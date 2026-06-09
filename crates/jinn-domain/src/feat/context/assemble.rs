@@ -49,7 +49,7 @@ pub struct AssembledPrompt {
     /// Tool definitions to include in the API request.
     pub tool_definitions: Vec<ToolDefinition>,
     /// Estimated token count (tiktoken o200k_base) of all messages.
-    estimated_tokens: u32,
+    pub estimated_tokens: u32,
 }
 
 impl AssembledPrompt {

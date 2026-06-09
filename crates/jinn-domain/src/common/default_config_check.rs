@@ -52,7 +52,7 @@ pub fn check_default_round_trips_to_default<T>(
 where
     T: DeserializeOwned + Serialize + Default + PartialEq + Debug,
 {
-    let parsed: T = toml::from_str(template).map_err(|_| DefaultConfigCheckError::Parse)?;
+    let parsed: T = toml::from_str(template).map_err(|_e| DefaultConfigCheckError::Parse)?;
     let default = T::default();
     if parsed == default {
         Ok(())

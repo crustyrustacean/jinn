@@ -76,9 +76,8 @@ pub fn render_rename_session_input(frame: &mut Frame<'_>, area: Rect, ctx: &Rend
 
     // Compute cursor x position: "> " (2) + grapheme count up to cursor_pos.
     let prefix_len = 2u16;
-    let grapheme_count = input_state.text.input[..input_state.text.cursor_pos]
-        .graphemes(true)
-        .count();
+    let grapheme_count = input_state.text.input.get(..input_state.text.cursor_pos)
+        .map_or(0, |s| s.graphemes(true).count());
     let cursor_x = (prefix_len + grapheme_count as u16).min(inner.width.saturating_sub(1));
     frame.set_cursor_position((inner.x.saturating_add(cursor_x), inner.y));
 }

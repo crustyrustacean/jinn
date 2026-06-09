@@ -163,7 +163,7 @@ pub struct ChatEntry {
     /// OWNER: compaction-actor (sets `ForcedExclude` during compaction),
     ///        user (via `x` key toggle in `toggle_entry_ignored`).
     #[serde(default)]
-    pub(crate) context_override: ContextOverride,
+    pub context_override: ContextOverride,
 
     /// Append-only audit log of every change to this entry's `context_override`.
     ///

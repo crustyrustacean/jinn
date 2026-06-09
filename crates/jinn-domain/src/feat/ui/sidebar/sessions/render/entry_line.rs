@@ -29,7 +29,7 @@ pub(crate) fn indicator_span(is_idle: bool, throbber_state: &ThrobberState) -> S
         if idx < 0 {
             idx += len;
         }
-        let ch = set.symbols[idx as usize];
+        let ch = set.symbols.get(idx as usize).expect("idx modulo len");
         Span::styled(ch.to_string(), Style::default().fg(Color::Cyan))
     }
 }
@@ -89,7 +89,7 @@ pub(crate) fn tree_prefix(entry: &SessionEntry) -> String {
     // Skip ancestor_continuations[0] - the root-level continuation.
     // Roots have no tree prefix, so there's nothing for that │ to connect to.
     let mut prefix = String::with_capacity(entry.depth * 3);
-    for &continues in &entry.ancestor_continuations[1..] {
+    for &continues in entry.ancestor_continuations.get(1..).unwrap_or(&[]) {
         prefix.push_str(if continues { "│  " } else { "   " });
     }
     prefix.push_str(if entry.is_last_child {

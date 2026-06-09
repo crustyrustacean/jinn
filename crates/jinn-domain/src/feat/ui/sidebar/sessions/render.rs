@@ -94,7 +94,7 @@ impl SidebarSection for SessionsSection {
             let start = scroll_offset.min(sessions.len());
             let end = (start + visible_count).min(sessions.len());
 
-            for (visual_i, entry) in sessions[start..end].iter().enumerate() {
+            for (visual_i, entry) in sessions.get(start..end).unwrap_or(&[]).iter().enumerate() {
                 let i = start + visual_i;
                 let is_selected = section_focused && selected_index == Some(i);
                 let max_title_len = area.width.saturating_sub(4) as usize;

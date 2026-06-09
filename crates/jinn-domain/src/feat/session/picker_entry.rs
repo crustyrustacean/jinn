@@ -20,7 +20,7 @@ pub struct SessionTreeEntry {
     /// The session's unique identifier.
     pub session_id: SessionId,
     /// Pre-computed string representation of `session_id` for `TreeItem::id`.
-    id_str: String,
+    pub id_str: String,
     /// Human-readable title (derived from first user message).
     pub title: String,
     /// When this session was last modified.
@@ -32,7 +32,7 @@ pub struct SessionTreeEntry {
     /// Parent session ID - `None` for root sessions.
     pub parent_id: Option<SessionId>,
     /// Pre-computed string representation of `parent_id` for `TreeItem::parent_id`.
-    parent_id_str: Option<String>,
+    pub parent_id_str: Option<String>,
 }
 
 impl SessionTreeEntry {

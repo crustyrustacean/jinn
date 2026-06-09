@@ -32,7 +32,9 @@ pub fn reconcile_after_session_removal(state: &mut AppState) {
     let active_id = state.session.active_session_id();
     let active_in_list = sessions.iter().any(|s| &s.id == active_id);
     if !active_in_list {
-        state.session.set_active(sessions[clamped].id.clone());
+        if let Some(s) = sessions.get(clamped) {
+            state.session.set_active(s.id.clone());
+        }
     }
 
     scroll_to_cursor(state);

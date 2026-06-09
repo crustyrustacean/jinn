@@ -53,9 +53,9 @@ fn to_lines_bash(arguments: &str, ctx: &RenderContext) -> Vec<Line<'static>> {
 
     let mut lines = vec![Line::from(Span::styled(truncated, style))];
 
-    if let Some(bg_color) = bg {
+    if let (Some(bg_color), Some(first_line)) = (bg, lines.first_mut()) {
         pad_line_to_width(
-            &mut lines[0],
+            first_line,
             ctx.content_width,
             Style::default().bg(bg_color),
         );
@@ -78,9 +78,9 @@ fn to_lines_collapsed(name: &str, arguments: &str, ctx: &RenderContext) -> Vec<L
 
     let mut lines = vec![Line::from(Span::styled(truncated, style))];
 
-    if let Some(bg_color) = bg {
+    if let (Some(bg_color), Some(first_line)) = (bg, lines.first_mut()) {
         pad_line_to_width(
-            &mut lines[0],
+            first_line,
             ctx.content_width,
             Style::default().bg(bg_color),
         );

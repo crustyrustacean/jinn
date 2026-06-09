@@ -45,7 +45,7 @@ pub fn wrap_text(text: &str, width: usize) -> Vec<WrappedLine> {
         if *g == "\n" {
             let logical_len = i - logical_start;
             wrap_logical_line(
-                &graphemes[logical_start..i],
+                graphemes.get(logical_start..i).unwrap_or(&[]),
                 width,
                 grapheme_offset,
                 logical_index,
@@ -59,7 +59,7 @@ pub fn wrap_text(text: &str, width: usize) -> Vec<WrappedLine> {
 
     // Handle the last logical line (no trailing `\n`).
     wrap_logical_line(
-        &graphemes[logical_start..],
+        graphemes.get(logical_start..).unwrap_or(&[]),
         width,
         grapheme_offset,
         logical_index,

@@ -157,7 +157,7 @@ mod tests {
     fn relative_subdir_resolves_against_current_cwd() {
         let dir = tempdir().unwrap();
         let sub = dir.path().join("sub");
-        fs::create_dir(&sub).unwrap();
+        fs::create_dir_all(&sub).unwrap();
         let res = resolve_cwd_input("sub", dir.path());
         assert_eq!(res, CwdResolution::Ok(canonicalize(&sub)));
     }

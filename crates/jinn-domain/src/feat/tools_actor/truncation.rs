@@ -60,7 +60,7 @@ pub fn truncate_head(content: &str, max_lines: usize, max_bytes: usize) -> Trunc
     }
 
     // If the first line alone exceeds the byte limit, return empty.
-    if !lines.is_empty() && lines[0].len() > max_bytes {
+    if lines.first().is_some_and(|l| l.len() > max_bytes) {
         return TruncationResult {
             content: String::new(),
             truncated: true,
@@ -230,7 +230,7 @@ fn truncate_string_from_end(s: &str, max_bytes: usize) -> String {
     while boundary < s.len() && !s.is_char_boundary(boundary) {
         boundary += 1;
     }
-    s[boundary..].to_owned()
+    s.get(boundary..).unwrap_or(s).to_owned()
 }
 
 /// Format a byte count as a human-readable size string.

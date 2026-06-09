@@ -54,7 +54,7 @@ fn resolve_context_limit(
     model_cache.and_then(|cache| {
         let provider_name = active_model.split('/').next()?;
         let models = cache.entries.get(provider_name)?;
-        let model_suffix = &active_model[(provider_name.len() + 1)..];
+        let model_suffix = active_model.get((provider_name.len() + 1)..)?;
         models
             .iter()
             .find(|m| m.id == model_suffix)

@@ -32,7 +32,7 @@ pub fn parse_frontmatter(content: &str) -> Option<SkillFrontmatter> {
     }
 
     // Skip the opening ---
-    let after_opening = &trimmed[3..];
+    let after_opening = trimmed.get(3..).unwrap_or("");
     let rest = after_opening
         .trim_start_matches('\n')
         .trim_start_matches('\r');
@@ -40,7 +40,7 @@ pub fn parse_frontmatter(content: &str) -> Option<SkillFrontmatter> {
     // Find the closing ---
     let close_offset = rest.find("\n---")?;
 
-    let yaml_block = &rest[..close_offset];
+    let yaml_block = rest.get(..close_offset)?;
 
     let mut name = None;
     let mut description = None;
@@ -64,7 +64,7 @@ pub fn strip_frontmatter(content: &str) -> String {
         return content.to_owned();
     }
 
-    let after_opening = &trimmed[3..];
+    let after_opening = trimmed.get(3..).unwrap_or("");
     let rest = after_opening
         .trim_start_matches('\n')
         .trim_start_matches('\r');
@@ -73,7 +73,7 @@ pub fn strip_frontmatter(content: &str) -> String {
         return content.to_owned();
     };
 
-    let body = &rest[close_offset + 4..];
+    let body = rest.get(close_offset + 4..).unwrap_or("");
     body.trim_start().to_owned()
 }
 

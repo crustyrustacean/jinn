@@ -196,7 +196,7 @@ pub fn render_arg_input(frame: &mut Frame<'_>, area: Rect, ctx: &RenderCtx) {
 
     // Separator line between command and input.
     if y_offset < max_y {
-        let separator: String = "─".repeat(inner.width as usize);
+        let separator = "─".repeat(inner.width as usize);
         let separator_line = Line::from(Span::styled(
             separator,
             Style::default().fg(theme.border_unfocused),

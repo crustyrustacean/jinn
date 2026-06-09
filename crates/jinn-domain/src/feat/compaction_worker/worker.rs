@@ -58,15 +58,15 @@ pub struct CompactionTrigger {
 #[derive(Clone)]
 pub struct CompactionWorker {
     /// Runtime services (for LLM calls).
-    pub services: Services,
+    pub(crate) services: Services,
     /// Tokio runtime handle for spawning tasks.
-    pub handle: Handle,
+    pub(crate) handle: Handle,
     /// Shared application state (for reading session history).
-    pub state: State,
+    pub(crate) state: State,
     /// Compaction configuration.
-    pub config: CompactionConfig,
+    pub(crate) config: CompactionConfig,
     /// System prompt for compaction summarization.
-    pub compaction_prompt: String,
+    pub(crate) compaction_prompt: String,
     /// Whether an auto-compaction is currently in flight.
     ///
     /// Set before starting the LLM call, cleared when the compaction
@@ -452,7 +452,7 @@ fn resolve_context_limit(
     model_cache.and_then(|cache| {
         let provider_name = active_model.split('/').next()?;
         let models = cache.entries.get(provider_name)?;
-        let model_suffix = &active_model[(provider_name.len() + 1)..];
+        let model_suffix = active_model.get((provider_name.len() + 1)..)?;
         models
             .iter()
             .find(|m| m.id == model_suffix)

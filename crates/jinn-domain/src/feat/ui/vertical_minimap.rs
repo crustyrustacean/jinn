@@ -53,7 +53,7 @@ fn token_threshold_color(count: u32, max_tokens: u32) -> Color {
     }
     let band = (u64::from(count) * MINIMAP_BANDS as u64 / u64::from(max_tokens))
         .min((MINIMAP_BANDS - 1) as u64) as usize;
-    MINIMAP_PALETTE[band]
+    MINIMAP_PALETTE.get(band).copied().unwrap_or(*MINIMAP_PALETTE.first().expect("non-empty"))
 }
 
 /// Extension trait for determining whether a visual item should produce
@@ -67,7 +67,7 @@ impl MinimapVisibility for VisualItem {
         match self {
             VisualItem::CollapsedIgnoredBlock { .. } => true,
             VisualItem::Entry(hist_idx) => {
-                let entry = &history[*hist_idx];
+                let Some(entry) = history.get(*hist_idx) else { return false };
                 if entry.is_empty_assistant() {
                     return false;
                 }

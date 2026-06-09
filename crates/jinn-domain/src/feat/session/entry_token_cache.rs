@@ -43,7 +43,10 @@ impl EntryTokenCache {
     ///
     /// Used by the token count actor for batch insertion after
     /// session load or history append.
-    pub fn bulk_insert(&mut self, entries: impl IntoIterator<Item = (ChatEntryId, u32)>) {
+    pub fn bulk_insert<I>(&mut self, entries: I)
+    where
+        I: IntoIterator<Item = (ChatEntryId, u32)>,
+    {
         for (id, count) in entries {
             self.entries.insert(id, count);
         }

@@ -362,26 +362,23 @@ fn tokenize_spans(line: &str) -> Vec<Span> {
         std::sync::LazyLock::new(|| Regex::new(r"<([^>]+)>").expect("invalid regex"));
 
     let mut spans = Vec::new();
-    let mut last_end = 0;
+    let last_end = 0;
 
     for caps in RE.captures_iter(line) {
         let m = caps.get(0).expect("capture group 0 always exists");
         // Emit preceding static text if any.
         if m.start() > last_end {
-            spans.push(Span::Static(line[last_end..m.start()].to_owned()));
+            if let Some(text) = line.get(last_end..m.start()) {
+                spans.push(Span::Static(text.to_owned()));
+            }
         }
-        let inner = caps
-            .get(1)
-            .expect("capture group 1 exists")
-            .as_str()
-            .to_owned();
-        spans.push(Span::Placeholder(inner));
-        last_end = m.end();
     }
 
     // Emit trailing static text if any.
     if last_end < line.len() {
-        spans.push(Span::Static(line[last_end..].to_owned()));
+        if let Some(text) = line.get(last_end..) {
+            spans.push(Span::Static(text.to_owned()));
+        }
     }
 
     spans

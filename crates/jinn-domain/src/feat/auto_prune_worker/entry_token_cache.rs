@@ -85,12 +85,15 @@ impl HistoryWorkerChatEntryTokenCache {
     /// If it ever becomes a hotspot, switch to a probe-then-insert
     /// pattern: `if let Some(v) = map.get(&k) { return v.clone() }`,
     /// compute outside any guard, then `map.entry(k).or_insert_with(...)`.
-    pub fn get_or_insert_with(
+    pub fn get_or_insert_with<F>(
         &self,
         session_id: &SessionId,
         entry_id: &ChatEntryId,
-        compute: impl FnOnce() -> u32,
-    ) -> u32 {
+        compute: F,
+    ) -> u32
+    where
+        F: FnOnce() -> u32,
+    {
         let session_id = session_id.clone();
         let entry_id = entry_id.clone();
         // outer entry() holds the outer shard guard briefly;
