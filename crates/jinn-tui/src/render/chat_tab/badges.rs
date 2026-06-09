@@ -61,9 +61,20 @@ pub(super) fn render_badges(frame: &mut Frame<'_>, input_area: Rect, ctx: &Rende
 fn build_badge_ctx(ctx: &RenderCtx) -> serde_json::Value {
     let sid = ctx.state.session.active_session_id().clone();
     let mode = ctx.state.frontend.scope_stack.current().mode();
+
+    let theme_styles: serde_json::Map<String, serde_json::Value> = ctx
+        .state
+        .frontend
+        .theme
+        .style_map()
+        .keys()
+        .map(|k| (k.to_string(), serde_json::Value::String(k.to_string())))
+        .collect();
+
     serde_json::json!({
         "active_session_id": sid.to_string(),
         "mode": mode.to_string(),
+        "theme_styles": serde_json::Value::Object(theme_styles),
     })
 }
 
@@ -291,5 +302,26 @@ mod tests {
         let v = build_badge_ctx(&ctx);
         // Then mode is the lowercase scope-mode string.
         assert_eq!(v["mode"], serde_json::json!("input"));
+    }
+
+    #[test]
+    fn badge_ctx_includes_theme_styles_keys() {
+        // Given default state.
+        let state = AppState::default();
+        let ctx = RenderCtx::new(&state);
+        // When building the badge ctx.
+        let v = build_badge_ctx(&ctx);
+        // Then theme_styles is an object with every theme field name as a key.
+        let ts = v["theme_styles"].as_object().expect("theme_styles must be an object");
+        let expected_count = theme().style_map().len();
+        assert_eq!(
+            ts.len(),
+            expected_count,
+            "theme_styles should have one entry per theme field"
+        );
+        // And each key maps to itself (the style name).
+        assert_eq!(ts["streaming"].as_str(), Some("streaming"));
+        assert_eq!(ts["accent_action"].as_str(), Some("accent_action"));
+        assert_eq!(ts["muted_text"].as_str(), Some("muted_text"));
     }
 }
