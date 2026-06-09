@@ -1,138 +1,237 @@
 # jinn default configuration
 #
-# This file is auto-generated on first run. Comments are preserved across
-# saves, so feel free to annotate values that you have customized.
+# ---------------------------------------------------------------------------
+# Session lifecycle commands
+# ---------------------------------------------------------------------------
+# Lifecycle commands run at session startup and teardown. They allow you to
+# setup and cleanup the environment.
 #
-# Defaults reflect `UserPreferences::default()` exactly; a unit test in
-# `user_preferences.rs` (round-trip equality) guards against drift.
-
-# ---------------------------------------------------------------------------
-# Runtime state (will be moved to a separate state file in a future release)
-# ---------------------------------------------------------------------------
-
-# Last model chosen in the model picker.
-# last_model = "provider/model-name"
-
-# Last strategy chosen in the strategy picker.
-# last_strategy = "balanced"
-
-# Sidebar column width in characters.
-# sidebar_width = 30
-
-# ---------------------------------------------------------------------------
-# Session lifecycle recipes
-# ---------------------------------------------------------------------------
+# `setup_command` is ran when the session is created. `teardown_command` is ran
+# when the session is "closed" or the command can be ran manually with the `t`
+# keyboard shortcut.
 #
-# Define named command sequences that run automatically when a session
-# transitions between states (e.g. on creation, before compaction, on close).
-# Uncomment and edit the example below to get started.
+# The `setup_command` can optionally end by printing the desired CWD and jinn
+# will configure the session to use that CWD. This is useful when checking out
+# a new branch in a new workspace and then switching to that workspace.
 #
+# If the `teardown_command` 
+#
+# Fossil SCM example
 # [[session_lifecycle]]
-# name = "startup-summary"
-# on = "session_created"
-# steps = [
-#     { kind = "bash", command = "git status --short" },
-#     { kind = "message", text = "Welcome back." },
-# ]
+# name = "fossil branch quickfix"
+# description = "Open a new checkout + branch"
+# setup_command = "mkdir <branch> && cd <branch> && fossil open ../jinn.fossil && fossil commit -m 'Open <branch>' --branch <branch> --allow-empty && just shm-target && echo ./<branch>"
+# teardown_command = "cd <branch> && fossil merge trunk --force && fossil addremove && fossil commit -m 'Bring in latest trunk' && fossil update trunk && fossil merge <branch> && fossil addremove && fossil commit -m 'Merge <branch>' && fossil branch close <branch> && just unshm-target && cd .. && rm -rfv <branch>"
 
-session_lifecycle = []
+[[session_lifecycle]]
+name = "git worktree"
+description = "Open a git worktree + branch"
+setup_command = "git worktree add -b <branch> ../<branch> && echo ../<branch>"
+teardown_command = "git merge <branch> && git worktree remove ../<branch> && git branch -d <branch>"
 
-# ---------------------------------------------------------------------------
-# Context compaction
-# ---------------------------------------------------------------------------
 
+# Compaction command + auto compaction.
 [compaction]
-# Compact the conversation when the used context window exceeds this fraction.
+# Automatically compact the conversation when the used context window exceeds
+# this usage percentage. Recommend no higher than 0.85 to account for drift in
+# token calculations between models and providers (jinn applies a single token
+# calculation across the board).
 threshold = 0.7
-# Number of tokens to reserve for the next reply after compaction.
+# Number of tokens to reserve during compaction. This will keep up to the
+# `reserve_tokens` worth of recent messages so the model doesn't lose track of
+# what it was doing.
 reserve_tokens = 20000
 # Fallback context window size (in tokens) when the provider does not report one.
 fallback_context_window = 150000
 
 
-# ---------------------------------------------------------------------------
-# Provider request retry policy
-# ---------------------------------------------------------------------------
 
+# Policy for retrying failed provider requests.
 [request_retry]
+# Retry the request this amount of times before aborting.
 max_retries = 5
 base_delay_secs = 2
 max_delay_secs = 60
 
-# ---------------------------------------------------------------------------
-# Tool backends
-# ---------------------------------------------------------------------------
-
+# web-fetch tool.
 [web_fetch]
-# HTTP backend used by the web_fetch tool. One of: "http".
-backend = "http"
+# HTTP backend used by the web_fetch tool. One of: "http" or "headless-chrome".
+#
+# "http" can be used when most of your requests hit static or server rendered
+# pages. Note that many sites will block bot traffic and so the "http" backend
+# will fail regularly.
+#
+# The "headless-chrome" backend is significantly slower than the "http"
+# backend, but will have a higher success rate at making the request since it
+# uses a real browser with JavaScript support. Note that the Chrome backend is
+# started on-demand, so the first request will take a while and subsequent
+# requests will be quicker (although still a bit slower than the "http"
+# backend).
+backend = "headless-chrome"
 
+# OpenRouter web search. Only valid when using OpenRouter as the provider.
 [openrouter_web_search]
-# Search engine used by the openrouter_web_search tool. One of: "exa".
+# Search engine used by the openrouter_web_search tool. One of:
+# - "exa",
+# - "firecrawl"
+# - "parallel"
+# - "native"
+# - "auto"
 engine = "exa"
 
+# Bash tool
+[bash]
+# Default timeout (in seconds) for bash tool invocations.
+default_timeout_secs = 180
+
+# <M-c>/<M-d> CWD selection
 [cwd_selector]
 # Shell command template run by the cwd_selector tool. `{path}` is replaced
 # with the starting directory. Must print a single absolute path on stdout.
 command = "find -L {path} -type d 2>/dev/null | fzf --no-multi"
 
+# The minimap uses colors (dark to light) to mark the size of a particular
+# message.
 [minimap]
-# Maximum number of tokens the minimap may consume.
+#  Messages `max_tokens` or higher will always be the lightest color.
 max_tokens = 2000
 
 # ---------------------------------------------------------------------------
 # Auto-prune rules
 # ---------------------------------------------------------------------------
 #
-# Each rule removes specific kinds of low-value entries from the conversation
-# history before context compaction kicks in. Disable any rule by setting
-# `enabled = false`.
+# Each rule removes specific messages from the conversation history. Disable
+# any rule by setting `enabled = false`.
 
-[auto_prune.read_edit]
+# ---------------------------------------------------------------------------
+# Prunes "edit" and "write" tool calls+results for a file if it is subsequently
+# read.
+[auto_prune.edit_read]
 enabled = true
-# Minimum age (in turns from the end of the conversation) before a read-edit
-# pair becomes eligible for pruning.
+# Only prune after `min_age` messages.
 min_age = 50
 
+# ---------------------------------------------------------------------------
+# Prunes "read" tool calls+results for a file after `threshold` number of
+# edits/writes.
+[auto_prune.read_edit]
+enabled = true
+# Number of edits or writes before the "read" becomes stale.
+threshold = 2
+# Only prune after `min_age` messages.
+min_age = 50
+
+# ---------------------------------------------------------------------------
+# User-supplied regex rules.
 [auto_prune.regex]
 enabled = true
-# User-supplied regex rules. Each entry is a struct; see the README for shape.
-rules = []
 
+[[auto_prune.regex.rules]]
+# Regex pattern to check
+pattern = "cargo test"
+# Tool name to check
+tool_name = "bash"
+# Keep this many matching instances.
+keep_last = 2
+# Don't trigger until this many messages/tool calls have elapsed
+min_age = 50
+
+[[auto_prune.regex.rules]]
+pattern = "cargo check"
+tool_name = "bash"
+keep_last = 1
+min_age = 50
+
+[[auto_prune.regex.rules]]
+pattern = "cargo clippy"
+tool_name = "bash"
+keep_last = 1
+min_age = 50
+
+# ---------------------------------------------------------------------------
+# Removes failed `edit` tool result and corresponding call.
 [auto_prune.broken_edit]
 enabled = true
 # Only prune a broken-edit pattern when at least this many tail entries exist.
 min_tail_entries = 10
 
+
+# ---------------------------------------------------------------------------
+# All todo/task list tool calls return the entire list. This pruner keeps only the most recent todo call.
 [auto_prune.todo]
 enabled = true
 
+# ---------------------------------------------------------------------------
+# Prunes old edit and write tool calls + tool results.
 [auto_prune.double_edit]
 enabled = true
+# The number of writes/edits to keep for any particular file
 max_file_edits = 2
+# Don't trigger until this many messages/tool calls have elapsed
 min_age = 20
 
+# ---------------------------------------------------------------------------
+# Prunes old reads of files.
 [auto_prune.consecutive_reads]
 enabled = true
-keep_last = 3
+# Keep up to 5 reads per file.
+keep_last = 5
+# Don't trigger until this many messages/tool calls have elapsed. This worker
+# should use a somewhat higher min_age threshold in case the agent reads small
+# chunks of large files multiple times.
+min_age = 80
 
+# ---------------------------------------------------------------------------
+# Prunes tool calls + tool results.
 [auto_prune.tool_age_window]
 enabled = true
-min_age = 100
+# Don't trigger until this many messages/tool calls have elapsed. This worker
+# should use a higher value since it prunes indiscriminately.
+min_age = 150
 
+# ---------------------------------------------------------------------------
+# Prunes short assistant entries. There are common during tool loops when then
+# agent is "thinking out loud".
 [auto_prune.trivial_assistant]
 enabled = true
-max_age_entries = 100
+# Prune entries that have up to this many tokens.
 max_tokens = 80
+# Don't trigger until this many messages/tool calls have elapsed. This worker
+# should use a high-ish value here so the agent doesn't lose track of what it's
+# working on.
+min_age = 100
 
-[auto_prune.anchor_radius]
+# ---------------------------------------------------------------------------
+# Prunes large assistant entries.
+#
+# Sometimes the assistant thinks "out loud" with large entries (which we want
+# to prune). However, large entries are also typically associated with direct
+# responses to user messages and are of more importance (like plans or
+# explanations or code samples that we want to keep).
+#
+# This pruner calculates a `radius` of entries anchored from all user messages
+# and the first/last message in the entire chat history. If the assistant entry
+# is outside the radius, it gets pruned. If it's inside, it stays. The size of
+# the assistant message is the `trivial_assistant` pruner config `max_tokens`
+# size + 1.
+#
+# Here's a visual to help explain:
+#
+#  u = user message
+#  A = assistant message
+#  t = tool call
+#  . = outside radius
+#  - = inside radius
+#
+#         keep                            keep
+#         v     v                         v  v
+#        uAtttttA.........................AttAttu
+# anchor ^-------|     outside radius    |------^ user message anchor
+
+[auto_prune.anchored_assistant]
 enabled = true
+# Number of chat entries from an anchor (user message or conversation history
+# start/end) before pruning is allowed.
 radius = 100
-
-# ---------------------------------------------------------------------------
-# Bash tool
-# ---------------------------------------------------------------------------
-
-[bash]
-# Default timeout (in seconds) for bash tool invocations.
-default_timeout_secs = 180
+# Candidate message must be at least this old before prune-eligible.
+min_age = 50

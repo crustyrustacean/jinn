@@ -23,10 +23,3 @@ pub use skills_scan_actor::{ScanSkills, SkillsLoaded};
 
 use std::path::PathBuf;
 
-/// Returns the default agent skills directory: `~/.agents/skills/`.
-pub fn skills_dir() -> PathBuf {
-    dirs::home_dir()
-        .unwrap_or_else(|| PathBuf::from("."))
-        .join(".agents")
-        .join("skills")
-}

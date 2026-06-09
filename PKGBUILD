@@ -53,6 +53,14 @@ package() {
     done
     install -Dm0644 -t "$pkgdir/usr/share/jinn/plugins/meta/" res/plugins/meta/*.lua
 
+    # Install default skills to /usr/share/jinn/skills/.
+    for skill_dir in res/skills/*/; do
+        local skill_name=$(basename "$skill_dir")
+        for file in "$skill_dir"*; do
+            install -Dm0644 "$file" -t "$pkgdir/usr/share/jinn/skills/$skill_name/"
+        done
+    done
+
     # Install shell completions.
     local _bin="target/release/jinn"
     install -Dm0644 /dev/stdin "$pkgdir/usr/share/bash-completion/completions/jinn" \
