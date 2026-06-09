@@ -127,7 +127,7 @@ pub fn load_compaction_prompt(
 pub fn load_theme(state: &State, user_dir: &Path, system_dir: &Path) {
     let theme_name = {
         let guard = state.read();
-        guard.frontend.preferences.theme_name.clone()
+        guard.frontend.app_state.theme_name.clone()
     };
     match jinn_domain::feat::theme::resolve_theme(theme_name.as_deref(), user_dir, system_dir) {
         Ok(theme) => {

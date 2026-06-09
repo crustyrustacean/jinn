@@ -26,6 +26,7 @@ use crate::feat::chat_input::protocol::event::ChatEntrySubmitted;
 // Re-export infrastructure types only. Domain structs are imported from their modules.
 pub use crate::common::actor::event_msg::EventMsg;
 use crate::feat::discovery_coordinator::SessionDiscoverySettled;
+use crate::feat::preferences_actor::protocol::app_state_event::AppStateUpdated;
 use crate::feat::preferences_actor::protocol::event::PreferencesUpdated;
 use crate::feat::provider::protocol::event::{
     ModelCacheLoaded, ModelsRefreshed, PromptTemplatesLoaded, ProviderSwitched, StreamCompleted,
@@ -114,6 +115,8 @@ pub enum Event {
     EnvironmentLoaded(EnvironmentLoaded),
     /// User preferences have been updated and persisted.
     PreferencesUpdated(PreferencesUpdated),
+    /// App-state fields have been updated and persisted to state.toml.
+    AppStateUpdated(AppStateUpdated),
     /// The active session changed (tab switch or session load).
     ActiveSessionChanged(crate::protocol::system::ActiveSessionChanged),
     /// A new chat session was created.
@@ -201,6 +204,7 @@ impl Event {
             }
             Self::EnvironmentLoaded(..) => Some(EnvironmentLoaded::TYPE_NAME),
             Self::PreferencesUpdated(..) => Some(PreferencesUpdated::TYPE_NAME),
+            Self::AppStateUpdated(..) => Some(AppStateUpdated::TYPE_NAME),
             Self::ActiveSessionChanged(..) => {
                 Some(crate::protocol::system::ActiveSessionChanged::TYPE_NAME)
             }
