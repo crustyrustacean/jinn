@@ -8,12 +8,15 @@ default-run = "jinn"
 default = ["headless-chrome"]
 headless-chrome = ["jinn-web-fetch/headless-chrome"]
 
+
 [workspace]
 members = ["crates/*", "tests/*", "vendor/*"]
+
 
 [workspace.package]
 version = "0.63.0"
 edition = "2024"
+publish = false
 
 [profile.release]
 strip = true

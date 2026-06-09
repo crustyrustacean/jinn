@@ -14,9 +14,9 @@
 //! - It is the **first** entry in history (regardless of type).
 //! - It is the **last** entry in history (regardless of type).
 //!
-//! The first/last anchors guarantee that the opening message and the most
-//! recent wrap-up summary are never pruned, even when a long tool-call
-//! chain pushes them far from any `User` entry.
+//! The first/last anchors guarantee that the opening message and the most recent wrap-up summary
+//! are never pruned by this worker, even when a long tool-call chain pushes them far from any
+//! `User` entry.
 //!
 //! # Semantics
 //!
