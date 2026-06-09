@@ -117,38 +117,88 @@ impl Default for MinimapConfig {
     }
 }
 
+/// Default enabled state for edit-read auto-prune.
+const DEFAULT_EDIT_READ_ENABLED: bool = true;
+
+/// Default `min_age` for edit-read auto-prune.
+///
+/// Number of entries from the end of history within which prior
+/// edit/write call+result pairs are protected from pruning
+/// when a same-file read occurs.
+const DEFAULT_EDIT_READ_MIN_AGE: usize = 50;
+
+/// Edit-read auto-prune configuration.
+///
+/// Serialized as `[auto_prune.edit_read]` in `jinn.toml`.
+/// Controls the auto-prune worker that excludes stale edit/write tool calls
+/// when a same-file read follows, since the read output represents the
+/// current file state.
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+pub struct EditReadAutoPruneConfig {
+    #[serde(default = "default_edit_read_enabled")]
+    pub enabled: bool,
+    /// Minimum number of entries from the end of history that must
+    /// appear after an edit/write call before it may be pruned when
+    /// a same-file read follows. Counts every entry, regardless of
+    /// in-context status. Set to 0 to disable protection.
+    /// Default: 50.
+    #[serde(default = "default_edit_read_min_age")]
+    pub min_age: usize,
+}
+
+fn default_edit_read_enabled() -> bool {
+    DEFAULT_EDIT_READ_ENABLED
+}
+
+fn default_edit_read_min_age() -> usize {
+    DEFAULT_EDIT_READ_MIN_AGE
+}
+
+impl Default for EditReadAutoPruneConfig {
+    fn default() -> Self {
+        Self {
+            enabled: DEFAULT_EDIT_READ_ENABLED,
+            min_age: DEFAULT_EDIT_READ_MIN_AGE,
+        }
+    }
+}
+
 /// Default enabled state for read-edit auto-prune.
 const DEFAULT_READ_EDIT_ENABLED: bool = true;
 
 /// Default `min_age` for read-edit auto-prune.
 ///
-/// Number of entries from the end of history within which prior
-/// edit/write call+result pairs are protected from backward pruning
-/// when a same-file read occurs.
+/// Number of entries from the end of history within which
+/// read call+result pairs are protected from pruning.
 const DEFAULT_READ_EDIT_MIN_AGE: usize = 50;
 
-/// Default enabled state for todo auto-prune.
-const DEFAULT_TODO_ENABLED: bool = true;
-
-/// Default minimum age for todo auto-prune.
-const DEFAULT_TODO_MIN_AGE: usize = 50;
+/// Default threshold for read-edit auto-prune.
+///
+/// Number of edit/write operations on the same file required before
+/// pruning the prior read call+result pair.
+const DEFAULT_READ_EDIT_THRESHOLD: usize = 2;
 
 /// Read-edit auto-prune configuration.
 ///
 /// Serialized as `[auto_prune.read_edit]` in `jinn.toml`.
-/// Controls the auto-prune worker that excludes stale read tool calls and results
-/// after the file has been edited twice.
+/// Controls the auto-prune worker that excludes stale read tool calls
+/// after the file has been edited a configurable number of times.
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 pub struct ReadEditAutoPruneConfig {
     #[serde(default = "default_read_edit_enabled")]
     pub enabled: bool,
-    /// Minimum number of entries from the end of history that must
-    /// appear after a write/edit call before backward pruning may
-    /// exclude the call+result pair. Counts every entry, regardless
-    /// of in-context status. Set to 0 to disable protection.
+    /// Minimum number of entries from the end of history within which
+    /// read call+result pairs are protected from pruning.
+    /// Counts every entry, regardless of in-context status.
+    /// Set to 0 to disable protection.
     /// Default: 50.
     #[serde(default = "default_read_edit_min_age")]
     pub min_age: usize,
+    /// Number of edit/write operations on the same file required before
+    /// pruning the prior read call+result pair.
+    /// Default: 2.
+    #[serde(default = "default_read_edit_threshold")]
+    pub threshold: usize,
 }
 
 fn default_read_edit_enabled() -> bool {
@@ -159,11 +209,16 @@ fn default_read_edit_min_age() -> usize {
     DEFAULT_READ_EDIT_MIN_AGE
 }
 
+fn default_read_edit_threshold() -> usize {
+    DEFAULT_READ_EDIT_THRESHOLD
+}
+
 impl Default for ReadEditAutoPruneConfig {
     fn default() -> Self {
         Self {
             enabled: DEFAULT_READ_EDIT_ENABLED,
             min_age: DEFAULT_READ_EDIT_MIN_AGE,
+            threshold: DEFAULT_READ_EDIT_THRESHOLD,
         }
     }
 }
@@ -172,6 +227,16 @@ impl Default for ReadEditAutoPruneConfig {
 ///
 /// Serialized as `[auto_prune.todo]` in `jinn.toml`.
 /// Controls the auto-prune worker that excludes stale todo tool call+result
+
+/// Default enabled state for todo auto-prune.
+const DEFAULT_TODO_ENABLED: bool = true;
+
+/// Default `min_age` for todo auto-prune.
+///
+/// Number of entries from the end of history that must
+/// appear after a todo tool call before pruning may exclude the
+/// call+result pair.
+const DEFAULT_TODO_MIN_AGE: usize = 50;
 /// pairs, keeping only the most recent one for each tool name.
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 pub struct TodoAutoPruneConfig {
@@ -630,6 +695,9 @@ fn default_regex_enabled() -> bool {
 /// Groups all auto-prune strategy configurations.
 #[derive(Default, Debug, Clone, PartialEq, Serialize, Deserialize)]
 pub struct AutoPruneConfig {
+    /// Edit-read auto-prune strategy configuration.
+    #[serde(default)]
+    pub edit_read: EditReadAutoPruneConfig,
     /// Read-edit auto-prune strategy configuration.
     #[serde(default)]
     pub read_edit: ReadEditAutoPruneConfig,
@@ -2227,6 +2295,9 @@ max_tokens = 5000
     #[rstest::rstest]
     fn default_auto_prune_config_has_defaults() {
         let config = AutoPruneConfig::default();
+        assert!(config.edit_read.enabled);
+        assert_eq!(config.edit_read.min_age, 50);
+        assert_eq!(config.read_edit.threshold, 2);
         assert!(config.read_edit.enabled);
         assert!(config.todo.enabled);
         assert!(config.consecutive_reads.enabled);
@@ -2244,6 +2315,7 @@ max_tokens = 5000
     fn default_preferences_has_default_auto_prune_config() {
         let prefs = UserPreferences::default();
         assert!(prefs.auto_prune.read_edit.enabled);
+        assert!(prefs.auto_prune.edit_read.enabled);
         assert!(prefs.auto_prune.todo.enabled);
         assert!(prefs.auto_prune.consecutive_reads.enabled);
         assert!(prefs.auto_prune.tool_age_window.enabled);
@@ -2359,6 +2431,7 @@ enabled = true
 
         let prefs = load_preferences_from(&path).expect("load");
         assert_eq!(prefs.auto_prune.read_edit.min_age, 50);
+        assert_eq!(prefs.auto_prune.read_edit.threshold, 2);
         assert_eq!(prefs.auto_prune.double_edit.min_age, 20);
         assert_eq!(prefs.auto_prune.tool_age_window.min_age, 100);
     }
@@ -2369,9 +2442,14 @@ enabled = true
         let path = dir.path().join(PREFS_FILE_NAME);
         let prefs = UserPreferences {
             auto_prune: AutoPruneConfig {
+                edit_read: EditReadAutoPruneConfig {
+                    enabled: true,
+                    min_age: 30,
+                },
                 read_edit: ReadEditAutoPruneConfig {
                     enabled: false,
                     min_age: 25,
+                    threshold: 3,
                 },
                 regex: RegexAutoPruneConfig::default(),
                 broken_edit: BrokenEditAutoPruneConfig {
@@ -2405,8 +2483,11 @@ enabled = true
         save_preferences_to(&prefs, &path).expect("save");
 
         let reloaded = load_preferences_from(&path).expect("load");
+        assert!(reloaded.auto_prune.edit_read.enabled);
+        assert_eq!(reloaded.auto_prune.edit_read.min_age, 30);
         assert!(!reloaded.auto_prune.read_edit.enabled);
         assert_eq!(reloaded.auto_prune.read_edit.min_age, 25);
+        assert_eq!(reloaded.auto_prune.read_edit.threshold, 3);
         assert!(!reloaded.auto_prune.broken_edit.enabled);
         assert_eq!(reloaded.auto_prune.broken_edit.min_age, 3);
         assert!(!reloaded.auto_prune.todo.enabled);
@@ -2426,6 +2507,7 @@ enabled = true
         std::fs::write(&path, r##"last_model = 'ollama/llama3'"##).expect("write");
 
         let prefs = load_preferences_from(&path).expect("load");
+        assert!(prefs.auto_prune.edit_read.enabled);
         assert!(prefs.auto_prune.read_edit.enabled);
         assert!(prefs.auto_prune.todo.enabled);
         assert!(prefs.auto_prune.tool_age_window.enabled);
@@ -2451,6 +2533,8 @@ enabled = false
 
         let prefs = load_preferences_from(&path).expect("load");
         assert!(!prefs.auto_prune.todo.enabled);
+        // edit_read should still have defaults
+        assert!(prefs.auto_prune.edit_read.enabled);
         // read_edit should still have defaults
         assert!(prefs.auto_prune.read_edit.enabled);
     }
@@ -2462,6 +2546,7 @@ enabled = false
         assert_eq!(AnchorRadiusAutoPruneConfig::default().min_age, 50);
         assert_eq!(ConsecutiveReadsAutoPruneConfig::default().min_age, 50);
         assert_eq!(TodoAutoPruneConfig::default().min_age, 50);
+        assert_eq!(EditReadAutoPruneConfig::default().min_age, 50);
         // RegexPruneRule has no Default impl (pattern is required), so verify
         // via the serde default function directly.
         assert_eq!(default_regex_min_age(), 50);
