@@ -958,21 +958,23 @@ impl ActorSystemBuilder {
             };
 
             if config.enabled {
-                actors.push(spawn::<HistoryWorkerActor<AnchoredAssistantAutoPruneWorker>>(
-                    "history-worker-auto-prune-anchored-assistant",
-                    &sink,
-                    handle,
-                    &counter,
-                    &shutdown_tracker,
-                    HistoryWorkerActorDeps {
-                        worker: AnchoredAssistantAutoPruneWorker {
-                            config,
-                            min_candidate_tokens: trivial_max_tokens + 1,
-                            token_cache: entry_token_cache.clone(),
-                            counter: TiktokenCounter::o200k_base(),
+                actors.push(
+                    spawn::<HistoryWorkerActor<AnchoredAssistantAutoPruneWorker>>(
+                        "history-worker-auto-prune-anchored-assistant",
+                        &sink,
+                        handle,
+                        &counter,
+                        &shutdown_tracker,
+                        HistoryWorkerActorDeps {
+                            worker: AnchoredAssistantAutoPruneWorker {
+                                config,
+                                min_candidate_tokens: trivial_max_tokens + 1,
+                                token_cache: entry_token_cache.clone(),
+                                counter: TiktokenCounter::o200k_base(),
+                            },
                         },
-                    },
-                ));
+                    ),
+                );
             }
         }
         // Sidebar state actor - keeps sidebar cursor in sync after session removal.

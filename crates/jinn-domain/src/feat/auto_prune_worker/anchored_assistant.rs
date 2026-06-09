@@ -45,9 +45,6 @@ use crate::feat::session::chat_entry::{ChangeSource, ChatEntry, ChatEntryKind, C
 use crate::feat::session::history_mutation::HistoryMutation;
 use crate::protocol::SessionId;
 
-/// Minimum token count for an `Assistant` entry to be a prune candidate.
-///
-
 /// Anchored-assistant auto-prune worker.
 ///
 /// See the [module docs](self) for full semantics.
@@ -163,29 +160,35 @@ fn distances_to_nearest_anchors(
 ///    e. Prune if both distances are present and both strictly exceed
 ///    `radius`.
 ///    f. Skip otherwise (including the case where only one side is
-///    missing — that side acts as `∞`, but the present side is finite
-///    and we keep the entry if it's within radius).
-fn build_prune_mutations(
-    history: &[ChatEntry],
+///    missing — that side acts as ∞, and we keep the entry if it's within
+///    radius).
+///
+/// Context bundle for [`build_prune_mutations`] — groups the seven parameters
+/// that vary per invocation into a single struct so the function signature stays
+/// under clippy's argument-count threshold.
+struct PruneCtx<'a> {
+    history: &'a [ChatEntry],
     radius: usize,
     min_age: usize,
     min_candidate_tokens: u32,
-    session_id: &SessionId,
-    token_cache: &super::HistoryWorkerChatEntryTokenCache,
-    counter: &TiktokenCounter,
-    worker_name: &str,
-) -> Vec<HistoryMutation> {
-    let radius = radius.max(1);
+    session_id: &'a SessionId,
+    token_cache: &'a super::HistoryWorkerChatEntryTokenCache,
+    counter: &'a TiktokenCounter,
+    worker_name: &'a str,
+}
 
-    if history.is_empty() {
+fn build_prune_mutations(ctx: &PruneCtx<'_>) -> Vec<HistoryMutation> {
+    let radius = ctx.radius.max(1);
+
+    if ctx.history.is_empty() {
         return Vec::new();
     }
-    let anchor_indices = collect_anchor_indices(history);
+    let anchor_indices = collect_anchor_indices(ctx.history);
 
     let mut mutations = Vec::new();
-    let history_len = history.len();
+    let history_len = ctx.history.len();
 
-    for (idx, entry) in history.iter().enumerate() {
+    for (idx, entry) in ctx.history.iter().enumerate() {
         // Only Assistant entries are candidates.
         let text = match &entry.kind {
             ChatEntryKind::Assistant(t) => t.as_str(),
@@ -211,17 +214,18 @@ fn build_prune_mutations(
 
         // Protection floor: never prune entries within `min_age` of the
         // end of history. `min_age = 0` disables protection entirely.
-        if is_within_min_age(history_len, idx, min_age) {
+        if is_within_min_age(history_len, idx, ctx.min_age) {
             continue;
         }
 
         // Look up or compute token count. The closure only fires on first
         // miss for this (session, entry) pair.
-        let tokens =
-            token_cache.get_or_insert_with(session_id, &entry.id, || counter.count(text) as u32);
+        let tokens = ctx
+            .token_cache
+            .get_or_insert_with(ctx.session_id, &entry.id, || ctx.counter.count(text) as u32);
 
         // Skip small entries — owned by TrivialAssistantAutoPruneWorker.
-        if tokens < min_candidate_tokens {
+        if tokens < ctx.min_candidate_tokens {
             continue;
         }
 
@@ -252,7 +256,7 @@ fn build_prune_mutations(
                 entry_id: entry.id.clone(),
                 value: ContextOverride::ForcedExclude,
                 source: ChangeSource::Worker {
-                    name: worker_name.to_owned(),
+                    name: ctx.worker_name.to_owned(),
                 },
             });
         }
@@ -273,16 +277,16 @@ impl HistoryWorker for AnchoredAssistantAutoPruneWorker {
         session_id: &SessionId,
         history: Arc<[ChatEntry]>,
     ) -> Vec<HistoryMutation> {
-        let mutations = build_prune_mutations(
-            &history,
-            self.config.radius,
-            self.config.min_age,
-            self.min_candidate_tokens,
+        let mutations = build_prune_mutations(&PruneCtx {
+            history: &history,
+            radius: self.config.radius,
+            min_age: self.config.min_age,
+            min_candidate_tokens: self.min_candidate_tokens,
             session_id,
-            &self.token_cache,
-            &self.counter,
-            self.name(),
-        );
+            token_cache: &self.token_cache,
+            counter: &self.counter,
+            worker_name: self.name(),
+        });
         tracing::debug!(
             mutations = mutations.len(),
             radius = self.config.radius,
@@ -301,7 +305,6 @@ mod tests {
     use crate::feat::preferences_actor::user_preferences::AnchoredAssistantAutoPruneConfig;
     use crate::feat::session::chat_entry::ChatEntry;
     use crate::feat::session::chat_entry::ChatEntryId;
-
 
     /// Tests use 81 as the hard-coded threshold (trivial_assistant default max_tokens=80 + 1).
     const TEST_MIN_CANDIDATE_TOKENS: u32 = 81;
@@ -330,7 +333,6 @@ mod tests {
             token_cache: super::super::HistoryWorkerChatEntryTokenCache::new(),
             counter: TiktokenCounter::o200k_base(),
         }
-
     }
 
     /// Build a trivial (≤80 tiktoken tokens) assistant entry.
@@ -350,7 +352,10 @@ mod tests {
     }
 
     /// Evaluate the worker on a history snapshot.
-    fn evaluate(w: &AnchoredAssistantAutoPruneWorker, history: Vec<ChatEntry>) -> Vec<HistoryMutation> {
+    fn evaluate(
+        w: &AnchoredAssistantAutoPruneWorker,
+        history: Vec<ChatEntry>,
+    ) -> Vec<HistoryMutation> {
         let rt = tokio::runtime::Runtime::new().expect("runtime");
         let history: Arc<[ChatEntry]> = history.into();
         rt.block_on(async { w.evaluate(&SessionId::new(), history).await })

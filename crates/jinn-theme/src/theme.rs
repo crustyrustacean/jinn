@@ -37,7 +37,6 @@ pub struct Theme {
     /// Streaming indicator color.
     pub streaming: Color,
 
-
     // Chat log backgrounds
     /// Gutter column background (left margin).
     pub gutter_bg: Color,

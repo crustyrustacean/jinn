@@ -42,7 +42,6 @@ impl SlashCommand {
                 name: "new".to_owned(),
                 description: "Create a new session".to_owned(),
             },
-
         ]
     }
 

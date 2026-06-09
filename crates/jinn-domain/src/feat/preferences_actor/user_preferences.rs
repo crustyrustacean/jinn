@@ -2683,7 +2683,6 @@ keep_last = 1
         assert_eq!(reloaded.auto_prune.regex.rules[1].pattern, "cargo check");
     }
 
-
     #[test]
     fn bash_config_default_is_180_secs() {
         // Given the default BashConfig.
