@@ -1,0 +1,11 @@
+This file lists third-party software bundled with jinn.
+
+---
+
+## ratatui-markdown
+
+- **Location:** `vendor/ratatui-markdown/`
+- **License:** Apache License, Version 2.0
+- **Source:** https://github.com/celestia-island/ratatui-markdown
+
+A Markdown rendering library for ratatui.

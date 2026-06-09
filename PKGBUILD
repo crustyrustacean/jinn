@@ -6,9 +6,10 @@ pkgrel=1
 pkgdesc='Agentic LLM agent harness'
 url='https://github.com/jayson-lennon/jinn'
 license=(AGPL-3.0)
-makedepends=('cargo' 'clang' 'upx')
+makedepends=('cargo' 'clang')
+checkdepends=('upx')
 depends=('sqlite' 'gcc-libs')
-arch=('x86_64')
+arch=('x86_64' 'aarch64')
 
 # Build from local checkout. Run makepkg from the project root directory.
 # No source array — we reference $startdir directly.
@@ -26,7 +27,7 @@ build() {
     cd "$srcdir/$pkgname-$pkgver"
     export RUSTUP_TOOLCHAIN=stable
     CFLAGS+=" -ffat-lto-objects" cargo build --frozen --release
-    upx -9 target/release/jinn
+    command -v upx >/dev/null 2>&1 && upx -9 target/release/jinn || echo 'upx not found, skipping binary compression'
 }
 
 package() {

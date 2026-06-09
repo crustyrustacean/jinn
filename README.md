@@ -22,12 +22,13 @@ A TUI agent harness with multi-session support and Vim-style keybinds.
 
 ## Installation
 
-Current only Arch Linux package + build from source are supported for installation.
+Currently only Arch Linux package + build from source are supported for installation.
 
 ### Arch Linux
 
 ```sh
 git clone https://github.com/jayson-lennon/jinn.git
+cd jinn
 makepkg -si
 ```
 
@@ -39,7 +40,7 @@ makepkg -si
 - SQLite (`sqlite`)
 - `clang`
 - `gcc-libs`
-  [`just`](https://github.com/casey/just):
+- [`just`](https://github.com/casey/just)
 
 ```sh
 git clone https://github.com/jayson-lennon/jinn.git
@@ -56,7 +57,7 @@ The binary will be at `target/release/jinn` and you'll need to add it to your `$
 jinn
 ```
 
-Note that each focusable section of the application has it's own set of keybinds. Make use of `?` to display which keybinds are available in any given scope (or `F1` if you are in a text input box).
+Note that each section of the application has it's own set of keybinds. Make use of `?` to display which keybinds are available in any given scope (or `F1` if you are in a text input box).
 
 ### Creating new sessions
 
@@ -148,5 +149,7 @@ Lots of inspiration from other projects went into the design of `jinn`:
 ## License
 
 jinn is licensed under the [GNU Affero General Public License v3.0 (AGPL-3.0)](LICENSE).
+
+This project includes third-party software under separate licenses. See [THIRD_PARTY_LICENSES](THIRD_PARTY_LICENSES) for details.
 
 Copyright 2026 Jayson Lennon.

@@ -22,4 +22,3 @@ pub use skill_preview_cache::SkillPreviewCache;
 pub use skills_scan_actor::{ScanSkills, SkillsLoaded};
 
 use std::path::PathBuf;
-

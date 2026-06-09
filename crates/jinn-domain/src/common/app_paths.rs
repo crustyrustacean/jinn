@@ -460,10 +460,7 @@ mod tests {
         let paths = AppPaths::new_in(root.path());
 
         // Then the system skills dir is root/share/skills.
-        assert_eq!(
-            paths.system_skills_dir(),
-            root.path().join("share/skills")
-        );
+        assert_eq!(paths.system_skills_dir(), root.path().join("share/skills"));
     }
 
     #[rstest::rstest]
