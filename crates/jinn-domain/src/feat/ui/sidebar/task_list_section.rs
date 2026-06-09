@@ -8,7 +8,7 @@ use std::borrow::Cow;
 
 use crate::common::app_state::AppState;
 use crate::common::render_ctx::RenderCtx;
-use crate::feat::todo_list::{TaskList, TaskStatus};
+use crate::feat::todo_list::{Phase, TaskList, TaskStatus};
 use crate::feat::ui::sidebar::section_trait::{
     EnterFrom, SectionNavResult, SidebarIntent, SidebarSection, SidebarSectionId,
 };
@@ -162,6 +162,8 @@ fn build_render_lines(list: &TaskList, state: &AppState) -> Vec<Line<'static>> {
     )]));
     lines.push(Line::from(""));
 
+    let active_phase_id = list.active_phase().map(Phase::id);
+
     for (phase_idx, phase) in list.phases().iter().enumerate() {
         let is_expanded = expanded == Some(phase_idx);
         let is_selected = expanded == Some(phase_idx);
@@ -173,8 +175,15 @@ fn build_render_lines(list: &TaskList, state: &AppState) -> Vec<Line<'static>> {
             "\u{25B8} " // ▸ collapsed
         };
         let phase_width = sidebar_width.saturating_sub(PHASE_INDENT + indicator.len());
+        let phase_color = if active_phase_id == Some(phase.id()) {
+            theme.streaming
+        } else if phase.has_pending_work() {
+            theme.primary_text
+        } else {
+            theme.muted_text
+        };
         let mut phase_style = Style::default()
-            .fg(theme.muted_text)
+            .fg(phase_color)
             .add_modifier(Modifier::BOLD);
         // Highlight the selected phase header with reversed colors.
         if is_selected {
@@ -828,6 +837,147 @@ mod tests {
         assert!(
             expanded_height > collapsed_height,
             "expanded height ({expanded_height}) should be > collapsed height ({collapsed_height})"
+        );
+    }
+
+    // --- Phase header styling tests ---
+
+    /// Helper: find a line containing `phase_name` and return its first span's foreground color.
+    fn phase_header_fg(lines: &[Line<'static>], phase_name: &str) -> Option<ratatui::style::Color> {
+        lines
+            .iter()
+            .find(|line| {
+                let text: String = line.spans.iter().map(|s| s.content.to_string()).collect();
+                text.contains(phase_name)
+            })
+            .and_then(|line| line.spans.first().map(|s| s.style.fg))
+            .flatten()
+    }
+
+    #[test]
+    fn active_phase_header_uses_streaming_color() {
+        // Given 3 phases: first has pending tasks (active), second has pending tasks, third all completed.
+        let mut app = AppState::default();
+        let session = app.session.active_session_mut();
+        let p1 = session.task_list_mut().add_phase("Research");
+        session
+            .task_list_mut()
+            .add_task(&p1, "Read docs", TaskPosition::End)
+            .unwrap();
+        let p2 = session.task_list_mut().add_phase("Build");
+        session
+            .task_list_mut()
+            .add_task(&p2, "Write code", TaskPosition::End)
+            .unwrap();
+        let p3 = session.task_list_mut().add_phase("Test");
+        let t3 = session
+            .task_list_mut()
+            .add_task(&p3, "Run tests", TaskPosition::End)
+            .unwrap();
+        session.task_list_mut().complete_task(&t3).unwrap();
+        let list = session.task_list().clone();
+
+        // When rendering (no focus).
+        let lines = build_render_lines(&list, &app);
+
+        // Then the active phase header (Research) uses streaming color.
+        let fg = phase_header_fg(&lines, "Research").expect("Research phase header");
+        assert_eq!(
+            fg, app.frontend.theme.streaming,
+            "active phase header should use streaming color"
+        );
+    }
+
+    #[test]
+    fn completed_phase_header_uses_muted_text_color() {
+        // Given a phase with all tasks completed.
+        let mut app = AppState::default();
+        let session = app.session.active_session_mut();
+        let p1 = session.task_list_mut().add_phase("Research");
+        let t1 = session
+            .task_list_mut()
+            .add_task(&p1, "Read docs", TaskPosition::End)
+            .unwrap();
+        session.task_list_mut().complete_task(&t1).unwrap();
+        let p2 = session.task_list_mut().add_phase("Build");
+        session
+            .task_list_mut()
+            .add_task(&p2, "Write code", TaskPosition::End)
+            .unwrap();
+        let list = session.task_list().clone();
+
+        // When rendering.
+        let lines = build_render_lines(&list, &app);
+
+        // Then the completed phase header (Research) uses muted_text color.
+        let fg = phase_header_fg(&lines, "Research").expect("Research phase header");
+        assert_eq!(
+            fg, app.frontend.theme.muted_text,
+            "completed phase header should use muted_text color"
+        );
+    }
+
+    #[test]
+    fn upcoming_phase_header_uses_primary_text_color() {
+        // Given 2 phases: first has pending tasks (active), second has pending tasks (upcoming/blocked).
+        let mut app = AppState::default();
+        let session = app.session.active_session_mut();
+        let p1 = session.task_list_mut().add_phase("Research");
+        session
+            .task_list_mut()
+            .add_task(&p1, "Read docs", TaskPosition::End)
+            .unwrap();
+        let p2 = session.task_list_mut().add_phase("Build");
+        session
+            .task_list_mut()
+            .add_task(&p2, "Write code", TaskPosition::End)
+            .unwrap();
+        let list = session.task_list().clone();
+
+        // When rendering.
+        let lines = build_render_lines(&list, &app);
+
+        // Then the upcoming phase header (Build) uses primary_text color.
+        let fg = phase_header_fg(&lines, "Build").expect("Build phase header");
+        assert_eq!(
+            fg, app.frontend.theme.primary_text,
+            "upcoming phase header should use primary_text color"
+        );
+    }
+
+    #[test]
+    fn selected_active_phase_header_has_reversed_and_streaming_color() {
+        // Given 2 phases with pending tasks, focused on first (active) phase.
+        let mut app = AppState::default();
+        let session = app.session.active_session_mut();
+        let p1 = session.task_list_mut().add_phase("Research");
+        session
+            .task_list_mut()
+            .add_task(&p1, "Read docs", TaskPosition::End)
+            .unwrap();
+        let p2 = session.task_list_mut().add_phase("Build");
+        session
+            .task_list_mut()
+            .add_task(&p2, "Write code", TaskPosition::End)
+            .unwrap();
+        let list = session.task_list().clone();
+        setup_focused_on_phase(&mut app, 0);
+
+        // When rendering.
+        let lines = build_render_lines(&list, &app);
+
+        // Then the active phase header has both streaming color AND REVERSED.
+        let has_both = lines.iter().any(|line| {
+            let text: String = line.spans.iter().map(|s| s.content.to_string()).collect();
+            text.contains("Research")
+                && line.spans.iter().any(|s| {
+                    s.style.fg == Some(app.frontend.theme.streaming)
+                        && s.style.add_modifier.contains(Modifier::REVERSED)
+                })
+        });
+        assert!(
+            has_both,
+            "selected active phase header should have streaming color AND REVERSED modifier"
         );
     }
 }

@@ -156,7 +156,6 @@ async fn process_stream_events(
     sid: &SessionId,
     model_id: &str,
 ) -> bool {
-
     let mut accumulated_text = String::new();
     let mut accumulated_thinking = String::new();
     let mut accumulated_tool_calls: Vec<ToolCall> = Vec::new();
