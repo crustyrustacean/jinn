@@ -21,7 +21,7 @@ use ratatui::widgets::Paragraph;
 pub struct StatusBarElement;
 
 /// Format a token count in human-readable form with one decimal place.
-#[allow(clippy::cast_precision_loss)]
+#[allow(clippy::cast_precision_loss, reason = "loss is negligible for UI calculations")]
 fn format_tokens(count: u64) -> String {
     if count >= 1_000_000 {
         format!("{:.1}M", count as f64 / 1_000_000.0)
@@ -67,7 +67,7 @@ impl UiElement for StatusBarElement {
         "status-bar".to_owned()
     }
 
-    #[allow(clippy::cast_precision_loss, clippy::too_many_lines)]
+    #[allow(clippy::cast_precision_loss, clippy::too_many_lines, reason = "loss is negligible; handler reads best as a single unit")]
     fn render(&mut self, frame: &mut Frame<'_>, area: Rect, ctx: &RenderCtx) {
         let state = ctx.state;
         // Split area into cwd line + info line.

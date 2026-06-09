@@ -69,7 +69,7 @@ impl SessionPersistenceActor {
     }
 
     /// No-op receiver for [`PromptTemplatesLoaded`].
-    #[allow(clippy::unused_self)]
+    #[allow(clippy::unused_self, reason = "trait contract requires #[allow(clippy::unused_self)]self method")]
     ///
     /// The [`PromptScanActor`] writes each session's discovered prompt set
     /// directly into that session's ephemeral state before emitting the event,

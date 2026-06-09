@@ -856,7 +856,7 @@ fn assert_no_conflicting_spans(spans: &[ResolvedSpan]) -> Result<(), String> {
 }
 
 /// Computes the first and last changed line numbers between original and result.
-#[allow(clippy::items_after_statements)]
+#[allow(clippy::items_after_statements, reason = "helper placement after main logic")]
 fn compute_changed_line_range(original: &str, result: &str) -> (Option<usize>, Option<usize>) {
     if original == result {
         return (None, None);

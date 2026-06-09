@@ -164,7 +164,8 @@ mod tests {
     #![allow(
         clippy::expect_used,
         clippy::indexing_slicing,
-        clippy::needless_range_loop
+        clippy::needless_range_loop,
+        reason = "test code"
     )]
 
     use super::*;

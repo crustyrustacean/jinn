@@ -287,7 +287,7 @@ pub enum Intent {
 }
 
 impl std::fmt::Display for Intent {
-    #[allow(clippy::too_many_lines)]
+    #[allow(clippy::too_many_lines, reason = "handler reads best as a single unit")]
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         match self {
             Intent::InsertChar { ch } => write!(f, "insert '{ch}'"),
@@ -437,6 +437,7 @@ impl IntentResult {
 
 #[cfg(test)]
 mod tests {
+#![allow(clippy::expect_used, clippy::indexing_slicing, clippy::panic, clippy::string_slice, clippy::uninlined_format_args, reason = "test code")]
     use super::*;
 
     #[test]

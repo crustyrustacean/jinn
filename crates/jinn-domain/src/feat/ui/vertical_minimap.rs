@@ -270,7 +270,7 @@ fn compute_tokens_below(state: &AppState, start: usize) -> Option<u32> {
     compute_token_sum_in_range(state, start, history_len)
 }
 
-#[allow(clippy::unnecessary_wraps)]
+#[allow(clippy::unnecessary_wraps, reason = "trait contract requires Result return")]
 fn compute_token_sum_in_range(state: &AppState, start: usize, end: usize) -> Option<u32> {
     let session = state.active_session();
     let history = session.history();
@@ -453,7 +453,7 @@ fn format_entry_tokens(count: u32) -> String {
 
 #[cfg(test)]
 mod tests {
-    #![allow(clippy::expect_used, clippy::indexing_slicing, reason = "test code")]
+    #![allow(clippy::expect_used, clippy::indexing_slicing, clippy::slicing, reason = "test code")]
     use super::*;
     use crate::common::app_state::AppState;
     use crate::feat::session::chat_entry::ChatEntry;

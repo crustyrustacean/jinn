@@ -211,7 +211,7 @@ fn build_age_window_mutations(
 
 #[async_trait::async_trait]
 impl HistoryWorker for ToolAgeWindowAutoPruneWorker {
-    #[allow(clippy::unnecessary_literal_bound)]
+    #[allow(clippy::unnecessary_literal_bound, reason = "lifetime elision makes bound redundant")]
     fn name(&self) -> &str {
         "auto-prune-tool-age-window"
     }

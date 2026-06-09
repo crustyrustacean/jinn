@@ -142,7 +142,7 @@ impl PendingSlot {
 pub struct DiscoveryCoordinatorActorDeps {
     /// Shared application state (currently unused but kept for parity with other
     /// scan actors and future enrichment from state).
-    #[allow(dead_code)]
+    #[allow(dead_code, reason = "kept for future use")]
     pub state: State,
 }
 
