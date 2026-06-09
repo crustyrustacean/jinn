@@ -3,21 +3,27 @@
 //! Each render frame, the input-area renderer queries every loaded plugin via
 //! the `on_chat_input_badges_render` hook. Plugins return declarative
 //! [`BadgeDirective`]s (slot + styled segments); Rust owns the slot
-//! layout and a constrained style vocabulary and draws into a consistent
-//! badge location.
+//! layout and draws into a consistent badge location.
+//!
+//! Plugins receive the full theme palette via `ctx.theme_styles` and use any
+//! theme field name as a style string (e.g. `"streaming"`, `"accent_action"`).
+//! Rust resolves those names against a [`HashMap`] built from [`Theme::style_map`].
 //!
 //! This is the render-thread direct path (`PluginSyncHooks`, non-`Send`),
 //! distinct from the actor/async paths. Hook failures or malformed returns
 //! are silently dropped with a `warn!` log so a buggy plugin cannot stall the
 //! render loop.
 
+use std::collections::HashMap;
+
 use ratatui::Frame;
 use ratatui::buffer::Buffer;
 use ratatui::layout::Rect;
-use ratatui::style::{Color, Style};
+use ratatui::style::Style;
 use ratatui::text::{Line, Span};
 use ratatui::widgets::{Paragraph, Widget};
 
+#[cfg(test)]
 use jinn_domain::feat::theme::Theme;
 use jinn_domain::{BadgeDirective, RenderCtx, call_hooks_typed};
 
@@ -43,8 +49,8 @@ pub(super) fn render_badges(frame: &mut Frame<'_>, input_area: Rect, ctx: &Rende
     // returns are silently dropped (see `call_hooks_typed`).
     let directives = call_hooks_typed::<BadgeDirective>(plugins, HOOK, &badge_ctx);
 
-    let theme = &ctx.state.frontend.theme;
-    draw_directives(frame.buffer_mut(), input_area, &directives, theme);
+    let style_map = ctx.state.frontend.theme.style_map();
+    draw_directives(frame.buffer_mut(), input_area, &directives, &style_map);
 }
 
 /// Builds the JSON ctx handed to `on_chat_input_badges_render`.
@@ -71,13 +77,13 @@ fn draw_directives(
     buf: &mut Buffer,
     input_area: Rect,
     directives: &[BadgeDirective],
-    theme: &Theme,
+    style_map: &HashMap<&str, Style>,
 ) {
     if directives.is_empty() {
         return;
     }
 
-    let Some(line) = build_badge_line(directives, theme) else {
+    let Some(line) = build_badge_line(directives, style_map) else {
         return;
     };
     let width = u16::try_from(line.width()).unwrap_or(input_area.width);
@@ -104,7 +110,7 @@ fn draw_directives(
 ///
 /// Directives are joined with a one-space separator. Returns `None` if the
 /// segments produce no spans.
-fn build_badge_line(directives: &[BadgeDirective], theme: &Theme) -> Option<Line<'static>> {
+fn build_badge_line(directives: &[BadgeDirective], style_map: &HashMap<&str, Style>) -> Option<Line<'static>> {
     let mut spans: Vec<Span> = Vec::new();
     for (i, d) in directives.iter().enumerate() {
         if i > 0 {
@@ -113,7 +119,7 @@ fn build_badge_line(directives: &[BadgeDirective], theme: &Theme) -> Option<Line
         spans.extend(d.segments.iter().map(|seg| {
             Span::styled(
                 seg.text.clone(),
-                style_from_name(seg.style.as_deref(), theme),
+                style_from_name(seg.style.as_deref(), style_map),
             )
         }));
     }
@@ -124,21 +130,14 @@ fn build_badge_line(directives: &[BadgeDirective], theme: &Theme) -> Option<Line
     }
 }
 
-/// Maps the constrained style vocabulary (strings from Lua) to ratatui styles.
+/// Resolves a style name (a theme field name) to a ratatui [`Style`].
 ///
-/// Theme-derived names (`accent_action`, `muted_text`) resolve to the active
-/// theme's colors; flat color names map to fixed ratatui colors.
-fn style_from_name(name: Option<&str>, theme: &Theme) -> Style {
-    match name {
-        Some("accent_action") => Style::default().fg(theme.accent_action),
-        Some("muted_text") => Style::default().fg(theme.muted_text),
-        Some("yellow") => Style::default().fg(Color::Yellow),
-        Some("cyan") => Style::default().fg(Color::Cyan),
-        Some("green") => Style::default().fg(Color::Green),
-        Some("red") => Style::default().fg(Color::Red),
-        Some("bold") => Style::default().add_modifier(ratatui::style::Modifier::BOLD),
-        _ => Style::default(),
-    }
+/// The name is looked up in the theme's style map. Unknown names produce
+/// [`Style::default`].
+fn style_from_name(name: Option<&str>, style_map: &HashMap<&str, Style>) -> Style {
+    name.and_then(|n| style_map.get(n))
+        .copied()
+        .unwrap_or_default()
 }
 
 #[cfg(test)]
@@ -161,7 +160,7 @@ mod tests {
         // Input occupies a single row at y=1; its bottom border row is also y=1.
         let mut buf = buffer(20, 2);
         let input_area = Rect::new(0, 1, 20, 1);
-        draw_directives(&mut buf, input_area, &[], &theme());
+        draw_directives(&mut buf, input_area, &[], &theme().style_map());
         // Then the border row (y=1) stays blank.
         for x in 0..20 {
             let sym = buf.cell((x, 1)).expect("cell").symbol();
@@ -182,7 +181,7 @@ mod tests {
             }],
         }];
         // When drawing.
-        draw_directives(&mut buf, input_area, &directives, &theme());
+        draw_directives(&mut buf, input_area, &directives, &theme().style_map());
         // Then "Hi" (width 2) sits at the right edge: x=18..19 on row y=1.
         assert_eq!(buf.cell((18, 1)).expect("cell").symbol(), "H");
         assert_eq!(buf.cell((19, 1)).expect("cell").symbol(), "i");
@@ -212,7 +211,7 @@ mod tests {
             },
         ];
         // When drawing.
-        draw_directives(&mut buf, input_area, &directives, &theme());
+        draw_directives(&mut buf, input_area, &directives, &theme().style_map());
         // Then the joined "A B" (width 3) is right-aligned: A=17, space=18, B=19.
         assert_eq!(buf.cell((17, 1)).expect("cell").symbol(), "A");
         assert_eq!(buf.cell((18, 1)).expect("cell").symbol(), " ");
@@ -242,8 +241,9 @@ mod tests {
             ],
         }];
         let t = theme();
+        let sm = t.style_map();
         // When drawing.
-        draw_directives(&mut buf, input_area, &directives, &t);
+        draw_directives(&mut buf, input_area, &directives, &sm);
         // Then each segment's cell carries its resolved style.
         // "[E]" (width 3) right-aligned: [=17, E=18, ]=19.
         assert_eq!(
@@ -261,22 +261,24 @@ mod tests {
     }
 
     #[test]
-    fn style_from_name_maps_theme_and_flat_colors() {
-        let t = theme();
+    fn style_from_name_resolves_theme_fields_and_defaults_unknown() {
+        let sm = theme().style_map();
+        // Then known theme field names resolve to their fg style.
         assert_eq!(
-            style_from_name(Some("accent_action"), &t),
-            Style::default().fg(t.accent_action)
+            style_from_name(Some("accent_action"), &sm),
+            Style::default().fg(theme().accent_action)
         );
         assert_eq!(
-            style_from_name(Some("muted_text"), &t),
-            Style::default().fg(t.muted_text)
+            style_from_name(Some("muted_text"), &sm),
+            Style::default().fg(theme().muted_text)
         );
         assert_eq!(
-            style_from_name(Some("yellow"), &t),
-            Style::default().fg(Color::Yellow)
+            style_from_name(Some("streaming"), &sm),
+            Style::default().fg(theme().streaming)
         );
-        assert_eq!(style_from_name(Some("unknown"), &t), Style::default());
-        assert_eq!(style_from_name(None, &t), Style::default());
+        // And unknown names produce default style.
+        assert_eq!(style_from_name(Some("unknown"), &sm), Style::default());
+        assert_eq!(style_from_name(None, &sm), Style::default());
     }
 
     #[test]

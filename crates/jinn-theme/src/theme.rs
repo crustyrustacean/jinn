@@ -1,6 +1,8 @@
 //! Theme struct - the resolved set of semantic colors used by the renderer.
 
-use ratatui::style::Color;
+use std::collections::HashMap;
+
+use ratatui::style::{Color, Style};
 
 use crate::color::ThemeColor;
 use crate::default_theme;
@@ -108,6 +110,76 @@ pub struct Theme {
     pub infopopup_border: Color,
     /// Body text color for info popups.
     pub infopopup_fg: Color,
+}
+
+impl Theme {
+    /// Returns a map from theme field name to its resolved foreground style.
+    ///
+    /// Every key matches a `Theme` field name; the value is `Style::default().fg(color)`.
+    /// This is the single source of truth for the badge style vocabulary.
+    #[must_use]
+    pub fn style_map(&self) -> HashMap<&'static str, Style> {
+        let mut m = HashMap::new();
+        m.insert("focus_accent", Style::default().fg(self.focus_accent));
+        m.insert("border_unfocused", Style::default().fg(self.border_unfocused));
+        m.insert("popup_title", Style::default().fg(self.popup_title));
+        m.insert("primary_text", Style::default().fg(self.primary_text));
+        m.insert("muted_text", Style::default().fg(self.muted_text));
+        m.insert("error_text", Style::default().fg(self.error_text));
+        m.insert("success", Style::default().fg(self.success));
+        m.insert("warning", Style::default().fg(self.warning));
+        m.insert("streaming", Style::default().fg(self.streaming));
+        m.insert("gutter_bg", Style::default().fg(self.gutter_bg));
+        m.insert(
+            "gutter_context_included",
+            Style::default().fg(self.gutter_context_included),
+        );
+        m.insert("user_block_bg", Style::default().fg(self.user_block_bg));
+        m.insert("tool_fg", Style::default().fg(self.tool_fg));
+        m.insert("tool_success_bg", Style::default().fg(self.tool_success_bg));
+        m.insert("tool_failure_bg", Style::default().fg(self.tool_failure_bg));
+        m.insert("tool_pending_bg", Style::default().fg(self.tool_pending_bg));
+        m.insert(
+            "compaction_block_bg",
+            Style::default().fg(self.compaction_block_bg),
+        );
+        m.insert("truncation_fg", Style::default().fg(self.truncation_fg));
+        m.insert(
+            "picker_active_marker",
+            Style::default().fg(self.picker_active_marker),
+        );
+        m.insert(
+            "picker_selected_bg",
+            Style::default().fg(self.picker_selected_bg),
+        );
+        m.insert(
+            "picker_highlight_bg",
+            Style::default().fg(self.picker_highlight_bg),
+        );
+        m.insert("tab_active_fg", Style::default().fg(self.tab_active_fg));
+        m.insert("tab_active_bg", Style::default().fg(self.tab_active_bg));
+        m.insert("tab_inactive_fg", Style::default().fg(self.tab_inactive_fg));
+        m.insert("selection_fg", Style::default().fg(self.selection_fg));
+        m.insert("selection_bg", Style::default().fg(self.selection_bg));
+        m.insert("accent_action", Style::default().fg(self.accent_action));
+        m.insert("age_fresh", Style::default().fg(self.age_fresh));
+        m.insert("age_stale", Style::default().fg(self.age_stale));
+        m.insert(
+            "scroll_indicator_bg",
+            Style::default().fg(self.scroll_indicator_bg),
+        );
+        m.insert(
+            "sidebar_resize_accent",
+            Style::default().fg(self.sidebar_resize_accent),
+        );
+        m.insert("input_mode_queue", Style::default().fg(self.input_mode_queue));
+        m.insert("input_mode_steer", Style::default().fg(self.input_mode_steer));
+        m.insert("infopopup_bg", Style::default().fg(self.infopopup_bg));
+        m.insert("infopopup_title", Style::default().fg(self.infopopup_title));
+        m.insert("infopopup_border", Style::default().fg(self.infopopup_border));
+        m.insert("infopopup_fg", Style::default().fg(self.infopopup_fg));
+        m
+    }
 }
 
 /// TOML-serializable theme file with optional fields.
@@ -653,3 +725,34 @@ mod tests {
         assert_eq!(resolved.input_mode_steer, fallback.input_mode_steer);
     }
 }
+
+    #[test]
+    fn style_map_returns_entry_for_every_theme_field() {
+        // Given the default theme.
+        let theme = crate::default_theme();
+        // When building the style map.
+        let map = theme.style_map();
+        // Then it has one entry per Theme field (37 fields).
+        assert_eq!(map.len(), 37, "style_map should cover all Theme fields");
+    }
+
+    #[test]
+    fn style_map_values_are_fg_only_styles() {
+        // Given the default theme.
+        let theme = crate::default_theme();
+        // When building the style map.
+        let map = theme.style_map();
+        // Then selected entries resolve to Style::default().fg(field).
+        assert_eq!(
+            map.get("streaming"),
+            Some(&Style::default().fg(theme.streaming))
+        );
+        assert_eq!(
+            map.get("accent_action"),
+            Some(&Style::default().fg(theme.accent_action))
+        );
+        assert_eq!(
+            map.get("muted_text"),
+            Some(&Style::default().fg(theme.muted_text))
+        );
+    }
