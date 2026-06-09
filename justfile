@@ -186,10 +186,13 @@ install-defaults:
     cp -r res/prompts/*.md ~/.config/jinn/prompts/
     mkdir -p ~/.config/jinn/plugins
     cp -r res/plugins/* ~/.config/jinn/plugins/
+    mkdir -p ~/.agents/skills
+    cp -r res/skills/* ~/.agents/skills/
     @echo "Themes installed to ~/.config/jinn/themes/"
     @echo "Personas installed to ~/.config/jinn/personas/"
     @echo "Prompts installed to ~/.config/jinn/prompts/"
     @echo "Plugins installed to ~/.config/jinn/plugins/"
+    @echo "Skills installed to ~/.agents/skills/"
 
 # Report stale Fossil locks (hung processes + stale journal files)
 fossil-unlock:

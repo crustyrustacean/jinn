@@ -123,7 +123,9 @@ impl SkillsScanActor {
         // Resolve the session's cwd and home once, up front. The cwd is
         // captured by clone so the blocking scan can move it across the
         // thread boundary without holding the state lock.
-        let Some((cwd, home, global_skills_dir)) = self.resolve_scan_inputs(session_id) else {
+        let Some((cwd, home, global_skills_dir, system_skills_dir)) =
+            self.resolve_scan_inputs(session_id)
+        else {
             tracing::warn!(%session_id, "ScanSkills: session not found, skipping");
             return;
         };
@@ -131,7 +133,7 @@ impl SkillsScanActor {
         let project_dirs = crate::feat::discovery::project_skills_dirs(&cwd, &home);
 
         let result = tokio::task::spawn_blocking(move || {
-            scan_skills_merged(&global_skills_dir, &project_dirs)
+            scan_skills_merged(&system_skills_dir, &global_skills_dir, &project_dirs)
         })
         .await;
 
@@ -169,21 +171,27 @@ impl SkillsScanActor {
         }
     }
 
-    /// Reads the session's cwd and the user's home dir for the scan.
+    /// Resolve the four inputs needed for a scan: cwd, home, global skills dir, and system skills dir.
     ///
     /// Returns `None` if the session is not present in state (it may have been
-    /// closed concurrently). All three values are cheap clones that can move
+    /// closed concurrently). All four values are cheap clones that can move
     /// into a `spawn_blocking` closure.
     fn resolve_scan_inputs(
         &self,
         session_id: &crate::SessionId,
-    ) -> Option<(std::path::PathBuf, std::path::PathBuf, std::path::PathBuf)> {
+    ) -> Option<(
+        std::path::PathBuf,
+        std::path::PathBuf,
+        std::path::PathBuf,
+        std::path::PathBuf,
+    )> {
         let guard = self.state.read();
         let session = guard.try_session(session_id)?;
         let cwd = session.cwd().to_path_buf();
         let home = self.services.paths.home_dir().to_path_buf();
         let global = self.services.paths.skills_dir();
-        Some((cwd, home, global))
+        let system = self.services.paths.system_skills_dir();
+        Some((cwd, home, global, system))
     }
 }
 

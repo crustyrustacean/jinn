@@ -121,23 +121,21 @@ pub struct EditResult {
     pub noop_edits: Vec<NoopEdit>,
 }
 
-/// A resolved byte span for applying an edit.
+/// A resolved line-range span for applying an edit.
 #[derive(Debug, Clone)]
 struct ResolvedSpan {
-    /// "replace" or "insert".
+    /// \"replace\", \"append\", or \"prepend\".
     kind: &'static str,
     /// Edit index in the original request.
     index: usize,
     /// Human-readable label for error messages.
     label: String,
-    /// Start byte offset (inclusive).
-    start: usize,
-    /// End byte offset (exclusive).
-    end: usize,
-    /// The replacement text.
-    replacement: String,
-    /// For inserts: the insertion boundary (for ordering/conflict detection).
-    boundary: Option<usize>,
+    /// Start line (1-indexed, inclusive).
+    start_line: usize,
+    /// End line (1-indexed, inclusive). For inserts, equals start_line.
+    end_line: usize,
+    /// The replacement lines (one String per line, no embedded newlines).
+    replacement_lines: Vec<String>,
 }
 
 // ─── Parsing ────────────────────────────────────────────────────────────
@@ -353,6 +351,7 @@ pub fn format_mismatch_error(mismatches: &[HashMismatch], file_lines: &[&str]) -
 /// Applies validated hashline edits to the file content.
 ///
 /// Returns the modified content, changed line range, warnings, and NOOP edits.
+#[expect(clippy::too_many_lines, clippy::expect_used, reason = "edit application is a sequential pipeline with bounded indices")]
 pub fn apply_hashline_edits(content: &str, edits: &[HashlineEdit]) -> Result<EditResult, String> {
     if edits.is_empty() {
         return Ok(EditResult {
@@ -406,36 +405,78 @@ pub fn apply_hashline_edits(content: &str, edits: &[HashlineEdit]) -> Result<Edi
     // Deduplicate identical spans
     let mut seen_keys = std::collections::HashSet::new();
     spans.retain(|s| {
-        let key = format!("{}:{}:{}:{}", s.kind, s.start, s.end, s.replacement);
+        let key = format!("{}:{}:{}:{}", s.kind, s.start_line, s.end_line, s.replacement_lines.join("\\n"));
         seen_keys.insert(key)
     });
 
     // Conflict detection
     assert_no_conflicting_spans(&spans)?;
 
-    // Sort bottom-up: highest end first, then by kind, then by index
+    // Sort top-to-bottom: lowest start_line first, then by kind priority, then by index
     spans.sort_by(|a, b| {
-        if b.end != a.end {
-            b.end.cmp(&a.end)
-        } else if a.kind != b.kind {
-            if a.kind == "replace" {
-                std::cmp::Ordering::Less
-            } else {
-                std::cmp::Ordering::Greater
+        if a.start_line == b.start_line {
+            let priority = |k: &str| match k {
+                "prepend" => 0,
+                "replace" => 1,
+                "append" => 2,
+                _ => 3,
+            };
+            match priority(a.kind).cmp(&priority(b.kind)) {
+                std::cmp::Ordering::Equal => a.index.cmp(&b.index),
+                other => other,
             }
         } else {
-            a.index.cmp(&b.index)
+            a.start_line.cmp(&b.start_line)
         }
     });
 
-    // Apply spans
-    let mut result = content.to_owned();
+    // Build output line-by-line (no string slicing)
+    let mut output_lines: Vec<String> = Vec::new();
+    let mut cursor: usize = 1;
+
     for span in &spans {
-        let before = result.get(..span.start).unwrap_or_default();
-        let after = result.get(span.end..).unwrap_or_default();
-        result = format!("{}{}{}", before, span.replacement, after);
+        match span.kind {
+            "replace" => {
+                while cursor < span.start_line {
+                    output_lines.push(file_lines.get(cursor - 1).expect("cursor bounded by len").to_string());
+                    cursor += 1;
+                }
+                cursor = span.end_line + 1;
+                output_lines.extend(span.replacement_lines.iter().cloned());
+            }
+            "append" => {
+                while cursor <= span.start_line && cursor <= file_lines.len() {
+                    output_lines.push(file_lines.get(cursor - 1).expect("cursor bounded by len").to_string());
+                    cursor += 1;
+                }
+                output_lines.extend(span.replacement_lines.iter().cloned());
+            }
+            "prepend" => {
+                while cursor < span.start_line {
+                    output_lines.push(file_lines.get(cursor - 1).expect("cursor bounded by len").to_string());
+                    cursor += 1;
+                }
+                output_lines.extend(span.replacement_lines.iter().cloned());
+            }
+            _ => {}
+        }
     }
 
+    while cursor <= file_lines.len() {
+        output_lines.push(file_lines.get(cursor - 1).expect("cursor bounded by len").to_string());
+        cursor += 1;
+    }
+
+    // If the original had a terminal newline, the split produced an empty trailing
+    // element. Remove it before joining so we don't get a double newline.
+    if has_terminal_newline && output_lines.last().is_some_and(String::is_empty) {
+        output_lines.pop();
+    }
+
+    let mut result = output_lines.join("\n");
+    if has_terminal_newline {
+        result.push('\n');
+    }
     // Compute changed range
     let changed_range = compute_changed_line_range(content, &result);
 
@@ -547,24 +588,21 @@ fn resolve_replace_span(
         );
     }
 
-    let &start_byte = ctx.line_starts.get(start_line - 1)?;
+    let _start_byte = ctx.line_starts.get(start_line - 1)?;
     let end_byte_start = ctx.line_starts.get(end_line - 1).copied();
     let end_line_content = ctx.file_lines.get(end_line - 1);
-    let end_byte = end_byte_start? + end_line_content?.len();
-    let replacement = lines.join("\n");
-
+    let _end_byte = end_byte_start? + end_line_content?.len();
+    let _replacement = lines.join("\n");
     Some(ResolvedSpan {
         kind: "replace",
         index,
         label: label.to_owned(),
-        start: start_byte,
-        end: end_byte,
-        replacement,
-        boundary: None,
-    })
-}
+        start_line,
+        end_line,
+        replacement_lines: lines.to_vec(),
+    })}
 
-/// Resolves an `Append` edit (insert after `pos`, or at EOF) to a byte span.
+/// Resolves an `Append` edit (insert after `pos`, or at EOF) to a line-range span.
 fn resolve_append_span(
     ctx: &mut ResolveCtx<'_>,
     pos: Option<&Anchor>,
@@ -581,64 +619,40 @@ fn resolve_append_span(
         );
     }
 
-    let inserted_text = lines.join("\n");
-    if ctx.content.is_empty() {
-        return Some(ResolvedSpan {
-            kind: "insert",
-            index,
-            label: label.to_owned(),
-            start: 0,
-            end: 0,
-            replacement: inserted_text,
-            boundary: Some(0),
-        });
-    }
-
-    let Some(anchor) = pos else {
-        // Append at EOF
-        let replacement = if ctx.has_terminal_newline {
-            format!("{inserted_text}\n")
+    let start_line = if ctx.content.is_empty() {
+        // Empty file — insert at line 1
+        1
+    } else if let Some(anchor) = pos {
+        // Insert after anchor.line
+        // If anchor points to the sentinel line (empty trailing element from
+        // terminal newline), treat it as "after last real line" — emit all real lines
+        // then insert.
+        if ctx.has_terminal_newline && anchor.line == ctx.file_lines.len() {
+            ctx.file_lines.len() - 1 // last real line
         } else {
-            format!("\n{inserted_text}")
-        };
-        return Some(ResolvedSpan {
-            kind: "insert",
-            index,
-            label: label.to_owned(),
-            start: ctx.content.len(),
-            end: ctx.content.len(),
-            replacement,
-            boundary: Some(ctx.file_lines.len()),
-        });
-    };
-
-    let is_sentinel = ctx.has_terminal_newline && anchor.line == ctx.file_lines.len();
-    let insert_pos = if is_sentinel {
-        ctx.content.len()
+            anchor.line
+        }
     } else {
-        let start = *ctx.line_starts.get(anchor.line - 1)?;
-        let line = ctx.file_lines.get(anchor.line - 1)?;
-        start + line.len()
+        // Append at EOF — insert after last real line
+        if ctx.has_terminal_newline && !ctx.file_lines.is_empty() {
+            ctx.file_lines.len() - 1
+        } else {
+            ctx.file_lines.len()
+        }
     };
-    let replacement = if is_sentinel {
-        format!("{inserted_text}\n")
-    } else {
-        format!("\n{inserted_text}")
-    };
-
     Some(ResolvedSpan {
-        kind: "insert",
+        kind: "append",
         index,
         label: label.to_owned(),
-        start: insert_pos,
-        end: insert_pos,
-        replacement,
-        boundary: Some(anchor.line),
+        start_line,
+        end_line: start_line,
+        replacement_lines: lines.to_vec(),
     })
 }
 
-/// Resolves a `Prepend` edit (insert before `pos`, or at BOF) to a byte span.
+/// Resolves a `Prepend` edit (insert before `pos`, or at BOF) to a line-range span.
 fn resolve_prepend_span(
+
     ctx: &mut ResolveCtx<'_>,
     pos: Option<&Anchor>,
     lines: &[String],
@@ -653,29 +667,24 @@ fn resolve_prepend_span(
         );
     }
 
-    let inserted_text = lines.join("\n");
-    let insert_pos = pos.map_or(0, |a| ctx.line_starts.get(a.line - 1).copied().unwrap_or(0));
-    let replacement = if ctx.content.is_empty() {
-        inserted_text
-    } else {
-        format!("{inserted_text}\n")
-    };
+    let start_line = pos.map_or(1, |a| a.line);
 
     Some(ResolvedSpan {
-        kind: "insert",
+        kind: "prepend",
         index,
         label: label.to_owned(),
-        start: insert_pos,
-        end: insert_pos,
-        replacement,
-        boundary: pos.map(|a| a.line.saturating_sub(1)),
+        start_line,
+        end_line: start_line,
+        replacement_lines: lines.to_vec(),
     })
+
 }
 
-/// Resolves a `ReplaceText` edit (unique-text swap) to a byte span.
+/// Resolves a `ReplaceText` edit (unique-text swap) to a line-range span.
 ///
 /// Unlike the other resolvers this can fail when `old_text` is absent or
 /// not unique, so it keeps the `Result` return.
+#[expect(clippy::expect_used, reason = "line offsets from line_number_at_byte are valid indices")]
 fn resolve_replace_text_span(
     ctx: &mut ResolveCtx<'_>,
     old_text: &str,
@@ -704,18 +713,35 @@ fn resolve_replace_text_span(
                 "[E_NOT_UNIQUE] replace_text: \"{old_text}\" appears more than once."
             ))
         }
-        Some((start, end)) => Ok(Some(ResolvedSpan {
-            kind: "replace",
-            index,
-            label: label.to_owned(),
-            start,
-            end,
-            replacement: new_text.to_owned(),
-            boundary: None,
-        })),
+        Some((byte_start, byte_end)) => {
+            let start_line = line_number_at_byte(ctx.line_starts, byte_start);
+            let end_line = line_number_at_byte(ctx.line_starts, byte_end);
+            let prefix_len = byte_start - ctx.line_starts.get(start_line - 1).expect("start_line from line_number_at_byte");
+            let suffix_start = byte_end - ctx.line_starts.get(end_line - 1).expect("end_line from line_number_at_byte");
+            let first_line_prefix = ctx.file_lines.get(start_line - 1).expect("start_line from line_number_at_byte").get(..prefix_len).expect("prefix_len is byte offset within line");
+            let last_line_suffix = ctx.file_lines.get(end_line - 1).expect("end_line from line_number_at_byte").get(suffix_start..).expect("suffix_start is byte offset within line");
+            let full_replacement =
+                format!("{first_line_prefix}{new_text}{last_line_suffix}");
+            let replacement_lines: Vec<String> =
+                full_replacement.split('\n').map(String::from).collect();
+            Ok(Some(ResolvedSpan {
+                kind: "replace",
+                index,
+                label: label.to_owned(),
+                start_line,
+                end_line,
+                replacement_lines,
+            }))
+        }
     }
 }
 
+
+
+/// Returns the 1-indexed line number containing the given byte offset.
+///
+/// `line_starts[i]` is the byte offset where line `i+1` begins.
+/// The function finds the last line whose start is <= `byte`.
 /// Finds the exact unique match of `old_text` in `content`.
 ///
 /// Returns `(start, end)` byte offsets or an error via `None` (the caller
@@ -820,40 +846,55 @@ fn assert_no_conflicting_spans(spans: &[ResolvedSpan]) -> Result<(), String> {
     for (i, left) in spans.iter().enumerate() {
         for right in spans.iter().skip(i + 1) {
 
-            // Two inserts at same boundary
-            if left.kind == "insert" && right.kind == "insert" {
-                if left.boundary == right.boundary {
-                    return Err(format!(
-                        "[E_EDIT_CONFLICT] Conflicting edits in a single request: edit {} ({}) and edit {} ({}) target the same insertion boundary.",
-                        left.index, left.label, right.index, right.label
-                    ));
-                }
-                continue;
-            }
-
-            // Two replaces that overlap
-            if left.kind == "replace" && right.kind == "replace" {
-                if left.start < right.end && right.start < left.end {
-                    return Err(format!(
-                        "[E_EDIT_CONFLICT] Conflicting edits in a single request: edit {} ({}) and edit {} ({}) overlap on the same original line range.",
-                        left.index, left.label, right.index, right.label
-                    ));
-                }
-                continue;
-            }
-
-            // Insert inside a replace
-            let (replace_span, insert_span) = if left.kind == "replace" {
-                (left, right)
-            } else {
-                (right, left)
-            };
-            if insert_span.start >= replace_span.start && insert_span.start < replace_span.end {
+        // Two inserts at same boundary
+        let left_is_insert = left.kind == "append" || left.kind == "prepend";
+        let right_is_insert = right.kind == "append" || right.kind == "prepend";
+        if left_is_insert && right_is_insert {
+            if left.start_line == right.start_line && left.kind == right.kind {
                 return Err(format!(
-                    "[E_EDIT_CONFLICT] Conflicting edits in a single request: edit {} ({}) and edit {} ({}) cannot be applied together because one inserts inside a replaced original range.",
+                    "[E_EDIT_CONFLICT] Conflicting edits in a single request: edit {} ({}) and edit {} ({}) target the same insertion boundary.",
                     left.index, left.label, right.index, right.label
                 ));
             }
+            continue;
+        }
+
+        // Two replaces that overlap
+        if left.kind == "replace" && right.kind == "replace" {
+            if left.start_line <= right.end_line && right.start_line <= left.end_line {
+                return Err(format!(
+                    "[E_EDIT_CONFLICT] Conflicting edits in a single request: edit {} ({}) and edit {} ({}) overlap on the same original line range.",
+                    left.index, left.label, right.index, right.label
+                ));
+            }
+            continue;
+        }
+
+        // Insert inside a replace
+        let (replace_span, insert_span) = if left.kind == "replace" {
+            (left, right)
+        } else {
+            (right, left)
+        };
+
+        // For prepend: start_line is the line it inserts before. If that line is
+        // within [replace.start_line, replace.end_line], it's a conflict.
+        // For append: start_line is the line it inserts after. If that line is
+        // within [replace.start_line, replace.end_line) (exclusive end), it's a conflict.
+        // Append after the replace's end_line is allowed — it inserts after the range.
+        let inside = if insert_span.kind == "append" {
+            insert_span.start_line >= replace_span.start_line
+                && insert_span.start_line < replace_span.end_line
+        } else {
+            insert_span.start_line >= replace_span.start_line
+                && insert_span.start_line <= replace_span.end_line
+        };
+        if inside {
+            return Err(format!(
+                "[E_EDIT_CONFLICT] Conflicting edits in a single request: edit {} ({}) and edit {} ({}) cannot be applied together because one inserts inside a replaced original range.",
+                left.index, left.label, right.index, right.label
+            ));
+        }
         }
     }
     Ok(())
@@ -927,6 +968,13 @@ fn compute_changed_line_range(original: &str, result: &str) -> (Option<usize>, O
     };
 
     (Some(first_line), Some(last_line))
+}
+
+fn line_number_at_byte(line_starts: &[usize], byte: usize) -> usize {
+    match line_starts.binary_search(&byte) {
+        Ok(idx) => idx + 1,
+        Err(idx) => idx,
+    }
 }
 
 #[cfg(test)]
@@ -1104,6 +1152,37 @@ mod tests {
         // Then the text is replaced.
         assert_eq!(result.content, "hello rust");
     }
+    #[rstest::rstest]
+    fn replace_text_spanning_lines() {
+        // Given content where old_text crosses a line boundary.
+        let content = "alpha\nbeta\ngamma\n";
+        let edits = vec![HashlineEdit::ReplaceText {
+            old_text: "beta\ngamma".to_owned(),
+            new_text: "BETA\nGAMMA".to_owned(),
+        }];
+
+        // When applying.
+        let result = apply_hashline_edits(content, &edits).expect("should apply");
+
+        // Then the multi-line replacement is applied.
+        assert_eq!(result.content, "alpha\nBETA\nGAMMA\n");
+    }
+
+    #[rstest::rstest]
+    fn replace_text_mid_line() {
+        // Given content where old_text is in the middle of a line.
+        let content = "the quick brown fox\njumps\n";
+        let edits = vec![HashlineEdit::ReplaceText {
+            old_text: "brown".to_owned(),
+            new_text: "red".to_owned(),
+        }];
+
+        // When applying.
+        let result = apply_hashline_edits(content, &edits).expect("should apply");
+
+        // Then only the matched portion is replaced, preserving line structure.
+        assert_eq!(result.content, "the quick red fox\njumps\n");
+    }
 
     #[rstest::rstest]
     fn bottom_up_ordering() {
@@ -1178,7 +1257,250 @@ mod tests {
         assert!(result.unwrap_err().contains("E_EDIT_CONFLICT"));
     }
 
+
+    // ─── crash regression & multi-span interaction tests ──────────
+
+    #[rstest::rstest]
+    fn replace_and_append_at_same_boundary() {
+        // Given a replace of lines 1-2 and an append after line 2.
+        // This is the exact crash scenario: both share the same end boundary,
+        // and the old bottom-up algorithm would panic with stale byte offsets.
+        let content = "alpha\nbeta\ngamma\n";
+        let pos1 = anchor(1, compute_line_hash(1, "alpha"));
+        let end1 = anchor(2, compute_line_hash(2, "beta"));
+        let pos2 = anchor(2, compute_line_hash(2, "beta"));
+        let edits = vec![
+            HashlineEdit::Replace {
+                pos: pos1,
+                end: Some(end1),
+                lines: vec!["ALPHA".to_owned(), "BETA".to_owned()],
+            },
+            HashlineEdit::Append {
+                pos: Some(pos2),
+                lines: vec!["inserted".to_owned()],
+            },
+        ];
+
+        // When applying.
+        let result = apply_hashline_edits(content, &edits).expect("should apply");
+
+        // Then the replace applies and the appended line follows.
+        assert_eq!(result.content, "ALPHA\nBETA\ninserted\ngamma\n");
+    }
+
+    #[rstest::rstest]
+    fn multiple_non_overlapping_replaces() {
+        // Given two non-overlapping replaces at lines 1-2 and 4-5.
+        let content = "a\nb\nc\nd\ne\nf\n";
+        let pos1 = anchor(1, compute_line_hash(1, "a"));
+        let end1 = anchor(2, compute_line_hash(2, "b"));
+        let pos2 = anchor(4, compute_line_hash(4, "d"));
+        let end2 = anchor(5, compute_line_hash(5, "e"));
+        let edits = vec![
+            HashlineEdit::Replace {
+                pos: pos1,
+                end: Some(end1),
+                lines: vec!["A".to_owned()],
+            },
+            HashlineEdit::Replace {
+                pos: pos2,
+                end: Some(end2),
+                lines: vec!["D".to_owned()],
+            },
+        ];
+
+        // When applying.
+        let result = apply_hashline_edits(content, &edits).expect("should apply");
+
+        // Then both ranges are replaced.
+        assert_eq!(result.content, "A\nc\nD\nf\n");
+    }
+
+    #[rstest::rstest]
+    fn replace_and_append_at_eof() {
+        // Given a replace mid-file and an append at EOF.
+        let content = "a\nb\nc\n";
+        let pos1 = anchor(1, compute_line_hash(1, "a"));
+        let pos2 = anchor(3, compute_line_hash(3, "c"));
+        let edits = vec![
+            HashlineEdit::Replace {
+                pos: pos1,
+                end: None,
+                lines: vec!["A".to_owned()],
+            },
+            HashlineEdit::Append {
+                pos: Some(pos2),
+                lines: vec!["after-c".to_owned()],
+            },
+        ];
+
+        // When applying.
+        let result = apply_hashline_edits(content, &edits).expect("should apply");
+
+        // Then the replace and append both apply.
+        assert_eq!(result.content, "A\nb\nc\nafter-c\n");
+    }
+
+    #[rstest::rstest]
+    fn prepend_and_replace_same_batch() {
+        // Given a prepend before line 1 and a replace at line 3.
+        let content = "a\nb\nc\nd\n";
+        let pos1 = anchor(1, compute_line_hash(1, "a"));
+        let pos2 = anchor(3, compute_line_hash(3, "c"));
+        let edits = vec![
+            HashlineEdit::Prepend {
+                pos: Some(pos1),
+                lines: vec!["header".to_owned()],
+            },
+            HashlineEdit::Replace {
+                pos: pos2,
+                end: None,
+                lines: vec!["C".to_owned()],
+            },
+        ];
+
+        // When applying.
+        let result = apply_hashline_edits(content, &edits).expect("should apply");
+
+        // Then prepend appears before line 1 and replace applies to line 3.
+        assert_eq!(result.content, "header\na\nb\nC\nd\n");
+    }
+
+    #[rstest::rstest]
+    fn replace_and_prepend_at_adjacent_line() {
+        // Given a replace of line 1 and a prepend before line 2.
+        let content = "alpha\nbeta\ngamma\n";
+        let pos1 = anchor(1, compute_line_hash(1, "alpha"));
+        let pos2 = anchor(2, compute_line_hash(2, "beta"));
+        let edits = vec![
+            HashlineEdit::Replace {
+                pos: pos1,
+                end: None,
+                lines: vec!["ALPHA".to_owned()],
+            },
+            HashlineEdit::Prepend {
+                pos: Some(pos2),
+                lines: vec!["before-beta".to_owned()],
+            },
+        ];
+
+        // When applying.
+        let result = apply_hashline_edits(content, &edits).expect("should apply");
+
+        // Then replace and prepend both apply correctly.
+        assert_eq!(result.content, "ALPHA\nbefore-beta\nbeta\ngamma\n");
+    }
+
+    #[rstest::rstest]
+    fn single_noop_replace() {
+        // Given a replace that produces identical content.
+        let content = "a\nb\nc\n";
+        let pos = anchor(2, compute_line_hash(2, "b"));
+        let edits = vec![HashlineEdit::Replace {
+            pos,
+            end: None,
+            lines: vec!["b".to_owned()],
+        }];
+
+        // When applying.
+        let result = apply_hashline_edits(content, &edits).expect("should apply");
+
+        // Then the content is unchanged and we get a NOOP.
+        assert_eq!(result.content, content);
+        assert_eq!(result.noop_edits.len(), 1);
+    }
+
+    #[rstest::rstest]
+    fn empty_edits_returns_original() {
+        // Given no edits.
+        let content = "a\nb\n";
+
+        // When applying empty edits.
+        let result = apply_hashline_edits(content, &[]).expect("should apply");
+
+        // Then the content is unchanged.
+        assert_eq!(result.content, content);
+    }
+
+    #[rstest::rstest]
+    fn deduplication_of_identical_edits() {
+        // Given two identical append edits.
+        let content = "a\nb\n";
+        let pos = anchor(2, compute_line_hash(2, "b"));
+        let edits = vec![
+            HashlineEdit::Append {
+                pos: Some(pos.clone()),
+                lines: vec!["x".to_owned()],
+            },
+            HashlineEdit::Append {
+                pos: Some(pos),
+                lines: vec!["x".to_owned()],
+            },
+        ];
+
+        // When applying.
+        let result = apply_hashline_edits(content, &edits).expect("should apply");
+
+        // Then only one copy is applied (deduplication).
+        assert_eq!(result.content, "a\nb\nx\n");
+    }
+
+    #[rstest::rstest]
+    fn conflict_insert_inside_replace() {
+        // Given a replace spanning lines 1-3 and a prepend at line 2 (inside the range).
+        let content = "a\nb\nc\nd\n";
+        let pos1 = anchor(1, compute_line_hash(1, "a"));
+        let end1 = anchor(3, compute_line_hash(3, "c"));
+        let pos2 = anchor(2, compute_line_hash(2, "b"));
+        let edits = vec![
+            HashlineEdit::Replace {
+                pos: pos1,
+                end: Some(end1),
+                lines: vec!["X".to_owned()],
+            },
+            HashlineEdit::Prepend {
+                pos: Some(pos2),
+                lines: vec!["Y".to_owned()],
+            },
+        ];
+
+        // When applying.
+        let result = apply_hashline_edits(content, &edits);
+
+        // Then it fails with a conflict error.
+        assert!(result.is_err());
+        assert!(result.unwrap_err().contains("E_EDIT_CONFLICT"));
+    }
+
+    #[rstest::rstest]
+    fn overlapping_replaces_rejected() {
+        // Given two replace edits that overlap.
+        let content = "a\nb\nc\n";
+        let tag1 = anchor(1, compute_line_hash(1, "a"));
+        let tag2 = anchor(2, compute_line_hash(2, "b"));
+        let tag3 = anchor(3, compute_line_hash(3, "c"));
+        let edits = vec![
+            HashlineEdit::Replace {
+                pos: tag1.clone(),
+                end: Some(tag2.clone()),
+                lines: vec!["X".to_owned()],
+            },
+            HashlineEdit::Replace {
+                pos: tag2,
+                end: Some(tag3),
+                lines: vec!["Y".to_owned()],
+            },
+        ];
+
+        // When applying.
+        let result = apply_hashline_edits(content, &edits);
+
+        // Then it fails with a conflict error.
+        assert!(result.is_err());
+        assert!(result.unwrap_err().contains("E_EDIT_CONFLICT"));
+    }
     fn compute_line_hash(line_num: usize, line: &str) -> String {
         crate::feat::tools_actor::edit::hash::compute_line_hash(line_num, line).to_owned()
     }
 }
+

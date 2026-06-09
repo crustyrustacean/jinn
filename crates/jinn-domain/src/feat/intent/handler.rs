@@ -482,7 +482,9 @@ impl IntentHandler {
                 feat::ui::sidebar::sessions::handle_session_continue(state)
             }
 
-            Intent::SidebarConfirm => feat::ui::sidebar::sessions::handle_session_activate(state),
+            Intent::SidebarSessionConfirm => {
+                feat::ui::sidebar::sessions::handle_session_activate(state)
+            }
             Intent::SidebarConfirmInsert => {
                 feat::ui::sidebar::sessions::handle_session_activate_insert(state)
             }

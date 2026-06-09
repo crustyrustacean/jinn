@@ -34,6 +34,10 @@ pub enum KeyCategory {
     Context,
     /// Plugin-declared keybinds (e.g. enrich prompt on tap).
     Plugin,
+    /// Sidebar sections
+    Sidebar,
+    /// Chat history
+    ChatHistory,
 }
 
 /// Builds and returns the full keymap with all scope bindings.
@@ -57,8 +61,6 @@ fn add_sidebar_base(b: &mut ratatui_which_key::ScopeBuilder<KeyEvent, Scope, Int
         .bind("<c-h>", Intent::SidebarLeave, KeyCategory::Navigation)
         // Sidebar resize
         .bind("<c-w>", Intent::SidebarResizeEnter, KeyCategory::Navigation)
-        // Input - external editor
-        .bind("<c-e>", Intent::EditInput, KeyCategory::Input)
         // Input - enter input mode
         .bind("i", Intent::EnterInsertMode, KeyCategory::Input)
         // Direct jump to Sessions section
@@ -124,8 +126,6 @@ pub fn init() -> Keymap<KeyEvent, Scope, Intent, KeyCategory> {
 
             .bind("<c-u>", Intent::ScrollUp, KeyCategory::Navigation)
             .bind("<c-d>", Intent::ScrollDown, KeyCategory::Navigation)
-            // Input - external editor
-            .bind("<c-e>", Intent::EditInput, KeyCategory::Input)
             // Change CWD - search from session CWD
             .bind("<M-c>", Intent::ChangeCwd { root: CwdRoot::Session }, KeyCategory::Navigation)
             // Change CWD - search from home directory
@@ -148,19 +148,19 @@ pub fn init() -> Keymap<KeyEvent, Scope, Intent, KeyCategory> {
             .bind("<c-w>", Intent::SidebarResizeEnter, KeyCategory::Navigation)
             // Minimap navigation
             // Pin selected entry
-            .bind("p", Intent::ChatEntryPinSelected, KeyCategory::Context)
+            .bind("p", Intent::ChatEntryPinSelected, KeyCategory::ChatHistory)
             // Ignore/un-ignore selected entry
-            .bind("x", Intent::ChatEntryIgnoreSelected, KeyCategory::Context)
+            .bind("x", Intent::ChatEntryIgnoreSelected, KeyCategory::ChatHistory)
             // Expand/collapse tool entry
-            .bind("e", Intent::ExpandToolEntry, KeyCategory::Navigation)
+            .bind("e", Intent::ExpandToolEntry, KeyCategory::ChatHistory)
             // Toggle audit popup for the selected entry
-            .bind("a", Intent::ToggleAuditPopup, KeyCategory::Navigation)
+            .bind("a", Intent::ToggleAuditPopup, KeyCategory::ChatHistory)
             // Toggle ignored block visibility
-            .bind("h", Intent::ToggleIgnoredBlockVisibility, KeyCategory::Navigation)
+            .bind("h", Intent::ToggleIgnoredBlockVisibility, KeyCategory::ChatHistory)
             // Fork session from selected entry
-            .bind("f", Intent::ForkFromEntry, KeyCategory::General)
+            .bind("f", Intent::ForkFromEntry, KeyCategory::ChatHistory)
             // Yank (copy) selected entry to clipboard
-            .bind("y", Intent::YankSelectedEntry, KeyCategory::Navigation)
+            .bind("y", Intent::YankSelectedEntry, KeyCategory::ChatHistory)
             // Session creation
             .bind("n", Intent::SessionNew, KeyCategory::General)
             .bind("N", Intent::SessionNewWithLifecycle, KeyCategory::General)
@@ -180,18 +180,18 @@ pub fn init() -> Keymap<KeyEvent, Scope, Intent, KeyCategory> {
             add_sidebar_base(b);
             b
             // Persona-specific actions
-            .bind("c", Intent::SidebarPersonaEdit, KeyCategory::Context);
+            .bind("c", Intent::SidebarPersonaEdit, KeyCategory::Sidebar);
         })
         // Sidebar - Pins section
         .scope(Scope::SidebarPins, |b| {
             add_sidebar_base(b);
             b
             // Pin management actions
-            .bind("u", Intent::PinsUnpin, KeyCategory::Context)
-            .bind("t", Intent::PinsPinTop, KeyCategory::Context)
-            .bind("b", Intent::PinsPinBottom, KeyCategory::Context)
-            .bind("r", Intent::PinsPinRelative, KeyCategory::Context)
-            .bind("m", Intent::PinsPinCycle, KeyCategory::Context)
+            .bind("u", Intent::PinsUnpin, KeyCategory::Sidebar)
+            .bind("t", Intent::PinsPinTop, KeyCategory::Sidebar)
+            .bind("b", Intent::PinsPinBottom, KeyCategory::Sidebar)
+            .bind("r", Intent::PinsPinRelative, KeyCategory::Sidebar)
+            .bind("m", Intent::PinsPinCycle, KeyCategory::Sidebar)
             // Leave sidebar to Normal at the pin's position (same as <c-h>/<esc>).
             .bind("<enter>", Intent::SidebarLeave, KeyCategory::General);
         })
@@ -200,18 +200,18 @@ pub fn init() -> Keymap<KeyEvent, Scope, Intent, KeyCategory> {
             add_sidebar_base(b);
             b
             // Session management actions
-            .bind("x", Intent::SidebarSessionClose, KeyCategory::General)
-            .bind("t", Intent::SidebarSessionTeardown, KeyCategory::General)
-            .bind("<enter>", Intent::SidebarConfirm, KeyCategory::General)
-            .bind("n", Intent::SessionNew, KeyCategory::General)
-            .bind("N", Intent::SessionNewWithLifecycle, KeyCategory::General)
-            .bind("r", Intent::SidebarRenameSession, KeyCategory::General)
-            .bind("a", Intent::SidebarSessionArchive, KeyCategory::General)
-            .bind("c", Intent::SidebarSessionContinue, KeyCategory::General)
-            .bind("s", Intent::SidebarSessionRerunSetup, KeyCategory::General)
+            .bind("x", Intent::SidebarSessionClose, KeyCategory::Sidebar)
+            .bind("t", Intent::SidebarSessionTeardown, KeyCategory::Sidebar)
+            .bind("<enter>", Intent::SidebarSessionConfirm, KeyCategory::Sidebar)
+            .bind("n", Intent::SessionNew, KeyCategory::Sidebar)
+            .bind("N", Intent::SessionNewWithLifecycle, KeyCategory::Sidebar)
+            .bind("r", Intent::SidebarRenameSession, KeyCategory::Sidebar)
+            .bind("a", Intent::SidebarSessionArchive, KeyCategory::Sidebar)
+            .bind("c", Intent::SidebarSessionContinue, KeyCategory::Sidebar)
+            .bind("s", Intent::SidebarSessionRerunSetup, KeyCategory::Sidebar)
 
             // i activates session and enters insert mode
-            .bind("i", Intent::SidebarConfirmInsert, KeyCategory::Input)
+            .bind("i", Intent::SidebarConfirmInsert, KeyCategory::Sidebar)
             // Unmapped character keys produce NoOp to dismiss confirmation prompts
             .catch_all(|key: KeyEvent| {
                 if let Key::Char(_) = key.key {
@@ -228,7 +228,7 @@ pub fn init() -> Keymap<KeyEvent, Scope, Intent, KeyCategory> {
             b.bind(
                 "s",
                 Intent::OpenPicker { kind: jinn_domain::feat::picker::PickerKind::TaskList },
-                KeyCategory::General,
+                KeyCategory::Sidebar,
             );
         })
         // Input scope: typing into the input buffer
@@ -336,9 +336,9 @@ pub fn init() -> Keymap<KeyEvent, Scope, Intent, KeyCategory> {
     // SidebarResize scope - adjusting sidebar width.
     keymap.scope(Scope::SidebarResize, |b| {
         b
-        .bind("h", Intent::SidebarResizeExpand, KeyCategory::Navigation)
-        .bind("l", Intent::SidebarResizeContract, KeyCategory::Navigation)
-        .bind("<esc>", Intent::SidebarResizeLeave, KeyCategory::General)
+        .bind("h", Intent::SidebarResizeExpand, KeyCategory::Sidebar)
+        .bind("l", Intent::SidebarResizeContract, KeyCategory::Sidebar)
+        .bind("<esc>", Intent::SidebarResizeLeave, KeyCategory::Sidebar)
         .bind("<c-c>", Intent::Quit, KeyCategory::General);
     });
 

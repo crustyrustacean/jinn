@@ -371,13 +371,13 @@ impl Default for DoubleEditAutoPruneConfig {
 }
 
 /// Default number of consecutive read pairs to keep per file path.
-const DEFAULT_CONSECUTIVE_READS_KEEP_LAST: usize = 3;
+const DEFAULT_CONSECUTIVE_READS_KEEP_LAST: usize = 5;
 
 /// Default enabled state for consecutive-reads auto-prune.
 const DEFAULT_CONSECUTIVE_READS_ENABLED: bool = true;
 
 /// Default minimum age for consecutive-reads auto-prune.
-const DEFAULT_CONSECUTIVE_READS_MIN_AGE: usize = 50;
+const DEFAULT_CONSECUTIVE_READS_MIN_AGE: usize = 80;
 
 /// Consecutive-reads auto-prune configuration.
 ///
@@ -433,9 +433,8 @@ const DEFAULT_TOOL_AGE_WINDOW_ENABLED: bool = true;
 /// Default `min_age` for tool-age-window auto-prune.
 ///
 /// Number of entries from the end of history within which `ToolCall`/
-/// `ToolResult` pairs are protected from pruning. Matches the legacy
-/// `max_age_entries` default of 100 to preserve the historical keep-window.
-const DEFAULT_TOOL_AGE_WINDOW_MIN_AGE: usize = 100;
+/// `ToolResult` pairs are protected from pruning.
+const DEFAULT_TOOL_AGE_WINDOW_MIN_AGE: usize = 150;
 
 /// Tool-age-window auto-prune configuration.
 ///
@@ -676,7 +675,26 @@ impl Default for RegexAutoPruneConfig {
     fn default() -> Self {
         Self {
             enabled: DEFAULT_REGEX_ENABLED,
-            rules: Vec::new(),
+            rules: vec![
+                RegexPruneRule {
+                    pattern: "cargo test".to_owned(),
+                    tool_name: DEFAULT_REGEX_TOOL_NAME.to_owned(),
+                    keep_last: 2,
+                    min_age: DEFAULT_REGEX_MIN_AGE,
+                },
+                RegexPruneRule {
+                    pattern: "cargo check".to_owned(),
+                    tool_name: DEFAULT_REGEX_TOOL_NAME.to_owned(),
+                    keep_last: 1,
+                    min_age: DEFAULT_REGEX_MIN_AGE,
+                },
+                RegexPruneRule {
+                    pattern: "cargo clippy".to_owned(),
+                    tool_name: DEFAULT_REGEX_TOOL_NAME.to_owned(),
+                    keep_last: 1,
+                    min_age: DEFAULT_REGEX_MIN_AGE,
+                },
+            ],
         }
     }
 }
@@ -800,7 +818,7 @@ pub enum WebFetchBackend {
 /// Controls which backend the `web-fetch` tool uses.
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 pub struct WebFetchConfig {
-    /// The backend to use for web fetching. Default: `"http"`.
+    /// The backend to use for web fetching. Default: `"headless-chrome"`.
     #[serde(default)]
     pub backend: WebFetchBackend,
 }
@@ -808,7 +826,7 @@ pub struct WebFetchConfig {
 impl Default for WebFetchConfig {
     fn default() -> Self {
         Self {
-            backend: WebFetchBackend::Http,
+            backend: WebFetchBackend::HeadlessChrome,
         }
     }
 }
@@ -949,7 +967,7 @@ impl RequestRetryConfig {
 ///
 /// This file stores user behavior preferences that should survive
 /// app restarts - e.g., the last model and strategy selected from pickers.
-#[derive(Debug, Clone, Default, PartialEq, Serialize, Deserialize)]
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 pub struct UserPreferences {
 
 
@@ -1002,6 +1020,41 @@ pub struct UserPreferences {
     /// Bash tool configuration.
     #[serde(default)]
     pub bash: BashConfig,
+}
+
+impl Default for UserPreferences {
+    fn default() -> Self {
+        Self {
+            tool_entry_max_lines: None,
+            min_collapse_count: None,
+            session_lifecycles: vec![SessionLifecycle {
+                name: "git worktree".to_owned(),
+                description: Some("Open a git worktree + branch".to_owned()),
+                setup: Some(
+                    crate::feat::session_lifecycle::builtin::LifecycleCommand::Shell(
+                        "git worktree add -b <branch> ../<branch> && echo ../<branch>"
+                            .to_owned(),
+                    ),
+                ),
+                teardown: Some(
+                    crate::feat::session_lifecycle::builtin::LifecycleCommand::Shell(
+                        "git merge <branch> && git worktree remove ../<branch> && git branch -d <branch>"
+                            .to_owned(),
+                    ),
+                ),
+            }],
+            max_tool_output_lines: None,
+            max_tool_output_bytes: None,
+            compaction: CompactionConfig::default(),
+            request_retry: RequestRetryConfig::default(),
+            web_fetch: WebFetchConfig::default(),
+            openrouter_web_search: OpenrouterWebSearchConfig::default(),
+            cwd_selector: CwdSelectorConfig::default(),
+            minimap: MinimapConfig::default(),
+            auto_prune: AutoPruneConfig::default(),
+            bash: BashConfig::default(),
+        }
+    }
 }
 
 /// Returns the path to the user preferences file.
@@ -1506,12 +1559,14 @@ mod tests {
     }
 
     #[rstest::rstest]
-    fn default_preferences_has_empty_lifecycles() {
+    fn default_preferences_has_git_worktree_lifecycle() {
         // Given default preferences.
         let prefs = UserPreferences::default();
 
-        // Then session_lifecycles is empty.
-        assert!(prefs.session_lifecycles.is_empty());
+        // Then session_lifecycles contains the git worktree lifecycle.
+        assert_eq!(prefs.session_lifecycles.len(), 1);
+        assert_eq!(prefs.session_lifecycles[0].name, "git worktree");
+        assert!(prefs.session_lifecycles[0].setup.is_some());
     }
 
 
@@ -1932,15 +1987,15 @@ teardown_command = "~/.config/jinn/scripts/fossil-cleanup.sh $1"
     // --- WebFetchConfig tests ---
 
     #[rstest::rstest]
-    fn default_web_fetch_config_uses_http_backend() {
+    fn default_web_fetch_config_uses_headless_chrome_backend() {
         let config = WebFetchConfig::default();
-        assert_eq!(config.backend, WebFetchBackend::Http);
+        assert_eq!(config.backend, WebFetchBackend::HeadlessChrome);
     }
 
     #[rstest::rstest]
-    fn default_preferences_has_http_web_fetch() {
+    fn default_preferences_has_headless_chrome_web_fetch() {
         let prefs = UserPreferences::default();
-        assert_eq!(prefs.web_fetch.backend, WebFetchBackend::Http);
+        assert_eq!(prefs.web_fetch.backend, WebFetchBackend::HeadlessChrome);
     }
 
     #[rstest::rstest]
@@ -2210,15 +2265,18 @@ max_tokens = 5000
         assert!(config.read_edit.enabled);
         assert!(config.todo.enabled);
         assert!(config.consecutive_reads.enabled);
-        assert_eq!(config.consecutive_reads.keep_last, 3);
+        assert_eq!(config.consecutive_reads.keep_last, 5);
+        assert_eq!(config.consecutive_reads.min_age, 80);
         assert!(config.tool_age_window.enabled);
         assert_eq!(config.read_edit.min_age, 50);
         assert_eq!(config.double_edit.min_age, 20);
-        assert_eq!(config.tool_age_window.min_age, 100);
+        assert_eq!(config.tool_age_window.min_age, 150);
         assert!(config.trivial_assistant.enabled);
         assert_eq!(config.trivial_assistant.min_age, 100);
         assert_eq!(config.trivial_assistant.max_tokens, 80);
     }
+
+
 
     #[rstest::rstest]
     fn default_preferences_has_default_auto_prune_config() {
@@ -2342,7 +2400,7 @@ enabled = true
         assert_eq!(prefs.auto_prune.read_edit.min_age, 50);
         assert_eq!(prefs.auto_prune.read_edit.threshold, 2);
         assert_eq!(prefs.auto_prune.double_edit.min_age, 20);
-        assert_eq!(prefs.auto_prune.tool_age_window.min_age, 100);
+        assert_eq!(prefs.auto_prune.tool_age_window.min_age, 150);
     }
 
     #[rstest::rstest]
@@ -2420,7 +2478,7 @@ enabled = true
         assert!(prefs.auto_prune.read_edit.enabled);
         assert!(prefs.auto_prune.todo.enabled);
         assert!(prefs.auto_prune.tool_age_window.enabled);
-        assert_eq!(prefs.auto_prune.tool_age_window.min_age, 100);
+        assert_eq!(prefs.auto_prune.tool_age_window.min_age, 150);
         assert!(prefs.auto_prune.trivial_assistant.enabled);
         assert_eq!(prefs.auto_prune.trivial_assistant.min_age, 100);
         assert_eq!(prefs.auto_prune.trivial_assistant.max_tokens, 80);
@@ -2453,9 +2511,9 @@ enabled = false
         // Given the three newly-min_age'd configs and the per-rule default.
         // Then their Default impls all produce min_age == 50.
         assert_eq!(AnchoredAssistantAutoPruneConfig::default().min_age, 50);
-        assert_eq!(ConsecutiveReadsAutoPruneConfig::default().min_age, 50);
-        assert_eq!(TodoAutoPruneConfig::default().min_age, 50);
-        assert_eq!(EditReadAutoPruneConfig::default().min_age, 50);
+        // ConsecutiveReads min_age was raised to 80 in the defaults.
+        // The other three remain 50.
+        assert_eq!(ConsecutiveReadsAutoPruneConfig::default().min_age, 80);
         // RegexPruneRule has no Default impl (pattern is required), so verify
         // via the serde default function directly.
         assert_eq!(default_regex_min_age(), 50);
@@ -2493,10 +2551,13 @@ min_tail_entries = 10
     // --- RegexAutoPruneConfig tests ---
 
     #[rstest::rstest]
-    fn default_regex_config_is_empty_rules_and_enabled() {
+    fn default_regex_config_has_default_rules_and_enabled() {
         let config = RegexAutoPruneConfig::default();
         assert!(config.enabled);
-        assert!(config.rules.is_empty());
+        assert_eq!(config.rules.len(), 3);
+        assert_eq!(config.rules[0].pattern, "cargo test");
+        assert_eq!(config.rules[1].pattern, "cargo check");
+        assert_eq!(config.rules[2].pattern, "cargo clippy");
     }
 
     #[rstest::rstest]
@@ -2608,7 +2669,7 @@ pattern = "cargo check"
 
         let prefs = load_preferences_from(&path).expect("load");
         assert!(prefs.auto_prune.regex.enabled);
-        assert!(prefs.auto_prune.regex.rules.is_empty());
+        assert_eq!(prefs.auto_prune.regex.rules.len(), 3);
     }
 
     #[rstest::rstest]
