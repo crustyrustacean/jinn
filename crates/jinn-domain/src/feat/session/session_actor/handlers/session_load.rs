@@ -136,6 +136,7 @@ impl SessionPersistenceActor {
     /// Calls `store.fork()` to create a new session with entries up to `at_ordinal`,
     /// then uses `load_and_insert` to insert and emit `SessionLoadCompleted`,
     /// followed by the heavy restore flow.
+    #[expect(clippy::expect_used, reason = "just inserted above")]
     pub(in crate::feat::session::session_actor) async fn on_session_fork_requested(
         &self,
         payload: &SessionForkRequested,

@@ -22,6 +22,11 @@ use crate::feat::session::chat_entry::{ChatEntry, ChatEntryKind};
 /// kept entries form a structurally valid LLM message sequence.
 ///
 /// Returns the adjusted cut index (>= `cut_index`, <= `history.len()`).
+///
+/// # Panics
+///
+/// Panics if `cut_index < history.len()` but `history[cut_index..]` is empty.
+#[expect(clippy::expect_used, reason = "infallible")]
 pub fn adjust_cut_to_boundary(history: &[ChatEntry], cut_index: usize) -> usize {
     if cut_index >= history.len() {
         return cut_index;

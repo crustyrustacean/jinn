@@ -162,6 +162,7 @@ impl AppStateStorageService {
     ///
     /// Panics if called before a successful `reload()` (or `save()`) has populated
     /// the cache.
+    #[expect(clippy::expect_used, reason = "infallible")]
     pub fn read(&self) -> AppStateFile {
         self.cache
             .read()

@@ -92,13 +92,13 @@ impl<'de> Deserialize<'de> for LifecycleCommand {
                         formatter.write_str("`builtin`")
                     }
 
-                    fn visit_str<E>(self, value: &str) -> Result<Field, E>
+                    fn visit_str<E>(self, v: &str) -> Result<Field, E>
                     where
                         E: de::Error,
                     {
-                        match value {
+                        match v {
                             "builtin" => Ok(Field::Builtin),
-                            _ => Err(de::Error::unknown_field(value, &["builtin"])),
+                            _ => Err(de::Error::unknown_field(v, &["builtin"])),
                         }
                     }
                 }
@@ -116,18 +116,18 @@ impl<'de> Deserialize<'de> for LifecycleCommand {
                 formatter.write_str("a string or { builtin = \"name\" }")
             }
 
-            fn visit_str<E>(self, value: &str) -> Result<LifecycleCommand, E>
+            fn visit_str<E>(self, v: &str) -> Result<LifecycleCommand, E>
             where
                 E: de::Error,
             {
-                Ok(LifecycleCommand::Shell(value.to_owned()))
+                Ok(LifecycleCommand::Shell(v.to_owned()))
             }
 
-            fn visit_string<E>(self, value: String) -> Result<LifecycleCommand, E>
+            fn visit_string<E>(self, v: String) -> Result<LifecycleCommand, E>
             where
                 E: de::Error,
             {
-                Ok(LifecycleCommand::Shell(value))
+                Ok(LifecycleCommand::Shell(v))
             }
 
             fn visit_map<A>(self, mut map: A) -> Result<LifecycleCommand, A::Error>

@@ -100,14 +100,13 @@ pub(crate) struct PendingBatch {
 /// handler and aggregates results into batch completion events.
 pub struct ToolOrchestratorActor {
     /// Tool name → registration info.
-    pub(crate) tools: HashMap<String, ToolRegistration>,
+    tools: HashMap<String, ToolRegistration>,
     /// Session ID → pending batch tracker.
-    pub(crate) pending: HashMap<SessionId, PendingBatch>,
+    pending: HashMap<SessionId, PendingBatch>,
     /// Shared application state for reading session CWD.
-    pub(crate) state: State,
-    /// Application filesystem paths.
+    state: State,
     /// Runtime services.
-    pub(crate) services: Services,
+    services: Services,
     /// Shell binary path (captured at startup from `$SHELL`).
     shell: String,
 }

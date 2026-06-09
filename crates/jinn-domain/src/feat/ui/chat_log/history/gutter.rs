@@ -101,14 +101,14 @@ pub(crate) fn build_blank_gutter_lines(
     theme: &Theme,
     gutter_str: &str,
 ) -> Vec<Line<'static>> {
-    (0..count)
-        .map(|_| {
-            Line::from(Span::styled(
-                gutter_str.to_owned(),
-                Style::default().fg(theme.border_unfocused),
-            ))
-        })
-        .collect()
+    std::iter::repeat_with(|| {
+        Line::from(Span::styled(
+            gutter_str.to_owned(),
+            Style::default().fg(theme.border_unfocused),
+        ))
+    })
+    .take(count)
+    .collect()
 }
 
 /// Build a single gutter line for a collapsed ignored block summary.

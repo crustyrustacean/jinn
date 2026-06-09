@@ -30,6 +30,7 @@ pub struct CachedEntryCount {
     ///
     /// `None` when inserted via [`EntryLineCache::insert`] (count-only).
     /// `Some` when inserted via [`EntryLineCache::insert_with_lines`].
+    #[expect(clippy::rc_buffer, reason = "Vec<Line> not Send, Arc used for cheap clone within same thread")]
     pub lines: Option<Arc<Vec<Line<'static>>>>,
 }
 
@@ -38,6 +39,7 @@ pub struct CacheHit {
     /// The wrapped line count for this entry.
     pub wrapped_count: u16,
     /// Pre-rendered lines for this entry, if they were cached.
+    #[expect(clippy::rc_buffer, reason = "Vec<Line> not Send, Arc used for cheap clone within same thread")]
     pub lines: Option<Arc<Vec<Line<'static>>>>,
 }
 
@@ -117,6 +119,7 @@ impl EntryLineCache {
         );
     }
 
+    #[expect(clippy::rc_buffer, reason = "Vec<Line> not Send, Arc used for cheap clone within same thread")]
     /// Store a wrapped line count and rendered lines for an entry.
     pub fn insert_with_lines(
         &mut self,

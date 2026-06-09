@@ -15,7 +15,7 @@ use std::path::Path;
 #[derive(Debug, Clone, Default)]
 pub struct ModelsDevData {
     /// Model ID → context length in tokens.
-    pub(crate) context_lengths: HashMap<String, u32>,
+    pub context_lengths: HashMap<String, u32>,
 }
 
 impl ModelsDevData {

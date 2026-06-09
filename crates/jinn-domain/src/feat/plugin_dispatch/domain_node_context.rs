@@ -27,6 +27,9 @@ use crate::protocol::{Command, SessionId};
 #[error(debug)]
 pub struct DomainContextError;
 
+type PendingResult = Arc<Mutex<HashMap<SessionId, oneshot::Sender<Result<String, String>>>>>;
+
+
 /// Domain context for Lua plugin LLM access.
 ///
 /// Provides:
@@ -43,7 +46,7 @@ pub struct DomainNodeContext {
     /// The sender carries a `Result`: `Ok(text)` for a successful one-shot
     /// (assistant text) or `Err(message)` when the one-shot session ended in an
     /// error entry (e.g. provider connection failure).
-    pending: Arc<Mutex<HashMap<SessionId, oneshot::Sender<Result<String, String>>>>>,
+    pending: PendingResult,
 }
 
 impl DomainNodeContext {

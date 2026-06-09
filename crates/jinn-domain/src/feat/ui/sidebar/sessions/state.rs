@@ -8,7 +8,7 @@ use crate::protocol::SessionId;
 
 /// Discriminator for sidebar list entries.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub(crate) enum SessionEntryKind {
+pub enum SessionEntryKind {
     Session,
     Plugin { enabled: bool },
 }
@@ -31,26 +31,26 @@ pub struct SessionsSectionState {
 }
 
 #[derive(Clone)]
-pub(crate) struct SessionEntry {
+pub struct SessionEntry {
     /// Whether this entry represents a session or a plugin.
-    pub(crate) kind: SessionEntryKind,
-    pub(crate) id: SessionId,
-    pub(crate) title: String,
-    pub(crate) is_active: bool,
-    pub(crate) created_at: jiff::Timestamp,
-    pub(crate) is_idle: bool,
-    pub(crate) last_entry_is_error: bool,
+    pub kind: SessionEntryKind,
+    pub id: SessionId,
+    pub title: String,
+    pub is_active: bool,
+    pub created_at: jiff::Timestamp,
+    pub is_idle: bool,
+    pub last_entry_is_error: bool,
 
     /// Parent session ID - `None` for root sessions.
-    pub(crate) parent_id: Option<SessionId>,
+    pub parent_id: Option<SessionId>,
     /// Depth in the session tree. 0 for roots, 1 for their children, etc.
-    pub(crate) depth: usize,
+    pub depth: usize,
     /// For each ancestor level (0..depth-1), `true` if that ancestor has younger siblings.
     /// Used to render `│` vs ` ` continuation characters.
-    pub(crate) ancestor_continuations: Vec<bool>,
+    pub ancestor_continuations: Vec<bool>,
     /// Whether this entry is the last child of its parent.
     /// Used to render `└` vs `├`.
-    pub(crate) is_last_child: bool,
+    pub is_last_child: bool,
 }
 
 /// Collects all loaded sessions in tree order (DFS).
@@ -62,7 +62,12 @@ pub(crate) struct SessionEntry {
 ///
 /// Only includes sessions with `SessionState::Loaded` - archived sessions
 /// are not in the `SessionMap` and thus excluded automatically.
-pub(crate) fn sorted_open_sessions(state: &AppState) -> Vec<SessionEntry> {
+///
+/// # Panics
+///
+/// Panics if a session exists in the map but its parent does not.
+#[expect(clippy::expect_used, reason = "infallible")]
+pub fn sorted_open_sessions(state: &AppState) -> Vec<SessionEntry> {
     let active_id = state.session.active_session_id();
 
     // Collect all loaded sessions into entries.
@@ -202,6 +207,7 @@ pub(crate) fn sorted_open_sessions(state: &AppState) -> Vec<SessionEntry> {
 /// plugin children appended need their own `is_last_child` unchanged (they remain
 /// last among *session* siblings). The plugin entries become their new children at
 /// depth + 1.
+#[expect(clippy::expect_used, reason = "infallible")]
 fn insert_plugin_entries(state: &AppState, entries: &mut Vec<SessionEntry>) {
     // Collect (insert_index, session_id, plugins) for each session with plugins.
     let mut insertions: Vec<(

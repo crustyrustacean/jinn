@@ -31,11 +31,11 @@ pub struct AffectedRange {
 #[derive(Debug)]
 pub enum AnchorBlock {
     /// A formatted anchor block with fresh hashes.
+    #[expect(clippy::allow_attributes, reason = "dead_code is a compiler lint, not clippy")]
+    #[allow(dead_code, reason = "fields used for anchor processing")]
     Block {
         text: String,
-        #[expect(dead_code, reason = "kept for future use")]
         start: usize,
-        #[expect(dead_code, reason = "kept for future use")]
         end: usize,
     },
     /// Anchors omitted because the span was too large.

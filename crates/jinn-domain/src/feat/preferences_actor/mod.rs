@@ -8,15 +8,12 @@ pub mod app_state_actor;
 pub mod app_state_sync_actor;
 pub mod app_state_file;
 pub mod app_state_storage;
+#[expect(clippy::module_inception, reason = "preferences_actor/mod.rs is the public API, preferences_actor/ is implementation")]
 pub mod preferences_actor;
 pub mod preferences_state_sync_actor;
 pub mod protocol;
 pub mod user_preferences;
 pub mod user_preferences_storage;
-
-#[cfg(test)]
-mod preferences_actor_tests;
-
 pub use user_preferences::{
     AutoPruneConfig, BashConfig, CompactionConfig, InitDefaultConfigError, InitOutcome,
     MinimapConfig, OpenrouterWebSearchConfig, RequestRetryConfig, UserPreferences,

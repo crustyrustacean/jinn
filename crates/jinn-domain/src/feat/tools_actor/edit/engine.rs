@@ -537,9 +537,7 @@ fn resolve_replace_span(
     let end_line = end.map_or(start_line, |a| a.line);
 
     // NOOP check
-    let Some(original) = ctx.file_lines.get(start_line - 1..end_line.min(ctx.file_lines.len())) else {
-        return None;
-    };
+    let original = ctx.file_lines.get(start_line - 1..end_line.min(ctx.file_lines.len()))?;
     let original: Vec<&str> = original.to_vec();
     if original.len() == lines.len() && original.iter().zip(lines.iter()).all(|(a, b)| a == b) {
         return ctx.record_noop(
@@ -549,9 +547,10 @@ fn resolve_replace_span(
         );
     }
 
-    let Some(&start_byte) = ctx.line_starts.get(start_line - 1) else { return None; };
-    let (Some(&end_byte_start), Some(end_line_content)) = (ctx.line_starts.get(end_line - 1), ctx.file_lines.get(end_line - 1)) else { return None; };
-    let end_byte = end_byte_start + end_line_content.len();
+    let &start_byte = ctx.line_starts.get(start_line - 1)?;
+    let end_byte_start = ctx.line_starts.get(end_line - 1).copied();
+    let end_line_content = ctx.file_lines.get(end_line - 1);
+    let end_byte = end_byte_start? + end_line_content?.len();
     let replacement = lines.join("\n");
 
     Some(ResolvedSpan {
@@ -617,7 +616,8 @@ fn resolve_append_span(
     let insert_pos = if is_sentinel {
         ctx.content.len()
     } else {
-        let (Some(&start), Some(line)) = (ctx.line_starts.get(anchor.line - 1), ctx.file_lines.get(anchor.line - 1)) else { return None; };
+        let start = *ctx.line_starts.get(anchor.line - 1)?;
+        let line = ctx.file_lines.get(anchor.line - 1)?;
         start + line.len()
     };
     let replacement = if is_sentinel {
@@ -746,6 +746,7 @@ fn find_exact_unique_match(content: &str, old_text: &str) -> Option<(usize, usiz
 }
 
 /// Checks for boundary duplication and adds a warning if detected.
+#[expect(clippy::expect_used, reason = "infallible")]
 fn check_boundary_duplication(
     edit: &HashlineEdit,
     file_lines: &[&str],

@@ -8,6 +8,7 @@ pub(crate) struct ScrollState {
 }
 
 /// Compute scroll offset, blank count, max offset, and scroll-to-selected adjustment.
+#[expect(clippy::else_if_without_else, reason = "no-op on fallthrough is intentional")]
 pub(crate) fn compute_scroll(
     area_height: u16,
     total_wrapped: u16,

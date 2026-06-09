@@ -18,6 +18,7 @@ use super::truncate::truncate_str;
 ///
 /// Returns a blank space when the session is idle, or an animated braille
 /// character when the session is working.
+#[expect(clippy::expect_used, reason = "idx modulo len is always in bounds")]
 pub(crate) fn indicator_span(is_idle: bool, throbber_state: &ThrobberState) -> Span<'static> {
     if is_idle {
         Span::raw(" ")

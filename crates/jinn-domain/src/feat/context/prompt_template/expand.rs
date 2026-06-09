@@ -1,3 +1,4 @@
+#![expect(clippy::expect_used, reason = "infallible static regex initialization")]
 //! Token expansion - replaces `#name` tokens using templates from the store.
 
 use std::sync::LazyLock;

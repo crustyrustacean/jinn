@@ -47,6 +47,7 @@ const MINIMAP_PALETTE: [Color; MINIMAP_BANDS] = [
 ///
 /// Divides `[0, max_tokens]` into `MINIMAP_BANDS` equal-width bands.
 /// Counts exceeding `max_tokens` get the last band color.
+#[expect(clippy::expect_used, reason = "infallible")]
 fn token_threshold_color(count: u32, max_tokens: u32) -> Color {
     if max_tokens == 0 {
         return MINIMAP_PALETTE[0];
@@ -86,6 +87,7 @@ struct VisibleEntry {
 }
 
 /// Computes the list of visible (non-excluded) entries from visual items.
+#[expect(clippy::expect_used, reason = "infallible")]
 fn compute_visible_entries(state: &AppState) -> Vec<VisibleEntry> {
     let session = state.active_session();
     let history = session.history();
@@ -132,8 +134,8 @@ fn find_block_index(selected_vi_idx: Option<usize>, visible: &[VisibleEntry]) ->
         None => visible.len().checked_sub(1),
     }
 }
-
-#[expect(dead_code, reason = "available for future use")]
+#[expect(clippy::allow_attributes, reason = "dead_code is a compiler lint, not clippy")]
+#[allow(dead_code, reason = "available for future use")]
 fn compute_minimap_scroll(
     selected_block: usize,
     _total_blocks: usize,
@@ -456,7 +458,7 @@ fn format_entry_tokens(count: u32) -> String {
 
 #[cfg(test)]
 mod tests {
-    #![allow(clippy::expect_used, clippy::panic, clippy::unreachable, clippy::indexing_slicing, clippy::slicing, reason = "test code")]
+    #![allow(clippy::expect_used, clippy::panic, clippy::unreachable, clippy::indexing_slicing, reason = "test code")]
     use super::*;
     use crate::common::app_state::AppState;
     use crate::feat::session::chat_entry::ChatEntry;

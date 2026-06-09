@@ -12,6 +12,7 @@
 //! script modes identically to the TUI mode.
 
 pub mod handler;
+#[expect(clippy::module_inception, reason = "intent/mod.rs is the public API, intent/ is implementation")]
 pub mod intent;
 
 pub use crate::IntentResult;

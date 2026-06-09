@@ -32,7 +32,7 @@ use error_stack::Report;
 use futures::StreamExt as _;
 
 use jinn_provider::{LlmService, LlmServiceError, OnRetry, RetryingLlmService};
-use session::{SessionData, SessionState};
+use session::SessionData;
 
 /// OnRetry callback that pushes a system chat entry to notify the user.
 struct PushEntryOnRetry {
@@ -497,7 +497,7 @@ impl LlmActor {
 
         // Update session state.
         if let Some(session) = self.sessions.get_mut(&session_id) {
-            session.state = SessionState::Streaming;
+            session.begin_streaming();
         }
 
         self.tasks.insert(session_id, handle);
@@ -584,6 +584,7 @@ impl LlmActor {
 mod tests {
     #![allow(clippy::expect_used, clippy::panic, clippy::unreachable, clippy::indexing_slicing, reason = "test code")]
     use super::*;
+    use super::session::SessionState;
 
     use crate::common::app_state::AppState;
     use crate::common::state::State;
@@ -958,7 +959,7 @@ mod tests {
         let session_data = actor.sessions.get(&session_id);
         assert!(session_data.is_some(), "session should be tracked");
         assert_eq!(
-            session_data.unwrap().state,
+            *session_data.unwrap().state(),
             SessionState::Streaming,
             "session should be in Streaming state"
         );

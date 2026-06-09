@@ -154,6 +154,7 @@ struct HistoryRender<'a> {
     /// Per-visual-item wrapped line ranges: `entry_line_ranges[vi_idx] = (start, end)`.
     entry_line_ranges: Vec<(u16, u16)>,
     miss_lines: HashMap<usize, Vec<Line<'static>>>,
+    #[expect(clippy::rc_buffer, reason = "Vec<Line> not Send, Arc used for cheap clone within same thread")]
     cached_lines: HashMap<usize, Arc<Vec<Line<'static>>>>,
     total_wrapped: u16,
     scroll: ScrollState,
@@ -254,6 +255,7 @@ impl<'a> HistoryRender<'a> {
     /// On a cache hit with rendered lines, the lines are stored in `cached_lines`
     /// for reuse in Pass 2. On a miss, lines are rendered, stored in both the cache
     /// (via `insert_with_lines`) and `miss_lines`.
+    #[expect(clippy::expect_used, reason = "infallible")]
     fn compute_line_ranges(&mut self, cache: &mut EntryLineCache) {
         let mut wrapped_cursor: u16 = 0;
 
@@ -394,6 +396,7 @@ impl<'a> HistoryRender<'a> {
     // -----------------------------------------------------------------------
 
     /// Build content and gutter lines for all visible entries.
+    #[expect(clippy::expect_used, reason = "infallible")]
     fn render_visible_entries(&mut self) {
         let viewport_top = self.scroll.clamped;
         let chat_log_active = matches!(

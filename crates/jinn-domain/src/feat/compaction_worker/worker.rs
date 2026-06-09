@@ -58,26 +58,22 @@ pub struct CompactionTrigger {
 #[derive(Clone)]
 pub struct CompactionWorker {
     /// Runtime services (for LLM calls).
-    pub(crate) services: Services,
+    services: Services,
     /// Tokio runtime handle for spawning tasks.
-    pub(crate) handle: Handle,
+    handle: Handle,
     /// Shared application state (for reading session history).
-    pub(crate) state: State,
-    /// Compaction configuration.
-    pub(crate) config: CompactionConfig,
-    /// System prompt for compaction summarization.
-    pub(crate) compaction_prompt: String,
+    state: State,
     /// Whether an auto-compaction is currently in flight.
     ///
     /// Set before starting the LLM call, cleared when the compaction
     /// summary entry is found in a subsequent snapshot (meaning mutations
     /// were applied) or on error.
-    pub(crate) compaction_in_progress: Arc<AtomicBool>,
+    compaction_in_progress: Arc<AtomicBool>,
     /// The `ChatEntryId` of the pending compaction summary entry.
     ///
     /// Used to detect when mutations have been applied by scanning the snapshot.
     /// `None` when no compaction is in flight.
-    pub(crate) pending_compaction_id: Arc<Mutex<Option<ChatEntryId>>>,
+    pending_compaction_id: Arc<Mutex<Option<ChatEntryId>>>,
 }
 
 impl CompactionWorker {
@@ -86,18 +82,19 @@ impl CompactionWorker {
         services: Services,
         handle: Handle,
         state: State,
-        config: CompactionConfig,
-        compaction_prompt: String,
     ) -> Self {
         Self {
             services,
             handle,
             state,
-            config,
-            compaction_prompt,
             compaction_in_progress: Arc::new(AtomicBool::new(false)),
             pending_compaction_id: Arc::new(Mutex::new(None)),
         }
+    }
+
+    /// Shared application state reference (for reading session history).
+    pub fn state(&self) -> &State {
+        &self.state
     }
 
     /// Check whether the compaction summary from a previous auto-compaction
@@ -105,6 +102,7 @@ impl CompactionWorker {
     ///
     /// If found, clears the in-progress flag and pending ID. Returns true
     /// if the flag was cleared (compaction applied), false if still in flight.
+    #[expect(clippy::expect_used, reason = "infallible")]
     fn check_compaction_applied(&self, history: &[ChatEntry]) -> bool {
         let guard = self.pending_compaction_id.lock().expect("lock");
         let Some(pending_id) = guard.as_ref() else {
@@ -122,6 +120,7 @@ impl CompactionWorker {
     }
 
     /// Clear the compaction in-progress state (flag and pending ID).
+    #[expect(clippy::expect_used, reason = "infallible")]
     fn clear_compaction_state(&self) {
         self.compaction_in_progress.store(false, Ordering::SeqCst);
         *self.pending_compaction_id.lock().expect("lock") = None;
@@ -209,6 +208,7 @@ impl CompactionWorker {
     /// Compacts only when the session's tiktoken-based `context_size()` (the same
     /// value shown in the status bar) exceeds `config.threshold` of the model's
     /// `context_length`.
+    #[expect(clippy::expect_used, reason = "infallible")]
     async fn evaluate_history(
         &self,
         session_id: &SessionId,
@@ -328,7 +328,7 @@ impl CompactionWorker {
     ///
     /// `pub(crate)` for testing - the real entry points are [`evaluate`] (trait)
     /// and [`evaluate_for_session`] (trigger-based).
-    #[expect(clippy::too_many_arguments, reason = "handler reads best as a single unit")]
+    #[expect(clippy::expect_used, clippy::too_many_arguments, reason = "handler reads best as a single unit")]
     pub(crate) async fn evaluate_with_config(
         &self,
         history: &[ChatEntry],
@@ -570,3 +570,6 @@ async fn generate_summary(
 
     Ok(summary)
 }
+
+#[cfg(test)]
+mod worker_tests;

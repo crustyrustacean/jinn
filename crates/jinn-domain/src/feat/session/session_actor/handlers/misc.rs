@@ -147,6 +147,7 @@ impl SessionPersistenceActor {
 /// | ollama   | 5      | ✅     |
 /// | openai   | 0      | ❌ API key not resolved |
 /// ```
+#[expect(clippy::else_if_without_else, reason = "no-op on fallthrough is intentional")]
 fn build_models_refresh_table(event: &ModelsRefreshed) -> String {
     // Collect all provider names and sort alphabetically.
     let mut all_providers: Vec<&str> = event

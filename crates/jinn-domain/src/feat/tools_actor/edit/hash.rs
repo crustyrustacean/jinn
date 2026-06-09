@@ -25,6 +25,7 @@ pub(crate) const NIBBLE_STR: &str = "ZPMQVRWSNKTXJBYH";
 
 /// Pre-computed lookup table: byte value → 2-character hash string.
 /// Built at runtime from the nibble alphabet.
+#[expect(clippy::expect_used, reason = "indices are bounded by 256-entry table")]
 pub(crate) static DICT: std::sync::LazyLock<[String; 256]> = std::sync::LazyLock::new(|| {
     let nibble_bytes = b"ZPMQVRWSNKTXJBYH";
     let mut table: [String; 256] = core::array::from_fn(|_| String::new());
@@ -76,6 +77,7 @@ pub struct HashMismatch {
 ///    `NIBBLE_STR`.
 ///
 /// The result is always exactly 2 characters from `NIBBLE_STR`.
+#[expect(clippy::expect_used, reason = "u8 always fits in 256-entry table")]
 pub fn compute_line_hash(line_num: usize, line: &str) -> &str {
     // Strip trailing CR and trailing whitespace
     let normalized = line.trim_end_matches('\r').trim_end();
@@ -224,17 +226,19 @@ fn diagnose_line_ref(ref_str: &str) -> String {
 ///
 /// The model must send literal file content for `lines`, not the rendered
 /// read/diff form.
+#[expect(clippy::expect_used, reason = "valid regex")]
 static DISPLAY_PREFIX_RE: std::sync::LazyLock<regex::Regex> = std::sync::LazyLock::new(|| {
     regex::Regex::new(r"^\s*(?:>>>|>>)?\s*(?:\d+\s*#\s*|#\s*)[ZPMQVRWSNKTXJBYH]{2}\|")
         .expect("valid regex")
 });
 
 /// Regex detecting diff-plus display prefixes.
+#[expect(clippy::expect_used, reason = "valid regex")]
 static DISPLAY_PREFIX_PLUS_RE: std::sync::LazyLock<regex::Regex> = std::sync::LazyLock::new(|| {
     regex::Regex::new(r"^\+\s*(?:\d+\s*#\s*|#\s*)[ZPMQVRWSNKTXJBYH]{2}\|").expect("valid regex")
 });
 
-/// Regex detecting diff-minus display prefixes.
+#[expect(clippy::expect_used, reason = "valid regex")]
 static DIFF_MINUS_RE: std::sync::LazyLock<regex::Regex> =
     std::sync::LazyLock::new(|| regex::Regex::new(r"^-\s*\d+\s{4}").expect("valid regex"));
 

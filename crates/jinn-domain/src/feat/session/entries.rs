@@ -20,6 +20,7 @@ use super::SessionStoreService;
 /// Each tree's position is determined by the most recent `updated_at`
 /// across all nodes in the tree. Loaded trees appear before Archived trees.
 /// Within each tree, children are sorted by `updated_at` descending.
+#[expect(clippy::expect_used, reason = "indices from enumerate over entries")]
 pub(crate) fn sort_entries_tree_aware(entries: &mut Vec<SessionTreeEntry>) {
     if entries.is_empty() {
         return;
@@ -80,6 +81,7 @@ pub(crate) fn sort_entries_tree_aware(entries: &mut Vec<SessionTreeEntry>) {
 }
 
 /// Returns the maximum `updated_at` across a node and all its descendants.
+#[expect(clippy::expect_used, reason = "infallible")]
 fn compute_subtree_max(
     idx: usize,
     children_map: &HashMap<SessionId, Vec<usize>>,
@@ -98,6 +100,7 @@ fn compute_subtree_max(
 
 /// Emits a node and all its descendants in DFS order.
 /// Children within each parent are sorted by `updated_at` descending.
+#[expect(clippy::expect_used, reason = "infallible")]
 fn emit_tree(
     idx: usize,
     children_map: &HashMap<SessionId, Vec<usize>>,

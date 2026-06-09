@@ -1,3 +1,4 @@
+#![expect(clippy::expect_used, reason = "test infrastructure initialization")]
 use std::sync::{Arc, LazyLock};
 
 use async_trait::async_trait;
