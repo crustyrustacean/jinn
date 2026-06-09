@@ -6,50 +6,6 @@
 //! "narration" turns the model emits between tool calls during autonomous
 //! coding.
 //!
-//! # Semantics
-//!
-//! - Age is computed against every entry in raw history — already-excluded,
-//!   thinking, transient, system, error, and pending-result entries all
-//!   count. This makes the protection floor independent of what other
-//!   auto-prune workers have already `ForcedExclude`d, so multiple workers
-//!   compose cleanly.
-//! - An entry is **protected** when its age is strictly less than `min_age`.
-//!   With `min_age = 0`, no entry is ever protected (back-compat baseline).
-//! - Only `ChatEntryKind::Assistant(_)` entries are candidates. Non-assistant
-//!   entries are never targeted.
-//! - Assistant entries inside the protection floor are never pruned,
-//!   regardless of token count.
-//! - Assistant entries outside the protection floor are pruned only if their
-//!   estimated token count is `<= max_tokens`. Larger entries survive
-//!   (a separate future worker will address large stale entries).
-//! - Empty assistant entries are skipped defensively — they are already
-//!   out of context via `is_empty_assistant()`, so they cannot be pruning
-//!   candidates anyway.
-//! - Already-`ForcedExclude` entries do not receive duplicate
-//!   `SetContextOverride` mutations.
-//! - Pinned entries are never pruned. Pin beats `ForcedExclude`.
-//! - Tokens are counted with the same `TiktokenCounter::o200k_base()`
-//!   encoder used by the token-count actor and the UI minimap, so the
-//!   `max_tokens` cutoff matches what users see.
-//!
-//! # Token-cache integration
-//!
-//! Per-entry counts are looked up via
-//! [`HistoryWorkerChatEntryTokenCache::get_or_insert_with`]. The first
-//! worker to evaluate a session pays the tiktoken cost; subsequent
-//! evaluations and concurrent workers (e.g., `AnchorRadiusAutoPruneWorker`)
-//! hit the cache.
-//!
-//! [`HistoryWorkerChatEntryTokenCache::get_or_insert_with`]: crate::feat::auto_prune_worker::HistoryWorkerChatEntryTokenCache::get_or_insert_with
-//!
-//! # Safety: pruning `Assistant` is unconditionally safe
-//!
-//! A `ToolCall` entry in `entries_to_messages` auto-creates an empty
-//! `LlmMessage::Assistant { content: "", tool_calls: Some(vec![...]) }`
-//! when its preceding `Assistant` message is missing. Excluding an
-//! `Assistant` entry therefore cannot orphan a `ToolCall` or produce an
-//! invalid provider request.
-//!
 //! # Example (min_age = 4, max_tokens = 80)
 //!
 //! ```text
@@ -571,30 +527,6 @@ mod tests {
         );
     }
 
-    // ------------------------------------------------------------------
-    // 11b. config_alias_max_age_entries_still_parses
-    //
-    // Legacy `max_age_entries` field must still deserialize via serde
-    // alias and populate the new `min_age` field. Back-compat for users
-    // with existing `jinn.toml` files.
-    // ------------------------------------------------------------------
-    #[test]
-    fn config_alias_max_age_entries_still_parses() {
-        // Given a TOML fragment using the legacy `max_age_entries` field.
-        let toml_src = r#"
-            enabled = true
-            max_age_entries = 100
-            max_tokens = 80
-        "#;
-
-        // When deserializing.
-        let config: TrivialAssistantAutoPruneConfig = toml::from_str(toml_src).expect("parse");
-
-        // Then the legacy field populates the new min_age field via serde alias.
-        assert_eq!(config.min_age, 100);
-        assert!(config.enabled);
-        assert_eq!(config.max_tokens, 80);
-    }
     // ------------------------------------------------------------------
     // 11. max_tokens_clamped_to_1
     //

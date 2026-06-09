@@ -186,6 +186,15 @@ impl AppPaths {
         self.system_data_dir.join("plugins")
     }
 
+    /// System skills directory (`/usr/share/jinn/skills`).
+    ///
+    /// Installed by the system package. Used as a fallback source for
+    /// skills when user-global skills are not found.
+    #[must_use]
+    pub fn system_skills_dir(&self) -> PathBuf {
+        self.system_data_dir.join("skills")
+    }
+
     /// User's models.dev reference file (`~/.cache/jinn/models.dev.json`).
     ///
     /// Written by `jinn fetch models`. Contains the full models.dev API
@@ -430,6 +439,31 @@ mod tests {
 
         // Then the system data dir is root/share.
         assert_eq!(paths.system_data_dir(), root.path().join("share"));
+    }
+
+    #[rstest::rstest]
+    fn default_system_skills_dir_is_usr_share() {
+        // Given a default AppPaths.
+        let paths = AppPaths::default();
+
+        // Then the system skills dir is /usr/share/jinn/skills.
+        assert_eq!(
+            paths.system_skills_dir(),
+            Path::new("/usr/share/jinn/skills")
+        );
+    }
+
+    #[rstest::rstest]
+    fn new_in_system_skills_dir_is_under_root() {
+        // Given an AppPaths created with new_in.
+        let root = tempfile::TempDir::new().expect("temp dir");
+        let paths = AppPaths::new_in(root.path());
+
+        // Then the system skills dir is root/share/skills.
+        assert_eq!(
+            paths.system_skills_dir(),
+            root.path().join("share/skills")
+        );
     }
 
     #[rstest::rstest]
