@@ -6,8 +6,6 @@
 //! so that whole trees move as a unit, positioned by the most recent
 //! `updated_at` across all nodes in the tree.
 
-#![allow(clippy::expect_used, clippy::indexing_slicing, reason = "test code")]
-
 use crate::feat::session::chat_session::SessionState;
 use crate::feat::session::entries::sort_entries_tree_aware;
 use crate::feat::session::picker_entry::SessionTreeEntry;

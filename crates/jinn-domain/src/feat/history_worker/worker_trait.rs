@@ -15,7 +15,6 @@ use crate::protocol::SessionId;
 #[async_trait::async_trait]
 pub trait HistoryWorker: Send + Sync + 'static {
     /// Human-readable name for logging and diagnostics.
-    #[expect(clippy::unnecessary_literal_bound, reason = "lifetime elision makes bound redundant")]
     fn name(&self) -> &str;
 
     /// Inspect the history snapshot and optionally produce mutations.

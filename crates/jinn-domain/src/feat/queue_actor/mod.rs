@@ -200,7 +200,6 @@ impl QueueActor {
     /// Dispatch a tool continuation: assemble prompt and emit SendToLlmProvider.
     ///
     /// See [`Self::dispatch_resume`] for the shared dispatch body.
-    #[expect(clippy::unused_async, reason = "trait contract requires async")]
     async fn dispatch_tool_continuation(
         &self,
         session_id: &crate::protocol::SessionId,

@@ -727,7 +727,6 @@ impl ChatSessionState {
     ///
     /// Future work: restrict to the session feature module and require external
     /// code to use the `PushChatEntry` command (which also triggers persistence).
-    #[expect(clippy::missing_panics_doc, reason = "panics are documented in trait definition")]
     pub fn push_entry(&mut self, entry: ChatEntry) -> usize {
         let was_at_last = self
             .ui

@@ -20,7 +20,6 @@ impl SessionPersistenceActor {
     /// Builds a markdown table from the refresh results and pushes it directly
     /// to session state. Does NOT emit `PushChatEntry` - transient entries
     /// are not persisted.
-    #[expect(clippy::unused_self, reason = "trait contract requires #[allow(clippy::unused_self)]self method")]
     pub(in crate::feat::session::session_actor) fn on_models_refreshed(
         &self,
         event: &ModelsRefreshed,
@@ -39,7 +38,6 @@ impl SessionPersistenceActor {
     }
 
     /// Pushes a transient entry listing discovered skills.
-    #[expect(clippy::unused_self, reason = "trait contract requires #[allow(clippy::unused_self)]self method")]
     pub(in crate::feat::session::session_actor) fn on_skills_loaded(
         &self,
         event: &crate::feat::skills::SkillsLoaded,
