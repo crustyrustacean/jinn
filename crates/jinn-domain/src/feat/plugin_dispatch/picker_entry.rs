@@ -1,4 +1,4 @@
-//! Workflow picker entry - one row in the plugin selection picker.
+//! Plugin picker entry - one row in the plugin selection picker.
 
 use jinn_selection_widget::PickerItem;
 use ratatui::text::{Line, Span};
@@ -98,7 +98,7 @@ mod tests {
         let entry = test_entry("add-numbers", None);
 
         // When reading the display label.
-        // Then it returns the workflow name.
+        // Then it returns the plugin name.
         assert_eq!(entry.display_label(), "add-numbers");
     }
 

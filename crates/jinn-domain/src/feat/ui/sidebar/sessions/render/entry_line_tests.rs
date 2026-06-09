@@ -400,10 +400,10 @@ fn non_judge_child_at_depth_1_uses_grapheme_count_for_tree() {
 }
 
 // ---------------------------------------------------------------------------
-// Workflow entry rendering
+// Plugin entry rendering
 // ---------------------------------------------------------------------------
 
-fn workflow_entry(enabled: bool) -> SessionEntry {
+fn plugin_entry(enabled: bool) -> SessionEntry {
     SessionEntry {
         kind: SessionEntryKind::Plugin { enabled },
         id: SessionId::new(),
@@ -420,9 +420,9 @@ fn workflow_entry(enabled: bool) -> SessionEntry {
 }
 
 #[test]
-fn render_workflow_entry_shows_plugin_name() {
-    // Given a workflow entry with an enabled plugin.
-    let entry = workflow_entry(true);
+fn render_plugin_entry_shows_plugin_name() {
+    // Given a plugin entry with an enabled plugin.
+    let entry = plugin_entry(true);
     let theme = default_theme();
 
     // When assembling the entry line.
@@ -437,9 +437,9 @@ fn render_workflow_entry_shows_plugin_name() {
 }
 
 #[test]
-fn render_workflow_entry_shows_lightning_icon() {
-    // Given a workflow entry.
-    let entry = workflow_entry(true);
+fn render_plugin_entry_shows_lightning_icon() {
+    // Given a plugin entry.
+    let entry = plugin_entry(true);
     let theme = default_theme();
 
     // When assembling the entry line.
@@ -454,9 +454,9 @@ fn render_workflow_entry_shows_lightning_icon() {
 }
 
 #[test]
-fn render_workflow_entry_dimmed_when_disabled() {
-    // Given a disabled workflow entry.
-    let entry = workflow_entry(false);
+fn render_plugin_entry_dimmed_when_disabled() {
+    // Given a disabled plugin entry.
+    let entry = plugin_entry(false);
     let theme = default_theme();
 
     // When assembling the entry line.
@@ -471,9 +471,9 @@ fn render_workflow_entry_dimmed_when_disabled() {
 }
 
 #[test]
-fn render_workflow_entry_enabled_not_dimmed() {
-    // Given an enabled workflow entry.
-    let entry = workflow_entry(true);
+fn render_plugin_entry_enabled_not_dimmed() {
+    // Given an enabled plugin entry.
+    let entry = plugin_entry(true);
     let theme = default_theme();
 
     // When assembling the entry line.

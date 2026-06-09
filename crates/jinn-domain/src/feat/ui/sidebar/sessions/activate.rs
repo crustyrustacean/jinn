@@ -1,11 +1,11 @@
-//! Activates the session or workflow under the cursor.
+//! Activates the session under the cursor.
 
 use crate::common::app_state::AppState;
 
 use crate::feat::ui::sidebar::sessions::state::sorted_open_sessions;
 use crate::protocol::IntentResult;
 
-/// Activates the session or workflow under the cursor.
+/// Activates the session under the cursor.
 ///
 /// Called when the user presses Enter in the sessions section.
 /// Uses `swap_base` to replace the entire scope stack, effectively
@@ -14,7 +14,7 @@ use crate::protocol::IntentResult;
 ///   are emitted: each session's discovered skills/prompts/context-files
 ///   are ephemeral and persist across activation changes, and were
 ///   hydrated when the session was created/loaded.
-/// - For workflow entries: swaps to Workflow (graph view).
+/// - For plugin entries: no-op (informational only).
 pub fn handle_session_activate(state: &mut AppState) -> IntentResult {
     use crate::common::app_state::FocusScope;
     use crate::feat::ui::sidebar::section_trait::SidebarSectionId;
@@ -41,7 +41,7 @@ pub fn handle_session_activate(state: &mut AppState) -> IntentResult {
             IntentResult::empty()
         }
         SessionEntryKind::Plugin { .. } => {
-            // Workflow entries are informational only; activating them is a no-op.
+            // Plugin entries are informational only; activating them is a no-op.
             IntentResult::empty()
         }
     }
@@ -84,7 +84,7 @@ pub fn handle_session_activate_insert(state: &mut AppState) -> IntentResult {
             IntentResult::empty()
         }
         SessionEntryKind::Plugin { .. } => {
-            // Workflow entries are informational only; activating them is a no-op.
+            // Plugin entries are informational only; activating them is a no-op.
             IntentResult::empty()
         }
     }
