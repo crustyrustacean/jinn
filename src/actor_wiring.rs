@@ -580,17 +580,12 @@ impl ActorSystemBuilder {
         ));
 
         // Discovery notifier — posts a transient chat entry when a session's
-        // discovery settles.
-        actors.push(spawn::<
-            jinn_domain::feat::discovery_notifier::DiscoveryNotifierActor,
-        >(
-            "discovery-notifier",
-            &sink,
-            handle,
-            &counter,
-            &shutdown_tracker,
-            jinn_domain::feat::discovery_notifier::DiscoveryNotifierActorDeps,
-        ));
+        // discovery settles. (Migrated to kameo — registers on bus during on_start.)
+        let _discovery_notifier = jinn_domain::feat::discovery_notifier::DiscoveryNotifierActor::spawn(
+            jinn_domain::feat::discovery_notifier::DiscoveryNotifierActorDeps {
+                bus: services.bus.clone().expect("bus must be initialized before spawning actors"),
+            },
+        );
 
         // Persona scan actor.
         actors.push(spawn::<
@@ -635,18 +630,15 @@ impl ActorSystemBuilder {
             ),
         );
 
-        // Queue actor - dispatches queued turns when sessions become idle.
-        actors.push(spawn::<jinn_domain::feat::queue_actor::QueueActor>(
-            "queue",
-            &sink,
-            handle,
-            &counter,
-            &shutdown_tracker,
+        // Queue actor — dispatches queued turns when sessions become idle.
+        // (Migrated to kameo — registers on bus during on_start.)
+        let _queue_actor = jinn_domain::feat::queue_actor::QueueActor::spawn(
             jinn_domain::feat::queue_actor::QueueActorDeps {
                 state: state.clone(),
-                counter: token_counter,
+                counter: token_counter.clone(),
+                bus: services.bus.clone().expect("bus must be initialized before spawning actors"),
             },
-        ));
+        );
 
         // Context size actor - recalculates context size for the status bar.
         actors.push(spawn::<
