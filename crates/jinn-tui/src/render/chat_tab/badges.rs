@@ -121,7 +121,10 @@ fn draw_directives(
 ///
 /// Directives are joined with a one-space separator. Returns `None` if the
 /// segments produce no spans.
-fn build_badge_line(directives: &[BadgeDirective], style_map: &HashMap<&str, Style>) -> Option<Line<'static>> {
+fn build_badge_line(
+    directives: &[BadgeDirective],
+    style_map: &HashMap<&str, Style>,
+) -> Option<Line<'static>> {
     let mut spans: Vec<Span> = Vec::new();
     for (i, d) in directives.iter().enumerate() {
         if i > 0 {
@@ -312,7 +315,9 @@ mod tests {
         // When building the badge ctx.
         let v = build_badge_ctx(&ctx);
         // Then theme_styles is an object with every theme field name as a key.
-        let ts = v["theme_styles"].as_object().expect("theme_styles must be an object");
+        let ts = v["theme_styles"]
+            .as_object()
+            .expect("theme_styles must be an object");
         let expected_count = theme().style_map().len();
         assert_eq!(
             ts.len(),

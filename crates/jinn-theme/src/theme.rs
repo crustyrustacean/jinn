@@ -121,7 +121,10 @@ impl Theme {
     pub fn style_map(&self) -> HashMap<&'static str, Style> {
         let mut m = HashMap::new();
         m.insert("focus_accent", Style::default().fg(self.focus_accent));
-        m.insert("border_unfocused", Style::default().fg(self.border_unfocused));
+        m.insert(
+            "border_unfocused",
+            Style::default().fg(self.border_unfocused),
+        );
         m.insert("popup_title", Style::default().fg(self.popup_title));
         m.insert("primary_text", Style::default().fg(self.primary_text));
         m.insert("muted_text", Style::default().fg(self.muted_text));
@@ -172,11 +175,20 @@ impl Theme {
             "sidebar_resize_accent",
             Style::default().fg(self.sidebar_resize_accent),
         );
-        m.insert("input_mode_queue", Style::default().fg(self.input_mode_queue));
-        m.insert("input_mode_steer", Style::default().fg(self.input_mode_steer));
+        m.insert(
+            "input_mode_queue",
+            Style::default().fg(self.input_mode_queue),
+        );
+        m.insert(
+            "input_mode_steer",
+            Style::default().fg(self.input_mode_steer),
+        );
         m.insert("infopopup_bg", Style::default().fg(self.infopopup_bg));
         m.insert("infopopup_title", Style::default().fg(self.infopopup_title));
-        m.insert("infopopup_border", Style::default().fg(self.infopopup_border));
+        m.insert(
+            "infopopup_border",
+            Style::default().fg(self.infopopup_border),
+        );
         m.insert("infopopup_fg", Style::default().fg(self.infopopup_fg));
         m
     }
@@ -726,33 +738,33 @@ mod tests {
     }
 }
 
-    #[test]
-    fn style_map_returns_entry_for_every_theme_field() {
-        // Given the default theme.
-        let theme = crate::default_theme();
-        // When building the style map.
-        let map = theme.style_map();
-        // Then it has one entry per Theme field (37 fields).
-        assert_eq!(map.len(), 37, "style_map should cover all Theme fields");
-    }
+#[test]
+fn style_map_returns_entry_for_every_theme_field() {
+    // Given the default theme.
+    let theme = crate::default_theme();
+    // When building the style map.
+    let map = theme.style_map();
+    // Then it has one entry per Theme field (37 fields).
+    assert_eq!(map.len(), 37, "style_map should cover all Theme fields");
+}
 
-    #[test]
-    fn style_map_values_are_fg_only_styles() {
-        // Given the default theme.
-        let theme = crate::default_theme();
-        // When building the style map.
-        let map = theme.style_map();
-        // Then selected entries resolve to Style::default().fg(field).
-        assert_eq!(
-            map.get("streaming"),
-            Some(&Style::default().fg(theme.streaming))
-        );
-        assert_eq!(
-            map.get("accent_action"),
-            Some(&Style::default().fg(theme.accent_action))
-        );
-        assert_eq!(
-            map.get("muted_text"),
-            Some(&Style::default().fg(theme.muted_text))
-        );
-    }
+#[test]
+fn style_map_values_are_fg_only_styles() {
+    // Given the default theme.
+    let theme = crate::default_theme();
+    // When building the style map.
+    let map = theme.style_map();
+    // Then selected entries resolve to Style::default().fg(field).
+    assert_eq!(
+        map.get("streaming"),
+        Some(&Style::default().fg(theme.streaming))
+    );
+    assert_eq!(
+        map.get("accent_action"),
+        Some(&Style::default().fg(theme.accent_action))
+    );
+    assert_eq!(
+        map.get("muted_text"),
+        Some(&Style::default().fg(theme.muted_text))
+    );
+}
