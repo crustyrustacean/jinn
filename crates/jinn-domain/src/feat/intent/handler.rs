@@ -691,7 +691,7 @@ fn try_handle_close_session_prompt(intent: &Intent, state: &mut AppState) -> Opt
 
 #[cfg(test)]
 mod tests {
-    #![allow(clippy::expect_used, clippy::indexing_slicing, reason = "test code")]
+    #![allow(clippy::expect_used, clippy::panic, clippy::unreachable, clippy::indexing_slicing, reason = "test code")]
     use crate::common::app_state::{AppState, FocusScope, RenameSessionInputState};
     use crate::feat::intent::IntentHandler;
     use crate::protocol::{ChatEntry, Intent};

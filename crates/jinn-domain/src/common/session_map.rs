@@ -138,7 +138,7 @@ impl SessionMap {
     ///
     /// Panics if the session does not exist. Prefer `get()` when the ID
     /// may not be present.
-    #[expect(clippy::expect_used, reason = "caller guarantees session exists")]
+    #[expect(clippy::expect_used, clippy::panic, clippy::unreachable, reason = "caller guarantees session exists")]
     pub fn get_unchecked(&self, id: &SessionId) -> &ChatSessionState {
         self.sessions
             .get(id)
@@ -151,7 +151,7 @@ impl SessionMap {
     ///
     /// Panics if the session does not exist. Prefer `get_mut()` when the ID
     /// may not be present.
-    #[expect(clippy::expect_used, reason = "caller guarantees session exists")]
+    #[expect(clippy::expect_used, clippy::panic, clippy::unreachable, reason = "caller guarantees session exists")]
     pub fn get_unchecked_mut(&mut self, id: &SessionId) -> &mut ChatSessionState {
         self.sessions
             .get_mut(id)
@@ -337,7 +337,7 @@ impl SessionMap {
 
 #[cfg(test)]
 mod tests {
-    #![allow(clippy::expect_used, clippy::indexing_slicing, reason = "test code")]
+    #![allow(clippy::expect_used, clippy::panic, clippy::unreachable, clippy::indexing_slicing, reason = "test code")]
     use super::*;
     fn default_map() -> SessionMap {
         let session = ChatSessionState::new();

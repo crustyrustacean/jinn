@@ -111,6 +111,8 @@ pub fn handle_ctrl_clear(state: &mut AppState) -> (IntentResult, Option<Intent>)
 mod tests {
     #![allow(
         clippy::expect_used,
+        clippy::panic,
+        clippy::unreachable,
         clippy::indexing_slicing,
         clippy::items_after_statements,
         reason = "test code"

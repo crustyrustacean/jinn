@@ -382,7 +382,7 @@ fn finalize_sweep(
 
 #[cfg(test)]
 mod tests {
-    #![allow(clippy::expect_used, clippy::indexing_slicing, reason = "test code")]
+    #![allow(clippy::expect_used, clippy::panic, clippy::unreachable, clippy::indexing_slicing, reason = "test code")]
     use crate::common::app_state::AppState;
     use crate::feat::context::protocol::command::PinChatEntry;
     use crate::feat::session::chat_entry::ChangeSource;

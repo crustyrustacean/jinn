@@ -41,7 +41,7 @@ pub fn handle_rescan_prompt_templates(state: &mut AppState) -> IntentResult {
 
 #[cfg(test)]
 mod tests {
-    #![allow(clippy::expect_used, clippy::indexing_slicing, reason = "test code")]
+    #![allow(clippy::expect_used, clippy::panic, clippy::unreachable, clippy::indexing_slicing, reason = "test code")]
     use crate::common::app_state::AppState;
     use crate::protocol::{ChatEntry, ChatEntryKind, Command, PickerKind};
 

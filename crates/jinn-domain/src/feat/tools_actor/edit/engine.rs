@@ -930,7 +930,7 @@ fn compute_changed_line_range(original: &str, result: &str) -> (Option<usize>, O
 
 #[cfg(test)]
 mod tests {
-    #![allow(clippy::expect_used, clippy::indexing_slicing, reason = "test code")]
+    #![allow(clippy::expect_used, clippy::panic, clippy::unreachable, clippy::indexing_slicing, reason = "test code")]
     use super::*;
 
     fn anchor(line: usize, hash: impl AsRef<str>) -> Anchor {

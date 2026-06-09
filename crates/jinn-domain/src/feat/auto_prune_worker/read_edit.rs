@@ -165,6 +165,8 @@ impl HistoryWorker for ReadEditAutoPruneWorker {
 mod tests {
     #![allow(
         clippy::expect_used,
+        clippy::panic,
+        clippy::unreachable,
         clippy::indexing_slicing,
         clippy::similar_names,
         reason = "test code"

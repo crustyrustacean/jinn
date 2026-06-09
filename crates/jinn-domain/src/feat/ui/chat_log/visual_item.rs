@@ -165,6 +165,8 @@ pub fn entry_id_from_visual_item(item: &VisualItem, history: &[ChatEntry]) -> Op
 mod tests {
     #![allow(
         clippy::expect_used,
+        clippy::panic,
+        clippy::unreachable,
         clippy::indexing_slicing,
         clippy::needless_range_loop,
         reason = "test code"

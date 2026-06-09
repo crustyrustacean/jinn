@@ -6,7 +6,7 @@
 //! 3. Tool loop cycles - multi-step sequences
 //! 4. Side effects - data tracking within phases
 
-#![allow(clippy::expect_used, clippy::indexing_slicing, reason = "test code")]
+#![allow(clippy::expect_used, clippy::panic, clippy::unreachable, clippy::indexing_slicing, reason = "test code")]
 
 use super::machine::{SessionPhaseMachine, TransitionError};
 use super::phase::{Phase, PhaseKind};

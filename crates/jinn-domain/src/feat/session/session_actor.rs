@@ -329,7 +329,7 @@ impl SessionPersistenceActor {
 
 #[cfg(test)]
 mod dispatch_tests {
-    #![allow(clippy::expect_used, clippy::indexing_slicing, reason = "test code")]
+    #![allow(clippy::expect_used, clippy::panic, clippy::unreachable, clippy::indexing_slicing, reason = "test code")]
     use super::*;
     use crate::common::actor::ActorEnvelope;
     use crate::feat::chat_input::protocol::command::EnqueueUserMessage;
