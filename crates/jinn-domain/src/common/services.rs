@@ -7,6 +7,7 @@
 use std::sync::Arc;
 
 use derive_more::Debug;
+use kameo::actor::Spawn;
 
 use crate::feat::plugin_dispatch::{
     PluginFire, PluginFireError, PluginSyncCall, PluginSyncCallError,
@@ -85,14 +86,12 @@ pub struct Services {
     pub tempdir: Option<Arc<tempfile::TempDir>>,
 
     /// Kameo message bus for type-based pub/sub routing.
-    /// `None` in tests and during migration; `Some` in production after wiring.
     #[debug(skip)]
-    pub bus: Option<bus_service::BusService>,
+    pub bus: bus_service::BusService,
 
     /// Kanal closure bridge from sync TUI to async bus.
-    /// `None` in tests and during migration; `Some` in production after wiring.
     #[debug(skip)]
-    pub bridge: Option<crate::common::bridge::Bridge>,
+    pub bridge: crate::common::bridge::Bridge,
 }
 impl Default for Services {
     fn default() -> Self {
@@ -127,6 +126,15 @@ impl Services {
             let rx = actor_rx.to_async();
             while rx.recv().await.is_ok() {}
         });
+        let bus = {
+            let bus_actor = kameo_actors::message_bus::MessageBus::new(
+                kameo_actors::DeliveryStrategy::BestEffort,
+            );
+            let bus_ref = kameo_actors::message_bus::MessageBus::spawn(bus_actor);
+            bus_service::BusService::new(bus_ref)
+        };
+        let bridge = crate::common::bridge::Bridge::new(bus.actor_ref().clone());
+
         Self {
             paths: crate::common::app_paths::AppPaths::new_in(tempdir.path()),
             handle,
@@ -171,8 +179,8 @@ impl Services {
                     as std::sync::Arc<dyn crate::feat::plugin_system::SessionPluginRegistry>,
             ),
             tempdir: Some(tempdir),
-            bus: None,
-            bridge: None,
+            bus,
+            bridge,
         }
     }
 }

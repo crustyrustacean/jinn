@@ -3,7 +3,7 @@
 use std::fmt;
 
 use kameo::actor::ActorRef;
-use kameo_actors::message_bus::{MessageBus, Register};
+use kameo_actors::message_bus::{MessageBus, Publish, Register};
 
 /// Shared, cloneable wrapper around the message bus actor ref.
 ///
@@ -36,11 +36,23 @@ impl BusService {
     /// let recipient = actor_ref.recipient::<MyMessage>();
     /// args.bus.register(recipient).await;
     /// ```
-    pub async fn register<M: Clone + Send + 'static>(&self, recipient: kameo::actor::Recipient<M>) {
+    pub async fn register<M: Clone + Send + 'static>(
+        &self,
+        recipient: kameo::actor::Recipient<M>,
+    ) {
         self.bus
             .tell(Register(recipient))
             .await
             .expect("bus register should succeed");
+    }
+
+    /// Publishes a typed message to all registered recipients on the bus.
+    ///
+    /// Fire-and-forget: logs a warning on delivery failure but does not propagate.
+    pub async fn publish<M: Clone + Send + 'static>(&self, msg: M) {
+        if let Err(e) = self.bus.tell(Publish(msg)).await {
+            tracing::warn!(err = ?e, "bus publish failed");
+        }
     }
 }
 

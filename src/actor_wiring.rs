@@ -292,8 +292,8 @@ impl ActorSystemBuilder {
                         >,
                 ),
             tempdir: None,
-            bus: Some(bus),
-            bridge: Some(bridge),
+            bus,
+            bridge,
         };
 
         // Now that `services` + `state` exist, build the shared `DomainNodeContext`
@@ -585,7 +585,7 @@ impl ActorSystemBuilder {
         // discovery settles. (Migrated to kameo — registers on bus during on_start.)
         let _discovery_notifier = DiscoveryNotifierActor::spawn(
             DiscoveryNotifierActorDeps {
-                bus: services.bus.clone().expect("bus must be initialized before spawning actors"),
+                bus: services.bus.clone(),
             },
         );
 
@@ -638,7 +638,7 @@ impl ActorSystemBuilder {
             QueueActorDeps {
                 state: state.clone(),
                 counter: token_counter.clone(),
-                bus: services.bus.clone().expect("bus must be initialized before spawning actors"),
+                bus: services.bus.clone(),
             },
         );
 
