@@ -208,6 +208,7 @@ pub fn init() -> Keymap<KeyEvent, Scope, Intent, KeyCategory> {
             .bind("r", Intent::SidebarRenameSession, KeyCategory::General)
             .bind("a", Intent::SidebarSessionArchive, KeyCategory::General)
             .bind("c", Intent::SidebarSessionContinue, KeyCategory::General)
+            .bind("s", Intent::SidebarSessionRerunSetup, KeyCategory::General)
 
             // i activates session and enters insert mode
             .bind("i", Intent::SidebarConfirmInsert, KeyCategory::Input)
