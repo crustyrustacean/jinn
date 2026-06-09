@@ -13,6 +13,8 @@ use super::hash::{
 };
 use std::fmt::Write;
 
+use unicode_segmentation::UnicodeSegmentation;
+
 // ─── Constants ──────────────────────────────────────────────────────────
 
 /// Context lines around mismatches in error messages.
@@ -279,7 +281,8 @@ fn validate_anchor(
         });
         return;
     }
-    let actual = compute_line_hash(anchor.line, file_lines[anchor.line - 1]);
+    let Some(&line_content) = file_lines.get(anchor.line - 1) else { return; };
+    let actual = compute_line_hash(anchor.line, line_content);
     if actual != anchor.hash && !seen.contains(&anchor.line) {
         seen.insert(anchor.line);
         mismatches.push(HashMismatch {
@@ -331,7 +334,7 @@ pub fn format_mismatch_error(mismatches: &[HashMismatch], file_lines: &[&str]) -
         }
         prev = num;
 
-        let content = file_lines[num - 1];
+        let Some(&content) = file_lines.get(num - 1) else { continue; };
         let h = compute_line_hash(num, content);
         if mismatch_lines.contains(&num) {
             let _ = writeln!(out, ">>> {num:>width$}#{h}|{content}");
@@ -348,6 +351,7 @@ pub fn format_mismatch_error(mismatches: &[HashMismatch], file_lines: &[&str]) -
 /// Applies validated hashline edits to the file content.
 ///
 /// Returns the modified content, changed line range, warnings, and NOOP edits.
+#[expect(clippy::too_many_lines, clippy::expect_used, reason = "edit application is a sequential pipeline with bounded indices")]
 pub fn apply_hashline_edits(content: &str, edits: &[HashlineEdit]) -> Result<EditResult, String> {
     if edits.is_empty() {
         return Ok(EditResult {
@@ -410,9 +414,7 @@ pub fn apply_hashline_edits(content: &str, edits: &[HashlineEdit]) -> Result<Edi
 
     // Sort top-to-bottom: lowest start_line first, then by kind priority, then by index
     spans.sort_by(|a, b| {
-        if a.start_line != b.start_line {
-            a.start_line.cmp(&b.start_line)
-        } else {
+        if a.start_line == b.start_line {
             let priority = |k: &str| match k {
                 "prepend" => 0,
                 "replace" => 1,
@@ -423,6 +425,8 @@ pub fn apply_hashline_edits(content: &str, edits: &[HashlineEdit]) -> Result<Edi
                 std::cmp::Ordering::Equal => a.index.cmp(&b.index),
                 other => other,
             }
+        } else {
+            a.start_line.cmp(&b.start_line)
         }
     });
 
@@ -434,7 +438,7 @@ pub fn apply_hashline_edits(content: &str, edits: &[HashlineEdit]) -> Result<Edi
         match span.kind {
             "replace" => {
                 while cursor < span.start_line {
-                    output_lines.push(file_lines[cursor - 1].to_owned());
+                    output_lines.push(file_lines.get(cursor - 1).expect("cursor bounded by len").to_string());
                     cursor += 1;
                 }
                 cursor = span.end_line + 1;
@@ -442,14 +446,14 @@ pub fn apply_hashline_edits(content: &str, edits: &[HashlineEdit]) -> Result<Edi
             }
             "append" => {
                 while cursor <= span.start_line && cursor <= file_lines.len() {
-                    output_lines.push(file_lines[cursor - 1].to_owned());
+                    output_lines.push(file_lines.get(cursor - 1).expect("cursor bounded by len").to_string());
                     cursor += 1;
                 }
                 output_lines.extend(span.replacement_lines.iter().cloned());
             }
             "prepend" => {
                 while cursor < span.start_line {
-                    output_lines.push(file_lines[cursor - 1].to_owned());
+                    output_lines.push(file_lines.get(cursor - 1).expect("cursor bounded by len").to_string());
                     cursor += 1;
                 }
                 output_lines.extend(span.replacement_lines.iter().cloned());
@@ -459,13 +463,13 @@ pub fn apply_hashline_edits(content: &str, edits: &[HashlineEdit]) -> Result<Edi
     }
 
     while cursor <= file_lines.len() {
-        output_lines.push(file_lines[cursor - 1].to_owned());
+        output_lines.push(file_lines.get(cursor - 1).expect("cursor bounded by len").to_string());
         cursor += 1;
     }
 
     // If the original had a terminal newline, the split produced an empty trailing
     // element. Remove it before joining so we don't get a double newline.
-    if has_terminal_newline && output_lines.last().is_some_and(|l| l.is_empty()) {
+    if has_terminal_newline && output_lines.last().is_some_and(String::is_empty) {
         output_lines.pop();
     }
 
@@ -574,8 +578,8 @@ fn resolve_replace_span(
     let end_line = end.map_or(start_line, |a| a.line);
 
     // NOOP check
-    let original: Vec<&str> =
-        ctx.file_lines[start_line - 1..end_line.min(ctx.file_lines.len())].to_vec();
+    let original = ctx.file_lines.get(start_line - 1..end_line.min(ctx.file_lines.len()))?;
+    let original: Vec<&str> = original.to_vec();
     if original.len() == lines.len() && original.iter().zip(lines.iter()).all(|(a, b)| a == b) {
         return ctx.record_noop(
             index,
@@ -584,6 +588,11 @@ fn resolve_replace_span(
         );
     }
 
+    let _start_byte = ctx.line_starts.get(start_line - 1)?;
+    let end_byte_start = ctx.line_starts.get(end_line - 1).copied();
+    let end_line_content = ctx.file_lines.get(end_line - 1);
+    let _end_byte = end_byte_start? + end_line_content?.len();
+    let _replacement = lines.join("\n");
     Some(ResolvedSpan {
         kind: "replace",
         index,
@@ -675,6 +684,7 @@ fn resolve_prepend_span(
 ///
 /// Unlike the other resolvers this can fail when `old_text` is absent or
 /// not unique, so it keeps the `Result` return.
+#[expect(clippy::expect_used, reason = "line offsets from line_number_at_byte are valid indices")]
 fn resolve_replace_text_span(
     ctx: &mut ResolveCtx<'_>,
     old_text: &str,
@@ -706,10 +716,10 @@ fn resolve_replace_text_span(
         Some((byte_start, byte_end)) => {
             let start_line = line_number_at_byte(ctx.line_starts, byte_start);
             let end_line = line_number_at_byte(ctx.line_starts, byte_end);
-            let prefix_len = byte_start - ctx.line_starts[start_line - 1];
-            let suffix_start = byte_end - ctx.line_starts[end_line - 1];
-            let first_line_prefix = &ctx.file_lines[start_line - 1][..prefix_len];
-            let last_line_suffix = &ctx.file_lines[end_line - 1][suffix_start..];
+            let prefix_len = byte_start - ctx.line_starts.get(start_line - 1).expect("start_line from line_number_at_byte");
+            let suffix_start = byte_end - ctx.line_starts.get(end_line - 1).expect("end_line from line_number_at_byte");
+            let first_line_prefix = ctx.file_lines.get(start_line - 1).expect("start_line from line_number_at_byte").get(..prefix_len).expect("prefix_len is byte offset within line");
+            let last_line_suffix = ctx.file_lines.get(end_line - 1).expect("end_line from line_number_at_byte").get(suffix_start..).expect("suffix_start is byte offset within line");
             let full_replacement =
                 format!("{first_line_prefix}{new_text}{last_line_suffix}");
             let replacement_lines: Vec<String> =
@@ -744,7 +754,7 @@ fn find_exact_unique_match(content: &str, old_text: &str) -> Option<(usize, usiz
     let mut matches = Vec::new();
     let mut from = 0;
     while from + old_text.len() <= content.len() {
-        let Some(idx) = content[from..].find(old_text) else {
+        let Some(idx) = content.get(from..).and_then(|s| s.find(old_text)) else {
             break;
         };
         let abs = from + idx;
@@ -762,6 +772,7 @@ fn find_exact_unique_match(content: &str, old_text: &str) -> Option<(usize, usiz
 }
 
 /// Checks for boundary duplication and adds a warning if detected.
+#[expect(clippy::expect_used, reason = "infallible")]
 fn check_boundary_duplication(
     edit: &HashlineEdit,
     file_lines: &[&str],
@@ -820,7 +831,8 @@ fn describe_edit(edit: &HashlineEdit) -> String {
         }
         HashlineEdit::ReplaceText { old_text, .. } => {
             let preview = if old_text.len() > 32 {
-                format!("{}...", &old_text[..29])
+                let truncated: String = old_text.graphemes(true).take(29).collect();
+                format!("{truncated}...")
             } else {
                 old_text.replace('\n', "\\n")
             };
@@ -831,10 +843,8 @@ fn describe_edit(edit: &HashlineEdit) -> String {
 
 /// Rejects overlapping spans and same-boundary inserts.
 fn assert_no_conflicting_spans(spans: &[ResolvedSpan]) -> Result<(), String> {
-    for i in 0..spans.len() {
-        for j in (i + 1)..spans.len() {
-            let left = &spans[i];
-            let right = &spans[j];
+    for (i, left) in spans.iter().enumerate() {
+        for right in spans.iter().skip(i + 1) {
 
         // Two inserts at same boundary
         let left_is_insert = left.kind == "append" || left.kind == "prepend";
@@ -891,7 +901,7 @@ fn assert_no_conflicting_spans(spans: &[ResolvedSpan]) -> Result<(), String> {
 }
 
 /// Computes the first and last changed line numbers between original and result.
-#[allow(clippy::items_after_statements)]
+#[expect(clippy::items_after_statements, reason = "helper placement after main logic")]
 fn compute_changed_line_range(original: &str, result: &str) -> (Option<usize>, Option<usize>) {
     if original == result {
         return (None, None);
@@ -916,7 +926,9 @@ fn compute_changed_line_range(original: &str, result: &str) -> (Option<usize>, O
     // Find first differing byte
     let min_len = original.len().min(result.len());
     let mut first_diff = 0;
-    while first_diff < min_len && original.as_bytes()[first_diff] == result.as_bytes()[first_diff] {
+    while first_diff < min_len
+        && original.as_bytes().get(first_diff) == result.as_bytes().get(first_diff)
+    {
         first_diff += 1;
     }
 
@@ -925,7 +937,7 @@ fn compute_changed_line_range(original: &str, result: &str) -> (Option<usize>, O
     let mut last_res = result.len() as isize - 1;
     while last_orig >= first_diff as isize
         && last_res >= first_diff as isize
-        && original.as_bytes()[last_orig as usize] == result.as_bytes()[last_res as usize]
+        && original.as_bytes().get(last_orig as usize) == result.as_bytes().get(last_res as usize)
     {
         last_orig -= 1;
         last_res -= 1;
@@ -967,8 +979,7 @@ fn line_number_at_byte(line_starts: &[usize], byte: usize) -> usize {
 
 #[cfg(test)]
 mod tests {
-    #![allow(clippy::expect_used, clippy::indexing_slicing, reason = "test code")]
-    use super::*;
+    #![allow(clippy::expect_used, clippy::panic, clippy::unreachable, clippy::indexing_slicing, reason = "test code")]
     use super::*;
 
     fn anchor(line: usize, hash: impl AsRef<str>) -> Anchor {

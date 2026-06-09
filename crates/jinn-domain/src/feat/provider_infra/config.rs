@@ -209,7 +209,7 @@ where
         patcher.register_array_key(["providers"], "name");
         patcher.register_array_key(["aliases"], "name");
 
-        let new_value = toml::Value::try_from(config).map_err(|_| {
+        let new_value = toml::Value::try_from(config).map_err(|_e| {
             Report::new(ConfigError::Parse).attach("failed to serialize ProvidersConfig")
         })?;
         let new_table: toml::value::Table = match new_value {
@@ -245,7 +245,7 @@ where
 
 #[cfg(test)]
 mod tests {
-    #![allow(clippy::expect_used, clippy::indexing_slicing, reason = "test code")]
+    #![allow(clippy::expect_used, clippy::panic, clippy::unreachable, clippy::indexing_slicing, reason = "test code")]
     use tempfile::TempDir;
 
     use super::*;

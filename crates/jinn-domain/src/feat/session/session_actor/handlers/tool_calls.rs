@@ -108,7 +108,7 @@ impl SessionPersistenceActor {
     /// and the session is already in sending state (set by `on_stream_completed`
     /// for the `ToolUse` reason). We just need to assemble the prompt via
     /// the full session history.
-    #[allow(clippy::too_many_lines)]
+    #[expect(clippy::too_many_lines, reason = "handler reads best as a single unit")]
     pub(in crate::feat::session::session_actor) fn on_tool_batch_completed(
         &self,
         event: &ToolBatchCompleted,
@@ -249,7 +249,7 @@ impl SessionPersistenceActor {
 
 #[cfg(test)]
 mod tests {
-    #![allow(clippy::expect_used, clippy::indexing_slicing, reason = "test code")]
+    #![allow(clippy::expect_used, clippy::panic, clippy::unreachable, clippy::indexing_slicing, reason = "test code")]
     use super::super::super::helpers::{test_actor, test_context};
     use crate::feat::provider::protocol::event::{StreamCompleted, StreamCompletedReason};
     use crate::feat::session::phase_machine::PhaseKind;

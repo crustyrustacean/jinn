@@ -30,6 +30,7 @@ pub struct CachedEntryCount {
     ///
     /// `None` when inserted via [`EntryLineCache::insert`] (count-only).
     /// `Some` when inserted via [`EntryLineCache::insert_with_lines`].
+    #[expect(clippy::rc_buffer, reason = "Vec<Line> not Send, Arc used for cheap clone within same thread")]
     pub lines: Option<Arc<Vec<Line<'static>>>>,
 }
 
@@ -38,6 +39,7 @@ pub struct CacheHit {
     /// The wrapped line count for this entry.
     pub wrapped_count: u16,
     /// Pre-rendered lines for this entry, if they were cached.
+    #[expect(clippy::rc_buffer, reason = "Vec<Line> not Send, Arc used for cheap clone within same thread")]
     pub lines: Option<Arc<Vec<Line<'static>>>>,
 }
 
@@ -91,18 +93,13 @@ impl EntryLineCache {
         }
 
         let cached = self.entries.get(&entry.id)?;
-        if cached.fingerprint == entry.content_fingerprint() && cached.is_expanded == is_expanded {
-            Some(CacheHit {
+        (cached.fingerprint == entry.content_fingerprint() && cached.is_expanded == is_expanded).then(|| CacheHit {
                 wrapped_count: cached.wrapped_count,
                 lines: cached.lines.clone(),
             })
-        } else {
-            None
-        }
     }
 
     /// Store a wrapped line count for an entry (without rendered lines).
-    #[allow(dead_code, reason = "public API available for future use")]
     pub fn insert(
         &mut self,
         entry: &ChatEntry,
@@ -122,6 +119,7 @@ impl EntryLineCache {
         );
     }
 
+    #[expect(clippy::rc_buffer, reason = "Vec<Line> not Send, Arc used for cheap clone within same thread")]
     /// Store a wrapped line count and rendered lines for an entry.
     pub fn insert_with_lines(
         &mut self,
@@ -152,13 +150,11 @@ impl EntryLineCache {
     }
 
     /// Remove a specific entry from the cache.
-    #[allow(dead_code)]
     pub fn invalidate_entry(&mut self, id: &ChatEntryId) {
         self.entries.remove(id);
     }
 
     /// Clear the entire cache.
-    #[allow(dead_code)]
     pub fn clear(&mut self) {
         self.entries.clear();
         self.content_width = None;
@@ -166,14 +162,12 @@ impl EntryLineCache {
 
     /// Number of entries currently cached.
     #[must_use]
-    #[allow(dead_code)]
     pub fn len(&self) -> usize {
         self.entries.len()
     }
 
     /// Whether the cache is empty.
     #[must_use]
-    #[allow(dead_code)]
     pub fn is_empty(&self) -> bool {
         self.entries.is_empty()
     }
@@ -181,7 +175,7 @@ impl EntryLineCache {
 
 #[cfg(test)]
 mod tests {
-    #![allow(clippy::expect_used, clippy::indexing_slicing, reason = "test code")]
+    #![allow(clippy::expect_used, clippy::panic, clippy::unreachable, clippy::indexing_slicing, reason = "test code")]
     use super::*;
     use crate::feat::session::tool_result_status::ToolResultStatus;
     use crate::protocol::{ChatEntry, ChatEntryKind};

@@ -93,7 +93,7 @@ fn to_lines_collapsed(
     } else {
         // Long content - show last N lines, then indicator at the bottom.
         let remaining = all_lines.len() - max;
-        for line_text in &all_lines[remaining..] {
+        for line_text in all_lines.get(remaining..).unwrap_or(&[]) {
             lines.push(Line::from(Span::styled(
                 truncate_to_width(line_text, ctx.content_width as usize),
                 style,
@@ -217,7 +217,7 @@ fn format_content_truncation_label(meta: &TruncationMeta) -> String {
 
 #[cfg(test)]
 mod tests {
-    #![allow(clippy::expect_used, clippy::indexing_slicing, reason = "test code")]
+    #![allow(clippy::expect_used, clippy::panic, clippy::unreachable, clippy::indexing_slicing, reason = "test code")]
     use super::*;
     use crate::feat::session::tool_result_status::ToolResultStatus;
     use crate::feat::ui::chat_log::shared::RenderContext;

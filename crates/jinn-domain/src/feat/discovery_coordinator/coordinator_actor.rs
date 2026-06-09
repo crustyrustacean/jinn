@@ -142,7 +142,6 @@ impl PendingSlot {
 pub struct DiscoveryCoordinatorActorDeps {
     /// Shared application state (currently unused but kept for parity with other
     /// scan actors and future enrichment from state).
-    #[allow(dead_code)]
     pub state: State,
 }
 
@@ -329,7 +328,7 @@ impl DiscoveryCoordinatorActor {
 
 #[cfg(test)]
 mod tests {
-    #![allow(clippy::expect_used, clippy::indexing_slicing, reason = "test code")]
+    #![allow(clippy::expect_used, clippy::panic, clippy::unreachable, clippy::indexing_slicing, reason = "test code")]
     use std::path::PathBuf;
     use std::sync::Arc;
 
@@ -389,7 +388,7 @@ mod tests {
 
     fn skill_named(name: &str) -> Skill {
         Skill {
-            name: name.to_string(),
+            name: name.to_owned(),
             description: String::new(),
             body: String::new(),
             file_path: PathBuf::new(),
@@ -400,7 +399,7 @@ mod tests {
 
     fn prompt_named(name: &str) -> PromptTemplate {
         PromptTemplate {
-            name: name.to_string(),
+            name: name.to_owned(),
             description: String::new(),
             body: String::new(),
         }

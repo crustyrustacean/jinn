@@ -1,13 +1,13 @@
 //! Integration tests for [`CompactionWorker`] using `FakeLlmServiceFactory`.
+#![allow(clippy::expect_used, clippy::indexing_slicing, clippy::panic, clippy::unreachable, clippy::string_slice, reason = "test code")]
+
 //!
 //! Tests cover the full `evaluate_with_config` pipeline: boundary finding,
 //! token accumulation, LLM summarization, and mutation production.
 //! Bug regression tests verify the three reported compaction bugs are fixed.
 
-#![allow(clippy::expect_used, clippy::indexing_slicing, reason = "test code")]
-
-use std::sync::atomic::{AtomicBool, Ordering};
-use std::sync::{Arc, Mutex};
+use std::sync::atomic::Ordering;
+use std::sync::Arc;
 
 use jinn_provider::RetryConfig;
 
@@ -102,15 +102,7 @@ fn test_worker(summary_text: &str) -> CompactionWorker {
         )))
         .build();
     let handle = services.handle.clone();
-    CompactionWorker {
-        services,
-        handle,
-        state: State::new(AppState::default()),
-        config: CompactionConfig::default(),
-        compaction_prompt: "Summarize this conversation.".to_owned(),
-        compaction_in_progress: Arc::new(AtomicBool::new(false)),
-        pending_compaction_id: Arc::new(Mutex::new(None)),
-    }
+    CompactionWorker::new(services, handle, State::new(AppState::default()))
 }
 
 /// Create a `CompactionWorker` backed by a fake LLM, with state containing
@@ -138,15 +130,7 @@ fn test_worker_with_session(
         .build();
     let handle = services.handle.clone();
 
-    let worker = CompactionWorker {
-        services,
-        handle,
-        state,
-        config: CompactionConfig::default(),
-        compaction_prompt: "Summarize this conversation.".to_owned(),
-        compaction_in_progress: Arc::new(AtomicBool::new(false)),
-        pending_compaction_id: Arc::new(Mutex::new(None)),
-    };
+    let worker = CompactionWorker::new(services, handle, state);
 
     (worker, session_id)
 }
@@ -182,11 +166,7 @@ fn forced_exclude_ids(mutations: &[HistoryMutation]) -> Vec<ChatEntryId> {
             HistoryMutation::SetContextOverride {
                 entry_id, value, ..
             } => {
-                if matches!(value, ContextOverride::ForcedExclude) {
-                    Some(entry_id.clone())
-                } else {
-                    None
-                }
+                matches!(value, ContextOverride::ForcedExclude).then(|| entry_id.clone())
             }
             _ => None,
         })
@@ -483,15 +463,7 @@ fn session_continues_after_background_compaction() {
         .expect("save test prefs");
     let handle = services.handle.clone();
 
-    let worker = CompactionWorker {
-        services,
-        handle,
-        state,
-        config: CompactionConfig::default(),
-        compaction_prompt: "Summarize this conversation.".to_owned(),
-        compaction_in_progress: Arc::new(AtomicBool::new(false)),
-        pending_compaction_id: Arc::new(Mutex::new(None)),
-    };
+    let worker = CompactionWorker::new(services, handle, state);
 
     // When evaluating compaction for the session.
     let rt = tokio::runtime::Runtime::new().expect("test runtime");
@@ -627,15 +599,7 @@ impl ThresholdTestEnv {
             .save(&prefs)
             .expect("save test prefs");
         let handle = services.handle.clone();
-        CompactionWorker {
-            services,
-            handle,
-            state: self.state.clone(),
-            config: CompactionConfig::default(),
-            compaction_prompt: "Summarize this conversation.".to_owned(),
-            compaction_in_progress: Arc::new(AtomicBool::new(false)),
-            pending_compaction_id: Arc::new(Mutex::new(None)),
-        }
+        CompactionWorker::new(services, handle, self.state.clone())
     }
 
     /// Run evaluate (auto-compaction path) and return mutations.
@@ -1125,15 +1089,7 @@ fn gate_passes_but_nothing_to_compact_with_empty_history() {
         .save(&prefs)
         .expect("save test prefs");
     let handle = services.handle.clone();
-    let worker = CompactionWorker {
-        services,
-        handle,
-        state,
-        config: CompactionConfig::default(),
-        compaction_prompt: "Summarize.".to_owned(),
-        compaction_in_progress: Arc::new(AtomicBool::new(false)),
-        pending_compaction_id: Arc::new(Mutex::new(None)),
-    };
+    let worker = CompactionWorker::new(services, handle, state);
 
     let rt = tokio::runtime::Runtime::new().expect("test runtime");
     let mutations = rt.block_on(async { worker.evaluate(&session_id, Arc::from([])).await });
@@ -1421,15 +1377,7 @@ fn error_clears_flag_and_allows_retry() {
         app.provider.model_cache = Some(model_cache_with("provider", "model-200k", 200_000));
     }
 
-    let worker = CompactionWorker {
-        services,
-        handle,
-        state,
-        config: CompactionConfig::default(),
-        compaction_prompt: "Summarize this conversation.".to_owned(),
-        compaction_in_progress: Arc::new(AtomicBool::new(false)),
-        pending_compaction_id: Arc::new(Mutex::new(None)),
-    };
+    let worker = CompactionWorker::new(services, handle, state);
 
     // When evaluating (LLM will fail).
     let rt = tokio::runtime::Runtime::new().expect("test runtime");

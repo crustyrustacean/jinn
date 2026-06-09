@@ -66,11 +66,10 @@ impl ShutdownTracker {
 
     /// Configures the tracker for shutdown: populates the pending set
     /// from the given actor names and stores the oneshot sender.
-    pub fn begin(
-        &self,
-        names: impl Iterator<Item = String>,
-        completion_tx: tokio::sync::oneshot::Sender<()>,
-    ) {
+    pub fn begin<I>(&self, names: I, completion_tx: tokio::sync::oneshot::Sender<()>)
+    where
+        I: Iterator<Item = String>,
+    {
         let mut inner = self.inner.lock();
         inner.active = true;
         inner.pending = names.collect();
@@ -321,7 +320,7 @@ struct RoutingTables {
 /// Lifecycle state that is only touched during shutdown.
 pub(crate) struct LifecycleState {
     /// Task join handles for actor tasks.
-    pub(crate) tasks: Vec<tokio::task::JoinHandle<()>>,
+    tasks: Vec<tokio::task::JoinHandle<()>>,
 }
 
 /// Hosts actors in-memory using pre-computed routing tables.
@@ -334,7 +333,7 @@ pub struct InMemoryActorHost {
     /// Pre-computed routing tables for lock-free dispatch.
     routing: RoutingTables,
     /// Lifecycle state (task handles) touched only during shutdown.
-    pub(crate) lifecycle: Mutex<LifecycleState>,
+    lifecycle: Mutex<LifecycleState>,
     /// Shared shutdown tracker - also cloned into each actor's run loop.
     shutdown_tracker: ShutdownTracker,
     /// Tokio runtime handle for spawning and joining tasks.
@@ -413,7 +412,7 @@ impl InMemoryActorHost {
     /// Populates the shutdown tracker with all known actor names and
     /// stores the oneshot sender. When all actors complete their shutdown,
     /// the sender fires.
-    pub fn begin_shutdown(&self, completion_tx: tokio::sync::oneshot::Sender<()>) {
+    pub fn initiate_shutdown(&self, completion_tx: tokio::sync::oneshot::Sender<()>) {
         let names = self.routing.all_entries.iter().map(|e| e.name.clone());
         self.shutdown_tracker.begin(names, completion_tx);
     }
@@ -509,10 +508,13 @@ impl ActorHost for InMemoryActorHost {
     }
 
     fn begin_shutdown(&self, completion_tx: tokio::sync::oneshot::Sender<()>) {
-        self.begin_shutdown(completion_tx);
+        self.initiate_shutdown(completion_tx);
     }
 
     fn shutdown(&self) -> Result<(), Report<ActorHostError>> {
         self.shutdown_with_timeout(JOIN_TIMEOUT)
     }
 }
+
+#[cfg(test)]
+mod in_memory_tests;

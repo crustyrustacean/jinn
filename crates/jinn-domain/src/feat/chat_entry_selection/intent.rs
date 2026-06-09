@@ -62,6 +62,7 @@ pub fn handle_select_next(state: &mut AppState) -> IntentResult {
 ///
 /// If the cursor is on the first visible entry, pages the viewport up first,
 /// then moves the cursor back by exactly 1. Clamps at entry 0 - no wrapping.
+#[expect(clippy::else_if_without_else, reason = "no-op on fallthrough is intentional")]
 pub fn handle_select_prev(state: &mut AppState) -> IntentResult {
     validator::validate_chat_entry_select_prev(state);
     let session = state.active_session_mut();
@@ -154,11 +155,12 @@ pub fn handle_toggle_ignored_block(state: &mut AppState) -> IntentResult {
     let entry_id = match items.get(vi_idx) {
         Some(VisualItem::CollapsedIgnoredBlock { start, .. }) => {
             // Block is collapsed → expand it.
-            history[*start].id.clone()
+            let Some(entry) = history.get(*start) else { return IntentResult::empty() };
+            entry.id.clone()
         }
         Some(VisualItem::Entry(hist_idx)) => {
             // Entry might be in an expanded ignored block → collapse it.
-            let entry = &history[*hist_idx];
+            let Some(entry) = history.get(*hist_idx) else { return IntentResult::empty() };
             if entry.is_in_context() {
                 return IntentResult::empty();
             }
@@ -297,7 +299,7 @@ fn handle_fresh_toggle(state: &mut AppState) -> IntentResult {
 
 #[cfg(test)]
 mod tests {
-    #![allow(clippy::expect_used, clippy::indexing_slicing, reason = "test code")]
+    #![allow(clippy::expect_used, clippy::panic, clippy::unreachable, clippy::indexing_slicing, reason = "test code")]
     use crate::common::app_state::AppState;
     use crate::feat::context::protocol::command::PinChatEntry;
     use crate::feat::session::chat_entry::ChangeSource;
@@ -683,7 +685,7 @@ mod tests {
         // Then yank_text is set to the entry text.
         assert_eq!(
             state.frontend.tui_signals.yank_text,
-            Some("hello".to_string())
+            Some("hello".to_owned())
         );
     }
 
@@ -749,7 +751,7 @@ mod tests {
         // Then yank_text contains the assistant text.
         assert_eq!(
             state.frontend.tui_signals.yank_text,
-            Some("response text".to_string())
+            Some("response text".to_owned())
         );
     }
 
@@ -773,7 +775,7 @@ mod tests {
         // Then yank_text contains "bash: output text" (ChatEntry.text() format).
         assert_eq!(
             state.frontend.tui_signals.yank_text,
-            Some("bash: output text".to_string())
+            Some("bash: output text".to_owned())
         );
     }
 

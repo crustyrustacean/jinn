@@ -130,7 +130,7 @@ impl SessionPersistenceActor {
     ///
     /// On success, sets the session's CWD to the command's output.
     /// On failure, sets the default CWD and pushes an error entry.
-    #[allow(clippy::unused_async)]
+    #[expect(clippy::unused_async, reason = "trait contract requires async")]
     pub(in crate::feat::session::session_actor) async fn handle_run_session_setup(
         &mut self,
         payload: &RunSessionSetup,
@@ -233,7 +233,7 @@ impl SessionPersistenceActor {
     /// Called by the spawned tokio task after the setup shell command finishes.
     /// Clears the lifecycle child, completes busy, sets CWD,
     /// advances lifecycle state, and emits events.
-    #[allow(clippy::unused_async)]
+    #[expect(clippy::unused_async, reason = "trait contract requires async")]
     pub(in crate::feat::session::session_actor) async fn handle_finish_session_setup(
         &mut self,
         payload: &crate::feat::session_lifecycle::protocol::command::FinishSessionSetup,
@@ -443,7 +443,7 @@ impl SessionPersistenceActor {
     /// sends `FinishSessionTeardown` back when complete.
     ///
     /// For builtin teardowns: runs inline (synchronous, no blocking).
-    #[allow(clippy::too_many_lines, clippy::items_after_statements)]
+    #[expect(clippy::too_many_lines, clippy::items_after_statements, reason = "handler reads best as a single unit")]
     pub(in crate::feat::session::session_actor) async fn handle_run_session_teardown(
         &mut self,
         payload: &RunSessionTeardown,
@@ -643,7 +643,7 @@ impl SessionPersistenceActor {
     ///
     /// On teardown failure, emits `SessionTeardownFinished(error)` and returns early.
     /// The session remains in memory with `SetupRan`.
-    #[allow(clippy::too_many_lines)]
+    #[expect(clippy::too_many_lines, reason = "handler reads best as a single unit")]
     pub(in crate::feat::session::session_actor) async fn handle_close_session(
         &mut self,
         payload: &CloseSession,
@@ -1082,7 +1082,7 @@ impl SessionPersistenceActor {
 
 #[cfg(test)]
 mod tests {
-    #![allow(clippy::expect_used, clippy::indexing_slicing, clippy::similar_names)]
+    #![allow(clippy::expect_used, clippy::panic, clippy::unreachable, clippy::indexing_slicing, clippy::similar_names, reason = "test code")]
     use super::super::super::helpers::{test_actor, test_context};
     use super::{
         no_output_info, setup_complete_msg, setup_running_msg, strip_ansi, teardown_running_msg,

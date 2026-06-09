@@ -60,7 +60,8 @@ impl LineInput {
     /// No-op when the cursor is at position 0.
     pub fn delete(&mut self) {
         if self.cursor_pos > 0 {
-            let prev = self.input[..self.cursor_pos]
+            let Some(slice) = self.input.get(..self.cursor_pos) else { return };
+            let prev = slice
                 .grapheme_indices(true)
                 .next_back()
                 .map(|(i, _)| i);
@@ -76,7 +77,8 @@ impl LineInput {
     /// No-op when the cursor is at the end of the input.
     pub fn delete_forward(&mut self) {
         if self.cursor_pos < self.input.len() {
-            let next_end = self.input[self.cursor_pos..]
+            let Some(slice) = self.input.get(self.cursor_pos..) else { return };
+            let next_end = slice
                 .grapheme_indices(true)
                 .nth(1)
                 .map_or(self.input.len(), |(i, _)| self.cursor_pos + i);
@@ -89,7 +91,8 @@ impl LineInput {
     /// No-op when the cursor is at position 0.
     pub fn cursor_left(&mut self) {
         if self.cursor_pos > 0 {
-            let prev = self.input[..self.cursor_pos]
+            let Some(slice) = self.input.get(..self.cursor_pos) else { return };
+            let prev = slice
                 .grapheme_indices(true)
                 .next_back()
                 .map(|(i, _)| i);
@@ -104,7 +107,8 @@ impl LineInput {
     /// No-op when the cursor is at the end of the input.
     pub fn cursor_right(&mut self) {
         if self.cursor_pos < self.input.len() {
-            let next = self.input[self.cursor_pos..]
+            let Some(slice) = self.input.get(self.cursor_pos..) else { return };
+            let next = slice
                 .grapheme_indices(true)
                 .nth(1)
                 .map(|(i, _)| self.cursor_pos + i);
@@ -120,13 +124,13 @@ impl LineInput {
     /// Convenience for render code that needs a display (column) cursor offset.
     #[must_use]
     pub fn graphemes_before_cursor(&self) -> usize {
-        self.input[..self.cursor_pos].graphemes(true).count()
+        self.input.get(..self.cursor_pos).map_or(0, |s| s.graphemes(true).count())
     }
 }
 
 #[cfg(test)]
 mod tests {
-    #![allow(clippy::expect_used, clippy::indexing_slicing, reason = "test code")]
+    #![allow(clippy::expect_used, clippy::panic, clippy::unreachable, clippy::indexing_slicing, reason = "test code")]
     use super::*;
 
     #[rstest::rstest]

@@ -1,9 +1,9 @@
+#![allow(clippy::expect_used, clippy::indexing_slicing, clippy::panic, clippy::uninlined_format_args, clippy::unreachable, clippy::string_slice, reason = "test code")]
 //! Tests for the task list data model.
+
 //!
 //! BDD-style tests following AGENTS.md conventions.
 //! Each test covers a single behavior.
-
-#![allow(clippy::uninlined_format_args, reason = "test code")]
 
 use crate::feat::todo_list::{PhaseId, TaskId, TaskList, TaskListError, TaskPosition, TaskStatus};
 

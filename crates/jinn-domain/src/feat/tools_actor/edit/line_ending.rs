@@ -22,7 +22,7 @@ pub enum LineEnding {
 /// or `(content, None)` if no BOM.
 pub fn strip_bom(content: &str) -> (&str, Option<&str>) {
     if let Some(stripped) = content.strip_prefix('\u{feff}') {
-        (stripped, Some(&content[..3]))
+        (stripped, content.get(..3))
     } else {
         (content, None)
     }
@@ -67,7 +67,7 @@ pub fn restore_line_endings(content: &str, ending: Option<LineEnding>) -> String
 
 #[cfg(test)]
 mod tests {
-    #![allow(clippy::expect_used, clippy::indexing_slicing, reason = "test code")]
+    #![allow(clippy::expect_used, clippy::panic, clippy::unreachable, clippy::indexing_slicing, reason = "test code")]
     use super::*;
 
     #[rstest::rstest]

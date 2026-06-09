@@ -20,7 +20,6 @@ impl SessionPersistenceActor {
     /// Builds a markdown table from the refresh results and pushes it directly
     /// to session state. Does NOT emit `PushChatEntry` - transient entries
     /// are not persisted.
-    #[allow(clippy::unused_self)]
     pub(in crate::feat::session::session_actor) fn on_models_refreshed(
         &self,
         event: &ModelsRefreshed,
@@ -39,7 +38,6 @@ impl SessionPersistenceActor {
     }
 
     /// Pushes a transient entry listing discovered skills.
-    #[allow(clippy::unused_self)]
     pub(in crate::feat::session::session_actor) fn on_skills_loaded(
         &self,
         event: &crate::feat::skills::SkillsLoaded,
@@ -149,6 +147,7 @@ impl SessionPersistenceActor {
 /// | ollama   | 5      | ✅     |
 /// | openai   | 0      | ❌ API key not resolved |
 /// ```
+#[expect(clippy::else_if_without_else, reason = "no-op on fallthrough is intentional")]
 fn build_models_refresh_table(event: &ModelsRefreshed) -> String {
     // Collect all provider names and sort alphabetically.
     let mut all_providers: Vec<&str> = event
@@ -195,6 +194,8 @@ fn build_skills_refresh_message(skills: &[crate::feat::skills::Skill]) -> String
 mod tests {
     #![allow(
         clippy::expect_used,
+        clippy::panic,
+        clippy::unreachable,
         clippy::indexing_slicing,
         clippy::unnecessary_mut_passed,
         reason = "test code"
@@ -380,7 +381,7 @@ mod tests {
                         entry_id: entry_id.clone(),
                         value: crate::feat::session::chat_entry::ContextOverride::ForcedExclude,
                         source: crate::feat::session::chat_entry::ChangeSource::Internal {
-                            label: "test".to_string(),
+                            label: "test".to_owned(),
                         },
                     },
                 ],
@@ -438,7 +439,7 @@ mod tests {
                         entry_id: crate::feat::session::chat_entry::ChatEntryId::new(),
                         value: crate::feat::session::chat_entry::ContextOverride::ForcedExclude,
                         source: crate::feat::session::chat_entry::ChangeSource::Internal {
-                            label: "test".to_string(),
+                            label: "test".to_owned(),
                         },
                     },
                 ],
@@ -486,7 +487,7 @@ mod tests {
                         entry_id: entry_id_1,
                         value: crate::feat::session::chat_entry::ContextOverride::ForcedExclude,
                         source: crate::feat::session::chat_entry::ChangeSource::Internal {
-                            label: "test".to_string(),
+                            label: "test".to_owned(),
                         },
                     },
                 ],
@@ -501,7 +502,7 @@ mod tests {
                         entry_id: entry_id_2,
                         value: crate::feat::session::chat_entry::ContextOverride::ForcedInclude,
                         source: crate::feat::session::chat_entry::ChangeSource::Internal {
-                            label: "test".to_string(),
+                            label: "test".to_owned(),
                         },
                     },
                 ],

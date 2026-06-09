@@ -689,8 +689,6 @@ impl ActorSystemBuilder {
                 HistoryWorkerActor, HistoryWorkerActorDeps,
             };
 
-            let config = user_preferences_storage.read().compaction.clone();
-            let compaction_prompt = state.read().context.compaction_prompt.clone();
 
             actors.push(spawn::<HistoryWorkerActor<CompactionWorker>>(
                 "history-worker-compaction",
@@ -703,8 +701,6 @@ impl ActorSystemBuilder {
                         services.clone(),
                         handle.clone(),
                         state.clone(),
-                        config,
-                        compaction_prompt,
                     ),
                 },
             ));
@@ -716,8 +712,6 @@ impl ActorSystemBuilder {
                 CompactionTriggerActor, CompactionTriggerActorDeps, CompactionWorker,
             };
 
-            let config = user_preferences_storage.read().compaction.clone();
-            let compaction_prompt = state.read().context.compaction_prompt.clone();
 
             actors.push(spawn::<CompactionTriggerActor>(
                 "compaction-trigger",
@@ -730,8 +724,6 @@ impl ActorSystemBuilder {
                         services.clone(),
                         handle.clone(),
                         state.clone(),
-                        config,
-                        compaction_prompt,
                     ),
                 },
             ));

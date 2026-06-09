@@ -199,6 +199,7 @@ pub type SpawnTeardownResult = Result<
 /// - spawning command fails
 /// - joining fails
 /// - the returned path cannot be canonicalized
+#[expect(clippy::expect_used, reason = "infallible")]
 pub fn spawn_setup_command(command: &str, shell: &str) -> SpawnSetupResult {
     use error_stack::ResultExt as _;
 
@@ -317,6 +318,7 @@ pub fn spawn_setup_command(command: &str, shell: &str) -> SpawnSetupResult {
 /// # Errors
 ///
 /// Returns an error if the shell command fails to spawn or canonicalize the working directory.
+#[expect(clippy::expect_used, reason = "infallible")]
 pub fn spawn_teardown_command(command: &str, shell: &str) -> SpawnTeardownResult {
     use error_stack::ResultExt as _;
 
@@ -393,7 +395,7 @@ pub fn spawn_teardown_command(command: &str, shell: &str) -> SpawnTeardownResult
 
 #[cfg(test)]
 mod tests {
-    #![allow(clippy::expect_used, clippy::indexing_slicing, reason = "test code")]
+    #![allow(clippy::expect_used, clippy::panic, clippy::unreachable, clippy::indexing_slicing, reason = "test code")]
     use super::*;
 
     // --- Setup command tests ---

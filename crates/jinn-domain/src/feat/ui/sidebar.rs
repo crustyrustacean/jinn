@@ -13,6 +13,7 @@ pub mod persona_section;
 pub mod pins;
 pub mod section_trait;
 pub mod sessions;
+#[expect(clippy::module_inception, reason = "sidebar.rs is the public API, sidebar/ is implementation")]
 pub mod sidebar;
 pub mod sidebar_state_actor;
 pub mod state;

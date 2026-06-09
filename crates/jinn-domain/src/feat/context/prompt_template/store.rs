@@ -300,13 +300,14 @@ impl PromptTemplateStore {
                 Ok(template) => {
                     if seen_names.contains(&template.name) {
                         // Replace the system template with the user version.
-                        if let Some(pos) = templates.iter().position(|t| t.name == template.name) {
-                            templates[pos] = template;
-                        }
-                    } else {
-                        seen_names.insert(template.name.clone());
-                        templates.push(template);
+                        if let Some(pos) = templates.iter().position(|t| t.name == template.name)
+                            && let Some(slot) = templates.get_mut(pos) {
+                                *slot = template;
+                            }
+                        continue;
                     }
+                    seen_names.insert(template.name.clone());
+                    templates.push(template);
                 }
                 Err(e) => {
                     warn!(
@@ -324,7 +325,7 @@ impl PromptTemplateStore {
 
 #[cfg(test)]
 mod tests {
-    #![allow(clippy::expect_used, clippy::indexing_slicing, reason = "test code")]
+    #![allow(clippy::expect_used, clippy::panic, clippy::unreachable, clippy::indexing_slicing, reason = "test code")]
     use super::*;
 
     /// Writes a minimal .md template file to `dir`.

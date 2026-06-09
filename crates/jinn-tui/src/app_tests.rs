@@ -356,7 +356,7 @@ fn alt_s_in_input_scope_focuses_sidebar_sessions() {
     // Then it resolves to SidebarFocusSessions (now bound in Input scope too).
     assert_eq!(
         intent.map(|i| i.to_string()).as_deref(),
-        Some("sidebar focus sessions")
+        Some("focus session list")
     );
 }
 
@@ -371,7 +371,7 @@ fn sessions_i_resolves_to_sidebar_confirm_insert() {
     // Then it resolves to SidebarConfirmInsert (activate + insert).
     assert_eq!(
         intent.map(|i| i.to_string()).as_deref(),
-        Some("sidebar confirm (insert)")
+        Some("activate session -> insert mode")
     );
 }
 
@@ -386,7 +386,7 @@ fn sessions_enter_still_resolves_to_sidebar_confirm() {
     // Then it still resolves to SidebarConfirm (activate + normal).
     assert_eq!(
         intent.map(|i| i.to_string()).as_deref(),
-        Some("sidebar confirm")
+        Some("activate session")
     );
 }
 
@@ -401,7 +401,7 @@ fn pins_enter_resolves_to_sidebar_leave() {
     // Then it resolves to SidebarLeave (leave to Normal at the pin's position).
     assert_eq!(
         intent.map(|i| i.to_string()).as_deref(),
-        Some("sidebar leave")
+        Some("return to normal mode")
     );
 }
 
@@ -416,6 +416,6 @@ fn alt_s_in_normal_scope_focuses_sidebar_sessions() {
     // Then it resolves to SidebarFocusSessions (scope-aware binding).
     assert_eq!(
         intent.map(|i| i.to_string()).as_deref(),
-        Some("sidebar focus sessions")
+        Some("focus session list")
     );
 }

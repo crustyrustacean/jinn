@@ -137,6 +137,8 @@ fn split_match_indices(
 mod tests {
     #![allow(
         clippy::expect_used,
+        clippy::panic,
+        clippy::unreachable,
         clippy::indexing_slicing,
         clippy::single_range_in_vec_init,
         reason = "test code"

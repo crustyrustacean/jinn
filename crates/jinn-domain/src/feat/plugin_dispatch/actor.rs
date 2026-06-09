@@ -153,8 +153,8 @@ impl PluginDispatchActor {
             }
             Event::SessionPhaseChanged(SessionPhaseChanged {
                 session_id,
-                old_phase: _,
                 new_phase,
+                ..
             }) => {
                 let hook_session = session_id.clone();
                 self.fire_on_phase_changed(&hook_session, new_phase);
@@ -480,9 +480,10 @@ impl PluginDispatchActor {
             "session_id": payload.session_id.to_string(),
             "hook": payload.hook,
         });
-        if let Some(text) = payload.text {
-            ctx_json["text"] = serde_json::Value::String(text);
-        }
+        if let Some(text) = payload.text
+            && let Some(map) = ctx_json.as_object_mut() {
+                map.insert("text".to_owned(), serde_json::Value::String(text));
+            }
 
         self.spawn_fire_for_session(&payload.session_id, &payload.hook, &ctx_json);
     }
@@ -491,7 +492,7 @@ impl PluginDispatchActor {
 // Pull in a typed-error conversion so `?` works in callers that bubble up
 // errors via `Report<PluginDispatchActorError>`. Currently no internal helpers
 // return Result, but this is here to keep the door open.
-#[allow(dead_code, reason = "kept for future internal helpers")]
+#[expect(dead_code, reason = "kept for future internal helpers")]
 fn into_error<E: std::fmt::Display>(e: E) -> Report<PluginDispatchActorError> {
     let _ = e;
     Report::new(PluginDispatchActorError)
@@ -499,6 +500,7 @@ fn into_error<E: std::fmt::Display>(e: E) -> Report<PluginDispatchActorError> {
 
 #[cfg(test)]
 mod tests {
+#![allow(clippy::expect_used, clippy::indexing_slicing, clippy::panic, clippy::unreachable, clippy::string_slice, clippy::uninlined_format_args, reason = "test code")]
     use super::*;
     use crate::common::actor::context::ActorContext;
     use crate::common::actor::message_sink::RecordingSink;

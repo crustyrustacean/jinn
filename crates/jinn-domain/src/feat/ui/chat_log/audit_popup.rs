@@ -71,7 +71,7 @@ fn format_event_line(event: &ContextChangeEvent, style: Style) -> Line<'static> 
 /// communicates "this is a non-user source".
 fn source_label(source: &ChangeSource) -> String {
     match source {
-        ChangeSource::User => "user".to_string(),
+        ChangeSource::User => "user".to_owned(),
         ChangeSource::Worker { name } => name.clone(),
         ChangeSource::Internal { label } => label.clone(),
     }
@@ -144,6 +144,7 @@ pub fn audit_popup_rect(
 
 #[cfg(test)]
 mod tests {
+#![allow(clippy::expect_used, clippy::indexing_slicing, clippy::panic, clippy::unreachable, clippy::string_slice, clippy::uninlined_format_args, reason = "test code")]
     //! BDD-style tests for `format_audit_lines`.
     //!
     //! Each test asserts exactly one observable behavior of the formatter:
@@ -206,7 +207,7 @@ mod tests {
         entry.apply_context_override(
             ContextOverride::ForcedExclude,
             ChangeSource::Worker {
-                name: "compactor".to_string(),
+                name: "compactor".to_owned(),
             },
         );
 
@@ -224,7 +225,7 @@ mod tests {
         entry.apply_context_override(
             ContextOverride::ForcedExclude,
             ChangeSource::Internal {
-                label: "dangling-cleanup".to_string(),
+                label: "dangling-cleanup".to_owned(),
             },
         );
 

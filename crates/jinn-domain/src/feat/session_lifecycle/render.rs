@@ -196,7 +196,7 @@ pub fn render_arg_input(frame: &mut Frame<'_>, area: Rect, ctx: &RenderCtx) {
 
     // Separator line between command and input.
     if y_offset < max_y {
-        let separator: String = "─".repeat(inner.width as usize);
+        let separator = "─".repeat(inner.width as usize);
         let separator_line = Line::from(Span::styled(
             separator,
             Style::default().fg(theme.border_unfocused),
@@ -224,7 +224,7 @@ pub fn render_arg_input(frame: &mut Frame<'_>, area: Rect, ctx: &RenderCtx) {
 
 #[cfg(test)]
 mod tests {
-    #![allow(clippy::expect_used, clippy::indexing_slicing, reason = "test code")]
+    #![allow(clippy::expect_used, clippy::panic, clippy::unreachable, clippy::indexing_slicing, reason = "test code")]
     use super::*;
     use crate::AppState;
     use crate::common::app_state::ArgInputState;
@@ -330,7 +330,7 @@ mod tests {
         if template_y < buffer.area().height {
             // First line should contain "script.sh <1> <2>".
             let row_text: String = (inner_x..inner_x + 30)
-                .filter_map(|x| buffer.cell((x, template_y)).map(|c| c.symbol().to_string()))
+                .filter_map(|x| buffer.cell((x, template_y)).map(|c| c.symbol().to_owned()))
                 .collect();
             assert!(
                 row_text.contains("script.sh"),
@@ -487,7 +487,7 @@ mod tests {
         let line1_y = popup_area.y + 1;
         if line1_y < buffer.area().height {
             let row_text: String = (inner_x..inner_x + 20)
-                .filter_map(|x| buffer.cell((x, line1_y)).map(|c| c.symbol().to_string()))
+                .filter_map(|x| buffer.cell((x, line1_y)).map(|c| c.symbol().to_owned()))
                 .collect();
             assert!(
                 row_text.contains("echo hello"),
@@ -499,7 +499,7 @@ mod tests {
         let line2_y = popup_area.y + 2;
         if line2_y < buffer.area().height {
             let row_text: String = (inner_x..inner_x + 20)
-                .filter_map(|x| buffer.cell((x, line2_y)).map(|c| c.symbol().to_string()))
+                .filter_map(|x| buffer.cell((x, line2_y)).map(|c| c.symbol().to_owned()))
                 .collect();
             assert!(
                 row_text.contains("echo world"),
@@ -583,7 +583,7 @@ mod tests {
         if last_cmd_y < buffer.area().height {
             // Collect the line text.
             let row_text: String = (inner_x..inner_x + 40)
-                .filter_map(|x| buffer.cell((x, last_cmd_y)).map(|c| c.symbol().to_string()))
+                .filter_map(|x| buffer.cell((x, last_cmd_y)).map(|c| c.symbol().to_owned()))
                 .collect();
             assert!(
                 !row_text.ends_with('\\'),

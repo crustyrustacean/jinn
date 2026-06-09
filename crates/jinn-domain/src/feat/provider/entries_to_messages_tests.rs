@@ -1,4 +1,4 @@
-#![allow(clippy::expect_used, clippy::indexing_slicing, reason = "test code")]
+#![allow(clippy::expect_used, clippy::panic, clippy::unreachable, clippy::indexing_slicing, reason = "test code")]
 
 use crate::feat::provider::entries_to_messages::entries_to_messages;
 use crate::feat::session::chat_entry::ChangeSource;
@@ -759,19 +759,19 @@ fn forced_exclude_dangling_tool_call_produces_valid_messages() {
     entries[1].apply_context_override(
         crate::protocol::ContextOverride::ForcedExclude,
         ChangeSource::Internal {
-            label: "test".to_string(),
+            label: "test".to_owned(),
         },
     );
     entries[2].apply_context_override(
         crate::protocol::ContextOverride::ForcedExclude,
         ChangeSource::Internal {
-            label: "test".to_string(),
+            label: "test".to_owned(),
         },
     );
     entries[2].apply_context_override(
         crate::protocol::ContextOverride::ForcedExclude,
         crate::feat::session::chat_entry::ChangeSource::Internal {
-            label: "test".to_string(),
+            label: "test".to_owned(),
         },
     );
 
@@ -813,13 +813,13 @@ fn forced_exclude_preserves_complete_tool_loop_in_messages() {
     entries[4].apply_context_override(
         crate::protocol::ContextOverride::ForcedExclude,
         crate::feat::session::chat_entry::ChangeSource::Internal {
-            label: "test".to_string(),
+            label: "test".to_owned(),
         },
     );
     entries[5].apply_context_override(
         crate::protocol::ContextOverride::ForcedExclude,
         crate::feat::session::chat_entry::ChangeSource::Internal {
-            label: "test".to_string(),
+            label: "test".to_owned(),
         },
     );
 
@@ -868,19 +868,19 @@ fn no_dangling_tool_calls_in_messages_after_hard_cancel() {
     entries[7].apply_context_override(
         crate::protocol::ContextOverride::ForcedExclude,
         crate::feat::session::chat_entry::ChangeSource::Internal {
-            label: "test".to_string(),
+            label: "test".to_owned(),
         },
     );
     entries[8].apply_context_override(
         crate::protocol::ContextOverride::ForcedExclude,
         crate::feat::session::chat_entry::ChangeSource::Internal {
-            label: "test".to_string(),
+            label: "test".to_owned(),
         },
     );
     entries[9].apply_context_override(
         crate::protocol::ContextOverride::ForcedExclude,
         crate::feat::session::chat_entry::ChangeSource::Internal {
-            label: "test".to_string(),
+            label: "test".to_owned(),
         },
     );
 

@@ -22,6 +22,11 @@ use crate::feat::session::chat_entry::{ChatEntry, ChatEntryKind};
 /// kept entries form a structurally valid LLM message sequence.
 ///
 /// Returns the adjusted cut index (>= `cut_index`, <= `history.len()`).
+///
+/// # Panics
+///
+/// Panics if `cut_index < history.len()` but `history[cut_index..]` is empty.
+#[expect(clippy::expect_used, reason = "infallible")]
 pub fn adjust_cut_to_boundary(history: &[ChatEntry], cut_index: usize) -> usize {
     if cut_index >= history.len() {
         return cut_index;
@@ -29,10 +34,11 @@ pub fn adjust_cut_to_boundary(history: &[ChatEntry], cut_index: usize) -> usize 
 
     // Pass 1: If cut lands on a ToolCall or ToolResult, walk forward past them.
     let cut_index = if matches!(
-        history[cut_index].kind,
-        ChatEntryKind::ToolCall { .. } | ChatEntryKind::ToolResult { .. }
+        history.get(cut_index).map(|e| &e.kind),
+        Some(ChatEntryKind::ToolCall { .. } | ChatEntryKind::ToolResult { ..})
     ) {
-        history[cut_index..]
+        history.get(cut_index..)
+            .expect("cut_index < history.len() checked above")
             .iter()
             .position(|entry| {
                 !matches!(
@@ -50,7 +56,7 @@ pub fn adjust_cut_to_boundary(history: &[ChatEntry], cut_index: usize) -> usize 
     }
 
     // Pass 2: If the cut lands on an Assistant, check for incomplete tool loops.
-    if !matches!(history[cut_index].kind, ChatEntryKind::Assistant(..)) {
+    if !matches!(history.get(cut_index).map(|e| &e.kind), Some(ChatEntryKind::Assistant(..))) {
         return cut_index;
     }
 
@@ -59,7 +65,8 @@ pub fn adjust_cut_to_boundary(history: &[ChatEntry], cut_index: usize) -> usize 
     let mut tool_result_ids: Vec<String> = Vec::new();
     let mut group_end = cut_index + 1;
 
-    for (offset, entry) in history[cut_index + 1..].iter().enumerate() {
+    let tail = history.get(cut_index + 1..).map_or(&[][..], |s| s);
+    for (offset, entry) in tail.iter().enumerate() {
         match &entry.kind {
             ChatEntryKind::ToolCall { id, .. } => {
                 tool_call_ids.push(id.clone());
@@ -108,7 +115,7 @@ pub fn compute_cut_index(
     let mut cut_index = start_index;
 
     for i in (start_index..history.len()).rev() {
-        let entry = &history[i];
+        let Some(entry) = history.get(i) else { continue };
         let tokens = estimate_entry_tokens(&estimator, entry);
         accumulated_tokens += tokens;
         if accumulated_tokens > reserve_tokens {
@@ -178,6 +185,7 @@ pub fn find_start_boundary(history: &[ChatEntry]) -> usize {
 
 #[cfg(test)]
 mod tests {
+#![allow(clippy::expect_used, clippy::indexing_slicing, clippy::panic, clippy::unreachable, clippy::string_slice, clippy::uninlined_format_args, reason = "test code")]
     use super::*;
     use crate::feat::session::chat_entry::{
         ChatEntry, ChatEntryId, ChatEntryKind, ContextOverride,

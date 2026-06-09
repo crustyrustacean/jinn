@@ -173,6 +173,7 @@ impl UserPreferencesStorageService {
     /// Panics if called before a successful `reload()` (or `save()`) has populated
     /// the cache. The panic message is descriptive — this is a programmer error,
     /// not an expected runtime condition.
+    #[expect(clippy::expect_used, reason = "infallible")]
     pub fn read(&self) -> UserPreferences {
         self.cache
             .read()
@@ -228,7 +229,7 @@ impl std::fmt::Debug for dyn UserPreferencesStorage {
 
 #[cfg(test)]
 mod tests {
-    #![allow(clippy::expect_used, clippy::indexing_slicing, reason = "test code")]
+    #![allow(clippy::expect_used, clippy::panic, clippy::unreachable, clippy::indexing_slicing, reason = "test code")]
     use super::*;
     use crate::common::app_info::PREFS_FILE_NAME;
     use crate::feat::preferences_actor::RequestRetryConfig;

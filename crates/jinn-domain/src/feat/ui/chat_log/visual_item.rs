@@ -48,6 +48,7 @@ pub enum VisualItem {
 /// - Contiguous ignored runs whose first entry's ID is in `shown_ignored_blocks`
 ///   are shown as individual `Entry` items.
 /// - All other contiguous ignored runs become a single `CollapsedIgnoredBlock`.
+#[expect(clippy::expect_used, reason = "infallible")]
 pub fn build_visual_items(
     history: &[ChatEntry],
     shown_ignored_blocks: &HashSet<ChatEntryId>,
@@ -64,7 +65,7 @@ pub fn build_visual_items(
 
     let mut i = 0;
     while i < len {
-        let entry = &history[i];
+        let Some(entry) = history.get(i) else { break };
 
         // Is this entry eligible for collapsing?
         if !entry.is_in_context() && entry.pin_position.is_none() && i < protected_start {
@@ -75,7 +76,7 @@ pub fn build_visual_items(
             i += block_count;
 
             // Check if the user has expanded this block, or the block is too small to collapse.
-            let block_representative_id = &history[block_start].id;
+            let block_representative_id = &history.get(block_start).expect("block_start < len").id;
             if shown_ignored_blocks.contains(block_representative_id)
                 || block_count < min_collapse_count
             {
@@ -103,12 +104,13 @@ fn push_entry_indices(items: &mut Vec<VisualItem>, start: usize, count: usize) {
 /// Count contiguous ignored entries starting at `start`, stopping at the first
 /// protected or in-context entry.
 fn find_ignored_block_end(history: &[ChatEntry], start: usize, protected_start: usize) -> usize {
-    history[start..]
-        .iter()
-        .take_while(|e| !e.is_in_context() && e.pin_position.is_none())
-        .enumerate()
-        .take_while(|(i, _)| start + i < protected_start)
-        .count()
+    history.get(start..)
+        .map_or(0, |slice| slice
+            .iter()
+            .take_while(|e| !e.is_in_context() && e.pin_position.is_none())
+            .enumerate()
+            .take_while(|(i, _)| start + i < protected_start)
+            .count())
 }
 
 /// Find the visual-item index for a given entry ID.
@@ -163,8 +165,12 @@ pub fn entry_id_from_visual_item(item: &VisualItem, history: &[ChatEntry]) -> Op
 mod tests {
     #![allow(
         clippy::expect_used,
+        clippy::map_with_unused_argument_over_ranges,
+        clippy::panic,
+        clippy::unreachable,
         clippy::indexing_slicing,
-        clippy::needless_range_loop
+        clippy::needless_range_loop,
+        reason = "test code"
     )]
 
     use super::*;

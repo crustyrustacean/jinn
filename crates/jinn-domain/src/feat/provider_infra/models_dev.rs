@@ -15,7 +15,7 @@ use std::path::Path;
 #[derive(Debug, Clone, Default)]
 pub struct ModelsDevData {
     /// Model ID → context length in tokens.
-    pub(crate) context_lengths: HashMap<String, u32>,
+    pub context_lengths: HashMap<String, u32>,
 }
 
 impl ModelsDevData {
@@ -120,7 +120,7 @@ impl ModelsDevData {
 
 #[cfg(test)]
 mod tests {
-    #![allow(clippy::expect_used, clippy::indexing_slicing, reason = "test code")]
+    #![allow(clippy::expect_used, clippy::panic, clippy::unreachable, clippy::indexing_slicing, reason = "test code")]
     use super::*;
 
     fn write_json(dir: &std::path::Path, filename: &str, json: &str) -> std::path::PathBuf {

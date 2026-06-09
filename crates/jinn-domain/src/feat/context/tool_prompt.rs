@@ -17,7 +17,7 @@ use crate::protocol::ToolDefinition;
 /// - `prompt_guidelines` → listed as bullet points in the "Tool guidelines" section
 ///
 /// Returns `None` if no tools have snippets or guidelines.
-#[allow(clippy::implicit_hasher)]
+#[expect(clippy::implicit_hasher, reason = "caller chooses hasher")]
 #[must_use]
 pub fn build_tool_context_block(tools: &HashMap<String, ToolDefinition>) -> Option<String> {
     let snippets: Vec<(&str, &str)> = tools
@@ -62,7 +62,7 @@ pub fn build_tool_context_block(tools: &HashMap<String, ToolDefinition>) -> Opti
 
 #[cfg(test)]
 mod tests {
-    #![allow(clippy::expect_used, clippy::indexing_slicing, reason = "test code")]
+    #![allow(clippy::expect_used, clippy::panic, clippy::unreachable, clippy::indexing_slicing, reason = "test code")]
     use super::*;
 
     fn test_tool(name: &str, snippet: Option<&str>, guidelines: Vec<&str>) -> ToolDefinition {

@@ -43,7 +43,10 @@ impl EntryTokenCache {
     ///
     /// Used by the token count actor for batch insertion after
     /// session load or history append.
-    pub fn bulk_insert(&mut self, entries: impl IntoIterator<Item = (ChatEntryId, u32)>) {
+    pub fn bulk_insert<I>(&mut self, entries: I)
+    where
+        I: IntoIterator<Item = (ChatEntryId, u32)>,
+    {
         for (id, count) in entries {
             self.entries.insert(id, count);
         }
@@ -52,6 +55,7 @@ impl EntryTokenCache {
 
 #[cfg(test)]
 mod tests {
+#![allow(clippy::expect_used, clippy::indexing_slicing, clippy::panic, clippy::unreachable, clippy::string_slice, clippy::uninlined_format_args, reason = "test code")]
     use super::*;
     use crate::protocol::ChatEntry;
 

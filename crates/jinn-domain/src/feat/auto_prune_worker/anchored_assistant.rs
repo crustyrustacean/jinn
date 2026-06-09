@@ -109,6 +109,7 @@ fn collect_anchor_indices(history: &[ChatEntry]) -> Vec<usize> {
 /// Returns `(None, None)` only when there are no anchors at all. Otherwise
 /// returns distances where `None` means "no anchor on that side" (i.e.,
 /// distance is `∞`).
+#[expect(clippy::unreachable, reason = "infallible")]
 fn distances_to_nearest_anchors(
     idx: usize,
     anchor_indices: &[usize],
@@ -127,13 +128,13 @@ fn distances_to_nearest_anchors(
         let _ = insertion;
         return (Some(0), Some(0));
     }
-    // SAFETY: we just verified binary_search returned Err, so insertion fits.
+    // binary_search returned Err, so insertion fits.
     let Err(insertion) = anchor_indices.binary_search(&idx) else {
         unreachable!("handled above");
     };
 
     // Preceding anchor = anchor_indices[insertion - 1] if insertion > 0.
-    let d_back = insertion.checked_sub(1).map(|i| idx - anchor_indices[i]);
+    let d_back = insertion.checked_sub(1).and_then(|i| anchor_indices.get(i).map(|&a| idx - a));
     // Following anchor = anchor_indices[insertion] if insertion < len.
     let d_fwd = anchor_indices
         .get(insertion)
@@ -267,7 +268,7 @@ fn build_prune_mutations(ctx: &PruneCtx<'_>) -> Vec<HistoryMutation> {
 
 #[async_trait::async_trait]
 impl HistoryWorker for AnchoredAssistantAutoPruneWorker {
-    #[allow(clippy::unnecessary_literal_bound)]
+    #[expect(clippy::unnecessary_literal_bound, reason = "lifetime elision makes bound redundant")]
     fn name(&self) -> &str {
         "auto-prune-anchored-assistant"
     }
@@ -299,7 +300,7 @@ impl HistoryWorker for AnchoredAssistantAutoPruneWorker {
 
 #[cfg(test)]
 mod tests {
-    #![allow(clippy::expect_used, clippy::indexing_slicing, reason = "test code")]
+    #![allow(clippy::expect_used, clippy::panic, clippy::unreachable, clippy::indexing_slicing, reason = "test code")]
 
     use super::*;
     use crate::feat::preferences_actor::user_preferences::AnchoredAssistantAutoPruneConfig;

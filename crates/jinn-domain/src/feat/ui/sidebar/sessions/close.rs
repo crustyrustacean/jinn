@@ -75,7 +75,10 @@ pub fn handle_session_close(state: &mut AppState) -> crate::protocol::IntentResu
 
     let index = state.frontend.sessions_section.selected_index.unwrap();
     let sessions = sorted_open_sessions(state);
-    let closing_id = sessions[index].id.clone();
+    let Some(closing) = sessions.get(index) else {
+        return crate::protocol::IntentResult::empty();
+    };
+    let closing_id = closing.id.clone();
     drop(sessions);
 
     // Update visual-parent index before removing the session
@@ -129,7 +132,8 @@ pub fn handle_session_close_with_lifecycle(state: &mut AppState) -> crate::proto
 
     let index = state.frontend.sessions_section.selected_index.unwrap();
     let sessions = sorted_open_sessions(state);
-    let closing_id = sessions[index].id.clone();
+    let Some(closing) = sessions.get(index) else { return crate::protocol::IntentResult::empty() };
+    let closing_id = closing.id.clone();
 
     // Emit CloseSession - the actor handles teardown, archive, and removal.
     crate::protocol::IntentResult::with_commands(vec![Command::CloseSession(CloseSession {

@@ -163,7 +163,7 @@ pub struct ChatEntry {
     /// OWNER: compaction-actor (sets `ForcedExclude` during compaction),
     ///        user (via `x` key toggle in `toggle_entry_ignored`).
     #[serde(default)]
-    pub(crate) context_override: ContextOverride,
+    pub context_override: ContextOverride,
 
     /// Append-only audit log of every change to this entry's `context_override`.
     ///
@@ -823,7 +823,7 @@ impl ChatEntry {
 }
 
 impl Serialize for ChatEntryKind {
-    #[allow(clippy::too_many_lines)]
+    #[expect(clippy::too_many_lines, reason = "handler reads best as a single unit")]
     fn serialize<S>(&self, serializer: S) -> Result<S::Ok, S::Error>
     where
         S: Serializer,
@@ -980,7 +980,7 @@ impl Serialize for ChatEntryKind {
 }
 
 impl<'de> Deserialize<'de> for ChatEntryKind {
-    #[allow(clippy::too_many_lines)]
+    #[expect(clippy::too_many_lines, reason = "handler reads best as a single unit")]
     fn deserialize<D>(deserializer: D) -> Result<Self, D::Error>
     where
         D: Deserializer<'de>,
@@ -997,7 +997,7 @@ impl<'de> Deserialize<'de> for ChatEntryKind {
                 formatter.write_str("a ChatEntryKind map")
             }
 
-            #[allow(clippy::too_many_lines)]
+            #[expect(clippy::too_many_lines, reason = "handler reads best as a single unit")]
             fn visit_map<A>(self, mut map: A) -> Result<Self::Value, A::Error>
             where
                 A: MapAccess<'de>,
@@ -1192,7 +1192,7 @@ impl ChatEntryKind {
 
 #[cfg(test)]
 mod tests {
-    #![allow(clippy::expect_used, clippy::indexing_slicing, reason = "test code")]
+    #![allow(clippy::expect_used, clippy::panic, clippy::unreachable, clippy::indexing_slicing, reason = "test code")]
     use super::*;
 
     fn fresh_user_entry() -> ChatEntry {

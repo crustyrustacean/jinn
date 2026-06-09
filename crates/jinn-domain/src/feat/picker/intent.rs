@@ -716,7 +716,7 @@ pub fn handle_refresh_skills(state: &mut AppState) -> IntentResult {
 
 #[cfg(test)]
 mod tests {
-    #![allow(clippy::expect_used, clippy::indexing_slicing, reason = "test code")]
+    #![allow(clippy::expect_used, clippy::panic, clippy::unreachable, clippy::indexing_slicing, reason = "test code")]
     use super::*;
     use crate::feat::session::ChatSessionState;
     use crate::feat::todo_list::TaskStatus;

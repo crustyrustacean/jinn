@@ -18,7 +18,7 @@ use super::app_info::APP_NAME;
 ///
 /// Construct once at init and share via `Services.paths`.
 #[derive(Debug, Clone)]
-#[allow(clippy::struct_field_names)]
+#[expect(clippy::struct_field_names, reason = "names match domain terminology")]
 pub struct AppPaths {
     /// `~/.config/jinn` - providers.toml, prompts/, personas/, plugins/, themes/, jinn.toml
     config_dir: PathBuf,
@@ -290,7 +290,7 @@ fn scan_dir_into(
 
 #[cfg(test)]
 mod tests {
-    #![allow(clippy::expect_used, clippy::indexing_slicing, reason = "test code")]
+    #![allow(clippy::expect_used, clippy::panic, clippy::unreachable, clippy::indexing_slicing, reason = "test code")]
     use super::*;
 
     #[rstest::rstest]
