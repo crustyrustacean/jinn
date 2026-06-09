@@ -161,7 +161,7 @@ pub enum Intent {
     /// Jump to the previous sidebar section.
     SidebarSectionPrev,
     /// Activate the selected session (switch to it).
-    SidebarConfirm,
+    SidebarSessionConfirm,
     /// Activate the selected session and enter Insert mode.
     SidebarConfirmInsert,
     /// Unpin the selected pinned entry.
@@ -287,7 +287,7 @@ pub enum Intent {
 }
 
 impl std::fmt::Display for Intent {
-    #[allow(clippy::too_many_lines)]
+    #[allow(clippy::too_many_lines, clippy::match_same_arms)]
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         match self {
             Intent::InsertChar { ch } => write!(f, "insert '{ch}'"),
@@ -335,30 +335,30 @@ impl std::fmt::Display for Intent {
             Intent::SkillToggleSelected => write!(f, "toggle skill"),
             Intent::PreviewScrollUp => write!(f, "preview scroll up"),
             Intent::PreviewScrollDown => write!(f, "preview scroll down"),
-            Intent::SessionNew => write!(f, "session new"),
+            Intent::SessionNew => write!(f, "new session"),
             Intent::RefreshModels => write!(f, "refresh models"),
             Intent::RescanPromptTemplates => write!(f, "rescan prompt templates"),
             Intent::RefreshSkills => write!(f, "refresh skills"),
-            Intent::SidebarFocus => write!(f, "sidebar focus"),
-            Intent::SidebarFocusSessions => write!(f, "sidebar focus sessions"),
-            Intent::SidebarLeave => write!(f, "sidebar leave"),
-            Intent::SidebarMoveDown => write!(f, "sidebar move down"),
-            Intent::SidebarMoveUp => write!(f, "sidebar move up"),
-            Intent::SidebarSectionNext => write!(f, "sidebar section next"),
-            Intent::SidebarSectionPrev => write!(f, "sidebar section prev"),
-            Intent::SidebarConfirm => write!(f, "sidebar confirm"),
-            Intent::SidebarConfirmInsert => write!(f, "sidebar confirm (insert)"),
-            Intent::PinsUnpin => write!(f, "pins unpin"),
-            Intent::PinsPinTop => write!(f, "pins pin top"),
-            Intent::PinsPinBottom => write!(f, "pins pin bottom"),
-            Intent::PinsPinRelative => write!(f, "pins pin relative"),
-            Intent::PinsPinCycle => write!(f, "pins pin cycle"),
+            Intent::SidebarFocus => write!(f, "focus sidebar"),
+            Intent::SidebarFocusSessions => write!(f, "focus session list"),
+            Intent::SidebarLeave => write!(f, "return to normal mode"),
+            Intent::SidebarMoveDown => write!(f, "cursor down"),
+            Intent::SidebarMoveUp => write!(f, "cursor up"),
+            Intent::SidebarSectionNext => write!(f, "cursor to next section"),
+            Intent::SidebarSectionPrev => write!(f, "cursor to previous section"),
+            Intent::SidebarSessionConfirm => write!(f, "activate session"),
+            Intent::SidebarConfirmInsert => write!(f, "activate session + insert mode"),
+            Intent::PinsUnpin => write!(f, "unpin entry"),
+            Intent::PinsPinTop => write!(f, "pin to top position"),
+            Intent::PinsPinBottom => write!(f, "pin to bottom position"),
+            Intent::PinsPinRelative => write!(f, "pin relative position"),
+            Intent::PinsPinCycle => write!(f, "cycle pin position"),
             Intent::SidebarSessionClose => write!(f, "sidebar session close"),
             Intent::SidebarSessionTeardown => write!(f, "sidebar session teardown"),
-            Intent::SidebarSessionArchive => write!(f, "sidebar session archive"),
+            Intent::SidebarSessionArchive => write!(f, "archive session"),
             Intent::SidebarPersonaEdit => write!(f, "edit persona"),
             Intent::SessionNewWithLifecycle => write!(f, "new session with lifecycle"),
-            Intent::SidebarSessionContinue => write!(f, "session continue"),
+            Intent::SidebarSessionContinue => write!(f, "continue session"),
             Intent::SidebarSessionRerunSetup => write!(f, "rerun session setup"),
 
             Intent::ChatEntrySelectNext => write!(f, "select next entry"),
@@ -376,10 +376,10 @@ impl std::fmt::Display for Intent {
             }
             Intent::SessionClose => write!(f, "session close"),
             Intent::ArgInputConfirm => write!(f, "arg input confirm"),
-            Intent::SidebarResizeEnter => write!(f, "sidebar resize enter"),
-            Intent::SidebarResizeExpand => write!(f, "sidebar resize expand"),
-            Intent::SidebarResizeContract => write!(f, "sidebar resize contract"),
-            Intent::SidebarResizeLeave => write!(f, "sidebar resize leave"),
+            Intent::SidebarResizeEnter => write!(f, "resize sidebar mode"),
+            Intent::SidebarResizeExpand => write!(f, "expand sidebar"),
+            Intent::SidebarResizeContract => write!(f, "contract sidebar"),
+            Intent::SidebarResizeLeave => write!(f, "exist resize sidebar mode"),
             Intent::SidebarRenameSession => write!(f, "rename session"),
             Intent::RenameSessionConfirm => write!(f, "rename session confirm"),
             Intent::RenameSessionLeave => write!(f, "rename session leave"),
@@ -392,7 +392,7 @@ impl std::fmt::Display for Intent {
             Intent::CwdInputConfirm => write!(f, "cwd input confirm"),
             Intent::CwdInputLeave => write!(f, "cwd input leave"),
 
-            Intent::ChangeCwd { root } => write!(f, "change cwd ({root})"),
+            Intent::ChangeCwd { root } => write!(f, "change cwd from '{root}'"),
             Intent::TriggerPlugin { description, .. } => write!(f, "{description}"),
         }
     }

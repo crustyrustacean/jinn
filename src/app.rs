@@ -27,6 +27,7 @@ use tokio::runtime::Runtime;
 use wherror::Error;
 
 use crate::actor_wiring;
+#[cfg(debug_assertions)]
 use crate::headless::HeadlessApp;
 use crate::runner::Runner;
 
@@ -101,7 +102,9 @@ impl App {
     ///
     /// Returns an error if the runner fails.
     pub fn dispatch(&mut self, cli: Cli) -> Result<(), Report<AppError>> {
-        use jinn_cli::cli::{BenchCommands, Commands, HeadlessCommands};
+        use jinn_cli::cli::Commands;
+        #[cfg(debug_assertions)]
+        use jinn_cli::cli::{BenchCommands, HeadlessCommands};
 
         // Load config from providers.toml (auto-creates on first run).
         let config_storage =
@@ -194,6 +197,7 @@ impl App {
             svc
         };
 
+        #[cfg(debug_assertions)]
         let db_path = cli.db_path_opt().cloned();
         match cli.command.unwrap_or(Commands::Tui) {
             Commands::Completions { shell } => {
@@ -222,6 +226,7 @@ impl App {
                 let runner = Runner::Tui(Box::new(app));
                 self.run_and_shutdown(runner, &session_store)?;
             }
+        #[cfg(debug_assertions)]
             Commands::Headless { command, .. } => {
                 let store_for_shutdown = session_store.clone();
                 let (core, _services, actor_host, _plugins) =
@@ -277,6 +282,7 @@ impl App {
                 }
             }
 
+            #[cfg(debug_assertions)]
             Commands::Bench { subcommand } => {
                 match &subcommand {
                     BenchCommands::Run { .. } | BenchCommands::Tui {} => {

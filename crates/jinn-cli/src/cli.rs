@@ -60,6 +60,7 @@ pub enum Commands {
     Tui,
 
     /// Run without a terminal interface.
+    #[cfg(debug_assertions)]
     Headless {
         /// Headless subcommand.
         #[command(subcommand)]
@@ -73,6 +74,7 @@ pub enum Commands {
     },
 
     /// Run benchmark tasks and view results.
+    #[cfg(debug_assertions)]
     Bench {
         /// The bench subcommand to run.
         #[command(subcommand)]
