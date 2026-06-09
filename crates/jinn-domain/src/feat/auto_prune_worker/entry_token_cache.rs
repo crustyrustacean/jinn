@@ -56,9 +56,9 @@ impl HistoryWorkerChatEntryTokenCache {
     /// evicted. Returns `None` otherwise.
     #[must_use]
     pub fn get(&self, session_id: &SessionId, entry_id: &ChatEntryId) -> Option<u32> {
-        self.inner
-            .get(session_id)
-            .and_then(|session_map| session_map.get(entry_id).map(|v| *v))
+        let session_map = self.inner
+            .get(session_id)?;
+        session_map.get(entry_id).map(|v| *v)
     }
 
     /// Insert a token count for a `(session_id, entry_id)` pair.

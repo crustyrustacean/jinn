@@ -108,7 +108,7 @@ impl SessionPersistenceActor {
     /// and the session is already in sending state (set by `on_stream_completed`
     /// for the `ToolUse` reason). We just need to assemble the prompt via
     /// the full session history.
-    #[allow(clippy::too_many_lines, reason = "handler reads best as a single unit")]
+    #[expect(clippy::too_many_lines, reason = "handler reads best as a single unit")]
     pub(in crate::feat::session::session_actor) fn on_tool_batch_completed(
         &self,
         event: &ToolBatchCompleted,

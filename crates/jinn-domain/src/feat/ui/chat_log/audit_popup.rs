@@ -71,7 +71,7 @@ fn format_event_line(event: &ContextChangeEvent, style: Style) -> Line<'static> 
 /// communicates "this is a non-user source".
 fn source_label(source: &ChangeSource) -> String {
     match source {
-        ChangeSource::User => "user".to_string(),
+        ChangeSource::User => "user".to_owned(),
         ChangeSource::Worker { name } => name.clone(),
         ChangeSource::Internal { label } => label.clone(),
     }
@@ -207,7 +207,7 @@ mod tests {
         entry.apply_context_override(
             ContextOverride::ForcedExclude,
             ChangeSource::Worker {
-                name: "compactor".to_string(),
+                name: "compactor".to_owned(),
             },
         );
 
@@ -225,7 +225,7 @@ mod tests {
         entry.apply_context_override(
             ContextOverride::ForcedExclude,
             ChangeSource::Internal {
-                label: "dangling-cleanup".to_string(),
+                label: "dangling-cleanup".to_owned(),
             },
         );
 

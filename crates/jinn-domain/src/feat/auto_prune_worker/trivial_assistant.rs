@@ -180,7 +180,7 @@ fn build_trivial_assistant_mutations(
 
 #[async_trait::async_trait]
 impl HistoryWorker for TrivialAssistantAutoPruneWorker {
-    #[allow(clippy::unnecessary_literal_bound, reason = "lifetime elision makes bound redundant")]
+    #[expect(clippy::unnecessary_literal_bound, reason = "lifetime elision makes bound redundant")]
     fn name(&self) -> &str {
         "auto-prune-trivial-assistant"
     }
@@ -581,11 +581,11 @@ mod tests {
     #[test]
     fn config_alias_max_age_entries_still_parses() {
         // Given a TOML fragment using the legacy `max_age_entries` field.
-        let toml_src = r#"
+        let toml_src = "
             enabled = true
             max_age_entries = 100
             max_tokens = 80
-        "#;
+        ";
 
         // When deserializing.
         let config: TrivialAssistantAutoPruneConfig = toml::from_str(toml_src).expect("parse");

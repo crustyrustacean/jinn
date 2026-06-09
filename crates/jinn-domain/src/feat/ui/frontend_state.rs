@@ -155,7 +155,7 @@ impl Default for FrontendState {
         Self {
             should_quit: false,
             pins: PinsState::default(),
-            sidebar: SidebarState::default(),
+            sidebar: SidebarState,
             persona_section: PersonaSectionState::default(),
             sessions_section: SessionsSectionState::default(),
             task_list_section: TaskListSectionState::default(),

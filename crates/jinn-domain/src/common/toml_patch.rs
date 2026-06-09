@@ -241,7 +241,7 @@ fn apply_array(
     }
 }
 
-#[allow(
+#[expect(
     clippy::too_many_lines,
     reason = "linear recursive TOML-table walk that reads best as a single unit"
 )]
@@ -311,11 +311,7 @@ fn apply_array_of_tables_by_key(
         .enumerate()
         .filter_map(|(idx, entry)| {
             let k = entry.get(key_field).and_then(item_to_string_key)?;
-            if new_by_key.contains_key(&k) {
-                Some((idx, k))
-            } else {
-                None
-            }
+            new_by_key.contains_key(&k).then_some((idx, k))
         })
         .collect();
 

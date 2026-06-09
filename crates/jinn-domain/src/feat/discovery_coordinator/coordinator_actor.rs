@@ -142,7 +142,7 @@ impl PendingSlot {
 pub struct DiscoveryCoordinatorActorDeps {
     /// Shared application state (currently unused but kept for parity with other
     /// scan actors and future enrichment from state).
-    #[allow(dead_code, reason = "kept for future use")]
+    #[expect(dead_code, reason = "kept for future use")]
     pub state: State,
 }
 
@@ -389,7 +389,7 @@ mod tests {
 
     fn skill_named(name: &str) -> Skill {
         Skill {
-            name: name.to_string(),
+            name: name.to_owned(),
             description: String::new(),
             body: String::new(),
             file_path: PathBuf::new(),
@@ -400,7 +400,7 @@ mod tests {
 
     fn prompt_named(name: &str) -> PromptTemplate {
         PromptTemplate {
-            name: name.to_string(),
+            name: name.to_owned(),
             description: String::new(),
             body: String::new(),
         }

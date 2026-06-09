@@ -254,6 +254,5 @@ fn compute_display_col(text: &str, lines: &[WrappedLine], row: usize, col: usize
     }
     graphemes
         .get(line.grapheme_start..end)
-        .map(|gs| gs.iter().map(|g| UnicodeWidthStr::width(*g)).sum::<usize>())
-        .unwrap_or(0)
+        .map_or(0, |gs| gs.iter().map(|g| UnicodeWidthStr::width(*g)).sum::<usize>())
 }

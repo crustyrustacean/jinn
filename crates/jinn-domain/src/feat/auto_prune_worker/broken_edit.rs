@@ -71,7 +71,7 @@ fn find_failed_edit_result(
 
 #[async_trait::async_trait]
 impl HistoryWorker for BrokenEditAutoPruneWorker {
-    #[allow(clippy::unnecessary_literal_bound, reason = "lifetime elision makes bound redundant")]
+    #[expect(clippy::unnecessary_literal_bound, reason = "lifetime elision makes bound redundant")]
     fn name(&self) -> &str {
         "auto-prune-broken-edit"
     }
@@ -294,10 +294,10 @@ mod tests {
     #[test]
     fn config_alias_min_tail_entries_still_parses() {
         // Given a TOML fragment using the legacy `min_tail_entries` field.
-        let toml_src = r#"
+        let toml_src = "
             enabled = true
             min_tail_entries = 10
-        "#;
+        ";
 
         // When deserializing.
         let config: BrokenEditAutoPruneConfig = toml::from_str(toml_src).expect("parse");

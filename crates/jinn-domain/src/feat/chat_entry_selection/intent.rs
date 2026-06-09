@@ -768,7 +768,7 @@ mod tests {
         // Then yank_text is set to the entry text.
         assert_eq!(
             state.frontend.tui_signals.yank_text,
-            Some("hello".to_string())
+            Some("hello".to_owned())
         );
     }
 
@@ -834,7 +834,7 @@ mod tests {
         // Then yank_text contains the assistant text.
         assert_eq!(
             state.frontend.tui_signals.yank_text,
-            Some("response text".to_string())
+            Some("response text".to_owned())
         );
     }
 
@@ -858,7 +858,7 @@ mod tests {
         // Then yank_text contains "bash: output text" (ChatEntry.text() format).
         assert_eq!(
             state.frontend.tui_signals.yank_text,
-            Some("bash: output text".to_string())
+            Some("bash: output text".to_owned())
         );
     }
 

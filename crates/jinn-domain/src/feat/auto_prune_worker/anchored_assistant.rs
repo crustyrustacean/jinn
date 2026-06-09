@@ -267,7 +267,7 @@ fn build_prune_mutations(ctx: &PruneCtx<'_>) -> Vec<HistoryMutation> {
 
 #[async_trait::async_trait]
 impl HistoryWorker for AnchoredAssistantAutoPruneWorker {
-    #[allow(clippy::unnecessary_literal_bound, reason = "lifetime elision makes bound redundant")]
+    #[expect(clippy::unnecessary_literal_bound, reason = "lifetime elision makes bound redundant")]
     fn name(&self) -> &str {
         "auto-prune-anchored-assistant"
     }

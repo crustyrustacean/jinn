@@ -270,7 +270,7 @@ mod tests {
     }
 
     #[rstest::rstest]
-    #[allow(clippy::single_range_in_vec_init, reason = "range syntax is clearer than vec!")]
+    #[expect(clippy::single_range_in_vec_init, reason = "range syntax is clearer than vec!")]
     fn render_row_with_highlight_preserves_glyph_span() {
         // Given a task entry.
         let entry = TaskListTreeEntry::new_task(

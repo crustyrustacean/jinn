@@ -52,7 +52,7 @@ fn queue_mutations_appends_nonempty_batch() {
         entry_id,
         value: ContextOverride::ForcedExclude,
         source: ChangeSource::Internal {
-            label: "test".to_string(),
+            label: "test".to_owned(),
         },
     }];
 
@@ -88,7 +88,7 @@ fn drain_pending_mutations_empties_the_queue() {
         entry_id,
         value: ContextOverride::ForcedExclude,
         source: ChangeSource::Internal {
-            label: "test".to_string(),
+            label: "test".to_owned(),
         },
     }]);
 
@@ -116,7 +116,7 @@ fn apply_mutations_sets_context_override_by_id() {
         entry_id,
         value: ContextOverride::ForcedExclude,
         source: ChangeSource::Internal {
-            label: "test".to_string(),
+            label: "test".to_owned(),
         },
     }]);
 
@@ -138,7 +138,7 @@ fn apply_mutations_skips_set_context_override_for_nonexistent_id() {
         entry_id: ChatEntryId::new(),
         value: ContextOverride::ForcedExclude,
         source: ChangeSource::Internal {
-            label: "test".to_string(),
+            label: "test".to_owned(),
         },
     }]);
 
@@ -424,7 +424,7 @@ fn apply_mutations_on_empty_history_is_noop() {
             entry_id: ChatEntryId::new(),
             value: ContextOverride::ForcedExclude,
             source: ChangeSource::Internal {
-                label: "test".to_string(),
+                label: "test".to_owned(),
             },
         },
         HistoryMutation::InsertEntry {
@@ -460,7 +460,7 @@ fn drain_and_apply_applies_all_batches_in_order() {
         entry_id: first_id,
         value: ContextOverride::ForcedExclude,
         source: ChangeSource::Internal {
-            label: "test".to_string(),
+            label: "test".to_owned(),
         },
     }]);
 
@@ -469,7 +469,7 @@ fn drain_and_apply_applies_all_batches_in_order() {
         entry_id: second_id,
         value: ContextOverride::ForcedExclude,
         source: ChangeSource::Internal {
-            label: "test".to_string(),
+            label: "test".to_owned(),
         },
     }]);
 
@@ -595,7 +595,7 @@ fn set_context_override_forced_include() {
         entry_id: entry_id.clone(),
         value: ContextOverride::ForcedInclude,
         source: ChangeSource::Internal {
-            label: "test".to_string(),
+            label: "test".to_owned(),
         },
     }]);
 
@@ -616,7 +616,7 @@ fn set_context_override_default_resets_to_default() {
         entry_id: entry_id.clone(),
         value: ContextOverride::ForcedExclude,
         source: ChangeSource::Internal {
-            label: "test".to_string(),
+            label: "test".to_owned(),
         },
     }]);
     assert_eq!(
@@ -629,7 +629,7 @@ fn set_context_override_default_resets_to_default() {
         entry_id: entry_id.clone(),
         value: ContextOverride::Default,
         source: ChangeSource::Internal {
-            label: "test".to_string(),
+            label: "test".to_owned(),
         },
     }]);
 
@@ -652,7 +652,7 @@ fn forced_include_is_not_overwritten_by_forced_exclude() {
         entry_id: entry_id.clone(),
         value: ContextOverride::ForcedInclude,
         source: ChangeSource::Internal {
-            label: "test".to_string(),
+            label: "test".to_owned(),
         },
     }]);
     assert_eq!(
@@ -665,7 +665,7 @@ fn forced_include_is_not_overwritten_by_forced_exclude() {
         entry_id: entry_id.clone(),
         value: ContextOverride::ForcedExclude,
         source: ChangeSource::Internal {
-            label: "test".to_string(),
+            label: "test".to_owned(),
         },
     }]);
 
@@ -687,7 +687,7 @@ fn forced_include_can_be_changed_to_default() {
         entry_id: entry_id.clone(),
         value: ContextOverride::ForcedInclude,
         source: ChangeSource::Internal {
-            label: "test".to_string(),
+            label: "test".to_owned(),
         },
     }]);
     assert_eq!(
@@ -700,7 +700,7 @@ fn forced_include_can_be_changed_to_default() {
         entry_id: entry_id.clone(),
         value: ContextOverride::Default,
         source: ChangeSource::Internal {
-            label: "test".to_string(),
+            label: "test".to_owned(),
         },
     }]);
 

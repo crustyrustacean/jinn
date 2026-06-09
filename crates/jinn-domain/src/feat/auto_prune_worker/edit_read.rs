@@ -84,7 +84,7 @@ pub struct EditReadAutoPruneWorker {
 
 #[async_trait::async_trait]
 impl HistoryWorker for EditReadAutoPruneWorker {
-    #[allow(clippy::unnecessary_literal_bound, reason = "lifetime elision makes bound redundant")]
+    #[expect(clippy::unnecessary_literal_bound, reason = "lifetime elision makes bound redundant")]
     fn name(&self) -> &str {
         "auto-prune-edit-read"
     }
@@ -181,7 +181,7 @@ fn prune_backward(
 
         let back_result_protected = back_result
             .as_ref()
-            .is_some_and(|(_, k)| history.get(*k).is_some_and(|e| e.is_protected_from_prune()));
+            .is_some_and(|(_, k)| history.get(*k).is_some_and(super::super::session::chat_entry::ChatEntry::is_protected_from_prune));
 
         // Skip if both call and result are protected — nothing to do.
         if back_call_protected && back_result_protected {

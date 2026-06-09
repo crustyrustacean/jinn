@@ -79,7 +79,7 @@ impl AssembledPrompt {
 ///
 /// Panics if the given `session_id` does not exist in the session map.
 #[must_use]
-#[allow(clippy::too_many_lines, reason = "handler reads best as a single unit")]
+#[expect(clippy::too_many_lines, reason = "handler reads best as a single unit")]
 pub fn assemble_prompt(
     state: &AppState,
     session_id: &SessionId,

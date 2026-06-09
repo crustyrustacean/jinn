@@ -68,11 +68,7 @@ pub(crate) fn find_visible_indices(
         .filter_map(|(i, &(start, end))| {
             let abs_start = start + blank_count as u16;
             let abs_end = end + blank_count as u16;
-            if abs_end > viewport_top && abs_start < viewport_bottom {
-                Some(i)
-            } else {
-                None
-            }
+            (abs_end > viewport_top && abs_start < viewport_bottom).then_some(i)
         })
         .collect()
 }

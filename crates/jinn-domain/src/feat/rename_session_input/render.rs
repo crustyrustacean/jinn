@@ -166,7 +166,7 @@ mod tests {
         let inner_x = popup_area.x + 1;
 
         let row_text: String = (inner_x..inner_x + 20)
-            .filter_map(|x| buffer.cell((x, inner_y)).map(|c| c.symbol().to_string()))
+            .filter_map(|x| buffer.cell((x, inner_y)).map(|c| c.symbol().to_owned()))
             .collect();
         assert!(
             row_text.starts_with("> Hello World"),

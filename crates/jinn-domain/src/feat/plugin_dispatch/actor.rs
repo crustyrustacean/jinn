@@ -480,11 +480,10 @@ impl PluginDispatchActor {
             "session_id": payload.session_id.to_string(),
             "hook": payload.hook,
         });
-        if let Some(text) = payload.text {
-            if let Some(map) = ctx_json.as_object_mut() {
+        if let Some(text) = payload.text
+            && let Some(map) = ctx_json.as_object_mut() {
                 map.insert("text".to_owned(), serde_json::Value::String(text));
             }
-        }
 
         self.spawn_fire_for_session(&payload.session_id, &payload.hook, &ctx_json);
     }
@@ -493,7 +492,7 @@ impl PluginDispatchActor {
 // Pull in a typed-error conversion so `?` works in callers that bubble up
 // errors via `Report<PluginDispatchActorError>`. Currently no internal helpers
 // return Result, but this is here to keep the door open.
-#[allow(dead_code, reason = "kept for future internal helpers")]
+#[expect(dead_code, reason = "kept for future internal helpers")]
 fn into_error<E: std::fmt::Display>(e: E) -> Report<PluginDispatchActorError> {
     let _ = e;
     Report::new(PluginDispatchActorError)

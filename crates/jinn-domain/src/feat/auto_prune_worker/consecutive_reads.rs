@@ -185,7 +185,7 @@ fn build_prune_mutations(
 
 #[async_trait::async_trait]
 impl HistoryWorker for ConsecutiveReadsAutoPruneWorker {
-    #[allow(clippy::unnecessary_literal_bound, reason = "lifetime elision makes bound redundant")]
+    #[expect(clippy::unnecessary_literal_bound, reason = "lifetime elision makes bound redundant")]
     fn name(&self) -> &str {
         "auto-prune-consecutive-reads"
     }

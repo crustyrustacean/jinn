@@ -270,7 +270,7 @@ pub fn get_visible_lines(text: &str) -> Vec<&str> {
     }
     let lines: Vec<&str> = text.split('\n').collect();
     if text.ends_with('\n') {
-        lines.get(..lines.len().saturating_sub(1)).map(|s| s.to_vec()).unwrap_or(lines)
+        lines.get(..lines.len().saturating_sub(1)).map(<[&str]>::to_vec).unwrap_or(lines)
     } else {
         lines
     }

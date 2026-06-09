@@ -27,7 +27,7 @@ pub enum SystemMessage {
 /// The type parameter `M` is the actor's direct message type (e.g.
 /// `LlmPipeDirectMsg`). Each actor reads `ActorEnvelope<M>` from a single
 /// kanal channel, giving it one unified match block for all incoming messages.
-#[allow(
+#[expect(
     clippy::large_enum_variant,
     reason = "boxing would cascade through all match arms"
 )]

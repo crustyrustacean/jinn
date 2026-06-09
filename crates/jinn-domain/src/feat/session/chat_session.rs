@@ -606,7 +606,7 @@ impl ChatSessionState {
         let mut block_start = idx;
         while block_start > 0 {
             let Some(prev) = self.core.history.get(block_start - 1) else { break };
-            if prev.is_in_context() || prev.pin_position.is_some() { break };
+            if prev.is_in_context() || prev.pin_position.is_some() { break }
             block_start -= 1;
         }
 
@@ -650,11 +650,7 @@ impl ChatSessionState {
     /// regardless of expiry - the caller must re-store it if continuing.
     pub fn take_ignore_sweep(&mut self) -> Option<ContextOverride> {
         let (instant, override_state) = self.ui.ignore_sweep.take()?;
-        if instant.elapsed() < std::time::Duration::from_millis(100) {
-            Some(override_state)
-        } else {
-            None
-        }
+        (instant.elapsed() < std::time::Duration::from_millis(100)).then_some(override_state)
     }
 
     /// Starts or continues a sweep by storing the target state and current time.
@@ -731,7 +727,7 @@ impl ChatSessionState {
     ///
     /// Future work: restrict to the session feature module and require external
     /// code to use the `PushChatEntry` command (which also triggers persistence).
-    #[allow(clippy::missing_panics_doc, reason = "panics are documented in trait definition")]
+    #[expect(clippy::missing_panics_doc, reason = "panics are documented in trait definition")]
     pub fn push_entry(&mut self, entry: ChatEntry) -> usize {
         let was_at_last = self
             .ui
@@ -1766,7 +1762,7 @@ impl ChatSessionState {
                 let selectable = match items.get(idx) {
                     Some(VisualItem::CollapsedIgnoredBlock { .. }) => true,
                     Some(VisualItem::Entry(hist_idx)) => {
-                        self.core.history.get(*hist_idx).map_or(false, |e| !e.is_empty_assistant())
+                        self.core.history.get(*hist_idx).is_some_and(|e| !e.is_empty_assistant())
                     }
                     None => false,
                 };
@@ -1782,7 +1778,7 @@ impl ChatSessionState {
                         .core
                         .history
                         .get(*hist_idx)
-                        .map_or(false, |e| !e.is_empty_assistant()),
+                        .is_some_and(|e| !e.is_empty_assistant()),
                     None => false,
                 };
                 if selectable {
@@ -1811,7 +1807,7 @@ impl ChatSessionState {
                 let selectable = match items.get(idx) {
                     Some(VisualItem::CollapsedIgnoredBlock { .. }) => true,
                     Some(VisualItem::Entry(hist_idx)) => {
-                        self.core.history.get(*hist_idx).map_or(false, |e| !e.is_empty_assistant())
+                        self.core.history.get(*hist_idx).is_some_and(|e| !e.is_empty_assistant())
                     }
                     None => false,
                 };
@@ -1823,7 +1819,7 @@ impl ChatSessionState {
             let selectable = match items.get(idx) {
                 Some(VisualItem::CollapsedIgnoredBlock { .. }) => true,
                 Some(VisualItem::Entry(hist_idx)) => {
-                    self.core.history.get(*hist_idx).map_or(false, |e| !e.is_empty_assistant())
+                    self.core.history.get(*hist_idx).is_some_and(|e| !e.is_empty_assistant())
                 }
                 None => false,
             };
@@ -1882,8 +1878,8 @@ impl ChatSessionState {
         // Same boundary rules as `build_visual_items` and `toggle_ignored_block_visibility`.
         let mut block_start = idx;
         while block_start > 0
-            && self.core.history.get(block_start - 1).map_or(false, |e| !e.is_in_context())
-            && self.core.history.get(block_start - 1).map_or(false, |e| e.pin_position.is_none())
+            && self.core.history.get(block_start - 1).is_some_and(|e| !e.is_in_context())
+            && self.core.history.get(block_start - 1).is_some_and(|e| e.pin_position.is_none())
         {
             block_start -= 1;
         }
@@ -1951,7 +1947,7 @@ impl ChatSessionState {
         while idx < max {
             let selectable = match items.get(idx) {
                 Some(VisualItem::CollapsedIgnoredBlock { .. }) => true,
-                Some(VisualItem::Entry(hist_idx)) => self.core.history.get(*hist_idx).map_or(false, |e: &ChatEntry| !e.is_empty_assistant()),
+                Some(VisualItem::Entry(hist_idx)) => self.core.history.get(*hist_idx).is_some_and(|e: &ChatEntry| !e.is_empty_assistant()),
                 None => false,
             };
             if selectable {
@@ -1961,7 +1957,7 @@ impl ChatSessionState {
         }
         let selectable = match items.get(idx) {
             Some(VisualItem::CollapsedIgnoredBlock { .. }) => true,
-            Some(VisualItem::Entry(hist_idx)) => self.core.history.get(*hist_idx).map_or(false, |e: &ChatEntry| !e.is_empty_assistant()),
+            Some(VisualItem::Entry(hist_idx)) => self.core.history.get(*hist_idx).is_some_and(|e: &ChatEntry| !e.is_empty_assistant()),
             None => false,
         };
         if selectable {
@@ -1992,7 +1988,7 @@ impl ChatSessionState {
         while idx > 0 {
             let selectable = match items.get(idx) {
                 Some(VisualItem::CollapsedIgnoredBlock { .. }) => true,
-                Some(VisualItem::Entry(hist_idx)) => self.core.history.get(*hist_idx).map_or(false, |e: &ChatEntry| !e.is_empty_assistant()),
+                Some(VisualItem::Entry(hist_idx)) => self.core.history.get(*hist_idx).is_some_and(|e: &ChatEntry| !e.is_empty_assistant()),
                 None => false,
             };
             if selectable {
@@ -2002,7 +1998,7 @@ impl ChatSessionState {
         }
         let selectable = match items.get(idx) {
             Some(VisualItem::CollapsedIgnoredBlock { .. }) => true,
-            Some(VisualItem::Entry(hist_idx)) => self.core.history.get(*hist_idx).map_or(false, |e: &ChatEntry| !e.is_empty_assistant()),
+            Some(VisualItem::Entry(hist_idx)) => self.core.history.get(*hist_idx).is_some_and(|e: &ChatEntry| !e.is_empty_assistant()),
             None => false,
         };
         if selectable {
@@ -2049,10 +2045,10 @@ impl ChatSessionState {
             .selected_entry_index()
             .map_or(0, |i| i.saturating_add(1).min(max));
         let mut idx = start;
-        while idx < max && self.core.history.get(idx).map_or(true, |e| e.is_empty_assistant()) {
+        while idx < max && self.core.history.get(idx).is_none_or(super::chat_entry::ChatEntry::is_empty_assistant) {
             idx = idx.saturating_add(1);
         }
-        if self.core.history.get(idx).map_or(false, |e| !e.is_empty_assistant()) {
+        if self.core.history.get(idx).is_some_and(|e| !e.is_empty_assistant()) {
             self.set_selected_entry_index(idx);
         }
     }
@@ -2069,10 +2065,10 @@ impl ChatSessionState {
                 i.saturating_sub(1)
             });
         let mut idx = start;
-        while idx > 0 && self.core.history.get(idx).map_or(true, |e| e.is_empty_assistant()) {
+        while idx > 0 && self.core.history.get(idx).is_none_or(super::chat_entry::ChatEntry::is_empty_assistant) {
             idx = idx.saturating_sub(1);
         }
-        if self.core.history.get(idx).map_or(false, |e| !e.is_empty_assistant()) {
+        if self.core.history.get(idx).is_some_and(|e| !e.is_empty_assistant()) {
             self.set_selected_entry_index(idx);
         }
     }
@@ -2211,8 +2207,8 @@ impl ChatSessionState {
         // act as block splitters even when ignored.
         let mut block_start = idx;
         while block_start > 0
-            && self.core.history.get(block_start - 1).map_or(false, |e| !e.is_in_context())
-            && self.core.history.get(block_start - 1).map_or(false, |e| e.pin_position.is_none())
+            && self.core.history.get(block_start - 1).is_some_and(|e| !e.is_in_context())
+            && self.core.history.get(block_start - 1).is_some_and(|e| e.pin_position.is_none())
         {
             block_start -= 1;
         }
