@@ -13,9 +13,9 @@ use super::super::SessionPersistenceActor;
 impl SessionPersistenceActor {
     /// Applies config defaults to the default session profile on startup.
     ///
-    /// Loads user preferences and applies `last_model`
-    /// to the default session, then sends an `UpdatePreferences` command so
-    /// the preferences pipeline handles persistence and state sync.
+    /// Loads app state and applies `last_model`
+    /// to the default session, then sends an `UpdateAppState` command so
+    /// the state pipeline handles persistence and state sync.
     ///
     /// NOTE: Using `active_session_mut()` is acceptable here because this runs
     /// at startup before any user interaction. There is only one session.
@@ -24,7 +24,7 @@ impl SessionPersistenceActor {
         _config: &crate::feat::provider_infra::ProvidersConfig,
         ctx: &ActorContext,
     ) {
-        let prefs = self.services.user_preferences_storage.read();
+        let app_state = self.services.app_state_storage.read();
 
         {
             let mut state = self.state.write();
@@ -34,7 +34,7 @@ impl SessionPersistenceActor {
             // Bench sessions are created with an explicit model before this handler
             // fires, so we must not overwrite them with the user's saved preference.
             let session = state.active_session_mut();
-            if let Some(ref model) = prefs.last_model
+            if let Some(ref model) = app_state.last_model
                 && session.profile().model == crate::feat::provider_infra::NO_PROVIDER_ID
             {
                 session.set_model(model.clone());
@@ -109,14 +109,14 @@ impl SessionPersistenceActor {
             }
         }
 
-        tracing::info!("DIAG on_environment_loaded sending UpdatePreferences");
-        // Send UpdatePreferences command so the pipeline handles persistence + state sync.
-        if let Err(e) = ctx.send_command(Command::UpdatePreferences(crate::feat::preferences_actor::protocol::command::UpdatePreferences {
+        tracing::info!("DIAG on_environment_loaded sending UpdateAppState");
+        // Send UpdateAppState command so the pipeline handles persistence + state sync.
+        if let Err(e) = ctx.send_command(Command::UpdateAppState(crate::feat::preferences_actor::protocol::app_state_command::UpdateAppState {
                 updates: vec![
-                    crate::feat::preferences_actor::protocol::command::PreferenceUpdate::SetLastModel(prefs.last_model.clone()),
+                    crate::feat::preferences_actor::protocol::app_state_command::AppStateUpdate::SetLastModel(app_state.last_model.clone()),
                 ],
             })) {
-            tracing::warn!(err = ?e, "session-actor failed to send UpdatePreferences on startup");
+            tracing::warn!(err = ?e, "session-actor failed to send UpdateAppState on startup");
         }
         tracing::info!("DIAG on_environment_loaded DONE");
     }
@@ -264,16 +264,16 @@ mod tests {
         let (actor, _store) = test_actor_with_store(vec![]);
         let (_sink, ctx) = test_context();
 
-        // Save preferences with a last_model.
-        let prefs = crate::feat::preferences_actor::user_preferences::UserPreferences {
+        // Save state with a last_model.
+        let state_file = crate::feat::preferences_actor::app_state_file::AppStateFile {
             last_model: Some("my-model".to_owned()),
             ..Default::default()
         };
         actor
             .services
-            .user_preferences_storage
-            .save(&prefs)
-            .expect("save prefs");
+            .app_state_storage
+            .save(&state_file)
+            .expect("save state");
 
         // When handling EnvironmentLoaded.
         actor
@@ -310,16 +310,16 @@ mod tests {
                 .set_model("bench-model".to_owned());
         }
 
-        // Save preferences with a different last_model.
-        let prefs = crate::feat::preferences_actor::user_preferences::UserPreferences {
+        // Save state with a different last_model.
+        let state_file = crate::feat::preferences_actor::app_state_file::AppStateFile {
             last_model: Some("wrong-model".to_owned()),
             ..Default::default()
         };
         actor
             .services
-            .user_preferences_storage
-            .save(&prefs)
-            .expect("save prefs");
+            .app_state_storage
+            .save(&state_file)
+            .expect("save state");
 
         let (_sink, ctx) = test_context();
 

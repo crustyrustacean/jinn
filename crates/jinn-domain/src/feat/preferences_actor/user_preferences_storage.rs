@@ -246,7 +246,7 @@ mod tests {
         let prefs = storage.reload().expect("reload");
 
         // Then defaults are returned.
-        assert!(prefs.last_model.is_none());
+        assert!(prefs.tool_entry_max_lines.is_none());
     }
 
     #[rstest::rstest]
@@ -254,13 +254,9 @@ mod tests {
         // Given an InMemoryUserPreferencesStorage.
         let storage = InMemoryUserPreferencesStorage::new();
         let prefs = UserPreferences {
-            last_model: Some("ollama/llama3".to_owned()),
-            tool_entry_max_lines: None,
+            tool_entry_max_lines: Some(42),
             min_collapse_count: None,
-            theme_name: None,
-            persona_name: None,
             session_lifecycles: vec![],
-            sidebar_width: None,
             max_tool_output_lines: None,
             max_tool_output_bytes: None,
             compaction: CompactionConfig::default(),
@@ -278,7 +274,7 @@ mod tests {
         let reloaded = storage.reload().expect("reload");
 
         // Then the round-tripped data matches.
-        assert_eq!(reloaded.last_model.as_deref(), Some("ollama/llama3"));
+        assert_eq!(reloaded.tool_entry_max_lines, Some(42));
     }
 
     #[rstest::rstest]
@@ -297,7 +293,7 @@ mod tests {
         // Then defaults are returned AND the file is auto-created with the
         // canonical template (so users get a comment-rich starter config on
         // first run).
-        assert!(prefs.last_model.is_none());
+        assert!(prefs.tool_entry_max_lines.is_none());
         assert!(
             path.exists(),
             "first-run load should auto-create the config file"
@@ -312,13 +308,9 @@ mod tests {
         let storage = FilesystemUserPreferencesStorage::new(path);
 
         let prefs = UserPreferences {
-            last_model: Some("test/model".to_owned()),
-            tool_entry_max_lines: None,
+            tool_entry_max_lines: Some(42),
             min_collapse_count: None,
-            theme_name: None,
-            persona_name: None,
             session_lifecycles: vec![],
-            sidebar_width: None,
             max_tool_output_lines: None,
             max_tool_output_bytes: None,
             compaction: CompactionConfig::default(),
@@ -336,7 +328,7 @@ mod tests {
         let reloaded = storage.reload().expect("reload");
 
         // Then the round-tripped data matches.
-        assert_eq!(reloaded.last_model.as_deref(), Some("test/model"));
+        assert_eq!(reloaded.tool_entry_max_lines, Some(42));
     }
 
     // --- Service caching tests ---
@@ -347,13 +339,9 @@ mod tests {
         let storage = InMemoryUserPreferencesStorage::new();
         let service = UserPreferencesStorageService::new(Arc::new(storage));
         let prefs = UserPreferences {
-            last_model: Some("ollama/llama3".to_owned()),
-            tool_entry_max_lines: None,
+            tool_entry_max_lines: Some(42),
             min_collapse_count: None,
-            theme_name: None,
-            persona_name: None,
             session_lifecycles: vec![],
-            sidebar_width: None,
             max_tool_output_lines: None,
             max_tool_output_bytes: None,
             compaction: CompactionConfig::default(),
@@ -372,8 +360,8 @@ mod tests {
         let second = service.reload().expect("second reload");
 
         // Then both return the same value without error.
-        assert_eq!(first.last_model, second.last_model);
-        assert_eq!(first.last_model.as_deref(), Some("ollama/llama3"));
+        assert_eq!(first.tool_entry_max_lines, second.tool_entry_max_lines);
+        assert_eq!(first.tool_entry_max_lines, Some(42));
     }
 
     #[rstest::rstest]
@@ -382,13 +370,9 @@ mod tests {
         let storage = InMemoryUserPreferencesStorage::new();
         let service = UserPreferencesStorageService::new(Arc::new(storage));
         let prefs = UserPreferences {
-            last_model: Some("ollama/llama3".to_owned()),
-            tool_entry_max_lines: None,
+            tool_entry_max_lines: Some(10),
             min_collapse_count: None,
-            theme_name: None,
-            persona_name: None,
             session_lifecycles: vec![],
-            sidebar_width: None,
             max_tool_output_lines: None,
             max_tool_output_bytes: None,
             compaction: CompactionConfig::default(),
@@ -404,13 +388,9 @@ mod tests {
 
         // When saving new preferences.
         let updated = UserPreferences {
-            last_model: Some("openrouter/gpt-4".to_owned()),
-            tool_entry_max_lines: None,
+            tool_entry_max_lines: Some(99),
             min_collapse_count: None,
-            theme_name: None,
-            persona_name: None,
             session_lifecycles: vec![],
-            sidebar_width: None,
             max_tool_output_lines: None,
             max_tool_output_bytes: None,
             compaction: CompactionConfig::default(),
@@ -426,7 +406,7 @@ mod tests {
 
         // Then load returns the updated value.
         let loaded = service.reload().expect("reload");
-        assert_eq!(loaded.last_model.as_deref(), Some("openrouter/gpt-4"));
+        assert_eq!(loaded.tool_entry_max_lines, Some(99));
     }
 
     #[rstest::rstest]
@@ -435,13 +415,9 @@ mod tests {
         let storage = InMemoryUserPreferencesStorage::new();
         let service = UserPreferencesStorageService::new(Arc::new(storage));
         let prefs = UserPreferences {
-            last_model: Some("ollama/llama3".to_owned()),
-            tool_entry_max_lines: None,
+            tool_entry_max_lines: Some(55),
             min_collapse_count: None,
-            theme_name: None,
-            persona_name: None,
             session_lifecycles: vec![],
-            sidebar_width: None,
             max_tool_output_lines: None,
             max_tool_output_bytes: None,
             compaction: CompactionConfig::default(),
@@ -455,11 +431,12 @@ mod tests {
         };
         service.save(&prefs).expect("save");
 
+
         // When reloading.
         let reloaded = service.reload().expect("reload");
 
         // Then fresh preferences are returned from storage.
-        assert_eq!(reloaded.last_model.as_deref(), Some("ollama/llama3"));
+        assert_eq!(reloaded.tool_entry_max_lines, Some(55));
     }
 
     #[rstest::rstest]

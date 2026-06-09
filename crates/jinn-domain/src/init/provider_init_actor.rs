@@ -3,7 +3,7 @@
 //! Subscribes to [`EnvironmentLoaded`](super::EnvironmentLoaded) emitted by the
 //! env init actor. On receipt: builds the `ProviderRegistry` from the config,
 //! replaces the empty startup registry, loads the model cache from disk, merges
-//! cache entries into the registry, loads user preferences, and if `last_model`
+//! cache entries into the registry, loads app state, and if `last_model`
 //! is set, sends a `ProviderSwitch` command to apply it.
 
 use crate::common::actor::{Actor, ActorContext, ActorEnvelope, NoDirectMsg};
@@ -19,7 +19,7 @@ use crate::protocol::{Command, Event};
 ///
 /// On `EnvironmentLoaded`: builds the registry from config, replaces the empty
 /// registry in `ProviderRegistryService`, loads the model cache, merges into
-/// registry, loads user preferences, and sends `ProviderSwitch` if `last_model`
+/// registry, loads app state, and sends `ProviderSwitch` if `last_model`
 /// is set.
 pub struct ProviderInitActor {
     /// Shared services (registry, API keys, user preferences storage).
@@ -110,7 +110,7 @@ impl ProviderInitActor {
         }
         self.state.write().provider.model_cache = cache;
 
-        let prefs = self.services.user_preferences_storage.read();
+        let app_state = self.services.app_state_storage.read();
 
         // If last_model is set, send ProviderSwitch to apply it.
         // Skip if the active session already has an explicit model (e.g., bench sessions
@@ -120,7 +120,7 @@ impl ProviderInitActor {
             state.active_session().profile().model.clone()
         };
         if active_session_model == crate::feat::provider_infra::NO_PROVIDER_ID
-            && let Some(ref model) = prefs.last_model
+            && let Some(ref model) = app_state.last_model
         {
             let id = crate::feat::provider_infra::ProviderId::new(model.clone());
             let api_keys = self.services.api_keys.read();
@@ -150,11 +150,8 @@ mod tests {
     };
     use crate::common::services::Services;
     use crate::common::state::State;
-    use crate::feat::preferences_actor::user_preferences::UserPreferences;
-    use crate::feat::preferences_actor::user_preferences::{
-        AutoPruneConfig, BashConfig, CompactionConfig, CwdSelectorConfig, MinimapConfig,
-        OpenrouterWebSearchConfig, RequestRetryConfig, WebFetchConfig,
-    };
+
+
     use crate::feat::provider_infra::ProviderEntry;
     use crate::init::EnvironmentLoaded;
     use crate::protocol::{Command, Event};
@@ -187,30 +184,14 @@ mod tests {
         // Given a provider init actor with preferences containing last_model.
         let (mut actor, services, sink, ctx) = create_actor();
 
-        // Set up preferences with a last_model.
+        // Set up app state with a last_model.
         services
-            .user_preferences_storage
-            .save(&UserPreferences {
+            .app_state_storage
+            .save(&crate::feat::preferences_actor::app_state_file::AppStateFile {
                 last_model: Some("sample/sample".to_owned()),
-                tool_entry_max_lines: None,
-                min_collapse_count: None,
-                theme_name: None,
-                persona_name: None,
-                session_lifecycles: vec![],
-                sidebar_width: None,
-                max_tool_output_lines: None,
-                max_tool_output_bytes: None,
-                compaction: CompactionConfig::default(),
-
-                request_retry: RequestRetryConfig::default(),
-                web_fetch: WebFetchConfig::default(),
-                openrouter_web_search: OpenrouterWebSearchConfig::default(),
-                cwd_selector: CwdSelectorConfig::default(),
-                minimap: MinimapConfig::default(),
-                auto_prune: AutoPruneConfig::default(),
-                bash: BashConfig::default(),
+                ..Default::default()
             })
-            .expect("save prefs");
+            .expect("save app state");
 
         // Set up registry with a sample provider.
         let config = crate::feat::provider_infra::ProvidersConfig {
@@ -402,7 +383,7 @@ mod tests {
     #[rstest::rstest]
     #[tokio::test]
     async fn does_not_send_provider_switch_when_session_has_explicit_model() {
-        // Given a provider init actor with preferences containing last_model
+        // Given a provider init actor with app state containing last_model
         // but the active session already has an explicitly set model.
         let (mut actor, services, sink, ctx, state) = create_actor_with_state();
 
@@ -412,29 +393,14 @@ mod tests {
             .active_session_mut()
             .set_model("bench-model".to_owned());
 
+        // Set up app state with a last_model (should be ignored since session has explicit model).
         services
-            .user_preferences_storage
-            .save(&UserPreferences {
-                last_model: Some("wrong-model".to_owned()),
-                tool_entry_max_lines: None,
-                min_collapse_count: None,
-                theme_name: None,
-                persona_name: None,
-                session_lifecycles: vec![],
-                sidebar_width: None,
-                max_tool_output_lines: None,
-                max_tool_output_bytes: None,
-                compaction: CompactionConfig::default(),
-
-                request_retry: RequestRetryConfig::default(),
-                web_fetch: WebFetchConfig::default(),
-                openrouter_web_search: OpenrouterWebSearchConfig::default(),
-                cwd_selector: CwdSelectorConfig::default(),
-                minimap: MinimapConfig::default(),
-                auto_prune: AutoPruneConfig::default(),
-                bash: BashConfig::default(),
+            .app_state_storage
+            .save(&crate::feat::preferences_actor::app_state_file::AppStateFile {
+                last_model: Some("sample/sample".to_owned()),
+                ..Default::default()
             })
-            .expect("save prefs");
+            .expect("save app state");
 
         let config = crate::feat::provider_infra::ProvidersConfig {
             providers: vec![ProviderEntry {

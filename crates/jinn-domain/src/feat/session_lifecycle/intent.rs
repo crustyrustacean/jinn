@@ -87,7 +87,7 @@ pub fn handle_session_lifecycle_setup(
 
     let model = state
         .frontend
-        .preferences
+        .app_state
         .last_model
         .clone()
         .unwrap_or_else(|| NO_PROVIDER_ID.to_owned());
