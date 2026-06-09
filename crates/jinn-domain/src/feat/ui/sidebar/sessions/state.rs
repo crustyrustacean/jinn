@@ -144,7 +144,7 @@ pub(crate) fn sorted_open_sessions(state: &AppState) -> Vec<SessionEntry> {
     roots.sort_by(|a, b| {
         let ea = entry_map.get(a).expect("root from entry_map keys");
         let eb = entry_map.get(b).expect("root from entry_map keys");
-        ea.created_at.cmp(&eb.created_at)
+        eb.created_at.cmp(&ea.created_at)
     });
 
     // Sort each parent's children ascending by created_at (oldest first).
