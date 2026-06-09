@@ -7,7 +7,7 @@
 use std::time::Duration;
 
 use kameo::prelude::{Actor, ActorRef, Context, Message};
-use kameo_actors::message_bus::{Publish, Register};
+use kameo_actors::message_bus::Publish;
 
 use crate::common::services::bus_service::BusService;
 use crate::feat::chat_input::protocol::command::PushChatEntry;
@@ -34,15 +34,7 @@ impl Actor for EchoActor {
         actor_ref: ActorRef<Self>,
     ) -> Result<Self, Self::Error> {
         // Register to receive ChatEntrySubmitted events from the bus.
-        let recipient = actor_ref.recipient::<ChatEntrySubmitted>();
-        let _ = args
-            .bus
-            .actor_ref()
-            .tell(Register(recipient))
-            .await
-            .inspect_err(|e| {
-                tracing::error!(err = ?e, "echo actor failed to register on bus");
-            });
+        args.bus.register(actor_ref.recipient::<ChatEntrySubmitted>()).await;
 
         Ok(Self { bus: args.bus })
     }

@@ -2,8 +2,8 @@
 
 use std::fmt;
 
-use kameo::prelude::ActorRef;
-use kameo_actors::message_bus::MessageBus;
+use kameo::actor::ActorRef;
+use kameo_actors::message_bus::{MessageBus, Register};
 
 /// Shared, cloneable wrapper around the message bus actor ref.
 ///
@@ -25,6 +25,22 @@ impl BusService {
     #[must_use]
     pub fn actor_ref(&self) -> &ActorRef<MessageBus> {
         &self.bus
+    }
+
+    /// Registers a recipient to receive messages of type `M` on the bus.
+    ///
+    /// Callers typically construct the recipient via `actor_ref.recipient::<M>()`.
+    /// The message type `M` is inferred from the recipient.
+    ///
+    /// ```ignore
+    /// let recipient = actor_ref.recipient::<MyMessage>();
+    /// args.bus.register(recipient).await;
+    /// ```
+    pub async fn register<M: Clone + Send + 'static>(&self, recipient: kameo::actor::Recipient<M>) {
+        self.bus
+            .tell(Register(recipient))
+            .await
+            .expect("bus register should succeed");
     }
 }
 

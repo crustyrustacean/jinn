@@ -10,7 +10,7 @@
 use std::convert::Infallible;
 
 use kameo::prelude::{Actor, ActorRef, Context, Message};
-use kameo_actors::message_bus::{Publish, Register};
+use kameo_actors::message_bus::Publish;
 
 use crate::common::services::bus_service::BusService;
 use crate::feat::chat_input::protocol::command::PushChatEntry;
@@ -36,12 +36,8 @@ impl Actor for DiscoveryNotifierActor {
         args: Self::Args,
         actor_ref: ActorRef<Self>,
     ) -> Result<Self, Self::Error> {
-        let bus = args.bus;
-        bus.actor_ref()
-            .tell(Register(actor_ref.recipient::<SessionDiscoverySettled>()))
-            .await
-            .expect("register discovery notifier on bus");
-        Ok(Self { bus })
+        args.bus.register(actor_ref.recipient::<SessionDiscoverySettled>()).await;
+        Ok(Self { bus: args.bus })
     }
 }
 

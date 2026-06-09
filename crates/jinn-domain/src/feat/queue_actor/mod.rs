@@ -25,7 +25,7 @@
 //! - `ToolContinuation` → call `assemble_prompt()` + emit `SendToLlmProvider`
 
 use kameo::prelude::{Actor, ActorRef, Context, Message};
-use kameo_actors::message_bus::{Publish, Register};
+use kameo_actors::message_bus::Publish;
 
 use crate::common::services::bus_service::BusService;
 use crate::common::state::State;
@@ -67,12 +67,7 @@ impl Actor for QueueActor {
     type Error = std::convert::Infallible;
 
     async fn on_start(args: Self::Args, actor_ref: ActorRef<Self>) -> Result<Self, Self::Error> {
-        let recipient = actor_ref.recipient::<SessionPhaseChanged>();
-        args.bus
-            .actor_ref()
-            .tell(Register(recipient))
-            .await
-            .expect("queue actor failed to register for SessionPhaseChanged");
+        args.bus.register(actor_ref.recipient::<SessionPhaseChanged>()).await;
 
         Ok(Self {
             state: args.state,
