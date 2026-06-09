@@ -32,7 +32,7 @@ use error_stack::Report;
 use futures::StreamExt as _;
 
 use jinn_provider::{LlmService, LlmServiceError, OnRetry, RetryingLlmService};
-use session::{SessionData, SessionState};
+use session::SessionData;
 
 /// OnRetry callback that pushes a system chat entry to notify the user.
 struct PushEntryOnRetry {
@@ -294,7 +294,7 @@ impl LlmActor {
                             tracing::info!(
                                 session_id = ?sid,
                                 token_len = token.len(),
-                                token_preview = %&token[..token.len().min(50)],
+                                token_preview = %token.get(..token.len().min(50)).unwrap_or_default(),
                                 "LLM ACTOR StreamEvent::Text"
                             );
                             accumulated_text.push_str(&token);
@@ -333,7 +333,7 @@ impl LlmActor {
                             tracing::info!(
                                 session_id = ?sid,
                                 token_len = token.len(),
-                                token_preview = %&token[..token.len().min(50)],
+                                token_preview = %token.get(..token.len().min(50)).unwrap_or_default(),
                                 "LLM ACTOR StreamEvent::Reasoning"
                             );
                             accumulated_thinking.push_str(&token);
@@ -497,7 +497,7 @@ impl LlmActor {
 
         // Update session state.
         if let Some(session) = self.sessions.get_mut(&session_id) {
-            session.state = SessionState::Streaming;
+            session.begin_streaming();
         }
 
         self.tasks.insert(session_id, handle);
@@ -582,8 +582,9 @@ impl LlmActor {
 
 #[cfg(test)]
 mod tests {
-    #![allow(clippy::expect_used, clippy::indexing_slicing, reason = "test code")]
+    #![allow(clippy::expect_used, clippy::panic, clippy::unreachable, clippy::indexing_slicing, reason = "test code")]
     use super::*;
+    use super::session::SessionState;
 
     use crate::common::app_state::AppState;
     use crate::common::state::State;
@@ -958,7 +959,7 @@ mod tests {
         let session_data = actor.sessions.get(&session_id);
         assert!(session_data.is_some(), "session should be tracked");
         assert_eq!(
-            session_data.unwrap().state,
+            *session_data.unwrap().state(),
             SessionState::Streaming,
             "session should be in Streaming state"
         );

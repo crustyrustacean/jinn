@@ -64,6 +64,7 @@ pub fn definition() -> ToolDefinition {
 }
 
 /// Executes the `add_task` tool.
+#[expect(clippy::unreachable, reason = "infallible")]
 pub fn execute(call: ToolCall, ctx: ToolContext) -> BoxedToolFuture {
     Box::pin(async move {
         let Some(state) = ctx.state else {
@@ -168,6 +169,7 @@ fn tool_error(call: ToolCall, msg: &str) -> ToolResult {
 
 #[cfg(test)]
 mod tests {
+#![allow(clippy::expect_used, clippy::indexing_slicing, clippy::panic, clippy::unreachable, clippy::string_slice, clippy::uninlined_format_args, reason = "test code")]
     use crate::common::app_state::AppState;
     use crate::common::state::State;
     use crate::feat::todo_list::TaskPosition;

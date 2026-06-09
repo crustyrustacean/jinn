@@ -162,6 +162,7 @@ impl AppStateStorageService {
     ///
     /// Panics if called before a successful `reload()` (or `save()`) has populated
     /// the cache.
+    #[expect(clippy::expect_used, reason = "infallible")]
     pub fn read(&self) -> AppStateFile {
         self.cache
             .read()
@@ -213,7 +214,7 @@ impl std::fmt::Debug for dyn AppStateStorage {
 
 #[cfg(test)]
 mod tests {
-    #![allow(clippy::expect_used, clippy::indexing_slicing, reason = "test code")]
+    #![allow(clippy::expect_used, clippy::panic, clippy::unreachable, clippy::indexing_slicing, reason = "test code")]
     use super::*;
 
     #[rstest::rstest]

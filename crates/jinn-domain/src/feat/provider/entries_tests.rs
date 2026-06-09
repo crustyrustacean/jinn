@@ -1,4 +1,4 @@
-#![allow(clippy::expect_used, clippy::indexing_slicing, reason = "test code")]
+#![allow(clippy::expect_used, clippy::panic, clippy::unreachable, clippy::indexing_slicing, reason = "test code")]
 
 use crate::feat::provider_infra::{ApiKeys, ProviderEntry, ProviderRegistry, ProvidersConfig};
 use crate::feat::theme::default_theme;

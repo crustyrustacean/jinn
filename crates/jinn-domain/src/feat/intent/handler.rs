@@ -693,7 +693,7 @@ fn try_handle_close_session_prompt(intent: &Intent, state: &mut AppState) -> Opt
 
 #[cfg(test)]
 mod tests {
-    #![allow(clippy::expect_used, clippy::indexing_slicing, reason = "test code")]
+    #![allow(clippy::expect_used, clippy::panic, clippy::unreachable, clippy::indexing_slicing, reason = "test code")]
     use crate::common::app_state::{AppState, FocusScope, RenameSessionInputState};
     use crate::feat::intent::IntentHandler;
     use crate::protocol::{ChatEntry, Intent};
@@ -1297,6 +1297,7 @@ mod tests {
 /// intents are covered separately in `intercept_scope_tests`.
 #[cfg(test)]
 mod intercept_tests {
+    #![allow(clippy::expect_used, clippy::panic, clippy::unreachable, clippy::indexing_slicing, reason = "test code")]
     use crate::common::app_state::AppState;
     use crate::feat::intent::IntentHandler;
     use crate::feat::plugin_dispatch::PluginSyncHooks;
@@ -1403,6 +1404,7 @@ mod intercept_tests {
 /// an enrichment one-shot once the toggle was armed).
 #[cfg(test)]
 mod intercept_scope_tests {
+    #![allow(clippy::expect_used, clippy::panic, clippy::unreachable, clippy::indexing_slicing, reason = "test code")]
     use crate::common::app_state::AppState;
     use crate::feat::intent::IntentHandler;
     use crate::feat::plugin_dispatch::PluginSyncHooks;
@@ -1493,6 +1495,7 @@ mod intercept_scope_tests {
 
     #[cfg(test)]
     mod intercept_ctx_tests {
+        #![allow(clippy::expect_used, clippy::panic, clippy::unreachable, clippy::indexing_slicing, reason = "test code")]
         use crate::common::app_state::AppState;
         use crate::feat::intent::IntentHandler;
         use crate::feat::plugin_dispatch::PluginSyncHooks;

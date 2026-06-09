@@ -2,7 +2,7 @@
 //!
 //! Each test verifies one specific tree rendering behavior using BDD style.
 
-#![allow(clippy::expect_used, clippy::indexing_slicing, reason = "test code")]
+#![allow(clippy::expect_used, clippy::panic, clippy::unreachable, clippy::indexing_slicing, reason = "test code")]
 
 use jiff::Timestamp;
 use throbber_widgets_tui::ThrobberState;

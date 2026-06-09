@@ -56,9 +56,9 @@ impl HistoryWorkerChatEntryTokenCache {
     /// evicted. Returns `None` otherwise.
     #[must_use]
     pub fn get(&self, session_id: &SessionId, entry_id: &ChatEntryId) -> Option<u32> {
-        self.inner
-            .get(session_id)
-            .and_then(|session_map| session_map.get(entry_id).map(|v| *v))
+        let session_map = self.inner
+            .get(session_id)?;
+        session_map.get(entry_id).map(|v| *v)
     }
 
     /// Insert a token count for a `(session_id, entry_id)` pair.
@@ -85,12 +85,15 @@ impl HistoryWorkerChatEntryTokenCache {
     /// If it ever becomes a hotspot, switch to a probe-then-insert
     /// pattern: `if let Some(v) = map.get(&k) { return v.clone() }`,
     /// compute outside any guard, then `map.entry(k).or_insert_with(...)`.
-    pub fn get_or_insert_with(
+    pub fn get_or_insert_with<F>(
         &self,
         session_id: &SessionId,
         entry_id: &ChatEntryId,
-        compute: impl FnOnce() -> u32,
-    ) -> u32 {
+        compute: F,
+    ) -> u32
+    where
+        F: FnOnce() -> u32,
+    {
         let session_id = session_id.clone();
         let entry_id = entry_id.clone();
         // outer entry() holds the outer shard guard briefly;
@@ -180,6 +183,7 @@ impl HistoryWorkerChatEntryTokenCacheEvictionActor {
 
 #[cfg(test)]
 mod tests {
+#![allow(clippy::expect_used, clippy::indexing_slicing, clippy::panic, clippy::unreachable, clippy::string_slice, clippy::uninlined_format_args, reason = "test code")]
     use std::sync::Arc;
     use std::sync::atomic::{AtomicUsize, Ordering};
     use std::time::Duration;

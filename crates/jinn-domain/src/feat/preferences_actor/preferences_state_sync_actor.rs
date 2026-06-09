@@ -52,6 +52,7 @@ impl Actor for PreferencesStateSyncActor {
 
 #[cfg(test)]
 mod tests {
+#![allow(clippy::expect_used, clippy::indexing_slicing, clippy::panic, clippy::unreachable, clippy::string_slice, clippy::uninlined_format_args, reason = "test code")]
     use super::*;
     use crate::common::actor::{ActorContext, RecordingSink};
     use crate::common::services::Services;

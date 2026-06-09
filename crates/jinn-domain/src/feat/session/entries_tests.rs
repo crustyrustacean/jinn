@@ -1,10 +1,10 @@
 //! Tests for tree-aware session picker sorting.
+#![allow(clippy::expect_used, clippy::indexing_slicing, clippy::panic, clippy::unreachable, clippy::string_slice, reason = "test code")]
+
 //!
 //! Covers the `sort_entries_tree_aware` function which sorts sessions
 //! so that whole trees move as a unit, positioned by the most recent
 //! `updated_at` across all nodes in the tree.
-
-#![allow(clippy::expect_used, clippy::indexing_slicing, reason = "test code")]
 
 use crate::feat::session::chat_session::SessionState;
 use crate::feat::session::entries::sort_entries_tree_aware;

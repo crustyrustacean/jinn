@@ -47,13 +47,14 @@ const MINIMAP_PALETTE: [Color; MINIMAP_BANDS] = [
 ///
 /// Divides `[0, max_tokens]` into `MINIMAP_BANDS` equal-width bands.
 /// Counts exceeding `max_tokens` get the last band color.
+#[expect(clippy::expect_used, reason = "infallible")]
 fn token_threshold_color(count: u32, max_tokens: u32) -> Color {
     if max_tokens == 0 {
         return MINIMAP_PALETTE[0];
     }
     let band = (u64::from(count) * MINIMAP_BANDS as u64 / u64::from(max_tokens))
         .min((MINIMAP_BANDS - 1) as u64) as usize;
-    MINIMAP_PALETTE[band]
+    MINIMAP_PALETTE.get(band).copied().unwrap_or(*MINIMAP_PALETTE.first().expect("non-empty"))
 }
 
 /// Extension trait for determining whether a visual item should produce
@@ -67,7 +68,7 @@ impl MinimapVisibility for VisualItem {
         match self {
             VisualItem::CollapsedIgnoredBlock { .. } => true,
             VisualItem::Entry(hist_idx) => {
-                let entry = &history[*hist_idx];
+                let Some(entry) = history.get(*hist_idx) else { return false };
                 if entry.is_empty_assistant() {
                     return false;
                 }
@@ -86,6 +87,7 @@ struct VisibleEntry {
 }
 
 /// Computes the list of visible (non-excluded) entries from visual items.
+#[expect(clippy::expect_used, reason = "infallible")]
 fn compute_visible_entries(state: &AppState) -> Vec<VisibleEntry> {
     let session = state.active_session();
     let history = session.history();
@@ -102,7 +104,10 @@ fn compute_visible_entries(state: &AppState) -> Vec<VisibleEntry> {
             }
             let ignored = match item {
                 VisualItem::CollapsedIgnoredBlock { .. } => false,
-                VisualItem::Entry(hist_idx) => !history[*hist_idx].is_in_context(),
+                VisualItem::Entry(hist_idx) => {
+                    let entry = history.get(*hist_idx).expect("hist_idx from visual_items");
+                    !entry.is_in_context()
+                }
             };
             let token_count = if ignored {
                 None
@@ -110,7 +115,7 @@ fn compute_visible_entries(state: &AppState) -> Vec<VisibleEntry> {
                 match item {
                     VisualItem::CollapsedIgnoredBlock { .. } => None,
                     VisualItem::Entry(hist_idx) => {
-                        let entry = &history[*hist_idx];
+                        let entry = history.get(*hist_idx).expect("hist_idx from visual_items");
                         token_cache.get(&entry.id)
                     }
                 }
@@ -129,7 +134,7 @@ fn find_block_index(selected_vi_idx: Option<usize>, visible: &[VisibleEntry]) ->
         None => visible.len().checked_sub(1),
     }
 }
-
+#[expect(clippy::allow_attributes, reason = "dead_code is a compiler lint, not clippy")]
 #[allow(dead_code, reason = "available for future use")]
 fn compute_minimap_scroll(
     selected_block: usize,
@@ -180,7 +185,7 @@ pub fn render_vertical_minimap(
     for row in 0..viewport_height {
         let block_index = selected_block as isize + row as isize - midpoint as isize;
         if block_index >= 0 && (block_index as usize) < total_blocks {
-            let entry = &visible[block_index as usize];
+            let entry = visible.get(block_index as usize)?;
             let span = match entry.token_count {
                 Some(count) => Span::styled(
                     FULL_BLOCK.to_owned(),
@@ -270,7 +275,7 @@ fn compute_tokens_below(state: &AppState, start: usize) -> Option<u32> {
     compute_token_sum_in_range(state, start, history_len)
 }
 
-#[allow(clippy::unnecessary_wraps)]
+#[expect(clippy::unnecessary_wraps, reason = "trait contract requires Result return")]
 fn compute_token_sum_in_range(state: &AppState, start: usize, end: usize) -> Option<u32> {
     let session = state.active_session();
     let history = session.history();
@@ -279,7 +284,7 @@ fn compute_token_sum_in_range(state: &AppState, start: usize, end: usize) -> Opt
     let end = end.min(history.len());
     let start = start.min(end);
     let mut sum: u32 = 0;
-    for entry in &history[start..end] {
+    for entry in history.get(start..end).unwrap_or(&[]) {
         if entry.is_in_context()
             && let Some(count) = token_cache.get(&entry.id)
         {
@@ -343,7 +348,7 @@ pub fn render_minimap_arrow(
 
     let y = chat_log_area.y + arrow.row.min(chat_log_area.height.saturating_sub(1));
 
-    #[allow(
+    #[expect(
         clippy::single_match_else,
         reason = "different match arms produce different widget layouts"
     )]
@@ -453,7 +458,7 @@ fn format_entry_tokens(count: u32) -> String {
 
 #[cfg(test)]
 mod tests {
-    #![allow(clippy::expect_used, clippy::indexing_slicing, reason = "test code")]
+    #![allow(clippy::expect_used, clippy::panic, clippy::unreachable, clippy::indexing_slicing, reason = "test code")]
     use super::*;
     use crate::common::app_state::AppState;
     use crate::feat::session::chat_entry::ChatEntry;

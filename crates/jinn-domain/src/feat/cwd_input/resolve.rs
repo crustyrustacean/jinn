@@ -116,6 +116,7 @@ pub fn resolve_cwd_input(raw: &str, current_cwd: &Path) -> CwdResolution {
 
 #[cfg(test)]
 mod tests {
+#![allow(clippy::expect_used, clippy::indexing_slicing, clippy::panic, clippy::unreachable, clippy::string_slice, clippy::uninlined_format_args, reason = "test code")]
     use super::*;
     use rstest::rstest;
     use std::fs;
@@ -156,7 +157,7 @@ mod tests {
     fn relative_subdir_resolves_against_current_cwd() {
         let dir = tempdir().unwrap();
         let sub = dir.path().join("sub");
-        fs::create_dir(&sub).unwrap();
+        fs::create_dir_all(&sub).unwrap();
         let res = resolve_cwd_input("sub", dir.path());
         assert_eq!(res, CwdResolution::Ok(canonicalize(&sub)));
     }

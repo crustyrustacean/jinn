@@ -58,26 +58,22 @@ pub struct CompactionTrigger {
 #[derive(Clone)]
 pub struct CompactionWorker {
     /// Runtime services (for LLM calls).
-    pub services: Services,
+    services: Services,
     /// Tokio runtime handle for spawning tasks.
-    pub handle: Handle,
+    handle: Handle,
     /// Shared application state (for reading session history).
-    pub state: State,
-    /// Compaction configuration.
-    pub config: CompactionConfig,
-    /// System prompt for compaction summarization.
-    pub compaction_prompt: String,
+    state: State,
     /// Whether an auto-compaction is currently in flight.
     ///
     /// Set before starting the LLM call, cleared when the compaction
     /// summary entry is found in a subsequent snapshot (meaning mutations
     /// were applied) or on error.
-    pub(crate) compaction_in_progress: Arc<AtomicBool>,
+    compaction_in_progress: Arc<AtomicBool>,
     /// The `ChatEntryId` of the pending compaction summary entry.
     ///
     /// Used to detect when mutations have been applied by scanning the snapshot.
     /// `None` when no compaction is in flight.
-    pub(crate) pending_compaction_id: Arc<Mutex<Option<ChatEntryId>>>,
+    pending_compaction_id: Arc<Mutex<Option<ChatEntryId>>>,
 }
 
 impl CompactionWorker {
@@ -86,18 +82,19 @@ impl CompactionWorker {
         services: Services,
         handle: Handle,
         state: State,
-        config: CompactionConfig,
-        compaction_prompt: String,
     ) -> Self {
         Self {
             services,
             handle,
             state,
-            config,
-            compaction_prompt,
             compaction_in_progress: Arc::new(AtomicBool::new(false)),
             pending_compaction_id: Arc::new(Mutex::new(None)),
         }
+    }
+
+    /// Shared application state reference (for reading session history).
+    pub fn state(&self) -> &State {
+        &self.state
     }
 
     /// Check whether the compaction summary from a previous auto-compaction
@@ -105,6 +102,7 @@ impl CompactionWorker {
     ///
     /// If found, clears the in-progress flag and pending ID. Returns true
     /// if the flag was cleared (compaction applied), false if still in flight.
+    #[expect(clippy::expect_used, reason = "infallible")]
     fn check_compaction_applied(&self, history: &[ChatEntry]) -> bool {
         let guard = self.pending_compaction_id.lock().expect("lock");
         let Some(pending_id) = guard.as_ref() else {
@@ -122,6 +120,7 @@ impl CompactionWorker {
     }
 
     /// Clear the compaction in-progress state (flag and pending ID).
+    #[expect(clippy::expect_used, reason = "infallible")]
     fn clear_compaction_state(&self) {
         self.compaction_in_progress.store(false, Ordering::SeqCst);
         *self.pending_compaction_id.lock().expect("lock") = None;
@@ -209,6 +208,7 @@ impl CompactionWorker {
     /// Compacts only when the session's tiktoken-based `context_size()` (the same
     /// value shown in the status bar) exceeds `config.threshold` of the model's
     /// `context_length`.
+    #[expect(clippy::expect_used, reason = "infallible")]
     async fn evaluate_history(
         &self,
         session_id: &SessionId,
@@ -328,7 +328,7 @@ impl CompactionWorker {
     ///
     /// `pub(crate)` for testing - the real entry points are [`evaluate`] (trait)
     /// and [`evaluate_for_session`] (trigger-based).
-    #[allow(clippy::too_many_lines, clippy::too_many_arguments)]
+    #[expect(clippy::expect_used, clippy::too_many_arguments, reason = "handler reads best as a single unit")]
     pub(crate) async fn evaluate_with_config(
         &self,
         history: &[ChatEntry],
@@ -358,12 +358,12 @@ impl CompactionWorker {
         // Step 4: Collect entries for serialization.
         let entries_to_serialize: Vec<ChatEntry> = gathered_indices
             .iter()
-            .map(|&i| history[i].clone())
+            .map(|&i| history.get(i).expect("index from gathered_indices").clone())
             .collect();
 
         // Step 5: Check for previous compaction summary.
         let previous_summary = if start_index > 0 {
-            let prev = &history[start_index - 1];
+            let Some(prev) = history.get(start_index - 1) else { return Err(error_stack::Report::new(CompactionError).attach("start_index out of bounds")) };
             if let ChatEntryKind::Compaction { summary, .. } = &prev.kind {
                 Some(summary.clone())
             } else {
@@ -406,7 +406,7 @@ impl CompactionWorker {
 
         // 8a: Set ForcedExclude for each gathered entry.
         for &idx in &gathered_indices {
-            let entry = &history[idx];
+            let Some(entry) = history.get(idx) else { continue };
             mutations.push(HistoryMutation::SetContextOverride {
                 entry_id: entry.id.clone(),
                 value: ContextOverride::ForcedExclude,
@@ -431,7 +431,7 @@ impl CompactionWorker {
             None,
         );
 
-        let last_gathered_id = gathered_indices.last().map(|&idx| history[idx].id.clone());
+        let last_gathered_id = gathered_indices.last().and_then(|&idx| history.get(idx).map(|e| e.id.clone()));
         mutations.push(HistoryMutation::InsertEntry {
             after_entry_id: last_gathered_id,
             entry: compaction_entry,
@@ -449,19 +449,18 @@ fn resolve_context_limit(
     model_cache: Option<&crate::feat::provider_infra::ModelCache>,
     active_model: &str,
 ) -> Option<u32> {
-    model_cache.and_then(|cache| {
-        let provider_name = active_model.split('/').next()?;
-        let models = cache.entries.get(provider_name)?;
-        let model_suffix = &active_model[(provider_name.len() + 1)..];
-        models
-            .iter()
-            .find(|m| m.id == model_suffix)
-            .and_then(|m| m.context_length)
-    })
+    let cache = model_cache?;
+    let provider_name = active_model.split('/').next()?;
+    let models = cache.entries.get(provider_name)?;
+    let model_suffix = active_model.get((provider_name.len() + 1)..)?;
+    models
+        .iter()
+        .find(|m| m.id == model_suffix)
+        .and_then(|m| m.context_length)
 }
 
 /// Generate a summary using the LLM.
-#[allow(clippy::too_many_arguments)]
+#[expect(clippy::too_many_arguments, reason = "handler signature matches actor protocol")]
 async fn generate_summary(
     services: &Services,
     runtime_handle: &Handle,
@@ -571,3 +570,6 @@ async fn generate_summary(
 
     Ok(summary)
 }
+
+#[cfg(test)]
+mod worker_tests;

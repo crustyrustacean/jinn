@@ -53,9 +53,9 @@ fn to_lines_bash(arguments: &str, ctx: &RenderContext) -> Vec<Line<'static>> {
 
     let mut lines = vec![Line::from(Span::styled(truncated, style))];
 
-    if let Some(bg_color) = bg {
+    if let (Some(bg_color), Some(first_line)) = (bg, lines.first_mut()) {
         pad_line_to_width(
-            &mut lines[0],
+            first_line,
             ctx.content_width,
             Style::default().bg(bg_color),
         );
@@ -78,9 +78,9 @@ fn to_lines_collapsed(name: &str, arguments: &str, ctx: &RenderContext) -> Vec<L
 
     let mut lines = vec![Line::from(Span::styled(truncated, style))];
 
-    if let Some(bg_color) = bg {
+    if let (Some(bg_color), Some(first_line)) = (bg, lines.first_mut()) {
         pad_line_to_width(
-            &mut lines[0],
+            first_line,
             ctx.content_width,
             Style::default().bg(bg_color),
         );
@@ -114,11 +114,13 @@ fn to_lines_streaming(name: &str, arguments: &str, ctx: &RenderContext) -> Vec<L
         }
     } else {
         let remaining = all_lines.len() - max;
-        for line_text in &all_lines[remaining..] {
-            lines.push(Line::from(Span::styled(
-                truncate_to_width(line_text, ctx.content_width as usize),
-                style,
-            )));
+        if let Some(remaining_lines) = all_lines.get(remaining..) {
+            for line_text in remaining_lines {
+                lines.push(Line::from(Span::styled(
+                    truncate_to_width(line_text, ctx.content_width as usize),
+                    style,
+                )));
+            }
         }
         let indicator = truncate_to_width(
             &format!("---({remaining} lines hidden above)---"),
@@ -211,7 +213,7 @@ fn pad_lines(lines: &mut [Line<'static>], ctx: &RenderContext) {
 
 #[cfg(test)]
 mod tests {
-    #![allow(clippy::expect_used, clippy::indexing_slicing, reason = "test code")]
+    #![allow(clippy::expect_used, clippy::panic, clippy::unreachable, clippy::indexing_slicing, reason = "test code")]
     use super::*;
     use crate::feat::session::tool_result_status::ToolResultStatus;
     use crate::feat::ui::chat_log::shared::RenderContext;

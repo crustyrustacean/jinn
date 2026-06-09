@@ -24,7 +24,7 @@ pub const SKILL_CONTENT_PREFIX: &str = "<skill name=\"";
 pub fn parse_loaded_skill_name(content: &str) -> Option<&str> {
     let rest = content.strip_prefix(SKILL_CONTENT_PREFIX)?;
     let end = rest.find('"')?;
-    let name = &rest[..end];
+    let name = rest.get(..end)?;
     if name.is_empty() { None } else { Some(name) }
 }
 
@@ -60,7 +60,7 @@ pub fn loaded_skill_summary_label(content: &str) -> String {
 
 #[cfg(test)]
 mod tests {
-    #![allow(clippy::expect_used, clippy::indexing_slicing, reason = "test code")]
+    #![allow(clippy::expect_used, clippy::panic, clippy::unreachable, clippy::indexing_slicing, reason = "test code")]
 
     use super::*;
 

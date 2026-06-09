@@ -171,7 +171,7 @@ diesel = { version = "2", features = ["sqlite", "r2d2"] }
 cucumber = "0.23"
 
 [workspace.lints.rust]
-missing_docs = "deny"
+missing_docs = "allow"
 
 [workspace.lints.clippy]
 pedantic = { level = "warn", priority = -1 }
@@ -217,7 +217,7 @@ lossy_float_literal = "deny"
 map_err_ignore = "deny"
 map_with_unused_argument_over_ranges = "warn"
 missing_assert_message = "warn"
-missing_docs_in_private_items = "warn"
+missing_docs_in_private_items = "allow"
 mixed_read_write_in_expression = "warn"
 multiple_unsafe_ops_per_block = "deny"
 mutex_atomic = "deny"

@@ -1,3 +1,4 @@
+#![allow(clippy::string_slice, reason = "test code")]
 //! Smoke test: verify `toml_edit` preserves comments on round-trip.
 //!
 //! This is a standalone sanity check that the crate behaves as expected

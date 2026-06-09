@@ -54,22 +54,21 @@ use crate::SessionLoadRequested;
 /// and emits new commands and events via the [`ActorContext`] message sink.
 /// Also persists session snapshots to disk when session state changes.
 pub struct SessionPersistenceActor {
-    /// Shared application state.
-    pub(in crate::feat::session::session_actor) state: State,
+    state: State,
     /// Runtime services (user preferences storage for startup config loading).
-    pub(in crate::feat::session::session_actor) services: Services,
+    services: Services,
     /// Token counter for recording token usage in the session ledger.
-    pub(in crate::feat::session::session_actor) counter: TiktokenCounter,
+    counter: TiktokenCounter,
     /// Registry of builtin lifecycle handlers.
-    pub(in crate::feat::session::session_actor) builtin_registry:
+    builtin_registry:
         crate::feat::session_lifecycle::builtin::BuiltinRegistry,
     /// Shell captured at startup for running lifecycle commands.
-    pub(in crate::feat::session::session_actor) shell: String,
+    shell: String,
     /// Handle for cancelling a currently running lifecycle shell process.
     /// `None` when no lifecycle command is in flight. Carries the process-group
-    /// PID (for kill) and the inner reader task's `AbortHandle` (so aborting it
+    /// PID (for kill) and the inner reader's `AbortHandle` (so aborting it
     /// surfaces the existing "... was cancelled" branch in the outer wrapper).
-    pub(in crate::feat::session::session_actor) lifecycle_child:
+    lifecycle_child:
         Option<crate::feat::session_lifecycle::command_runner::LifecycleCancelHandle>,
 }
 
@@ -329,7 +328,7 @@ impl SessionPersistenceActor {
 
 #[cfg(test)]
 mod dispatch_tests {
-    #![allow(clippy::expect_used, clippy::indexing_slicing, reason = "test code")]
+    #![allow(clippy::expect_used, clippy::panic, clippy::unreachable, clippy::indexing_slicing, reason = "test code")]
     use super::*;
     use crate::common::actor::ActorEnvelope;
     use crate::feat::chat_input::protocol::command::EnqueueUserMessage;

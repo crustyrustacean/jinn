@@ -49,7 +49,7 @@ pub struct AssembledPrompt {
     /// Tool definitions to include in the API request.
     pub tool_definitions: Vec<ToolDefinition>,
     /// Estimated token count (tiktoken o200k_base) of all messages.
-    estimated_tokens: u32,
+    pub estimated_tokens: u32,
 }
 
 impl AssembledPrompt {
@@ -79,7 +79,8 @@ impl AssembledPrompt {
 ///
 /// Panics if the given `session_id` does not exist in the session map.
 #[must_use]
-#[allow(clippy::too_many_lines)]
+#[expect(clippy::too_many_lines, reason = "handler reads best as a single unit")]
+#[expect(clippy::expect_used, reason = "infallible")]
 pub fn assemble_prompt(
     state: &AppState,
     session_id: &SessionId,
@@ -298,7 +299,7 @@ fn count_messages(messages: &[LlmMessage], counter: &dyn TokenCounter) -> u32 {
 
 #[cfg(test)]
 mod tests {
-    #![allow(clippy::expect_used, clippy::indexing_slicing, reason = "test code")]
+    #![allow(clippy::expect_used, clippy::panic, clippy::unreachable, clippy::indexing_slicing, reason = "test code")]
     use super::*;
     use crate::common::app_state::AppState;
     use crate::common::state::State;

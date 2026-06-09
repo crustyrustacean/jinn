@@ -1,3 +1,4 @@
+#![expect(clippy::expect_used, reason = "infallible static regex initialization")]
 //! Token expansion - replaces `#name` tokens using templates from the store.
 
 use std::sync::LazyLock;
@@ -34,7 +35,7 @@ pub fn expand_tokens(text: &str, store: &PromptTemplateStore) -> String {
 
 #[cfg(test)]
 mod expand_tokens_tests {
-    #![allow(clippy::expect_used, clippy::indexing_slicing, reason = "test code")]
+    #![allow(clippy::expect_used, clippy::panic, clippy::unreachable, clippy::indexing_slicing, reason = "test code")]
     use super::*;
     use crate::protocol::PromptTemplate;
 

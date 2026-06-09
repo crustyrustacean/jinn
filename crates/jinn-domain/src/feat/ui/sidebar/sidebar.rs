@@ -65,7 +65,7 @@ impl Sidebar {
         // Render all sections except the last top-down.
         let mut y_offset = 0u16;
         for (i, section) in self.sections.iter_mut().enumerate() {
-            let height = heights[i];
+            let height = heights.get(i).copied().unwrap_or(0);
             if i == n - 1 {
                 break; // handle last section separately
             }
@@ -87,7 +87,7 @@ impl Sidebar {
         // Render the last section (Sessions) anchored to the bottom.
         if n > 0 {
             let last_idx = n - 1;
-            let height = heights[last_idx];
+            let height = heights.get(last_idx).copied().unwrap_or(0);
             if height > 0 {
                 let bottom_y = area.height.saturating_sub(height);
                 let section_y = bottom_y.max(y_offset);
@@ -99,7 +99,9 @@ impl Sidebar {
                     width: area.width,
                     height: section_height,
                 };
-                self.sections[last_idx].render(frame, section_area, ctx);
+                if let Some(section) = self.sections.get_mut(last_idx) {
+                    section.render(frame, section_area, ctx);
+                }
             }
         }
     }
@@ -242,6 +244,7 @@ fn section_has_cursor(id: SidebarSectionId, state: &AppState) -> bool {
 /// Retains the leaving section's cursor position. If the target section has no
 /// cursor (never visited), calls [`receive_cursor`] as fallback.
 /// If the target has a retained cursor, ensures scroll offset is valid.
+#[expect(clippy::else_if_without_else, reason = "no-op on fallthrough is intentional")]
 pub fn jump_to_section(direction: &SidebarIntent, state: &mut AppState) {
     let focused = state
         .frontend

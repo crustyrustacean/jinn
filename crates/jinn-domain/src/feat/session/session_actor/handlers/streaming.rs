@@ -15,6 +15,7 @@ use crate::feat::session::phase_machine::PhaseKind;
 impl SessionPersistenceActor {
     /// Appends a streaming token to the session's assistant entry,
     /// or to the thinking entry if the token is flagged as reasoning.
+    #[expect(clippy::else_if_without_else, reason = "no-op on fallthrough is intentional")]
     pub(in crate::feat::session::session_actor) fn on_stream_token(&self, event: &StreamToken) {
         let mut state = self.state.write();
         let session = state.session_mut_or_create(&event.session_id);
@@ -53,6 +54,7 @@ impl SessionPersistenceActor {
     /// so the streaming indicator remains visible while the followup response
     /// is awaited. The queue is NOT drained - the turn hasn't ended.
     #[expect(clippy::too_many_lines, reason = "1 line over limit")]
+    #[expect(clippy::else_if_without_else, reason = "no-op on fallthrough is intentional")]
     pub(in crate::feat::session::session_actor) async fn on_stream_completed(
         &self,
         event: &StreamCompleted,
@@ -211,7 +213,7 @@ impl SessionPersistenceActor {
 
 #[cfg(test)]
 mod tests {
-    #![allow(clippy::expect_used, clippy::indexing_slicing, reason = "test code")]
+    #![allow(clippy::expect_used, clippy::panic, clippy::unreachable, clippy::indexing_slicing, reason = "test code")]
     use super::super::super::helpers::{test_actor, test_context};
     use crate::feat::provider::protocol::event::{
         StreamCompleted, StreamCompletedReason, StreamToken,

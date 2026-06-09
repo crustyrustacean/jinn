@@ -241,10 +241,7 @@ fn apply_array(
     }
 }
 
-#[allow(
-    clippy::too_many_lines,
-    reason = "linear recursive TOML-table walk that reads best as a single unit"
-)]
+#[expect(clippy::expect_used, reason = "infallible")]
 fn apply_array_of_tables_by_key(
     new: &[toml::Value],
     target: &mut Item,
@@ -299,8 +296,8 @@ fn apply_array_of_tables_by_key(
     for (idx, entry) in array.iter().enumerate() {
         let actual_key: Option<String> = entry.get(key_field).and_then(item_to_string_key);
         match actual_key {
-            Some(k) if new_by_key.contains_key(&k) => matched[idx] = true,
-            None => matched[idx] = true, // missing key field — preserve
+            Some(k) if new_by_key.contains_key(&k) => *matched.get_mut(idx).expect("idx from enumerate") = true,
+            None => *matched.get_mut(idx).expect("idx from enumerate") = true, // missing key field — preserve
             _ => {}
         }
     }
@@ -311,11 +308,7 @@ fn apply_array_of_tables_by_key(
         .enumerate()
         .filter_map(|(idx, entry)| {
             let k = entry.get(key_field).and_then(item_to_string_key)?;
-            if new_by_key.contains_key(&k) {
-                Some((idx, k))
-            } else {
-                None
-            }
+            new_by_key.contains_key(&k).then_some((idx, k))
         })
         .collect();
 
@@ -350,7 +343,7 @@ fn apply_array_of_tables_by_key(
 
     // Remove unmatched entries (their key was removed from the struct).
     for i in (0..array.len()).rev() {
-        if !matched[i] {
+        if !matched.get(i).copied().unwrap_or(false) {
             array.remove(i);
         }
     }
@@ -386,6 +379,7 @@ fn entry_exists_with_key(array: &ArrayOfTables, key_field: &str, key_value: &str
     false
 }
 
+#[expect(clippy::expect_used, reason = "infallible")]
 fn apply_scalar(new: &toml::Value, target: &mut Item) {
     let new_value = value_to_value_edit(new);
     if target.is_value() {
@@ -503,7 +497,7 @@ fn item_to_string_key(item: &Item) -> Option<String> {
 
 #[cfg(test)]
 mod tests {
-    #![allow(clippy::expect_used, clippy::indexing_slicing, reason = "test code")]
+    #![allow(clippy::expect_used, clippy::panic, clippy::unreachable, clippy::indexing_slicing, reason = "test code")]
 
     use super::*;
     use toml_edit::DocumentMut;

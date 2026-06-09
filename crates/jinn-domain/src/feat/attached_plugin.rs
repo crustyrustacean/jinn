@@ -37,7 +37,10 @@ impl AttachedPlugin {
     /// Construct a new attachment with `enabled = true`, `run_state = Idle`,
     /// and `label = name`.
     #[must_use]
-    pub fn new(name: impl Into<String>) -> Self {
+    pub fn new<S>(name: S) -> Self
+    where
+        S: Into<String>,
+    {
         let name = name.into();
         let label = name.clone();
         Self {
@@ -82,7 +85,7 @@ pub enum PluginRunState {
 
 #[cfg(test)]
 mod tests {
-    #![allow(clippy::expect_used, clippy::indexing_slicing, reason = "test code")]
+    #![allow(clippy::expect_used, clippy::panic, clippy::unreachable, clippy::indexing_slicing, reason = "test code")]
 
     use super::*;
 

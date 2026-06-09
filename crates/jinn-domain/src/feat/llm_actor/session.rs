@@ -15,7 +15,7 @@ pub(crate) enum SessionState {
 /// Per-session data tracked by the actor.
 pub(crate) struct SessionData {
     /// Current state in the streaming lifecycle.
-    pub(crate) state: SessionState,
+    state: SessionState,
 }
 
 impl SessionData {
@@ -24,5 +24,16 @@ impl SessionData {
         Self {
             state: SessionState::Idle,
         }
+    }
+
+    /// Returns the current streaming lifecycle state.
+    #[cfg(test)]
+    pub(in crate::feat::llm_actor) fn state(&self) -> &SessionState {
+        &self.state
+    }
+
+    /// Transitions to [`SessionState::Streaming`].
+    pub(crate) fn begin_streaming(&mut self) {
+        self.state = SessionState::Streaming;
     }
 }

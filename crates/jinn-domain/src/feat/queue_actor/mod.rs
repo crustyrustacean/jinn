@@ -123,7 +123,7 @@ impl QueueActor {
 
     /// Dispatch a user message: push to history, set title, begin sending,
     /// assemble prompt, emit SendToLlmProvider, emit ChatEntrySubmitted, emit PersistSession.
-    #[allow(clippy::unused_async)]
+    #[expect(clippy::unused_async, reason = "trait contract requires async")]
     async fn dispatch_user_message(
         &self,
         session_id: &crate::protocol::SessionId,
@@ -200,7 +200,6 @@ impl QueueActor {
     /// Dispatch a tool continuation: assemble prompt and emit SendToLlmProvider.
     ///
     /// See [`Self::dispatch_resume`] for the shared dispatch body.
-    #[allow(clippy::unused_async)]
     async fn dispatch_tool_continuation(
         &self,
         session_id: &crate::protocol::SessionId,
@@ -212,7 +211,7 @@ impl QueueActor {
 
     /// Shared dispatch body for tool-continuation and manual-resume paths:
     /// re-assemble prompt from current history and emit `SendToLlmProvider`.
-    #[allow(clippy::unused_async)]
+    #[expect(clippy::unused_async, reason = "trait contract requires async")]
     async fn dispatch_resume(
         &self,
         session_id: &crate::protocol::SessionId,
@@ -269,7 +268,7 @@ impl QueueActor {
 
 #[cfg(test)]
 mod tests {
-    #![allow(clippy::expect_used, clippy::indexing_slicing, reason = "test code")]
+    #![allow(clippy::expect_used, clippy::panic, clippy::unreachable, clippy::indexing_slicing, reason = "test code")]
 
     use super::*;
     use crate::common::actor::{ActorContext, RecordingSink};

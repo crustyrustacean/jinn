@@ -149,7 +149,7 @@ fn build_age_window_mutations(
     let mut mutations = Vec::new();
 
     for i in 0..prune_region_start {
-        let entry = &history[i];
+        let Some(entry) = history.get(i) else { continue };
 
         // Only ToolCalls in the prune region are candidates.
         let tool_call_id = match &entry.kind {
@@ -211,7 +211,7 @@ fn build_age_window_mutations(
 
 #[async_trait::async_trait]
 impl HistoryWorker for ToolAgeWindowAutoPruneWorker {
-    #[allow(clippy::unnecessary_literal_bound)]
+    #[expect(clippy::unnecessary_literal_bound, reason = "lifetime elision makes bound redundant")]
     fn name(&self) -> &str {
         "auto-prune-tool-age-window"
     }
@@ -234,7 +234,7 @@ impl HistoryWorker for ToolAgeWindowAutoPruneWorker {
 
 #[cfg(test)]
 mod tests {
-    #![allow(clippy::expect_used, clippy::indexing_slicing, reason = "test code")]
+    #![allow(clippy::expect_used, clippy::panic, clippy::unreachable, clippy::indexing_slicing, reason = "test code")]
 
     use super::*;
     use crate::feat::preferences_actor::user_preferences::ToolAgeWindowAutoPruneConfig;

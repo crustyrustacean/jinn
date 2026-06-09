@@ -27,6 +27,9 @@ use crate::protocol::{Command, SessionId};
 #[error(debug)]
 pub struct DomainContextError;
 
+type PendingResult = Arc<Mutex<HashMap<SessionId, oneshot::Sender<Result<String, String>>>>>;
+
+
 /// Domain context for Lua plugin LLM access.
 ///
 /// Provides:
@@ -43,7 +46,7 @@ pub struct DomainNodeContext {
     /// The sender carries a `Result`: `Ok(text)` for a successful one-shot
     /// (assistant text) or `Err(message)` when the one-shot session ended in an
     /// error entry (e.g. provider connection failure).
-    pending: Arc<Mutex<HashMap<SessionId, oneshot::Sender<Result<String, String>>>>>,
+    pending: PendingResult,
 }
 
 impl DomainNodeContext {
@@ -199,11 +202,7 @@ impl DomainNodeContext {
         //    Tools branch on `disable_tool_loop`: an empty vec forces no tools and
         //    pairs with `set_tool_loop_disabled` (step 4a); `None` lets assembly
         //    inherit the full global catalog, same as a normal session.
-        let tool_definitions = if disable_tool_loop {
-            Some(Vec::new())
-        } else {
-            None
-        };
+        let tool_definitions = disable_tool_loop.then(Vec::new);
         let overrides = AssemblyOverrides {
             system_prompt,
             tool_definitions,
@@ -275,7 +274,7 @@ impl DomainNodeContext {
 
 #[cfg(test)]
 mod tests {
-    #![allow(clippy::expect_used, clippy::indexing_slicing, reason = "test code")]
+    #![allow(clippy::expect_used, clippy::panic, clippy::unreachable, clippy::indexing_slicing, reason = "test code")]
 
     use super::*;
     use crate::common::app_state::AppState;

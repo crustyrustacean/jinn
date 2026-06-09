@@ -1,11 +1,11 @@
 //! Tests for DiscoverActor - command dispatch and handle routing.
+#![allow(clippy::expect_used, clippy::indexing_slicing, clippy::panic, clippy::unreachable, clippy::string_slice, reason = "test code")]
+
 //!
 //! (handle, handle_command, RefreshModels match arm) by verifying
 //! that commands are received and processed.
 //!
 //! Note: Testing the full `refresh_models` flow requires actual network calls,
-
-#![allow(clippy::expect_used, clippy::indexing_slicing, reason = "test code")]
 
 use std::sync::Arc;
 

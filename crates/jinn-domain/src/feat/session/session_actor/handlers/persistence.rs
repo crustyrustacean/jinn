@@ -114,7 +114,7 @@ impl SessionPersistenceActor {
     /// Creates an empty session with the given ID and emits a `SessionLoadCompleted` command.
     ///
     /// Used as a fallback when a session is not found or fails to load.
-    #[allow(clippy::unused_self)]
+    #[expect(clippy::unused_self, reason = "trait contract requires #[allow(clippy::unused_self)]self method")]
     fn create_empty_session_response(
         &self,
         session_id: &crate::protocol::SessionId,
@@ -300,7 +300,7 @@ impl SessionPersistenceActor {
     }
 
     /// Walk the parent chain up to root, then BFS to collect all session IDs
-    /// in the tree. Uses only the summary map (session_id → parent_session_id).
+    /// in the summary map (session_id → parent_session_id).
     fn collect_tree_ids(
         start: &SessionId,
         summary_map: &HashMap<SessionId, Option<SessionId>>,
@@ -344,6 +344,7 @@ impl SessionPersistenceActor {
     ///
     /// If the requested session is a judge, redirects to loading its origin session
     /// instead. The judge gets loaded as a side-effect of the origin's auto-load.
+    #[expect(clippy::expect_used, reason = "just inserted above")]
     pub(in crate::feat::session::session_actor) async fn on_load_requested(
         &mut self,
         evt: &SessionLoadRequested,
@@ -402,6 +403,8 @@ mod tests {
     #![allow(
         clippy::similar_names,
         clippy::expect_used,
+        clippy::panic,
+        clippy::unreachable,
         clippy::indexing_slicing,
         reason = "test code"
     )]

@@ -154,6 +154,7 @@ struct HistoryRender<'a> {
     /// Per-visual-item wrapped line ranges: `entry_line_ranges[vi_idx] = (start, end)`.
     entry_line_ranges: Vec<(u16, u16)>,
     miss_lines: HashMap<usize, Vec<Line<'static>>>,
+    #[expect(clippy::rc_buffer, reason = "Vec<Line> not Send, Arc used for cheap clone within same thread")]
     cached_lines: HashMap<usize, Arc<Vec<Line<'static>>>>,
     total_wrapped: u16,
     scroll: ScrollState,
@@ -254,13 +255,14 @@ impl<'a> HistoryRender<'a> {
     /// On a cache hit with rendered lines, the lines are stored in `cached_lines`
     /// for reuse in Pass 2. On a miss, lines are rendered, stored in both the cache
     /// (via `insert_with_lines`) and `miss_lines`.
+    #[expect(clippy::expect_used, reason = "infallible")]
     fn compute_line_ranges(&mut self, cache: &mut EntryLineCache) {
         let mut wrapped_cursor: u16 = 0;
 
         for (vi_idx, item) in self.visual_items.iter().enumerate() {
             match item {
                 VisualItem::Entry(hist_idx) => {
-                    let entry = &self.history[*hist_idx];
+                    let entry = self.history.get(*hist_idx).expect("hist_idx from visual_items");
                     let is_expanded = self.state.active_session().is_entry_expanded(&entry.id);
 
                     if let Some(hit) = cache.get(entry, is_expanded, self.content_width) {
@@ -394,6 +396,7 @@ impl<'a> HistoryRender<'a> {
     // -----------------------------------------------------------------------
 
     /// Build content and gutter lines for all visible entries.
+    #[expect(clippy::expect_used, reason = "infallible")]
     fn render_visible_entries(&mut self) {
         let viewport_top = self.scroll.clamped;
         let chat_log_active = matches!(
@@ -403,12 +406,12 @@ impl<'a> HistoryRender<'a> {
         let cursor_color = self.theme.focus_accent;
 
         for &vi_idx in &self.visible_indices {
-            let (entry_start, _entry_end) = self.entry_line_ranges[vi_idx];
+            let (entry_start, _entry_end) = self.entry_line_ranges.get(vi_idx).copied().expect("vi_idx from visible_indices");
             let abs_entry_start = entry_start + self.scroll.blank_count as u16;
 
-            match &self.visual_items[vi_idx] {
-                VisualItem::Entry(hist_idx) => {
-                    let entry = &self.history[*hist_idx];
+            match self.visual_items.get(vi_idx) {
+                Some(VisualItem::Entry(hist_idx)) => {
+                    let entry = self.history.get(*hist_idx).expect("hist_idx from visual_items");
                     let is_selected = self.selected_idx == Some(vi_idx);
                     let is_expanded = self.state.active_session().is_entry_expanded(&entry.id);
                     let max_lines = self
@@ -467,7 +470,7 @@ impl<'a> HistoryRender<'a> {
                     self.content_lines.extend(entry_content_lines);
                     self.gutter_lines.extend(entry_gutter_lines);
                 }
-                VisualItem::CollapsedIgnoredBlock { count, .. } => {
+                Some(VisualItem::CollapsedIgnoredBlock { count, .. }) => {
                     let is_selected = self.selected_idx == Some(vi_idx);
 
                     // Content: gray summary line.
@@ -490,6 +493,7 @@ impl<'a> HistoryRender<'a> {
                         self.lines_before_viewport += viewport_top.saturating_sub(abs_entry_start);
                     }
                 }
+                None => {}
             }
         }
     }

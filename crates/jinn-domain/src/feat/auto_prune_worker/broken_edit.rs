@@ -71,7 +71,7 @@ fn find_failed_edit_result(
 
 #[async_trait::async_trait]
 impl HistoryWorker for BrokenEditAutoPruneWorker {
-    #[allow(clippy::unnecessary_literal_bound)]
+    #[expect(clippy::unnecessary_literal_bound, reason = "lifetime elision makes bound redundant")]
     fn name(&self) -> &str {
         "auto-prune-broken-edit"
     }
@@ -84,7 +84,7 @@ impl HistoryWorker for BrokenEditAutoPruneWorker {
         let mut mutations = Vec::new();
 
         for i in 0..history.len() {
-            let entry = &history[i];
+            let Some(entry) = history.get(i) else { continue };
 
             // Only interested in "edit" tool calls.
             let tool_call_id = match &entry.kind {
@@ -150,7 +150,7 @@ impl HistoryWorker for BrokenEditAutoPruneWorker {
 
 #[cfg(test)]
 mod tests {
-    #![allow(clippy::expect_used, clippy::indexing_slicing, reason = "test code")]
+    #![allow(clippy::expect_used, clippy::panic, clippy::unreachable, clippy::indexing_slicing, reason = "test code")]
 
     use super::*;
     use crate::feat::preferences_actor::user_preferences::BrokenEditAutoPruneConfig;
@@ -294,10 +294,10 @@ mod tests {
     #[test]
     fn config_alias_min_tail_entries_still_parses() {
         // Given a TOML fragment using the legacy `min_tail_entries` field.
-        let toml_src = r#"
+        let toml_src = "
             enabled = true
             min_tail_entries = 10
-        "#;
+        ";
 
         // When deserializing.
         let config: BrokenEditAutoPruneConfig = toml::from_str(toml_src).expect("parse");

@@ -76,16 +76,15 @@ pub fn render_rename_session_input(frame: &mut Frame<'_>, area: Rect, ctx: &Rend
 
     // Compute cursor x position: "> " (2) + grapheme count up to cursor_pos.
     let prefix_len = 2u16;
-    let grapheme_count = input_state.text.input[..input_state.text.cursor_pos]
-        .graphemes(true)
-        .count();
+    let grapheme_count = input_state.text.input.get(..input_state.text.cursor_pos)
+        .map_or(0, |s| s.graphemes(true).count());
     let cursor_x = (prefix_len + grapheme_count as u16).min(inner.width.saturating_sub(1));
     frame.set_cursor_position((inner.x.saturating_add(cursor_x), inner.y));
 }
 
 #[cfg(test)]
 mod tests {
-    #![allow(clippy::expect_used, clippy::indexing_slicing, reason = "test code")]
+    #![allow(clippy::expect_used, clippy::panic, clippy::unreachable, clippy::indexing_slicing, reason = "test code")]
     use super::*;
     use crate::common::app_state::{AppState, FocusScope, RenameSessionInputState};
     use jinn_testutil::setup_term;
@@ -167,7 +166,7 @@ mod tests {
         let inner_x = popup_area.x + 1;
 
         let row_text: String = (inner_x..inner_x + 20)
-            .filter_map(|x| buffer.cell((x, inner_y)).map(|c| c.symbol().to_string()))
+            .filter_map(|x| buffer.cell((x, inner_y)).map(|c| c.symbol().to_owned()))
             .collect();
         assert!(
             row_text.starts_with("> Hello World"),

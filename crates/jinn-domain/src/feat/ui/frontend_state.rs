@@ -155,7 +155,7 @@ impl Default for FrontendState {
         Self {
             should_quit: false,
             pins: PinsState::default(),
-            sidebar: SidebarState::default(),
+            sidebar: SidebarState,
             persona_section: PersonaSectionState::default(),
             sessions_section: SessionsSectionState::default(),
             task_list_section: TaskListSectionState::default(),
@@ -182,7 +182,7 @@ impl Default for FrontendState {
 
 #[cfg(test)]
 mod tests {
-    #![allow(clippy::expect_used, clippy::indexing_slicing, reason = "test code")]
+    #![allow(clippy::expect_used, clippy::panic, clippy::unreachable, clippy::indexing_slicing, reason = "test code")]
 
     use super::*;
     use jinn_selection_widget::PreviewCache;

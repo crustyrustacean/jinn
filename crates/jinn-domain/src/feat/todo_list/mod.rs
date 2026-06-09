@@ -26,12 +26,13 @@ use serde::{Deserialize, Serialize};
 const ID_CHARSET: &[u8] = b"abcdefghijklmnqrsuvwxyz0123456789";
 
 /// Generates 3 random characters from the ID charset.
+#[expect(clippy::expect_used, reason = "infallible")]
 fn generate_id_chars() -> [u8; 3] {
     let mut rng = rand::rng();
     [
-        ID_CHARSET[rng.random_range(0..ID_CHARSET.len())],
-        ID_CHARSET[rng.random_range(0..ID_CHARSET.len())],
-        ID_CHARSET[rng.random_range(0..ID_CHARSET.len())],
+        *ID_CHARSET.get(rng.random_range(0..ID_CHARSET.len())).expect("range bounded by ID_CHARSET.len()"),
+        *ID_CHARSET.get(rng.random_range(0..ID_CHARSET.len())).expect("range bounded by ID_CHARSET.len()"),
+        *ID_CHARSET.get(rng.random_range(0..ID_CHARSET.len())).expect("range bounded by ID_CHARSET.len()"),
     ]
 }
 
@@ -47,6 +48,7 @@ fn generate_id_chars() -> [u8; 3] {
 pub struct PhaseId(String);
 
 impl PhaseId {
+    #[expect(clippy::expect_used, reason = "infallible")]
     fn new(existing: &[PhaseId]) -> Self {
         loop {
             let chars = generate_id_chars();
@@ -94,6 +96,7 @@ impl AsRef<str> for PhaseId {
 pub struct TaskId(String);
 
 impl TaskId {
+    #[expect(clippy::expect_used, reason = "charset is valid UTF-8")]
     fn new(existing: &[TaskId]) -> Self {
         loop {
             let chars = generate_id_chars();
@@ -229,11 +232,11 @@ pub enum TaskListError {
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 pub struct Task {
     /// Unique identifier for this task.
-    pub(crate) id: TaskId,
+    pub id: TaskId,
     /// Human-readable description of the task.
-    pub(crate) description: String,
+    pub description: String,
     /// Current status of the task.
-    pub(crate) status: TaskStatus,
+    pub status: TaskStatus,
 }
 
 impl Task {
@@ -264,11 +267,11 @@ impl Task {
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 pub struct Phase {
     /// Unique identifier for this phase.
-    pub(crate) id: PhaseId,
+    pub id: PhaseId,
     /// Human-readable description of the phase.
-    pub(crate) description: String,
+    pub description: String,
     /// Ordered tasks within this phase.
-    pub(crate) tasks: Vec<Task>,
+    pub tasks: Vec<Task>,
 }
 
 impl Phase {
@@ -325,7 +328,7 @@ impl Phase {
 pub struct TaskList {
     /// Ordered phases in this task list.
     #[serde(default)]
-    pub(crate) phases: Vec<Phase>,
+    pub phases: Vec<Phase>,
 }
 
 impl TaskList {
@@ -463,7 +466,7 @@ impl TaskList {
     /// # Panics
     ///
     /// Panics if internal invariants are violated (source/reference found but then missing).
-    #[allow(clippy::needless_pass_by_value)]
+    #[expect(clippy::needless_pass_by_value, reason = "ownership semantics required by trait")]
     pub fn postpone_task(
         &mut self,
         source_task_id: &TaskId,
@@ -520,10 +523,10 @@ impl TaskList {
             ref_phase_idx.ok_or_else(|| TaskListError::TaskNotFound(ref_task_id.clone()))?;
 
         // Mark source task as postponed.
-        let source_task = self.phases[src_pi]
-            .tasks
-            .iter_mut()
-            .find(|t| &t.id == source_task_id);
+        let source_task = self.phases.get_mut(src_pi)
+            .and_then(|phase| {
+                phase.tasks.iter_mut().find(|t| &t.id == source_task_id)
+            });
         if let Some(t) = source_task {
             t.status = TaskStatus::Postponed;
         } else {
@@ -551,7 +554,7 @@ impl TaskList {
         };
 
         // Insert at position in target phase.
-        let phase = &mut self.phases[target_pi];
+        let Some(phase) = self.phases.get_mut(target_pi) else { return Err(TaskListError::InternalInvariant { what: "postpone_task: target phase not found" }) };
         match &position {
             TaskPosition::After(after_id) => {
                 let idx =
@@ -571,7 +574,9 @@ impl TaskList {
                         })?;
                 phase.tasks.insert(idx, new_task);
             }
-            TaskPosition::End => unreachable!(),
+            TaskPosition::End => {
+                phase.tasks.push(new_task);
+            }
         }
 
         Ok(new_task_id)
@@ -632,10 +637,10 @@ impl TaskList {
             .ok_or_else(|| TaskListError::PhaseNotFound(target_phase_id.clone()))?;
 
         // Mark source task as postponed.
-        let source_task = self.phases[src_phase_idx]
-            .tasks
-            .iter_mut()
-            .find(|t| &t.id == source_task_id);
+        let source_task = self.phases.get_mut(src_phase_idx)
+            .and_then(|phase| {
+                phase.tasks.iter_mut().find(|t| &t.id == source_task_id)
+            });
         if let Some(t) = source_task {
             t.status = TaskStatus::Postponed;
         } else {
@@ -663,8 +668,9 @@ impl TaskList {
         };
 
         // Append to end of target phase.
-        self.phases[target_pi].tasks.push(new_task);
-
+        if let Some(phase) = self.phases.get_mut(target_pi) {
+            phase.tasks.push(new_task);
+        }
         Ok(new_task_id)
     }
 
@@ -856,13 +862,14 @@ impl TaskList {
     /// Panics if `active_phase()` returns a phase with no `TaskStatus::Pending`
     /// task — which the constructor of `Phase` and `active_phase()` invariantly forbid.
     #[must_use]
+    #[expect(clippy::expect_used, reason = "infallible")]
     pub fn render_next_block(&self) -> String {
         if self.phases.is_empty() {
             return String::new();
         }
 
         if let Some(active) = self.active_phase() {
-            // Safety: active_phase() implies has_pending_work(), which implies
+            // active_phase() implies has_pending_work(), which implies
             // at least one task with TaskStatus::Pending.
             let next_task = active
                 .tasks
@@ -916,7 +923,7 @@ impl TaskList {
                 .iter()
                 .filter(|t| t.status == TaskStatus::Pending)
                 .collect();
-            let next_task = &pending[0];
+            let Some(next_task) = pending.first() else { return self.render_next_block() };
             let remaining = pending.len();
             return format!(
                 "→ NEXT: {} — {} ({} pending in phase {})",
@@ -928,7 +935,7 @@ impl TaskList {
         // Are there later phases that still have work? Those are blocked until verify.
         let completed_idx = self.phases.iter().position(|p| &p.id == completed_phase_id);
         let later_blocked = match completed_idx {
-            Some(idx) => self.phases[idx + 1..].iter().any(Phase::has_pending_work),
+            Some(idx) => self.phases.get(idx + 1..).is_some_and(|tail| tail.iter().any(Phase::has_pending_work)),
             None => false,
         };
 

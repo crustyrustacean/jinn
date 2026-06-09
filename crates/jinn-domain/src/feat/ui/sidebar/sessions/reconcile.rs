@@ -31,16 +31,17 @@ pub fn reconcile_after_session_removal(state: &mut AppState) {
 
     let active_id = state.session.active_session_id();
     let active_in_list = sessions.iter().any(|s| &s.id == active_id);
-    if !active_in_list {
-        state.session.set_active(sessions[clamped].id.clone());
-    }
+    if !active_in_list
+        && let Some(s) = sessions.get(clamped) {
+            state.session.set_active(s.id.clone());
+        }
 
     scroll_to_cursor(state);
 }
 
 #[cfg(test)]
 mod tests {
-    #![allow(clippy::expect_used, clippy::indexing_slicing, reason = "test code")]
+    #![allow(clippy::expect_used, clippy::panic, clippy::unreachable, clippy::indexing_slicing, reason = "test code")]
     use super::*;
     use crate::feat::session::chat_session::ChatSessionState;
 

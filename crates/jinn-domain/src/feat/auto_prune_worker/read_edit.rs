@@ -79,7 +79,7 @@ pub struct ReadEditAutoPruneWorker {
 
 #[async_trait::async_trait]
 impl HistoryWorker for ReadEditAutoPruneWorker {
-    #[allow(clippy::unnecessary_literal_bound)]
+    #[expect(clippy::unnecessary_literal_bound, reason = "lifetime elision makes bound redundant")]
     fn name(&self) -> &str {
         "auto-prune-read-edit"
     }
@@ -93,7 +93,7 @@ impl HistoryWorker for ReadEditAutoPruneWorker {
         let history_len = history.len();
 
         for i in 0..history_len {
-            let entry = &history[i];
+            let Some(entry) = history.get(i) else { continue };
 
             // Only interested in "read" tool calls with a parseable file path.
             let (tool_call_id, read_path) = match &entry.kind {
@@ -122,7 +122,7 @@ impl HistoryWorker for ReadEditAutoPruneWorker {
                 continue;
             };
 
-            let result_protected = history[result_idx].is_protected_from_prune();
+            let result_protected = history.get(result_idx).is_some_and(super::super::session::chat_entry::ChatEntry::is_protected_from_prune);
 
             // Count how many edit/write calls to the same file appear after
             // this read. Once the threshold is reached, the read is stale.
@@ -165,6 +165,8 @@ impl HistoryWorker for ReadEditAutoPruneWorker {
 mod tests {
     #![allow(
         clippy::expect_used,
+        clippy::panic,
+        clippy::unreachable,
         clippy::indexing_slicing,
         clippy::similar_names,
         reason = "test code"

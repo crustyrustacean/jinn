@@ -49,10 +49,6 @@ use crate::feat::tools_actor::protocol::command::{
 /// UI operations have been migrated to the Intent/IntentHandler pipeline.
 /// This enum contains only commands that require actor coordination
 /// or domain processing.
-#[allow(
-    clippy::large_enum_variant,
-    reason = "boxing would cascade through all match arms"
-)]
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub enum Command {
     /// Send a message to the AI provider.
@@ -380,7 +376,7 @@ impl std::fmt::Display for Command {
 
 #[cfg(test)]
 mod tests {
-    #![allow(clippy::expect_used, clippy::indexing_slicing, reason = "test code")]
+    #![allow(clippy::expect_used, clippy::panic, clippy::unreachable, clippy::indexing_slicing, reason = "test code")]
     use super::*;
     use crate::protocol::SessionId;
 

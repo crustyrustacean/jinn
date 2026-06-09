@@ -345,6 +345,7 @@ fn migrate_v5(conn: &mut SqliteConnection) -> Result<(), Report<SessionStoreErro
 ///
 /// Sessions default to unarchived. Closing a session sets \`archived = TRUE\`.
 /// On startup, only unarchived sessions are loaded into memory.
+#[expect(clippy::expect_used, reason = "infallible")]
 fn migrate_v6(conn: &mut SqliteConnection) {
     sql_query("ALTER TABLE sessions ADD COLUMN archived BOOLEAN NOT NULL DEFAULT FALSE")
         .execute(conn)
@@ -639,7 +640,7 @@ fn migrate_v12(conn: &mut SqliteConnection) -> Result<(), Report<SessionStoreErr
 
 #[cfg(test)]
 mod tests {
-    #![allow(clippy::expect_used, clippy::indexing_slicing, reason = "test code")]
+    #![allow(clippy::expect_used, clippy::panic, clippy::unreachable, clippy::indexing_slicing, reason = "test code")]
     use super::*;
     use tempfile::TempDir;
 
