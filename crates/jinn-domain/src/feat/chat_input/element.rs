@@ -58,13 +58,17 @@ impl UiElement for ChatInputBoxElement {
                 InputMode::Queue => state.active_session().queue_len(),
                 InputMode::Steer => state.active_session().steering_buffer().len(),
             };
-            // Word + surrounding text color: input_mode_queue for Queue, input_mode_steer for Steer.
-            let word_color = match mode {
-                InputMode::Queue => theme.input_mode_queue,
-                InputMode::Steer => theme.input_mode_steer,
+            // When the input box is focused: vivid per-mode colors + orange accent.
+            // When unfocused: everything muted so the badge reads as informational context.
+            let (word_color, accent) = if input_mode {
+                let wc = match mode {
+                    InputMode::Queue => theme.input_mode_queue,
+                    InputMode::Steer => theme.input_mode_steer,
+                };
+                (wc, theme.accent_action)
+            } else {
+                (theme.muted_text, theme.muted_text)
             };
-            // The `Q` (hotkey mnemonic) is always the orange accent.
-            let accent = theme.accent_action;
             let rest = if buffer_count > 0 {
                 format!(":{} · {}]", mode.label(), buffer_count)
             } else {
