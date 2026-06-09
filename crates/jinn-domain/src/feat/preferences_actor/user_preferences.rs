@@ -223,10 +223,6 @@ impl Default for ReadEditAutoPruneConfig {
     }
 }
 
-/// Todo auto-prune configuration.
-///
-/// Serialized as `[auto_prune.todo]` in `jinn.toml`.
-/// Controls the auto-prune worker that excludes stale todo tool call+result
 
 /// Default enabled state for todo auto-prune.
 const DEFAULT_TODO_ENABLED: bool = true;
