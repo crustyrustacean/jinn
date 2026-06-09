@@ -423,7 +423,10 @@ async fn badge_returns_working_when_enriching() {
     let directive: jinn_domain::BadgeDirective =
         serde_json::from_value(directives[0].clone()).expect("deserialize directive");
     let joined: String = directive.segments.iter().map(|s| s.text.as_str()).collect();
-    assert_eq!(joined, "[Working]", "badge must show [Working] when enriching");
+    assert_eq!(
+        joined, "[Working]",
+        "badge must show [Working] when enriching"
+    );
 }
 
 #[tokio::test]
@@ -471,7 +474,10 @@ async fn badge_returns_idle_enrich_when_no_plugin_data() {
     let directive: jinn_domain::BadgeDirective =
         serde_json::from_value(directives[0].clone()).expect("deserialize directive");
     let joined: String = directive.segments.iter().map(|s| s.text.as_str()).collect();
-    assert_eq!(joined, "[Enrich]", "badge must show [Enrich] when no plugin_data");
+    assert_eq!(
+        joined, "[Enrich]",
+        "badge must show [Enrich] when no plugin_data"
+    );
 }
 
 /// Extract the `E` segment from the first badge directive returned by the plugin.
