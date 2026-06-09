@@ -1,7 +1,7 @@
 //! Sidebar resize intent handlers - enter/expand/contract/leave.
 
 use crate::common::app_state::{AppState, FocusScope};
-use crate::feat::preferences_actor::protocol::command::{PreferenceUpdate, UpdatePreferences};
+use crate::feat::preferences_actor::protocol::app_state_command::{AppStateUpdate, UpdateAppState};
 use crate::protocol::{Command, IntentResult};
 
 /// The number of columns to change per resize step.
@@ -20,7 +20,7 @@ pub fn handle_resize_enter(state: &mut AppState) -> IntentResult {
 ///
 /// Increments `sidebar_width` by `RESIZE_STEP`, clamped at a reasonable
 /// maximum (leaving at least `MIN_WIDTH` for the main column).
-/// Emits an `UpdatePreferences` command to persist the new width.
+/// Emits an `UpdateAppState` command to persist the new width.
 pub fn handle_resize_expand(state: &mut AppState) -> IntentResult {
     let max_width = state.frontend.sidebar_width.saturating_add(RESIZE_STEP);
     // Cap so main column has at least MIN_WIDTH + 1 (border) columns.
@@ -29,15 +29,15 @@ pub fn handle_resize_expand(state: &mut AppState) -> IntentResult {
     let new_width = max_width;
     state.frontend.sidebar_width = new_width;
 
-    IntentResult::with_commands(vec![Command::UpdatePreferences(UpdatePreferences {
-        updates: vec![PreferenceUpdate::SetSidebarWidth(Some(new_width))],
+    IntentResult::with_commands(vec![Command::UpdateAppState(UpdateAppState {
+        updates: vec![AppStateUpdate::SetSidebarWidth(Some(new_width))],
     })])
 }
 
 /// Contracts the sidebar by moving the border right.
 ///
 /// Decrements `sidebar_width` by `RESIZE_STEP`, clamped at `MIN_SIDEBAR_WIDTH`.
-/// Emits an `UpdatePreferences` command to persist the new width.
+/// Emits an `UpdateAppState` command to persist the new width.
 pub fn handle_resize_contract(state: &mut AppState) -> IntentResult {
     let new_width = state
         .frontend
@@ -51,8 +51,8 @@ pub fn handle_resize_contract(state: &mut AppState) -> IntentResult {
 
     state.frontend.sidebar_width = new_width;
 
-    IntentResult::with_commands(vec![Command::UpdatePreferences(UpdatePreferences {
-        updates: vec![PreferenceUpdate::SetSidebarWidth(Some(new_width))],
+    IntentResult::with_commands(vec![Command::UpdateAppState(UpdateAppState {
+        updates: vec![AppStateUpdate::SetSidebarWidth(Some(new_width))],
     })])
 }
 
@@ -70,7 +70,7 @@ mod tests {
     #![allow(clippy::expect_used, clippy::indexing_slicing, reason = "test code")]
     use crate::common::app_state::AppState;
     use crate::common::app_state::FocusScope;
-    use crate::feat::preferences_actor::protocol::command::PreferenceUpdate;
+    use crate::feat::preferences_actor::protocol::app_state_command::AppStateUpdate;
     use crate::protocol::Command;
 
     use super::*;
@@ -117,12 +117,12 @@ mod tests {
         // When handling SidebarResizeExpand.
         let result = handle_resize_expand(&mut state);
 
-        // Then an UpdatePreferences command with the new width was emitted.
+        // Then an UpdateAppState command with the new width was emitted.
         assert_eq!(result.commands.len(), 1);
         assert!(matches!(
             &result.commands[0],
-            Command::UpdatePreferences(cmd) if cmd.updates.len() == 1
-                && matches!(&cmd.updates[0], PreferenceUpdate::SetSidebarWidth(Some(32)))
+            Command::UpdateAppState(cmd) if cmd.updates.len() == 1
+                && matches!(&cmd.updates[0], AppStateUpdate::SetSidebarWidth(Some(32)))
         ));
     }
 
@@ -146,7 +146,7 @@ mod tests {
         // When handling SidebarResizeContract.
         let result = handle_resize_contract(&mut state);
 
-        // Then an UpdatePreferences command was emitted.
+        // Then an UpdateAppState command was emitted.
         assert_eq!(result.commands.len(), 1);
     }
 

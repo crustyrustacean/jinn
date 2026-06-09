@@ -223,10 +223,6 @@ impl Default for ReadEditAutoPruneConfig {
     }
 }
 
-/// Todo auto-prune configuration.
-///
-/// Serialized as `[auto_prune.todo]` in `jinn.toml`.
-/// Controls the auto-prune worker that excludes stale todo tool call+result
 
 /// Default enabled state for todo auto-prune.
 const DEFAULT_TODO_ENABLED: bool = true;
@@ -955,14 +951,8 @@ impl RequestRetryConfig {
 /// app restarts - e.g., the last model and strategy selected from pickers.
 #[derive(Debug, Clone, Default, PartialEq, Serialize, Deserialize)]
 pub struct UserPreferences {
-    /// The provider ID of the last model selected from the model picker.
-    /// Format: `{provider_name}/{model}` (e.g., `"ollama/llama3"`).
-    #[serde(default)]
-    pub last_model: Option<String>,
-    /// The strategy ID of the last strategy selected from the strategy picker.
-    /// Format: strategy name (e.g., `"sliding_window"`).
-    #[serde(default)]
-    pub last_strategy: Option<String>,
+
+
     /// Maximum number of lines to display for tool entries in the chat log.
     /// `None` means use the built-in default (5 lines).
     #[serde(default)]
@@ -971,23 +961,15 @@ pub struct UserPreferences {
     /// a summary line. `None` means use the built-in default (3).
     #[serde(default)]
     pub min_collapse_count: Option<usize>,
-    /// The name of the active theme. `None` or `"default"` uses the built-in theme.
-    /// Corresponds to a file in `~/.config/jinn/themes/<name>.toml`.
-    #[serde(default)]
-    pub theme_name: Option<String>,
-    /// The name of the active persona. `None` means use the default (`coding-assistant`).
-    /// Corresponds to a file in `~/.config/jinn/personas/<name>.md`.
-    #[serde(default)]
-    pub persona_name: Option<String>,
+
+
     /// Named session lifecycle recipes - paired setup/teardown commands.
     /// The implicit "blank" lifecycle (no commands) is always available and
     /// does not need to be listed here.
     #[serde(default)]
     #[serde(rename = "session_lifecycle")]
     pub session_lifecycles: Vec<SessionLifecycle>,
-    /// Sidebar width in columns. None means use the built-in default (30 columns).
-    #[serde(default)]
-    pub sidebar_width: Option<u16>,
+
     /// Maximum number of lines for tool output before truncation.
     /// `None` means use the built-in default (2000 lines).
     #[serde(default)]
@@ -1232,13 +1214,11 @@ mod tests {
     use super::*;
 
     #[rstest::rstest]
-    fn default_preferences_has_no_last_model() {
+    fn default_preferences_has_defaults_for_optional_fields() {
         // Given default preferences.
         let prefs = UserPreferences::default();
 
-        // Then last_model, last_strategy, tool_entry_max_lines, and min_collapse_count are None.
-        assert!(prefs.last_model.is_none());
-        assert!(prefs.last_strategy.is_none());
+        // Then optional fields default to None.
         assert!(prefs.tool_entry_max_lines.is_none());
         assert!(prefs.min_collapse_count.is_none());
     }
@@ -1253,8 +1233,7 @@ mod tests {
         let prefs = load_preferences_from(&path).expect("load");
 
         // Then defaults are returned.
-        assert!(prefs.last_model.is_none());
-        assert!(prefs.last_strategy.is_none());
+
         assert!(prefs.tool_entry_max_lines.is_none());
         // And the file is created.
         assert!(path.exists());
@@ -1279,7 +1258,7 @@ mod tests {
         // Given an existing file with custom content.
         let dir = TempDir::new().expect("temp dir");
         let path = dir.path().join(PREFS_FILE_NAME);
-        let marker = "# user-managed\nlast_model = \"x/y\"\n";
+        let marker = "# user-managed\ntool_entry_max_lines = 10\n";
         std::fs::write(&path, marker).expect("write");
         let mtime_before = std::fs::metadata(&path)
             .and_then(|m| m.modified())
@@ -1292,7 +1271,7 @@ mod tests {
         let on_disk = std::fs::read_to_string(&path).expect("read");
         assert_eq!(on_disk, marker);
         // And the parsed prefs reflect the file, not the defaults.
-        assert_eq!(prefs.last_model.as_deref(), Some("x/y"));
+        assert_eq!(prefs.tool_entry_max_lines, Some(10));
         // And the mtime is preserved.
         let mtime_after = std::fs::metadata(&path)
             .and_then(|m| m.modified())
@@ -1335,7 +1314,7 @@ mod tests {
         // Given an existing file with custom content.
         let dir = TempDir::new().expect("temp dir");
         let path = dir.path().join(PREFS_FILE_NAME);
-        let marker = "# user-managed\nlast_model = \"x/y\"\n";
+        let marker = "# user-managed\ntool_entry_max_lines = 10\n";
         std::fs::write(&path, marker).expect("write");
 
         // When initializing without --force.
@@ -1366,18 +1345,12 @@ mod tests {
 
     #[rstest::rstest]
     fn save_then_load_round_trips() {
-        // Given preferences with a last_model and last_strategy.
         let dir = TempDir::new().expect("temp dir");
         let path = dir.path().join(PREFS_FILE_NAME);
         let prefs = UserPreferences {
-            last_model: Some("ollama/llama3".to_owned()),
-            last_strategy: Some("sliding_window".to_owned()),
-            tool_entry_max_lines: None,
+            tool_entry_max_lines: Some(10),
             min_collapse_count: None,
-            theme_name: None,
-            persona_name: None,
             session_lifecycles: vec![],
-            sidebar_width: None,
             max_tool_output_lines: None,
             max_tool_output_bytes: None,
             compaction: CompactionConfig::default(),
@@ -1395,31 +1368,22 @@ mod tests {
         let reloaded = load_preferences_from(&path).expect("load");
 
         // Then the round-tripped data matches.
-        assert_eq!(reloaded.last_model.as_deref(), Some("ollama/llama3"));
-        assert_eq!(reloaded.last_strategy.as_deref(), Some("sliding_window"));
+        assert_eq!(reloaded.tool_entry_max_lines, Some(10));
     }
 
     #[rstest::rstest]
     fn load_parses_toml_content() {
-        // Given a TOML file with last_model and last_strategy.
         let dir = TempDir::new().expect("temp dir");
         let path = dir.path().join(PREFS_FILE_NAME);
         std::fs::write(
             &path,
-            r#"last_model = "openrouter/anthropic/claude-sonnet-4-20250514"
-last_strategy = "sliding_window""#,
+            r#"tool_entry_max_lines = 10"#,
         )
         .expect("write");
-
         // When loading.
         let prefs = load_preferences_from(&path).expect("load");
 
-        // Then last_model and last_strategy are parsed.
-        assert_eq!(
-            prefs.last_model.as_deref(),
-            Some("openrouter/anthropic/claude-sonnet-4-20250514")
-        );
-        assert_eq!(prefs.last_strategy.as_deref(), Some("sliding_window"));
+        assert_eq!(prefs.tool_entry_max_lines, Some(10));
     }
 
     #[rstest::rstest]
@@ -1433,8 +1397,7 @@ last_strategy = "sliding_window""#,
         let prefs = load_preferences_from(&path).expect("load");
 
         // Then defaults are returned (all fields None).
-        assert!(prefs.last_model.is_none());
-        assert!(prefs.last_strategy.is_none());
+
         assert!(prefs.tool_entry_max_lines.is_none());
     }
 
@@ -1444,14 +1407,9 @@ last_strategy = "sliding_window""#,
         let dir = TempDir::new().expect("temp dir");
         let path = dir.path().join("nested").join("dir").join(PREFS_FILE_NAME);
         let prefs = UserPreferences {
-            last_model: Some("test/model".to_owned()),
-            last_strategy: None,
             tool_entry_max_lines: None,
             min_collapse_count: None,
-            theme_name: None,
-            persona_name: None,
             session_lifecycles: vec![],
-            sidebar_width: None,
             max_tool_output_lines: None,
             max_tool_output_bytes: None,
             compaction: CompactionConfig::default(),
@@ -1477,14 +1435,9 @@ last_strategy = "sliding_window""#,
         let dir = TempDir::new().expect("temp dir");
         let path = dir.path().join(PREFS_FILE_NAME);
         let prefs = UserPreferences {
-            last_model: None,
-            last_strategy: None,
             tool_entry_max_lines: Some(10),
             min_collapse_count: None,
-            theme_name: None,
-            persona_name: None,
             session_lifecycles: vec![],
-            sidebar_width: None,
             max_tool_output_lines: None,
             max_tool_output_bytes: None,
             compaction: CompactionConfig::default(),
@@ -1511,12 +1464,8 @@ last_strategy = "sliding_window""#,
         let dir = TempDir::new().expect("temp dir");
         let path = dir.path().join(PREFS_FILE_NAME);
         let prefs = UserPreferences {
-            last_model: None,
-            last_strategy: None,
             tool_entry_max_lines: None,
             min_collapse_count: None,
-            theme_name: None,
-            persona_name: None,
             session_lifecycles: vec![SessionLifecycle {
                 name: "fossil branch".to_owned(),
                 description: Some("Open a fossil branch in a new workdir".to_owned()),
@@ -1531,7 +1480,6 @@ last_strategy = "sliding_window""#,
                     ),
                 ),
             }],
-            sidebar_width: None,
             max_tool_output_lines: None,
             max_tool_output_bytes: None,
             compaction: CompactionConfig::default(),
@@ -1566,34 +1514,7 @@ last_strategy = "sliding_window""#,
         assert!(prefs.session_lifecycles.is_empty());
     }
 
-    #[rstest::rstest]
-    fn save_then_load_round_trips_sidebar_width() {
-        let dir = TempDir::new().expect("temp dir");
-        let path = dir.path().join(PREFS_FILE_NAME);
-        let prefs = UserPreferences {
-            last_model: None,
-            last_strategy: None,
-            tool_entry_max_lines: None,
-            min_collapse_count: None,
-            theme_name: None,
-            persona_name: None,
-            session_lifecycles: vec![],
-            sidebar_width: Some(25),
-            max_tool_output_lines: None,
-            max_tool_output_bytes: None,
-            compaction: CompactionConfig::default(),
-            request_retry: RequestRetryConfig::default(),
-            web_fetch: WebFetchConfig::default(),
-            openrouter_web_search: OpenrouterWebSearchConfig::default(),
-            cwd_selector: CwdSelectorConfig::default(),
-            minimap: MinimapConfig::default(),
-            auto_prune: AutoPruneConfig::default(),
-            bash: BashConfig::default(),
-        };
-        save_preferences_to(&prefs, &path).expect("save");
-        let reloaded = load_preferences_from(&path).expect("load");
-        assert_eq!(reloaded.sidebar_width, Some(25));
-    }
+
 
     #[rstest::rstest]
     fn preferences_path_ends_with_jinn_toml() {
@@ -1657,21 +1578,21 @@ teardown_command = "~/.config/jinn/scripts/fossil-cleanup.sh $1"
     #[rstest::rstest]
     fn save_preferences_preserves_user_comments_on_scalar_change() {
         // Given a comment-rich jinn.toml.
-        let original = "# my prefs\nlast_model = \"ollama/llama3\"\n";
+        let original = "# my prefs\ntool_entry_max_lines = 10\n";
         let dir = TempDir::new().expect("temp dir");
         let path = dir.path().join(PREFS_FILE_NAME);
         std::fs::write(&path, original).expect("write");
 
-        // When loading, mutating last_model, and saving.
+        // When loading, mutating tool_entry_max_lines, and saving.
         let mut prefs = load_preferences_from(&path).expect("load");
-        prefs.last_model = Some("openai/gpt-4o".to_owned());
+        prefs.tool_entry_max_lines = Some(20);
         save_preferences_to(&prefs, &path).expect("save");
 
         // Then the comment is preserved and the field is updated.
         let written = std::fs::read_to_string(&path).expect("read");
         assert!(written.contains("# my prefs"), "comment wiped: {written}");
-        assert!(written.contains("openai/gpt-4o"));
-        assert!(!written.contains("ollama/llama3"));
+        assert!(written.contains("tool_entry_max_lines = 20"));
+        assert!(!written.contains("tool_entry_max_lines = 10"));
     }
 
     #[rstest::rstest]
@@ -1846,26 +1767,26 @@ teardown_command = "~/.config/jinn/scripts/fossil-cleanup.sh $1"
     fn save_preferences_mixed_mutations_preserve_unrelated_comments() {
         // Given a jinn.toml with comments sprinkled across several sections.
         let original = "\
-# main preferences\nlast_model = \"ollama/llama3\"\n\n# width in chars\nsidebar_width = 80\n\n# keep context compact\n[compaction]\n# always compact\nenabled = true\n# 50k tokens\ntokens = 50000\n\n# my lifecycles\n[[session_lifecycle]]\nname = \"alpha\"\n\n# deprecated lifecycle\n[[session_lifecycle]]\nname = \"beta\"\n";
+# main preferences\ntool_entry_max_lines = 10\n\n# collapse threshold\nmin_collapse_count = 5\n\n# keep context compact\n[compaction]\n# always compact\nenabled = true\n# 50k tokens\ntokens = 50000\n\n# my lifecycles\n[[session_lifecycle]]\nname = \"alpha\"\n\n# deprecated lifecycle\n[[session_lifecycle]]\nname = \"beta\"\n";
         let dir = TempDir::new().expect("temp dir");
         let path = dir.path().join(PREFS_FILE_NAME);
         std::fs::write(&path, original).expect("write");
 
         // When applying a mixed mutation set:
-        //   - change last_model (scalar update)
+        //   - change tool_entry_max_lines (scalar update)
         //   - delete beta session_lifecycle (array entry removal)
-        //   - leave sidebar_width and compaction untouched
+        //   - leave min_collapse_count and compaction untouched
         let mut prefs = load_preferences_from(&path).expect("load");
-        prefs.last_model = Some("openrouter/gpt-4o".to_owned());
+        prefs.tool_entry_max_lines = Some(20);
         prefs.session_lifecycles.retain(|l| l.name == "alpha");
         save_preferences_to(&prefs, &path).expect("save");
 
         // Then all unrelated comments survive and the targeted changes applied.
         let written = std::fs::read_to_string(&path).expect("read");
         assert!(written.contains("# main preferences"), "top comment kept");
-        assert!(written.contains("# width in chars"), "sidebar comment kept");
+        assert!(written.contains("# collapse threshold"), "collapse comment kept");
         assert!(
-            written.contains("sidebar_width = 80"),
+            written.contains("min_collapse_count = 5"),
             "untouched field kept"
         );
         assert!(
@@ -1886,12 +1807,11 @@ teardown_command = "~/.config/jinn/scripts/fossil-cleanup.sh $1"
             "beta comment removed with beta"
         );
         assert!(!written.contains("\"beta\""), "beta removed");
-        assert!(written.contains("openrouter/gpt-4o"), "last_model updated");
-        assert!(!written.contains("ollama/llama3"), "old last_model gone");
+        assert!(written.contains("tool_entry_max_lines = 20"), "tool_entry_max_lines updated");
+        assert!(!written.contains("tool_entry_max_lines = 10"), "old tool_entry_max_lines gone");
         // The alpha lifecycle is preserved.
         assert!(written.contains("\"alpha\""), "alpha kept");
     }
-
     #[rstest::rstest]
     fn save_preferences_preserves_inner_block_comment_when_field_is_mutated() {
         // Given a jinn.toml with a comment between two session_lifecycle fields.
@@ -1927,21 +1847,15 @@ teardown_command = "~/.config/jinn/scripts/fossil-cleanup.sh $1"
         let path = dir.path().join(PREFS_FILE_NAME);
         std::fs::write(
             &path,
-            "last_model = \"openrouter/anthropic/claude-sonnet-4-20250514\"\n\
-             last_strategy = \"sliding_window\"\n\
-             sidebar_width = 42\n",
+            "tool_entry_max_lines = 42\n             min_collapse_count = 7\n",
         )
         .expect("write");
 
         let prefs = load_preferences_from(&path).expect("load");
 
         // Then the loaded prefs are NOT defaults - they reflect the file.
-        assert_eq!(
-            prefs.last_model.as_deref(),
-            Some("openrouter/anthropic/claude-sonnet-4-20250514")
-        );
-        assert_eq!(prefs.last_strategy.as_deref(), Some("sliding_window"));
-        assert_eq!(prefs.sidebar_width, Some(42));
+        assert_eq!(prefs.tool_entry_max_lines, Some(42));
+        assert_eq!(prefs.min_collapse_count, Some(7));
     }
 
     #[rstest::rstest]
@@ -1951,14 +1865,9 @@ teardown_command = "~/.config/jinn/scripts/fossil-cleanup.sh $1"
         let dir = TempDir::new().expect("temp dir");
         let path = dir.path().join(PREFS_FILE_NAME);
         let prefs = UserPreferences {
-            last_model: Some("ollama/llama3".to_owned()),
-            last_strategy: None,
             tool_entry_max_lines: Some(99),
             min_collapse_count: None,
-            theme_name: None,
-            persona_name: None,
             session_lifecycles: vec![],
-            sidebar_width: Some(42),
             max_tool_output_lines: None,
             max_tool_output_bytes: None,
             compaction: CompactionConfig::default(),
@@ -1976,14 +1885,14 @@ teardown_command = "~/.config/jinn/scripts/fossil-cleanup.sh $1"
         // Then the file exists on disk with the expected content.
         assert!(path.exists(), "save_preferences should create the file");
         let content = std::fs::read_to_string(&path).expect("read back");
-        assert!(content.contains("ollama/llama3"));
-        assert!(content.contains("42"));
+        assert!(content.contains("tool_entry_max_lines = 99"));
+        assert!(content.contains("99"));
     }
 
     #[rstest::rstest]
     fn save_preferences_preserves_user_comments() {
         // Given a comment-rich jinn.toml.
-        let original = "# my favorite\nlast_model = \"ollama/llama3\"\nsidebar_width = 42\n";
+        let original = "# my favorite\ntool_entry_max_lines = 10\nmin_collapse_count = 42\n";
         let dir = TempDir::new().expect("temp dir");
         let path = dir.path().join(PREFS_FILE_NAME);
         std::fs::write(&path, original).expect("write");
@@ -2000,7 +1909,7 @@ teardown_command = "~/.config/jinn/scripts/fossil-cleanup.sh $1"
             "comment was wiped: {written}"
         );
         assert!(written.contains("tool_entry_max_lines = 7"));
-        assert!(written.contains("last_model = \"ollama/llama3\""));
+        assert!(written.contains("min_collapse_count = 42"));
     }
 
     #[rstest::rstest]

@@ -13,6 +13,8 @@ use jinn_domain::ApiKeysService;
 use jinn_domain::ConfigStorageService;
 use jinn_domain::FilesystemConfigStorage;
 use jinn_domain::FilesystemUserPreferencesStorage;
+use jinn_domain::AppStateStorageService;
+use jinn_domain::FilesystemAppStateStorage;
 use jinn_domain::LlmServiceFactoryService;
 use jinn_domain::NoProvidersAvailableFactory;
 use jinn_domain::ProviderRegistry;
@@ -180,8 +182,19 @@ impl App {
             svc
         };
 
-        let db_path = cli.db_path_opt().cloned();
+        let app_state_storage = {
+            let backend = FilesystemAppStateStorage::new(jinn_domain::AppPaths::default().state_file_path());
+            let svc = AppStateStorageService::new(Arc::new(backend));
+            if let Err(report) = svc.reload() {
+                tracing::error!("failed to load app state");
+                eprintln!("error: failed to load app state:");
+                eprintln!("  {report:?}");
+                std::process::exit(1);
+            }
+            svc
+        };
 
+        let db_path = cli.db_path_opt().cloned();
         match cli.command.unwrap_or(Commands::Tui) {
             Commands::Completions { shell } => {
                 use clap::CommandFactory;
@@ -200,6 +213,7 @@ impl App {
                         config_storage: config_storage.clone(),
                         session_store: session_store.clone(),
                         user_preferences_storage: user_preferences_storage.clone(),
+                        app_state_storage: app_state_storage.clone(),
                         paths: jinn_domain::AppPaths::default(),
                     })
                     .build();
@@ -219,6 +233,7 @@ impl App {
                         config_storage,
                         session_store,
                         user_preferences_storage: user_preferences_storage.clone(),
+                        app_state_storage: app_state_storage.clone(),
                         paths: jinn_domain::AppPaths::default(),
                     })
                     .build();
@@ -308,6 +323,7 @@ impl App {
                                     config_storage,
                                     session_store,
                                     user_preferences_storage,
+                                    app_state_storage: app_state_storage.clone(),
                                     paths: jinn_domain::AppPaths::default(),
                                 },
                             )
@@ -346,6 +362,7 @@ impl App {
                                     config_storage: config_storage.clone(),
                                     session_store,
                                     user_preferences_storage: user_preferences_storage.clone(),
+                                    app_state_storage: app_state_storage.clone(),
                                     paths: jinn_domain::AppPaths::default(),
                                 },
                             )
@@ -526,7 +543,7 @@ mod tests {
         let state = State::new(AppState::default());
 
         // Set the theme name in preferences.
-        state.write().frontend.preferences.theme_name = Some("custom".to_owned());
+        state.write().frontend.app_state.theme_name = Some("custom".to_owned());
 
         // Capture the initial focus_accent color.
         let initial_focus = state.read().frontend.theme.focus_accent;
@@ -548,7 +565,7 @@ mod tests {
     fn load_theme_falls_back_gracefully_on_missing() {
         // Given a state with a theme name that doesn't exist.
         let state = State::new(AppState::default());
-        state.write().frontend.preferences.theme_name = Some("nonexistent".to_owned());
+        state.write().frontend.app_state.theme_name = Some("nonexistent".to_owned());
 
         let empty = PathBuf::from("/nonexistent");
 

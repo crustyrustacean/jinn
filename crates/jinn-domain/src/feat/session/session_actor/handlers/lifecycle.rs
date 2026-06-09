@@ -1028,9 +1028,9 @@ impl SessionPersistenceActor {
             &mut state, session_id,
         );
 
-        let prefs = self.services.user_preferences_storage.read();
+        let app_state = self.services.app_state_storage.read();
         let fresh_session = {
-            let model = prefs
+            let model = app_state
                 .last_model
                 .clone()
                 .unwrap_or_else(|| crate::feat::provider_infra::NO_PROVIDER_ID.to_owned());
