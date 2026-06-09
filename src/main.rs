@@ -16,13 +16,19 @@ fn main() {
     let mode = match &cli.command {
         None
         | Some(jinn_cli::cli::Commands::Tui)
-        | Some(jinn_cli::cli::Commands::Completions { .. })
-        | Some(jinn_cli::cli::Commands::Bench { .. }) => TracingMode::Tui {
+        | Some(jinn_cli::cli::Commands::Completions { .. }) => TracingMode::Tui {
             log_path: log_path.clone(),
         },
-        Some(jinn_cli::cli::Commands::Headless { .. })
-        | Some(jinn_cli::cli::Commands::Fetch { .. })
+        #[cfg(debug_assertions)]
+        Some(jinn_cli::cli::Commands::Bench { .. }) => TracingMode::Tui {
+            log_path: log_path.clone(),
+        },
+        Some(jinn_cli::cli::Commands::Fetch { .. })
         | Some(jinn_cli::cli::Commands::Config { .. }) => TracingMode::Headless {
+            log_path: log_path.clone(),
+        },
+        #[cfg(debug_assertions)]
+        Some(jinn_cli::cli::Commands::Headless { .. }) => TracingMode::Headless {
             log_path: log_path.clone(),
         },
     };

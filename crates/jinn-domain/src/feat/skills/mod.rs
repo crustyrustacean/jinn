@@ -14,11 +14,9 @@ pub mod skill_preview_cache;
 pub mod skills_scan_actor;
 
 pub use loaded_name::parse_loaded_skill_name;
-pub use loaded_name::{SKILL_ICON, loaded_skill_summary_label};
+pub use loaded_name::{loaded_skill_summary_label, SKILL_ICON};
 pub use scan::scan_skills;
 pub use skill::{Skill, SkillSource};
 pub use skill_entry::SkillEntry;
 pub use skill_preview_cache::SkillPreviewCache;
 pub use skills_scan_actor::{ScanSkills, SkillsLoaded};
-
-use std::path::PathBuf;

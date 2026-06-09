@@ -80,8 +80,8 @@ There are multiple ways to create new sessions:
 
 Navigating between interface elements uses directional keybinds based on spatial position:
 
-- `<c-h>` -> focus to the left
-- `<c-l>` -> focus to the right
+- `<c-h>` -> focus left
+- `<c-l>` -> focus right
 - `<c-j>` -> focus down
 - `<c-k>` -> focus up
 
@@ -121,6 +121,14 @@ jinn is configured via the files in the `~/.config/jinn` directory:
 - `themes/` - color themes
 - `personas/` - personas
 - `prompts/` - custom prompts
+
+## Security
+
+None. Bring your OS's sandboxing features.
+
+- Linux: [bubblewrap](https://github.com/containers/bubblewrap)
+- macOS: [App Sandbox](https://developer.apple.com/documentation/xcode/configuring-the-macos-app-sandbox)
+- Windows: [Windows Sandbox (WSB)](https://learn.microsoft.com/en-us/windows/security/application-security/application-isolation/windows-sandbox/)
 
 ## Roadmap
 
