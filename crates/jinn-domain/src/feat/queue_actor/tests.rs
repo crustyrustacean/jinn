@@ -38,7 +38,7 @@ impl QueueTestHarness {
         let _queue = harness.spawn_actor::<super::QueueActor>(QueueActorDeps {
             state: state.clone(),
             counter,
-            bus: harness.bus(),
+            deps: harness.actor_deps(),
         }).await;
 
         let send_recorder = harness.spawn_recorder::<SendToLlmProvider>().await;

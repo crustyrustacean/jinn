@@ -7,22 +7,21 @@
 use std::time::Duration;
 
 use kameo::prelude::{Actor, ActorRef, Context, Message};
-use kameo_actors::message_bus::Publish;
 
-use crate::common::services::bus_service::BusService;
+use crate::common::actor_deps::{ActorDeps, BusPublish};
 use crate::feat::chat_input::protocol::command::PushChatEntry;
 use crate::feat::chat_input::protocol::event::ChatEntrySubmitted;
 use crate::protocol::{ChatEntry, ChatEntryKind};
 
 /// Dependencies for spawning an [`EchoActor`].
 pub struct EchoActorDeps {
-    /// Reference to the message bus for publishing commands.
-    pub bus: BusService,
+    /// Universal actor dependencies (bus, services, etc.).
+    pub deps: ActorDeps,
 }
 
 /// Reference echo actor that echoes user messages back as actor entries.
 pub struct EchoActor {
-    bus: BusService,
+    deps: ActorDeps,
 }
 
 impl Actor for EchoActor {
@@ -34,9 +33,9 @@ impl Actor for EchoActor {
         actor_ref: ActorRef<Self>,
     ) -> Result<Self, Self::Error> {
         // Register to receive ChatEntrySubmitted events from the bus.
-        args.bus.register(actor_ref.recipient::<ChatEntrySubmitted>()).await;
+        args.deps.register(actor_ref.recipient::<ChatEntrySubmitted>()).await;
 
-        Ok(Self { bus: args.bus })
+        Ok(Self { deps: args.deps })
     }
 }
 
@@ -67,14 +66,13 @@ impl Message<ChatEntrySubmitted> for EchoActor {
             session_id,
             entry: ChatEntry::actor("echo", display.to_uppercase()),
         };
-        let _ = self
-            .bus
-            .actor_ref()
-            .tell(Publish(push))
-            .await
-            .inspect_err(|e| {
-                tracing::error!(err = ?e, "echo actor failed to publish PushChatEntry");
-            });
+        self.publish(push).await;
+    }
+}
+
+impl BusPublish for EchoActor {
+    fn bus(&self) -> &crate::common::services::bus_service::BusService {
+        self.deps.bus()
     }
 }
 
@@ -98,7 +96,7 @@ mod tests {
     async fn echo_actor_publishes_uppercase_push_chat_entry() {
         // Given an echo actor and a recorder, both registered on the bus.
         let harness = TestHarness::new().await;
-        let _echo = harness.spawn_actor::<EchoActor>(EchoActorDeps { bus: harness.bus() }).await;
+        let _echo = harness.spawn_actor::<EchoActor>(EchoActorDeps { deps: harness.actor_deps() }).await;
         let recorder = harness.spawn_recorder::<PushChatEntry>().await;
 
         // When publishing a ChatEntrySubmitted with a user message.
@@ -126,7 +124,7 @@ mod tests {
     async fn echo_actor_ignores_non_user_entries() {
         // Given an echo actor and a recorder, both registered on the bus.
         let harness = TestHarness::new().await;
-        let _echo = harness.spawn_actor::<EchoActor>(EchoActorDeps { bus: harness.bus() }).await;
+        let _echo = harness.spawn_actor::<EchoActor>(EchoActorDeps { deps: harness.actor_deps() }).await;
         let recorder = harness.spawn_recorder::<PushChatEntry>().await;
 
         // When publishing a ChatEntrySubmitted with a system (non-user) entry.

@@ -25,9 +25,8 @@
 //! - `ToolContinuation` → call `assemble_prompt()` + emit `SendToLlmProvider`
 
 use kameo::prelude::{Actor, ActorRef, Context, Message};
-use kameo_actors::message_bus::Publish;
 
-use crate::common::services::bus_service::BusService;
+use crate::common::actor_deps::{ActorDeps, BusPublish};
 use crate::common::state::State;
 use crate::feat::chat_input::protocol::event::ChatEntrySubmitted;
 use crate::feat::context::assemble::assemble_prompt;
@@ -48,8 +47,8 @@ pub struct QueueActor {
     state: State,
     /// Token counter for recording token usage in the session ledger.
     counter: TiktokenCounter,
-    /// Reference to the message bus for publishing commands and events.
-    bus: BusService,
+    /// Universal actor dependencies (bus, services, etc.).
+    deps: ActorDeps,
 }
 
 /// Dependencies for [`QueueActor`].
@@ -58,8 +57,8 @@ pub struct QueueActorDeps {
     pub state: State,
     /// Token counter for usage tracking.
     pub counter: TiktokenCounter,
-    /// Reference to the message bus for publishing commands and events.
-    pub bus: BusService,
+    /// Universal actor dependencies (bus, services, etc.).
+    pub deps: ActorDeps,
 }
 
 impl Actor for QueueActor {
@@ -67,12 +66,12 @@ impl Actor for QueueActor {
     type Error = std::convert::Infallible;
 
     async fn on_start(args: Self::Args, actor_ref: ActorRef<Self>) -> Result<Self, Self::Error> {
-        args.bus.register(actor_ref.recipient::<SessionPhaseChanged>()).await;
+        args.deps.register(actor_ref.recipient::<SessionPhaseChanged>()).await;
 
         Ok(Self {
             state: args.state,
             counter: args.counter,
-            bus: args.bus,
+            deps: args.deps,
         })
     }
 }
@@ -86,6 +85,12 @@ impl Message<SessionPhaseChanged> for QueueActor {
         _ctx: &mut Context<Self, Self::Reply>,
     ) {
         self.handle_session_phase_changed(&msg).await;
+    }
+}
+
+impl BusPublish for QueueActor {
+    fn bus(&self) -> &crate::common::services::bus_service::BusService {
+        self.deps.bus()
     }
 }
 
@@ -171,38 +176,22 @@ impl QueueActor {
 
         let estimated_tokens = assembled.estimated_tokens();
 
-        let bus_ref = self.bus.actor_ref();
-        if let Err(e) = bus_ref
-            .tell(Publish(SendToLlmProvider {
-                session_id: session_id.clone(),
-                messages: assembled.messages,
-                provider_id,
-                estimated_tokens,
-                tool_definitions: assembled.tool_definitions,
-            }))
-            .await
-        {
-            tracing::warn!(err = ?e, "queue-actor failed to emit SendToLlmProvider");
-        }
+        self.publish(SendToLlmProvider {
+            session_id: session_id.clone(),
+            messages: assembled.messages,
+            provider_id,
+            estimated_tokens,
+            tool_definitions: assembled.tool_definitions,
+        }).await;
 
-        if let Err(e) = bus_ref
-            .tell(Publish(ChatEntrySubmitted {
-                session_id: session_id.clone(),
-                entry: entry.clone(),
-            }))
-            .await
-        {
-            tracing::warn!(err = ?e, "queue-actor failed to emit ChatEntrySubmitted");
-        }
+        self.publish(ChatEntrySubmitted {
+            session_id: session_id.clone(),
+            entry: entry.clone(),
+        }).await;
 
-        if let Err(e) = bus_ref
-            .tell(Publish(PersistSession {
-                session_id: session_id.clone(),
-            }))
-            .await
-        {
-            tracing::warn!(err = ?e, "queue-actor failed to emit PersistSession");
-        }
+        self.publish(PersistSession {
+            session_id: session_id.clone(),
+        }).await;
     }
 
     /// Dispatch a tool continuation: assemble prompt and emit SendToLlmProvider.
@@ -248,23 +237,13 @@ impl QueueActor {
 
         let estimated_tokens = assembled.estimated_tokens();
 
-        let bus_ref = self.bus.actor_ref();
-        if let Err(e) = bus_ref
-            .tell(Publish(SendToLlmProvider {
-                session_id: session_id.clone(),
-                messages: assembled.messages,
-                provider_id,
-                estimated_tokens,
-                tool_definitions: assembled.tool_definitions,
-            }))
-            .await
-        {
-            tracing::warn!(
-                err = ?e,
-                label,
-                "queue-actor failed to emit SendToLlmProvider"
-            );
-        }
+        self.publish(SendToLlmProvider {
+            session_id: session_id.clone(),
+            messages: assembled.messages,
+            provider_id,
+            estimated_tokens,
+            tool_definitions: assembled.tool_definitions,
+        }).await;
     }
 }
 

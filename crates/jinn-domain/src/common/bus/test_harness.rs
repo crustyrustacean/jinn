@@ -62,6 +62,15 @@ impl TestHarness {
             .expect("register recorder");
         recorder
     }
+    /// Build an [`ActorDeps`] with the harness bus wired into a test [`Services`].
+    ///
+    /// This creates a `Services::new()` and replaces its bus with the harness bus,
+    /// so actors use the same bus the test is publishing to.
+    pub fn actor_deps(&self) -> crate::common::actor_deps::ActorDeps {
+        let mut services = crate::Services::new();
+        services.bus = self.bus.clone();
+        crate::common::actor_deps::ActorDeps { services }
+    }
 }
 
 // ---------------------------------------------------------------------------
