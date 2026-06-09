@@ -268,7 +268,13 @@ fn merge_context_lengths_from_models_dev(
 
 #[cfg(test)]
 mod tests {
-    #![allow(clippy::expect_used, clippy::panic, clippy::unreachable, clippy::indexing_slicing, reason = "test code")]
+    #![allow(
+        clippy::expect_used,
+        clippy::panic,
+        clippy::unreachable,
+        clippy::indexing_slicing,
+        reason = "test code"
+    )]
     use std::sync::Arc;
 
     use crate::AppState;
@@ -295,7 +301,7 @@ mod tests {
         let sink = Arc::new(RecordingSink::new());
         let mut ctx = ActorContext::new("provider", sink.clone() as Arc<dyn MessageSink>);
 
-        let services = Services::new();
+        let services = Services::new_fake();
         let state = State::new(AppState::default());
         let deps = ProviderActorDeps {
             services: services.clone(),
@@ -369,7 +375,7 @@ mod tests {
     ) {
         let sink = Arc::new(RecordingSink::new());
         let mut ctx = ActorContext::new("provider", sink.clone() as Arc<dyn MessageSink>);
-        let services = Services::new();
+        let services = Services::new_fake();
         let registry =
             crate::feat::provider_infra::ProviderRegistry::from_config(config).expect("registry");
         services.provider_registry.replace(registry);

@@ -481,9 +481,10 @@ impl PluginDispatchActor {
             "hook": payload.hook,
         });
         if let Some(text) = payload.text
-            && let Some(map) = ctx_json.as_object_mut() {
-                map.insert("text".to_owned(), serde_json::Value::String(text));
-            }
+            && let Some(map) = ctx_json.as_object_mut()
+        {
+            map.insert("text".to_owned(), serde_json::Value::String(text));
+        }
 
         self.spawn_fire_for_session(&payload.session_id, &payload.hook, &ctx_json);
     }
@@ -500,7 +501,15 @@ fn into_error<E: std::fmt::Display>(e: E) -> Report<PluginDispatchActorError> {
 
 #[cfg(test)]
 mod tests {
-#![allow(clippy::expect_used, clippy::indexing_slicing, clippy::panic, clippy::unreachable, clippy::string_slice, clippy::uninlined_format_args, reason = "test code")]
+    #![allow(
+        clippy::expect_used,
+        clippy::indexing_slicing,
+        clippy::panic,
+        clippy::unreachable,
+        clippy::string_slice,
+        clippy::uninlined_format_args,
+        reason = "test code"
+    )]
     use super::*;
     use crate::common::actor::context::ActorContext;
     use crate::common::actor::message_sink::RecordingSink;
@@ -536,11 +545,11 @@ mod tests {
         let mut ctx = ActorContext::new("plugin-dispatch-test", sink.clone());
         let actor = PluginDispatchActor::activate(
             PluginDispatchActorDeps {
-                services: Services::new(),
+                services: Services::new_fake(),
                 state,
                 startup_session_id: session_id.to_string(),
                 domain_ctx: std::sync::Arc::new(DomainNodeContext::new(
-                    Services::new(),
+                    Services::new_fake(),
                     State::new(AppState::default()),
                 )),
             },
@@ -851,7 +860,7 @@ mod tests {
         backend: Arc<dyn PluginFire>,
     ) -> (PluginDispatchActor, ActorContext) {
         use crate::common::session_map::SessionMap;
-        let mut services = Services::new();
+        let mut services = Services::new_fake();
         services.plugins = PluginFireService::new(backend);
         let session = ChatSessionState::default();
         let session_id = session.session_id().clone();
@@ -868,7 +877,7 @@ mod tests {
                 state,
                 startup_session_id: session_id.to_string(),
                 domain_ctx: Arc::new(DomainNodeContext::new(
-                    Services::new(),
+                    Services::new_fake(),
                     State::new(AppState::default()),
                 )),
             },
@@ -959,7 +968,7 @@ mod tests {
         let gate = Arc::new(Notify::new());
         let fire = BlockingPluginFire::new(gate.clone());
 
-        let mut services = Services::new();
+        let mut services = Services::new_fake();
         services.plugins = PluginFireService::new(Arc::new(fire) as Arc<dyn PluginFire>);
 
         let session = ChatSessionState::default();
@@ -980,7 +989,7 @@ mod tests {
         let mut ctx = ActorContext::new("plugin-dispatch-test", sink);
 
         let domain_ctx = Arc::new(DomainNodeContext::new(
-            Services::new(),
+            Services::new_fake(),
             State::new(AppState::default()),
         ));
         let (tx, rx) = oneshot::channel::<Result<String, String>>();

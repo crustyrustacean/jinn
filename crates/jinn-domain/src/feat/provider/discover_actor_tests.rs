@@ -1,5 +1,12 @@
 //! Tests for DiscoverActor - command dispatch and handle routing.
-#![allow(clippy::expect_used, clippy::indexing_slicing, clippy::panic, clippy::unreachable, clippy::string_slice, reason = "test code")]
+#![allow(
+    clippy::expect_used,
+    clippy::indexing_slicing,
+    clippy::panic,
+    clippy::unreachable,
+    clippy::string_slice,
+    reason = "test code"
+)]
 
 //!
 //! (handle, handle_command, RefreshModels match arm) by verifying
@@ -26,7 +33,7 @@ fn create_actor() -> (
     let sink = Arc::new(RecordingSink::new());
     let mut ctx = ActorContext::new("discover", sink.clone() as Arc<dyn MessageSink>);
 
-    let services = Services::new();
+    let services = Services::new_fake();
     let state = State::new(AppState::default());
     let deps = DiscoverActorDeps {
         services: services.clone(),

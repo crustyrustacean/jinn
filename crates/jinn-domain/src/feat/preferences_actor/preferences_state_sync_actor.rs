@@ -34,9 +34,7 @@ impl Actor for PreferencesStateSyncActor {
         ctx.subscribe_event::<super::protocol::event::PreferencesUpdated>();
         ctx.set_description("Syncs AppState.frontend.preferences from PreferencesUpdated events");
 
-        Self {
-            state: deps.state,
-        }
+        Self { state: deps.state }
     }
 
     async fn handle(&mut self, msg: ActorEnvelope<Self::Message>, _ctx: &ActorContext) {
@@ -52,7 +50,15 @@ impl Actor for PreferencesStateSyncActor {
 
 #[cfg(test)]
 mod tests {
-#![allow(clippy::expect_used, clippy::indexing_slicing, clippy::panic, clippy::unreachable, clippy::string_slice, clippy::uninlined_format_args, reason = "test code")]
+    #![allow(
+        clippy::expect_used,
+        clippy::indexing_slicing,
+        clippy::panic,
+        clippy::unreachable,
+        clippy::string_slice,
+        clippy::uninlined_format_args,
+        reason = "test code"
+    )]
     use super::*;
     use crate::common::actor::{ActorContext, RecordingSink};
     use crate::common::services::Services;
@@ -62,7 +68,7 @@ mod tests {
 
     fn create_actor() -> (PreferencesStateSyncActor, ActorContext) {
         let state = State::new(crate::common::app_state::AppState::default());
-        let services = Services::new();
+        let services = Services::new_fake();
         let sink = Arc::new(RecordingSink::new());
         let mut ctx = ActorContext::new("prefs-state-sync", sink);
         let actor = PreferencesStateSyncActor::activate(
@@ -83,10 +89,7 @@ mod tests {
 
         // When handling the PreferencesUpdated event.
         actor
-            .handle(
-                ActorEnvelope::Event(Event::PreferencesUpdated(event)),
-                &ctx,
-            )
+            .handle(ActorEnvelope::Event(Event::PreferencesUpdated(event)), &ctx)
             .await;
 
         // Then the frontend preferences match.
@@ -101,13 +104,16 @@ mod tests {
 
         // When handling an unrelated event.
         actor
-            .handle(ActorEnvelope::Event(Event::AppStateUpdated(
-                crate::feat::preferences_actor::protocol::app_state_event::AppStateUpdated {
-                    state: crate::feat::preferences_actor::app_state_file::AppStateFile::default(),
-                },
-            )), &ctx)
+            .handle(
+                ActorEnvelope::Event(Event::AppStateUpdated(
+                    crate::feat::preferences_actor::protocol::app_state_event::AppStateUpdated {
+                        state:
+                            crate::feat::preferences_actor::app_state_file::AppStateFile::default(),
+                    },
+                )),
+                &ctx,
+            )
             .await;
-
 
         // Then the frontend preferences remain default.
         let guard = actor.state.read();

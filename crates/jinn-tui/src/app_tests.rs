@@ -24,7 +24,7 @@ use crate::{AppStatus, MsgHandler, TuiApp};
 
 /// Creates a minimal `TuiApp` for testing.
 fn test_app() -> TuiApp {
-    let services = Services::new();
+    let services = Services::new_fake();
     let (sender, _receiver) = kanal::unbounded();
     let core = AppCore {
         state: State::new(AppState::default()),
@@ -215,7 +215,7 @@ fn scroll_events_still_route_to_keymap() {
 #[rstest::rstest]
 fn mouse_events_not_handled_when_mouse_selection_disabled() {
     // Given an app with mouse selection disabled and a registered selectable rect.
-    let services = Services::new();
+    let services = Services::new_fake();
     let (sender, _receiver) = kanal::unbounded();
     let core = AppCore {
         state: State::new(AppState::default()),

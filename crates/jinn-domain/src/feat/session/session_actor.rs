@@ -60,16 +60,14 @@ pub struct SessionPersistenceActor {
     /// Token counter for recording token usage in the session ledger.
     counter: TiktokenCounter,
     /// Registry of builtin lifecycle handlers.
-    builtin_registry:
-        crate::feat::session_lifecycle::builtin::BuiltinRegistry,
+    builtin_registry: crate::feat::session_lifecycle::builtin::BuiltinRegistry,
     /// Shell captured at startup for running lifecycle commands.
     shell: String,
     /// Handle for cancelling a currently running lifecycle shell process.
     /// `None` when no lifecycle command is in flight. Carries the process-group
     /// PID (for kill) and the inner reader's `AbortHandle` (so aborting it
     /// surfaces the existing "... was cancelled" branch in the outer wrapper).
-    lifecycle_child:
-        Option<crate::feat::session_lifecycle::command_runner::LifecycleCancelHandle>,
+    lifecycle_child: Option<crate::feat::session_lifecycle::command_runner::LifecycleCancelHandle>,
 }
 
 pub struct SessionPersistenceActorDeps {
@@ -328,7 +326,13 @@ impl SessionPersistenceActor {
 
 #[cfg(test)]
 mod dispatch_tests {
-    #![allow(clippy::expect_used, clippy::panic, clippy::unreachable, clippy::indexing_slicing, reason = "test code")]
+    #![allow(
+        clippy::expect_used,
+        clippy::panic,
+        clippy::unreachable,
+        clippy::indexing_slicing,
+        reason = "test code"
+    )]
     use super::*;
     use crate::common::actor::ActorEnvelope;
     use crate::feat::chat_input::protocol::command::EnqueueUserMessage;
@@ -343,7 +347,7 @@ mod dispatch_tests {
 
         SessionPersistenceActor {
             state: State::new(AppState::default()),
-            services: crate::common::services::Services::new(),
+            services: crate::common::services::Services::new_fake(),
             counter: TiktokenCounter::o200k_base(),
             builtin_registry: crate::feat::session_lifecycle::builtin::BuiltinRegistry::new(),
             shell: "/bin/sh".to_owned(),

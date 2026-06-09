@@ -95,7 +95,7 @@ pub struct Services {
 }
 impl Default for Services {
     fn default() -> Self {
-        Self::new()
+        Self::new_fake()
     }
 }
 
@@ -114,7 +114,7 @@ impl Services {
         clippy::expect_used,
         reason = "test-only defaults, panics are acceptable"
     )]
-    pub fn new() -> Self {
+    pub fn new_fake() -> Self {
         let handle = test_services::shared_test_handle();
 
         let tempdir = Arc::new(tempfile::TempDir::new().expect("test temp dir"));
@@ -161,9 +161,7 @@ impl Services {
                 svc
             },
             app_state_storage: {
-                let svc = AppStateStorageService::new(Arc::new(
-                    InMemoryAppStateStorage::new(),
-                ));
+                let svc = AppStateStorageService::new(Arc::new(InMemoryAppStateStorage::new()));
                 svc.reload().expect("test app state storage initial reload");
                 svc
             },
