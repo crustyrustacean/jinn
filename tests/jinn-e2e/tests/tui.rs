@@ -67,6 +67,13 @@ impl TuiWorld {
                 svc.reload().expect("test prefs storage initial reload");
                 svc
             },
+            app_state_storage: {
+                let svc = jinn_domain::AppStateStorageService::new(Arc::new(
+                    jinn_domain::InMemoryAppStateStorage::new(),
+                ));
+                svc.reload().expect("test state storage initial reload");
+                svc
+            },
             plugins: jinn_domain::feat::plugin_dispatch::PluginFireService::new(Arc::new(
                 jinn_domain::NoopPluginFire,
             )

@@ -315,6 +315,7 @@ impl SessionPersistenceActor {
             | Command::ScanContextFiles(..)
             | Command::RescanPersonas(..)
             | Command::UpdatePreferences(..)
+            | Command::UpdateAppState(..)
             | Command::LoadCompactionModelPickerEntries(..)
             | Command::TriggerCompaction(..)
             | Command::Dynamic(..)

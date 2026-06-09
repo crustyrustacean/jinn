@@ -68,6 +68,9 @@ pub struct ActorSystemBuilderArgs {
     pub session_store: SessionStoreService,
     /// User preferences storage service.
     pub user_preferences_storage: UserPreferencesStorageService,
+    /// App state storage service.
+    pub app_state_storage:
+        jinn_domain::feat::preferences_actor::AppStateStorageService,
     /// Application paths.
     pub paths: jinn_domain::AppPaths,
 }
@@ -134,6 +137,7 @@ impl ActorSystemBuilder {
             config_storage,
             session_store,
             user_preferences_storage,
+            app_state_storage,
             paths,
         } = self.args;
         // Body passes `handle` as `&tokio::runtime::Handle`; rebind as a ref.
@@ -164,6 +168,15 @@ impl ActorSystemBuilder {
             guard.frontend.preferences = user_preferences_storage.read();
         }
 
+        // Set app state (last_model, theme_name, persona_name, sidebar_width)
+        {
+            let app_state = app_state_storage.read();
+            let mut guard = state.write();
+            guard.frontend.app_state.last_model = app_state.last_model.clone();
+            guard.frontend.app_state.theme_name = app_state.theme_name.clone();
+            guard.frontend.app_state.persona_name = app_state.persona_name.clone();
+            guard.frontend.app_state.sidebar_width = app_state.sidebar_width;
+        }
         // Set default CWD for sessions (inherited from shell).
         {
             let cwd = std::env::current_dir().unwrap_or_else(|_| std::path::PathBuf::from("/"));
@@ -243,6 +256,7 @@ impl ActorSystemBuilder {
             config_storage: config_storage.clone(),
             session_store: session_store.clone(),
             user_preferences_storage: user_preferences_storage.clone(),
+            app_state_storage: app_state_storage.clone(),
             plugins: jinn_domain::feat::plugin_dispatch::PluginFireService::new(
                 std::sync::Arc::new(async_plugins.clone())
                     as std::sync::Arc<dyn jinn_domain::feat::plugin_dispatch::PluginFire>,
@@ -348,6 +362,35 @@ impl ActorSystemBuilder {
             state: state.clone(),
         },
     ));
+
+        // App state actor: persists state changes to state.toml.
+        actors.push(spawn::<
+            jinn_domain::feat::preferences_actor::app_state_actor::AppStateActor,
+        >(
+            "app-state",
+            &sink,
+            handle,
+            &counter,
+            &shutdown_tracker,
+            jinn_domain::feat::preferences_actor::app_state_actor::AppStateActorDeps {
+                services: services.clone(),
+            },
+        ));
+
+        // App state sync: updates AppState from AppStateUpdated events.
+        actors.push(spawn::<
+            jinn_domain::feat::preferences_actor::app_state_sync_actor::AppStateSyncActor,
+        >(
+            "app-state-sync",
+            &sink,
+            handle,
+            &counter,
+            &shutdown_tracker,
+            jinn_domain::feat::preferences_actor::app_state_sync_actor::AppStateSyncActorDeps {
+                services: services.clone(),
+                state: state.clone(),
+            },
+        ));
 
         // ── Domain actors ────────────────────────────────────────────────────
 
@@ -717,6 +760,29 @@ impl ActorSystemBuilder {
             }
         }
 
+        // Auto-prune worker: edit→read context pruning.
+        {
+            use jinn_domain::feat::auto_prune_worker::EditReadAutoPruneWorker;
+            use jinn_domain::feat::history_worker::actor::{
+                HistoryWorkerActor, HistoryWorkerActorDeps,
+            };
+
+            let config = user_preferences_storage.read().auto_prune.edit_read.clone();
+
+            if config.enabled {
+                actors.push(spawn::<HistoryWorkerActor<EditReadAutoPruneWorker>>(
+                    "history-worker-auto-prune-edit-read",
+                    &sink,
+                    handle,
+                    &counter,
+                    &shutdown_tracker,
+                    HistoryWorkerActorDeps {
+                        worker: EditReadAutoPruneWorker { config },
+                    },
+                ));
+            }
+        }
+
         // Auto-prune worker: regex-based tool call pruning.
         {
             use jinn_domain::feat::auto_prune_worker::RegexAutoPruneWorker;
@@ -939,38 +1005,42 @@ impl ActorSystemBuilder {
             }
         }
 
-        // Auto-prune worker: anchor-radius context pruning.
+        // Auto-prune worker: anchored-assistant context pruning.
         // Prunes large (>80 token) Assistant entries whose index distance to the
         // nearest anchor entry (first index, last index, or any User entry)
         // exceeds a configurable radius.
         {
-            use jinn_domain::feat::auto_prune_worker::AnchorRadiusAutoPruneWorker;
+            use jinn_domain::feat::auto_prune_worker::AnchoredAssistantAutoPruneWorker;
             use jinn_domain::feat::context::strategy::token_estimator::TiktokenCounter;
             use jinn_domain::feat::history_worker::actor::{
                 HistoryWorkerActor, HistoryWorkerActorDeps,
             };
 
-            let config = user_preferences_storage
-                .read()
-                .auto_prune
-                .anchor_radius
-                .clone();
+            let (config, trivial_max_tokens) = {
+                let prefs = user_preferences_storage.read();
+                let cfg = prefs.auto_prune.anchored_assistant.clone();
+                let max_tokens = prefs.auto_prune.trivial_assistant.max_tokens as u32;
+                (cfg, max_tokens)
+            };
 
             if config.enabled {
-                actors.push(spawn::<HistoryWorkerActor<AnchorRadiusAutoPruneWorker>>(
-                    "history-worker-auto-prune-anchor-radius",
-                    &sink,
-                    handle,
-                    &counter,
-                    &shutdown_tracker,
-                    HistoryWorkerActorDeps {
-                        worker: AnchorRadiusAutoPruneWorker {
-                            config,
-                            token_cache: entry_token_cache.clone(),
-                            counter: TiktokenCounter::o200k_base(),
+                actors.push(
+                    spawn::<HistoryWorkerActor<AnchoredAssistantAutoPruneWorker>>(
+                        "history-worker-auto-prune-anchored-assistant",
+                        &sink,
+                        handle,
+                        &counter,
+                        &shutdown_tracker,
+                        HistoryWorkerActorDeps {
+                            worker: AnchoredAssistantAutoPruneWorker {
+                                config,
+                                min_candidate_tokens: trivial_max_tokens + 1,
+                                token_cache: entry_token_cache.clone(),
+                                counter: TiktokenCounter::o200k_base(),
+                            },
                         },
-                    },
-                ));
+                    ),
+                );
             }
         }
         // Sidebar state actor - keeps sidebar cursor in sync after session removal.

@@ -1,5 +1,12 @@
 # jinn default configuration
 #
+# This file is auto-generated on first run. Comments are preserved across
+# saves, so feel free to annotate values that you have customized.
+#
+# Defaults reflect `UserPreferences::default()` exactly; a unit test in
+# `user_preferences.rs` (round-trip equality) guards against drift.
+
+
 # ---------------------------------------------------------------------------
 # Session lifecycle commands
 # ---------------------------------------------------------------------------

@@ -1,4 +1,4 @@
-//! Domain context for Lua workflow LLM access.
+//! Domain context for Lua plugin LLM access.
 //!
 //! Provides `send_llm_request_cloned` so Lua scripts can call `ctx.llm()`
 //! through the existing session infrastructure. Also provides `send_command`
@@ -27,7 +27,7 @@ use crate::protocol::{Command, SessionId};
 #[error(debug)]
 pub struct DomainContextError;
 
-/// Domain context for Lua workflow LLM access.
+/// Domain context for Lua plugin LLM access.
 ///
 /// Provides:
 /// - `send_command` - emit domain commands through the actor channel
@@ -39,7 +39,11 @@ pub struct DomainNodeContext {
     /// Shared application state.
     state: State,
     /// Maps session IDs to pending oneshot senders.
-    pending: Arc<Mutex<HashMap<SessionId, oneshot::Sender<String>>>>,
+    ///
+    /// The sender carries a `Result`: `Ok(text)` for a successful one-shot
+    /// (assistant text) or `Err(message)` when the one-shot session ended in an
+    /// error entry (e.g. provider connection failure).
+    pending: Arc<Mutex<HashMap<SessionId, oneshot::Sender<Result<String, String>>>>>,
 }
 
 impl DomainNodeContext {
@@ -62,16 +66,23 @@ impl DomainNodeContext {
         self.pending.lock().contains_key(session_id)
     }
 
-    /// Resolves a pending oneshot with the given response.
-    pub fn resolve_completed(&self, session_id: &SessionId, response: String) {
+    /// Resolves a pending oneshot with the given outcome.
+    ///
+    /// `Ok(text)` fulfills a successful one-shot; `Err(message)` reports that the
+    /// one-shot session ended in an error entry.
+    pub fn resolve_completed(&self, session_id: &SessionId, outcome: Result<String, String>) {
         if let Some(tx) = self.pending.lock().remove(session_id) {
-            let _ = tx.send(response);
+            let _ = tx.send(outcome);
         }
     }
 
     /// Inserts a pending oneshot sender for the given session ID.
     #[cfg(test)]
-    pub fn insert_pending(&self, session_id: SessionId, tx: oneshot::Sender<String>) {
+    pub fn insert_pending(
+        &self,
+        session_id: SessionId,
+        tx: oneshot::Sender<Result<String, String>>,
+    ) {
         self.pending.lock().insert(session_id, tx);
     }
 
@@ -112,7 +123,7 @@ impl DomainNodeContext {
         // 3. Generate new session ID (clone must NOT share ID with source)
         session.core.session_id = SessionId::new();
 
-        // 4. Mark as workflow, reset ephemeral
+        // 4. Mark as plugin session, reset ephemeral
         session.core.is_automated = true;
         session.core.ephemeral = SessionCoreEphemeral::default();
         session.core.assembly_overrides = Some(overrides);
@@ -143,9 +154,13 @@ impl DomainNodeContext {
                 entry,
             }));
 
-        rx.await.map_err(|_| {
-            Report::new(DomainContextError).attach("cloned workflow LLM request cancelled")
-        })
+        match rx.await {
+            Ok(Ok(response)) => Ok(response),
+            Ok(Err(message)) => Err(Report::new(DomainContextError).attach(message)),
+            Err(_) => {
+                Err(Report::new(DomainContextError).attach("cloned plugin LLM request cancelled"))
+            }
+        }
     }
 
     /// Send a history-less one-shot LLM request, inheriting only the source session's
@@ -153,7 +168,7 @@ impl DomainNodeContext {
     /// session (default `SessionCore`, empty history) — no inherited chat history, profile
     /// skills, or tools. Used by plugin enrichment (`ctx.request("llm_oneshot", ...)`).
     ///
-    /// The completion is resolved by the plugin-dispatch actor when this workflow session
+    /// The completion is resolved by the plugin-dispatch actor when this plugin session
     /// transitions to `Idle` (see `SessionPhaseChanged` handler).
     ///
     /// # Errors
@@ -238,7 +253,8 @@ impl DomainNodeContext {
         //    session (no zombie stream burning provider tokens) and drop the pending
         //    entry so a later Idle transition can't resolve a dead receiver.
         match tokio::time::timeout(std::time::Duration::from_millis(timeout_ms), rx).await {
-            Ok(Ok(response)) => Ok(response),
+            Ok(Ok(Ok(response))) => Ok(response),
+            Ok(Ok(Err(message))) => Err(Report::new(DomainContextError).attach(message)),
             Ok(Err(_)) => {
                 Err(Report::new(DomainContextError).attach("one-shot LLM request cancelled"))
             }
@@ -296,9 +312,9 @@ mod tests {
         let session_id = SessionId::new();
         let (tx, mut rx) = oneshot::channel();
         ctx.pending.lock().insert(session_id.clone(), tx);
-        ctx.resolve_completed(&session_id, "hello world".to_owned());
+        ctx.resolve_completed(&session_id, Ok("hello world".to_owned()));
         let result = rx.try_recv().expect("should have a value");
-        assert_eq!(result, "hello world");
+        assert_eq!(result, Ok("hello world".to_owned()));
     }
 
     #[rstest::rstest]
@@ -307,14 +323,14 @@ mod tests {
         let session_id = SessionId::new();
         let (tx, _rx) = oneshot::channel();
         ctx.pending.lock().insert(session_id.clone(), tx);
-        ctx.resolve_completed(&session_id, "response".to_owned());
+        ctx.resolve_completed(&session_id, Ok("response".to_owned()));
         assert!(!ctx.has_pending(&session_id));
     }
 
     #[rstest::rstest]
     fn resolve_completed_ignores_unknown_session() {
         let ctx = make_ctx();
-        ctx.resolve_completed(&SessionId::new(), "response".to_owned());
+        ctx.resolve_completed(&SessionId::new(), Ok("response".to_owned()));
     }
 
     // ── send_llm_request_oneshot ──────────────────────────────────────────
@@ -376,7 +392,7 @@ mod tests {
         );
 
         // Exactly one command should be emitted: an EnqueueUserMessage for the
-        // NEW (workflow) session — not the source session.
+        // NEW (plugin) session — not the source session.
         let msg = rx.recv().expect("expected one AppMsg");
         let new_session_id = match msg {
             AppMsg::Command {
@@ -390,7 +406,7 @@ mod tests {
             "one-shot must create a fresh session, not reuse the source"
         );
 
-        // The new workflow session inherits the source's provider+model, has no
+        // The new plugin session inherits the source's provider+model, has no
         // history, is marked is_automated, and records the source as parent.
         let guard = ctx.state.read();
         let new = guard
@@ -422,7 +438,7 @@ mod tests {
         assert!(ctx.has_pending(&new_session_id));
 
         // Resolve the oneshot — polling again should yield the text.
-        ctx.resolve_completed(&new_session_id, "rewritten!".to_owned());
+        ctx.resolve_completed(&new_session_id, Ok("rewritten!".to_owned()));
         match fut.as_mut().poll(&mut poll_cx) {
             std::task::Poll::Ready(Ok(text)) => assert_eq!(text, "rewritten!"),
             other => panic!("expected Ready(Ok), got {other:?}"),
@@ -449,6 +465,55 @@ mod tests {
                 assert!(s.contains("source session not found"), "got: {s}");
             }
             other => panic!("expected immediate error, got {other:?}"),
+        }
+    }
+
+    #[tokio::test]
+    async fn oneshot_resolves_err_as_request_failure() {
+        // When a one-shot session errors (e.g. LLM connection refused), the session
+        // actor pushes a ChatEntry::error and transitions to Idle. The dispatch actor
+        // reads that error entry and resolves the pending oneshot as Err, which
+        // surfaces to the plugin via the request envelope's `error` field.
+        use std::future::Future as _;
+
+        let (ctx, rx) = make_ctx_with_channel();
+        let source_id = seed_source_session(&ctx, "ollama/llama3");
+
+        let fut = ctx.send_llm_request_oneshot(
+            &source_id,
+            "rewrite me".to_owned(),
+            None,
+            false,
+            true,
+            30_000,
+        );
+        futures::pin_mut!(fut);
+        let waker = futures::task::noop_waker();
+        let mut poll_cx = std::task::Context::from_waker(&waker);
+
+        // Drive to the await point (pending on the oneshot channel).
+        assert!(matches!(
+            fut.as_mut().poll(&mut poll_cx),
+            std::task::Poll::Pending,
+        ));
+
+        // Consume the EnqueueUserMessage to discover the new session id.
+        let new_session_id = match rx.recv().expect("expected one AppMsg") {
+            AppMsg::Command {
+                command: Command::EnqueueUserMessage(e),
+                ..
+            } => e.session_id,
+            other => panic!("expected EnqueueUserMessage, got {other:?}"),
+        };
+
+        // Resolve as an error (simulating the dispatch actor reading an Error entry).
+        ctx.resolve_completed(&new_session_id, Err("LLM stream error".to_owned()));
+        match fut.as_mut().poll(&mut poll_cx) {
+            std::task::Poll::Ready(Err(e)) => {
+                let s = format!("{e:?}");
+                assert!(s.contains("LLM stream error"), "got: {s}");
+            }
+            other => panic!("expected Ready(Err), got {other:?}"),
         }
     }
 

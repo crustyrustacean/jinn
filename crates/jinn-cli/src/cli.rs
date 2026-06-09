@@ -19,14 +19,38 @@ pub struct Cli {
     pub log_file: Option<PathBuf>,
 
     /// Session database file. Defaults to the platform data directory.
-    /// Use this to inspect a bench database after a run, e.g.
+    ///
+    /// In debug builds this flag is **required** to prevent accidental use
+    /// of the production database during development.
+    #[cfg(debug_assertions)]
+    #[arg(long, value_hint = clap::ValueHint::FilePath)]
+    pub db_path: PathBuf,
+
+    /// Session database file. Defaults to the platform data directory.
+    ///
+    /// Use `--db-path` to inspect a bench database after a run, e.g.
     /// `jinn --db-path ./bench.db/sessions.db`.
+    #[cfg(not(debug_assertions))]
     #[arg(long, value_hint = clap::ValueHint::FilePath)]
     pub db_path: Option<PathBuf>,
 
     /// The subcommand to run. If omitted, launches the TUI.
     #[command(subcommand)]
     pub command: Option<Commands>,
+}
+
+impl Cli {
+    /// Returns the database path if provided (always `Some` in debug builds).
+    pub fn db_path_opt(&self) -> Option<&PathBuf> {
+        #[cfg(debug_assertions)]
+        {
+            Some(&self.db_path)
+        }
+        #[cfg(not(debug_assertions))]
+        {
+            self.db_path.as_ref()
+        }
+    }
 }
 
 /// Available subcommands.
@@ -110,10 +134,6 @@ pub enum ConfigCommands {
 pub enum BenchCommands {
     /// Run benchmark tasks through the actor pipeline.
     Run {
-        /// Database file path for bench sessions (isolated from user's real database).
-        #[arg(value_hint = clap::ValueHint::FilePath)]
-        db_path: PathBuf,
-
         /// Model(s) to benchmark (e.g., `openai/gpt-4o`). At least one required.
         #[arg(long, required = true)]
         model: Vec<String>,
@@ -149,11 +169,7 @@ pub enum BenchCommands {
     },
 
     /// Launch the TUI pointed at a bench database for inspection.
-    Tui {
-        /// Database file to open.
-        #[arg(value_hint = clap::ValueHint::FilePath)]
-        db_path: PathBuf,
-    },
+    Tui {},
 }
 
 #[cfg(test)]
@@ -165,7 +181,7 @@ mod tests {
     // Then Cli.log_file is None (default).
     #[test]
     fn log_file_flag_defaults_to_none() {
-        let cli = Cli::parse_from(["jinn"]);
+        let cli = Cli::parse_from(["jinn", "--db-path", "/tmp/test.db"]);
         assert!(cli.log_file.is_none());
     }
 
@@ -173,7 +189,14 @@ mod tests {
     // Then Cli.log_file captures the override.
     #[test]
     fn log_file_flag_global_overrides() {
-        let cli = Cli::parse_from(["jinn", "--log-file", "/tmp/x.log", "tui"]);
+        let cli = Cli::parse_from([
+            "jinn",
+            "--db-path",
+            "/tmp/test.db",
+            "--log-file",
+            "/tmp/x.log",
+            "tui",
+        ]);
         assert_eq!(
             cli.log_file.as_deref(),
             Some(std::path::Path::new("/tmp/x.log"))
@@ -184,7 +207,10 @@ mod tests {
     // Then clap rejects it (the flag has been removed).
     #[test]
     fn log_dir_flag_removed() {
-        let result = Cli::try_parse_from(["jinn", "--log-dir", "/tmp"]);
+        // In debug mode, missing --db-path would trigger first,
+        // so provide a dummy path.
+        let result =
+            Cli::try_parse_from(["jinn", "--db-path", "/tmp/test.db", "--log-dir", "/tmp"]);
         assert!(result.is_err());
     }
 
@@ -194,6 +220,8 @@ mod tests {
     fn headless_scoped_log_file_removed() {
         let result = Cli::try_parse_from([
             "jinn",
+            "--db-path",
+            "/tmp/test.db",
             "headless",
             "--log-file",
             "/tmp/x.log",
@@ -209,6 +237,8 @@ mod tests {
     fn log_file_flag_works_with_headless() {
         let cli = Cli::parse_from([
             "jinn",
+            "--db-path",
+            "/tmp/test.db",
             "--log-file",
             "/tmp/x.log",
             "headless",
@@ -219,5 +249,57 @@ mod tests {
             cli.log_file.as_deref(),
             Some(std::path::Path::new("/tmp/x.log"))
         );
+    }
+
+    #[cfg(debug_assertions)]
+    #[test]
+    fn db_path_required_in_debug() {
+        // Given no --db-path flag.
+        // When parsing.
+        let result = Cli::try_parse_from(["jinn"]);
+        // Then clap rejects it.
+        assert!(result.is_err());
+    }
+
+    #[cfg(not(debug_assertions))]
+    #[test]
+    fn db_path_optional_in_release() {
+        // Given no --db-path flag.
+        // When parsing.
+        let cli = Cli::parse_from(["jinn"]);
+        // Then db_path_opt returns None.
+        assert!(cli.db_path_opt().is_none());
+    }
+
+    #[test]
+    fn db_path_opt_returns_some_when_provided() {
+        // Given --db-path /tmp/test.db.
+        // When parsing.
+        let cli = Cli::parse_from(["jinn", "--db-path", "/tmp/test.db"]);
+        // Then db_path_opt returns the path.
+        assert_eq!(
+            cli.db_path_opt().map(std::path::PathBuf::as_path),
+            Some(std::path::Path::new("/tmp/test.db"))
+        );
+    }
+
+    #[cfg(not(debug_assertions))]
+    #[test]
+    fn bench_run_no_db_path_fails_in_release() {
+        // Given no --db-path flag with bench run.
+        // When parsing.
+        let cli = Cli::parse_from(["jinn", "bench", "run", "--model", "gpt-4o"]);
+        // Then CLI parses but db_path_opt is None (runtime will reject).
+        assert!(cli.db_path_opt().is_none());
+    }
+
+    #[cfg(not(debug_assertions))]
+    #[test]
+    fn bench_tui_no_db_path_fails_in_release() {
+        // Given no --db-path flag with bench tui.
+        // When parsing.
+        let cli = Cli::parse_from(["jinn", "bench", "tui"]);
+        // Then CLI parses but db_path_opt is None (runtime will reject).
+        assert!(cli.db_path_opt().is_none());
     }
 }

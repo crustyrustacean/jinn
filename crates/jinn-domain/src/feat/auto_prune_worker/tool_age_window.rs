@@ -31,10 +31,10 @@
 //! # Example (min_age = 4)
 //!
 //! ```text
-//! X  [User]                  ← index 0 (pruned: age 7 ≥ min_age)
+//!    [User]                  ← index 0 (untouched: not a tool call)
 //! X  [Tool Call]: bash       ← index 1 (pruned: call in prune region)
 //! X  [Tool Result] (OK)      ← index 2 (pruned atomically with its call)
-//! X  [Assistant]             ← index 3 (pruned: age 4 ≥ min_age)
+//!    [Assistant]             ← index 3 (untouched: not a tool call)
 //!    [User]                  ← index 4 (kept: age 3 < min_age)
 //!    [Tool Call]: bash       ← index 5 (kept)
 //!    [Tool Result] (OK)      ← index 6 (kept)

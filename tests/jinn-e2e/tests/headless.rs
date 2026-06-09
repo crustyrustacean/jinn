@@ -109,6 +109,13 @@ impl HeadlessWorld {
                     config_storage,
                     session_store,
                     user_preferences_storage,
+                    app_state_storage: {
+                        let svc = jinn_domain::AppStateStorageService::new(Arc::new(
+                            jinn_domain::InMemoryAppStateStorage::new(),
+                        ));
+                        svc.reload().expect("test state storage initial reload");
+                        svc
+                    },
                     paths,
                 })
                 .build();

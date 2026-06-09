@@ -32,7 +32,7 @@ pub enum KeyCategory {
     Input,
     /// Context strategy and prompt template management.
     Context,
-    /// Plugin-declared keybinds (e.g. toggle prompt enrichment).
+    /// Plugin-declared keybinds (e.g. enrich prompt on tap).
     Plugin,
     /// Sidebar sections
     Sidebar,
@@ -206,6 +206,7 @@ pub fn init() -> Keymap<KeyEvent, Scope, Intent, KeyCategory> {
             .bind("r", Intent::SidebarRenameSession, KeyCategory::Sidebar)
             .bind("a", Intent::SidebarSessionArchive, KeyCategory::Sidebar)
             .bind("c", Intent::SidebarSessionContinue, KeyCategory::Sidebar)
+            .bind("s", Intent::SidebarSessionRerunSetup, KeyCategory::General)
 
             // i activates session and enters insert mode
             .bind("i", Intent::SidebarConfirmInsert, KeyCategory::Sidebar)
@@ -500,7 +501,7 @@ mod tests {
             "plugin keybinds must group under KeyCategory::Plugin"
         );
         assert_eq!(
-            me.description, "toggle prompt enrichment",
+            me.description, "enrich prompt",
             "which-key help derives its text from this description"
         );
     }

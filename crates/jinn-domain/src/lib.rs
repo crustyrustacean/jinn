@@ -43,7 +43,7 @@ pub use common::tui_signals::TuiSignals;
 pub use common::{AppUiRegistry, register_all_ui_elements};
 pub use feat::context::prompt_template::PromptTemplateStore;
 pub use feat::plugin_dispatch::{
-    BadgeDirective, InterceptOutcome, PluginSyncHooks, call_hooks_typed,
+    BadgeDirective, BadgeSegment, InterceptOutcome, PluginSyncHooks, call_hooks_typed,
 };
 pub use feat::provider_infra::NO_PROVIDER_ID;
 
@@ -89,6 +89,9 @@ pub use feat::preferences_actor::InMemoryUserPreferencesStorage;
 pub use feat::preferences_actor::RequestRetryConfig;
 pub use feat::preferences_actor::UserPreferences;
 pub use feat::preferences_actor::UserPreferencesStorageService;
+pub use feat::preferences_actor::AppStateStorageService;
+pub use feat::preferences_actor::FilesystemAppStateStorage;
+pub use feat::preferences_actor::InMemoryAppStateStorage;
 pub use feat::preferences_actor::protocol::command::{PreferenceUpdate, UpdatePreferences};
 pub use feat::preferences_actor::protocol::event::PreferencesUpdated;
 pub use feat::preferences_actor::{InitOutcome, init_default_config_to, preferences_path};

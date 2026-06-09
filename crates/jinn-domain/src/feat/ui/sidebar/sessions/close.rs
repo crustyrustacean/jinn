@@ -11,7 +11,7 @@ pub enum SessionCloseError {
     WrongSection,
     /// No session is selected.
     NoSelection,
-    /// The selected entry is a workflow, not a session.
+    /// The selected entry is a plugin, not a session.
     NotASession,
     /// The selected session is streaming or sending.
     SessionBusy,
@@ -44,7 +44,7 @@ pub fn validate_session_close(state: &AppState) -> Result<(), SessionCloseError>
     let sessions = sorted_open_sessions(state);
     let entry = sessions.get(index).ok_or(SessionCloseError::NoSelection)?;
 
-    // Workflow entries cannot be closed/archived.
+    // Plugin entries cannot be closed/archived.
     if matches!(entry.kind, SessionEntryKind::Plugin { .. }) {
         return Err(SessionCloseError::NotASession);
     }
@@ -89,7 +89,7 @@ pub fn handle_session_close(state: &mut AppState) -> crate::protocol::IntentResu
         let new_session = {
             let model = state
                 .frontend
-                .preferences
+                .app_state
                 .last_model
                 .clone()
                 .unwrap_or_else(|| crate::feat::provider_infra::NO_PROVIDER_ID.to_owned());

@@ -13,6 +13,8 @@ use jinn_domain::ApiKeysService;
 use jinn_domain::ConfigStorageService;
 use jinn_domain::FilesystemConfigStorage;
 use jinn_domain::FilesystemUserPreferencesStorage;
+use jinn_domain::AppStateStorageService;
+use jinn_domain::FilesystemAppStateStorage;
 use jinn_domain::LlmServiceFactoryService;
 use jinn_domain::NoProvidersAvailableFactory;
 use jinn_domain::ProviderRegistry;
@@ -121,17 +123,11 @@ impl App {
         // Initial factory is the no-provider sentinel until actors resolve the real one.
         let llm_service = LlmServiceFactoryService::new(Arc::new(NoProvidersAvailableFactory));
 
-        // Guard: --db-path cannot be used with bench subcommands.
-        if matches!(&cli.command, Some(Commands::Bench { .. })) && cli.db_path.is_some() {
-            return Err(Report::new(AppError)
-                .attach("--db-path cannot be used with bench subcommands. Use 'bench tui <db_path>' instead"));
-        }
-
         // Create the session store - uses --db-path if provided, otherwise
         // the platform default. The --db-path flag lets users point the TUI
         // at a bench database to inspect results after a bench run.
         let session_store = {
-            let store = match &cli.db_path {
+            let store = match cli.db_path_opt() {
                 Some(path) => SqliteSessionStore::open_or_create(path),
                 None => SqliteSessionStore::new(),
             };
@@ -186,6 +182,19 @@ impl App {
             svc
         };
 
+        let app_state_storage = {
+            let backend = FilesystemAppStateStorage::new(jinn_domain::AppPaths::default().state_file_path());
+            let svc = AppStateStorageService::new(Arc::new(backend));
+            if let Err(report) = svc.reload() {
+                tracing::error!("failed to load app state");
+                eprintln!("error: failed to load app state:");
+                eprintln!("  {report:?}");
+                std::process::exit(1);
+            }
+            svc
+        };
+
+        let db_path = cli.db_path_opt().cloned();
         match cli.command.unwrap_or(Commands::Tui) {
             Commands::Completions { shell } => {
                 use clap::CommandFactory;
@@ -204,6 +213,7 @@ impl App {
                         config_storage: config_storage.clone(),
                         session_store: session_store.clone(),
                         user_preferences_storage: user_preferences_storage.clone(),
+                        app_state_storage: app_state_storage.clone(),
                         paths: jinn_domain::AppPaths::default(),
                     })
                     .build();
@@ -223,6 +233,7 @@ impl App {
                         config_storage,
                         session_store,
                         user_preferences_storage: user_preferences_storage.clone(),
+                        app_state_storage: app_state_storage.clone(),
                         paths: jinn_domain::AppPaths::default(),
                     })
                     .build();
@@ -267,13 +278,17 @@ impl App {
             }
 
             Commands::Bench { subcommand } => {
-                if cli.db_path.is_some() {
-                    return Err(Report::new(AppError)
-                        .attach("--db-path cannot be used with bench subcommands. Use 'bench tui <db_path>' instead"));
+                match &subcommand {
+                    BenchCommands::Run { .. } | BenchCommands::Tui {} => {
+                        if db_path.is_none() {
+                            return Err(Report::new(AppError)
+                                .attach("--db-path is required for bench commands"));
+                        }
+                    }
+                    BenchCommands::Show { .. } | BenchCommands::Compare { .. } => {}
                 }
                 match subcommand {
                     BenchCommands::Run {
-                        db_path,
                         model,
                         task,
                         csv,
@@ -291,9 +306,11 @@ impl App {
                             .attach("invalid task glob pattern")?;
                         tracing::info!(pairs = plan.pairs.len(), "built bench plan");
 
+                        // Safe: validated above that --db-path is present.
+                        let db_path = db_path.as_ref().unwrap();
+
                         let session_store = SessionStoreService::new(Arc::new(
-                            SqliteSessionStore::open_or_create(&db_path)
-                                .change_context(AppError)?,
+                            SqliteSessionStore::open_or_create(db_path).change_context(AppError)?,
                         ));
                         let store_for_shutdown = session_store.clone();
                         let (core, services, actor_host, plugins) =
@@ -306,6 +323,7 @@ impl App {
                                     config_storage,
                                     session_store,
                                     user_preferences_storage,
+                                    app_state_storage: app_state_storage.clone(),
                                     paths: jinn_domain::AppPaths::default(),
                                 },
                             )
@@ -326,10 +344,12 @@ impl App {
                             error_stack::Report::new(AppError).attach(e.to_string())
                         })?;
                     }
-                    BenchCommands::Tui { db_path } => {
+                    BenchCommands::Tui {} => {
+                        // Safe: validated above that --db-path is present.
+                        let db_path = db_path.as_ref().unwrap();
+
                         let session_store = SessionStoreService::new(Arc::new(
-                            SqliteSessionStore::open_or_create(&db_path)
-                                .change_context(AppError)?,
+                            SqliteSessionStore::open_or_create(db_path).change_context(AppError)?,
                         ));
                         let store_for_shutdown = session_store.clone();
                         let (core, services, actor_host, plugins) =
@@ -342,6 +362,7 @@ impl App {
                                     config_storage: config_storage.clone(),
                                     session_store,
                                     user_preferences_storage: user_preferences_storage.clone(),
+                                    app_state_storage: app_state_storage.clone(),
                                     paths: jinn_domain::AppPaths::default(),
                                 },
                             )
@@ -522,7 +543,7 @@ mod tests {
         let state = State::new(AppState::default());
 
         // Set the theme name in preferences.
-        state.write().frontend.preferences.theme_name = Some("custom".to_owned());
+        state.write().frontend.app_state.theme_name = Some("custom".to_owned());
 
         // Capture the initial focus_accent color.
         let initial_focus = state.read().frontend.theme.focus_accent;
@@ -544,7 +565,7 @@ mod tests {
     fn load_theme_falls_back_gracefully_on_missing() {
         // Given a state with a theme name that doesn't exist.
         let state = State::new(AppState::default());
-        state.write().frontend.preferences.theme_name = Some("nonexistent".to_owned());
+        state.write().frontend.app_state.theme_name = Some("nonexistent".to_owned());
 
         let empty = PathBuf::from("/nonexistent");
 

@@ -463,6 +463,12 @@ impl IntentHandler {
                 }
                 feat::ui::sidebar::sessions::handle_session_teardown(state)
             }
+            Intent::SidebarSessionRerunSetup => {
+                if selected_entry_is_automated(state) {
+                    return IntentResult::empty();
+                }
+                feat::session_lifecycle::intent::handle_session_rerun_setup(state)
+            }
             Intent::SidebarSessionArchive => {
                 if selected_entry_is_automated(state) {
                     return IntentResult::empty();
@@ -533,9 +539,9 @@ impl IntentHandler {
             }
             Intent::SidebarResizeLeave => feat::sidebar_resize::intent::handle_resize_leave(state),
 
-            // --- Rename Session / Workflow Input ---
+            // --- Rename Session / Plugin Input ---
             Intent::SidebarRenameSession => {
-                // Branch on selected entry kind: session -> session rename, workflow -> workflow rename.
+                // Branch on selected entry kind: session -> session rename, plugin -> no-op.
                 let index = state.frontend.sessions_section.selected_index;
                 if let Some(index) = index {
                     let entries = feat::ui::sidebar::sessions::sorted_open_sessions(state);
@@ -549,7 +555,7 @@ impl IntentHandler {
                             feat::ui::sidebar::sessions::state::SessionEntryKind::Plugin {
                                 ..
                             } => {
-                                // Workflow entries are not renamable from the sidebar.
+                                // Plugin entries are not renamable from the sidebar.
                                 IntentResult::empty()
                             }
                         }
@@ -595,9 +601,9 @@ impl IntentHandler {
     }
 }
 
-/// Returns `true` when the cursor in the sessions sidebar section is on a workflow entry.
+/// Returns `true` when the cursor in the sessions sidebar section is on a plugin entry.
 ///
-/// Used by session-management intents to no-op when a workflow is selected,
+/// Used by session-management intents to no-op when a plugin is selected,
 /// preventing accidental operations on the parent session.
 fn selected_entry_is_automated(state: &AppState) -> bool {
     use crate::feat::ui::sidebar::sessions::state::SessionEntryKind;
@@ -1210,10 +1216,10 @@ mod tests {
         );
     }
 
-    // --- Session-management intents on workflow entries ---
+    // --- Session-management intents on plugin entries ---
 
     /// Helper: create state with a session that has an attached plugin, cursor on the plugin entry.
-    fn state_with_workflow_selected() -> AppState {
+    fn state_with_plugin_selected() -> AppState {
         use crate::feat::attached_plugin::AttachedPlugin;
 
         let mut state = AppState::default();
@@ -1231,9 +1237,9 @@ mod tests {
     }
 
     #[rstest::rstest]
-    fn sidebar_session_close_noop_on_workflow_entry() {
-        // Given the cursor on a workflow entry in the sessions sidebar.
-        let mut state = state_with_workflow_selected();
+    fn sidebar_session_close_noop_on_plugin_entry() {
+        // Given the cursor on a plugin entry in the sessions sidebar.
+        let mut state = state_with_plugin_selected();
 
         // When handling SidebarSessionClose.
         let result = IntentHandler::handle(&Intent::SidebarSessionClose, &mut state, None);
@@ -1244,9 +1250,9 @@ mod tests {
     }
 
     #[rstest::rstest]
-    fn sidebar_session_teardown_noop_on_workflow_entry() {
-        // Given the cursor on a workflow entry in the sessions sidebar.
-        let mut state = state_with_workflow_selected();
+    fn sidebar_session_teardown_noop_on_plugin_entry() {
+        // Given the cursor on a plugin entry in the sessions sidebar.
+        let mut state = state_with_plugin_selected();
 
         // When handling SidebarSessionTeardown.
         let result = IntentHandler::handle(&Intent::SidebarSessionTeardown, &mut state, None);
@@ -1256,9 +1262,9 @@ mod tests {
     }
 
     #[rstest::rstest]
-    fn sidebar_session_archive_noop_on_workflow_entry() {
-        // Given the cursor on a workflow entry in the sessions sidebar.
-        let mut state = state_with_workflow_selected();
+    fn sidebar_session_archive_noop_on_plugin_entry() {
+        // Given the cursor on a plugin entry in the sessions sidebar.
+        let mut state = state_with_plugin_selected();
         let original_count = state.session.session_count();
 
         // When handling SidebarSessionArchive.
@@ -1270,9 +1276,9 @@ mod tests {
     }
 
     #[rstest::rstest]
-    fn sidebar_session_continue_noop_on_workflow_entry() {
-        // Given the cursor on a workflow entry in the sessions sidebar.
-        let mut state = state_with_workflow_selected();
+    fn sidebar_session_continue_noop_on_plugin_entry() {
+        // Given the cursor on a plugin entry in the sessions sidebar.
+        let mut state = state_with_plugin_selected();
 
         // When handling SidebarSessionContinue.
         let result = IntentHandler::handle(&Intent::SidebarSessionContinue, &mut state, None);

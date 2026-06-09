@@ -1,4 +1,4 @@
-//! Anchor-radius auto-prune worker.
+//! Anchored-assistant auto-prune worker.
 //!
 //! Targets large (`> 80` token) `Assistant` text entries that are far from
 //! any **anchor** entry in either direction. These are typically planning
@@ -40,24 +40,23 @@ use std::sync::Arc;
 use crate::feat::auto_prune_worker::is_within_min_age;
 use crate::feat::context::strategy::token_estimator::{TiktokenCounter, TokenCounter};
 use crate::feat::history_worker::worker_trait::HistoryWorker;
-use crate::feat::preferences_actor::user_preferences::AnchorRadiusAutoPruneConfig;
+use crate::feat::preferences_actor::user_preferences::AnchoredAssistantAutoPruneConfig;
 use crate::feat::session::chat_entry::{ChangeSource, ChatEntry, ChatEntryKind, ContextOverride};
 use crate::feat::session::history_mutation::HistoryMutation;
 use crate::protocol::SessionId;
 
-/// Minimum token count for an `Assistant` entry to be a prune candidate.
-///
-/// Entries at or below this threshold are owned by
-/// [`TrivialAssistantAutoPruneWorker`](super::TrivialAssistantAutoPruneWorker).
-const MIN_CANDIDATE_TOKENS: u32 = 81;
-
-/// Anchor-radius auto-prune worker.
+/// Anchored-assistant auto-prune worker.
 ///
 /// See the [module docs](self) for full semantics.
 #[derive(Clone)]
-pub struct AnchorRadiusAutoPruneWorker {
+pub struct AnchoredAssistantAutoPruneWorker {
     /// Configuration for the anchor-radius strategy.
-    pub config: AnchorRadiusAutoPruneConfig,
+    pub config: AnchoredAssistantAutoPruneConfig,
+    /// Minimum token count for an entry to be considered a pruning candidate.
+    /// Entries at or below this threshold are owned by
+    /// [`TrivialAssistantAutoPruneWorker`](super::TrivialAssistantAutoPruneWorker).
+    /// Derived from `trivial_assistant.max_tokens + 1` at wiring time.
+    pub min_candidate_tokens: u32,
     /// Shared per-session, per-entry token-count cache. Cheap clone (inner is
     /// `Arc`-shared).
     pub token_cache: super::HistoryWorkerChatEntryTokenCache,
@@ -161,28 +160,35 @@ fn distances_to_nearest_anchors(
 ///    e. Prune if both distances are present and both strictly exceed
 ///    `radius`.
 ///    f. Skip otherwise (including the case where only one side is
-///    missing — that side acts as `∞`, but the present side is finite
-///    and we keep the entry if it's within radius).
-fn build_prune_mutations(
-    history: &[ChatEntry],
+///    missing — that side acts as ∞, and we keep the entry if it's within
+///    radius).
+///
+/// Context bundle for [`build_prune_mutations`] — groups the seven parameters
+/// that vary per invocation into a single struct so the function signature stays
+/// under clippy's argument-count threshold.
+struct PruneCtx<'a> {
+    history: &'a [ChatEntry],
     radius: usize,
     min_age: usize,
-    session_id: &SessionId,
-    token_cache: &super::HistoryWorkerChatEntryTokenCache,
-    counter: &TiktokenCounter,
-    worker_name: &str,
-) -> Vec<HistoryMutation> {
-    let radius = radius.max(1);
+    min_candidate_tokens: u32,
+    session_id: &'a SessionId,
+    token_cache: &'a super::HistoryWorkerChatEntryTokenCache,
+    counter: &'a TiktokenCounter,
+    worker_name: &'a str,
+}
 
-    if history.is_empty() {
+fn build_prune_mutations(ctx: &PruneCtx<'_>) -> Vec<HistoryMutation> {
+    let radius = ctx.radius.max(1);
+
+    if ctx.history.is_empty() {
         return Vec::new();
     }
-    let anchor_indices = collect_anchor_indices(history);
+    let anchor_indices = collect_anchor_indices(ctx.history);
 
     let mut mutations = Vec::new();
-    let history_len = history.len();
+    let history_len = ctx.history.len();
 
-    for (idx, entry) in history.iter().enumerate() {
+    for (idx, entry) in ctx.history.iter().enumerate() {
         // Only Assistant entries are candidates.
         let text = match &entry.kind {
             ChatEntryKind::Assistant(t) => t.as_str(),
@@ -208,17 +214,18 @@ fn build_prune_mutations(
 
         // Protection floor: never prune entries within `min_age` of the
         // end of history. `min_age = 0` disables protection entirely.
-        if is_within_min_age(history_len, idx, min_age) {
+        if is_within_min_age(history_len, idx, ctx.min_age) {
             continue;
         }
 
         // Look up or compute token count. The closure only fires on first
         // miss for this (session, entry) pair.
-        let tokens =
-            token_cache.get_or_insert_with(session_id, &entry.id, || counter.count(text) as u32);
+        let tokens = ctx
+            .token_cache
+            .get_or_insert_with(ctx.session_id, &entry.id, || ctx.counter.count(text) as u32);
 
         // Skip small entries — owned by TrivialAssistantAutoPruneWorker.
-        if tokens < MIN_CANDIDATE_TOKENS {
+        if tokens < ctx.min_candidate_tokens {
             continue;
         }
 
@@ -243,13 +250,13 @@ fn build_prune_mutations(
                 radius,
                 d_back = ?d_back,
                 d_fwd = ?d_fwd,
-                "anchor_radius: excluding stale large assistant entry",
+                "anchored_assistant: excluding stale large assistant entry",
             );
             mutations.push(HistoryMutation::SetContextOverride {
                 entry_id: entry.id.clone(),
                 value: ContextOverride::ForcedExclude,
                 source: ChangeSource::Worker {
-                    name: worker_name.to_owned(),
+                    name: ctx.worker_name.to_owned(),
                 },
             });
         }
@@ -259,10 +266,10 @@ fn build_prune_mutations(
 }
 
 #[async_trait::async_trait]
-impl HistoryWorker for AnchorRadiusAutoPruneWorker {
+impl HistoryWorker for AnchoredAssistantAutoPruneWorker {
     #[allow(clippy::unnecessary_literal_bound)]
     fn name(&self) -> &str {
-        "auto-prune-anchor-radius"
+        "auto-prune-anchored-assistant"
     }
 
     async fn evaluate(
@@ -270,20 +277,21 @@ impl HistoryWorker for AnchorRadiusAutoPruneWorker {
         session_id: &SessionId,
         history: Arc<[ChatEntry]>,
     ) -> Vec<HistoryMutation> {
-        let mutations = build_prune_mutations(
-            &history,
-            self.config.radius,
-            self.config.min_age,
+        let mutations = build_prune_mutations(&PruneCtx {
+            history: &history,
+            radius: self.config.radius,
+            min_age: self.config.min_age,
+            min_candidate_tokens: self.min_candidate_tokens,
             session_id,
-            &self.token_cache,
-            &self.counter,
-            self.name(),
-        );
+            token_cache: &self.token_cache,
+            counter: &self.counter,
+            worker_name: self.name(),
+        });
         tracing::debug!(
             mutations = mutations.len(),
             radius = self.config.radius,
             history_len = history.len(),
-            "anchor_radius evaluate done"
+            "anchored_assistant evaluate done"
         );
         mutations
     }
@@ -294,9 +302,13 @@ mod tests {
     #![allow(clippy::expect_used, clippy::indexing_slicing, reason = "test code")]
 
     use super::*;
-    use crate::feat::preferences_actor::user_preferences::AnchorRadiusAutoPruneConfig;
+    use crate::feat::preferences_actor::user_preferences::AnchoredAssistantAutoPruneConfig;
     use crate::feat::session::chat_entry::ChatEntry;
     use crate::feat::session::chat_entry::ChatEntryId;
+
+    /// Tests use 81 as the hard-coded threshold (trivial_assistant default max_tokens=80 + 1).
+    const TEST_MIN_CANDIDATE_TOKENS: u32 = 81;
+
     use crate::protocol::SessionId;
 
     // ------------------------------------------------------------------
@@ -305,18 +317,19 @@ mod tests {
 
     /// Build a worker with the given radius (enabled = true).
     /// Build a worker with the given radius and `min_age = 0` (back-compat baseline).
-    fn worker(radius: usize) -> AnchorRadiusAutoPruneWorker {
+    fn worker(radius: usize) -> AnchoredAssistantAutoPruneWorker {
         worker_with_min_age(radius, 0)
     }
 
     /// Build a worker with the given radius and `min_age`.
-    fn worker_with_min_age(radius: usize, min_age: usize) -> AnchorRadiusAutoPruneWorker {
-        AnchorRadiusAutoPruneWorker {
-            config: AnchorRadiusAutoPruneConfig {
+    fn worker_with_min_age(radius: usize, min_age: usize) -> AnchoredAssistantAutoPruneWorker {
+        AnchoredAssistantAutoPruneWorker {
+            config: AnchoredAssistantAutoPruneConfig {
                 enabled: true,
                 radius,
                 min_age,
             },
+            min_candidate_tokens: 81,
             token_cache: super::super::HistoryWorkerChatEntryTokenCache::new(),
             counter: TiktokenCounter::o200k_base(),
         }
@@ -339,7 +352,10 @@ mod tests {
     }
 
     /// Evaluate the worker on a history snapshot.
-    fn evaluate(w: &AnchorRadiusAutoPruneWorker, history: Vec<ChatEntry>) -> Vec<HistoryMutation> {
+    fn evaluate(
+        w: &AnchoredAssistantAutoPruneWorker,
+        history: Vec<ChatEntry>,
+    ) -> Vec<HistoryMutation> {
         let rt = tokio::runtime::Runtime::new().expect("runtime");
         let history: Arc<[ChatEntry]> = history.into();
         rt.block_on(async { w.evaluate(&SessionId::new(), history).await })
@@ -763,7 +779,7 @@ mod tests {
         );
         let cached_count = cached.expect("checked Some");
         assert!(
-            cached_count >= MIN_CANDIDATE_TOKENS,
+            cached_count >= TEST_MIN_CANDIDATE_TOKENS,
             "large_assistant helper must produce >80 tokens, got {cached_count}"
         );
     }
@@ -799,7 +815,7 @@ mod tests {
             .get(&session_id, &asst_id)
             .expect("first evaluate must populate cache");
         assert!(
-            cached >= MIN_CANDIDATE_TOKENS,
+            cached >= TEST_MIN_CANDIDATE_TOKENS,
             "real token count must be >80, got {cached}"
         );
 
@@ -807,7 +823,7 @@ mod tests {
         w.token_cache.insert(
             session_id.clone(),
             asst_id.clone(),
-            MIN_CANDIDATE_TOKENS - 1,
+            TEST_MIN_CANDIDATE_TOKENS - 1,
         );
 
         // Reset context_override on a fresh history copy so the worker
@@ -1144,7 +1160,7 @@ mod tests {
     }
 
     #[test]
-    fn min_age_boundary_strict_less_than_anchor_radius() {
+    fn min_age_boundary_strict_less_than_anchored_assistant_radius() {
         // Layout: idx 0 = User anchor; idx 1..=100 = padding; idx 101 = candidate;
         // idx 102..=151 = trivial_assistant padding. history_len = 152.
         // candidate idx = 101 → age = 152 - 101 - 1 = 50.
