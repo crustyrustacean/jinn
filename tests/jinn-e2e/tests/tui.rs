@@ -88,6 +88,8 @@ impl TuiWorld {
                 )
                     as Arc<dyn jinn_domain::feat::plugin_system::SessionPluginRegistry>),
             tempdir: None,
+            bus: None,
+            bridge: None,
         };
 
         let app = TuiApp::test_builder().services(services).build();

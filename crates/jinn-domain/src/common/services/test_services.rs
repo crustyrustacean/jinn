@@ -269,6 +269,8 @@ impl TestServices {
             )
                 as Arc<dyn SessionPluginRegistry>),
             tempdir,
+            bus: None,
+            bridge: None,
         }
     }
 }

@@ -21,6 +21,8 @@ pub struct PushChatEntry {
     pub entry: ChatEntry,
 }
 
+impl crate::common::bus::BusMessage for PushChatEntry {}
+
 /// Enqueue a user message for processing by the message queue.
 ///
 /// Submitted instead of directly pushing a chat entry when the queue is active.

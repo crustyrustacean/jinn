@@ -60,6 +60,8 @@ pub struct SendToLlmProvider {
     pub estimated_tokens: u32,
 }
 
+impl crate::common::bus::BusMessage for SendToLlmProvider {}
+
 /// Refresh the model list from all providers.
 #[derive(Debug, Clone, Serialize, Deserialize, CommandMsg)]
 #[cmd("provider")]

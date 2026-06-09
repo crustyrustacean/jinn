@@ -19,6 +19,8 @@
 
 use std::sync::Arc;
 
+use kameo::actor::Spawn;
+
 use jinn_domain::ApiKeysService;
 use jinn_domain::AppState;
 use jinn_domain::ConfigStorageService;
@@ -150,6 +152,21 @@ impl ActorSystemBuilder {
         let (sender, receiver) = kanal::unbounded::<AppMsg>();
         let async_receiver = receiver.to_async();
 
+        // Spawn the kameo MessageBus for type-based pub/sub routing.
+        // We need to enter the tokio runtime context because kameo's Actor::spawn()
+        // calls tokio::spawn internally.
+        let _guard = handle.enter();
+        let bus_actor_ref =
+            kameo_actors::message_bus::MessageBus::spawn(
+                kameo_actors::message_bus::MessageBus::new(
+                    kameo_actors::DeliveryStrategy::Guaranteed,
+                ),
+            );
+        let bus = jinn_domain::BusService::new(bus_actor_ref);
+
+        // Create the kanal closure bridge from sync TUI to async bus.
+        let bridge = jinn_domain::Bridge::new(bus.actor_ref().clone());
+
         // Create the message sink that bridges actor output to AppCore's channel.
         let sink: Arc<dyn MessageSink> = Arc::new(ActorMessageSink::new(sender.clone()));
 
@@ -273,6 +290,8 @@ impl ActorSystemBuilder {
                         >,
                 ),
             tempdir: None,
+            bus: Some(bus),
+            bridge: Some(bridge),
         };
 
         // Now that `services` + `state` exist, build the shared `DomainNodeContext`

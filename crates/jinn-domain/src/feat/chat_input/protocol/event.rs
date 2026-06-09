@@ -15,3 +15,5 @@ pub struct ChatEntrySubmitted {
     /// The chat entry that was added.
     pub entry: ChatEntry,
 }
+
+impl crate::common::bus::BusMessage for ChatEntrySubmitted {}

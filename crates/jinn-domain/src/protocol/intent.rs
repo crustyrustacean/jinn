@@ -1,4 +1,6 @@
 //! The [`Intent`] enum - one variant per user-initiated action.
+use crate::common::bridge::BridgeClosure;
+use crate::common::bus::BusMessage;
 use crate::protocol::{Command, Event, PickerKind, SessionId};
 
 /// The search root for the directory picker.
@@ -400,38 +402,62 @@ impl std::fmt::Display for Intent {
 
 /// What an intent handler returns after processing an intent.
 ///
-/// Carries commands and events to be dispatched to the actor system.
-#[derive(Debug)]
+/// Carries typed message closures to be dispatched to the actor system
+/// via the kameo message bus.
 pub struct IntentResult {
-    /// Commands to send to the actor system.
+    /// Commands to send to the actor system (legacy, will be removed in phase 4).
     pub commands: Vec<Command>,
-    /// Events to broadcast to the actor system.
+    /// Events to broadcast to the actor system (legacy, will be removed in phase 4).
     pub events: Vec<Event>,
+    /// Typed message closures to publish to the kameo bus.
+    pub messages: Vec<BridgeClosure>,
 }
 
 impl IntentResult {
-    /// An empty result with no commands or events.
+    /// An empty result with no commands, events, or messages.
     #[must_use]
     pub fn empty() -> Self {
         Self {
             commands: vec![],
             events: vec![],
+            messages: vec![],
         }
     }
 
-    /// A result with commands.
+    /// A result with commands (legacy path).
     #[must_use]
     pub fn with_commands(commands: Vec<Command>) -> Self {
         Self {
             commands,
             events: vec![],
+            messages: vec![],
         }
     }
 
-    /// A result with both commands and events.
+    /// A result with both commands and events (legacy path).
     #[must_use]
     pub fn with_commands_and_events(commands: Vec<Command>, events: Vec<Event>) -> Self {
-        Self { commands, events }
+        Self {
+            commands,
+            events,
+            messages: vec![],
+        }
+    }
+
+    /// A result with a single typed message to publish to the bus.
+    ///
+    /// The message is wrapped in a closure that calls
+    /// `bus.tell(Publish(msg)).await` when the bridge drain task processes it.
+    #[must_use]
+    pub fn with_message<M>(msg: M) -> Self
+    where
+        M: BusMessage,
+    {
+        Self {
+            commands: vec![],
+            events: vec![],
+            messages: vec![crate::common::bridge::Bridge::publish_closure(msg)],
+        }
     }
 }
 
