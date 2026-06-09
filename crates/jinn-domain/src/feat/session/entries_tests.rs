@@ -1,5 +1,5 @@
 //! Tests for tree-aware session picker sorting.
-#![allow(clippy::expect_used, clippy::indexing_slicing, clippy::panic, clippy::string_slice, reason = "test code")]
+#![allow(clippy::expect_used, clippy::indexing_slicing, clippy::panic, clippy::unreachable, clippy::string_slice, reason = "test code")]
 
 //!
 //! Covers the `sort_entries_tree_aware` function which sorts sessions

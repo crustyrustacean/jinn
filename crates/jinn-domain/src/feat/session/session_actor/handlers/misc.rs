@@ -195,6 +195,8 @@ fn build_skills_refresh_message(skills: &[crate::feat::skills::Skill]) -> String
 mod tests {
     #![allow(
         clippy::expect_used,
+        clippy::panic,
+        clippy::unreachable,
         clippy::indexing_slicing,
         clippy::unnecessary_mut_passed,
         reason = "test code"

@@ -51,7 +51,7 @@ impl SessionPersistenceActor {
                 &session_id,
             );
 
-            #[expect(clippy::expect_used, reason = "just inserted into sessions map above")]
+            #[expect(clippy::expect_used, clippy::panic, clippy::unreachable, reason = "just inserted into sessions map above")]
             let session = state.session.get_mut(&session_id).expect("just inserted");
             session.set_model(model);
             // Mark loaded session as interacted - it came from disk (already persisted).
@@ -78,7 +78,7 @@ impl SessionPersistenceActor {
                 state.session.default_cwd().clone()
             };
             let mut state = self.state.write();
-            #[expect(clippy::expect_used, reason = "just inserted into sessions map above")]
+            #[expect(clippy::expect_used, clippy::panic, clippy::unreachable, reason = "just inserted into sessions map above")]
             let session = state.session.get_mut(&session_id).expect("just inserted");
             session.push_entry(ChatEntry::system(format!(
                 "Warning: working directory '{}' not found, falling back to '{}'",
@@ -192,7 +192,7 @@ impl SessionPersistenceActor {
 
 #[cfg(test)]
 mod tests {
-    #![allow(clippy::expect_used, clippy::indexing_slicing, reason = "test code")]
+    #![allow(clippy::expect_used, clippy::panic, clippy::unreachable, clippy::indexing_slicing, reason = "test code")]
 
     use super::*;
     use crate::feat::session::chat_session::ChatSessionState;

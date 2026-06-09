@@ -402,6 +402,8 @@ mod tests {
     #![allow(
         clippy::similar_names,
         clippy::expect_used,
+        clippy::panic,
+        clippy::unreachable,
         clippy::indexing_slicing,
         reason = "test code"
     )]

@@ -1,6 +1,6 @@
 //! Tests for [`HistoryMutation`] application and queue operations.
 
-#![allow(clippy::expect_used, clippy::indexing_slicing, reason = "test code")]
+#![allow(clippy::expect_used, clippy::panic, clippy::unreachable, clippy::indexing_slicing, reason = "test code")]
 
 use crate::feat::session::chat_entry::{ChatEntry, ChatEntryId, ContextOverride, PinPosition};
 use crate::feat::session::chat_session::ChatSessionState;

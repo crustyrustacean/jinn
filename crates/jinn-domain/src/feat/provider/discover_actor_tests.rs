@@ -1,5 +1,5 @@
 //! Tests for DiscoverActor - command dispatch and handle routing.
-#![allow(clippy::expect_used, clippy::indexing_slicing, clippy::panic, clippy::string_slice, reason = "test code")]
+#![allow(clippy::expect_used, clippy::indexing_slicing, clippy::panic, clippy::unreachable, clippy::string_slice, reason = "test code")]
 
 //!
 //! (handle, handle_command, RefreshModels match arm) by verifying

@@ -299,7 +299,7 @@ impl HistoryWorker for AnchoredAssistantAutoPruneWorker {
 
 #[cfg(test)]
 mod tests {
-    #![allow(clippy::expect_used, clippy::indexing_slicing, reason = "test code")]
+    #![allow(clippy::expect_used, clippy::panic, clippy::unreachable, clippy::indexing_slicing, reason = "test code")]
 
     use super::*;
     use crate::feat::preferences_actor::user_preferences::AnchoredAssistantAutoPruneConfig;

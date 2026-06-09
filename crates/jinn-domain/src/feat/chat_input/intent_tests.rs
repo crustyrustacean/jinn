@@ -1,4 +1,4 @@
-#![allow(clippy::expect_used, clippy::indexing_slicing, clippy::uninlined_format_args, reason = "test code")]
+#![allow(clippy::expect_used, clippy::panic, clippy::unreachable, clippy::indexing_slicing, clippy::uninlined_format_args, reason = "test code")]
 
 use crate::common::app_state::AppState;
 use crate::feat::chat_input::{AutocompleteMatch, AutocompleteTrigger, InputMode};

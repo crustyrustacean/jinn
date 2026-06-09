@@ -1,5 +1,5 @@
 //! Tests for DynamicEvent.
-#![allow(clippy::expect_used, clippy::indexing_slicing, clippy::panic, clippy::string_slice, reason = "test code")]
+#![allow(clippy::expect_used, clippy::indexing_slicing, clippy::panic, clippy::unreachable, clippy::string_slice, reason = "test code")]
 
 
 use serde_json::json;
