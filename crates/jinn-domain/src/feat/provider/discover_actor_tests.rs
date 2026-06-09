@@ -7,8 +7,6 @@
 //!
 //! Note: Testing the full `refresh_models` flow requires actual network calls,
 
-#![allow(clippy::expect_used, clippy::indexing_slicing, reason = "test code")]
-
 use std::sync::Arc;
 
 use crate::common::actor::{Actor as _, ActorContext, ActorEnvelope, MessageSink, RecordingSink};

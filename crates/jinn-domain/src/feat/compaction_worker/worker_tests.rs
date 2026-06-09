@@ -6,8 +6,6 @@
 //! token accumulation, LLM summarization, and mutation production.
 //! Bug regression tests verify the three reported compaction bugs are fixed.
 
-#![allow(clippy::expect_used, clippy::indexing_slicing, reason = "test code")]
-
 use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::{Arc, Mutex};
 

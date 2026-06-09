@@ -66,7 +66,6 @@ impl UiElement for StatusBarElement {
         "status-bar".to_owned()
     }
 
-    #[expect(clippy::cast_precision_loss, clippy::too_many_lines, reason = "loss is negligible; handler reads best as a single unit")]
     fn render(&mut self, frame: &mut Frame<'_>, area: Rect, ctx: &RenderCtx) {
         let state = ctx.state;
         // Split area into cwd line + info line.

@@ -299,7 +299,6 @@ impl SessionPhaseMachine {
     }
 
     /// Read-only access to `SendingPhase` data, if currently sending.
-    #[expect(dead_code, reason = "will be used when SendingPhase carries state")]
     pub fn sending_phase(&self) -> Option<&SendingPhase> {
         match &self.phase {
             Phase::Sending(s) => Some(s),
@@ -308,7 +307,6 @@ impl SessionPhaseMachine {
     }
 
     /// Mutable access to `SendingPhase` data, if currently sending.
-    #[expect(dead_code, reason = "will be used when SendingPhase carries state")]
     pub fn sending_phase_mut(&mut self) -> Option<&mut SendingPhase> {
         match &mut self.phase {
             Phase::Sending(s) => Some(s),
