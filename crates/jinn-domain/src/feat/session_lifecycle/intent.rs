@@ -17,6 +17,10 @@ use crate::feat::session_lifecycle::protocol::command::{PersistSession, RunSessi
 use crate::feat::session_lifecycle::protocol::event::SessionCreated;
 use crate::protocol::app_msg::Event;
 use crate::protocol::{Command, IntentResult, SessionId};
+use crate::feat::session::chat_session::LifecycleScriptState;
+use crate::feat::session::session_actor::setup_running_msg;
+use crate::feat::ui::sidebar::sessions::close::validate_session_close;
+use crate::feat::ui::sidebar::sessions::state::sorted_open_sessions;
 
 /// Errors that can occur when validating arg input.
 #[derive(Debug, Error)]
@@ -241,6 +245,83 @@ pub fn handle_arg_input_cursor_right(state: &mut AppState) -> IntentResult {
 pub fn handle_arg_input_paste(state: &mut AppState, text: &str) -> IntentResult {
     state.frontend.arg_input.text.paste(text);
     IntentResult::empty()
+}
+
+/// Handle `Intent::SidebarSessionRerunSetup`.
+///
+/// Re-runs the lifecycle setup command for the sidebar-selected session.
+/// Only valid when the session's `lifecycle_script_state` is `NothingRan`.
+/// If the session has no lifecycle, no setup command, or is not in `NothingRan`,
+/// this is a no-op.
+///
+/// # Panics
+///
+/// Panics if the sidebar session entry at the selected index is missing
+/// from the session map (indicates a corrupt UI state).
+pub fn handle_session_rerun_setup(state: &mut AppState) -> IntentResult {
+
+    if validate_session_close(state).is_err() {
+        return IntentResult::empty();
+    }
+
+    let index = state.frontend.sessions_section.selected_index.unwrap();
+    let sessions = sorted_open_sessions(state);
+    let target_id = sessions[index].id.clone();
+
+    let (setup_command, lifecycle_args) = {
+        let session = state.session.get(&target_id);
+        let Some(session) = session else {
+            return IntentResult::empty();
+        };
+
+        if session.lifecycle_script_state() != LifecycleScriptState::NothingRan {
+            return IntentResult::empty();
+        }
+
+        let lifecycle_name = session.lifecycle_name().map(String::from);
+        let args = session.lifecycle_args().to_vec();
+        let setup = lifecycle_name.as_deref().and_then(|name| {
+            state
+                .frontend
+                .preferences
+                .session_lifecycles
+                .iter()
+                .find(|l| l.name == name)
+                .and_then(|l| l.setup.clone())
+        });
+        (setup, args)
+    };
+
+    let Some(ref setup_cmd) = setup_command else {
+        return IntentResult::empty();
+    };
+
+    let rendered = match setup_cmd {
+        crate::feat::session_lifecycle::builtin::LifecycleCommand::Shell(cmd) => {
+            let template = CommandTemplate::parse(cmd);
+            if lifecycle_args.is_empty() {
+                cmd.clone()
+            } else {
+                template.render(&lifecycle_args)
+            }
+        }
+        crate::feat::session_lifecycle::builtin::LifecycleCommand::Builtin(id) => {
+            id.to_string()
+        }
+    };
+
+    IntentResult::with_commands(vec![
+        Command::PushChatEntry(PushChatEntry {
+            session_id: target_id.clone(),
+            entry: setup_running_msg(),
+        }),
+        Command::RunSessionSetup(RunSessionSetup {
+            session_id: target_id,
+            command: rendered,
+            args: lifecycle_args,
+            lifecycle_command: Some(setup_cmd.clone()),
+        }),
+    ])
 }
 
 /// Look up a lifecycle by name in the user preferences.
@@ -1113,4 +1194,146 @@ mod tests {
         assert_eq!(state.frontend.arg_input.text.input, "abcd");
         assert_eq!(state.frontend.arg_input.text.cursor_pos, 2);
     }
+
+    // -----------------------------------------------------------------------
+    // Re-run setup tests
+    // -----------------------------------------------------------------------
+
+    fn setup_rerun_state() -> AppState {
+        use crate::common::focus::FocusScope;
+        use crate::feat::session_lifecycle::builtin::LifecycleCommand;
+
+        let mut state = AppState::default();
+        state
+            .frontend
+            .scope_stack
+            .push(FocusScope::SidebarSessions);
+        state.frontend.sessions_section.selected_index = Some(0);
+        state
+            .frontend
+            .preferences
+            .session_lifecycles
+            .push(SessionLifecycle {
+                name: "test-lifecycle".to_owned(),
+                description: None,
+                setup: Some(LifecycleCommand::Shell("echo /tmp/workdir".to_owned())),
+                teardown: None,
+            });
+        state
+            .active_session_mut()
+            .set_lifecycle_name(Some("test-lifecycle".to_owned()));
+        state
+            .active_session_mut()
+            .set_lifecycle_args(vec!["arg1".to_owned()]);
+        state
+    }
+
+    #[test]
+    fn rerun_setup_noop_when_no_lifecycle() {
+        // Given a session with no lifecycle name in NothingRan state.
+        use crate::common::focus::FocusScope;
+
+        let mut state = AppState::default();
+        state
+            .frontend
+            .scope_stack
+            .push(FocusScope::SidebarSessions);
+        state.frontend.sessions_section.selected_index = Some(0);
+
+        // When handling rerun setup.
+        let result = handle_session_rerun_setup(&mut state);
+
+        // Then no commands are emitted.
+        assert!(result.commands.is_empty());
+    }
+
+    #[test]
+    fn rerun_setup_noop_when_no_setup_command() {
+        // Given a session with a lifecycle that has no setup command.
+        use crate::common::focus::FocusScope;
+
+        let mut state = AppState::default();
+        state
+            .frontend
+            .scope_stack
+            .push(FocusScope::SidebarSessions);
+        state.frontend.sessions_section.selected_index = Some(0);
+        state
+            .frontend
+            .preferences
+            .session_lifecycles
+            .push(SessionLifecycle {
+                name: "test-lifecycle".to_owned(),
+                description: None,
+                setup: None,
+                teardown: None,
+            });
+        state
+            .active_session_mut()
+            .set_lifecycle_name(Some("test-lifecycle".to_owned()));
+
+        // When handling rerun setup.
+        let result = handle_session_rerun_setup(&mut state);
+
+        // Then no commands are emitted.
+        assert!(result.commands.is_empty());
+    }
+
+    #[test]
+    fn rerun_setup_noop_when_not_nothing_ran() {
+        // Given a session that has already run setup (SetupRan state).
+        let mut state = setup_rerun_state();
+        state.active_session_mut().advance_lifecycle_after_setup();
+
+        // When handling rerun setup.
+        let result = handle_session_rerun_setup(&mut state);
+
+        // Then no commands are emitted.
+        assert!(result.commands.is_empty());
+    }
+
+    #[test]
+    fn rerun_setup_noop_when_no_selection() {
+        // Given a sidebar sessions view with no selected index.
+        use crate::common::focus::FocusScope;
+
+        let mut state = AppState::default();
+        state
+            .frontend
+            .scope_stack
+            .push(FocusScope::SidebarSessions);
+        // No selected_index set.
+
+        // When handling rerun setup.
+        let result = handle_session_rerun_setup(&mut state);
+
+        // Then no commands are emitted.
+        assert!(result.commands.is_empty());
+    }
+
+    #[test]
+    fn rerun_setup_emits_commands_when_valid() {
+        // Given a session in NothingRan with a setup command.
+        let mut state = setup_rerun_state();
+        let session_id = state.session.active_session_id().clone();
+
+        // When handling rerun setup.
+        let result = handle_session_rerun_setup(&mut state);
+
+        // Then two commands are emitted.
+        assert_eq!(result.commands.len(), 2);
+        // And the first is a PushChatEntry with the running message.
+        assert!(matches!(
+            &result.commands[0],
+            Command::PushChatEntry(cmd) if cmd.session_id == session_id
+        ));
+        // And the second is RunSessionSetup with correct fields.
+        let Command::RunSessionSetup(setup_cmd) = &result.commands[1] else {
+            panic!("expected RunSessionSetup");
+        };
+        assert_eq!(setup_cmd.session_id, session_id);
+        assert_eq!(setup_cmd.command, "echo /tmp/workdir");
+        assert_eq!(setup_cmd.args, vec!["arg1".to_owned()]);
+    }
 }
+
