@@ -4,6 +4,10 @@
 //! for reading and writing user preferences across app restarts. The preferences
 //! actor subscribes to provider switch events and persists the last-used model.
 
+pub mod app_state_actor;
+pub mod app_state_sync_actor;
+pub mod app_state_file;
+pub mod app_state_storage;
 pub mod preferences_actor;
 pub mod preferences_state_sync_actor;
 pub mod protocol;
@@ -17,6 +21,9 @@ pub use user_preferences::{
     AutoPruneConfig, BashConfig, CompactionConfig, InitDefaultConfigError, InitOutcome,
     MinimapConfig, OpenrouterWebSearchConfig, RequestRetryConfig, UserPreferences,
     init_default_config_to, preferences_path,
+};
+pub use app_state_storage::{
+    AppStateStorageService, FilesystemAppStateStorage, InMemoryAppStateStorage,
 };
 pub use user_preferences_storage::{
     FilesystemUserPreferencesStorage, InMemoryUserPreferencesStorage, UserPreferencesStorageService,

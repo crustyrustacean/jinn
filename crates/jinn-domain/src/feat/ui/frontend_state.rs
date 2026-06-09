@@ -5,6 +5,7 @@ use parking_lot::RwLock;
 use crate::common::focus::{FocusScope, ScopeStack};
 use crate::common::tui_signals::TuiSignals;
 use crate::feat::cwd_input::state::CwdInputState;
+use crate::feat::preferences_actor::app_state_file::AppStateFile;
 use crate::feat::preferences_actor::UserPreferences;
 use crate::feat::rename_session_input::state::RenameSessionInputState;
 
@@ -86,6 +87,11 @@ pub struct FrontendState {
     /// This is a cache - the file is the authoritative source.
     pub preferences: UserPreferences,
 
+    /// Cached copy of app state from `state.toml`.
+    /// Updated exclusively by `AppStateSyncActor` on `AppStateUpdated` events.
+    /// This is a cache - the file is the authoritative source.
+    pub app_state: AppStateFile,
+
     /// Focus scope stack - single source of truth for what the user is focused on.
     /// OWNER: IntentHandler (push/pop on scope transitions).
     pub scope_stack: ScopeStack,
@@ -155,6 +161,7 @@ impl Default for FrontendState {
             task_list_section: TaskListSectionState::default(),
             tui_signals: TuiSignals::new(),
             preferences: UserPreferences::default(),
+            app_state: AppStateFile::default(),
             scope_stack,
             theme: crate::feat::theme::default_theme(),
             caches: FrontendCaches::default(),

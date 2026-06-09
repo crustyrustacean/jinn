@@ -20,34 +20,41 @@ fn create_actor() -> (PreferencesActor, Arc<RecordingSink>, ActorContext) {
 
 #[rstest::rstest]
 #[tokio::test]
-async fn set_last_model_saves_to_storage() {
+async fn set_compaction_model_saves_to_storage() {
     // Given a preferences actor with in-memory storage.
     let (mut actor, _sink, ctx) = create_actor();
 
-    // When sending UpdatePreferences with SetLastModel.
+    // When sending UpdatePreferences with SetCompactionModel.
     actor
         .handle(
             ActorEnvelope::Command(Command::UpdatePreferences(UpdatePreferences {
-                updates: vec![PreferenceUpdate::SetLastModel(Some("ollama/llama3".into()))],
+                updates: vec![PreferenceUpdate::SetCompactionModel(Some(
+                    "ollama/llama3".into(),
+                ))],
             })),
             &ctx,
         )
         .await;
 
-    // Then the storage contains the provider as last_model.
+    // Then the storage contains the model as compaction.model.
     let prefs = actor.services.user_preferences_storage.read();
-    assert_eq!(prefs.last_model.as_deref(), Some("ollama/llama3"));
+    assert_eq!(
+        prefs.compaction.model.as_deref(),
+        Some("ollama/llama3")
+    );
 }
 
 #[rstest::rstest]
 #[tokio::test]
-async fn set_last_model_overwrites_previous() {
-    // Given a preferences actor with a saved model.
+async fn set_compaction_model_overwrites_previous() {
+    // Given a preferences actor with a saved compaction model.
     let (mut actor, _sink, ctx) = create_actor();
     actor
         .handle(
             ActorEnvelope::Command(Command::UpdatePreferences(UpdatePreferences {
-                updates: vec![PreferenceUpdate::SetLastModel(Some("ollama/llama3".into()))],
+                updates: vec![PreferenceUpdate::SetCompactionModel(Some(
+                    "ollama/llama3".into(),
+                ))],
             })),
             &ctx,
         )
@@ -57,7 +64,7 @@ async fn set_last_model_overwrites_previous() {
     actor
         .handle(
             ActorEnvelope::Command(Command::UpdatePreferences(UpdatePreferences {
-                updates: vec![PreferenceUpdate::SetLastModel(Some(
+                updates: vec![PreferenceUpdate::SetCompactionModel(Some(
                     "openrouter/gpt-4".into(),
                 ))],
             })),
@@ -67,119 +74,10 @@ async fn set_last_model_overwrites_previous() {
 
     // Then only the latest model is persisted.
     let prefs = actor.services.user_preferences_storage.read();
-    assert_eq!(prefs.last_model.as_deref(), Some("openrouter/gpt-4"));
-}
-
-#[rstest::rstest]
-#[tokio::test]
-async fn set_last_model_preserves_last_strategy() {
-    // Given a preferences actor with a saved strategy.
-    let (mut actor, _sink, ctx) = create_actor();
-    actor
-        .handle(
-            ActorEnvelope::Command(Command::UpdatePreferences(UpdatePreferences {
-                updates: vec![PreferenceUpdate::SetLastStrategy(Some(
-                    "sliding_window".into(),
-                ))],
-            })),
-            &ctx,
-        )
-        .await;
-
-    // When sending UpdatePreferences with SetLastModel.
-    actor
-        .handle(
-            ActorEnvelope::Command(Command::UpdatePreferences(UpdatePreferences {
-                updates: vec![PreferenceUpdate::SetLastModel(Some("ollama/llama3".into()))],
-            })),
-            &ctx,
-        )
-        .await;
-
-    // Then last_strategy is preserved.
-    let prefs = actor.services.user_preferences_storage.read();
-    assert_eq!(prefs.last_model.as_deref(), Some("ollama/llama3"));
-    assert_eq!(prefs.last_strategy.as_deref(), Some("sliding_window"));
-}
-
-#[rstest::rstest]
-#[tokio::test]
-async fn set_last_strategy_saves_to_storage() {
-    // Given a preferences actor.
-    let (mut actor, _sink, ctx) = create_actor();
-
-    // When sending UpdatePreferences with SetLastStrategy.
-    actor
-        .handle(
-            ActorEnvelope::Command(Command::UpdatePreferences(UpdatePreferences {
-                updates: vec![PreferenceUpdate::SetLastStrategy(Some(
-                    "sliding_window".into(),
-                ))],
-            })),
-            &ctx,
-        )
-        .await;
-
-    // Then the storage contains the strategy as last_strategy.
-    let prefs = actor.services.user_preferences_storage.read();
-    assert_eq!(prefs.last_strategy.as_deref(), Some("sliding_window"));
-}
-
-#[rstest::rstest]
-#[tokio::test]
-async fn set_last_strategy_preserves_last_model() {
-    // Given a preferences actor with a saved model.
-    let (mut actor, _sink, ctx) = create_actor();
-    actor
-        .handle(
-            ActorEnvelope::Command(Command::UpdatePreferences(UpdatePreferences {
-                updates: vec![PreferenceUpdate::SetLastModel(Some("ollama/llama3".into()))],
-            })),
-            &ctx,
-        )
-        .await;
-
-    // When sending UpdatePreferences with SetLastStrategy.
-    actor
-        .handle(
-            ActorEnvelope::Command(Command::UpdatePreferences(UpdatePreferences {
-                updates: vec![PreferenceUpdate::SetLastStrategy(Some(
-                    "sliding_window".into(),
-                ))],
-            })),
-            &ctx,
-        )
-        .await;
-
-    // Then last_model is preserved.
-    let prefs = actor.services.user_preferences_storage.read();
-    assert_eq!(prefs.last_model.as_deref(), Some("ollama/llama3"));
-    assert_eq!(prefs.last_strategy.as_deref(), Some("sliding_window"));
-}
-
-#[rstest::rstest]
-#[tokio::test]
-async fn batch_diffs_apply_all_at_once() {
-    // Given a preferences actor.
-    let (mut actor, _sink, ctx) = create_actor();
-
-    // When sending UpdatePreferences with both diffs in one batch.
-    actor
-        .handle(
-            ActorEnvelope::Command(Command::UpdatePreferences(UpdatePreferences {
-                updates: vec![
-                    PreferenceUpdate::SetLastModel(Some("ollama/llama3".into())),
-                    PreferenceUpdate::SetLastStrategy(Some("sliding_window".into())),
-                ],
-            })),
-            &ctx,
-        )
-        .await;
-
-    // Then both fields are persisted.
-    let prefs = actor.services.user_preferences_storage.read();
-    assert_eq!(prefs.last_model.as_deref(), Some("ollama/llama3"));
-    assert_eq!(prefs.last_strategy.as_deref(), Some("sliding_window"));
+    assert_eq!(
+        prefs.compaction.model.as_deref(),
+        Some("openrouter/gpt-4")
+    );
 }
 
 #[rstest::rstest]
@@ -192,7 +90,9 @@ async fn emits_preferences_updated_event() {
     actor
         .handle(
             ActorEnvelope::Command(Command::UpdatePreferences(UpdatePreferences {
-                updates: vec![PreferenceUpdate::SetLastModel(Some("ollama/llama3".into()))],
+                updates: vec![PreferenceUpdate::SetCompactionModel(Some(
+                    "ollama/llama3".into(),
+                ))],
             })),
             &ctx,
         )
@@ -204,25 +104,27 @@ async fn emits_preferences_updated_event() {
         matches!(
             e,
             Event::PreferencesUpdated(PreferencesUpdated {
-                    preferences
-                }) if preferences.last_model.as_deref() == Some("ollama/llama3")
+                preferences
+            }) if preferences.compaction.model.as_deref() == Some("ollama/llama3")
         )
     });
     assert!(
         found,
-        "expected PreferencesUpdated event with last_model=ollama/llama3"
+        "expected PreferencesUpdated event with compaction.model=ollama/llama3"
     );
 }
 
 #[rstest::rstest]
 #[tokio::test]
 async fn empty_diffs_does_not_change_storage() {
-    // Given a preferences actor with a saved model.
+    // Given a preferences actor with a saved compaction model.
     let (mut actor, _sink, ctx) = create_actor();
     actor
         .handle(
             ActorEnvelope::Command(Command::UpdatePreferences(UpdatePreferences {
-                updates: vec![PreferenceUpdate::SetLastModel(Some("ollama/llama3".into()))],
+                updates: vec![PreferenceUpdate::SetCompactionModel(Some(
+                    "ollama/llama3".into(),
+                ))],
             })),
             &ctx,
         )
@@ -240,7 +142,10 @@ async fn empty_diffs_does_not_change_storage() {
 
     // Then the existing preferences are preserved.
     let prefs = actor.services.user_preferences_storage.read();
-    assert_eq!(prefs.last_model.as_deref(), Some("ollama/llama3"));
+    assert_eq!(
+        prefs.compaction.model.as_deref(),
+        Some("ollama/llama3")
+    );
 }
 
 #[rstest::rstest]
@@ -256,6 +161,5 @@ async fn ignores_unrelated_commands() {
 
     // Then no preferences were saved (still defaults).
     let prefs = actor.services.user_preferences_storage.read();
-    assert!(prefs.last_model.is_none());
-    assert!(prefs.last_strategy.is_none());
+    assert!(prefs.compaction.model.is_none());
 }

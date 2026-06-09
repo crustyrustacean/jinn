@@ -117,38 +117,88 @@ impl Default for MinimapConfig {
     }
 }
 
+/// Default enabled state for edit-read auto-prune.
+const DEFAULT_EDIT_READ_ENABLED: bool = true;
+
+/// Default `min_age` for edit-read auto-prune.
+///
+/// Number of entries from the end of history within which prior
+/// edit/write call+result pairs are protected from pruning
+/// when a same-file read occurs.
+const DEFAULT_EDIT_READ_MIN_AGE: usize = 50;
+
+/// Edit-read auto-prune configuration.
+///
+/// Serialized as `[auto_prune.edit_read]` in `jinn.toml`.
+/// Controls the auto-prune worker that excludes stale edit/write tool calls
+/// when a same-file read follows, since the read output represents the
+/// current file state.
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+pub struct EditReadAutoPruneConfig {
+    #[serde(default = "default_edit_read_enabled")]
+    pub enabled: bool,
+    /// Minimum number of entries from the end of history that must
+    /// appear after an edit/write call before it may be pruned when
+    /// a same-file read follows. Counts every entry, regardless of
+    /// in-context status. Set to 0 to disable protection.
+    /// Default: 50.
+    #[serde(default = "default_edit_read_min_age")]
+    pub min_age: usize,
+}
+
+fn default_edit_read_enabled() -> bool {
+    DEFAULT_EDIT_READ_ENABLED
+}
+
+fn default_edit_read_min_age() -> usize {
+    DEFAULT_EDIT_READ_MIN_AGE
+}
+
+impl Default for EditReadAutoPruneConfig {
+    fn default() -> Self {
+        Self {
+            enabled: DEFAULT_EDIT_READ_ENABLED,
+            min_age: DEFAULT_EDIT_READ_MIN_AGE,
+        }
+    }
+}
+
 /// Default enabled state for read-edit auto-prune.
 const DEFAULT_READ_EDIT_ENABLED: bool = true;
 
 /// Default `min_age` for read-edit auto-prune.
 ///
-/// Number of entries from the end of history within which prior
-/// edit/write call+result pairs are protected from backward pruning
-/// when a same-file read occurs.
+/// Number of entries from the end of history within which
+/// read call+result pairs are protected from pruning.
 const DEFAULT_READ_EDIT_MIN_AGE: usize = 50;
 
-/// Default enabled state for todo auto-prune.
-const DEFAULT_TODO_ENABLED: bool = true;
-
-/// Default minimum age for todo auto-prune.
-const DEFAULT_TODO_MIN_AGE: usize = 50;
+/// Default threshold for read-edit auto-prune.
+///
+/// Number of edit/write operations on the same file required before
+/// pruning the prior read call+result pair.
+const DEFAULT_READ_EDIT_THRESHOLD: usize = 2;
 
 /// Read-edit auto-prune configuration.
 ///
 /// Serialized as `[auto_prune.read_edit]` in `jinn.toml`.
-/// Controls the auto-prune worker that excludes stale read tool calls and results
-/// after the file has been edited twice.
+/// Controls the auto-prune worker that excludes stale read tool calls
+/// after the file has been edited a configurable number of times.
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 pub struct ReadEditAutoPruneConfig {
     #[serde(default = "default_read_edit_enabled")]
     pub enabled: bool,
-    /// Minimum number of entries from the end of history that must
-    /// appear after a write/edit call before backward pruning may
-    /// exclude the call+result pair. Counts every entry, regardless
-    /// of in-context status. Set to 0 to disable protection.
+    /// Minimum number of entries from the end of history within which
+    /// read call+result pairs are protected from pruning.
+    /// Counts every entry, regardless of in-context status.
+    /// Set to 0 to disable protection.
     /// Default: 50.
     #[serde(default = "default_read_edit_min_age")]
     pub min_age: usize,
+    /// Number of edit/write operations on the same file required before
+    /// pruning the prior read call+result pair.
+    /// Default: 2.
+    #[serde(default = "default_read_edit_threshold")]
+    pub threshold: usize,
 }
 
 fn default_read_edit_enabled() -> bool {
@@ -159,19 +209,30 @@ fn default_read_edit_min_age() -> usize {
     DEFAULT_READ_EDIT_MIN_AGE
 }
 
+fn default_read_edit_threshold() -> usize {
+    DEFAULT_READ_EDIT_THRESHOLD
+}
+
 impl Default for ReadEditAutoPruneConfig {
     fn default() -> Self {
         Self {
             enabled: DEFAULT_READ_EDIT_ENABLED,
             min_age: DEFAULT_READ_EDIT_MIN_AGE,
+            threshold: DEFAULT_READ_EDIT_THRESHOLD,
         }
     }
 }
 
-/// Todo auto-prune configuration.
+
+/// Default enabled state for todo auto-prune.
+const DEFAULT_TODO_ENABLED: bool = true;
+
+/// Default `min_age` for todo auto-prune.
 ///
-/// Serialized as `[auto_prune.todo]` in `jinn.toml`.
-/// Controls the auto-prune worker that excludes stale todo tool call+result
+/// Number of entries from the end of history that must
+/// appear after a todo tool call before pruning may exclude the
+/// call+result pair.
+const DEFAULT_TODO_MIN_AGE: usize = 50;
 /// pairs, keeping only the most recent one for each tool name.
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 pub struct TodoAutoPruneConfig {
@@ -487,24 +548,24 @@ impl Default for TrivialAssistantAutoPruneConfig {
     }
 }
 
-/// Default enabled state for anchor-radius auto-prune.
-const DEFAULT_ANCHOR_RADIUS_ENABLED: bool = true;
+/// Default enabled state for anchored-assistant auto-prune.
+const DEFAULT_ANCHORED_ASSISTANT_ENABLED: bool = true;
 
 /// Default radius (in raw history entries) within which an Assistant entry is
 /// protected from pruning regardless of token count.
-const DEFAULT_ANCHOR_RADIUS: usize = 100;
+const DEFAULT_ANCHORED_ASSISTANT_RADIUS: usize = 100;
 
-/// Default minimum age for anchor-radius auto-prune.
-const DEFAULT_ANCHOR_RADIUS_MIN_AGE: usize = 50;
+/// Default minimum age for anchored-assistant auto-prune.
+const DEFAULT_ANCHORED_ASSISTANT_MIN_AGE: usize = 50;
 
-/// Anchor-radius auto-prune strategy configuration.
+/// Anchored-assistant auto-prune strategy configuration.
 ///
-/// Serialized as `[auto_prune.anchor_radius]` in `jinn.toml`.
+/// Serialized as `[auto_prune.anchored_assistant]` in `jinn.toml`.
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
-pub struct AnchorRadiusAutoPruneConfig {
-    /// Whether the anchor-radius auto-prune worker is active.
+pub struct AnchoredAssistantAutoPruneConfig {
+    /// Whether the anchored-assistant auto-prune worker is active.
     /// Default: `true`.
-    #[serde(default = "default_anchor_radius_enabled")]
+    #[serde(default = "default_anchored_assistant_enabled")]
     pub enabled: bool,
     /// Radius (in raw chat entries) within which an `Assistant` entry is
     /// protected from pruning, regardless of distance to any User entry.
@@ -512,35 +573,35 @@ pub struct AnchorRadiusAutoPruneConfig {
     /// prune candidate (subject to the `>80` token threshold).
     /// Minimum 1 (clamped at evaluation time).
     /// Default: `100`.
-    #[serde(default = "default_anchor_radius")]
+    #[serde(default = "default_anchored_assistant_radius")]
     pub radius: usize,
     /// Minimum number of entries from the end of history within which
     /// Assistant entries are protected from pruning even when both anchor
     /// distances exceed the radius. Counts every entry, regardless of
     /// in-context status. Set to 0 to disable protection.
     /// Default: `50`.
-    #[serde(default = "default_anchor_radius_min_age")]
+    #[serde(default = "default_anchored_assistant_min_age")]
     pub min_age: usize,
 }
 
-fn default_anchor_radius_enabled() -> bool {
-    DEFAULT_ANCHOR_RADIUS_ENABLED
+fn default_anchored_assistant_enabled() -> bool {
+    DEFAULT_ANCHORED_ASSISTANT_ENABLED
 }
 
-fn default_anchor_radius() -> usize {
-    DEFAULT_ANCHOR_RADIUS
+fn default_anchored_assistant_radius() -> usize {
+    DEFAULT_ANCHORED_ASSISTANT_RADIUS
 }
 
-fn default_anchor_radius_min_age() -> usize {
-    DEFAULT_ANCHOR_RADIUS_MIN_AGE
+fn default_anchored_assistant_min_age() -> usize {
+    DEFAULT_ANCHORED_ASSISTANT_MIN_AGE
 }
 
-impl Default for AnchorRadiusAutoPruneConfig {
+impl Default for AnchoredAssistantAutoPruneConfig {
     fn default() -> Self {
         Self {
-            enabled: DEFAULT_ANCHOR_RADIUS_ENABLED,
-            radius: DEFAULT_ANCHOR_RADIUS,
-            min_age: DEFAULT_ANCHOR_RADIUS_MIN_AGE,
+            enabled: DEFAULT_ANCHORED_ASSISTANT_ENABLED,
+            radius: DEFAULT_ANCHORED_ASSISTANT_RADIUS,
+            min_age: DEFAULT_ANCHORED_ASSISTANT_MIN_AGE,
         }
     }
 }
@@ -630,6 +691,9 @@ fn default_regex_enabled() -> bool {
 /// Groups all auto-prune strategy configurations.
 #[derive(Default, Debug, Clone, PartialEq, Serialize, Deserialize)]
 pub struct AutoPruneConfig {
+    /// Edit-read auto-prune strategy configuration.
+    #[serde(default)]
+    pub edit_read: EditReadAutoPruneConfig,
     /// Read-edit auto-prune strategy configuration.
     #[serde(default)]
     pub read_edit: ReadEditAutoPruneConfig,
@@ -654,9 +718,9 @@ pub struct AutoPruneConfig {
     /// Trivial-assistant auto-prune strategy configuration.
     #[serde(default)]
     pub trivial_assistant: TrivialAssistantAutoPruneConfig,
-    /// Anchor-radius auto-prune strategy configuration.
-    #[serde(default, alias = "user_anchor_radius")]
-    pub anchor_radius: AnchorRadiusAutoPruneConfig,
+    /// Anchored-assistant auto-prune strategy configuration.
+    #[serde(default)]
+    pub anchored_assistant: AnchoredAssistantAutoPruneConfig,
 }
 
 /// Default token threshold for auto-compaction.
@@ -887,14 +951,8 @@ impl RequestRetryConfig {
 /// app restarts - e.g., the last model and strategy selected from pickers.
 #[derive(Debug, Clone, Default, PartialEq, Serialize, Deserialize)]
 pub struct UserPreferences {
-    /// The provider ID of the last model selected from the model picker.
-    /// Format: `{provider_name}/{model}` (e.g., `"ollama/llama3"`).
-    #[serde(default)]
-    pub last_model: Option<String>,
-    /// The strategy ID of the last strategy selected from the strategy picker.
-    /// Format: strategy name (e.g., `"sliding_window"`).
-    #[serde(default)]
-    pub last_strategy: Option<String>,
+
+
     /// Maximum number of lines to display for tool entries in the chat log.
     /// `None` means use the built-in default (5 lines).
     #[serde(default)]
@@ -903,23 +961,15 @@ pub struct UserPreferences {
     /// a summary line. `None` means use the built-in default (3).
     #[serde(default)]
     pub min_collapse_count: Option<usize>,
-    /// The name of the active theme. `None` or `"default"` uses the built-in theme.
-    /// Corresponds to a file in `~/.config/jinn/themes/<name>.toml`.
-    #[serde(default)]
-    pub theme_name: Option<String>,
-    /// The name of the active persona. `None` means use the default (`coding-assistant`).
-    /// Corresponds to a file in `~/.config/jinn/personas/<name>.md`.
-    #[serde(default)]
-    pub persona_name: Option<String>,
+
+
     /// Named session lifecycle recipes - paired setup/teardown commands.
     /// The implicit "blank" lifecycle (no commands) is always available and
     /// does not need to be listed here.
     #[serde(default)]
     #[serde(rename = "session_lifecycle")]
     pub session_lifecycles: Vec<SessionLifecycle>,
-    /// Sidebar width in columns. None means use the built-in default (30 columns).
-    #[serde(default)]
-    pub sidebar_width: Option<u16>,
+
     /// Maximum number of lines for tool output before truncation.
     /// `None` means use the built-in default (2000 lines).
     #[serde(default)]
@@ -1164,13 +1214,11 @@ mod tests {
     use super::*;
 
     #[rstest::rstest]
-    fn default_preferences_has_no_last_model() {
+    fn default_preferences_has_defaults_for_optional_fields() {
         // Given default preferences.
         let prefs = UserPreferences::default();
 
-        // Then last_model, last_strategy, tool_entry_max_lines, and min_collapse_count are None.
-        assert!(prefs.last_model.is_none());
-        assert!(prefs.last_strategy.is_none());
+        // Then optional fields default to None.
         assert!(prefs.tool_entry_max_lines.is_none());
         assert!(prefs.min_collapse_count.is_none());
     }
@@ -1185,8 +1233,7 @@ mod tests {
         let prefs = load_preferences_from(&path).expect("load");
 
         // Then defaults are returned.
-        assert!(prefs.last_model.is_none());
-        assert!(prefs.last_strategy.is_none());
+
         assert!(prefs.tool_entry_max_lines.is_none());
         // And the file is created.
         assert!(path.exists());
@@ -1211,7 +1258,7 @@ mod tests {
         // Given an existing file with custom content.
         let dir = TempDir::new().expect("temp dir");
         let path = dir.path().join(PREFS_FILE_NAME);
-        let marker = "# user-managed\nlast_model = \"x/y\"\n";
+        let marker = "# user-managed\ntool_entry_max_lines = 10\n";
         std::fs::write(&path, marker).expect("write");
         let mtime_before = std::fs::metadata(&path)
             .and_then(|m| m.modified())
@@ -1224,7 +1271,7 @@ mod tests {
         let on_disk = std::fs::read_to_string(&path).expect("read");
         assert_eq!(on_disk, marker);
         // And the parsed prefs reflect the file, not the defaults.
-        assert_eq!(prefs.last_model.as_deref(), Some("x/y"));
+        assert_eq!(prefs.tool_entry_max_lines, Some(10));
         // And the mtime is preserved.
         let mtime_after = std::fs::metadata(&path)
             .and_then(|m| m.modified())
@@ -1267,7 +1314,7 @@ mod tests {
         // Given an existing file with custom content.
         let dir = TempDir::new().expect("temp dir");
         let path = dir.path().join(PREFS_FILE_NAME);
-        let marker = "# user-managed\nlast_model = \"x/y\"\n";
+        let marker = "# user-managed\ntool_entry_max_lines = 10\n";
         std::fs::write(&path, marker).expect("write");
 
         // When initializing without --force.
@@ -1298,18 +1345,12 @@ mod tests {
 
     #[rstest::rstest]
     fn save_then_load_round_trips() {
-        // Given preferences with a last_model and last_strategy.
         let dir = TempDir::new().expect("temp dir");
         let path = dir.path().join(PREFS_FILE_NAME);
         let prefs = UserPreferences {
-            last_model: Some("ollama/llama3".to_owned()),
-            last_strategy: Some("sliding_window".to_owned()),
-            tool_entry_max_lines: None,
+            tool_entry_max_lines: Some(10),
             min_collapse_count: None,
-            theme_name: None,
-            persona_name: None,
             session_lifecycles: vec![],
-            sidebar_width: None,
             max_tool_output_lines: None,
             max_tool_output_bytes: None,
             compaction: CompactionConfig::default(),
@@ -1327,31 +1368,22 @@ mod tests {
         let reloaded = load_preferences_from(&path).expect("load");
 
         // Then the round-tripped data matches.
-        assert_eq!(reloaded.last_model.as_deref(), Some("ollama/llama3"));
-        assert_eq!(reloaded.last_strategy.as_deref(), Some("sliding_window"));
+        assert_eq!(reloaded.tool_entry_max_lines, Some(10));
     }
 
     #[rstest::rstest]
     fn load_parses_toml_content() {
-        // Given a TOML file with last_model and last_strategy.
         let dir = TempDir::new().expect("temp dir");
         let path = dir.path().join(PREFS_FILE_NAME);
         std::fs::write(
             &path,
-            r#"last_model = "openrouter/anthropic/claude-sonnet-4-20250514"
-last_strategy = "sliding_window""#,
+            r#"tool_entry_max_lines = 10"#,
         )
         .expect("write");
-
         // When loading.
         let prefs = load_preferences_from(&path).expect("load");
 
-        // Then last_model and last_strategy are parsed.
-        assert_eq!(
-            prefs.last_model.as_deref(),
-            Some("openrouter/anthropic/claude-sonnet-4-20250514")
-        );
-        assert_eq!(prefs.last_strategy.as_deref(), Some("sliding_window"));
+        assert_eq!(prefs.tool_entry_max_lines, Some(10));
     }
 
     #[rstest::rstest]
@@ -1365,8 +1397,7 @@ last_strategy = "sliding_window""#,
         let prefs = load_preferences_from(&path).expect("load");
 
         // Then defaults are returned (all fields None).
-        assert!(prefs.last_model.is_none());
-        assert!(prefs.last_strategy.is_none());
+
         assert!(prefs.tool_entry_max_lines.is_none());
     }
 
@@ -1376,14 +1407,9 @@ last_strategy = "sliding_window""#,
         let dir = TempDir::new().expect("temp dir");
         let path = dir.path().join("nested").join("dir").join(PREFS_FILE_NAME);
         let prefs = UserPreferences {
-            last_model: Some("test/model".to_owned()),
-            last_strategy: None,
             tool_entry_max_lines: None,
             min_collapse_count: None,
-            theme_name: None,
-            persona_name: None,
             session_lifecycles: vec![],
-            sidebar_width: None,
             max_tool_output_lines: None,
             max_tool_output_bytes: None,
             compaction: CompactionConfig::default(),
@@ -1409,14 +1435,9 @@ last_strategy = "sliding_window""#,
         let dir = TempDir::new().expect("temp dir");
         let path = dir.path().join(PREFS_FILE_NAME);
         let prefs = UserPreferences {
-            last_model: None,
-            last_strategy: None,
             tool_entry_max_lines: Some(10),
             min_collapse_count: None,
-            theme_name: None,
-            persona_name: None,
             session_lifecycles: vec![],
-            sidebar_width: None,
             max_tool_output_lines: None,
             max_tool_output_bytes: None,
             compaction: CompactionConfig::default(),
@@ -1443,12 +1464,8 @@ last_strategy = "sliding_window""#,
         let dir = TempDir::new().expect("temp dir");
         let path = dir.path().join(PREFS_FILE_NAME);
         let prefs = UserPreferences {
-            last_model: None,
-            last_strategy: None,
             tool_entry_max_lines: None,
             min_collapse_count: None,
-            theme_name: None,
-            persona_name: None,
             session_lifecycles: vec![SessionLifecycle {
                 name: "fossil branch".to_owned(),
                 description: Some("Open a fossil branch in a new workdir".to_owned()),
@@ -1463,7 +1480,6 @@ last_strategy = "sliding_window""#,
                     ),
                 ),
             }],
-            sidebar_width: None,
             max_tool_output_lines: None,
             max_tool_output_bytes: None,
             compaction: CompactionConfig::default(),
@@ -1498,34 +1514,7 @@ last_strategy = "sliding_window""#,
         assert!(prefs.session_lifecycles.is_empty());
     }
 
-    #[rstest::rstest]
-    fn save_then_load_round_trips_sidebar_width() {
-        let dir = TempDir::new().expect("temp dir");
-        let path = dir.path().join(PREFS_FILE_NAME);
-        let prefs = UserPreferences {
-            last_model: None,
-            last_strategy: None,
-            tool_entry_max_lines: None,
-            min_collapse_count: None,
-            theme_name: None,
-            persona_name: None,
-            session_lifecycles: vec![],
-            sidebar_width: Some(25),
-            max_tool_output_lines: None,
-            max_tool_output_bytes: None,
-            compaction: CompactionConfig::default(),
-            request_retry: RequestRetryConfig::default(),
-            web_fetch: WebFetchConfig::default(),
-            openrouter_web_search: OpenrouterWebSearchConfig::default(),
-            cwd_selector: CwdSelectorConfig::default(),
-            minimap: MinimapConfig::default(),
-            auto_prune: AutoPruneConfig::default(),
-            bash: BashConfig::default(),
-        };
-        save_preferences_to(&prefs, &path).expect("save");
-        let reloaded = load_preferences_from(&path).expect("load");
-        assert_eq!(reloaded.sidebar_width, Some(25));
-    }
+
 
     #[rstest::rstest]
     fn preferences_path_ends_with_jinn_toml() {
@@ -1589,21 +1578,21 @@ teardown_command = "~/.config/jinn/scripts/fossil-cleanup.sh $1"
     #[rstest::rstest]
     fn save_preferences_preserves_user_comments_on_scalar_change() {
         // Given a comment-rich jinn.toml.
-        let original = "# my prefs\nlast_model = \"ollama/llama3\"\n";
+        let original = "# my prefs\ntool_entry_max_lines = 10\n";
         let dir = TempDir::new().expect("temp dir");
         let path = dir.path().join(PREFS_FILE_NAME);
         std::fs::write(&path, original).expect("write");
 
-        // When loading, mutating last_model, and saving.
+        // When loading, mutating tool_entry_max_lines, and saving.
         let mut prefs = load_preferences_from(&path).expect("load");
-        prefs.last_model = Some("openai/gpt-4o".to_owned());
+        prefs.tool_entry_max_lines = Some(20);
         save_preferences_to(&prefs, &path).expect("save");
 
         // Then the comment is preserved and the field is updated.
         let written = std::fs::read_to_string(&path).expect("read");
         assert!(written.contains("# my prefs"), "comment wiped: {written}");
-        assert!(written.contains("openai/gpt-4o"));
-        assert!(!written.contains("ollama/llama3"));
+        assert!(written.contains("tool_entry_max_lines = 20"));
+        assert!(!written.contains("tool_entry_max_lines = 10"));
     }
 
     #[rstest::rstest]
@@ -1778,26 +1767,26 @@ teardown_command = "~/.config/jinn/scripts/fossil-cleanup.sh $1"
     fn save_preferences_mixed_mutations_preserve_unrelated_comments() {
         // Given a jinn.toml with comments sprinkled across several sections.
         let original = "\
-# main preferences\nlast_model = \"ollama/llama3\"\n\n# width in chars\nsidebar_width = 80\n\n# keep context compact\n[compaction]\n# always compact\nenabled = true\n# 50k tokens\ntokens = 50000\n\n# my lifecycles\n[[session_lifecycle]]\nname = \"alpha\"\n\n# deprecated lifecycle\n[[session_lifecycle]]\nname = \"beta\"\n";
+# main preferences\ntool_entry_max_lines = 10\n\n# collapse threshold\nmin_collapse_count = 5\n\n# keep context compact\n[compaction]\n# always compact\nenabled = true\n# 50k tokens\ntokens = 50000\n\n# my lifecycles\n[[session_lifecycle]]\nname = \"alpha\"\n\n# deprecated lifecycle\n[[session_lifecycle]]\nname = \"beta\"\n";
         let dir = TempDir::new().expect("temp dir");
         let path = dir.path().join(PREFS_FILE_NAME);
         std::fs::write(&path, original).expect("write");
 
         // When applying a mixed mutation set:
-        //   - change last_model (scalar update)
+        //   - change tool_entry_max_lines (scalar update)
         //   - delete beta session_lifecycle (array entry removal)
-        //   - leave sidebar_width and compaction untouched
+        //   - leave min_collapse_count and compaction untouched
         let mut prefs = load_preferences_from(&path).expect("load");
-        prefs.last_model = Some("openrouter/gpt-4o".to_owned());
+        prefs.tool_entry_max_lines = Some(20);
         prefs.session_lifecycles.retain(|l| l.name == "alpha");
         save_preferences_to(&prefs, &path).expect("save");
 
         // Then all unrelated comments survive and the targeted changes applied.
         let written = std::fs::read_to_string(&path).expect("read");
         assert!(written.contains("# main preferences"), "top comment kept");
-        assert!(written.contains("# width in chars"), "sidebar comment kept");
+        assert!(written.contains("# collapse threshold"), "collapse comment kept");
         assert!(
-            written.contains("sidebar_width = 80"),
+            written.contains("min_collapse_count = 5"),
             "untouched field kept"
         );
         assert!(
@@ -1818,12 +1807,11 @@ teardown_command = "~/.config/jinn/scripts/fossil-cleanup.sh $1"
             "beta comment removed with beta"
         );
         assert!(!written.contains("\"beta\""), "beta removed");
-        assert!(written.contains("openrouter/gpt-4o"), "last_model updated");
-        assert!(!written.contains("ollama/llama3"), "old last_model gone");
+        assert!(written.contains("tool_entry_max_lines = 20"), "tool_entry_max_lines updated");
+        assert!(!written.contains("tool_entry_max_lines = 10"), "old tool_entry_max_lines gone");
         // The alpha lifecycle is preserved.
         assert!(written.contains("\"alpha\""), "alpha kept");
     }
-
     #[rstest::rstest]
     fn save_preferences_preserves_inner_block_comment_when_field_is_mutated() {
         // Given a jinn.toml with a comment between two session_lifecycle fields.
@@ -1859,21 +1847,15 @@ teardown_command = "~/.config/jinn/scripts/fossil-cleanup.sh $1"
         let path = dir.path().join(PREFS_FILE_NAME);
         std::fs::write(
             &path,
-            "last_model = \"openrouter/anthropic/claude-sonnet-4-20250514\"\n\
-             last_strategy = \"sliding_window\"\n\
-             sidebar_width = 42\n",
+            "tool_entry_max_lines = 42\n             min_collapse_count = 7\n",
         )
         .expect("write");
 
         let prefs = load_preferences_from(&path).expect("load");
 
         // Then the loaded prefs are NOT defaults - they reflect the file.
-        assert_eq!(
-            prefs.last_model.as_deref(),
-            Some("openrouter/anthropic/claude-sonnet-4-20250514")
-        );
-        assert_eq!(prefs.last_strategy.as_deref(), Some("sliding_window"));
-        assert_eq!(prefs.sidebar_width, Some(42));
+        assert_eq!(prefs.tool_entry_max_lines, Some(42));
+        assert_eq!(prefs.min_collapse_count, Some(7));
     }
 
     #[rstest::rstest]
@@ -1883,14 +1865,9 @@ teardown_command = "~/.config/jinn/scripts/fossil-cleanup.sh $1"
         let dir = TempDir::new().expect("temp dir");
         let path = dir.path().join(PREFS_FILE_NAME);
         let prefs = UserPreferences {
-            last_model: Some("ollama/llama3".to_owned()),
-            last_strategy: None,
             tool_entry_max_lines: Some(99),
             min_collapse_count: None,
-            theme_name: None,
-            persona_name: None,
             session_lifecycles: vec![],
-            sidebar_width: Some(42),
             max_tool_output_lines: None,
             max_tool_output_bytes: None,
             compaction: CompactionConfig::default(),
@@ -1908,14 +1885,14 @@ teardown_command = "~/.config/jinn/scripts/fossil-cleanup.sh $1"
         // Then the file exists on disk with the expected content.
         assert!(path.exists(), "save_preferences should create the file");
         let content = std::fs::read_to_string(&path).expect("read back");
-        assert!(content.contains("ollama/llama3"));
-        assert!(content.contains("42"));
+        assert!(content.contains("tool_entry_max_lines = 99"));
+        assert!(content.contains("99"));
     }
 
     #[rstest::rstest]
     fn save_preferences_preserves_user_comments() {
         // Given a comment-rich jinn.toml.
-        let original = "# my favorite\nlast_model = \"ollama/llama3\"\nsidebar_width = 42\n";
+        let original = "# my favorite\ntool_entry_max_lines = 10\nmin_collapse_count = 42\n";
         let dir = TempDir::new().expect("temp dir");
         let path = dir.path().join(PREFS_FILE_NAME);
         std::fs::write(&path, original).expect("write");
@@ -1932,7 +1909,7 @@ teardown_command = "~/.config/jinn/scripts/fossil-cleanup.sh $1"
             "comment was wiped: {written}"
         );
         assert!(written.contains("tool_entry_max_lines = 7"));
-        assert!(written.contains("last_model = \"ollama/llama3\""));
+        assert!(written.contains("min_collapse_count = 42"));
     }
 
     #[rstest::rstest]
@@ -2227,6 +2204,9 @@ max_tokens = 5000
     #[rstest::rstest]
     fn default_auto_prune_config_has_defaults() {
         let config = AutoPruneConfig::default();
+        assert!(config.edit_read.enabled);
+        assert_eq!(config.edit_read.min_age, 50);
+        assert_eq!(config.read_edit.threshold, 2);
         assert!(config.read_edit.enabled);
         assert!(config.todo.enabled);
         assert!(config.consecutive_reads.enabled);
@@ -2244,6 +2224,7 @@ max_tokens = 5000
     fn default_preferences_has_default_auto_prune_config() {
         let prefs = UserPreferences::default();
         assert!(prefs.auto_prune.read_edit.enabled);
+        assert!(prefs.auto_prune.edit_read.enabled);
         assert!(prefs.auto_prune.todo.enabled);
         assert!(prefs.auto_prune.consecutive_reads.enabled);
         assert!(prefs.auto_prune.tool_age_window.enabled);
@@ -2359,6 +2340,7 @@ enabled = true
 
         let prefs = load_preferences_from(&path).expect("load");
         assert_eq!(prefs.auto_prune.read_edit.min_age, 50);
+        assert_eq!(prefs.auto_prune.read_edit.threshold, 2);
         assert_eq!(prefs.auto_prune.double_edit.min_age, 20);
         assert_eq!(prefs.auto_prune.tool_age_window.min_age, 100);
     }
@@ -2369,9 +2351,14 @@ enabled = true
         let path = dir.path().join(PREFS_FILE_NAME);
         let prefs = UserPreferences {
             auto_prune: AutoPruneConfig {
+                edit_read: EditReadAutoPruneConfig {
+                    enabled: true,
+                    min_age: 30,
+                },
                 read_edit: ReadEditAutoPruneConfig {
                     enabled: false,
                     min_age: 25,
+                    threshold: 3,
                 },
                 regex: RegexAutoPruneConfig::default(),
                 broken_edit: BrokenEditAutoPruneConfig {
@@ -2393,7 +2380,7 @@ enabled = true
                     min_age: 50,
                     max_tokens: 40,
                 },
-                anchor_radius: AnchorRadiusAutoPruneConfig {
+                anchored_assistant: AnchoredAssistantAutoPruneConfig {
                     enabled: false,
                     radius: 42,
                     min_age: 0,
@@ -2405,8 +2392,11 @@ enabled = true
         save_preferences_to(&prefs, &path).expect("save");
 
         let reloaded = load_preferences_from(&path).expect("load");
+        assert!(reloaded.auto_prune.edit_read.enabled);
+        assert_eq!(reloaded.auto_prune.edit_read.min_age, 30);
         assert!(!reloaded.auto_prune.read_edit.enabled);
         assert_eq!(reloaded.auto_prune.read_edit.min_age, 25);
+        assert_eq!(reloaded.auto_prune.read_edit.threshold, 3);
         assert!(!reloaded.auto_prune.broken_edit.enabled);
         assert_eq!(reloaded.auto_prune.broken_edit.min_age, 3);
         assert!(!reloaded.auto_prune.todo.enabled);
@@ -2415,8 +2405,8 @@ enabled = true
         assert!(!reloaded.auto_prune.trivial_assistant.enabled);
         assert_eq!(reloaded.auto_prune.trivial_assistant.min_age, 50);
         assert_eq!(reloaded.auto_prune.trivial_assistant.max_tokens, 40);
-        assert!(!reloaded.auto_prune.anchor_radius.enabled);
-        assert_eq!(reloaded.auto_prune.anchor_radius.radius, 42);
+        assert!(!reloaded.auto_prune.anchored_assistant.enabled);
+        assert_eq!(reloaded.auto_prune.anchored_assistant.radius, 42);
     }
 
     #[rstest::rstest]
@@ -2426,6 +2416,7 @@ enabled = true
         std::fs::write(&path, r##"last_model = 'ollama/llama3'"##).expect("write");
 
         let prefs = load_preferences_from(&path).expect("load");
+        assert!(prefs.auto_prune.edit_read.enabled);
         assert!(prefs.auto_prune.read_edit.enabled);
         assert!(prefs.auto_prune.todo.enabled);
         assert!(prefs.auto_prune.tool_age_window.enabled);
@@ -2433,8 +2424,8 @@ enabled = true
         assert!(prefs.auto_prune.trivial_assistant.enabled);
         assert_eq!(prefs.auto_prune.trivial_assistant.min_age, 100);
         assert_eq!(prefs.auto_prune.trivial_assistant.max_tokens, 80);
-        assert!(prefs.auto_prune.anchor_radius.enabled);
-        assert_eq!(prefs.auto_prune.anchor_radius.radius, 100);
+        assert!(prefs.auto_prune.anchored_assistant.enabled);
+        assert_eq!(prefs.auto_prune.anchored_assistant.radius, 100);
     }
 
     #[rstest::rstest]
@@ -2451,6 +2442,8 @@ enabled = false
 
         let prefs = load_preferences_from(&path).expect("load");
         assert!(!prefs.auto_prune.todo.enabled);
+        // edit_read should still have defaults
+        assert!(prefs.auto_prune.edit_read.enabled);
         // read_edit should still have defaults
         assert!(prefs.auto_prune.read_edit.enabled);
     }
@@ -2459,9 +2452,10 @@ enabled = false
     fn default_min_age_is_50_for_new_workers() {
         // Given the three newly-min_age'd configs and the per-rule default.
         // Then their Default impls all produce min_age == 50.
-        assert_eq!(AnchorRadiusAutoPruneConfig::default().min_age, 50);
+        assert_eq!(AnchoredAssistantAutoPruneConfig::default().min_age, 50);
         assert_eq!(ConsecutiveReadsAutoPruneConfig::default().min_age, 50);
         assert_eq!(TodoAutoPruneConfig::default().min_age, 50);
+        assert_eq!(EditReadAutoPruneConfig::default().min_age, 50);
         // RegexPruneRule has no Default impl (pattern is required), so verify
         // via the serde default function directly.
         assert_eq!(default_regex_min_age(), 50);
@@ -2681,35 +2675,6 @@ keep_last = 1
         assert_eq!(reloaded.auto_prune.regex.rules.len(), 2);
         assert_eq!(reloaded.auto_prune.regex.rules[0].pattern, "ls");
         assert_eq!(reloaded.auto_prune.regex.rules[1].pattern, "cargo check");
-    }
-
-    #[rstest::rstest]
-    fn legacy_user_anchor_radius_key_still_loads_via_serde_alias() {
-        // Given a TOML file using the legacy [auto_prune.user_anchor_radius] table key
-        // (renamed to anchor_radius in the assistant-message-filter-fix task).
-        let dir = TempDir::new().expect("temp dir");
-        let path = dir.path().join(PREFS_FILE_NAME);
-        std::fs::write(
-            &path,
-            r#"[auto_prune.user_anchor_radius]
-enabled = true
-radius = 42"#,
-        )
-        .expect("write");
-
-        // When loading.
-        let prefs = load_preferences_from(&path).expect("load");
-
-        // Then the values populate the renamed anchor_radius field,
-        // proving the #[serde(alias = "user_anchor_radius")] on AutoPruneConfig works.
-        assert!(
-            prefs.auto_prune.anchor_radius.enabled,
-            "legacy user_anchor_radius table should map to anchor_radius",
-        );
-        assert_eq!(
-            prefs.auto_prune.anchor_radius.radius, 42,
-            "legacy radius value should round-trip",
-        );
     }
 
     #[test]
