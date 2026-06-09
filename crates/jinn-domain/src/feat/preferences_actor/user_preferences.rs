@@ -552,24 +552,24 @@ impl Default for TrivialAssistantAutoPruneConfig {
     }
 }
 
-/// Default enabled state for anchor-radius auto-prune.
-const DEFAULT_ANCHOR_RADIUS_ENABLED: bool = true;
+/// Default enabled state for anchored-assistant auto-prune.
+const DEFAULT_ANCHORED_ASSISTANT_ENABLED: bool = true;
 
 /// Default radius (in raw history entries) within which an Assistant entry is
 /// protected from pruning regardless of token count.
-const DEFAULT_ANCHOR_RADIUS: usize = 100;
+const DEFAULT_ANCHORED_ASSISTANT_RADIUS: usize = 100;
 
-/// Default minimum age for anchor-radius auto-prune.
-const DEFAULT_ANCHOR_RADIUS_MIN_AGE: usize = 50;
+/// Default minimum age for anchored-assistant auto-prune.
+const DEFAULT_ANCHORED_ASSISTANT_MIN_AGE: usize = 50;
 
-/// Anchor-radius auto-prune strategy configuration.
+/// Anchored-assistant auto-prune strategy configuration.
 ///
-/// Serialized as `[auto_prune.anchor_radius]` in `jinn.toml`.
+/// Serialized as `[auto_prune.anchored_assistant]` in `jinn.toml`.
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
-pub struct AnchorRadiusAutoPruneConfig {
-    /// Whether the anchor-radius auto-prune worker is active.
+pub struct AnchoredAssistantAutoPruneConfig {
+    /// Whether the anchored-assistant auto-prune worker is active.
     /// Default: `true`.
-    #[serde(default = "default_anchor_radius_enabled")]
+    #[serde(default = "default_anchored_assistant_enabled")]
     pub enabled: bool,
     /// Radius (in raw chat entries) within which an `Assistant` entry is
     /// protected from pruning, regardless of distance to any User entry.
@@ -577,35 +577,35 @@ pub struct AnchorRadiusAutoPruneConfig {
     /// prune candidate (subject to the `>80` token threshold).
     /// Minimum 1 (clamped at evaluation time).
     /// Default: `100`.
-    #[serde(default = "default_anchor_radius")]
+    #[serde(default = "default_anchored_assistant_radius")]
     pub radius: usize,
     /// Minimum number of entries from the end of history within which
     /// Assistant entries are protected from pruning even when both anchor
     /// distances exceed the radius. Counts every entry, regardless of
     /// in-context status. Set to 0 to disable protection.
     /// Default: `50`.
-    #[serde(default = "default_anchor_radius_min_age")]
+    #[serde(default = "default_anchored_assistant_min_age")]
     pub min_age: usize,
 }
 
-fn default_anchor_radius_enabled() -> bool {
-    DEFAULT_ANCHOR_RADIUS_ENABLED
+fn default_anchored_assistant_enabled() -> bool {
+    DEFAULT_ANCHORED_ASSISTANT_ENABLED
 }
 
-fn default_anchor_radius() -> usize {
-    DEFAULT_ANCHOR_RADIUS
+fn default_anchored_assistant_radius() -> usize {
+    DEFAULT_ANCHORED_ASSISTANT_RADIUS
 }
 
-fn default_anchor_radius_min_age() -> usize {
-    DEFAULT_ANCHOR_RADIUS_MIN_AGE
+fn default_anchored_assistant_min_age() -> usize {
+    DEFAULT_ANCHORED_ASSISTANT_MIN_AGE
 }
 
-impl Default for AnchorRadiusAutoPruneConfig {
+impl Default for AnchoredAssistantAutoPruneConfig {
     fn default() -> Self {
         Self {
-            enabled: DEFAULT_ANCHOR_RADIUS_ENABLED,
-            radius: DEFAULT_ANCHOR_RADIUS,
-            min_age: DEFAULT_ANCHOR_RADIUS_MIN_AGE,
+            enabled: DEFAULT_ANCHORED_ASSISTANT_ENABLED,
+            radius: DEFAULT_ANCHORED_ASSISTANT_RADIUS,
+            min_age: DEFAULT_ANCHORED_ASSISTANT_MIN_AGE,
         }
     }
 }
@@ -722,9 +722,9 @@ pub struct AutoPruneConfig {
     /// Trivial-assistant auto-prune strategy configuration.
     #[serde(default)]
     pub trivial_assistant: TrivialAssistantAutoPruneConfig,
-    /// Anchor-radius auto-prune strategy configuration.
-    #[serde(default, alias = "user_anchor_radius")]
-    pub anchor_radius: AnchorRadiusAutoPruneConfig,
+    /// Anchored-assistant auto-prune strategy configuration.
+    #[serde(default)]
+    pub anchored_assistant: AnchoredAssistantAutoPruneConfig,
 }
 
 /// Default token threshold for auto-compaction.
@@ -2471,7 +2471,7 @@ enabled = true
                     min_age: 50,
                     max_tokens: 40,
                 },
-                anchor_radius: AnchorRadiusAutoPruneConfig {
+                anchored_assistant: AnchoredAssistantAutoPruneConfig {
                     enabled: false,
                     radius: 42,
                     min_age: 0,
@@ -2496,8 +2496,8 @@ enabled = true
         assert!(!reloaded.auto_prune.trivial_assistant.enabled);
         assert_eq!(reloaded.auto_prune.trivial_assistant.min_age, 50);
         assert_eq!(reloaded.auto_prune.trivial_assistant.max_tokens, 40);
-        assert!(!reloaded.auto_prune.anchor_radius.enabled);
-        assert_eq!(reloaded.auto_prune.anchor_radius.radius, 42);
+        assert!(!reloaded.auto_prune.anchored_assistant.enabled);
+        assert_eq!(reloaded.auto_prune.anchored_assistant.radius, 42);
     }
 
     #[rstest::rstest]
@@ -2515,8 +2515,8 @@ enabled = true
         assert!(prefs.auto_prune.trivial_assistant.enabled);
         assert_eq!(prefs.auto_prune.trivial_assistant.min_age, 100);
         assert_eq!(prefs.auto_prune.trivial_assistant.max_tokens, 80);
-        assert!(prefs.auto_prune.anchor_radius.enabled);
-        assert_eq!(prefs.auto_prune.anchor_radius.radius, 100);
+        assert!(prefs.auto_prune.anchored_assistant.enabled);
+        assert_eq!(prefs.auto_prune.anchored_assistant.radius, 100);
     }
 
     #[rstest::rstest]
@@ -2543,7 +2543,7 @@ enabled = false
     fn default_min_age_is_50_for_new_workers() {
         // Given the three newly-min_age'd configs and the per-rule default.
         // Then their Default impls all produce min_age == 50.
-        assert_eq!(AnchorRadiusAutoPruneConfig::default().min_age, 50);
+        assert_eq!(AnchoredAssistantAutoPruneConfig::default().min_age, 50);
         assert_eq!(ConsecutiveReadsAutoPruneConfig::default().min_age, 50);
         assert_eq!(TodoAutoPruneConfig::default().min_age, 50);
         assert_eq!(EditReadAutoPruneConfig::default().min_age, 50);
@@ -2766,35 +2766,6 @@ keep_last = 1
         assert_eq!(reloaded.auto_prune.regex.rules.len(), 2);
         assert_eq!(reloaded.auto_prune.regex.rules[0].pattern, "ls");
         assert_eq!(reloaded.auto_prune.regex.rules[1].pattern, "cargo check");
-    }
-
-    #[rstest::rstest]
-    fn legacy_user_anchor_radius_key_still_loads_via_serde_alias() {
-        // Given a TOML file using the legacy [auto_prune.user_anchor_radius] table key
-        // (renamed to anchor_radius in the assistant-message-filter-fix task).
-        let dir = TempDir::new().expect("temp dir");
-        let path = dir.path().join(PREFS_FILE_NAME);
-        std::fs::write(
-            &path,
-            r#"[auto_prune.user_anchor_radius]
-enabled = true
-radius = 42"#,
-        )
-        .expect("write");
-
-        // When loading.
-        let prefs = load_preferences_from(&path).expect("load");
-
-        // Then the values populate the renamed anchor_radius field,
-        // proving the #[serde(alias = "user_anchor_radius")] on AutoPruneConfig works.
-        assert!(
-            prefs.auto_prune.anchor_radius.enabled,
-            "legacy user_anchor_radius table should map to anchor_radius",
-        );
-        assert_eq!(
-            prefs.auto_prune.anchor_radius.radius, 42,
-            "legacy radius value should round-trip",
-        );
     }
 
     #[test]
