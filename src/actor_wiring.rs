@@ -585,7 +585,9 @@ impl ActorSystemBuilder {
         // discovery settles. (Migrated to kameo — registers on bus during on_start.)
         let _discovery_notifier = DiscoveryNotifierActor::spawn(
             DiscoveryNotifierActorDeps {
-                bus: services.bus.clone(),
+                deps: jinn_domain::common::actor_deps::ActorDeps {
+                    services: services.clone(),
+                },
             },
         );
 
@@ -636,9 +638,11 @@ impl ActorSystemBuilder {
         // (Migrated to kameo — registers on bus during on_start.)
         let _queue_actor = QueueActor::spawn(
             QueueActorDeps {
+                deps: jinn_domain::common::actor_deps::ActorDeps {
+                    services: services.clone(),
+                },
                 state: state.clone(),
                 counter: token_counter.clone(),
-                bus: services.bus.clone(),
             },
         );
 
