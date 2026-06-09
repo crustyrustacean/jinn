@@ -100,7 +100,117 @@ impl SessionPersistenceActor {
         session.append_tool_result_output(&event.tool_call_id, &event.output);
     }
 
-    /// All tools in a batch have finished - route the continuation through
+    /// Drains pending history mutations and steering buffer entries, emitting
+    /// ContextOverrideChanged events for any modified entries.
+    fn apply_pending_mutations_and_steering(
+        &self,
+        session_id: &crate::protocol::SessionId,
+        ctx: &ActorContext,
+    ) {
+        // Drain and apply pending history mutations.
+        let changed = {
+            let mut state = self.state.write();
+            let session = state.session_mut_or_create(session_id);
+            let (count, changed) = session.drain_and_apply_pending_mutations();
+            if count > 0 {
+                tracing::debug!(
+                    session_id = %session_id,
+                    applied = count,
+                    "applied pending history mutations"
+                );
+            }
+            changed
+        };
+        // Emit ContextOverrideChanged events outside the write lock.
+        for entry_id in changed {
+            if let Err(e) = ctx.send_event(Event::ContextOverrideChanged(
+                crate::feat::context::protocol::event::ContextOverrideChanged {
+                    session_id: session_id.clone(),
+                    entry_id,
+                },
+            )) {
+                tracing::warn!(err = ?e, "failed to emit ContextOverrideChanged");
+            }
+        }
+
+        // Drain any pending steering fragments into history.
+        {
+            let mut state = self.state.write();
+            let session = state.session_mut_or_create(session_id);
+            if let Some(entry) = session.steering_buffer_mut().drain_into_entry() {
+                let entry_id = entry.id.clone();
+                let index = session.push_entry(entry);
+                tracing::debug!(
+                    session_id = %session_id,
+                    entry_id = %entry_id,
+                    history_index = index,
+                    "drained steering entry into history at tool-batch boundary"
+                );
+            }
+        }
+    }
+
+    /// Assembles the continuation prompt, transitions to streaming phase,
+    /// and emits the SendToLlmProvider command.
+    fn assemble_and_send_continuation(
+        &self,
+        session_id: &crate::protocol::SessionId,
+        assembly_overrides: Option<&crate::feat::context::assemble::AssemblyOverrides>,
+        ctx: &ActorContext,
+    ) {
+        let assembled = {
+            let guard = self.state.read();
+            assemble_prompt(
+                &guard,
+                session_id,
+                &self.counter,
+                assembly_overrides,
+            )
+        };
+
+        let (old_phase, new_phase) = {
+            let mut state = self.state.write();
+            let session = state.session_mut_or_create(session_id);
+            let old_phase = session.phase();
+            session.begin_streaming();
+            session.push_token_record(TokenRecord {
+                timestamp: jiff::Timestamp::now(),
+                tokens_sent: assembled.estimated_tokens(),
+                tokens_received: 0,
+                cost: None,
+            });
+
+            (old_phase, session.phase())
+        };
+        super::super::helpers::emit_phase_changed(ctx, session_id, old_phase, new_phase);
+
+        let provider_id = {
+            let state = self.state.read();
+            let model = state.session(session_id).profile().model.clone();
+            if model == crate::feat::provider_infra::NO_PROVIDER_ID {
+                None
+            } else {
+                Some(model)
+            }
+        };
+
+        let estimated_tokens = assembled.estimated_tokens();
+
+        if let Err(e) = ctx.send_command(Command::SendToLlmProvider(SendToLlmProvider {
+            session_id: session_id.clone(),
+            messages: assembled.messages,
+            provider_id,
+            estimated_tokens,
+            tool_definitions: assembled.tool_definitions,
+        })) {
+            tracing::warn!(
+                err = ?e,
+                "session-actor failed to emit SendToLlmProvider from tool batch completion"
+            );
+        }
+    }
+
+    /// All tools in a batch have finished — route the continuation through
     /// context assembly so token counting and prompt strategy apply.
     ///
     /// By this point, the session history already contains `ToolCall`,
@@ -108,7 +218,6 @@ impl SessionPersistenceActor {
     /// and the session is already in sending state (set by `on_stream_completed`
     /// for the `ToolUse` reason). We just need to assemble the prompt via
     /// the full session history.
-    #[expect(clippy::too_many_lines, reason = "handler reads best as a single unit")]
     pub(in crate::feat::session::session_actor) fn on_tool_batch_completed(
         &self,
         event: &ToolBatchCompleted,
@@ -120,7 +229,7 @@ impl SessionPersistenceActor {
             "on_tool_batch_completed"
         );
 
-        // Check tool loop disabled: if set, end the turn instead of continuing.
+        // If tool loop is disabled, end the turn instead of continuing.
         // This is used by judge verdict tools to prevent infinite tool-call loops.
         // finish_sending_via_machine delegates to on_tool_batch_completed() which
         // reads and clears the tool_loop_disabled flag from the machine.
@@ -138,112 +247,31 @@ impl SessionPersistenceActor {
                 session.finish_sending_via_machine();
                 (old_phase, session.phase())
             };
-            super::super::helpers::emit_phase_changed(ctx, &event.session_id, old_phase, new_phase);
+            super::super::helpers::emit_phase_changed(
+                ctx,
+                &event.session_id,
+                old_phase,
+                new_phase,
+            );
             return;
         }
 
-        // Apply pending history mutations before assembling the prompt.
-        // Skip if judge session.
-        let changed = {
-            let mut state = self.state.write();
-            let session = state.session_mut_or_create(&event.session_id);
-            let (count, changed) = session.drain_and_apply_pending_mutations();
-            if count > 0 {
-                tracing::debug!(
-                    session_id = %event.session_id,
-                    applied = count,
-                    "applied pending history mutations"
-                );
-            }
-            changed
-        };
-        // Emit ContextOverrideChanged events outside the write lock.
-        for entry_id in changed {
-            if let Err(e) = ctx.send_event(Event::ContextOverrideChanged(
-                crate::feat::context::protocol::event::ContextOverrideChanged {
-                    session_id: event.session_id.clone(),
-                    entry_id,
-                },
-            )) {
-                tracing::warn!(err = ?e, "failed to emit ContextOverrideChanged");
-            }
-        }
+        self.apply_pending_mutations_and_steering(&event.session_id, ctx);
 
-        // Drain any pending steering fragments into history before assembly.
-        {
-            let mut state = self.state.write();
-            let session = state.session_mut_or_create(&event.session_id);
-            if let Some(entry) = session.steering_buffer_mut().drain_into_entry() {
-                let entry_id = entry.id.clone();
-                let index = session.push_entry(entry);
-                tracing::debug!(
-                    session_id = %event.session_id,
-                    entry_id = %entry_id,
-                    history_index = index,
-                    "drained steering entry into history at tool-batch boundary"
-                );
-            }
-        }
-        // Note: the session is already in sending state, set by on_stream_completed(ToolUse).
-        let assembly_overrides: Option<crate::feat::context::assemble::AssemblyOverrides> = {
+        let assembly_overrides = {
             let state = self.state.read();
             let session = state.session(&event.session_id);
-            if session.is_automated() {
-                session.core.assembly_overrides.clone()
-            } else {
-                None
-            }
-        };
-        let assembled = {
-            let guard = self.state.read();
-            assemble_prompt(
-                &guard,
-                &event.session_id,
-                &self.counter,
-                assembly_overrides.as_ref(),
-            )
+            session
+                .is_automated()
+                .then(|| session.core.assembly_overrides.clone())
+                .flatten()
         };
 
-        let (old_phase, new_phase) = {
-            let mut state = self.state.write();
-            let session = state.session_mut_or_create(&event.session_id);
-            let old_phase = session.phase();
-            session.begin_streaming();
-            session.push_token_record(TokenRecord {
-                timestamp: jiff::Timestamp::now(),
-                tokens_sent: assembled.estimated_tokens(),
-                tokens_received: 0,
-                cost: None,
-            });
-
-            (old_phase, session.phase())
-        };
-        super::super::helpers::emit_phase_changed(ctx, &event.session_id, old_phase, new_phase);
-
-        let provider_id = {
-            let state = self.state.read();
-            let model = state.session(&event.session_id).profile().model.clone();
-            if model == crate::feat::provider_infra::NO_PROVIDER_ID {
-                None
-            } else {
-                Some(model)
-            }
-        };
-
-        let estimated_tokens = assembled.estimated_tokens();
-
-        if let Err(e) = ctx.send_command(Command::SendToLlmProvider(SendToLlmProvider {
-            session_id: event.session_id.clone(),
-            messages: assembled.messages,
-            provider_id,
-            estimated_tokens,
-            tool_definitions: assembled.tool_definitions,
-        })) {
-            tracing::warn!(
-                err = ?e,
-                "session-actor failed to emit SendToLlmProvider from tool batch completion"
-            );
-        }
+        self.assemble_and_send_continuation(
+            &event.session_id,
+            assembly_overrides.as_ref(),
+            ctx,
+        );
     }
 }
 
