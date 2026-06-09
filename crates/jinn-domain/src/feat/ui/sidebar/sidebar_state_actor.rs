@@ -49,7 +49,13 @@ impl SidebarStateActor {
 
 #[cfg(test)]
 mod tests {
-    #![allow(clippy::expect_used, clippy::panic, clippy::unreachable, clippy::indexing_slicing, reason = "test code")]
+    #![allow(
+        clippy::expect_used,
+        clippy::panic,
+        clippy::unreachable,
+        clippy::indexing_slicing,
+        reason = "test code"
+    )]
     use super::*;
     use crate::common::app_state::AppState;
     use crate::common::state::State;

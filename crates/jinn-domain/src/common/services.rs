@@ -143,9 +143,7 @@ impl Services {
                 svc
             },
             app_state_storage: {
-                let svc = AppStateStorageService::new(Arc::new(
-                    InMemoryAppStateStorage::new(),
-                ));
+                let svc = AppStateStorageService::new(Arc::new(InMemoryAppStateStorage::new()));
                 svc.reload().expect("test app state storage initial reload");
                 svc
             },

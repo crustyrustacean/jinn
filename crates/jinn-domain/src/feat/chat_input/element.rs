@@ -152,7 +152,10 @@ fn build_wrapped_lines<'a>(
         }
 
         let prefix = if row == 0 { "> " } else { "  " };
-        let content: String = graphemes.get(line.grapheme_start..line.grapheme_end).map(|g| g.join("")).unwrap_or_default();
+        let content: String = graphemes
+            .get(line.grapheme_start..line.grapheme_end)
+            .map(|g| g.join(""))
+            .unwrap_or_default();
         lines.push(Line::from(vec![
             Span::styled(prefix, prompt_style),
             Span::styled(content, text_style),
@@ -252,7 +255,7 @@ fn compute_display_col(text: &str, lines: &[WrappedLine], row: usize, col: usize
     if line.grapheme_start >= end {
         return 0;
     }
-    graphemes
-        .get(line.grapheme_start..end)
-        .map_or(0, |gs| gs.iter().map(|g| UnicodeWidthStr::width(*g)).sum::<usize>())
+    graphemes.get(line.grapheme_start..end).map_or(0, |gs| {
+        gs.iter().map(|g| UnicodeWidthStr::width(*g)).sum::<usize>()
+    })
 }

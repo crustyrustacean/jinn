@@ -6,9 +6,9 @@
 //! obstacles are transparent — the user never sees a "skip" as a separate step.
 
 use crate::common::app_state::AppState;
+use crate::feat::context::protocol::event::ContextOverrideChanged;
 use crate::feat::session::chat_entry::ChatEntry;
 use crate::feat::session_lifecycle::protocol::command::PersistSession;
-use crate::feat::context::protocol::event::ContextOverrideChanged;
 use crate::protocol::{ChatEntryId, Command, ContextOverride, Event, IntentResult, SessionId};
 
 use super::intent::advance_selection_one;
@@ -30,9 +30,7 @@ pub(crate) fn run_sweep(state: &mut AppState, target: ContextOverride) -> Intent
         }
 
         // Skip pinned entries and collapsed blocks.
-        let is_pinned = session
-            .selected_entry()
-            .is_some_and(ChatEntry::is_pinned);
+        let is_pinned = session.selected_entry().is_some_and(ChatEntry::is_pinned);
         if is_pinned || session.is_selected_collapsed_block() {
             if !advance_selection_one(session) {
                 if changed_ids.is_empty() {

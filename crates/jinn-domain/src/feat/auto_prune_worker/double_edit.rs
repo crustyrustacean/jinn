@@ -97,7 +97,10 @@ struct EditWritePair {
 
 #[async_trait::async_trait]
 impl HistoryWorker for DoubleEditAutoPruneWorker {
-    #[expect(clippy::unnecessary_literal_bound, reason = "lifetime elision makes bound redundant")]
+    #[expect(
+        clippy::unnecessary_literal_bound,
+        reason = "lifetime elision makes bound redundant"
+    )]
     fn name(&self) -> &str {
         "auto-prune-double-edit"
     }
@@ -150,7 +153,9 @@ fn collect_edit_write_pairs_by_path(history: &[ChatEntry]) -> HashMap<String, Ve
     let mut groups: HashMap<String, Vec<EditWritePair>> = HashMap::new();
 
     for (call_idx, path) in &candidates {
-        let Some(call_entry) = history.get(*call_idx) else { continue };
+        let Some(call_entry) = history.get(*call_idx) else {
+            continue;
+        };
 
         let ChatEntryKind::ToolCall {
             id: tool_call_id, ..
@@ -246,7 +251,13 @@ fn build_prune_mutations(
 
 #[cfg(test)]
 mod tests {
-    #![allow(clippy::expect_used, clippy::panic, clippy::unreachable, clippy::indexing_slicing, reason = "test code")]
+    #![allow(
+        clippy::expect_used,
+        clippy::panic,
+        clippy::unreachable,
+        clippy::indexing_slicing,
+        reason = "test code"
+    )]
 
     use super::*;
     use crate::feat::session::chat_entry::ChatEntry;

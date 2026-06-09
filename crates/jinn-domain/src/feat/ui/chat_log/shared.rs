@@ -153,13 +153,21 @@ pub fn truncate_to_width(s: &str, max_width: usize) -> String {
     if graphemes.len() <= max_width {
         s.to_owned()
     } else {
-        graphemes.get(..max_width).map_or_else(|| s.to_owned(), |g| g.iter().copied().collect())
+        graphemes
+            .get(..max_width)
+            .map_or_else(|| s.to_owned(), |g| g.iter().copied().collect())
     }
 }
 
 #[cfg(test)]
 mod tests {
-    #![allow(clippy::expect_used, clippy::panic, clippy::unreachable, clippy::indexing_slicing, reason = "test code")]
+    #![allow(
+        clippy::expect_used,
+        clippy::panic,
+        clippy::unreachable,
+        clippy::indexing_slicing,
+        reason = "test code"
+    )]
     use ratatui::style::{Color, Style};
     use ratatui::text::{Line, Span};
 

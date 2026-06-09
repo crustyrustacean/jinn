@@ -8,7 +8,6 @@
 
 use std::path::Path;
 
-
 use error_stack::{Report, ResultExt as _};
 use serde::{Deserialize, Serialize};
 use wherror::Error;
@@ -85,10 +84,7 @@ where
 ///
 /// Returns [`AppStateFileError::Parse`] if serialization fails.
 /// Returns [`AppStateFileError::Io`] if writing fails.
-pub fn save_app_state_to<P>(
-    state: &AppStateFile,
-    path: P,
-) -> Result<(), Report<AppStateFileError>>
+pub fn save_app_state_to<P>(state: &AppStateFile, path: P) -> Result<(), Report<AppStateFileError>>
 where
     P: AsRef<Path>,
 {
@@ -111,7 +107,13 @@ where
 
 #[cfg(test)]
 mod tests {
-    #![allow(clippy::expect_used, clippy::panic, clippy::unreachable, clippy::indexing_slicing, reason = "test code")]
+    #![allow(
+        clippy::expect_used,
+        clippy::panic,
+        clippy::unreachable,
+        clippy::indexing_slicing,
+        reason = "test code"
+    )]
     use tempfile::TempDir;
 
     use super::*;

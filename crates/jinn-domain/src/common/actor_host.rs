@@ -9,7 +9,10 @@
     reason = "startup invariants in routing use intentional panics"
 )]
 
-#[expect(clippy::module_inception, reason = "actor_host.rs is the public API, actor_host/ is implementation")]
+#[expect(
+    clippy::module_inception,
+    reason = "actor_host.rs is the public API, actor_host/ is implementation"
+)]
 pub mod actor_host;
 pub mod fake;
 pub mod in_memory;
@@ -22,4 +25,3 @@ pub use in_memory::{
     ActorSpawnResult, InMemoryActorHost, ShutdownTracker, spawn, spawn_actor_impl, system_spawn,
 };
 pub use routing::RoutingEntry;
-

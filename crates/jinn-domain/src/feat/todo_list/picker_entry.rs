@@ -174,7 +174,13 @@ fn render_task_list_row(
 
 #[cfg(test)]
 mod tests {
-    #![allow(clippy::expect_used, clippy::panic, clippy::unreachable, clippy::indexing_slicing, reason = "test code")]
+    #![allow(
+        clippy::expect_used,
+        clippy::panic,
+        clippy::unreachable,
+        clippy::indexing_slicing,
+        reason = "test code"
+    )]
     use super::*;
     use crate::feat::theme::default_theme;
 
@@ -270,7 +276,10 @@ mod tests {
     }
 
     #[rstest::rstest]
-    #[expect(clippy::single_range_in_vec_init, reason = "range syntax is clearer than vec!")]
+    #[expect(
+        clippy::single_range_in_vec_init,
+        reason = "range syntax is clearer than vec!"
+    )]
     fn render_row_with_highlight_preserves_glyph_span() {
         // Given a task entry.
         let entry = TaskListTreeEntry::new_task(

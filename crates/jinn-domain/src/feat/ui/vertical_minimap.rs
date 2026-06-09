@@ -54,7 +54,10 @@ fn token_threshold_color(count: u32, max_tokens: u32) -> Color {
     }
     let band = (u64::from(count) * MINIMAP_BANDS as u64 / u64::from(max_tokens))
         .min((MINIMAP_BANDS - 1) as u64) as usize;
-    MINIMAP_PALETTE.get(band).copied().unwrap_or(*MINIMAP_PALETTE.first().expect("non-empty"))
+    MINIMAP_PALETTE
+        .get(band)
+        .copied()
+        .unwrap_or(*MINIMAP_PALETTE.first().expect("non-empty"))
 }
 
 /// Extension trait for determining whether a visual item should produce
@@ -68,7 +71,9 @@ impl MinimapVisibility for VisualItem {
         match self {
             VisualItem::CollapsedIgnoredBlock { .. } => true,
             VisualItem::Entry(hist_idx) => {
-                let Some(entry) = history.get(*hist_idx) else { return false };
+                let Some(entry) = history.get(*hist_idx) else {
+                    return false;
+                };
                 if entry.is_empty_assistant() {
                     return false;
                 }
@@ -134,7 +139,10 @@ fn find_block_index(selected_vi_idx: Option<usize>, visible: &[VisibleEntry]) ->
         None => visible.len().checked_sub(1),
     }
 }
-#[expect(clippy::allow_attributes, reason = "dead_code is a compiler lint, not clippy")]
+#[expect(
+    clippy::allow_attributes,
+    reason = "dead_code is a compiler lint, not clippy"
+)]
 #[allow(dead_code, reason = "available for future use")]
 fn compute_minimap_scroll(
     selected_block: usize,
@@ -275,7 +283,10 @@ fn compute_tokens_below(state: &AppState, start: usize) -> Option<u32> {
     compute_token_sum_in_range(state, start, history_len)
 }
 
-#[expect(clippy::unnecessary_wraps, reason = "trait contract requires Result return")]
+#[expect(
+    clippy::unnecessary_wraps,
+    reason = "trait contract requires Result return"
+)]
 fn compute_token_sum_in_range(state: &AppState, start: usize, end: usize) -> Option<u32> {
     let session = state.active_session();
     let history = session.history();
@@ -458,7 +469,13 @@ fn format_entry_tokens(count: u32) -> String {
 
 #[cfg(test)]
 mod tests {
-    #![allow(clippy::expect_used, clippy::panic, clippy::unreachable, clippy::indexing_slicing, reason = "test code")]
+    #![allow(
+        clippy::expect_used,
+        clippy::panic,
+        clippy::unreachable,
+        clippy::indexing_slicing,
+        reason = "test code"
+    )]
     use super::*;
     use crate::common::app_state::AppState;
     use crate::feat::session::chat_entry::ChatEntry;

@@ -79,7 +79,10 @@ pub struct ReadEditAutoPruneWorker {
 
 #[async_trait::async_trait]
 impl HistoryWorker for ReadEditAutoPruneWorker {
-    #[expect(clippy::unnecessary_literal_bound, reason = "lifetime elision makes bound redundant")]
+    #[expect(
+        clippy::unnecessary_literal_bound,
+        reason = "lifetime elision makes bound redundant"
+    )]
     fn name(&self) -> &str {
         "auto-prune-read-edit"
     }
@@ -93,7 +96,9 @@ impl HistoryWorker for ReadEditAutoPruneWorker {
         let history_len = history.len();
 
         for i in 0..history_len {
-            let Some(entry) = history.get(i) else { continue };
+            let Some(entry) = history.get(i) else {
+                continue;
+            };
 
             // Only interested in "read" tool calls with a parseable file path.
             let (tool_call_id, read_path) = match &entry.kind {
@@ -122,7 +127,9 @@ impl HistoryWorker for ReadEditAutoPruneWorker {
                 continue;
             };
 
-            let result_protected = history.get(result_idx).is_some_and(super::super::session::chat_entry::ChatEntry::is_protected_from_prune);
+            let result_protected = history
+                .get(result_idx)
+                .is_some_and(super::super::session::chat_entry::ChatEntry::is_protected_from_prune);
 
             // Count how many edit/write calls to the same file appear after
             // this read. Once the threshold is reached, the read is stale.
@@ -724,11 +731,7 @@ mod tests {
         // With threshold = 3, 3 edits is enough.
         let w = worker_with_threshold(3);
         let mutations = evaluate_with(&w, history);
-        assert_eq!(
-            mutations.len(),
-            2,
-            "3 edits should meet threshold of 3"
-        );
+        assert_eq!(mutations.len(), 2, "3 edits should meet threshold of 3");
 
         let ids = mutation_ids(&mutations);
         assert!(ids.contains(&read[0].id));

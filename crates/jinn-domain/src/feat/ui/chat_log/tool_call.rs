@@ -54,11 +54,7 @@ fn to_lines_bash(arguments: &str, ctx: &RenderContext) -> Vec<Line<'static>> {
     let mut lines = vec![Line::from(Span::styled(truncated, style))];
 
     if let (Some(bg_color), Some(first_line)) = (bg, lines.first_mut()) {
-        pad_line_to_width(
-            first_line,
-            ctx.content_width,
-            Style::default().bg(bg_color),
-        );
+        pad_line_to_width(first_line, ctx.content_width, Style::default().bg(bg_color));
     }
 
     lines
@@ -79,11 +75,7 @@ fn to_lines_collapsed(name: &str, arguments: &str, ctx: &RenderContext) -> Vec<L
     let mut lines = vec![Line::from(Span::styled(truncated, style))];
 
     if let (Some(bg_color), Some(first_line)) = (bg, lines.first_mut()) {
-        pad_line_to_width(
-            first_line,
-            ctx.content_width,
-            Style::default().bg(bg_color),
-        );
+        pad_line_to_width(first_line, ctx.content_width, Style::default().bg(bg_color));
     }
 
     lines
@@ -213,7 +205,13 @@ fn pad_lines(lines: &mut [Line<'static>], ctx: &RenderContext) {
 
 #[cfg(test)]
 mod tests {
-    #![allow(clippy::expect_used, clippy::panic, clippy::unreachable, clippy::indexing_slicing, reason = "test code")]
+    #![allow(
+        clippy::expect_used,
+        clippy::panic,
+        clippy::unreachable,
+        clippy::indexing_slicing,
+        reason = "test code"
+    )]
     use super::*;
     use crate::feat::session::tool_result_status::ToolResultStatus;
     use crate::feat::ui::chat_log::shared::RenderContext;
