@@ -402,14 +402,6 @@ fn execute_slash_command(
             )])
         }
         SlashCommand::New => crate::feat::session::intent::handle_session_new(state),
-        SlashCommand::Workflow => {
-            // Open the workflow picker to select a Lua plugin.
-            crate::feat::picker::intent::handle_open_picker(
-                state,
-                crate::protocol::PickerKind::Plugin,
-            );
-            IntentResult::empty()
-        }
     }
 }
 

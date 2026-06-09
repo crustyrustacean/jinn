@@ -34,14 +34,14 @@ pub fn scroll_to_cursor(state: &mut AppState) {
     *offset = (*offset).min(max_offset);
 }
 
-/// No-op: workflow preview removed with node-graph.
+/// No-op: plugin preview removed with node-graph.
 fn update_preview(_state: &mut AppState) {}
 
 /// Navigate within the sessions section.
 ///
 /// Moves the cursor within the sessions list.
 /// Returns `Exhausted` when at a boundary or when the list is empty.
-/// The cursor lands on all entries including workflow entries.
+/// The cursor lands on all entries including plugin entries.
 pub fn navigate(intent: &SidebarIntent, state: &mut AppState) -> SectionNavResult {
     let sessions = sorted_open_sessions(state);
     if sessions.is_empty() {
