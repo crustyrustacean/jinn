@@ -30,12 +30,12 @@ impl Actor for EchoActor {
     type Error = kameo::error::Infallible;
 
     async fn on_start(
-        deps: Self::Args,
+        args: Self::Args,
         actor_ref: ActorRef<Self>,
     ) -> Result<Self, Self::Error> {
         // Register to receive ChatEntrySubmitted events from the bus.
         let recipient = actor_ref.recipient::<ChatEntrySubmitted>();
-        let _ = deps
+        let _ = args
             .bus
             .actor_ref()
             .tell(Register(recipient))
@@ -44,7 +44,7 @@ impl Actor for EchoActor {
                 tracing::error!(err = ?e, "echo actor failed to register on bus");
             });
 
-        Ok(Self { bus: deps.bus })
+        Ok(Self { bus: args.bus })
     }
 }
 
@@ -96,92 +96,28 @@ mod tests {
         reason = "test code"
     )]
 
-    use kameo::actor::Spawn;
+    use std::time::Duration;
+
     use super::*;
+    use crate::common::bus::test_harness::{await_recorded, TestHarness};
     use crate::protocol::SessionId;
-
-    /// Query message to retrieve collected messages from a Recorder.
-    pub struct GetRecorded;
-
-    /// A simple recorder actor that collects messages of type M.
-    pub struct Recorder<M> {
-        messages: Vec<M>,
-    }
-
-    impl<M: Send + 'static> Actor for Recorder<M> {
-        type Args = ();
-        type Error = kameo::error::Infallible;
-
-        async fn on_start(
-            _args: Self::Args,
-            _actor_ref: ActorRef<Self>,
-        ) -> Result<Self, Self::Error> {
-            Ok(Self {
-                messages: Vec::new(),
-            })
-        }
-    }
-
-    impl<M: Clone + Send + 'static> Message<M> for Recorder<M> {
-        type Reply = ();
-
-        async fn handle(
-            &mut self,
-            msg: M,
-            _ctx: &mut Context<Self, Self::Reply>,
-        ) -> Self::Reply {
-            self.messages.push(msg);
-        }
-    }
-
-    impl<M: Clone + Send + 'static> Message<GetRecorded> for Recorder<M> {
-        type Reply = Vec<M>;
-
-        async fn handle(
-            &mut self,
-            _msg: GetRecorded,
-            _ctx: &mut Context<Self, Self::Reply>,
-        ) -> Self::Reply {
-            self.messages.clone()
-        }
-    }
 
     #[tokio::test]
     async fn echo_actor_publishes_uppercase_push_chat_entry() {
-        // Given an echo actor and a recorder actor, both registered on the bus.
-        let bus = kameo_actors::message_bus::MessageBus::new(kameo_actors::DeliveryStrategy::BestEffort);
-        let bus_ref = kameo::prelude::Spawn::spawn(bus);
-        let bus_service = BusService::new(bus_ref.clone());
-
-        let _echo = EchoActor::spawn(EchoActorDeps {
-            bus: bus_service.clone(),
-        });
-
-        // Give the bus time to process the echo actor's registration.
-        tokio::time::sleep(Duration::from_millis(50)).await;
-
-        let recorder = Recorder::<PushChatEntry>::spawn(());
-        bus_ref
-            .tell(Register(recorder.clone().recipient::<PushChatEntry>()))
-            .await
-            .expect("register recorder");
-        // Give the bus time to process the recorder's registration.
-        tokio::time::sleep(Duration::from_millis(50)).await;
+        // Given an echo actor and a recorder, both registered on the bus.
+        let harness = TestHarness::new().await;
+        let _echo = harness.spawn_actor::<EchoActor>(EchoActorDeps { bus: harness.bus() }).await;
+        let recorder = harness.spawn_recorder::<PushChatEntry>().await;
 
         // When publishing a ChatEntrySubmitted with a user message.
         let session_id = SessionId::new();
-        bus_ref
-            .tell(Publish(ChatEntrySubmitted {
-                session_id: session_id.clone(),
-                entry: ChatEntry::user("hello world"),
-            }))
-            .await
-            .expect("publish ChatEntrySubmitted");
+        harness.publish(ChatEntrySubmitted {
+            session_id: session_id.clone(),
+            entry: ChatEntry::user("hello world"),
+        }).await;
 
-        // Then the recorder received a PushChatEntry with "HELLO WORLD".
-        // Wait for the 1-second delay.
-        tokio::time::sleep(Duration::from_secs(2)).await;
-        let recorded: Vec<PushChatEntry> = recorder.ask(GetRecorded).await.expect("get recorded messages");
+        // Then the recorder received a PushChatEntry with 'HELLO WORLD'.
+        let recorded = await_recorded(&recorder, 1, Duration::from_secs(2)).await;
 
         assert_eq!(recorded.len(), 1, "expected exactly one PushChatEntry");
 
@@ -196,34 +132,19 @@ mod tests {
 
     #[tokio::test]
     async fn echo_actor_ignores_non_user_entries() {
-        // Given an echo actor and a recorder actor, both registered on the bus.
-        let bus = kameo_actors::message_bus::MessageBus::new(kameo_actors::DeliveryStrategy::BestEffort);
-        let bus_ref = kameo::prelude::Spawn::spawn(bus);
-        let bus_service = BusService::new(bus_ref.clone());
-
-        let _echo = EchoActor::spawn(EchoActorDeps {
-            bus: bus_service.clone(),
-        });
-
-        let recorder = Recorder::<PushChatEntry>::spawn(());
-        bus_ref
-            .tell(Register(recorder.clone().recipient::<PushChatEntry>()))
-            .await
-            .expect("register recorder");
+        // Given an echo actor and a recorder, both registered on the bus.
+        let harness = TestHarness::new().await;
+        let _echo = harness.spawn_actor::<EchoActor>(EchoActorDeps { bus: harness.bus() }).await;
+        let recorder = harness.spawn_recorder::<PushChatEntry>().await;
 
         // When publishing a ChatEntrySubmitted with a system (non-user) entry.
-        bus_ref
-            .tell(Publish(ChatEntrySubmitted {
-                session_id: SessionId::new(),
-                entry: ChatEntry::system("system message"),
-            }))
-            .await
-            .expect("publish ChatEntrySubmitted");
+        harness.publish(ChatEntrySubmitted {
+            session_id: SessionId::new(),
+            entry: ChatEntry::system("system message"),
+        }).await;
 
         // Then no PushChatEntry was published (echo ignores non-user entries).
-        tokio::time::sleep(Duration::from_millis(500)).await;
-        let recorded: Vec<PushChatEntry> = recorder.ask(GetRecorded).await.expect("get recorded messages");
-
+        let recorded = await_recorded(&recorder, 1, Duration::from_millis(500)).await;
         assert!(recorded.is_empty(), "expected no PushChatEntry for system entry");
     }
 }
