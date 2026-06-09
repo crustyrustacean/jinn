@@ -13,8 +13,10 @@ use crate::feat::plugin_dispatch::{
 };
 use crate::feat::plugin_system::SessionRegistryId;
 use crate::feat::preferences_actor::{
-    InMemoryUserPreferencesStorage, UserPreferencesStorageService,
+    AppStateStorageService, InMemoryAppStateStorage, InMemoryUserPreferencesStorage,
+    UserPreferencesStorageService,
 };
+
 pub use crate::feat::provider_infra;
 use crate::feat::provider_infra::{
     ApiKeys, ApiKeysService, ConfigStorageService, InMemoryConfigStorage, LlmServiceFactoryService,
@@ -63,6 +65,8 @@ pub struct Services {
     pub session_store: SessionStoreService,
     /// User preferences storage for persisting `jinn.toml`.
     pub user_preferences_storage: UserPreferencesStorageService,
+    /// App state storage for persisting `state.toml`.
+    pub app_state_storage: AppStateStorageService,
     /// Plugin system async handle (fire-and-forget + collect).
     pub plugins: crate::feat::plugin_dispatch::PluginFireService,
     /// Plugin system sync handle (blocking hook calls from actors).
@@ -136,6 +140,13 @@ impl Services {
                     InMemoryUserPreferencesStorage::new(),
                 ));
                 svc.reload().expect("test prefs storage initial reload");
+                svc
+            },
+            app_state_storage: {
+                let svc = AppStateStorageService::new(Arc::new(
+                    InMemoryAppStateStorage::new(),
+                ));
+                svc.reload().expect("test app state storage initial reload");
                 svc
             },
             plugins: crate::feat::plugin_dispatch::PluginFireService::new(std::sync::Arc::new(

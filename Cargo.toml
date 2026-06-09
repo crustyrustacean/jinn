@@ -73,8 +73,7 @@ jinn-cli = { path = "crates/jinn-cli" }
 jinn-protocol-derive = { path = "crates/jinn-protocol-derive" }
 jinn-selection-widget = { path = "crates/jinn-selection-widget" }
 jinn-testutil = { path = "crates/jinn-testutil" }
-jinn-workflow = { path = "crates/jinn-workflow" }
-jinn-workflow-tui = { path = "crates/jinn-workflow-tui" }
+
 jinn-bench = { path = "crates/jinn-bench" }
 jinn-theme = { path = "crates/jinn-theme" }
 jinn-web-fetch = { path = "crates/jinn-web-fetch" }

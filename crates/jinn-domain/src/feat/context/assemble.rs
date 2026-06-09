@@ -20,7 +20,7 @@ use jinn_provider::ServerToolType;
 /// Overrides for [`assemble_prompt`]. When provided, these replace the default
 /// sources for system prompt, tools, skills, and context files.
 ///
-/// Used by workflow sessions to control the LLM prompt independently of global state.
+/// Used by plugin sessions to control the LLM prompt independently of global state.
 #[derive(Debug, Clone, Default)]
 pub struct AssemblyOverrides {
     /// If set, replaces the entire system prompt (persona, skills, env context, context files).

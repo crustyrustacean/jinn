@@ -139,6 +139,13 @@ impl AppWorld {
                 svc.reload().expect("test prefs storage initial reload");
                 svc
             };
+            let app_state_storage = {
+                let svc = jinn_domain::AppStateStorageService::new(Arc::new(
+                    jinn_domain::InMemoryAppStateStorage::new(),
+                ));
+                svc.reload().expect("test state storage initial reload");
+                svc
+            };
 
             let session_store = jinn_domain::SessionStoreService::new(Arc::new(
                 jinn_domain::SqliteSessionStore::new_in(&paths.sessions_dir()).expect("store"),
@@ -154,6 +161,7 @@ impl AppWorld {
                     config_storage,
                     session_store,
                     user_preferences_storage,
+                    app_state_storage,
                     paths,
                 })
                 .build();
@@ -572,6 +580,13 @@ fn when_restart_app(world: &mut AppWorld) {
             svc.reload().expect("test prefs storage initial reload");
             svc
         };
+        let app_state_storage = {
+            let svc = jinn_domain::AppStateStorageService::new(Arc::new(
+                jinn_domain::InMemoryAppStateStorage::new(),
+            ));
+            svc.reload().expect("test state storage initial reload");
+            svc
+        };
         let session_store = jinn_domain::SessionStoreService::new(Arc::new(
             jinn_domain::SqliteSessionStore::new_in(&paths.sessions_dir()).expect("store"),
         ));
@@ -585,6 +600,7 @@ fn when_restart_app(world: &mut AppWorld) {
                 config_storage,
                 session_store,
                 user_preferences_storage,
+                app_state_storage,
                 paths,
             })
             .build();

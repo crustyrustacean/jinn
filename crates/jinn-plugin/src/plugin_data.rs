@@ -1,8 +1,14 @@
 //! Shared plugin data store — cross-context persistent state for plugins.
 //!
 //! Plugins that need to share data between async and sync hooks use this
-//! store. Async hooks write via `ctx.set_plugin_data(value)`. Sync hooks
-//! read from `ctx.plugin_data` (automatically injected before each call).
+//! store, which is live across all clones (`Arc<DashMap>`).
+//!
+//! - Async hooks write via `ctx.set_plugin_data(value)` (full replace) or
+//!   `ctx.merge_plugin_data(value)` (shallow top-level merge), and read
+//!   **current** state via `ctx.get_plugin_data()` (re-reads the store; use
+//!   after an `await` to observe writes from other fires).
+//! - Sync hooks read from `ctx.plugin_data` (auto-injected before each call;
+//!   already current at entry since sync hooks never `await`).
 //!
 //! Keyed by plugin name. Each plugin sees only its own data.
 
@@ -36,6 +42,34 @@ impl PluginData {
     /// Set a plugin's data. Replaces any previous value.
     pub fn set(&self, plugin_name: String, value: serde_json::Value) {
         self.0.insert(plugin_name, value);
+    }
+
+    /// Shallow-merge a partial object into a plugin's data.
+    ///
+    /// Top-level keys in `partial` overwrite the same keys in the stored
+    /// value; other top-level keys are untouched. The stored value is
+    /// treated as `{}` when no data exists yet, or when the stored value
+    /// is not an object (a stray scalar is replaced wholesale). Nested
+    /// objects in `partial` replace — are not deep-merged into — the
+    /// corresponding nested objects in the stored value.
+    pub fn merge(&self, plugin_name: &str, partial: serde_json::Value) {
+        use serde_json::Value;
+
+        let merged = self
+            .0
+            .get(plugin_name)
+            .filter(|v| v.is_object())
+            .map(|v| {
+                let mut current = v.clone();
+                if let (Value::Object(cur), Value::Object(part)) = (&mut current, &partial) {
+                    for (k, v) in part {
+                        cur.insert(k.clone(), v.clone());
+                    }
+                }
+                current
+            })
+            .unwrap_or(partial);
+        self.0.insert(plugin_name.to_owned(), merged);
     }
 }
 
@@ -93,5 +127,23 @@ mod tests {
         let cloned = data.clone();
         data.set("shared".to_owned(), serde_json::json!("hello"));
         assert_eq!(cloned.get("shared"), Some(serde_json::json!("hello")));
+    }
+
+    #[test]
+    fn merge_overwrites_top_level_keys_and_keeps_others() {
+        // Given a plugin with two fields stored.
+        let data = PluginData::new();
+        data.set(
+            "alpha".to_owned(),
+            serde_json::json!({"status": "idle", "count": 3}),
+        );
+
+        // When shallow-merging one top-level key.
+        data.merge("alpha", serde_json::json!({"status": "enriching"}));
+
+        // Then the merged key updates and the untouched key survives.
+        let result = data.get("alpha").expect("should exist");
+        assert_eq!(result["status"], "enriching");
+        assert_eq!(result["count"], 3);
     }
 }

@@ -6,6 +6,50 @@
 //! "narration" turns the model emits between tool calls during autonomous
 //! coding.
 //!
+//! # Semantics
+//!
+//! - Age is computed against every entry in raw history — already-excluded,
+//!   thinking, transient, system, error, and pending-result entries all
+//!   count. This makes the protection floor independent of what other
+//!   auto-prune workers have already `ForcedExclude`d, so multiple workers
+//!   compose cleanly.
+//! - An entry is **protected** when its age is strictly less than `min_age`.
+//!   With `min_age = 0`, no entry is ever protected (back-compat baseline).
+//! - Only `ChatEntryKind::Assistant(_)` entries are candidates. Non-assistant
+//!   entries are never targeted.
+//! - Assistant entries inside the protection floor are never pruned,
+//!   regardless of token count.
+//! - Assistant entries outside the protection floor are pruned only if their
+//!   estimated token count is `<= max_tokens`. Larger entries survive
+//!   (a separate future worker will address large stale entries).
+//! - Empty assistant entries are skipped defensively — they are already
+//!   out of context via `is_empty_assistant()`, so they cannot be pruning
+//!   candidates anyway.
+//! - Already-`ForcedExclude` entries do not receive duplicate
+//!   `SetContextOverride` mutations.
+//! - Pinned entries are never pruned. Pin beats `ForcedExclude`.
+//! - Tokens are counted with the same `TiktokenCounter::o200k_base()`
+//!   encoder used by the token-count actor and the UI minimap, so the
+//!   `max_tokens` cutoff matches what users see.
+//!
+//! # Token-cache integration
+//!
+//! Per-entry counts are looked up via
+//! [`HistoryWorkerChatEntryTokenCache::get_or_insert_with`]. The first
+//! worker to evaluate a session pays the tiktoken cost; subsequent
+//! evaluations and concurrent workers (e.g., `AnchoredAssistantAutoPruneWorker`)
+//! hit the cache.
+//!
+//! [`HistoryWorkerChatEntryTokenCache::get_or_insert_with`]: crate::feat::auto_prune_worker::HistoryWorkerChatEntryTokenCache::get_or_insert_with
+//!
+//! # Safety: pruning `Assistant` is unconditionally safe
+//!
+//! A `ToolCall` entry in `entries_to_messages` auto-creates an empty
+//! `LlmMessage::Assistant { content: "", tool_calls: Some(vec![...]) }`
+//! when its preceding `Assistant` message is missing. Excluding an
+//! `Assistant` entry therefore cannot orphan a `ToolCall` or produce an
+//! invalid provider request.
+//!
 //! # Example (min_age = 4, max_tokens = 80)
 //!
 //! ```text
@@ -685,24 +729,24 @@ mod tests {
     }
 
     // ------------------------------------------------------------------
-    // 16. anchor_worker_reads_external_cache_writes
+    // 16. anchored_assistant_worker_reads_external_cache_writes
     //
     // Cross-worker sharing test: the trivial worker and the
-    // user-anchor-radius worker share a cache handle. We don't need to
+    // anchored-assistant worker share a cache handle. We don't need to
     // actually run the trivial worker — sabotaging the cache substitutes
-    // for a first write. The point is to prove the anchor worker honors
+    // for a first write. The point is to prove the anchored-assistant worker honors
     // cache writes from outside its own evaluate path.
     //
     // Proof strategy: target entry "ok" has 1 o200k_base token. Sabotage
-    // the cache with 999. The anchor worker's MIN_CANDIDATE_TOKENS is 81,
+    // the cache with 999. The anchored-assistant worker's min_candidate_tokens is 81,
     // so a recomputed count of 1 would be skipped, but a cached count of
     // 999 would be classified as a candidate (then pruned because d_back
     // = 101 > radius 5).
     // ------------------------------------------------------------------
     #[test]
-    fn anchor_worker_reads_external_cache_writes() {
-        use crate::feat::auto_prune_worker::anchor_radius::AnchorRadiusAutoPruneWorker;
-        use crate::feat::preferences_actor::user_preferences::AnchorRadiusAutoPruneConfig;
+    fn anchored_assistant_worker_reads_external_cache_writes() {
+        use crate::feat::auto_prune_worker::anchored_assistant::AnchoredAssistantAutoPruneWorker;
+        use crate::feat::preferences_actor::user_preferences::AnchoredAssistantAutoPruneConfig;
 
         let shared_cache = HistoryWorkerChatEntryTokenCache::new();
         let session_id = SessionId::new();
@@ -719,12 +763,13 @@ mod tests {
             counter: TiktokenCounter::o200k_base(),
         };
 
-        let anchor = AnchorRadiusAutoPruneWorker {
-            config: AnchorRadiusAutoPruneConfig {
+        let anchored = AnchoredAssistantAutoPruneWorker {
+            config: AnchoredAssistantAutoPruneConfig {
                 enabled: true,
                 radius: 5,
                 min_age: 0,
             },
+            min_candidate_tokens: 81,
             token_cache: shared_cache.clone(),
             counter: TiktokenCounter::o200k_base(),
         };
@@ -744,20 +789,20 @@ mod tests {
 
         let history: Arc<[ChatEntry]> = history.into();
         let rt = tokio::runtime::Runtime::new().expect("runtime");
-        let mutations = rt.block_on(async { anchor.evaluate(&session_id, history).await });
+        let mutations = rt.block_on(async { anchored.evaluate(&session_id, history).await });
 
         assert!(
             excluded_ids(&mutations).contains(&target_id),
-            "anchor worker must read sabotaged cache value (999 > 81 → candidate); \"
-             if it recomputed it would see 1 token and skip"
+            "anchored-assistant worker must read sabotaged cache value (999 > 81 -> candidate); \",
+             if it recomputed it would see 1 token and skip",
         );
 
-        // Belt-and-suspenders: the anchor worker's get_or_insert_with
+        // Belt-and-suspenders: the anchored-assistant worker's get_or_insert_with
         // must not overwrite an existing cache entry.
         assert_eq!(
             shared_cache.get(&session_id, &target_id),
             Some(999),
-            "anchor worker must not overwrite an existing cache entry"
+            "anchored-assistant worker must not overwrite an existing cache entry"
         );
     }
 }

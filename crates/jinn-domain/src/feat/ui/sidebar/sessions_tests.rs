@@ -1948,9 +1948,9 @@ fn clear_visual_parents_on_load_actually_removes_entries() {
     );
 }
 
-// --- Workflow entries in sorted_open_sessions ---
+// --- Plugin entries in sorted_open_sessions ---
 
-fn state_with_workflows() -> AppState {
+fn state_with_plugins() -> AppState {
     use crate::feat::attached_plugin::AttachedPlugin;
 
     let mut state = AppState::default();
@@ -1992,12 +1992,12 @@ fn state_with_workflows() -> AppState {
 #[rstest::rstest]
 fn sorted_open_sessions_includes_attached_plugins() {
     // Given a session with two attached plugins.
-    let state = state_with_workflows();
+    let state = state_with_plugins();
 
     // When collecting sorted sessions.
     let sessions = sorted_open_sessions(&state);
 
-    // Then the session entry appears, followed by its child session, then two workflow entries.
+    // Then the session entry appears, followed by its child session, then two plugin entries.
     let titles: Vec<&str> = sessions.iter().map(|s| s.title.as_str()).collect();
     assert!(
         titles.contains(&"main session"),
@@ -2009,92 +2009,92 @@ fn sorted_open_sessions_includes_attached_plugins() {
     );
     assert!(
         titles.contains(&"consensus"),
-        "consensus workflow should be present"
+        "consensus plugin should be present"
     );
     assert!(
         titles.contains(&"judge_fail"),
-        "judge_fail workflow should be present"
+        "judge_fail plugin should be present"
     );
 
-    // And workflow entries have the Workflow kind.
-    let workflow_entries: Vec<_> = sessions
+    // And plugin entries have the Plugin kind.
+    let plugin_entries: Vec<_> = sessions
         .iter()
         .filter(|s| matches!(s.kind, SessionEntryKind::Plugin { .. }))
         .collect();
-    assert_eq!(workflow_entries.len(), 2, "should have 2 workflow entries");
+    assert_eq!(plugin_entries.len(), 2, "should have 2 plugin entries");
 
-    // And workflow entries are children of root session (depth = root depth + 1).
+    // And plugin entries are children of root session (depth = root depth + 1).
     let root_entry = sessions
         .iter()
         .find(|s| s.title == "main session")
         .expect("root");
     let root_depth = root_entry.depth;
-    for wf in &workflow_entries {
+    for pl in &plugin_entries {
         assert_eq!(
-            wf.depth,
+            pl.depth,
             root_depth + 1,
-            "workflow should be one level deeper than its parent session"
+            "plugin should be one level deeper than its parent session"
         );
         assert_eq!(
-            wf.parent_id,
+            pl.parent_id,
             Some(root_entry.id.clone()),
-            "workflow parent should be root session"
+            "plugin parent should be root session"
         );
     }
 }
 
 #[rstest::rstest]
-fn sorted_open_sessions_no_workflows_when_none_attached() {
-    // Given a session with no attached workflows.
+fn sorted_open_sessions_no_plugins_when_none_attached() {
+    // Given a session with no attached plugins.
     let state = AppState::default();
 
     // When collecting sorted sessions.
     let sessions = sorted_open_sessions(&state);
 
-    // Then there are no workflow entries.
-    let workflow_count = sessions
+    // Then there are no plugin entries.
+    let plugin_count = sessions
         .iter()
         .filter(|s| matches!(s.kind, SessionEntryKind::Plugin { .. }))
         .count();
-    assert_eq!(workflow_count, 0, "should have no workflow entries");
+    assert_eq!(plugin_count, 0, "should have no plugin entries");
 }
 
 #[rstest::rstest]
-fn sorted_open_sessions_workflows_after_real_children() {
-    // Given a session with a child session and two attached workflows.
-    let state = state_with_workflows();
+fn sorted_open_sessions_plugins_after_real_children() {
+    // Given a session with a child session and two attached plugins.
+    let state = state_with_plugins();
 
     // When collecting sorted sessions.
     let sessions = sorted_open_sessions(&state);
 
-    // Then child session appears before workflow entries.
+    // Then child session appears before plugin entries.
     let child_pos = sessions
         .iter()
         .position(|s| s.title == "child session")
         .expect("child");
-    let wf1_pos = sessions
+    let pl1_pos = sessions
         .iter()
         .position(|s| s.title == "consensus")
         .expect("consensus");
-    let wf2_pos = sessions
+    let pl2_pos = sessions
         .iter()
         .position(|s| s.title == "judge_fail")
         .expect("judge_fail");
     assert!(
-        child_pos < wf1_pos,
-        "child session should appear before workflow entries"
+        child_pos < pl1_pos,
+        "child session should appear before plugin entries"
     );
-    assert!(wf1_pos < wf2_pos, "workflows should appear in order");
+    assert!(pl1_pos < pl2_pos, "plugins should appear in order");
 }
 
-fn state_with_session_and_workflows(workflow_count: usize) -> AppState {
+fn state_with_session_and_plugins(plugin_count: usize) -> AppState {
     use crate::feat::attached_plugin::AttachedPlugin;
 
     let mut state = AppState::default();
     let session = state.session.active_session_id().clone();
     {
         let s = state.session.get_mut(&session).expect("active session");
-        for i in 0..workflow_count {
+        for i in 0..plugin_count {
             s.core
                 .attached_plugins
                 .push(AttachedPlugin::new(format!("plugin-{i}")));
@@ -2104,22 +2104,22 @@ fn state_with_session_and_workflows(workflow_count: usize) -> AppState {
 }
 
 #[test]
-fn navigate_down_lands_on_workflow_entry() {
-    // Given a session with 2 workflow attachments, cursor at index 0.
-    let mut state = state_with_session_and_workflows(2);
+fn navigate_down_lands_on_plugin_entry() {
+    // Given a session with 2 plugin attachments, cursor at index 0.
+    let mut state = state_with_session_and_plugins(2);
     state.frontend.sessions_section.selected_index = Some(0);
 
     // When navigating down from the session entry.
-    // entries: [session0, wf-0, wf-1]
+    // entries: [session0, pl-0, pl-1]
     let result = navigate(&SidebarIntent::MoveDown, &mut state);
 
-    // Then the cursor lands on the first workflow entry.
+    // Then the cursor lands on the first plugin entry.
     assert_eq!(result, SectionNavResult::Moved);
     assert_eq!(state.frontend.sessions_section.selected_index, Some(1));
 }
 
 #[test]
-fn navigate_up_lands_on_workflow_entry() {
+fn navigate_up_lands_on_plugin_entry() {
     use crate::feat::attached_plugin::AttachedPlugin;
     let mut state = state_with_sessions(2);
     {
@@ -2130,7 +2130,7 @@ fn navigate_up_lands_on_workflow_entry() {
             .attached_plugins
             .push(AttachedPlugin::new("my-plugin"));
     }
-    // entries: [session0, wf, session1]
+    // entries: [session0, pl, session1]
     // cursor on session1
     let entries = sorted_open_sessions(&state);
     let session1_idx = entries
@@ -2142,7 +2142,7 @@ fn navigate_up_lands_on_workflow_entry() {
     // When navigating up from session1.
     let result = navigate(&SidebarIntent::MoveUp, &mut state);
 
-    // Then the cursor lands on the workflow entry (not skipping it).
+    // Then the cursor lands on the plugin entry (not skipping it).
     assert_eq!(result, SectionNavResult::Moved);
     assert_eq!(
         state.frontend.sessions_section.selected_index,
@@ -2151,14 +2151,14 @@ fn navigate_up_lands_on_workflow_entry() {
 }
 
 #[test]
-fn activate_on_workflow_entry_is_noop() {
-    // Given a session with a workflow attachment, cursor on the workflow entry.
-    let mut state = state_with_session_and_workflows(1);
+fn activate_on_plugin_entry_is_noop() {
+    // Given a session with a plugin attachment, cursor on the plugin entry.
+    let mut state = state_with_session_and_plugins(1);
     let original_active = state.session.active_session_id().clone();
-    // entries: [session0, wf-0]
+    // entries: [session0, pl-0]
     state.frontend.sessions_section.selected_index = Some(1);
 
-    // When activating the workflow entry.
+    // When activating the plugin entry.
     handle_session_activate(&mut state);
 
     // Then the active session did not change.
@@ -2166,14 +2166,14 @@ fn activate_on_workflow_entry_is_noop() {
 }
 
 #[test]
-fn close_on_workflow_entry_is_rejected() {
-    // Given a session with a workflow attachment, cursor on the workflow entry.
-    let mut state = state_with_session_and_workflows(1);
-    // entries: [session0, wf-0]
+fn close_on_plugin_entry_is_rejected() {
+    // Given a session with a plugin attachment, cursor on the plugin entry.
+    let mut state = state_with_session_and_plugins(1);
+    // entries: [session0, pl-0]
     state.frontend.sessions_section.selected_index = Some(1);
     state.frontend.close_session_prompt = true;
 
-    // When attempting to close the workflow entry.
+    // When attempting to close the plugin entry.
     let result = validate_session_close(&state);
 
     // Then validation rejects it.

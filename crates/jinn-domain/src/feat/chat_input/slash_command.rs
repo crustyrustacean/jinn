@@ -13,9 +13,8 @@ pub enum SlashCommand {
     /// Summarize conversation history into a structured checkpoint.
     Compact,
     /// Compact all messages, ignoring the token reserve.
+    /// Compact all messages, ignoring the token reserve.
     CompactAll,
-    /// Run a named workflow.
-    Workflow,
 }
 
 /// A single entry for the slash command autocomplete popup.
@@ -43,10 +42,6 @@ impl SlashCommand {
                 name: "new".to_owned(),
                 description: "Create a new session".to_owned(),
             },
-            SlashCommandEntry {
-                name: "workflow".to_owned(),
-                description: "Run a named workflow".to_owned(),
-            },
         ]
     }
 
@@ -56,7 +51,6 @@ impl SlashCommand {
             "compact" => Some(Self::Compact),
             "compact-all" => Some(Self::CompactAll),
             "new" => Some(Self::New),
-            "workflow" => Some(Self::Workflow),
             _ => None,
         }
     }
@@ -86,14 +80,6 @@ mod tests {
     }
 
     #[rstest::rstest]
-    fn lookup_workflow_returns_workflow() {
-        assert_eq!(
-            SlashCommand::lookup("workflow"),
-            Some(SlashCommand::Workflow)
-        );
-    }
-
-    #[rstest::rstest]
     fn lookup_unknown_returns_none() {
         assert_eq!(SlashCommand::lookup("nonexistent"), None);
     }
@@ -105,6 +91,5 @@ mod tests {
         assert!(names.contains(&"compact"));
         assert!(names.contains(&"compact-all"));
         assert!(names.contains(&"new"));
-        assert!(names.contains(&"workflow"));
     }
 }

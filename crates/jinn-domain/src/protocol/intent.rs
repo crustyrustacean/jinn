@@ -186,6 +186,9 @@ pub enum Intent {
     SessionNewWithLifecycle,
     /// Queue a "Continue" user message to the session under the sidebar cursor.
     SidebarSessionContinue,
+    /// Re-run the lifecycle setup command for the sidebar-selected session.
+    /// Only valid when the session's lifecycle_script_state is NothingRan.
+    SidebarSessionRerunSetup,
 
     // --- Chat Entry Selection ---
     /// Select the next chat entry.
@@ -356,6 +359,7 @@ impl std::fmt::Display for Intent {
             Intent::SidebarPersonaEdit => write!(f, "edit persona"),
             Intent::SessionNewWithLifecycle => write!(f, "new session with lifecycle"),
             Intent::SidebarSessionContinue => write!(f, "continue session"),
+            Intent::SidebarSessionRerunSetup => write!(f, "rerun session setup"),
 
             Intent::ChatEntrySelectNext => write!(f, "select next entry"),
             Intent::ChatEntrySelectPrev => write!(f, "select prev entry"),
@@ -439,10 +443,10 @@ mod tests {
     fn trigger_plugin_display_returns_description() {
         let intent = Intent::TriggerPlugin {
             plugin_name: "prompt_enrichment".into(),
-            action: "on_toggle_enrich".into(),
-            description: "toggle prompt enrichment".into(),
+            action: "on_enrich".into(),
+            description: "enrich prompt".into(),
             session_id: None,
         };
-        assert_eq!(intent.to_string(), "toggle prompt enrichment");
+        assert_eq!(intent.to_string(), "enrich prompt");
     }
 }
