@@ -33,10 +33,10 @@ impl Actor for DiscoveryNotifierActor {
     type Error = Infallible;
 
     async fn on_start(
-        deps: Self::Args,
+        args: Self::Args,
         actor_ref: ActorRef<Self>,
     ) -> Result<Self, Self::Error> {
-        let bus = deps.bus;
+        let bus = args.bus;
         bus.actor_ref()
             .tell(Register(actor_ref.recipient::<SessionDiscoverySettled>()))
             .await
@@ -50,12 +50,12 @@ impl Message<SessionDiscoverySettled> for DiscoveryNotifierActor {
 
     async fn handle(
         &mut self,
-        event: SessionDiscoverySettled,
+        msg: SessionDiscoverySettled,
         _ctx: &mut Context<Self, Self::Reply>,
     ) {
-        let summary = build_summary(&event);
+        let summary = build_summary(&msg);
         let push = PushChatEntry {
-            session_id: event.session_id.clone(),
+            session_id: msg.session_id.clone(),
             entry: ChatEntry::transient(summary),
         };
         if let Err(e) = self.bus.actor_ref().tell(Publish(push)).await {
@@ -119,97 +119,35 @@ fn build_summary(event: &SessionDiscoverySettled) -> String {
 #[cfg(test)]
 mod tests {
     #![allow(clippy::expect_used, clippy::panic, clippy::unreachable, clippy::indexing_slicing, reason = "test code")]
-    use super::*;
-    use crate::feat::discovery_coordinator::DiscoverySnapshot;
-    use crate::protocol::{ChatEntryKind, SessionId};
-    use kameo::actor::Spawn;
-    use kameo_actors::message_bus::MessageBus;
+
     use std::time::Duration;
 
-    /// A recorder actor that collects messages of type M.
-    pub struct Recorder<M> {
-        recorded: Vec<M>,
-    }
-
-    pub struct GetRecorded;
-
-    impl<M: Clone + Send + 'static> Actor for Recorder<M> {
-        type Args = ();
-        type Error = Infallible;
-
-        async fn on_start(_: (), _: ActorRef<Self>) -> Result<Self, Self::Error> {
-            Ok(Self { recorded: vec![] })
-        }
-    }
-
-    impl<M: Clone + Send + 'static> Message<M> for Recorder<M> {
-        type Reply = ();
-
-        async fn handle(&mut self, msg: M, _ctx: &mut Context<Self, Self::Reply>) {
-            self.recorded.push(msg);
-        }
-    }
-
-    impl<M: Clone + Send + 'static> Message<GetRecorded> for Recorder<M> {
-        type Reply = Vec<M>;
-
-        async fn handle(
-            &mut self,
-            _: GetRecorded,
-            _ctx: &mut Context<Self, Self::Reply>,
-        ) -> Vec<M> {
-            std::mem::take(&mut self.recorded)
-        }
-    }
-
-    async fn setup() -> (
-        ActorRef<DiscoveryNotifierActor>,
-        ActorRef<Recorder<PushChatEntry>>,
-        kameo::prelude::ActorRef<MessageBus>,
-    ) {
-        let bus_ref = kameo::actor::Spawn::spawn(MessageBus::new(
-            kameo_actors::DeliveryStrategy::BestEffort,
-        ));
-        let bus_service = BusService::new(bus_ref.clone());
-
-        let notifier = DiscoveryNotifierActor::spawn(DiscoveryNotifierActorDeps {
-            bus: bus_service,
-        });
-        let recorder = Recorder::<PushChatEntry>::spawn(());
-        bus_ref
-            .tell(Register(recorder.clone().recipient::<PushChatEntry>()))
-            .await
-            .expect("register recorder");
-
-        // Give the bus time to process registrations.
-        tokio::time::sleep(Duration::from_millis(50)).await;
-
-        (notifier, recorder, bus_ref)
-    }
+    use super::*;
+    use crate::common::bus::test_harness::{await_recorded, TestHarness};
+    use crate::feat::discovery_coordinator::DiscoverySnapshot;
+    use crate::protocol::{ChatEntryKind, SessionId};
 
     #[tokio::test]
     async fn settled_event_posts_one_transient_chat_entry() {
         // Given a notifier and a recorder wired to the bus.
-        let (_notifier, recorder, bus_ref) = setup().await;
+        let harness = TestHarness::new().await;
+        let _notifier = harness.spawn_actor::<DiscoveryNotifierActor>(DiscoveryNotifierActorDeps { bus: harness.bus() }).await;
+        let recorder = harness.spawn_recorder::<PushChatEntry>().await;
 
         // When a SessionDiscoverySettled event with discovered resources is published.
-        bus_ref
-            .tell(Publish(SessionDiscoverySettled {
-                session_id: SessionId::new(),
-                snapshot: DiscoverySnapshot {
-                    skill_count: 2,
-                    prompt_count: 1,
-                    context_file_count: 1,
-                    ..Default::default()
-                },
-                delayed: None,
-            }))
-            .await
-            .expect("publish settled event");
+        harness.publish(SessionDiscoverySettled {
+            session_id: SessionId::new(),
+            snapshot: DiscoverySnapshot {
+                skill_count: 2,
+                prompt_count: 1,
+                context_file_count: 1,
+                ..Default::default()
+            },
+            delayed: None,
+        }).await;
 
         // Then exactly one PushChatEntry was emitted with a transient entry.
-        tokio::time::sleep(Duration::from_millis(100)).await;
-        let recorded: Vec<PushChatEntry> = recorder.ask(GetRecorded).await.expect("get recorded");
+        let recorded = await_recorded(&recorder, 1, Duration::from_millis(500)).await;
         assert_eq!(recorded.len(), 1, "expected exactly one PushChatEntry");
 
         let entry = &recorded[0];
@@ -222,21 +160,19 @@ mod tests {
     #[tokio::test]
     async fn empty_discovery_says_no_resources() {
         // Given a notifier and a recorder.
-        let (_notifier, recorder, bus_ref) = setup().await;
+        let harness = TestHarness::new().await;
+        let _notifier = harness.spawn_actor::<DiscoveryNotifierActor>(DiscoveryNotifierActorDeps { bus: harness.bus() }).await;
+        let recorder = harness.spawn_recorder::<PushChatEntry>().await;
 
         // When a settled event with empty discovery is published.
-        bus_ref
-            .tell(Publish(SessionDiscoverySettled {
-                session_id: SessionId::new(),
-                snapshot: DiscoverySnapshot::default(),
-                delayed: None,
-            }))
-            .await
-            .expect("publish settled event");
+        harness.publish(SessionDiscoverySettled {
+            session_id: SessionId::new(),
+            snapshot: DiscoverySnapshot::default(),
+            delayed: None,
+        }).await;
 
         // Then the message says no project resources found.
-        tokio::time::sleep(Duration::from_millis(100)).await;
-        let recorded: Vec<PushChatEntry> = recorder.ask(GetRecorded).await.expect("get recorded");
+        let recorded = await_recorded(&recorder, 1, Duration::from_millis(500)).await;
         let entry = &recorded[0];
         let ChatEntryKind::Transient(text) = &entry.entry.kind else {
             panic!("expected transient entry");
@@ -250,24 +186,22 @@ mod tests {
     #[tokio::test]
     async fn delayed_reason_surfaces_in_message() {
         // Given a notifier and a recorder.
-        let (_notifier, recorder, bus_ref) = setup().await;
+        let harness = TestHarness::new().await;
+        let _notifier = harness.spawn_actor::<DiscoveryNotifierActor>(DiscoveryNotifierActorDeps { bus: harness.bus() }).await;
+        let recorder = harness.spawn_recorder::<PushChatEntry>().await;
 
         // When a settled event carries a delayed reason.
-        bus_ref
-            .tell(Publish(SessionDiscoverySettled {
-                session_id: SessionId::new(),
-                snapshot: DiscoverySnapshot {
-                    skill_count: 2,
-                    ..Default::default()
-                },
-                delayed: Some("discovery delayed by context".to_owned()),
-            }))
-            .await
-            .expect("publish settled event");
+        harness.publish(SessionDiscoverySettled {
+            session_id: SessionId::new(),
+            snapshot: DiscoverySnapshot {
+                skill_count: 2,
+                ..Default::default()
+            },
+            delayed: Some("discovery delayed by context".to_owned()),
+        }).await;
 
         // Then the reason is surfaced in the message.
-        tokio::time::sleep(Duration::from_millis(100)).await;
-        let recorded: Vec<PushChatEntry> = recorder.ask(GetRecorded).await.expect("get recorded");
+        let recorded = await_recorded(&recorder, 1, Duration::from_millis(500)).await;
         let entry = &recorded[0];
         let ChatEntryKind::Transient(text) = &entry.entry.kind else {
             panic!("expected transient entry");
@@ -281,25 +215,23 @@ mod tests {
     #[tokio::test]
     async fn failed_scan_notes_error_in_message() {
         // Given a notifier and a recorder.
-        let (_notifier, recorder, bus_ref) = setup().await;
+        let harness = TestHarness::new().await;
+        let _notifier = harness.spawn_actor::<DiscoveryNotifierActor>(DiscoveryNotifierActorDeps { bus: harness.bus() }).await;
+        let recorder = harness.spawn_recorder::<PushChatEntry>().await;
 
         // When a settled event carries a skills scan error.
-        bus_ref
-            .tell(Publish(SessionDiscoverySettled {
-                session_id: SessionId::new(),
-                snapshot: DiscoverySnapshot {
-                    skill_count: 0,
-                    skill_error: Some("permission denied".to_owned()),
-                    ..Default::default()
-                },
-                delayed: None,
-            }))
-            .await
-            .expect("publish settled event");
+        harness.publish(SessionDiscoverySettled {
+            session_id: SessionId::new(),
+            snapshot: DiscoverySnapshot {
+                skill_count: 0,
+                skill_error: Some("permission denied".to_owned()),
+                ..Default::default()
+            },
+            delayed: None,
+        }).await;
 
         // Then the message notes the failure.
-        tokio::time::sleep(Duration::from_millis(100)).await;
-        let recorded: Vec<PushChatEntry> = recorder.ask(GetRecorded).await.expect("get recorded");
+        let recorded = await_recorded(&recorder, 1, Duration::from_millis(500)).await;
         let entry = &recorded[0];
         let ChatEntryKind::Transient(text) = &entry.entry.kind else {
             panic!("expected transient entry");

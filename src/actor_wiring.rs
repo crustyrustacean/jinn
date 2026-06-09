@@ -39,6 +39,8 @@ use jinn_domain::feat::plugin_dispatch::{PluginDispatchActor, PluginDispatchActo
 use jinn_domain::init::env_init_actor::{EnvInitActor, EnvInitActorDeps};
 use jinn_domain::init::provider_init_actor::{ProviderInitActor, ProviderInitActorDeps};
 use jinn_domain::init::system_ready_actor::{SystemReadyActor, SystemReadyActorDeps};
+use jinn_domain::feat::discovery_notifier::{DiscoveryNotifierActor, DiscoveryNotifierActorDeps};
+use jinn_domain::feat::queue_actor::{QueueActor, QueueActorDeps};
 
 use jinn_domain::feat::preferences_actor::user_preferences::WebFetchBackend;
 use jinn_domain::feat::web_fetch_actor::{WebFetchActor, WebFetchActorDeps};
@@ -581,8 +583,8 @@ impl ActorSystemBuilder {
 
         // Discovery notifier — posts a transient chat entry when a session's
         // discovery settles. (Migrated to kameo — registers on bus during on_start.)
-        let _discovery_notifier = jinn_domain::feat::discovery_notifier::DiscoveryNotifierActor::spawn(
-            jinn_domain::feat::discovery_notifier::DiscoveryNotifierActorDeps {
+        let _discovery_notifier = DiscoveryNotifierActor::spawn(
+            DiscoveryNotifierActorDeps {
                 bus: services.bus.clone().expect("bus must be initialized before spawning actors"),
             },
         );
@@ -632,8 +634,8 @@ impl ActorSystemBuilder {
 
         // Queue actor — dispatches queued turns when sessions become idle.
         // (Migrated to kameo — registers on bus during on_start.)
-        let _queue_actor = jinn_domain::feat::queue_actor::QueueActor::spawn(
-            jinn_domain::feat::queue_actor::QueueActorDeps {
+        let _queue_actor = QueueActor::spawn(
+            QueueActorDeps {
                 state: state.clone(),
                 counter: token_counter.clone(),
                 bus: services.bus.clone().expect("bus must be initialized before spawning actors"),

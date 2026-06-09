@@ -10,3 +10,6 @@
 /// kameo's `MessageBus` requirements. No methods — this exists
 /// purely for discoverability and compile-time bounds checking.
 pub trait BusMessage: Clone + Send + 'static {}
+
+#[cfg(test)]
+pub mod test_harness;
