@@ -168,6 +168,15 @@ impl ActorSystemBuilder {
             guard.frontend.preferences = user_preferences_storage.read();
         }
 
+        // Set app state (last_model, theme_name, persona_name, sidebar_width)
+        {
+            let app_state = app_state_storage.read();
+            let mut guard = state.write();
+            guard.frontend.app_state.last_model = app_state.last_model.clone();
+            guard.frontend.app_state.theme_name = app_state.theme_name.clone();
+            guard.frontend.app_state.persona_name = app_state.persona_name.clone();
+            guard.frontend.app_state.sidebar_width = app_state.sidebar_width;
+        }
         // Set default CWD for sessions (inherited from shell).
         {
             let cwd = std::env::current_dir().unwrap_or_else(|_| std::path::PathBuf::from("/"));
@@ -353,6 +362,35 @@ impl ActorSystemBuilder {
             state: state.clone(),
         },
     ));
+
+        // App state actor: persists state changes to state.toml.
+        actors.push(spawn::<
+            jinn_domain::feat::preferences_actor::app_state_actor::AppStateActor,
+        >(
+            "app-state",
+            &sink,
+            handle,
+            &counter,
+            &shutdown_tracker,
+            jinn_domain::feat::preferences_actor::app_state_actor::AppStateActorDeps {
+                services: services.clone(),
+            },
+        ));
+
+        // App state sync: updates AppState from AppStateUpdated events.
+        actors.push(spawn::<
+            jinn_domain::feat::preferences_actor::app_state_sync_actor::AppStateSyncActor,
+        >(
+            "app-state-sync",
+            &sink,
+            handle,
+            &counter,
+            &shutdown_tracker,
+            jinn_domain::feat::preferences_actor::app_state_sync_actor::AppStateSyncActorDeps {
+                services: services.clone(),
+                state: state.clone(),
+            },
+        ));
 
         // ── Domain actors ────────────────────────────────────────────────────
 

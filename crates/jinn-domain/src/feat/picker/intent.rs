@@ -9,7 +9,7 @@
 use crate::common::app_state::AppState;
 use crate::common::app_state::FocusScope;
 use crate::feat::context::protocol::command::{LoadPersonaPickerEntries, ScanContextFiles};
-use crate::feat::preferences_actor::protocol::command::{PreferenceUpdate, UpdatePreferences};
+use crate::feat::preferences_actor::protocol::app_state_command::{AppStateUpdate, UpdateAppState};
 use crate::feat::provider::protocol::command::{
     LoadProviderPickerEntries, ProviderSwitch, RescanPromptTemplates,
 };
@@ -353,11 +353,12 @@ fn confirm_provider(state: &mut AppState) -> IntentResult {
             session_id,
             provider_id: provider_id.clone(),
         }),
-        Command::UpdatePreferences(UpdatePreferences {
-            updates: vec![PreferenceUpdate::SetLastModel(Some(provider_id))],
+        Command::UpdateAppState(UpdateAppState {
+            updates: vec![AppStateUpdate::SetLastModel(Some(provider_id))],
         }),
     ])
 }
+
 
 /// Confirms the selected persona and sets it as active.
 fn confirm_persona(state: &mut AppState) -> IntentResult {
@@ -384,8 +385,8 @@ fn confirm_persona(state: &mut AppState) -> IntentResult {
 
     state.frontend.scope_stack.pop();
 
-    IntentResult::with_commands(vec![Command::UpdatePreferences(UpdatePreferences {
-        updates: vec![PreferenceUpdate::SetPersona(Some(persona_name))],
+    IntentResult::with_commands(vec![Command::UpdateAppState(UpdateAppState {
+        updates: vec![AppStateUpdate::SetPersona(Some(persona_name))],
     })])
 }
 
@@ -400,8 +401,8 @@ fn confirm_theme(state: &mut AppState) -> IntentResult {
     *state.frontend.theme_preview_original_mut() = None;
     state.frontend.scope_stack.pop();
 
-    IntentResult::with_commands(vec![Command::UpdatePreferences(UpdatePreferences {
-        updates: vec![PreferenceUpdate::SetTheme(Some(theme_name))],
+    IntentResult::with_commands(vec![Command::UpdateAppState(UpdateAppState {
+        updates: vec![AppStateUpdate::SetTheme(Some(theme_name))],
     })])
 }
 

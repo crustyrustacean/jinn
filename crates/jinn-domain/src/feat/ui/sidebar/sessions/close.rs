@@ -89,7 +89,7 @@ pub fn handle_session_close(state: &mut AppState) -> crate::protocol::IntentResu
         let new_session = {
             let model = state
                 .frontend
-                .preferences
+                .app_state
                 .last_model
                 .clone()
                 .unwrap_or_else(|| crate::feat::provider_infra::NO_PROVIDER_ID.to_owned());
