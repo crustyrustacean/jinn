@@ -348,35 +348,23 @@ pub fn format_mismatch_error(mismatches: &[HashMismatch], file_lines: &[&str]) -
 
 // ─── Application ────────────────────────────────────────────────────────
 
-/// Applies validated hashline edits to the file content.
+/// Resolved, deduplicated, conflict-checked, sorted edit spans ready for application.
+struct EditPlan {
+    spans: Vec<ResolvedSpan>,
+    warnings: Vec<String>,
+    noop_edits: Vec<NoopEdit>,
+}
+
+/// Resolves raw edits into a sorted, deduplicated, conflict-checked plan.
 ///
-/// Returns the modified content, changed line range, warnings, and NOOP edits.
-#[expect(clippy::too_many_lines, clippy::expect_used, reason = "edit application is a sequential pipeline with bounded indices")]
-pub fn apply_hashline_edits(content: &str, edits: &[HashlineEdit]) -> Result<EditResult, String> {
-    if edits.is_empty() {
-        return Ok(EditResult {
-            content: content.to_owned(),
-            first_changed_line: None,
-            last_changed_line: None,
-            warnings: Vec::new(),
-            noop_edits: Vec::new(),
-        });
-    }
-
-    let file_lines: Vec<&str> = content.split('\n').collect();
-    let has_terminal_newline = content.ends_with('\n');
-
-    // Build byte-offset index for each line start
-    let mut line_starts: Vec<usize> = Vec::with_capacity(file_lines.len());
-    let mut offset = 0;
-    for (i, line) in file_lines.iter().enumerate() {
-        line_starts.push(offset);
-        offset += line.len();
-        if i < file_lines.len() - 1 {
-            offset += 1; // newline
-        }
-    }
-
+/// Returns an [`EditPlan`] containing all spans ready for sequential application.
+fn build_edit_plan(
+    edits: &[HashlineEdit],
+    content: &str,
+    file_lines: &[&str],
+    line_starts: &[usize],
+    has_terminal_newline: bool,
+) -> Result<EditPlan, String> {
     let mut warnings = Vec::new();
     let mut noop_edits = Vec::new();
     let mut spans = Vec::new();
@@ -386,8 +374,8 @@ pub fn apply_hashline_edits(content: &str, edits: &[HashlineEdit]) -> Result<Edi
             edit,
             index,
             content,
-            &file_lines,
-            &line_starts,
+            file_lines,
+            line_starts,
             has_terminal_newline,
             &mut noop_edits,
         )?;
@@ -396,23 +384,23 @@ pub fn apply_hashline_edits(content: &str, edits: &[HashlineEdit]) -> Result<Edi
             continue;
         };
 
-        // Check for boundary duplication
-        check_boundary_duplication(edit, &file_lines, &mut warnings);
-
+        check_boundary_duplication(edit, file_lines, &mut warnings);
         spans.push(span);
     }
 
-    // Deduplicate identical spans
+    // Deduplicate identical spans.
     let mut seen_keys = std::collections::HashSet::new();
     spans.retain(|s| {
-        let key = format!("{}:{}:{}:{}", s.kind, s.start_line, s.end_line, s.replacement_lines.join("\\n"));
+        let key = format!(
+            "{}:{}:{}:{}",
+            s.kind, s.start_line, s.end_line, s.replacement_lines.join("\\n")
+        );
         seen_keys.insert(key)
     });
 
-    // Conflict detection
     assert_no_conflicting_spans(&spans)?;
 
-    // Sort top-to-bottom: lowest start_line first, then by kind priority, then by index
+    // Sort top-to-bottom: lowest start_line first, then by kind priority, then by index.
     spans.sort_by(|a, b| {
         if a.start_line == b.start_line {
             let priority = |k: &str| match k {
@@ -430,15 +418,28 @@ pub fn apply_hashline_edits(content: &str, edits: &[HashlineEdit]) -> Result<Edi
         }
     });
 
-    // Build output line-by-line (no string slicing)
+    Ok(EditPlan { spans, warnings, noop_edits })
+}
+
+/// Rebuilds the file by applying sorted spans to the original lines.
+///
+/// Walks a cursor through the original file, emitting unchanged lines and
+/// replacement content at each span's position.
+fn rebuild_file_from_spans(
+    file_lines: &[&str],
+    spans: &[ResolvedSpan],
+    has_terminal_newline: bool,
+) -> String {
     let mut output_lines: Vec<String> = Vec::new();
     let mut cursor: usize = 1;
 
-    for span in &spans {
+    for span in spans {
         match span.kind {
             "replace" => {
                 while cursor < span.start_line {
-                    output_lines.push(file_lines.get(cursor - 1).expect("cursor bounded by len").to_string());
+                    output_lines.push(
+                        file_lines.get(cursor - 1).expect("cursor bounded by len").to_string(),
+                    );
                     cursor += 1;
                 }
                 cursor = span.end_line + 1;
@@ -446,14 +447,18 @@ pub fn apply_hashline_edits(content: &str, edits: &[HashlineEdit]) -> Result<Edi
             }
             "append" => {
                 while cursor <= span.start_line && cursor <= file_lines.len() {
-                    output_lines.push(file_lines.get(cursor - 1).expect("cursor bounded by len").to_string());
+                    output_lines.push(
+                        file_lines.get(cursor - 1).expect("cursor bounded by len").to_string(),
+                    );
                     cursor += 1;
                 }
                 output_lines.extend(span.replacement_lines.iter().cloned());
             }
             "prepend" => {
                 while cursor < span.start_line {
-                    output_lines.push(file_lines.get(cursor - 1).expect("cursor bounded by len").to_string());
+                    output_lines.push(
+                        file_lines.get(cursor - 1).expect("cursor bounded by len").to_string(),
+                    );
                     cursor += 1;
                 }
                 output_lines.extend(span.replacement_lines.iter().cloned());
@@ -463,7 +468,9 @@ pub fn apply_hashline_edits(content: &str, edits: &[HashlineEdit]) -> Result<Edi
     }
 
     while cursor <= file_lines.len() {
-        output_lines.push(file_lines.get(cursor - 1).expect("cursor bounded by len").to_string());
+        output_lines.push(
+            file_lines.get(cursor - 1).expect("cursor bounded by len").to_string(),
+        );
         cursor += 1;
     }
 
@@ -477,15 +484,60 @@ pub fn apply_hashline_edits(content: &str, edits: &[HashlineEdit]) -> Result<Edi
     if has_terminal_newline {
         result.push('\n');
     }
-    // Compute changed range
+
+    result
+}
+
+/// Applies validated hashline edits to the file content.
+///
+/// Pipeline: prepare file index → build edit plan → rebuild file → compute changed range.
+pub fn apply_hashline_edits(content: &str, edits: &[HashlineEdit]) -> Result<EditResult, String> {
+    if edits.is_empty() {
+        return Ok(EditResult {
+            content: content.to_owned(),
+            first_changed_line: None,
+            last_changed_line: None,
+            warnings: Vec::new(),
+            noop_edits: Vec::new(),
+        });
+    }
+
+    let file_lines: Vec<&str> = content.split('\n').collect();
+    let has_terminal_newline = content.ends_with('\n');
+
+    // Build byte-offset index for each line start.
+    let line_starts = {
+        let mut starts = Vec::with_capacity(file_lines.len());
+        let mut offset = 0;
+        for (i, line) in file_lines.iter().enumerate() {
+            starts.push(offset);
+            offset += line.len();
+            if i < file_lines.len() - 1 {
+                offset += 1; // newline
+            }
+        }
+        starts
+    };
+
+    let plan = build_edit_plan(
+        edits,
+        content,
+        &file_lines,
+        &line_starts,
+        has_terminal_newline,
+    )?;
+
+    let result =
+        rebuild_file_from_spans(&file_lines, &plan.spans, has_terminal_newline);
+
     let changed_range = compute_changed_line_range(content, &result);
 
     Ok(EditResult {
         content: result,
         first_changed_line: changed_range.0,
         last_changed_line: changed_range.1,
-        warnings,
-        noop_edits,
+        warnings: plan.warnings,
+        noop_edits: plan.noop_edits,
     })
 }
 
