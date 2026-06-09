@@ -717,6 +717,29 @@ impl ActorSystemBuilder {
             }
         }
 
+        // Auto-prune worker: edit→read context pruning.
+        {
+            use jinn_domain::feat::auto_prune_worker::EditReadAutoPruneWorker;
+            use jinn_domain::feat::history_worker::actor::{
+                HistoryWorkerActor, HistoryWorkerActorDeps,
+            };
+
+            let config = user_preferences_storage.read().auto_prune.edit_read.clone();
+
+            if config.enabled {
+                actors.push(spawn::<HistoryWorkerActor<EditReadAutoPruneWorker>>(
+                    "history-worker-auto-prune-edit-read",
+                    &sink,
+                    handle,
+                    &counter,
+                    &shutdown_tracker,
+                    HistoryWorkerActorDeps {
+                        worker: EditReadAutoPruneWorker { config },
+                    },
+                ));
+            }
+        }
+
         // Auto-prune worker: regex-based tool call pruning.
         {
             use jinn_domain::feat::auto_prune_worker::RegexAutoPruneWorker;

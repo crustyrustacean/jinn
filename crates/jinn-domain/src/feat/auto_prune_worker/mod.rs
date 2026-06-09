@@ -16,6 +16,7 @@ pub mod anchor_radius;
 pub mod broken_edit;
 pub mod consecutive_reads;
 pub mod double_edit;
+pub mod edit_read;
 pub mod entry_token_cache;
 pub(crate) mod min_age;
 pub mod read_edit;
@@ -34,6 +35,7 @@ pub use entry_token_cache::{
     HistoryWorkerChatEntryTokenCacheEvictionActorDeps,
 };
 pub use read_edit::ReadEditAutoPruneWorker;
+pub use edit_read::EditReadAutoPruneWorker;
 pub use regex::RegexAutoPruneWorker;
 pub use todo_prune::TodoAutoPruneWorker;
 pub use tool_age_window::ToolAgeWindowAutoPruneWorker;
