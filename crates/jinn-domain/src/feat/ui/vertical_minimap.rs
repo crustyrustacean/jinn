@@ -133,7 +133,7 @@ fn find_block_index(selected_vi_idx: Option<usize>, visible: &[VisibleEntry]) ->
     }
 }
 
-#[allow(dead_code, reason = "available for future use")]
+#[expect(dead_code, reason = "available for future use")]
 fn compute_minimap_scroll(
     selected_block: usize,
     _total_blocks: usize,
@@ -273,7 +273,7 @@ fn compute_tokens_below(state: &AppState, start: usize) -> Option<u32> {
     compute_token_sum_in_range(state, start, history_len)
 }
 
-#[allow(clippy::unnecessary_wraps, reason = "trait contract requires Result return")]
+#[expect(clippy::unnecessary_wraps, reason = "trait contract requires Result return")]
 fn compute_token_sum_in_range(state: &AppState, start: usize, end: usize) -> Option<u32> {
     let session = state.active_session();
     let history = session.history();
@@ -346,7 +346,7 @@ pub fn render_minimap_arrow(
 
     let y = chat_log_area.y + arrow.row.min(chat_log_area.height.saturating_sub(1));
 
-    #[allow(
+    #[expect(
         clippy::single_match_else,
         reason = "different match arms produce different widget layouts"
     )]

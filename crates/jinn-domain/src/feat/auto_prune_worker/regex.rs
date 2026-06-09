@@ -247,7 +247,7 @@ fn build_prune_mutations(
 
 #[async_trait::async_trait]
 impl HistoryWorker for RegexAutoPruneWorker {
-    #[allow(clippy::unnecessary_literal_bound, reason = "lifetime elision makes bound redundant")]
+    #[expect(clippy::unnecessary_literal_bound, reason = "lifetime elision makes bound redundant")]
     fn name(&self) -> &str {
         "auto-prune-regex"
     }
@@ -646,7 +646,7 @@ mod tests {
         let worker = RegexAutoPruneWorker::from_config(&RegexAutoPruneConfig {
             enabled: true,
             rules: vec![RegexPruneRule {
-                pattern: r"bash:.*cargo check".to_owned(),
+                pattern: "bash:.*cargo check".to_owned(),
                 tool_name: "bash".to_owned(),
                 keep_last: 1,
                 min_age: 0,

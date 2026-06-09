@@ -53,7 +53,7 @@ use crate::protocol::system::{KeyDown, KeyUp, ModeChanged};
 /// this enum. An event struct defined in a domain module without an enum variant
 /// here will not be broadcast by the bus.
 #[derive(Debug, Clone, Serialize, Deserialize)]
-#[allow(clippy::large_enum_variant, reason = "boxing would cascade through match arms")]
+#[expect(clippy::large_enum_variant, reason = "boxing would cascade through match arms")]
 pub enum Event {
     /// A key was pressed down.
     KeyDown(KeyDown),

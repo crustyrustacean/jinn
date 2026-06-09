@@ -20,7 +20,7 @@ impl SessionPersistenceActor {
     /// Builds a markdown table from the refresh results and pushes it directly
     /// to session state. Does NOT emit `PushChatEntry` - transient entries
     /// are not persisted.
-    #[allow(clippy::unused_self, reason = "trait contract requires #[allow(clippy::unused_self)]self method")]
+    #[expect(clippy::unused_self, reason = "trait contract requires #[allow(clippy::unused_self)]self method")]
     pub(in crate::feat::session::session_actor) fn on_models_refreshed(
         &self,
         event: &ModelsRefreshed,
@@ -39,7 +39,7 @@ impl SessionPersistenceActor {
     }
 
     /// Pushes a transient entry listing discovered skills.
-    #[allow(clippy::unused_self, reason = "trait contract requires #[allow(clippy::unused_self)]self method")]
+    #[expect(clippy::unused_self, reason = "trait contract requires #[allow(clippy::unused_self)]self method")]
     pub(in crate::feat::session::session_actor) fn on_skills_loaded(
         &self,
         event: &crate::feat::skills::SkillsLoaded,
@@ -382,7 +382,7 @@ mod tests {
                         entry_id: entry_id.clone(),
                         value: crate::feat::session::chat_entry::ContextOverride::ForcedExclude,
                         source: crate::feat::session::chat_entry::ChangeSource::Internal {
-                            label: "test".to_string(),
+                            label: "test".to_owned(),
                         },
                     },
                 ],
@@ -440,7 +440,7 @@ mod tests {
                         entry_id: crate::feat::session::chat_entry::ChatEntryId::new(),
                         value: crate::feat::session::chat_entry::ContextOverride::ForcedExclude,
                         source: crate::feat::session::chat_entry::ChangeSource::Internal {
-                            label: "test".to_string(),
+                            label: "test".to_owned(),
                         },
                     },
                 ],
@@ -488,7 +488,7 @@ mod tests {
                         entry_id: entry_id_1,
                         value: crate::feat::session::chat_entry::ContextOverride::ForcedExclude,
                         source: crate::feat::session::chat_entry::ChangeSource::Internal {
-                            label: "test".to_string(),
+                            label: "test".to_owned(),
                         },
                     },
                 ],
@@ -503,7 +503,7 @@ mod tests {
                         entry_id: entry_id_2,
                         value: crate::feat::session::chat_entry::ContextOverride::ForcedInclude,
                         source: crate::feat::session::chat_entry::ChangeSource::Internal {
-                            label: "test".to_string(),
+                            label: "test".to_owned(),
                         },
                     },
                 ],

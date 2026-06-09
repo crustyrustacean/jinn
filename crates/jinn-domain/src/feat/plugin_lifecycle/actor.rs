@@ -91,5 +91,5 @@ impl PluginLifecycleActor {
 }
 
 // Unused but needed for type inference in some contexts.
-#[allow(dead_code, reason = "Command handling placeholder")]
+#[expect(dead_code, reason = "Command handling placeholder")]
 fn _command_type_hint(_: Command) {}

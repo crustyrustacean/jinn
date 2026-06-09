@@ -287,7 +287,7 @@ pub enum Intent {
 }
 
 impl std::fmt::Display for Intent {
-    #[allow(clippy::too_many_lines, reason = "handler reads best as a single unit")]
+    #[expect(clippy::too_many_lines, reason = "handler reads best as a single unit")]
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         match self {
             Intent::InsertChar { ch } => write!(f, "insert '{ch}'"),

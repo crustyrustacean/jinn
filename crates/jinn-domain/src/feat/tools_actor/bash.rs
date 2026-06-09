@@ -185,7 +185,7 @@ fn format_exit_result(
     max_lines: usize,
     max_bytes: usize,
 ) -> ToolResult {
-    let mut content = accumulated.to_string();
+    let mut content = accumulated.to_owned();
     let success = match exit_result {
         Ok(status) => status.success(),
         Err(_) => false,

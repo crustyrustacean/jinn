@@ -184,11 +184,7 @@ fn forced_exclude_ids(mutations: &[HistoryMutation]) -> Vec<ChatEntryId> {
             HistoryMutation::SetContextOverride {
                 entry_id, value, ..
             } => {
-                if matches!(value, ContextOverride::ForcedExclude) {
-                    Some(entry_id.clone())
-                } else {
-                    None
-                }
+                matches!(value, ContextOverride::ForcedExclude).then(|| entry_id.clone())
             }
             _ => None,
         })

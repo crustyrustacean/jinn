@@ -194,8 +194,8 @@ impl SessionPhaseMachine {
 
     /// The streaming assistant entry index, if streaming.
     pub fn streaming_entry_index(&self) -> Option<usize> {
-        self.streaming_phase()
-            .and_then(|sp| sp.streaming_entry_index)
+        let sp = self.streaming_phase()?;
+        sp.streaming_entry_index
     }
 
     /// Set the streaming assistant entry index. No-op if not streaming.
@@ -207,8 +207,8 @@ impl SessionPhaseMachine {
 
     /// The streaming thinking entry index, if streaming.
     pub fn streaming_thinking_entry_index(&self) -> Option<usize> {
-        self.streaming_phase()
-            .and_then(|sp| sp.streaming_thinking_entry_index)
+        let sp = self.streaming_phase()?;
+        sp.streaming_thinking_entry_index
     }
 
     /// Set the streaming thinking entry index. No-op if not streaming.
@@ -299,7 +299,7 @@ impl SessionPhaseMachine {
     }
 
     /// Read-only access to `SendingPhase` data, if currently sending.
-    #[allow(dead_code, reason = "will be used when SendingPhase carries state")]
+    #[expect(dead_code, reason = "will be used when SendingPhase carries state")]
     pub fn sending_phase(&self) -> Option<&SendingPhase> {
         match &self.phase {
             Phase::Sending(s) => Some(s),
@@ -308,7 +308,7 @@ impl SessionPhaseMachine {
     }
 
     /// Mutable access to `SendingPhase` data, if currently sending.
-    #[allow(dead_code, reason = "will be used when SendingPhase carries state")]
+    #[expect(dead_code, reason = "will be used when SendingPhase carries state")]
     pub fn sending_phase_mut(&mut self) -> Option<&mut SendingPhase> {
         match &mut self.phase {
             Phase::Sending(s) => Some(s),

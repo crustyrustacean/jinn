@@ -426,7 +426,7 @@ mod tests {
     #[test]
     fn deserialize_non_string_non_map_returns_error() {
         // Given TOML where the command is a number (not a string or map).
-        let toml_str = r#"setup_command = 42"#;
+        let toml_str = "setup_command = 42";
 
         // When deserializing.
         let result: Result<SetupCommandWrapper, _> = toml::from_str(toml_str);

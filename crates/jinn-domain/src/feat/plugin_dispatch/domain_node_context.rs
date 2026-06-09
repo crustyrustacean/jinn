@@ -199,11 +199,7 @@ impl DomainNodeContext {
         //    Tools branch on `disable_tool_loop`: an empty vec forces no tools and
         //    pairs with `set_tool_loop_disabled` (step 4a); `None` lets assembly
         //    inherit the full global catalog, same as a normal session.
-        let tool_definitions = if disable_tool_loop {
-            Some(Vec::new())
-        } else {
-            None
-        };
+        let tool_definitions = disable_tool_loop.then(Vec::new);
         let overrides = AssemblyOverrides {
             system_prompt,
             tool_definitions,

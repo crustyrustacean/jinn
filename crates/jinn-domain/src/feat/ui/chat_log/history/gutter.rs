@@ -104,7 +104,7 @@ pub(crate) fn build_blank_gutter_lines(
     (0..count)
         .map(|_| {
             Line::from(Span::styled(
-                gutter_str.to_string(),
+                gutter_str.to_owned(),
                 Style::default().fg(theme.border_unfocused),
             ))
         })

@@ -328,7 +328,7 @@ impl CompactionWorker {
     ///
     /// `pub(crate)` for testing - the real entry points are [`evaluate`] (trait)
     /// and [`evaluate_for_session`] (trigger-based).
-    #[allow(clippy::too_many_lines, clippy::too_many_arguments, reason = "handler reads best as a single unit")]
+    #[expect(clippy::too_many_lines, clippy::too_many_arguments, reason = "handler reads best as a single unit")]
     pub(crate) async fn evaluate_with_config(
         &self,
         history: &[ChatEntry],
@@ -449,19 +449,18 @@ fn resolve_context_limit(
     model_cache: Option<&crate::feat::provider_infra::ModelCache>,
     active_model: &str,
 ) -> Option<u32> {
-    model_cache.and_then(|cache| {
-        let provider_name = active_model.split('/').next()?;
-        let models = cache.entries.get(provider_name)?;
-        let model_suffix = active_model.get((provider_name.len() + 1)..)?;
-        models
-            .iter()
-            .find(|m| m.id == model_suffix)
-            .and_then(|m| m.context_length)
-    })
+    let cache = model_cache?;
+    let provider_name = active_model.split('/').next()?;
+    let models = cache.entries.get(provider_name)?;
+    let model_suffix = active_model.get((provider_name.len() + 1)..)?;
+    models
+        .iter()
+        .find(|m| m.id == model_suffix)
+        .and_then(|m| m.context_length)
 }
 
 /// Generate a summary using the LLM.
-#[allow(clippy::too_many_arguments, reason = "handler signature matches actor protocol")]
+#[expect(clippy::too_many_arguments, reason = "handler signature matches actor protocol")]
 async fn generate_summary(
     services: &Services,
     runtime_handle: &Handle,

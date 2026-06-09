@@ -153,8 +153,7 @@ fn wrap_logical_line(
                 // i+1 graphemes have been processed; break_pos started the new line.
                 col = graphemes
                     .get(break_pos..=i)
-                    .map(|gs| gs.iter().map(|g| UnicodeWidthStr::width(*g)).sum::<usize>())
-                    .unwrap_or(0);
+                    .map_or(0, |gs| gs.iter().map(|g| UnicodeWidthStr::width(*g)).sum::<usize>());
                 last_word_break = None;
             } else {
                 // No word break found - break at the current position

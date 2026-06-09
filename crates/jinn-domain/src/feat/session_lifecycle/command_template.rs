@@ -108,7 +108,7 @@ fn try_parse_dollar(graphemes: &[&str], i: usize) -> Option<(Param, usize)> {
     let current = *graphemes.get(i)?;
     if current != "$" { return None; }
     let next = *graphemes.get(i + 1)?;
-    let Some(&first_byte) = next.as_bytes().get(0) else { return None };
+    let Some(&first_byte) = next.as_bytes().first() else { return None };
     if next.len() == 1 && first_byte.is_ascii_digit() && first_byte != b'0' {
         let n = (first_byte - b'0') as usize;
         Some((Param::Positional(n), 2))
@@ -360,7 +360,7 @@ impl CommandTemplate {
 /// Unclosed `<` without a matching `>` is treated as static text (not a placeholder).
 fn tokenize_spans(line: &str) -> Vec<Span> {
     static RE: std::sync::LazyLock<Regex> =
-        std::sync::LazyLock::new(|| Regex::new(r"<([^>]+)>").expect("invalid regex"));
+        std::sync::LazyLock::new(|| Regex::new("<([^>]+)>").expect("invalid regex"));
 
     let mut spans = Vec::new();
     let mut last_end = 0;
@@ -368,11 +368,10 @@ fn tokenize_spans(line: &str) -> Vec<Span> {
     for caps in RE.captures_iter(line) {
         let m = caps.get(0).expect("capture group 0 always exists");
         // Emit preceding static text if any.
-        if m.start() > last_end {
-            if let Some(text) = line.get(last_end..m.start()) {
+        if m.start() > last_end
+            && let Some(text) = line.get(last_end..m.start()) {
                 spans.push(Span::Static(text.to_owned()));
             }
-        }
         let inner = caps
             .get(1)
             .expect("capture group 1 exists")
@@ -383,11 +382,10 @@ fn tokenize_spans(line: &str) -> Vec<Span> {
     }
 
     // Emit trailing static text if any.
-    if last_end < line.len() {
-        if let Some(text) = line.get(last_end..) {
+    if last_end < line.len()
+        && let Some(text) = line.get(last_end..) {
             spans.push(Span::Static(text.to_owned()));
         }
-    }
 
     spans
 }

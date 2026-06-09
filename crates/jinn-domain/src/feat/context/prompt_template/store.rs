@@ -300,16 +300,14 @@ impl PromptTemplateStore {
                 Ok(template) => {
                     if seen_names.contains(&template.name) {
                         // Replace the system template with the user version.
-                        if let Some(pos) = templates.iter().position(|t| t.name == template.name) {
-                            if let Some(slot) = templates.get_mut(pos) {
+                        if let Some(pos) = templates.iter().position(|t| t.name == template.name)
+                            && let Some(slot) = templates.get_mut(pos) {
                                 *slot = template;
                             }
-                        }
                         continue;
-                    } else {
-                        seen_names.insert(template.name.clone());
-                        templates.push(template);
                     }
+                    seen_names.insert(template.name.clone());
+                    templates.push(template);
                 }
                 Err(e) => {
                     warn!(

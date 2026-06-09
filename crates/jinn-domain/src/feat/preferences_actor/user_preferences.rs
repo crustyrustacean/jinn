@@ -817,7 +817,7 @@ impl Default for WebFetchConfig {
 const DEFAULT_BASH_DEFAULT_TIMEOUT_SECS: u64 = 180;
 
 // serde default fns must return the field type (Option<u64>) even when always Some.
-#[allow(clippy::unnecessary_wraps, reason = "trait contract requires Result return")]
+#[expect(clippy::unnecessary_wraps, reason = "trait contract requires Result return")]
 fn default_bash_default_timeout_secs() -> Option<u64> {
     Some(DEFAULT_BASH_DEFAULT_TIMEOUT_SECS)
 }
@@ -1377,7 +1377,7 @@ mod tests {
         let path = dir.path().join(PREFS_FILE_NAME);
         std::fs::write(
             &path,
-            r#"tool_entry_max_lines = 10"#,
+            "tool_entry_max_lines = 10",
         )
         .expect("write");
         // When loading.
@@ -2149,9 +2149,9 @@ excluded_domains = ["spam.com"]
         let path = dir.path().join(PREFS_FILE_NAME);
         std::fs::write(
             &path,
-            r#"[minimap]
+            "[minimap]
 max_tokens = 5000
-"#,
+",
         )
         .expect("write");
 
@@ -2239,9 +2239,9 @@ max_tokens = 5000
         let path = dir.path().join(PREFS_FILE_NAME);
         std::fs::write(
             &path,
-            r#"[auto_prune.read_edit]
+            "[auto_prune.read_edit]
 enabled = false
-"#,
+",
         )
         .expect("write");
 
@@ -2255,10 +2255,10 @@ enabled = false
         let path = dir.path().join(PREFS_FILE_NAME);
         std::fs::write(
             &path,
-            r#"[auto_prune.consecutive_reads]
+            "[auto_prune.consecutive_reads]
 enabled = false
 keep_last = 5
-"#,
+",
         )
         .expect("write");
 
@@ -2273,10 +2273,10 @@ keep_last = 5
         let path = dir.path().join(PREFS_FILE_NAME);
         std::fs::write(
             &path,
-            r#"[auto_prune.tool_age_window]
+            "[auto_prune.tool_age_window]
 enabled = false
 min_age = 50
-"#,
+",
         )
         .expect("write");
 
@@ -2291,9 +2291,9 @@ min_age = 50
         let path = dir.path().join(PREFS_FILE_NAME);
         std::fs::write(
             &path,
-            r#"[auto_prune.read_edit]
+            "[auto_prune.read_edit]
 min_age = 25
-"#,
+",
         )
         .expect("write");
 
@@ -2307,9 +2307,9 @@ min_age = 25
         let path = dir.path().join(PREFS_FILE_NAME);
         std::fs::write(
             &path,
-            r#"[auto_prune.double_edit]
+            "[auto_prune.double_edit]
 min_age = 15
-"#,
+",
         )
         .expect("write");
 
@@ -2326,7 +2326,7 @@ min_age = 15
         let path = dir.path().join(PREFS_FILE_NAME);
         std::fs::write(
             &path,
-            r#"[auto_prune.read_edit]
+            "[auto_prune.read_edit]
 enabled = true
 
 [auto_prune.double_edit]
@@ -2334,7 +2334,7 @@ enabled = true
 
 [auto_prune.tool_age_window]
 enabled = true
-"#,
+",
         )
         .expect("write");
 
@@ -2413,7 +2413,7 @@ enabled = true
     fn load_without_auto_prune_section_uses_defaults() {
         let dir = TempDir::new().expect("temp dir");
         let path = dir.path().join(PREFS_FILE_NAME);
-        std::fs::write(&path, r##"last_model = 'ollama/llama3'"##).expect("write");
+        std::fs::write(&path, "last_model = 'ollama/llama3'").expect("write");
 
         let prefs = load_preferences_from(&path).expect("load");
         assert!(prefs.auto_prune.edit_read.enabled);
@@ -2434,9 +2434,9 @@ enabled = true
         let path = dir.path().join(PREFS_FILE_NAME);
         std::fs::write(
             &path,
-            r#"[auto_prune.todo]
+            "[auto_prune.todo]
 enabled = false
-"#,
+",
         )
         .expect("write");
 
@@ -2469,7 +2469,7 @@ enabled = false
         let path = dir.path().join(PREFS_FILE_NAME);
         std::fs::write(
             &path,
-            r#"[auto_prune.trivial_assistant]
+            "[auto_prune.trivial_assistant]
 enabled = true
 max_age_entries = 100
 max_tokens = 80
@@ -2477,7 +2477,7 @@ max_tokens = 80
 [auto_prune.broken_edit]
 enabled = true
 min_tail_entries = 10
-"#,
+",
         )
         .expect("write");
 
@@ -2693,9 +2693,9 @@ keep_last = 1
     #[test]
     fn bash_config_toml_roundtrip_explicit_value() {
         // Given a TOML fragment with an explicit override.
-        let toml_str = r#"
+        let toml_str = "
             default_timeout_secs = 60
-        "#;
+        ";
 
         // When parsed.
         let cfg: BashConfig = toml::from_str(toml_str).expect("parse");

@@ -128,7 +128,7 @@ fn build_prune_mutations(
         }
 
         // Prune the ToolCall if not protected from prune.
-        if !history.get(call_info.index).is_some_and(|e| e.is_protected_from_prune()) {
+        if !history.get(call_info.index).is_some_and(super::super::session::chat_entry::ChatEntry::is_protected_from_prune) {
             mutations.push(HistoryMutation::SetContextOverride {
                 entry_id: call_info.entry_id.clone(),
                 value: ContextOverride::ForcedExclude,
@@ -140,7 +140,7 @@ fn build_prune_mutations(
 
         // Prune the corresponding ToolResult if it exists and isn't protected.
         if let Some((result_idx, result_entry_id)) = result_map.get(&call_info.tool_call_id)
-            && !history.get(*result_idx).is_some_and(|e| e.is_protected_from_prune())
+            && !history.get(*result_idx).is_some_and(super::super::session::chat_entry::ChatEntry::is_protected_from_prune)
         {
             mutations.push(HistoryMutation::SetContextOverride {
                 entry_id: result_entry_id.clone(),
@@ -157,7 +157,7 @@ fn build_prune_mutations(
 
 #[async_trait::async_trait]
 impl HistoryWorker for TodoAutoPruneWorker {
-    #[allow(clippy::unnecessary_literal_bound, reason = "lifetime elision makes bound redundant")]
+    #[expect(clippy::unnecessary_literal_bound, reason = "lifetime elision makes bound redundant")]
     fn name(&self) -> &str {
         "auto-prune-todo"
     }

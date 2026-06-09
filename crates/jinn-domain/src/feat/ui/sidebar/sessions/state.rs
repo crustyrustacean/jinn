@@ -298,15 +298,14 @@ fn insert_plugin_entries(state: &AppState, entries: &mut Vec<SessionEntry>) {
         // and has depth == plugin_depth.
         if insert_idx > 0 {
             for k in (0..insert_idx).rev() {
-                if let Some(e) = entries.get(k) {
-                    if e.depth == plugin_depth
+                if let Some(e) = entries.get(k)
+                    && e.depth == plugin_depth
                         && e.parent_id.as_ref() == Some(&parent_id)
                         && matches!(e.kind, SessionEntryKind::Session)
                     {
                         entries.get_mut(k).expect("k < insert_idx").is_last_child = false;
                         break;
                     }
-                }
             }
         }
     }

@@ -78,7 +78,7 @@ impl DiscoverActor {
     }
 
     /// Iterates all providers, discovers models, saves cache, emits event.
-    #[allow(clippy::too_many_lines, reason = "handler reads best as a single unit")]
+    #[expect(clippy::too_many_lines, reason = "handler reads best as a single unit")]
     async fn refresh_models(&self, ctx: &ActorContext) {
         let entries = {
             let registry = self.services.provider_registry.read();

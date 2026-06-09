@@ -91,18 +91,14 @@ impl EntryLineCache {
         }
 
         let cached = self.entries.get(&entry.id)?;
-        if cached.fingerprint == entry.content_fingerprint() && cached.is_expanded == is_expanded {
-            Some(CacheHit {
+        (cached.fingerprint == entry.content_fingerprint() && cached.is_expanded == is_expanded).then(|| CacheHit {
                 wrapped_count: cached.wrapped_count,
                 lines: cached.lines.clone(),
             })
-        } else {
-            None
-        }
     }
 
     /// Store a wrapped line count for an entry (without rendered lines).
-    #[allow(dead_code, reason = "public API available for future use")]
+    #[expect(dead_code, reason = "public API available for future use")]
     pub fn insert(
         &mut self,
         entry: &ChatEntry,
@@ -152,13 +148,13 @@ impl EntryLineCache {
     }
 
     /// Remove a specific entry from the cache.
-    #[allow(dead_code, reason = "kept for future use")]
+    #[expect(dead_code, reason = "kept for future use")]
     pub fn invalidate_entry(&mut self, id: &ChatEntryId) {
         self.entries.remove(id);
     }
 
     /// Clear the entire cache.
-    #[allow(dead_code, reason = "kept for future use")]
+    #[expect(dead_code, reason = "kept for future use")]
     pub fn clear(&mut self) {
         self.entries.clear();
         self.content_width = None;
@@ -166,14 +162,14 @@ impl EntryLineCache {
 
     /// Number of entries currently cached.
     #[must_use]
-    #[allow(dead_code, reason = "kept for future use")]
+    #[expect(dead_code, reason = "kept for future use")]
     pub fn len(&self) -> usize {
         self.entries.len()
     }
 
     /// Whether the cache is empty.
     #[must_use]
-    #[allow(dead_code, reason = "kept for future use")]
+    #[expect(dead_code, reason = "kept for future use")]
     pub fn is_empty(&self) -> bool {
         self.entries.is_empty()
     }
