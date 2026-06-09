@@ -123,7 +123,9 @@ impl SkillsScanActor {
         // Resolve the session's cwd and home once, up front. The cwd is
         // captured by clone so the blocking scan can move it across the
         // thread boundary without holding the state lock.
-        let Some((cwd, home, global_skills_dir, system_skills_dir)) = self.resolve_scan_inputs(session_id) else {
+        let Some((cwd, home, global_skills_dir, system_skills_dir)) =
+            self.resolve_scan_inputs(session_id)
+        else {
             tracing::warn!(%session_id, "ScanSkills: session not found, skipping");
             return;
         };
@@ -177,7 +179,12 @@ impl SkillsScanActor {
     fn resolve_scan_inputs(
         &self,
         session_id: &crate::SessionId,
-    ) -> Option<(std::path::PathBuf, std::path::PathBuf, std::path::PathBuf, std::path::PathBuf)> {
+    ) -> Option<(
+        std::path::PathBuf,
+        std::path::PathBuf,
+        std::path::PathBuf,
+        std::path::PathBuf,
+    )> {
         let guard = self.state.read();
         let session = guard.try_session(session_id)?;
         let cwd = session.cwd().to_path_buf();

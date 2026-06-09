@@ -313,7 +313,6 @@ mod tests {
         // When merging with no project dirs.
         let skills = scan_skills_merged(Path::new("/nonexistent/system"), global.path(), &[]);
 
-
         // Then the global skill is present with Global source.
         assert_eq!(skills.len(), 1);
         assert_eq!(skills[0].name, "g-skill");
@@ -415,11 +414,7 @@ mod tests {
         .expect("write SKILL.md");
 
         // When merging with nonexistent global and no project dirs.
-        let skills = scan_skills_merged(
-            system.path(),
-            Path::new("/nonexistent/global"),
-            &[],
-        );
+        let skills = scan_skills_merged(system.path(), Path::new("/nonexistent/global"), &[]);
 
         // Then the system skill is found with Global source.
         assert_eq!(skills.len(), 1);
