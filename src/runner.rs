@@ -3,6 +3,7 @@
 use error_stack::{Report, ResultExt};
 
 use crate::app::AppError;
+#[cfg(debug_assertions)]
 use crate::headless::HeadlessApp;
 
 /// Mode-specific runner.
@@ -13,6 +14,7 @@ pub enum Runner {
     /// Terminal UI mode.
     Tui(Box<jinn_tui::TuiApp>),
     /// Headless (non-interactive) mode.
+    #[cfg(debug_assertions)]
     Headless(Box<HeadlessApp>),
 }
 
@@ -30,6 +32,7 @@ impl Runner {
             Runner::Tui(app) => {
                 jinn_tui::run(*app).change_context(AppError)?;
             }
+            #[cfg(debug_assertions)]
             Runner::Headless(mut app) => {
                 app.shutdown();
                 app.print_history();
