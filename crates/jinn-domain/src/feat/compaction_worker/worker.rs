@@ -78,11 +78,7 @@ pub struct CompactionWorker {
 
 impl CompactionWorker {
     /// Creates a new compaction worker.
-    pub fn new(
-        services: Services,
-        handle: Handle,
-        state: State,
-    ) -> Self {
+    pub fn new(services: Services, handle: Handle, state: State) -> Self {
         Self {
             services,
             handle,
@@ -328,7 +324,11 @@ impl CompactionWorker {
     ///
     /// `pub(crate)` for testing - the real entry points are [`evaluate`] (trait)
     /// and [`evaluate_for_session`] (trigger-based).
-    #[expect(clippy::expect_used, clippy::too_many_arguments, reason = "handler reads best as a single unit")]
+    #[expect(
+        clippy::expect_used,
+        clippy::too_many_arguments,
+        reason = "handler reads best as a single unit"
+    )]
     pub(crate) async fn evaluate_with_config(
         &self,
         history: &[ChatEntry],
@@ -363,7 +363,11 @@ impl CompactionWorker {
 
         // Step 5: Check for previous compaction summary.
         let previous_summary = if start_index > 0 {
-            let Some(prev) = history.get(start_index - 1) else { return Err(error_stack::Report::new(CompactionError).attach("start_index out of bounds")) };
+            let Some(prev) = history.get(start_index - 1) else {
+                return Err(
+                    error_stack::Report::new(CompactionError).attach("start_index out of bounds")
+                );
+            };
             if let ChatEntryKind::Compaction { summary, .. } = &prev.kind {
                 Some(summary.clone())
             } else {
@@ -406,7 +410,9 @@ impl CompactionWorker {
 
         // 8a: Set ForcedExclude for each gathered entry.
         for &idx in &gathered_indices {
-            let Some(entry) = history.get(idx) else { continue };
+            let Some(entry) = history.get(idx) else {
+                continue;
+            };
             mutations.push(HistoryMutation::SetContextOverride {
                 entry_id: entry.id.clone(),
                 value: ContextOverride::ForcedExclude,
@@ -431,7 +437,9 @@ impl CompactionWorker {
             None,
         );
 
-        let last_gathered_id = gathered_indices.last().and_then(|&idx| history.get(idx).map(|e| e.id.clone()));
+        let last_gathered_id = gathered_indices
+            .last()
+            .and_then(|&idx| history.get(idx).map(|e| e.id.clone()));
         mutations.push(HistoryMutation::InsertEntry {
             after_entry_id: last_gathered_id,
             entry: compaction_entry,
@@ -460,7 +468,10 @@ fn resolve_context_limit(
 }
 
 /// Generate a summary using the LLM.
-#[expect(clippy::too_many_arguments, reason = "handler signature matches actor protocol")]
+#[expect(
+    clippy::too_many_arguments,
+    reason = "handler signature matches actor protocol"
+)]
 async fn generate_summary(
     services: &Services,
     runtime_handle: &Handle,

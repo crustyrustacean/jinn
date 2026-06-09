@@ -30,12 +30,12 @@ pub use anchored_assistant::AnchoredAssistantAutoPruneWorker;
 pub use broken_edit::BrokenEditAutoPruneWorker;
 pub use consecutive_reads::ConsecutiveReadsAutoPruneWorker;
 pub use double_edit::DoubleEditAutoPruneWorker;
+pub use edit_read::EditReadAutoPruneWorker;
 pub use entry_token_cache::{
     HistoryWorkerChatEntryTokenCache, HistoryWorkerChatEntryTokenCacheEvictionActor,
     HistoryWorkerChatEntryTokenCacheEvictionActorDeps,
 };
 pub use read_edit::ReadEditAutoPruneWorker;
-pub use edit_read::EditReadAutoPruneWorker;
 pub use regex::RegexAutoPruneWorker;
 pub use todo_prune::TodoAutoPruneWorker;
 pub use tool_age_window::ToolAgeWindowAutoPruneWorker;

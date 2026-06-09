@@ -1,4 +1,10 @@
-#![allow(clippy::expect_used, clippy::panic, clippy::unreachable, clippy::indexing_slicing, reason = "test code")]
+#![allow(
+    clippy::expect_used,
+    clippy::panic,
+    clippy::unreachable,
+    clippy::indexing_slicing,
+    reason = "test code"
+)]
 
 use std::sync::Arc;
 
@@ -38,10 +44,7 @@ async fn set_compaction_model_saves_to_storage() {
 
     // Then the storage contains the model as compaction.model.
     let prefs = actor.services.user_preferences_storage.read();
-    assert_eq!(
-        prefs.compaction.model.as_deref(),
-        Some("ollama/llama3")
-    );
+    assert_eq!(prefs.compaction.model.as_deref(), Some("ollama/llama3"));
 }
 
 #[rstest::rstest]
@@ -74,10 +77,7 @@ async fn set_compaction_model_overwrites_previous() {
 
     // Then only the latest model is persisted.
     let prefs = actor.services.user_preferences_storage.read();
-    assert_eq!(
-        prefs.compaction.model.as_deref(),
-        Some("openrouter/gpt-4")
-    );
+    assert_eq!(prefs.compaction.model.as_deref(), Some("openrouter/gpt-4"));
 }
 
 #[rstest::rstest]
@@ -142,10 +142,7 @@ async fn empty_diffs_does_not_change_storage() {
 
     // Then the existing preferences are preserved.
     let prefs = actor.services.user_preferences_storage.read();
-    assert_eq!(
-        prefs.compaction.model.as_deref(),
-        Some("ollama/llama3")
-    );
+    assert_eq!(prefs.compaction.model.as_deref(), Some("ollama/llama3"));
 }
 
 #[rstest::rstest]

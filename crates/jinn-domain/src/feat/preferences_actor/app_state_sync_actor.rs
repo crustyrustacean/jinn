@@ -59,7 +59,6 @@ impl Actor for AppStateSyncActor {
                 // Cache the entire state for runtime access.
                 state.frontend.app_state = updated.clone();
 
-
                 state.frontend.sidebar_width = updated.sidebar_width.unwrap_or(30);
 
                 // Reload theme when theme_name changes.
@@ -97,10 +96,18 @@ impl Actor for AppStateSyncActor {
 
 #[cfg(test)]
 mod tests {
-    #![allow(clippy::expect_used, clippy::panic, clippy::unreachable, clippy::indexing_slicing, reason = "test code")]
+    #![allow(
+        clippy::expect_used,
+        clippy::panic,
+        clippy::unreachable,
+        clippy::indexing_slicing,
+        reason = "test code"
+    )]
     use std::sync::Arc;
 
-    use crate::common::actor::{Actor as _, ActorContext, ActorEnvelope, MessageSink, RecordingSink};
+    use crate::common::actor::{
+        Actor as _, ActorContext, ActorEnvelope, MessageSink, RecordingSink,
+    };
     use crate::common::app_state::AppState;
     use crate::common::state::State;
     use crate::feat::persona::Persona;
@@ -138,9 +145,7 @@ mod tests {
         };
         actor
             .handle(
-                ActorEnvelope::Event(Event::AppStateUpdated(AppStateUpdated {
-                    state: app_state,
-                })),
+                ActorEnvelope::Event(Event::AppStateUpdated(AppStateUpdated { state: app_state })),
                 &ctx,
             )
             .await;
@@ -163,9 +168,7 @@ mod tests {
         };
         actor
             .handle(
-                ActorEnvelope::Event(Event::AppStateUpdated(AppStateUpdated {
-                    state: app_state,
-                })),
+                ActorEnvelope::Event(Event::AppStateUpdated(AppStateUpdated { state: app_state })),
                 &ctx,
             )
             .await;
@@ -207,9 +210,7 @@ mod tests {
         };
         actor
             .handle(
-                ActorEnvelope::Event(Event::AppStateUpdated(AppStateUpdated {
-                    state: app_state,
-                })),
+                ActorEnvelope::Event(Event::AppStateUpdated(AppStateUpdated { state: app_state })),
                 &ctx,
             )
             .await;
@@ -237,13 +238,10 @@ mod tests {
         };
         actor
             .handle(
-                ActorEnvelope::Event(Event::AppStateUpdated(AppStateUpdated {
-                    state: app_state,
-                })),
+                ActorEnvelope::Event(Event::AppStateUpdated(AppStateUpdated { state: app_state })),
                 &ctx,
             )
             .await;
-
 
         // Then the theme was resolved and caches invalidated without panic.
         // resolve_theme(None, ...) returns the embedded default theme.

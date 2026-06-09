@@ -30,9 +30,15 @@ const ID_CHARSET: &[u8] = b"abcdefghijklmnqrsuvwxyz0123456789";
 fn generate_id_chars() -> [u8; 3] {
     let mut rng = rand::rng();
     [
-        *ID_CHARSET.get(rng.random_range(0..ID_CHARSET.len())).expect("range bounded by ID_CHARSET.len()"),
-        *ID_CHARSET.get(rng.random_range(0..ID_CHARSET.len())).expect("range bounded by ID_CHARSET.len()"),
-        *ID_CHARSET.get(rng.random_range(0..ID_CHARSET.len())).expect("range bounded by ID_CHARSET.len()"),
+        *ID_CHARSET
+            .get(rng.random_range(0..ID_CHARSET.len()))
+            .expect("range bounded by ID_CHARSET.len()"),
+        *ID_CHARSET
+            .get(rng.random_range(0..ID_CHARSET.len()))
+            .expect("range bounded by ID_CHARSET.len()"),
+        *ID_CHARSET
+            .get(rng.random_range(0..ID_CHARSET.len()))
+            .expect("range bounded by ID_CHARSET.len()"),
     ]
 }
 
@@ -466,7 +472,10 @@ impl TaskList {
     /// # Panics
     ///
     /// Panics if internal invariants are violated (source/reference found but then missing).
-    #[expect(clippy::needless_pass_by_value, reason = "ownership semantics required by trait")]
+    #[expect(
+        clippy::needless_pass_by_value,
+        reason = "ownership semantics required by trait"
+    )]
     pub fn postpone_task(
         &mut self,
         source_task_id: &TaskId,
@@ -523,10 +532,10 @@ impl TaskList {
             ref_phase_idx.ok_or_else(|| TaskListError::TaskNotFound(ref_task_id.clone()))?;
 
         // Mark source task as postponed.
-        let source_task = self.phases.get_mut(src_pi)
-            .and_then(|phase| {
-                phase.tasks.iter_mut().find(|t| &t.id == source_task_id)
-            });
+        let source_task = self
+            .phases
+            .get_mut(src_pi)
+            .and_then(|phase| phase.tasks.iter_mut().find(|t| &t.id == source_task_id));
         if let Some(t) = source_task {
             t.status = TaskStatus::Postponed;
         } else {
@@ -554,7 +563,11 @@ impl TaskList {
         };
 
         // Insert at position in target phase.
-        let Some(phase) = self.phases.get_mut(target_pi) else { return Err(TaskListError::InternalInvariant { what: "postpone_task: target phase not found" }) };
+        let Some(phase) = self.phases.get_mut(target_pi) else {
+            return Err(TaskListError::InternalInvariant {
+                what: "postpone_task: target phase not found",
+            });
+        };
         match &position {
             TaskPosition::After(after_id) => {
                 let idx =
@@ -637,10 +650,10 @@ impl TaskList {
             .ok_or_else(|| TaskListError::PhaseNotFound(target_phase_id.clone()))?;
 
         // Mark source task as postponed.
-        let source_task = self.phases.get_mut(src_phase_idx)
-            .and_then(|phase| {
-                phase.tasks.iter_mut().find(|t| &t.id == source_task_id)
-            });
+        let source_task = self
+            .phases
+            .get_mut(src_phase_idx)
+            .and_then(|phase| phase.tasks.iter_mut().find(|t| &t.id == source_task_id));
         if let Some(t) = source_task {
             t.status = TaskStatus::Postponed;
         } else {
@@ -923,7 +936,9 @@ impl TaskList {
                 .iter()
                 .filter(|t| t.status == TaskStatus::Pending)
                 .collect();
-            let Some(next_task) = pending.first() else { return self.render_next_block() };
+            let Some(next_task) = pending.first() else {
+                return self.render_next_block();
+            };
             let remaining = pending.len();
             return format!(
                 "→ NEXT: {} — {} ({} pending in phase {})",
@@ -935,7 +950,10 @@ impl TaskList {
         // Are there later phases that still have work? Those are blocked until verify.
         let completed_idx = self.phases.iter().position(|p| &p.id == completed_phase_id);
         let later_blocked = match completed_idx {
-            Some(idx) => self.phases.get(idx + 1..).is_some_and(|tail| tail.iter().any(Phase::has_pending_work)),
+            Some(idx) => self
+                .phases
+                .get(idx + 1..)
+                .is_some_and(|tail| tail.iter().any(Phase::has_pending_work)),
             None => false,
         };
 

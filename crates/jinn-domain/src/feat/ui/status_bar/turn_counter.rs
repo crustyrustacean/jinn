@@ -27,7 +27,9 @@ pub fn compute_turn_count(history: &[ChatEntry]) -> u32 {
             ChatEntryKind::Assistant(..) => {
                 let is_last = i == len - 1;
                 let followed_by_tool_call = !is_last
-                    && history.get(i + 1).is_some_and(|h| matches!(h.kind, ChatEntryKind::ToolCall { .. }));
+                    && history
+                        .get(i + 1)
+                        .is_some_and(|h| matches!(h.kind, ChatEntryKind::ToolCall { .. }));
                 if !followed_by_tool_call {
                     count += 1;
                 }
@@ -40,7 +42,13 @@ pub fn compute_turn_count(history: &[ChatEntry]) -> u32 {
 
 #[cfg(test)]
 mod tests {
-    #![allow(clippy::expect_used, clippy::panic, clippy::unreachable, clippy::indexing_slicing, reason = "test code")]
+    #![allow(
+        clippy::expect_used,
+        clippy::panic,
+        clippy::unreachable,
+        clippy::indexing_slicing,
+        reason = "test code"
+    )]
     use super::*;
     use crate::protocol::ChatEntry;
 

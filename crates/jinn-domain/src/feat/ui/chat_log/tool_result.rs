@@ -217,7 +217,13 @@ fn format_content_truncation_label(meta: &TruncationMeta) -> String {
 
 #[cfg(test)]
 mod tests {
-    #![allow(clippy::expect_used, clippy::panic, clippy::unreachable, clippy::indexing_slicing, reason = "test code")]
+    #![allow(
+        clippy::expect_used,
+        clippy::panic,
+        clippy::unreachable,
+        clippy::indexing_slicing,
+        reason = "test code"
+    )]
     use super::*;
     use crate::feat::session::tool_result_status::ToolResultStatus;
     use crate::feat::ui::chat_log::shared::RenderContext;

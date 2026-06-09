@@ -114,7 +114,10 @@ impl SessionPersistenceActor {
     /// Creates an empty session with the given ID and emits a `SessionLoadCompleted` command.
     ///
     /// Used as a fallback when a session is not found or fails to load.
-    #[expect(clippy::unused_self, reason = "trait contract requires #[allow(clippy::unused_self)]self method")]
+    #[expect(
+        clippy::unused_self,
+        reason = "trait contract requires #[allow(clippy::unused_self)]self method"
+    )]
     fn create_empty_session_response(
         &self,
         session_id: &crate::protocol::SessionId,
