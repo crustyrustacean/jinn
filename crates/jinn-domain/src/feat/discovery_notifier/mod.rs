@@ -31,11 +31,10 @@ impl Actor for DiscoveryNotifierActor {
     type Args = DiscoveryNotifierActorDeps;
     type Error = Infallible;
 
-    async fn on_start(
-        args: Self::Args,
-        actor_ref: ActorRef<Self>,
-    ) -> Result<Self, Self::Error> {
-        args.deps.register(actor_ref.recipient::<SessionDiscoverySettled>()).await;
+    async fn on_start(args: Self::Args, actor_ref: ActorRef<Self>) -> Result<Self, Self::Error> {
+        args.deps
+            .subscribe(actor_ref.recipient::<SessionDiscoverySettled>())
+            .await;
         Ok(Self { deps: args.deps })
     }
 }
@@ -117,12 +116,18 @@ fn build_summary(event: &SessionDiscoverySettled) -> String {
 
 #[cfg(test)]
 mod tests {
-    #![allow(clippy::expect_used, clippy::panic, clippy::unreachable, clippy::indexing_slicing, reason = "test code")]
+    #![allow(
+        clippy::expect_used,
+        clippy::panic,
+        clippy::unreachable,
+        clippy::indexing_slicing,
+        reason = "test code"
+    )]
 
     use std::time::Duration;
 
     use super::*;
-    use crate::common::bus::test_harness::{await_recorded, TestHarness};
+    use crate::common::bus::test_harness::{TestHarness, await_recorded};
     use crate::feat::discovery_coordinator::DiscoverySnapshot;
     use crate::protocol::{ChatEntryKind, SessionId};
 
@@ -130,20 +135,26 @@ mod tests {
     async fn settled_event_posts_one_transient_chat_entry() {
         // Given a notifier and a recorder wired to the bus.
         let harness = TestHarness::new().await;
-        let _notifier = harness.spawn_actor::<DiscoveryNotifierActor>(DiscoveryNotifierActorDeps { deps: harness.actor_deps() }).await;
+        let _notifier = harness
+            .spawn_actor::<DiscoveryNotifierActor>(DiscoveryNotifierActorDeps {
+                deps: harness.actor_deps(),
+            })
+            .await;
         let recorder = harness.spawn_recorder::<PushChatEntry>().await;
 
         // When a SessionDiscoverySettled event with discovered resources is published.
-        harness.publish(SessionDiscoverySettled {
-            session_id: SessionId::new(),
-            snapshot: DiscoverySnapshot {
-                skill_count: 2,
-                prompt_count: 1,
-                context_file_count: 1,
-                ..Default::default()
-            },
-            delayed: None,
-        }).await;
+        harness
+            .publish(SessionDiscoverySettled {
+                session_id: SessionId::new(),
+                snapshot: DiscoverySnapshot {
+                    skill_count: 2,
+                    prompt_count: 1,
+                    context_file_count: 1,
+                    ..Default::default()
+                },
+                delayed: None,
+            })
+            .await;
 
         // Then exactly one PushChatEntry was emitted with a transient entry.
         let recorded = await_recorded(&recorder, 1, Duration::from_millis(500)).await;
@@ -160,15 +171,21 @@ mod tests {
     async fn empty_discovery_says_no_resources() {
         // Given a notifier and a recorder.
         let harness = TestHarness::new().await;
-        let _notifier = harness.spawn_actor::<DiscoveryNotifierActor>(DiscoveryNotifierActorDeps { deps: harness.actor_deps() }).await;
+        let _notifier = harness
+            .spawn_actor::<DiscoveryNotifierActor>(DiscoveryNotifierActorDeps {
+                deps: harness.actor_deps(),
+            })
+            .await;
         let recorder = harness.spawn_recorder::<PushChatEntry>().await;
 
         // When a settled event with empty discovery is published.
-        harness.publish(SessionDiscoverySettled {
-            session_id: SessionId::new(),
-            snapshot: DiscoverySnapshot::default(),
-            delayed: None,
-        }).await;
+        harness
+            .publish(SessionDiscoverySettled {
+                session_id: SessionId::new(),
+                snapshot: DiscoverySnapshot::default(),
+                delayed: None,
+            })
+            .await;
 
         // Then the message says no project resources found.
         let recorded = await_recorded(&recorder, 1, Duration::from_millis(500)).await;
@@ -186,18 +203,24 @@ mod tests {
     async fn delayed_reason_surfaces_in_message() {
         // Given a notifier and a recorder.
         let harness = TestHarness::new().await;
-        let _notifier = harness.spawn_actor::<DiscoveryNotifierActor>(DiscoveryNotifierActorDeps { deps: harness.actor_deps() }).await;
+        let _notifier = harness
+            .spawn_actor::<DiscoveryNotifierActor>(DiscoveryNotifierActorDeps {
+                deps: harness.actor_deps(),
+            })
+            .await;
         let recorder = harness.spawn_recorder::<PushChatEntry>().await;
 
         // When a settled event carries a delayed reason.
-        harness.publish(SessionDiscoverySettled {
-            session_id: SessionId::new(),
-            snapshot: DiscoverySnapshot {
-                skill_count: 2,
-                ..Default::default()
-            },
-            delayed: Some("discovery delayed by context".to_owned()),
-        }).await;
+        harness
+            .publish(SessionDiscoverySettled {
+                session_id: SessionId::new(),
+                snapshot: DiscoverySnapshot {
+                    skill_count: 2,
+                    ..Default::default()
+                },
+                delayed: Some("discovery delayed by context".to_owned()),
+            })
+            .await;
 
         // Then the reason is surfaced in the message.
         let recorded = await_recorded(&recorder, 1, Duration::from_millis(500)).await;
@@ -215,19 +238,25 @@ mod tests {
     async fn failed_scan_notes_error_in_message() {
         // Given a notifier and a recorder.
         let harness = TestHarness::new().await;
-        let _notifier = harness.spawn_actor::<DiscoveryNotifierActor>(DiscoveryNotifierActorDeps { deps: harness.actor_deps() }).await;
+        let _notifier = harness
+            .spawn_actor::<DiscoveryNotifierActor>(DiscoveryNotifierActorDeps {
+                deps: harness.actor_deps(),
+            })
+            .await;
         let recorder = harness.spawn_recorder::<PushChatEntry>().await;
 
         // When a settled event carries a skills scan error.
-        harness.publish(SessionDiscoverySettled {
-            session_id: SessionId::new(),
-            snapshot: DiscoverySnapshot {
-                skill_count: 0,
-                skill_error: Some("permission denied".to_owned()),
-                ..Default::default()
-            },
-            delayed: None,
-        }).await;
+        harness
+            .publish(SessionDiscoverySettled {
+                session_id: SessionId::new(),
+                snapshot: DiscoverySnapshot {
+                    skill_count: 0,
+                    skill_error: Some("permission denied".to_owned()),
+                    ..Default::default()
+                },
+                delayed: None,
+            })
+            .await;
 
         // Then the message notes the failure.
         let recorded = await_recorded(&recorder, 1, Duration::from_millis(500)).await;

@@ -66,7 +66,9 @@ impl Actor for QueueActor {
     type Error = std::convert::Infallible;
 
     async fn on_start(args: Self::Args, actor_ref: ActorRef<Self>) -> Result<Self, Self::Error> {
-        args.deps.register(actor_ref.recipient::<SessionPhaseChanged>()).await;
+        args.deps
+            .subscribe(actor_ref.recipient::<SessionPhaseChanged>())
+            .await;
 
         Ok(Self {
             state: args.state,
@@ -79,11 +81,7 @@ impl Actor for QueueActor {
 impl Message<SessionPhaseChanged> for QueueActor {
     type Reply = ();
 
-    async fn handle(
-        &mut self,
-        msg: SessionPhaseChanged,
-        _ctx: &mut Context<Self, Self::Reply>,
-    ) {
+    async fn handle(&mut self, msg: SessionPhaseChanged, _ctx: &mut Context<Self, Self::Reply>) {
         self.handle_session_phase_changed(&msg).await;
     }
 }
@@ -182,16 +180,19 @@ impl QueueActor {
             provider_id,
             estimated_tokens,
             tool_definitions: assembled.tool_definitions,
-        }).await;
+        })
+        .await;
 
         self.publish(ChatEntrySubmitted {
             session_id: session_id.clone(),
             entry: entry.clone(),
-        }).await;
+        })
+        .await;
 
         self.publish(PersistSession {
             session_id: session_id.clone(),
-        }).await;
+        })
+        .await;
     }
 
     /// Dispatch a tool continuation: assemble prompt and emit SendToLlmProvider.
@@ -243,10 +244,10 @@ impl QueueActor {
             provider_id,
             estimated_tokens,
             tool_definitions: assembled.tool_definitions,
-        }).await;
+        })
+        .await;
     }
 }
-
 
 #[cfg(test)]
 mod tests;

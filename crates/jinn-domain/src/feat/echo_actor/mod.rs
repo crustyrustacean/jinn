@@ -28,12 +28,11 @@ impl Actor for EchoActor {
     type Args = EchoActorDeps;
     type Error = kameo::error::Infallible;
 
-    async fn on_start(
-        args: Self::Args,
-        actor_ref: ActorRef<Self>,
-    ) -> Result<Self, Self::Error> {
+    async fn on_start(args: Self::Args, actor_ref: ActorRef<Self>) -> Result<Self, Self::Error> {
         // Register to receive ChatEntrySubmitted events from the bus.
-        args.deps.register(actor_ref.recipient::<ChatEntrySubmitted>()).await;
+        args.deps
+            .subscribe(actor_ref.recipient::<ChatEntrySubmitted>())
+            .await;
 
         Ok(Self { deps: args.deps })
     }
@@ -89,22 +88,28 @@ mod tests {
     use std::time::Duration;
 
     use super::*;
-    use crate::common::bus::test_harness::{await_recorded, TestHarness};
+    use crate::common::bus::test_harness::{TestHarness, await_recorded};
     use crate::protocol::SessionId;
 
     #[tokio::test]
     async fn echo_actor_publishes_uppercase_push_chat_entry() {
         // Given an echo actor and a recorder, both registered on the bus.
         let harness = TestHarness::new().await;
-        let _echo = harness.spawn_actor::<EchoActor>(EchoActorDeps { deps: harness.actor_deps() }).await;
+        let _echo = harness
+            .spawn_actor::<EchoActor>(EchoActorDeps {
+                deps: harness.actor_deps(),
+            })
+            .await;
         let recorder = harness.spawn_recorder::<PushChatEntry>().await;
 
         // When publishing a ChatEntrySubmitted with a user message.
         let session_id = SessionId::new();
-        harness.publish(ChatEntrySubmitted {
-            session_id: session_id.clone(),
-            entry: ChatEntry::user("hello world"),
-        }).await;
+        harness
+            .publish(ChatEntrySubmitted {
+                session_id: session_id.clone(),
+                entry: ChatEntry::user("hello world"),
+            })
+            .await;
 
         // Then the recorder received a PushChatEntry with 'HELLO WORLD'.
         let recorded = await_recorded(&recorder, 1, Duration::from_secs(2)).await;
@@ -124,17 +129,26 @@ mod tests {
     async fn echo_actor_ignores_non_user_entries() {
         // Given an echo actor and a recorder, both registered on the bus.
         let harness = TestHarness::new().await;
-        let _echo = harness.spawn_actor::<EchoActor>(EchoActorDeps { deps: harness.actor_deps() }).await;
+        let _echo = harness
+            .spawn_actor::<EchoActor>(EchoActorDeps {
+                deps: harness.actor_deps(),
+            })
+            .await;
         let recorder = harness.spawn_recorder::<PushChatEntry>().await;
 
         // When publishing a ChatEntrySubmitted with a system (non-user) entry.
-        harness.publish(ChatEntrySubmitted {
-            session_id: SessionId::new(),
-            entry: ChatEntry::system("system message"),
-        }).await;
+        harness
+            .publish(ChatEntrySubmitted {
+                session_id: SessionId::new(),
+                entry: ChatEntry::system("system message"),
+            })
+            .await;
 
         // Then no PushChatEntry was published (echo ignores non-user entries).
         let recorded = await_recorded(&recorder, 1, Duration::from_millis(500)).await;
-        assert!(recorded.is_empty(), "expected no PushChatEntry for system entry");
+        assert!(
+            recorded.is_empty(),
+            "expected no PushChatEntry for system entry"
+        );
     }
 }
