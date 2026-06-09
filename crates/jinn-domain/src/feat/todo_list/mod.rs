@@ -26,6 +26,7 @@ use serde::{Deserialize, Serialize};
 const ID_CHARSET: &[u8] = b"abcdefghijklmnqrsuvwxyz0123456789";
 
 /// Generates 3 random characters from the ID charset.
+#[expect(clippy::expect_used, reason = "infallible")]
 fn generate_id_chars() -> [u8; 3] {
     let mut rng = rand::rng();
     [
@@ -47,6 +48,7 @@ fn generate_id_chars() -> [u8; 3] {
 pub struct PhaseId(String);
 
 impl PhaseId {
+    #[expect(clippy::expect_used, reason = "infallible")]
     fn new(existing: &[PhaseId]) -> Self {
         loop {
             let chars = generate_id_chars();
@@ -94,6 +96,7 @@ impl AsRef<str> for PhaseId {
 pub struct TaskId(String);
 
 impl TaskId {
+    #[expect(clippy::expect_used, reason = "charset is valid UTF-8")]
     fn new(existing: &[TaskId]) -> Self {
         loop {
             let chars = generate_id_chars();
@@ -229,11 +232,11 @@ pub enum TaskListError {
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 pub struct Task {
     /// Unique identifier for this task.
-    pub(crate) id: TaskId,
+    pub id: TaskId,
     /// Human-readable description of the task.
-    pub(crate) description: String,
+    pub description: String,
     /// Current status of the task.
-    pub(crate) status: TaskStatus,
+    pub status: TaskStatus,
 }
 
 impl Task {
@@ -264,11 +267,11 @@ impl Task {
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 pub struct Phase {
     /// Unique identifier for this phase.
-    pub(crate) id: PhaseId,
+    pub id: PhaseId,
     /// Human-readable description of the phase.
-    pub(crate) description: String,
+    pub description: String,
     /// Ordered tasks within this phase.
-    pub(crate) tasks: Vec<Task>,
+    pub tasks: Vec<Task>,
 }
 
 impl Phase {
@@ -325,7 +328,7 @@ impl Phase {
 pub struct TaskList {
     /// Ordered phases in this task list.
     #[serde(default)]
-    pub(crate) phases: Vec<Phase>,
+    pub phases: Vec<Phase>,
 }
 
 impl TaskList {
@@ -571,7 +574,9 @@ impl TaskList {
                         })?;
                 phase.tasks.insert(idx, new_task);
             }
-            TaskPosition::End => unreachable!(),
+            TaskPosition::End => {
+                phase.tasks.push(new_task);
+            }
         }
 
         Ok(new_task_id)
@@ -857,6 +862,7 @@ impl TaskList {
     /// Panics if `active_phase()` returns a phase with no `TaskStatus::Pending`
     /// task — which the constructor of `Phase` and `active_phase()` invariantly forbid.
     #[must_use]
+    #[expect(clippy::expect_used, reason = "infallible")]
     pub fn render_next_block(&self) -> String {
         if self.phases.is_empty() {
             return String::new();

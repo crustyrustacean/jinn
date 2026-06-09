@@ -62,6 +62,7 @@ pub fn handle_select_next(state: &mut AppState) -> IntentResult {
 ///
 /// If the cursor is on the first visible entry, pages the viewport up first,
 /// then moves the cursor back by exactly 1. Clamps at entry 0 - no wrapping.
+#[expect(clippy::else_if_without_else, reason = "no-op on fallthrough is intentional")]
 pub fn handle_select_prev(state: &mut AppState) -> IntentResult {
     validator::validate_chat_entry_select_prev(state);
     let session = state.active_session_mut();

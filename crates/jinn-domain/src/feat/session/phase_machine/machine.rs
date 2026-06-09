@@ -65,7 +65,7 @@ pub struct TransitionError {
 #[derive(Debug, Clone, Default, Serialize, Deserialize)]
 pub struct SessionPhaseMachine {
     /// The current phase.
-    pub(in crate::feat::session::phase_machine) phase: Phase,
+    phase: Phase,
     /// When `true`, `on_tool_batch_completed` transitions to `Idle`
     /// instead of continuing the tool loop. Set by judge verdict tools
     /// (`task_complete`, `task_incomplete`) during `Streaming` or `Sending`.

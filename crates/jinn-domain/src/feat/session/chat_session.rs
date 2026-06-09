@@ -107,25 +107,25 @@ impl LifecycleScriptState {
 pub struct SessionCoreEphemeral {
     /// Validated phase transition machine.
     /// The single source of truth for phase state.
-    pub(crate) machine: crate::feat::session::phase_machine::SessionPhaseMachine,
+    pub machine: crate::feat::session::phase_machine::SessionPhaseMachine,
     /// Turn dispatch queue - drives all turn transitions through a single processor.
-    pub(crate) message_queue: crate::feat::session::turn_queue::TurnQueue,
+    pub message_queue: crate::feat::session::turn_queue::TurnQueue,
     /// Cached context size in tokens (assembled prompt size).
     /// Updated when context is assembled. Not persisted across restarts.
     /// OWNER: session-actor.
-    pub(crate) cached_context_size: Option<u32>,
+    pub cached_context_size: Option<u32>,
 
     /// Number of active background operations (e.g., lifecycle tasks).
     /// Ephemeral: not persisted, not serialized.
     /// OWNER: session-actor.
     #[serde(skip)]
-    pub(crate) busy_count: usize,
+    pub busy_count: usize,
 
     /// Pending history mutation batches from background workers.
     /// Drained and applied at safe application points (tool batch completion,
     /// stream completion). Not persisted across restarts.
     #[serde(skip)]
-    pub(crate) pending_mutations: Vec<Vec<crate::feat::session::history_mutation::HistoryMutation>>,
+    pub pending_mutations: Vec<Vec<crate::feat::session::history_mutation::HistoryMutation>>,
 
     /// Discovered resources for THIS session, scoped to its cwd tree.
     /// Populated by the scan actors (skills / prompts / context-files).
@@ -133,19 +133,19 @@ pub struct SessionCoreEphemeral {
     /// OWNER: scan actors (SkillsScanActor / PromptScanActor / context-files actor).
     /// See `.plans/project-locals/plan.md` decision D3 — per-session isolation.
     #[serde(skip)]
-    pub(crate) discovered_skills: Vec<crate::feat::skills::Skill>,
+    pub discovered_skills: Vec<crate::feat::skills::Skill>,
 
     /// Discovered prompt templates for this session (merged global + project).
     /// OWNER: PromptScanActor.
     #[serde(skip)]
-    pub(crate) discovered_prompt_templates:
+    pub discovered_prompt_templates:
         crate::feat::context::prompt_template::PromptTemplateStore,
 
     /// Discovered AGENTS.md/CLAUDE.md context files for this session, ordered
     /// root-first (root ancestor first, cwd last) for prompt assembly.
     /// OWNER: context-files scan actor.
     #[serde(skip)]
-    pub(crate) discovered_context_files: Vec<crate::feat::context::env_context::ContextFile>,
+    pub discovered_context_files: Vec<crate::feat::context::env_context::ContextFile>,
 }
 
 // Core session state - owned by session-actor and context-actor.
@@ -162,7 +162,7 @@ fn default_cwd() -> std::path::PathBuf {
 }
 
 /// Serde default for [`SessionCore::persist`] — sessions persist unless explicitly marked transient.
-pub(crate) fn default_persist() -> bool {
+pub fn default_persist() -> bool {
     true
 }
 
@@ -170,91 +170,91 @@ pub(crate) fn default_persist() -> bool {
 pub struct SessionCore {
     /// Unique identifier for this session.
     /// Generated at construction. Matches the HashMap key in `SessionState.sessions`.
-    pub(crate) session_id: SessionId,
+    pub session_id: SessionId,
     /// Human-readable title. `None` until the first user message is sent.
     /// OWNER: session-actor (set on first user message, changeable by user).
     #[serde(default)]
     #[serde(skip_serializing_if = "Option::is_none")]
-    pub(crate) title: Option<String>,
+    pub title: Option<String>,
     /// When this session was last updated. Set at construction, updated on save.
-    pub(crate) updated_at: Timestamp,
+    pub updated_at: Timestamp,
     /// When this session was created. Set once at construction, never mutated.
-    pub(crate) created_at: Timestamp,
+    pub created_at: Timestamp,
     /// All messages in this conversation.
     /// OWNER: session-actor (creates/removes entries, restores history)
-    pub(crate) history: ChatHistory,
+    pub history: ChatHistory,
     /// Per-session model and strategy selection.
     /// OWNER: provider-actor (model), context-actor (strategy via SwitchPromptStrategy command)
-    pub(crate) profile: SessionProfile,
+    pub profile: SessionProfile,
     /// Working directory for tool execution in this session.
     /// OWNER: IntentHandler (set on session creation and cd commands)
     #[serde(default = "default_cwd")]
-    pub(crate) cwd: std::path::PathBuf,
+    pub cwd: std::path::PathBuf,
     /// Token usage ledger - one immutable record per request/response pair.
     /// OWNER: session-actor (records tokens on assembly and StreamCompleted).
     #[serde(default)]
-    pub(crate) token_ledger: Vec<TokenRecord>,
+    pub token_ledger: Vec<TokenRecord>,
     /// Parent session ID, if this session was forked from another.
     /// `None` means this is a root session.
     /// OWNER: session-actor (set at session creation).
     #[serde(default)]
-    pub(crate) parent_session: Option<SessionId>,
+    pub parent_session: Option<SessionId>,
 
     /// Generic blob storage for future subsystems.
     #[serde(default)]
-    pub(crate) blobs: HashMap<String, JsonValue>,
+    pub blobs: HashMap<String, JsonValue>,
     /// Name of the session lifecycle that created this session.
     /// `None` means the implicit "blank" lifecycle (no setup command).
     /// OWNER: IntentHandler (set on session creation).
     #[serde(default)]
-    pub(crate) lifecycle_name: Option<String>,
+    pub lifecycle_name: Option<String>,
     /// Arguments passed to the lifecycle setup command.
     /// Replayed during teardown so the same args are available.
     /// OWNER: IntentHandler (set on session creation).
     #[serde(default)]
-    pub(crate) lifecycle_args: Vec<String>,
+    pub lifecycle_args: Vec<String>,
     /// Whether this session is loaded in memory or archived in the database.
     /// OWNER: session-actor (transitions on close/archive/unarchive).
     #[serde(default)]
-    pub(crate) session_state: SessionState,
+    pub session_state: SessionState,
     /// Lifecycle script progression - one-way: NothingRan → SetupRan → TeardownRan.
     /// OWNER: session-actor (advances only after script success).
     #[serde(default)]
-    pub(crate) lifecycle_script_state: LifecycleScriptState,
+    pub lifecycle_script_state: LifecycleScriptState,
     /// Whether this session is program-initiated (plugin, subagent, judge, etc.),
     /// not a normal user conversation. When true, the session uses its
     /// `assembly_overrides` instead of global defaults and is hidden from the sidebar.
     /// OWNER: session-actor / plugin-dispatch-actor (set on creation).
     #[serde(default)]
-    pub(crate) is_automated: bool,
+    pub is_automated: bool,
 
     /// Whether this session should be persisted to disk. Default true; set
     /// false for transient automated sessions (e.g. plugin enrichment one-shots).
     /// OWNER: plugin-dispatch-actor (set on creation).
     #[serde(default = "default_persist")]
-    pub(crate) persist: bool,
+    pub persist: bool,
 
     /// Whether the user has meaningfully interacted with this session.
     /// Sessions with `has_interacted = false` are not persisted to disk.
     /// OWNER: session-actor (set via MarkSessionInteracted command).
     #[serde(default)]
-    pub(crate) has_interacted: bool,
+    pub has_interacted: bool,
     /// Assembly overrides for automated sessions. When set, these replace global
     /// defaults in `assemble_prompt`. Runtime-only - not persisted.
     /// OWNER: session-actor / plugin-dispatch-actor (set before first message).
     #[serde(skip)]
-    pub(crate) assembly_overrides: Option<crate::feat::context::assemble::AssemblyOverrides>,
+    pub assembly_overrides: Option<crate::feat::context::assemble::AssemblyOverrides>,
     /// Phased task list for agent session planning.
     /// OWNER: tools-actor (mutated by task list tools).
     #[serde(default)]
-    pub(crate) task_list: crate::feat::todo_list::TaskList,
+    pub task_list: crate::feat::todo_list::TaskList,
     /// Attached plugins - persistent per-session plugin attachments.
     /// OWNER: plugin-dispatch-actor (attach/detach/toggle).
     #[serde(default)]
-    pub(crate) attached_plugins: Vec<crate::feat::attached_plugin::AttachedPlugin>,
+    pub attached_plugins: Vec<crate::feat::attached_plugin::AttachedPlugin>,
     /// Runtime-only state - not persisted across restarts.
     #[serde(skip)]
-    pub(crate) ephemeral: SessionCoreEphemeral,
+    pub ephemeral: SessionCoreEphemeral,
 }
 
 impl Default for SessionCore {
@@ -294,11 +294,11 @@ impl Default for SessionCore {
 /// restoring when the user leaves the sidebar entirely to Normal scope,
 /// indicating they wanted to view the pinned entry in the history.
 #[derive(Debug, Clone, Default)]
-pub(crate) struct SavedHistoryPosition {
+pub struct SavedHistoryPosition {
     /// The scroll offset at the time of capture.
-    pub(crate) scroll_offset: Option<u16>,
+    pub scroll_offset: Option<u16>,
     /// The entry ID of the cursor at the time of capture.
-    pub(crate) selected_cursor_id: Option<ChatEntryId>,
+    pub selected_cursor_id: Option<ChatEntryId>,
 }
 
 /// UI state for a session - owned by IntentHandler (exempt from ownership restrictions).
@@ -307,71 +307,71 @@ pub(crate) struct SavedHistoryPosition {
 #[derive(Debug)]
 pub struct SessionUi {
     /// The user's in-progress message for this session.
-    pub(crate) chat_input: ChatInputBoxState,
+    pub chat_input: ChatInputBoxState,
     /// In-memory steering buffer for this session.
     ///
     /// Accumulates user-submitted text fragments that will be drained
     /// into a single `User` chat entry at the next prompt-assembly
     /// boundary. Not serialized - `SessionUi` itself is in-memory only,
     /// so this field is dropped on session close.
-    pub(crate) steering_buffer: SteeringBuffer,
+    pub steering_buffer: SteeringBuffer,
     /// Number of lines to skip from the top when rendering (ratatui scroll offset).
     ///
     /// `None` means "show the bottom of the conversation" (auto-scroll).
     /// `Some(n)` means the user has manually scrolled to offset `n`.
-    pub(crate) scroll_offset: Option<u16>,
+    pub scroll_offset: Option<u16>,
     /// The entry ID of the currently selected cursor position, if any.
     ///
     /// This is the source of truth for selection. The visual-item index
     /// is resolved on demand via `selected_entry_index()`.
     /// `None` means no entry is selected.
-    pub(crate) selected_cursor_id: Option<ChatEntryId>,
+    pub selected_cursor_id: Option<ChatEntryId>,
     /// The maximum scroll offset computed during the last render.
     ///
     /// Used by scroll handlers to resolve the "at bottom" sentinel into
     /// a concrete offset so `scroll_up` / `scroll_down` work correctly.
     /// Uses `AtomicU16` for interior mutability since the element receives `&self`.
-    pub(crate) last_max_offset: AtomicU16,
+    pub last_max_offset: AtomicU16,
     /// The actual viewport scroll offset after clamping and scroll-to-selected
     /// adjustment, as computed by the render pipeline.
     ///
     /// Unlike `scroll_offset` (the user's intent), this reflects what's
     /// actually displayed. Written by the renderer each frame, read by
     /// intent handlers to determine visible entries.
-    pub(crate) rendered_scroll_offset: AtomicU16,
+    pub rendered_scroll_offset: AtomicU16,
     /// Per-entry wrapped line ranges computed by the renderer each frame.
     ///
     /// `entry_line_ranges[i] = (start_wrapped_line, end_wrapped_line)` in wrapped
     /// coordinate space. Used by intent handlers to determine which entries are
     /// visible in the viewport.
-    pub(crate) entry_line_ranges: RwLock<Vec<(u16, u16)>>,
+    pub entry_line_ranges: RwLock<Vec<(u16, u16)>>,
     /// The viewport height (render area height) set by the renderer each frame.
-    pub(crate) viewport_height: AtomicU16,
+    pub viewport_height: AtomicU16,
     /// Number of blank lines prepended by the renderer for bottom-alignment.
-    pub(crate) blank_count: AtomicU16,
+    pub blank_count: AtomicU16,
     /// The set of chat entry IDs whose tool result content is expanded.
     ///
     /// When a tool result entry is expanded, its full content is shown
     /// instead of being truncated. This is ephemeral UI state - not persisted.
-    pub(crate) expanded_entries: HashSet<ChatEntryId>,
+    pub expanded_entries: HashSet<ChatEntryId>,
     /// Snapshot of chat log position before entering Pins sidebar section.
     ///
     /// `None` when not in a Pins browsing session. Set when the cursor enters
     /// Pins, restored when the cursor leaves to another section, discarded
     /// when leaving the sidebar to Normal.
-    pub(crate) saved_history_position: Option<SavedHistoryPosition>,
+    pub saved_history_position: Option<SavedHistoryPosition>,
     /// Entry IDs whose ignored blocks are currently *shown* (expanded).
     ///
     /// Default: empty (all ignored blocks are collapsed).
     /// Key: the ID of the first entry in the contiguous ignored block.
     /// Ephemeral - not persisted across restarts.
-    pub(crate) shown_ignored_blocks: HashSet<ChatEntryId>,
+    pub shown_ignored_blocks: HashSet<ChatEntryId>,
     /// The visual items list computed from flat history during render.
     ///
     /// Maps visual-item positions to either real entries or collapsed
     /// ignored blocks. Set by the renderer each frame, read by intent
     /// handlers for navigation and toggle.
-    pub(crate) visual_items: RwLock<Vec<crate::feat::ui::chat_log::visual_item::VisualItem>>,
+    pub visual_items: RwLock<Vec<crate::feat::ui::chat_log::visual_item::VisualItem>>,
     /// Tracks an active "x-sweep": holding `x` to apply a fixed ignore state
     /// across consecutive entries.
     ///
@@ -380,7 +380,7 @@ pub struct SessionUi {
     /// - `override`: the `ContextOverride` to apply to subsequent entries
     ///
     /// Cleared by: >100ms gap, or any non-`ChatEntryIgnoreSelected` intent.
-    pub(crate) ignore_sweep: Option<(
+    pub ignore_sweep: Option<(
         std::time::Instant,
         crate::feat::session::chat_entry::ContextOverride,
     )>,
@@ -444,10 +444,10 @@ impl Default for SessionUi {
 pub struct ChatSessionState {
     /// Core domain state managed by session-actor and context-actor.
     #[serde(flatten)]
-    pub(crate) core: SessionCore,
+    pub core: SessionCore,
     /// UI state managed by IntentHandler.
     #[serde(skip)]
-    pub(crate) ui: SessionUi,
+    pub ui: SessionUi,
 }
 
 impl ChatSessionState {
@@ -1086,7 +1086,7 @@ impl ChatSessionState {
     ///
     /// Searches recent history for a `ToolCall` entry matching the given ID.
     /// If not found (shouldn't happen in normal flow), pushes a new entry.
-    pub(crate) fn finalize_tool_call(&mut self, id: &str, name: &str, arguments: &str) {
+    pub fn finalize_tool_call(&mut self, id: &str, name: &str, arguments: &str) {
         for entry in self.core.history.iter_mut().rev() {
             if let ChatEntryKind::ToolCall {
                 id: ref entry_id, ..
@@ -1834,6 +1834,7 @@ impl ChatSessionState {
     ///
     /// Replaces the current history with the given entries. Used by session
     /// persistence to rehydrate a session from disk.
+    #[expect(clippy::else_if_without_else, reason = "no-op on fallthrough is intentional")]
     pub fn restore_history(&mut self, entries: Vec<ChatEntry>) {
         self.core.history.replace_all(entries);
         if self.core.history.is_empty() {
@@ -2079,7 +2080,7 @@ impl ChatSessionState {
     /// Call this before `sync_chat_log_cursor` changes the viewport.
     /// No-op if a position is already saved (prevents overwriting during
     /// a single Pins visit).
-    pub(crate) fn save_history_position(&mut self) {
+    pub fn save_history_position(&mut self) {
         if self.ui.saved_history_position.is_some() {
             return;
         }
@@ -2092,7 +2093,7 @@ impl ChatSessionState {
     /// Restores the chat log to the saved "pre-pin" position, if one exists.
     ///
     /// Consumes the saved position (take semantics).
-    pub(crate) fn restore_history_position(&mut self) {
+    pub fn restore_history_position(&mut self) {
         if let Some(saved) = self.ui.saved_history_position.take() {
             self.ui.scroll_offset = saved.scroll_offset;
             self.ui.selected_cursor_id = saved.selected_cursor_id;
@@ -2103,12 +2104,12 @@ impl ChatSessionState {
     ///
     /// Used when leaving the sidebar to Normal scope - the pin's position
     /// should persist in the chat log.
-    pub(crate) fn discard_saved_history_position(&mut self) {
+    pub fn discard_saved_history_position(&mut self) {
         self.ui.saved_history_position = None;
     }
 
     /// Returns whether there is a saved history position.
-    pub(crate) fn has_saved_history_position(&self) -> bool {
+    pub fn has_saved_history_position(&self) -> bool {
         self.ui.saved_history_position.is_some()
     }
 
@@ -2430,7 +2431,7 @@ impl ChatSessionState {
     }
 
     /// Set the session ID (used when inserting into a HashMap with an external key).
-    pub(crate) fn set_session_id(&mut self, id: SessionId) {
+    pub fn set_session_id(&mut self, id: SessionId) {
         self.core.session_id = id;
     }
 
@@ -2711,6 +2712,7 @@ impl Default for ChatSessionState {
 /// session.append_stream_token("world");
 /// ```
 #[cfg(test)]
+#[must_use]
 #[derive(Debug, Default)]
 pub struct ChatSessionStateBuilder {
     ops: Vec<BuilderOp>,

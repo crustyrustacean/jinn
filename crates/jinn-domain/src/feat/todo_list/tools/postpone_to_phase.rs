@@ -70,6 +70,7 @@ pub fn definition() -> ToolDefinition {
 /// # Panics
 ///
 /// Does not panic under normal operation. Panics indicate a bug.
+#[expect(clippy::expect_used, reason = "infallible")]
 pub fn execute(call: ToolCall, ctx: ToolContext) -> BoxedToolFuture {
     Box::pin(async move {
         let Some(state) = ctx.state else {

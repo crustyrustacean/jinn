@@ -108,7 +108,7 @@ fn try_parse_dollar(graphemes: &[&str], i: usize) -> Option<(Param, usize)> {
     let current = *graphemes.get(i)?;
     if current != "$" { return None; }
     let next = *graphemes.get(i + 1)?;
-    let Some(&first_byte) = next.as_bytes().first() else { return None };
+    let first_byte = *next.as_bytes().first()?;
     if next.len() == 1 && first_byte.is_ascii_digit() && first_byte != b'0' {
         let n = (first_byte - b'0') as usize;
         Some((Param::Positional(n), 2))
@@ -358,6 +358,7 @@ impl CommandTemplate {
 ///
 /// Pure function - no `&self`, no args, no param lookup.
 /// Unclosed `<` without a matching `>` is treated as static text (not a placeholder).
+#[expect(clippy::expect_used, reason = "infallible")]
 fn tokenize_spans(line: &str) -> Vec<Span> {
     static RE: std::sync::LazyLock<Regex> =
         std::sync::LazyLock::new(|| Regex::new("<([^>]+)>").expect("invalid regex"));

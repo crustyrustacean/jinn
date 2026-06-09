@@ -64,6 +64,7 @@ pub fn definition() -> ToolDefinition {
 }
 
 /// Executes the `add_task` tool.
+#[expect(clippy::unreachable, reason = "infallible")]
 pub fn execute(call: ToolCall, ctx: ToolContext) -> BoxedToolFuture {
     Box::pin(async move {
         let Some(state) = ctx.state else {

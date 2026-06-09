@@ -173,6 +173,7 @@ impl UserPreferencesStorageService {
     /// Panics if called before a successful `reload()` (or `save()`) has populated
     /// the cache. The panic message is descriptive — this is a programmer error,
     /// not an expected runtime condition.
+    #[expect(clippy::expect_used, reason = "infallible")]
     pub fn read(&self) -> UserPreferences {
         self.cache
             .read()

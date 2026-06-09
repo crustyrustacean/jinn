@@ -25,7 +25,7 @@ use crate::protocol::{Command, Event};
 /// downstream actors can sync their caches.
 pub struct PreferencesActor {
     /// Runtime services.
-    pub(crate) services: Services,
+    services: Services,
 }
 /// Dependencies for [`PreferencesActor`].
 pub struct PreferencesActorDeps {
@@ -74,3 +74,6 @@ impl PreferencesActor {
         }
     }
 }
+
+#[cfg(test)]
+mod preferences_actor_tests;

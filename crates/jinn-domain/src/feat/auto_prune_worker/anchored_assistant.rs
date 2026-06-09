@@ -109,6 +109,7 @@ fn collect_anchor_indices(history: &[ChatEntry]) -> Vec<usize> {
 /// Returns `(None, None)` only when there are no anchors at all. Otherwise
 /// returns distances where `None` means "no anchor on that side" (i.e.,
 /// distance is `∞`).
+#[expect(clippy::unreachable, reason = "infallible")]
 fn distances_to_nearest_anchors(
     idx: usize,
     anchor_indices: &[usize],

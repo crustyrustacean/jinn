@@ -153,8 +153,8 @@ impl PluginDispatchActor {
             }
             Event::SessionPhaseChanged(SessionPhaseChanged {
                 session_id,
-                old_phase: _,
                 new_phase,
+                ..
             }) => {
                 let hook_session = session_id.clone();
                 self.fire_on_phase_changed(&hook_session, new_phase);

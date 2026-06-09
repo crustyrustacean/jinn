@@ -37,6 +37,7 @@ impl<'a> RenderCtx<'a> {
 
     /// Attaches the sync plugin-hooks handle so render call sites can query
     /// hooks (e.g. badge directives) directly.
+    #[must_use]
     pub fn with_plugins(mut self, plugins: &'a dyn PluginSyncHooks) -> Self {
         self.plugins = Some(plugins);
         self

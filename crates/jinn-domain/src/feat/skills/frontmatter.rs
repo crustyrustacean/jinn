@@ -25,6 +25,7 @@ pub struct SkillFrontmatter {
 /// ```
 ///
 /// Returns `None` if no frontmatter block is found.
+#[expect(clippy::else_if_without_else, reason = "no-op on fallthrough is intentional")]
 pub fn parse_frontmatter(content: &str) -> Option<SkillFrontmatter> {
     let trimmed = content.trim_start();
     if !trimmed.starts_with("---") {

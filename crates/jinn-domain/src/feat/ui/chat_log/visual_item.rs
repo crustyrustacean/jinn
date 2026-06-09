@@ -48,6 +48,7 @@ pub enum VisualItem {
 /// - Contiguous ignored runs whose first entry's ID is in `shown_ignored_blocks`
 ///   are shown as individual `Entry` items.
 /// - All other contiguous ignored runs become a single `CollapsedIgnoredBlock`.
+#[expect(clippy::expect_used, reason = "infallible")]
 pub fn build_visual_items(
     history: &[ChatEntry],
     shown_ignored_blocks: &HashSet<ChatEntryId>,
@@ -164,6 +165,7 @@ pub fn entry_id_from_visual_item(item: &VisualItem, history: &[ChatEntry]) -> Op
 mod tests {
     #![allow(
         clippy::expect_used,
+        clippy::map_with_unused_argument_over_ranges,
         clippy::panic,
         clippy::unreachable,
         clippy::indexing_slicing,

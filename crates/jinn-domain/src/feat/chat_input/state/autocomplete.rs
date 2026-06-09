@@ -24,15 +24,15 @@ pub enum AutocompleteTrigger {
 #[derive(Debug, Clone)]
 pub struct AutocompleteState {
     /// What triggered this autocomplete session.
-    pub(super) trigger: AutocompleteTrigger,
+    pub trigger: AutocompleteTrigger,
     /// Grapheme index where the trigger character (`#` or `/`) sits in the input buffer.
-    pub(super) token_start: usize,
+    pub token_start: usize,
     /// Index of the currently highlighted match (0 = first in the list).
     /// The list is ordered least-relevant (index 0) to most-relevant (last index).
-    pub(super) selected_index: usize,
+    pub selected_index: usize,
     /// Current fuzzy matches, ordered least-relevant first, most-relevant last.
     /// Capped at 20 entries.
-    pub(super) matches: Vec<crate::feat::chat_input::AutocompleteMatch>,
+    pub matches: Vec<crate::feat::chat_input::AutocompleteMatch>,
 }
 
 impl AutocompleteState {

@@ -241,6 +241,7 @@ fn apply_array(
     }
 }
 
+#[expect(clippy::expect_used, reason = "infallible")]
 fn apply_array_of_tables_by_key(
     new: &[toml::Value],
     target: &mut Item,
@@ -378,6 +379,7 @@ fn entry_exists_with_key(array: &ArrayOfTables, key_field: &str, key_value: &str
     false
 }
 
+#[expect(clippy::expect_used, reason = "infallible")]
 fn apply_scalar(new: &toml::Value, target: &mut Item) {
     let new_value = value_to_value_edit(new);
     if target.is_value() {

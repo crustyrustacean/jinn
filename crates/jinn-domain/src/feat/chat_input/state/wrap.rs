@@ -82,6 +82,7 @@ pub fn wrap_text(text: &str, width: usize) -> Vec<WrappedLine> {
 ///
 /// Each grapheme is counted as 1 column. Word boundaries are at whitespace
 /// graphemes. Long words that exceed `width` are broken at grapheme boundaries.
+#[expect(clippy::else_if_without_else, reason = "no-op on fallthrough is intentional")]
 fn wrap_logical_line(
     graphemes: &[&str],
     width: usize,

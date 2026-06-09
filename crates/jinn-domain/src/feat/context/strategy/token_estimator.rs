@@ -147,6 +147,7 @@ impl TiktokenCounter {
     /// Panics if the `o200k_base` encoding is unavailable, which should never happen
     /// as it is a built-in tiktoken encoding.
     #[must_use]
+    #[expect(clippy::expect_used, reason = "infallible")]
     pub fn o200k_base() -> Self {
         static ENCODING: OnceLock<Option<&'static tiktoken::CoreBpe>> = OnceLock::new();
         let encoder = ENCODING
