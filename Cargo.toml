@@ -37,6 +37,8 @@ jinn-plugin = { workspace = true }
 jinn-web-fetch = { workspace = true, features = ["headless-chrome"] }
 clap_complete = { workspace = true }
 tokio = { workspace = true }
+kameo = { workspace = true }
+kameo_actors = { workspace = true }
 kanal = { workspace = true }
 async-trait = { workspace = true }
 wherror = { workspace = true }
@@ -91,6 +93,11 @@ tokio = { version = "1", features = ["full"] }
 kanal = "0.1"
 dashmap = "6"
 futures = "0.3"
+
+
+# Actor framework
+kameo = "0.20"
+kameo_actors = "0.5"
 
 # UI
 ratatui = { version = "0.30.0", features = ["unstable-rendered-line-info"] }

@@ -22,3 +22,5 @@ pub struct SessionPhaseChanged {
     /// The new phase after the transition.
     pub new_phase: PhaseKind,
 }
+
+impl crate::common::bus::BusMessage for SessionPhaseChanged {}

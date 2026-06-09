@@ -56,6 +56,8 @@ pub struct PersistSession {
     pub session_id: SessionId,
 }
 
+impl crate::common::bus::BusMessage for PersistSession {}
+
 /// Request to set a session's working directory.
 ///
 /// Sent by the CWD input popup and CWD selector instead of mutating state

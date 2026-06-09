@@ -29,6 +29,8 @@ use tokio::runtime::Handle;
 
 pub mod actor_channel;
 
+pub mod bus_service;
+
 #[cfg(test)]
 mod actor_channel_tests;
 
@@ -73,7 +75,6 @@ pub struct Services {
     pub plugin_sync: crate::feat::plugin_dispatch::PluginSyncCallService,
     /// Per-session plugin registry (manages isolated Lua states for attached plugins).
     pub session_plugin_registry: crate::feat::plugin_system::SessionPluginRegistryService,
-
     /// Test-only owned temp directory. `None` in production.
     ///
     /// Held here so the dir outlives the [`AppPaths`] that points at it
@@ -82,8 +83,17 @@ pub struct Services {
     /// real user dirs.
     #[debug(skip)]
     pub tempdir: Option<Arc<tempfile::TempDir>>,
-}
 
+    /// Kameo message bus for type-based pub/sub routing.
+    /// `None` in tests and during migration; `Some` in production after wiring.
+    #[debug(skip)]
+    pub bus: Option<bus_service::BusService>,
+
+    /// Kanal closure bridge from sync TUI to async bus.
+    /// `None` in tests and during migration; `Some` in production after wiring.
+    #[debug(skip)]
+    pub bridge: Option<crate::common::bridge::Bridge>,
+}
 impl Default for Services {
     fn default() -> Self {
         Self::new()
@@ -161,6 +171,8 @@ impl Services {
                     as std::sync::Arc<dyn crate::feat::plugin_system::SessionPluginRegistry>,
             ),
             tempdir: Some(tempdir),
+            bus: None,
+            bridge: None,
         }
     }
 }

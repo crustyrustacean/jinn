@@ -41,6 +41,8 @@ pub use common::render_ctx::RenderCtx;
 pub use common::state::{State, StateReadGuard, StateWriteGuard};
 pub use common::tui_signals::TuiSignals;
 pub use common::{AppUiRegistry, register_all_ui_elements};
+pub use common::bridge::Bridge;
+pub use common::bus::BusMessage;
 pub use feat::context::prompt_template::PromptTemplateStore;
 pub use feat::plugin_dispatch::{
     BadgeDirective, BadgeSegment, InterceptOutcome, PluginSyncHooks, call_hooks_typed,
@@ -52,7 +54,9 @@ pub use common::services::NoopPluginFire;
 pub use common::services::NoopPluginSyncCall;
 pub use common::services::NoopSessionPluginRegistry;
 pub use common::services::Services;
+pub use common::services::bus_service::BusService;
 pub use common::services::test_services::TestServices;
+
 
 // Re-export core types
 pub use common::core::{
