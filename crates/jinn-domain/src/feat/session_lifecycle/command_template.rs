@@ -105,10 +105,9 @@ pub struct CommandTemplate {
 /// Returns `Some((Param, graphemes_consumed))` on success, `None` if position `i`
 /// is not a recognized dollar token.
 fn try_parse_dollar(graphemes: &[&str], i: usize) -> Option<(Param, usize)> {
-    if graphemes[i] != "$" || i + 1 >= graphemes.len() {
-        return None;
-    }
-    let next = graphemes[i + 1];
+    let current = *graphemes.get(i)?;
+    if current != "$" { return None; }
+    let next = *graphemes.get(i + 1)?;
     if next.len() == 1 && next.as_bytes()[0].is_ascii_digit() && next != "0" {
         let n = (next.as_bytes()[0] - b'0') as usize;
         Some((Param::Positional(n), 2))
@@ -125,16 +124,15 @@ fn try_parse_dollar(graphemes: &[&str], i: usize) -> Option<(Param, usize)> {
 /// `<name>` token is found (non-empty name, closing `>` present).
 /// Returns `None` otherwise.
 fn try_parse_named(graphemes: &[&str], i: usize) -> Option<(Param, usize)> {
-    if graphemes[i] != "<" {
-        return None;
-    }
+    if graphemes.get(i)? != &"<" { return None; }
     let start = i + 1;
     let mut end = start;
-    while end < graphemes.len() && graphemes[end] != ">" {
+    while let Some(g) = graphemes.get(end) {
+        if *g == ">" { break; }
         end += 1;
     }
-    if end > start && end < graphemes.len() {
-        let name: String = graphemes[start..end].join("");
+    if end > start && graphemes.get(end) == Some(&">") {
+        let name: String = graphemes.get(start..end)?.join("");
         Some((Param::Named(name), end - i + 1))
     } else {
         None
@@ -229,8 +227,8 @@ impl CommandTemplate {
             match param {
                 Param::Named(name) => {
                     let search = format!("<{name}>");
-                    let replacement = if arg_idx < args.len() {
-                        shell_quote(&args[arg_idx])
+                    let replacement = if let Some(arg) = args.get(arg_idx) {
+                        shell_quote(arg)
                     } else {
                         String::new()
                     };
@@ -239,8 +237,8 @@ impl CommandTemplate {
                 }
                 Param::Positional(_n) => {
                     let search = format!("{param}");
-                    let replacement = if arg_idx < args.len() {
-                        shell_quote(&args[arg_idx])
+                    let replacement = if let Some(arg) = args.get(arg_idx) {
+                        shell_quote(arg)
                     } else {
                         String::new()
                     };
@@ -255,11 +253,13 @@ impl CommandTemplate {
 
         // Replace $@ and $* with remaining args (those not consumed by non-splat params).
         if self.has_splat() {
-            let joined = args[arg_idx..]
-                .iter()
-                .map(|a| shell_quote(a))
-                .collect::<Vec<_>>()
-                .join(" ");
+            let joined = args.get(arg_idx..)
+                .map(|remaining| remaining
+                    .iter()
+                    .map(|a| shell_quote(a))
+                    .collect::<Vec<_>>()
+                    .join(" "))
+                .unwrap_or_default();
             result = result.replace("$@", &joined);
             result = result.replace("$*", &joined);
         }
@@ -418,9 +418,9 @@ fn substitute_spans(spans: Vec<Span>, params: &[Param], args: &[String]) -> Vec<
                 match token_map.iter().find(|(tok, _, _)| *tok == full_token) {
                     Some((_, param_idx, arg_off)) => {
                         let display_text = if *arg_off < args.len() {
-                            match &params[*param_idx] {
-                                Param::Splat => args[*arg_off..].join(" "),
-                                _ => args[*arg_off].clone(),
+                            match params.get(*param_idx) {
+                                Some(Param::Splat) => args.get(*arg_off..).map(|s| s.join(" ")).unwrap_or_default(),
+                                _ => args.get(*arg_off).cloned().unwrap_or_default(),
                             }
                         } else {
                             full_token.clone()
@@ -474,14 +474,14 @@ pub fn split_preserving_quotes(input: &str) -> Vec<String> {
     let mut i = 0;
 
     while i < graphemes.len() {
-        let g = graphemes[i];
+        let Some(g) = graphemes.get(i).copied() else { break };
         if in_quotes {
             if g == "\\" {
                 // Backslash escape inside quotes: next grapheme is literal (skip backslash).
                 current.push('\\');
                 i += 1;
-                if i < graphemes.len() {
-                    current.push_str(graphemes[i]);
+                if let Some(next) = graphemes.get(i).copied() {
+                    current.push_str(next);
                 }
             } else if g == "\"" {
                 // End of quoted section - keep the quote char.
@@ -494,8 +494,8 @@ pub fn split_preserving_quotes(input: &str) -> Vec<String> {
             // Backslash escape outside quotes.
             current.push('\\');
             i += 1;
-            if i < graphemes.len() {
-                current.push_str(graphemes[i]);
+            if let Some(next) = graphemes.get(i).copied() {
+                current.push_str(next);
             }
         } else if g == "\"" {
             // Start of quoted section - keep the quote char.
@@ -544,13 +544,13 @@ pub fn parse_quoted_args(input: &str) -> Vec<String> {
     let mut i = 0;
 
     while i < graphemes.len() {
-        let g = graphemes[i];
+        let Some(g) = graphemes.get(i).copied() else { break };
         if in_quotes {
             if g == "\\" {
                 // Backslash escape inside quotes: next grapheme is literal.
                 i += 1;
-                if i < graphemes.len() {
-                    current.push_str(graphemes[i]);
+                if let Some(next) = graphemes.get(i).copied() {
+                    current.push_str(next);
                 } else {
                     // Trailing backslash - treat as literal.
                     current.push('\\');
@@ -564,8 +564,8 @@ pub fn parse_quoted_args(input: &str) -> Vec<String> {
         } else if g == "\\" {
             // Backslash escape outside quotes.
             i += 1;
-            if i < graphemes.len() {
-                current.push_str(graphemes[i]);
+            if let Some(next) = graphemes.get(i).copied() {
+                current.push_str(next);
             } else {
                 current.push('\\');
             }
