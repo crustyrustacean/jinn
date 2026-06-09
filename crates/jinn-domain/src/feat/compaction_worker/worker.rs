@@ -328,7 +328,7 @@ impl CompactionWorker {
     ///
     /// `pub(crate)` for testing - the real entry points are [`evaluate`] (trait)
     /// and [`evaluate_for_session`] (trigger-based).
-    #[expect(clippy::too_many_arguments, reason = "handler reads best as a single unit")
+    #[expect(clippy::too_many_arguments, reason = "handler reads best as a single unit")]
     pub(crate) async fn evaluate_with_config(
         &self,
         history: &[ChatEntry],
