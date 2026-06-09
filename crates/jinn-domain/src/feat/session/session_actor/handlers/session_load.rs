@@ -34,7 +34,7 @@ impl SessionPersistenceActor {
             let model = if loaded.model() == crate::feat::provider_infra::NO_PROVIDER_ID {
                 state
                     .frontend
-                    .preferences
+                    .app_state
                     .last_model
                     .clone()
                     .unwrap_or_else(|| crate::feat::provider_infra::NO_PROVIDER_ID.to_owned())

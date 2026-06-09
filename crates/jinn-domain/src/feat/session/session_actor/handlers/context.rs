@@ -90,7 +90,7 @@ impl SessionPersistenceActor {
     /// Stores loaded personas in state and selects the active persona.
     ///
     /// Priority:
-    /// 1. Honor prefs.persona_name if set and found in list.
+    /// 1. Honor state.persona_name if set and found in list.
     /// 2. Keep current active_persona if it still exists in the new list.
     /// 3. Fallback to `"coding-assistant"` by name.
     /// 4. If coding-assistant not found, pick first available.
@@ -110,7 +110,7 @@ impl SessionPersistenceActor {
 
         let target_name = state
             .frontend
-            .preferences
+            .app_state
             .persona_name
             .as_deref()
             .filter(|name| payload.personas.iter().any(|p| p.name == *name))

@@ -23,6 +23,7 @@ use crate::feat::chat_input::protocol::command::{
 use crate::feat::context::protocol::command::{
     LoadPersonaPickerEntries, PinChatEntry, RescanPersonas, ScanContextFiles, UnpinChatEntry,
 };
+use crate::feat::preferences_actor::protocol::app_state_command::UpdateAppState;
 use crate::feat::preferences_actor::protocol::command::UpdatePreferences;
 use crate::feat::provider::protocol::command::{
     CancelStream, LoadProviderPickerEntries, ProviderSwitch, RefreshModels, RescanPromptTemplates,
@@ -113,6 +114,8 @@ pub enum Command {
     LoadPersonaPickerEntries(LoadPersonaPickerEntries),
     /// Update one or more user preferences (persisted to jinn.toml).
     UpdatePreferences(UpdatePreferences),
+    /// Update one or more app-state fields (persisted to state.toml).
+    UpdateAppState(UpdateAppState),
     /// Request to fork a session at a specific entry ordinal.
     SessionForkRequested(SessionForkRequested),
     /// Run a lifecycle setup command asynchronously.
@@ -187,6 +190,7 @@ impl Command {
             Self::RescanPersonas(..) => Some(RescanPersonas::NAME),
             Self::LoadPersonaPickerEntries(..) => Some(LoadPersonaPickerEntries::NAME),
             Self::UpdatePreferences(..) => Some(UpdatePreferences::NAME),
+            Self::UpdateAppState(..) => Some(UpdateAppState::NAME),
             Self::SessionForkRequested(..) => Some(SessionForkRequested::NAME),
             Self::RunSessionSetup(..) => Some(RunSessionSetup::NAME),
             Self::RunSessionTeardown(..) => Some(RunSessionTeardown::NAME),
@@ -304,6 +308,10 @@ impl std::fmt::Display for Command {
             Command::UpdatePreferences(payload) => {
                 write!(f, "update preferences ({} diff(s))", payload.updates.len())
             }
+            Command::UpdateAppState(payload) => {
+                write!(f, "update app state ({} diff(s))", payload.updates.len())
+            }
+
             Command::SessionForkRequested(payload) => {
                 write!(f, "session fork at ordinal {}", payload.at_ordinal)
             }
