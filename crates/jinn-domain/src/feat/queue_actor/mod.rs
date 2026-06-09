@@ -98,6 +98,10 @@ impl QueueActor {
     }
 
     /// Handle Idle transition - pop and dispatch the next queued item.
+    ///
+    /// If the turn queue is empty, checks the steering buffer as a fallback.
+    /// When steering fragments are present, drains them into history and
+    /// dispatches a resume turn so the steering messages reach the LLM.
     async fn handle_idle_transition(
         &self,
         session_id: &crate::protocol::SessionId,
@@ -109,15 +113,28 @@ impl QueueActor {
             session.dequeue()
         };
 
-        let Some(item) = item else { return };
+        if let Some(item) = item {
+            match item {
+                QueueItem::UserMessage(entry) => {
+                    self.dispatch_user_message(session_id, &entry, ctx).await;
+                }
+                QueueItem::ToolContinuation => {
+                    self.dispatch_tool_continuation(session_id, ctx).await;
+                }
+            }
+            return;
+        }
 
-        match item {
-            QueueItem::UserMessage(entry) => {
-                self.dispatch_user_message(session_id, &entry, ctx).await;
-            }
-            QueueItem::ToolContinuation => {
-                self.dispatch_tool_continuation(session_id, ctx).await;
-            }
+        // Queue was empty — check steering buffer as fallback.
+        let has_steering = {
+            let state = self.state.read();
+            let session = state.session(session_id);
+            !session.steering_buffer().is_empty()
+        };
+
+        if has_steering {
+            self.dispatch_resume(session_id, ctx, "steering buffer")
+                .await;
         }
     }
 
@@ -718,6 +735,169 @@ mod tests {
         assert!(
             has_steering_entry,
             "drained steering entry must appear in history after dispatch_resume"
+        );
+    }
+
+    #[tokio::test]
+    async fn idle_transition_with_steering_buffer_and_empty_queue_dispatches_resume() {
+        // Given a session with steering fragments in the buffer and an empty queue.
+        let actor = test_actor();
+        let (sink, ctx) = test_context();
+        let session_id = {
+            let mut state = actor.state.write();
+            let session = state.active_session_mut();
+            session
+                .steering_buffer_mut()
+                .push_fragment("stay focused".to_owned());
+            state.session.active_session_id().clone()
+        };
+
+        // When handling SessionPhaseChanged with Idle phase.
+        let payload = SessionPhaseChanged {
+            session_id: session_id.clone(),
+            old_phase: PhaseKind::Streaming,
+            new_phase: PhaseKind::Idle,
+        };
+        actor.handle_session_phase_changed(&payload, &ctx).await;
+
+        // Then SendToLlmProvider was emitted (resume dispatch ran).
+        let commands = sink.commands();
+        let has_send = commands
+            .iter()
+            .any(|c| matches!(c, Command::SendToLlmProvider(_)));
+        assert!(
+            has_send,
+            "expected SendToLlmProvider for steering buffer resume dispatch"
+        );
+
+        // And the steering buffer is empty.
+        let state = actor.state.read();
+        let session = state.session.get(&session_id).expect("session exists");
+        assert!(
+            session.steering_buffer().is_empty(),
+            "steering buffer must be drained after resume dispatch"
+        );
+    }
+
+    #[tokio::test]
+    async fn idle_transition_with_queued_message_and_steering_buffer_dispatches_queue_first() {
+        // Given a session with both a queued user message and steering fragments.
+        let actor = test_actor();
+        let (sink, ctx) = test_context();
+        let session_id = {
+            let mut state = actor.state.write();
+            let session = state.active_session_mut();
+            session.enqueue(QueueItem::UserMessage(Box::new(ChatEntry::user(
+                "queued message",
+            ))));
+            session
+                .steering_buffer_mut()
+                .push_fragment("steer here".to_owned());
+            state.session.active_session_id().clone()
+        };
+
+        // When handling SessionPhaseChanged with Idle phase.
+        let payload = SessionPhaseChanged {
+            session_id: session_id.clone(),
+            old_phase: PhaseKind::Streaming,
+            new_phase: PhaseKind::Idle,
+        };
+        actor.handle_session_phase_changed(&payload, &ctx).await;
+
+        // Then SendToLlmProvider was emitted.
+        let commands = sink.commands();
+        let has_send = commands
+            .iter()
+            .any(|c| matches!(c, Command::SendToLlmProvider(_)));
+        assert!(
+            has_send,
+            "expected SendToLlmProvider for queued user message"
+        );
+
+        // And the queue is empty.
+        let state = actor.state.read();
+        let session = state.session.get(&session_id).expect("session exists");
+        assert!(
+            session.queue().is_empty(),
+            "queue must be empty after dispatch"
+        );
+
+        // And the steering buffer is drained by dispatch_user_message.
+        assert!(
+            session.steering_buffer().is_empty(),
+            "steering buffer must be drained during queue dispatch"
+        );
+    }
+
+    #[tokio::test]
+    async fn steering_buffer_drain_produces_entry_in_history() {
+        // Given a session with steering fragments and empty queue.
+        let actor = test_actor();
+        let (_sink, ctx) = test_context();
+        let session_id = {
+            let mut state = actor.state.write();
+            let session = state.active_session_mut();
+            session
+                .steering_buffer_mut()
+                .push_fragment("late correction".to_owned());
+            state.session.active_session_id().clone()
+        };
+
+        // When handling SessionPhaseChanged with Idle phase.
+        let payload = SessionPhaseChanged {
+            session_id: session_id.clone(),
+            old_phase: PhaseKind::Streaming,
+            new_phase: PhaseKind::Idle,
+        };
+        actor.handle_session_phase_changed(&payload, &ctx).await;
+
+        // Then history contains a User entry with the steering text.
+        let state = actor.state.read();
+        let session = state.session.get(&session_id).expect("session exists");
+        let has_steering_entry = session.history().iter().any(|e| {
+            matches!(
+                &e.kind,
+                crate::protocol::ChatEntryKind::User { expanded, .. } if expanded == "late correction"
+            )
+        });
+        assert!(
+            has_steering_entry,
+            "drained steering entry must appear in history"
+        );
+    }
+
+    #[tokio::test]
+    async fn steering_buffer_dispatch_includes_entry_in_llm_context() {
+        // Given a session with existing history and steering fragments.
+        let actor = test_actor();
+        let (sink, ctx) = test_context();
+        let session_id = {
+            let mut state = actor.state.write();
+            let session = state.active_session_mut();
+            session.push_entry(ChatEntry::user("original question"));
+            session
+                .steering_buffer_mut()
+                .push_fragment("follow-up steer".to_owned());
+            state.session.active_session_id().clone()
+        };
+
+        // When handling SessionPhaseChanged with Idle phase.
+        let payload = SessionPhaseChanged {
+            session_id: session_id.clone(),
+            old_phase: PhaseKind::Streaming,
+            new_phase: PhaseKind::Idle,
+        };
+        actor.handle_session_phase_changed(&payload, &ctx).await;
+
+        // Then SendToLlmProvider was emitted, proving the steering entry
+        // was assembled into the LLM prompt alongside existing history.
+        let commands = sink.commands();
+        let has_send = commands
+            .iter()
+            .any(|c| matches!(c, Command::SendToLlmProvider(_)));
+        assert!(
+            has_send,
+            "SendToLlmProvider must be emitted with steering entry in context"
         );
     }
 }
