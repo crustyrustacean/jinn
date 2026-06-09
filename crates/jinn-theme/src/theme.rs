@@ -37,10 +37,6 @@ pub struct Theme {
     /// Streaming indicator color.
     pub streaming: Color,
 
-    // Workflow
-    /// Color for node status indicating user input is needed.
-    pub node_awaiting_input: Color,
-
     // Chat log backgrounds
     /// Gutter column background (left margin).
     pub gutter_bg: Color,
@@ -140,9 +136,6 @@ pub struct ThemeFile {
     pub warning: Option<ThemeColor>,
     #[serde(default)]
     pub streaming: Option<ThemeColor>,
-
-    #[serde(default)]
-    pub node_awaiting_input: Option<ThemeColor>,
 
     #[serde(default)]
     pub gutter_bg: Option<ThemeColor>,
@@ -255,10 +248,7 @@ impl ThemeFile {
             streaming: self
                 .streaming
                 .map_or(fallback.streaming, crate::color::ThemeColor::inner),
-            node_awaiting_input: self.node_awaiting_input.map_or(
-                fallback.node_awaiting_input,
-                crate::color::ThemeColor::inner,
-            ),
+
             gutter_bg: self
                 .gutter_bg
                 .map_or(fallback.gutter_bg, crate::color::ThemeColor::inner),
@@ -375,7 +365,7 @@ impl ThemeFile {
             success: Self::resolve_field(self.success),
             warning: Self::resolve_field(self.warning),
             streaming: Self::resolve_field(self.streaming),
-            node_awaiting_input: Self::resolve_field(self.node_awaiting_input),
+
             gutter_bg: Self::resolve_field(self.gutter_bg),
             gutter_context_included: Self::resolve_field(self.gutter_context_included),
             user_block_bg: Self::resolve_field(self.user_block_bg),
@@ -430,7 +420,7 @@ mod tests {
             success: None,
             warning: None,
             streaming: None,
-            node_awaiting_input: None,
+
             gutter_bg: None,
             gutter_context_included: None,
             user_block_bg: None,
@@ -490,7 +480,7 @@ mod tests {
             success: None,
             warning: None,
             streaming: None,
-            node_awaiting_input: None,
+
             gutter_bg: None,
             gutter_context_included: None,
             user_block_bg: None,
@@ -558,7 +548,7 @@ mod tests {
             success: Some(ThemeColor(Color::Green)),
             warning: Some(ThemeColor(Color::Yellow)),
             streaming: Some(ThemeColor(Color::Cyan)),
-            node_awaiting_input: Some(ThemeColor(Color::Cyan)),
+
             gutter_bg: Some(ThemeColor(Color::Rgb(25, 27, 30))),
             gutter_context_included: Some(ThemeColor(Color::Rgb(30, 50, 110))),
             user_block_bg: Some(ThemeColor(Color::Rgb(52, 53, 65))),
@@ -624,7 +614,7 @@ mod tests {
             success: None,
             warning: None,
             streaming: None,
-            node_awaiting_input: None,
+
             gutter_bg: None,
             gutter_context_included: None,
             user_block_bg: None,

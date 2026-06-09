@@ -1020,8 +1020,7 @@ fn slash_autocomplete_tab_completes_name() {
     crate::feat::chat_input::intent::handle_insert_char('/', &mut state);
 
     // Navigate to the "new" entry (default selection is the last entry).
-    // Entries: compact(0), new(1), workflow(2). Default = 2. Move up once.
-    let _ = crate::feat::chat_input::intent::handle_move_cursor_up(&mut state);
+    // Entries: compact(0), compact-all(1), new(2). Default = 2 (= new).
 
     // When confirming autocomplete (Tab).
     let _ = crate::feat::chat_input::intent::handle_autocomplete_confirm(&mut state);
@@ -1248,8 +1247,8 @@ fn tab_completes_name_without_executing() {
     crate::feat::chat_input::intent::handle_insert_char('/', &mut state);
     let old_id = state.session.active_session_id().clone();
 
-    // Navigate to the "new" entry (default selection is the last entry).
-    let _ = crate::feat::chat_input::intent::handle_move_cursor_up(&mut state);
+    // The default selection is "new" (last entry). No navigation needed.
+    // Entries: compact(0), compact-all(1), new(2). Default = 2 (= new).
 
     // When confirming autocomplete (Tab).
     let _ = crate::feat::chat_input::intent::handle_autocomplete_confirm(&mut state);
@@ -1283,8 +1282,8 @@ fn enter_completes_and_executes_slash_command() {
     crate::feat::chat_input::intent::handle_insert_char('/', &mut state);
     let old_id = state.session.active_session_id().clone();
 
-    // Navigate to the "new" entry (default selection is the last entry).
-    let _ = crate::feat::chat_input::intent::handle_move_cursor_up(&mut state);
+    // The default selection is the last entry ("new"). No navigation needed.
+    // Entries: compact(0), compact-all(1), new(2). Default = 2 (= new).
 
     // When pressing Enter (SubmitMessage with autocomplete active).
     let _result = crate::feat::chat_input::intent::handle_submit_message(&mut state);
