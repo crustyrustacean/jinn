@@ -99,7 +99,9 @@ impl Sidebar {
                     width: area.width,
                     height: section_height,
                 };
-                self.sections[last_idx].render(frame, section_area, ctx);
+                if let Some(section) = self.sections.get_mut(last_idx) {
+                    section.render(frame, section_area, ctx);
+                }
             }
         }
     }

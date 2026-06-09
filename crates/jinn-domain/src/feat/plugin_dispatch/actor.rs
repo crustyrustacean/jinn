@@ -481,7 +481,9 @@ impl PluginDispatchActor {
             "hook": payload.hook,
         });
         if let Some(text) = payload.text {
-            ctx_json["text"] = serde_json::Value::String(text);
+            if let Some(map) = ctx_json.as_object_mut() {
+                map.insert("text".to_owned(), serde_json::Value::String(text));
+            }
         }
 
         self.spawn_fire_for_session(&payload.session_id, &payload.hook, &ctx_json);

@@ -358,12 +358,12 @@ impl CompactionWorker {
         // Step 4: Collect entries for serialization.
         let entries_to_serialize: Vec<ChatEntry> = gathered_indices
             .iter()
-            .map(|&i| history[i].clone())
+            .map(|&i| history.get(i).expect("index from gathered_indices").clone())
             .collect();
 
         // Step 5: Check for previous compaction summary.
         let previous_summary = if start_index > 0 {
-            let prev = &history[start_index - 1];
+            let Some(prev) = history.get(start_index - 1) else { return Err(error_stack::Report::new(CompactionError).attach("start_index out of bounds")) };
             if let ChatEntryKind::Compaction { summary, .. } = &prev.kind {
                 Some(summary.clone())
             } else {
@@ -406,7 +406,7 @@ impl CompactionWorker {
 
         // 8a: Set ForcedExclude for each gathered entry.
         for &idx in &gathered_indices {
-            let entry = &history[idx];
+            let Some(entry) = history.get(idx) else { continue };
             mutations.push(HistoryMutation::SetContextOverride {
                 entry_id: entry.id.clone(),
                 value: ContextOverride::ForcedExclude,
@@ -431,7 +431,7 @@ impl CompactionWorker {
             None,
         );
 
-        let last_gathered_id = gathered_indices.last().map(|&idx| history[idx].id.clone());
+        let last_gathered_id = gathered_indices.last().and_then(|&idx| history.get(idx).map(|e| e.id.clone()));
         mutations.push(HistoryMutation::InsertEntry {
             after_entry_id: last_gathered_id,
             entry: compaction_entry,

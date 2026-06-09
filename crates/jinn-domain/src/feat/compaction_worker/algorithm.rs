@@ -110,7 +110,7 @@ pub fn compute_cut_index(
     let mut cut_index = start_index;
 
     for i in (start_index..history.len()).rev() {
-        let entry = &history[i];
+        let Some(entry) = history.get(i) else { continue };
         let tokens = estimate_entry_tokens(&estimator, entry);
         accumulated_tokens += tokens;
         if accumulated_tokens > reserve_tokens {

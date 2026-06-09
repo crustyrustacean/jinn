@@ -114,11 +114,13 @@ fn to_lines_streaming(name: &str, arguments: &str, ctx: &RenderContext) -> Vec<L
         }
     } else {
         let remaining = all_lines.len() - max;
-        for line_text in &all_lines[remaining..] {
-            lines.push(Line::from(Span::styled(
-                truncate_to_width(line_text, ctx.content_width as usize),
-                style,
-            )));
+        if let Some(remaining_lines) = all_lines.get(remaining..) {
+            for line_text in remaining_lines {
+                lines.push(Line::from(Span::styled(
+                    truncate_to_width(line_text, ctx.content_width as usize),
+                    style,
+                )));
+            }
         }
         let indicator = truncate_to_width(
             &format!("---({remaining} lines hidden above)---"),

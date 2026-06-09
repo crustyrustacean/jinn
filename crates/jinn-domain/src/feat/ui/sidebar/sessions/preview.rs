@@ -387,7 +387,7 @@ fn build_preview_lines(
 
     // Cache miss - render.
     let start = history_len.saturating_sub(PREVIEW_ENTRY_COUNT);
-    let entries = &history[start..];
+    let entries = history.get(start..).unwrap_or(&[]);
 
     let ctx = RenderContext {
         content_width,

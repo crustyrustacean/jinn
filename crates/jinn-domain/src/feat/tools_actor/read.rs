@@ -228,9 +228,9 @@ fn apply_offset_limit(content: &str, offset: Option<usize>, limit: Option<usize>
     }
 
     let sliced = if let Some(limit) = limit {
-        &lines[start..total_lines.min(start + limit)]
+        lines.get(start..total_lines.min(start + limit)).unwrap_or(&[])
     } else {
-        &lines[start..]
+        lines.get(start..).unwrap_or(&[])
     };
 
     let mut result = sliced.join("\n");

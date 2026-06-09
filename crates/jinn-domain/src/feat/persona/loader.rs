@@ -120,7 +120,9 @@ pub fn scan_personas_merged(user_dir: &Path, system_dir: &Path) -> Vec<Persona> 
         if seen.contains(&persona.name) {
             // Replace the system persona with the user version.
             if let Some(pos) = personas.iter().position(|p| p.name == persona.name) {
-                personas[pos] = persona;
+                if let Some(slot) = personas.get_mut(pos) {
+                    *slot = persona;
+                }
             }
         } else {
             seen.insert(persona.name.clone());

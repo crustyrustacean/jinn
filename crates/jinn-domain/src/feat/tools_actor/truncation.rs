@@ -190,7 +190,7 @@ pub fn truncate_tail(content: &str, max_lines: usize, max_bytes: usize) -> Trunc
         // Reconstruct with the partial first line.
         let partial = truncate_string_from_end(lines.last().unwrap_or(&""), max_bytes);
         if output_lines_arr.len() > 1 {
-            format!("{}\n{}", partial, output_lines_arr[1..].join("\n"))
+            format!("{}\n{}", partial, output_lines_arr.get(1..).map(|s| s.join("\n")).unwrap_or_default())
         } else {
             partial
         }

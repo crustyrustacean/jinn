@@ -150,7 +150,7 @@ fn collect_edit_write_pairs_by_path(history: &[ChatEntry]) -> HashMap<String, Ve
     let mut groups: HashMap<String, Vec<EditWritePair>> = HashMap::new();
 
     for (call_idx, path) in &candidates {
-        let call_entry = &history[*call_idx];
+        let Some(call_entry) = history.get(*call_idx) else { continue };
 
         let ChatEntryKind::ToolCall {
             id: tool_call_id, ..

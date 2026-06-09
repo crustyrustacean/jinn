@@ -283,7 +283,8 @@ fn validate_anchor(
         });
         return;
     }
-    let actual = compute_line_hash(anchor.line, file_lines[anchor.line - 1]);
+    let Some(&line_content) = file_lines.get(anchor.line - 1) else { return; };
+    let actual = compute_line_hash(anchor.line, line_content);
     if actual != anchor.hash && !seen.contains(&anchor.line) {
         seen.insert(anchor.line);
         mismatches.push(HashMismatch {
@@ -335,7 +336,7 @@ pub fn format_mismatch_error(mismatches: &[HashMismatch], file_lines: &[&str]) -
         }
         prev = num;
 
-        let content = file_lines[num - 1];
+        let Some(&content) = file_lines.get(num - 1) else { continue; };
         let h = compute_line_hash(num, content);
         if mismatch_lines.contains(&num) {
             let _ = writeln!(out, ">>> {num:>width$}#{h}|{content}");
@@ -536,8 +537,10 @@ fn resolve_replace_span(
     let end_line = end.map_or(start_line, |a| a.line);
 
     // NOOP check
-    let original: Vec<&str> =
-        ctx.file_lines[start_line - 1..end_line.min(ctx.file_lines.len())].to_vec();
+    let Some(original) = ctx.file_lines.get(start_line - 1..end_line.min(ctx.file_lines.len())) else {
+        return None;
+    };
+    let original: Vec<&str> = original.to_vec();
     if original.len() == lines.len() && original.iter().zip(lines.iter()).all(|(a, b)| a == b) {
         return ctx.record_noop(
             index,
@@ -546,8 +549,9 @@ fn resolve_replace_span(
         );
     }
 
-    let start_byte = ctx.line_starts[start_line - 1];
-    let end_byte = ctx.line_starts[end_line - 1] + ctx.file_lines[end_line - 1].len();
+    let Some(&start_byte) = ctx.line_starts.get(start_line - 1) else { return None; };
+    let (Some(&end_byte_start), Some(end_line_content)) = (ctx.line_starts.get(end_line - 1), ctx.file_lines.get(end_line - 1)) else { return None; };
+    let end_byte = end_byte_start + end_line_content.len();
     let replacement = lines.join("\n");
 
     Some(ResolvedSpan {
@@ -613,7 +617,8 @@ fn resolve_append_span(
     let insert_pos = if is_sentinel {
         ctx.content.len()
     } else {
-        ctx.line_starts[anchor.line - 1] + ctx.file_lines[anchor.line - 1].len()
+        let (Some(&start), Some(line)) = (ctx.line_starts.get(anchor.line - 1), ctx.file_lines.get(anchor.line - 1)) else { return None; };
+        start + line.len()
     };
     let replacement = if is_sentinel {
         format!("{inserted_text}\n")
@@ -649,7 +654,7 @@ fn resolve_prepend_span(
     }
 
     let inserted_text = lines.join("\n");
-    let insert_pos = pos.map_or(0, |a| ctx.line_starts[a.line - 1]);
+    let insert_pos = pos.map_or(0, |a| ctx.line_starts.get(a.line - 1).copied().unwrap_or(0));
     let replacement = if ctx.content.is_empty() {
         inserted_text
     } else {
@@ -811,10 +816,8 @@ fn describe_edit(edit: &HashlineEdit) -> String {
 
 /// Rejects overlapping spans and same-boundary inserts.
 fn assert_no_conflicting_spans(spans: &[ResolvedSpan]) -> Result<(), String> {
-    for i in 0..spans.len() {
-        for j in (i + 1)..spans.len() {
-            let left = &spans[i];
-            let right = &spans[j];
+    for (i, left) in spans.iter().enumerate() {
+        for right in spans.iter().skip(i + 1) {
 
             // Two inserts at same boundary
             if left.kind == "insert" && right.kind == "insert" {
@@ -881,7 +884,9 @@ fn compute_changed_line_range(original: &str, result: &str) -> (Option<usize>, O
     // Find first differing byte
     let min_len = original.len().min(result.len());
     let mut first_diff = 0;
-    while first_diff < min_len && original.as_bytes()[first_diff] == result.as_bytes()[first_diff] {
+    while first_diff < min_len
+        && original.as_bytes().get(first_diff) == result.as_bytes().get(first_diff)
+    {
         first_diff += 1;
     }
 
@@ -890,7 +895,7 @@ fn compute_changed_line_range(original: &str, result: &str) -> (Option<usize>, O
     let mut last_res = result.len() as isize - 1;
     while last_orig >= first_diff as isize
         && last_res >= first_diff as isize
-        && original.as_bytes()[last_orig as usize] == result.as_bytes()[last_res as usize]
+        && original.as_bytes().get(last_orig as usize) == result.as_bytes().get(last_res as usize)
     {
         last_orig -= 1;
         last_res -= 1;
