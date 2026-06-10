@@ -7,13 +7,12 @@
 //!
 //! # Anchors
 //!
-//! An entry is an anchor if any of:
-//! - It is a `User` entry (any position).
-//! - It is the **first** entry in history (regardless of type).
-//! - It is the **last** entry in history (regardless of type).
+//! An anchor is a `User` entry — any position in history. Unlike the
+//! anchored-assistant pruner, the shield does *not* anchor on conversation
+//! start/end boundaries (which would shield nearly every entry in short
+//! conversations).
 //!
-//! The anchor definition is shared with [`AnchoredAssistantAutoPruneWorker`] via
-//! [`collect_anchor_indices`].
+//! Anchor indices are computed via [`collect_user_anchor_indices`] (User-only).
 //!
 //! # Pair Atomicity
 //!
@@ -40,14 +39,14 @@
 //!
 //! [`ContextOverride::ForcedInclude`]: crate::feat::session::chat_entry::ContextOverride::ForcedInclude
 //! [`AnchoredAssistantAutoPruneWorker`]: super::AnchoredAssistantAutoPruneWorker
-//! [`collect_anchor_indices`]: super::anchored_assistant::collect_anchor_indices
+//! [`collect_user_anchor_indices`]: super::anchored_assistant::collect_user_anchor_indices
 //! [`AnchorShieldConfig`]: crate::feat::preferences_actor::user_preferences::AnchorShieldConfig
 
 use std::collections::HashSet;
 use std::sync::Arc;
 
 use crate::feat::auto_prune_worker::anchored_assistant::{
-    collect_anchor_indices, distances_to_nearest_anchors,
+    collect_user_anchor_indices, distances_to_nearest_anchors,
 };
 use crate::feat::history_worker::worker_trait::HistoryWorker;
 use crate::feat::preferences_actor::user_preferences::AnchorShieldConfig;
@@ -75,7 +74,7 @@ pub struct AnchorShieldAutoPruneWorker {
 /// # Algorithm
 ///
 /// 1. If history is empty, return empty vec.
-/// 2. Compute anchor indices via [`collect_anchor_indices`].
+/// 2. Compute anchor indices via [`collect_user_anchor_indices`] (User-only).
 /// 3. Pass 1 — collect candidate ids: For each entry whose kind is
 ///    `User`, `Assistant`, `ToolCall`, or `ToolResult`, compute the minimum
 ///    distance to the nearest anchor. If the distance ≤ radius, add the
@@ -95,7 +94,7 @@ fn build_shield_mutations(
         return Vec::new();
     }
 
-    let anchor_indices = collect_anchor_indices(history);
+    let anchor_indices = collect_user_anchor_indices(history);
     let shield_set = collect_shield_candidates(history, radius, &anchor_indices);
     let shield_set = apply_pair_atomicity(history, shield_set);
     emit_shield_mutations(history, &shield_set, session_id, worker_name)
@@ -350,10 +349,10 @@ mod tests {
     // 2. single_entry_is_anchor_and_shielded
     // ------------------------------------------------------------------
     #[test]
-    fn single_entry_is_anchor_and_shielded() {
-        // Given a single assistant entry (first + last = anchor).
+    fn single_user_entry_is_anchor_and_shielded() {
+        // Given a single user entry (anchor, since it's User kind).
         let w = worker(20);
-        let entry = ChatEntry::assistant("hello");
+        let entry = ChatEntry::user("hello");
         let entry_id = entry.id.clone();
 
         // When evaluating.
@@ -363,6 +362,24 @@ mod tests {
         let included = included_ids(&mutations);
         assert!(included.contains(&entry_id));
     }
+    #[test]
+    fn single_non_user_entry_without_anchors_is_not_shielded() {
+        // Given a single assistant entry — no User anchors exist.
+        let w = worker(20);
+        let entry = ChatEntry::assistant("hello");
+        let entry_id = entry.id.clone();
+
+        // When evaluating.
+        let mutations = evaluate(&w, vec![entry]);
+
+        // Then no entries are shielded (no User anchors to measure from).
+        let included = included_ids(&mutations);
+        assert!(
+            !included.contains(&entry_id),
+            "non-User entry with no anchors must not be shielded"
+        );
+    }
+
 
     // ------------------------------------------------------------------
     // 3. assistant_within_radius_is_forced_included
@@ -399,14 +416,12 @@ mod tests {
         let asst = ChatEntry::assistant("far away");
         let asst_id = asst.id.clone();
         history.push(asst); // idx 6
-        // Padding after so last-entry anchor is far.
+        // Padding after to ensure no other User anchors nearby.
         for i in 0..10 {
             history.push(ChatEntry::assistant(format!("tail {i}")));
         }
-        // Anchors: idx 0 (User), idx 16 (last entry).
-        // Assistant at idx 6: distance 6 from anchor 0, distance 10 from
-        // anchor 16. Both > radius 5.
-
+        // Anchor: idx 0 (User) — the only anchor (no boundary anchors).
+        // Assistant at idx 6: distance 6 from anchor 0. > radius 5.
         // When evaluating.
         let mutations = evaluate(&w, history);
 
@@ -466,7 +481,7 @@ mod tests {
     // ------------------------------------------------------------------
     #[test]
     fn tool_result_within_radius_shields_call_pair() {
-        // Given a ToolResult near the last-entry anchor (distance 0),
+        // Given a ToolResult near a User anchor (distance 0),
         // and its ToolCall far from all anchors. Pair atomicity must
         // shield the call even though it's outside radius.
         let mut history = Vec::new();
@@ -481,16 +496,18 @@ mod tests {
         let result_id = result.id.clone();
         history.push(call); // idx 31
 
-        for i in 0..30 {
+        for i in 0..29 {
             history.push(ChatEntry::assistant(format!("pad2 {i}")));
         }
-        // ToolResult at idx 62 (= last entry = boundary anchor).
+        // User anchor at idx 61.
+        history.push(ChatEntry::user("second")); // idx 61, anchor
+        // ToolResult at idx 62, distance 1 from anchor 61.
         history.push(result); // idx 62
 
-        // Anchors: idx 0 (User), idx 62 (last entry).
-        // Result at idx 62: distance 0 from anchor 62. Within radius.
-        // Call at idx 31: distance 31 from anchor 0, distance 31 from
-        // anchor 62. Both > radius 10.
+        // Anchors: idx 0 (User), idx 61 (User).
+        // Result at idx 62: distance 1 from anchor 61. Within radius 10.
+        // Call at idx 31: distance 31 from anchor 0, distance 30 from
+        // anchor 61. Both > radius 10.
 
         let w = worker(10);
         let mutations = evaluate(&w, history);
@@ -498,7 +515,7 @@ mod tests {
         let included = included_ids(&mutations);
         assert!(
             included.contains(&result_id),
-            "result is last-entry anchor and must be shielded"
+            "result is near User anchor and must be shielded"
         );
         assert!(
             included.contains(&call_id),
