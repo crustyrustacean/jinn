@@ -1002,20 +1002,18 @@ impl ActorSystemBuilder {
             };
 
             if shield_config.enabled {
-                actors.push(
-                    spawn::<HistoryWorkerActor<AnchorShieldAutoPruneWorker>>(
-                        "history-worker-auto-prune-anchor-shield",
-                        &sink,
-                        handle,
-                        &counter,
-                        &shutdown_tracker,
-                        HistoryWorkerActorDeps {
-                            worker: AnchorShieldAutoPruneWorker {
-                                config: shield_config,
-                            },
+                actors.push(spawn::<HistoryWorkerActor<AnchorShieldAutoPruneWorker>>(
+                    "history-worker-auto-prune-anchor-shield",
+                    &sink,
+                    handle,
+                    &counter,
+                    &shutdown_tracker,
+                    HistoryWorkerActorDeps {
+                        worker: AnchorShieldAutoPruneWorker {
+                            config: shield_config,
                         },
-                    ),
-                );
+                    },
+                ));
             }
         }
 
