@@ -47,9 +47,7 @@ impl Actor for DiscoverActor {
     type Error = kameo::error::Infallible;
 
     async fn on_start(args: Self::Args, actor_ref: ActorRef<Self>) -> Result<Self, Self::Error> {
-        args.deps
-            .subscribe(actor_ref.recipient::<RefreshModels>())
-            .await;
+        args.deps.subscribe(actor_ref.recipient::<RefreshModels>()).await;
 
         Ok(Self {
             deps: args.deps,

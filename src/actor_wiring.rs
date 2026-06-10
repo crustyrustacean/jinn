@@ -42,6 +42,7 @@ use jinn_domain::init::env_init_actor::{EnvInitActor, EnvInitActorDeps};
 use jinn_domain::init::provider_init_actor::{ProviderInitActor, ProviderInitActorDeps};
 use jinn_domain::init::system_ready_actor::{SystemReadyActor, SystemReadyActorDeps};
 use jinn_domain::feat::ui::sidebar::sidebar_state_actor::{SidebarStateActor, SidebarStateActorDeps};
+use jinn_domain::feat::token_count_actor::{TokenCountActor, TokenCountActorDeps};
 use jinn_domain::feat::preferences_actor::app_state_actor::{AppStateActor, AppStateActorDeps};
 use jinn_domain::feat::preferences_actor::app_state_sync_actor::{AppStateSyncActor, AppStateSyncActorDeps};
 use jinn_domain::feat::discovery_notifier::{DiscoveryNotifierActor, DiscoveryNotifierActorDeps};
@@ -315,6 +316,8 @@ impl ActorSystemBuilder {
 
         let mut actors = Vec::new();
 
+        let (ready_tx, ready_rx) = tokio::sync::oneshot::channel();
+
         actors.push(system_spawn::<SystemReadyActor>(
             "system-ready",
             sink.clone(),
@@ -432,14 +435,7 @@ impl ActorSystemBuilder {
                 ))
             }
         };
-        actors.push(spawn::<WebFetchActor>(
-            "web-fetch",
-            &sink,
-            handle,
-            &counter,
-            &shutdown_tracker,
-            WebFetchActorDeps { web_fetcher },
-        ));
+        let _web_fetch = WebFetchActor::spawn(WebFetchActorDeps { deps: ActorDeps { services: services.clone() }, web_fetcher });
 
         // Session persistence actor.
         let token_counter = TiktokenCounter::o200k_base();
@@ -565,18 +561,10 @@ impl ActorSystemBuilder {
         ));
 
         // Token count actor - computes tiktoken counts for chat entries.
-        actors.push(
-            spawn::<jinn_domain::feat::token_count_actor::TokenCountActor>(
-                "token-count",
-                &sink,
-                handle,
-                &counter,
-                &shutdown_tracker,
-                jinn_domain::feat::token_count_actor::TokenCountActorDeps {
-                    state: state.clone(),
-                },
-            ),
-        );
+        let _token_count = TokenCountActor::spawn(TokenCountActorDeps {
+            deps: ActorDeps { services: services.clone() },
+            state: state.clone(),
+        });
 
         // Queue actor — dispatches queued turns when sessions become idle.
         // (Migrated to kameo — registers on bus during on_start.)

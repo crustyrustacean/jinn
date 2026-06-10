@@ -35,8 +35,7 @@ impl kameo::Actor for SidebarStateActor {
         actor_ref: ActorRef<Self>,
     ) -> Result<Self, Self::Error> {
         args.deps
-            .subscribe(actor_ref.recipient::<SessionClosed>())
-            .await;
+            .subscribe(actor_ref.recipient::<SessionClosed>()).await;
 
         Ok(Self { state: args.state })
     }

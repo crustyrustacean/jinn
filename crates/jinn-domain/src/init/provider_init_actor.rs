@@ -42,9 +42,7 @@ impl Actor for ProviderInitActor {
     type Error = std::convert::Infallible;
 
     async fn on_start(args: Self::Args, actor_ref: ActorRef<Self>) -> Result<Self, Self::Error> {
-        args.deps
-            .subscribe(actor_ref.recipient::<EnvironmentLoaded>())
-            .await;
+        args.deps.subscribe(actor_ref.recipient::<EnvironmentLoaded>()).await;
         Ok(Self {
             deps: args.deps,
             state: args.state,

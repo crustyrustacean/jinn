@@ -1,22 +1,25 @@
-//! Token count actor - computes tiktoken-based counts for chat entries.
+//! Token count actor — computes tiktoken-based counts for chat entries.
 //!
 //! Subscribes to [`HistoryAppended`] and [`SessionLoadCompleted`] to
 //! asynchronously compute per-entry token counts and write them to the
 //! [`EntryTokenCache`] in `FrontendCaches`. The minimap render pipeline
 //! reads the cache synchronously during rendering.
 
-use crate::common::actor::scan_actor::NoDirectMsg;
-use crate::common::actor::{Actor, ActorContext, ActorEnvelope};
+use kameo::actor::{ActorRef, Spawn};
+use kameo::prelude::{Context, Message};
+
+use crate::common::actor_deps::{ActorDeps, BusPublish};
 use crate::common::state::State;
 use crate::feat::context::strategy::token_estimator::{
     TiktokenCounter, TokenCounter, TokenEstimator, estimate_entry_tokens,
 };
 use crate::feat::session::protocol::history_appended::HistoryAppended;
 use crate::feat::session::protocol::session_load_completed::SessionLoadCompleted;
-use crate::protocol::Event;
 
 /// Dependencies for [`TokenCountActor`].
 pub struct TokenCountActorDeps {
+    /// Common actor dependencies (services + bus).
+    pub deps: ActorDeps,
     /// Shared application state.
     pub state: State,
 }
@@ -47,34 +50,43 @@ impl TokenEstimator for TiktokenEstimator {
     }
 }
 
-impl Actor for TokenCountActor {
-    type Message = NoDirectMsg;
-    type Deps = TokenCountActorDeps;
+impl kameo::Actor for TokenCountActor {
+    type Args = TokenCountActorDeps;
+    type Error = kameo::error::Infallible;
 
-    fn activate(deps: Self::Deps, ctx: &mut ActorContext) -> Self {
-        ctx.set_description("Computes tiktoken-based token counts for chat entries");
-        ctx.subscribe_event::<HistoryAppended>();
-        ctx.subscribe_event::<SessionLoadCompleted>();
+    async fn on_start(
+        args: Self::Args,
+        actor_ref: ActorRef<Self>,
+    ) -> Result<Self, Self::Error> {
+        args.deps.subscribe(actor_ref.clone().recipient::<HistoryAppended>()).await;
+        args.deps.subscribe(actor_ref.recipient::<SessionLoadCompleted>()).await;
 
-        Self {
-            state: deps.state,
+        Ok(Self {
+            state: args.state,
             counter: TiktokenCounter::o200k_base(),
-        }
+        })
     }
+}
 
-    async fn handle(&mut self, msg: ActorEnvelope<Self::Message>, _ctx: &ActorContext) {
-        match msg {
-            ActorEnvelope::Event(Event::HistoryAppended(ref payload)) => {
-                self.handle_history_appended(&payload.session_id);
-            }
-            ActorEnvelope::Event(Event::SessionLoadCompleted(ref payload)) => {
-                self.handle_session_load_completed(&payload.session);
-            }
-            ActorEnvelope::Command(_)
-            | ActorEnvelope::Event(_)
-            | ActorEnvelope::System(_)
-            | ActorEnvelope::Direct(_) => {}
-        }
+impl BusPublish for TokenCountActor {
+    fn bus(&self) -> &crate::common::services::bus_service::BusService {
+        unreachable!("TokenCountActor does not publish")
+    }
+}
+
+impl Message<HistoryAppended> for TokenCountActor {
+    type Reply = ();
+
+    async fn handle(&mut self, msg: HistoryAppended, _ctx: &mut Context<Self, Self::Reply>) {
+        self.handle_history_appended(&msg.session_id);
+    }
+}
+
+impl Message<SessionLoadCompleted> for TokenCountActor {
+    type Reply = ();
+
+    async fn handle(&mut self, msg: SessionLoadCompleted, _ctx: &mut Context<Self, Self::Reply>) {
+        self.handle_session_load_completed(&msg.session);
     }
 }
 
@@ -149,7 +161,13 @@ impl TokenCountActor {
 
 #[cfg(test)]
 mod tests {
-    #![allow(clippy::expect_used, clippy::panic, clippy::unreachable, clippy::indexing_slicing, reason = "test code")]
+    #![allow(
+        clippy::expect_used,
+        clippy::panic,
+        clippy::unreachable,
+        clippy::indexing_slicing,
+        reason = "test code"
+    )]
     use super::*;
     use crate::common::app_state::AppState;
     use crate::feat::session::chat_entry::ChatEntry;

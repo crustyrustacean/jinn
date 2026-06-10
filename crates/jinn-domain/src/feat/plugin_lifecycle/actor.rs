@@ -38,10 +38,8 @@ impl Actor for PluginLifecycleActor {
     type Error = Infallible;
 
     async fn on_start(args: Self::Args, actor_ref: ActorRef<Self>) -> Result<Self, Self::Error> {
-        let r1 = actor_ref.clone().recipient::<AllActorsSpawned>();
-        let r2 = actor_ref.recipient::<SessionCreated>();
-        args.deps.subscribe(r1).await;
-        args.deps.subscribe(r2).await;
+        args.deps.subscribe(actor_ref.clone().recipient::<AllActorsSpawned>()).await;
+        args.deps.subscribe(actor_ref.recipient::<SessionCreated>()).await;
 
         Ok(Self {
             services: args.deps.services,
