@@ -127,6 +127,7 @@ pub struct TestServices {
     session_store: Option<SessionStoreService>,
     /// Custom app paths (if provided).
     paths: Option<crate::common::app_paths::AppPaths>,
+    bus_override: Option<super::bus_service::BusService>,
 }
 
 impl Default for TestServices {
@@ -142,6 +143,7 @@ impl Default for TestServices {
             llm_service: None,
             session_store: None,
             paths: None,
+            bus_override: None,
         }
     }
 }
@@ -201,6 +203,12 @@ impl TestServices {
         self
     }
 
+    /// Use the provided bus service instead of spawning a new one.
+    pub fn with_bus(mut self, bus: super::bus_service::BusService) -> Self {
+        self.bus_override = Some(bus);
+        self
+    }
+
     /// Build the [`Services`] instance.
     ///
     /// Uses the shared process-wide test runtime if no custom handle is provided.
@@ -229,7 +237,9 @@ impl TestServices {
             let rx = actor_rx.to_async();
             while rx.recv().await.is_ok() {}
         });
-        let bus = {
+        let bus = if let Some(override_bus) = self.bus_override {
+            override_bus
+        } else {
             let bus_actor = kameo_actors::message_bus::MessageBus::new(
                 kameo_actors::DeliveryStrategy::BestEffort,
             );
