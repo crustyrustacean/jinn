@@ -233,12 +233,32 @@ min_age = 100
 #         keep                            keep
 #         v     v                         v  v
 #        uAtttttA.........................AttAttu
-# anchor ^-------|     outside radius    |------^ user message anchor
+# anchor ^-------|         prune         |------^ user message anchor
 
 [auto_prune.anchored_assistant]
 enabled = true
-# Number of chat entries from an anchor (user message or conversation history
-# start/end) before pruning is allowed.
-radius = 100
 # Candidate message must be at least this old before prune-eligible.
 min_age = 50
+
+# ---------------------------------------------------------------------------
+# Protects Assistant, Tool Calls, and Tool Result entries around user messages
+# from being excluded from context by marking them as ForceIncluded.
+#
+# Here's a visual to help explain:
+#
+#  u = user message
+#  A = assistant message
+#  t = tool call
+#  . = outside radius
+#  - = inside radius
+#
+#  anchor                                 user message anchor
+#   v                                      v
+#   uAtttttA.........................AttAttu
+#   --------|     outside radius    |-------
+#  protected                         protected
+[auto_prune.anchor_shield]
+enabled = true
+# Number of entries around a user message that are shielded from exclusion by
+# other workers.
+radius = 20

@@ -428,7 +428,7 @@ impl CompactionWorker {
         let tokens_after = CharRatioEstimator.estimate(&summary);
         let compaction_entry = ChatEntry::new_with_kind(
             compaction_entry_id,
-            jiff::Timestamp::now(),
+            crate::protocol::EntryTiming::instant_now(),
             ChatEntryKind::Compaction {
                 summary,
                 tokens_before,

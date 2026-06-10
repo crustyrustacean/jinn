@@ -393,7 +393,7 @@ struct NewSessionRow {
 #[diesel(table_name = crate::schema::entries)]
 struct EntryRow {
     id: Option<String>,
-    timestamp: String,
+    timing: String,
     kind: String,
     context_history: String,
 }
@@ -403,7 +403,7 @@ struct EntryRow {
 #[diesel(table_name = crate::schema::entries)]
 struct NewEntryRow {
     id: String,
-    timestamp: String,
+    timing: String,
     kind: String,
     context_history: String,
 }
@@ -813,7 +813,8 @@ fn save_blocking(
             .filter(|(_, e)| !matches!(e.kind, crate::protocol::ChatEntryKind::Transient(_)))
         {
             let entry_id_str = entry.id.to_string();
-            let timestamp_str = entry.timestamp.to_string();
+            let timing_str = serde_json::to_string(&entry.timing)
+                .map_err(|e| diesel::result::Error::SerializationError(Box::new(e)))?;
             let kind_json = serde_json::to_string(&entry.kind)
                 .map_err(|e| diesel::result::Error::SerializationError(Box::new(e)))?;
             let pin_str = entry.pin_position.map(|p| p.to_string());
@@ -829,7 +830,7 @@ fn save_blocking(
             insert_into(entries::table)
                 .values(&NewEntryRow {
                     id: entry_id_str.clone(),
-                    timestamp: timestamp_str,
+                    timing: timing_str,
                     kind: kind_json,
                     context_history: context_history_json,
                 })
@@ -951,12 +952,20 @@ fn load_session_blocking(
             });
 
             let row_id = entry.id.clone().unwrap_or_default();
-            let row_timestamp = entry.timestamp.clone();
+            let row_timing = entry.timing.clone();
+            let timing: crate::protocol::EntryTiming =
+                serde_json::from_str(&row_timing).unwrap_or_else(|_| {
+                    // Fallback: parse raw timestamp string as Instant (legacy data).
+                    row_timing
+                        .parse::<jiff::Timestamp>()
+                        .map_or_else(
+                            |_| crate::protocol::EntryTiming::instant_now(),
+                            |at| crate::protocol::EntryTiming::Instant { at },
+                        )
+                });
             let mut chat_entry = ChatEntry::new_with_kind(
                 ChatEntryId::from(row_id),
-                row_timestamp
-                    .parse()
-                    .unwrap_or_else(|_| jiff::Timestamp::now()),
+                timing,
                 kind,
                 pin_position,
             );
@@ -1814,7 +1823,7 @@ mod tests {
             .expect("fk on");
         migrator::run_migrations(&mut conn).expect("migrations");
         sql_query(
-            "INSERT INTO entries (id, timestamp, kind) \
+            "INSERT INTO entries (id, timing, kind) \
              VALUES ('orphan-1', '2024-01-01T00:00:00Z', '\"User\"')",
         )
         .execute(&mut conn)
@@ -1917,7 +1926,7 @@ mod tests {
         let id = session.session_id().clone();
         save_blocking(&mut conn, &session).expect("save");
         sql_query(
-            "INSERT INTO entries (id, timestamp, kind) \
+            "INSERT INTO entries (id, timing, kind) \
              VALUES ('orphan-x', '2024-01-01T00:00:00Z', '\"User\"')",
         )
         .execute(&mut conn)

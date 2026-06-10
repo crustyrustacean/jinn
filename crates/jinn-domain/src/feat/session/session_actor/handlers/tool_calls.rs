@@ -24,7 +24,7 @@ impl SessionPersistenceActor {
     ) {
         let mut state = self.state.write();
         let session = state.session_mut_or_create(&event.session_id);
-        session.begin_tool_call(event.index, &event.id, &event.name);
+        session.begin_tool_call(event.index, &event.id, &event.name, event.dispatched_at);
     }
 
     /// Finalizes the tool call entry with complete arguments.
@@ -87,7 +87,7 @@ impl SessionPersistenceActor {
     ) {
         let mut state = self.state.write();
         let session = state.session_mut_or_create(&event.session_id);
-        session.begin_tool_result(&event.tool_call_id, &event.name);
+        session.begin_tool_result(&event.tool_call_id, &event.name, event.dispatched_at);
     }
 
     /// Appends incremental output to a pending ToolResult entry.
@@ -199,6 +199,7 @@ impl SessionPersistenceActor {
             provider_id,
             estimated_tokens,
             tool_definitions: assembled.tool_definitions,
+            dispatched_at: jiff::Timestamp::now(),
         })) {
             tracing::warn!(
                 err = ?e,
@@ -334,7 +335,7 @@ mod tests {
             let mut state = actor.state.write();
             let session = state.active_session_mut();
             session.begin_streaming();
-            session.finish_streaming(true);
+            session.finish_streaming(true, jiff::Timestamp::now());
             session.begin_sending();
             state.session.active_session_id().clone()
         };
@@ -385,6 +386,7 @@ mod tests {
             cost: None,
             provider_completion_tokens: None,
             thinking_content: None,
+            dispatched_at: jiff::Timestamp::now(),
         };
         actor.on_stream_completed(&event, &ctx).await;
 
@@ -418,7 +420,7 @@ mod tests {
             ));
             session.begin_sending();
             session.begin_streaming();
-            session.begin_tool_result("tc-1", "bash");
+            session.begin_tool_result("tc-1", "bash", jiff::Timestamp::now());
             state.session.active_session_id().clone()
         };
 
@@ -457,7 +459,7 @@ mod tests {
             let mut state = actor.state.write();
             let session = state.active_session_mut();
             session.begin_streaming();
-            session.finish_streaming(true);
+            session.finish_streaming(true, jiff::Timestamp::now());
             session.begin_sending();
             session.set_tool_loop_disabled();
             state.session.active_session_id().clone()
@@ -520,7 +522,7 @@ mod tests {
             session.push_entry(ChatEntry::tool_call("tc-1", "bash", r#"{"command":"ls"}"#));
             session.push_entry(ChatEntry::assistant("here are the files"));
             session.begin_streaming();
-            session.finish_streaming(true);
+            session.finish_streaming(true, jiff::Timestamp::now());
             session.begin_sending();
             state.session.active_session_id().clone()
         };
@@ -570,6 +572,7 @@ mod tests {
             index: 0,
             id: "tc-1".to_owned(),
             name: "bash".to_owned(),
+            dispatched_at: jiff::Timestamp::now(),
         });
 
         // Then a ToolCall entry is in history with empty arguments.
@@ -582,6 +585,43 @@ mod tests {
         assert!(tc.is_some(), "expected ToolCall entry with id tc-1");
     }
 
+    #[test]
+    fn tool_call_entry_gets_dispatched_at_from_tool_use_started() {
+        // Given a session in streaming state.
+        let actor = test_actor();
+        let session_id = {
+            let mut state = actor.state.write();
+            let session = state.active_session_mut();
+            session.begin_streaming();
+            state.session.active_session_id().clone()
+        };
+        let dispatched = jiff::Timestamp::now();
+
+        // When a tool use starts with a specific dispatched_at.
+        actor.on_tool_use_started(&ToolUseStarted {
+            session_id: session_id.clone(),
+            index: 0,
+            id: "tc-dispatch".to_owned(),
+            name: "bash".to_owned(),
+            dispatched_at: dispatched,
+        });
+
+        // Then the ToolCall entry's timing has that dispatched_at.
+        let state = actor.state.read();
+        let session = state.session.get(&session_id).expect("session");
+        let tc = session
+            .history()
+            .iter()
+            .find(|e| matches!(&e.kind, ChatEntryKind::ToolCall { id, .. } if id == "tc-dispatch"))
+            .expect("tool call entry");
+        match &tc.timing {
+            crate::protocol::EntryTiming::Streamed { dispatched_at, .. } => {
+                assert_eq!(*dispatched_at, dispatched);
+            }
+            other => panic!("expected Streamed, got {other:?}"),
+        }
+    }
+
     // --- on_tool_call_received ---
 
     #[test]
@@ -592,7 +632,7 @@ mod tests {
             let mut state = actor.state.write();
             let session = state.active_session_mut();
             session.begin_streaming();
-            session.begin_tool_call(0, "tc-1", "bash");
+            session.begin_tool_call(0, "tc-1", "bash", jiff::Timestamp::now());
             state.session.active_session_id().clone()
         };
 
@@ -606,6 +646,7 @@ mod tests {
 "#
                 .to_owned(),
             },
+            dispatched_at: jiff::Timestamp::now(),
         });
 
         // Then the tool call entry has the complete arguments.
@@ -634,7 +675,7 @@ mod tests {
             let mut state = actor.state.write();
             let session = state.active_session_mut();
             session.begin_streaming();
-            session.begin_tool_call(0, "tc-1", "bash");
+            session.begin_tool_call(0, "tc-1", "bash", jiff::Timestamp::now());
             state.session.active_session_id().clone()
         };
 
@@ -682,6 +723,7 @@ mod tests {
             session_id: session_id.clone(),
             tool_call_id: "tc-1".to_owned(),
             name: "bash".to_owned(),
+            dispatched_at: jiff::Timestamp::now(),
         });
 
         // Then a ToolResult entry with Pending status is in history.
@@ -705,7 +747,7 @@ mod tests {
             let session = state.active_session_mut();
             session.begin_sending();
             session.begin_streaming();
-            session.begin_tool_result("tc-1", "bash");
+            session.begin_tool_result("tc-1", "bash", jiff::Timestamp::now());
             state.session.active_session_id().clone()
         };
 
@@ -753,7 +795,7 @@ mod tests {
             session.push_entry(ChatEntry::tool_call("tc-1", "bash", r#"{"command":"ls"}"#));
             session.push_entry(ChatEntry::assistant("here are the files"));
             session.begin_streaming();
-            session.finish_streaming(true);
+            session.finish_streaming(true, jiff::Timestamp::now());
             session.begin_sending();
             // Queue a mutation to exclude the assistant entry.
             session.queue_mutations(vec![
@@ -821,7 +863,7 @@ mod tests {
             session.push_entry(ChatEntry::tool_call("tc-1", "bash", r#"{"command":"ls"}"#));
             session.push_entry(ChatEntry::assistant("here are the files"));
             session.begin_streaming();
-            session.finish_streaming(true);
+            session.finish_streaming(true, jiff::Timestamp::now());
             session.begin_sending();
             state.session.active_session_id().clone()
         };
@@ -882,7 +924,7 @@ mod tests {
                 .push_fragment("stay at the foo part");
             // Tool batch already completed; transition to Sending so on_tool_batch_completed
             // routes through the drain path.
-            session.finish_streaming(true);
+            session.finish_streaming(true, jiff::Timestamp::now());
             session.begin_sending();
             state.session.active_session_id().clone()
         };

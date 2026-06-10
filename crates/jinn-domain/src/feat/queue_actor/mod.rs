@@ -198,6 +198,7 @@ impl QueueActor {
             provider_id,
             estimated_tokens,
             tool_definitions: assembled.tool_definitions,
+            dispatched_at: jiff::Timestamp::now(),
         })) {
             tracing::warn!(err = ?e, "queue-actor failed to emit SendToLlmProvider");
         }
@@ -277,6 +278,7 @@ impl QueueActor {
             provider_id,
             estimated_tokens,
             tool_definitions: assembled.tool_definitions,
+            dispatched_at: jiff::Timestamp::now(),
         })) {
             tracing::warn!(
                 err = ?e,

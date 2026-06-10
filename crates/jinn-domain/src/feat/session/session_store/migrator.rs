@@ -161,6 +161,10 @@ fn run_pending_migrations(conn: &mut SqliteConnection) -> Result<(), Report<Sess
             "rewrite_model_to_model_selection_and_add_model_used",
         )?;
     }
+    if current < 18 {
+        migrate_v18(conn)?;
+        record_version(conn, 18, "rename_entries_timestamp_to_timing")?;
+    }
     Ok(())
 }
 
@@ -709,6 +713,19 @@ fn migrate_v17(conn: &mut SqliteConnection) -> Result<(), Report<SessionStoreErr
     Ok(())
 }
 
+
+/// v18: Rename `entries.timestamp` column to `timing`.
+///
+/// The column now stores `EntryTiming` JSON (instant or streamed timing data)
+/// rather than a plain timestamp string. The rename aligns the column name
+/// with the Rust field it maps to.
+fn migrate_v18(conn: &mut SqliteConnection) -> Result<(), Report<SessionStoreError>> {
+    sql_query("ALTER TABLE entries RENAME COLUMN timestamp TO timing")
+        .execute(conn)
+        .change_context(SessionStoreError)
+        .attach("v18: rename entries.timestamp to timing")?;
+    Ok(())
+}
 fn migrate_v12(conn: &mut SqliteConnection) -> Result<(), Report<SessionStoreError>> {
     sql_query(
         "ALTER TABLE session_history ADD COLUMN context_override TEXT NOT NULL DEFAULT 'default'",
@@ -769,7 +786,7 @@ mod tests {
                 .load(&mut conn)
                 .expect("query migrations");
 
-        assert_eq!(rows.len(), 18);
+        assert_eq!(rows.len(), 19);
         assert_eq!(rows[0].version, 0);
         assert_eq!(rows[0].name, "create_initial_schema");
         assert_eq!(rows[1].version, 1);
@@ -823,7 +840,7 @@ mod tests {
             .load(&mut conn)
             .expect("query count");
 
-        assert_eq!(rows[0].count, 18);
+        assert_eq!(rows[0].count, 19);
     }
 
     /// Applies migrations up to (and including) `target` version.
@@ -953,8 +970,8 @@ mod tests {
                 .load(&mut conn)
                 .expect("query count");
             assert_eq!(
-                rows[0].count, 18,
-                "at target_version={target_version}: expected 18 migration rows, no duplicates"
+                rows[0].count, 19,
+                "at target_version={target_version}: expected 19 migration rows, no duplicates"
             );
         }
     }
@@ -1412,5 +1429,37 @@ mod tests {
             col_names.contains(&"model_used"),
             "expected model_used column, got: {col_names:?}"
         );
+    }
+
+    #[test]
+    fn migrate_v18_renames_timestamp_and_preserves_value() {
+        #[derive(QueryableByName)]
+        struct TimingRow {
+            #[diesel(sql_type = diesel::sql_types::Text)]
+            timing: String,
+        }
+
+        // Given a database at v16 (timestamp column, before rename).
+        let (_dir, mut conn) = make_conn();
+        apply_migrations_up_to(&mut conn, 15);
+        migrate_v16(&mut conn).expect("v16");
+        record_version(&mut conn, 16, "add_persist_and_is_automated").expect("record v16");
+
+        // Insert a row with the old `timestamp` column.
+        let legacy_ts = "2024-01-15T10:30:00Z";
+        sql_query("INSERT INTO entries (id, timestamp, kind) VALUES ('e1', ?, 'user')")
+            .bind::<diesel::sql_types::Text, _>(legacy_ts)
+            .execute(&mut conn)
+            .expect("insert legacy row");
+
+        // When running migrations (v18 renames timestamp → timing).
+        run_migrations(&mut conn).expect("run_migrations");
+
+        // Then the column is renamed and the value is preserved.
+        let rows: Vec<TimingRow> = sql_query("SELECT timing FROM entries WHERE id = 'e1'")
+            .load(&mut conn)
+            .expect("read timing");
+        assert_eq!(rows.len(), 1, "entry should exist");
+        assert_eq!(rows[0].timing, legacy_ts, "value preserved through rename");
     }
 }

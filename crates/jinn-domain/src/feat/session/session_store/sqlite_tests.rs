@@ -10,7 +10,7 @@ use crate::feat::session::chat_session::ChatSessionState;
 use crate::feat::session::session_store::SessionStore;
 use crate::feat::session::session_store::sqlite::SqliteSessionStore;
 use crate::feat::session::tool_result_status::ToolResultStatus;
-use crate::protocol::{ChatEntry, ChatEntryKind, SessionId};
+use crate::protocol::{ChatEntry, ChatEntryKind, EntryTiming, SessionId};
 use tempfile::TempDir;
 
 /// Creates a minimal `ChatSessionState` for testing.
@@ -843,4 +843,50 @@ async fn persistent_session_is_written() {
         "is_automated must survive save/load"
     );
     assert!(loaded.core.persist, "persist must survive save/load");
+}
+
+#[rstest::rstest]
+#[tokio::test]
+async fn streamed_timing_roundtrips_through_db() {
+    // Given a persisted session with an entry that has Streamed timing.
+    let (_dir, store) = make_store();
+    let session_id = SessionId::new();
+    let mut session = make_session(&session_id, "Timing test");
+    session.core.persist = true;
+
+    let dispatched = jiff::Timestamp::now();
+    let mut timing = EntryTiming::streamed(dispatched);
+    timing.set_first_token();
+    timing.finish();
+
+    let mut entry = ChatEntry::user("hello");
+    entry.timing = timing;
+    session.push_entry(entry);
+
+    // When saving and loading.
+    store.save(&session).await.expect("save");
+
+    let loaded = store
+        .load_session(&session_id)
+        .await
+        .expect("load")
+        .expect("should exist");
+
+    // Then the Streamed timing is preserved with all timestamps.
+    let loaded_entry = &loaded.history()[1];
+    match &loaded_entry.timing {
+        EntryTiming::Streamed {
+            dispatched_at,
+            first_token_at,
+            finished_at,
+        } => {
+            assert_eq!(
+                *dispatched_at, dispatched,
+                "dispatched_at should round-trip"
+            );
+            assert!(first_token_at.is_some(), "first_token_at should be Some");
+            assert!(finished_at.is_some(), "finished_at should be Some");
+        }
+        other => panic!("expected Streamed timing, got {other:?}"),
+    }
 }

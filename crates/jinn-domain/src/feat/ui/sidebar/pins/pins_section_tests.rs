@@ -692,7 +692,7 @@ fn pins_non_skill_tool_result_unchanged() {
 
     // Then the non-skill rendering is unchanged: check icon, tool name, content.
     assert!(
-        rendered.contains('\u{2705}'),
+        rendered.contains('✓'),
         "non-skill success result should show the check icon: {rendered}"
     );
     assert!(
@@ -702,5 +702,132 @@ fn pins_non_skill_tool_result_unchanged() {
     assert!(
         rendered.contains("file contents here"),
         "non-skill result should show the raw content: {rendered}"
+    );
+}
+
+// --- Display-width truncation tests ---
+
+#[rstest::rstest]
+fn truncate_to_width_returns_string_unchanged_when_it_fits() {
+    // Given a string that fits within the budget.
+    let result = truncate_to_width("hello", 10);
+
+    // Then it is returned unchanged.
+    assert_eq!(result, "hello");
+}
+
+#[rstest::rstest]
+fn truncate_to_width_truncates_ascii_and_appends_ellipsis() {
+    // Given a string that exceeds the budget.
+    let result = truncate_to_width("hello world", 5);
+
+    // Then it is truncated to fit with an ellipsis.
+    assert_eq!(result, "hell\u{2026}");
+}
+
+#[rstest::rstest]
+fn truncate_to_width_fits_double_wide_char_within_budget() {
+    // Given a string with a double-wide char that fits.
+    let result = truncate_to_width("\u{2705} ok", 10);
+
+    // Then it is returned unchanged (2+1+2=5 <= 10).
+    assert_eq!(result, "\u{2705} ok");
+}
+
+#[rstest::rstest]
+fn truncate_to_width_skips_wide_char_at_boundary() {
+    // Given a string where a 2-cell char would overflow the budget.
+    let result = truncate_to_width("ab\u{2705}", 3);
+
+    // Then the wide char is skipped and ellipsis is appended.
+    assert_eq!(result, "ab\u{2026}");
+}
+
+#[rstest::rstest]
+fn truncate_to_width_fits_wide_char_exactly() {
+    // Given a string where a wide char fills the budget exactly.
+    let result = truncate_to_width("a\u{2705}b", 4);
+
+    // Then it is returned unchanged (1+2+1=4).
+    assert_eq!(result, "a\u{2705}b");
+}
+
+#[rstest::rstest]
+fn truncate_to_width_only_wide_chars_budget_one() {
+    // Given only wide chars with a budget of 1.
+    let result = truncate_to_width("\u{2705}\u{274c}", 1);
+
+    // Then only the ellipsis fits.
+    assert_eq!(result, "\u{2026}");
+}
+
+#[rstest::rstest]
+fn truncate_to_width_empty_string_returns_empty() {
+    // Given an empty string.
+    let result = truncate_to_width("", 5);
+
+    // Then it is returned unchanged.
+    assert_eq!(result, "");
+}
+
+#[rstest::rstest]
+fn truncate_to_width_zero_budget_returns_empty() {
+    // Given a non-empty string with zero budget.
+    let result = truncate_to_width("hello", 0);
+
+    // Then an empty string is returned (no room for anything).
+    assert_eq!(result, "");
+}
+
+#[rstest::rstest]
+fn truncate_str_strips_ansi_before_truncating() {
+    // Given a string with ANSI escape codes.
+    let result = truncate_str("\x1b[31mhello\x1b[0m", 3);
+
+    // Then ANSI is stripped and the plain text is truncated.
+    assert_eq!(result, "he\u{2026}");
+}
+
+// --- area_width constraint tests ---
+
+#[test]
+
+fn tool_result_with_wide_emoji_fits_narrow_sidebar() {
+    // Given a pinned tool result with the ✓ success icon.
+    let state = state_with_pinned_tool_result("write", &"x".repeat(100));
+
+    // When rendering in a narrow sidebar (20 cells).
+    let mut section = PinsSection;
+    let rows = render_rows(&mut section, &state, 20, 10);
+
+    // Then the ✓ character is present (single-width, no clipping issue).
+    let combined = rows.join("\n");
+    assert!(
+        combined.contains('✓'),
+        "should still contain ✓ even in narrow sidebar: {combined}"
+    );
+}
+#[rstest::rstest]
+fn long_content_is_truncated_to_fit_area_width() {
+    // Given a pinned user entry with very long content.
+    let mut state = AppState::default();
+    let entry = ChatEntry::user("a".repeat(200));
+    let entry_id = entry.id.clone();
+    state.active_session_mut().push_entry(entry);
+    state
+        .active_session_mut()
+        .pin_entry(&entry_id, PinPosition::Top);
+    state.frontend.pins.select_by_id(entry_id);
+
+    // When rendering in a narrow sidebar (25 cells).
+    let mut section = PinsSection;
+    let rows = render_rows(&mut section, &state, 25, 10);
+
+    // Then the content row exists and fits within the area.
+    let combined = rows.join("\n");
+    // The content should be truncated (contain ellipsis) rather than overflow.
+    assert!(
+        combined.contains('\u{2026}'),
+        "long content should be truncated with ellipsis: {combined}"
     );
 }
