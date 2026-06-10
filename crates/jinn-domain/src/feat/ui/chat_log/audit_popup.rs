@@ -31,12 +31,24 @@ pub fn format_audit_lines(entry: &ChatEntry, theme: &Theme) -> Vec<Line<'static>
         .fg(theme.infopopup_fg)
         .bg(theme.infopopup_bg);
 
+    // --- Metadata section ---
+    let mut lines = Vec::new();
+    lines.push(centered_title("Metadata", AUDIT_POPUP_WIDTH, header_style));
+    lines.push(Line::from(vec![Span::styled(
+        format!("Sent: {}", format_timestamp(&entry.timestamp)),
+        body_style,
+    )]));
+    lines.push(Line::from(vec![Span::styled(String::new(), body_style)]));
+
+    // --- Audit section ---
     let count = entry.context_history.len();
     let current = context_override_label(entry.context_override);
-    let header = format!("--- audit ({count} events) ({current}) ---");
-
-    let mut lines = Vec::with_capacity(1 + count.max(1));
-    lines.push(Line::from(vec![Span::styled(header, header_style)]));
+    let audit_label = format!("audit ({count} events) ({current})");
+    lines.push(centered_title(
+        &audit_label,
+        AUDIT_POPUP_WIDTH,
+        header_style,
+    ));
 
     if entry.context_history.is_empty() {
         lines.push(Line::from(vec![Span::styled(
@@ -86,11 +98,85 @@ fn context_override_label(o: ContextOverride) -> &'static str {
     }
 }
 
+/// Build a title line centered within `width` columns, padded with `-----`.
+///
+/// The label is surrounded by one space on each side, then `-` characters
+/// fill the remaining width. If the padding is odd, the extra `-` goes right.
+fn centered_title(label: &str, width: u16, style: Style) -> Line<'static> {
+    let inner = (width as usize).saturating_sub(2);
+    let dash_budget = inner.saturating_sub(label.len() + 2); // +2 for spaces around label
+    let left = dash_budget / 2;
+    let right = dash_budget - left;
+    let text = format!("{} {} {}", "-".repeat(left), label, "-".repeat(right));
+    Line::from(vec![Span::styled(text, style)])
+}
+
 /// Fixed width of the audit popup, in terminal columns.
 ///
 /// Deliberately constant regardless of terminal size so the popup is always the
 /// same shape. See `audit_popup_rect` for placement.
 pub const AUDIT_POPUP_WIDTH: u16 = 60;
+
+/// Format a timestamp as `YYYY-MM-DD HH:MM:SS (<relative>)`.
+///
+/// The absolute part uses UTC. The relative part is a human-readable
+/// string like \"5 minutes ago\", \"2 hours ago\", \"3 days ago\", etc.
+fn format_timestamp(ts: &jiff::Timestamp) -> String {
+    let absolute = ts.strftime("%Y-%m-%d %H:%M:%S").to_string();
+    let relative = format_relative_time(ts);
+    format!("{absolute} ({relative})")
+}
+
+/// Compute a human-readable relative time string from a timestamp to now.
+///
+/// Produces strings like "2 seconds ago", "5 minutes ago", "2 hours ago",
+/// \"3 days ago\", \"5 months ago\", \"1 year ago\".
+fn format_relative_time(ts: &jiff::Timestamp) -> String {
+    let now = jiff::Timestamp::now();
+    // Timestamp::since only supports up to Unit::Hour (days require calendar context).
+    // So we get hours/minutes/seconds and derive days/months/years from total hours.
+    let span = match now.since((jiff::Unit::Hour, *ts)) {
+        Ok(s) => s,
+        Err(_) => return "unknown".to_owned(),
+    };
+
+    let total_hours = span.get_hours().unsigned_abs() as u32;
+    let minutes = span.get_minutes().unsigned_abs() as u32;
+
+    // Derive larger units from total hours (approximate).
+    let years = total_hours / (365 * 24);
+    let months = total_hours / (30 * 24);
+    let days = total_hours / 24;
+    let hours = total_hours % 24;
+
+    if years > 0 {
+        format_units(years, "year")
+    } else if months > 0 {
+        format_units(months, "month")
+    } else if days > 0 {
+        format_units(days, "day")
+    } else if hours > 0 {
+        format_units(hours, "hour")
+    } else if minutes > 0 {
+        format_units(minutes, "minute")
+    } else {
+        let seconds = span.get_seconds().unsigned_abs() as u32;
+        if seconds > 0 {
+            format_units(seconds, "second")
+        } else {
+            "just now".to_owned()
+        }
+    }
+}
+
+/// Format a count with a pluralized unit and \"ago\" suffix.
+fn format_units(count: u32, unit: &str) -> String {
+    if count == 1 {
+        format!("1 {unit} ago")
+    } else {
+        format!("{count} {unit}s ago")
+    }
+}
 
 /// Compute the screen rectangle for the audit popup.
 ///
@@ -178,6 +264,120 @@ mod tests {
     }
 
     #[test]
+    fn centered_title_produces_exact_width_line() {
+        // Given label "Metadata" and popup width 60.
+        // Content area is 58 (60 - 2 borders).
+        let theme = default_theme();
+        let style = Style::default()
+            .fg(theme.infopopup_title)
+            .bg(theme.infopopup_bg);
+        let line = centered_title("Metadata", 60, style);
+
+        // Then the rendered text is exactly 58 characters (content width).
+        assert_eq!(text(&line).len(), 58);
+    }
+
+    #[test]
+    fn centered_title_centers_label_with_dash_padding() {
+        // Given label "Metadata" and popup width 60.
+        // Content area is 58 (60 - 2 borders).
+        let theme = default_theme();
+        let style = Style::default()
+            .fg(theme.infopopup_title)
+            .bg(theme.infopopup_bg);
+        let line = centered_title("Metadata", 60, style);
+        let rendered = text(&line);
+
+        // Then the label is surrounded by spaces and dashes.
+        assert!(rendered.contains(" Metadata "));
+        // And the line starts and ends with dashes.
+        assert!(rendered.starts_with('-'));
+        assert!(rendered.ends_with('-'));
+        // And dash count is 48 (58 content - 8 label - 2 spaces).
+        let dash_count = rendered.chars().filter(|c| *c == '-').count();
+        assert_eq!(dash_count, 48);
+    }
+
+    #[test]
+    fn format_timestamp_recent_shows_absolute_and_relative() {
+        // Given a timestamp 30 seconds ago.
+        let ts = jiff::Timestamp::now()
+            .checked_sub(jiff::SignedDuration::from_secs(30))
+            .expect("30s ago is valid");
+
+        // When formatting.
+        let result = format_timestamp(&ts);
+
+        // Then the absolute portion looks like a date-time.
+        assert!(
+            result.contains('T') || result.contains(' '),
+            "should contain date/time separator: {result}"
+        );
+        // And the relative portion says "30 seconds ago".
+        assert!(
+            result.contains("30 seconds ago"),
+            "should say '30 seconds ago' for 30s ago: {result}"
+        );
+    }
+
+    #[test]
+    fn format_timestamp_old_shows_absolute_and_days_ago() {
+        // Given a timestamp 5 days ago.
+        let ts = jiff::Timestamp::now()
+            .checked_sub(jiff::SignedDuration::from_hours(24 * 5))
+            .expect("5 days ago is valid");
+
+        // When formatting.
+        let result = format_timestamp(&ts);
+
+        // Then the relative portion says \"5 days ago\".
+        assert!(
+            result.contains("5 days ago"),
+            "should say '5 days ago': {result}"
+        );
+    }
+
+    #[test]
+    fn format_audit_lines_includes_metadata_section_before_audit() {
+        // Given a default entry.
+        let entry = ChatEntry::user("hi");
+
+        // When formatting.
+        let lines = format(&entry);
+
+        // Then line 0 is the centered Metadata title.
+        let title = text(&lines[0]);
+        assert!(
+            title.contains("Metadata"),
+            "first line should contain Metadata: {title}"
+        );
+        // And line 1 is the Sent: line.
+        let sent = text(&lines[1]);
+        assert!(
+            sent.starts_with("Sent:"),
+            "second line should start with Sent:: {sent}"
+        );
+        // And line 3 is the centered audit title.
+        let audit = text(&lines[3]);
+        assert!(
+            audit.contains("audit"),
+            "fourth line should contain audit: {audit}"
+        );
+    }
+
+    #[test]
+    fn format_audit_lines_includes_blank_line_between_sections() {
+        // Given a default entry.
+        let entry = ChatEntry::user("hi");
+
+        // When formatting.
+        let lines = format(&entry);
+
+        // Then line 2 (between Metadata and audit) is blank.
+        assert_eq!(text(&lines[2]), "");
+    }
+
+    #[test]
     fn format_audit_lines_empty_history_returns_header_and_no_events_line() {
         // Given a default entry (no history, Default override).
         let entry = ChatEntry::user("hi");
@@ -185,11 +385,14 @@ mod tests {
         // When formatting.
         let lines = format(&entry);
 
-        // Then the header reflects 0 events and current state.
-        assert_eq!(lines.len(), 2);
-        assert_eq!(text(&lines[0]), "--- audit (0 events) (Default) ---");
+        // Then line count is 5: Metadata title, Sent, blank, audit title, placeholder.
+        assert_eq!(lines.len(), 5);
+        assert_eq!(
+            text(&lines[3]),
+            "--------------- audit (0 events) (Default) ---------------"
+        );
         // And the body is the placeholder.
-        assert_eq!(text(&lines[1]), "(no events recorded)");
+        assert_eq!(text(&lines[4]), "(no events recorded)");
     }
 
     #[test]
@@ -202,10 +405,13 @@ mod tests {
         let lines = format(&entry);
 
         // Then the header shows the current override.
-        assert_eq!(lines.len(), 2);
-        assert_eq!(text(&lines[0]), "--- audit (1 events) (ForcedExclude) ---");
+        assert_eq!(lines.len(), 5);
+        assert_eq!(
+            text(&lines[3]),
+            "------------ audit (1 events) (ForcedExclude) ------------"
+        );
         // And the body line shows the transition with [user] source.
-        assert_eq!(text(&lines[1]), "[user] Default -> ForcedExclude");
+        assert_eq!(text(&lines[4]), "[user] Default -> ForcedExclude");
     }
 
     #[test]
@@ -223,7 +429,7 @@ mod tests {
         let lines = format(&entry);
 
         // Then the source label is the bare worker name (no `worker:` prefix).
-        assert_eq!(text(&lines[1]), "[compactor] Default -> ForcedExclude");
+        assert_eq!(text(&lines[4]), "[compactor] Default -> ForcedExclude");
     }
 
     #[test]
@@ -242,7 +448,7 @@ mod tests {
 
         // Then the source label is the bare internal label.
         assert_eq!(
-            text(&lines[1]),
+            text(&lines[4]),
             "[dangling-cleanup] Default -> ForcedExclude"
         );
     }
@@ -257,10 +463,10 @@ mod tests {
         // When formatting.
         let lines = format(&entry);
 
-        // Then 3 lines (header + 2 events) and order matches insertion.
-        assert_eq!(lines.len(), 3);
-        assert_eq!(text(&lines[1]), "[user] Default -> ForcedExclude");
-        assert_eq!(text(&lines[2]), "[user] ForcedExclude -> Default");
+        // Then 6 lines total (3 metadata + 3 audit) and order matches insertion.
+        assert_eq!(lines.len(), 6);
+        assert_eq!(text(&lines[4]), "[user] Default -> ForcedExclude");
+        assert_eq!(text(&lines[5]), "[user] ForcedExclude -> Default");
     }
 
     #[test]
@@ -275,9 +481,9 @@ mod tests {
         let lines = format(&entry);
 
         // Then the header parenthetical shows the *current* Default, not the last event's `to`.
-        assert!(text(&lines[0]).contains("(Default) ---"));
+        assert!(text(&lines[3]).contains("(Default) ---"));
         // And event count is 2, not 1.
-        assert!(text(&lines[0]).contains("(2 events)"));
+        assert!(text(&lines[3]).contains("(2 events)"));
     }
 
     mod rect_tests {
