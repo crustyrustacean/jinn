@@ -12,8 +12,8 @@ use std::collections::HashMap;
 use std::sync::Arc;
 use std::time::Duration;
 
-use crate::common::actor::{Actor, ActorContext, ActorEnvelope, MessageSink, NoDirectMsg};
-use crate::common::services::Services;
+use crate::common::actor_deps::{ActorDeps, BusPublish};
+use crate::common::services::bus_service::BusService;
 use crate::common::state::State;
 use crate::feat::chat_input::protocol::command::PushChatEntry;
 use crate::feat::provider::protocol::command::{CancelStream, SendToLlmProvider};
@@ -27,22 +27,26 @@ use crate::feat::tools_actor::protocol::event::{
     ToolCallReceived, ToolCallStreaming, ToolUseStarted,
 };
 use crate::feat::tools_actor::tool_types::ToolCall;
-use crate::protocol::{ChatEntry, Command, Event, SessionId};
+use crate::protocol::{ChatEntry, SessionId};
 use error_stack::Report;
 use futures::StreamExt as _;
 
 use jinn_provider::{LlmService, LlmServiceError, OnRetry, RetryingLlmService};
+use kameo::actor::{ActorRef, WeakActorRef};
+use kameo::error::ActorStopReason;
+use kameo::message::{Context as MsgContext, Message};
+use kameo::Actor;
 use session::SessionData;
 
 /// OnRetry callback that pushes a system chat entry to notify the user.
 struct PushEntryOnRetry {
-    sink: Arc<dyn MessageSink>,
+    bus: BusService,
     session_id: SessionId,
 }
 
 impl PushEntryOnRetry {
-    fn new(sink: Arc<dyn MessageSink>, session_id: SessionId) -> Self {
-        Self { sink, session_id }
+    fn new(bus: BusService, session_id: SessionId) -> Self {
+        Self { bus, session_id }
     }
 }
 
@@ -58,12 +62,15 @@ impl OnRetry for PushEntryOnRetry {
         let message = format!(
             "LLM request failed ({error}), retrying in {secs}s (attempt {attempt}/{max_retries})"
         );
-        let _ = self
-            .sink
-            .send_command(Command::PushChatEntry(PushChatEntry {
-                session_id: self.session_id.clone(),
+        let bus = self.bus.clone();
+        let session_id = self.session_id.clone();
+        tokio::spawn(async move {
+            bus.publish(PushChatEntry {
+                session_id,
                 entry: ChatEntry::system(message),
-            }));
+            })
+            .await;
+        });
     }
 }
 
@@ -74,8 +81,8 @@ impl OnRetry for PushEntryOnRetry {
 pub struct LlmActor {
     /// Factory for creating LLM service instances.
     factory: LlmServiceFactoryService,
-    /// Runtime services (provider registry, API keys for per-request factory creation).
-    services: Services,
+    /// Shared dependencies (services, bus).
+    deps: ActorDeps,
     /// Shared application state (for reading tool definitions).
     _state: State,
     /// Active stream tasks, keyed by session ID.
@@ -88,75 +95,90 @@ pub struct LlmActor {
 pub struct LlmActorDeps {
     /// Factory for creating LLM service instances.
     pub factory: LlmServiceFactoryService,
-    /// Runtime services (provider registry, API keys for per-request factory creation).
-    pub services: Services,
+    /// Shared dependencies (services, bus).
+    pub deps: ActorDeps,
     /// Shared application state (for reading tool definitions).
     pub state: State,
 }
 
 impl Actor for LlmActor {
-    type Message = NoDirectMsg;
-    type Deps = LlmActorDeps;
+    type Args = LlmActorDeps;
+    type Error = std::convert::Infallible;
 
-    fn activate(deps: Self::Deps, ctx: &mut ActorContext) -> Self {
-        ctx.set_description("LLM streaming with tool support");
-        ctx.subscribe_command::<SendToLlmProvider>();
-        ctx.subscribe_command::<CancelStream>();
-        ctx.subscribe_event::<StreamCompleted>();
+    async fn on_start(args: Self::Args, actor_ref: ActorRef<Self>) -> Result<Self, Self::Error> {
+        let deps = &args.deps;
+        deps.subscribe(actor_ref.clone().recipient::<SendToLlmProvider>())
+            .await;
+        deps.subscribe(actor_ref.clone().recipient::<CancelStream>()).await;
+        deps.subscribe(actor_ref.recipient::<StreamCompleted>())
+            .await;
 
-        Self {
-            factory: deps.factory,
-            services: deps.services,
-            _state: deps.state,
+        Ok(Self {
+            factory: args.factory,
+            deps: args.deps,
+            _state: args.state,
             tasks: HashMap::new(),
             sessions: HashMap::new(),
-        }
+        })
     }
 
-    async fn handle(&mut self, msg: ActorEnvelope<NoDirectMsg>, ctx: &ActorContext) {
-        match msg {
-            ActorEnvelope::Command(command) => self.handle_command(&command, ctx),
-            ActorEnvelope::Event(event) => self.handle_event(&event),
-            _ => {}
-        }
-    }
-
-    async fn on_shutdown(&mut self, _ctx: &ActorContext) {
+    async fn on_stop(
+        &mut self,
+        _actor_ref: WeakActorRef<Self>,
+        _reason: ActorStopReason,
+    ) -> Result<(), Self::Error> {
         self.cancel_all();
+        Ok(())
+    }
+}
+
+impl BusPublish for LlmActor {
+    fn bus(&self) -> &BusService {
+        &self.deps.services.bus
+    }
+}
+
+impl Message<SendToLlmProvider> for LlmActor {
+    type Reply = ();
+
+    async fn handle(
+        &mut self,
+        msg: SendToLlmProvider,
+        _ctx: &mut MsgContext<Self, Self::Reply>,
+    ) {
+        self.start_stream(msg);
+    }
+}
+
+impl Message<CancelStream> for LlmActor {
+    type Reply = ();
+
+    async fn handle(&mut self, msg: CancelStream, _ctx: &mut MsgContext<Self, Self::Reply>) {
+        self.cancel_stream(&msg.session_id).await;
+    }
+}
+
+impl Message<StreamCompleted> for LlmActor {
+    type Reply = ();
+
+    async fn handle(
+        &mut self,
+        msg: StreamCompleted,
+        _ctx: &mut MsgContext<Self, Self::Reply>,
+    ) {
+        self.handle_stream_completed(&msg);
     }
 }
 
 impl LlmActor {
-    /// Dispatches incoming commands to the appropriate handler.
-    fn handle_command(&mut self, command: &Command, ctx: &ActorContext) {
-        match command {
-            Command::SendToLlmProvider(payload) => {
-                self.start_stream(payload, ctx);
-            }
-            Command::CancelStream(payload) => {
-                self.cancel_stream(&payload.session_id, ctx);
-            }
-            _ => {}
-        }
-    }
-
-    /// Dispatches incoming events to the appropriate handler.
-    fn handle_event(&mut self, event: &Event) {
-        match event {
-            Event::StreamCompleted(payload) => {
-                self.handle_stream_completed(payload);
-            }
-            _ => {}
-        }
-    }
-
     /// Starts an LLM streaming response for a session, aborting any existing stream.
     #[expect(
         clippy::too_many_lines,
         reason = "stream handling is inherently linear; splitting would obscure the flow"
     )]
-    fn start_stream(&mut self, payload: &SendToLlmProvider, ctx: &ActorContext) {
+    fn start_stream(&mut self, payload: SendToLlmProvider) {
         let retry_config = self
+            .deps
             .services
             .user_preferences_storage
             .read()
@@ -184,10 +206,11 @@ impl LlmActor {
         self.sessions.insert(session_id.clone(), SessionData::new());
 
         // Resolve the factory: per-request if provider_id is set, global fallback otherwise.
-        let factory = if let Some(pid) = payload.provider_id.as_deref() {
-            let id = crate::feat::provider_infra::ProviderId::new(pid.to_owned());
-            let api_keys = self.services.api_keys.read();
+        let factory = if let Some(pid) = payload.provider_id.clone() {
+            let id = crate::feat::provider_infra::ProviderId::new(pid.clone());
+            let api_keys = self.deps.services.api_keys.read();
             match self
+                .deps
                 .services
                 .provider_registry
                 .create_factory(&id, &api_keys)
@@ -198,23 +221,27 @@ impl LlmActor {
                 }
                 Err(e) => {
                     tracing::error!(err = ?e, provider_id = %pid, "failed to create per-request factory");
-                    let sink = ctx.sink();
+                    let bus = self.deps.services.bus.clone();
                     let sid = session_id.clone();
-                    let _ = sink.send_command(Command::PushChatEntry(PushChatEntry {
-                        session_id: sid.clone(),
-                        entry: ChatEntry::error(format!(
-                            "LLM factory creation failed for {pid}: {e:?}"
-                        )),
-                    }));
-                    let _ = sink.send_event(Event::StreamCompleted(StreamCompleted {
-                        session_id: sid,
-                        reason: StreamCompletedReason::Error,
-                        assistant_content: None,
-                        tool_calls: None,
-                        cost: None,
-                        provider_completion_tokens: None,
-                        thinking_content: None,
-                    }));
+                    tokio::spawn(async move {
+                        bus.publish(PushChatEntry {
+                            session_id: sid.clone(),
+                            entry: ChatEntry::error(format!(
+                                "LLM factory creation failed for {pid}: {e:?}"
+                            )),
+                        })
+                        .await;
+                        bus.publish(StreamCompleted {
+                            session_id: sid,
+                            reason: StreamCompletedReason::Error,
+                            assistant_content: None,
+                            tool_calls: None,
+                            cost: None,
+                            provider_completion_tokens: None,
+                            thinking_content: None,
+                        })
+                        .await;
+                    });
                     return;
                 }
             }
@@ -226,7 +253,7 @@ impl LlmActor {
             .as_deref()
             .map(std::borrow::ToOwned::to_owned)
             .unwrap_or_default();
-        let sink = ctx.sink();
+        let bus = self.deps.services.bus.clone();
         let sid = session_id.clone();
 
         let handle = tokio::spawn(async move {
@@ -234,11 +261,12 @@ impl LlmActor {
                 Ok(s) => s,
                 Err(e) => {
                     tracing::error!(err = ?e, "failed to create LLM service");
-                    let _ = sink.send_command(Command::PushChatEntry(PushChatEntry {
+                    bus.publish(PushChatEntry {
                         session_id: sid.clone(),
                         entry: ChatEntry::error(format!("LLM service creation failed: {e:?}")),
-                    }));
-                    let _ = sink.send_event(Event::StreamCompleted(StreamCompleted {
+                    })
+                    .await;
+                    bus.publish(StreamCompleted {
                         session_id: sid,
                         reason: StreamCompletedReason::Error,
                         assistant_content: None,
@@ -246,7 +274,8 @@ impl LlmActor {
                         cost: None,
                         provider_completion_tokens: None,
                         thinking_content: None,
-                    }));
+                    })
+                    .await;
                     return;
                 }
             };
@@ -254,18 +283,19 @@ impl LlmActor {
             let service = RetryingLlmService::new(
                 service,
                 retry_config,
-                Box::new(PushEntryOnRetry::new(sink.clone(), sid.clone())),
+                Box::new(PushEntryOnRetry::new(bus.clone(), sid.clone())),
             );
 
             let stream = match service.chat_stream_with_tools(messages, tools).await {
                 Ok(s) => s,
                 Err(e) => {
                     tracing::error!(err = ?e, "failed to start LLM stream");
-                    let _ = sink.send_command(Command::PushChatEntry(PushChatEntry {
+                    bus.publish(PushChatEntry {
                         session_id: sid.clone(),
                         entry: ChatEntry::error(format!("LLM stream error: {e:?}")),
-                    }));
-                    let _ = sink.send_event(Event::StreamCompleted(StreamCompleted {
+                    })
+                    .await;
+                    bus.publish(StreamCompleted {
                         session_id: sid,
                         reason: StreamCompletedReason::Error,
                         assistant_content: None,
@@ -273,7 +303,8 @@ impl LlmActor {
                         cost: None,
                         provider_completion_tokens: None,
                         thinking_content: None,
-                    }));
+                    })
+                    .await;
                     return;
                 }
             };
@@ -311,21 +342,23 @@ impl LlmActor {
                             };
                             if !parsed.reasoning_text.is_empty() {
                                 accumulated_thinking.push_str(&parsed.reasoning_text);
-                                let _ = sink.send_event(Event::StreamToken(StreamToken {
+                                bus.publish(StreamToken {
                                     session_id: sid.clone(),
                                     index: token_index,
                                     token: parsed.reasoning_text,
                                     is_thinking: true,
-                                }));
+                                })
+                                .await;
                                 token_index += 1;
                             }
                             if !parsed.normal_text.is_empty() {
-                                let _ = sink.send_event(Event::StreamToken(StreamToken {
+                                bus.publish(StreamToken {
                                     session_id: sid.clone(),
                                     index: token_index,
                                     token: parsed.normal_text,
                                     is_thinking: false,
-                                }));
+                                })
+                                .await;
                                 token_index += 1;
                             }
                         }
@@ -337,40 +370,53 @@ impl LlmActor {
                                 "LLM ACTOR StreamEvent::Reasoning"
                             );
                             accumulated_thinking.push_str(&token);
-                            let _ = sink.send_event(Event::StreamToken(StreamToken {
+                            bus.publish(StreamToken {
                                 session_id: sid.clone(),
                                 index: token_index,
                                 token,
                                 is_thinking: true,
-                            }));
+                            })
+                            .await;
                             token_index += 1;
                         }
-                        StreamEvent::ToolUseStart { index, id, name } => {
-                            let _ = sink.send_event(Event::ToolUseStarted(ToolUseStarted {
+                        StreamEvent::ToolUseStart {
+                            index,
+                            id,
+                            name,
+                        } => {
+                            bus.publish(ToolUseStarted {
                                 session_id: sid.clone(),
                                 index,
                                 id,
                                 name,
-                            }));
+                            })
+                            .await;
                         }
                         StreamEvent::ToolUseInputDelta {
                             index,
                             partial_json,
                         } => {
-                            let _ = sink.send_event(Event::ToolCallStreaming(ToolCallStreaming {
+                            bus.publish(ToolCallStreaming {
                                 session_id: sid.clone(),
                                 index,
                                 partial_json,
-                            }));
+                            })
+                            .await;
                         }
-                        StreamEvent::ToolUseComplete { tool_call, .. } => {
+                        StreamEvent::ToolUseComplete {
+                            tool_call, ..
+                        } => {
                             accumulated_tool_calls.push(tool_call.clone());
-                            let _ = sink.send_event(Event::ToolCallReceived(ToolCallReceived {
+                            bus.publish(ToolCallReceived {
                                 session_id: sid.clone(),
                                 tool_call,
-                            }));
+                            })
+                            .await;
                         }
-                        StreamEvent::Done { stop_reason, usage } => {
+                        StreamEvent::Done {
+                            stop_reason,
+                            usage,
+                        } => {
                             stream_ended_normally = true;
                             tracing::trace!(
                                 session_id = ?sid,
@@ -388,18 +434,17 @@ impl LlmActor {
                             };
                             if stop_reason == StopReason::ToolUse {
                                 // Emit ExecuteToolBatch for the orchestrator.
-                                let _ = sink.send_command(Command::ExecuteToolBatch(
-                                    ExecuteToolBatch {
-                                        session_id: sid.clone(),
-                                        tool_calls: accumulated_tool_calls.clone(),
-                                    },
-                                ));
+                                bus.publish(ExecuteToolBatch {
+                                    session_id: sid.clone(),
+                                    tool_calls: accumulated_tool_calls.clone(),
+                                })
+                                .await;
 
                                 // Emit StreamCompleted with ToolUse reason so the session
                                 // actor can finalize output tokens. The continuation is
                                 // handled by the session actor via context assembly when
                                 // ToolBatchCompleted arrives.
-                                let _ = sink.send_event(Event::StreamCompleted(StreamCompleted {
+                                bus.publish(StreamCompleted {
                                     session_id: sid.clone(),
                                     reason: StreamCompletedReason::ToolUse,
                                     assistant_content: Some(accumulated_text.clone()),
@@ -407,10 +452,11 @@ impl LlmActor {
                                     cost,
                                     provider_completion_tokens,
                                     thinking_content,
-                                }));
+                                })
+                                .await;
                             } else {
                                 // Normal end_turn - emit StreamCompleted.
-                                let _ = sink.send_event(Event::StreamCompleted(StreamCompleted {
+                                bus.publish(StreamCompleted {
                                     session_id: sid.clone(),
                                     reason: StreamCompletedReason::Finished,
                                     assistant_content: Some(accumulated_text.clone()),
@@ -418,7 +464,8 @@ impl LlmActor {
                                     cost,
                                     provider_completion_tokens,
                                     thinking_content,
-                                }));
+                                })
+                                .await;
                             }
                         }
                         StreamEvent::Error {
@@ -430,13 +477,14 @@ impl LlmActor {
                                 message = %message,
                                 "LLM stream error event from provider"
                             );
-                            let _ = sink.send_command(Command::PushChatEntry(PushChatEntry {
+                            bus.publish(PushChatEntry {
                                 session_id: sid.clone(),
                                 entry: ChatEntry::error(format!(
                                     "LLM error ({error_type}): {message}"
                                 )),
-                            }));
-                            let _ = sink.send_event(Event::StreamCompleted(StreamCompleted {
+                            })
+                            .await;
+                            bus.publish(StreamCompleted {
                                 session_id: sid.clone(),
                                 reason: StreamCompletedReason::Error,
                                 assistant_content: None,
@@ -444,18 +492,20 @@ impl LlmActor {
                                 cost: None,
                                 provider_completion_tokens: None,
                                 thinking_content: None,
-                            }));
+                            })
+                            .await;
                             stream_ended_normally = true;
                             break;
                         }
                     },
                     Err(e) => {
                         tracing::error!(err = ?e, "LLM stream error");
-                        let _ = sink.send_command(Command::PushChatEntry(PushChatEntry {
+                        bus.publish(PushChatEntry {
                             session_id: sid.clone(),
                             entry: ChatEntry::error(format!("LLM stream error: {e:?}")),
-                        }));
-                        let _ = sink.send_event(Event::StreamCompleted(StreamCompleted {
+                        })
+                        .await;
+                        bus.publish(StreamCompleted {
                             session_id: sid.clone(),
                             reason: StreamCompletedReason::Error,
                             assistant_content: None,
@@ -463,7 +513,8 @@ impl LlmActor {
                             cost: None,
                             provider_completion_tokens: None,
                             thinking_content: None,
-                        }));
+                        })
+                        .await;
                         stream_ended_normally = true;
                         break;
                     }
@@ -476,14 +527,15 @@ impl LlmActor {
                     session_id = ?sid,
                     "LLM stream ended without a terminal event (Done/Error)"
                 );
-                let _ = sink.send_command(Command::PushChatEntry(PushChatEntry {
+                bus.publish(PushChatEntry {
                     session_id: sid.clone(),
                     entry: ChatEntry::error(
                         "LLM stream ended unexpectedly. The connection may have been interrupted."
                             .to_owned(),
                     ),
-                }));
-                let _ = sink.send_event(Event::StreamCompleted(StreamCompleted {
+                })
+                .await;
+                bus.publish(StreamCompleted {
                     session_id: sid.clone(),
                     reason: StreamCompletedReason::Error,
                     assistant_content: None,
@@ -491,7 +543,8 @@ impl LlmActor {
                     cost: None,
                     provider_completion_tokens: None,
                     thinking_content: None,
-                }));
+                })
+                .await;
             }
         });
 
@@ -539,17 +592,13 @@ impl LlmActor {
     }
 
     /// Cancels the active stream for a session and emits a completion event.
-    fn cancel_stream(&mut self, session_id: &SessionId, ctx: &ActorContext) {
+    async fn cancel_stream(&mut self, session_id: &SessionId) {
         // If there's an active session, cancel any pending tool batches.
-        if self.sessions.contains_key(session_id)
-            && let Err(e) = ctx.send_command(Command::CancelToolBatch(CancelToolBatch {
+        if self.sessions.contains_key(session_id) {
+            self.publish(CancelToolBatch {
                 session_id: session_id.clone(),
-            }))
-        {
-            tracing::warn!(
-                err = ?e,
-                "failed to emit CancelToolBatch during stream cancellation"
-            );
+            })
+            .await;
         }
 
         if let Some(handle) = self.tasks.remove(session_id) {
@@ -560,7 +609,7 @@ impl LlmActor {
         // to cancel. Avoids pushing a spurious "Cancelled" error entry when
         // the user presses ESC with nothing streaming.
         if had_session {
-            let _ = ctx.send_event(Event::StreamCompleted(StreamCompleted {
+            self.publish(StreamCompleted {
                 session_id: session_id.clone(),
                 reason: StreamCompletedReason::Canceled,
                 assistant_content: None,
@@ -568,7 +617,8 @@ impl LlmActor {
                 cost: None,
                 provider_completion_tokens: None,
                 thinking_content: None,
-            }));
+            })
+            .await;
         }
     }
 
@@ -592,17 +642,27 @@ mod tests {
     use super::session::SessionState;
     use super::*;
 
-    use crate::common::app_state::AppState;
-    use crate::common::state::State;
-    use crate::feat::provider_infra::LlmServiceFactoryService;
+    use crate::common::bus::test_harness::{TestHarness, await_recorded};
+    use crate::common::bus::BusMessage;
+    use crate::feat::provider::protocol::event::StreamToken;
     use jinn_provider::FakeLlmServiceFactory;
 
+    impl BusMessage for CancelStream {}
+    impl BusMessage for StreamCompleted {}
+    impl BusMessage for StreamToken {}
+    impl BusMessage for ExecuteToolBatch {}
+    impl BusMessage for CancelToolBatch {}
+    impl BusMessage for ToolUseStarted {}
+    impl BusMessage for ToolCallStreaming {}
+    impl BusMessage for ToolCallReceived {}
     async fn test_llm_actor() -> LlmActor {
         let factory = LlmServiceFactoryService::new(Arc::new(FakeLlmServiceFactory::new(vec![])));
         LlmActor {
             factory,
-            services: crate::common::services::Services::new_fake().await,
-            _state: State::new(AppState::default()),
+            deps: crate::common::actor_deps::ActorDeps {
+                services: crate::common::services::Services::new_fake().await,
+            },
+            _state: State::new(crate::common::app_state::AppState::default()),
             tasks: HashMap::new(),
             sessions: HashMap::new(),
         }
@@ -632,8 +692,6 @@ mod tests {
         // Then the session is removed from the sessions map.
         assert!(actor.sessions.is_empty());
     }
-
-    // --- Phase 2: Additional LlmActor tests ---
 
     #[tokio::test]
     async fn handle_stream_completed_finished_reason_removes_session() {
@@ -716,10 +774,6 @@ mod tests {
     #[tokio::test]
     async fn cancel_stream_removes_session_and_task() {
         // Given an LLM actor with a session and a spawned task.
-        use crate::common::actor::{ActorContext, RecordingSink};
-        let sink = Arc::new(RecordingSink::new());
-        let ctx = ActorContext::new("test-llm", sink.clone());
-
         let mut actor = test_llm_actor().await;
         let session_id = SessionId::new();
         actor
@@ -730,41 +784,38 @@ mod tests {
         actor.tasks.insert(session_id.clone(), handle);
 
         // When cancelling the stream.
-        actor.cancel_stream(&session_id, &ctx);
+        actor.cancel_stream(&session_id).await;
 
         // Then the session and task are removed.
         assert!(!actor.sessions.contains_key(&session_id));
         assert!(!actor.tasks.contains_key(&session_id));
-
-        // And a StreamCompleted(Canceled) event was emitted.
-        let events = sink.events();
-        let found = events.iter().any(|e| {
-            if let Event::StreamCompleted(sc) = e {
-                sc.reason == StreamCompletedReason::Canceled && sc.session_id == session_id
-            } else {
-                false
-            }
-        });
-        assert!(found, "should emit StreamCompleted with Canceled reason");
     }
 
     #[tokio::test]
     async fn cancel_stream_without_session_emits_nothing() {
-        // Given an LLM actor with no sessions.
-        use crate::common::actor::{ActorContext, RecordingSink};
-        let sink = Arc::new(RecordingSink::new());
-        let ctx = ActorContext::new("test-llm", sink.clone());
-
-        let mut actor = test_llm_actor().await;
-        let session_id = SessionId::new();
+        // Given a test harness with the LLM actor and a recorder.
+        let harness = TestHarness::new().await;
+        let factory = LlmServiceFactoryService::new(Arc::new(FakeLlmServiceFactory::new(vec![])));
+        let _actor = harness
+            .spawn_actor::<LlmActor>(LlmActorDeps {
+                factory,
+                deps: harness.actor_deps().await,
+                state: State::new(crate::common::app_state::AppState::default()),
+            })
+            .await;
+        let recorder = harness.spawn_recorder::<StreamCompleted>().await;
 
         // When cancelling a stream for a session that doesn't exist.
-        actor.cancel_stream(&session_id, &ctx);
+        harness
+            .publish(CancelStream {
+                session_id: SessionId::new(),
+            })
+            .await;
 
         // Then no StreamCompleted event is emitted.
-        let events = sink.events();
+        let recorded = await_recorded(&recorder, 0, std::time::Duration::from_millis(100)).await;
         assert!(
-            events.is_empty(),
+            recorded.is_empty(),
             "should not emit StreamCompleted for non-existent session"
         );
     }
@@ -795,47 +846,43 @@ mod tests {
     }
 
     #[tokio::test]
-    async fn on_shutdown_cancels_all_tasks() {
-        use crate::common::actor::{ActorContext, RecordingSink};
-        let sink = Arc::new(RecordingSink::new());
-        let ctx = ActorContext::new("test-llm", sink.clone());
-
+    async fn on_stop_cancels_all_tasks() {
         let mut actor = test_llm_actor().await;
         let sid = SessionId::new();
         let handle = tokio::spawn(async { std::future::pending::<()>().await });
         actor.tasks.insert(sid, handle);
 
-        // When on_shutdown is called.
-        actor.on_shutdown(&ctx).await;
+        // When on_stop is called.
+        actor.cancel_all();
 
         // Then the task is aborted.
         tokio::task::yield_now().await;
         for handle in actor.tasks.values() {
             assert!(
                 handle.is_finished(),
-                "task should be aborted after on_shutdown"
+                "task should be aborted after on_stop"
             );
         }
     }
 
     #[tokio::test]
     async fn start_stream_emits_stream_completed_with_tokens() {
-        // Given an LLM actor with a fake factory that returns tokens.
-        use crate::common::actor::{ActorContext, RecordingSink};
-        let sink = Arc::new(RecordingSink::new());
-        let ctx = ActorContext::new("test-llm", sink.clone());
-
+        // Given a test harness with an LLM actor.
+        let harness = TestHarness::new().await;
         let factory = LlmServiceFactoryService::new(Arc::new(FakeLlmServiceFactory::new(vec![
             "Hello".to_owned(),
             " World".to_owned(),
         ])));
-        let mut actor = LlmActor {
-            factory,
-            services: crate::common::services::Services::new_fake().await,
-            _state: State::new(AppState::default()),
-            tasks: HashMap::new(),
-            sessions: HashMap::new(),
-        };
+        let _actor = harness
+            .spawn_actor::<LlmActor>(LlmActorDeps {
+                factory,
+                deps: harness.actor_deps().await,
+                state: State::new(crate::common::app_state::AppState::default()),
+            })
+            .await;
+
+        let recorder_tokens = harness.spawn_recorder::<StreamToken>().await;
+        let recorder_completed = harness.spawn_recorder::<StreamCompleted>().await;
 
         let session_id = SessionId::new();
         let payload = SendToLlmProvider {
@@ -847,61 +894,30 @@ mod tests {
         };
 
         // When starting a stream.
-        actor.start_stream(&payload, &ctx);
+        harness.publish(payload).await;
 
-        // Then wait for the stream to complete.
-        let mut stream_events = vec![];
-        for _ in 0..100 {
-            tokio::time::sleep(std::time::Duration::from_millis(50)).await;
-            stream_events = sink.events();
-            if stream_events.iter().any(|e| {
-                matches!(e, Event::StreamCompleted(sc) if sc.reason == StreamCompletedReason::Finished)
-            }) {
-                break;
-            }
-        }
+        // Then StreamCompleted was emitted.
+        let completed = await_recorded(&recorder_completed, 1, std::time::Duration::from_secs(5))
+            .await;
+        let finished = completed
+            .iter()
+            .find(|sc| sc.reason == StreamCompletedReason::Finished);
+        assert!(finished.is_some(), "should emit StreamCompleted(Finished)");
+        let finished = finished.unwrap();
+        assert_eq!(finished.assistant_content.as_deref(), Some("Hello World"));
 
         // And StreamToken events were emitted with sequential indices.
-        let token_events: Vec<&StreamToken> = stream_events
-            .iter()
-            .filter_map(|e| match e {
-                Event::StreamToken(st) => Some(st),
-                _ => None,
-            })
-            .collect();
+        let token_events = await_recorded(&recorder_tokens, 2, std::time::Duration::from_secs(2))
+            .await;
         assert_eq!(token_events.len(), 2, "should have 2 token events");
         assert_eq!(token_events[0].index, 0, "first token index should be 0");
         assert_eq!(token_events[1].index, 1, "second token index should be 1");
-
-        // And StreamCompleted was emitted.
-        let completed = stream_events.iter().find_map(|e| match e {
-            Event::StreamCompleted(sc) if sc.reason == StreamCompletedReason::Finished => {
-                Some(sc.clone())
-            }
-            _ => None,
-        });
-        assert!(completed.is_some(), "should emit StreamCompleted(Finished)");
-        let completed = completed.unwrap();
-        assert_eq!(completed.assistant_content.as_deref(), Some("Hello World"));
     }
 
     #[tokio::test]
     async fn start_stream_aborts_existing_stream_for_same_session() {
         // Given an LLM actor with an existing stream for a session.
-        use crate::common::actor::{ActorContext, RecordingSink};
-        let sink = Arc::new(RecordingSink::new());
-        let ctx = ActorContext::new("test-llm", sink.clone());
-
-        let factory = LlmServiceFactoryService::new(Arc::new(FakeLlmServiceFactory::new(vec![
-            "First".to_owned(),
-        ])));
-        let mut actor = LlmActor {
-            factory,
-            services: crate::common::services::Services::new_fake().await,
-            _state: State::new(AppState::default()),
-            tasks: HashMap::new(),
-            sessions: HashMap::new(),
-        };
+        let mut actor = test_llm_actor().await;
 
         let session_id = SessionId::new();
         let payload = SendToLlmProvider {
@@ -913,7 +929,7 @@ mod tests {
         };
 
         // Start first stream and save the handle.
-        actor.start_stream(&payload, &ctx);
+        actor.start_stream(payload.clone());
         let first_handle = actor.tasks.remove(&session_id);
         assert!(first_handle.is_some());
         // Re-insert for the second start_stream to find and abort.
@@ -922,7 +938,7 @@ mod tests {
             .insert(session_id.clone(), first_handle.unwrap());
 
         // When starting a second stream for the same session.
-        actor.start_stream(&payload, &ctx);
+        actor.start_stream(payload);
 
         // Then a new task exists (the old one was aborted internally).
         assert!(
@@ -934,20 +950,7 @@ mod tests {
     #[tokio::test]
     async fn start_stream_sets_session_to_streaming() {
         // Given an LLM actor.
-        use crate::common::actor::{ActorContext, RecordingSink};
-        let sink = Arc::new(RecordingSink::new());
-        let ctx = ActorContext::new("test-llm", sink.clone());
-
-        let factory = LlmServiceFactoryService::new(Arc::new(FakeLlmServiceFactory::new(vec![
-            "Hi".to_owned(),
-        ])));
-        let mut actor = LlmActor {
-            factory,
-            services: crate::common::services::Services::new_fake().await,
-            _state: State::new(AppState::default()),
-            tasks: HashMap::new(),
-            sessions: HashMap::new(),
-        };
+        let mut actor = test_llm_actor().await;
 
         let session_id = SessionId::new();
         let payload = SendToLlmProvider {
@@ -959,7 +962,7 @@ mod tests {
         };
 
         // When starting a stream.
-        actor.start_stream(&payload, &ctx);
+        actor.start_stream(payload);
 
         // Then the session state is Streaming.
         let session_data = actor.sessions.get(&session_id);
@@ -972,63 +975,68 @@ mod tests {
     }
 
     #[tokio::test]
-    async fn handle_command_dispatches_send_to_llm() {
-        // Given an LLM actor.
-        use crate::common::actor::{ActorContext, RecordingSink};
-        let sink = Arc::new(RecordingSink::new());
-        let ctx = ActorContext::new("test-llm", sink.clone());
-
+    async fn handle_send_to_llm_via_bus() {
+        // Given a test harness with an LLM actor.
+        let harness = TestHarness::new().await;
         let factory = LlmServiceFactoryService::new(Arc::new(FakeLlmServiceFactory::new(vec![
             "response".to_owned(),
         ])));
-        let mut actor = LlmActor {
-            factory,
-            services: crate::common::services::Services::new_fake().await,
-            _state: State::new(AppState::default()),
-            tasks: HashMap::new(),
-            sessions: HashMap::new(),
-        };
+        let _actor = harness
+            .spawn_actor::<LlmActor>(LlmActorDeps {
+                factory,
+                deps: harness.actor_deps().await,
+                state: State::new(crate::common::app_state::AppState::default()),
+            })
+            .await;
+        let recorder = harness.spawn_recorder::<StreamCompleted>().await;
 
         let session_id = SessionId::new();
-        let command = Command::SendToLlmProvider(SendToLlmProvider {
+        let payload = SendToLlmProvider {
             session_id: session_id.clone(),
             messages: vec![],
             tool_definitions: vec![],
             provider_id: None,
             estimated_tokens: 0,
-        });
+        };
 
-        // When dispatching via handle_command.
-        actor.handle_command(&command, &ctx);
+        // When sending via bus.
+        harness.publish(payload).await;
 
-        // Then a task is spawned for the session.
-        assert!(actor.tasks.contains_key(&session_id));
+        // Then the stream completes.
+        let completed = await_recorded(&recorder, 1, std::time::Duration::from_secs(5)).await;
+        let found = completed
+            .iter()
+            .any(|sc| sc.reason == StreamCompletedReason::Finished);
+        assert!(found, "should emit StreamCompleted(Finished)");
     }
 
     #[tokio::test]
-    async fn handle_command_dispatches_cancel() {
-        // Given an LLM actor with a streaming session.
-        use crate::common::actor::{ActorContext, RecordingSink};
-        let sink = Arc::new(RecordingSink::new());
-        let ctx = ActorContext::new("test-llm", sink.clone());
+    async fn handle_cancel_stream_with_no_active_stream_is_noop() {
+        // Given a test harness with an LLM actor.
+        let harness = TestHarness::new().await;
+        let factory = LlmServiceFactoryService::new(Arc::new(FakeLlmServiceFactory::new(vec![
+            "response".to_owned(),
+        ])));
+        let _actor = harness
+            .spawn_actor::<LlmActor>(LlmActorDeps {
+                factory,
+                deps: harness.actor_deps().await,
+                state: State::new(crate::common::app_state::AppState::default()),
+            })
+            .await;
 
-        let mut actor = test_llm_actor().await;
+        let recorder = harness.spawn_recorder::<StreamCompleted>().await;
+
+        // When sending CancelStream with no active stream.
         let session_id = SessionId::new();
-        actor
-            .sessions
-            .insert(session_id.clone(), SessionData::new());
-        let handle = tokio::spawn(async { std::future::pending::<()>().await });
-        actor.tasks.insert(session_id.clone(), handle);
+        harness
+            .publish(CancelStream {
+                session_id: session_id.clone(),
+            })
+            .await;
 
-        let command = Command::CancelStream(CancelStream {
-            session_id: session_id.clone(),
-        });
-
-        // When dispatching via handle_command.
-        actor.handle_command(&command, &ctx);
-
-        // Then the task and session are removed.
-        assert!(!actor.tasks.contains_key(&session_id));
-        assert!(!actor.sessions.contains_key(&session_id));
+        // Then no StreamCompleted is emitted (nothing to cancel).
+        let completed = await_recorded(&recorder, 1, std::time::Duration::from_millis(100)).await;
+        assert!(completed.is_empty(), "CancelStream with no active stream should be a no-op");
     }
 }

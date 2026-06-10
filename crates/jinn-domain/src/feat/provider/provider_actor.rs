@@ -16,165 +16,139 @@
 //! All handlers follow the same pattern: acquire state lock → mutate → release →
 //! then emit. Never hold the lock during emission.
 
-use crate::common::actor::{Actor, ActorContext, ActorEnvelope, NoDirectMsg};
-use crate::common::services::Services;
+use std::convert::Infallible;
+
+use crate::common::actor_deps::{ActorDeps, BusPublish};
 use crate::common::state::State;
-use crate::feat::provider::protocol::command::ProviderSwitch;
+use crate::feat::provider::protocol::command::{
+    LoadCompactionModelPickerEntries, LoadProviderPickerEntries, ProviderSwitch,
+};
 use crate::feat::provider::protocol::event::{ModelCacheLoaded, ModelsRefreshed, ProviderSwitched};
-use crate::protocol::{Command, Event};
 
 use super::loader::{load_compaction_model_picker_items, load_provider_picker_items};
-use crate::feat::provider::protocol::command::{
-    LoadCompactionModelPickerEntries, LoadProviderPickerEntries,
-};
+use kameo::actor::ActorRef;
+use kameo::message::{Context as MsgContext, Message};
+use kameo::Actor;
 
 /// The provider actor.
 ///
 /// Subscribes to provider-related commands, mutates [`State`], and emits events
-/// via the [`ActorContext`] message sink.
+/// via the bus.
 pub struct ProviderActor {
     /// Shared application state.
     state: State,
     /// Runtime services (provider registry, API keys, LLM service factory).
-    services: Services,
+    deps: ActorDeps,
 }
 
 /// Dependencies for [`ProviderActor`].
 pub struct ProviderActorDeps {
     /// Shared application state.
     pub state: State,
-    /// Runtime services.
-    pub services: Services,
+    /// Actor dependencies (services including bus).
+    pub deps: ActorDeps,
 }
 
 impl Actor for ProviderActor {
-    type Message = NoDirectMsg;
-    type Deps = ProviderActorDeps;
+    type Args = ProviderActorDeps;
+    type Error = Infallible;
 
-    fn activate(deps: Self::Deps, ctx: &mut ActorContext) -> Self {
-        ctx.subscribe_command::<ProviderSwitch>();
-        ctx.subscribe_command::<LoadProviderPickerEntries>();
-        ctx.subscribe_command::<LoadCompactionModelPickerEntries>();
-        ctx.subscribe_event::<ModelsRefreshed>();
-        ctx.subscribe_event::<ModelCacheLoaded>();
+    async fn on_start(args: Self::Args, actor_ref: ActorRef<Self>) -> Result<Self, Self::Error> {
+        let bus = &args.deps.services.bus;
+        bus.register(actor_ref.clone().recipient::<ProviderSwitch>()).await;
+        bus.register(actor_ref.clone().recipient::<LoadProviderPickerEntries>()).await;
+        bus.register(actor_ref.clone().recipient::<LoadCompactionModelPickerEntries>()).await;
+        bus.register(actor_ref.clone().recipient::<ModelsRefreshed>()).await;
+        bus.register(actor_ref.recipient::<ModelCacheLoaded>()).await;
 
-        ctx.set_description("Manages provider selection, LLM factory, and model cache");
-
-        Self {
-            state: deps.state,
-            services: deps.services,
-        }
+        Ok(Self {
+            state: args.state,
+            deps: args.deps,
+        })
     }
+}
 
-    async fn handle(&mut self, msg: ActorEnvelope<Self::Message>, ctx: &ActorContext) {
-        match msg {
-            ActorEnvelope::Command(cmd) => self.handle_command(&cmd, ctx),
-            ActorEnvelope::Event(Event::ModelsRefreshed(ref payload)) => {
-                self.handle_models_refreshed(payload);
-            }
-            ActorEnvelope::Event(Event::ModelCacheLoaded(ref payload)) => {
-                self.handle_model_cache_loaded(&payload.cache);
-            }
-            _ => {}
-        }
+impl Message<ProviderSwitch> for ProviderActor {
+    type Reply = ();
+
+    async fn handle(
+        &mut self,
+        msg: ProviderSwitch,
+        _ctx: &mut MsgContext<Self, Self::Reply>,
+    ) {
+        self.handle_provider_switch(&msg);
+        self.publish(ProviderSwitched {
+            session_id: msg.session_id.clone(),
+            provider_name: msg.provider_id.clone(),
+        })
+        .await;
+    }
+}
+
+impl Message<LoadProviderPickerEntries> for ProviderActor {
+    type Reply = ();
+
+    async fn handle(
+        &mut self,
+        _msg: LoadProviderPickerEntries,
+        _ctx: &mut MsgContext<Self, Self::Reply>,
+    ) {
+        let mut state = self.state.write();
+        load_provider_picker_items(&self.deps.services, &mut state);
+    }
+}
+
+impl Message<LoadCompactionModelPickerEntries> for ProviderActor {
+    type Reply = ();
+
+    async fn handle(
+        &mut self,
+        _msg: LoadCompactionModelPickerEntries,
+        _ctx: &mut MsgContext<Self, Self::Reply>,
+    ) {
+        let mut state = self.state.write();
+        load_compaction_model_picker_items(&self.deps.services, &mut state);
+    }
+}
+
+impl Message<ModelsRefreshed> for ProviderActor {
+    type Reply = ();
+
+    async fn handle(
+        &mut self,
+        msg: ModelsRefreshed,
+        _ctx: &mut MsgContext<Self, Self::Reply>,
+    ) {
+        self.handle_models_refreshed(&msg);
+    }
+}
+
+impl Message<ModelCacheLoaded> for ProviderActor {
+    type Reply = ();
+
+    async fn handle(
+        &mut self,
+        msg: ModelCacheLoaded,
+        _ctx: &mut MsgContext<Self, Self::Reply>,
+    ) {
+        self.handle_model_cache_loaded(&msg.cache);
+    }
+}
+
+impl BusPublish for ProviderActor {
+    fn bus(&self) -> &crate::common::services::bus_service::BusService {
+        &self.deps.services.bus
     }
 }
 
 impl ProviderActor {
-    /// Dispatches a command to the appropriate handler.
-    fn handle_command(&mut self, cmd: &Command, ctx: &ActorContext) {
-        match cmd {
-            Command::ProviderSwitch(payload) => {
-                self.handle_provider_switch(payload, ctx);
-            }
-            Command::LoadProviderPickerEntries(payload) => {
-                self.handle_load_provider_picker_entries(payload);
-            }
-            Command::LoadCompactionModelPickerEntries(payload) => {
-                self.handle_load_compaction_model_picker_entries(payload);
-            }
-            // Commands NOT subscribed to - these should not arrive.
-            Command::SendMessage(..)
-            | Command::PinChatEntry(..)
-            | Command::UnpinChatEntry(..)
-            | Command::EnqueueUserMessage(..)
-            | Command::EnqueueResumeTurn(..)
-            | Command::SetChatInputText(..)
-            | Command::PushChatEntry(..)
-            | Command::CancelStream(..)
-            | Command::SendToLlmProvider(..)
-            | Command::RefreshModels
-            | Command::RescanPromptTemplates(..)
-            | Command::ScanContextFiles(..)
-            | Command::RegisterTools(..)
-            | Command::ExecuteToolBatch(..)
-            | Command::ExecuteTool(..)
-            | Command::CancelToolBatch(..)
-            | Command::ProceedWithShutdown(..)
-            | Command::SessionLoadRequested(..)
-            | Command::LoadSessionPickerEntries(..)
-            | Command::ScanSkills(..)
-            | Command::RescanPersonas(..)
-            | Command::LoadPersonaPickerEntries(..)
-            | Command::UpdatePreferences(..)
-            | Command::UpdateAppState(..)
-            | Command::SessionForkRequested(..)
-            | Command::RunSessionSetup(..)
-            | Command::RunSessionTeardown(..)
-            | Command::CloseSession(..)
-            | Command::ArchiveSession(..)
-            | Command::PersistSession(..)
-            | Command::SetSessionCwd(..)
-            | Command::FinishSessionTeardown(..)
-            | Command::FinishSessionSetup(..)
-            | Command::CancelLifecycleCommand(..)
-            | Command::MarkSessionInteracted(..)
-            | Command::SubmitHistoryMutations(..)
-            | Command::TriggerCompaction(..)
-            | Command::Dynamic(..)
-            | Command::ExecuteWebFetch(..)
-            | Command::AttachPlugin(..)
-            | Command::DetachPlugin(..)
-            | Command::TogglePlugin(..)
-            | Command::SubmitSteeringMessage(..) => {}
-        }
-    }
-
-    // --- Command handlers ---
-
-    /// ProviderSwitch: update session profile and emit ProviderSwitched event.
-    fn handle_provider_switch(&self, payload: &ProviderSwitch, ctx: &ActorContext) {
-        {
-            let mut state = self.state.write();
-            state
-                .session_mut_or_create(&payload.session_id)
-                .set_model(payload.provider_id.clone());
-        }
-
-        if let Err(e) = ctx.send_event(Event::ProviderSwitched(ProviderSwitched {
-            session_id: payload.session_id.clone(),
-            provider_name: payload.provider_id.clone(),
-        })) {
-            tracing::warn!(err = ?e, "provider-actor failed to emit ProviderSwitched");
-        }
-    }
-
-    /// LoadProviderPickerEntries: load provider picker entries.
-    fn handle_load_provider_picker_entries(&self, _payload: &LoadProviderPickerEntries) {
+    /// ProviderSwitch: update session profile.
+    fn handle_provider_switch(&self, payload: &ProviderSwitch) {
         let mut state = self.state.write();
-        load_provider_picker_items(&self.services, &mut state);
+        state
+            .session_mut_or_create(&payload.session_id)
+            .set_model(payload.provider_id.clone());
     }
-
-    /// LoadCompactionModelPickerEntries: load compaction model picker entries.
-    fn handle_load_compaction_model_picker_entries(
-        &self,
-        _payload: &LoadCompactionModelPickerEntries,
-    ) {
-        let mut state = self.state.write();
-        load_compaction_model_picker_items(&self.services, &mut state);
-    }
-
-    // --- Event handlers ---
 
     /// ModelsRefreshed: update model cache and reload provider picker entries.
     fn handle_models_refreshed(&self, event: &ModelsRefreshed) {
@@ -184,39 +158,39 @@ impl ProviderActor {
             last_updated_at: Some(now),
         };
         {
-            let registry = self.services.provider_registry.read();
+            let registry = self.deps.services.provider_registry.read();
             merge_context_lengths_from_registry(&mut cache, &registry);
         }
         let models_dev = crate::feat::provider_infra::ModelsDevData::load(
-            &self.services.paths.models_dev_user_path(),
-            &self.services.paths.models_dev_system_path(),
+            &self.deps.services.paths.models_dev_user_path(),
+            &self.deps.services.paths.models_dev_system_path(),
         );
         merge_context_lengths_from_models_dev(&mut cache, &models_dev);
         // Merge remote models into the registry so create_factory() can find them.
-        self.services.provider_registry.merge_cache(&cache);
+        self.deps.services.provider_registry.merge_cache(&cache);
         let mut state = self.state.write();
         state.provider.model_cache = Some(cache);
         // Also reload provider picker entries from updated model cache.
-        load_provider_picker_items(&self.services, &mut state);
+        load_provider_picker_items(&self.deps.services, &mut state);
     }
 
     /// ModelCacheLoaded: restore model cache from disk and reload picker entries.
     fn handle_model_cache_loaded(&self, cache: &crate::feat::provider_infra::ModelCache) {
         let mut cache = cache.clone();
         {
-            let registry = self.services.provider_registry.read();
+            let registry = self.deps.services.provider_registry.read();
             merge_context_lengths_from_registry(&mut cache, &registry);
         }
         let models_dev = crate::feat::provider_infra::ModelsDevData::load(
-            &self.services.paths.models_dev_user_path(),
-            &self.services.paths.models_dev_system_path(),
+            &self.deps.services.paths.models_dev_user_path(),
+            &self.deps.services.paths.models_dev_system_path(),
         );
         merge_context_lengths_from_models_dev(&mut cache, &models_dev);
         // Merge remote models into the registry so create_factory() can find them.
-        self.services.provider_registry.merge_cache(&cache);
+        self.deps.services.provider_registry.merge_cache(&cache);
         let mut state = self.state.write();
         state.provider.model_cache = Some(cache);
-        load_provider_picker_items(&self.services, &mut state);
+        load_provider_picker_items(&self.deps.services, &mut state);
     }
 }
 
@@ -278,37 +252,32 @@ mod tests {
     use std::sync::Arc;
 
     use crate::AppState;
-    use crate::common::actor::{
-        Actor as _, ActorContext, ActorEnvelope, MessageSink, RecordingSink,
-    };
+    use crate::common::bus::test_harness::{TestHarness, await_recorded};
     use crate::common::services::Services;
     use crate::common::state::State;
     use crate::feat::provider_infra::{ModelCache, ModelInfo, ProviderEntry, ProvidersConfig};
-    use crate::protocol::{Command, Event};
 
-    use super::{ModelsRefreshed, ProviderActor, ProviderActorDeps};
+    use super::{ModelCacheLoaded, ModelsRefreshed, ProviderActor, ProviderActorDeps};
+    use crate::common::actor_deps::ActorDeps;
+    use crate::feat::provider::protocol::command::LoadCompactionModelPickerEntries;
     use crate::feat::provider::protocol::command::LoadProviderPickerEntries;
     use crate::feat::provider::protocol::command::ProviderSwitch;
+    use crate::feat::provider::protocol::event::ProviderSwitched;
     use crate::feat::ui::picker_states::PickerExt;
 
-    async fn create_actor() -> (
-        ProviderActor,
-        Services,
-        Arc<RecordingSink>,
-        ActorContext,
-        State,
-    ) {
-        let sink = Arc::new(RecordingSink::new());
-        let mut ctx = ActorContext::new("provider", sink.clone() as Arc<dyn MessageSink>);
-
-        let services = Services::new_fake().await;
+    async fn create_harness() -> (TestHarness, State) {
+        let harness = TestHarness::new().await;
         let state = State::new(AppState::default());
-        let deps = ProviderActorDeps {
-            services: services.clone(),
-            state: state.clone(),
-        };
-        let actor = ProviderActor::activate(deps, &mut ctx);
-        (actor, services, sink, ctx, state)
+        (harness, state)
+    }
+
+    async fn spawn_actor(harness: &TestHarness, state: &State, deps: ActorDeps) {
+        harness
+            .spawn_actor::<ProviderActor>(ProviderActorDeps {
+                deps,
+                state: state.clone(),
+            })
+            .await;
     }
 
     fn sample_config() -> ProvidersConfig {
@@ -332,10 +301,12 @@ mod tests {
     #[tokio::test]
     async fn model_cache_loaded_sets_model_cache_in_state() {
         // Given a provider actor and a registry with a provider.
-        let (mut actor, services, _sink, ctx, state) = create_actor().await;
+        let (harness, state) = create_harness().await;
+        let services = harness.actor_deps().await.services;
         let registry = crate::feat::provider_infra::ProviderRegistry::from_config(sample_config())
             .expect("registry");
         services.provider_registry.replace(registry);
+        spawn_actor(&harness, &state, harness.actor_deps().await).await;
 
         let mut cache = ModelCache::new();
         cache.entries.insert(
@@ -347,16 +318,15 @@ mod tests {
         );
         cache.last_updated_at = Some(jiff::Timestamp::now());
 
-        let event = crate::feat::provider::protocol::event::ModelCacheLoaded {
-            cache: cache.clone(),
-        };
-
-        // When handling ModelCacheLoaded.
-        actor
-            .handle(ActorEnvelope::Event(Event::ModelCacheLoaded(event)), &ctx)
+        // When publishing ModelCacheLoaded via bus.
+        harness
+            .publish(ModelCacheLoaded { cache: cache.clone() })
             .await;
 
         // Then the model cache is set in state.
+        tokio::time::sleep(std::time::Duration::from_millis(50)).await;
+        assert!(state.read().provider.model_cache.is_some(), "actor should have processed the event");
+
         let s = state.read();
         assert!(s.provider.model_cache.is_some());
         let loaded = s.provider.model_cache.as_ref().unwrap();
@@ -364,38 +334,16 @@ mod tests {
         assert_eq!(loaded.entries["ollama"][0].id, "llama3");
     }
 
-    async fn create_actor_with_config(
-        config: ProvidersConfig,
-    ) -> (
-        ProviderActor,
-        Services,
-        Arc<RecordingSink>,
-        ActorContext,
-        State,
-    ) {
-        let sink = Arc::new(RecordingSink::new());
-        let mut ctx = ActorContext::new("provider", sink.clone() as Arc<dyn MessageSink>);
-        let services = Services::new_fake().await;
-        let registry =
-            crate::feat::provider_infra::ProviderRegistry::from_config(config).expect("registry");
-        services.provider_registry.replace(registry);
-        let state = State::new(AppState::default());
-        let deps = ProviderActorDeps {
-            services: services.clone(),
-            state: state.clone(),
-        };
-        let actor = ProviderActor::activate(deps, &mut ctx);
-        (actor, services, sink, ctx, state)
-    }
-
     #[rstest::rstest]
     #[tokio::test]
     async fn model_cache_loaded_preserves_timestamp() {
         // Given a provider actor with a cache that has a timestamp.
-        let (mut actor, services, _sink, ctx, state) = create_actor().await;
+        let (harness, state) = create_harness().await;
+        let services = harness.actor_deps().await.services;
         let registry = crate::feat::provider_infra::ProviderRegistry::from_config(sample_config())
             .expect("registry");
         services.provider_registry.replace(registry);
+        spawn_actor(&harness, &state, harness.actor_deps().await).await;
 
         let ts = jiff::Timestamp::now();
         let mut cache = ModelCache::new();
@@ -408,14 +356,12 @@ mod tests {
         );
         cache.last_updated_at = Some(ts);
 
-        let event = crate::feat::provider::protocol::event::ModelCacheLoaded {
-            cache: cache.clone(),
-        };
-
-        // When handling ModelCacheLoaded.
-        actor
-            .handle(ActorEnvelope::Event(Event::ModelCacheLoaded(event)), &ctx)
+        // When publishing ModelCacheLoaded via bus.
+        harness
+            .publish(ModelCacheLoaded { cache: cache.clone() })
             .await;
+
+        tokio::time::sleep(std::time::Duration::from_millis(50)).await;
 
         // Then the timestamp is preserved in state.
         let s = state.read();
@@ -443,9 +389,15 @@ mod tests {
             aliases: vec![],
             default_provider: None,
         };
-        let (mut actor, services, _sink, ctx, state) = create_actor_with_config(config).await;
+        let (harness, state) = create_harness().await;
+        let deps = harness.actor_deps().await;
+        let services = deps.services.clone();
+        let registry =
+            crate::feat::provider_infra::ProviderRegistry::from_config(config).expect("registry");
+        services.provider_registry.replace(registry);
+        spawn_actor(&harness, &state, deps).await;
 
-        // When handling ModelsRefreshed with zai model that has context_length: None.
+        // When publishing ModelsRefreshed with zai model that has context_length: None.
         let mut results = std::collections::HashMap::new();
         results.insert(
             "zai".to_owned(),
@@ -459,9 +411,9 @@ mod tests {
             results,
             errors: std::collections::HashMap::new(),
         };
-        actor
-            .handle(ActorEnvelope::Event(Event::ModelsRefreshed(event)), &ctx)
-            .await;
+        harness.publish(event).await;
+
+        tokio::time::sleep(std::time::Duration::from_millis(50)).await;
 
         // Then the model cache has context_length from the registry.
         let s = state.read();
@@ -503,9 +455,14 @@ mod tests {
             aliases: vec![],
             default_provider: None,
         };
-        let (mut actor, _services, _sink, ctx, state) = create_actor_with_config(config).await;
+        let (harness, state) = create_harness().await;
+        let services = harness.actor_deps().await.services;
+        let registry =
+            crate::feat::provider_infra::ProviderRegistry::from_config(config).expect("registry");
+        services.provider_registry.replace(registry);
+        spawn_actor(&harness, &state, harness.actor_deps().await).await;
 
-        // When handling ModelsRefreshed where API returns context_length: Some(8192).
+        // When publishing ModelsRefreshed where API returns context_length: Some(8192).
         let mut results = std::collections::HashMap::new();
         results.insert(
             "ollama".to_owned(),
@@ -519,9 +476,9 @@ mod tests {
             results,
             errors: std::collections::HashMap::new(),
         };
-        actor
-            .handle(ActorEnvelope::Event(Event::ModelsRefreshed(event)), &ctx)
-            .await;
+        harness.publish(event).await;
+
+        tokio::time::sleep(std::time::Duration::from_millis(50)).await;
 
         // Then the API value wins (8192), not the registry value (4096).
         let s = state.read();
@@ -536,10 +493,11 @@ mod tests {
     #[rstest::rstest]
     #[tokio::test]
     async fn models_refreshed_leaves_none_when_neither_source_has_context_length() {
-        // Given a registry with provider that has context_length: None.
-        let (mut actor, _services, _sink, ctx, state) = create_actor().await;
+        // Given a provider actor.
+        let (harness, state) = create_harness().await;
+        spawn_actor(&harness, &state, harness.actor_deps().await).await;
 
-        // When handling ModelsRefreshed where API also returns context_length: None.
+        // When publishing ModelsRefreshed where API also returns context_length: None.
         let mut results = std::collections::HashMap::new();
         results.insert(
             "ollama".to_owned(),
@@ -553,9 +511,9 @@ mod tests {
             results,
             errors: std::collections::HashMap::new(),
         };
-        actor
-            .handle(ActorEnvelope::Event(Event::ModelsRefreshed(event)), &ctx)
-            .await;
+        harness.publish(event).await;
+
+        tokio::time::sleep(std::time::Duration::from_millis(50)).await;
 
         // Then the cache entry stays None.
         let s = state.read();
@@ -570,10 +528,11 @@ mod tests {
     #[rstest::rstest]
     #[tokio::test]
     async fn models_refreshed_does_not_touch_provider_not_in_registry() {
-        // Given a registry with only ollama provider.
-        let (mut actor, _services, _sink, ctx, state) = create_actor().await;
+        // Given a provider actor.
+        let (harness, state) = create_harness().await;
+        spawn_actor(&harness, &state, harness.actor_deps().await).await;
 
-        // When handling ModelsRefreshed with results for groq (not in registry).
+        // When publishing ModelsRefreshed with results for groq (not in registry).
         let mut results = std::collections::HashMap::new();
         results.insert(
             "groq".to_owned(),
@@ -587,9 +546,9 @@ mod tests {
             results,
             errors: std::collections::HashMap::new(),
         };
-        actor
-            .handle(ActorEnvelope::Event(Event::ModelsRefreshed(event)), &ctx)
-            .await;
+        harness.publish(event).await;
+
+        tokio::time::sleep(std::time::Duration::from_millis(50)).await;
 
         // Then the cache entry is stored as-is, no panic.
         let s = state.read();
@@ -619,9 +578,15 @@ mod tests {
             aliases: vec![],
             default_provider: None,
         };
-        let (mut actor, services, _sink, ctx, state) = create_actor_with_config(config).await;
+        let (harness, state) = create_harness().await;
+        let deps = harness.actor_deps().await;
+        let services = deps.services.clone();
+        let registry =
+            crate::feat::provider_infra::ProviderRegistry::from_config(config).expect("registry");
+        services.provider_registry.replace(registry);
+        spawn_actor(&harness, &state, deps).await;
 
-        // When handling ModelCacheLoaded with cache that has context_length: None.
+        // When publishing ModelCacheLoaded with cache that has context_length: None.
         let mut cache = ModelCache::new();
         cache.entries.insert(
             "zai".to_owned(),
@@ -632,12 +597,11 @@ mod tests {
         );
         cache.last_updated_at = Some(jiff::Timestamp::now());
 
-        let event = crate::feat::provider::protocol::event::ModelCacheLoaded {
-            cache: cache.clone(),
-        };
-        actor
-            .handle(ActorEnvelope::Event(Event::ModelCacheLoaded(event)), &ctx)
+        harness
+            .publish(ModelCacheLoaded { cache: cache.clone() })
             .await;
+
+        tokio::time::sleep(std::time::Duration::from_millis(50)).await;
 
         // Then the model cache in state has context_length from the registry.
         let s = state.read();
@@ -679,9 +643,14 @@ mod tests {
             aliases: vec![],
             default_provider: None,
         };
-        let (mut actor, _services, _sink, ctx, state) = create_actor_with_config(config).await;
+        let (harness, state) = create_harness().await;
+        let services = harness.actor_deps().await.services;
+        let registry =
+            crate::feat::provider_infra::ProviderRegistry::from_config(config).expect("registry");
+        services.provider_registry.replace(registry);
+        spawn_actor(&harness, &state, harness.actor_deps().await).await;
 
-        // When handling ModelCacheLoaded with cache that has context_length: Some(8192).
+        // When publishing ModelCacheLoaded with cache that has context_length: Some(8192).
         let mut cache = ModelCache::new();
         cache.entries.insert(
             "ollama".to_owned(),
@@ -692,12 +661,11 @@ mod tests {
         );
         cache.last_updated_at = Some(jiff::Timestamp::now());
 
-        let event = crate::feat::provider::protocol::event::ModelCacheLoaded {
-            cache: cache.clone(),
-        };
-        actor
-            .handle(ActorEnvelope::Event(Event::ModelCacheLoaded(event)), &ctx)
+        harness
+            .publish(ModelCacheLoaded { cache: cache.clone() })
             .await;
+
+        tokio::time::sleep(std::time::Duration::from_millis(50)).await;
 
         // Then the cache value wins (8192), not the registry value (4096).
         let s = state.read();
@@ -709,10 +677,10 @@ mod tests {
         assert_eq!(loaded.entries["ollama"][0].context_length, Some(8192));
     }
 
-    // --- models.dev merge tests ---
+    // --- models.dev merge tests (pure unit tests, no actor involved) ---
 
     #[rstest::rstest]
-#[tokio::test]
+    #[tokio::test]
     async fn merge_from_models_dev_fills_none() {
         // Given a cache with context_length: None and models.dev data.
         let mut cache = ModelCache::new();
@@ -737,7 +705,7 @@ mod tests {
     }
 
     #[rstest::rstest]
-#[tokio::test]
+    #[tokio::test]
     async fn merge_from_models_dev_does_not_overwrite_existing() {
         // Given a cache with context_length: Some(100000) and models.dev has 200000.
         let mut cache = ModelCache::new();
@@ -762,7 +730,7 @@ mod tests {
     }
 
     #[rstest::rstest]
-#[tokio::test]
+    #[tokio::test]
     async fn merge_from_models_dev_leaves_none_when_not_in_data() {
         // Given a cache with an unknown model.
         let mut cache = ModelCache::new();
@@ -784,7 +752,7 @@ mod tests {
     }
 
     #[rstest::rstest]
-#[tokio::test]
+    #[tokio::test]
     async fn merge_priority_is_api_then_config_then_models_dev() {
         // Given three models with different source scenarios.
         let mut cache = ModelCache::new();
@@ -846,7 +814,7 @@ mod tests {
     }
 
     #[rstest::rstest]
-#[tokio::test]
+    #[tokio::test]
     async fn merge_from_models_dev_handles_multiple_providers() {
         // Given two providers with models that have None.
         let mut cache = ModelCache::new();
@@ -884,45 +852,45 @@ mod tests {
     #[rstest::rstest]
     #[tokio::test]
     async fn handle_dispatches_provider_switch_command() {
-        // Kills: delete ActorEnvelope::Command(cmd) match arm in handle.
-        // Also kills: replace handle_command with ().
-        // Also kills: replace handle_provider_switch with ().
         // Given a provider actor.
-        let (mut actor, _services, sink, ctx, state) = create_actor().await;
+        let (harness, state) = create_harness().await;
+        let recorder = harness.spawn_recorder::<ProviderSwitched>().await;
+        spawn_actor(&harness, &state, harness.actor_deps().await).await;
         let session_id = state.read().session.active_session_id().clone();
 
-        // When sending a ProviderSwitch command.
-        let cmd = Command::ProviderSwitch(ProviderSwitch {
-            session_id: session_id.clone(),
-            provider_id: "ollama/llama3".to_owned(),
-        });
-        actor.handle(ActorEnvelope::Command(cmd), &ctx).await;
+        // When publishing a ProviderSwitch command.
+        harness
+            .publish(ProviderSwitch {
+                session_id: session_id.clone(),
+                provider_id: "ollama/llama3".to_owned(),
+            })
+            .await;
 
         // Then the session model is updated.
+        let recorded = await_recorded(&recorder, 1, std::time::Duration::from_secs(2)).await;
+        assert_eq!(recorded.len(), 1);
+        assert_eq!(recorded[0].provider_name, "ollama/llama3");
+
         let s = state.read();
         assert_eq!(s.session.active_session().profile().model, "ollama/llama3");
-
-        // And a ProviderSwitched event is emitted.
-        let events = sink.take_events();
-        assert_eq!(events.len(), 1);
-        assert!(
-            matches!(&events[0], Event::ProviderSwitched(e) if e.provider_name == "ollama/llama3")
-        );
     }
 
     #[rstest::rstest]
     #[tokio::test]
     async fn handle_dispatches_load_provider_picker_entries_command() {
-        // Kills: replace handle_load_provider_picker_entries with ().
         // Given a provider actor with a registry.
-        let (mut actor, services, _sink, ctx, state) = create_actor().await;
+        let (harness, state) = create_harness().await;
+        let deps = harness.actor_deps().await;
         let registry = crate::feat::provider_infra::ProviderRegistry::from_config(sample_config())
             .expect("registry");
-        services.provider_registry.replace(registry);
+        deps.services.provider_registry.replace(registry);
+        spawn_actor(&harness, &state, deps).await;
 
-        // When sending LoadProviderPickerEntries.
-        let cmd = Command::LoadProviderPickerEntries(LoadProviderPickerEntries);
-        actor.handle(ActorEnvelope::Command(cmd), &ctx).await;
+        // When publishing LoadProviderPickerEntries.
+        harness.publish(LoadProviderPickerEntries).await;
+
+        // Give the actor time to process.
+        tokio::time::sleep(std::time::Duration::from_millis(200)).await;
 
         // Then the provider picker has entries.
         let s = state.read();
@@ -936,18 +904,19 @@ mod tests {
     #[rstest::rstest]
     #[tokio::test]
     async fn handle_dispatches_load_compaction_model_picker_entries_command() {
-        // Kills: replace handle_load_compaction_model_picker_entries with ().
         // Given a provider actor with a registry.
-        let (mut actor, services, _sink, ctx, state) = create_actor().await;
+        let (harness, state) = create_harness().await;
+        let deps = harness.actor_deps().await;
         let registry = crate::feat::provider_infra::ProviderRegistry::from_config(sample_config())
             .expect("registry");
-        services.provider_registry.replace(registry);
+        deps.services.provider_registry.replace(registry);
+        spawn_actor(&harness, &state, deps).await;
 
-        // When sending LoadCompactionModelPickerEntries.
-        let cmd = Command::LoadCompactionModelPickerEntries(
-            crate::feat::provider::protocol::command::LoadCompactionModelPickerEntries,
-        );
-        actor.handle(ActorEnvelope::Command(cmd), &ctx).await;
+        // When publishing LoadCompactionModelPickerEntries.
+        harness.publish(LoadCompactionModelPickerEntries).await;
+
+        // Give the actor time to process.
+        tokio::time::sleep(std::time::Duration::from_millis(50)).await;
 
         // Then the compaction model picker has entries (at least the sentinel).
         let s = state.read();

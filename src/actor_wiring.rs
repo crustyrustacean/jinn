@@ -48,6 +48,7 @@ use jinn_domain::feat::preferences_actor::app_state_sync_actor::{AppStateSyncAct
 use jinn_domain::feat::discovery_notifier::{DiscoveryNotifierActor, DiscoveryNotifierActorDeps};
 use jinn_domain::feat::queue_actor::{QueueActor, QueueActorDeps};
 use jinn_domain::feat::provider::discover_actor::{DiscoverActor, DiscoverActorDeps};
+use jinn_domain::feat::llm_actor::{LlmActor, LlmActorDeps};
 
 use jinn_domain::feat::preferences_actor::user_preferences::WebFetchBackend;
 use jinn_domain::feat::web_fetch_actor::{WebFetchActor, WebFetchActorDeps};
@@ -376,18 +377,11 @@ impl ActorSystemBuilder {
         // ── Domain actors ────────────────────────────────────────────────────
 
         // LLM streaming actor.
-        actors.push(spawn::<jinn_domain::feat::llm_actor::LlmActor>(
-            "llm-streaming",
-            &sink,
-            handle,
-            &counter,
-            &shutdown_tracker,
-            jinn_domain::feat::llm_actor::LlmActorDeps {
-                factory: llm_service.clone(),
-                services: services.clone(),
-                state: state.clone(),
-            },
-        ));
+        let _llm = LlmActor::spawn(LlmActorDeps {
+            factory: llm_service.clone(),
+            deps: ActorDeps { services: services.clone() },
+            state: state.clone(),
+        });
 
         // Model discovery actor.
         let _discover = DiscoverActor::spawn(DiscoverActorDeps {
@@ -466,19 +460,13 @@ impl ActorSystemBuilder {
         ));
 
         // Prompt scan actor.
-        actors.push(spawn::<
-            jinn_domain::feat::context::prompt_scan_actor::PromptScanActor,
-        >(
-            "prompt-scan",
-            &sink,
-            handle,
-            &counter,
-            &shutdown_tracker,
-            jinn_domain::feat::context::prompt_scan_actor::PromptScanActorDeps {
-                services: services.clone(),
-                state: state.clone(),
-            },
-        ));
+        let _prompt_scan =
+            jinn_domain::feat::context::prompt_scan_actor::PromptScanActor::spawn(
+                jinn_domain::feat::context::prompt_scan_actor::PromptScanActorDeps {
+                    deps: jinn_domain::common::actor_deps::ActorDeps { services: services.clone() },
+                    state: state.clone(),
+                },
+            );
 
         // Context-files scan actor.
         let _context_files_scan =
@@ -534,19 +522,13 @@ impl ActorSystemBuilder {
             });
         }
         // Provider actor.
-        actors.push(spawn::<
-            jinn_domain::feat::provider::provider_actor::ProviderActor,
-        >(
-            "provider",
-            &sink,
-            handle,
-            &counter,
-            &shutdown_tracker,
-            jinn_domain::feat::provider::provider_actor::ProviderActorDeps {
-                state: state.clone(),
-                services: services.clone(),
-            },
-        ));
+        let _provider_actor =
+            jinn_domain::feat::provider::provider_actor::ProviderActor::spawn(
+                jinn_domain::feat::provider::provider_actor::ProviderActorDeps {
+                    deps: jinn_domain::common::actor_deps::ActorDeps { services: services.clone() },
+                    state: state.clone(),
+                },
+            );
 
         // Token count actor - computes tiktoken counts for chat entries.
         let _token_count = TokenCountActor::spawn(TokenCountActorDeps {
