@@ -1509,4 +1509,103 @@ mod tests {
             state.frontend.scope_stack.current()
         );
     }
+
+    // --- Tool picker tests ---
+
+    fn setup_state_with_plugin_tools() -> AppState {
+        let mut state = AppState::default();
+        let origin = ChatSessionState::new();
+        state.session.insert(origin);
+        state
+            .session
+            .set_active(state.session.active_session_id().clone());
+
+        // Simulate plugin tools having been registered via ToolsRegistered event.
+        state.context.tool_definitions.insert(
+            "judgment_passed".to_owned(),
+            crate::protocol::ToolDefinition {
+                name: "judgment_passed".to_owned(),
+                description: "Call when response passes".to_owned(),
+                parameters: serde_json::json!({"type": "object", "properties": {}}),
+                prompt_snippet: None,
+                prompt_guidelines: vec![],
+                server_tool_type: None,
+            },
+        );
+        state.context.tool_definitions.insert(
+            "judgment_failed".to_owned(),
+            crate::protocol::ToolDefinition {
+                name: "judgment_failed".to_owned(),
+                description: "Call when response fails".to_owned(),
+                parameters: serde_json::json!({
+                    "type": "object",
+                    "properties": {
+                        "message": { "type": "string", "description": "Why it failed" }
+                    },
+                    "required": ["message"]
+                }),
+                prompt_snippet: None,
+                prompt_guidelines: vec![],
+                server_tool_type: None,
+            },
+        );
+
+        state
+    }
+
+    #[rstest::rstest]
+    fn load_tool_picker_entries_includes_plugin_tools() {
+        // Given state with plugin tool definitions in context.
+        let mut state = setup_state_with_plugin_tools();
+
+        // When loading tool picker entries.
+        load_tool_picker_entries(&mut state);
+
+        // Then plugin tools appear alongside any builtins.
+        let items = state.frontend.tool_picker().items();
+        let names: Vec<&str> = items.iter().map(|e| e.name.as_str()).collect();
+        assert!(
+            names.contains(&"judgment_passed"),
+            "plugin tool 'judgment_passed' should be in picker, got: {names:?}"
+        );
+        assert!(
+            names.contains(&"judgment_failed"),
+            "plugin tool 'judgment_failed' should be in picker, got: {names:?}"
+        );
+    }
+
+    #[rstest::rstest]
+    fn load_tool_picker_entries_marks_plugin_tools_enabled_by_default() {
+        // Given state with plugin tool definitions.
+        let mut state = setup_state_with_plugin_tools();
+
+        // When loading tool picker entries.
+        load_tool_picker_entries(&mut state);
+
+        // Then plugin tools are enabled (not in disabled_tools set).
+        let items = state.frontend.tool_picker().items();
+        let passed = items.iter().find(|e| e.name == "judgment_passed").expect("entry");
+        assert!(passed.enabled, "judgment_passed should be enabled by default");
+        let failed = items.iter().find(|e| e.name == "judgment_failed").expect("entry");
+        assert!(failed.enabled, "judgment_failed should be enabled by default");
+    }
+
+    #[rstest::rstest]
+    fn load_tool_picker_entries_disables_plugin_tool_when_in_disabled_set() {
+        // Given state with 'judgment_passed' in the disabled_tools set.
+        let mut state = setup_state_with_plugin_tools();
+        state
+            .active_session_mut()
+            .set_disabled_tools(std::collections::HashSet::from(["judgment_passed".to_owned()]));
+
+        // When loading tool picker entries.
+        load_tool_picker_entries(&mut state);
+
+        // Then 'judgment_passed' is disabled but 'judgment_failed' is still enabled.
+        let items = state.frontend.tool_picker().items();
+        let passed = items.iter().find(|e| e.name == "judgment_passed").expect("entry");
+        assert!(!passed.enabled, "judgment_passed should be disabled");
+        let failed = items.iter().find(|e| e.name == "judgment_failed").expect("entry");
+        assert!(failed.enabled, "judgment_failed should still be enabled");
+    }
 }
