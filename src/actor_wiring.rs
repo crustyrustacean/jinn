@@ -346,17 +346,10 @@ impl ActorSystemBuilder {
         });
 
         // Provider init: on EnvironmentLoaded, builds registry, merges cache, resolves last_model.
-        actors.push(spawn::<ProviderInitActor>(
-            "provider-init",
-            &sink,
-            handle,
-            &counter,
-            &shutdown_tracker,
-            ProviderInitActorDeps {
-                services: services.clone(),
-                state: state.clone(),
-            },
-        ));
+        let _provider_init = ProviderInitActor::spawn(ProviderInitActorDeps {
+            deps: ActorDeps { services: services.clone() },
+            state: state.clone(),
+        });
 
         // Preferences: loads and persists user preferences. (Migrated to kameo.)
         let _preferences = PreferencesActor::spawn(PreferencesActorDeps {
