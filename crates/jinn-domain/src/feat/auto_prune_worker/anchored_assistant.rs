@@ -71,7 +71,7 @@ pub struct AnchoredAssistantAutoPruneWorker {
 /// (regardless of entry kind). The first and last anchors are always
 /// present when `history` is non-empty, so this returns a non-empty `Vec`
 /// for any non-empty history and an empty `Vec` only for empty history.
-fn collect_anchor_indices(history: &[ChatEntry]) -> Vec<usize> {
+pub(crate) fn collect_anchor_indices(history: &[ChatEntry]) -> Vec<usize> {
     if history.is_empty() {
         return Vec::new();
     }
@@ -110,7 +110,7 @@ fn collect_anchor_indices(history: &[ChatEntry]) -> Vec<usize> {
 /// returns distances where `None` means "no anchor on that side" (i.e.,
 /// distance is `∞`).
 #[expect(clippy::unreachable, reason = "infallible")]
-fn distances_to_nearest_anchors(
+pub(crate) fn distances_to_nearest_anchors(
     idx: usize,
     anchor_indices: &[usize],
 ) -> (Option<usize>, Option<usize>) {

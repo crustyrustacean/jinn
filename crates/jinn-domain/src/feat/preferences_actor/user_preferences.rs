@@ -565,6 +565,10 @@ pub struct AnchoredAssistantAutoPruneConfig {
     /// Default: `true`.
     #[serde(default = "default_anchored_assistant_enabled")]
     pub enabled: bool,
+    /// **Deprecated:** the radius value is now sourced from `AnchorShieldConfig.radius`.
+    /// This field is kept for backward compatibility with existing `jinn.toml` files
+    /// but its value is ignored at wiring time.
+    ///
     /// Radius (in raw chat entries) within which an `Assistant` entry is
     /// protected from pruning, regardless of distance to any User entry.
     /// Distance strictly greater than this radius marks the entry as a
@@ -600,6 +604,55 @@ impl Default for AnchoredAssistantAutoPruneConfig {
             enabled: DEFAULT_ANCHORED_ASSISTANT_ENABLED,
             radius: DEFAULT_ANCHORED_ASSISTANT_RADIUS,
             min_age: DEFAULT_ANCHORED_ASSISTANT_MIN_AGE,
+        }
+    }
+}
+/// Default enabled state for anchor-shield auto-prune.
+const DEFAULT_ANCHOR_SHIELD_ENABLED: bool = true;
+
+/// Default radius (in raw history entries) for the anchor-shield worker.
+const DEFAULT_ANCHOR_SHIELD_RADIUS: usize = 20;
+
+/// Anchor-shield auto-prune strategy configuration.
+///
+/// Serialized as `[auto_prune.anchor_shield]` in `jinn.toml`.
+///
+/// The shield worker emits `ForcedInclude` for all in-context-by-default
+/// entry types (`User`, `Assistant`, `ToolCall`, `ToolResult`) within
+/// `radius` of any anchor entry. This prevents other workers from excluding
+/// entries that carry conversation structure near user turns.
+///
+/// The `radius` value is also used by the `AnchoredAssistantAutoPruneWorker`
+/// so the shield boundary and prune boundary always align.
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+pub struct AnchorShieldConfig {
+    /// Whether the anchor-shield worker is active.
+    /// Default: `true`.
+    #[serde(default = "default_anchor_shield_enabled")]
+    pub enabled: bool,
+    /// Radius (in raw chat entries) within which in-context entries
+    /// are shielded from exclusion by other workers.
+    /// This value is also used by the `AnchoredAssistantAutoPruneWorker`
+    /// so the shield boundary and prune boundary always align.
+    /// Minimum 1 (clamped at evaluation time).
+    /// Default: `20`.
+    #[serde(default = "default_anchor_shield_radius")]
+    pub radius: usize,
+}
+
+fn default_anchor_shield_enabled() -> bool {
+    DEFAULT_ANCHOR_SHIELD_ENABLED
+}
+
+fn default_anchor_shield_radius() -> usize {
+    DEFAULT_ANCHOR_SHIELD_RADIUS
+}
+
+impl Default for AnchorShieldConfig {
+    fn default() -> Self {
+        Self {
+            enabled: DEFAULT_ANCHOR_SHIELD_ENABLED,
+            radius: DEFAULT_ANCHOR_SHIELD_RADIUS,
         }
     }
 }
@@ -738,6 +791,9 @@ pub struct AutoPruneConfig {
     /// Anchored-assistant auto-prune strategy configuration.
     #[serde(default)]
     pub anchored_assistant: AnchoredAssistantAutoPruneConfig,
+    /// Anchor-shield auto-prune strategy configuration.
+    #[serde(default)]
+    pub anchor_shield: AnchorShieldConfig,
 }
 
 /// Default token threshold for auto-compaction.
@@ -2449,6 +2505,10 @@ enabled = true
                     enabled: false,
                     radius: 42,
                     min_age: 0,
+                },
+                anchor_shield: AnchorShieldConfig {
+                    enabled: true,
+                    radius: 20,
                 },
             },
             ..UserPreferences::default()
