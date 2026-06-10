@@ -581,6 +581,43 @@ mod tests {
         assert!(tc.is_some(), "expected ToolCall entry with id tc-1");
     }
 
+    #[test]
+    fn tool_call_entry_gets_dispatched_at_from_tool_use_started() {
+        // Given a session in streaming state.
+        let actor = test_actor();
+        let session_id = {
+            let mut state = actor.state.write();
+            let session = state.active_session_mut();
+            session.begin_streaming();
+            state.session.active_session_id().clone()
+        };
+        let dispatched = jiff::Timestamp::now();
+
+        // When a tool use starts with a specific dispatched_at.
+        actor.on_tool_use_started(&ToolUseStarted {
+            session_id: session_id.clone(),
+            index: 0,
+            id: "tc-dispatch".to_owned(),
+            name: "bash".to_owned(),
+            dispatched_at: dispatched,
+        });
+
+        // Then the ToolCall entry's timing has that dispatched_at.
+        let state = actor.state.read();
+        let session = state.session.get(&session_id).expect("session");
+        let tc = session
+            .history()
+            .iter()
+            .find(|e| matches!(&e.kind, ChatEntryKind::ToolCall { id, .. } if id == "tc-dispatch"))
+            .expect("tool call entry");
+        match &tc.timing {
+            crate::protocol::EntryTiming::Streamed { dispatched_at, .. } => {
+                assert_eq!(*dispatched_at, dispatched);
+            }
+            other => panic!("expected Streamed, got {other:?}"),
+        }
+    }
+
     // --- on_tool_call_received ---
 
     #[test]

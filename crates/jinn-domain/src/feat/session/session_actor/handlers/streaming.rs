@@ -1564,4 +1564,196 @@ mod tests {
             session.token_ledger()[0].tokens_received
         );
     }
+
+    // --- EntryTiming integration tests ---
+
+    #[test]
+    fn dispatched_at_flows_from_stream_token_to_entry_timing() {
+        // Given a session actor with a session in streaming state.
+        let actor = test_actor();
+        let dispatched = jiff::Timestamp::now();
+        let session_id = {
+            let mut state = actor.state.write();
+            let session = state.active_session_mut();
+            session.begin_streaming();
+            state.session.active_session_id().clone()
+        };
+
+        // When handling a StreamToken with a specific dispatched_at.
+        actor.on_stream_token(&StreamToken {
+            session_id: session_id.clone(),
+            index: 0,
+            token: "Hello".to_owned(),
+            is_thinking: false,
+            dispatched_at: dispatched,
+        });
+
+        // Then the assistant entry's timing has that dispatched_at.
+        let state = actor.state.read();
+        let session = state.session.get(&session_id).expect("session exists");
+        let assistant = session
+            .history()
+            .iter()
+            .find(|e| matches!(e.kind, crate::protocol::ChatEntryKind::Assistant(_)))
+            .expect("assistant entry");
+        match &assistant.timing {
+            crate::protocol::EntryTiming::Streamed {
+                dispatched_at,
+                first_token_at,
+                finished_at,
+            } => {
+                assert_eq!(*dispatched_at, dispatched);
+                assert!(first_token_at.is_some());
+                assert!(finished_at.is_none());
+            }
+            other => panic!("expected Streamed, got {other:?}"),
+        }
+    }
+
+    #[test]
+    fn thinking_entry_gets_dispatched_at_from_stream_token() {
+        // Given a session actor with a session in streaming state.
+        let actor = test_actor();
+        let dispatched = jiff::Timestamp::now();
+        let session_id = {
+            let mut state = actor.state.write();
+            let session = state.active_session_mut();
+            session.begin_streaming();
+            state.session.active_session_id().clone()
+        };
+
+        // When handling a thinking StreamToken with a specific dispatched_at.
+        actor.on_stream_token(&StreamToken {
+            session_id: session_id.clone(),
+            index: 0,
+            token: "reasoning".to_owned(),
+            is_thinking: true,
+            dispatched_at: dispatched,
+        });
+
+        // Then the thinking entry's timing has that dispatched_at.
+        let state = actor.state.read();
+        let session = state.session.get(&session_id).expect("session exists");
+        let thinking = session
+            .history()
+            .iter()
+            .find(|e| matches!(e.kind, crate::protocol::ChatEntryKind::Thinking(_)))
+            .expect("thinking entry");
+        match &thinking.timing {
+            crate::protocol::EntryTiming::Streamed {
+                dispatched_at,
+                first_token_at,
+                finished_at,
+            } => {
+                assert_eq!(*dispatched_at, dispatched);
+                assert!(first_token_at.is_some());
+                assert!(finished_at.is_none());
+            }
+            other => panic!("expected Streamed, got {other:?}"),
+        }
+    }
+
+    #[tokio::test]
+    async fn stream_completed_sets_finished_at_on_assistant_entry() {
+        // Given a session actor with a session in streaming state and a token.
+        let actor = test_actor();
+        let (_sink, ctx) = test_context();
+        let dispatched = jiff::Timestamp::now();
+        let session_id = {
+            let mut state = actor.state.write();
+            let session = state.active_session_mut();
+            session.begin_streaming();
+            state.session.active_session_id().clone()
+        };
+        actor.on_stream_token(&StreamToken {
+            session_id: session_id.clone(),
+            index: 0,
+            token: "Hello".to_owned(),
+            is_thinking: false,
+            dispatched_at: dispatched,
+        });
+
+        // When handling StreamCompleted with Finished reason.
+        let event = StreamCompleted {
+            session_id: session_id.clone(),
+            reason: StreamCompletedReason::Finished,
+            assistant_content: Some("Hello".to_owned()),
+            tool_calls: None,
+            cost: None,
+            provider_completion_tokens: Some(10),
+            thinking_content: None,
+            dispatched_at: dispatched,
+        };
+        actor.on_stream_completed(&event, &ctx).await;
+
+        // Then the assistant entry has finished_at set.
+        let state = actor.state.read();
+        let session = state.session.get(&session_id).expect("session exists");
+        let assistant = session
+            .history()
+            .iter()
+            .find(|e| matches!(e.kind, crate::protocol::ChatEntryKind::Assistant(_)))
+            .expect("assistant entry");
+        match &assistant.timing {
+            crate::protocol::EntryTiming::Streamed { finished_at, .. } => {
+                assert!(
+                    finished_at.is_some(),
+                    "finished_at should be set after completion"
+                );
+            }
+            other => panic!("expected Streamed, got {other:?}"),
+        }
+    }
+
+    #[tokio::test]
+    async fn cancelled_stream_records_finished_at() {
+        // Given a session actor with a session in streaming state and a token.
+        let actor = test_actor();
+        let (_sink, ctx) = test_context();
+        let dispatched = jiff::Timestamp::now();
+        let session_id = {
+            let mut state = actor.state.write();
+            let session = state.active_session_mut();
+            session.begin_streaming();
+            state.session.active_session_id().clone()
+        };
+        actor.on_stream_token(&StreamToken {
+            session_id: session_id.clone(),
+            index: 0,
+            token: "Partial".to_owned(),
+            is_thinking: false,
+            dispatched_at: dispatched,
+        });
+
+        // When handling StreamCompleted with Canceled reason.
+        let event = StreamCompleted {
+            session_id: session_id.clone(),
+            reason: StreamCompletedReason::Canceled,
+            assistant_content: None,
+            tool_calls: None,
+            cost: None,
+            provider_completion_tokens: None,
+            thinking_content: None,
+            dispatched_at: dispatched,
+        };
+        actor.on_stream_completed(&event, &ctx).await;
+
+        // Then the assistant entry has finished_at set (cancellation is a finish event).
+        let state = actor.state.read();
+        let session = state.session.get(&session_id).expect("session exists");
+        let assistant = session
+            .history()
+            .iter()
+            .find(|e| matches!(e.kind, crate::protocol::ChatEntryKind::Assistant(_)))
+            .expect("assistant entry");
+        match &assistant.timing {
+            crate::protocol::EntryTiming::Streamed { finished_at, .. } => {
+                assert!(
+                    finished_at.is_some(),
+                    "finished_at should be set even on cancellation"
+                );
+            }
+            other => panic!("expected Streamed, got {other:?}"),
+        }
+    }
 }
