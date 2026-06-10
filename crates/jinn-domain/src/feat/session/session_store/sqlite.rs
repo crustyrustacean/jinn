@@ -951,8 +951,10 @@ fn load_session_blocking(
                     // Fallback: parse raw timestamp string as Instant (legacy data).
                     row_timing
                         .parse::<jiff::Timestamp>()
-                        .map(|at| crate::protocol::EntryTiming::Instant { at })
-                        .unwrap_or_else(|_| crate::protocol::EntryTiming::instant_now())
+                        .map_or_else(
+                            |_| crate::protocol::EntryTiming::instant_now(),
+                            |at| crate::protocol::EntryTiming::Instant { at },
+                        )
                 });
             let mut chat_entry = ChatEntry::new_with_kind(
                 ChatEntryId::from(row_id),
