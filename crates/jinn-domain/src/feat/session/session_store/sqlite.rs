@@ -393,7 +393,7 @@ struct NewSessionRow {
 #[diesel(table_name = crate::schema::entries)]
 struct EntryRow {
     id: Option<String>,
-    timestamp: String,
+    timing: String,
     kind: String,
     context_history: String,
 }
@@ -403,7 +403,7 @@ struct EntryRow {
 #[diesel(table_name = crate::schema::entries)]
 struct NewEntryRow {
     id: String,
-    timestamp: String,
+    timing: String,
     kind: String,
     context_history: String,
 }
@@ -824,7 +824,7 @@ fn save_blocking(
             insert_into(entries::table)
                 .values(&NewEntryRow {
                     id: entry_id_str.clone(),
-                    timestamp: timing_str,
+                    timing: timing_str,
                     kind: kind_json,
                     context_history: context_history_json,
                 })
@@ -945,7 +945,7 @@ fn load_session_blocking(
             });
 
             let row_id = entry.id.clone().unwrap_or_default();
-            let row_timing = entry.timestamp.clone();
+            let row_timing = entry.timing.clone();
             let timing: crate::protocol::EntryTiming =
                 serde_json::from_str(&row_timing).unwrap_or_else(|_| {
                     // Fallback: parse raw timestamp string as Instant (legacy data).
@@ -1813,7 +1813,7 @@ mod tests {
             .expect("fk on");
         migrator::run_migrations(&mut conn).expect("migrations");
         sql_query(
-            "INSERT INTO entries (id, timestamp, kind) \
+            "INSERT INTO entries (id, timing, kind) \
              VALUES ('orphan-1', '2024-01-01T00:00:00Z', '\"User\"')",
         )
         .execute(&mut conn)
@@ -1916,7 +1916,7 @@ mod tests {
         let id = session.session_id().clone();
         save_blocking(&mut conn, &session).expect("save");
         sql_query(
-            "INSERT INTO entries (id, timestamp, kind) \
+            "INSERT INTO entries (id, timing, kind) \
              VALUES ('orphan-x', '2024-01-01T00:00:00Z', '\"User\"')",
         )
         .execute(&mut conn)

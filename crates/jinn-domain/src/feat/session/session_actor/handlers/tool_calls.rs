@@ -24,7 +24,7 @@ impl SessionPersistenceActor {
     ) {
         let mut state = self.state.write();
         let session = state.session_mut_or_create(&event.session_id);
-        session.begin_tool_call(event.index, &event.id, &event.name);
+        session.begin_tool_call(event.index, &event.id, &event.name, event.dispatched_at);
     }
 
     /// Finalizes the tool call entry with complete arguments.
@@ -87,7 +87,7 @@ impl SessionPersistenceActor {
     ) {
         let mut state = self.state.write();
         let session = state.session_mut_or_create(&event.session_id);
-        session.begin_tool_result(&event.tool_call_id, &event.name);
+        session.begin_tool_result(&event.tool_call_id, &event.name, event.dispatched_at);
     }
 
     /// Appends incremental output to a pending ToolResult entry.
@@ -333,7 +333,7 @@ mod tests {
             let mut state = actor.state.write();
             let session = state.active_session_mut();
             session.begin_streaming();
-            session.finish_streaming(true);
+            session.finish_streaming(true, jiff::Timestamp::now());
             session.begin_sending();
             state.session.active_session_id().clone()
         };
@@ -416,7 +416,7 @@ mod tests {
             ));
             session.begin_sending();
             session.begin_streaming();
-            session.begin_tool_result("tc-1", "bash");
+            session.begin_tool_result("tc-1", "bash", jiff::Timestamp::now());
             state.session.active_session_id().clone()
         };
 
@@ -455,7 +455,7 @@ mod tests {
             let mut state = actor.state.write();
             let session = state.active_session_mut();
             session.begin_streaming();
-            session.finish_streaming(true);
+            session.finish_streaming(true, jiff::Timestamp::now());
             session.begin_sending();
             session.set_tool_loop_disabled();
             state.session.active_session_id().clone()
@@ -518,7 +518,7 @@ mod tests {
             session.push_entry(ChatEntry::tool_call("tc-1", "bash", r#"{"command":"ls"}"#));
             session.push_entry(ChatEntry::assistant("here are the files"));
             session.begin_streaming();
-            session.finish_streaming(true);
+            session.finish_streaming(true, jiff::Timestamp::now());
             session.begin_sending();
             state.session.active_session_id().clone()
         };
@@ -591,7 +591,7 @@ mod tests {
             let mut state = actor.state.write();
             let session = state.active_session_mut();
             session.begin_streaming();
-            session.begin_tool_call(0, "tc-1", "bash");
+            session.begin_tool_call(0, "tc-1", "bash", jiff::Timestamp::now());
             state.session.active_session_id().clone()
         };
 
@@ -634,7 +634,7 @@ mod tests {
             let mut state = actor.state.write();
             let session = state.active_session_mut();
             session.begin_streaming();
-            session.begin_tool_call(0, "tc-1", "bash");
+            session.begin_tool_call(0, "tc-1", "bash", jiff::Timestamp::now());
             state.session.active_session_id().clone()
         };
 
@@ -706,7 +706,7 @@ mod tests {
             let session = state.active_session_mut();
             session.begin_sending();
             session.begin_streaming();
-            session.begin_tool_result("tc-1", "bash");
+            session.begin_tool_result("tc-1", "bash", jiff::Timestamp::now());
             state.session.active_session_id().clone()
         };
 
@@ -754,7 +754,7 @@ mod tests {
             session.push_entry(ChatEntry::tool_call("tc-1", "bash", r#"{"command":"ls"}"#));
             session.push_entry(ChatEntry::assistant("here are the files"));
             session.begin_streaming();
-            session.finish_streaming(true);
+            session.finish_streaming(true, jiff::Timestamp::now());
             session.begin_sending();
             // Queue a mutation to exclude the assistant entry.
             session.queue_mutations(vec![
@@ -822,7 +822,7 @@ mod tests {
             session.push_entry(ChatEntry::tool_call("tc-1", "bash", r#"{"command":"ls"}"#));
             session.push_entry(ChatEntry::assistant("here are the files"));
             session.begin_streaming();
-            session.finish_streaming(true);
+            session.finish_streaming(true, jiff::Timestamp::now());
             session.begin_sending();
             state.session.active_session_id().clone()
         };
@@ -883,7 +883,7 @@ mod tests {
                 .push_fragment("stay at the foo part");
             // Tool batch already completed; transition to Sending so on_tool_batch_completed
             // routes through the drain path.
-            session.finish_streaming(true);
+            session.finish_streaming(true, jiff::Timestamp::now());
             session.begin_sending();
             state.session.active_session_id().clone()
         };
