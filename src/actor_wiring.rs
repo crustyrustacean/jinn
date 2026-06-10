@@ -33,14 +33,18 @@ use jinn_domain::UserPreferencesStorageService;
 
 use jinn_domain::actor_channel::ActorChannelService;
 use jinn_domain::common::actor::protocol::event::{ActorStarted, ActorStarting, AllActorsSpawned};
+use jinn_domain::common::actor_deps::ActorDeps;
 use jinn_domain::feat::context::strategy::token_estimator::TiktokenCounter;
 
 use jinn_domain::feat::plugin_dispatch::{PluginDispatchActor, PluginDispatchActorDeps};
 use jinn_domain::init::env_init_actor::{EnvInitActor, EnvInitActorDeps};
 use jinn_domain::init::provider_init_actor::{ProviderInitActor, ProviderInitActorDeps};
 use jinn_domain::init::system_ready_actor::{SystemReadyActor, SystemReadyActorDeps};
+use jinn_domain::feat::preferences_actor::app_state_actor::{AppStateActor, AppStateActorDeps};
+use jinn_domain::feat::preferences_actor::app_state_sync_actor::{AppStateSyncActor, AppStateSyncActorDeps};
 use jinn_domain::feat::discovery_notifier::{DiscoveryNotifierActor, DiscoveryNotifierActorDeps};
 use jinn_domain::feat::queue_actor::{QueueActor, QueueActorDeps};
+use jinn_domain::feat::provider::discover_actor::{DiscoverActor, DiscoverActorDeps};
 
 use jinn_domain::feat::preferences_actor::user_preferences::WebFetchBackend;
 use jinn_domain::feat::web_fetch_actor::{WebFetchActor, WebFetchActorDeps};
@@ -335,17 +339,10 @@ impl ActorSystemBuilder {
 
         // ── Init actors (self-schedule Initialize during activate) ────────────
 
-        // Env init: loads providers.toml, resolves API keys, emits EnvironmentLoaded.
-        actors.push(spawn::<EnvInitActor>(
-            "env-init",
-            &sink,
-            handle,
-            &counter,
-            &shutdown_tracker,
-            EnvInitActorDeps {
-                services: services.clone(),
-            },
-        ));
+        // Env init: loads providers.toml, resolves API keys, publishes EnvironmentLoaded.
+        let _env_init = EnvInitActor::spawn(EnvInitActorDeps {
+            deps: ActorDeps { services: services.clone() },
+        });
 
         // Provider init: on EnvironmentLoaded, builds registry, merges cache, resolves last_model.
         actors.push(spawn::<ProviderInitActor>(
@@ -384,34 +381,20 @@ impl ActorSystemBuilder {
         },
     ));
 
-        // App state actor: persists state changes to state.toml.
-        actors.push(spawn::<
-            jinn_domain::feat::preferences_actor::app_state_actor::AppStateActor,
-        >(
-            "app-state",
-            &sink,
-            handle,
-            &counter,
-            &shutdown_tracker,
-            jinn_domain::feat::preferences_actor::app_state_actor::AppStateActorDeps {
+        // App state actor: persists state changes to state.toml. (Migrated to kameo.)
+        let _app_state = AppStateActor::spawn(AppStateActorDeps {
+            deps: jinn_domain::common::actor_deps::ActorDeps {
                 services: services.clone(),
             },
-        ));
+        });
 
-        // App state sync: updates AppState from AppStateUpdated events.
-        actors.push(spawn::<
-            jinn_domain::feat::preferences_actor::app_state_sync_actor::AppStateSyncActor,
-        >(
-            "app-state-sync",
-            &sink,
-            handle,
-            &counter,
-            &shutdown_tracker,
-            jinn_domain::feat::preferences_actor::app_state_sync_actor::AppStateSyncActorDeps {
+        // App state sync: updates AppState from AppStateUpdated events. (Migrated to kameo.)
+        let _app_state_sync = AppStateSyncActor::spawn(AppStateSyncActorDeps {
+            deps: jinn_domain::common::actor_deps::ActorDeps {
                 services: services.clone(),
-                state: state.clone(),
             },
-        ));
+            state: state.clone(),
+        });
 
         // ── Domain actors ────────────────────────────────────────────────────
 
@@ -430,19 +413,10 @@ impl ActorSystemBuilder {
         ));
 
         // Model discovery actor.
-        actors.push(spawn::<
-            jinn_domain::feat::provider::discover_actor::DiscoverActor,
-        >(
-            "llm-provider-listing",
-            &sink,
-            handle,
-            &counter,
-            &shutdown_tracker,
-            jinn_domain::feat::provider::discover_actor::DiscoverActorDeps {
-                services: services.clone(),
-                state: state.clone(),
-            },
-        ));
+        let _discover = DiscoverActor::spawn(DiscoverActorDeps {
+            deps: ActorDeps { services: services.clone() },
+            state: state.clone(),
+        });
 
         // Tool orchestrator actor.
         actors.push(
@@ -725,25 +699,18 @@ impl ActorSystemBuilder {
 
         // Compaction trigger actor - handles /compact and /compact-all commands.
         {
-            use jinn_domain::feat::compaction_worker::{
-                CompactionTriggerActor, CompactionTriggerActorDeps, CompactionWorker,
-            };
+            use jinn_domain::feat::compaction_worker::{CompactionWorker, CompactionTriggerActor, CompactionTriggerActorDeps};
 
-
-            actors.push(spawn::<CompactionTriggerActor>(
-                "compaction-trigger",
-                &sink,
-                handle,
-                &counter,
-                &shutdown_tracker,
+            let _compaction_trigger = CompactionTriggerActor::spawn(
                 CompactionTriggerActorDeps {
+                    deps: ActorDeps { services: services.clone() },
                     worker: CompactionWorker::new(
                         services.clone(),
                         handle.clone(),
                         state.clone(),
                     ),
                 },
-            ));
+            );
         }
 
         // Auto-prune worker: read→edit context pruning.

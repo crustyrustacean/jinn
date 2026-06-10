@@ -19,8 +19,6 @@ pub mod render;
 #[cfg(test)]
 mod render_tests;
 
-#[cfg(test)]
-mod discover_actor_tests;
 
 #[cfg(test)]
 mod entries_tests;

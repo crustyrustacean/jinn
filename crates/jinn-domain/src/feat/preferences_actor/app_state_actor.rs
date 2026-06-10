@@ -5,12 +5,17 @@
 //! applies all diffs, saves to disk, and emits an [`AppStateUpdated`]
 //! event with the full result.
 
-use crate::common::actor::{Actor, ActorContext, ActorEnvelope, NoDirectMsg};
-use crate::common::services::Services;
+use kameo::prelude::{Actor, ActorRef, Context, Message};
+
+use crate::common::actor_deps::{ActorDeps, BusPublish};
 use crate::feat::preferences_actor::protocol::app_state_command::UpdateAppState;
 use crate::feat::preferences_actor::protocol::app_state_event::AppStateUpdated;
 
-use crate::protocol::{Command, Event};
+/// Dependencies for spawning an [`AppStateActor`].
+pub struct AppStateActorDeps {
+    /// Universal actor dependencies (bus, services, etc.).
+    pub deps: ActorDeps,
+}
 
 /// The app-state actor.
 ///
@@ -18,53 +23,41 @@ use crate::protocol::{Command, Event};
 /// diffs to `state.toml`, then emits `AppStateUpdated` so
 /// downstream actors can sync their caches.
 pub struct AppStateActor {
-    /// Runtime services.
-    services: Services,
-}
-
-/// Dependencies for [`AppStateActor`].
-pub struct AppStateActorDeps {
-    /// Runtime services.
-    pub services: Services,
+    deps: ActorDeps,
 }
 
 impl Actor for AppStateActor {
-    type Message = NoDirectMsg;
-    type Deps = AppStateActorDeps;
+    type Args = AppStateActorDeps;
+    type Error = kameo::error::Infallible;
 
-    fn activate(deps: Self::Deps, ctx: &mut ActorContext) -> Self {
-        ctx.subscribe_command::<UpdateAppState>();
-        ctx.set_description("Persists runtime state to state.toml");
+    async fn on_start(args: Self::Args, actor_ref: ActorRef<Self>) -> Result<Self, Self::Error> {
+        args.deps
+            .subscribe(actor_ref.recipient::<UpdateAppState>())
+            .await;
 
-        Self {
-            services: deps.services,
-        }
-    }
-
-    async fn handle(&mut self, msg: ActorEnvelope<Self::Message>, ctx: &ActorContext) {
-        match msg {
-            ActorEnvelope::Command(Command::UpdateAppState(ref payload)) => {
-                self.handle_update_app_state(payload, ctx);
-            }
-            ActorEnvelope::Event(_) | ActorEnvelope::Command(_) | ActorEnvelope::System(_) => {}
-        }
+        Ok(Self { deps: args.deps })
     }
 }
 
-impl AppStateActor {
-    /// Processes a batch of state diffs: load, apply, save, emit.
-    fn handle_update_app_state(&self, payload: &UpdateAppState, ctx: &ActorContext) {
-        let mut state = self.services.app_state_storage.read();
-        for update in &payload.updates {
+impl Message<UpdateAppState> for AppStateActor {
+    type Reply = ();
+
+    async fn handle(&mut self, msg: UpdateAppState, _ctx: &mut Context<Self, Self::Reply>) {
+        let mut state = self.deps.services.app_state_storage.read();
+        for update in &msg.updates {
             update.apply(&mut state);
         }
-        if let Err(e) = self.services.app_state_storage.save(&state) {
+        if let Err(e) = self.deps.services.app_state_storage.save(&state) {
             tracing::warn!(err = ?e, "app-state-actor failed to save app state");
             return;
         }
-        if let Err(e) = ctx.send_event(Event::AppStateUpdated(AppStateUpdated { state })) {
-            tracing::warn!(err = ?e, "app-state-actor failed to emit AppStateUpdated");
-        }
+        self.publish(AppStateUpdated { state }).await;
+    }
+}
+
+impl BusPublish for AppStateActor {
+    fn bus(&self) -> &crate::common::services::bus_service::BusService {
+        self.deps.bus()
     }
 }
 
@@ -78,133 +71,117 @@ mod tests {
         reason = "test code"
     )]
     use std::sync::Arc;
+    use std::time::Duration;
 
-    use crate::common::actor::{
-        Actor as _, ActorContext, ActorEnvelope, MessageSink, RecordingSink,
-    };
+    use super::{AppStateActor, AppStateActorDeps};
+    use crate::common::actor_deps::ActorDeps;
+    use crate::common::bus::test_harness::{TestHarness, await_recorded};
     use crate::common::services::Services;
-
     use crate::feat::preferences_actor::app_state_storage::InMemoryAppStateStorage;
     use crate::feat::preferences_actor::protocol::app_state_command::AppStateUpdate;
     use crate::feat::preferences_actor::protocol::app_state_command::UpdateAppState;
-    use crate::protocol::Command;
+    use crate::feat::preferences_actor::protocol::app_state_event::AppStateUpdated;
 
-    use super::{AppStateActor, AppStateActorDeps};
-
-    async fn create_actor() -> (AppStateActor, Arc<RecordingSink>, Services, ActorContext) {
-        let sink = Arc::new(RecordingSink::new());
-        let mut ctx = ActorContext::new("app-state", sink.clone() as Arc<dyn MessageSink>);
-
+    async fn create_harness() -> (TestHarness, Services) {
+        let harness = TestHarness::new().await;
         let storage = InMemoryAppStateStorage::new();
         let mut services = Services::new_fake().await;
-        let svc = crate::feat::preferences_actor::app_state_storage::AppStateStorageService::new(
-            Arc::new(storage),
-        );
+        let svc =
+            crate::feat::preferences_actor::app_state_storage::AppStateStorageService::new(
+                Arc::new(storage),
+            );
         svc.reload().expect("test app state storage initial reload");
         services.app_state_storage = svc;
-
-        let deps = AppStateActorDeps {
-            services: services.clone(),
-        };
-        let actor = AppStateActor::activate(deps, &mut ctx);
-        (actor, sink, services, ctx)
+        services.bus = harness.bus();
+        (harness, services)
     }
 
-    #[rstest::rstest]
     #[tokio::test]
     async fn set_last_model_persists_and_emits() {
-        // Given an app-state actor.
-        let (mut actor, sink, services, ctx) = create_actor().await;
+        // Given an app-state actor and a recorder for AppStateUpdated.
+        let (harness, services) = create_harness().await;
+        let _actor = harness
+            .spawn_actor::<AppStateActor>(AppStateActorDeps {
+                deps: ActorDeps { services: services.clone() },
+            })
+            .await;
+        let recorder = harness.spawn_recorder::<AppStateUpdated>().await;
 
-        // When handling UpdateAppState with SetLastModel.
-        actor
-            .handle(
-                ActorEnvelope::Command(Command::UpdateAppState(UpdateAppState {
-                    updates: vec![AppStateUpdate::SetLastModel(Some(
-                        "anthropic/claude-sonnet-4".to_owned(),
-                    ))],
-                })),
-                &ctx,
-            )
+        // When publishing UpdateAppState with SetLastModel.
+        harness
+            .publish(UpdateAppState {
+                updates: vec![AppStateUpdate::SetLastModel(Some(
+                    "anthropic/claude-sonnet-4".to_owned(),
+                ))],
+            })
             .await;
 
-        // Then the storage has the last model.
+        // Then an AppStateUpdated event was emitted.
+        let events = await_recorded(&recorder, 1, Duration::from_secs(1)).await;
+        assert_eq!(events.len(), 1);
+
+        // And the storage has the last model.
         let loaded = services.app_state_storage.read();
         assert_eq!(
             loaded.last_model.as_deref(),
             Some("anthropic/claude-sonnet-4")
         );
-
-        // And an AppStateUpdated event was emitted.
-        let events = sink.events();
-        assert_eq!(events.len(), 1);
     }
 
-    #[rstest::rstest]
     #[tokio::test]
     async fn set_theme_persists_and_emits() {
-        // Given an app-state actor.
-        let (mut actor, sink, services, ctx) = create_actor().await;
+        // Given an app-state actor and a recorder for AppStateUpdated.
+        let (harness, services) = create_harness().await;
+        let _actor = harness
+            .spawn_actor::<AppStateActor>(AppStateActorDeps {
+                deps: ActorDeps { services: services.clone() },
+            })
+            .await;
+        let recorder = harness.spawn_recorder::<AppStateUpdated>().await;
 
-        // When handling UpdateAppState with SetTheme.
-        actor
-            .handle(
-                ActorEnvelope::Command(Command::UpdateAppState(UpdateAppState {
-                    updates: vec![AppStateUpdate::SetTheme(Some("dracula".to_owned()))],
-                })),
-                &ctx,
-            )
+        // When publishing UpdateAppState with SetTheme.
+        harness
+            .publish(UpdateAppState {
+                updates: vec![AppStateUpdate::SetTheme(Some("dracula".to_owned()))],
+            })
             .await;
 
-        // Then the storage has the theme.
+        // Then an AppStateUpdated event was emitted.
+        let events = await_recorded(&recorder, 1, Duration::from_secs(1)).await;
+        assert_eq!(events.len(), 1);
+
+        // And the storage has the theme.
         let loaded = services.app_state_storage.read();
         assert_eq!(loaded.theme_name.as_deref(), Some("dracula"));
-
-        // And an AppStateUpdated event was emitted.
-        let events = sink.events();
-        assert_eq!(events.len(), 1);
     }
 
-    #[rstest::rstest]
-    #[tokio::test]
-    async fn ignores_unrelated_commands() {
-        // Given an app-state actor.
-        let (mut actor, sink, services, ctx) = create_actor().await;
-
-        // When handling an unrelated command.
-        actor
-            .handle(ActorEnvelope::Command(Command::RefreshModels), &ctx)
-            .await;
-
-        // Then no events were emitted.
-        assert!(sink.events().is_empty());
-
-        // And storage still has defaults.
-        let loaded = services.app_state_storage.read();
-        assert!(loaded.last_model.is_none());
-    }
-
-    #[rstest::rstest]
     #[tokio::test]
     async fn multiple_updates_in_one_command() {
-        // Given an app-state actor.
-        let (mut actor, _sink, services, ctx) = create_actor().await;
+        // Given an app-state actor and a recorder for AppStateUpdated.
+        let (harness, services) = create_harness().await;
+        let _actor = harness
+            .spawn_actor::<AppStateActor>(AppStateActorDeps {
+                deps: ActorDeps { services: services.clone() },
+            })
+            .await;
+        let recorder = harness.spawn_recorder::<AppStateUpdated>().await;
 
-        // When handling a batch with multiple updates.
-        actor
-            .handle(
-                ActorEnvelope::Command(Command::UpdateAppState(UpdateAppState {
-                    updates: vec![
-                        AppStateUpdate::SetLastModel(Some("openrouter/gpt-4".to_owned())),
-                        AppStateUpdate::SetSidebarWidth(Some(40)),
-                        AppStateUpdate::SetTheme(Some("nord".to_owned())),
-                    ],
-                })),
-                &ctx,
-            )
+        // When publishing a batch with multiple updates.
+        harness
+            .publish(UpdateAppState {
+                updates: vec![
+                    AppStateUpdate::SetLastModel(Some("openrouter/gpt-4".to_owned())),
+                    AppStateUpdate::SetSidebarWidth(Some(40)),
+                    AppStateUpdate::SetTheme(Some("nord".to_owned())),
+                ],
+            })
             .await;
 
-        // Then all three fields are persisted.
+        // Then an AppStateUpdated event was emitted.
+        let events = await_recorded(&recorder, 1, Duration::from_secs(1)).await;
+        assert_eq!(events.len(), 1);
+
+        // And all three fields are persisted.
         let loaded = services.app_state_storage.read();
         assert_eq!(loaded.last_model.as_deref(), Some("openrouter/gpt-4"));
         assert_eq!(loaded.sidebar_width, Some(40));

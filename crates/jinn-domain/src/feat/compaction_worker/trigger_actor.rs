@@ -4,56 +4,67 @@
 //! and submits mutations via `SubmitHistoryMutations`.
 //! Pushes system messages for user feedback (queued, skipped, failed).
 
-use crate::common::actor::{Actor, ActorContext, ActorEnvelope, NoDirectMsg};
+use crate::common::actor_deps::{ActorDeps, BusPublish};
 use crate::feat::chat_input::protocol::command::PushChatEntry;
 use crate::feat::compaction_worker::worker::CompactionWorker;
 use crate::feat::session::chat_entry::ChatEntry;
 use crate::feat::session::protocol::submit_history_mutations::SubmitHistoryMutations;
 use crate::feat::session::protocol::trigger_compaction::TriggerCompaction;
-use crate::protocol::Command;
+use kameo::prelude::{Actor, ActorRef, Context, Message};
 
 /// Actor that handles manual compaction triggers.
 ///
 /// Subscribes to `TriggerCompaction` commands (from `/compact` and `/compact-all`).
 /// Runs the compaction worker and submits mutations.
 pub struct CompactionTriggerActor {
+    deps: ActorDeps,
     worker: CompactionWorker,
 }
 
-/// Dependencies for [`CompactionTriggerActor`].
+/// Dependencies for spawning a [`CompactionTriggerActor`].
 pub struct CompactionTriggerActorDeps {
+    /// Universal actor dependencies (bus, services, etc.).
+    pub deps: ActorDeps,
     /// The compaction worker.
     pub worker: CompactionWorker,
 }
 
 impl Actor for CompactionTriggerActor {
-    type Message = NoDirectMsg;
-    type Deps = CompactionTriggerActorDeps;
+    type Args = CompactionTriggerActorDeps;
+    type Error = kameo::error::Infallible;
 
-    fn activate(deps: Self::Deps, ctx: &mut ActorContext) -> Self {
-        ctx.set_description("compaction-trigger");
-        ctx.subscribe_command::<TriggerCompaction>();
+    async fn on_start(args: Self::Args, actor_ref: ActorRef<Self>) -> Result<Self, Self::Error> {
+        args.deps
+            .subscribe(actor_ref.recipient::<TriggerCompaction>())
+            .await;
 
-        Self {
-            worker: deps.worker,
-        }
+        Ok(Self {
+            deps: args.deps,
+            worker: args.worker,
+        })
     }
+}
 
-    async fn handle(&mut self, msg: ActorEnvelope<Self::Message>, ctx: &ActorContext) {
-        match msg {
-            ActorEnvelope::Command(Command::TriggerCompaction(ref payload)) => {
-                self.handle_trigger_compaction(payload, ctx).await;
-            }
-            ActorEnvelope::Command(_)
-            | ActorEnvelope::Event(_)
-            | ActorEnvelope::System(_)
-            | ActorEnvelope::Direct(_) => {}
-        }
+impl Message<TriggerCompaction> for CompactionTriggerActor {
+    type Reply = ();
+
+    async fn handle(
+        &mut self,
+        msg: TriggerCompaction,
+        _ctx: &mut Context<Self, Self::Reply>,
+    ) -> Self::Reply {
+        self.handle_trigger_compaction(&msg).await;
+    }
+}
+
+impl BusPublish for CompactionTriggerActor {
+    fn bus(&self) -> &crate::common::services::bus_service::BusService {
+        self.deps.bus()
     }
 }
 
 impl CompactionTriggerActor {
-    async fn handle_trigger_compaction(&self, payload: &TriggerCompaction, ctx: &ActorContext) {
+    async fn handle_trigger_compaction(&self, payload: &TriggerCompaction) {
         tracing::info!(
             session_id = %payload.session_id,
             compact_all = payload.compact_all,
@@ -61,10 +72,11 @@ impl CompactionTriggerActor {
         );
 
         // Always push immediate "queued" feedback.
-        let _ = ctx.send_command(Command::PushChatEntry(PushChatEntry {
+        self.publish(PushChatEntry {
             session_id: payload.session_id.clone(),
             entry: ChatEntry::system("⏳ Compacting context..."),
-        }));
+        })
+        .await;
 
         let trigger = crate::feat::compaction_worker::worker::CompactionTrigger {
             session_id: payload.session_id.clone(),
@@ -79,17 +91,11 @@ impl CompactionTriggerActor {
                     "compaction trigger produced mutations"
                 );
 
-                let cmd = Command::SubmitHistoryMutations(SubmitHistoryMutations {
+                self.publish(SubmitHistoryMutations {
                     session_id: payload.session_id.clone(),
                     mutations,
-                });
-
-                if let Err(e) = ctx.send_command(cmd) {
-                    tracing::warn!(
-                        err = ?e,
-                        "failed to submit compaction mutations"
-                    );
-                }
+                })
+                .await;
             }
             Ok(_) => {
                 // Empty mutations - nothing to compact.
@@ -108,10 +114,11 @@ impl CompactionTriggerActor {
                     session_id = %payload.session_id,
                     "compaction produced no mutations (nothing to compact)"
                 );
-                let _ = ctx.send_command(Command::PushChatEntry(PushChatEntry {
+                self.publish(PushChatEntry {
                     session_id: payload.session_id.clone(),
                     entry: ChatEntry::system(&msg),
-                }));
+                })
+                .await;
             }
             Err(e) => {
                 tracing::error!(
@@ -120,10 +127,11 @@ impl CompactionTriggerActor {
                     "compaction failed"
                 );
                 let msg = format!("⚠ Compaction failed: {e}");
-                let _ = ctx.send_command(Command::PushChatEntry(PushChatEntry {
+                self.publish(PushChatEntry {
                     session_id: payload.session_id.clone(),
                     entry: ChatEntry::system(&msg),
-                }));
+                })
+                .await;
             }
         }
     }
