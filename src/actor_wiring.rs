@@ -41,6 +41,7 @@ use jinn_domain::feat::plugin_dispatch::{PluginDispatchActor, PluginDispatchActo
 use jinn_domain::init::env_init_actor::{EnvInitActor, EnvInitActorDeps};
 use jinn_domain::init::provider_init_actor::{ProviderInitActor, ProviderInitActorDeps};
 use jinn_domain::init::system_ready_actor::{SystemReadyActor, SystemReadyActorDeps};
+use jinn_domain::feat::ui::sidebar::sidebar_state_actor::{SidebarStateActor, SidebarStateActorDeps};
 use jinn_domain::feat::preferences_actor::app_state_actor::{AppStateActor, AppStateActorDeps};
 use jinn_domain::feat::preferences_actor::app_state_sync_actor::{AppStateSyncActor, AppStateSyncActorDeps};
 use jinn_domain::feat::discovery_notifier::{DiscoveryNotifierActor, DiscoveryNotifierActorDeps};
@@ -995,18 +996,10 @@ impl ActorSystemBuilder {
             }
         }
         // Sidebar state actor - keeps sidebar cursor in sync after session removal.
-        actors.push(spawn::<
-            jinn_domain::feat::ui::sidebar::sidebar_state_actor::SidebarStateActor,
-        >(
-            "sidebar-state",
-            &sink,
-            handle,
-            &counter,
-            &shutdown_tracker,
-            jinn_domain::feat::ui::sidebar::sidebar_state_actor::SidebarStateActorDeps {
-                state: state.clone(),
-            },
-        ));
+        let _sidebar_state = SidebarStateActor::spawn(SidebarStateActorDeps {
+            deps: ActorDeps { services: services.clone() },
+            state: state.clone(),
+        });
 
         // ── Plugin dispatch actor (replaces plugin_lifecycle + workflow_controller) ─
         actors.push(spawn::<PluginDispatchActor>(
