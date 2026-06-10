@@ -6,7 +6,7 @@
 use crate::feat::preferences_actor::user_preferences::BashConfig;
 use crate::feat::tools_actor::tool_types::{ToolCall, ToolContext, ToolDefinition};
 
-use super::{BoxedToolFuture, bash, edit, get_time, read, session_query, skill, write};
+use super::{BoxedToolFuture, bash, edit, get_time, read, save_plan, session_query, skill, write};
 
 use crate::feat::todo_list;
 
@@ -42,6 +42,10 @@ pub fn builtin_tools(bash_config: &BashConfig) -> Vec<BuiltinToolEntry> {
         (
             skill::definition(),
             skill::execute as fn(ToolCall, ToolContext) -> BoxedToolFuture,
+        ),
+        (
+            save_plan::definition(),
+            save_plan::execute as fn(ToolCall, ToolContext) -> BoxedToolFuture,
         ),
         (
             session_query::definition(),

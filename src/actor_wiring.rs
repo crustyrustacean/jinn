@@ -1021,10 +1021,41 @@ impl ActorSystemBuilder {
             }
         }
 
+        // Auto-prune worker: anchor shield.
+        // Force-includes in-context-by-default entries (Assistant, ToolCall, ToolResult,
+        // User) within a configurable radius of any anchor (User entries, first/last
+        // index), preventing other workers from excluding them.
+        {
+            use jinn_domain::feat::auto_prune_worker::AnchorShieldAutoPruneWorker;
+            use jinn_domain::feat::history_worker::actor::{
+                HistoryWorkerActor, HistoryWorkerActorDeps,
+            };
+
+            let shield_config = {
+                let prefs = user_preferences_storage.read();
+                prefs.auto_prune.anchor_shield.clone()
+            };
+
+            if shield_config.enabled {
+                actors.push(spawn::<HistoryWorkerActor<AnchorShieldAutoPruneWorker>>(
+                    "history-worker-auto-prune-anchor-shield",
+                    &sink,
+                    handle,
+                    &counter,
+                    &shutdown_tracker,
+                    HistoryWorkerActorDeps {
+                        worker: AnchorShieldAutoPruneWorker {
+                            config: shield_config,
+                        },
+                    },
+                ));
+            }
+        }
+
         // Auto-prune worker: anchored-assistant context pruning.
         // Prunes large (>80 token) Assistant entries whose index distance to the
         // nearest anchor entry (first index, last index, or any User entry)
-        // exceeds a configurable radius.
+        // exceeds the shield's radius (shared with AnchorShieldAutoPruneWorker).
         {
             use jinn_domain::feat::auto_prune_worker::AnchoredAssistantAutoPruneWorker;
             use jinn_domain::feat::context::strategy::token_estimator::TiktokenCounter;
@@ -1032,11 +1063,12 @@ impl ActorSystemBuilder {
                 HistoryWorkerActor, HistoryWorkerActorDeps,
             };
 
-            let (config, trivial_max_tokens) = {
+            let (config, shield_radius, trivial_max_tokens) = {
                 let prefs = user_preferences_storage.read();
                 let cfg = prefs.auto_prune.anchored_assistant.clone();
+                let radius = prefs.auto_prune.anchor_shield.radius;
                 let max_tokens = prefs.auto_prune.trivial_assistant.max_tokens as u32;
-                (cfg, max_tokens)
+                (cfg, radius, max_tokens)
             };
 
             if config.enabled {
@@ -1050,6 +1082,7 @@ impl ActorSystemBuilder {
                         HistoryWorkerActorDeps {
                             worker: AnchoredAssistantAutoPruneWorker {
                                 config,
+                                radius: shield_radius,
                                 min_candidate_tokens: trivial_max_tokens + 1,
                                 token_cache: entry_token_cache.clone(),
                                 counter: TiktokenCounter::o200k_base(),
