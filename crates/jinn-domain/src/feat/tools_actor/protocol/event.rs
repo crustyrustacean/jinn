@@ -6,6 +6,8 @@ use crate::feat::tools_actor::tool_types::{ToolCall, ToolDefinition, ToolResult}
 use crate::protocol::EventMsg;
 use crate::protocol::SessionId;
 
+use jiff::Timestamp;
+
 /// All tool calls in a batch have completed execution.
 ///
 /// Emitted by the tool orchestrator when every tool call in a batch
@@ -60,6 +62,8 @@ pub struct ToolUseStarted {
     pub id: String,
     /// The name of the tool being called.
     pub name: String,
+    /// When the original LLM request was dispatched.
+    pub dispatched_at: Timestamp,
 }
 
 /// A complete tool call received from the LLM stream.
@@ -73,6 +77,8 @@ pub struct ToolCallReceived {
     pub session_id: SessionId,
     /// The assembled tool call.
     pub tool_call: ToolCall,
+    /// When the original LLM request was dispatched.
+    pub dispatched_at: Timestamp,
 }
 
 /// Streaming update for a tool call being assembled.
@@ -104,6 +110,8 @@ pub struct ToolExecutionStarted {
     pub tool_call_id: String,
     /// The name of the tool being executed.
     pub name: String,
+    /// When the original LLM request was dispatched.
+    pub dispatched_at: Timestamp,
 }
 
 /// Incremental output from a running tool.
