@@ -42,8 +42,7 @@ impl Actor for AppStateSyncActor {
 
     async fn on_start(args: Self::Args, actor_ref: ActorRef<Self>) -> Result<Self, Self::Error> {
         args.deps
-            .subscribe(actor_ref.recipient::<AppStateUpdated>())
-            .await;
+            .subscribe(actor_ref.recipient::<AppStateUpdated>()).await;
 
         Ok(Self {
             state: args.state,

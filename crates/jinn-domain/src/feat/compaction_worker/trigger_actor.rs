@@ -35,8 +35,7 @@ impl Actor for CompactionTriggerActor {
 
     async fn on_start(args: Self::Args, actor_ref: ActorRef<Self>) -> Result<Self, Self::Error> {
         args.deps
-            .subscribe(actor_ref.recipient::<TriggerCompaction>())
-            .await;
+            .subscribe(actor_ref.recipient::<TriggerCompaction>()).await;
 
         Ok(Self {
             deps: args.deps,

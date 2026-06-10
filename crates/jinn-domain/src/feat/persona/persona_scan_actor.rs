@@ -29,8 +29,7 @@ impl Actor for PersonaScanActor {
 
     async fn on_start(args: Self::Args, actor_ref: ActorRef<Self>) -> Result<Self, Self::Error> {
         args.deps
-            .subscribe(actor_ref.recipient::<RescanPersonas>())
-            .await;
+            .subscribe(actor_ref.recipient::<RescanPersonas>()).await;
 
         Ok(Self { deps: args.deps })
     }

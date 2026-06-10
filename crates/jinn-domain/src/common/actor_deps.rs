@@ -35,14 +35,24 @@ impl ActorDeps {
         &self.services.bus
     }
 
-    /// Convenience: register a recipient on the bus.
+    /// Register a [`Recipient`] on the bus for a specific message type.
+    ///
+    /// Use [`Self::subscribe_recipient`] if you need to subscribe to
+    /// multiple message types from the same actor — call `actor_ref.clone().recipient::<M>()`
+    /// to obtain each recipient without consuming the original `actor_ref`.
     ///
     /// ```ignore
-    /// args.subscribe(actor_ref.recipient::<MyMessage>()).await;
+    /// // Single message type:
+    /// args.deps.subscribe(actor_ref.recipient::<MyMessage>()).await;
+    ///
+    /// // Multiple message types from the same actor:
+    /// args.deps.subscribe(actor_ref.clone().recipient::<Msg1>()).await;
+    /// args.deps.subscribe(actor_ref.clone().recipient::<Msg2>()).await;
+    /// args.deps.subscribe(actor_ref.recipient::<Msg3>()).await; // last one can consume
     /// ```
     pub async fn subscribe<M: Clone + Send + 'static>(
         &self,
-        recipient: kameo::actor::Recipient<M>,
+        recipient: kameo::prelude::Recipient<M>,
     ) {
         self.services.bus.register(recipient).await;
     }
