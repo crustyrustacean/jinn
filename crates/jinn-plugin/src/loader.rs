@@ -150,14 +150,25 @@ fn parse_description(path: &Path) -> Option<String> {
 
 // ── Plugin Loading ───────────────────────────────────────────────────────
 
+/// Result of loading plugins into a Lua state.
+///
+/// Contains both hooks (for lifecycle events) and tool definitions (for LLM-callable functions).
+pub struct LoadResult {
+    /// Plugin name → hook data.
+    pub hooks: HashMap<String, PluginHooks>,
+    /// All tool definitions extracted from loaded plugins.
+    pub tools: Vec<crate::tool_def::PluginToolDef>,
+}
+
 /// Load all plugins into a Lua state with `_ENV` isolation.
 ///
 /// Each script is loaded with `set_environment` so globals from one plugin
 /// are invisible to another. The returned table is stored in the Lua registry.
 ///
-/// Returns a map of plugin name → [`PluginHooks`].
-pub fn load_all(lua: &Lua, plugins: &[PluginMeta]) -> HashMap<String, PluginHooks> {
+/// Returns a [`LoadResult`] containing both hooks and tool definitions.
+pub fn load_all(lua: &Lua, plugins: &[PluginMeta]) -> LoadResult {
     let mut hooks = HashMap::new();
+    let mut tools = Vec::new();
 
     for meta in plugins {
         let script_path = meta.path.join("init.lua");
@@ -171,8 +182,18 @@ pub fn load_all(lua: &Lua, plugins: &[PluginMeta]) -> HashMap<String, PluginHook
 
         match load_plugin(lua, &source) {
             Ok(table_key) => {
+                let table: mlua::Table = lua
+                    .registry_value(&table_key)
+                    .expect("just-stored key must resolve");
+                let plugin_tools =
+                    crate::tool_def::extract_tools(lua, &table, &meta.name);
+                tracing::debug!(
+                    plugin = meta.name,
+                    tools = plugin_tools.len(),
+                    "loaded plugin"
+                );
+                tools.extend(plugin_tools);
                 hooks.insert(meta.name.clone(), PluginHooks::new(table_key));
-                tracing::debug!(plugin = meta.name, "loaded plugin");
             }
             Err(e) => {
                 tracing::error!(plugin = meta.name, err = %e, "failed to load plugin");
@@ -180,7 +201,7 @@ pub fn load_all(lua: &Lua, plugins: &[PluginMeta]) -> HashMap<String, PluginHook
         }
     }
 
-    hooks
+    LoadResult { hooks, tools }
 }
 
 /// Load a single plugin script into the Lua state with `_ENV` isolation.
@@ -400,12 +421,13 @@ mod tests {
 
         let plugins = discover_plugins(dir.path(), Path::new("/nonexistent"));
         let lua = Lua::new();
-        let hooks = load_all(&lua, &plugins);
+        let result = load_all(&lua, &plugins);
 
-        assert_eq!(hooks.len(), 2);
+        assert_eq!(result.hooks.len(), 2);
+
 
         // Plugin alpha returns 1, plugin beta returns 2.
-        for (name, ph) in &hooks {
+        for (name, ph) in &result.hooks {
             let table: mlua::Table = lua.registry_value(ph.table()).expect("get table");
             let func: mlua::Function = table.get("on_test").expect("get func");
             let result: i64 = func.call(()).expect("call");
@@ -442,10 +464,10 @@ end }",
         );
 
         let lua = Lua::new();
-        let hooks = load_all(&lua, &plugins);
-        assert_eq!(hooks.len(), 1, "stdlib plugin should load");
+        let result = load_all(&lua, &plugins);
+        assert_eq!(result.hooks.len(), 1, "stdlib plugin should load");
 
-        let (_name, ph) = hooks.iter().next().expect("one hook");
+        let (_name, ph) = result.hooks.iter().next().expect("one hook");
         let table: mlua::Table = lua.registry_value(ph.table()).expect("get table");
         let func: mlua::Function = table.get("on_test").expect("get func");
         let result: String = func.call(()).expect("call");
@@ -460,11 +482,11 @@ end }",
 
         let plugins = discover_plugins(dir.path(), Path::new("/nonexistent"));
         let lua = Lua::new();
-        let hooks = load_all(&lua, &plugins);
+        let result = load_all(&lua, &plugins);
 
         // Only the good plugin should load.
-        assert_eq!(hooks.len(), 1);
-        assert!(hooks.contains_key("good"));
+        assert_eq!(result.hooks.len(), 1);
+        assert!(result.hooks.contains_key("good"));
     }
 
     #[test]

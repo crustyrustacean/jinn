@@ -284,10 +284,56 @@ impl PluginDispatchActor {
             .create_session_registry(plugin_names)
             .await
         {
-            Ok(new_id) => self.registry.insert(session_id.clone(), new_id),
+            Ok(result) => {
+                self.registry.insert(session_id.clone(), result.registry_id);
+
+                // 3. Register plugin tools with the tools actor.
+                if !result.tool_metadata.is_empty() {
+                    let registry_id = result.registry_id;
+                    self.register_plugin_tools_with_actor(
+                        session_id,
+                        &registry_id,
+                        result.tool_metadata,
+                    );
+                }
+            }
             Err(e) => {
                 tracing::warn!(err = %e, session_id = %session_id, "create_session_registry failed");
             }
+        }
+    }
+
+    /// Send plugin tool definitions to the tools actor for registration.
+    fn register_plugin_tools_with_actor(
+        &self,
+        _session_id: &SessionId,
+        registry_id: &crate::feat::plugin_system::SessionRegistryId,
+        tools: Vec<crate::feat::plugin_system::PluginToolMetadata>,
+    ) {
+        use crate::feat::tools_actor::protocol::command::RegisterPluginTools;
+
+        // Group tools by plugin name, since RegisterPluginTools takes one plugin name at a time.
+        let mut by_plugin: std::collections::HashMap<String, Vec<crate::feat::plugin_system::PluginToolMetadata>> = std::collections::HashMap::new();
+        for tool in tools {
+            by_plugin
+                .entry(tool.plugin_name.clone())
+                .or_default()
+                .push(tool);
+        }
+
+        for (plugin_name, plugin_tools) in by_plugin {
+            let definitions: Vec<jinn_provider::ToolDefinition> = plugin_tools
+                .into_iter()
+                .map(|meta: crate::feat::plugin_system::PluginToolMetadata| meta.to_tool_definition())
+                .collect();
+
+            self.services.actor_channel.send_command(
+                crate::protocol::Command::RegisterPluginTools(RegisterPluginTools {
+                    plugin_name,
+                    target: Some(*registry_id),
+                    definitions,
+                }),
+            );
         }
     }
 

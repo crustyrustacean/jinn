@@ -10,7 +10,8 @@ use derive_more::Debug;
 use error_stack::Report;
 
 use crate::feat::plugin_system::{
-    SessionPluginRegistry, SessionPluginRegistryError, SessionRegistryId,
+    CreateSessionRegistryResult, SessionPluginRegistry,
+    SessionPluginRegistryError, SessionRegistryId,
 };
 
 /// Service wrapper for [`SessionPluginRegistry`].
@@ -38,7 +39,7 @@ impl SessionPluginRegistryService {
     pub async fn create_session_registry(
         &self,
         plugin_names: Vec<String>,
-    ) -> Result<SessionRegistryId, Report<SessionPluginRegistryError>> {
+    ) -> Result<CreateSessionRegistryResult, Report<SessionPluginRegistryError>> {
         self.backend.create_session_registry(plugin_names).await
     }
 

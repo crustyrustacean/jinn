@@ -450,7 +450,7 @@ mod tests {
     ///       requires the PascalCase `"Input"` (matching `Scope::Display`).
     #[test]
     fn bind_plugin_keybinds_loads_prompt_enrichment_binding() {
-        use jinn_plugin::PluginSystem;
+        use jinn_plugin::{PluginSystem, PluginSystemBuildResult};
         use std::path::Path;
 
         // Locate the dev plugin tree (crate-relative).
@@ -469,7 +469,7 @@ mod tests {
         );
 
         let rt = tokio::runtime::Runtime::new().expect("runtime");
-        let (sync_plugins, _async_handle, _sync_handle) = PluginSystem::build(
+        let PluginSystemBuildResult { sync: sync_plugins, .. } = PluginSystem::build(
             &res_plugins,
             Path::new("/nonexistent"),
             rt.handle().clone(),
@@ -517,7 +517,7 @@ mod tests {
     fn handle_key_alt_e_in_input_scope_fires_trigger_plugin() {
         use crate::app::WhichKeyInstance;
         use jinn_domain::{Key, KeyEvent, Modifiers};
-        use jinn_plugin::PluginSystem;
+        use jinn_plugin::{PluginSystem, PluginSystemBuildResult};
         use std::path::Path;
 
         let manifest_dir = Path::new(env!("CARGO_MANIFEST_DIR"));
@@ -528,7 +528,12 @@ mod tests {
             .join("res/plugins");
 
         let rt = tokio::runtime::Runtime::new().expect("runtime");
-        let (sync_plugins, _async_handle, _sync_handle) = PluginSystem::build(
+        let PluginSystemBuildResult {
+            sync: sync_plugins,
+            async_handle: _async_handle,
+            sync_handle: _sync_handle,
+            global_tool_metadata: _,
+        } = PluginSystem::build(
             &res_plugins,
             Path::new("/nonexistent"),
             rt.handle().clone(),

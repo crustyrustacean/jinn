@@ -222,13 +222,18 @@ impl ActorSystemBuilder {
             }
         });
 
-        let (sync_plugins, async_plugins, plugin_sync_handle) = jinn_plugin::PluginSystem::build(
+        let plugin_build = jinn_plugin::PluginSystem::build(
             &paths.plugins_dir(),
             &paths.system_plugins_dir(),
             handle.clone(),
             plugin_command_dispatcher,
             plugin_request_handler,
         );
+
+        let sync_plugins = plugin_build.sync;
+        let async_plugins = plugin_build.async_handle;
+        let plugin_sync_handle = plugin_build.sync_handle;
+        let global_tool_metadata = plugin_build.global_tool_metadata;
 
         // Store discovered plugin metadata in state for the sidebar.
         {
@@ -273,6 +278,37 @@ impl ActorSystemBuilder {
                 ),
             tempdir: None,
         };
+
+        // Register global plugin tools with the tools actor.
+        if !global_tool_metadata.is_empty() {
+            // Group tools by plugin name and send one RegisterPluginTools per plugin.
+            let mut by_plugin: std::collections::HashMap<String, Vec<jinn_domain::ToolDefinition>> =
+                std::collections::HashMap::new();
+            for meta in global_tool_metadata {
+                by_plugin
+                    .entry(meta.plugin_name.clone())
+                    .or_default()
+                    .push(jinn_domain::ToolDefinition {
+                        name: meta.name,
+                        description: meta.description,
+                        parameters: meta.parameters,
+                        prompt_snippet: None,
+                        prompt_guidelines: vec![],
+                        server_tool_type: None,
+                    });
+            }
+            for (plugin_name, definitions) in by_plugin {
+                services.actor_channel.send_command(
+                    jinn_domain::Command::RegisterPluginTools(
+                        jinn_domain::feat::tools_actor::protocol::command::RegisterPluginTools {
+                            plugin_name,
+                            target: None,
+                            definitions,
+                        },
+                    ),
+                );
+            }
+        }
 
         // Now that `services` + `state` exist, build the shared `DomainNodeContext`
         // and publish it into the `OnceLock` so the plugin request handler can see it.

@@ -34,13 +34,14 @@ use crate::common::state::State;
 use crate::feat::preferences_actor::OpenrouterWebSearchConfig;
 use crate::feat::session::chat_session::ChatSessionState;
 use crate::feat::tools_actor::protocol::command::{
-    CancelToolBatch, ExecuteToolBatch, ExecuteWebFetch, RegisterTools,
+    CancelToolBatch, ExecuteToolBatch, ExecuteWebFetch, RegisterPluginTools, RegisterTools,
 };
 use crate::feat::tools_actor::protocol::event::{
     ToolBatchCompleted, ToolExecutionCompleted, ToolsRegistered,
 };
 use crate::feat::tools_actor::tool_types::{ToolCall, ToolContext, ToolDefinition, ToolResult};
 use crate::protocol::{Command, Event, SessionId};
+use crate::feat::plugin_system::SessionRegistryId;
 use jinn_provider::ServerToolType;
 
 /// A boxed future returned by built-in tool execute functions.
@@ -62,6 +63,15 @@ pub(crate) enum ToolRegistration {
         /// The name of the actor providing this tool.
         provider: String,
     },
+    /// A plugin-defined tool routed to the plugin system's async thread.
+    Plugin {
+        /// The tool's JSON-schema definition.
+        definition: ToolDefinition,
+        /// `None` for global plugins, `Some(id)` for session-attached plugins.
+        target: Option<SessionRegistryId>,
+        /// The name of the plugin that owns this tool.
+        plugin_name: String,
+    },
 }
 
 impl std::fmt::Debug for ToolRegistration {
@@ -78,6 +88,16 @@ impl std::fmt::Debug for ToolRegistration {
                 .debug_struct("Actor")
                 .field("name", &definition.name)
                 .field("provider", provider)
+                .finish(),
+            Self::Plugin {
+                definition,
+                target,
+                plugin_name,
+            } => f
+                .debug_struct("Plugin")
+                .field("name", &definition.name)
+                .field("target", target)
+                .field("plugin_name", plugin_name)
                 .finish(),
         }
     }
@@ -173,6 +193,7 @@ impl Actor for ToolOrchestratorActor {
     fn activate(deps: Self::Deps, ctx: &mut ActorContext) -> Self {
         ctx.set_description("Dispatches and manages tool execution");
         ctx.subscribe_command::<RegisterTools>();
+        ctx.subscribe_command::<RegisterPluginTools>();
         ctx.subscribe_command::<ExecuteToolBatch>();
         ctx.subscribe_command::<CancelToolBatch>();
         ctx.subscribe_event::<ToolExecutionCompleted>();
@@ -267,6 +288,9 @@ impl ToolOrchestratorActor {
             Command::RegisterTools(payload) => {
                 self.handle_register_tools(&payload.provider, &payload.definitions, ctx);
             }
+            Command::RegisterPluginTools(payload) => {
+                self.handle_register_plugin_tools(&payload.plugin_name, &payload.target, &payload.definitions, ctx);
+            }
             Command::ExecuteToolBatch(payload) => {
                 self.handle_execute_tool_batch(
                     payload.session_id.clone(),
@@ -318,6 +342,34 @@ impl ToolOrchestratorActor {
             definitions: definitions.to_vec(),
         })) {
             tracing::warn!(err = ?e, "failed to emit ToolsRegistered event");
+        }
+    }
+
+    /// Registers tool definitions from a Lua plugin.
+    fn handle_register_plugin_tools(
+        &mut self,
+        plugin_name: &str,
+        target: &Option<SessionRegistryId>,
+        definitions: &[ToolDefinition],
+        ctx: &ActorContext,
+    ) {
+        for def in definitions {
+            let name = def.name.clone();
+            self.tools.insert(
+                name,
+                ToolRegistration::Plugin {
+                    definition: def.clone(),
+                    target: *target,
+                    plugin_name: plugin_name.to_owned(),
+                },
+            );
+        }
+
+        if let Err(e) = ctx.send_event(Event::ToolsRegistered(ToolsRegistered {
+            provider: format!("plugin:{plugin_name}"),
+            definitions: definitions.to_vec(),
+        })) {
+            tracing::warn!(err = ?e, "failed to emit ToolsRegistered event for plugin");
         }
     }
 
@@ -431,6 +483,7 @@ impl ToolOrchestratorActor {
             reg_type = match self.tools.get(&tool_call.name) {
                 Some(ToolRegistration::Builtin { .. }) => "builtin",
                 Some(ToolRegistration::Actor { .. }) => "actor",
+                Some(ToolRegistration::Plugin { .. }) => "plugin",
                 None => "unknown",
             },
             "dispatch_tool_call"
@@ -499,6 +552,33 @@ impl ToolOrchestratorActor {
                     );
                 }
                 None
+            }
+            Some(ToolRegistration::Plugin { .. }) => {
+                // Phase 2 will wire execute_plugin_tool().
+                // For now, return an error so the tool call doesn't hang.
+                let call_id = tool_call.id.clone();
+                let call_name = tool_call.name.clone();
+                let sink = ctx.sink();
+                let handle = tokio::spawn(async move {
+                    let result = ToolResult {
+                        tool_call_id: call_id,
+                        name: call_name,
+                        content: "plugin tool execution not yet implemented".to_owned(),
+                        success: false,
+                        full_content: None,
+                        truncation: None,
+                        pin_position: None,
+                    };
+                    if let Err(e) =
+                        sink.send_event(Event::ToolExecutionCompleted(ToolExecutionCompleted {
+                            session_id,
+                            result,
+                        }))
+                    {
+                        tracing::warn!(err = ?e, "plugin tool failed to send ToolExecutionCompleted");
+                    }
+                });
+                Some(handle)
             }
             None => {
                 let call_id = tool_call.id.clone();

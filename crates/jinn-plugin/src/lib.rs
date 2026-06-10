@@ -54,6 +54,7 @@ pub mod plugin_sync_impl;
 pub mod sync_handle;
 pub mod sync_state;
 pub mod system;
+pub mod tool_def;
 
 pub use async_handle::AsyncPluginHandle;
 pub use async_thread::RequestHandler;
@@ -63,7 +64,8 @@ pub use plugin_data::PluginData;
 pub use session_registry::SessionRegistryId;
 pub use sync_handle::PluginSyncHandle;
 pub use sync_state::{PluginHooks, SyncPlugins};
-pub use system::{CommandDispatcher, PluginSystem};
+pub use system::{CommandDispatcher, PluginSystem, PluginSystemBuildResult};
+pub use tool_def::{PluginToolDef, PluginToolMetadata};
 
 /// A no-op request handler for contexts where async requests aren't needed.
 #[must_use]

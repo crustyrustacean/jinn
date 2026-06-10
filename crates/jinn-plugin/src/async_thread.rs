@@ -58,6 +58,8 @@ struct SessionState {
     lua: Lua,
     /// Hooks registered per plugin for this session.
     hooks: HashMap<String, PluginHooks>,
+    /// Tool definitions from attached plugins in this session.
+    tools: Vec<crate::tool_def::PluginToolDef>,
 }
 
 /// Thread state passed through the loop.
@@ -66,6 +68,8 @@ struct ThreadState {
     global_lua: Lua,
     /// Hooks registered for global plugins.
     global_hooks: HashMap<String, PluginHooks>,
+    /// Tool definitions from global plugins.
+    global_tools: Vec<crate::tool_def::PluginToolDef>,
     /// Per-session states keyed by registry ID.
     sessions: HashMap<SessionRegistryId, SessionState>,
     /// All discovered attachable plugins (loaded on demand).
@@ -86,6 +90,7 @@ pub(crate) fn run_async_thread(
     rx: kanal::AsyncReceiver<PluginJob>,
     lua: Lua,
     hooks: HashMap<String, PluginHooks>,
+    global_tools: Vec<crate::tool_def::PluginToolDef>,
     all_plugins: Vec<PluginMeta>,
     plugin_data: PluginData,
     emit_tx: kanal::AsyncSender<PluginCommand>,
@@ -110,6 +115,7 @@ pub(crate) fn run_async_thread(
     let state = ThreadState {
         global_lua: lua,
         global_hooks: hooks,
+        global_tools,
         sessions: HashMap::new(),
         attachable_plugins,
         plugin_data,
@@ -195,7 +201,7 @@ fn load_session_plugins(
     state: &mut ThreadState,
     registry_id: SessionRegistryId,
     plugin_names: &[String],
-) -> Result<(), Report<PluginError>> {
+) -> Result<Vec<crate::tool_def::PluginToolMetadata>, Report<PluginError>> {
     // Resolve each name to a PluginMeta in the attachable set.
     let metas: Vec<PluginMeta> = plugin_names
         .iter()
@@ -214,19 +220,24 @@ fn load_session_plugins(
         })?;
 
     let lua = Lua::new();
-    let hooks = load_all(&lua, &metas);
+    let result = load_all(&lua, &metas);
 
-    if hooks.len() != plugin_names.len() {
-        let loaded_names: Vec<&str> = hooks.keys().map(String::as_str).collect();
+    if result.hooks.len() != plugin_names.len() {
+        let loaded_names: Vec<&str> = result.hooks.keys().map(String::as_str).collect();
         return Err(Report::new(PluginError)
             .attach("some plugins failed to load")
             .attach(format!("requested: {plugin_names:?}"))
             .attach(format!("loaded: {loaded_names:?}")));
     }
+    let metadata: Vec<_> = result.tools.iter().map(|t| t.to_metadata()).collect();
     state
         .sessions
-        .insert(registry_id, SessionState { lua, hooks });
-    Ok(())
+        .insert(registry_id, SessionState {
+            lua,
+            hooks: result.hooks,
+            tools: result.tools,
+        });
+    Ok(metadata)
 }
 
 /// Run global hooks + optional session hooks, discarding return values.

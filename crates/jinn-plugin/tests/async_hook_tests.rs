@@ -12,7 +12,7 @@ use jinn_domain::feat::plugin_system::SessionPluginRegistry;
 use std::path::Path;
 use std::sync::{Arc, Mutex};
 
-use jinn_plugin::{PluginCommand, PluginSystem};
+use jinn_plugin::{PluginCommand, PluginSystem, PluginSystemBuildResult};
 use serde::Serialize;
 use serde_json::json;
 
@@ -36,7 +36,7 @@ fn build_system(dir: &Path) -> TestSystem {
     // Leak the runtime — it lives for the test duration.
     // Can't drop a Runtime inside a #[tokio::test] async context.
     let rt = Box::leak(Box::new(tokio::runtime::Runtime::new().expect("runtime")));
-    let (_, async_handle, _) = PluginSystem::build(
+    let PluginSystemBuildResult { async_handle, .. } = PluginSystem::build(
         dir,
         Path::new("/nonexistent"),
         rt.handle().clone(),
@@ -313,7 +313,7 @@ async fn load_session_registry_creates_isolated_state() {
     );
 
     let sys = build_system(dir.path());
-    let session = sys
+    let result = sys
         .async_handle
         .create_session_registry(vec!["judge_fail".to_owned()])
         .await
@@ -321,7 +321,7 @@ async fn load_session_registry_creates_isolated_state() {
 
     sys.async_handle
         .fire_async_for_session(
-            Some(session),
+            Some(result.registry_id),
             "on_turn_end",
             &TurnEndCtx {
                 session_id: "s1".to_owned(),
@@ -368,7 +368,8 @@ async fn fire_for_session_excludes_other_sessions_plugins() {
         .async_handle
         .create_session_registry(vec![])
         .await
-        .expect("create registry B (empty)");
+        .expect("create registry B (empty)")
+        .registry_id;
 
     sys.async_handle
         .fire_async_for_session(
@@ -428,7 +429,7 @@ async fn fire_for_session_merges_global_and_session_plugins() {
     );
 
     let sys = build_system(dir.path());
-    let session = sys
+    let result = sys
         .async_handle
         .create_session_registry(vec!["judge_fail".to_owned()])
         .await
@@ -436,7 +437,7 @@ async fn fire_for_session_merges_global_and_session_plugins() {
 
     sys.async_handle
         .fire_async_for_session(
-            Some(session),
+            Some(result.registry_id),
             "on_turn_end",
             &TurnEndCtx {
                 session_id: "s1".to_owned(),
