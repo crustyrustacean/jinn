@@ -52,6 +52,10 @@ use crate::protocol::SessionId;
 pub struct AnchoredAssistantAutoPruneWorker {
     /// Configuration for the anchor-radius strategy.
     pub config: AnchoredAssistantAutoPruneConfig,
+    /// The anchor radius, sourced from [`AnchorShieldConfig::radius`](super::anchor_shield::AnchorShieldConfig::radius)
+    /// at wiring time. Centralized on the shield worker so the shield boundary
+    /// and prune boundary always align.
+    pub radius: usize,
     /// Minimum token count for an entry to be considered a pruning candidate.
     /// Entries at or below this threshold are owned by
     /// [`TrivialAssistantAutoPruneWorker`](super::TrivialAssistantAutoPruneWorker).
@@ -71,7 +75,7 @@ pub struct AnchoredAssistantAutoPruneWorker {
 /// (regardless of entry kind). The first and last anchors are always
 /// present when `history` is non-empty, so this returns a non-empty `Vec`
 /// for any non-empty history and an empty `Vec` only for empty history.
-fn collect_anchor_indices(history: &[ChatEntry]) -> Vec<usize> {
+pub(crate) fn collect_anchor_indices(history: &[ChatEntry]) -> Vec<usize> {
     if history.is_empty() {
         return Vec::new();
     }
@@ -98,6 +102,20 @@ fn collect_anchor_indices(history: &[ChatEntry]) -> Vec<usize> {
     anchors.dedup();
     anchors
 }
+/// Collect anchor indices from User messages only — no boundary anchors.
+/// Used by the anchor shield worker, which should only shield around user turns,
+/// not around conversation start/end (which would shield nearly everything).
+pub(crate) fn collect_user_anchor_indices(history: &[ChatEntry]) -> Vec<usize> {
+    history
+        .iter()
+        .enumerate()
+        .filter_map(|(i, e)| match e.kind {
+            ChatEntryKind::User { .. } => Some(i),
+            _ => None,
+        })
+        .collect()
+}
+
 
 /// Compute `(d_back, d_fwd)` — index distances to the nearest preceding and
 /// following anchors.
@@ -110,7 +128,7 @@ fn collect_anchor_indices(history: &[ChatEntry]) -> Vec<usize> {
 /// returns distances where `None` means "no anchor on that side" (i.e.,
 /// distance is `∞`).
 #[expect(clippy::unreachable, reason = "infallible")]
-fn distances_to_nearest_anchors(
+pub(crate) fn distances_to_nearest_anchors(
     idx: usize,
     anchor_indices: &[usize],
 ) -> (Option<usize>, Option<usize>) {
@@ -285,7 +303,7 @@ impl HistoryWorker for AnchoredAssistantAutoPruneWorker {
     ) -> Vec<HistoryMutation> {
         let mutations = build_prune_mutations(&PruneCtx {
             history: &history,
-            radius: self.config.radius,
+            radius: self.radius,
             min_age: self.config.min_age,
             min_candidate_tokens: self.min_candidate_tokens,
             session_id,
@@ -295,9 +313,8 @@ impl HistoryWorker for AnchoredAssistantAutoPruneWorker {
         });
         tracing::debug!(
             mutations = mutations.len(),
-            radius = self.config.radius,
+            radius = self.radius,
             history_len = history.len(),
-            "anchored_assistant evaluate done"
         );
         mutations
     }
@@ -341,6 +358,7 @@ mod tests {
                 radius,
                 min_age,
             },
+            radius,
             min_candidate_tokens: 81,
             token_cache: super::super::HistoryWorkerChatEntryTokenCache::new(),
             counter: TiktokenCounter::o200k_base(),
@@ -1082,6 +1100,39 @@ mod tests {
         let anchors = collect_anchor_indices(&history);
         assert_eq!(anchors, vec![0, 1, 2]);
     }
+    // ------------------------------------------------------------------
+    // collect_user_anchor_indices
+    // ------------------------------------------------------------------
+
+    #[test]
+    fn collect_user_anchors_empty_history() {
+        assert!(collect_user_anchor_indices(&[]).is_empty());
+    }
+
+    #[test]
+    fn collect_user_anchors_returns_user_entries_only() {
+        let history = vec![
+            ChatEntry::assistant("a"),
+            ChatEntry::user("first"),
+            ChatEntry::assistant("b"),
+            ChatEntry::user("second"),
+            ChatEntry::assistant("c"),
+        ];
+        let anchors = collect_user_anchor_indices(&history);
+        assert_eq!(anchors, vec![1, 3]);
+    }
+
+    #[test]
+    fn collect_user_anchors_no_user_entries_is_empty() {
+        let history = vec![
+            ChatEntry::assistant("a"),
+            ChatEntry::assistant("b"),
+            ChatEntry::assistant("c"),
+        ];
+        let anchors = collect_user_anchor_indices(&history);
+        assert!(anchors.is_empty());
+    }
+
 
     // ------------------------------------------------------------------
     // 21. no_user_entries_first_and_last_still_anchor
