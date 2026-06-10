@@ -1,4 +1,12 @@
-#![allow(clippy::expect_used, clippy::indexing_slicing, clippy::panic, clippy::uninlined_format_args, clippy::unreachable, clippy::string_slice, reason = "test code")]
+#![allow(
+    clippy::expect_used,
+    clippy::indexing_slicing,
+    clippy::panic,
+    clippy::uninlined_format_args,
+    clippy::unreachable,
+    clippy::string_slice,
+    reason = "test code"
+)]
 //! Tests for the task list data model.
 
 //!

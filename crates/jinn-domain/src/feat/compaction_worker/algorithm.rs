@@ -35,9 +35,10 @@ pub fn adjust_cut_to_boundary(history: &[ChatEntry], cut_index: usize) -> usize 
     // Pass 1: If cut lands on a ToolCall or ToolResult, walk forward past them.
     let cut_index = if matches!(
         history.get(cut_index).map(|e| &e.kind),
-        Some(ChatEntryKind::ToolCall { .. } | ChatEntryKind::ToolResult { ..})
+        Some(ChatEntryKind::ToolCall { .. } | ChatEntryKind::ToolResult { .. })
     ) {
-        history.get(cut_index..)
+        history
+            .get(cut_index..)
             .expect("cut_index < history.len() checked above")
             .iter()
             .position(|entry| {
@@ -56,7 +57,10 @@ pub fn adjust_cut_to_boundary(history: &[ChatEntry], cut_index: usize) -> usize 
     }
 
     // Pass 2: If the cut lands on an Assistant, check for incomplete tool loops.
-    if !matches!(history.get(cut_index).map(|e| &e.kind), Some(ChatEntryKind::Assistant(..))) {
+    if !matches!(
+        history.get(cut_index).map(|e| &e.kind),
+        Some(ChatEntryKind::Assistant(..))
+    ) {
         return cut_index;
     }
 
@@ -115,7 +119,9 @@ pub fn compute_cut_index(
     let mut cut_index = start_index;
 
     for i in (start_index..history.len()).rev() {
-        let Some(entry) = history.get(i) else { continue };
+        let Some(entry) = history.get(i) else {
+            continue;
+        };
         let tokens = estimate_entry_tokens(&estimator, entry);
         accumulated_tokens += tokens;
         if accumulated_tokens > reserve_tokens {
@@ -185,7 +191,15 @@ pub fn find_start_boundary(history: &[ChatEntry]) -> usize {
 
 #[cfg(test)]
 mod tests {
-#![allow(clippy::expect_used, clippy::indexing_slicing, clippy::panic, clippy::unreachable, clippy::string_slice, clippy::uninlined_format_args, reason = "test code")]
+    #![allow(
+        clippy::expect_used,
+        clippy::indexing_slicing,
+        clippy::panic,
+        clippy::unreachable,
+        clippy::string_slice,
+        clippy::uninlined_format_args,
+        reason = "test code"
+    )]
     use super::*;
     use crate::feat::session::chat_entry::{
         ChatEntry, ChatEntryId, ChatEntryKind, ContextOverride,

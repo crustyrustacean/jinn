@@ -93,7 +93,8 @@ pub fn compute_line_hash(line_num: usize, line: &str) -> &str {
     hasher.write(normalized.as_bytes());
     let sum = hasher.finish();
     let lo = sum as u8;
-    DICT.get(lo as usize).expect("u8 always fits in 256-entry table")
+    DICT.get(lo as usize)
+        .expect("u8 always fits in 256-entry table")
 }
 
 /// Returns `true` if the line contains at least one letter or digit.
@@ -274,7 +275,10 @@ pub fn get_visible_lines(text: &str) -> Vec<&str> {
     }
     let lines: Vec<&str> = text.split('\n').collect();
     if text.ends_with('\n') {
-        lines.get(..lines.len().saturating_sub(1)).map(<[&str]>::to_vec).unwrap_or(lines)
+        lines
+            .get(..lines.len().saturating_sub(1))
+            .map(<[&str]>::to_vec)
+            .unwrap_or(lines)
     } else {
         lines
     }
@@ -282,7 +286,13 @@ pub fn get_visible_lines(text: &str) -> Vec<&str> {
 
 #[cfg(test)]
 mod tests {
-    #![allow(clippy::expect_used, clippy::panic, clippy::unreachable, clippy::indexing_slicing, reason = "test code")]
+    #![allow(
+        clippy::expect_used,
+        clippy::panic,
+        clippy::unreachable,
+        clippy::indexing_slicing,
+        reason = "test code"
+    )]
     use super::*;
 
     #[rstest::rstest]

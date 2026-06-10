@@ -82,8 +82,7 @@ pub struct ActorSystemBuilderArgs {
     /// User preferences storage service.
     pub user_preferences_storage: UserPreferencesStorageService,
     /// App state storage service.
-    pub app_state_storage:
-        jinn_domain::feat::preferences_actor::AppStateStorageService,
+    pub app_state_storage: jinn_domain::feat::preferences_actor::AppStateStorageService,
     /// Application paths.
     pub paths: jinn_domain::AppPaths,
 }
@@ -591,7 +590,6 @@ impl ActorSystemBuilder {
                 HistoryWorkerActor, HistoryWorkerActorDeps,
             };
 
-
             actors.push(spawn::<HistoryWorkerActor<CompactionWorker>>(
                 "history-worker-compaction",
                 &sink,
@@ -599,11 +597,7 @@ impl ActorSystemBuilder {
                 &counter,
                 &shutdown_tracker,
                 HistoryWorkerActorDeps {
-                    worker: CompactionWorker::new(
-                        services.clone(),
-                        handle.clone(),
-                        state.clone(),
-                    ),
+                    worker: CompactionWorker::new(services.clone(), handle.clone(), state.clone()),
                 },
             ));
         }
@@ -613,8 +607,29 @@ impl ActorSystemBuilder {
             use jinn_domain::feat::compaction_worker::{CompactionWorker, CompactionTriggerActor, CompactionTriggerActorDeps};
 
             let _compaction_trigger = CompactionTriggerActor::spawn(
+            use jinn_domain::feat::compaction_worker::{CompactionWorker, CompactionTriggerActor, CompactionTriggerActorDeps};
+
+            actors.push(spawn::<CompactionTriggerActor::spawn(
+            use jinn_domain::feat::compaction_worker::{
+                CompactionTriggerActor, CompactionTriggerActorDeps, CompactionWorker,
+            };
+
+
+            actors.push(spawn::<CompactionTriggerActor>(
+                "compaction-trigger",
+                &sink,
+                handle,
+                &counter,
+                &shutdown_tracker,
                 CompactionTriggerActorDeps {
                     deps: ActorDeps { services: services.clone() },
+                    worker: CompactionWorker::new(
+                        services.clone(),
+                        handle.clone(),
+                        state.clone(),
+                    ),
+                    deps: ActorDeps { services: services.clone() },
+                    worker: CompactionWorker::new(services.clone(), handle.clone(), state.clone()),
                     worker: CompactionWorker::new(
                         services.clone(),
                         handle.clone(),
@@ -890,10 +905,41 @@ impl ActorSystemBuilder {
             }
         }
 
+        // Auto-prune worker: anchor shield.
+        // Force-includes in-context-by-default entries (Assistant, ToolCall, ToolResult,
+        // User) within a configurable radius of any anchor (User entries, first/last
+        // index), preventing other workers from excluding them.
+        {
+            use jinn_domain::feat::auto_prune_worker::AnchorShieldAutoPruneWorker;
+            use jinn_domain::feat::history_worker::actor::{
+                HistoryWorkerActor, HistoryWorkerActorDeps,
+            };
+
+            let shield_config = {
+                let prefs = user_preferences_storage.read();
+                prefs.auto_prune.anchor_shield.clone()
+            };
+
+            if shield_config.enabled {
+                actors.push(spawn::<HistoryWorkerActor<AnchorShieldAutoPruneWorker>>(
+                    "history-worker-auto-prune-anchor-shield",
+                    &sink,
+                    handle,
+                    &counter,
+                    &shutdown_tracker,
+                    HistoryWorkerActorDeps {
+                        worker: AnchorShieldAutoPruneWorker {
+                            config: shield_config,
+                        },
+                    },
+                ));
+            }
+        }
+
         // Auto-prune worker: anchored-assistant context pruning.
         // Prunes large (>80 token) Assistant entries whose index distance to the
         // nearest anchor entry (first index, last index, or any User entry)
-        // exceeds a configurable radius.
+        // exceeds the shield's radius (shared with AnchorShieldAutoPruneWorker).
         {
             use jinn_domain::feat::auto_prune_worker::AnchoredAssistantAutoPruneWorker;
             use jinn_domain::feat::context::strategy::token_estimator::TiktokenCounter;
@@ -901,11 +947,12 @@ impl ActorSystemBuilder {
                 HistoryWorkerActor, HistoryWorkerActorDeps,
             };
 
-            let (config, trivial_max_tokens) = {
+            let (config, shield_radius, trivial_max_tokens) = {
                 let prefs = user_preferences_storage.read();
                 let cfg = prefs.auto_prune.anchored_assistant.clone();
+                let radius = prefs.auto_prune.anchor_shield.radius;
                 let max_tokens = prefs.auto_prune.trivial_assistant.max_tokens as u32;
-                (cfg, max_tokens)
+                (cfg, radius, max_tokens)
             };
 
             if config.enabled {
@@ -919,6 +966,7 @@ impl ActorSystemBuilder {
                         HistoryWorkerActorDeps {
                             worker: AnchoredAssistantAutoPruneWorker {
                                 config,
+                                radius: shield_radius,
                                 min_candidate_tokens: trivial_max_tokens + 1,
                                 token_cache: entry_token_cache.clone(),
                                 counter: TiktokenCounter::o200k_base(),

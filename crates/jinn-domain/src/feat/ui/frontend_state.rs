@@ -5,8 +5,8 @@ use parking_lot::RwLock;
 use crate::common::focus::{FocusScope, ScopeStack};
 use crate::common::tui_signals::TuiSignals;
 use crate::feat::cwd_input::state::CwdInputState;
-use crate::feat::preferences_actor::app_state_file::AppStateFile;
 use crate::feat::preferences_actor::UserPreferences;
+use crate::feat::preferences_actor::app_state_file::AppStateFile;
 use crate::feat::rename_session_input::state::RenameSessionInputState;
 
 use crate::feat::session_lifecycle::arg_input_state::ArgInputState;
@@ -182,7 +182,13 @@ impl Default for FrontendState {
 
 #[cfg(test)]
 mod tests {
-    #![allow(clippy::expect_used, clippy::panic, clippy::unreachable, clippy::indexing_slicing, reason = "test code")]
+    #![allow(
+        clippy::expect_used,
+        clippy::panic,
+        clippy::unreachable,
+        clippy::indexing_slicing,
+        reason = "test code"
+    )]
 
     use super::*;
     use jinn_selection_widget::PreviewCache;

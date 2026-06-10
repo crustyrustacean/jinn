@@ -1,4 +1,10 @@
-#![allow(clippy::expect_used, clippy::panic, clippy::unreachable, clippy::indexing_slicing, reason = "test code")]
+#![allow(
+    clippy::expect_used,
+    clippy::panic,
+    clippy::unreachable,
+    clippy::indexing_slicing,
+    reason = "test code"
+)]
 
 use crate::common::app_state::AppState;
 use crate::common::app_state::FocusScope;
@@ -825,4 +831,163 @@ fn render_queue_badge_no_count_when_buffer_empty() {
     // x = 11 (right after the 9-cell badge at x=2..11) is the bottom-border line character.
     let right_cell = buffer.cell((11, 2)).expect("cell should exist");
     assert_eq!(right_cell.symbol(), "─");
+}
+
+// ===== Muted badge rendering tests (Normal scope) =====
+
+#[rstest::rstest]
+fn steer_badge_is_muted_in_normal_mode() {
+    // Given a ChatInputBoxElement in Steer mode with Normal (browsing) scope.
+    let mut element = ChatInputBoxElement;
+    let state = {
+        let mut s = AppState::default();
+        s.frontend.scope_stack.pop(); // pop Input → back to Normal
+        s
+    };
+
+    let (mut terminal, area) = setup_term(40, 3);
+
+    // When rendering.
+    terminal
+        .draw(|frame| {
+            let ctx = RenderCtx::new(&state);
+            element.render(frame, area, &ctx);
+        })
+        .unwrap();
+
+    // Then all badge spans use muted_text — the badge is purely informational
+    // when the input box is unfocused.
+    let buffer = terminal.backend().buffer().clone();
+    let theme = default_theme();
+    // [ at x=2
+    let bracket_cell = buffer.cell((2, 2)).expect("cell should exist");
+    assert_eq!(bracket_cell.symbol(), "[");
+    assert_eq!(bracket_cell.style().fg, Some(theme.muted_text));
+    // Q at x=3
+    let q_cell = buffer.cell((3, 2)).expect("cell should exist");
+    assert_eq!(q_cell.symbol(), "Q");
+    assert_eq!(q_cell.style().fg, Some(theme.muted_text));
+    // : at x=4
+    let colon_cell = buffer.cell((4, 2)).expect("cell should exist");
+    assert_eq!(colon_cell.symbol(), ":");
+    assert_eq!(colon_cell.style().fg, Some(theme.muted_text));
+    // ] at x=10
+    let close_cell = buffer.cell((10, 2)).expect("cell should exist");
+    assert_eq!(close_cell.symbol(), "]");
+    assert_eq!(close_cell.style().fg, Some(theme.muted_text));
+}
+
+#[rstest::rstest]
+fn queue_badge_is_muted_in_normal_mode() {
+    // Given a ChatInputBoxElement toggled to Queue mode with Normal (browsing) scope.
+    let mut element = ChatInputBoxElement;
+    let state = {
+        let mut s = AppState::default();
+        s.active_chat_input_mut().toggle_input_mode(); // Steer → Queue
+        s.frontend.scope_stack.pop(); // pop Input → back to Normal
+        s
+    };
+
+    let (mut terminal, area) = setup_term(40, 3);
+
+    // When rendering.
+    terminal
+        .draw(|frame| {
+            let ctx = RenderCtx::new(&state);
+            element.render(frame, area, &ctx);
+        })
+        .unwrap();
+
+    // Then all badge spans use muted_text.
+    let buffer = terminal.backend().buffer().clone();
+    let theme = default_theme();
+    let bracket_cell = buffer.cell((2, 2)).expect("cell should exist");
+    assert_eq!(bracket_cell.style().fg, Some(theme.muted_text));
+    let q_cell = buffer.cell((3, 2)).expect("cell should exist");
+    assert_eq!(q_cell.style().fg, Some(theme.muted_text));
+    let colon_cell = buffer.cell((4, 2)).expect("cell should exist");
+    assert_eq!(colon_cell.style().fg, Some(theme.muted_text));
+    let close_cell = buffer.cell((10, 2)).expect("cell should exist");
+    assert_eq!(close_cell.style().fg, Some(theme.muted_text));
+}
+
+#[rstest::rstest]
+fn steer_badge_count_is_muted_in_normal_mode() {
+    // Given Steer mode with 2 fragments buffered, Normal scope.
+    let mut element = ChatInputBoxElement;
+    let state = {
+        let mut s = AppState::default();
+        s.active_session_mut()
+            .steering_buffer_mut()
+            .push_fragment("first".to_owned());
+        s.active_session_mut()
+            .steering_buffer_mut()
+            .push_fragment("second".to_owned());
+        s.frontend.scope_stack.pop(); // pop Input → back to Normal
+        s
+    };
+
+    let (mut terminal, area) = setup_term(40, 3);
+
+    // When rendering.
+    terminal
+        .draw(|frame| {
+            let ctx = RenderCtx::new(&state);
+            element.render(frame, area, &ctx);
+        })
+        .unwrap();
+
+    // Then all badge spans including the count use muted_text.
+    let buffer = terminal.backend().buffer().clone();
+    let theme = default_theme();
+    let bracket_cell = buffer.cell((2, 2)).expect("cell should exist");
+    assert_eq!(bracket_cell.style().fg, Some(theme.muted_text));
+    let q_cell = buffer.cell((3, 2)).expect("cell should exist");
+    assert_eq!(q_cell.style().fg, Some(theme.muted_text));
+    let dot_cell = buffer.cell((11, 2)).expect("cell should exist");
+    assert_eq!(dot_cell.style().fg, Some(theme.muted_text));
+    let count_cell = buffer.cell((13, 2)).expect("cell should exist");
+    assert_eq!(count_cell.style().fg, Some(theme.muted_text));
+    let close_cell = buffer.cell((14, 2)).expect("cell should exist");
+    assert_eq!(close_cell.style().fg, Some(theme.muted_text));
+}
+
+#[rstest::rstest]
+fn queue_badge_count_is_muted_in_normal_mode() {
+    // Given Queue mode with 2 queued items, Normal scope.
+    let mut element = ChatInputBoxElement;
+    let state = {
+        let mut s = AppState::default();
+        s.active_chat_input_mut().toggle_input_mode(); // Steer → Queue
+        s.active_session_mut()
+            .enqueue(QueueItem::UserMessage(Box::new(ChatEntry::user("first"))));
+        s.active_session_mut()
+            .enqueue(QueueItem::UserMessage(Box::new(ChatEntry::user("second"))));
+        s.frontend.scope_stack.pop(); // pop Input → back to Normal
+        s
+    };
+
+    let (mut terminal, area) = setup_term(40, 3);
+
+    // When rendering.
+    terminal
+        .draw(|frame| {
+            let ctx = RenderCtx::new(&state);
+            element.render(frame, area, &ctx);
+        })
+        .unwrap();
+
+    // Then all badge spans including the count use muted_text.
+    let buffer = terminal.backend().buffer().clone();
+    let theme = default_theme();
+    let bracket_cell = buffer.cell((2, 2)).expect("cell should exist");
+    assert_eq!(bracket_cell.style().fg, Some(theme.muted_text));
+    let q_cell = buffer.cell((3, 2)).expect("cell should exist");
+    assert_eq!(q_cell.style().fg, Some(theme.muted_text));
+    let dot_cell = buffer.cell((11, 2)).expect("cell should exist");
+    assert_eq!(dot_cell.style().fg, Some(theme.muted_text));
+    let count_cell = buffer.cell((13, 2)).expect("cell should exist");
+    assert_eq!(count_cell.style().fg, Some(theme.muted_text));
+    let close_cell = buffer.cell((14, 2)).expect("cell should exist");
+    assert_eq!(close_cell.style().fg, Some(theme.muted_text));
 }

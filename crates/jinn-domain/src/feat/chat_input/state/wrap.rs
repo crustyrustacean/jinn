@@ -82,7 +82,10 @@ pub fn wrap_text(text: &str, width: usize) -> Vec<WrappedLine> {
 ///
 /// Each grapheme is counted as 1 column. Word boundaries are at whitespace
 /// graphemes. Long words that exceed `width` are broken at grapheme boundaries.
-#[expect(clippy::else_if_without_else, reason = "no-op on fallthrough is intentional")]
+#[expect(
+    clippy::else_if_without_else,
+    reason = "no-op on fallthrough is intentional"
+)]
 fn wrap_logical_line(
     graphemes: &[&str],
     width: usize,
@@ -152,9 +155,9 @@ fn wrap_logical_line(
                 first_line = false;
                 // Recompute col from the remaining graphemes.
                 // i+1 graphemes have been processed; break_pos started the new line.
-                col = graphemes
-                    .get(break_pos..=i)
-                    .map_or(0, |gs| gs.iter().map(|g| UnicodeWidthStr::width(*g)).sum::<usize>());
+                col = graphemes.get(break_pos..=i).map_or(0, |gs| {
+                    gs.iter().map(|g| UnicodeWidthStr::width(*g)).sum::<usize>()
+                });
                 last_word_break = None;
             } else {
                 // No word break found - break at the current position
@@ -195,7 +198,13 @@ fn wrap_logical_line(
 
 #[cfg(test)]
 mod tests {
-    #![allow(clippy::expect_used, clippy::panic, clippy::unreachable, clippy::indexing_slicing, reason = "test code")]
+    #![allow(
+        clippy::expect_used,
+        clippy::panic,
+        clippy::unreachable,
+        clippy::indexing_slicing,
+        reason = "test code"
+    )]
     use super::*;
 
     #[rstest::rstest]

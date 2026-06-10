@@ -25,6 +25,49 @@ use crate::protocol::{ChatEntry, ChatEntryKind, ContextOverride};
 /// | Transient | `LlmMessage::User` with `[Transient]` prefix | Only when in context |
 /// | Skill | `LlmMessage::System` with skill XML | Always in context by default |
 /// | Compaction | `LlmMessage::User` with summary | Always in context by default |
+
+/// Attaches a tool call to the most recent assistant message,
+/// or creates an empty assistant message if none exists (orphan tool call).
+fn push_tool_call_message(messages: &mut Vec<LlmMessage>, tool_call: ToolCall) {
+    match messages.last_mut() {
+        Some(LlmMessage::Assistant { tool_calls, .. }) => {
+            tool_calls.get_or_insert_with(Vec::new).push(tool_call);
+        }
+        _ => {
+            // Orphaned tool call - create an empty assistant message.
+            messages.push(LlmMessage::Assistant {
+                content: String::new(),
+                tool_calls: Some(vec![tool_call]),
+            });
+        }
+    }
+}
+
+/// Formats an error entry as a user message, using actionable framing for
+/// `ForcedInclude` entries and the legacy `[Error]` prefix otherwise.
+fn error_to_user_message(text: &str, context_override: ContextOverride) -> LlmMessage {
+    let content = match context_override {
+        ContextOverride::ForcedInclude => {
+            format!("The user has shared the following output for you to address:\n\n{text}")
+        }
+        // Default and ForcedExclude (unreachable here; already
+        // filtered by is_in_context). Pin alone does not trigger
+        // the actionable framing.
+        ContextOverride::Default | ContextOverride::ForcedExclude => {
+            format!("[Error] {text}")
+        }
+    };
+    LlmMessage::User { content }
+}
+
+/// Formats a compaction summary as a user message wrapping the summary in XML tags.
+fn compaction_to_user_message(summary: &str) -> LlmMessage {
+    LlmMessage::User {
+        content: format!(
+            "The conversation history before this point was compacted into the following summary:\n\n<summary>\n{summary}\n</summary>"
+        ),
+    }
+}
 pub fn entries_to_messages(entries: &[ChatEntry]) -> Vec<LlmMessage> {
     let mut messages = Vec::new();
 
@@ -52,25 +95,12 @@ pub fn entries_to_messages(entries: &[ChatEntry]) -> Vec<LlmMessage> {
                 name,
                 arguments,
             } => {
-                // Attach tool calls to the most recent assistant message.
-                // If there's no assistant message yet, create an empty one.
                 let tool_call = ToolCall {
                     id: id.clone(),
                     name: name.clone(),
                     arguments: arguments.clone(),
                 };
-                match messages.last_mut() {
-                    Some(LlmMessage::Assistant { tool_calls, .. }) => {
-                        tool_calls.get_or_insert_with(Vec::new).push(tool_call);
-                    }
-                    _ => {
-                        // Orphaned tool call - create an empty assistant message.
-                        messages.push(LlmMessage::Assistant {
-                            content: String::new(),
-                            tool_calls: Some(vec![tool_call]),
-                        });
-                    }
-                }
+                push_tool_call_message(&mut messages, tool_call);
             }
             ChatEntryKind::ToolResult {
                 id, name, content, ..
@@ -95,26 +125,8 @@ pub fn entries_to_messages(entries: &[ChatEntry]) -> Vec<LlmMessage> {
                     content: format!("[Actor: {source}] {text}"),
                 });
             }
-            // Error entries produce a User message when in context (pinned
-            // or forced-include). Default-override entries (including pinned)
-            // get the legacy `[Error]` prefix; ForcedInclude entries get an
-            // actionable framing that signals the user wants the LLM to act
-            // on the contents rather than investigate the failure.
             ChatEntryKind::Error(text) => {
-                let content = match entry.context_override() {
-                    ContextOverride::ForcedInclude => {
-                        format!(
-                            "The user has shared the following output for you to address:\n\n{text}"
-                        )
-                    }
-                    // Default and ForcedExclude (unreachable here; already
-                    // filtered by is_in_context). Pin alone does not trigger
-                    // the actionable framing.
-                    ContextOverride::Default | ContextOverride::ForcedExclude => {
-                        format!("[Error] {text}")
-                    }
-                };
-                messages.push(LlmMessage::User { content });
+                messages.push(error_to_user_message(text, entry.context_override()));
             }
             // Thinking entries produce a User message with [Thinking] prefix
             // when in context (pinned or forced-include).
@@ -130,14 +142,8 @@ pub fn entries_to_messages(entries: &[ChatEntry]) -> Vec<LlmMessage> {
                     content: format!("[Transient] {text}"),
                 });
             }
-            // Compaction entries produce a User message wrapping the summary.
-            // The summary replaces all ignored entries before this point.
             ChatEntryKind::Compaction { summary, .. } => {
-                messages.push(LlmMessage::User {
-                    content: format!(
-                        "The conversation history before this point was compacted into the following summary:\n\n<summary>\n{summary}\n</summary>"
-                    ),
-                });
+                messages.push(compaction_to_user_message(summary));
             }
         }
     }

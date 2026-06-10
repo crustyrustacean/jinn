@@ -11,7 +11,10 @@
 //! - [`ActorContext`] - subscriptions, peer refs, and message sink
 //! - [`MessageSink`] - trait for sending bus messages from actors to the application
 
-#[expect(clippy::module_inception, reason = "actor.rs is the public API, actor/ is implementation")]
+#[expect(
+    clippy::module_inception,
+    reason = "actor.rs is the public API, actor/ is implementation"
+)]
 pub mod actor;
 pub mod actor_counter;
 pub mod actor_name;

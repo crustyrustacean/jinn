@@ -29,7 +29,6 @@ pub struct DomainContextError;
 
 type PendingResult = Arc<Mutex<HashMap<SessionId, oneshot::Sender<Result<String, String>>>>>;
 
-
 /// Domain context for Lua plugin LLM access.
 ///
 /// Provides:
@@ -274,7 +273,13 @@ impl DomainNodeContext {
 
 #[cfg(test)]
 mod tests {
-    #![allow(clippy::expect_used, clippy::panic, clippy::unreachable, clippy::indexing_slicing, reason = "test code")]
+    #![allow(
+        clippy::expect_used,
+        clippy::panic,
+        clippy::unreachable,
+        clippy::indexing_slicing,
+        reason = "test code"
+    )]
 
     use super::*;
     use crate::common::app_state::AppState;

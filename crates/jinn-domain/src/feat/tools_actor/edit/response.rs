@@ -31,7 +31,10 @@ pub struct AffectedRange {
 #[derive(Debug)]
 pub enum AnchorBlock {
     /// A formatted anchor block with fresh hashes.
-    #[expect(clippy::allow_attributes, reason = "dead_code is a compiler lint, not clippy")]
+    #[expect(
+        clippy::allow_attributes,
+        reason = "dead_code is a compiler lint, not clippy"
+    )]
     #[allow(dead_code, reason = "fields used for anchor processing")]
     Block {
         text: String,
@@ -98,7 +101,10 @@ pub fn build_anchor_block(
         return AnchorBlock::Omitted;
     };
 
-    let region: Vec<&str> = visible.get(range.start.saturating_sub(1)..range.end).unwrap_or_default().to_vec();
+    let region: Vec<&str> = visible
+        .get(range.start.saturating_sub(1)..range.end)
+        .unwrap_or_default()
+        .to_vec();
     let formatted = format_hashline_region(&region, range.start);
 
     let block_text = format!("--- Anchors {}-{} ---\n{formatted}", range.start, range.end);
@@ -172,7 +178,13 @@ pub fn format_noop_response(
 
 #[cfg(test)]
 mod tests {
-    #![allow(clippy::expect_used, clippy::panic, clippy::unreachable, clippy::indexing_slicing, reason = "test code")]
+    #![allow(
+        clippy::expect_used,
+        clippy::panic,
+        clippy::unreachable,
+        clippy::indexing_slicing,
+        reason = "test code"
+    )]
     use super::*;
 
     #[rstest::rstest]

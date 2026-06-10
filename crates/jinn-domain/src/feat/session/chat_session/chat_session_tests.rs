@@ -1,7 +1,7 @@
 #![allow(
     clippy::expect_used,
-        clippy::panic,
-        clippy::unreachable,
+    clippy::panic,
+    clippy::unreachable,
     clippy::indexing_slicing,
     clippy::uninlined_format_args,
     reason = "test code"

@@ -106,7 +106,9 @@ pub struct CommandTemplate {
 /// is not a recognized dollar token.
 fn try_parse_dollar(graphemes: &[&str], i: usize) -> Option<(Param, usize)> {
     let current = *graphemes.get(i)?;
-    if current != "$" { return None; }
+    if current != "$" {
+        return None;
+    }
     let next = *graphemes.get(i + 1)?;
     let first_byte = *next.as_bytes().first()?;
     if next.len() == 1 && first_byte.is_ascii_digit() && first_byte != b'0' {
@@ -125,11 +127,15 @@ fn try_parse_dollar(graphemes: &[&str], i: usize) -> Option<(Param, usize)> {
 /// `<name>` token is found (non-empty name, closing `>` present).
 /// Returns `None` otherwise.
 fn try_parse_named(graphemes: &[&str], i: usize) -> Option<(Param, usize)> {
-    if graphemes.get(i)? != &"<" { return None; }
+    if graphemes.get(i)? != &"<" {
+        return None;
+    }
     let start = i + 1;
     let mut end = start;
     while let Some(g) = graphemes.get(end) {
-        if *g == ">" { break; }
+        if *g == ">" {
+            break;
+        }
         end += 1;
     }
     if end > start && graphemes.get(end) == Some(&">") {
@@ -254,12 +260,15 @@ impl CommandTemplate {
 
         // Replace $@ and $* with remaining args (those not consumed by non-splat params).
         if self.has_splat() {
-            let joined = args.get(arg_idx..)
-                .map(|remaining| remaining
-                    .iter()
-                    .map(|a| shell_quote(a))
-                    .collect::<Vec<_>>()
-                    .join(" "))
+            let joined = args
+                .get(arg_idx..)
+                .map(|remaining| {
+                    remaining
+                        .iter()
+                        .map(|a| shell_quote(a))
+                        .collect::<Vec<_>>()
+                        .join(" ")
+                })
                 .unwrap_or_default();
             result = result.replace("$@", &joined);
             result = result.replace("$*", &joined);
@@ -370,9 +379,10 @@ fn tokenize_spans(line: &str) -> Vec<Span> {
         let m = caps.get(0).expect("capture group 0 always exists");
         // Emit preceding static text if any.
         if m.start() > last_end
-            && let Some(text) = line.get(last_end..m.start()) {
-                spans.push(Span::Static(text.to_owned()));
-            }
+            && let Some(text) = line.get(last_end..m.start())
+        {
+            spans.push(Span::Static(text.to_owned()));
+        }
         let inner = caps
             .get(1)
             .expect("capture group 1 exists")
@@ -384,9 +394,10 @@ fn tokenize_spans(line: &str) -> Vec<Span> {
 
     // Emit trailing static text if any.
     if last_end < line.len()
-        && let Some(text) = line.get(last_end..) {
-            spans.push(Span::Static(text.to_owned()));
-        }
+        && let Some(text) = line.get(last_end..)
+    {
+        spans.push(Span::Static(text.to_owned()));
+    }
 
     spans
 }
@@ -426,7 +437,10 @@ fn substitute_spans(spans: Vec<Span>, params: &[Param], args: &[String]) -> Vec<
                     Some((_, param_idx, arg_off)) => {
                         let display_text = if *arg_off < args.len() {
                             match params.get(*param_idx) {
-                                Some(Param::Splat) => args.get(*arg_off..).map(|s| s.join(" ")).unwrap_or_default(),
+                                Some(Param::Splat) => args
+                                    .get(*arg_off..)
+                                    .map(|s| s.join(" "))
+                                    .unwrap_or_default(),
                                 _ => args.get(*arg_off).cloned().unwrap_or_default(),
                             }
                         } else {
@@ -481,7 +495,9 @@ pub fn split_preserving_quotes(input: &str) -> Vec<String> {
     let mut i = 0;
 
     while i < graphemes.len() {
-        let Some(g) = graphemes.get(i).copied() else { break };
+        let Some(g) = graphemes.get(i).copied() else {
+            break;
+        };
         if in_quotes {
             if g == "\\" {
                 // Backslash escape inside quotes: next grapheme is literal (skip backslash).
@@ -551,7 +567,9 @@ pub fn parse_quoted_args(input: &str) -> Vec<String> {
     let mut i = 0;
 
     while i < graphemes.len() {
-        let Some(g) = graphemes.get(i).copied() else { break };
+        let Some(g) = graphemes.get(i).copied() else {
+            break;
+        };
         if in_quotes {
             if g == "\\" {
                 // Backslash escape inside quotes: next grapheme is literal.
@@ -604,7 +622,13 @@ impl fmt::Display for CommandTemplate {
 
 #[cfg(test)]
 mod tests {
-    #![allow(clippy::expect_used, clippy::panic, clippy::unreachable, clippy::indexing_slicing, reason = "test code")]
+    #![allow(
+        clippy::expect_used,
+        clippy::panic,
+        clippy::unreachable,
+        clippy::indexing_slicing,
+        reason = "test code"
+    )]
     use super::*;
 
     // --- Parsing: $N syntax (backward compat) ---

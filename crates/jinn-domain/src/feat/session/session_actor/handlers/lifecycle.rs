@@ -443,7 +443,11 @@ impl SessionPersistenceActor {
     /// sends `FinishSessionTeardown` back when complete.
     ///
     /// For builtin teardowns: runs inline (synchronous, no blocking).
-    #[expect(clippy::too_many_lines, clippy::items_after_statements, reason = "handler reads best as a single unit")]
+    #[expect(
+        clippy::too_many_lines,
+        clippy::items_after_statements,
+        reason = "handler reads best as a single unit"
+    )]
     pub(in crate::feat::session::session_actor) async fn handle_run_session_teardown(
         &mut self,
         payload: &RunSessionTeardown,
@@ -1082,7 +1086,14 @@ impl SessionPersistenceActor {
 
 #[cfg(test)]
 mod tests {
-    #![allow(clippy::expect_used, clippy::panic, clippy::unreachable, clippy::indexing_slicing, clippy::similar_names, reason = "test code")]
+    #![allow(
+        clippy::expect_used,
+        clippy::panic,
+        clippy::unreachable,
+        clippy::indexing_slicing,
+        clippy::similar_names,
+        reason = "test code"
+    )]
     use super::super::super::helpers::{test_actor, test_context};
     use super::{
         no_output_info, setup_complete_msg, setup_running_msg, strip_ansi, teardown_running_msg,

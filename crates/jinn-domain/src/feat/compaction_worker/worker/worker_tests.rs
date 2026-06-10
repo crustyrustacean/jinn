@@ -1,13 +1,20 @@
 //! Integration tests for [`CompactionWorker`] using `FakeLlmServiceFactory`.
-#![allow(clippy::expect_used, clippy::indexing_slicing, clippy::panic, clippy::unreachable, clippy::string_slice, reason = "test code")]
+#![allow(
+    clippy::expect_used,
+    clippy::indexing_slicing,
+    clippy::panic,
+    clippy::unreachable,
+    clippy::string_slice,
+    reason = "test code"
+)]
 
 //!
 //! Tests cover the full `evaluate_with_config` pipeline: boundary finding,
 //! token accumulation, LLM summarization, and mutation production.
 //! Bug regression tests verify the three reported compaction bugs are fixed.
 
-use std::sync::atomic::Ordering;
 use std::sync::Arc;
+use std::sync::atomic::Ordering;
 
 use jinn_provider::RetryConfig;
 
@@ -165,9 +172,7 @@ fn forced_exclude_ids(mutations: &[HistoryMutation]) -> Vec<ChatEntryId> {
         .filter_map(|m| match m {
             HistoryMutation::SetContextOverride {
                 entry_id, value, ..
-            } => {
-                matches!(value, ContextOverride::ForcedExclude).then(|| entry_id.clone())
-            }
+            } => matches!(value, ContextOverride::ForcedExclude).then(|| entry_id.clone()),
             _ => None,
         })
         .collect()

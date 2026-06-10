@@ -84,7 +84,10 @@ pub struct EditReadAutoPruneWorker {
 
 #[async_trait::async_trait]
 impl HistoryWorker for EditReadAutoPruneWorker {
-    #[expect(clippy::unnecessary_literal_bound, reason = "lifetime elision makes bound redundant")]
+    #[expect(
+        clippy::unnecessary_literal_bound,
+        reason = "lifetime elision makes bound redundant"
+    )]
     fn name(&self) -> &str {
         "auto-prune-edit-read"
     }
@@ -98,14 +101,14 @@ impl HistoryWorker for EditReadAutoPruneWorker {
         let history_len = history.len();
 
         for i in 0..history_len {
-            let Some(entry) = history.get(i) else { continue };
+            let Some(entry) = history.get(i) else {
+                continue;
+            };
 
             // Only interested in "read" tool calls with a parseable file path.
             let read_path = match &entry.kind {
                 ChatEntryKind::ToolCall {
-                    name,
-                    arguments,
-                    ..
+                    name, arguments, ..
                 } if name == "read" => {
                     let Some(path) = extract_path_from_arguments(arguments) else {
                         continue;
@@ -151,7 +154,9 @@ fn prune_backward(
     let history_len = history.len();
     // Walk backward from the read to find prior edit/write calls on the same file.
     for j in (0..read_index).rev() {
-        let Some(back_entry) = history.get(j) else { continue };
+        let Some(back_entry) = history.get(j) else {
+            continue;
+        };
 
         // Only interested in edit/write tool calls targeting the same file path.
         let back_call_id = match &back_entry.kind {
@@ -179,9 +184,11 @@ fn prune_backward(
         // The result may appear anywhere after the call (not necessarily right after).
         let back_result = find_matching_result(history, j, &back_call_id);
 
-        let back_result_protected = back_result
-            .as_ref()
-            .is_some_and(|(_, k)| history.get(*k).is_some_and(super::super::session::chat_entry::ChatEntry::is_protected_from_prune));
+        let back_result_protected = back_result.as_ref().is_some_and(|(_, k)| {
+            history
+                .get(*k)
+                .is_some_and(super::super::session::chat_entry::ChatEntry::is_protected_from_prune)
+        });
 
         // Skip if both call and result are protected — nothing to do.
         if back_call_protected && back_result_protected {
