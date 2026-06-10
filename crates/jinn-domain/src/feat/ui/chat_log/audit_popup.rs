@@ -129,7 +129,7 @@ fn format_timestamp(ts: &jiff::Timestamp) -> String {
 
 /// Compute a human-readable relative time string from a timestamp to now.
 ///
-/// Produces strings like \"just now\", \"5 minutes ago\", \"2 hours ago\",
+/// Produces strings like "2 seconds ago", "5 minutes ago", "2 hours ago",
 /// \"3 days ago\", \"5 months ago\", \"1 year ago\".
 fn format_relative_time(ts: &jiff::Timestamp) -> String {
     let now = jiff::Timestamp::now();
@@ -160,8 +160,12 @@ fn format_relative_time(ts: &jiff::Timestamp) -> String {
     } else if minutes > 0 {
         format_units(minutes, "minute")
     } else {
-        // Less than a minute ago.
-        "just now".to_owned()
+        let seconds = span.get_seconds().unsigned_abs() as u32;
+        if seconds > 0 {
+            format_units(seconds, "second")
+        } else {
+            "just now".to_owned()
+        }
     }
 }
 
@@ -309,10 +313,10 @@ mod tests {
             result.contains('T') || result.contains(' '),
             "should contain date/time separator: {result}"
         );
-        // And the relative portion says \"just now\".
+        // And the relative portion says "30 seconds ago".
         assert!(
-            result.contains("just now"),
-            "should say 'just now' for 30s ago: {result}"
+            result.contains("30 seconds ago"),
+            "should say '30 seconds ago' for 30s ago: {result}"
         );
     }
 
