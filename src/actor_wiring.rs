@@ -315,8 +315,6 @@ impl ActorSystemBuilder {
 
         let mut actors = Vec::new();
 
-        // System-ready actor: counts ActorStarted, signals main thread when done.
-        let (ready_tx, ready_rx) = tokio::sync::oneshot::channel::<()>();
         actors.push(system_spawn::<SystemReadyActor>(
             "system-ready",
             sink.clone(),
@@ -328,16 +326,6 @@ impl ActorSystemBuilder {
                 counter: counter.clone(),
             },
         ));
-
-        // Emit lifecycle events for the infrastructure actor manually.
-        let _ = sink.send_event(Event::ActorStarting(ActorStarting {
-            name: "system-ready".to_owned(),
-            description: Some("Counts ActorStarted events and signals system ready".to_owned()),
-        }));
-        let _ = sink.send_event(Event::ActorStarted(ActorStarted {
-            name: "system-ready".to_owned(),
-            description: Some("Counts ActorStarted events and signals system ready".to_owned()),
-        }));
 
         // ── Init actors (self-schedule Initialize during activate) ────────────
 

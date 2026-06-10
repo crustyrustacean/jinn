@@ -5,6 +5,10 @@
 //! `AllActorsSpawned` (emitted by the wiring code after all actors are spawned).
 //! When the received count matches the [`ActorCounter`] total, sends `()` on
 //! a `oneshot::Sender` to unblock the main thread's `wait_for_system_ready` call.
+//!
+//! NOTE: This actor remains on the old system until the full migration completes.
+//! It depends on lifecycle events emitted via the old sink, which are not yet
+//! published to the kameo bus.
 
 use crate::common::actor::actor_counter::ActorCounter;
 use crate::common::actor::protocol::event::{ActorStarted, AllActorsSpawned};
@@ -95,7 +99,13 @@ impl SystemReadyActor {
 
 #[cfg(test)]
 mod tests {
-    #![allow(clippy::expect_used, clippy::panic, clippy::unreachable, clippy::indexing_slicing, reason = "test code")]
+    #![allow(
+        clippy::expect_used,
+        clippy::panic,
+        clippy::unreachable,
+        clippy::indexing_slicing,
+        reason = "test code"
+    )]
     use super::*;
     use crate::common::actor::{ActorContext, MessageSink, SendResult};
     use crate::protocol::Event;
