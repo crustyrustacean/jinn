@@ -162,11 +162,11 @@ fn apply_pair_atomicity(
         if shield_set.contains(*call_entry_id) {
             // Find matching ToolResult (scan forward from call).
             for entry in history.iter().skip(call_idx + 1) {
-                if let ChatEntryKind::ToolResult { id, .. } = &entry.kind {
-                    if id == tool_call_id {
-                        shield_set.insert(entry.id.clone());
-                        break;
-                    }
+                if let ChatEntryKind::ToolResult { id, .. } = &entry.kind
+                    && id == tool_call_id
+                {
+                    shield_set.insert(entry.id.clone());
+                    break;
                 }
             }
         }
@@ -289,7 +289,6 @@ mod tests {
     use super::*;
     use crate::feat::session::chat_entry::{ChatEntry, PinPosition};
     use crate::feat::session::tool_result_status::ToolResultStatus;
-
 
     /// Build a worker with the given radius (enabled = true).
     fn worker(radius: usize) -> AnchorShieldAutoPruneWorker {
@@ -452,7 +451,10 @@ mod tests {
         // Then: call (idx 1, distance 1) is shielded.
         // Pair atomicity: result (idx 22, distance 22) is also shielded.
         let included = included_ids(&mutations);
-        assert!(included.contains(&call_id), "call within radius must be shielded");
+        assert!(
+            included.contains(&call_id),
+            "call within radius must be shielded"
+        );
         assert!(
             included.contains(&result_id),
             "result must be shielded via pair atomicity even though it's outside radius"
@@ -633,8 +635,14 @@ mod tests {
 
         // Then entries near each anchor are shielded independently.
         let included = included_ids(&mutations);
-        assert!(included.contains(&near1_id), "entry near anchor-1 must be shielded");
-        assert!(included.contains(&near2_id), "entry near anchor-2 must be shielded");
+        assert!(
+            included.contains(&near1_id),
+            "entry near anchor-1 must be shielded"
+        );
+        assert!(
+            included.contains(&near2_id),
+            "entry near anchor-2 must be shielded"
+        );
     }
 
     // ------------------------------------------------------------------
@@ -717,7 +725,12 @@ mod tests {
         // Apply the mutations to the history.
         let mut history2 = history.clone();
         for m in &mutations1 {
-            if let HistoryMutation::SetContextOverride { entry_id, value, source } = m {
+            if let HistoryMutation::SetContextOverride {
+                entry_id,
+                value,
+                source,
+            } = m
+            {
                 for e in &mut history2 {
                     if e.id == *entry_id {
                         e.apply_context_override(*value, source.clone());

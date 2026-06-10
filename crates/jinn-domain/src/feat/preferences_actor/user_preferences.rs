@@ -2534,7 +2534,6 @@ enabled = true
         assert_eq!(reloaded.auto_prune.anchored_assistant.radius, 42);
         assert!(reloaded.auto_prune.anchor_shield.enabled);
         assert_eq!(reloaded.auto_prune.anchor_shield.radius, 20);
-
     }
 
     #[rstest::rstest]
