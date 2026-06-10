@@ -2532,6 +2532,9 @@ enabled = true
         assert_eq!(reloaded.auto_prune.trivial_assistant.max_tokens, 40);
         assert!(!reloaded.auto_prune.anchored_assistant.enabled);
         assert_eq!(reloaded.auto_prune.anchored_assistant.radius, 42);
+        assert!(reloaded.auto_prune.anchor_shield.enabled);
+        assert_eq!(reloaded.auto_prune.anchor_shield.radius, 20);
+
     }
 
     #[rstest::rstest]
@@ -2551,6 +2554,40 @@ enabled = true
         assert_eq!(prefs.auto_prune.trivial_assistant.max_tokens, 80);
         assert!(prefs.auto_prune.anchored_assistant.enabled);
         assert_eq!(prefs.auto_prune.anchored_assistant.radius, 100);
+        assert!(prefs.auto_prune.anchor_shield.enabled);
+        assert_eq!(prefs.auto_prune.anchor_shield.radius, 20);
+    }
+
+    #[rstest::rstest]
+    fn load_with_anchored_assistant_radius_uses_defaults_for_anchor_shield() {
+        // Given a TOML file with only anchored_assistant radius (no anchor_shield section).
+        let dir = TempDir::new().expect("temp dir");
+        let path = dir.path().join(PREFS_FILE_NAME);
+        std::fs::write(
+            &path,
+            "[auto_prune.anchored_assistant]
+enabled = true
+radius = 42
+min_age = 5
+
+[auto_prune.anchor_shield]
+enabled = true
+radius = 20
+",
+        )
+        .expect("write");
+
+        // When loading.
+        let prefs = load_preferences_from(&path).expect("load");
+
+        // Then anchored_assistant still reads its own radius.
+        assert!(prefs.auto_prune.anchored_assistant.enabled);
+        assert_eq!(prefs.auto_prune.anchored_assistant.radius, 42);
+        assert_eq!(prefs.auto_prune.anchored_assistant.min_age, 5);
+
+        // And anchor_shield uses its own config.
+        assert!(prefs.auto_prune.anchor_shield.enabled);
+        assert_eq!(prefs.auto_prune.anchor_shield.radius, 20);
     }
 
     #[rstest::rstest]
