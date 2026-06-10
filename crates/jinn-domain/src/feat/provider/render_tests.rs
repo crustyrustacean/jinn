@@ -111,7 +111,7 @@ fn render_provider_picker_uses_dark_gray_border() {
 }
 
 #[rstest::rstest]
-fn render_provider_picker_shows_active_model_marker() {
+fn render_provider_picker_no_active_marker_for_active_model() {
     // Given a state with active_provider set to "ollama/llama3" and items loaded.
 
     let (mut state, services) = picker_state_with_ollama();
@@ -134,13 +134,12 @@ fn render_provider_picker_shows_active_model_marker() {
         })
         .unwrap();
 
-    // Then the first result row starts with ">" (active marker) in green.
+    // Then the first result row does not contain ">".
     let buffer = terminal.backend().buffer().clone();
     let popup = compute_popup_rect(Rect::new(0, 0, 80, 24));
     // Results start at popup.y + 3 (border + input + separator)
     let result_y = popup.y + 3;
-    // Selection marker (2 chars) + active_marker position
+    // The first 2 chars are selection_marker (spaces, no checkmark since not selected).
     let marker_cell = buffer.cell((popup.x + 3, result_y)).expect("marker cell");
-    assert_eq!(marker_cell.symbol(), ">");
-    assert_eq!(marker_cell.fg, Color::Green);
+    assert_ne!(marker_cell.symbol(), ">");
 }

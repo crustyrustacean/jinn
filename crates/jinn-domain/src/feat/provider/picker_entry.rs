@@ -2,7 +2,7 @@
 
 use std::ops::Range;
 
-use crate::feat::picker::style::{active_marker, selected_style};
+use crate::feat::picker::style::selected_style;
 use crate::feat::theme::Theme;
 use jinn_selection_widget::PickerItem;
 use jinn_selection_widget::highlight_text_with_bg;
@@ -75,7 +75,6 @@ fn render_provider_row(
     is_selected: bool,
     match_indices: &[Range<usize>],
 ) -> Line<'static> {
-    let active_marker = active_marker(entry.is_active, &entry.theme);
 
     let selection_marker = if entry.selected {
         // ✓
@@ -141,7 +140,6 @@ fn render_provider_row(
 
     Line::from(
         std::iter::once(selection_marker)
-            .chain(std::iter::once(active_marker))
             .chain(spans)
             .collect::<Vec<_>>(),
     )
