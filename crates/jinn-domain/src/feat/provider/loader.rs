@@ -43,7 +43,10 @@ pub fn load_provider_picker_items(services: &Services, state: &mut AppState) {
 /// Sets `selected = true` on entries matching the current model selection.
 ///
 /// For `Single`, checks the one matching entry. For `Alloy`, checks all member entries.
-fn pre_check_active_models(entries: &mut [crate::protocol::PickerEntry], selection: &ModelSelection) {
+fn pre_check_active_models(
+    entries: &mut [crate::protocol::PickerEntry],
+    selection: &ModelSelection,
+) {
     let model_ids: Vec<&str> = match selection {
         ModelSelection::Single(s) => vec![s],
         ModelSelection::Alloy { models, .. } => models.iter().map(String::as_str).collect(),
@@ -195,11 +198,17 @@ mod tests {
 
         // Then the entry matching the session model has selected = true.
         let items = state.provider.provider_picker.items();
-        let llama = items.iter().find(|e| e.provider_id == "ollama/llama3").expect("llama3");
+        let llama = items
+            .iter()
+            .find(|e| e.provider_id == "ollama/llama3")
+            .expect("llama3");
         assert!(llama.selected, "llama3 should be selected");
 
         // And the other entry is not selected.
-        let mistral = items.iter().find(|e| e.provider_id == "ollama/mistral").expect("mistral");
+        let mistral = items
+            .iter()
+            .find(|e| e.provider_id == "ollama/mistral")
+            .expect("mistral");
         assert!(!mistral.selected, "mistral should not be selected");
     }
 
@@ -211,7 +220,11 @@ mod tests {
                 providers: vec![ProviderEntry {
                     name: "ollama".to_owned(),
                     backend: "ollama".to_owned(),
-                    models: vec!["llama3".to_owned(), "mistral".to_owned(), "gemma".to_owned()],
+                    models: vec![
+                        "llama3".to_owned(),
+                        "mistral".to_owned(),
+                        "gemma".to_owned(),
+                    ],
                     base_url: Some("http://localhost:11434".to_owned()),
                     api_key_env: None,
                     requires_key: false,
@@ -235,14 +248,23 @@ mod tests {
 
         // Then both alloy members are selected.
         let items = state.provider.provider_picker.items();
-        let llama = items.iter().find(|e| e.provider_id == "ollama/llama3").expect("llama3");
+        let llama = items
+            .iter()
+            .find(|e| e.provider_id == "ollama/llama3")
+            .expect("llama3");
         assert!(llama.selected, "llama3 should be selected");
 
-        let mistral = items.iter().find(|e| e.provider_id == "ollama/mistral").expect("mistral");
+        let mistral = items
+            .iter()
+            .find(|e| e.provider_id == "ollama/mistral")
+            .expect("mistral");
         assert!(mistral.selected, "mistral should be selected");
 
         // And the non-member is not selected.
-        let gemma = items.iter().find(|e| e.provider_id == "ollama/gemma").expect("gemma");
+        let gemma = items
+            .iter()
+            .find(|e| e.provider_id == "ollama/gemma")
+            .expect("gemma");
         assert!(!gemma.selected, "gemma should not be selected");
     }
 
@@ -254,7 +276,11 @@ mod tests {
                 providers: vec![ProviderEntry {
                     name: "ollama".to_owned(),
                     backend: "ollama".to_owned(),
-                    models: vec!["gemma".to_owned(), "llama3".to_owned(), "mistral".to_owned()],
+                    models: vec![
+                        "gemma".to_owned(),
+                        "llama3".to_owned(),
+                        "mistral".to_owned(),
+                    ],
                     base_url: Some("http://localhost:11434".to_owned()),
                     api_key_env: None,
                     requires_key: false,

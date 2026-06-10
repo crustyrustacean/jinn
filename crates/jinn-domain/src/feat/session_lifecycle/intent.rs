@@ -94,7 +94,6 @@ pub fn handle_session_lifecycle_setup(
         .app_state
         .last_model
         .clone()
-        .map(ModelSelection::Single)
         .unwrap_or_default();
 
     let persona_name = state

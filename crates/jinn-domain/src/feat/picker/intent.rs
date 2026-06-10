@@ -377,7 +377,7 @@ fn confirm_provider(state: &mut AppState) -> IntentResult {
         }
     };
 
-    let last_model = model_selection.last_model().map(ToOwned::to_owned);
+    let last_model = Some(model_selection.clone());
     let session_id = state.session.active_session_id().clone();
 
     state.frontend.scope_stack.pop();

@@ -137,6 +137,41 @@ impl ModelSelection {
     }
 }
 
+/// Serde compatibility module for `last_model` in the TOML state file.
+///
+/// Accepts both the legacy bare-string format (`last_model = "ollama/llama3"`)
+/// and the new enum format (`last_model = {single = "ollama/llama3"}`).
+/// Serialization always writes the new format.
+pub(crate) mod last_model_compat {
+    use serde::{Deserialize, Deserializer, Serializer};
+
+    use super::ModelSelection;
+
+    pub fn serialize<S: Serializer>(
+        value: &Option<ModelSelection>,
+        serializer: S,
+    ) -> Result<S::Ok, S::Error> {
+        serde::Serialize::serialize(value, serializer)
+    }
+
+    pub fn deserialize<'de, D: Deserializer<'de>>(
+        deserializer: D,
+    ) -> Result<Option<ModelSelection>, D::Error> {
+        #[derive(Deserialize)]
+        #[serde(untagged)]
+        enum Compat {
+            Model(ModelSelection),
+            Bare(String),
+        }
+
+        let compat = Compat::deserialize(deserializer)?;
+        Ok(Some(match compat {
+            Compat::Model(ms) => ms,
+            Compat::Bare(s) => ModelSelection::Single(s),
+        }))
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;

@@ -38,7 +38,6 @@ impl SessionPersistenceActor {
                     .app_state
                     .last_model
                     .clone()
-                    .map(ModelSelection::from_single)
                     .unwrap_or_default()
             } else {
                 loaded.model_selection().clone()

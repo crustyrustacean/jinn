@@ -75,7 +75,6 @@ fn render_provider_row(
     is_selected: bool,
     match_indices: &[Range<usize>],
 ) -> Line<'static> {
-
     let selection_marker = if entry.selected {
         // ✓
         Span::styled(
