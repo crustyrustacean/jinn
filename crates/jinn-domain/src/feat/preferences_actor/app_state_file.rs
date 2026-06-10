@@ -12,6 +12,7 @@ use error_stack::{Report, ResultExt as _};
 use serde::{Deserialize, Serialize};
 use wherror::Error;
 
+use crate::feat::session::model_selection::{self, ModelSelection};
 /// Errors that can occur during app state file I/O.
 #[derive(Debug, Error)]
 pub enum AppStateFileError {
@@ -31,10 +32,13 @@ pub enum AppStateFileError {
 /// and never hand-edited by users.
 #[derive(Debug, Clone, Default, PartialEq, Serialize, Deserialize)]
 pub struct AppStateFile {
-    /// The provider ID of the last model selected from the model picker.
-    /// Format: `{provider_name}/{model}` (e.g., `"ollama/llama3"`).
-    #[serde(default)]
-    pub last_model: Option<String>,
+    /// The last model or alloy selected from the model picker.
+    ///
+    /// Accepts both the legacy bare-string format (`last_model = "ollama/llama3"`)
+    /// and the new enum format (`last_model = {single = "ollama/llama3"}`).
+    /// Serialization always writes the new format.
+    #[serde(default, with = "model_selection::last_model_compat")]
+    pub last_model: Option<ModelSelection>,
     /// The name of the active theme. `None` uses the built-in theme.
     /// Corresponds to a file in `~/.config/jinn/themes/<name>.toml`.
     #[serde(default)]
@@ -134,7 +138,7 @@ mod tests {
     fn round_trip_all_fields_set() {
         // Given state with all fields populated.
         let state = AppStateFile {
-            last_model: Some("ollama/llama3".to_owned()),
+            last_model: Some(ModelSelection::Single("ollama/llama3".to_owned())),
             theme_name: Some("gruvbox-dark".to_owned()),
             persona_name: Some("coder".to_owned()),
             sidebar_width: Some(40),
@@ -192,5 +196,31 @@ mod tests {
 
         // Then the file exists.
         assert!(path.exists());
+    }
+
+    #[rstest::rstest]
+    fn load_legacy_bare_string_last_model() {
+        // Given a state file with the old bare-string last_model format.
+        let dir = TempDir::new().expect("temp dir");
+        let path = dir.path().join("state.toml");
+        std::fs::write(
+            &path,
+            r##"last_model = "ollama/llama3"
+theme_name = "gruvbox-dark"
+"##,
+        )
+        .expect("write");
+
+        // When loading.
+        let state = load_app_state_from(&path).expect("load");
+
+        // Then last_model is parsed as Single.
+        let expected = AppStateFile {
+            last_model: Some(ModelSelection::Single("ollama/llama3".to_owned())),
+            theme_name: Some("gruvbox-dark".to_owned()),
+            persona_name: None,
+            sidebar_width: None,
+        };
+        assert_eq!(state, expected);
     }
 }

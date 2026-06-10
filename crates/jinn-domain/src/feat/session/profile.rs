@@ -74,6 +74,16 @@ impl SessionProfile {
         }
     }
 
+    /// Creates a profile from a [`ModelSelection`] (single model or alloy).
+    pub fn from_model_selection(model: ModelSelection) -> Self {
+        Self {
+            model,
+            persona_name: DEFAULT_PERSONA_NAME.to_owned(),
+            disabled_tools: HashSet::new(),
+            disabled_skills: HashSet::new(),
+        }
+    }
+
     /// Creates a profile with all fields specified.
     pub fn new(
         model: ModelSelection,

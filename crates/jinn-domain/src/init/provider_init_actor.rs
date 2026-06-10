@@ -121,20 +121,21 @@ impl ProviderInitActor {
             state.active_session().profile().model.clone()
         };
         if active_session_model.is_no_provider()
-            && let Some(ref model) = app_state.last_model
+            && let Some(ref selection) = app_state.last_model
         {
-            let id = crate::feat::provider_infra::ProviderId::new(model.clone());
+            let model_str = selection.display_str();
+            let id = crate::feat::provider_infra::ProviderId::new(model_str.to_owned());
             let api_keys = self.services.api_keys.read();
             if self.services.provider_registry.is_available(&id, &api_keys) {
-                tracing::info!(last_model = %model, "provider-init resolving last_model");
+                tracing::info!(last_model = %selection, "provider-init resolving last_model");
                 if let Err(e) = ctx.send_command(Command::ProviderSwitch(ProviderSwitch {
                     session_id: self.state.read().session.active_session_id().clone(),
-                    provider_id: ModelSelection::Single(model.clone()),
+                    provider_id: selection.clone(),
                 })) {
                     tracing::warn!(err = ?e, "provider-init failed to send ProviderSwitch");
                 }
             } else {
-                tracing::warn!(last_model = %model, "provider-init: last_model not available, skipping");
+                tracing::warn!(last_model = %selection, "provider-init: last_model not available, skipping");
             }
         }
     }
@@ -196,7 +197,7 @@ mod tests {
             .app_state_storage
             .save(
                 &crate::feat::preferences_actor::app_state_file::AppStateFile {
-                    last_model: Some("sample/sample".to_owned()),
+                    last_model: Some(ModelSelection::from_single("sample/sample".to_owned())),
                     ..Default::default()
                 },
             )
@@ -233,6 +234,60 @@ mod tests {
             matches!(c, Command::ProviderSwitch (payload) if payload.provider_id == ModelSelection::Single("sample/sample".to_owned()))
         });
         assert!(found, "expected ProviderSwitch command for sample/sample");
+    }
+
+    #[rstest::rstest]
+    #[tokio::test]
+    async fn sends_provider_switch_with_alloy_when_last_model_is_alloy() {
+        // Given a provider init actor with last_model set to an alloy.
+        let (mut actor, services, sink, ctx) = create_actor();
+
+        let alloy = ModelSelection::Alloy {
+            models: vec!["sample/alpha".to_owned(), "sample/beta".to_owned()],
+            strategy: crate::feat::session::model_selection::AlloyStrategy::RoundRobin { index: 0 },
+        };
+
+        services
+            .app_state_storage
+            .save(
+                &crate::feat::preferences_actor::app_state_file::AppStateFile {
+                    last_model: Some(alloy.clone()),
+                    ..Default::default()
+                },
+            )
+            .expect("save app state");
+
+        // Set up registry with two sample models.
+        let config = crate::feat::provider_infra::ProvidersConfig {
+            providers: vec![ProviderEntry {
+                name: "sample".to_owned(),
+                backend: "sample".to_owned(),
+                models: vec!["alpha".to_owned(), "beta".to_owned()],
+                base_url: None,
+                api_key_env: None,
+                requires_key: false,
+                extra_body: None,
+                context_length: None,
+            }],
+            aliases: vec![],
+            default_provider: None,
+            alloys: vec![],
+        };
+
+        // When processing EnvironmentLoaded.
+        actor
+            .handle(
+                ActorEnvelope::Event(Event::EnvironmentLoaded(EnvironmentLoaded { config })),
+                &ctx,
+            )
+            .await;
+
+        // Then a ProviderSwitch command was sent with the alloy.
+        let commands = sink.commands();
+        let found = commands
+            .iter()
+            .any(|c| matches!(c, Command::ProviderSwitch(payload) if payload.provider_id == alloy));
+        assert!(found, "expected ProviderSwitch command with alloy");
     }
 
     #[rstest::rstest]
@@ -411,7 +466,7 @@ mod tests {
             .app_state_storage
             .save(
                 &crate::feat::preferences_actor::app_state_file::AppStateFile {
-                    last_model: Some("sample/sample".to_owned()),
+                    last_model: Some(ModelSelection::from_single("sample/sample".to_owned())),
                     ..Default::default()
                 },
             )

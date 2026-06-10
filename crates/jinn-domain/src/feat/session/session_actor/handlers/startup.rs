@@ -38,7 +38,7 @@ impl SessionPersistenceActor {
             if let Some(ref model) = app_state.last_model
                 && session.profile().model.is_no_provider()
             {
-                session.set_model(ModelSelection::from_single(model.clone()));
+                session.set_model(model.clone());
             }
         }
 
@@ -278,7 +278,7 @@ mod tests {
 
         // Save state with a last_model.
         let state_file = crate::feat::preferences_actor::app_state_file::AppStateFile {
-            last_model: Some("my-model".to_owned()),
+            last_model: Some(ModelSelection::from_single("my-model".to_owned())),
             ..Default::default()
         };
         actor
@@ -325,7 +325,7 @@ mod tests {
 
         // Save state with a different last_model.
         let state_file = crate::feat::preferences_actor::app_state_file::AppStateFile {
-            last_model: Some("wrong-model".to_owned()),
+            last_model: Some(ModelSelection::from_single("wrong-model".to_owned())),
             ..Default::default()
         };
         actor
