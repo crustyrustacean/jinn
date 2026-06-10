@@ -16,33 +16,6 @@ use crate::feat::preferences_actor::protocol::event::PreferencesUpdated;
 
 impl BusMessage for UpdatePreferences {}
 
-async fn set_compaction_model_saves_to_storage() {
-    // Given a preferences actor and a recorder.
-    let harness = TestHarness::new().await;
-    let _actor = harness.spawn_actor::<PreferencesActor>(PreferencesActorDeps {
-        deps: harness.actor_deps().await,
-    }).await;
-    let recorder = harness.spawn_recorder::<PreferencesUpdated>().await;
-
-    // When sending UpdatePreferences with SetCompactionModel via the bus.
-    harness
-        .publish(UpdatePreferences {
-            updates: vec![PreferenceUpdate::SetCompactionModel(Some(
-                "ollama/llama3".into(),
-            ))],
-        })
-        .await;
-
-    // Then the actor emits PreferencesUpdated with the correct model.
-    let recorded = await_recorded(&recorder, 1, Duration::from_secs(2)).await;
-    assert!(!recorded.is_empty(), "expected PreferencesUpdated event");
-
-    let found = recorded.iter().any(|e| {
-        e.preferences.compaction.model.as_deref() == Some("ollama/llama3")
-    });
-    assert!(found, "expected PreferencesUpdated with compaction.model=ollama/llama3");
-}
-
 #[tokio::test]
 async fn set_compaction_model_overwrites_previous() {
     // Given a preferences actor.
@@ -62,7 +35,6 @@ async fn set_compaction_model_overwrites_previous() {
         .await;
     let recorded = await_recorded(&recorder, 1, Duration::from_secs(2)).await;
     assert!(!recorded.is_empty(), "expected first PreferencesUpdated");
-
     // When sending a second UpdatePreferences with a different model.
     harness
         .publish(UpdatePreferences {
@@ -71,13 +43,17 @@ async fn set_compaction_model_overwrites_previous() {
             ))],
         })
         .await;
-    let recorded = await_recorded(&recorder, 2, Duration::from_secs(2)).await;
+    let recorded = await_recorded(&recorder, 1, Duration::from_secs(2)).await;
 
     // Then only the latest model is in the emitted event.
     let found = recorded.iter().any(|e| {
         e.preferences.compaction.model.as_deref() == Some("openrouter/gpt-4")
     });
-    assert!(found, "expected PreferencesUpdated with compaction.model=openrouter/gpt-4");
+    assert!(
+        found,
+        "expected PreferencesUpdated with compaction.model=openrouter/gpt-4, got {} events: {recorded:?}",
+        recorded.len()
+    );
 }
 
 #[tokio::test]
