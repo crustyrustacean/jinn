@@ -31,12 +31,23 @@ pub fn format_audit_lines(entry: &ChatEntry, theme: &Theme) -> Vec<Line<'static>
         .fg(theme.infopopup_fg)
         .bg(theme.infopopup_bg);
 
+    // --- Metadata section ---
+    let mut lines = Vec::new();
+    lines.push(centered_title("Metadata", AUDIT_POPUP_WIDTH, header_style));
+    lines.push(Line::from(vec![Span::styled(
+        format!("Sent: {}", format_timestamp(&entry.timestamp)),
+        body_style,
+    )]));
+    lines.push(Line::from(vec![Span::styled(
+        String::new(),
+        body_style,
+    )]));
+
+    // --- Audit section ---
     let count = entry.context_history.len();
     let current = context_override_label(entry.context_override);
-    let header = format!("--- audit ({count} events) ({current}) ---");
-
-    let mut lines = Vec::with_capacity(1 + count.max(1));
-    lines.push(Line::from(vec![Span::styled(header, header_style)]));
+    let audit_label = format!("audit ({count} events) ({current})");
+    lines.push(centered_title(&audit_label, AUDIT_POPUP_WIDTH, header_style));
 
     if entry.context_history.is_empty() {
         lines.push(Line::from(vec![Span::styled(
@@ -315,6 +326,46 @@ mod tests {
             result.contains("5 days ago"),
             "should say '5 days ago': {result}"
         );
+    }
+
+    #[test]
+    fn format_audit_lines_includes_metadata_section_before_audit() {
+        // Given a default entry.
+        let entry = ChatEntry::user("hi");
+
+        // When formatting.
+        let lines = format(&entry);
+
+        // Then line 0 is the centered Metadata title.
+        let title = text(&lines[0]);
+        assert!(
+            title.contains("Metadata"),
+            "first line should contain Metadata: {title}"
+        );
+        // And line 1 is the Sent: line.
+        let sent = text(&lines[1]);
+        assert!(
+            sent.starts_with("Sent:"),
+            "second line should start with Sent:: {sent}"
+        );
+        // And line 3 is the centered audit title.
+        let audit = text(&lines[3]);
+        assert!(
+            audit.contains("audit"),
+            "fourth line should contain audit: {audit}"
+        );
+    }
+
+    #[test]
+    fn format_audit_lines_includes_blank_line_between_sections() {
+        // Given a default entry.
+        let entry = ChatEntry::user("hi");
+
+        // When formatting.
+        let lines = format(&entry);
+
+        // Then line 2 (between Metadata and audit) is blank.
+        assert_eq!(text(&lines[2]), "");
     }
 
     #[test]
