@@ -778,6 +778,7 @@ mod tests {
                 radius: 5,
                 min_age: 0,
             },
+            radius: 5,
             min_candidate_tokens: 81,
             token_cache: shared_cache.clone(),
             counter: TiktokenCounter::o200k_base(),
