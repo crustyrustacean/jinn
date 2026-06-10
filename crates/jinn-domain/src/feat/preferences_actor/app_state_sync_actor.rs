@@ -8,11 +8,12 @@
 
 use std::path::PathBuf;
 
-use crate::common::actor::{Actor, ActorContext, ActorEnvelope, NoDirectMsg};
-use crate::common::services::Services;
+use kameo::prelude::{Actor, ActorRef, Context, Message};
+
+use crate::common::actor_deps::ActorDeps;
 use crate::common::state::State;
 use crate::feat::theme;
-use crate::protocol::Event;
+use crate::feat::preferences_actor::protocol::app_state_event::AppStateUpdated;
 
 /// Keeps `AppState.frontend` in sync with persisted app state.
 ///
@@ -27,69 +28,80 @@ pub struct AppStateSyncActor {
     system_themes_dir: PathBuf,
 }
 
-/// Dependencies for [`AppStateSyncActor`].
+/// Dependencies for spawning an [`AppStateSyncActor`].
 pub struct AppStateSyncActorDeps {
+    /// Universal actor dependencies (bus, services, etc.).
+    pub deps: ActorDeps,
     /// Shared application state.
     pub state: State,
-    /// Runtime services.
-    pub services: Services,
 }
 
 impl Actor for AppStateSyncActor {
-    type Message = NoDirectMsg;
-    type Deps = AppStateSyncActorDeps;
+    type Args = AppStateSyncActorDeps;
+    type Error = kameo::error::Infallible;
 
-    fn activate(deps: Self::Deps, ctx: &mut ActorContext) -> Self {
-        ctx.subscribe_event::<super::protocol::app_state_event::AppStateUpdated>();
-        ctx.set_description("Syncs AppState.frontend from AppStateUpdated events");
+    async fn on_start(args: Self::Args, actor_ref: ActorRef<Self>) -> Result<Self, Self::Error> {
+        args.deps
+            .subscribe(actor_ref.recipient::<AppStateUpdated>())
+            .await;
 
-        Self {
-            state: deps.state,
-            themes_dir: deps.services.paths.themes_dir(),
-            system_themes_dir: deps.services.paths.system_themes_dir(),
-        }
+        Ok(Self {
+            state: args.state,
+            themes_dir: args.deps.services.paths.themes_dir(),
+            system_themes_dir: args.deps.services.paths.system_themes_dir(),
+        })
     }
+}
 
-    async fn handle(&mut self, msg: ActorEnvelope<Self::Message>, _ctx: &ActorContext) {
-        match msg {
-            ActorEnvelope::Event(Event::AppStateUpdated(ref payload)) => {
-                let mut state = self.state.write();
-                let updated = &payload.state;
+impl Message<AppStateUpdated> for AppStateSyncActor {
+    type Reply = ();
 
-                // Cache the entire state for runtime access.
-                state.frontend.app_state = updated.clone();
+    async fn handle(
+        &mut self,
+        msg: AppStateUpdated,
+        _ctx: &mut Context<Self, Self::Reply>,
+    ) -> Self::Reply {
+        self.sync_state(&msg);
+    }
+}
 
-                state.frontend.sidebar_width = updated.sidebar_width.unwrap_or(30);
+impl AppStateSyncActor {
+    /// Applies the updated state to the shared application state.
+    fn sync_state(&self, msg: &AppStateUpdated) {
+        let mut state = self.state.write();
+        let updated = &msg.state;
 
-                // Reload theme when theme_name changes.
-                match theme::resolve_theme(
-                    updated.theme_name.as_deref(),
-                    &self.themes_dir,
-                    &self.system_themes_dir,
-                ) {
-                    Ok(t) => {
-                        state.frontend.theme = t;
-                        state.invalidate_theme_caches();
-                    }
-                    Err(e) => {
-                        tracing::warn!(err = ?e, "failed to reload theme, keeping current");
-                    }
-                }
+        // Cache the entire state for runtime access.
+        state.frontend.app_state = updated.clone();
 
-                // Sync active_persona when persona_name changes.
-                if let Some(ref persona_name) = updated.persona_name {
-                    let found = state
-                        .context
-                        .personas
-                        .iter()
-                        .find(|p| p.name == *persona_name)
-                        .cloned();
-                    if let Some(persona) = found {
-                        state.context.active_persona = Some(persona);
-                    }
-                }
+        state.frontend.sidebar_width = updated.sidebar_width.unwrap_or(30);
+
+        // Reload theme when theme_name changes.
+        match theme::resolve_theme(
+            updated.theme_name.as_deref(),
+            &self.themes_dir,
+            &self.system_themes_dir,
+        ) {
+            Ok(t) => {
+                state.frontend.theme = t;
+                state.invalidate_theme_caches();
             }
-            ActorEnvelope::Command(_) | ActorEnvelope::Event(_) | ActorEnvelope::System(_) => {}
+            Err(e) => {
+                tracing::warn!(err = ?e, "failed to reload theme, keeping current");
+            }
+        }
+
+        // Sync active_persona when persona_name changes.
+        if let Some(ref persona_name) = updated.persona_name {
+            let found = state
+                .context
+                .personas
+                .iter()
+                .find(|p| p.name == *persona_name)
+                .cloned();
+            if let Some(persona) = found {
+                state.context.active_persona = Some(persona);
+            }
         }
     }
 }
@@ -103,52 +115,38 @@ mod tests {
         clippy::indexing_slicing,
         reason = "test code"
     )]
-    use std::sync::Arc;
 
-    use crate::common::actor::{
-        Actor as _, ActorContext, ActorEnvelope, MessageSink, RecordingSink,
-    };
+    use std::path::PathBuf;
+
     use crate::common::app_state::AppState;
     use crate::common::state::State;
     use crate::feat::persona::Persona;
     use crate::feat::preferences_actor::app_state_file::AppStateFile;
     use crate::feat::preferences_actor::protocol::app_state_event::AppStateUpdated;
-    use crate::protocol::Event;
 
-    use super::{AppStateSyncActor, AppStateSyncActorDeps};
-    use crate::common::services::Services;
+    use super::AppStateSyncActor;
 
-    /// Creates a test actor with shared state.
-    async fn create_actor() -> (AppStateSyncActor, State, ActorContext) {
-        let sink = Arc::new(RecordingSink::new());
-        let mut ctx = ActorContext::new("app-state-sync", sink.clone() as Arc<dyn MessageSink>);
+    fn create_actor() -> (AppStateSyncActor, State) {
         let state = State::new(AppState::default());
-        let deps = AppStateSyncActorDeps {
-            services: Services::new_fake().await,
+        let actor = AppStateSyncActor {
             state: state.clone(),
+            themes_dir: PathBuf::new(),
+            system_themes_dir: PathBuf::new(),
         };
-
-        let actor = AppStateSyncActor::activate(deps, &mut ctx);
-        (actor, state, ctx)
+        (actor, state)
     }
 
     #[rstest::rstest]
-    #[tokio::test]
-    async fn sidebar_width_defaults_to_30_when_none() {
+    fn sidebar_width_defaults_to_30_when_none() {
         // Given a sync actor.
-        let (mut actor, state, ctx) = create_actor().await;
+        let (actor, state) = create_actor();
 
         // When receiving AppStateUpdated with sidebar_width = None.
         let app_state = AppStateFile {
             sidebar_width: None,
             ..AppStateFile::default()
         };
-        actor
-            .handle(
-                ActorEnvelope::Event(Event::AppStateUpdated(AppStateUpdated { state: app_state })),
-                &ctx,
-            )
-            .await;
+        actor.sync_state(&AppStateUpdated { state: app_state });
 
         // Then sidebar_width is the default 30.
         let guard = state.read();
@@ -156,22 +154,16 @@ mod tests {
     }
 
     #[rstest::rstest]
-    #[tokio::test]
-    async fn sidebar_width_updates_from_state() {
+    fn sidebar_width_updates_from_state() {
         // Given a sync actor.
-        let (mut actor, state, ctx) = create_actor().await;
+        let (actor, state) = create_actor();
 
         // When receiving AppStateUpdated with sidebar_width = 50.
         let app_state = AppStateFile {
             sidebar_width: Some(50),
             ..AppStateFile::default()
         };
-        actor
-            .handle(
-                ActorEnvelope::Event(Event::AppStateUpdated(AppStateUpdated { state: app_state })),
-                &ctx,
-            )
-            .await;
+        actor.sync_state(&AppStateUpdated { state: app_state });
 
         // Then sidebar_width is 50.
         let guard = state.read();
@@ -179,12 +171,11 @@ mod tests {
     }
 
     #[rstest::rstest]
-    #[tokio::test]
-    async fn persona_name_sync_sets_correct_persona() {
+    fn persona_name_sync_sets_correct_persona() {
         // Kills: replace == with != in persona_name matching.
         // If the condition were flipped, the wrong persona would be set.
         // Given a sync actor with two personas loaded.
-        let (mut actor, state, ctx) = create_actor().await;
+        let (actor, state) = create_actor();
         {
             let mut guard = state.write();
             guard.context.personas = vec![
@@ -208,12 +199,7 @@ mod tests {
             persona_name: Some("writer".to_owned()),
             ..AppStateFile::default()
         };
-        actor
-            .handle(
-                ActorEnvelope::Event(Event::AppStateUpdated(AppStateUpdated { state: app_state })),
-                &ctx,
-            )
-            .await;
+        actor.sync_state(&AppStateUpdated { state: app_state });
 
         // Then the active persona is "writer", not "coder".
         let guard = state.read();
@@ -226,48 +212,20 @@ mod tests {
     }
 
     #[rstest::rstest]
-    #[tokio::test]
-    async fn theme_name_none_resolves_default_theme() {
+    fn theme_name_none_resolves_default_theme() {
         // Given a sync actor.
-        let (mut actor, state, ctx) = create_actor().await;
+        let (actor, state) = create_actor();
 
         // When receiving AppStateUpdated with theme_name = None.
         let app_state = AppStateFile {
             theme_name: None,
             ..AppStateFile::default()
         };
-        actor
-            .handle(
-                ActorEnvelope::Event(Event::AppStateUpdated(AppStateUpdated { state: app_state })),
-                &ctx,
-            )
-            .await;
+        actor.sync_state(&AppStateUpdated { state: app_state });
 
         // Then the theme was resolved and caches invalidated without panic.
         // resolve_theme(None, ...) returns the embedded default theme.
         let _guard = state.read();
         // If we reach here, the handler completed successfully.
-    }
-
-    #[rstest::rstest]
-    #[tokio::test]
-    async fn ignores_unrelated_events() {
-        // Given a sync actor.
-        let (mut actor, state, ctx) = create_actor().await;
-
-        // When receiving an unrelated event (ModeChanged).
-        actor
-            .handle(
-                ActorEnvelope::Event(Event::ModeChanged(crate::protocol::system::ModeChanged {
-                    from: crate::protocol::Mode::Normal,
-                    to: crate::protocol::Mode::Input,
-                })),
-                &ctx,
-            )
-            .await;
-
-        // Then sidebar_width remains at its default.
-        let guard = state.read();
-        assert_eq!(guard.frontend.sidebar_width, 30);
     }
 }
