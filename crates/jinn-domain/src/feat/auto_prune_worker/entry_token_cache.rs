@@ -56,8 +56,7 @@ impl HistoryWorkerChatEntryTokenCache {
     /// evicted. Returns `None` otherwise.
     #[must_use]
     pub fn get(&self, session_id: &SessionId, entry_id: &ChatEntryId) -> Option<u32> {
-        let session_map = self.inner
-            .get(session_id)?;
+        let session_map = self.inner.get(session_id)?;
         session_map.get(entry_id).map(|v| *v)
     }
 
@@ -192,7 +191,15 @@ impl HistoryWorkerChatEntryTokenCacheEvictionActor {
 
 #[cfg(test)]
 mod tests {
-#![allow(clippy::expect_used, clippy::indexing_slicing, clippy::panic, clippy::unreachable, clippy::string_slice, clippy::uninlined_format_args, reason = "test code")]
+    #![allow(
+        clippy::expect_used,
+        clippy::indexing_slicing,
+        clippy::panic,
+        clippy::unreachable,
+        clippy::string_slice,
+        clippy::uninlined_format_args,
+        reason = "test code"
+    )]
     use std::sync::Arc;
     use std::sync::atomic::{AtomicUsize, Ordering};
     use std::time::Duration;

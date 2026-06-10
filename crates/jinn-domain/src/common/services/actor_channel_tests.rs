@@ -1,4 +1,11 @@
-#![allow(clippy::expect_used, clippy::panic, clippy::unreachable, clippy::indexing_slicing, clippy::match_wildcard_for_single_variants, reason = "test code")]
+#![allow(
+    clippy::expect_used,
+    clippy::panic,
+    clippy::unreachable,
+    clippy::indexing_slicing,
+    clippy::match_wildcard_for_single_variants,
+    reason = "test code"
+)]
 use super::actor_channel::ActorChannelService;
 use crate::common::core::app_msg::AppMsg;
 

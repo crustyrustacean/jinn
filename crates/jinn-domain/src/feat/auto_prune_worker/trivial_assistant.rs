@@ -180,7 +180,10 @@ fn build_trivial_assistant_mutations(
 
 #[async_trait::async_trait]
 impl HistoryWorker for TrivialAssistantAutoPruneWorker {
-    #[expect(clippy::unnecessary_literal_bound, reason = "lifetime elision makes bound redundant")]
+    #[expect(
+        clippy::unnecessary_literal_bound,
+        reason = "lifetime elision makes bound redundant"
+    )]
     fn name(&self) -> &str {
         "auto-prune-trivial-assistant"
     }
@@ -212,7 +215,13 @@ impl HistoryWorker for TrivialAssistantAutoPruneWorker {
 
 #[cfg(test)]
 mod tests {
-    #![allow(clippy::expect_used, clippy::panic, clippy::unreachable, clippy::indexing_slicing, reason = "test code")]
+    #![allow(
+        clippy::expect_used,
+        clippy::panic,
+        clippy::unreachable,
+        clippy::indexing_slicing,
+        reason = "test code"
+    )]
 
     use super::*;
     use crate::feat::preferences_actor::user_preferences::TrivialAssistantAutoPruneConfig;
@@ -769,6 +778,7 @@ mod tests {
                 radius: 5,
                 min_age: 0,
             },
+            radius: 5,
             min_candidate_tokens: 81,
             token_cache: shared_cache.clone(),
             counter: TiktokenCounter::o200k_base(),

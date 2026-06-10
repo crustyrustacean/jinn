@@ -296,7 +296,9 @@ fn apply_array_of_tables_by_key(
     for (idx, entry) in array.iter().enumerate() {
         let actual_key: Option<String> = entry.get(key_field).and_then(item_to_string_key);
         match actual_key {
-            Some(k) if new_by_key.contains_key(&k) => *matched.get_mut(idx).expect("idx from enumerate") = true,
+            Some(k) if new_by_key.contains_key(&k) => {
+                *matched.get_mut(idx).expect("idx from enumerate") = true
+            }
             None => *matched.get_mut(idx).expect("idx from enumerate") = true, // missing key field — preserve
             _ => {}
         }
@@ -497,7 +499,13 @@ fn item_to_string_key(item: &Item) -> Option<String> {
 
 #[cfg(test)]
 mod tests {
-    #![allow(clippy::expect_used, clippy::panic, clippy::unreachable, clippy::indexing_slicing, reason = "test code")]
+    #![allow(
+        clippy::expect_used,
+        clippy::panic,
+        clippy::unreachable,
+        clippy::indexing_slicing,
+        reason = "test code"
+    )]
 
     use super::*;
     use toml_edit::DocumentMut;

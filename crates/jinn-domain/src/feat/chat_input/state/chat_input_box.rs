@@ -424,7 +424,10 @@ impl ChatInputBoxState {
 
     /// Adjusts scroll offset to ensure the cursor's visual row is visible
     /// within `max_visible_lines` rows.
-    #[expect(clippy::else_if_without_else, reason = "no-op on fallthrough is intentional")]
+    #[expect(
+        clippy::else_if_without_else,
+        reason = "no-op on fallthrough is intentional"
+    )]
     pub fn scroll_to_cursor(&mut self, max_visible_lines: usize) {
         let lines = self.wrapped_lines();
         let (cursor_row, _) = self.cursor_row_col_wrapped(&lines);
@@ -631,7 +634,13 @@ impl Default for ChatInputBoxState {
 
 #[cfg(test)]
 mod tests {
-    #![allow(clippy::expect_used, clippy::panic, clippy::unreachable, clippy::indexing_slicing, reason = "test code")]
+    #![allow(
+        clippy::expect_used,
+        clippy::panic,
+        clippy::unreachable,
+        clippy::indexing_slicing,
+        reason = "test code"
+    )]
 
     use super::*;
     use crate::feat::chat_input::AutocompleteMatch;

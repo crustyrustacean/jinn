@@ -144,7 +144,14 @@ fn first_existing_context_candidate(dir: &Path) -> Option<PathBuf> {
 
 #[cfg(test)]
 mod tests {
-    #![allow(clippy::create_dir, clippy::expect_used, clippy::panic, clippy::unreachable, clippy::indexing_slicing, reason = "test code")]
+    #![allow(
+        clippy::create_dir,
+        clippy::expect_used,
+        clippy::panic,
+        clippy::unreachable,
+        clippy::indexing_slicing,
+        reason = "test code"
+    )]
     use super::*;
 
     /// Builds a nested temp dir tree and returns the root + a leaf path.

@@ -1,4 +1,11 @@
-#![allow(clippy::expect_used, clippy::panic, clippy::unimplemented, clippy::unreachable, clippy::indexing_slicing, reason = "test code")]
+#![allow(
+    clippy::expect_used,
+    clippy::panic,
+    clippy::unimplemented,
+    clippy::unreachable,
+    clippy::indexing_slicing,
+    reason = "test code"
+)]
 
 use std::path::PathBuf;
 
@@ -131,7 +138,7 @@ async fn activate_emits_tools_registered_for_builtins() {
         .iter()
         .find(|p| p.provider == "builtin")
         .expect("expected builtin ToolsRegistered");
-    assert_eq!(builtin_evt.definitions.len(), 16);
+    assert_eq!(builtin_evt.definitions.len(), 17);
 }
 
 // --- RegisterTools command tests ---

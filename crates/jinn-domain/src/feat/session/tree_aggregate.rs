@@ -122,7 +122,10 @@ pub fn find_tree_root<S: ::std::hash::BuildHasher>(
 /// 1. Finds the tree root via [`find_tree_root`].
 /// 2. Collects ALL sessions in the tree (BFS from root), including frozen nodes.
 /// 3. Sums token stats, cost, and turns.
-#[expect(clippy::else_if_without_else, reason = "no-op on fallthrough is intentional")]
+#[expect(
+    clippy::else_if_without_else,
+    reason = "no-op on fallthrough is intentional"
+)]
 pub fn aggregate_tree_stats<S: ::std::hash::BuildHasher>(
     sessions: &HashMap<SessionId, ChatSessionState, S>,
     frozen_nodes: &HashMap<SessionId, FrozenTreeNode, S>,

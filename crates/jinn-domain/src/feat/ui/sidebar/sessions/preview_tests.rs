@@ -1,6 +1,12 @@
 //! Tests for the session preview popup renderer.
 
-#![allow(clippy::expect_used, clippy::panic, clippy::unreachable, clippy::indexing_slicing, reason = "test code")]
+#![allow(
+    clippy::expect_used,
+    clippy::panic,
+    clippy::unreachable,
+    clippy::indexing_slicing,
+    reason = "test code"
+)]
 
 use crate::feat::session::chat_session::ChatSessionState;
 use crate::feat::theme::default_theme;

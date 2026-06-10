@@ -11,16 +11,16 @@ use crate::feat::chat_input::protocol::command::PushChatEntry;
 use crate::feat::preferences_actor::user_preferences::SessionLifecycle;
 use crate::feat::provider_infra::NO_PROVIDER_ID;
 use crate::feat::session::chat_session::ChatSessionState;
+use crate::feat::session::chat_session::LifecycleScriptState;
 use crate::feat::session::profile::SessionProfile;
+use crate::feat::session::session_actor::setup_running_msg;
 use crate::feat::session_lifecycle::command_template::{CommandTemplate, parse_quoted_args};
 use crate::feat::session_lifecycle::protocol::command::{PersistSession, RunSessionSetup};
 use crate::feat::session_lifecycle::protocol::event::SessionCreated;
-use crate::protocol::app_msg::Event;
-use crate::protocol::{Command, IntentResult, SessionId};
-use crate::feat::session::chat_session::LifecycleScriptState;
-use crate::feat::session::session_actor::setup_running_msg;
 use crate::feat::ui::sidebar::sessions::close::validate_session_close;
 use crate::feat::ui::sidebar::sessions::state::sorted_open_sessions;
+use crate::protocol::app_msg::Event;
+use crate::protocol::{Command, IntentResult, SessionId};
 
 /// Errors that can occur when validating arg input.
 #[derive(Debug, Error)]
@@ -259,14 +259,15 @@ pub fn handle_arg_input_paste(state: &mut AppState, text: &str) -> IntentResult 
 /// Panics if the sidebar session entry at the selected index is missing
 /// from the session map (indicates a corrupt UI state).
 pub fn handle_session_rerun_setup(state: &mut AppState) -> IntentResult {
-
     if validate_session_close(state).is_err() {
         return IntentResult::empty();
     }
 
     let index = state.frontend.sessions_section.selected_index.unwrap();
     let sessions = sorted_open_sessions(state);
-    let Some(target_session) = sessions.get(index) else { return IntentResult::empty() };
+    let Some(target_session) = sessions.get(index) else {
+        return IntentResult::empty();
+    };
     let target_id = target_session.id.clone();
     let (setup_command, lifecycle_args) = {
         let session = state.session.get(&target_id);
@@ -305,9 +306,7 @@ pub fn handle_session_rerun_setup(state: &mut AppState) -> IntentResult {
                 template.render(&lifecycle_args)
             }
         }
-        crate::feat::session_lifecycle::builtin::LifecycleCommand::Builtin(id) => {
-            id.to_string()
-        }
+        crate::feat::session_lifecycle::builtin::LifecycleCommand::Builtin(id) => id.to_string(),
     };
 
     IntentResult::with_commands(vec![
@@ -346,7 +345,13 @@ fn close_session_and_switch(closing_id: &SessionId) -> IntentResult {
 
 #[cfg(test)]
 mod tests {
-    #![allow(clippy::expect_used, clippy::panic, clippy::unreachable, clippy::indexing_slicing, reason = "test code")]
+    #![allow(
+        clippy::expect_used,
+        clippy::panic,
+        clippy::unreachable,
+        clippy::indexing_slicing,
+        reason = "test code"
+    )]
     use super::*;
     use crate::common::app_state::AppState;
     use crate::feat::preferences_actor::user_preferences::SessionLifecycle;
@@ -1204,10 +1209,7 @@ mod tests {
         use crate::feat::session_lifecycle::builtin::LifecycleCommand;
 
         let mut state = AppState::default();
-        state
-            .frontend
-            .scope_stack
-            .push(FocusScope::SidebarSessions);
+        state.frontend.scope_stack.push(FocusScope::SidebarSessions);
         state.frontend.sessions_section.selected_index = Some(0);
         state
             .frontend
@@ -1234,10 +1236,7 @@ mod tests {
         use crate::common::focus::FocusScope;
 
         let mut state = AppState::default();
-        state
-            .frontend
-            .scope_stack
-            .push(FocusScope::SidebarSessions);
+        state.frontend.scope_stack.push(FocusScope::SidebarSessions);
         state.frontend.sessions_section.selected_index = Some(0);
 
         // When handling rerun setup.
@@ -1253,10 +1252,7 @@ mod tests {
         use crate::common::focus::FocusScope;
 
         let mut state = AppState::default();
-        state
-            .frontend
-            .scope_stack
-            .push(FocusScope::SidebarSessions);
+        state.frontend.scope_stack.push(FocusScope::SidebarSessions);
         state.frontend.sessions_section.selected_index = Some(0);
         state
             .frontend
@@ -1298,10 +1294,7 @@ mod tests {
         use crate::common::focus::FocusScope;
 
         let mut state = AppState::default();
-        state
-            .frontend
-            .scope_stack
-            .push(FocusScope::SidebarSessions);
+        state.frontend.scope_stack.push(FocusScope::SidebarSessions);
         // No selected_index set.
 
         // When handling rerun setup.
@@ -1336,4 +1329,3 @@ mod tests {
         assert_eq!(setup_cmd.args, vec!["arg1".to_owned()]);
     }
 }
-

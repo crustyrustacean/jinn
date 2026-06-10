@@ -214,7 +214,13 @@ impl std::fmt::Debug for dyn AppStateStorage {
 
 #[cfg(test)]
 mod tests {
-    #![allow(clippy::expect_used, clippy::panic, clippy::unreachable, clippy::indexing_slicing, reason = "test code")]
+    #![allow(
+        clippy::expect_used,
+        clippy::panic,
+        clippy::unreachable,
+        clippy::indexing_slicing,
+        reason = "test code"
+    )]
     use super::*;
 
     #[rstest::rstest]
@@ -263,7 +269,10 @@ mod tests {
 
         // Then defaults are returned AND the file was NOT auto-created.
         assert!(state.last_model.is_none());
-        assert!(!path.exists(), "state file should not be auto-created on read");
+        assert!(
+            !path.exists(),
+            "state file should not be auto-created on read"
+        );
     }
 
     #[rstest::rstest]

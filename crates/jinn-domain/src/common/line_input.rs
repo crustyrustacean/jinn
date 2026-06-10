@@ -60,11 +60,10 @@ impl LineInput {
     /// No-op when the cursor is at position 0.
     pub fn delete(&mut self) {
         if self.cursor_pos > 0 {
-            let Some(slice) = self.input.get(..self.cursor_pos) else { return };
-            let prev = slice
-                .grapheme_indices(true)
-                .next_back()
-                .map(|(i, _)| i);
+            let Some(slice) = self.input.get(..self.cursor_pos) else {
+                return;
+            };
+            let prev = slice.grapheme_indices(true).next_back().map(|(i, _)| i);
             if let Some(prev_idx) = prev {
                 self.input.drain(prev_idx..self.cursor_pos);
                 self.cursor_pos = prev_idx;
@@ -77,7 +76,9 @@ impl LineInput {
     /// No-op when the cursor is at the end of the input.
     pub fn delete_forward(&mut self) {
         if self.cursor_pos < self.input.len() {
-            let Some(slice) = self.input.get(self.cursor_pos..) else { return };
+            let Some(slice) = self.input.get(self.cursor_pos..) else {
+                return;
+            };
             let next_end = slice
                 .grapheme_indices(true)
                 .nth(1)
@@ -91,11 +92,10 @@ impl LineInput {
     /// No-op when the cursor is at position 0.
     pub fn cursor_left(&mut self) {
         if self.cursor_pos > 0 {
-            let Some(slice) = self.input.get(..self.cursor_pos) else { return };
-            let prev = slice
-                .grapheme_indices(true)
-                .next_back()
-                .map(|(i, _)| i);
+            let Some(slice) = self.input.get(..self.cursor_pos) else {
+                return;
+            };
+            let prev = slice.grapheme_indices(true).next_back().map(|(i, _)| i);
             if let Some(prev_idx) = prev {
                 self.cursor_pos = prev_idx;
             }
@@ -107,7 +107,9 @@ impl LineInput {
     /// No-op when the cursor is at the end of the input.
     pub fn cursor_right(&mut self) {
         if self.cursor_pos < self.input.len() {
-            let Some(slice) = self.input.get(self.cursor_pos..) else { return };
+            let Some(slice) = self.input.get(self.cursor_pos..) else {
+                return;
+            };
             let next = slice
                 .grapheme_indices(true)
                 .nth(1)
@@ -124,13 +126,21 @@ impl LineInput {
     /// Convenience for render code that needs a display (column) cursor offset.
     #[must_use]
     pub fn graphemes_before_cursor(&self) -> usize {
-        self.input.get(..self.cursor_pos).map_or(0, |s| s.graphemes(true).count())
+        self.input
+            .get(..self.cursor_pos)
+            .map_or(0, |s| s.graphemes(true).count())
     }
 }
 
 #[cfg(test)]
 mod tests {
-    #![allow(clippy::expect_used, clippy::panic, clippy::unreachable, clippy::indexing_slicing, reason = "test code")]
+    #![allow(
+        clippy::expect_used,
+        clippy::panic,
+        clippy::unreachable,
+        clippy::indexing_slicing,
+        reason = "test code"
+    )]
     use super::*;
 
     #[rstest::rstest]

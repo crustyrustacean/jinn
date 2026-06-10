@@ -9,7 +9,8 @@
 //! - `on_enrich` drops the stale result on double-tap (generation supersession).
 //! - The `[Enrich]` badge colors the `E` `accent_action` in Input mode,
 //!   `muted_text` otherwise, and always renders unconditionally.
-
+//! - When enriching (`plugin_data.status == "enriching"`), the badge shows `[Working]`
+//!   with the `Working` text styled as `streaming`.
 #![allow(
     clippy::expect_used,
     clippy::indexing_slicing,
@@ -392,12 +393,91 @@ async fn badge_always_returns_enrich_directive() {
             joined, "[Enrich]",
             "badge must read [Enrich] in {mode} mode (got {joined:?})"
         );
-        // And the three segments are "[" / "E" / "nrich]".
-        assert_eq!(directive.segments.len(), 3, "expected three segments");
+        // And the four segments are "[" / "E" / "nrich" / "]".
+        assert_eq!(directive.segments.len(), 4, "expected four segments");
         assert_eq!(directive.segments[0].text, "[");
         assert_eq!(directive.segments[1].text, "E");
-        assert_eq!(directive.segments[2].text, "nrich]");
+        assert_eq!(directive.segments[2].text, "nrich");
+        assert_eq!(directive.segments[3].text, "]");
     }
+}
+
+// ── badge working-state tests ──────────────────────────────────────────
+
+#[tokio::test]
+async fn badge_returns_working_when_enriching() {
+    // Given a system where the enrich plugin is actively enriching.
+    let sys = build_system_with_oneshot(json!(null));
+    sys.async_handle.set_plugin_data(
+        "prompt_enrichment".to_owned(),
+        json!({ "status": "enriching" }),
+    );
+
+    // When the renderer fires the badge hook.
+    let directives = sys.sync.call_hooks(
+        "on_chat_input_badges_render",
+        &json!({ "active_session_id": "s1", "mode": "input" }),
+    );
+
+    // Then the badge text is [Working].
+    let directive: jinn_domain::BadgeDirective =
+        serde_json::from_value(directives[0].clone()).expect("deserialize directive");
+    let joined: String = directive.segments.iter().map(|s| s.text.as_str()).collect();
+    assert_eq!(
+        joined, "[Working]",
+        "badge must show [Working] when enriching"
+    );
+}
+
+#[tokio::test]
+async fn working_badge_uses_streaming_style() {
+    // Given a system where the enrich plugin is actively enriching.
+    let sys = build_system_with_oneshot(json!(null));
+    sys.async_handle.set_plugin_data(
+        "prompt_enrichment".to_owned(),
+        json!({ "status": "enriching" }),
+    );
+
+    // When the renderer fires the badge hook.
+    let directives = sys.sync.call_hooks(
+        "on_chat_input_badges_render",
+        &json!({ "active_session_id": "s1", "mode": "input" }),
+    );
+
+    // Then the Working segment is styled streaming.
+    let directive: jinn_domain::BadgeDirective =
+        serde_json::from_value(directives[0].clone()).expect("deserialize directive");
+    let working = directive
+        .segments
+        .iter()
+        .find(|s| s.text == "Working")
+        .unwrap_or_else(|| panic!("directive must contain a 'Working' segment: {directive:?}"));
+    assert_eq!(
+        working.style.as_deref(),
+        Some("streaming"),
+        "Working segment must use streaming style"
+    );
+}
+
+#[tokio::test]
+async fn badge_returns_idle_enrich_when_no_plugin_data() {
+    // Given a system with no plugin_data set (fresh state).
+    let sys = build_system_with_oneshot(json!(null));
+
+    // When the renderer fires the badge hook.
+    let directives = sys.sync.call_hooks(
+        "on_chat_input_badges_render",
+        &json!({ "active_session_id": "s1", "mode": "input" }),
+    );
+
+    // Then the badge text is [Enrich] (the idle state).
+    let directive: jinn_domain::BadgeDirective =
+        serde_json::from_value(directives[0].clone()).expect("deserialize directive");
+    let joined: String = directive.segments.iter().map(|s| s.text.as_str()).collect();
+    assert_eq!(
+        joined, "[Enrich]",
+        "badge must show [Enrich] when no plugin_data"
+    );
 }
 
 /// Extract the `E` segment from the first badge directive returned by the plugin.

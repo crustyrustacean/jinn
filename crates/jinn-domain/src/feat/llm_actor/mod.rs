@@ -74,6 +74,26 @@ impl OnRetry for PushEntryOnRetry {
     }
 }
 
+/// Emits a [`PushChatEntry`] error and [`StreamCompleted`] error event.
+///
+/// Used at every point where an LLM operation fails and the session needs
+/// to be notified of the error terminal state.
+fn emit_stream_error(sink: &Arc<dyn MessageSink>, session_id: &SessionId, message: String) {
+    let _ = sink.send_command(Command::PushChatEntry(PushChatEntry {
+        session_id: session_id.clone(),
+        entry: ChatEntry::error(message),
+    }));
+    let _ = sink.send_event(Event::StreamCompleted(StreamCompleted {
+        session_id: session_id.clone(),
+        reason: StreamCompletedReason::Error,
+        assistant_content: None,
+        tool_calls: None,
+        cost: None,
+        provider_completion_tokens: None,
+        thinking_content: None,
+    }));
+}
+
 /// LLM streaming actor.
 ///
 /// Holds a reference to the LLM service factory and tracks active
@@ -170,12 +190,192 @@ impl Message<StreamCompleted> for LlmActor {
     }
 }
 
+/// Processes events from an LLM stream, emitting token/tool events via the sink.
+///
+/// Returns `true` if the stream ended with a terminal event (Done or Error),
+/// `false` if the stream ended abnormally without one.
+async fn process_stream_events(
+    mut stream: jinn_provider::ToolStream,
+    sink: &Arc<dyn MessageSink>,
+    sid: &SessionId,
+    model_id: &str,
+) -> bool {
+    let mut accumulated_text = String::new();
+    let mut accumulated_thinking = String::new();
+    let mut accumulated_tool_calls: Vec<ToolCall> = Vec::new();
+    let mut token_index = 0usize;
+    let mut parser = reasoning_parser::ParserFactory::new().create(model_id);
+
+    let mut stream_ended_normally = false;
+    while let Some(result) = stream.next().await {
+        match result {
+            Ok(event) => match event {
+                StreamEvent::Text(token) => {
+                    tracing::info!(
+                        session_id = ?sid,
+                        token_len = token.len(),
+                        token_preview = %token.get(..token.len().min(50)).unwrap_or_default(),
+                        "LLM ACTOR StreamEvent::Text"
+                    );
+                    accumulated_text.push_str(&token);
+                    let parsed = match parser.parse_reasoning_streaming_incremental(&token) {
+                        Ok(r) => r,
+                        Err(e) => {
+                            tracing::warn!(
+                                err = ?e,
+                                "reasoning parser error, treating as normal text"
+                            );
+                            reasoning_parser::ParserResult::normal(token.clone())
+                        }
+                    };
+                    if !parsed.reasoning_text.is_empty() {
+                        accumulated_thinking.push_str(&parsed.reasoning_text);
+                        let _ = sink.send_event(Event::StreamToken(StreamToken {
+                            session_id: sid.clone(),
+                            index: token_index,
+                            token: parsed.reasoning_text,
+                            is_thinking: true,
+                        }));
+                        token_index += 1;
+                    }
+                    if !parsed.normal_text.is_empty() {
+                        let _ = sink.send_event(Event::StreamToken(StreamToken {
+                            session_id: sid.clone(),
+                            index: token_index,
+                            token: parsed.normal_text,
+                            is_thinking: false,
+                        }));
+                        token_index += 1;
+                    }
+                }
+                StreamEvent::Reasoning(token) => {
+                    tracing::info!(
+                        session_id = ?sid,
+                        token_len = token.len(),
+                        token_preview = %token.get(..token.len().min(50)).unwrap_or_default(),
+                        "LLM ACTOR StreamEvent::Reasoning"
+                    );
+                    accumulated_thinking.push_str(&token);
+                    let _ = sink.send_event(Event::StreamToken(StreamToken {
+                        session_id: sid.clone(),
+                        index: token_index,
+                        token,
+                        is_thinking: true,
+                    }));
+                    token_index += 1;
+                }
+                StreamEvent::ToolUseStart { index, id, name } => {
+                    let _ = sink.send_event(Event::ToolUseStarted(ToolUseStarted {
+                        session_id: sid.clone(),
+                        index,
+                        id,
+                        name,
+                    }));
+                }
+                StreamEvent::ToolUseInputDelta {
+                    index,
+                    partial_json,
+                } => {
+                    let _ = sink.send_event(Event::ToolCallStreaming(ToolCallStreaming {
+                        session_id: sid.clone(),
+                        index,
+                        partial_json,
+                    }));
+                }
+                StreamEvent::ToolUseComplete { tool_call, .. } => {
+                    accumulated_tool_calls.push(tool_call.clone());
+                    let _ = sink.send_event(Event::ToolCallReceived(ToolCallReceived {
+                        session_id: sid.clone(),
+                        tool_call,
+                    }));
+                }
+                StreamEvent::Done { stop_reason, usage } => {
+                    stream_ended_normally = true;
+                    tracing::trace!(
+                        session_id = ?sid,
+                        stop_reason = %stop_reason,
+                        tool_call_count = accumulated_tool_calls.len(),
+                        "stream Done"
+                    );
+                    let cost = usage.as_ref().and_then(|u| u.cost);
+                    let provider_completion_tokens =
+                        usage.as_ref().and_then(|u| u.completion_tokens);
+                    let thinking_content = if accumulated_thinking.is_empty() {
+                        None
+                    } else {
+                        Some(std::mem::take(&mut accumulated_thinking))
+                    };
+                    if stop_reason == StopReason::ToolUse {
+                        // Emit ExecuteToolBatch for the orchestrator.
+                        let _ = sink.send_command(Command::ExecuteToolBatch(ExecuteToolBatch {
+                            session_id: sid.clone(),
+                            tool_calls: accumulated_tool_calls.clone(),
+                        }));
+
+                        // Emit StreamCompleted with ToolUse reason so the session
+                        // actor knows the stream ended due to tool calls.
+                        let _ = sink.send_event(Event::StreamCompleted(StreamCompleted {
+                            session_id: sid.clone(),
+                            reason: StreamCompletedReason::ToolUse,
+                            thinking_content,
+                            assistant_content: Some(std::mem::take(&mut accumulated_text)),
+                            tool_calls: Some(std::mem::take(&mut accumulated_tool_calls)),
+                            cost,
+                            provider_completion_tokens,
+                        }));
+                    } else {
+                        // Normal end_turn - emit StreamCompleted.
+                        let _ = sink.send_event(Event::StreamCompleted(StreamCompleted {
+                            session_id: sid.clone(),
+                            reason: StreamCompletedReason::Finished,
+                            thinking_content,
+                            assistant_content: Some(std::mem::take(&mut accumulated_text)),
+                            tool_calls: None,
+                            cost,
+                            provider_completion_tokens,
+                        }));
+                    }
+                    break;
+                }
+                StreamEvent::Error {
+                    error_type: _,
+                    message,
+                } => {
+                    stream_ended_normally = true;
+                    tracing::error!(
+                        session_id = ?sid,
+                        error = %message,
+                        "LLM stream error event"
+                    );
+                    emit_stream_error(sink, sid, format!("LLM stream error: {message}"));
+                    break;
+                }
+            },
+            Err(e) => {
+                stream_ended_normally = true;
+                emit_stream_error(sink, sid, format!("LLM stream error: {e:?}"));
+                break;
+            }
+        }
+    }
+
+    if !stream_ended_normally {
+        tracing::error!(
+            session_id = ?sid,
+            "LLM stream ended without a terminal event (Done/Error)"
+        );
+        emit_stream_error(
+            sink,
+            sid,
+            "LLM stream ended unexpectedly. The connection may have been interrupted.".to_owned(),
+        );
+    }
+
+    stream_ended_normally
+}
+
 impl LlmActor {
     /// Starts an LLM streaming response for a session, aborting any existing stream.
-    #[expect(
-        clippy::too_many_lines,
-        reason = "stream handling is inherently linear; splitting would obscure the flow"
-    )]
     fn start_stream(&mut self, payload: SendToLlmProvider) {
         let retry_config = self
             .deps
@@ -242,6 +442,28 @@ impl LlmActor {
                         })
                         .await;
                     });
+                    emit_stream_error(
+                        &ctx.sink(),
+                        &session_id,
+                        format!("LLM factory creation failed for {pid}: {e:?}"),
+                    );
+                    let sink = ctx.sink();
+                    let sid = session_id.clone();
+                    let _ = sink.send_command(Command::PushChatEntry(PushChatEntry {
+                        session_id: sid.clone(),
+                        entry: ChatEntry::error(format!(
+                            "LLM factory creation failed for {pid}: {e:?}"
+                        )),
+                    }));
+                    let _ = sink.send_event(Event::StreamCompleted(StreamCompleted {
+                        session_id: sid,
+                        reason: StreamCompletedReason::Error,
+                        assistant_content: None,
+                        tool_calls: None,
+                        cost: None,
+                        provider_completion_tokens: None,
+                        thinking_content: None,
+                    }));
                     return;
                 }
             }
@@ -276,6 +498,20 @@ impl LlmActor {
                         thinking_content: None,
                     })
                     .await;
+                    emit_stream_error(&sink, &sid, format!("LLM service creation failed: {e:?}"));
+                    let _ = sink.send_command(Command::PushChatEntry(PushChatEntry {
+                        session_id: sid.clone(),
+                        entry: ChatEntry::error(format!("LLM service creation failed: {e:?}")),
+                    }));
+                    let _ = sink.send_event(Event::StreamCompleted(StreamCompleted {
+                        session_id: sid,
+                        reason: StreamCompletedReason::Error,
+                        assistant_content: None,
+                        tool_calls: None,
+                        cost: None,
+                        provider_completion_tokens: None,
+                        thinking_content: None,
+                    }));
                     return;
                 }
             };
@@ -305,6 +541,20 @@ impl LlmActor {
                         thinking_content: None,
                     })
                     .await;
+                    emit_stream_error(&sink, &sid, format!("LLM stream error: {e:?}"));
+                    let _ = sink.send_command(Command::PushChatEntry(PushChatEntry {
+                        session_id: sid.clone(),
+                        entry: ChatEntry::error(format!("LLM stream error: {e:?}")),
+                    }));
+                    let _ = sink.send_event(Event::StreamCompleted(StreamCompleted {
+                        session_id: sid,
+                        reason: StreamCompletedReason::Error,
+                        assistant_content: None,
+                        tool_calls: None,
+                        cost: None,
+                        provider_completion_tokens: None,
+                        thinking_content: None,
+                    }));
                     return;
                 }
             };
@@ -545,6 +795,222 @@ impl LlmActor {
                     thinking_content: None,
                 })
                 .await;
+            }
+            process_stream_events(stream, &sink, &sid, &model_id).await;
+            // Accumulate text and tool calls from the stream.
+            let mut accumulated_text = String::new();
+            let mut accumulated_thinking = String::new();
+            let mut accumulated_tool_calls: Vec<ToolCall> = Vec::new();
+            let mut token_index = 0usize;
+            let mut parser = reasoning_parser::ParserFactory::new().create(&model_id);
+
+            let mut stream_ended_normally = false;
+            let mut stream = std::pin::pin!(stream);
+            while let Some(result) = stream.next().await {
+                match result {
+                    Ok(event) => match event {
+                        StreamEvent::Text(token) => {
+                            tracing::info!(
+                                session_id = ?sid,
+                                token_len = token.len(),
+                                token_preview = %token.get(..token.len().min(50)).unwrap_or_default(),
+                                "LLM ACTOR StreamEvent::Text"
+                            );
+                            accumulated_text.push_str(&token);
+                            let parsed = match parser.parse_reasoning_streaming_incremental(&token)
+                            {
+                                Ok(r) => r,
+                                Err(e) => {
+                                    tracing::warn!(
+                                        err = ?e,
+                                        "reasoning parser error, treating as normal text"
+                                    );
+                                    reasoning_parser::ParserResult::normal(token.clone())
+                                }
+                            };
+                            if !parsed.reasoning_text.is_empty() {
+                                accumulated_thinking.push_str(&parsed.reasoning_text);
+                                let _ = sink.send_event(Event::StreamToken(StreamToken {
+                                    session_id: sid.clone(),
+                                    index: token_index,
+                                    token: parsed.reasoning_text,
+                                    is_thinking: true,
+                                }));
+                                token_index += 1;
+                            }
+                            if !parsed.normal_text.is_empty() {
+                                let _ = sink.send_event(Event::StreamToken(StreamToken {
+                                    session_id: sid.clone(),
+                                    index: token_index,
+                                    token: parsed.normal_text,
+                                    is_thinking: false,
+                                }));
+                                token_index += 1;
+                            }
+                        }
+                        StreamEvent::Reasoning(token) => {
+                            tracing::info!(
+                                session_id = ?sid,
+                                token_len = token.len(),
+                                token_preview = %token.get(..token.len().min(50)).unwrap_or_default(),
+                                "LLM ACTOR StreamEvent::Reasoning"
+                            );
+                            accumulated_thinking.push_str(&token);
+                            let _ = sink.send_event(Event::StreamToken(StreamToken {
+                                session_id: sid.clone(),
+                                index: token_index,
+                                token,
+                                is_thinking: true,
+                            }));
+                            token_index += 1;
+                        }
+                        StreamEvent::ToolUseStart { index, id, name } => {
+                            let _ = sink.send_event(Event::ToolUseStarted(ToolUseStarted {
+                                session_id: sid.clone(),
+                                index,
+                                id,
+                                name,
+                            }));
+                        }
+                        StreamEvent::ToolUseInputDelta {
+                            index,
+                            partial_json,
+                        } => {
+                            let _ = sink.send_event(Event::ToolCallStreaming(ToolCallStreaming {
+                                session_id: sid.clone(),
+                                index,
+                                partial_json,
+                            }));
+                        }
+                        StreamEvent::ToolUseComplete { tool_call, .. } => {
+                            accumulated_tool_calls.push(tool_call.clone());
+                            let _ = sink.send_event(Event::ToolCallReceived(ToolCallReceived {
+                                session_id: sid.clone(),
+                                tool_call,
+                            }));
+                        }
+                        StreamEvent::Done { stop_reason, usage } => {
+                            stream_ended_normally = true;
+                            tracing::trace!(
+                                session_id = ?sid,
+                                stop_reason = %stop_reason,
+                                tool_call_count = accumulated_tool_calls.len(),
+                                "stream Done"
+                            );
+                            let cost = usage.as_ref().and_then(|u| u.cost);
+                            let provider_completion_tokens =
+                                usage.as_ref().and_then(|u| u.completion_tokens);
+                            let thinking_content = if accumulated_thinking.is_empty() {
+                                None
+                            } else {
+                                Some(std::mem::take(&mut accumulated_thinking))
+                            };
+                            if stop_reason == StopReason::ToolUse {
+                                // Emit ExecuteToolBatch for the orchestrator.
+                                let _ = sink.send_command(Command::ExecuteToolBatch(
+                                    ExecuteToolBatch {
+                                        session_id: sid.clone(),
+                                        tool_calls: accumulated_tool_calls.clone(),
+                                    },
+                                ));
+
+                                // Emit StreamCompleted with ToolUse reason so the session
+                                // actor can finalize output tokens. The continuation is
+                                // handled by the session actor via context assembly when
+                                // ToolBatchCompleted arrives.
+                                let _ = sink.send_event(Event::StreamCompleted(StreamCompleted {
+                                    session_id: sid.clone(),
+                                    reason: StreamCompletedReason::ToolUse,
+                                    assistant_content: Some(accumulated_text.clone()),
+                                    tool_calls: Some(accumulated_tool_calls.clone()),
+                                    cost,
+                                    provider_completion_tokens,
+                                    thinking_content,
+                                }));
+                            } else {
+                                // Normal end_turn - emit StreamCompleted.
+                                let _ = sink.send_event(Event::StreamCompleted(StreamCompleted {
+                                    session_id: sid.clone(),
+                                    reason: StreamCompletedReason::Finished,
+                                    assistant_content: Some(accumulated_text.clone()),
+                                    tool_calls: None,
+                                    cost,
+                                    provider_completion_tokens,
+                                    thinking_content,
+                                }));
+                            }
+                        }
+                        StreamEvent::Error {
+                            error_type,
+                            message,
+                        } => {
+                            tracing::error!(
+                                error_type = %error_type,
+                                message = %message,
+                                "LLM stream error event from provider"
+                            );
+                            let _ = sink.send_command(Command::PushChatEntry(PushChatEntry {
+                                session_id: sid.clone(),
+                                entry: ChatEntry::error(format!(
+                                    "LLM error ({error_type}): {message}"
+                                )),
+                            }));
+                            let _ = sink.send_event(Event::StreamCompleted(StreamCompleted {
+                                session_id: sid.clone(),
+                                reason: StreamCompletedReason::Error,
+                                assistant_content: None,
+                                tool_calls: None,
+                                cost: None,
+                                provider_completion_tokens: None,
+                                thinking_content: None,
+                            }));
+                            stream_ended_normally = true;
+                            break;
+                        }
+                    },
+                    Err(e) => {
+                        tracing::error!(err = ?e, "LLM stream error");
+                        let _ = sink.send_command(Command::PushChatEntry(PushChatEntry {
+                            session_id: sid.clone(),
+                            entry: ChatEntry::error(format!("LLM stream error: {e:?}")),
+                        }));
+                        let _ = sink.send_event(Event::StreamCompleted(StreamCompleted {
+                            session_id: sid.clone(),
+                            reason: StreamCompletedReason::Error,
+                            assistant_content: None,
+                            tool_calls: None,
+                            cost: None,
+                            provider_completion_tokens: None,
+                            thinking_content: None,
+                        }));
+                        stream_ended_normally = true;
+                        break;
+                    }
+                }
+            }
+
+            // Guard: if the stream ended without a terminal event, emit fallback error.
+            if !stream_ended_normally {
+                tracing::error!(
+                    session_id = ?sid,
+                    "LLM stream ended without a terminal event (Done/Error)"
+                );
+                let _ = sink.send_command(Command::PushChatEntry(PushChatEntry {
+                    session_id: sid.clone(),
+                    entry: ChatEntry::error(
+                        "LLM stream ended unexpectedly. The connection may have been interrupted."
+                            .to_owned(),
+                    ),
+                }));
+                let _ = sink.send_event(Event::StreamCompleted(StreamCompleted {
+                    session_id: sid.clone(),
+                    reason: StreamCompletedReason::Error,
+                    assistant_content: None,
+                    tool_calls: None,
+                    cost: None,
+                    provider_completion_tokens: None,
+                    thinking_content: None,
+                }));
             }
         });
 

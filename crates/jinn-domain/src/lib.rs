@@ -88,14 +88,14 @@ pub use feat::session::no_api_keys_msg;
 pub use feat::session::phase_machine::PhaseKind;
 
 // Re-export preferences types
+pub use feat::preferences_actor::AppStateStorageService;
+pub use feat::preferences_actor::FilesystemAppStateStorage;
 pub use feat::preferences_actor::FilesystemUserPreferencesStorage;
+pub use feat::preferences_actor::InMemoryAppStateStorage;
 pub use feat::preferences_actor::InMemoryUserPreferencesStorage;
 pub use feat::preferences_actor::RequestRetryConfig;
 pub use feat::preferences_actor::UserPreferences;
 pub use feat::preferences_actor::UserPreferencesStorageService;
-pub use feat::preferences_actor::AppStateStorageService;
-pub use feat::preferences_actor::FilesystemAppStateStorage;
-pub use feat::preferences_actor::InMemoryAppStateStorage;
 pub use feat::preferences_actor::protocol::command::{PreferenceUpdate, UpdatePreferences};
 pub use feat::preferences_actor::protocol::event::PreferencesUpdated;
 pub use feat::preferences_actor::{InitOutcome, init_default_config_to, preferences_path};

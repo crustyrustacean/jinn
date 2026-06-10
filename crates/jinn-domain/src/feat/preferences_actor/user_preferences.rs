@@ -223,7 +223,6 @@ impl Default for ReadEditAutoPruneConfig {
     }
 }
 
-
 /// Default enabled state for todo auto-prune.
 const DEFAULT_TODO_ENABLED: bool = true;
 
@@ -566,6 +565,10 @@ pub struct AnchoredAssistantAutoPruneConfig {
     /// Default: `true`.
     #[serde(default = "default_anchored_assistant_enabled")]
     pub enabled: bool,
+    /// **Deprecated:** the radius value is now sourced from `AnchorShieldConfig.radius`.
+    /// This field is kept for backward compatibility with existing `jinn.toml` files
+    /// but its value is ignored at wiring time.
+    ///
     /// Radius (in raw chat entries) within which an `Assistant` entry is
     /// protected from pruning, regardless of distance to any User entry.
     /// Distance strictly greater than this radius marks the entry as a
@@ -601,6 +604,55 @@ impl Default for AnchoredAssistantAutoPruneConfig {
             enabled: DEFAULT_ANCHORED_ASSISTANT_ENABLED,
             radius: DEFAULT_ANCHORED_ASSISTANT_RADIUS,
             min_age: DEFAULT_ANCHORED_ASSISTANT_MIN_AGE,
+        }
+    }
+}
+/// Default enabled state for anchor-shield auto-prune.
+const DEFAULT_ANCHOR_SHIELD_ENABLED: bool = true;
+
+/// Default radius (in raw history entries) for the anchor-shield worker.
+const DEFAULT_ANCHOR_SHIELD_RADIUS: usize = 20;
+
+/// Anchor-shield auto-prune strategy configuration.
+///
+/// Serialized as `[auto_prune.anchor_shield]` in `jinn.toml`.
+///
+/// The shield worker emits `ForcedInclude` for all in-context-by-default
+/// entry types (`User`, `Assistant`, `ToolCall`, `ToolResult`) within
+/// `radius` of any anchor entry. This prevents other workers from excluding
+/// entries that carry conversation structure near user turns.
+///
+/// The `radius` value is also used by the `AnchoredAssistantAutoPruneWorker`
+/// so the shield boundary and prune boundary always align.
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+pub struct AnchorShieldConfig {
+    /// Whether the anchor-shield worker is active.
+    /// Default: `true`.
+    #[serde(default = "default_anchor_shield_enabled")]
+    pub enabled: bool,
+    /// Radius (in raw chat entries) within which in-context entries
+    /// are shielded from exclusion by other workers.
+    /// This value is also used by the `AnchoredAssistantAutoPruneWorker`
+    /// so the shield boundary and prune boundary always align.
+    /// Minimum 1 (clamped at evaluation time).
+    /// Default: `20`.
+    #[serde(default = "default_anchor_shield_radius")]
+    pub radius: usize,
+}
+
+fn default_anchor_shield_enabled() -> bool {
+    DEFAULT_ANCHOR_SHIELD_ENABLED
+}
+
+fn default_anchor_shield_radius() -> usize {
+    DEFAULT_ANCHOR_SHIELD_RADIUS
+}
+
+impl Default for AnchorShieldConfig {
+    fn default() -> Self {
+        Self {
+            enabled: DEFAULT_ANCHOR_SHIELD_ENABLED,
+            radius: DEFAULT_ANCHOR_SHIELD_RADIUS,
         }
     }
 }
@@ -739,6 +791,9 @@ pub struct AutoPruneConfig {
     /// Anchored-assistant auto-prune strategy configuration.
     #[serde(default)]
     pub anchored_assistant: AnchoredAssistantAutoPruneConfig,
+    /// Anchor-shield auto-prune strategy configuration.
+    #[serde(default)]
+    pub anchor_shield: AnchorShieldConfig,
 }
 
 /// Default token threshold for auto-compaction.
@@ -835,7 +890,10 @@ impl Default for WebFetchConfig {
 const DEFAULT_BASH_DEFAULT_TIMEOUT_SECS: u64 = 180;
 
 // serde default fns must return the field type (Option<u64>) even when always Some.
-#[expect(clippy::unnecessary_wraps, reason = "trait contract requires Result return")]
+#[expect(
+    clippy::unnecessary_wraps,
+    reason = "trait contract requires Result return"
+)]
 fn default_bash_default_timeout_secs() -> Option<u64> {
     Some(DEFAULT_BASH_DEFAULT_TIMEOUT_SECS)
 }
@@ -969,8 +1027,6 @@ impl RequestRetryConfig {
 /// app restarts - e.g., the last model and strategy selected from pickers.
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 pub struct UserPreferences {
-
-
     /// Maximum number of lines to display for tool entries in the chat log.
     /// `None` means use the built-in default (5 lines).
     #[serde(default)]
@@ -979,7 +1035,6 @@ pub struct UserPreferences {
     /// a summary line. `None` means use the built-in default (3).
     #[serde(default)]
     pub min_collapse_count: Option<usize>,
-
 
     /// Named session lifecycle recipes - paired setup/teardown commands.
     /// The implicit "blank" lifecycle (no commands) is always available and
@@ -1261,7 +1316,14 @@ where
 
 #[cfg(test)]
 mod tests {
-    #![allow(clippy::expect_used, clippy::panic, clippy::print_stderr, clippy::unreachable, clippy::indexing_slicing, reason = "test code")]
+    #![allow(
+        clippy::expect_used,
+        clippy::panic,
+        clippy::print_stderr,
+        clippy::unreachable,
+        clippy::indexing_slicing,
+        reason = "test code"
+    )]
     use tempfile::TempDir;
 
     use super::*;
@@ -1428,11 +1490,7 @@ mod tests {
     fn load_parses_toml_content() {
         let dir = TempDir::new().expect("temp dir");
         let path = dir.path().join(PREFS_FILE_NAME);
-        std::fs::write(
-            &path,
-            "tool_entry_max_lines = 10",
-        )
-        .expect("write");
+        std::fs::write(&path, "tool_entry_max_lines = 10").expect("write");
         // When loading.
         let prefs = load_preferences_from(&path).expect("load");
 
@@ -1568,8 +1626,6 @@ mod tests {
         assert_eq!(prefs.session_lifecycles[0].name, "git worktree");
         assert!(prefs.session_lifecycles[0].setup.is_some());
     }
-
-
 
     #[rstest::rstest]
     fn preferences_path_ends_with_jinn_toml() {
@@ -1839,7 +1895,10 @@ teardown_command = "~/.config/jinn/scripts/fossil-cleanup.sh $1"
         // Then all unrelated comments survive and the targeted changes applied.
         let written = std::fs::read_to_string(&path).expect("read");
         assert!(written.contains("# main preferences"), "top comment kept");
-        assert!(written.contains("# collapse threshold"), "collapse comment kept");
+        assert!(
+            written.contains("# collapse threshold"),
+            "collapse comment kept"
+        );
         assert!(
             written.contains("min_collapse_count = 5"),
             "untouched field kept"
@@ -1862,8 +1921,14 @@ teardown_command = "~/.config/jinn/scripts/fossil-cleanup.sh $1"
             "beta comment removed with beta"
         );
         assert!(!written.contains("\"beta\""), "beta removed");
-        assert!(written.contains("tool_entry_max_lines = 20"), "tool_entry_max_lines updated");
-        assert!(!written.contains("tool_entry_max_lines = 10"), "old tool_entry_max_lines gone");
+        assert!(
+            written.contains("tool_entry_max_lines = 20"),
+            "tool_entry_max_lines updated"
+        );
+        assert!(
+            !written.contains("tool_entry_max_lines = 10"),
+            "old tool_entry_max_lines gone"
+        );
         // The alpha lifecycle is preserved.
         assert!(written.contains("\"alpha\""), "alpha kept");
     }
@@ -2276,8 +2341,6 @@ max_tokens = 5000
         assert_eq!(config.trivial_assistant.max_tokens, 80);
     }
 
-
-
     #[rstest::rstest]
     fn default_preferences_has_default_auto_prune_config() {
         let prefs = UserPreferences::default();
@@ -2443,6 +2506,10 @@ enabled = true
                     radius: 42,
                     min_age: 0,
                 },
+                anchor_shield: AnchorShieldConfig {
+                    enabled: true,
+                    radius: 20,
+                },
             },
             ..UserPreferences::default()
         };
@@ -2465,6 +2532,8 @@ enabled = true
         assert_eq!(reloaded.auto_prune.trivial_assistant.max_tokens, 40);
         assert!(!reloaded.auto_prune.anchored_assistant.enabled);
         assert_eq!(reloaded.auto_prune.anchored_assistant.radius, 42);
+        assert!(reloaded.auto_prune.anchor_shield.enabled);
+        assert_eq!(reloaded.auto_prune.anchor_shield.radius, 20);
     }
 
     #[rstest::rstest]
@@ -2484,6 +2553,40 @@ enabled = true
         assert_eq!(prefs.auto_prune.trivial_assistant.max_tokens, 80);
         assert!(prefs.auto_prune.anchored_assistant.enabled);
         assert_eq!(prefs.auto_prune.anchored_assistant.radius, 100);
+        assert!(prefs.auto_prune.anchor_shield.enabled);
+        assert_eq!(prefs.auto_prune.anchor_shield.radius, 20);
+    }
+
+    #[rstest::rstest]
+    fn load_with_anchored_assistant_radius_uses_defaults_for_anchor_shield() {
+        // Given a TOML file with only anchored_assistant radius (no anchor_shield section).
+        let dir = TempDir::new().expect("temp dir");
+        let path = dir.path().join(PREFS_FILE_NAME);
+        std::fs::write(
+            &path,
+            "[auto_prune.anchored_assistant]
+enabled = true
+radius = 42
+min_age = 5
+
+[auto_prune.anchor_shield]
+enabled = true
+radius = 20
+",
+        )
+        .expect("write");
+
+        // When loading.
+        let prefs = load_preferences_from(&path).expect("load");
+
+        // Then anchored_assistant still reads its own radius.
+        assert!(prefs.auto_prune.anchored_assistant.enabled);
+        assert_eq!(prefs.auto_prune.anchored_assistant.radius, 42);
+        assert_eq!(prefs.auto_prune.anchored_assistant.min_age, 5);
+
+        // And anchor_shield uses its own config.
+        assert!(prefs.auto_prune.anchor_shield.enabled);
+        assert_eq!(prefs.auto_prune.anchor_shield.radius, 20);
     }
 
     #[rstest::rstest]
