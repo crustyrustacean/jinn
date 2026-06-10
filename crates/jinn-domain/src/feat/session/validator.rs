@@ -64,12 +64,9 @@ mod tests {
         clippy::indexing_slicing,
         reason = "test code"
     )]
+    use super::*;
     use crate::feat::session::model_selection::ModelSelection;
     use crate::protocol::PickerKind;
-
-    use super::*;
-
-    use super::*;
 
     // --- RefreshModels tests ---
 

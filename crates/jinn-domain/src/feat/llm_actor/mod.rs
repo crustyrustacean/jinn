@@ -299,6 +299,7 @@ async fn process_stream_events(
                 StreamEvent::Error {
                     error_type: _,
                     message,
+                    ..
                 } => {
                     stream_ended_normally = true;
                     tracing::error!(
@@ -385,8 +386,7 @@ impl LlmActor {
 
         // Track the session and store the resolved model.
         let model_used = payload.model_used.clone();
-        self.sessions
-            .insert(session_id.clone(), SessionData::new());
+        self.sessions.insert(session_id.clone(), SessionData::new());
         if let Some(data) = self.sessions.get_mut(&session_id) {
             data.set_model_used(model_used);
         }

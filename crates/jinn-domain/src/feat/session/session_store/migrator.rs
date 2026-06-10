@@ -155,7 +155,11 @@ fn run_pending_migrations(conn: &mut SqliteConnection) -> Result<(), Report<Sess
     }
     if current < 17 {
         migrate_v17(conn)?;
-        record_version(conn, 17, "rewrite_model_to_model_selection_and_add_model_used")?;
+        record_version(
+            conn,
+            17,
+            "rewrite_model_to_model_selection_and_add_model_used",
+        )?;
     }
     Ok(())
 }
@@ -494,10 +498,7 @@ fn rewrite_profile_model(raw: &str) -> String {
         return raw.to_owned();
     };
     if let serde_json::Value::String(s) = model_value {
-        map.insert(
-            "model".to_owned(),
-            serde_json::json!({"single": s}),
-        );
+        map.insert("model".to_owned(), serde_json::json!({"single": s}));
     }
     // If model is already an object or missing, leave it alone.
 
@@ -689,17 +690,14 @@ fn migrate_v17(conn: &mut SqliteConnection) -> Result<(), Report<SessionStoreErr
             .attach("v17: update session profile")?;
     }
 
-    let add_result = sql_query("ALTER TABLE token_ledger ADD COLUMN model_used TEXT")
-        .execute(conn);
+    let add_result = sql_query("ALTER TABLE token_ledger ADD COLUMN model_used TEXT").execute(conn);
 
     // Idempotent: ignore "duplicate column" error if migration runs twice.
     match add_result {
         Err(diesel::result::Error::DatabaseError(
             diesel::result::DatabaseErrorKind::Unknown,
             msg,
-        )) if msg
-            .message()
-            .contains("duplicate column name") => {}
+        )) if msg.message().contains("duplicate column name") => {}
         Err(e) => {
             return Err(e)
                 .change_context(SessionStoreError)
@@ -902,16 +900,23 @@ mod tests {
         }
         if target >= 16 {
             migrate_v16(conn).expect("v16");
-            record_version(conn, 16, "rename_is_workflow_to_is_automated_and_add_persist")
-                .expect("record v16");
+            record_version(
+                conn,
+                16,
+                "rename_is_workflow_to_is_automated_and_add_persist",
+            )
+            .expect("record v16");
         }
         if target >= 17 {
             migrate_v17(conn).expect("v17");
-            record_version(conn, 17, "rewrite_model_to_model_selection_and_add_model_used")
-                .expect("record v17");
+            record_version(
+                conn,
+                17,
+                "rewrite_model_to_model_selection_and_add_model_used",
+            )
+            .expect("record v17");
         }
     }
-
 
     /// Verifies that each migration guard uses `<` not `<=`.
     ///
@@ -1293,10 +1298,9 @@ mod tests {
         migrate_v17(&mut conn).expect("migrate v17");
 
         // Then the profile JSON has model rewritten as {"single":"ollama/llama3"}.
-        let rows: Vec<ProfileRow> =
-            sql_query("SELECT profile FROM sessions WHERE id = 'test-v17'")
-                .load(&mut conn)
-                .expect("query");
+        let rows: Vec<ProfileRow> = sql_query("SELECT profile FROM sessions WHERE id = 'test-v17'")
+            .load(&mut conn)
+            .expect("query");
 
         assert_eq!(rows.len(), 1);
         let profile: serde_json::Map<String, serde_json::Value> =
@@ -1342,10 +1346,7 @@ mod tests {
         assert_eq!(rows.len(), 1);
         let profile: serde_json::Map<String, serde_json::Value> =
             serde_json::from_str(&rows[0].profile).expect("parse profile");
-        assert_eq!(
-            profile["model"],
-            serde_json::json!({"single": "<none>"})
-        );
+        assert_eq!(profile["model"], serde_json::json!({"single": "<none>"}));
     }
 
     #[test]

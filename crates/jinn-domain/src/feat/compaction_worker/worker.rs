@@ -162,8 +162,7 @@ impl CompactionWorker {
             let mut state = self.state.write();
             let session = state.session_mut(&trigger.session_id);
             let config = prefs.compaction.clone();
-            let model_name =
-                session.profile_mut().model.resolve_model().to_owned();
+            let model_name = session.profile_mut().model.resolve_model();
             let history = session.history().to_vec();
             let compaction_prompt = state.context.compaction_prompt.clone();
             let retry_config = prefs.request_retry.to_retry_config();

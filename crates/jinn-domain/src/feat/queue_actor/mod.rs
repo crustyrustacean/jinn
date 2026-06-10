@@ -180,12 +180,11 @@ impl QueueActor {
 
         let (provider_id, model_used) = {
             let mut state = self.state.write();
-            let model =
-                &mut state.session_mut(session_id).profile_mut().model;
+            let model = &mut state.session_mut(session_id).profile_mut().model;
             if model.is_no_provider() {
                 (None, None)
             } else {
-                let resolved = model.resolve_model().to_owned();
+                let resolved = model.resolve_model();
                 (Some(resolved.clone()), Some(resolved))
             }
         };
@@ -260,12 +259,11 @@ impl QueueActor {
 
         let (provider_id, model_used) = {
             let mut state = self.state.write();
-            let model =
-                &mut state.session_mut(session_id).profile_mut().model;
+            let model = &mut state.session_mut(session_id).profile_mut().model;
             if model.is_no_provider() {
                 (None, None)
             } else {
-                let resolved = model.resolve_model().to_owned();
+                let resolved = model.resolve_model();
                 (Some(resolved.clone()), Some(resolved))
             }
         };

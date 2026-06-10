@@ -105,26 +105,20 @@ pub struct AlloyEntry {
 }
 
 /// Alloy rotation strategy.
-#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq, Default)]
 #[serde(rename_all = "snake_case")]
 pub enum AlloyStrategy {
     /// Cycle through models in order, incrementing after each LLM call.
+    #[default]
     RoundRobin,
     /// Pick a random model on each LLM call.
     Random,
-}
-
-impl Default for AlloyStrategy {
-    fn default() -> Self {
-        Self::RoundRobin
-    }
 }
 
 /// Default strategy for serde default attribute.
 fn default_strategy_round_robin() -> AlloyStrategy {
     AlloyStrategy::RoundRobin
 }
-
 
 /// Default value for boolean fields that default to `true`.
 const fn default_true() -> bool {
@@ -905,7 +899,7 @@ strategy = "random"
         );
         assert!(matches!(
             config.alloys[0].strategy,
-            AlloyStrategy::RoundRobin { .. }
+            AlloyStrategy::RoundRobin
         ));
         assert_eq!(config.alloys[1].name, "wild");
         assert_eq!(config.alloys[1].models.len(), 3);
@@ -949,16 +943,14 @@ requires_key = false
             }],
             aliases: vec![],
             default_provider: None,
-            alloys: vec![
-                AlloyEntry {
-                    name: "balanced".to_owned(),
-                    models: vec![
-                        "ollama/llama3".to_owned(),
-                        "openrouter/anthropic/claude-sonnet-4".to_owned(),
-                    ],
-                    strategy: AlloyStrategy::RoundRobin,
-                },
-            ],
+            alloys: vec![AlloyEntry {
+                name: "balanced".to_owned(),
+                models: vec![
+                    "ollama/llama3".to_owned(),
+                    "openrouter/anthropic/claude-sonnet-4".to_owned(),
+                ],
+                strategy: AlloyStrategy::RoundRobin,
+            }],
         };
         let dir = TempDir::new().expect("temp dir");
         let path = dir.path().join("providers.toml");
@@ -973,7 +965,7 @@ requires_key = false
         assert_eq!(reloaded.alloys[0].models.len(), 2);
         assert!(matches!(
             reloaded.alloys[0].strategy,
-            AlloyStrategy::RoundRobin { .. }
+            AlloyStrategy::RoundRobin
         ));
     }
 

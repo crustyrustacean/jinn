@@ -45,9 +45,4 @@ impl SessionData {
     pub(crate) fn set_model_used(&mut self, model: Option<String>) {
         self.model_used = model;
     }
-
-    /// Returns the concrete model ID for the current/last stream.
-    pub(crate) fn model_used(&self) -> Option<&str> {
-        self.model_used.as_deref()
-    }
 }

@@ -120,12 +120,11 @@ impl SessionPersistenceActor {
 
                 let (provider_id, model_used) = {
                     let mut state = self.state.write();
-                    let model =
-                        &mut state.session_mut(&payload.session_id).profile_mut().model;
+                    let model = &mut state.session_mut(&payload.session_id).profile_mut().model;
                     if model.is_no_provider() {
                         (None, None)
                     } else {
-                        let resolved = model.resolve_model().to_owned();
+                        let resolved = model.resolve_model();
                         (Some(resolved.clone()), Some(resolved))
                     }
                 };
@@ -250,7 +249,7 @@ impl SessionPersistenceActor {
             let (provider_id, model_used) = if model.is_no_provider() {
                 (None, None)
             } else {
-                let resolved = model.resolve_model().to_owned();
+                let resolved = model.resolve_model();
                 (Some(resolved.clone()), Some(resolved))
             };
             let old_phase = session.phase();

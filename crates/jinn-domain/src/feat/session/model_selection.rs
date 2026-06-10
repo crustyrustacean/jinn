@@ -59,6 +59,10 @@ impl ModelSelection {
     /// For `Single`, returns the model string unchanged.
     /// For `Alloy` with `RoundRobin`, returns the current model and advances the index.
     /// For `Alloy` with `Random`, picks a random member.
+    ///
+    /// # Panics
+    ///
+    /// Panics if `Alloy` contains an empty models list.
     pub fn resolve_model(&mut self) -> String {
         match self {
             Self::Single(s) => s.clone(),
@@ -71,10 +75,8 @@ impl ModelSelection {
                     }
                     AlloyStrategy::Random => rand::rng().random_range(0..models.len()),
                 };
-                models
-                    .get(idx)
-                    .expect("index is always in range due to modulo")
-                    .clone()
+                #[expect(clippy::indexing_slicing, reason = "idx bounded by modulo or len")]
+                models[idx].clone()
             }
         }
     }
@@ -89,6 +91,23 @@ impl ModelSelection {
         match self {
             Self::Single(s) => Some(s),
             Self::Alloy { .. } => None,
+        }
+    }
+
+    /// Returns the model ID that was last used (or would be used next).
+    ///
+    /// For `Single`, returns the model string. For `Alloy`, returns the
+    /// model at the current round-robin index (or the first model for random).
+    pub fn last_model(&self) -> Option<&str> {
+        match self {
+            Self::Single(s) => Some(s),
+            Self::Alloy { models, strategy } => {
+                let idx = match strategy {
+                    AlloyStrategy::RoundRobin { index } => *index,
+                    AlloyStrategy::Random => 0,
+                };
+                models.get(idx).map(String::as_str)
+            }
         }
     }
 
