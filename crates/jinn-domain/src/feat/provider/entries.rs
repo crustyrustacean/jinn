@@ -49,7 +49,7 @@ pub fn sorted_entries(
 }
 
 /// Promotes entries with `selected == true` to the top of the list.
-fn promote_selected_to_top(entries: &mut Vec<PickerEntry>) {
+pub(crate) fn promote_selected_to_top(entries: &mut Vec<PickerEntry>) {
     // Stable partition: selected entries move to top, preserving alphabetical order within each group.
     let selected: Vec<PickerEntry> = entries.extract_if(.., |e| e.selected).collect();
     let mut result = selected;
