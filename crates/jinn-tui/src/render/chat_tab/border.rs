@@ -47,9 +47,10 @@ mod tests {
     }
 
     #[rstest::rstest]
-    fn separator_is_yellow_when_sidebar_focused() {
+    #[tokio::test]
+    async fn separator_is_yellow_when_sidebar_focused() {
         // Given a TuiApp rendered with Sidebar scope.
-        let mut app = crate::TuiApp::test_builder().build();
+        let mut app = crate::TuiApp::test_builder().build().await;
         app.core
             .state
             .write()
@@ -76,9 +77,10 @@ mod tests {
     }
 
     #[rstest::rstest]
-    fn separator_is_darkgray_when_normal() {
+    #[tokio::test]
+    async fn separator_is_darkgray_when_normal() {
         // Given a TuiApp rendered with Normal scope.
-        let mut app = crate::TuiApp::test_builder().build();
+        let mut app = crate::TuiApp::test_builder().build().await;
         let (mut terminal, _area) = setup_term(80, 24);
 
         // When rendering.
@@ -98,9 +100,10 @@ mod tests {
     }
 
     #[rstest::rstest]
-    fn separator_is_green_when_resizing() {
+    #[tokio::test]
+    async fn separator_is_green_when_resizing() {
         // Given a TuiApp rendered with SidebarResize scope.
-        let mut app = crate::TuiApp::test_builder().build();
+        let mut app = crate::TuiApp::test_builder().build().await;
         app.core
             .state
             .write()

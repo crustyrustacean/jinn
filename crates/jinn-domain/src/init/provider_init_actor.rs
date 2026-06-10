@@ -164,7 +164,7 @@ mod tests {
     use super::{ProviderInitActor, ProviderInitActorDeps};
 
     /// Creates a test actor with Services defaults.
-    fn create_actor() -> (
+    async fn create_actor() -> (
         ProviderInitActor,
         Services,
         Arc<RecordingSink>,
@@ -173,7 +173,7 @@ mod tests {
         let sink = Arc::new(RecordingSink::new());
         let mut ctx = ActorContext::new("provider-init", sink.clone() as Arc<dyn MessageSink>);
 
-        let services = Services::new_fake();
+        let services = Services::new_fake().await;
         let state = State::new(AppState::default());
         let deps = ProviderInitActorDeps {
             services: services.clone(),
@@ -187,7 +187,7 @@ mod tests {
     #[tokio::test]
     async fn sends_provider_switch_when_last_model_set() {
         // Given a provider init actor with preferences containing last_model.
-        let (mut actor, services, sink, ctx) = create_actor();
+        let (mut actor, services, sink, ctx) = create_actor().await;
 
         // Set up app state with a last_model.
         services
@@ -236,7 +236,7 @@ mod tests {
     #[tokio::test]
     async fn does_not_send_provider_switch_when_no_last_model() {
         // Given a provider init actor with no last_model in preferences.
-        let (mut actor, _services, sink, ctx) = create_actor();
+        let (mut actor, _services, sink, ctx) = create_actor().await;
 
         let config = crate::feat::provider_infra::ProvidersConfig {
             providers: vec![ProviderEntry {
@@ -270,7 +270,7 @@ mod tests {
     }
 
     /// Creates a test actor with Services defaults, returning the shared state for assertions.
-    fn create_actor_with_state() -> (
+    async fn create_actor_with_state() -> (
         ProviderInitActor,
         Services,
         Arc<RecordingSink>,
@@ -280,7 +280,7 @@ mod tests {
         let sink = Arc::new(RecordingSink::new());
         let mut ctx = ActorContext::new("provider-init", sink.clone() as Arc<dyn MessageSink>);
 
-        let services = Services::new_fake();
+        let services = Services::new_fake().await;
         let state = State::new(AppState::default());
         let deps = ProviderInitActorDeps {
             services: services.clone(),
@@ -294,7 +294,7 @@ mod tests {
     #[tokio::test]
     async fn pushes_no_api_keys_msg_when_keys_empty() {
         // Given a provider init actor with no API keys.
-        let (mut actor, _services, sink, ctx, _state) = create_actor_with_state();
+        let (mut actor, _services, sink, ctx, _state) = create_actor_with_state().await;
 
         let config = crate::feat::provider_infra::ProvidersConfig {
             providers: vec![ProviderEntry {
@@ -339,7 +339,7 @@ mod tests {
     #[tokio::test]
     async fn emits_model_cache_loaded_when_cache_exists_on_disk() {
         // Given a provider init actor with a cache file on disk.
-        let (mut actor, services, sink, ctx) = create_actor();
+        let (mut actor, services, sink, ctx) = create_actor().await;
 
         let mut cache = crate::feat::provider_infra::ModelCache::new();
         cache.entries.insert(
@@ -392,7 +392,7 @@ mod tests {
     async fn does_not_send_provider_switch_when_session_has_explicit_model() {
         // Given a provider init actor with app state containing last_model
         // but the active session already has an explicitly set model.
-        let (mut actor, services, sink, ctx, state) = create_actor_with_state();
+        let (mut actor, services, sink, ctx, state) = create_actor_with_state().await;
 
         // Set an explicit model on the active session (simulating bench actor).
         state

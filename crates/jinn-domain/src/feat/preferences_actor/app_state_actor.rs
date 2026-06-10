@@ -91,12 +91,12 @@ mod tests {
 
     use super::{AppStateActor, AppStateActorDeps};
 
-    fn create_actor() -> (AppStateActor, Arc<RecordingSink>, Services, ActorContext) {
+    async fn create_actor() -> (AppStateActor, Arc<RecordingSink>, Services, ActorContext) {
         let sink = Arc::new(RecordingSink::new());
         let mut ctx = ActorContext::new("app-state", sink.clone() as Arc<dyn MessageSink>);
 
         let storage = InMemoryAppStateStorage::new();
-        let mut services = Services::new_fake();
+        let mut services = Services::new_fake().await;
         let svc = crate::feat::preferences_actor::app_state_storage::AppStateStorageService::new(
             Arc::new(storage),
         );
@@ -114,7 +114,7 @@ mod tests {
     #[tokio::test]
     async fn set_last_model_persists_and_emits() {
         // Given an app-state actor.
-        let (mut actor, sink, services, ctx) = create_actor();
+        let (mut actor, sink, services, ctx) = create_actor().await;
 
         // When handling UpdateAppState with SetLastModel.
         actor
@@ -144,7 +144,7 @@ mod tests {
     #[tokio::test]
     async fn set_theme_persists_and_emits() {
         // Given an app-state actor.
-        let (mut actor, sink, services, ctx) = create_actor();
+        let (mut actor, sink, services, ctx) = create_actor().await;
 
         // When handling UpdateAppState with SetTheme.
         actor
@@ -169,7 +169,7 @@ mod tests {
     #[tokio::test]
     async fn ignores_unrelated_commands() {
         // Given an app-state actor.
-        let (mut actor, sink, services, ctx) = create_actor();
+        let (mut actor, sink, services, ctx) = create_actor().await;
 
         // When handling an unrelated command.
         actor
@@ -188,7 +188,7 @@ mod tests {
     #[tokio::test]
     async fn multiple_updates_in_one_command() {
         // Given an app-state actor.
-        let (mut actor, _sink, services, ctx) = create_actor();
+        let (mut actor, _sink, services, ctx) = create_actor().await;
 
         // When handling a batch with multiple updates.
         actor

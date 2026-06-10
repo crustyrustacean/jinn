@@ -66,9 +66,9 @@ mod tests {
     use crate::feat::preferences_actor::user_preferences::UserPreferences;
     use std::sync::Arc;
 
-    fn create_actor() -> (PreferencesStateSyncActor, ActorContext) {
+    async fn create_actor() -> (PreferencesStateSyncActor, ActorContext) {
         let state = State::new(crate::common::app_state::AppState::default());
-        let services = Services::new_fake();
+        let services = Services::new_fake().await;
         let sink = Arc::new(RecordingSink::new());
         let mut ctx = ActorContext::new("prefs-state-sync", sink);
         let actor = PreferencesStateSyncActor::activate(
@@ -81,7 +81,7 @@ mod tests {
     #[tokio::test]
     async fn preferences_updated_syncs_to_frontend() {
         // Given a sync actor and a PreferencesUpdated event with custom preferences.
-        let (mut actor, ctx) = create_actor();
+        let (mut actor, ctx) = create_actor().await;
         let prefs = UserPreferences::default();
         let event = PreferencesUpdated {
             preferences: prefs.clone(),
@@ -100,7 +100,7 @@ mod tests {
     #[tokio::test]
     async fn ignores_unrelated_events() {
         // Given a sync actor.
-        let (mut actor, ctx) = create_actor();
+        let (mut actor, ctx) = create_actor().await;
 
         // When handling an unrelated event.
         actor

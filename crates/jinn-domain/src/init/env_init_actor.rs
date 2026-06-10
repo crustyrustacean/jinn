@@ -127,7 +127,7 @@ mod tests {
     use super::{EnvInitActor, EnvInitActorDeps};
 
     /// Creates a test actor with in-memory storage.
-    fn create_actor() -> (
+    async fn create_actor() -> (
         EnvInitActor,
         ApiKeysService,
         Arc<RecordingSink>,
@@ -152,7 +152,7 @@ mod tests {
     #[tokio::test]
     async fn initialize_emits_environment_loaded() {
         // Given an env init actor.
-        let (mut actor, _api_keys, sink, ctx) = create_actor();
+        let (mut actor, _api_keys, sink, ctx) = create_actor().await;
 
         // When processing Initialize.
         actor

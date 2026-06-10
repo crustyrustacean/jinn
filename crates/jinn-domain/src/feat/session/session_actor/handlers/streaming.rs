@@ -225,7 +225,7 @@ mod tests {
     #[tokio::test]
     async fn on_stream_completed_error_reason_finishes_streaming() {
         // Given a session actor with a session in streaming state.
-        let actor = test_actor();
+        let actor = test_actor().await;
         let (_sink, ctx) = test_context();
         let session_id = {
             let mut state = actor.state.write();
@@ -256,7 +256,7 @@ mod tests {
     #[tokio::test]
     async fn on_stream_completed_error_reason_drains_queue_to_input_buffer() {
         // Given a session actor with a session in streaming state and a queued message.
-        let actor = test_actor();
+        let actor = test_actor().await;
         let (_sink, ctx) = test_context();
         let session_id = {
             let mut state = actor.state.write();
@@ -291,7 +291,7 @@ mod tests {
     #[tokio::test]
     async fn on_stream_completed_error_with_multiple_queued_messages_joins_with_newline() {
         // Given a session actor with a session in streaming state and two queued messages.
-        let actor = test_actor();
+        let actor = test_actor().await;
         let (_sink, ctx) = test_context();
         let session_id = {
             let mut state = actor.state.write();
@@ -328,7 +328,7 @@ mod tests {
     #[tokio::test]
     async fn on_stream_completed_canceled_reason_drains_queue_to_input_buffer() {
         // Given a session actor with a session in streaming state and a queued message.
-        let actor = test_actor();
+        let actor = test_actor().await;
         let (_sink, ctx) = test_context();
         let session_id = {
             let mut state = actor.state.write();
@@ -363,7 +363,7 @@ mod tests {
     #[tokio::test]
     async fn on_stream_completed_finished_emits_history_appended() {
         // Given a session actor with a session in streaming state with history.
-        let actor = test_actor();
+        let actor = test_actor().await;
         let (sink, ctx) = test_context();
         let session_id = {
             let mut state = actor.state.write();
@@ -399,7 +399,7 @@ mod tests {
     #[tokio::test]
     async fn on_stream_completed_error_emits_history_appended() {
         // Given a session actor with a session in streaming state with history.
-        let actor = test_actor();
+        let actor = test_actor().await;
         let (sink, ctx) = test_context();
         let session_id = {
             let mut state = actor.state.write();
@@ -435,7 +435,7 @@ mod tests {
     #[tokio::test]
     async fn on_stream_completed_canceled_emits_history_appended() {
         // Given a session actor with a session in streaming state with history.
-        let actor = test_actor();
+        let actor = test_actor().await;
         let (sink, ctx) = test_context();
         let session_id = {
             let mut state = actor.state.write();
@@ -471,7 +471,7 @@ mod tests {
     #[tokio::test]
     async fn on_stream_completed_canceled_force_excludes_dangling_tool_calls() {
         // Given a session in streaming state with dangling tool calls in history.
-        let actor = test_actor();
+        let actor = test_actor().await;
         let (_sink, ctx) = test_context();
         let session_id = {
             let mut state = actor.state.write();
@@ -523,7 +523,7 @@ mod tests {
     #[tokio::test]
     async fn on_stream_token_appends_text_to_assistant_entry() {
         // Given a session in streaming state.
-        let actor = test_actor();
+        let actor = test_actor().await;
         let (_sink, _ctx) = test_context();
         let session_id = {
             let mut state = actor.state.write();
@@ -563,7 +563,7 @@ mod tests {
     #[tokio::test]
     async fn on_stream_token_keeps_phase_as_streaming() {
         // Given a session in streaming state.
-        let actor = test_actor();
+        let actor = test_actor().await;
         let session_id = {
             let state = actor.state.read();
             state.session.active_session_id().clone()
@@ -594,7 +594,7 @@ mod tests {
     #[tokio::test]
     async fn on_stream_token_corrects_sending_phase_to_streaming() {
         // Given a session in Sending state (stream token arrived before phase transition).
-        let actor = test_actor();
+        let actor = test_actor().await;
         let session_id = {
             let mut state = actor.state.write();
             let session = state.active_session_mut();
@@ -624,7 +624,7 @@ mod tests {
     #[tokio::test]
     async fn on_stream_completed_finished_persists_session() {
         // Given an interacted session in streaming state.
-        let (actor, store) = super::super::super::helpers::test_actor_with_store(vec![]);
+        let (actor, store) = super::super::super::helpers::test_actor_with_store(vec![]).await;
         let session_id = {
             let mut state = actor.state.write();
             let session = state.active_session_mut();
@@ -657,7 +657,7 @@ mod tests {
     #[tokio::test]
     async fn on_stream_completed_error_persists_session() {
         // Given an interacted session in streaming state.
-        let (actor, store) = super::super::super::helpers::test_actor_with_store(vec![]);
+        let (actor, store) = super::super::super::helpers::test_actor_with_store(vec![]).await;
         let session_id = {
             let mut state = actor.state.write();
             let session = state.active_session_mut();
@@ -690,7 +690,7 @@ mod tests {
     #[tokio::test]
     async fn on_stream_completed_canceled_persists_session() {
         // Given an interacted session in streaming state.
-        let (actor, store) = super::super::super::helpers::test_actor_with_store(vec![]);
+        let (actor, store) = super::super::super::helpers::test_actor_with_store(vec![]).await;
         let session_id = {
             let mut state = actor.state.write();
             let session = state.active_session_mut();
@@ -723,7 +723,7 @@ mod tests {
     #[tokio::test]
     async fn on_stream_completed_does_not_count_tokens_on_error() {
         // Given a session with a token record in streaming state.
-        let actor = test_actor();
+        let actor = test_actor().await;
         let (_sink, ctx) = test_context();
         let session_id = {
             let mut state = actor.state.write();
@@ -764,7 +764,7 @@ mod tests {
     #[tokio::test]
     async fn on_stream_completed_tool_use_preserves_assistant_entry() {
         // Given a session in streaming state with tokens appended via on_stream_token.
-        let actor = test_actor();
+        let actor = test_actor().await;
         let (_sink, ctx) = test_context();
         let session_id = {
             let mut state = actor.state.write();
@@ -813,7 +813,7 @@ mod tests {
     #[tokio::test]
     async fn on_stream_completed_tool_use_counts_tool_call_arguments() {
         // Given a session with a token record (from prompt assembly) in streaming state.
-        let actor = test_actor();
+        let actor = test_actor().await;
         let (_sink, ctx) = test_context();
         let session_id = {
             let mut state = actor.state.write();
@@ -861,7 +861,7 @@ mod tests {
     #[tokio::test]
     async fn on_stream_completed_finished_preserves_assistant_entry() {
         // Given a session in streaming state with tokens appended.
-        let actor = test_actor();
+        let actor = test_actor().await;
         let (_sink, ctx) = test_context();
         let session_id = {
             let mut state = actor.state.write();
@@ -906,7 +906,7 @@ mod tests {
     #[tokio::test]
     async fn on_stream_completed_canceled_with_complete_tool_loop_does_not_exclude() {
         // Given a session in streaming state with a complete tool loop in history.
-        let actor = test_actor();
+        let actor = test_actor().await;
         let (_sink, ctx) = test_context();
         let session_id = {
             let mut state = actor.state.write();
@@ -955,7 +955,7 @@ mod tests {
     #[tokio::test]
     async fn on_stream_completed_finished_without_auto_compaction_goes_to_idle() {
         // Given a session in streaming state WITHOUT auto-compaction requested.
-        let actor = test_actor();
+        let actor = test_actor().await;
         let (_sink, ctx) = test_context();
         let session_id = {
             let mut state = actor.state.write();
@@ -993,7 +993,7 @@ mod tests {
     #[tokio::test]
     async fn on_stream_completed_finished_applies_pending_mutations() {
         // Given a session in streaming state with pending mutations.
-        let actor = test_actor();
+        let actor = test_actor().await;
         let (sink, ctx) = test_context();
         let (entry_id, session_id) = {
             let mut state = actor.state.write();
@@ -1056,7 +1056,7 @@ mod tests {
     #[tokio::test]
     async fn on_stream_completed_error_applies_pending_mutations() {
         // Given a session in streaming state with pending mutations.
-        let actor = test_actor();
+        let actor = test_actor().await;
         let (_sink, ctx) = test_context();
         let (entry_id, session_id) = {
             let mut state = actor.state.write();
@@ -1108,7 +1108,7 @@ mod tests {
     #[tokio::test]
     async fn on_stream_completed_canceled_applies_pending_mutations() {
         // Given a session in streaming state with pending mutations.
-        let actor = test_actor();
+        let actor = test_actor().await;
         let (_sink, ctx) = test_context();
         let (entry_id, session_id) = {
             let mut state = actor.state.write();
@@ -1160,7 +1160,7 @@ mod tests {
     #[tokio::test]
     async fn on_stream_completed_tool_use_does_not_apply_mutations() {
         // Given a session in streaming state with pending mutations.
-        let actor = test_actor();
+        let actor = test_actor().await;
         let (_sink, ctx) = test_context();
         let (entry_id, session_id) = {
             let mut state = actor.state.write();
@@ -1222,7 +1222,7 @@ mod tests {
     #[tokio::test]
     async fn on_stream_completed_provider_tokens_used_directly() {
         // Given a session with a token record in streaming state.
-        let actor = test_actor();
+        let actor = test_actor().await;
         let (_sink, ctx) = test_context();
         let session_id = {
             let mut state = actor.state.write();
@@ -1264,7 +1264,7 @@ mod tests {
     #[tokio::test]
     async fn on_stream_completed_local_fallback_includes_thinking() {
         // Given a session with a token record in streaming state.
-        let actor = test_actor();
+        let actor = test_actor().await;
         let (_sink, ctx) = test_context();
         let session_id = {
             let mut state = actor.state.write();
@@ -1306,7 +1306,7 @@ mod tests {
     #[tokio::test]
     async fn on_stream_completed_local_fallback_without_thinking_backward_compat() {
         // Given a session with a token record in streaming state.
-        let actor = test_actor();
+        let actor = test_actor().await;
         let (_sink, ctx) = test_context();
         let session_id = {
             let mut state = actor.state.write();
@@ -1348,7 +1348,7 @@ mod tests {
     #[tokio::test]
     async fn on_stream_completed_provider_tokens_preferred_over_local() {
         // Given a session with a token record in streaming state.
-        let actor = test_actor();
+        let actor = test_actor().await;
         let (_sink, ctx) = test_context();
         let session_id = {
             let mut state = actor.state.write();
@@ -1388,7 +1388,7 @@ mod tests {
     #[tokio::test]
     async fn on_stream_completed_takes_max_when_provider_undercounts() {
         // Given a session with a token record in streaming state.
-        let actor = test_actor();
+        let actor = test_actor().await;
         let (_sink, ctx) = test_context();
         let session_id = {
             let mut state = actor.state.write();
@@ -1434,7 +1434,7 @@ mod tests {
     #[tokio::test]
     async fn on_stream_completed_takes_max_when_provider_overcounts() {
         // Given a session with a token record in streaming state.
-        let actor = test_actor();
+        let actor = test_actor().await;
         let (_sink, ctx) = test_context();
         let session_id = {
             let mut state = actor.state.write();
@@ -1476,7 +1476,7 @@ mod tests {
     async fn on_stream_completed_uses_local_count_when_no_provider_report() {
         use crate::feat::context::strategy::token_estimator::TokenCounter;
         // Given a session with a token record in streaming state.
-        let actor = test_actor();
+        let actor = test_actor().await;
         let (_sink, ctx) = test_context();
         let session_id = {
             let mut state = actor.state.write();

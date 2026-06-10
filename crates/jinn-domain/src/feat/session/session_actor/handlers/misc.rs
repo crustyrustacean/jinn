@@ -218,10 +218,10 @@ mod tests {
 
     // --- on_models_refreshed ---
 
-    #[test]
-    fn on_models_refreshed_pushes_transient_entry() {
+    #[tokio::test]
+    async fn on_models_refreshed_pushes_transient_entry() {
         // Given a session actor.
-        let actor = test_actor();
+        let actor = test_actor().await;
         let session_id = SessionId::new();
 
         // When refreshing models with some results.
@@ -247,10 +247,10 @@ mod tests {
         assert!(matches!(&entry.kind, ChatEntryKind::Transient(t) if t.contains("ollama")));
     }
 
-    #[test]
-    fn on_models_refreshed_empty_results_shows_no_providers_message() {
+    #[tokio::test]
+    async fn on_models_refreshed_empty_results_shows_no_providers_message() {
         // Given a session actor.
-        let actor = test_actor();
+        let actor = test_actor().await;
         let session_id = SessionId::new();
 
         // When refreshing models with empty results AND empty errors.
@@ -272,10 +272,10 @@ mod tests {
         );
     }
 
-    #[test]
-    fn on_models_refreshed_with_errors_shows_table() {
+    #[tokio::test]
+    async fn on_models_refreshed_with_errors_shows_table() {
         // Given a session actor.
-        let actor = test_actor();
+        let actor = test_actor().await;
         let session_id = SessionId::new();
 
         // When refreshing models with errors but no results.
@@ -300,8 +300,8 @@ mod tests {
 
     // --- build_models_refresh_table ---
 
-    #[test]
-    fn build_models_refresh_table_includes_provider_and_model_count() {
+    #[tokio::test]
+    async fn build_models_refresh_table_includes_provider_and_model_count() {
         // Given a refresh event with results.
         let mut results = HashMap::new();
         results.insert(
@@ -338,7 +338,7 @@ mod tests {
     async fn handle_load_session_picker_entries_loads_from_store() {
         // Given an actor with a store containing a session.
         let session = crate::feat::session::chat_session::ChatSessionState::new();
-        let (actor, _store) = test_actor_with_store(vec![session]);
+        let (actor, _store) = test_actor_with_store(vec![session]).await;
 
         // When loading session picker entries.
         actor
@@ -355,10 +355,10 @@ mod tests {
 
     // --- handle_submit_history_mutations ---
 
-    #[test]
-    fn handle_submit_history_mutations_applies_immediately_when_idle() {
+    #[tokio::test]
+    async fn handle_submit_history_mutations_applies_immediately_when_idle() {
         // Given a session actor with a session that has one entry.
-        let actor = test_actor();
+        let actor = test_actor().await;
         let session_id = {
             let mut state = actor.state.write();
             let session = state.active_session_mut();
@@ -400,10 +400,10 @@ mod tests {
         assert!(session.core.ephemeral.pending_mutations.is_empty());
     }
 
-    #[test]
-    fn handle_submit_history_mutations_with_empty_batch_is_noop() {
+    #[tokio::test]
+    async fn handle_submit_history_mutations_with_empty_batch_is_noop() {
         // Given a session actor.
-        let actor = test_actor();
+        let actor = test_actor().await;
         let session_id = {
             let state = actor.state.read();
             state.session.active_session_id().clone()
@@ -424,10 +424,10 @@ mod tests {
         assert!(session.core.ephemeral.pending_mutations.is_empty());
     }
 
-    #[test]
-    fn handle_submit_history_mutations_creates_session_if_missing() {
+    #[tokio::test]
+    async fn handle_submit_history_mutations_creates_session_if_missing() {
         // Given a session actor with no session for the target ID.
-        let actor = test_actor();
+        let actor = test_actor().await;
         let new_session_id = SessionId::new();
 
         // When submitting mutations for a nonexistent session.
@@ -454,10 +454,10 @@ mod tests {
         assert!(session.core.ephemeral.pending_mutations.is_empty());
     }
 
-    #[test]
-    fn handle_submit_history_mutations_multiple_submissions_each_applied_immediately() {
+    #[tokio::test]
+    async fn handle_submit_history_mutations_multiple_submissions_each_applied_immediately() {
         // Given a session actor.
-        let actor = test_actor();
+        let actor = test_actor().await;
         let session_id = {
             let mut state = actor.state.write();
             let session = state.active_session_mut();
@@ -526,10 +526,10 @@ mod tests {
 
     // --- Worker mutation emits ContextOverrideChanged ---
 
-    #[test]
-    fn handle_submit_history_mutations_emits_context_override_changed_on_change() {
+    #[tokio::test]
+    async fn handle_submit_history_mutations_emits_context_override_changed_on_change() {
         // Given a session with one entry at Default.
-        let actor = test_actor();
+        let actor = test_actor().await;
         let (sink, ctx) = crate::feat::session::session_actor::helpers::test_context();
         // Override actor's state to use our sink-equipped context for event capture.
         let session_id = {
@@ -577,10 +577,10 @@ mod tests {
         );
     }
 
-    #[test]
-    fn handle_submit_history_mutations_does_not_emit_on_noop_mutation() {
+    #[tokio::test]
+    async fn handle_submit_history_mutations_does_not_emit_on_noop_mutation() {
         // Given a session with one entry already at ForcedExclude.
-        let actor = test_actor();
+        let actor = test_actor().await;
         let (sink, ctx) = crate::feat::session::session_actor::helpers::test_context();
         let session_id = {
             let mut state = actor.state.write();

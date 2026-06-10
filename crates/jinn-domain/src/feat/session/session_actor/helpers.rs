@@ -45,14 +45,14 @@ pub(in crate::feat::session::session_actor) fn emit_history_appended(
 }
 
 #[cfg(test)]
-pub(super) fn test_actor() -> super::SessionPersistenceActor {
+pub(super) async fn test_actor() -> super::SessionPersistenceActor {
     use crate::common::app_state::AppState;
     use crate::common::state::State;
     use crate::feat::context::strategy::token_estimator::TiktokenCounter;
 
     super::SessionPersistenceActor {
         state: State::new(AppState::default()),
-        services: crate::common::services::Services::new_fake(),
+        services: crate::common::services::Services::new_fake().await,
         counter: TiktokenCounter::o200k_base(),
         builtin_registry: crate::feat::session_lifecycle::builtin::BuiltinRegistry::new(),
         shell: "/bin/sh".to_owned(),
@@ -204,7 +204,7 @@ impl crate::feat::session::session_store::SessionStore for PopulatedFakeStore {
 /// Builds a test actor with services and a populated store.
 /// Returns (actor, store) so tests can inspect store state.
 #[cfg(test)]
-pub(super) fn test_actor_with_store(
+pub(super) async fn test_actor_with_store(
     sessions: Vec<crate::feat::session::chat_session::ChatSessionState>,
 ) -> (
     super::SessionPersistenceActor,

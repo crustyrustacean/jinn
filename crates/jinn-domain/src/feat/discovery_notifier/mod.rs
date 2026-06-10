@@ -137,7 +137,7 @@ mod tests {
         let harness = TestHarness::new().await;
         let _notifier = harness
             .spawn_actor::<DiscoveryNotifierActor>(DiscoveryNotifierActorDeps {
-                deps: harness.actor_deps(),
+                deps: harness.actor_deps().await,
             })
             .await;
         let recorder = harness.spawn_recorder::<PushChatEntry>().await;
@@ -173,7 +173,7 @@ mod tests {
         let harness = TestHarness::new().await;
         let _notifier = harness
             .spawn_actor::<DiscoveryNotifierActor>(DiscoveryNotifierActorDeps {
-                deps: harness.actor_deps(),
+                deps: harness.actor_deps().await,
             })
             .await;
         let recorder = harness.spawn_recorder::<PushChatEntry>().await;
@@ -205,7 +205,7 @@ mod tests {
         let harness = TestHarness::new().await;
         let _notifier = harness
             .spawn_actor::<DiscoveryNotifierActor>(DiscoveryNotifierActorDeps {
-                deps: harness.actor_deps(),
+                deps: harness.actor_deps().await,
             })
             .await;
         let recorder = harness.spawn_recorder::<PushChatEntry>().await;
@@ -240,7 +240,7 @@ mod tests {
         let harness = TestHarness::new().await;
         let _notifier = harness
             .spawn_actor::<DiscoveryNotifierActor>(DiscoveryNotifierActorDeps {
-                deps: harness.actor_deps(),
+                deps: harness.actor_deps().await,
             })
             .await;
         let recorder = harness.spawn_recorder::<PushChatEntry>().await;

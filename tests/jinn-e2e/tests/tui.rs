@@ -26,11 +26,8 @@ pub struct TuiWorld {
 
 impl TuiWorld {
     /// Creates a new world with a `TuiApp` backed by fake services.
-    fn new_app() -> Self {
-        let rt = Box::leak(Box::new(
-            tokio::runtime::Runtime::new().expect("test runtime"),
-        ));
-        let handle = rt.handle().clone();
+    async fn new_app() -> Self {
+        let handle = tokio::runtime::Handle::current();
         let llm = jinn_domain::feat::provider_infra::LlmServiceFactoryService::new(Arc::new(
             jinn_domain::FakeLlmServiceFactory::new(vec![]),
         ));
@@ -43,11 +40,14 @@ impl TuiWorld {
 
         let temp_dir = tempfile::TempDir::new().expect("test temp dir");
         let paths = jinn_domain::AppPaths::new_in(temp_dir.path());
-        let sessions_dir = paths.sessions_dir();
+        let _sessions_dir = paths.sessions_dir();
+
+        // We're inside #[tokio::main], so new_fake() can use the ambient runtime.
+        let base_services = jinn_domain::Services::new_fake().await;
 
         let services = jinn_domain::Services {
             paths,
-            handle,
+            handle: handle.clone(),
             actor_channel: jinn_domain::ActorChannelService::new(actor_tx),
             llm_service: llm,
             provider_registry: jinn_domain::ProviderRegistryService::new(
@@ -56,9 +56,6 @@ impl TuiWorld {
             api_keys: jinn_domain::ApiKeysService::new(jinn_domain::ApiKeys::new()),
             config_storage: jinn_domain::ConfigStorageService::new(Arc::new(
                 jinn_domain::InMemoryConfigStorage::new(),
-            )),
-            session_store: jinn_domain::SessionStoreService::new(Arc::new(
-                jinn_domain::SqliteSessionStore::new_in(&sessions_dir).expect("store"),
             )),
             user_preferences_storage: {
                 let svc = jinn_domain::UserPreferencesStorageService::new(Arc::new(
@@ -88,10 +85,10 @@ impl TuiWorld {
                 )
                     as Arc<dyn jinn_domain::feat::plugin_system::SessionPluginRegistry>),
             tempdir: None,
-            ..jinn_domain::Services::new_fake()
+            ..base_services
         };
 
-        let app = TuiApp::test_builder().services(services).build();
+        let app = TuiApp::test_builder().services(services).build().await;
 
         Self { app, temp_dir }
     }

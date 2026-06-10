@@ -529,7 +529,7 @@ mod tests {
     use std::sync::Arc;
     use tokio::sync::Notify;
 
-    fn make_actor() -> (
+    async fn make_actor() -> (
         PluginDispatchActor,
         Arc<RecordingSink>,
         ActorContext,
@@ -545,11 +545,11 @@ mod tests {
         let mut ctx = ActorContext::new("plugin-dispatch-test", sink.clone());
         let actor = PluginDispatchActor::activate(
             PluginDispatchActorDeps {
-                services: Services::new_fake(),
+                services: Services::new_fake().await,
                 state,
                 startup_session_id: session_id.to_string(),
                 domain_ctx: std::sync::Arc::new(DomainNodeContext::new(
-                    Services::new_fake(),
+                    Services::new_fake().await,
                     State::new(AppState::default()),
                 )),
             },
@@ -560,7 +560,7 @@ mod tests {
 
     #[tokio::test]
     async fn attach_plugin_pushes_onto_session_attached_plugins() {
-        let (mut actor, sink, ctx, session_id) = make_actor();
+        let (mut actor, sink, ctx, session_id) = make_actor().await;
         actor
             .handle_command(
                 Command::AttachPlugin(
@@ -593,7 +593,7 @@ mod tests {
 
     #[tokio::test]
     async fn detach_plugin_removes_from_session() {
-        let (mut actor, sink, ctx, session_id) = make_actor();
+        let (mut actor, sink, ctx, session_id) = make_actor().await;
         actor
             .handle_command(
                 Command::AttachPlugin(
@@ -634,7 +634,7 @@ mod tests {
 
     #[tokio::test]
     async fn toggle_plugin_flips_enabled() {
-        let (mut actor, sink, ctx, session_id) = make_actor();
+        let (mut actor, sink, ctx, session_id) = make_actor().await;
         actor
             .handle_command(
                 Command::AttachPlugin(
@@ -674,7 +674,7 @@ mod tests {
 
     #[tokio::test]
     async fn attach_on_unknown_session_is_noop() {
-        let (mut actor, sink, ctx, _) = make_actor();
+        let (mut actor, sink, ctx, _) = make_actor().await;
         let bogus_id = SessionId::new();
         actor
             .handle_command(
@@ -693,7 +693,7 @@ mod tests {
 
     #[tokio::test]
     async fn detach_unknown_plugin_is_noop() {
-        let (mut actor, sink, ctx, session_id) = make_actor();
+        let (mut actor, sink, ctx, session_id) = make_actor().await;
         actor
             .handle_command(
                 Command::DetachPlugin(
@@ -722,7 +722,7 @@ mod tests {
 
     #[tokio::test]
     async fn toggle_unknown_plugin_is_noop() {
-        let (mut actor, sink, ctx, session_id) = make_actor();
+        let (mut actor, sink, ctx, session_id) = make_actor().await;
         actor
             .handle_command(
                 Command::TogglePlugin(
@@ -739,7 +739,7 @@ mod tests {
 
     #[tokio::test]
     async fn fire_async_hook_routes_dynamic_to_handler() {
-        let (mut actor, _sink, ctx, session_id) = make_actor();
+        let (mut actor, _sink, ctx, session_id) = make_actor().await;
         // A well-formed plugin::fire_async dynamic command for the session.
         // NoopPluginFire silently no-ops, but the handler must not panic and
         // must resolve the session (registry miss falls back to global fire).
@@ -761,7 +761,7 @@ mod tests {
 
     #[tokio::test]
     async fn fire_async_hook_drops_malformed_payload() {
-        let (mut actor, sink, ctx, _session_id) = make_actor();
+        let (mut actor, sink, ctx, _session_id) = make_actor().await;
         // Malformed payload (session_id missing) is logged + dropped, no panic.
         actor
             .handle_command(
@@ -777,7 +777,7 @@ mod tests {
 
     #[tokio::test]
     async fn unrelated_dynamic_command_is_ignored() {
-        let (mut actor, sink, ctx, _session_id) = make_actor();
+        let (mut actor, sink, ctx, _session_id) = make_actor().await;
         // A dynamic command with a different name must not be handled here.
         actor
             .handle_command(
@@ -856,11 +856,11 @@ mod tests {
     }
 
     /// Build an actor whose `services.plugins` is a custom [`PluginFire`] backend.
-    fn make_actor_with_plugin_fire(
+    async fn make_actor_with_plugin_fire(
         backend: Arc<dyn PluginFire>,
     ) -> (PluginDispatchActor, ActorContext) {
         use crate::common::session_map::SessionMap;
-        let mut services = Services::new_fake();
+        let mut services = Services::new_fake().await;
         services.plugins = PluginFireService::new(backend);
         let session = ChatSessionState::default();
         let session_id = session.session_id().clone();
@@ -877,7 +877,7 @@ mod tests {
                 state,
                 startup_session_id: session_id.to_string(),
                 domain_ctx: Arc::new(DomainNodeContext::new(
-                    Services::new_fake(),
+                    Services::new_fake().await,
                     State::new(AppState::default()),
                 )),
             },
@@ -892,7 +892,7 @@ mod tests {
         let gate = Arc::new(Notify::new());
         let fire = BlockingPluginFire::new(gate.clone());
         let (actor, _ctx) =
-            make_actor_with_plugin_fire(Arc::new(fire.clone()) as Arc<dyn PluginFire>);
+            make_actor_with_plugin_fire(Arc::new(fire.clone()) as Arc<dyn PluginFire>).await;
 
         // When firing on_session_created. With the spawn fix this returns
         // immediately even though the fire parks on the gate; with the old
@@ -928,7 +928,7 @@ mod tests {
         let gate = Arc::new(Notify::new());
         let fire = BlockingPluginFire::new(gate.clone());
         let (actor, _ctx) =
-            make_actor_with_plugin_fire(Arc::new(fire.clone()) as Arc<dyn PluginFire>);
+            make_actor_with_plugin_fire(Arc::new(fire.clone()) as Arc<dyn PluginFire>).await;
 
         // When firing on_turn_end (Idle phase → on_turn_end hook). With the
         // spawn fix this returns immediately; the inline-await version would block.
@@ -968,7 +968,7 @@ mod tests {
         let gate = Arc::new(Notify::new());
         let fire = BlockingPluginFire::new(gate.clone());
 
-        let mut services = Services::new_fake();
+        let mut services = Services::new_fake().await;
         services.plugins = PluginFireService::new(Arc::new(fire) as Arc<dyn PluginFire>);
 
         let session = ChatSessionState::default();
@@ -989,7 +989,7 @@ mod tests {
         let mut ctx = ActorContext::new("plugin-dispatch-test", sink);
 
         let domain_ctx = Arc::new(DomainNodeContext::new(
-            Services::new_fake(),
+            Services::new_fake().await,
             State::new(AppState::default()),
         ));
         let (tx, rx) = oneshot::channel::<Result<String, String>>();

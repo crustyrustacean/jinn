@@ -194,7 +194,7 @@ mod tests {
         }
     }
 
-    fn create_actor() -> (SessionPersistenceActor, State) {
+    async fn create_actor() -> (SessionPersistenceActor, State) {
         let sink: Arc<dyn MessageSink> = Arc::new(RecordingSink::new());
         let mut ctx = ActorContext::new("test", sink);
         let state = State::new(AppState::default());
@@ -210,9 +210,10 @@ mod tests {
     }
 
     #[rstest::rstest]
-    fn on_tools_registered_keeps_regular_tools_in_global_map() {
+#[tokio::test]
+    async fn on_tools_registered_keeps_regular_tools_in_global_map() {
         // Given a session actor.
-        let (actor, state) = create_actor();
+        let (actor, state) = create_actor().await;
 
         // Build a ToolsRegistered with all builtin tools.
         let all_tools = crate::feat::tools_actor::registry::builtin_tools(
@@ -236,9 +237,10 @@ mod tests {
     }
 
     #[rstest::rstest]
-    fn on_personas_loaded_selects_coding_assistant_when_none_active() {
+#[tokio::test]
+    async fn on_personas_loaded_selects_coding_assistant_when_none_active() {
         // Given a session actor with no active persona.
-        let (actor, state) = create_actor();
+        let (actor, state) = create_actor().await;
         let personas = vec![
             make_persona("learning-tutor"),
             make_persona("coding-assistant"),
@@ -264,9 +266,10 @@ mod tests {
     }
 
     #[rstest::rstest]
-    fn on_personas_loaded_keeps_existing_active_persona() {
+#[tokio::test]
+    async fn on_personas_loaded_keeps_existing_active_persona() {
         // Given a session actor with active persona "learning-tutor".
-        let (actor, state) = create_actor();
+        let (actor, state) = create_actor().await;
         {
             let mut guard = state.write();
             guard.context.active_persona = Some(make_persona("learning-tutor"));
@@ -296,9 +299,10 @@ mod tests {
     }
 
     #[rstest::rstest]
-    fn on_personas_loaded_falls_back_when_active_missing() {
+#[tokio::test]
+    async fn on_personas_loaded_falls_back_when_active_missing() {
         // Given a session actor where active persona "foo" was deleted from disk.
-        let (actor, state) = create_actor();
+        let (actor, state) = create_actor().await;
         {
             let mut guard = state.write();
             guard.context.active_persona = Some(make_persona("foo"));
@@ -325,9 +329,10 @@ mod tests {
     }
 
     #[rstest::rstest]
-    fn on_personas_loaded_uses_first_when_coding_assistant_missing() {
+#[tokio::test]
+    async fn on_personas_loaded_uses_first_when_coding_assistant_missing() {
         // Given a session actor with no coding-assistant in the scanned list.
-        let (actor, state) = create_actor();
+        let (actor, state) = create_actor().await;
         let personas = vec![make_persona("learning-tutor")];
         let payload = PersonasLoaded {
             personas,
@@ -350,9 +355,10 @@ mod tests {
     }
 
     #[rstest::rstest]
-    fn on_personas_loaded_clears_active_when_list_empty() {
+#[tokio::test]
+    async fn on_personas_loaded_clears_active_when_list_empty() {
         // Given a session actor with some active persona.
-        let (actor, state) = create_actor();
+        let (actor, state) = create_actor().await;
         {
             let mut guard = state.write();
             guard.context.active_persona = Some(make_persona("foo"));
@@ -373,9 +379,10 @@ mod tests {
     // --- handle_pin_chat_entry ---
 
     #[rstest::rstest]
-    fn handle_pin_chat_entry_pins_and_emits() {
+#[tokio::test]
+    async fn handle_pin_chat_entry_pins_and_emits() {
         // Given a session with a user entry.
-        let (actor, state) = create_actor();
+        let (actor, state) = create_actor().await;
         let (sink, ctx) = {
             let sink = Arc::new(RecordingSink::new());
             let ctx = ActorContext::new("test", sink.clone());
@@ -422,9 +429,10 @@ mod tests {
     // --- handle_unpin_chat_entry ---
 
     #[rstest::rstest]
-    fn handle_unpin_chat_entry_unpins_and_emits() {
+#[tokio::test]
+    async fn handle_unpin_chat_entry_unpins_and_emits() {
         // Given a session with a pinned entry.
-        let (actor, state) = create_actor();
+        let (actor, state) = create_actor().await;
         let (sink, ctx) = {
             let sink = Arc::new(RecordingSink::new());
             let ctx = ActorContext::new("test", sink.clone());
@@ -473,9 +481,10 @@ mod tests {
     // --- handle_load_persona_picker_entries ---
 
     #[rstest::rstest]
-    fn handle_load_persona_picker_entries_populates_picker() {
+#[tokio::test]
+    async fn handle_load_persona_picker_entries_populates_picker() {
         // Given a session actor with personas loaded.
-        let (actor, state) = create_actor();
+        let (actor, state) = create_actor().await;
         {
             let mut guard = state.write();
             guard.context.personas = vec![

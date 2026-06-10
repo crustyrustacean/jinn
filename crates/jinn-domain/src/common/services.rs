@@ -93,11 +93,6 @@ pub struct Services {
     #[debug(skip)]
     pub bridge: crate::common::bridge::Bridge,
 }
-impl Default for Services {
-    fn default() -> Self {
-        Self::new_fake()
-    }
-}
 
 impl Services {
     /// Creates a new `Services` with all fake/noop implementations.
@@ -114,7 +109,7 @@ impl Services {
         clippy::expect_used,
         reason = "test-only defaults, panics are acceptable"
     )]
-    pub fn new_fake() -> Self {
+    pub async fn new_fake() -> Self {
         let handle = test_services::shared_test_handle();
 
         let tempdir = Arc::new(tempfile::TempDir::new().expect("test temp dir"));

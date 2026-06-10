@@ -119,12 +119,12 @@ mod tests {
     use crate::common::services::Services;
 
     /// Creates a test actor with shared state.
-    fn create_actor() -> (AppStateSyncActor, State, ActorContext) {
+    async fn create_actor() -> (AppStateSyncActor, State, ActorContext) {
         let sink = Arc::new(RecordingSink::new());
         let mut ctx = ActorContext::new("app-state-sync", sink.clone() as Arc<dyn MessageSink>);
         let state = State::new(AppState::default());
         let deps = AppStateSyncActorDeps {
-            services: Services::new_fake(),
+            services: Services::new_fake().await,
             state: state.clone(),
         };
 
@@ -136,7 +136,7 @@ mod tests {
     #[tokio::test]
     async fn sidebar_width_defaults_to_30_when_none() {
         // Given a sync actor.
-        let (mut actor, state, ctx) = create_actor();
+        let (mut actor, state, ctx) = create_actor().await;
 
         // When receiving AppStateUpdated with sidebar_width = None.
         let app_state = AppStateFile {
@@ -159,7 +159,7 @@ mod tests {
     #[tokio::test]
     async fn sidebar_width_updates_from_state() {
         // Given a sync actor.
-        let (mut actor, state, ctx) = create_actor();
+        let (mut actor, state, ctx) = create_actor().await;
 
         // When receiving AppStateUpdated with sidebar_width = 50.
         let app_state = AppStateFile {
@@ -184,7 +184,7 @@ mod tests {
         // Kills: replace == with != in persona_name matching.
         // If the condition were flipped, the wrong persona would be set.
         // Given a sync actor with two personas loaded.
-        let (mut actor, state, ctx) = create_actor();
+        let (mut actor, state, ctx) = create_actor().await;
         {
             let mut guard = state.write();
             guard.context.personas = vec![
@@ -229,7 +229,7 @@ mod tests {
     #[tokio::test]
     async fn theme_name_none_resolves_default_theme() {
         // Given a sync actor.
-        let (mut actor, state, ctx) = create_actor();
+        let (mut actor, state, ctx) = create_actor().await;
 
         // When receiving AppStateUpdated with theme_name = None.
         let app_state = AppStateFile {
@@ -253,7 +253,7 @@ mod tests {
     #[tokio::test]
     async fn ignores_unrelated_events() {
         // Given a sync actor.
-        let (mut actor, state, ctx) = create_actor();
+        let (mut actor, state, ctx) = create_actor().await;
 
         // When receiving an unrelated event (ModeChanged).
         actor

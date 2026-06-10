@@ -377,7 +377,7 @@ mod tests {
     #[tokio::test]
     async fn handle_enqueue_user_message_dispatches_when_idle() {
         // Given an idle session.
-        let actor = test_actor();
+        let actor = test_actor().await;
         let (sink, ctx) = test_context();
         let session_id = {
             let mut state = actor.state.write();
@@ -417,7 +417,7 @@ mod tests {
     #[tokio::test]
     async fn handle_enqueue_user_message_sets_title_from_first_message() {
         // Given a new session with no title.
-        let actor = test_actor();
+        let actor = test_actor().await;
         let (_sink, ctx) = test_context();
         let session_id = {
             let mut state = actor.state.write();
@@ -445,7 +445,7 @@ mod tests {
     #[tokio::test]
     async fn handle_enqueue_user_message_queues_when_busy() {
         // Given a session in Streaming phase (busy).
-        let actor = test_actor();
+        let actor = test_actor().await;
         let (_sink, ctx) = test_context();
         let session_id = {
             let mut state = actor.state.write();
@@ -478,7 +478,7 @@ mod tests {
     #[tokio::test]
     async fn handle_enqueue_user_message_no_provider_sends_none_provider_id() {
         // Given a session with default model (NO_PROVIDER_ID).
-        let actor = test_actor();
+        let actor = test_actor().await;
         let (sink, ctx) = test_context();
         let session_id = {
             let mut state = actor.state.write();
@@ -515,7 +515,7 @@ mod tests {
     #[tokio::test]
     async fn handle_set_chat_input_text_updates_buffer() {
         // Given a session.
-        let actor = test_actor();
+        let actor = test_actor().await;
         let session_id = {
             let mut state = actor.state.write();
             let _ = state.active_session_mut();
@@ -539,7 +539,7 @@ mod tests {
     #[tokio::test]
     async fn handle_push_chat_entry_pushes_and_emits() {
         // Given a session.
-        let actor = test_actor();
+        let actor = test_actor().await;
         let (sink, ctx) = test_context();
         let session_id = {
             let mut state = actor.state.write();
@@ -588,7 +588,7 @@ mod tests {
     #[tokio::test]
     async fn handle_send_message_emits_enqueue_user_message() {
         // Given a test context.
-        let _actor = test_actor();
+        let _actor = test_actor().await;
         let (sink, ctx) = test_context();
         let session_id = crate::protocol::SessionId::new();
 
@@ -617,7 +617,7 @@ mod tests {
     #[tokio::test]
     async fn before_turn_no_attachments_dispatches_normally() {
         // Given an idle session with no attached plugins.
-        let actor = test_actor();
+        let actor = test_actor().await;
         let (_sink, ctx) = test_context();
         let session_id = {
             let mut state = actor.state.write();
@@ -648,7 +648,7 @@ mod tests {
     #[tokio::test]
     async fn handle_enqueue_resume_turn_noop_when_streaming() {
         // Given a session already in Streaming phase.
-        let actor = test_actor();
+        let actor = test_actor().await;
         let (sink, ctx) = test_context();
         let session_id = {
             let mut state = actor.state.write();
@@ -684,7 +684,7 @@ mod tests {
     #[tokio::test]
     async fn handle_enqueue_resume_turn_idle_dispatches_directly() {
         // Given an idle session.
-        let actor = test_actor();
+        let actor = test_actor().await;
         let (sink, ctx) = test_context();
         let session_id = {
             let mut state = actor.state.write();
@@ -739,7 +739,7 @@ mod tests {
     #[tokio::test]
     async fn handle_enqueue_resume_turn_drains_steering_buffer_before_assembly() {
         // Given an idle session with a non-empty steering buffer.
-        let actor = test_actor();
+        let actor = test_actor().await;
         let (sink, ctx) = test_context();
         let session_id = {
             let mut state = actor.state.write();
@@ -805,7 +805,7 @@ mod tests {
     #[tokio::test]
     async fn handle_enqueue_user_message_drains_steering_buffer_on_idle_dispatch() {
         // Given an idle session with a non-empty steering buffer.
-        let actor = test_actor();
+        let actor = test_actor().await;
         let (sink, ctx) = test_context();
         let session_id = {
             let mut state = actor.state.write();

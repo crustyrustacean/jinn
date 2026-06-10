@@ -291,7 +291,7 @@ mod tests {
     use crate::feat::provider::protocol::command::ProviderSwitch;
     use crate::feat::ui::picker_states::PickerExt;
 
-    fn create_actor() -> (
+    async fn create_actor() -> (
         ProviderActor,
         Services,
         Arc<RecordingSink>,
@@ -301,7 +301,7 @@ mod tests {
         let sink = Arc::new(RecordingSink::new());
         let mut ctx = ActorContext::new("provider", sink.clone() as Arc<dyn MessageSink>);
 
-        let services = Services::new_fake();
+        let services = Services::new_fake().await;
         let state = State::new(AppState::default());
         let deps = ProviderActorDeps {
             services: services.clone(),
@@ -332,7 +332,7 @@ mod tests {
     #[tokio::test]
     async fn model_cache_loaded_sets_model_cache_in_state() {
         // Given a provider actor and a registry with a provider.
-        let (mut actor, services, _sink, ctx, state) = create_actor();
+        let (mut actor, services, _sink, ctx, state) = create_actor().await;
         let registry = crate::feat::provider_infra::ProviderRegistry::from_config(sample_config())
             .expect("registry");
         services.provider_registry.replace(registry);
@@ -364,7 +364,7 @@ mod tests {
         assert_eq!(loaded.entries["ollama"][0].id, "llama3");
     }
 
-    fn create_actor_with_config(
+    async fn create_actor_with_config(
         config: ProvidersConfig,
     ) -> (
         ProviderActor,
@@ -375,7 +375,7 @@ mod tests {
     ) {
         let sink = Arc::new(RecordingSink::new());
         let mut ctx = ActorContext::new("provider", sink.clone() as Arc<dyn MessageSink>);
-        let services = Services::new_fake();
+        let services = Services::new_fake().await;
         let registry =
             crate::feat::provider_infra::ProviderRegistry::from_config(config).expect("registry");
         services.provider_registry.replace(registry);
@@ -392,7 +392,7 @@ mod tests {
     #[tokio::test]
     async fn model_cache_loaded_preserves_timestamp() {
         // Given a provider actor with a cache that has a timestamp.
-        let (mut actor, services, _sink, ctx, state) = create_actor();
+        let (mut actor, services, _sink, ctx, state) = create_actor().await;
         let registry = crate::feat::provider_infra::ProviderRegistry::from_config(sample_config())
             .expect("registry");
         services.provider_registry.replace(registry);
@@ -443,7 +443,7 @@ mod tests {
             aliases: vec![],
             default_provider: None,
         };
-        let (mut actor, services, _sink, ctx, state) = create_actor_with_config(config);
+        let (mut actor, services, _sink, ctx, state) = create_actor_with_config(config).await;
 
         // When handling ModelsRefreshed with zai model that has context_length: None.
         let mut results = std::collections::HashMap::new();
@@ -503,7 +503,7 @@ mod tests {
             aliases: vec![],
             default_provider: None,
         };
-        let (mut actor, _services, _sink, ctx, state) = create_actor_with_config(config);
+        let (mut actor, _services, _sink, ctx, state) = create_actor_with_config(config).await;
 
         // When handling ModelsRefreshed where API returns context_length: Some(8192).
         let mut results = std::collections::HashMap::new();
@@ -537,7 +537,7 @@ mod tests {
     #[tokio::test]
     async fn models_refreshed_leaves_none_when_neither_source_has_context_length() {
         // Given a registry with provider that has context_length: None.
-        let (mut actor, _services, _sink, ctx, state) = create_actor();
+        let (mut actor, _services, _sink, ctx, state) = create_actor().await;
 
         // When handling ModelsRefreshed where API also returns context_length: None.
         let mut results = std::collections::HashMap::new();
@@ -571,7 +571,7 @@ mod tests {
     #[tokio::test]
     async fn models_refreshed_does_not_touch_provider_not_in_registry() {
         // Given a registry with only ollama provider.
-        let (mut actor, _services, _sink, ctx, state) = create_actor();
+        let (mut actor, _services, _sink, ctx, state) = create_actor().await;
 
         // When handling ModelsRefreshed with results for groq (not in registry).
         let mut results = std::collections::HashMap::new();
@@ -619,7 +619,7 @@ mod tests {
             aliases: vec![],
             default_provider: None,
         };
-        let (mut actor, services, _sink, ctx, state) = create_actor_with_config(config);
+        let (mut actor, services, _sink, ctx, state) = create_actor_with_config(config).await;
 
         // When handling ModelCacheLoaded with cache that has context_length: None.
         let mut cache = ModelCache::new();
@@ -679,7 +679,7 @@ mod tests {
             aliases: vec![],
             default_provider: None,
         };
-        let (mut actor, _services, _sink, ctx, state) = create_actor_with_config(config);
+        let (mut actor, _services, _sink, ctx, state) = create_actor_with_config(config).await;
 
         // When handling ModelCacheLoaded with cache that has context_length: Some(8192).
         let mut cache = ModelCache::new();
@@ -712,7 +712,8 @@ mod tests {
     // --- models.dev merge tests ---
 
     #[rstest::rstest]
-    fn merge_from_models_dev_fills_none() {
+#[tokio::test]
+    async fn merge_from_models_dev_fills_none() {
         // Given a cache with context_length: None and models.dev data.
         let mut cache = ModelCache::new();
         cache.entries.insert(
@@ -736,7 +737,8 @@ mod tests {
     }
 
     #[rstest::rstest]
-    fn merge_from_models_dev_does_not_overwrite_existing() {
+#[tokio::test]
+    async fn merge_from_models_dev_does_not_overwrite_existing() {
         // Given a cache with context_length: Some(100000) and models.dev has 200000.
         let mut cache = ModelCache::new();
         cache.entries.insert(
@@ -760,7 +762,8 @@ mod tests {
     }
 
     #[rstest::rstest]
-    fn merge_from_models_dev_leaves_none_when_not_in_data() {
+#[tokio::test]
+    async fn merge_from_models_dev_leaves_none_when_not_in_data() {
         // Given a cache with an unknown model.
         let mut cache = ModelCache::new();
         cache.entries.insert(
@@ -781,7 +784,8 @@ mod tests {
     }
 
     #[rstest::rstest]
-    fn merge_priority_is_api_then_config_then_models_dev() {
+#[tokio::test]
+    async fn merge_priority_is_api_then_config_then_models_dev() {
         // Given three models with different source scenarios.
         let mut cache = ModelCache::new();
         // Model A: API returned a value.
@@ -842,7 +846,8 @@ mod tests {
     }
 
     #[rstest::rstest]
-    fn merge_from_models_dev_handles_multiple_providers() {
+#[tokio::test]
+    async fn merge_from_models_dev_handles_multiple_providers() {
         // Given two providers with models that have None.
         let mut cache = ModelCache::new();
         cache.entries.insert(
@@ -883,7 +888,7 @@ mod tests {
         // Also kills: replace handle_command with ().
         // Also kills: replace handle_provider_switch with ().
         // Given a provider actor.
-        let (mut actor, _services, sink, ctx, state) = create_actor();
+        let (mut actor, _services, sink, ctx, state) = create_actor().await;
         let session_id = state.read().session.active_session_id().clone();
 
         // When sending a ProviderSwitch command.
@@ -910,7 +915,7 @@ mod tests {
     async fn handle_dispatches_load_provider_picker_entries_command() {
         // Kills: replace handle_load_provider_picker_entries with ().
         // Given a provider actor with a registry.
-        let (mut actor, services, _sink, ctx, state) = create_actor();
+        let (mut actor, services, _sink, ctx, state) = create_actor().await;
         let registry = crate::feat::provider_infra::ProviderRegistry::from_config(sample_config())
             .expect("registry");
         services.provider_registry.replace(registry);
@@ -933,7 +938,7 @@ mod tests {
     async fn handle_dispatches_load_compaction_model_picker_entries_command() {
         // Kills: replace handle_load_compaction_model_picker_entries with ().
         // Given a provider actor with a registry.
-        let (mut actor, services, _sink, ctx, state) = create_actor();
+        let (mut actor, services, _sink, ctx, state) = create_actor().await;
         let registry = crate::feat::provider_infra::ProviderRegistry::from_config(sample_config())
             .expect("registry");
         services.provider_registry.replace(registry);

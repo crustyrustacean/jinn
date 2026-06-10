@@ -1095,7 +1095,8 @@ mod tests {
     // --- Helper function tests ---
 
     #[rstest::rstest]
-    fn strip_ansi_removes_bold_codes() {
+#[tokio::test]
+    async fn strip_ansi_removes_bold_codes() {
         // Given text with bold ANSI codes.
         let input = "\x1b[1mbold text\x1b[22m";
 
@@ -1107,28 +1108,32 @@ mod tests {
     }
 
     #[rstest::rstest]
-    fn strip_ansi_removes_color_codes() {
+#[tokio::test]
+    async fn strip_ansi_removes_color_codes() {
         let input = "\x1b[31mred\x1b[0m";
         let result = strip_ansi(input);
         assert_eq!(result, "red");
     }
 
     #[rstest::rstest]
-    fn strip_ansi_passes_plain_text() {
+#[tokio::test]
+    async fn strip_ansi_passes_plain_text() {
         let input = "hello world";
         let result = strip_ansi(input);
         assert_eq!(result, "hello world");
     }
 
     #[rstest::rstest]
-    fn strip_ansi_handles_chained_codes() {
+#[tokio::test]
+    async fn strip_ansi_handles_chained_codes() {
         let input = "\x1b[1m\x1b[31mbold red\x1b[0m";
         let result = strip_ansi(input);
         assert_eq!(result, "bold red");
     }
 
     #[rstest::rstest]
-    fn strip_ansi_handles_complex_csi_sequences() {
+#[tokio::test]
+    async fn strip_ansi_handles_complex_csi_sequences() {
         // 38;5;196 is foreground 256-color (bright red).
         let input = "\x1b[38;5;196mcolored\x1b[0m";
         let result = strip_ansi(input);
@@ -1136,20 +1141,23 @@ mod tests {
     }
 
     #[rstest::rstest]
-    fn strip_ansi_handles_empty_string() {
+#[tokio::test]
+    async fn strip_ansi_handles_empty_string() {
         let result = strip_ansi("");
         assert_eq!(result, "");
     }
 
     #[rstest::rstest]
-    fn strip_ansi_handles_text_with_no_ansi() {
+#[tokio::test]
+    async fn strip_ansi_handles_text_with_no_ansi() {
         let input = "normal text\nwith newlines";
         let result = strip_ansi(input);
         assert_eq!(result, "normal text\nwith newlines");
     }
 
     #[rstest::rstest]
-    fn no_output_info_is_system_entry_with_cwd() {
+#[tokio::test]
+    async fn no_output_info_is_system_entry_with_cwd() {
         // Given a default CWD path.
         let cwd = Path::new("/tmp/test-project");
 
@@ -1165,7 +1173,8 @@ mod tests {
     }
 
     #[rstest::rstest]
-    fn setup_running_msg_is_system_with_gear_emoji() {
+#[tokio::test]
+    async fn setup_running_msg_is_system_with_gear_emoji() {
         // When building the setup running message.
         let entry = setup_running_msg();
 
@@ -1178,7 +1187,8 @@ mod tests {
     }
 
     #[rstest::rstest]
-    fn setup_complete_msg_is_system_with_checkmark_and_cwd() {
+#[tokio::test]
+    async fn setup_complete_msg_is_system_with_checkmark_and_cwd() {
         // Given a CWD path.
         let cwd = Path::new("/tmp/my-project");
 
@@ -1195,7 +1205,8 @@ mod tests {
     }
 
     #[rstest::rstest]
-    fn teardown_running_msg_is_system_with_gear_emoji() {
+#[tokio::test]
+    async fn teardown_running_msg_is_system_with_gear_emoji() {
         // When building the teardown running message.
         let entry = teardown_running_msg();
 
@@ -1214,7 +1225,7 @@ mod tests {
         // Given a session actor with two sessions, second is targeted for teardown.
         use crate::feat::preferences_actor::user_preferences::SessionLifecycle;
 
-        let mut actor = test_actor();
+        let mut actor = test_actor().await;
         let (sink, ctx) = test_context();
         let (target_id, original_active) = {
             let mut state = actor.state.write();
@@ -1278,7 +1289,7 @@ mod tests {
         // Given a session actor in Normal scope with a lifecycle.
         use crate::feat::preferences_actor::user_preferences::SessionLifecycle;
 
-        let mut actor = test_actor();
+        let mut actor = test_actor().await;
         let (_sink, ctx) = test_context();
         let session_id = {
             let mut state = actor.state.write();
@@ -1324,7 +1335,7 @@ mod tests {
         // Given a session actor with a session and a lifecycle.
         use crate::feat::preferences_actor::user_preferences::SessionLifecycle;
 
-        let mut actor = test_actor();
+        let mut actor = test_actor().await;
         let (sink, ctx) = test_context();
         let session_id = {
             let mut state = actor.state.write();
@@ -1381,7 +1392,7 @@ mod tests {
         // Given a session actor with a session and a lifecycle.
         use crate::feat::preferences_actor::user_preferences::SessionLifecycle;
 
-        let mut actor = test_actor();
+        let mut actor = test_actor().await;
         let (sink, ctx) = test_context();
         let session_id = {
             let mut state = actor.state.write();
@@ -1442,7 +1453,7 @@ mod tests {
     #[tokio::test]
     async fn remove_session_removes_session_from_hashmap() {
         // Given a session actor with two sessions.
-        let mut actor = test_actor();
+        let mut actor = test_actor().await;
         let (sink, ctx) = test_context();
         let second = ChatSessionState::new();
         let second_id = second.session_id().clone();
@@ -1486,7 +1497,7 @@ mod tests {
     #[tokio::test]
     async fn remove_session_creates_new_session_when_last_removed() {
         // Given a session actor with only one session.
-        let mut actor = test_actor();
+        let mut actor = test_actor().await;
         let (sink, ctx) = test_context();
         let only_id = {
             let state = actor.state.read();
@@ -1528,7 +1539,7 @@ mod tests {
     #[tokio::test]
     async fn remove_session_switches_active_when_active_is_removed() {
         // Given a session actor with two sessions, active is the second.
-        let mut actor = test_actor();
+        let mut actor = test_actor().await;
         let (_sink, ctx) = test_context();
         let second = ChatSessionState::new();
         let second_id = second.session_id().clone();
@@ -1557,7 +1568,7 @@ mod tests {
     #[tokio::test]
     async fn remove_session_emits_session_removed_event() {
         // Given a session actor with two sessions.
-        let mut actor = test_actor();
+        let mut actor = test_actor().await;
         let (sink, ctx) = test_context();
         let second = ChatSessionState::new();
         let second_id = second.session_id().clone();
@@ -1597,7 +1608,7 @@ mod tests {
     #[tokio::test]
     async fn remove_session_is_noop_if_session_does_not_exist() {
         // Given a session actor with one session.
-        let mut actor = test_actor();
+        let mut actor = test_actor().await;
         let (sink, ctx) = test_context();
         let fake_id = crate::protocol::SessionId::new();
         let original_len = {
@@ -1643,7 +1654,7 @@ mod tests {
     #[tokio::test]
     async fn teardown_only_success_does_not_remove_session() {
         // Given a session actor with a session.
-        let mut actor = test_actor();
+        let mut actor = test_actor().await;
         let (_sink, ctx) = test_context();
         let session_id = {
             let state = actor.state.read();
@@ -1675,7 +1686,7 @@ mod tests {
     #[tokio::test]
     async fn teardown_only_success_does_not_emit_session_removed() {
         // Given a session actor with a session.
-        let mut actor = test_actor();
+        let mut actor = test_actor().await;
         let (sink, ctx) = test_context();
         let session_id = {
             let state = actor.state.read();
@@ -1714,7 +1725,7 @@ mod tests {
         // Given a session actor with a session and a lifecycle.
         use crate::feat::preferences_actor::user_preferences::SessionLifecycle;
 
-        let mut actor = test_actor();
+        let mut actor = test_actor().await;
         let (sink, ctx) = test_context();
         let session_id = {
             let mut state = actor.state.write();
@@ -1776,7 +1787,7 @@ mod tests {
         // Given a session actor with a session and a lifecycle.
         use crate::feat::preferences_actor::user_preferences::SessionLifecycle;
 
-        let mut actor = test_actor();
+        let mut actor = test_actor().await;
         let (sink, ctx) = test_context();
         let session_id = {
             let mut state = actor.state.write();
@@ -1837,7 +1848,7 @@ mod tests {
     #[tokio::test]
     async fn close_session_with_nothing_ran_skips_teardown_and_archives() {
         // Given a session with LifecycleScriptState::NothingRan and history.
-        let mut actor = test_actor();
+        let mut actor = test_actor().await;
         let (sink, ctx) = test_context();
         let session_id = {
             let mut state = actor.state.write();
@@ -1883,7 +1894,7 @@ mod tests {
     #[tokio::test]
     async fn archive_session_without_lifecycle_removes_from_memory() {
         // Given a session with history and no lifecycle.
-        let actor = test_actor();
+        let actor = test_actor().await;
         let (sink, ctx) = test_context();
         let second = ChatSessionState::new();
         let _second_id = second.session_id().clone();
@@ -1947,7 +1958,7 @@ mod tests {
     #[tokio::test]
     async fn archive_empty_session_removes_and_archives() {
         // Given an empty session.
-        let actor = test_actor();
+        let actor = test_actor().await;
         let (sink, ctx) = test_context();
         let second = ChatSessionState::new();
         let _second_id = second.session_id().clone();
@@ -1993,7 +2004,7 @@ mod tests {
     #[tokio::test]
     async fn archive_active_session_switches_to_next() {
         // Given two sessions, archiving the active one.
-        let actor = test_actor();
+        let actor = test_actor().await;
         let (_sink, ctx) = test_context();
         let second = ChatSessionState::new();
         let _second_id = second.session_id().clone();
@@ -2025,7 +2036,7 @@ mod tests {
     #[tokio::test]
     async fn archive_last_session_creates_new_one() {
         // Given one non-empty session.
-        let actor = test_actor();
+        let actor = test_actor().await;
         let (_sink, ctx) = test_context();
         let only_id = {
             let mut state = actor.state.write();
@@ -2060,7 +2071,7 @@ mod tests {
         use crate::feat::session::chat_session::LifecycleScriptState;
 
         // Given a session with SetupRan, a lifecycle, and a failing teardown command.
-        let mut actor = test_actor();
+        let mut actor = test_actor().await;
         let (_sink, ctx) = test_context();
         let session_id = {
             let mut state = actor.state.write();
@@ -2116,7 +2127,7 @@ mod tests {
         use crate::feat::preferences_actor::user_preferences::SessionLifecycle;
 
         // Given a session with SetupRan and a failing teardown.
-        let mut actor = test_actor();
+        let mut actor = test_actor().await;
         let (sink, ctx) = test_context();
         let session_id = {
             let mut state = actor.state.write();
@@ -2172,7 +2183,7 @@ mod tests {
         use crate::feat::preferences_actor::user_preferences::SessionLifecycle;
 
         // Given a session with SetupRan and a succeeding teardown command.
-        let mut actor = test_actor();
+        let mut actor = test_actor().await;
         let (sink, ctx) = test_context();
         let second_session = ChatSessionState::new();
         let session_id = {
@@ -2241,7 +2252,7 @@ mod tests {
         // Given an actor with an empty (non-interacted) session and a recording store.
         use super::super::super::helpers::{test_actor_with_store, test_context};
 
-        let (actor, store) = test_actor_with_store(vec![]);
+        let (actor, store) = test_actor_with_store(vec![]).await;
         let session_id = actor.state.read().session.active_session_id().clone();
         let (_sink, ctx) = test_context();
 
@@ -2267,7 +2278,7 @@ mod tests {
         // Given an actor with an empty (non-interacted) session and a recording store.
         use super::super::super::helpers::{test_actor_with_store, test_context};
 
-        let (mut actor, store) = test_actor_with_store(vec![]);
+        let (mut actor, store) = test_actor_with_store(vec![]).await;
         let session_id = actor.state.read().session.active_session_id().clone();
         let (_sink, ctx) = test_context();
 
@@ -2296,7 +2307,7 @@ mod tests {
         use crate::feat::session::chat_session::LifecycleScriptState;
 
         // Given a session with SetupRan and a succeeding teardown command.
-        let mut actor = test_actor();
+        let mut actor = test_actor().await;
         let (_sink, ctx) = test_context();
         let session_id = {
             let mut state = actor.state.write();
@@ -2355,7 +2366,7 @@ mod tests {
         use crate::feat::session::chat_session::LifecycleScriptState;
 
         // Given a session with SetupRan, a succeeding teardown, and a recording store.
-        let (mut actor, store) = test_actor_with_store(vec![]);
+        let (mut actor, store) = test_actor_with_store(vec![]).await;
         let second = ChatSessionState::new();
         let session_id = {
             let mut state = actor.state.write();
@@ -2412,7 +2423,7 @@ mod tests {
         use crate::feat::session_lifecycle::protocol::command::SetSessionCwd;
         use std::path::PathBuf;
 
-        let actor = test_actor();
+        let actor = test_actor().await;
         let (_sink, ctx) = test_context();
         let session_id = {
             let state = actor.state.read();
@@ -2442,7 +2453,7 @@ mod tests {
         use crate::feat::session_lifecycle::protocol::event::SessionCwdChanged;
         use std::path::PathBuf;
 
-        let actor = test_actor();
+        let actor = test_actor().await;
         let (sink, ctx) = test_context();
         let session_id = {
             let state = actor.state.read();
@@ -2474,9 +2485,10 @@ mod tests {
     }
 
     #[rstest::rstest]
-    fn cancel_with_no_lifecycle_in_flight_is_noop() {
+#[tokio::test]
+    async fn cancel_with_no_lifecycle_in_flight_is_noop() {
         // Given an actor with no lifecycle child running.
-        let mut actor = test_actor();
+        let mut actor = test_actor().await;
         let (sink, ctx) = test_context();
         let payload = crate::feat::session_lifecycle::protocol::command::CancelLifecycleCommand {
             session_id: crate::protocol::SessionId::new(),
@@ -2493,7 +2505,7 @@ mod tests {
     #[tokio::test]
     async fn finish_handler_owns_cleanup_after_cancel() {
         // Given an active session that has started a long-running setup command.
-        let mut actor = test_actor();
+        let mut actor = test_actor().await;
         let (sink, ctx) = test_context();
         let session_id = actor.state.read().session.active_session_id().clone();
 
@@ -2592,7 +2604,7 @@ mod tests {
     #[tokio::test]
     async fn setup_with_no_output_advances_to_setup_ran() {
         // Given an active session with default CWD and lifecycle in NothingRan.
-        let mut actor = test_actor();
+        let mut actor = test_actor().await;
         let (sink, ctx) = test_context();
         let session_id = actor.state.read().session.active_session_id().clone();
 

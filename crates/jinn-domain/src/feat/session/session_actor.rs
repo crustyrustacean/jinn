@@ -340,14 +340,14 @@ mod dispatch_tests {
     use crate::feat::tools_actor::protocol::event::ToolCallReceived;
     use crate::protocol::{Command, Event};
 
-    fn test_actor() -> SessionPersistenceActor {
+    async fn test_actor() -> SessionPersistenceActor {
         use crate::common::app_state::AppState;
         use crate::common::state::State;
         use crate::feat::context::strategy::token_estimator::TiktokenCounter;
 
         SessionPersistenceActor {
             state: State::new(AppState::default()),
-            services: crate::common::services::Services::new_fake(),
+            services: crate::common::services::Services::new_fake().await,
             counter: TiktokenCounter::o200k_base(),
             builtin_registry: crate::feat::session_lifecycle::builtin::BuiltinRegistry::new(),
             shell: "/bin/sh".to_owned(),
@@ -367,7 +367,7 @@ mod dispatch_tests {
     #[tokio::test]
     async fn handle_event_stream_token_dispatches_to_handler() {
         // Given an actor with a session in streaming state.
-        let mut actor = test_actor();
+        let mut actor = test_actor().await;
         let (_sink, ctx) = test_context();
         let session_id = {
             let mut state = actor.state.write();
@@ -395,7 +395,7 @@ mod dispatch_tests {
     #[tokio::test]
     async fn handle_event_tool_call_received_dispatches_to_handler() {
         // Given an actor with an active session.
-        let mut actor = test_actor();
+        let mut actor = test_actor().await;
         let (_sink, ctx) = test_context();
         let session_id = actor.state.read().session.active_session_id().clone();
 
@@ -416,7 +416,7 @@ mod dispatch_tests {
     #[tokio::test]
     async fn handle_command_enqueue_user_message_dispatches_to_handler() {
         // Given an actor with an active session.
-        let mut actor = test_actor();
+        let mut actor = test_actor().await;
         let (_sink, ctx) = test_context();
         let session_id = actor.state.read().session.active_session_id().clone();
 
@@ -433,7 +433,7 @@ mod dispatch_tests {
     #[tokio::test]
     async fn handle_event_models_refreshed_dispatches_to_handler() {
         // Given an actor.
-        let mut actor = test_actor();
+        let mut actor = test_actor().await;
         let (_sink, ctx) = test_context();
 
         // When handling a ModelsRefreshed event via the dispatch path.
@@ -450,7 +450,7 @@ mod dispatch_tests {
     #[tokio::test]
     async fn handle_event_environment_loaded_dispatches_to_handler() {
         // Given an actor.
-        let mut actor = test_actor();
+        let mut actor = test_actor().await;
         let (_sink, ctx) = test_context();
 
         // When handling an EnvironmentLoaded event via the dispatch path.

@@ -132,7 +132,7 @@ mod tests {
     async fn loading_unarchived_sessions_does_not_switch_active_session() {
         // Given an actor with a default welcome session and one session in the store.
         let store_session = ChatSessionState::new();
-        let (actor, _store) = test_actor_with_store(vec![store_session]);
+        let (actor, _store) = test_actor_with_store(vec![store_session]).await;
         let (_sink, ctx) = test_context();
 
         // Record the default session's ID before loading.
@@ -158,7 +158,7 @@ mod tests {
     #[tokio::test]
     async fn on_environment_loaded_emits_no_scan_commands() {
         // Given an actor with a default welcome session.
-        let (actor, _store) = test_actor_with_store(vec![]);
+        let (actor, _store) = test_actor_with_store(vec![]).await;
         let (sink, ctx) = test_context();
 
         // When handling EnvironmentLoaded.
@@ -198,7 +198,7 @@ mod tests {
     async fn loading_unarchived_sessions_does_not_remove_default_session() {
         // Given an actor with a default welcome session and one session in the store.
         let store_session = ChatSessionState::new();
-        let (actor, _store) = test_actor_with_store(vec![store_session]);
+        let (actor, _store) = test_actor_with_store(vec![store_session]).await;
         let (_sink, ctx) = test_context();
 
         let default_id = actor.state.read().session.active_session_id().clone();
@@ -230,7 +230,7 @@ mod tests {
         let store_id1 = store_session1.session_id().clone();
         let store_session2 = ChatSessionState::new();
         let store_id2 = store_session2.session_id().clone();
-        let (actor, _store) = test_actor_with_store(vec![store_session1, store_session2]);
+        let (actor, _store) = test_actor_with_store(vec![store_session1, store_session2]).await;
         let (_sink, ctx) = test_context();
 
         // When handling EnvironmentLoaded.
@@ -261,7 +261,7 @@ mod tests {
     async fn saved_model_overwrites_no_provider_sentinel() {
         // Given an actor with a default session (NO_PROVIDER_ID model)
         // and saved preferences with a last_model.
-        let (actor, _store) = test_actor_with_store(vec![]);
+        let (actor, _store) = test_actor_with_store(vec![]).await;
         let (_sink, ctx) = test_context();
 
         // Save state with a last_model.
@@ -300,7 +300,7 @@ mod tests {
     async fn saved_model_does_not_overwrite_explicitly_set_model() {
         // Given an actor with a session that has an explicit model (not NO_PROVIDER_ID)
         // and saved preferences with a different last_model.
-        let (actor, _store) = test_actor_with_store(vec![]);
+        let (actor, _store) = test_actor_with_store(vec![]).await;
 
         // Set an explicit model on the active session (simulating bench actor behavior).
         {
@@ -350,7 +350,7 @@ mod tests {
         let mut store_session = ChatSessionState::new();
         let ap = crate::feat::attached_plugin::AttachedPlugin::new("test");
         store_session.core.attached_plugins.push(ap);
-        let (actor, _store) = test_actor_with_store(vec![store_session]);
+        let (actor, _store) = test_actor_with_store(vec![store_session]).await;
         let (_sink, ctx) = test_context();
 
         // When handling EnvironmentLoaded (startup).
@@ -390,7 +390,7 @@ mod tests {
                 ..ap
             });
         let session_id = store_session.session_id().clone();
-        let (actor, _store) = test_actor_with_store(vec![store_session]);
+        let (actor, _store) = test_actor_with_store(vec![store_session]).await;
 
         let (_sink, ctx) = test_context();
 

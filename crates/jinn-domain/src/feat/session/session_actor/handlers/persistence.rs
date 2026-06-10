@@ -423,7 +423,7 @@ mod tests {
         store_session.set_title("Archived Chat".to_owned());
         store_session.set_session_state(SessionState::Archived);
         let session_id = store_session.session_id().clone();
-        let (mut actor, _store) = test_actor_with_store(vec![store_session]);
+        let (mut actor, _store) = test_actor_with_store(vec![store_session]).await;
         let (sink, ctx) = test_context();
 
         // When loading the archived session.
@@ -470,7 +470,7 @@ mod tests {
     #[tokio::test]
     async fn save_active_session_skips_non_persistable_session() {
         // Given an actor with a new (non-interacted) session and a recording store.
-        let (actor, store) = test_actor_with_store(vec![]);
+        let (actor, store) = test_actor_with_store(vec![]).await;
         let session_id = actor.state.read().session.active_session_id().clone();
 
         // When saving the active session.
@@ -486,7 +486,7 @@ mod tests {
     #[tokio::test]
     async fn save_active_session_persists_interacted_session() {
         // Given an actor with an interacted session and a recording store.
-        let (actor, store) = test_actor_with_store(vec![]);
+        let (actor, store) = test_actor_with_store(vec![]).await;
         let session_id = actor.state.read().session.active_session_id().clone();
         {
             let mut state = actor.state.write();
@@ -509,7 +509,7 @@ mod tests {
         use crate::protocol::Event;
 
         // Given an actor with a new session.
-        let (mut actor, store) = test_actor_with_store(vec![]);
+        let (mut actor, store) = test_actor_with_store(vec![]).await;
         let session_id = actor.state.read().session.active_session_id().clone();
         let (sink, ctx) = test_context();
 
@@ -559,7 +559,7 @@ mod tests {
         child.push_entry(crate::protocol::ChatEntry::user("child msg"));
         let child_id = child.session_id().clone();
 
-        let (mut actor, _store) = test_actor_with_store(vec![parent, child]);
+        let (mut actor, _store) = test_actor_with_store(vec![parent, child]).await;
         let (_sink, ctx) = test_context();
 
         // When loading the child session.

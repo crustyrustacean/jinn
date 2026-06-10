@@ -47,8 +47,11 @@ impl TuiAppBuilder {
     /// the real launch path ([`crate::launch::launch`]) share a single keymap
     /// bootstrap site. This is what prevents the test/prod divergence that
     /// previously left plugin keybinds unbound in production.
-    pub fn build(self) -> TuiApp {
-        let services = self.services.unwrap_or_default();
+    pub async fn build(self) -> TuiApp {
+        let services = match self.services {
+            Some(s) => s,
+            None => jinn_domain::Services::new_fake().await,
+        };
         let state = self.state.unwrap_or_default();
 
         let (sender, _receiver) = kanal::unbounded();
