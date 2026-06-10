@@ -55,10 +55,12 @@ fn sidebar_persona_edit_opens_picker_when_persona_focused() {
         Some(crate::protocol::PickerKind::Persona)
     );
     // And a LoadPersonaPickerEntries command is returned.
-    assert!(result
-        .commands
-        .iter()
-        .any(|c| matches!(c, Command::LoadPersonaPickerEntries(..))));
+    assert!(
+        result
+            .commands
+            .iter()
+            .any(|c| matches!(c, Command::LoadPersonaPickerEntries(..)))
+    );
 }
 
 #[rstest::rstest]
@@ -88,10 +90,12 @@ fn pins_unpin_returns_command() {
     let result = handle_pins_unpin(&mut state);
 
     // Then an UnpinChatEntry command is returned.
-    assert!(result
-        .commands
-        .iter()
-        .any(|c| matches!(c, Command::UnpinChatEntry(..))));
+    assert!(
+        result
+            .commands
+            .iter()
+            .any(|c| matches!(c, Command::UnpinChatEntry(..)))
+    );
 }
 
 #[rstest::rstest]
@@ -461,7 +465,7 @@ fn sync_chat_log_cursor_sets_cursor_by_entry_id_with_visual_items() {
     // Given a session with ignored entries (causing visual-item index != history index)
     // and a pinned entry deep in history.
     use crate::feat::ui::chat_log::visual_item::{
-        build_visual_items, DEFAULT_MIN_COLLAPSE_COUNT, PROXIMITY_COUNT,
+        DEFAULT_MIN_COLLAPSE_COUNT, PROXIMITY_COUNT, build_visual_items,
     };
 
     let mut state = AppState::default();
@@ -787,7 +791,6 @@ fn truncate_str_strips_ansi_before_truncating() {
 // --- area_width constraint tests ---
 
 #[test]
-
 fn tool_result_with_wide_emoji_fits_narrow_sidebar() {
     // Given a pinned tool result with the ✓ success icon.
     let state = state_with_pinned_tool_result("write", &"x".repeat(100));
@@ -802,6 +805,8 @@ fn tool_result_with_wide_emoji_fits_narrow_sidebar() {
         combined.contains('✓'),
         "should still contain ✓ even in narrow sidebar: {combined}"
     );
+}
+
 #[rstest::rstest]
 fn long_content_is_truncated_to_fit_area_width() {
     // Given a pinned user entry with very long content.
