@@ -193,7 +193,94 @@ async fn execute_plugin_job(state: &mut ThreadState, job: PluginJob) {
         PluginJob::DestroySession { registry_id } => {
             state.sessions.remove(&registry_id);
         }
+        PluginJob::ExecuteTool {
+            target,
+            plugin_name,
+            tool_name,
+            arguments,
+            respond_to,
+        } => {
+            let result = execute_plugin_tool(state, target, &plugin_name, &tool_name, arguments);
+            let _ = respond_to.send(result);
+        }
     }
+}
+
+
+
+/// Execute a plugin-defined tool handler.
+///
+/// Routes to the correct Lua state (global or per-session),
+/// finds the tool handler by plugin + tool name, builds a ctx,
+/// calls the handler with (ctx, arguments), returns the result string.
+fn execute_plugin_tool(
+    state: &mut ThreadState,
+    target: Option<SessionRegistryId>,
+    plugin_name: &str,
+    tool_name: &str,
+    arguments: serde_json::Value,
+) -> Result<String, Report<PluginError>> {
+    // Locate the correct Lua state and tools list.
+    let (lua, tools) = if let Some(id) = &target {
+        let session = state.sessions.get_mut(id).ok_or_else(|| {
+            Report::new(PluginError).attach(format!("no session for registry id {id:?}"))
+        })?;
+        (&session.lua, &session.tools)
+    } else {
+        (&state.global_lua, &state.global_tools)
+    };
+
+    // Find the tool definition.
+    let tool_def = tools
+        .iter()
+        .find(|t| t.plugin_name == plugin_name && t.name == tool_name)
+        .ok_or_else(|| {
+            Report::new(PluginError)
+                .attach(format!("no tool '{tool_name}' for plugin '{plugin_name}'"))
+        })?;
+
+    // Build the ctx table for the handler.
+    let ctx = build_async_ctx(
+        lua,
+        &serde_json::json!({}),
+        plugin_name,
+        &state.plugin_data,
+        &state.emit_tx,
+        &state.request_handler,
+    )
+    .map_err(|e| Report::new(PluginError).attach(e.to_string()))
+    .attach("failed to build tool handler ctx")?;
+
+    // Convert arguments JSON to a Lua table.
+    let args_value = bindings::json_to_lua_value(lua, &arguments)
+        .map_err(|e| Report::new(PluginError).attach(e.to_string()))?;
+    let args_table = match args_value {
+        mlua::Value::Table(t) => t,
+        _ => lua.create_table().map_err(|e| {
+            Report::new(PluginError).attach(e.to_string())
+        })?,
+    };
+
+    // Get the handler function from the registry.
+    let handler: mlua::Function = lua
+        .registry_value(&tool_def.handler_key)
+        .map_err(|e: mlua::Error| Report::new(PluginError).attach(e.to_string()))
+        .attach("tool handler not found in Lua registry")?;
+
+    // Call the handler with (ctx, args).
+    let result: mlua::Value = handler
+        .call::<mlua::Value>((ctx, mlua::Value::Table(args_table)))
+        .map_err(|e: mlua::Error| Report::new(PluginError).attach(e.to_string()))
+        .attach(format!("tool handler '{tool_name}' failed"))?;
+
+    // Convert the return value to a string.
+    let result_str = match result {
+        mlua::Value::String(s) => s.to_str().map(|s| s.to_owned()).unwrap_or_default(),
+        mlua::Value::Nil => String::new(),
+        _ => format!("{result:?}"),
+    };
+
+    Ok(result_str)
 }
 
 /// Load attachable plugins into a new per-session Lua state.

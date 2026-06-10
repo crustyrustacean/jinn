@@ -55,6 +55,18 @@ impl PluginFire for AsyncPluginHandle {
             .map_err(|report| report.change_context(PluginFireError))
     }
 
+    async fn execute_plugin_tool(
+        &self,
+        target: Option<SessionRegistryId>,
+        plugin_name: &str,
+        tool_name: &str,
+        arguments: &Value,
+    ) -> Result<String, Report<PluginFireError>> {
+        self.execute_tool(target, plugin_name, tool_name, arguments)
+            .await
+            .map_err(|report| report.change_context(PluginFireError))
+    }
+
     fn name(&self) -> &'static str {
         "AsyncPluginHandle"
     }

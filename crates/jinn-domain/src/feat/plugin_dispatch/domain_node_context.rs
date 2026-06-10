@@ -63,6 +63,25 @@ impl DomainNodeContext {
         self.services.actor_channel.send_command(cmd);
     }
 
+    /// Create a child session with the given parent, automation, and persistence flags.
+    ///
+    /// Returns the new session's ID.
+    pub fn create_child_session(
+        &self,
+        parent_session_id: SessionId,
+        automated: bool,
+        persist: bool,
+    ) -> SessionId {
+        let mut session = ChatSessionState::default();
+        session.core.parent_session = Some(parent_session_id);
+        session.core.is_automated = automated;
+        session.core.persist = persist;
+
+        let session_id = session.session_id().clone();
+        self.state.write().session.insert(session);
+        session_id
+    }
+
     /// Returns `true` if there is a pending oneshot for the given session ID.
     pub fn has_pending(&self, session_id: &SessionId) -> bool {
         self.pending.lock().contains_key(session_id)
@@ -768,5 +787,49 @@ mod tests {
             !still_pending,
             "timeout must remove the pending oneshot entry for the cancelled session"
         );
+    }
+
+    #[test]
+    fn create_child_session_returns_unique_id() {
+        // Given a domain context.
+        let ctx = make_ctx();
+        let parent_id = SessionId::new();
+
+        // When creating a child session.
+        let child_id = ctx.create_child_session(parent_id.clone(), true, true);
+
+        // Then the child ID differs from the parent.
+        assert_ne!(child_id, parent_id);
+    }
+
+    #[test]
+    fn create_child_session_sets_parent_automated_persist_flags() {
+        // Given a domain context.
+        let ctx = make_ctx();
+        let parent_id = SessionId::new();
+
+        // When creating a child session with automated=true, persist=true.
+        let child_id = ctx.create_child_session(parent_id.clone(), true, true);
+
+        // Then the child session has the correct flags.
+        let state = ctx.state.read();
+        let child = state.session.get(&child_id).expect("child session exists");
+        assert_eq!(child.core.parent_session.as_ref(), Some(&parent_id));
+        assert!(child.core.is_automated);
+        assert!(child.core.persist);
+    }
+
+    #[test]
+    fn create_child_session_inserts_into_state() {
+        // Given a domain context.
+        let ctx = make_ctx();
+        let parent_id = SessionId::new();
+
+        // When creating a child session.
+        let child_id = ctx.create_child_session(parent_id, false, false);
+
+        // Then the session map contains the child.
+        let state = ctx.state.read();
+        assert!(state.session.contains(&child_id));
     }
 }

@@ -34,6 +34,7 @@ use crate::feat::provider::protocol::event::{ModelsRefreshed, StreamCompleted, S
 use crate::feat::session::protocol::close_session::CloseSession;
 use crate::feat::session::protocol::load_session_picker_entries::LoadSessionPickerEntries;
 use crate::feat::session::protocol::mark_session_interacted::MarkSessionInteracted;
+use crate::feat::session::protocol::reset_session_history::ResetSessionHistory;
 use crate::feat::session_lifecycle::protocol::command::{
     PersistSession, RunSessionSetup, RunSessionTeardown,
 };
@@ -115,6 +116,7 @@ impl Actor for SessionPersistenceActor {
         ctx.subscribe_command::<crate::feat::session::protocol::archive_session::ArchiveSession>();
         ctx.subscribe_command::<crate::feat::session::protocol::submit_history_mutations::SubmitHistoryMutations>();
         ctx.subscribe_command::<MarkSessionInteracted>();
+        ctx.subscribe_command::<ResetSessionHistory>();
 
         // Context-related subscriptions (relocated from PromptAssemblyActor).
         ctx.subscribe_command::<crate::feat::context::protocol::command::PinChatEntry>();
@@ -295,6 +297,9 @@ impl SessionPersistenceActor {
             }
             Command::SubmitHistoryMutations(payload) => {
                 self.handle_submit_history_mutations(payload, ctx);
+            }
+            Command::ResetSessionHistory(payload) => {
+                self.handle_reset_session_history(payload, ctx);
             }
             // Commands NOT subscribed to - these should not arrive.
             Command::SendToLlmProvider(..)

@@ -20,6 +20,7 @@ use jinn_domain::feat::chat_input::protocol::command::{
 use jinn_domain::feat::plugin_dispatch::DomainNodeContext;
 use jinn_domain::feat::plugin_dispatch::protocol::command::TogglePlugin;
 use jinn_domain::feat::session::chat_entry::ChatEntry;
+use jinn_domain::feat::session::protocol::ResetSessionHistory;
 use jinn_domain::protocol::SessionId;
 use jinn_plugin::PluginCommand;
 use wherror::Error;
@@ -89,6 +90,11 @@ struct LuaSetChatInput {
     text: String,
 }
 
+#[derive(serde::Deserialize)]
+struct LuaResetSession {
+    session_id: SessionId,
+}
+
 // ─── Verb → Command conversions ───────────────────────────────────────
 
 fn push_chat_entry_from_lua(
@@ -156,6 +162,15 @@ fn set_chat_input_from_lua(
     }))
 }
 
+fn reset_session_from_lua(
+    _ctx: CmdCtx,
+    lua: LuaResetSession,
+) -> Result<Command, Report<PluginWiringError>> {
+    Ok(Command::ResetSessionHistory(ResetSessionHistory {
+        session_id: lua.session_id,
+    }))
+}
+
 fn translate<LuaT>(
     cmd: &PluginCommand,
     convert: fn(CmdCtx, LuaT) -> Result<Command, Report<PluginWiringError>>,
@@ -217,6 +232,7 @@ fn translate_command(cmd: &PluginCommand) -> Result<Command, Report<PluginWiring
         "disable_plugin" => translate::<LuaDisablePlugin>(cmd, disable_plugin_from_lua),
         "fire_async_hook" => translate::<LuaFireAsyncHook>(cmd, fire_async_hook_from_lua),
         "set_chat_input" => translate::<LuaSetChatInput>(cmd, set_chat_input_from_lua),
+        "reset_session" => translate::<LuaResetSession>(cmd, reset_session_from_lua),
         other => {
             let ctx = CmdCtx {
                 plugin_name: cmd.plugin_name.clone(),
@@ -292,6 +308,32 @@ pub async fn handle_plugin_request(
                 },
                 Err(e) => {
                     tracing::warn!(error = %e, "llm_oneshot malformed payload");
+                    request_err(e)
+                }
+            }
+        }
+        "create_session" => {
+            #[derive(serde::Deserialize)]
+            struct CreateSessionPayload {
+                parent_session_id: SessionId,
+                #[serde(default)]
+                automated: Option<bool>,
+                #[serde(default)]
+                persist: Option<bool>,
+            }
+            match serde_json::from_value::<CreateSessionPayload>(data.clone()) {
+                Ok(p) => {
+                    let session_id = domain_ctx.create_child_session(
+                        p.parent_session_id,
+                        p.automated.unwrap_or(false),
+                        p.persist.unwrap_or(true),
+                    );
+
+                    tracing::debug!(session_id = %session_id, "plugin created session");
+                    request_ok(serde_json::json!({ "session_id": session_id.to_string() }))
+                }
+                Err(e) => {
+                    tracing::warn!(error = %e, "create_session malformed payload");
                     request_err(e)
                 }
             }
@@ -608,6 +650,31 @@ mod tests {
                 assert_eq!(s.text, "enriched prompt text");
             }
             other => panic!("expected SetChatInputText, got {other:?}"),
+        }
+    }
+
+    #[test]
+    fn reset_session_dispatches_reset_session_history() {
+        let sink = test_sink();
+        let cmd = PluginCommand {
+            plugin_name: "judge".to_owned(),
+            name: "reset_session".to_owned(),
+            data: serde_json::json!({
+                "session_id": "s-judge-session",
+            }),
+        };
+
+        handle_plugin_command(cmd, &*sink);
+        let cmds = captured(&sink);
+        assert_eq!(cmds.len(), 1);
+        match &cmds[0] {
+            Command::ResetSessionHistory(payload) => {
+                assert_eq!(
+                    payload.session_id,
+                    SessionId::from("s-judge-session".to_owned())
+                );
+            }
+            other => panic!("expected ResetSessionHistory, got {other:?}"),
         }
     }
 }

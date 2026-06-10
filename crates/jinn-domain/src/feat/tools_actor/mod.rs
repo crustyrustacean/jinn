@@ -553,21 +553,45 @@ impl ToolOrchestratorActor {
                 }
                 None
             }
-            Some(ToolRegistration::Plugin { .. }) => {
-                // Phase 2 will wire execute_plugin_tool().
-                // For now, return an error so the tool call doesn't hang.
-                let call_id = tool_call.id.clone();
-                let call_name = tool_call.name.clone();
+            Some(ToolRegistration::Plugin { target, plugin_name, .. }) => {
                 let sink = ctx.sink();
+                let plugin_fire = self.services.plugins.clone();
+                let target = target.clone();
+                let plugin_name = plugin_name.clone();
+                let arguments: serde_json::Value =
+                    serde_json::from_str(&tool_call.arguments).unwrap_or_default();
+
                 let handle = tokio::spawn(async move {
-                    let result = ToolResult {
-                        tool_call_id: call_id,
-                        name: call_name,
-                        content: "plugin tool execution not yet implemented".to_owned(),
-                        success: false,
-                        full_content: None,
-                        truncation: None,
-                        pin_position: None,
+                    let result = match plugin_fire
+                        .execute_plugin_tool(
+                            target,
+                            &plugin_name,
+                            &tool_call.name,
+                            &arguments,
+                        )
+                        .await
+                    {
+                        Ok(content) => ToolResult {
+                            tool_call_id: tool_call.id.clone(),
+                            name: tool_call.name.clone(),
+                            content,
+                            success: true,
+                            full_content: None,
+                            truncation: None,
+                            pin_position: None,
+                        },
+                        Err(report) => {
+                            tracing::warn!(?report, %plugin_name, "plugin tool execution failed");
+                            ToolResult {
+                                tool_call_id: tool_call.id.clone(),
+                                name: tool_call.name.clone(),
+                                content: format!("plugin tool error: {report:#}"),
+                                success: false,
+                                full_content: None,
+                                truncation: None,
+                                pin_position: None,
+                            }
+                        }
                     };
                     if let Err(e) =
                         sink.send_event(Event::ToolExecutionCompleted(ToolExecutionCompleted {

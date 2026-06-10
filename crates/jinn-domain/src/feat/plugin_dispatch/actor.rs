@@ -896,6 +896,17 @@ mod tests {
             Ok(vec![])
         }
 
+        async fn execute_plugin_tool(
+            &self,
+            _target: Option<SessionRegistryId>,
+            _plugin_name: &str,
+            _tool_name: &str,
+            _arguments: &Value,
+        ) -> Result<String, Report<PluginFireError>> {
+            self.gate.notified().await;
+            Ok(String::new())
+        }
+
         fn name(&self) -> &'static str {
             "BlockingPluginFire"
         }
