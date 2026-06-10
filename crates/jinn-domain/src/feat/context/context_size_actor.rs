@@ -251,8 +251,8 @@ mod tests {
         );
     }
 
-    #[test]
-    fn is_context_relevant_matches_expected_events() {
+    #[tokio::test]
+    async fn is_context_relevant_matches_expected_events() {
         // Given various events.
         use crate::feat::session::chat_entry::ChatEntryId;
 
@@ -294,8 +294,8 @@ mod tests {
         );
     }
 
-    #[test]
-    fn is_context_relevant_ignores_irrelevant_events() {
+    #[tokio::test]
+    async fn is_context_relevant_ignores_irrelevant_events() {
         // Given an irrelevant event.
         assert!(
             !ContextSizeActor::is_context_relevant(&Event::SessionCreated(

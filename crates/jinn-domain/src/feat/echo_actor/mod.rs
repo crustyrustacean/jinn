@@ -97,7 +97,7 @@ mod tests {
         let harness = TestHarness::new().await;
         let _echo = harness
             .spawn_actor::<EchoActor>(EchoActorDeps {
-                deps: harness.actor_deps(),
+                deps: harness.actor_deps().await,
             })
             .await;
         let recorder = harness.spawn_recorder::<PushChatEntry>().await;
@@ -131,7 +131,7 @@ mod tests {
         let harness = TestHarness::new().await;
         let _echo = harness
             .spawn_actor::<EchoActor>(EchoActorDeps {
-                deps: harness.actor_deps(),
+                deps: harness.actor_deps().await,
             })
             .await;
         let recorder = harness.spawn_recorder::<PushChatEntry>().await;

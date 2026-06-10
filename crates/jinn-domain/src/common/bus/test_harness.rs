@@ -67,8 +67,8 @@ impl TestHarness {
     ///
     /// This creates a `Services::new()` and replaces its bus with the harness bus,
     /// so actors use the same bus the test is publishing to.
-    pub fn actor_deps(&self) -> crate::common::actor_deps::ActorDeps {
-        let mut services = crate::Services::new_fake();
+    pub async fn actor_deps(&self) -> crate::common::actor_deps::ActorDeps {
+        let mut services = crate::Services::new_fake().await;
         services.bus = self.bus.clone();
         crate::common::actor_deps::ActorDeps { services }
     }

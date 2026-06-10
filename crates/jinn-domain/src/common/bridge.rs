@@ -26,10 +26,18 @@ impl Bridge {
     /// Spawns a background tokio task that loops on `receiver.to_async().recv()`
     /// and calls each closure with the bus actor ref.
     pub fn new(bus: ActorRef<MessageBus>) -> Self {
+        Self::with_handle(bus, tokio::runtime::Handle::current())
+    }
+
+    /// Creates a new bridge using a specific runtime handle.
+    ///
+    /// Use this when constructing from outside a tokio async context
+    /// (e.g., from sync test code using a shared test runtime).
+    pub fn with_handle(bus: ActorRef<MessageBus>, handle: tokio::runtime::Handle) -> Self {
         let (sender, receiver) = kanal::unbounded::<BridgeClosure>();
         let async_rx = receiver.to_async();
 
-        tokio::spawn(async move {
+        handle.spawn(async move {
             while let Ok(closure) = async_rx.recv().await {
                 closure(&bus);
             }

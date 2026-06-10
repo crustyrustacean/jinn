@@ -16,10 +16,10 @@ use crate::feat::preferences_actor::protocol::event::PreferencesUpdated;
 use crate::protocol::{Command, Event};
 
 /// Creates a test actor with in-memory storage.
-fn create_actor() -> (PreferencesActor, Arc<RecordingSink>, ActorContext) {
+async fn create_actor() -> (PreferencesActor, Arc<RecordingSink>, ActorContext) {
     let sink = Arc::new(RecordingSink::new());
     let mut ctx = ActorContext::new("preferences-actor", sink.clone() as Arc<dyn MessageSink>);
-    let services = Services::new_fake();
+    let services = Services::new_fake().await;
     let actor = PreferencesActor::activate(PreferencesActorDeps { services }, &mut ctx);
     (actor, sink, ctx)
 }
@@ -28,7 +28,7 @@ fn create_actor() -> (PreferencesActor, Arc<RecordingSink>, ActorContext) {
 #[tokio::test]
 async fn set_compaction_model_saves_to_storage() {
     // Given a preferences actor with in-memory storage.
-    let (mut actor, _sink, ctx) = create_actor();
+    let (mut actor, _sink, ctx) = create_actor().await;
 
     // When sending UpdatePreferences with SetCompactionModel.
     actor
@@ -51,7 +51,7 @@ async fn set_compaction_model_saves_to_storage() {
 #[tokio::test]
 async fn set_compaction_model_overwrites_previous() {
     // Given a preferences actor with a saved compaction model.
-    let (mut actor, _sink, ctx) = create_actor();
+    let (mut actor, _sink, ctx) = create_actor().await;
     actor
         .handle(
             ActorEnvelope::Command(Command::UpdatePreferences(UpdatePreferences {
@@ -84,7 +84,7 @@ async fn set_compaction_model_overwrites_previous() {
 #[tokio::test]
 async fn emits_preferences_updated_event() {
     // Given a preferences actor.
-    let (mut actor, sink, ctx) = create_actor();
+    let (mut actor, sink, ctx) = create_actor().await;
 
     // When sending UpdatePreferences.
     actor
@@ -118,7 +118,7 @@ async fn emits_preferences_updated_event() {
 #[tokio::test]
 async fn empty_diffs_does_not_change_storage() {
     // Given a preferences actor with a saved compaction model.
-    let (mut actor, _sink, ctx) = create_actor();
+    let (mut actor, _sink, ctx) = create_actor().await;
     actor
         .handle(
             ActorEnvelope::Command(Command::UpdatePreferences(UpdatePreferences {
@@ -149,7 +149,7 @@ async fn empty_diffs_does_not_change_storage() {
 #[tokio::test]
 async fn ignores_unrelated_commands() {
     // Given a preferences actor.
-    let (mut actor, _sink, ctx) = create_actor();
+    let (mut actor, _sink, ctx) = create_actor().await;
 
     // When sending an unrelated command (RefreshModels).
     actor

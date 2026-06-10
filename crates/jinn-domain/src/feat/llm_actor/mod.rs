@@ -597,21 +597,21 @@ mod tests {
     use crate::feat::provider_infra::LlmServiceFactoryService;
     use jinn_provider::FakeLlmServiceFactory;
 
-    fn test_llm_actor() -> LlmActor {
+    async fn test_llm_actor() -> LlmActor {
         let factory = LlmServiceFactoryService::new(Arc::new(FakeLlmServiceFactory::new(vec![])));
         LlmActor {
             factory,
-            services: crate::common::services::Services::new_fake(),
+            services: crate::common::services::Services::new_fake().await,
             _state: State::new(AppState::default()),
             tasks: HashMap::new(),
             sessions: HashMap::new(),
         }
     }
 
-    #[test]
-    fn handle_stream_completed_error_reason_removes_session() {
+    #[tokio::test]
+    async fn handle_stream_completed_error_reason_removes_session() {
         // Given an LLM actor with a streaming session.
-        let mut actor = test_llm_actor();
+        let mut actor = test_llm_actor().await;
         let session_id = SessionId::new();
         actor
             .sessions
@@ -635,10 +635,10 @@ mod tests {
 
     // --- Phase 2: Additional LlmActor tests ---
 
-    #[test]
-    fn handle_stream_completed_finished_reason_removes_session() {
+    #[tokio::test]
+    async fn handle_stream_completed_finished_reason_removes_session() {
         // Given an LLM actor with a streaming session.
-        let mut actor = test_llm_actor();
+        let mut actor = test_llm_actor().await;
         let session_id = SessionId::new();
         actor
             .sessions
@@ -663,10 +663,10 @@ mod tests {
         );
     }
 
-    #[test]
-    fn handle_stream_completed_tool_use_keeps_session() {
+    #[tokio::test]
+    async fn handle_stream_completed_tool_use_keeps_session() {
         // Given an LLM actor with a streaming session.
-        let mut actor = test_llm_actor();
+        let mut actor = test_llm_actor().await;
         let session_id = SessionId::new();
         actor
             .sessions
@@ -691,10 +691,10 @@ mod tests {
         );
     }
 
-    #[test]
-    fn handle_stream_completed_unknown_session_is_noop() {
+    #[tokio::test]
+    async fn handle_stream_completed_unknown_session_is_noop() {
         // Given an LLM actor with NO sessions.
-        let mut actor = test_llm_actor();
+        let mut actor = test_llm_actor().await;
         let session_id = SessionId::new();
 
         // When handling StreamCompleted for an unknown session.
@@ -720,7 +720,7 @@ mod tests {
         let sink = Arc::new(RecordingSink::new());
         let ctx = ActorContext::new("test-llm", sink.clone());
 
-        let mut actor = test_llm_actor();
+        let mut actor = test_llm_actor().await;
         let session_id = SessionId::new();
         actor
             .sessions
@@ -748,14 +748,14 @@ mod tests {
         assert!(found, "should emit StreamCompleted with Canceled reason");
     }
 
-    #[test]
-    fn cancel_stream_without_session_emits_nothing() {
+    #[tokio::test]
+    async fn cancel_stream_without_session_emits_nothing() {
         // Given an LLM actor with no sessions.
         use crate::common::actor::{ActorContext, RecordingSink};
         let sink = Arc::new(RecordingSink::new());
         let ctx = ActorContext::new("test-llm", sink.clone());
 
-        let mut actor = test_llm_actor();
+        let mut actor = test_llm_actor().await;
         let session_id = SessionId::new();
 
         // When cancelling a stream for a session that doesn't exist.
@@ -772,7 +772,7 @@ mod tests {
     #[tokio::test]
     async fn cancel_all_aborts_all_tasks() {
         // Given an LLM actor with multiple spawned tasks.
-        let mut actor = test_llm_actor();
+        let mut actor = test_llm_actor().await;
         let sid1 = SessionId::new();
         let sid2 = SessionId::new();
         let h1 = tokio::spawn(async { std::future::pending::<()>().await });
@@ -800,7 +800,7 @@ mod tests {
         let sink = Arc::new(RecordingSink::new());
         let ctx = ActorContext::new("test-llm", sink.clone());
 
-        let mut actor = test_llm_actor();
+        let mut actor = test_llm_actor().await;
         let sid = SessionId::new();
         let handle = tokio::spawn(async { std::future::pending::<()>().await });
         actor.tasks.insert(sid, handle);
@@ -831,7 +831,7 @@ mod tests {
         ])));
         let mut actor = LlmActor {
             factory,
-            services: crate::common::services::Services::new_fake(),
+            services: crate::common::services::Services::new_fake().await,
             _state: State::new(AppState::default()),
             tasks: HashMap::new(),
             sessions: HashMap::new(),
@@ -897,7 +897,7 @@ mod tests {
         ])));
         let mut actor = LlmActor {
             factory,
-            services: crate::common::services::Services::new_fake(),
+            services: crate::common::services::Services::new_fake().await,
             _state: State::new(AppState::default()),
             tasks: HashMap::new(),
             sessions: HashMap::new(),
@@ -943,7 +943,7 @@ mod tests {
         ])));
         let mut actor = LlmActor {
             factory,
-            services: crate::common::services::Services::new_fake(),
+            services: crate::common::services::Services::new_fake().await,
             _state: State::new(AppState::default()),
             tasks: HashMap::new(),
             sessions: HashMap::new(),
@@ -983,7 +983,7 @@ mod tests {
         ])));
         let mut actor = LlmActor {
             factory,
-            services: crate::common::services::Services::new_fake(),
+            services: crate::common::services::Services::new_fake().await,
             _state: State::new(AppState::default()),
             tasks: HashMap::new(),
             sessions: HashMap::new(),
@@ -1012,7 +1012,7 @@ mod tests {
         let sink = Arc::new(RecordingSink::new());
         let ctx = ActorContext::new("test-llm", sink.clone());
 
-        let mut actor = test_llm_actor();
+        let mut actor = test_llm_actor().await;
         let session_id = SessionId::new();
         actor
             .sessions

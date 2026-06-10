@@ -23,7 +23,7 @@ use crate::common::state::State;
 use crate::feat::provider::discover_actor::{DiscoverActor, DiscoverActorDeps};
 use crate::protocol::Command;
 
-fn create_actor() -> (
+async fn create_actor() -> (
     DiscoverActor,
     Services,
     Arc<RecordingSink>,
@@ -33,7 +33,7 @@ fn create_actor() -> (
     let sink = Arc::new(RecordingSink::new());
     let mut ctx = ActorContext::new("discover", sink.clone() as Arc<dyn MessageSink>);
 
-    let services = Services::new_fake();
+    let services = Services::new_fake().await;
     let state = State::new(AppState::default());
     let deps = DiscoverActorDeps {
         services: services.clone(),
@@ -53,7 +53,7 @@ async fn handle_processes_command_envelope() {
     // We verify the command is processed by checking that the actor at least
     // attempts the discovery (emitting a ModelsRefreshed event with results,
     // even if the result maps are empty due to no configured providers).
-    let (mut actor, _services, sink, ctx, _state) = create_actor();
+    let (mut actor, _services, sink, ctx, _state) = create_actor().await;
 
     // When sending a RefreshModels command via ActorEnvelope::Command.
     actor
@@ -75,7 +75,7 @@ async fn handle_processes_command_envelope() {
 async fn handle_ignores_event_envelope() {
     // Verifies that the actor properly distinguishes Command from Event envelopes.
     // This indirectly tests the match arm in handle().
-    let (mut actor, _services, sink, ctx, _state) = create_actor();
+    let (mut actor, _services, sink, ctx, _state) = create_actor().await;
 
     // When sending an unrelated event.
     actor

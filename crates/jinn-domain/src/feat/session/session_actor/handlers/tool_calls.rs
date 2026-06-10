@@ -265,7 +265,7 @@ mod tests {
     #[tokio::test]
     async fn on_tool_batch_completed_emits_send_to_llm_provider() {
         // Given a session with tool call and result entries in history.
-        let actor = test_actor();
+        let actor = test_actor().await;
         let (sink, ctx) = test_context();
         let session_id = {
             let mut state = actor.state.write();
@@ -306,7 +306,7 @@ mod tests {
     #[tokio::test]
     async fn on_tool_batch_completed_transitions_session_to_sending() {
         // Given a session in sending state (set by on_stream_completed for ToolUse).
-        let actor = test_actor();
+        let actor = test_actor().await;
         let (_sink, ctx) = test_context();
         let session_id = {
             let mut state = actor.state.write();
@@ -333,7 +333,7 @@ mod tests {
     #[tokio::test]
     async fn on_stream_completed_tool_use_counts_tool_call_arguments() {
         // Given a session with a token record (from prompt assembly) in streaming state.
-        let actor = test_actor();
+        let actor = test_actor().await;
         let (_sink, ctx) = test_context();
         let session_id = {
             let mut state = actor.state.write();
@@ -381,7 +381,7 @@ mod tests {
     #[tokio::test]
     async fn on_tool_execution_completed_emits_history_appended() {
         // Given a session actor with a pending tool result.
-        let actor = test_actor();
+        let actor = test_actor().await;
         let (sink, ctx) = test_context();
         let session_id = {
             let mut state = actor.state.write();
@@ -427,7 +427,7 @@ mod tests {
     #[tokio::test]
     async fn on_tool_batch_completed_skips_send_when_tool_loop_disabled() {
         // Given a session in sending state with tool_loop_disabled set.
-        let actor = test_actor();
+        let actor = test_actor().await;
         let (sink, ctx) = test_context();
         let session_id = {
             let mut state = actor.state.write();
@@ -486,7 +486,7 @@ mod tests {
     #[tokio::test]
     async fn on_tool_batch_completed_unaffected_without_tool_loop_disabled() {
         // Given a normal session (no flag set) in sending state with history.
-        let actor = test_actor();
+        let actor = test_actor().await;
         let (sink, ctx) = test_context();
         let session_id = {
             let mut state = actor.state.write();
@@ -529,10 +529,10 @@ mod tests {
 
     // --- on_tool_use_started ---
 
-    #[test]
-    fn on_tool_use_started_creates_tool_call_entry() {
+    #[tokio::test]
+    async fn on_tool_use_started_creates_tool_call_entry() {
         // Given a session in streaming state.
-        let actor = test_actor();
+        let actor = test_actor().await;
         let session_id = {
             let mut state = actor.state.write();
             let session = state.active_session_mut();
@@ -560,10 +560,10 @@ mod tests {
 
     // --- on_tool_call_received ---
 
-    #[test]
-    fn on_tool_call_received_finalizes_arguments() {
+    #[tokio::test]
+    async fn on_tool_call_received_finalizes_arguments() {
         // Given a session with a started tool call.
-        let actor = test_actor();
+        let actor = test_actor().await;
         let session_id = {
             let mut state = actor.state.write();
             let session = state.active_session_mut();
@@ -602,10 +602,10 @@ mod tests {
 
     // --- on_tool_call_streaming ---
 
-    #[test]
-    fn on_tool_call_streaming_appends_delta() {
+    #[tokio::test]
+    async fn on_tool_call_streaming_appends_delta() {
         // Given a session with a started tool call.
-        let actor = test_actor();
+        let actor = test_actor().await;
         let session_id = {
             let mut state = actor.state.write();
             let session = state.active_session_mut();
@@ -641,10 +641,10 @@ mod tests {
 
     // --- on_tool_execution_started ---
 
-    #[test]
-    fn on_tool_execution_started_creates_pending_result() {
+    #[tokio::test]
+    async fn on_tool_execution_started_creates_pending_result() {
         // Given a session in streaming state.
-        let actor = test_actor();
+        let actor = test_actor().await;
         let session_id = {
             let mut state = actor.state.write();
             let session = state.active_session_mut();
@@ -672,10 +672,10 @@ mod tests {
 
     // --- on_tool_execution_output ---
 
-    #[test]
-    fn on_tool_execution_output_appends_to_pending_result() {
+    #[tokio::test]
+    async fn on_tool_execution_output_appends_to_pending_result() {
         // Given a session with a pending tool result.
-        let actor = test_actor();
+        let actor = test_actor().await;
         let session_id = {
             let mut state = actor.state.write();
             let session = state.active_session_mut();
@@ -717,7 +717,7 @@ mod tests {
     #[tokio::test]
     async fn on_tool_batch_completed_applies_pending_mutations() {
         // Given a session in sending state with pending history mutations.
-        let actor = test_actor();
+        let actor = test_actor().await;
         let (sink, ctx) = test_context();
         let (entry_id, session_id) = {
             let mut state = actor.state.write();
@@ -787,7 +787,7 @@ mod tests {
     #[tokio::test]
     async fn on_tool_batch_completed_empty_mutation_queue_is_noop() {
         // Given a session in sending state with no pending mutations.
-        let actor = test_actor();
+        let actor = test_actor().await;
         let (sink, ctx) = test_context();
         let session_id = {
             let mut state = actor.state.write();
@@ -832,7 +832,7 @@ mod tests {
     async fn on_tool_batch_completed_drained_steering_entry_lands_after_tool_results() {
         // Given a session with [user][assistant+tool_call][tool_result] in history
         // and a non-empty steering buffer.
-        let actor = test_actor();
+        let actor = test_actor().await;
         let (_sink, ctx) = test_context();
         let session_id = {
             let mut state = actor.state.write();

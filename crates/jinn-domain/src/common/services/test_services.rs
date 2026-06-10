@@ -35,9 +35,8 @@ use super::actor_channel::ActorChannelService;
 /// The `Runtime` itself is intentionally leaked via `Box::leak` at
 /// static-init time; it lives for the lifetime of the test binary.
 /// The `Handle` is cheaply cloneable and shared by all tests.
-static TEST_RUNTIME: LazyLock<Handle> = LazyLock::new(|| {
-    let rt = Box::leak(Box::new(Runtime::new().expect("shared test runtime")));
-    rt.handle().clone()
+static TEST_RUNTIME: LazyLock<&'static Runtime> = LazyLock::new(|| {
+    Box::leak(Box::new(Runtime::new().expect("shared test runtime")))
 });
 
 /// Returns a clone of the shared test runtime handle.
@@ -47,7 +46,7 @@ static TEST_RUNTIME: LazyLock<Handle> = LazyLock::new(|| {
 /// Panics if the underlying tokio runtime fails to create (extremely
 /// unlikely in tests).
 pub(crate) fn shared_test_handle() -> Handle {
-    TEST_RUNTIME.clone()
+    TEST_RUNTIME.handle().clone()
 }
 
 /// A no-op session store for tests.
@@ -234,10 +233,19 @@ impl TestServices {
             let bus_actor = kameo_actors::message_bus::MessageBus::new(
                 kameo_actors::DeliveryStrategy::BestEffort,
             );
-            let bus_ref = kameo_actors::message_bus::MessageBus::spawn(bus_actor);
+            // MessageBus::spawn calls tokio::spawn internally.
+            // If we're already inside a tokio runtime, use it directly.
+            // Otherwise, enter the shared test runtime via block_on.
+            let bus_ref = if tokio::runtime::Handle::try_current().is_ok() {
+                kameo_actors::message_bus::MessageBus::spawn(bus_actor)
+            } else {
+                TEST_RUNTIME.block_on(async {
+                    kameo_actors::message_bus::MessageBus::spawn(bus_actor)
+                })
+            };
             super::bus_service::BusService::new(bus_ref)
         };
-        let bridge = crate::common::bridge::Bridge::new(bus.actor_ref().clone());
+        let bridge = crate::common::bridge::Bridge::with_handle(bus.actor_ref().clone(), handle.clone());
 
         Services {
             paths,

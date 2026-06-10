@@ -61,8 +61,8 @@ mod tests {
         }
     }
 
-    #[test]
-    fn clamps_selected_index_after_session_removed() {
+    #[tokio::test]
+    async fn clamps_selected_index_after_session_removed() {
         // Given a sidebar actor with three sessions and cursor at index 2.
         let actor = test_actor();
         let removed_id = {
@@ -100,8 +100,8 @@ mod tests {
         assert_eq!(state.frontend.sessions_section.selected_index, Some(1));
     }
 
-    #[test]
-    fn handles_removal_of_last_session_cursor_at_zero() {
+    #[tokio::test]
+    async fn handles_removal_of_last_session_cursor_at_zero() {
         // Given a sidebar actor with one session and cursor at 0.
         let actor = test_actor();
         let removed_id = {
@@ -130,8 +130,8 @@ mod tests {
         assert_eq!(state.frontend.sessions_section.selected_index, Some(0));
     }
 
-    #[test]
-    fn cursor_stays_when_index_still_valid() {
+    #[tokio::test]
+    async fn cursor_stays_when_index_still_valid() {
         // Given a sidebar actor with three sessions and cursor at index 0.
         let actor = test_actor();
         let removed_id = {
