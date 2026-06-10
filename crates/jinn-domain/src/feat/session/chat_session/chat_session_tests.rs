@@ -42,7 +42,9 @@ fn first_stream_token_creates_assistant_entry() {
     session.begin_streaming();
 
     // When appending the first token.
-    session.append_stream_token("Hello", jiff::Timestamp::now()).expect("ok");
+    session
+        .append_stream_token("Hello", jiff::Timestamp::now())
+        .expect("ok");
 
     // Then the assistant entry is created.
     assert_eq!(session.history().len(), 2);
@@ -72,8 +74,12 @@ fn append_stream_token_appends_to_assistant_entry() {
     session.begin_streaming();
 
     // When appending a token.
-    session.append_stream_token("Hello", jiff::Timestamp::now()).expect("ok");
-    session.append_stream_token(" world", jiff::Timestamp::now()).expect("ok");
+    session
+        .append_stream_token("Hello", jiff::Timestamp::now())
+        .expect("ok");
+    session
+        .append_stream_token(" world", jiff::Timestamp::now())
+        .expect("ok");
 
     // Then the assistant entry text is "Hello world".
     assert_eq!(
@@ -87,7 +93,9 @@ fn finish_streaming_clears_streaming_state() {
     // Given a session that is streaming with some tokens.
     let mut session = ChatSessionState::new();
     session.begin_streaming();
-    session.append_stream_token("Hi", jiff::Timestamp::now()).expect("ok");
+    session
+        .append_stream_token("Hi", jiff::Timestamp::now())
+        .expect("ok");
 
     // When finishing streaming.
     session.finish_streaming(true, jiff::Timestamp::now());
@@ -105,7 +113,9 @@ fn cancel_streaming_keeps_partial_text() {
     // Given a session that is streaming with partial tokens.
     let mut session = ChatSessionState::new();
     session.begin_streaming();
-    session.append_stream_token("Partial", jiff::Timestamp::now()).expect("ok");
+    session
+        .append_stream_token("Partial", jiff::Timestamp::now())
+        .expect("ok");
 
     // When cancelling streaming.
     session.cancel_streaming(jiff::Timestamp::now());
@@ -1448,7 +1458,9 @@ fn finish_streaming_clears_thinking_entry_index() {
         .build();
     session.begin_thinking(jiff::Timestamp::now());
     session.append_thinking_token("reasoning").expect("ok");
-    session.append_stream_token("response", jiff::Timestamp::now()).expect("ok");
+    session
+        .append_stream_token("response", jiff::Timestamp::now())
+        .expect("ok");
 
     // When finishing streaming.
     session.finish_streaming(true, jiff::Timestamp::now());
@@ -1520,7 +1532,9 @@ fn finish_streaming_without_preserve_keeps_existing_assistant() {
     // Given a session that is streaming and has received tokens.
     let mut session = ChatSessionState::new();
     session.begin_streaming();
-    session.append_stream_token("Hello", jiff::Timestamp::now()).expect("ok");
+    session
+        .append_stream_token("Hello", jiff::Timestamp::now())
+        .expect("ok");
 
     // When finishing streaming without preserving assistant.
     session.finish_streaming(false, jiff::Timestamp::now());

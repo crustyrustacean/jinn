@@ -851,7 +851,11 @@ impl ChatSessionState {
         clippy::indexing_slicing,
         reason = "index comes from push_entry which always returns a valid index"
     )]
-    pub fn append_stream_token<S>(&mut self, token: S, dispatched_at: jiff::Timestamp) -> Result<(), StreamingError>
+    pub fn append_stream_token<S>(
+        &mut self,
+        token: S,
+        dispatched_at: jiff::Timestamp,
+    ) -> Result<(), StreamingError>
     where
         S: AsRef<str>,
     {
@@ -1056,7 +1060,13 @@ impl ChatSessionState {
     ///
     /// Called when `ToolUseStarted` arrives - the tool name is known but arguments
     /// are still streaming in.
-    pub fn begin_tool_call(&mut self, index: usize, id: &str, name: &str, dispatched_at: jiff::Timestamp) {
+    pub fn begin_tool_call(
+        &mut self,
+        index: usize,
+        id: &str,
+        name: &str,
+        dispatched_at: jiff::Timestamp,
+    ) {
         self.ensure_assistant_entry(dispatched_at);
         let mut entry = ChatEntry::tool_call(id, name, "");
         entry.timing = EntryTiming::streamed(dispatched_at);
@@ -1145,7 +1155,12 @@ impl ChatSessionState {
     ///
     /// Creates the entry with `ToolResultStatus::Pending` and empty content,
     /// then tracks its history index for later content appends.
-    pub fn begin_tool_result(&mut self, tool_call_id: &str, name: &str, dispatched_at: jiff::Timestamp) {
+    pub fn begin_tool_result(
+        &mut self,
+        tool_call_id: &str,
+        name: &str,
+        dispatched_at: jiff::Timestamp,
+    ) {
         // Early return if not in Streaming phase — don't push orphaned entries.
         if self
             .core
