@@ -333,23 +333,55 @@ fn entry_prefix_and_content(kind: &ChatEntryKind) -> (&'static str, String) {
 }
 
 /// Truncates a string to the given max grapheme length, appending an ellipsis if needed.
-fn truncate_str(s: &str, max_len: usize) -> String {
+/// Truncate a string to at most `max_width` display columns, appending \u{2026} if truncated.
+///
+/// Uses `unicode_width` to measure each grapheme's display width. Wide characters
+/// (emoji, CJK) that would overflow the budget are skipped entirely rather than
+/// rendered partially.
+pub(crate) fn truncate_to_width(s: &str, max_width: usize) -> String {
     use unicode_segmentation::UnicodeSegmentation;
+    use unicode_width::UnicodeWidthStr;
 
-    let s = strip_ansi(s);
-    if s.len() <= max_len {
-        s
-    } else {
-        let truncated: String = s.graphemes(true).take(max_len.saturating_sub(1)).collect();
-        format!("{truncated}\u{2026}")
+    let s_width = UnicodeWidthStr::width(s);
+    if s_width <= max_width {
+        return s.to_owned();
     }
+
+    // Zero budget: no room for anything, not even an ellipsis.
+    if max_width == 0 {
+        return String::new();
+    }
+
+    // Walk graphemes, accumulating display width.
+    // Stop before a grapheme that would overflow the budget
+    // (leaving room for the ellipsis).
+    let ellipsis_width = 1; // \u{2026} is 1 cell
+    let target_width = max_width.saturating_sub(ellipsis_width);
+
+    let mut accumulated = 0usize;
+    let mut result = String::new();
+    for g in s.graphemes(true) {
+        let gw = UnicodeWidthStr::width(g);
+        if accumulated + gw > target_width {
+            break;
+        }
+        result.push_str(g);
+        accumulated += gw;
+    }
+    result.push('\u{2026}');
+    result
+}
+
+/// Strip ANSI escape sequences and truncate to at most `max_width` display columns.
+pub(crate) fn truncate_str(s: &str, max_width: usize) -> String {
+    truncate_to_width(&strip_ansi(s), max_width)
 }
 
 /// Builds the list of lines for the pinned entries panel.
 fn build_entry_list(
     pinned: &[&crate::protocol::ChatEntry],
     selected_index: usize,
-    _area_width: u16,
+    area_width: u16,
     sidebar_focused: bool,
     section_focused: bool,
     theme: &Theme,
@@ -358,12 +390,16 @@ fn build_entry_list(
 
     // Header
     lines.push(Line::from(vec![Span::styled(
-        format!(" Pinned Context \u{2014} {}", pinned.len()),
+        format!(" Pinned Context — {}", pinned.len()),
         Style::default()
             .fg(theme.primary_text)
             .add_modifier(Modifier::BOLD),
     )]));
     lines.push(Line::from(""));
+
+    // Fixed overhead per entry line: border(1) + space(1) + badge(5) + space(1) = 8 cells.
+    let fixed_overhead: u16 = 8;
+    let content_budget = area_width.saturating_sub(fixed_overhead) as usize;
 
     for (i, entry) in pinned.iter().enumerate() {
         let is_selected = section_focused && i == selected_index;
@@ -384,6 +420,10 @@ fn build_entry_list(
 
         let (prefix, content) = entry_prefix_and_content(&entry.kind);
 
+        // Truncate the assembled content to the remaining cell budget.
+        let full_content = format!("{prefix}{content}");
+        let capped_content = truncate_to_width(&full_content, content_budget);
+
         let style = if is_selected {
             Style::default().add_modifier(Modifier::REVERSED)
         } else {
@@ -393,7 +433,7 @@ fn build_entry_list(
         lines.push(Line::from(vec![
             border,
             Span::styled(format!(" {badge_text} "), Style::default().fg(badge_color)),
-            Span::styled(format!("{prefix}{content}"), style),
+            Span::styled(capped_content, style),
         ]));
     }
 
