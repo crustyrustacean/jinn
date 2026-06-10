@@ -86,6 +86,19 @@ fn context_override_label(o: ContextOverride) -> &'static str {
     }
 }
 
+/// Build a title line centered within `width` columns, padded with `-----`.
+///
+/// The label is surrounded by one space on each side, then `-` characters
+/// fill the remaining width. If the padding is odd, the extra `-` goes right.
+fn centered_title(label: &str, width: u16, style: Style) -> Line<'static> {
+    let inner = (width as usize).saturating_sub(2);
+    let dash_count = inner.saturating_sub(label.len());
+    let left = dash_count / 2;
+    let right = dash_count - left;
+    let text = format!("{} {} {}", "-".repeat(left), label, "-".repeat(right));
+    Line::from(vec![Span::styled(text, style)])
+}
+
 /// Fixed width of the audit popup, in terminal columns.
 ///
 /// Deliberately constant regardless of terminal size so the popup is always the
@@ -175,6 +188,36 @@ mod tests {
             .map(|s| s.content.clone())
             .collect::<Vec<_>>()
             .join("")
+    }
+
+    #[test]
+    fn centered_title_produces_exact_width_line() {
+        // Given label "Metadata" and width 60.
+        let theme = default_theme();
+        let style = Style::default().fg(theme.infopopup_title).bg(theme.infopopup_bg);
+        let line = centered_title("Metadata", 60, style);
+
+        // Then the rendered text is exactly 60 characters.
+        assert_eq!(text(&line).len(), 60);
+    }
+
+    #[test]
+    fn centered_title_centers_label_with_dash_padding() {
+        // Given label "Metadata" and width 60.
+        let theme = default_theme();
+        let style = Style::default().fg(theme.infopopup_title).bg(theme.infopopup_bg);
+        let line = centered_title("Metadata", 60, style);
+        let rendered = text(&line);
+
+        // Then the label is surrounded by spaces and dashes.
+        assert!(rendered.contains(" Metadata "));
+        // And the line starts and ends with dashes.
+        assert!(rendered.starts_with('-'));
+        assert!(rendered.ends_with('-'));
+        // And when padding is even (50 dashes for 8-char label in 60 cols),
+        // left and right dash counts are equal.
+        let dash_count = rendered.chars().filter(|c| *c == '-').count();
+        assert_eq!(dash_count, 50);
     }
 
     #[test]
