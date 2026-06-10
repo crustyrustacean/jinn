@@ -20,6 +20,7 @@ use serde_json::Value as JsonValue;
 use crate::feat::chat_input::ChatInputBoxState;
 
 use crate::feat::session::chat_history::ChatHistory;
+use crate::feat::session::model_selection::ModelSelection;
 use crate::feat::session::phase_machine::PhaseKind;
 use crate::feat::session::profile::SessionProfile;
 use crate::feat::session::steering_buffer::SteeringBuffer;
@@ -1352,8 +1353,8 @@ impl ChatSessionState {
         &mut self.core.profile
     }
 
-    /// Set the model for this session.
-    pub fn set_model(&mut self, model: String) {
+    /// Set the model selection for this session.
+    pub fn set_model(&mut self, model: ModelSelection) {
         self.core.profile.model = model;
     }
 
@@ -1434,8 +1435,11 @@ impl ChatSessionState {
         out
     }
 
-    /// The model for this session.
-    pub fn model(&self) -> &str {
+    /// The model selection for this session.
+    pub fn model_selection(&self) -> &ModelSelection {
+        &self.core.profile.model
+    }
+    pub fn model(&self) -> &ModelSelection {
         &self.core.profile.model
     }
 

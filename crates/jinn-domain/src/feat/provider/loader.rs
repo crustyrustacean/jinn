@@ -27,7 +27,12 @@ pub fn load_provider_picker_items(services: &Services, state: &mut AppState) {
         state.provider.model_cache.as_ref(),
         &state.frontend.theme,
     );
-    let active_model = state.active_session().profile().model.clone();
+    let active_model = state
+        .active_session()
+        .profile()
+        .model
+        .display_str()
+        .to_owned();
     let entries = sorted_entries(&all, "", &active_model);
     state.provider.provider_picker.set_items(entries);
 }

@@ -12,6 +12,7 @@ use crate::common::state::State;
 use crate::feat::provider::protocol::command::ProviderSwitch;
 use crate::feat::provider::protocol::event::ModelCacheLoaded;
 use crate::feat::provider_infra::{ModelCache, ProviderRegistry};
+use crate::feat::session::model_selection::ModelSelection;
 use crate::init::EnvironmentLoaded;
 use crate::protocol::{Command, Event};
 
@@ -119,7 +120,7 @@ impl ProviderInitActor {
             let state = self.state.read();
             state.active_session().profile().model.clone()
         };
-        if active_session_model == crate::feat::provider_infra::NO_PROVIDER_ID
+        if active_session_model.is_no_provider()
             && let Some(ref model) = app_state.last_model
         {
             let id = crate::feat::provider_infra::ProviderId::new(model.clone());
@@ -128,7 +129,7 @@ impl ProviderInitActor {
                 tracing::info!(last_model = %model, "provider-init resolving last_model");
                 if let Err(e) = ctx.send_command(Command::ProviderSwitch(ProviderSwitch {
                     session_id: self.state.read().session.active_session_id().clone(),
-                    provider_id: model.clone(),
+                    provider_id: ModelSelection::Single(model.clone()),
                 })) {
                     tracing::warn!(err = ?e, "provider-init failed to send ProviderSwitch");
                 }
@@ -162,6 +163,7 @@ mod tests {
     use crate::protocol::{Command, Event};
 
     use super::{ProviderInitActor, ProviderInitActorDeps};
+    use crate::feat::session::model_selection::ModelSelection;
 
     /// Creates a test actor with Services defaults.
     fn create_actor() -> (
@@ -227,7 +229,7 @@ mod tests {
         // Then a ProviderSwitch command was sent.
         let commands = sink.commands();
         let found = commands.iter().any(|c| {
-            matches!(c, Command::ProviderSwitch (payload) if payload.provider_id == "sample/sample")
+            matches!(c, Command::ProviderSwitch (payload) if payload.provider_id == ModelSelection::Single("sample/sample".to_owned()))
         });
         assert!(found, "expected ProviderSwitch command for sample/sample");
     }
@@ -398,7 +400,7 @@ mod tests {
         state
             .write()
             .active_session_mut()
-            .set_model("bench-model".to_owned());
+            .set_model(ModelSelection::Single("bench-model".to_owned()));
 
         // Set up app state with a last_model (should be ignored since session has explicit model).
         services

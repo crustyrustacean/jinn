@@ -20,6 +20,7 @@ use ratatui::style::Color;
 
 use super::loader::load_provider_picker_items;
 use super::render::render_provider_picker;
+use crate::feat::session::model_selection::ModelSelection;
 
 fn picker_state_with_ollama() -> (AppState, Services) {
     let config = ProvidersConfig {
@@ -118,7 +119,7 @@ fn render_provider_picker_shows_active_model_marker() {
     });
     state
         .active_session_mut()
-        .set_model("ollama/llama3".to_owned());
+        .set_model(ModelSelection::Single("ollama/llama3".to_owned()));
     load_picker_items(&mut state, &services);
 
     let (mut terminal, _area) = setup_term(80, 24);
