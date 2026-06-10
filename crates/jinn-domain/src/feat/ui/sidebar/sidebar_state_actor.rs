@@ -1,14 +1,17 @@
-//! Sidebar state actor - keeps sidebar cursor in sync after session close.
+//! Sidebar state actor — keeps sidebar cursor in sync after session close.
 //!
 //! Subscribes to [`SessionClosed`] events and clamps the sidebar's
 //! `selected_index` and `scroll_offset` so they never point past the end
 //! of the sessions list.
 
-use crate::common::actor::{Actor, ActorContext, ActorEnvelope, NoDirectMsg};
+use kameo::actor::{ActorRef, Spawn};
+use kameo::prelude::{Context, Message};
+use std::sync::Arc;
+
+use crate::common::actor_deps::{ActorDeps, BusPublish};
 use crate::common::state::State;
 use crate::feat::session::protocol::session_closed::SessionClosed;
 use crate::feat::ui::sidebar::sessions;
-use crate::protocol::Event;
 
 /// Actor that adjusts sidebar cursor state in response to session close.
 pub struct SidebarStateActor {
@@ -17,25 +20,39 @@ pub struct SidebarStateActor {
 
 /// Dependencies for [`SidebarStateActor`].
 pub struct SidebarStateActorDeps {
+    /// Common actor dependencies (services + bus).
+    pub deps: ActorDeps,
     /// Shared application state.
     pub state: State,
 }
 
-impl Actor for SidebarStateActor {
-    type Message = NoDirectMsg;
-    type Deps = SidebarStateActorDeps;
+impl kameo::Actor for SidebarStateActor {
+    type Args = SidebarStateActorDeps;
+    type Error = kameo::error::Infallible;
 
-    fn activate(deps: Self::Deps, ctx: &mut ActorContext) -> Self {
-        ctx.subscribe_event::<SessionClosed>();
-        ctx.set_description("Sidebar cursor state management");
+    async fn on_start(
+        args: Self::Args,
+        actor_ref: ActorRef<Self>,
+    ) -> Result<Self, Self::Error> {
+        args.deps
+            .subscribe(actor_ref.recipient::<SessionClosed>())
+            .await;
 
-        Self { state: deps.state }
+        Ok(Self { state: args.state })
     }
+}
 
-    async fn handle(&mut self, msg: ActorEnvelope<Self::Message>, _ctx: &ActorContext) {
-        if let ActorEnvelope::Event(Event::SessionClosed(payload)) = &msg {
-            self.handle_session_closed(payload);
-        }
+impl BusPublish for SidebarStateActor {
+    fn bus(&self) -> &crate::common::services::bus_service::BusService {
+        unreachable!("SidebarStateActor does not publish")
+    }
+}
+
+impl Message<SessionClosed> for SidebarStateActor {
+    type Reply = ();
+
+    async fn handle(&mut self, msg: SessionClosed, _ctx: &mut Context<Self, Self::Reply>) {
+        self.handle_session_closed(&msg);
     }
 }
 
@@ -49,7 +66,13 @@ impl SidebarStateActor {
 
 #[cfg(test)]
 mod tests {
-    #![allow(clippy::expect_used, clippy::panic, clippy::unreachable, clippy::indexing_slicing, reason = "test code")]
+    #![allow(
+        clippy::expect_used,
+        clippy::panic,
+        clippy::unreachable,
+        clippy::indexing_slicing,
+        reason = "test code"
+    )]
     use super::*;
     use crate::common::app_state::AppState;
     use crate::common::state::State;
