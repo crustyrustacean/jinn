@@ -463,6 +463,11 @@ struct TokenLedgerRow {
     tokens_sent: i32,
     tokens_received: i32,
     cost: Option<f64>,
+    #[expect(
+        dead_code,
+        reason = "required by Diesel Queryable derive to match SELECT * columns"
+    )]
+    model_used: Option<String>,
 }
 
 /// Insert model for the `token_ledger` table.
@@ -474,6 +479,7 @@ struct NewTokenLedgerRow {
     tokens_sent: i32,
     tokens_received: i32,
     cost: Option<f64>,
+    model_used: Option<String>,
 }
 
 // ── Conversions ──────────────────────────────────────────────────────────
@@ -855,6 +861,7 @@ fn save_blocking(
                     tokens_sent: record.tokens_sent as i32,
                     tokens_received: record.tokens_received as i32,
                     cost: record.cost,
+                    model_used: None,
                 })
                 .execute(txn)?;
         }
