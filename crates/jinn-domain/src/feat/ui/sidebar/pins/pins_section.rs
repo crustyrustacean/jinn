@@ -309,9 +309,9 @@ fn entry_prefix_and_content(kind: &ChatEntryKind) -> (&'static str, String) {
                 return ("", truncate_str(&loaded_skill_summary_label(content), 40));
             }
             let icon = if *status == ToolResultStatus::Success {
-                "\u{2705}"
+                "✓"
             } else {
-                "\u{274c}"
+                "✗"
             };
             (
                 "",

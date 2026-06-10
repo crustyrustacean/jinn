@@ -692,7 +692,7 @@ fn pins_non_skill_tool_result_unchanged() {
 
     // Then the non-skill rendering is unchanged: check icon, tool name, content.
     assert!(
-        rendered.contains('\u{2705}'),
+        rendered.contains('✓'),
         "non-skill success result should show the check icon: {rendered}"
     );
     assert!(
@@ -793,19 +793,20 @@ fn truncate_str_strips_ansi_before_truncating() {
 #[test]
 
 fn tool_result_with_wide_emoji_fits_narrow_sidebar() {
-    // Given a pinned tool result with the double-wide ✅ icon.
+    // Given a pinned tool result with the ✓ success icon.
     let state = state_with_pinned_tool_result("write", &"x".repeat(100));
 
     // When rendering in a narrow sidebar (20 cells).
     let mut section = PinsSection;
     let rows = render_rows(&mut section, &state, 20, 10);
 
-    // Then the ✅ character is still present (not stripped by truncation).
+    // Then the ✓ character is present (single-width, no clipping issue).
     let combined = rows.join("\n");
     assert!(
-        combined.contains('\u{2705}'),
-        "should still contain ✅ even in narrow sidebar: {combined}"
+        combined.contains('✓'),
+        "should still contain ✓ even in narrow sidebar: {combined}"
     );
+}
 }
 
 #[rstest::rstest]
