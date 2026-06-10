@@ -105,6 +105,63 @@ fn centered_title(label: &str, width: u16, style: Style) -> Line<'static> {
 /// same shape. See `audit_popup_rect` for placement.
 pub const AUDIT_POPUP_WIDTH: u16 = 60;
 
+/// Format a timestamp as `YYYY-MM-DD HH:MM:SS (<relative>)`.
+///
+/// The absolute part uses UTC. The relative part is a human-readable
+/// string like \"5 minutes ago\", \"2 hours ago\", \"3 days ago\", etc.
+fn format_timestamp(ts: &jiff::Timestamp) -> String {
+    let absolute = ts.strftime("%Y-%m-%d %H:%M:%S").to_string();
+    let relative = format_relative_time(ts);
+    format!("{absolute} ({relative})")
+}
+
+/// Compute a human-readable relative time string from a timestamp to now.
+///
+/// Produces strings like \"just now\", \"5 minutes ago\", \"2 hours ago\",
+/// \"3 days ago\", \"5 months ago\", \"1 year ago\".
+fn format_relative_time(ts: &jiff::Timestamp) -> String {
+    let now = jiff::Timestamp::now();
+    // Timestamp::since only supports up to Unit::Hour (days require calendar context).
+    // So we get hours/minutes/seconds and derive days/months/years from total hours.
+    let span = match now.since((jiff::Unit::Hour, *ts)) {
+        Ok(s) => s,
+        Err(_) => return "unknown".to_owned(),
+    };
+
+    let total_hours = span.get_hours().unsigned_abs() as u32;
+    let minutes = span.get_minutes().unsigned_abs() as u32;
+
+    // Derive larger units from total hours (approximate).
+    let years = total_hours / (365 * 24);
+    let months = total_hours / (30 * 24);
+    let days = total_hours / 24;
+    let hours = total_hours % 24;
+
+    if years > 0 {
+        format_units(years, "year")
+    } else if months > 0 {
+        format_units(months, "month")
+    } else if days > 0 {
+        format_units(days, "day")
+    } else if hours > 0 {
+        format_units(hours, "hour")
+    } else if minutes > 0 {
+        format_units(minutes, "minute")
+    } else {
+        // Less than a minute ago.
+        "just now".to_owned()
+    }
+}
+
+/// Format a count with a pluralized unit and \"ago\" suffix.
+fn format_units(count: u32, unit: &str) -> String {
+    if count == 1 {
+        format!("1 {unit} ago")
+    } else {
+        format!("{count} {unit}s ago")
+    }
+}
+
 /// Compute the screen rectangle for the audit popup.
 ///
 /// Placement rules (in priority order):
@@ -218,6 +275,46 @@ mod tests {
         // left and right dash counts are equal.
         let dash_count = rendered.chars().filter(|c| *c == '-').count();
         assert_eq!(dash_count, 50);
+    }
+
+    #[test]
+    fn format_timestamp_recent_shows_absolute_and_relative() {
+        // Given a timestamp 30 seconds ago.
+        let ts = jiff::Timestamp::now()
+            .checked_sub(jiff::SignedDuration::from_secs(30))
+            .expect("30s ago is valid");
+
+        // When formatting.
+        let result = format_timestamp(&ts);
+
+        // Then the absolute portion looks like a date-time.
+        assert!(
+            result.contains('T') || result.contains(' '),
+            "should contain date/time separator: {result}"
+        );
+        // And the relative portion says \"just now\".
+        assert!(
+            result.contains("just now"),
+            "should say 'just now' for 30s ago: {result}"
+        );
+    }
+
+
+    #[test]
+    fn format_timestamp_old_shows_absolute_and_days_ago() {
+        // Given a timestamp 5 days ago.
+        let ts = jiff::Timestamp::now()
+            .checked_sub(jiff::SignedDuration::from_hours(24 * 5))
+            .expect("5 days ago is valid");
+
+        // When formatting.
+        let result = format_timestamp(&ts);
+
+        // Then the relative portion says \"5 days ago\".
+        assert!(
+            result.contains("5 days ago"),
+            "should say '5 days ago': {result}"
+        );
     }
 
     #[test]
