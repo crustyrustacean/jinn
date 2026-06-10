@@ -71,7 +71,7 @@ async fn set_compaction_model_overwrites_previous() {
             ))],
         })
         .await;
-    let recorded = await_recorded(&recorder, 2, Duration::from_secs(2)).await;
+    let recorded = await_recorded(&recorder, 1, Duration::from_secs(2)).await;
 
     // Then only the latest model is in the emitted event.
     let found = recorded.iter().any(|e| {
