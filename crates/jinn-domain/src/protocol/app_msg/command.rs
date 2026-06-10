@@ -41,7 +41,8 @@ use crate::feat::session_lifecycle::protocol::command::{
 };
 use crate::feat::skills::skills_scan_actor::ScanSkills;
 use crate::feat::tools_actor::protocol::command::{
-    CancelToolBatch, ExecuteTool, ExecuteToolBatch, ExecuteWebFetch, RegisterTools,
+    CancelToolBatch, ExecuteTool, ExecuteToolBatch, ExecuteWebFetch, RegisterPluginTools,
+    RegisterTools,
 };
 
 /// Every domain command the actor system can receive.
@@ -80,6 +81,8 @@ pub enum Command {
     RescanPromptTemplates(RescanPromptTemplates),
     /// Register tools that an actor can execute.
     RegisterTools(RegisterTools),
+    /// Register tools provided by a Lua plugin.
+    RegisterPluginTools(RegisterPluginTools),
     /// Request execution of a batch of tool calls.
     ExecuteToolBatch(ExecuteToolBatch),
     /// Execute a single tool call (routed to provider actor).
@@ -170,6 +173,7 @@ impl Command {
             Self::RefreshModels => Some(RefreshModels::NAME),
             Self::RescanPromptTemplates(..) => Some(RescanPromptTemplates::NAME),
             Self::RegisterTools(..) => Some(RegisterTools::NAME),
+            Self::RegisterPluginTools(..) => Some(RegisterPluginTools::NAME),
             Self::ExecuteToolBatch(..) => Some(ExecuteToolBatch::NAME),
             Self::ExecuteTool(..) => Some(ExecuteTool::NAME),
             Self::CancelToolBatch(..) => Some(CancelToolBatch::NAME),
@@ -261,6 +265,14 @@ impl std::fmt::Display for Command {
                     "register {} tools from '{}'",
                     payload.definitions.len(),
                     payload.provider
+                )
+            }
+            Command::RegisterPluginTools(payload) => {
+                write!(
+                    f,
+                    "register {} plugin tools from '{}'",
+                    payload.definitions.len(),
+                    payload.plugin_name
                 )
             }
             Command::ExecuteToolBatch(payload) => {

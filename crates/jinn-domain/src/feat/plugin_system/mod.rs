@@ -32,7 +32,10 @@ impl Default for SessionRegistryId {
 
 pub mod session_plugin_registry;
 
-pub use session_plugin_registry::{SessionPluginRegistry, SessionPluginRegistryError};
+pub use session_plugin_registry::{
+    CreateSessionRegistryResult, PluginToolMetadata, SessionPluginRegistry,
+    SessionPluginRegistryError,
+};
 
 pub mod session_plugin_registry_service;
 

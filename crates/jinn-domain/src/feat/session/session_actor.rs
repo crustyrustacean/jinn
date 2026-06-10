@@ -319,7 +319,8 @@ impl SessionPersistenceActor {
             | Command::ExecuteWebFetch(..)
             | Command::AttachPlugin(..)
             | Command::DetachPlugin(..)
-            | Command::TogglePlugin(..) => {}
+            | Command::TogglePlugin(..)
+            | Command::RegisterPluginTools(..) => {}
         }
     }
 }

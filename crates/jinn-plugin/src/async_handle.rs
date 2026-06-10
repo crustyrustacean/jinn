@@ -12,6 +12,16 @@ use wherror::Error;
 
 use crate::PluginData;
 
+/// Result of creating a per-session plugin registry.
+#[derive(Debug)]
+pub struct CreateSessionRegistryResult {
+    /// The newly created registry ID.
+    pub registry_id: crate::session_registry::SessionRegistryId,
+    /// Tool definitions extracted from the loaded plugins.
+    pub tool_metadata: Vec<crate::tool_def::PluginToolMetadata>,
+}
+
+
 /// Error type for plugin system failures.
 ///
 /// Colocated with [`AsyncPluginHandle`] because it is the primary consumer
@@ -75,8 +85,8 @@ pub(crate) enum PluginJob {
         registry_id: crate::session_registry::SessionRegistryId,
         /// Names of attachable plugins to load.
         plugin_names: Vec<String>,
-        /// Responder. `Ok` indicates the Lua state is ready.
-        respond_to: oneshot::Sender<Result<(), Report<PluginError>>>,
+        /// Responder. Returns tool definitions extracted from loaded plugins.
+        respond_to: oneshot::Sender<Result<Vec<crate::tool_def::PluginToolMetadata>, Report<PluginError>>>,
     },
     /// Drop a per-session Lua state and free its memory.
     DestroySession {
@@ -242,7 +252,7 @@ impl AsyncPluginHandle {
     pub async fn create_session_registry_impl(
         &self,
         plugin_names: Vec<String>,
-    ) -> Result<crate::session_registry::SessionRegistryId, Report<PluginError>> {
+    ) -> Result<CreateSessionRegistryResult, Report<PluginError>> {
         let registry_id = crate::session_registry::SessionRegistryId::new();
         let (respond_to, rx) = oneshot::channel();
         self.tx
@@ -254,13 +264,16 @@ impl AsyncPluginHandle {
             .await
             .map_err(|_e| Report::new(PluginError))
             .attach("failed to send LoadSession job to plugin thread")?;
-        tokio::time::timeout(std::time::Duration::from_secs(30), rx)
+        let tool_metadata = tokio::time::timeout(std::time::Duration::from_secs(30), rx)
             .await
             .map_err(|_e| Report::new(PluginError))
             .attach("timed out waiting for plugin thread response (30s)")?
             .map_err(|_e| Report::new(PluginError))
             .attach("plugin thread dropped oneshot responder")??;
-        Ok(registry_id)
+        Ok(CreateSessionRegistryResult {
+            registry_id,
+            tool_metadata,
+        })
     }
 
     /// Drop a per-session Lua state.
@@ -302,13 +315,17 @@ impl jinn_domain::feat::plugin_system::SessionPluginRegistry for AsyncPluginHand
         &self,
         plugin_names: Vec<String>,
     ) -> Result<
-        jinn_domain::feat::plugin_system::SessionRegistryId,
+        jinn_domain::feat::plugin_system::CreateSessionRegistryResult,
         Report<jinn_domain::feat::plugin_system::SessionPluginRegistryError>,
     > {
-        AsyncPluginHandle::create_session_registry_impl(self, plugin_names)
+        let result = AsyncPluginHandle::create_session_registry_impl(self, plugin_names)
             .await
             .map_err(|_e| Report::new(jinn_domain::feat::plugin_system::SessionPluginRegistryError))
-            .attach("create per-session plugin registry")
+            .attach("create per-session plugin registry")?;
+        Ok(jinn_domain::feat::plugin_system::CreateSessionRegistryResult {
+            registry_id: result.registry_id,
+            tool_metadata: result.tool_metadata.into_iter().map(|m| m.into()).collect(),
+        })
     }
 
     async fn destroy_session_registry(

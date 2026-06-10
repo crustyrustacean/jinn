@@ -16,7 +16,7 @@
 use std::path::Path;
 use std::sync::{Arc, Mutex};
 
-use jinn_plugin::{PluginCommand, PluginSystem};
+use jinn_plugin::{PluginCommand, PluginSystem, PluginSystemBuildResult};
 use serde::Serialize;
 use serde_json::json;
 
@@ -40,7 +40,7 @@ fn build_system(dir: &Path) -> TestSystem {
     let captured_clone = captured.clone();
 
     let rt = Box::leak(Box::new(tokio::runtime::Runtime::new().expect("runtime")));
-    let (sync, async_handle, _) = PluginSystem::build(
+    let PluginSystemBuildResult { sync, async_handle, .. } = PluginSystem::build(
         dir,
         Path::new("/nonexistent"),
         rt.handle().clone(),

@@ -253,10 +253,13 @@ impl crate::feat::plugin_system::SessionPluginRegistry for NoopSessionPluginRegi
         &self,
         _plugin_names: Vec<String>,
     ) -> Result<
-        crate::feat::plugin_system::SessionRegistryId,
+        crate::feat::plugin_system::CreateSessionRegistryResult,
         Report<crate::feat::plugin_system::SessionPluginRegistryError>,
     > {
-        Ok(crate::feat::plugin_system::SessionRegistryId::new())
+        Ok(crate::feat::plugin_system::CreateSessionRegistryResult {
+            registry_id: crate::feat::plugin_system::SessionRegistryId::new(),
+            tool_metadata: Vec::new(),
+        })
     }
 
     async fn destroy_session_registry(

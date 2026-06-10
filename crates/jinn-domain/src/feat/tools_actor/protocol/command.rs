@@ -45,6 +45,21 @@ pub struct ExecuteTool {
     pub tool_call: ToolCall,
 }
 
+/// Register tools provided by a Lua plugin.
+///
+/// Sent by the plugin dispatch actor when a plugin with tool definitions is loaded.
+/// Carries the plugin name, target scope (global or session-attached), and tool definitions.
+#[derive(Debug, Clone, Serialize, Deserialize, CommandMsg)]
+#[cmd("tool")]
+pub struct RegisterPluginTools {
+    /// The name of the plugin providing these tools.
+    pub plugin_name: String,
+    /// `None` for global plugins (registered everywhere), `Some(id)` for session-attached plugins.
+    pub target: Option<crate::feat::plugin_system::SessionRegistryId>,
+    /// The tool definitions being registered.
+    pub definitions: Vec<ToolDefinition>,
+}
+
 /// Cancel all pending tool executions for a session.
 ///
 /// Sent by the LLM actor when a stream is cancelled while tool results

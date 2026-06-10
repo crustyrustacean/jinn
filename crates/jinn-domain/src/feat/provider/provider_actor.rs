@@ -136,6 +136,7 @@ impl ProviderActor {
             | Command::AttachPlugin(..)
             | Command::DetachPlugin(..)
             | Command::TogglePlugin(..)
+            | Command::RegisterPluginTools(..)
             | Command::SubmitSteeringMessage(..) => {}
         }
     }

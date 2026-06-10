@@ -12,7 +12,7 @@ use std::path::Path;
 use std::sync::{Arc, Mutex};
 
 use jinn_domain::feat::plugin_system::SessionPluginRegistry;
-use jinn_plugin::{PluginCommand, PluginSyncHandle, PluginSystem};
+use jinn_plugin::{PluginCommand, PluginSyncHandle, PluginSystem, PluginSystemBuildResult};
 use serde::Serialize;
 
 fn write_plugin(dir: &Path, name: &str, lua_source: &str) {
@@ -26,7 +26,7 @@ fn build_system(dir: &Path) -> (PluginSyncHandle, Arc<Mutex<Vec<PluginCommand>>>
     let captured_clone = captured.clone();
 
     let rt = Box::leak(Box::new(tokio::runtime::Runtime::new().expect("runtime")));
-    let (_, _, sync_handle) = PluginSystem::build(
+    let PluginSystemBuildResult { sync_handle, .. } = PluginSystem::build(
         dir,
         Path::new("/nonexistent"),
         rt.handle().clone(),
@@ -159,7 +159,7 @@ fn build_both(
     let captured: Arc<Mutex<Vec<PluginCommand>>> = Arc::new(Mutex::new(Vec::new()));
     let captured_clone = captured.clone();
     let rt = Box::leak(Box::new(tokio::runtime::Runtime::new().expect("runtime")));
-    let (_, async_handle, sync_handle) = PluginSystem::build(
+    let PluginSystemBuildResult { async_handle, sync_handle, .. } = PluginSystem::build(
         dir,
         Path::new("/nonexistent"),
         rt.handle().clone(),
@@ -206,7 +206,7 @@ fn sync_call_hooks_for_session_includes_global_and_session_plugins() {
             .create_session_registry(vec!["a".to_owned()])
             .await
             .expect("create registry")
-    });
+    }).registry_id;
 
     let results: Vec<String> = sync_handle
         .call_hooks_for_session(
@@ -254,7 +254,7 @@ fn sync_call_hooks_for_session_excludes_unattached() {
             .create_session_registry(vec![])
             .await
             .expect("create registry")
-    });
+    }).registry_id;
 
     let results: Vec<String> = sync_handle
         .call_hooks_for_session(

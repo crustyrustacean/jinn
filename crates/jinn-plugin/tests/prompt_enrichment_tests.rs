@@ -20,7 +20,7 @@
 )]
 
 use jinn_domain::feat::plugin_dispatch::PluginSyncHooks;
-use jinn_plugin::{PluginCommand, PluginSystem, SyncPlugins};
+use jinn_plugin::{PluginCommand, PluginSystem, PluginSystemBuildResult, SyncPlugins};
 use serde_json::{Value, json};
 use std::path::{Path, PathBuf};
 use std::sync::{Arc, Mutex};
@@ -71,7 +71,7 @@ fn build_system_with_oneshot(stub_result: Value) -> TestSystem {
     // dropped inside a `#[tokio::test]` async context.
     let rt = Box::leak(Box::new(tokio::runtime::Runtime::new().expect("runtime")));
 
-    let (sync, async_handle, _) = PluginSystem::build(
+    let PluginSystemBuildResult { sync, async_handle, .. } = PluginSystem::build(
         &res_plugins_dir(),
         Path::new("/nonexistent"),
         rt.handle().clone(),
@@ -121,7 +121,7 @@ async fn on_enrich_noops_on_empty_text() {
     let rt = Box::leak(Box::new(tokio::runtime::Runtime::new().expect("runtime")));
 
     let counter = oneshot_calls.clone();
-    let (_, async_handle, _) = PluginSystem::build(
+    let PluginSystemBuildResult { async_handle, .. } = PluginSystem::build(
         &res_plugins_dir(),
         Path::new("/nonexistent"),
         rt.handle().clone(),
@@ -220,7 +220,7 @@ async fn on_enrich_two_taps_both_succeed_last_wins() {
 
     let call_count = Arc::new(Mutex::new(0u32));
     let counter = call_count.clone();
-    let (_, async_handle, _) = PluginSystem::build(
+    let PluginSystemBuildResult { async_handle, .. } = PluginSystem::build(
         &res_plugins_dir(),
         Path::new("/nonexistent"),
         rt.handle().clone(),

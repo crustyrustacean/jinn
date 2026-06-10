@@ -14,7 +14,7 @@ use crate::common::app_state::AppState;
 use crate::common::state::State;
 use crate::feat::tools_actor::get_time;
 use crate::feat::tools_actor::protocol::command::{
-    CancelToolBatch, ExecuteToolBatch, RegisterTools,
+    CancelToolBatch, ExecuteToolBatch, RegisterPluginTools, RegisterTools,
 };
 use crate::feat::tools_actor::protocol::event::{ToolBatchCompleted, ToolExecutionCompleted};
 use crate::feat::tools_actor::read;
@@ -175,7 +175,7 @@ async fn register_tools_stores_actor_tools() {
         ToolRegistration::Actor { provider, .. } => {
             assert_eq!(provider, "web-actor");
         }
-        other @ ToolRegistration::Builtin { .. } => {
+        other => {
             panic!("expected Actor registration, got {other:?}")
         }
     }
@@ -1147,4 +1147,105 @@ fn tool_registration_debug_shows_name() {
         debug_str.contains("my_tool"),
         "Debug output should contain tool name: {debug_str}"
     );
+}
+
+#[rstest::rstest]
+#[tokio::test]
+async fn register_plugin_tools_stores_tool_as_plugin_variant() {
+    // Given an activated tools actor.
+    let (sink, mut ctx, deps) = default_test_ctx();
+    let mut actor = ToolOrchestratorActor::activate(deps, &mut ctx);
+
+    // When registering a plugin tool.
+    let definitions = vec![ToolDefinition {
+        name: "judgment_passed".to_owned(),
+        description: "Call when response passes".to_owned(),
+        parameters: serde_json::json!({"type": "object", "properties": {}}),
+        prompt_snippet: None,
+        prompt_guidelines: vec![],
+        server_tool_type: None,
+    }];
+    actor.handle_register_plugin_tools(
+        "judge",
+        &None,
+        &definitions,
+        &ctx,
+    );
+
+    // Then the tool is stored with the Plugin variant.
+    let reg = actor.tools.get("judgment_passed").expect("tool should be registered");
+    match reg {
+        ToolRegistration::Plugin { plugin_name, target, definition } => {
+            assert_eq!(plugin_name, "judge");
+            assert!(target.is_none());
+            assert_eq!(definition.name, "judgment_passed");
+        }
+        other => panic!("expected Plugin variant, got {other:?}"),
+    }
+}
+
+#[rstest::rstest]
+#[tokio::test]
+async fn register_plugin_tools_emits_tools_registered_event() {
+    // Given an activated tools actor.
+    let (sink, mut ctx, deps) = default_test_ctx();
+    let mut actor = ToolOrchestratorActor::activate(deps, &mut ctx);
+
+    // When registering a plugin tool.
+    let definitions = vec![ToolDefinition {
+        name: "judgment_failed".to_owned(),
+        description: "Call when response fails".to_owned(),
+        parameters: serde_json::json!({"type": "object", "properties": {}}),
+        prompt_snippet: None,
+        prompt_guidelines: vec![],
+        server_tool_type: None,
+    }];
+    actor.handle_register_plugin_tools(
+        "judge",
+        &None,
+        &definitions,
+        &ctx,
+    );
+
+    // Then a ToolsRegistered event was emitted.
+    let events = sink.events();
+    let found = events.iter().any(|e| matches!(
+        e,
+        Event::ToolsRegistered(evt) if evt.provider == "plugin:judge"
+    ));
+    assert!(found, "expected ToolsRegistered event from plugin:judge");
+}
+
+#[rstest::rstest]
+#[tokio::test]
+async fn register_plugin_tools_with_session_target_stores_target() {
+    // Given an activated tools actor.
+    let (sink, mut ctx, deps) = default_test_ctx();
+    let mut actor = ToolOrchestratorActor::activate(deps, &mut ctx);
+    let target_id = crate::feat::plugin_system::SessionRegistryId::new();
+
+    // When registering a plugin tool with a session target.
+    let definitions = vec![ToolDefinition {
+        name: "session_tool".to_owned(),
+        description: "A session-scoped tool".to_owned(),
+        parameters: serde_json::json!({"type": "object", "properties": {}}),
+        prompt_snippet: None,
+        prompt_guidelines: vec![],
+        server_tool_type: None,
+    }];
+    actor.handle_register_plugin_tools(
+        "my_plugin",
+        &Some(target_id),
+        &definitions,
+        &ctx,
+    );
+
+    // Then the tool is stored with the session target.
+    let reg = actor.tools.get("session_tool").expect("tool should be registered");
+    match reg {
+        ToolRegistration::Plugin { target, .. } => {
+            assert!(target.is_some());
+        }
+        other => panic!("expected Plugin variant, got {other:?}"),
+    }
 }

@@ -11,7 +11,7 @@
 use std::path::Path;
 use std::sync::{Arc, Mutex};
 
-use jinn_plugin::{AsyncPluginHandle, PluginCommand, PluginSystem, SyncPlugins};
+use jinn_plugin::{AsyncPluginHandle, PluginCommand, PluginSystem, PluginSystemBuildResult, SyncPlugins};
 
 // ── Test Helpers ─────────────────────────────────────────────────────────
 
@@ -27,7 +27,7 @@ fn build_system(
     let captured: Arc<Mutex<Vec<PluginCommand>>> = Arc::new(Mutex::new(Vec::new()));
     let captured_clone = captured.clone();
 
-    let (sync, async_handle, sync_handle) = PluginSystem::build(
+    let PluginSystemBuildResult { sync, async_handle, sync_handle, .. } = PluginSystem::build(
         dir,
         Path::new("/nonexistent"),
         rt.handle().clone(),
@@ -63,7 +63,7 @@ fn plugin_system_constructs_with_empty_plugin_dir() {
 #[test]
 fn plugin_system_constructs_with_nonexistent_dirs() {
     let rt = tokio::runtime::Runtime::new().expect("runtime");
-    let (sync, _, _) = PluginSystem::build(
+    let PluginSystemBuildResult { sync, .. } = PluginSystem::build(
         Path::new("/nonexistent/user"),
         Path::new("/nonexistent/system"),
         rt.handle().clone(),
