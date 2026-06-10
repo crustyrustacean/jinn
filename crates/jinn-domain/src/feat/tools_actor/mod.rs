@@ -15,6 +15,7 @@
 pub mod bash;
 pub mod edit;
 pub mod get_time;
+pub mod grep;
 pub mod protocol;
 pub mod read;
 pub mod registry;
