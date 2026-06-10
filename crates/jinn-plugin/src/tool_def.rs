@@ -66,7 +66,6 @@ impl PluginToolDef {
     }
 }
 
-
 /// Intermediate representation of a simplified parameter DSL entry read from Lua.
 pub(crate) struct LuaParamDef {
     /// Parameter name.
@@ -81,9 +80,7 @@ pub(crate) struct LuaParamDef {
 ///
 /// Input: `[{ name = "msg", type = "string", description = "Why" }]`
 /// Output: `{ type: "object", properties: { msg: { type: "string", description: "Why" } }, required: ["msg"] }`
-pub(crate) fn expand_parameters_to_schema(
-    params: &[LuaParamDef],
-) -> serde_json::Value {
+pub(crate) fn expand_parameters_to_schema(params: &[LuaParamDef]) -> serde_json::Value {
     use serde_json::{Map, Value};
 
     if params.is_empty() {
@@ -138,27 +135,23 @@ pub fn extract_tools(
         _ => return Vec::new(),
     };
 
-    let mut defs = Vec::new();
-    for pair in tools_table.sequence_values::<mlua::Table>() {
-        let entry = match pair {
-            Ok(t) => t,
-            Err(e) => {
-                tracing::warn!(
-                    plugin = plugin_name,
-                    err = %e,
-                    "skipping malformed tool entry in plugin"
-                );
-                continue;
-            }
-        };
-
-        match extract_single_tool(lua, &entry, plugin_name) {
-            Some(def) => defs.push(def),
-            None => continue,
-        }
-    }
-
-    defs
+    tools_table
+        .sequence_values::<mlua::Table>()
+        .filter_map(|pair| {
+            let entry = match pair {
+                Ok(t) => t,
+                Err(e) => {
+                    tracing::warn!(
+                        plugin = plugin_name,
+                        err = %e,
+                        "skipping malformed tool entry in plugin"
+                    );
+                    return None;
+                }
+            };
+            extract_single_tool(lua, &entry, plugin_name)
+        })
+        .collect()
 }
 
 fn extract_single_tool(
@@ -196,35 +189,27 @@ fn extract_params(entry: &mlua::Table) -> Vec<LuaParamDef> {
         _ => return Vec::new(),
     };
 
-    let mut params = Vec::new();
-    for pair in params_table.sequence_values::<mlua::Table>() {
-        match pair {
-            Ok(t) => {
-                let name: String = match t.get("name") {
-                    Ok(n) => n,
-                    Err(_) => continue,
-                };
-                let param_type: String = match t.get("type") {
-                    Ok(ty) => ty,
-                    Err(_) => continue,
-                };
-                let description: Option<String> = t.get("description").ok();
-                params.push(LuaParamDef {
-                    name,
-                    param_type,
-                    description,
-                });
-            }
-            Err(_) => continue,
-        }
-    }
-    params
+    params_table
+        .sequence_values::<mlua::Table>()
+        .filter_map(|pair| pair.ok())
+        .filter_map(|t| {
+            let name: String = t.get("name").ok()?;
+            let param_type: String = t.get("type").ok()?;
+            let description: Option<String> = t.get("description").ok();
+            Some(LuaParamDef {
+                name,
+                param_type,
+                description,
+            })
+        })
+        .collect()
 }
 
 #[cfg(test)]
 mod tests {
     #![allow(
         clippy::expect_used,
+        clippy::indexing_slicing,
         clippy::panic,
         clippy::unreachable,
         reason = "test code"
@@ -239,7 +224,10 @@ mod tests {
 
         // Then the schema is an empty object type.
         assert_eq!(schema["type"], "object");
-        assert_eq!(schema["properties"].as_object().map(|o| o.len()), Some(0));
+        assert_eq!(
+            schema["properties"].as_object().map(serde_json::Map::len),
+            Some(0)
+        );
     }
 
     #[test]
@@ -397,4 +385,3 @@ impl From<PluginToolMetadata> for jinn_domain::feat::plugin_system::PluginToolMe
         }
     }
 }
-

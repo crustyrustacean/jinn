@@ -185,8 +185,7 @@ pub fn load_all(lua: &Lua, plugins: &[PluginMeta]) -> LoadResult {
                 let table: mlua::Table = lua
                     .registry_value(&table_key)
                     .expect("just-stored key must resolve");
-                let plugin_tools =
-                    crate::tool_def::extract_tools(lua, &table, &meta.name);
+                let plugin_tools = crate::tool_def::extract_tools(lua, &table, &meta.name);
                 tracing::debug!(
                     plugin = meta.name,
                     tools = plugin_tools.len(),
@@ -425,7 +424,6 @@ mod tests {
 
         assert_eq!(result.hooks.len(), 2);
 
-
         // Plugin alpha returns 1, plugin beta returns 2.
         for (name, ph) in &result.hooks {
             let table: mlua::Table = lua.registry_value(ph.table()).expect("get table");
@@ -507,5 +505,75 @@ end }",
 
         let result = parse_description(&file);
         assert!(result.is_none());
+    }
+
+    #[test]
+    fn load_all_extracts_tool_definitions() {
+        let dir = tempfile::tempdir().expect("tempdir");
+        make_plugin(
+            dir.path(),
+            "tools_plugin",
+            r#"
+local M = {}
+M.tools = {
+    {
+        name = "my_tool",
+        description = "Does a thing",
+        parameters = {
+            { name = "msg", type = "string", description = "A message" },
+        },
+        handler = function(ctx, args)
+            return "result: " .. args.msg
+        end,
+    },
+}
+function M.on_test() end
+return M
+"#,
+        );
+
+        let plugins = discover_plugins(dir.path(), Path::new("/nonexistent"));
+        let lua = Lua::new();
+        let result = load_all(&lua, &plugins);
+
+        // Then the plugin has one tool definition.
+        assert_eq!(result.tools.len(), 1);
+        let tool = &result.tools[0];
+        assert_eq!(tool.name, "my_tool");
+        assert_eq!(tool.plugin_name, "tools_plugin");
+        assert_eq!(tool.description, "Does a thing");
+    }
+
+    #[test]
+    fn load_all_extracts_tool_with_no_parameters() {
+        let dir = tempfile::tempdir().expect("tempdir");
+        make_plugin(
+            dir.path(),
+            "simple_tool",
+            r#"
+local M = {}
+M.tools = {
+    {
+        name = "no_params",
+        description = "No params tool",
+        parameters = {},
+        handler = function(ctx)
+            return "ok"
+        end,
+    },
+}
+function M.on_test() end
+return M
+"#,
+        );
+
+        let plugins = discover_plugins(dir.path(), Path::new("/nonexistent"));
+        let lua = Lua::new();
+        let result = load_all(&lua, &plugins);
+
+        // Then the tool has an empty parameters schema.
+        assert_eq!(result.tools.len(), 1);
+        let tool = &result.tools[0];
+        assert_eq!(tool.name, "no_params");
     }
 }

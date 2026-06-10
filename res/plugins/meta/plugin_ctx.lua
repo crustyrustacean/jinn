@@ -58,6 +58,37 @@
 ---@field input_text string The current chat-input draft at submit time.
 
 ---
+-- ─── Plugin-defined tools ──────────────────────────────────────────
+---
+---A plugin can declare custom tools the LLM can call. Add a `tools` field
+---to the returned table:
+---
+---```lua
+---M.tools = {
+---  {
+---    name = "my_tool",
+---    description = "What this tool does",
+---    parameters = {
+---      { name = "arg", type = "string", description = "Arg description" },
+---    },
+---    handler = function(ctx, args)
+---      -- ctx: same async ctx as hooks (emit, request, etc.)
+---      -- args: table of parameter values
+---      return "result string"
+---    end,
+---  },
+---}
+---```
+---
+---Parameters use a simplified DSL: `{ name, type, description }`.
+---All parameters are required by default. The DSL is auto-expanded to
+---full JSON Schema. `type` can be "string", "number", "boolean".
+---
+---Global plugin tools are available in every session.
+---Attached plugin tools are available only in the session they are attached to.
+---Plugin tools appear in the tool picker and can be toggled on/off.
+---
+---
 ---@class OnChatInputBadgesRenderCtx : PluginCtx
 ---Sync hook fired by the chat-input renderer each frame. A plugin returns a
 ---single badge directive drawn right-aligned on the input box's bottom border
@@ -73,6 +104,13 @@
 ---@field active_session_id string The session currently in focus.
 ---@field mode string The current scope mode as a lowercase string (`"input"`, `"normal"`, ...). Plugins branch on it to style their own content.
 ---@field theme_styles table<string, string> A flat dictionary of every theme field name mapped to itself. Pass any key as a segment's `style` to resolve it against the active theme. Examples: `"streaming"`, `"accent_action"`, `"muted_text"`, `"error_text"`, etc.
+---@class OnSessionPreviewCtx : PluginCtx
+---Sync hook fired by the sidebar session preview renderer when the cursor is
+---on a plugin entry. The plugin returns `{ session_id = "..." }` to preview that
+---session, or `nil` to show no preview. Runs on the render-thread (sync) Lua state.
+---
+---@field plugin_data any This plugin's persistent state (read-only for sync hooks).
+---
 -- ─── Verb payload shapes ───────────────────────────────────────────
 
 ---@alias PluginVerb
@@ -81,6 +119,8 @@
 ---| '"disable_plugin"'
 ---| '"fire_async_hook"'
 ---| '"set_chat_input"'
+---| '"reset_session"'
+---| '"create_session"'
 
 ---@class PushChatEntryPayload
 ---@field session_id string
@@ -113,6 +153,12 @@
 ---@field session_id string
 ---@field text string The replacement text.
 
+---
+---@class ResetSessionPayload
+---Clears the chat history for the given session.
+---
+---@field session_id string
+
 --- ─── ctx.request contracts ───────────────────────────────────────
 ---
 ---`ctx.request(name, data)` is a blocking coroutine call resolved by a oneshot.
@@ -120,6 +166,7 @@
 ---
 ---@alias PluginRequestName
 ---| '"llm_oneshot"'
+---| '"create_session"'
 
 ---@class LlmOneshotRequest
 ---History-less one-shot LLM call. Inherits the session's provider+model
@@ -150,3 +197,13 @@
 ---
 ---@class LlmOneshotResponse
 ---@field text string The model's response text.
+
+---@class CreateSessionRequest
+---Creates a new session as a child of the given parent.
+---
+---@field parent_session_id string The parent session ID.
+---@field automated boolean|nil If true, the session is marked automated.
+---@field persist boolean|nil If true (default), the session is persisted to storage.
+---
+---@class CreateSessionResponse
+---@field session_id string The ID of the newly created session.

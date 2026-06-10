@@ -189,6 +189,9 @@ pub enum Intent {
     /// Re-run the lifecycle setup command for the sidebar-selected session.
     /// Only valid when the session's lifecycle_script_state is NothingRan.
     SidebarSessionRerunSetup,
+    /// Toggle the enabled/disabled state of the sidebar-selected plugin entry.
+    /// Only valid when the cursor is on a `SessionEntryKind::Plugin` entry.
+    SidebarTogglePlugin,
 
     // --- Chat Entry Selection ---
     /// Select the next chat entry.
@@ -364,6 +367,7 @@ impl std::fmt::Display for Intent {
             Intent::SessionNewWithLifecycle => write!(f, "new session with lifecycle"),
             Intent::SidebarSessionContinue => write!(f, "continue session"),
             Intent::SidebarSessionRerunSetup => write!(f, "rerun session setup"),
+            Intent::SidebarTogglePlugin => write!(f, "toggle plugin"),
 
             Intent::ChatEntrySelectNext => write!(f, "select next entry"),
             Intent::ChatEntrySelectPrev => write!(f, "select prev entry"),

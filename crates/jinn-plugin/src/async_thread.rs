@@ -200,13 +200,11 @@ async fn execute_plugin_job(state: &mut ThreadState, job: PluginJob) {
             arguments,
             respond_to,
         } => {
-            let result = execute_plugin_tool(state, target, &plugin_name, &tool_name, arguments);
+            let result = execute_plugin_tool(state, target, &plugin_name, &tool_name, &arguments);
             let _ = respond_to.send(result);
         }
     }
 }
-
-
 
 /// Execute a plugin-defined tool handler.
 ///
@@ -218,7 +216,7 @@ fn execute_plugin_tool(
     target: Option<SessionRegistryId>,
     plugin_name: &str,
     tool_name: &str,
-    arguments: serde_json::Value,
+    arguments: &serde_json::Value,
 ) -> Result<String, Report<PluginError>> {
     // Locate the correct Lua state and tools list.
     let (lua, tools) = if let Some(id) = &target {
@@ -256,9 +254,9 @@ fn execute_plugin_tool(
         .map_err(|e| Report::new(PluginError).attach(e.to_string()))?;
     let args_table = match args_value {
         mlua::Value::Table(t) => t,
-        _ => lua.create_table().map_err(|e| {
-            Report::new(PluginError).attach(e.to_string())
-        })?,
+        _ => lua
+            .create_table()
+            .map_err(|e| Report::new(PluginError).attach(e.to_string()))?,
     };
 
     // Get the handler function from the registry.
@@ -316,14 +314,19 @@ fn load_session_plugins(
             .attach(format!("requested: {plugin_names:?}"))
             .attach(format!("loaded: {loaded_names:?}")));
     }
-    let metadata: Vec<_> = result.tools.iter().map(|t| t.to_metadata()).collect();
-    state
-        .sessions
-        .insert(registry_id, SessionState {
+    let metadata: Vec<_> = result
+        .tools
+        .iter()
+        .map(super::tool_def::PluginToolDef::to_metadata)
+        .collect();
+    state.sessions.insert(
+        registry_id,
+        SessionState {
             lua,
             hooks: result.hooks,
             tools: result.tools,
-        });
+        },
+    );
     Ok(metadata)
 }
 

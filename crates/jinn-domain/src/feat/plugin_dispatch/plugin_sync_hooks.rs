@@ -99,6 +99,16 @@ pub struct BadgeSegment {
     pub style: Option<String>,
 }
 
+/// Session preview directive from `on_session_preview`.
+///
+/// Returned by a plugin to indicate which session should be previewed
+/// when the sidebar cursor is on a plugin entry.
+#[derive(Debug, Clone, serde::Deserialize, PartialEq, Eq)]
+pub struct PreviewDirective {
+    /// The session ID to preview.
+    pub session_id: String,
+}
+
 #[cfg(test)]
 mod tests {
     #![allow(

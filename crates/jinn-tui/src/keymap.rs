@@ -202,6 +202,7 @@ pub fn init() -> Keymap<KeyEvent, Scope, Intent, KeyCategory> {
             // Session management actions
             .bind("x", Intent::SidebarSessionClose, KeyCategory::Sidebar)
             .bind("t", Intent::SidebarSessionTeardown, KeyCategory::Sidebar)
+            .describe_group_with_category("p", "plugin", KeyCategory::Sidebar)
             .bind("<enter>", Intent::SidebarSessionConfirm, KeyCategory::Sidebar)
             .bind("n", Intent::SessionNew, KeyCategory::Sidebar)
             .bind("N", Intent::SessionNewWithLifecycle, KeyCategory::Sidebar)
@@ -209,6 +210,7 @@ pub fn init() -> Keymap<KeyEvent, Scope, Intent, KeyCategory> {
             .bind("a", Intent::SidebarSessionArchive, KeyCategory::Sidebar)
             .bind("c", Intent::SidebarSessionContinue, KeyCategory::Sidebar)
             .bind("s", Intent::SidebarSessionRerunSetup, KeyCategory::Sidebar)
+            .bind("pt", Intent::SidebarTogglePlugin, KeyCategory::Sidebar)
 
             // i activates session and enters insert mode
             .bind("i", Intent::SidebarConfirmInsert, KeyCategory::Sidebar)
@@ -469,7 +471,9 @@ mod tests {
         );
 
         let rt = tokio::runtime::Runtime::new().expect("runtime");
-        let PluginSystemBuildResult { sync: sync_plugins, .. } = PluginSystem::build(
+        let PluginSystemBuildResult {
+            sync: sync_plugins, ..
+        } = PluginSystem::build(
             &res_plugins,
             Path::new("/nonexistent"),
             rt.handle().clone(),

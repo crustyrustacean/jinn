@@ -34,5 +34,6 @@ pub use picker_entry::PluginPickerEntry;
 pub use plugin_fire::{PluginFire, PluginFireError, PluginFireService};
 pub use plugin_sync::{PluginSyncCall, PluginSyncCallError, PluginSyncCallService};
 pub use plugin_sync_hooks::{
-    BadgeDirective, BadgeSegment, InterceptOutcome, PluginSyncHooks, call_hooks_typed,
+    BadgeDirective, BadgeSegment, InterceptOutcome, PluginSyncHooks, PreviewDirective,
+    call_hooks_typed,
 };

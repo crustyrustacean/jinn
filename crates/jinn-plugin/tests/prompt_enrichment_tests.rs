@@ -71,7 +71,9 @@ fn build_system_with_oneshot(stub_result: Value) -> TestSystem {
     // dropped inside a `#[tokio::test]` async context.
     let rt = Box::leak(Box::new(tokio::runtime::Runtime::new().expect("runtime")));
 
-    let PluginSystemBuildResult { sync, async_handle, .. } = PluginSystem::build(
+    let PluginSystemBuildResult {
+        sync, async_handle, ..
+    } = PluginSystem::build(
         &res_plugins_dir(),
         Path::new("/nonexistent"),
         rt.handle().clone(),

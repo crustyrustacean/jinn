@@ -21,7 +21,6 @@ pub struct CreateSessionRegistryResult {
     pub tool_metadata: Vec<crate::tool_def::PluginToolMetadata>,
 }
 
-
 /// Error type for plugin system failures.
 ///
 /// Colocated with [`AsyncPluginHandle`] because it is the primary consumer
@@ -86,7 +85,8 @@ pub(crate) enum PluginJob {
         /// Names of attachable plugins to load.
         plugin_names: Vec<String>,
         /// Responder. Returns tool definitions extracted from loaded plugins.
-        respond_to: oneshot::Sender<Result<Vec<crate::tool_def::PluginToolMetadata>, Report<PluginError>>>,
+        respond_to:
+            oneshot::Sender<Result<Vec<crate::tool_def::PluginToolMetadata>, Report<PluginError>>>,
     },
     /// Execute a plugin-defined tool handler.
     ///
@@ -376,10 +376,12 @@ impl jinn_domain::feat::plugin_system::SessionPluginRegistry for AsyncPluginHand
             .await
             .map_err(|_e| Report::new(jinn_domain::feat::plugin_system::SessionPluginRegistryError))
             .attach("create per-session plugin registry")?;
-        Ok(jinn_domain::feat::plugin_system::CreateSessionRegistryResult {
-            registry_id: result.registry_id,
-            tool_metadata: result.tool_metadata.into_iter().map(|m| m.into()).collect(),
-        })
+        Ok(
+            jinn_domain::feat::plugin_system::CreateSessionRegistryResult {
+                registry_id: result.registry_id,
+                tool_metadata: result.tool_metadata.into_iter().map(|m| m.into()).collect(),
+            },
+        )
     }
 
     async fn destroy_session_registry(
