@@ -153,6 +153,10 @@ fn run_pending_migrations(conn: &mut SqliteConnection) -> Result<(), Report<Sess
             "rename_is_workflow_to_is_automated_and_add_persist",
         )?;
     }
+    if current < 17 {
+        migrate_v17(conn)?;
+        record_version(conn, 17, "rename_entries_timestamp_to_timing")?;
+    }
     Ok(())
 }
 
@@ -624,6 +628,19 @@ fn migrate_v16(conn: &mut SqliteConnection) -> Result<(), Report<SessionStoreErr
     Ok(())
 }
 
+/// v17: Rename `entries.timestamp` column to `timing`.
+///
+/// The column now stores `EntryTiming` JSON (instant or streamed timing data)
+/// rather than a plain timestamp string. The rename aligns the column name
+/// with the Rust field it maps to.
+fn migrate_v17(conn: &mut SqliteConnection) -> Result<(), Report<SessionStoreError>> {
+    sql_query("ALTER TABLE entries RENAME COLUMN timestamp TO timing")
+        .execute(conn)
+        .change_context(SessionStoreError)
+        .attach("v17: rename entries.timestamp to timing")?;
+    Ok(())
+}
+
 fn migrate_v12(conn: &mut SqliteConnection) -> Result<(), Report<SessionStoreError>> {
     sql_query(
         "ALTER TABLE session_history ADD COLUMN context_override TEXT NOT NULL DEFAULT 'default'",
@@ -684,7 +701,7 @@ mod tests {
                 .load(&mut conn)
                 .expect("query migrations");
 
-        assert_eq!(rows.len(), 17);
+        assert_eq!(rows.len(), 18);
         assert_eq!(rows[0].version, 0);
         assert_eq!(rows[0].name, "create_initial_schema");
         assert_eq!(rows[1].version, 1);
@@ -738,7 +755,7 @@ mod tests {
             .load(&mut conn)
             .expect("query count");
 
-        assert_eq!(rows[0].count, 17);
+        assert_eq!(rows[0].count, 18);
     }
 
     /// Applies migrations up to (and including) `target` version.
@@ -845,13 +862,13 @@ mod tests {
                 panic!("re-run at target_version={target_version} should succeed: {e:?}")
             });
 
-            // Verify no duplicate rows: exactly 17 migration rows total.
+            // Verify no duplicate rows: exactly 18 migration rows total.
             let rows: Vec<CountRow> = sql_query("SELECT COUNT(*) AS count FROM _migrations")
                 .load(&mut conn)
                 .expect("query count");
             assert_eq!(
-                rows[0].count, 17,
-                "at target_version={target_version}: expected 17 migration rows, no duplicates"
+                rows[0].count, 18,
+                "at target_version={target_version}: expected 18 migration rows, no duplicates"
             );
         }
     }

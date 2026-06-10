@@ -1046,7 +1046,7 @@ fn streaming_content_change_invalidates_cache() {
     state.active_session_mut().begin_streaming();
     state
         .active_session_mut()
-        .append_stream_token("initial")
+        .append_stream_token("initial", jiff::Timestamp::now())
         .expect("ok");
 
     // When rendering with initial streaming content.
@@ -1066,7 +1066,7 @@ fn streaming_content_change_invalidates_cache() {
     // When more tokens arrive (content changes, fingerprint changes).
     state
         .active_session_mut()
-        .append_stream_token(" + more text")
+        .append_stream_token(" + more text", jiff::Timestamp::now())
         .expect("ok");
 
     terminal

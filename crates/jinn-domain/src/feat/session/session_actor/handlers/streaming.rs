@@ -37,12 +37,12 @@ impl SessionPersistenceActor {
         }
         if event.is_thinking {
             if session.streaming_thinking_entry_index().is_none() {
-                session.begin_thinking();
+                session.begin_thinking(event.dispatched_at);
             }
             if let Err(e) = session.append_thinking_token(&event.token) {
                 tracing::error!(err = ?e, "failed to append thinking token");
             }
-        } else if let Err(e) = session.append_stream_token(&event.token) {
+        } else if let Err(e) = session.append_stream_token(&event.token, event.dispatched_at) {
             tracing::error!(err = ?e, "failed to append stream token");
         }
     }
@@ -136,7 +136,7 @@ impl SessionPersistenceActor {
             }
             let preserve_assistant = event.reason == StreamCompletedReason::Finished
                 || event.reason == StreamCompletedReason::ToolUse;
-            session.finish_streaming(preserve_assistant);
+            session.finish_streaming(preserve_assistant, event.dispatched_at);
 
             // Hard cancel: force-exclude dangling tool calls left by the interrupted stream.
             if event.reason == StreamCompletedReason::Canceled {
