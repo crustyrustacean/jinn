@@ -4,11 +4,18 @@
 //! to update `cached_context_size` for the active session. Uses eager
 //! recalculation — each event triggers an immediate assembly.
 
-use crate::common::actor::{Actor, ActorContext, ActorEnvelope, NoDirectMsg};
+use crate::common::actor_deps::{ActorDeps, BusPublish};
+use crate::common::services::bus_service::BusService;
 use crate::common::state::State;
 use crate::feat::context::assemble::assemble_prompt;
+use crate::feat::context::protocol::event::ChatEntryPinChanged;
+use crate::feat::context::protocol::event::ContextOverrideChanged;
 use crate::feat::context::strategy::token_estimator::TiktokenCounter;
-use crate::protocol::Event;
+use crate::feat::session::protocol::history_appended::HistoryAppended;
+use crate::feat::session::protocol::session_load_completed::SessionLoadCompleted;
+use crate::protocol::system::ActiveSessionChanged;
+use kameo::actor::{ActorRef, Spawn};
+use kameo::prelude::{Context, Message};
 use tracing::error;
 
 /// Recalculates context size for the active session after context-affecting changes.
@@ -21,58 +28,86 @@ pub struct ContextSizeActor {
     state: State,
     /// Token counter for prompt assembly.
     counter: TiktokenCounter,
+    /// Bus for message routing.
+    bus: BusService,
 }
 
 /// Dependencies for [`ContextSizeActor`].
 pub struct ContextSizeActorDeps {
+    /// Common actor dependencies.
+    pub deps: ActorDeps,
     /// Shared application state.
     pub state: State,
     /// Token counter for prompt assembly.
     pub counter: TiktokenCounter,
 }
 
-impl Actor for ContextSizeActor {
-    type Message = NoDirectMsg;
-    type Deps = ContextSizeActorDeps;
-
-    fn activate(deps: Self::Deps, ctx: &mut ActorContext) -> Self {
-        // Subscribe to all events that can change context size.
-        ctx.subscribe_event::<crate::feat::session::protocol::history_appended::HistoryAppended>();
-        ctx.subscribe_event::<crate::feat::context::protocol::event::ContextOverrideChanged>();
-        ctx.subscribe_event::<crate::protocol::system::ActiveSessionChanged>();
-        ctx.subscribe_event::<crate::feat::context::protocol::event::ChatEntryPinChanged>();
-        ctx.subscribe_event::<crate::feat::session::protocol::session_load_completed::SessionLoadCompleted>();
-
-        ctx.set_description("Context size recalculation for status bar");
-
-        Self {
-            state: deps.state,
-            counter: deps.counter,
-        }
+impl BusPublish for ContextSizeActor {
+    fn bus(&self) -> &BusService {
+        &self.bus
     }
+}
 
-    async fn handle(&mut self, msg: ActorEnvelope<Self::Message>, _ctx: &ActorContext) {
-        if let ActorEnvelope::Event(event) = &msg
-            && Self::is_context_relevant(event)
-        {
-            self.recalculate().await;
-        }
+impl kameo::Actor for ContextSizeActor {
+    type Args = ContextSizeActorDeps;
+    type Error = std::convert::Infallible;
+
+    async fn on_start(args: Self::Args, actor_ref: ActorRef<Self>) -> Result<Self, Self::Error> {
+        args.deps.subscribe(actor_ref.clone().recipient::<HistoryAppended>()).await;
+        args.deps.subscribe(actor_ref.clone().recipient::<ContextOverrideChanged>()).await;
+        args.deps.subscribe(actor_ref.clone().recipient::<ActiveSessionChanged>()).await;
+        args.deps.subscribe(actor_ref.clone().recipient::<ChatEntryPinChanged>()).await;
+        args.deps.subscribe(actor_ref.recipient::<SessionLoadCompleted>()).await;
+
+        Ok(Self {
+            state: args.state,
+            counter: args.counter,
+            bus: args.deps.services.bus.clone(),
+        })
+    }
+}
+
+impl Message<HistoryAppended> for ContextSizeActor {
+    type Reply = ();
+
+    async fn handle(&mut self, _msg: HistoryAppended, _ctx: &mut Context<Self, Self::Reply>) {
+        self.recalculate().await;
+    }
+}
+
+impl Message<ContextOverrideChanged> for ContextSizeActor {
+    type Reply = ();
+
+    async fn handle(&mut self, _msg: ContextOverrideChanged, _ctx: &mut Context<Self, Self::Reply>) {
+        self.recalculate().await;
+    }
+}
+
+impl Message<ActiveSessionChanged> for ContextSizeActor {
+    type Reply = ();
+
+    async fn handle(&mut self, _msg: ActiveSessionChanged, _ctx: &mut Context<Self, Self::Reply>) {
+        self.recalculate().await;
+    }
+}
+
+impl Message<ChatEntryPinChanged> for ContextSizeActor {
+    type Reply = ();
+
+    async fn handle(&mut self, _msg: ChatEntryPinChanged, _ctx: &mut Context<Self, Self::Reply>) {
+        self.recalculate().await;
+    }
+}
+
+impl Message<SessionLoadCompleted> for ContextSizeActor {
+    type Reply = ();
+
+    async fn handle(&mut self, _msg: SessionLoadCompleted, _ctx: &mut Context<Self, Self::Reply>) {
+        self.recalculate().await;
     }
 }
 
 impl ContextSizeActor {
-    /// Check if this event is relevant to context size.
-    fn is_context_relevant(event: &Event) -> bool {
-        matches!(
-            event,
-            Event::HistoryAppended(_)
-                | Event::ContextOverrideChanged(_)
-                | Event::ActiveSessionChanged(_)
-                | Event::ChatEntryPinChanged(_)
-                | Event::SessionLoadCompleted(_)
-        )
-    }
-
     /// Recalculate context size for the active session.
     ///
     /// The CPU-intensive `assemble_prompt` call is moved into
@@ -111,23 +146,26 @@ impl ContextSizeActor {
 mod tests {
     #![allow(clippy::expect_used, clippy::panic, clippy::unreachable, clippy::indexing_slicing, reason = "test code")]
 
+    use crate::common::services::bus_service::BusService;
+
     use super::*;
     use crate::common::app_state::AppState;
-    use crate::common::state::State;
     use crate::feat::session::chat_session::ChatSessionState;
     use crate::protocol::{ChatEntry, SessionId};
 
-    fn test_actor() -> ContextSizeActor {
+    async fn test_actor() -> ContextSizeActor {
+        let harness = crate::common::bus::test_harness::TestHarness::new().await;
         ContextSizeActor {
             state: State::new(AppState::default()),
             counter: TiktokenCounter::o200k_base(),
+            bus: harness.bus().clone(),
         }
     }
 
     #[tokio::test]
     async fn recalculate_updates_context_size_for_active_session() {
         // Given an actor with a session that has history.
-        let actor = test_actor();
+        let actor = test_actor().await;
         let session_id = {
             let mut state = actor.state.write();
             state
@@ -152,7 +190,7 @@ mod tests {
     #[tokio::test]
     async fn recalculate_updates_after_entry_added() {
         // Given an actor with empty session.
-        let actor = test_actor();
+        let actor = test_actor().await;
         let session_id = {
             let state = actor.state.read();
             state.session.active_session_id().clone()
@@ -198,7 +236,7 @@ mod tests {
     #[tokio::test]
     async fn recalculate_handles_empty_session_gracefully() {
         // Given an actor with empty session.
-        let actor = test_actor();
+        let actor = test_actor().await;
 
         // When recalculating.
         actor.recalculate().await;
@@ -219,7 +257,7 @@ mod tests {
     #[tokio::test]
     async fn recalculate_only_updates_active_session() {
         // Given an actor with two sessions.
-        let actor = test_actor();
+        let actor = test_actor().await;
         let second = ChatSessionState::new();
         let second_id = second.session_id().clone();
         {
@@ -248,62 +286,6 @@ mod tests {
                 .context_size()
                 .is_none(),
             "non-active session should not have context_size set"
-        );
-    }
-
-    #[tokio::test]
-    async fn is_context_relevant_matches_expected_events() {
-        // Given various events.
-        use crate::feat::session::chat_entry::ChatEntryId;
-
-        assert!(
-            ContextSizeActor::is_context_relevant(&Event::HistoryAppended(
-                crate::feat::session::protocol::history_appended::HistoryAppended {
-                    session_id: SessionId::new(),
-                }
-            )),
-            "HistoryAppended should be relevant"
-        );
-
-        assert!(
-            ContextSizeActor::is_context_relevant(&Event::ContextOverrideChanged(
-                crate::feat::context::protocol::event::ContextOverrideChanged {
-                    session_id: SessionId::new(),
-                    entry_id: ChatEntryId::new(),
-                }
-            )),
-            "ContextOverrideChanged should be relevant"
-        );
-
-        assert!(
-            ContextSizeActor::is_context_relevant(&Event::ActiveSessionChanged(
-                crate::protocol::system::ActiveSessionChanged {
-                    session_id: SessionId::new(),
-                }
-            )),
-            "ActiveSessionChanged should be relevant"
-        );
-
-        assert!(
-            ContextSizeActor::is_context_relevant(&Event::ChatEntryPinChanged(
-                crate::feat::context::protocol::event::ChatEntryPinChanged {
-                    session_id: SessionId::new(),
-                }
-            )),
-            "ChatEntryPinChanged should be relevant"
-        );
-    }
-
-    #[tokio::test]
-    async fn is_context_relevant_ignores_irrelevant_events() {
-        // Given an irrelevant event.
-        assert!(
-            !ContextSizeActor::is_context_relevant(&Event::SessionCreated(
-                crate::feat::session_lifecycle::protocol::event::SessionCreated {
-                    session_id: SessionId::new(),
-                }
-            )),
-            "SessionCreated should not be relevant"
         );
     }
 }

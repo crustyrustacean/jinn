@@ -481,19 +481,13 @@ impl ActorSystemBuilder {
         ));
 
         // Context-files scan actor.
-        actors.push(spawn::<
-            jinn_domain::feat::context::context_files_scan_actor::ContextFilesScanActor,
-        >(
-            "context-files-scan",
-            &sink,
-            handle,
-            &counter,
-            &shutdown_tracker,
-            jinn_domain::feat::context::context_files_scan_actor::ContextFilesScanActorDeps {
-                services: services.clone(),
-                state: state.clone(),
-            },
-        ));
+        let _context_files_scan =
+            jinn_domain::feat::context::context_files_scan_actor::ContextFilesScanActor::spawn(
+                jinn_domain::feat::context::context_files_scan_actor::ContextFilesScanActorDeps {
+                    deps: jinn_domain::common::actor_deps::ActorDeps { services: services.clone() },
+                    state: state.clone(),
+                },
+            );
 
         // Skills scan actor.
         actors.push(spawn::<
@@ -579,19 +573,14 @@ impl ActorSystemBuilder {
         );
 
         // Context size actor - recalculates context size for the status bar.
-        actors.push(spawn::<
-            jinn_domain::feat::context::context_size_actor::ContextSizeActor,
-        >(
-            "context-size",
-            &sink,
-            handle,
-            &counter,
-            &shutdown_tracker,
-            jinn_domain::feat::context::context_size_actor::ContextSizeActorDeps {
-                state: state.clone(),
-                counter: token_counter,
-            },
-        ));
+        let _context_size =
+            jinn_domain::feat::context::context_size_actor::ContextSizeActor::spawn(
+                jinn_domain::feat::context::context_size_actor::ContextSizeActorDeps {
+                    deps: jinn_domain::common::actor_deps::ActorDeps { services: services.clone() },
+                    state: state.clone(),
+                    counter: token_counter,
+                },
+            );
 
         // ── History mutation workers ────────────────��─────────────────────────
         //

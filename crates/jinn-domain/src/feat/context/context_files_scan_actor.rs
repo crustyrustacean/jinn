@@ -1,4 +1,4 @@
-//! Context-files scan actor - scans project context files.
+//! Context-files scan actor — scans project context files.
 //!
 //! Two trigger paths:
 //! - **Event-driven** (automatic): subscribes to session lifecycle events
@@ -16,9 +16,10 @@
 //!   per walked dir, writes the result into that session's ephemeral
 //!   discovered set, and emits [`ContextFilesLoaded`] events.
 
-use crate::common::actor::scan_actor::{NoDirectMsg, scan_cwd_for_session};
-use crate::common::actor::{Actor, ActorContext, ActorEnvelope};
-use crate::common::services::Services;
+use kameo::actor::{ActorRef, Spawn};
+use kameo::prelude::{Context, Message};
+
+use crate::common::actor_deps::{ActorDeps, BusPublish};
 use crate::common::state::State;
 use crate::feat::context::env_context::ContextFile;
 use crate::feat::context::protocol::command::ScanContextFiles;
@@ -29,102 +30,128 @@ use crate::feat::session_lifecycle::protocol::event::{
     SessionCreated, SessionCwdChanged, SessionSetupCompleted,
 };
 use crate::init::env_init_actor::EnvironmentLoaded;
-use crate::protocol::{Command, Event};
 
 /// Dependencies for [`ContextFilesScanActor`].
 pub struct ContextFilesScanActorDeps {
-    /// Runtime services.
-    pub services: Services,
+    /// Common actor dependencies (services + bus).
+    pub deps: ActorDeps,
     /// Shared application state.
     pub state: State,
 }
 
-/// Scans and loads project context files (AGENTS.md/CLAUDE.md) on `ScanContextFiles`.
+/// Scans and loads project context files (AGENTS.md/CLAUDE.md).
 ///
 /// On command, reads the session's cwd from shared state, walks the bounded
 /// ancestor chain, reads each discovered context file, writes the result into
 /// that session's ephemeral discovered set, and emits `ContextFilesLoaded`.
 pub struct ContextFilesScanActor {
-    /// Runtime services.
-    services: Services,
+    /// Common actor dependencies.
+    deps: ActorDeps,
     /// Shared application state.
     state: State,
 }
 
-impl Actor for ContextFilesScanActor {
-    type Message = NoDirectMsg;
-    type Deps = ContextFilesScanActorDeps;
+impl kameo::Actor for ContextFilesScanActor {
+    type Args = ContextFilesScanActorDeps;
+    type Error = kameo::error::Infallible;
 
-    fn activate(deps: Self::Deps, ctx: &mut ActorContext) -> Self {
-        ctx.set_description("Scans and loads project context files (AGENTS.md/CLAUDE.md)");
-        ctx.subscribe_command::<ScanContextFiles>();
-        // Event-driven triggers: scan automatically when a session's cwd
-        // becomes the active discovery target.
-        ctx.subscribe_event::<EnvironmentLoaded>();
-        ctx.subscribe_event::<SessionCreated>();
-        ctx.subscribe_event::<SessionSetupCompleted>();
-        ctx.subscribe_event::<SessionLoadCompleted>();
-        ctx.subscribe_event::<SessionCwdChanged>();
-        Self {
-            services: deps.services,
-            state: deps.state,
+    async fn on_start(
+        args: Self::Args,
+        actor_ref: ActorRef<Self>,
+    ) -> Result<Self, Self::Error> {
+        let deps = args.deps;
+        deps.subscribe(actor_ref.clone().recipient::<ScanContextFiles>()).await;
+        deps.subscribe(actor_ref.clone().recipient::<EnvironmentLoaded>()).await;
+        deps.subscribe(actor_ref.clone().recipient::<SessionCreated>()).await;
+        deps.subscribe(actor_ref.clone().recipient::<SessionSetupCompleted>()).await;
+        deps.subscribe(actor_ref.clone().recipient::<SessionLoadCompleted>()).await;
+        deps.subscribe(actor_ref.recipient::<SessionCwdChanged>()).await;
+
+        Ok(Self {
+            deps,
+            state: args.state,
+        })
+    }
+}
+
+impl BusPublish for ContextFilesScanActor {
+    fn bus(&self) -> &crate::common::services::bus_service::BusService {
+        &self.deps.services.bus
+    }
+}
+
+impl Message<ScanContextFiles> for ContextFilesScanActor {
+    type Reply = ();
+
+    async fn handle(&mut self, msg: ScanContextFiles, _ctx: &mut Context<Self, Self::Reply>) {
+        self.run_scan(&msg.session_id).await;
+    }
+}
+
+impl Message<EnvironmentLoaded> for ContextFilesScanActor {
+    type Reply = ();
+
+    async fn handle(&mut self, msg: EnvironmentLoaded, _ctx: &mut Context<Self, Self::Reply>) {
+        let session_id = self.state.read().session.active_session_id().clone();
+        if crate::common::actor::scan_actor::scan_cwd_for_session(&self.state, &session_id)
+            .is_some()
+        {
+            self.run_scan(&session_id).await;
         }
     }
+}
 
-    async fn handle(&mut self, msg: ActorEnvelope<NoDirectMsg>, ctx: &ActorContext) {
-        match msg {
-            ActorEnvelope::Command(command) => {
-                self.handle_command(&command, ctx).await;
-            }
-            ActorEnvelope::Event(event) => {
-                self.handle_event(&event, ctx).await;
-            }
-            _ => {}
+impl Message<SessionCreated> for ContextFilesScanActor {
+    type Reply = ();
+
+    async fn handle(&mut self, msg: SessionCreated, _ctx: &mut Context<Self, Self::Reply>) {
+        if crate::common::actor::scan_actor::scan_cwd_for_session(&self.state, &msg.session_id)
+            .is_some()
+        {
+            self.run_scan(&msg.session_id).await;
+        }
+    }
+}
+
+impl Message<SessionSetupCompleted> for ContextFilesScanActor {
+    type Reply = ();
+
+    async fn handle(&mut self, msg: SessionSetupCompleted, _ctx: &mut Context<Self, Self::Reply>) {
+        if crate::common::actor::scan_actor::scan_cwd_for_session(&self.state, &msg.session_id)
+            .is_some()
+        {
+            self.run_scan(&msg.session_id).await;
+        }
+    }
+}
+
+impl Message<SessionLoadCompleted> for ContextFilesScanActor {
+    type Reply = ();
+
+    async fn handle(&mut self, msg: SessionLoadCompleted, _ctx: &mut Context<Self, Self::Reply>) {
+        if crate::common::actor::scan_actor::scan_cwd_for_session(&self.state, &msg.session_id())
+            .is_some()
+        {
+            self.run_scan(msg.session_id()).await;
+        }
+    }
+}
+
+impl Message<SessionCwdChanged> for ContextFilesScanActor {
+    type Reply = ();
+
+    async fn handle(&mut self, msg: SessionCwdChanged, _ctx: &mut Context<Self, Self::Reply>) {
+        if crate::common::actor::scan_actor::scan_cwd_for_session(&self.state, &msg.session_id)
+            .is_some()
+        {
+            self.run_scan(&msg.session_id).await;
         }
     }
 }
 
 impl ContextFilesScanActor {
-    /// Dispatches incoming commands.
-    async fn handle_command(&mut self, command: &Command, ctx: &ActorContext) {
-        if let Command::ScanContextFiles(payload) = command {
-            self.run_scan(&payload.session_id, ctx).await;
-        }
-    }
-
-    /// Dispatches incoming lifecycle events to a session-targeted scan.
-    ///
-    /// Extracts the relevant session id, applies the `"."`-sentinel gate via
-    /// [`scan_cwd_for_session`], and scans when the cwd is settled. The gate
-    /// defers lifecycle-setup sessions to `SessionSetupCompleted`.
-    async fn handle_event(&self, event: &Event, ctx: &ActorContext) {
-        let Some(session_id) = self.session_id_for_event(event) else {
-            return;
-        };
-        if scan_cwd_for_session(&self.state, &session_id).is_some() {
-            self.run_scan(&session_id, ctx).await;
-        }
-    }
-
-    /// Resolves the session id a discovery trigger event targets, if any.
-    fn session_id_for_event(&self, event: &Event) -> Option<crate::SessionId> {
-        match event {
-            Event::EnvironmentLoaded(_) => {
-                Some(self.state.read().session.active_session_id().clone())
-            }
-            Event::SessionCreated(payload) => Some(payload.session_id.clone()),
-            Event::SessionSetupCompleted(payload) => Some(payload.session_id.clone()),
-            Event::SessionLoadCompleted(payload) => Some(payload.session_id().clone()),
-            Event::SessionCwdChanged(payload) => Some(payload.session_id.clone()),
-            _ => None,
-        }
-    }
-
     /// Runs the blocking scan for a session's cwd and emits the result.
-    async fn run_scan(&self, session_id: &crate::SessionId, ctx: &ActorContext) {
-        // Resolve the session's cwd and home once, up front. The cwd is
-        // captured by clone so the blocking scan can move it across the
-        // thread boundary without holding the state lock.
+    async fn run_scan(&self, session_id: &crate::SessionId) {
         let Some((cwd, home)) = self.resolve_scan_inputs(session_id) else {
             tracing::warn!(%session_id, "ScanContextFiles: session not found, skipping");
             return;
@@ -143,19 +170,21 @@ impl ContextFilesScanActor {
                     }
                 }
 
-                let _ = ctx.send_event(Event::ContextFilesLoaded(ContextFilesLoaded {
+                self.publish(ContextFilesLoaded {
                     session_id: session_id.clone(),
                     files,
                     error: None,
-                }));
+                })
+                .await;
             }
             Err(join_error) => {
                 tracing::error!("context-files scan task panicked: {join_error}");
-                let _ = ctx.send_event(Event::ContextFilesLoaded(ContextFilesLoaded {
+                self.publish(ContextFilesLoaded {
                     session_id: session_id.clone(),
                     files: vec![],
                     error: Some(format!("context-files scan task failed: {join_error}")),
-                }));
+                })
+                .await;
             }
         }
     }
@@ -172,7 +201,7 @@ impl ContextFilesScanActor {
         let guard = self.state.read();
         let session = guard.try_session(session_id)?;
         let cwd = session.cwd().to_path_buf();
-        let home = self.services.paths.home_dir().to_path_buf();
+        let home = self.deps.services.paths.home_dir().to_path_buf();
         Some((cwd, home))
     }
 }
@@ -200,37 +229,29 @@ fn read_one_context_file(path: &std::path::Path) -> Option<ContextFile> {
 
 #[cfg(test)]
 mod tests {
-    #![allow(clippy::expect_used, clippy::panic, clippy::unreachable, clippy::indexing_slicing, reason = "test code")]
-    use std::sync::Arc;
-
-    use crate::common::actor::{Actor, ActorContext, ActorEnvelope, MessageSink, RecordingSink};
+    #![allow(
+        clippy::expect_used,
+        clippy::panic,
+        clippy::unreachable,
+        clippy::indexing_slicing,
+        reason = "test code"
+    )]
+    use super::*;
     use crate::common::app_paths::AppPaths;
     use crate::common::app_state::AppState;
+    use crate::common::bus::test_harness::{TestHarness, await_recorded};
     use crate::common::state::State;
-    use crate::protocol::Command;
+    use crate::common::services::test_services::TestServices;
+    use crate::feat::session_lifecycle::protocol::event::{
+        SessionCreated, SessionCwdChanged, SessionSetupCompleted,
+    };
+    use crate::init::env_init_actor::EnvironmentLoaded;
+    use kameo::actor::Spawn;
 
-    use super::*;
-
-    fn find_context_files_loaded(events: &[Event]) -> Option<&ContextFilesLoaded> {
-        for evt in events {
-            if let Event::ContextFilesLoaded(payload) = evt {
-                return Some(payload);
-            }
-        }
-        None
-    }
-
-    /// Builds an actor whose active session has its cwd set to `dir`.
-    /// Returns the session id so tests can emit `ScanContextFiles { session_id }`.
-    fn create_actor(
+    fn create_actor_state(
         dir: &tempfile::TempDir,
         state: State,
-    ) -> (
-        ContextFilesScanActor,
-        Arc<RecordingSink>,
-        ActorContext,
-        crate::SessionId,
-    ) {
+    ) -> (crate::SessionId, crate::Services) {
         {
             let mut guard = state.write();
             guard
@@ -240,19 +261,12 @@ mod tests {
         }
         let session_id = state.read().session.active_session_id().clone();
 
-        let sink = Arc::new(RecordingSink::new());
-        let mut ctx = ActorContext::new(
-            "context-files-scan-test",
-            sink.clone() as Arc<dyn MessageSink>,
-        );
-        // Set the home directory to a parent of `dir` so the project walk (which
-        // is exclusive of `$HOME`) still visits the session's cwd and its ancestors.
         let home = dir
             .path()
             .parent()
             .expect("temp dir has a parent")
             .to_path_buf();
-        let services = crate::common::services::test_services::TestServices::builder()
+        let services = TestServices::builder()
             .paths({
                 let mut paths = AppPaths::new_in(dir.path());
                 paths.set_home_dir_for_test(home);
@@ -260,13 +274,9 @@ mod tests {
             })
             .build();
 
-        let deps = ContextFilesScanActorDeps { services, state };
-
-        let actor = ContextFilesScanActor::activate(deps, &mut ctx);
-        (actor, sink, ctx, session_id)
+        (session_id, services)
     }
 
-    #[rstest::rstest]
     #[tokio::test]
     async fn scan_context_files_command_writes_to_session_state() {
         // Given an actor whose session cwd has an AGENTS.md.
@@ -274,21 +284,27 @@ mod tests {
         std::fs::write(dir.path().join("AGENTS.md"), "# Project rules").expect("write");
 
         let state = State::new(AppState::default());
-        let (mut actor, _sink, ctx, session_id) = create_actor(&dir, state.clone());
+        let (session_id, services) = create_actor_state(&dir, state.clone());
 
-        // When processing ScanContextFiles command.
-        actor
-            .handle(
-                ActorEnvelope::Command(Command::ScanContextFiles(
-                    crate::feat::context::protocol::command::ScanContextFiles {
-                        session_id: session_id.clone(),
-                    },
-                )),
-                &ctx,
-            )
-            .await;
+        let harness = TestHarness::new().await;
+        let mut services = services;
+        services.bus = harness.bus().clone();
+
+        let actor = ContextFilesScanActor::spawn(ContextFilesScanActorDeps {
+            deps: ActorDeps { services },
+            state: state.clone(),
+        });
+        actor.wait_for_startup().await;
+
+        let recorder = harness.spawn_recorder::<ContextFilesLoaded>().await;
+
+        // When sending ScanContextFiles command.
+        harness.publish(ScanContextFiles {
+            session_id: session_id.clone(),
+        }).await;
 
         // Then the file is written to the session's ephemeral discovered set.
+        let _recorded = await_recorded(&recorder, 1, std::time::Duration::from_secs(2)).await;
         let guard = state.read();
         let session = guard.session.get(&session_id).expect("session exists");
         assert_eq!(session.discovered_context_files().len(), 1);
@@ -298,7 +314,6 @@ mod tests {
         );
     }
 
-    #[rstest::rstest]
     #[tokio::test]
     async fn scan_context_files_command_emits_loaded_event() {
         // Given an actor whose session cwd has an AGENTS.md.
@@ -306,51 +321,59 @@ mod tests {
         std::fs::write(dir.path().join("AGENTS.md"), "# Body").expect("write");
 
         let state = State::new(AppState::default());
-        let (mut actor, sink, ctx, session_id) = create_actor(&dir, state);
+        let (session_id, services) = create_actor_state(&dir, state.clone());
 
-        // When processing ScanContextFiles command.
-        actor
-            .handle(
-                ActorEnvelope::Command(Command::ScanContextFiles(
-                    crate::feat::context::protocol::command::ScanContextFiles { session_id },
-                )),
-                &ctx,
-            )
-            .await;
+        let harness = TestHarness::new().await;
+        let mut services = services;
+        services.bus = harness.bus().clone();
+
+        let actor = ContextFilesScanActor::spawn(ContextFilesScanActorDeps {
+            deps: ActorDeps { services },
+            state,
+        });
+        actor.wait_for_startup().await;
+
+        let recorder = harness.spawn_recorder::<ContextFilesLoaded>().await;
+
+        // When sending ScanContextFiles command.
+        harness.publish(ScanContextFiles { session_id }).await;
 
         // Then ContextFilesLoaded is emitted with the file and no error.
-        let events = sink.events();
-        let loaded = find_context_files_loaded(&events).expect("should have ContextFilesLoaded");
-        assert!(loaded.error.is_none());
-        assert_eq!(loaded.files.len(), 1);
+        let recorded = await_recorded(&recorder, 1, std::time::Duration::from_secs(2)).await;
+        assert_eq!(recorded.len(), 1);
+        assert!(recorded[0].error.is_none());
+        assert_eq!(recorded[0].files.len(), 1);
     }
 
-    #[rstest::rstest]
     #[tokio::test]
     async fn scan_context_files_empty_dir_emits_empty_loaded() {
         // Given an actor whose session cwd has no context files.
         let dir = tempfile::tempdir().expect("create temp dir");
         let state = State::new(AppState::default());
-        let (mut actor, sink, ctx, session_id) = create_actor(&dir, state);
+        let (session_id, services) = create_actor_state(&dir, state.clone());
 
-        // When processing ScanContextFiles command.
-        actor
-            .handle(
-                ActorEnvelope::Command(Command::ScanContextFiles(
-                    crate::feat::context::protocol::command::ScanContextFiles { session_id },
-                )),
-                &ctx,
-            )
-            .await;
+        let harness = TestHarness::new().await;
+        let mut services = services;
+        services.bus = harness.bus().clone();
+
+        let actor = ContextFilesScanActor::spawn(ContextFilesScanActorDeps {
+            deps: ActorDeps { services },
+            state,
+        });
+        actor.wait_for_startup().await;
+
+        let recorder = harness.spawn_recorder::<ContextFilesLoaded>().await;
+
+        // When sending ScanContextFiles command.
+        harness.publish(ScanContextFiles { session_id }).await;
 
         // Then ContextFilesLoaded is emitted with an empty list.
-        let events = sink.events();
-        let loaded = find_context_files_loaded(&events).expect("should have ContextFilesLoaded");
-        assert!(loaded.files.is_empty());
-        assert!(loaded.error.is_none());
+        let recorded = await_recorded(&recorder, 1, std::time::Duration::from_secs(2)).await;
+        assert_eq!(recorded.len(), 1);
+        assert!(recorded[0].files.is_empty());
+        assert!(recorded[0].error.is_none());
     }
 
-    #[rstest::rstest]
     #[tokio::test]
     async fn scan_context_files_skips_home_ancestor() {
         // Given a session cwd nested under a "home" dir that itself has an AGENTS.md,
@@ -363,49 +386,41 @@ mod tests {
 
         let dir = tempfile::tempdir().expect("create temp dir for AppPaths");
         let state = State::new(AppState::default());
-        // Point the session cwd at the project dir, and home at the parent.
         {
             let mut guard = state.write();
             guard.session.active_session_mut().set_cwd(project.clone());
         }
         let session_id = state.read().session.active_session_id().clone();
 
-        let sink = Arc::new(RecordingSink::new());
-        let mut ctx = ActorContext::new(
-            "context-files-scan-test",
-            sink.clone() as Arc<dyn MessageSink>,
-        );
-        // Build services whose home_dir() resolves to our temp home.
         let mut paths = AppPaths::new_in(dir.path());
         paths.set_home_dir_for_test(home.path().to_path_buf());
-        let services = crate::common::services::test_services::TestServices::builder()
-            .paths(paths)
-            .build();
-        let deps = ContextFilesScanActorDeps { services, state };
-        let mut actor = ContextFilesScanActor::activate(deps, &mut ctx);
+        let services = TestServices::builder().paths(paths).build();
 
-        // When processing ScanContextFiles command.
-        actor
-            .handle(
-                ActorEnvelope::Command(Command::ScanContextFiles(
-                    crate::feat::context::protocol::command::ScanContextFiles { session_id },
-                )),
-                &ctx,
-            )
-            .await;
+        let harness = TestHarness::new().await;
+        let mut services = services;
+        services.bus = harness.bus().clone();
+
+        let actor = ContextFilesScanActor::spawn(ContextFilesScanActorDeps {
+            deps: ActorDeps { services },
+            state,
+        });
+        actor.wait_for_startup().await;
+
+        let recorder = harness.spawn_recorder::<ContextFilesLoaded>().await;
+
+        // When sending ScanContextFiles command.
+        harness.publish(ScanContextFiles { session_id }).await;
 
         // Then only the project file is loaded; the home-level file is excluded.
-        let events = sink.events();
-        let loaded = find_context_files_loaded(&events).expect("should have ContextFilesLoaded");
-        assert_eq!(loaded.files.len(), 1);
-        assert_eq!(loaded.files[0].content, "project file");
+        let recorded = await_recorded(&recorder, 1, std::time::Duration::from_secs(2)).await;
+        assert_eq!(recorded.len(), 1);
+        assert_eq!(recorded[0].files.len(), 1);
+        assert_eq!(recorded[0].files[0].content, "project file");
     }
 
     #[tokio::test]
     async fn scan_context_files_discovers_ancestor_file_from_nested_cwd() {
-        // Given cwd = home/repo/subdir and an AGENTS.md at home/repo (an ancestor
-        // below home, no VCS marker). The walk must collect from `repo` even though
-        // the session cwd is its descendant `subdir`.
+        // Given cwd = home/repo/subdir and an AGENTS.md at home/repo.
         let home = tempfile::tempdir().expect("create home dir");
         let repo = home.path().join("repo");
         let subdir = repo.join("subdir");
@@ -420,170 +435,194 @@ mod tests {
         }
         let session_id = state.read().session.active_session_id().clone();
 
-        let sink = Arc::new(RecordingSink::new());
-        let mut ctx = ActorContext::new(
-            "context-files-scan-test",
-            sink.clone() as Arc<dyn MessageSink>,
-        );
         let mut paths = AppPaths::new_in(dir.path());
         paths.set_home_dir_for_test(home.path().to_path_buf());
-        let services = crate::common::services::test_services::TestServices::builder()
-            .paths(paths)
-            .build();
-        let deps = ContextFilesScanActorDeps { services, state };
-        let mut actor = ContextFilesScanActor::activate(deps, &mut ctx);
+        let services = TestServices::builder().paths(paths).build();
 
-        actor
-            .handle(
-                ActorEnvelope::Command(Command::ScanContextFiles(
-                    crate::feat::context::protocol::command::ScanContextFiles { session_id },
-                )),
-                &ctx,
-            )
-            .await;
+        let harness = TestHarness::new().await;
+        let mut services = services;
+        services.bus = harness.bus().clone();
 
-        let events = sink.events();
-        let loaded = find_context_files_loaded(&events).expect("should have ContextFilesLoaded");
+        let actor = ContextFilesScanActor::spawn(ContextFilesScanActorDeps {
+            deps: ActorDeps { services },
+            state,
+        });
+        actor.wait_for_startup().await;
+
+        let recorder = harness.spawn_recorder::<ContextFilesLoaded>().await;
+        harness.publish(ScanContextFiles { session_id }).await;
+
+        let recorded = await_recorded(&recorder, 1, std::time::Duration::from_secs(2)).await;
         assert_eq!(
-            loaded.files.len(),
+            recorded.len(),
             1,
             "ancestor file must be discovered from a descendant cwd"
         );
-        assert_eq!(loaded.files[0].content, "ancestor file");
+        assert_eq!(recorded[0].files[0].content, "ancestor file");
     }
-    use crate::feat::session_lifecycle::protocol::event::{
-        SessionCreated, SessionCwdChanged, SessionSetupCompleted,
-    };
-    use crate::init::env_init_actor::EnvironmentLoaded;
 
-    #[rstest::rstest]
     #[tokio::test]
     async fn session_created_event_scans_context_files() {
         // Given an actor whose session cwd has an AGENTS.md.
         let dir = tempfile::tempdir().expect("create temp dir");
         std::fs::write(dir.path().join("AGENTS.md"), "# Project rules").expect("write");
         let state = State::new(AppState::default());
-        let (actor, _sink, ctx, session_id) = create_actor(&dir, state.clone());
+        let (session_id, services) = create_actor_state(&dir, state.clone());
 
-        // When processing SessionCreated for that session.
-        let event = Event::SessionCreated(SessionCreated {
-            session_id: session_id.clone(),
+        let harness = TestHarness::new().await;
+        let mut services = services;
+        services.bus = harness.bus().clone();
+
+        let actor = ContextFilesScanActor::spawn(ContextFilesScanActorDeps {
+            deps: ActorDeps { services },
+            state: state.clone(),
         });
-        actor.handle_event(&event, &ctx).await;
+        actor.wait_for_startup().await;
+
+        // When sending SessionCreated for that session.
+        harness.publish(SessionCreated {
+            session_id: session_id.clone(),
+        }).await;
 
         // Then the file is written to the session's discovered set.
+        let recorder = harness.spawn_recorder::<ContextFilesLoaded>().await;
+        let _ = await_recorded(&recorder, 1, std::time::Duration::from_secs(2)).await;
         let guard = state.read();
         let session = guard.session.get(&session_id).expect("session exists");
         assert_eq!(session.discovered_context_files().len(), 1);
     }
 
-    #[rstest::rstest]
     #[tokio::test]
     async fn session_created_event_skips_scan_when_cwd_is_sentinel() {
         // Given an actor whose active session cwd is the pending "." sentinel.
         let dir = tempfile::tempdir().expect("create temp dir");
-        // Drop an AGENTS.md under a sibling dir so a stray scan would find it.
         let stray = dir.path().join("stray");
         std::fs::create_dir_all(&stray).expect("create stray dir");
         std::fs::write(stray.join("AGENTS.md"), "# stray").expect("write");
         let state = State::new(AppState::default());
-        // Note: deliberately do NOT set a real cwd; default is ".".
         let session_id = state.read().session.active_session_id().clone();
-        let sink = Arc::new(RecordingSink::new());
-        let mut ctx = ActorContext::new(
-            "context-files-scan-test",
-            sink.clone() as Arc<dyn MessageSink>,
-        );
+
         let mut paths = AppPaths::new_in(dir.path());
         paths.set_home_dir_for_test(dir.path().to_path_buf());
-        let services = crate::common::services::test_services::TestServices::builder()
-            .paths(paths)
-            .build();
-        let actor = ContextFilesScanActor::activate(
-            ContextFilesScanActorDeps {
-                services,
-                state: state.clone(),
-            },
-            &mut ctx,
-        );
+        let services = TestServices::builder().paths(paths).build();
 
-        // When processing SessionCreated for the sentinel-cwd session.
-        let event = Event::SessionCreated(SessionCreated {
-            session_id: session_id.clone(),
+        let harness = TestHarness::new().await;
+        let mut services = services;
+        services.bus = harness.bus().clone();
+
+        let actor = ContextFilesScanActor::spawn(ContextFilesScanActorDeps {
+            deps: ActorDeps { services },
+            state: state.clone(),
         });
-        actor.handle_event(&event, &ctx).await;
+        actor.wait_for_startup().await;
+
+        let recorder = harness.spawn_recorder::<ContextFilesLoaded>().await;
+
+        // When sending SessionCreated for the sentinel-cwd session.
+        harness.publish(SessionCreated {
+            session_id: session_id.clone(),
+        }).await;
 
         // Then no scan runs: the discovered set stays empty.
+        let recorded = await_recorded(&recorder, 1, std::time::Duration::from_millis(100)).await;
+        assert!(recorded.is_empty(), "should not scan for sentinel cwd");
         let guard = state.read();
         let session = guard.session.get(&session_id).expect("session exists");
         assert!(session.discovered_context_files().is_empty());
     }
 
-    #[rstest::rstest]
     #[tokio::test]
     async fn session_setup_completed_event_scans_context_files() {
         // Given an actor whose session cwd has an AGENTS.md.
         let dir = tempfile::tempdir().expect("create temp dir");
         std::fs::write(dir.path().join("AGENTS.md"), "# Project rules").expect("write");
         let state = State::new(AppState::default());
-        let (actor, _sink, ctx, session_id) = create_actor(&dir, state.clone());
+        let (session_id, services) = create_actor_state(&dir, state.clone());
 
-        // When processing SessionSetupCompleted.
-        let event = Event::SessionSetupCompleted(SessionSetupCompleted {
+        let harness = TestHarness::new().await;
+        let mut services = services;
+        services.bus = harness.bus().clone();
+
+        let actor = ContextFilesScanActor::spawn(ContextFilesScanActorDeps {
+            deps: ActorDeps { services },
+            state: state.clone(),
+        });
+        actor.wait_for_startup().await;
+
+        // When sending SessionSetupCompleted.
+        harness.publish(SessionSetupCompleted {
             session_id: session_id.clone(),
             cwd: dir.path().to_path_buf(),
             error: None,
-        });
-        actor.handle_event(&event, &ctx).await;
+        }).await;
 
-        // Then the file is written to the session's discovered set.
+        let recorder = harness.spawn_recorder::<ContextFilesLoaded>().await;
+        let _ = await_recorded(&recorder, 1, std::time::Duration::from_secs(2)).await;
         let guard = state.read();
         let session = guard.session.get(&session_id).expect("session exists");
         assert_eq!(session.discovered_context_files().len(), 1);
     }
 
-    #[rstest::rstest]
     #[tokio::test]
     async fn session_cwd_changed_event_scans_context_files() {
         // Given an actor whose session cwd has an AGENTS.md.
         let dir = tempfile::tempdir().expect("create temp dir");
         std::fs::write(dir.path().join("AGENTS.md"), "# Project rules").expect("write");
         let state = State::new(AppState::default());
-        let (actor, _sink, ctx, session_id) = create_actor(&dir, state.clone());
+        let (session_id, services) = create_actor_state(&dir, state.clone());
 
-        // When processing SessionCwdChanged.
-        let event = Event::SessionCwdChanged(SessionCwdChanged {
+        let harness = TestHarness::new().await;
+        let mut services = services;
+        services.bus = harness.bus().clone();
+
+        let actor = ContextFilesScanActor::spawn(ContextFilesScanActorDeps {
+            deps: ActorDeps { services },
+            state: state.clone(),
+        });
+        actor.wait_for_startup().await;
+
+        // When sending SessionCwdChanged.
+        harness.publish(SessionCwdChanged {
             session_id: session_id.clone(),
             cwd: dir.path().to_path_buf(),
-        });
-        actor.handle_event(&event, &ctx).await;
+        }).await;
 
-        // Then the file is written to the session's discovered set.
+        let recorder = harness.spawn_recorder::<ContextFilesLoaded>().await;
+        let _ = await_recorded(&recorder, 1, std::time::Duration::from_secs(2)).await;
         let guard = state.read();
         let session = guard.session.get(&session_id).expect("session exists");
         assert_eq!(session.discovered_context_files().len(), 1);
     }
 
-    #[rstest::rstest]
     #[tokio::test]
     async fn environment_loaded_event_scans_active_session_context_files() {
         // Given an actor whose session cwd has an AGENTS.md.
         let dir = tempfile::tempdir().expect("create temp dir");
         std::fs::write(dir.path().join("AGENTS.md"), "# Project rules").expect("write");
         let state = State::new(AppState::default());
-        let (actor, _sink, ctx, session_id) = create_actor(&dir, state.clone());
+        let (session_id, services) = create_actor_state(&dir, state.clone());
 
-        // When processing EnvironmentLoaded.
-        let event = Event::EnvironmentLoaded(EnvironmentLoaded {
+        let harness = TestHarness::new().await;
+        let mut services = services;
+        services.bus = harness.bus().clone();
+
+        let actor = ContextFilesScanActor::spawn(ContextFilesScanActorDeps {
+            deps: ActorDeps { services },
+            state: state.clone(),
+        });
+        actor.wait_for_startup().await;
+
+        // When sending EnvironmentLoaded.
+        harness.publish(EnvironmentLoaded {
             config: crate::ProvidersConfig {
                 providers: vec![],
                 aliases: vec![],
                 default_provider: None,
             },
-        });
-        actor.handle_event(&event, &ctx).await;
+        }).await;
 
-        // Then the active session's AGENTS.md is discovered.
+        let recorder = harness.spawn_recorder::<ContextFilesLoaded>().await;
+        let _ = await_recorded(&recorder, 1, std::time::Duration::from_secs(2)).await;
         let guard = state.read();
         let session = guard.session.get(&session_id).expect("session exists");
         assert_eq!(session.discovered_context_files().len(), 1);

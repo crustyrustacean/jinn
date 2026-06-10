@@ -217,7 +217,7 @@ mod tests {
         session.push_entry(ChatEntry::user("hello world"));
         session.push_entry(ChatEntry::assistant("hi there"));
 
-        let mut actor = test_actor().await;
+        let actor = test_actor().await;
         let (_sink, ctx) = test_context();
 
         let payload = SessionLoadCompleted { session };
@@ -240,7 +240,7 @@ mod tests {
         session.push_entry(ChatEntry::user("hello"));
         let session_id = session.session_id().clone();
 
-        let mut actor = test_actor().await;
+        let actor = test_actor().await;
         let (_sink, ctx) = test_context();
 
         let payload = SessionLoadCompleted { session };
@@ -267,7 +267,7 @@ mod tests {
         let mut session = ChatSessionState::new();
         session.push_entry(ChatEntry::user("hello"));
 
-        let mut actor = test_actor().await;
+        let actor = test_actor().await;
         let (sink, ctx) = test_context();
 
         let payload = SessionLoadCompleted { session };
