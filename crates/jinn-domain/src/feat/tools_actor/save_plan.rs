@@ -195,9 +195,7 @@ mod tests {
 
         // Then at least one guideline mentions .plans/.
         assert!(
-            def.prompt_guidelines
-                .iter()
-                .any(|g| g.contains(".plans")),
+            def.prompt_guidelines.iter().any(|g| g.contains(".plans")),
             "expected a guideline mentioning .plans/"
         );
     }
@@ -250,10 +248,7 @@ mod tests {
 
         // Then the result is pinned with Relative.
         assert!(result.success);
-        assert_eq!(
-            result.pin_position,
-            Some(ToolResultPinPosition::Relative)
-        );
+        assert_eq!(result.pin_position, Some(ToolResultPinPosition::Relative));
     }
 
     #[rstest::rstest]
@@ -342,11 +337,7 @@ mod tests {
     async fn execute_creates_parent_dirs() {
         // Given a nested path like .plans/my-task/plan.md.
         let dir = tempfile::tempdir().expect("create temp dir");
-        let file_path = dir
-            .path()
-            .join(".plans")
-            .join("my-task")
-            .join("plan.md");
+        let file_path = dir.path().join(".plans").join("my-task").join("plan.md");
 
         let call = ToolCall {
             id: "call_6".to_owned(),
