@@ -662,16 +662,12 @@ impl ActorSystemBuilder {
                 HistorySnapshotActor, HistorySnapshotActorDeps,
             };
 
-            actors.push(spawn::<HistorySnapshotActor>(
-                "history-snapshot",
-                &sink,
-                handle,
-                &counter,
-                &shutdown_tracker,
+            let _history_snapshot = HistorySnapshotActor::spawn(
                 HistorySnapshotActorDeps {
+                    deps: ActorDeps { services: services.clone() },
                     state: state.clone(),
                 },
-            ));
+            );
         }
         // Compaction worker - summarizes conversation history into structured checkpoints.
         {
