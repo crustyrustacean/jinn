@@ -366,14 +366,12 @@ impl ActorSystemBuilder {
         });
 
         // Preferences state sync: updates AppState from PreferencesUpdated events.
-        actors.push(spawn::<
-        jinn_domain::feat::preferences_actor::preferences_state_sync_actor::PreferencesStateSyncActor,
-    >("preferences-sync", &sink, handle, &counter, &shutdown_tracker,
-        jinn_domain::feat::preferences_actor::preferences_state_sync_actor::PreferencesStateSyncActorDeps {
-            services: services.clone(),
-            state: state.clone(),
-        },
-    ));
+        let _preferences_state_sync = jinn_domain::feat::preferences_actor::preferences_state_sync_actor::PreferencesStateSyncActor::spawn(
+            jinn_domain::feat::preferences_actor::preferences_state_sync_actor::PreferencesStateSyncActorDeps {
+                deps: ActorDeps { services: services.clone() },
+                state: state.clone(),
+            },
+        );
 
         // App state actor: persists state changes to state.toml. (Migrated to kameo.)
         let _app_state = AppStateActor::spawn(AppStateActorDeps {
