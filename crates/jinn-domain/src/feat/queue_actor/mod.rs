@@ -181,10 +181,10 @@ impl QueueActor {
         let provider_id = {
             let state = self.state.read();
             let model = state.session(session_id).profile().model.clone();
-            if model == crate::feat::provider_infra::NO_PROVIDER_ID {
+            if model.is_no_provider() {
                 None
             } else {
-                Some(model)
+                Some(model.display_str().to_owned())
             }
         };
 
@@ -258,10 +258,10 @@ impl QueueActor {
         let provider_id = {
             let state = self.state.read();
             let model = state.session(session_id).profile().model.clone();
-            if model == crate::feat::provider_infra::NO_PROVIDER_ID {
+            if model.is_no_provider() {
                 None
             } else {
-                Some(model)
+                Some(model.display_str().to_owned())
             }
         };
 
@@ -296,6 +296,7 @@ mod tests {
     use super::*;
     use crate::common::actor::{ActorContext, RecordingSink};
     use crate::common::app_state::AppState;
+    use crate::feat::session::model_selection::ModelSelection;
     use crate::feat::session::phase_machine::PhaseKind;
     use crate::protocol::ChatEntry;
 
@@ -541,7 +542,9 @@ mod tests {
         let (sink, ctx) = test_context();
         let session_id = {
             let mut state = actor.state.write();
-            state.active_session_mut().set_model("my-model".to_owned());
+            state
+                .active_session_mut()
+                .set_model(ModelSelection::Single("my-model".to_owned()));
             state.session.active_session_id().clone()
         };
 
@@ -601,7 +604,7 @@ mod tests {
             session.push_entry(ChatEntry::user("previous message"));
             state
                 .active_session_mut()
-                .set_model("tool-model".to_owned());
+                .set_model(ModelSelection::Single("tool-model".to_owned()));
             state.session.active_session_id().clone()
         };
 

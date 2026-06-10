@@ -162,7 +162,7 @@ impl CompactionWorker {
             let state = self.state.read();
             let session = state.session(&trigger.session_id);
             let config = prefs.compaction.clone();
-            let model_name = session.profile().model.clone();
+            let model_name = session.profile().model.display_str().to_owned();
             let history = session.history().to_vec();
             let compaction_prompt = state.context.compaction_prompt.clone();
             let retry_config = prefs.request_retry.to_retry_config();
@@ -251,8 +251,10 @@ impl CompactionWorker {
                 return vec![];
             };
 
-            let context_length =
-                resolve_context_limit(state.provider.model_cache.as_ref(), &model_name);
+            let context_length = resolve_context_limit(
+                state.provider.model_cache.as_ref(),
+                model_name.display_str(),
+            );
 
             let context_limit = match context_length {
                 Some(limit) => limit,
@@ -297,7 +299,7 @@ impl CompactionWorker {
             .evaluate_with_config(
                 &full_history,
                 &config,
-                &model_name,
+                model_name.display_str(),
                 &compaction_prompt,
                 &retry_config,
                 false, // Not compact_all for auto-trigger

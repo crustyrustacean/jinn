@@ -32,9 +32,24 @@ pub enum ModelSelection {
     },
 }
 
+/// Borrowed view of alloy data (models + strategy).
+pub struct AlloyData<'a> {
+    pub models: &'a [String],
+    pub strategy: &'a AlloyStrategy,
+}
+
 impl Default for ModelSelection {
     fn default() -> Self {
         Self::Single(NO_PROVIDER_ID.to_owned())
+    }
+}
+
+impl std::fmt::Display for ModelSelection {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        match self {
+            Self::Single(s) => write!(f, "{s}"),
+            Self::Alloy { models, .. } => write!(f, "alloy({})", models.join(", ")),
+        }
     }
 }
 
@@ -54,9 +69,12 @@ impl ModelSelection {
                         *index = (*index + 1) % models.len();
                         i
                     }
-                    AlloyStrategy::Random => rand::thread_rng().gen_range(0..models.len()),
+                    AlloyStrategy::Random => rand::rng().random_range(0..models.len()),
                 };
-                models[idx].clone()
+                models
+                    .get(idx)
+                    .expect("index is always in range due to modulo")
+                    .clone()
             }
         }
     }
@@ -71,6 +89,26 @@ impl ModelSelection {
         match self {
             Self::Single(s) => Some(s),
             Self::Alloy { .. } => None,
+        }
+    }
+
+    /// Returns a display string for the selection.
+    ///
+    /// For `Single`, returns the model string. For `Alloy`, returns the first
+    /// model in the list (used for provider filtering where the exact model
+    /// doesn't matter — any member's provider suffices).
+    pub fn display_str(&self) -> &str {
+        match self {
+            Self::Single(s) => s,
+            Self::Alloy { models, .. } => models.first().map_or("", |s| s.as_str()),
+        }
+    }
+
+    /// Returns the alloy data if `Alloy`, `None` if `Single`.
+    pub fn as_alloy(&self) -> Option<AlloyData<'_>> {
+        match self {
+            Self::Alloy { models, strategy } => Some(AlloyData { models, strategy }),
+            Self::Single(_) => None,
         }
     }
 
@@ -297,6 +335,9 @@ mod tests {
         let selection = ModelSelection::from_single("ollama/llama3".to_owned());
 
         // Then it is a Single variant.
-        assert_eq!(selection, ModelSelection::Single("ollama/llama3".to_owned()));
+        assert_eq!(
+            selection,
+            ModelSelection::Single("ollama/llama3".to_owned())
+        );
     }
 }

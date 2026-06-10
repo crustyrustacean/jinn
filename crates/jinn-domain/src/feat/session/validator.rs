@@ -21,7 +21,7 @@ pub enum RefreshModelsError {
 ///
 /// Returns an error if no provider is configured.
 pub fn validate_refresh_models(state: &AppState) -> Result<(), RefreshModelsError> {
-    if state.active_session().profile().model == crate::feat::provider_infra::NO_PROVIDER_ID {
+    if state.active_session().profile().model.is_no_provider() {
         return Err(RefreshModelsError::NoProvider);
     }
     Ok(())
@@ -64,7 +64,10 @@ mod tests {
         clippy::indexing_slicing,
         reason = "test code"
     )]
+    use crate::feat::session::model_selection::ModelSelection;
     use crate::protocol::PickerKind;
+
+    use super::*;
 
     use super::*;
 
@@ -74,7 +77,9 @@ mod tests {
     fn refresh_models_succeeds_with_provider() {
         // Given a state with a configured provider.
         let mut state = AppState::default();
-        state.active_session_mut().set_model("ollama".to_owned());
+        state
+            .active_session_mut()
+            .set_model(ModelSelection::Single("ollama".to_owned()));
 
         // When validating refresh models.
         let result = validate_refresh_models(&state);

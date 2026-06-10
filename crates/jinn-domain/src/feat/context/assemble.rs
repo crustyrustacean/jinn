@@ -120,7 +120,12 @@ pub fn assemble_prompt(
 
     // Filter out server tools that don't match the active provider.
     // The model string format is "provider_name/model_name" - extract provider.
-    let provider_name = session.model().split('/').next().unwrap_or("");
+    let provider_name = session
+        .model_selection()
+        .display_str()
+        .split('/')
+        .next()
+        .unwrap_or("");
     if overrides.is_none_or(|o| o.tool_definitions.is_none()) {
         tool_defs.retain(|def| {
             match def.server_tool_type {

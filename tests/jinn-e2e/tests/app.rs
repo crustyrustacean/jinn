@@ -44,6 +44,7 @@ use jinn_domain::ToolDefinition;
 use jinn_domain::ToolResult;
 use jinn_domain::UnpinChatEntry;
 use jinn_domain::UserPreferencesStorageService;
+use jinn_domain::feat::session::model_selection::ModelSelection;
 
 use jinn_plugin::SyncPlugins;
 use jinn_tui::AppStatus;
@@ -410,7 +411,7 @@ fn given_active_provider_set(world: &mut AppWorld) {
         .state
         .write()
         .active_session_mut()
-        .set_model("test".to_owned());
+        .set_model(ModelSelection::Single("test".to_owned()));
 }
 
 /// Pre-populates the active session with user and assistant messages.

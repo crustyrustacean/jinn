@@ -3,6 +3,8 @@
 use serde::{Deserialize, Serialize};
 
 use crate::feat::provider::llm_message::LlmMessage;
+
+use crate::feat::session::model_selection::ModelSelection;
 use crate::feat::tools_actor::tool_types::ToolDefinition;
 use crate::protocol::{CommandMsg, SessionId};
 
@@ -13,10 +15,10 @@ use crate::protocol::{CommandMsg, SessionId};
 #[derive(Debug, Clone, Serialize, Deserialize, CommandMsg)]
 #[cmd("provider")]
 pub struct ProviderSwitch {
-    /// The session whose model should be switched.
+    /// The session to switch provider for.
     pub session_id: SessionId,
-    /// The provider to switch to.
-    pub provider_id: String,
+    /// The model selection to switch to.
+    pub provider_id: ModelSelection,
 }
 
 /// Send a message to the AI provider.

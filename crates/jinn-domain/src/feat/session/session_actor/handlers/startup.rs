@@ -5,6 +5,7 @@
 //! to initialize the context and preferences pipelines.
 
 use crate::common::actor::ActorContext;
+use crate::feat::session::model_selection::ModelSelection;
 
 use crate::protocol::Command;
 
@@ -35,9 +36,9 @@ impl SessionPersistenceActor {
             // fires, so we must not overwrite them with the user's saved preference.
             let session = state.active_session_mut();
             if let Some(ref model) = app_state.last_model
-                && session.profile().model == crate::feat::provider_infra::NO_PROVIDER_ID
+                && session.profile().model.is_no_provider()
             {
-                session.set_model(model.clone());
+                session.set_model(ModelSelection::from_single(model.clone()));
             }
         }
 
@@ -133,6 +134,7 @@ mod tests {
     )]
     use super::super::super::helpers::{test_actor_with_store, test_context};
     use crate::feat::session::chat_session::ChatSessionState;
+    use crate::feat::session::model_selection::ModelSelection;
 
     #[tokio::test]
     async fn loading_unarchived_sessions_does_not_switch_active_session() {
@@ -297,7 +299,7 @@ mod tests {
         let state = actor.state.read();
         assert_eq!(
             state.active_session().profile().model,
-            "my-model",
+            ModelSelection::Single("my-model".to_owned()),
             "default session model should be updated from saved preference"
         );
     }
@@ -313,7 +315,7 @@ mod tests {
             let mut state = actor.state.write();
             state
                 .active_session_mut()
-                .set_model("bench-model".to_owned());
+                .set_model(ModelSelection::Single("bench-model".to_owned()));
         }
 
         // Save state with a different last_model.
@@ -341,11 +343,10 @@ mod tests {
             )
             .await;
 
-        // Then the active session's model was NOT overwritten.
         let state = actor.state.read();
         assert_eq!(
             state.active_session().profile().model,
-            "bench-model",
+            ModelSelection::Single("bench-model".to_owned()),
             "explicitly set model should not be overwritten by saved preference"
         );
     }

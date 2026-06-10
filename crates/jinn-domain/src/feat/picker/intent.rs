@@ -13,6 +13,7 @@ use crate::feat::preferences_actor::protocol::app_state_command::{AppStateUpdate
 use crate::feat::provider::protocol::command::{
     LoadProviderPickerEntries, ProviderSwitch, RescanPromptTemplates,
 };
+use crate::feat::session::model_selection::ModelSelection;
 use crate::feat::session::protocol::load_session_picker_entries::LoadSessionPickerEntries;
 use crate::feat::session::protocol::session_load_requested::SessionLoadRequested;
 use crate::feat::skills::ScanSkills;
@@ -351,7 +352,7 @@ fn confirm_provider(state: &mut AppState) -> IntentResult {
     IntentResult::with_commands(vec![
         Command::ProviderSwitch(ProviderSwitch {
             session_id,
-            provider_id: provider_id.clone(),
+            provider_id: ModelSelection::Single(provider_id.clone()),
         }),
         Command::UpdateAppState(UpdateAppState {
             updates: vec![AppStateUpdate::SetLastModel(Some(provider_id))],

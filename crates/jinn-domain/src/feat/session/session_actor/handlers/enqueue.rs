@@ -120,10 +120,10 @@ impl SessionPersistenceActor {
                 let provider_id = {
                     let state = self.state.read();
                     let model = state.session(&payload.session_id).profile().model.clone();
-                    if model == crate::feat::provider_infra::NO_PROVIDER_ID {
+                    if model.is_no_provider() {
                         None
                     } else {
-                        Some(model)
+                        Some(model.display_str().to_owned())
                     }
                 };
 
@@ -240,10 +240,10 @@ impl SessionPersistenceActor {
         let provider_id = {
             let state = self.state.read();
             let model = state.session(&payload.session_id).profile().model.clone();
-            if model == crate::feat::provider_infra::NO_PROVIDER_ID {
+            if model.is_no_provider() {
                 None
             } else {
-                Some(model)
+                Some(model.display_str().to_owned())
             }
         };
 
