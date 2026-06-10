@@ -11,7 +11,9 @@
 use std::path::Path;
 use std::sync::{Arc, Mutex};
 
-use jinn_plugin::{AsyncPluginHandle, PluginCommand, PluginSystem, PluginSystemBuildResult, SyncPlugins};
+use jinn_plugin::{
+    AsyncPluginHandle, PluginCommand, PluginSystem, PluginSystemBuildResult, SyncPlugins,
+};
 
 // ── Test Helpers ─────────────────────────────────────────────────────────
 
@@ -27,7 +29,12 @@ fn build_system(
     let captured: Arc<Mutex<Vec<PluginCommand>>> = Arc::new(Mutex::new(Vec::new()));
     let captured_clone = captured.clone();
 
-    let PluginSystemBuildResult { sync, async_handle, sync_handle, .. } = PluginSystem::build(
+    let PluginSystemBuildResult {
+        sync,
+        async_handle,
+        sync_handle,
+        ..
+    } = PluginSystem::build(
         dir,
         Path::new("/nonexistent"),
         rt.handle().clone(),

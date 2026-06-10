@@ -8,8 +8,8 @@ use crate::common::actor::ActorContext;
 use crate::feat::provider::protocol::event::ModelsRefreshed;
 use crate::feat::session::phase_machine::PhaseKind;
 use crate::feat::session::protocol::load_session_picker_entries::LoadSessionPickerEntries;
-use crate::feat::session::protocol::submit_history_mutations::SubmitHistoryMutations;
 use crate::feat::session::protocol::reset_session_history::ResetSessionHistory;
+use crate::feat::session::protocol::submit_history_mutations::SubmitHistoryMutations;
 
 use crate::feat::ui::picker_states::PickerExt;
 use crate::protocol::Event;
@@ -662,6 +662,39 @@ mod tests {
             session.history()[0].context_history.len(),
             1,
             "context_history should contain only the setup event"
+        );
+    }
+
+    // --- handle_reset_session_history ---
+
+    #[test]
+    fn reset_session_history_clears_chat_entries() {
+        use crate::feat::session::protocol::reset_session_history::ResetSessionHistory;
+
+        // Given a session actor with a session that has history.
+        let mut actor = test_actor();
+        let session_id = {
+            let mut state = actor.state.write();
+            let session = state.active_session_mut();
+            session.push_entry(crate::protocol::ChatEntry::user("hello"));
+            session.push_entry(crate::protocol::ChatEntry::assistant("world"));
+            state.session.active_session_id().clone()
+        };
+
+        // When resetting the session history.
+        actor.handle_reset_session_history(
+            &ResetSessionHistory {
+                session_id: session_id.clone(),
+            },
+            &test_ctx(),
+        );
+
+        // Then the history is empty.
+        let state = actor.state.read();
+        let session = state.session.get(&session_id).unwrap();
+        assert!(
+            session.history().is_empty(),
+            "history should be empty after reset"
         );
     }
 }

@@ -10,8 +10,8 @@ use derive_more::Debug;
 use error_stack::Report;
 
 use crate::feat::plugin_system::{
-    CreateSessionRegistryResult, SessionPluginRegistry,
-    SessionPluginRegistryError, SessionRegistryId,
+    CreateSessionRegistryResult, SessionPluginRegistry, SessionPluginRegistryError,
+    SessionRegistryId,
 };
 
 /// Service wrapper for [`SessionPluginRegistry`].

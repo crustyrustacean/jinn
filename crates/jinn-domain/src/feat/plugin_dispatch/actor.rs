@@ -313,7 +313,10 @@ impl PluginDispatchActor {
         use crate::feat::tools_actor::protocol::command::RegisterPluginTools;
 
         // Group tools by plugin name, since RegisterPluginTools takes one plugin name at a time.
-        let mut by_plugin: std::collections::HashMap<String, Vec<crate::feat::plugin_system::PluginToolMetadata>> = std::collections::HashMap::new();
+        let mut by_plugin: std::collections::HashMap<
+            String,
+            Vec<crate::feat::plugin_system::PluginToolMetadata>,
+        > = std::collections::HashMap::new();
         for tool in tools {
             by_plugin
                 .entry(tool.plugin_name.clone())
@@ -324,7 +327,9 @@ impl PluginDispatchActor {
         for (plugin_name, plugin_tools) in by_plugin {
             let definitions: Vec<jinn_provider::ToolDefinition> = plugin_tools
                 .into_iter()
-                .map(|meta: crate::feat::plugin_system::PluginToolMetadata| meta.to_tool_definition())
+                .map(|meta: crate::feat::plugin_system::PluginToolMetadata| {
+                    meta.to_tool_definition()
+                })
                 .collect();
 
             self.services.actor_channel.send_command(

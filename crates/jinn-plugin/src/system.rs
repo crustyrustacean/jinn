@@ -11,9 +11,9 @@ use crate::async_handle::PluginJob;
 use crate::async_thread::{RequestHandler, run_async_thread};
 use crate::command::PluginCommand;
 use crate::loader::{PluginMeta, discover_plugins, load_all};
-use crate::tool_def::PluginToolMetadata;
 use crate::plugin_data::PluginData;
 use crate::sync_state::SyncPlugins;
+use crate::tool_def::PluginToolMetadata;
 use crate::{AsyncPluginHandle, PluginSyncHandle};
 
 /// Result of [`PluginSystem::build`] — all handles and metadata.
@@ -152,12 +152,7 @@ impl PluginSystem {
             })
             .expect("spawn plugin-async thread");
 
-        let sync = SyncPlugins::new(
-            sync_lua,
-            sync_result.hooks,
-            plugin_data.clone(),
-            emit_tx,
-        );
+        let sync = SyncPlugins::new(sync_lua, sync_result.hooks, plugin_data.clone(), emit_tx);
 
         let async_handle = AsyncPluginHandle::new(job_tx.clone(), plugin_data);
 

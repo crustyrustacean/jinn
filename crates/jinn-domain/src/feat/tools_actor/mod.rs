@@ -18,6 +18,7 @@ pub mod get_time;
 pub mod protocol;
 pub mod read;
 pub mod registry;
+pub mod session_query;
 pub mod skill;
 pub mod tool_entry;
 pub mod tool_types;
@@ -31,6 +32,7 @@ use std::pin::Pin;
 use crate::common::actor::{Actor, ActorContext, ActorEnvelope, MessageSink, NoDirectMsg};
 use crate::common::services::Services;
 use crate::common::state::State;
+use crate::feat::plugin_system::SessionRegistryId;
 use crate::feat::preferences_actor::OpenrouterWebSearchConfig;
 use crate::feat::session::chat_session::ChatSessionState;
 use crate::feat::tools_actor::protocol::command::{
@@ -41,7 +43,6 @@ use crate::feat::tools_actor::protocol::event::{
 };
 use crate::feat::tools_actor::tool_types::{ToolCall, ToolContext, ToolDefinition, ToolResult};
 use crate::protocol::{Command, Event, SessionId};
-use crate::feat::plugin_system::SessionRegistryId;
 use jinn_provider::ServerToolType;
 
 /// A boxed future returned by built-in tool execute functions.
@@ -289,7 +290,12 @@ impl ToolOrchestratorActor {
                 self.handle_register_tools(&payload.provider, &payload.definitions, ctx);
             }
             Command::RegisterPluginTools(payload) => {
-                self.handle_register_plugin_tools(&payload.plugin_name, &payload.target, &payload.definitions, ctx);
+                self.handle_register_plugin_tools(
+                    &payload.plugin_name,
+                    &payload.target,
+                    &payload.definitions,
+                    ctx,
+                );
             }
             Command::ExecuteToolBatch(payload) => {
                 self.handle_execute_tool_batch(
@@ -553,7 +559,11 @@ impl ToolOrchestratorActor {
                 }
                 None
             }
-            Some(ToolRegistration::Plugin { target, plugin_name, .. }) => {
+            Some(ToolRegistration::Plugin {
+                target,
+                plugin_name,
+                ..
+            }) => {
                 let sink = ctx.sink();
                 let plugin_fire = self.services.plugins.clone();
                 let target = target.clone();
@@ -563,12 +573,7 @@ impl ToolOrchestratorActor {
 
                 let handle = tokio::spawn(async move {
                     let result = match plugin_fire
-                        .execute_plugin_tool(
-                            target,
-                            &plugin_name,
-                            &tool_call.name,
-                            &arguments,
-                        )
+                        .execute_plugin_tool(target, &plugin_name, &tool_call.name, &arguments)
                         .await
                     {
                         Ok(content) => ToolResult {

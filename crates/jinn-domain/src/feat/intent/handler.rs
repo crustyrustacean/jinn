@@ -482,6 +482,8 @@ impl IntentHandler {
                 feat::ui::sidebar::sessions::handle_session_continue(state)
             }
 
+            Intent::SidebarTogglePlugin => handle_sidebar_toggle_plugin(state),
+
             Intent::SidebarSessionConfirm => {
                 feat::ui::sidebar::sessions::handle_session_activate(state)
             }
@@ -618,6 +620,28 @@ fn selected_entry_is_automated(state: &AppState) -> bool {
     )
 }
 
+fn handle_sidebar_toggle_plugin(state: &mut AppState) -> IntentResult {
+    use crate::feat::plugin_dispatch::protocol::command::TogglePlugin;
+    use crate::feat::ui::sidebar::sessions::state::SessionEntryKind;
+
+    let Some(index) = state.frontend.sessions_section.selected_index else {
+        return IntentResult::empty();
+    };
+    let entries = feat::ui::sidebar::sessions::sorted_open_sessions(state);
+    let Some(entry) = entries.get(index) else {
+        return IntentResult::empty();
+    };
+    match entry.kind {
+        SessionEntryKind::Plugin { .. } => {
+            IntentResult::with_commands(vec![Command::TogglePlugin(TogglePlugin {
+                session_id: entry.id.clone(),
+                plugin_name: entry.title.clone(),
+            })])
+        }
+        SessionEntryKind::Session => IntentResult::empty(),
+    }
+}
+
 /// Cancel stream prompt intercept.
 ///
 /// If the cancel-stream confirmation prompt is showing:
@@ -702,7 +726,7 @@ mod tests {
     )]
     use crate::common::app_state::{AppState, FocusScope, RenameSessionInputState};
     use crate::feat::intent::IntentHandler;
-    use crate::protocol::{ChatEntry, Intent};
+    use crate::protocol::{ChatEntry, Command, Intent};
 
     #[rstest::rstest]
     fn paste_text_ignored_in_normal_scope() {
@@ -1288,6 +1312,35 @@ mod tests {
 
         // When handling SidebarSessionContinue.
         let result = IntentHandler::handle(&Intent::SidebarSessionContinue, &mut state, None);
+
+        // Then no commands are emitted.
+        assert!(result.commands.is_empty());
+    }
+
+    #[rstest::rstest]
+    fn sidebar_toggle_plugin_on_plugin_entry() {
+        // Given the cursor on a plugin entry in the sessions sidebar.
+        let mut state = state_with_plugin_selected();
+
+        // When handling SidebarTogglePlugin.
+        let result = IntentHandler::handle(&Intent::SidebarTogglePlugin, &mut state, None);
+
+        // Then a TogglePlugin command is emitted for the plugin.
+        assert_eq!(result.commands.len(), 1);
+        assert!(matches!(
+            &result.commands[0],
+            Command::TogglePlugin(cmd) if cmd.plugin_name == "test-plugin"
+        ));
+    }
+
+    #[rstest::rstest]
+    fn sidebar_toggle_plugin_noop_on_session_entry() {
+        // Given a state with a session selected (not a plugin entry).
+        let mut state = state_with_plugin_selected();
+        state.frontend.sessions_section.selected_index = Some(0); // cursor on session, not plugin
+
+        // When handling SidebarTogglePlugin.
+        let result = IntentHandler::handle(&Intent::SidebarTogglePlugin, &mut state, None);
 
         // Then no commands are emitted.
         assert!(result.commands.is_empty());

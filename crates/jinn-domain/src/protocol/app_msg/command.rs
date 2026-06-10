@@ -126,9 +126,7 @@ pub enum Command {
     /// Mark a session as having been interacted with by the user.
     MarkSessionInteracted(MarkSessionInteracted),
     /// Reset a session's chat history and lifecycle state.
-    ResetSessionHistory(
-        crate::feat::session::protocol::ResetSessionHistory,
-    ),
+    ResetSessionHistory(crate::feat::session::protocol::ResetSessionHistory),
     /// Archive a session without running teardown.
     ArchiveSession(crate::feat::session::protocol::archive_session::ArchiveSession),
     /// Persist a session's full state to SQLite immediately.
@@ -200,9 +198,9 @@ impl Command {
             Self::RunSessionTeardown(..) => Some(RunSessionTeardown::NAME),
             Self::CloseSession(..) => Some(CloseSession::NAME),
             Self::MarkSessionInteracted(..) => Some(MarkSessionInteracted::NAME),
-            Self::ResetSessionHistory(..) => Some(
-                crate::feat::session::protocol::ResetSessionHistory::NAME,
-            ),
+            Self::ResetSessionHistory(..) => {
+                Some(crate::feat::session::protocol::ResetSessionHistory::NAME)
+            }
             Self::ArchiveSession(..) => {
                 Some(crate::feat::session::protocol::archive_session::ArchiveSession::NAME)
             }

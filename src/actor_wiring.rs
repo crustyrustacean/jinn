@@ -285,28 +285,27 @@ impl ActorSystemBuilder {
             let mut by_plugin: std::collections::HashMap<String, Vec<jinn_domain::ToolDefinition>> =
                 std::collections::HashMap::new();
             for meta in global_tool_metadata {
-                by_plugin
-                    .entry(meta.plugin_name.clone())
-                    .or_default()
-                    .push(jinn_domain::ToolDefinition {
+                by_plugin.entry(meta.plugin_name.clone()).or_default().push(
+                    jinn_domain::ToolDefinition {
                         name: meta.name,
                         description: meta.description,
                         parameters: meta.parameters,
                         prompt_snippet: None,
                         prompt_guidelines: vec![],
                         server_tool_type: None,
-                    });
+                    },
+                );
             }
             for (plugin_name, definitions) in by_plugin {
-                services.actor_channel.send_command(
-                    jinn_domain::Command::RegisterPluginTools(
+                services
+                    .actor_channel
+                    .send_command(jinn_domain::Command::RegisterPluginTools(
                         jinn_domain::feat::tools_actor::protocol::command::RegisterPluginTools {
                             plugin_name,
                             target: None,
                             definitions,
                         },
-                    ),
-                );
+                    ));
             }
         }
 
