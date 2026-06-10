@@ -182,15 +182,15 @@ pub fn execute(call: ToolCall, ctx: ToolContext) -> BoxedToolFuture {
         if let Some(ref path) = args.path {
             cmd.arg(path);
         }
-        if let Some(ref glob) = args.glob {
-            if !glob.is_empty() {
-                cmd.arg("--glob").arg(glob);
-            }
+        if let Some(ref glob) = args.glob
+            && !glob.is_empty()
+        {
+            cmd.arg("--glob").arg(glob);
         }
-        if let Some(ref file_type) = args.file_type {
-            if !file_type.is_empty() {
-                cmd.arg("--type").arg(file_type);
-            }
+        if let Some(ref file_type) = args.file_type
+            && !file_type.is_empty()
+        {
+            cmd.arg("--type").arg(file_type);
         }
 
         let output = match cmd.output().await {
@@ -211,10 +211,7 @@ pub fn execute(call: ToolCall, ctx: ToolContext) -> BoxedToolFuture {
         let stderr = String::from_utf8_lossy(&output.stderr);
 
         let code = output.status.code().unwrap_or(-1);
-        let success = match code {
-            0 | 1 => true,
-            _ => false,
-        };
+        let success = matches!(code, 0 | 1);
 
         let content = build_content(&stdout, &stderr);
 
@@ -274,11 +271,11 @@ mod tests {
 
     fn tool_call_with_args(pattern: &str, extra: serde_json::Value) -> ToolCall {
         let mut args = serde_json::json!({ "pattern": pattern });
-        if let serde_json::Value::Object(ref mut map) = args {
-            if let serde_json::Value::Object(extra_map) = extra {
-                for (k, v) in extra_map {
-                    map.insert(k, v);
-                }
+        if let serde_json::Value::Object(ref mut map) = args
+            && let serde_json::Value::Object(extra_map) = extra
+        {
+            for (k, v) in extra_map {
+                map.insert(k, v);
             }
         }
         ToolCall {
@@ -462,8 +459,10 @@ mod tests {
         // Given a file with many matching lines.
         let dir = tempfile::tempdir().expect("create temp dir");
         let content: String = (0..3000)
-            .map(|i| format!("match_line_{i}\n"))
-            .collect();
+            .fold(String::new(), |mut s, i| {
+                s.push_str(&format!("match_line_{i}\n"));
+                s
+            });
         std::fs::write(dir.path().join("big.txt"), content).expect("write file");
 
         let call = tool_call("match_line");
@@ -540,7 +539,10 @@ mod tests {
     #[rstest::rstest]
     fn format_output_with_truncation() {
         // Given content exceeding the line limit.
-        let content: String = (0..3000).map(|i| format!("line {i}\n")).collect();
+        let content: String = (0..3000).fold(String::new(), |mut s, i| {
+            s.push_str(&format!("line {i}\n"));
+            s
+        });
 
         let result = format_output(
             &content,
