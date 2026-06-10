@@ -69,6 +69,11 @@ impl ChatHistory {
     pub(crate) fn replace_all(&mut self, entries: Vec<ChatEntry>) {
         self.entries = entries;
     }
+
+    /// Clear all entries from the history.
+    pub(in crate::feat::session) fn clear(&mut self) {
+        self.entries.clear();
+    }
 }
 
 impl Deref for ChatHistory {

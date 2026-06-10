@@ -18,9 +18,11 @@ pub mod submit_history_mutations;
 pub mod task_list_updated;
 pub mod trigger_compaction;
 pub mod user_interacted;
+pub mod reset_session_history;
 
 pub use archive_session::ArchiveSession;
 pub use close_session::CloseSession;
+pub use reset_session_history::ResetSessionHistory;
 pub use mark_session_interacted::MarkSessionInteracted;
 pub use session_archived::SessionArchived;
 pub use session_closed::SessionClosed;

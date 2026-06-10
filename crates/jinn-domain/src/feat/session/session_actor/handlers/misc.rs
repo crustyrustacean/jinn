@@ -9,6 +9,7 @@ use crate::feat::provider::protocol::event::ModelsRefreshed;
 use crate::feat::session::phase_machine::PhaseKind;
 use crate::feat::session::protocol::load_session_picker_entries::LoadSessionPickerEntries;
 use crate::feat::session::protocol::submit_history_mutations::SubmitHistoryMutations;
+use crate::feat::session::protocol::reset_session_history::ResetSessionHistory;
 
 use crate::feat::ui::picker_states::PickerExt;
 use crate::protocol::Event;
@@ -135,6 +136,28 @@ impl SessionPersistenceActor {
                 tracing::warn!(err = ?e, "failed to emit ContextOverrideChanged");
             }
         }
+    }
+
+    /// Resets a session's chat history, clearing all entries.
+    ///
+    /// Used by plugins (via `reset_session` emit verb) to give a judge session
+    /// a clean workspace before each evaluation.
+    pub(in crate::feat::session::session_actor) fn handle_reset_session_history(
+        &mut self,
+        payload: &ResetSessionHistory,
+        _ctx: &ActorContext,
+    ) {
+        let mut state = self.state.write();
+        let Some(session) = state.session.get_mut(&payload.session_id) else {
+            tracing::warn!(
+                session_id = %payload.session_id,
+                "ResetSessionHistory: session not found"
+            );
+            return;
+        };
+        session.clear_history();
+        drop(state);
+        tracing::debug!(session_id = %payload.session_id, "session history reset");
     }
 }
 

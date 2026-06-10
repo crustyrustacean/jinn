@@ -88,7 +88,22 @@ pub(crate) enum PluginJob {
         /// Responder. Returns tool definitions extracted from loaded plugins.
         respond_to: oneshot::Sender<Result<Vec<crate::tool_def::PluginToolMetadata>, Report<PluginError>>>,
     },
-    /// Drop a per-session Lua state and free its memory.
+    /// Execute a plugin-defined tool handler.
+    ///
+    /// Routes to the correct Lua state (global or per-session),
+    /// finds the tool handler, calls it with arguments, returns result string.
+    ExecuteTool {
+        /// If `Some`, use the per-session Lua state; otherwise global.
+        target: Option<crate::session_registry::SessionRegistryId>,
+        /// Plugin that defined this tool.
+        plugin_name: String,
+        /// Tool name to execute.
+        tool_name: String,
+        /// Arguments from the LLM tool call.
+        arguments: serde_json::Value,
+        /// Oneshot responder. Returns the tool result string.
+        respond_to: oneshot::Sender<Result<String, Report<PluginError>>>,
+    },
     DestroySession {
         /// Registry ID previously returned by `create_session_registry`.
         registry_id: crate::session_registry::SessionRegistryId,
@@ -306,6 +321,45 @@ impl AsyncPluginHandle {
     #[must_use]
     pub fn get_plugin_data(&self, plugin_name: &str) -> Option<serde_json::Value> {
         self.plugin_data.get(plugin_name)
+    }
+    /// Execute a plugin-defined tool handler on the background thread.
+    ///
+    /// Routes to the correct Lua state (global or per-session),
+    /// finds the tool handler by plugin + tool name, builds a ctx,
+    /// calls the handler with `(ctx, arguments)`, returns the result string.
+    ///
+    /// # Errors
+    ///
+    /// Returns an error if the background thread is dead, the tool handler is not found,
+    /// or the handler itself errors.
+    pub async fn execute_tool(
+        &self,
+        target: Option<crate::session_registry::SessionRegistryId>,
+        plugin_name: &str,
+        tool_name: &str,
+        arguments: &serde_json::Value,
+    ) -> Result<String, Report<PluginError>> {
+        let (respond_to, rx) = oneshot::channel();
+        self.tx
+            .send(PluginJob::ExecuteTool {
+                target,
+                plugin_name: plugin_name.to_owned(),
+                tool_name: tool_name.to_owned(),
+                arguments: arguments.clone(),
+                respond_to,
+            })
+            .await
+            .map_err(|_e| Report::new(PluginError))
+            .attach("failed to send ExecuteTool job to plugin thread")
+            .attach(plugin_name.to_owned())?;
+        tokio::time::timeout(std::time::Duration::from_secs(30), rx)
+            .await
+            .map_err(|_e| Report::new(PluginError))
+            .attach("plugin tool execution timed out")
+            .attach(plugin_name.to_owned())?
+            .map_err(|_e| Report::new(PluginError))
+            .attach("plugin tool response dropped")
+            .attach(plugin_name.to_owned())?
     }
 }
 

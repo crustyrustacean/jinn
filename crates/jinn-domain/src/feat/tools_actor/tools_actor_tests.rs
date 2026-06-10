@@ -1249,3 +1249,95 @@ async fn register_plugin_tools_with_session_target_stores_target() {
         other => panic!("expected Plugin variant, got {other:?}"),
     }
 }
+
+#[rstest::rstest]
+#[tokio::test]
+async fn plugin_tool_execution_dispatches_to_plugin_fire_service() {
+    // Given an activated actor with a registered plugin tool.
+    let (sink, mut ctx, deps) = default_test_ctx();
+    let mut actor = ToolOrchestratorActor::activate(deps, &mut ctx);
+
+    let definitions = vec![ToolDefinition {
+        name: "judgment_passed".to_owned(),
+        description: "Call when response passes".to_owned(),
+        parameters: serde_json::json!({"type": "object", "properties": {}}),
+        prompt_snippet: None,
+        prompt_guidelines: vec![],
+        server_tool_type: None,
+    }];
+    actor.handle_register_plugin_tools(
+        "judge",
+        &None,
+        &definitions,
+        &ctx,
+    );
+
+    let session_id = SessionId::new();
+
+    // When executing a batch with the plugin tool.
+    let cmd = Command::ExecuteToolBatch(ExecuteToolBatch {
+        session_id: session_id.clone(),
+        tool_calls: vec![ToolCall {
+            id: "call_1".to_owned(),
+            name: "judgment_passed".to_owned(),
+            arguments: "{}".to_owned(),
+        }],
+    });
+    actor.handle_command(&cmd, &ctx);
+
+    // Then the tool execution completes (via NoopPluginFire).
+    tokio::time::sleep(std::time::Duration::from_millis(100)).await;
+    let events = sink.take_events();
+    let completed = find_execution_completed(&events);
+    assert_eq!(completed.len(), 1);
+    assert!(completed[0].result.success);
+}
+
+#[rstest::rstest]
+#[tokio::test]
+async fn plugin_tool_with_arguments_executes_successfully() {
+    // Given an activated actor with a registered plugin tool that takes arguments.
+    let (sink, mut ctx, deps) = default_test_ctx();
+    let mut actor = ToolOrchestratorActor::activate(deps, &mut ctx);
+
+    let definitions = vec![ToolDefinition {
+        name: "judgment_failed".to_owned(),
+        description: "Call when response fails".to_owned(),
+        parameters: serde_json::json!({
+            "type": "object",
+            "properties": {
+                "message": { "type": "string", "description": "Why it failed" }
+            },
+            "required": ["message"]
+        }),
+        prompt_snippet: None,
+        prompt_guidelines: vec![],
+        server_tool_type: None,
+    }];
+    actor.handle_register_plugin_tools(
+        "judge",
+        &None,
+        &definitions,
+        &ctx,
+    );
+
+    let session_id = SessionId::new();
+
+    // When executing a batch with arguments.
+    let cmd = Command::ExecuteToolBatch(ExecuteToolBatch {
+        session_id: session_id.clone(),
+        tool_calls: vec![ToolCall {
+            id: "call_1".to_owned(),
+            name: "judgment_failed".to_owned(),
+            arguments: r#"{"message": "test failure"}"#.to_owned(),
+        }],
+    });
+    actor.handle_command(&cmd, &ctx);
+
+    // Then the tool execution completes successfully.
+    tokio::time::sleep(std::time::Duration::from_millis(100)).await;
+    let events = sink.take_events();
+    let completed = find_execution_completed(&events);
+    assert_eq!(completed.len(), 1);
+    assert!(completed[0].result.success);
+}

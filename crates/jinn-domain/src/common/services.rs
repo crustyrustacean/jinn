@@ -213,6 +213,17 @@ impl PluginFire for NoopPluginFire {
         Ok(vec![])
     }
 
+    async fn execute_plugin_tool(
+        &self,
+        _target: Option<SessionRegistryId>,
+        _plugin_name: &str,
+        _tool_name: &str,
+        _arguments: &serde_json::Value,
+    ) -> Result<String, Report<PluginFireError>> {
+        tracing::debug!("noop plugin execute tool");
+        Ok(String::new())
+    }
+
     fn name(&self) -> &'static str {
         "NoopPluginFire"
     }
