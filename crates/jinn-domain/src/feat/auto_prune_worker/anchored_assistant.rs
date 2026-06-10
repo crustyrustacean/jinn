@@ -102,6 +102,20 @@ pub(crate) fn collect_anchor_indices(history: &[ChatEntry]) -> Vec<usize> {
     anchors.dedup();
     anchors
 }
+/// Collect anchor indices from User messages only — no boundary anchors.
+/// Used by the anchor shield worker, which should only shield around user turns,
+/// not around conversation start/end (which would shield nearly everything).
+pub(crate) fn collect_user_anchor_indices(history: &[ChatEntry]) -> Vec<usize> {
+    history
+        .iter()
+        .enumerate()
+        .filter_map(|(i, e)| match e.kind {
+            ChatEntryKind::User { .. } => Some(i),
+            _ => None,
+        })
+        .collect()
+}
+
 
 /// Compute `(d_back, d_fwd)` — index distances to the nearest preceding and
 /// following anchors.
@@ -1086,6 +1100,39 @@ mod tests {
         let anchors = collect_anchor_indices(&history);
         assert_eq!(anchors, vec![0, 1, 2]);
     }
+    // ------------------------------------------------------------------
+    // collect_user_anchor_indices
+    // ------------------------------------------------------------------
+
+    #[test]
+    fn collect_user_anchors_empty_history() {
+        assert!(collect_user_anchor_indices(&[]).is_empty());
+    }
+
+    #[test]
+    fn collect_user_anchors_returns_user_entries_only() {
+        let history = vec![
+            ChatEntry::assistant("a"),
+            ChatEntry::user("first"),
+            ChatEntry::assistant("b"),
+            ChatEntry::user("second"),
+            ChatEntry::assistant("c"),
+        ];
+        let anchors = collect_user_anchor_indices(&history);
+        assert_eq!(anchors, vec![1, 3]);
+    }
+
+    #[test]
+    fn collect_user_anchors_no_user_entries_is_empty() {
+        let history = vec![
+            ChatEntry::assistant("a"),
+            ChatEntry::assistant("b"),
+            ChatEntry::assistant("c"),
+        ];
+        let anchors = collect_user_anchor_indices(&history);
+        assert!(anchors.is_empty());
+    }
+
 
     // ------------------------------------------------------------------
     // 21. no_user_entries_first_and_last_still_anchor
