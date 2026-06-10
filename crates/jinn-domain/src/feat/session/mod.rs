@@ -24,6 +24,7 @@ mod history_mutation_tests;
 pub mod intent;
 pub mod phase_machine;
 pub mod picker_entry;
+pub mod model_selection;
 pub mod profile;
 pub mod protocol;
 pub mod queue_item;
