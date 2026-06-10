@@ -15,7 +15,7 @@ use crate::feat::ui::chat_log::visual_item::{
     DEFAULT_MIN_COLLAPSE_COUNT, PROXIMITY_COUNT, build_visual_items,
 };
 use crate::protocol::{
-    ChatEntry, ChatEntryId, ChatEntryKind, ContextOverride, PinPosition, SessionId,
+    ChatEntry, ChatEntryId, ChatEntryKind, ContextOverride, EntryTiming, PinPosition, SessionId,
 };
 use std::path::PathBuf;
 
@@ -43,7 +43,9 @@ fn first_stream_token_creates_assistant_entry() {
     session.begin_streaming();
 
     // When appending the first token.
-    session.append_stream_token("Hello").expect("ok");
+    session
+        .append_stream_token("Hello", jiff::Timestamp::now())
+        .expect("ok");
 
     // Then the assistant entry is created.
     assert_eq!(session.history().len(), 2);
@@ -73,8 +75,12 @@ fn append_stream_token_appends_to_assistant_entry() {
     session.begin_streaming();
 
     // When appending a token.
-    session.append_stream_token("Hello").expect("ok");
-    session.append_stream_token(" world").expect("ok");
+    session
+        .append_stream_token("Hello", jiff::Timestamp::now())
+        .expect("ok");
+    session
+        .append_stream_token(" world", jiff::Timestamp::now())
+        .expect("ok");
 
     // Then the assistant entry text is "Hello world".
     assert_eq!(
@@ -88,10 +94,12 @@ fn finish_streaming_clears_streaming_state() {
     // Given a session that is streaming with some tokens.
     let mut session = ChatSessionState::new();
     session.begin_streaming();
-    session.append_stream_token("Hi").expect("ok");
+    session
+        .append_stream_token("Hi", jiff::Timestamp::now())
+        .expect("ok");
 
     // When finishing streaming.
-    session.finish_streaming(true);
+    session.finish_streaming(true, jiff::Timestamp::now());
 
     // Then is_streaming is false and text is preserved.
     assert_ne!(session.phase(), PhaseKind::Streaming);
@@ -106,10 +114,12 @@ fn cancel_streaming_keeps_partial_text() {
     // Given a session that is streaming with partial tokens.
     let mut session = ChatSessionState::new();
     session.begin_streaming();
-    session.append_stream_token("Partial").expect("ok");
+    session
+        .append_stream_token("Partial", jiff::Timestamp::now())
+        .expect("ok");
 
     // When cancelling streaming.
-    session.cancel_streaming();
+    session.cancel_streaming(jiff::Timestamp::now());
 
     // Then is_streaming is false but partial text is kept.
     assert_ne!(session.phase(), PhaseKind::Streaming);
@@ -138,7 +148,7 @@ fn append_stream_token_when_not_streaming_returns_error() {
     let mut session = ChatSessionState::new();
 
     // When calling append_stream_token.
-    let result = session.append_stream_token("oops");
+    let result = session.append_stream_token("oops", jiff::Timestamp::now());
 
     // Then it returns an error (no panic).
     assert!(result.is_err());
@@ -534,7 +544,7 @@ fn cancel_streaming_returns_to_idle() {
     assert_eq!(session.phase(), PhaseKind::Streaming);
 
     // When cancelling streaming.
-    session.cancel_streaming();
+    session.cancel_streaming(jiff::Timestamp::now());
 
     // Then the session is idle.
     assert_eq!(session.phase(), PhaseKind::Idle);
@@ -548,12 +558,12 @@ fn cancel_streaming_from_sending_phase_returns_to_idle() {
     let mut session = ChatSessionState::new();
     session.begin_sending();
     session.begin_streaming();
-    session.finish_streaming(true);
+    session.finish_streaming(true, jiff::Timestamp::now());
     session.begin_sending();
     assert_eq!(session.phase(), PhaseKind::Sending);
 
     // When cancelling streaming (user presses ESC during tool execution).
-    session.cancel_streaming();
+    session.cancel_streaming(jiff::Timestamp::now());
 
     // Then the session returns to idle.
     assert_eq!(session.phase(), PhaseKind::Idle);
@@ -573,7 +583,7 @@ fn finish_streaming_returns_to_idle() {
         .set_streaming_entry_index(idx);
 
     // When finishing streaming.
-    session.finish_streaming(true);
+    session.finish_streaming(true, jiff::Timestamp::now());
 
     // Then the session is idle.
     assert_eq!(session.phase(), PhaseKind::Idle);
@@ -590,7 +600,7 @@ fn begin_tool_call_creates_entry_with_empty_arguments() {
     session.begin_streaming();
 
     // When beginning a tool call.
-    session.begin_tool_call(0, "call_1", "echo");
+    session.begin_tool_call(0, "call_1", "echo", jiff::Timestamp::now());
 
     // Then history has an assistant entry and a tool call entry with empty arguments.
     assert_eq!(session.history().len(), 2);
@@ -613,7 +623,7 @@ fn append_tool_call_delta_accumulates_arguments() {
     // Given a streaming session with a tool call entry.
     let mut session = ChatSessionState::new();
     session.begin_streaming();
-    session.begin_tool_call(0, "call_1", "echo");
+    session.begin_tool_call(0, "call_1", "echo", jiff::Timestamp::now());
 
     // When appending tool call deltas.
     session
@@ -639,7 +649,7 @@ fn finalize_tool_call_overwrites_arguments() {
     // Given a streaming session with a tool call that has partial arguments.
     let mut session = ChatSessionState::new();
     session.begin_streaming();
-    session.begin_tool_call(0, "call_1", "echo");
+    session.begin_tool_call(0, "call_1", "echo", jiff::Timestamp::now());
     session
         .append_tool_call_delta(0, r#"{"input":"#)
         .expect("ok");
@@ -686,7 +696,7 @@ fn first_tool_call_tracks_arguments() {
     session.begin_streaming();
 
     // When beginning a tool call and appending a delta.
-    session.begin_tool_call(0, "call_1", "echo");
+    session.begin_tool_call(0, "call_1", "echo", jiff::Timestamp::now());
     session.append_tool_call_delta(0, r#"{"a":1}"#).expect("ok");
 
     // Then the tool call entry tracks its own arguments.
@@ -705,11 +715,11 @@ fn second_tool_call_tracks_independent_arguments() {
     // Given a streaming session with one tool call already started.
     let mut session = ChatSessionState::new();
     session.begin_streaming();
-    session.begin_tool_call(0, "call_1", "echo");
+    session.begin_tool_call(0, "call_1", "echo", jiff::Timestamp::now());
     session.append_tool_call_delta(0, r#"{"a":1}"#).expect("ok");
 
     // When beginning a second tool call with a different index.
-    session.begin_tool_call(1, "call_2", "get_time");
+    session.begin_tool_call(1, "call_2", "get_time", jiff::Timestamp::now());
     session.append_tool_call_delta(1, "{}").expect("ok");
 
     // Then the second tool call entry tracks its own arguments independently.
@@ -728,10 +738,10 @@ fn finish_streaming_clears_tool_call_indices() {
     // Given a streaming session with a tool call entry.
     let mut session = ChatSessionState::new();
     session.begin_streaming();
-    session.begin_tool_call(0, "call_1", "echo");
+    session.begin_tool_call(0, "call_1", "echo", jiff::Timestamp::now());
 
     // When finishing streaming.
-    session.finish_streaming(true);
+    session.finish_streaming(true, jiff::Timestamp::now());
 
     // Then the tool call indices are cleared (entries remain in history).
     assert_ne!(session.phase(), PhaseKind::Streaming);
@@ -743,10 +753,10 @@ fn cancel_streaming_clears_tool_call_indices() {
     // Given a streaming session with a tool call entry.
     let mut session = ChatSessionState::new();
     session.begin_streaming();
-    session.begin_tool_call(0, "call_1", "echo");
+    session.begin_tool_call(0, "call_1", "echo", jiff::Timestamp::now());
 
     // When cancelling streaming.
-    session.cancel_streaming();
+    session.cancel_streaming(jiff::Timestamp::now());
 
     // Then the tool call indices are cleared (entries remain in history).
     assert_ne!(session.phase(), PhaseKind::Streaming);
@@ -1408,7 +1418,7 @@ fn begin_thinking_appends_before_assistant_is_created() {
     assert_eq!(session.history().len(), 1);
 
     // When beginning thinking.
-    session.begin_thinking();
+    session.begin_thinking(jiff::Timestamp::now());
 
     // Then the Thinking entry is appended (index 1).
     // No Assistant entry yet - it will be created on first token.
@@ -1427,7 +1437,7 @@ fn append_thinking_token_appends_to_thinking_entry() {
         .with_user_entry("hello")
         .begin_streaming()
         .build();
-    session.begin_thinking();
+    session.begin_thinking(jiff::Timestamp::now());
 
     // When appending thinking tokens.
     session.append_thinking_token("reasoning").expect("ok");
@@ -1447,12 +1457,14 @@ fn finish_streaming_clears_thinking_entry_index() {
         .with_user_entry("hello")
         .begin_streaming()
         .build();
-    session.begin_thinking();
+    session.begin_thinking(jiff::Timestamp::now());
     session.append_thinking_token("reasoning").expect("ok");
-    session.append_stream_token("response").expect("ok");
+    session
+        .append_stream_token("response", jiff::Timestamp::now())
+        .expect("ok");
 
     // When finishing streaming.
-    session.finish_streaming(true);
+    session.finish_streaming(true, jiff::Timestamp::now());
 
     // Then the thinking entry index is cleared.
     assert_eq!(session.streaming_thinking_entry_index(), None);
@@ -1472,13 +1484,13 @@ fn cancel_streaming_preserves_partial_thinking() {
         .with_user_entry("hello")
         .begin_streaming()
         .build();
-    session.begin_thinking();
+    session.begin_thinking(jiff::Timestamp::now());
     session
         .append_thinking_token("partial reasoning")
         .expect("ok");
 
     // When cancelling streaming.
-    session.cancel_streaming();
+    session.cancel_streaming(jiff::Timestamp::now());
 
     // Then the partial thinking text is preserved.
     assert_eq!(session.streaming_thinking_entry_index(), None);
@@ -1494,7 +1506,7 @@ fn finish_streaming_without_preserve_skips_assistant_entry() {
     session.begin_streaming();
 
     // When finishing streaming without preserving assistant.
-    session.finish_streaming(false);
+    session.finish_streaming(false, jiff::Timestamp::now());
 
     // Then no assistant entry was created.
     assert_ne!(session.phase(), PhaseKind::Streaming);
@@ -1508,7 +1520,7 @@ fn finish_streaming_with_preserve_creates_assistant_entry() {
     session.begin_streaming();
 
     // When finishing streaming with preserving assistant.
-    session.finish_streaming(true);
+    session.finish_streaming(true, jiff::Timestamp::now());
 
     // Then an empty assistant entry was created.
     assert_ne!(session.phase(), PhaseKind::Streaming);
@@ -1521,10 +1533,12 @@ fn finish_streaming_without_preserve_keeps_existing_assistant() {
     // Given a session that is streaming and has received tokens.
     let mut session = ChatSessionState::new();
     session.begin_streaming();
-    session.append_stream_token("Hello").expect("ok");
+    session
+        .append_stream_token("Hello", jiff::Timestamp::now())
+        .expect("ok");
 
     // When finishing streaming without preserving assistant.
-    session.finish_streaming(false);
+    session.finish_streaming(false, jiff::Timestamp::now());
 
     // Then the existing assistant entry is still there (ensure_assistant_entry was a no-op since entry already existed).
     assert_ne!(session.phase(), PhaseKind::Streaming);
@@ -1643,7 +1657,7 @@ fn begin_thinking_auto_selects_new_last_when_at_last() {
     assert_eq!(session.selected_entry_index(), Some(0));
 
     // When beginning thinking (appends Thinking at index 1).
-    session.begin_thinking();
+    session.begin_thinking(jiff::Timestamp::now());
 
     // Then cursor advances to the new last entry (thinking at index 1).
     // history: [user(0), thinking(1)]
@@ -1666,7 +1680,7 @@ fn begin_thinking_preserves_selection_when_not_at_last() {
     session.set_selected_entry_index(0);
 
     // When beginning thinking.
-    session.begin_thinking();
+    session.begin_thinking(jiff::Timestamp::now());
 
     // Then cursor stays on the user entry.
     assert_eq!(session.selected_entry_index(), Some(0));
@@ -1873,7 +1887,7 @@ fn begin_tool_result_creates_pending_entry() {
     session.begin_streaming();
 
     // When beginning a tool result.
-    session.begin_tool_result("call_1", "bash");
+    session.begin_tool_result("call_1", "bash", jiff::Timestamp::now());
 
     // Then the history has a pending ToolResult entry.
     assert_eq!(session.history().len(), 1);
@@ -1904,7 +1918,7 @@ fn begin_tool_result_tracks_history_index() {
     session.begin_streaming();
 
     // When beginning a tool result.
-    session.begin_tool_result("call_1", "bash");
+    session.begin_tool_result("call_1", "bash", jiff::Timestamp::now());
 
     // Then the tracking index points to the second entry.
     assert!(
@@ -1931,7 +1945,7 @@ fn append_tool_result_output_appends_to_pending_entry() {
     let mut session = ChatSessionState::new();
     session.begin_sending();
     session.begin_streaming();
-    session.begin_tool_result("call_1", "bash");
+    session.begin_tool_result("call_1", "bash", jiff::Timestamp::now());
 
     // When appending output.
     session.append_tool_result_output(
@@ -1974,7 +1988,7 @@ fn finalize_tool_result_completes_pending_entry() {
     let mut session = ChatSessionState::new();
     session.begin_sending();
     session.begin_streaming();
-    session.begin_tool_result("call_1", "bash");
+    session.begin_tool_result("call_1", "bash", jiff::Timestamp::now());
     session.append_tool_result_output(
         "call_1",
         "building...
@@ -2004,6 +2018,34 @@ fn finalize_tool_result_completes_pending_entry() {
             .streaming_tool_result_indices()
             .contains_key("call_1")
     );
+}
+
+#[test]
+fn tool_result_entry_gets_finished_at_on_finalize() {
+    // Given a session in streaming state with a pending tool result.
+    let mut session = ChatSessionState::new();
+    session.begin_sending();
+    session.begin_streaming();
+    session.begin_tool_result("call_1", "bash", jiff::Timestamp::now());
+
+    // When finalizing the tool result.
+    session.finalize_tool_result("call_1", "bash", "done", true, None, None, None);
+
+    // Then the ToolResult entry has finished_at set.
+    let entry = session
+        .history()
+        .iter()
+        .find(|e| matches!(&e.kind, ChatEntryKind::ToolResult { id, .. } if id == "call_1"))
+        .expect("tool result entry");
+    match &entry.timing {
+        EntryTiming::Streamed { finished_at, .. } => {
+            assert!(
+                finished_at.is_some(),
+                "finished_at should be set after finalize"
+            );
+        }
+        other => panic!("expected Streamed, got {other:?}"),
+    }
 }
 
 #[test]
@@ -2041,7 +2083,7 @@ fn begin_tool_result_does_not_push_when_not_streaming() {
     let mut session = ChatSessionState::new();
 
     // When beginning a tool result.
-    session.begin_tool_result("call_1", "bash");
+    session.begin_tool_result("call_1", "bash", jiff::Timestamp::now());
 
     // Then no entry is pushed (the early return prevented it).
     assert!(
@@ -2058,7 +2100,7 @@ fn begin_tool_result_does_not_push_in_sending_phase() {
     session.begin_sending();
 
     // When beginning a tool result.
-    session.begin_tool_result("call_1", "bash");
+    session.begin_tool_result("call_1", "bash", jiff::Timestamp::now());
 
     // Then no entry is pushed.
     assert!(
@@ -2561,7 +2603,7 @@ fn is_tool_call_streaming_returns_true_for_active_streaming_entry() {
     // Given a streaming session with an active tool call.
     let mut session = ChatSessionState::new();
     session.begin_streaming();
-    session.begin_tool_call(0, "tc-1", "write");
+    session.begin_tool_call(0, "tc-1", "write", jiff::Timestamp::now());
 
     // When checking if the tool call entry is streaming.
     let entry_id = session.history()[1].id.clone();
@@ -2578,11 +2620,11 @@ fn is_tool_call_streaming_returns_false_after_finish_streaming() {
     // Given a streaming session with a tool call that has been finalized.
     let mut session = ChatSessionState::new();
     session.begin_streaming();
-    session.begin_tool_call(0, "tc-1", "write");
+    session.begin_tool_call(0, "tc-1", "write", jiff::Timestamp::now());
     let entry_id = session.history()[1].id.clone();
 
     // When finishing streaming.
-    session.finish_streaming(true);
+    session.finish_streaming(true, jiff::Timestamp::now());
 
     // Then the tool call entry is no longer streaming.
     assert!(
@@ -4822,4 +4864,138 @@ fn loaded_skills_returns_only_valid_pinned_skill_names() {
         std::collections::HashSet::from(["phased-task-loop".to_owned()]),
         "loaded_skills() should return exactly the one valid pinned skill name"
     );
+}
+
+// ─── EntryTiming integration tests ────────────────────────────────
+// ─── EntryTiming integration tests ────────────────────────────────
+
+fn streaming_session() -> ChatSessionState {
+    let mut session = ChatSessionState::new();
+    session.begin_streaming();
+    session
+}
+
+fn dispatched_at() -> jiff::Timestamp {
+    jiff::Timestamp::now()
+}
+
+#[test]
+fn streamed_entry_begins_with_dispatched_at_only() {
+    // Given a session in streaming phase.
+    let mut session = streaming_session();
+    let da = dispatched_at();
+
+    // When starting a thinking entry.
+    session.begin_thinking(da);
+
+    // Then the entry has dispatched_at set and first_token_at is Some.
+    let entry = session.history().last().expect("entry exists");
+    match &entry.timing {
+        EntryTiming::Streamed {
+            dispatched_at: d,
+            first_token_at: Some(ft),
+            finished_at: None,
+            ..
+        } => {
+            assert_eq!(*d, da, "dispatched_at should match");
+            assert!(*ft >= da, "first_token_at should be >= dispatched_at");
+        }
+        other => {
+            panic!("expected Streamed with first_token_at=Some, finished_at=None, got {other:?}")
+        }
+    };
+}
+
+#[test]
+fn streamed_entry_gets_first_token_at_on_creation() {
+    // Given a session in streaming phase.
+    let mut session = streaming_session();
+    let da = dispatched_at();
+
+    // When appending a stream token (lazily creates assistant entry).
+    let _ = session.append_stream_token("Hello", da);
+
+    // Then the assistant entry has first_token_at set.
+    let entry = session
+        .history()
+        .iter()
+        .find(|e| matches!(e.kind, ChatEntryKind::Assistant(_)))
+        .expect("assistant entry");
+    match &entry.timing {
+        EntryTiming::Streamed {
+            dispatched_at: d,
+            first_token_at: Some(ft),
+            finished_at: None,
+            ..
+        } => {
+            assert_eq!(*d, da);
+            assert!(*ft >= da);
+        }
+        other => panic!("expected Streamed with first_token_at=Some, got {other:?}"),
+    };
+}
+
+#[test]
+fn streamed_entry_gets_finished_at_on_stream_complete() {
+    // Given a session in streaming phase with an assistant entry.
+    let mut session = streaming_session();
+    let da = dispatched_at();
+    let _ = session.append_stream_token("Hello", da);
+
+    // When finishing the stream.
+    session.finish_streaming_entry(
+        session
+            .history()
+            .iter()
+            .rposition(|e| matches!(e.kind, ChatEntryKind::Assistant(_)))
+            .expect("assistant index"),
+    );
+
+    // Then the assistant entry has finished_at set.
+    let entry = session
+        .history()
+        .iter()
+        .find(|e| matches!(e.kind, ChatEntryKind::Assistant(_)))
+        .expect("assistant entry");
+    match &entry.timing {
+        EntryTiming::Streamed {
+            dispatched_at: d,
+            first_token_at: Some(ft),
+            finished_at: Some(fin),
+            ..
+        } => {
+            assert_eq!(*d, da);
+            assert!(*ft >= da);
+            assert!(*fin >= *ft);
+        }
+        other => panic!("expected Streamed with all timestamps set, got {other:?}"),
+    };
+}
+
+#[test]
+fn tool_call_entry_gets_dispatched_at_from_tool_use_started() {
+    // Given a session in streaming phase.
+    let mut session = streaming_session();
+    let da = dispatched_at();
+
+    // When beginning a tool call.
+    session.begin_tool_call(0, "call_1", "echo", da);
+
+    // Then the tool call entry has dispatched_at from the event.
+    let entry = session
+        .history()
+        .iter()
+        .find(|e| matches!(e.kind, ChatEntryKind::ToolCall { .. }))
+        .expect("tool call entry");
+    match &entry.timing {
+        EntryTiming::Streamed {
+            dispatched_at: d,
+            first_token_at: Some(_),
+            finished_at: None,
+            ..
+        } => {
+            assert_eq!(*d, da, "dispatched_at should come from ToolUseStarted");
+        }
+        other => panic!("expected Streamed, got {other:?}"),
+    };
 }

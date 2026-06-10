@@ -7,6 +7,8 @@ use crate::feat::tools_actor::tool_types::ToolCall;
 use crate::protocol::EventMsg;
 use crate::protocol::SessionId;
 
+use jiff::Timestamp;
+
 /// Why the stream completed.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "snake_case")]
@@ -57,6 +59,8 @@ pub struct StreamCompleted {
     /// request. For single-model sessions, this is the model itself.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub model_used: Option<String>,
+    /// When the original LLM request was dispatched.
+    pub dispatched_at: Timestamp,
 }
 
 /// A single token from a streaming LLM response.
@@ -78,6 +82,8 @@ pub struct StreamToken {
     /// chat entry instead of the `Assistant` entry.
     #[serde(default)]
     pub is_thinking: bool,
+    /// When the original LLM request was dispatched.
+    pub dispatched_at: Timestamp,
 }
 
 /// The active provider was switched.

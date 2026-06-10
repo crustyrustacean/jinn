@@ -30,6 +30,7 @@ use crate::feat::tools_actor::tool_types::ToolCall;
 use crate::protocol::{ChatEntry, Command, Event, SessionId};
 use error_stack::Report;
 use futures::StreamExt as _;
+use jiff::Timestamp;
 
 use jinn_provider::{LlmService, LlmServiceError, OnRetry, RetryingLlmService};
 use session::SessionData;
@@ -71,7 +72,12 @@ impl OnRetry for PushEntryOnRetry {
 ///
 /// Used at every point where an LLM operation fails and the session needs
 /// to be notified of the error terminal state.
-fn emit_stream_error(sink: &Arc<dyn MessageSink>, session_id: &SessionId, message: String) {
+fn emit_stream_error(
+    sink: &Arc<dyn MessageSink>,
+    session_id: &SessionId,
+    message: String,
+    dispatched_at: Timestamp,
+) {
     let _ = sink.send_command(Command::PushChatEntry(PushChatEntry {
         session_id: session_id.clone(),
         entry: ChatEntry::error(message),
@@ -85,6 +91,7 @@ fn emit_stream_error(sink: &Arc<dyn MessageSink>, session_id: &SessionId, messag
         cost: None,
         provider_completion_tokens: None,
         thinking_content: None,
+        dispatched_at,
     }));
 }
 
@@ -156,6 +163,7 @@ async fn process_stream_events(
     sink: &Arc<dyn MessageSink>,
     sid: &SessionId,
     model_id: &str,
+    dispatched_at: jiff::Timestamp,
 ) -> bool {
     let mut accumulated_text = String::new();
     let mut accumulated_thinking = String::new();
@@ -192,6 +200,7 @@ async fn process_stream_events(
                             index: token_index,
                             token: parsed.reasoning_text,
                             is_thinking: true,
+                            dispatched_at,
                         }));
                         token_index += 1;
                     }
@@ -201,6 +210,7 @@ async fn process_stream_events(
                             index: token_index,
                             token: parsed.normal_text,
                             is_thinking: false,
+                            dispatched_at,
                         }));
                         token_index += 1;
                     }
@@ -218,6 +228,7 @@ async fn process_stream_events(
                         index: token_index,
                         token,
                         is_thinking: true,
+                        dispatched_at,
                     }));
                     token_index += 1;
                 }
@@ -227,6 +238,7 @@ async fn process_stream_events(
                         index,
                         id,
                         name,
+                        dispatched_at,
                     }));
                 }
                 StreamEvent::ToolUseInputDelta {
@@ -244,6 +256,7 @@ async fn process_stream_events(
                     let _ = sink.send_event(Event::ToolCallReceived(ToolCallReceived {
                         session_id: sid.clone(),
                         tool_call,
+                        dispatched_at,
                     }));
                 }
                 StreamEvent::Done { stop_reason, usage } => {
@@ -267,6 +280,7 @@ async fn process_stream_events(
                         let _ = sink.send_command(Command::ExecuteToolBatch(ExecuteToolBatch {
                             session_id: sid.clone(),
                             tool_calls: accumulated_tool_calls.clone(),
+                            dispatched_at,
                         }));
 
                         // Emit StreamCompleted with ToolUse reason so the session
@@ -280,6 +294,7 @@ async fn process_stream_events(
                             tool_calls: Some(std::mem::take(&mut accumulated_tool_calls)),
                             cost,
                             provider_completion_tokens,
+                            dispatched_at,
                         }));
                     } else {
                         // Normal end_turn - emit StreamCompleted.
@@ -292,6 +307,7 @@ async fn process_stream_events(
                             tool_calls: None,
                             cost,
                             provider_completion_tokens,
+                            dispatched_at,
                         }));
                     }
                     break;
@@ -307,13 +323,18 @@ async fn process_stream_events(
                         error = %message,
                         "LLM stream error event"
                     );
-                    emit_stream_error(sink, sid, format!("LLM stream error: {message}"));
+                    emit_stream_error(
+                        sink,
+                        sid,
+                        format!("LLM stream error: {message}"),
+                        dispatched_at,
+                    );
                     break;
                 }
             },
             Err(e) => {
                 stream_ended_normally = true;
-                emit_stream_error(sink, sid, format!("LLM stream error: {e:?}"));
+                emit_stream_error(sink, sid, format!("LLM stream error: {e:?}"), dispatched_at);
                 break;
             }
         }
@@ -328,6 +349,7 @@ async fn process_stream_events(
             sink,
             sid,
             "LLM stream ended unexpectedly. The connection may have been interrupted.".to_owned(),
+            dispatched_at,
         );
     }
 
@@ -410,6 +432,7 @@ impl LlmActor {
                         &ctx.sink(),
                         &session_id,
                         format!("LLM factory creation failed for {pid}: {e:?}"),
+                        payload.dispatched_at,
                     );
                     return;
                 }
@@ -424,13 +447,19 @@ impl LlmActor {
             .unwrap_or_default();
         let sink = ctx.sink();
         let sid = session_id.clone();
+        let dispatched_at = payload.dispatched_at;
 
         let handle = tokio::spawn(async move {
             let service: Box<dyn LlmService> = match factory.create() {
                 Ok(s) => s,
                 Err(e) => {
                     tracing::error!(err = ?e, "failed to create LLM service");
-                    emit_stream_error(&sink, &sid, format!("LLM service creation failed: {e:?}"));
+                    emit_stream_error(
+                        &sink,
+                        &sid,
+                        format!("LLM service creation failed: {e:?}"),
+                        dispatched_at,
+                    );
                     return;
                 }
             };
@@ -445,17 +474,22 @@ impl LlmActor {
                 Ok(s) => s,
                 Err(e) => {
                     tracing::error!(err = ?e, "failed to start LLM stream");
-                    emit_stream_error(&sink, &sid, format!("LLM stream error: {e:?}"));
+                    emit_stream_error(
+                        &sink,
+                        &sid,
+                        format!("LLM stream error: {e:?}"),
+                        dispatched_at,
+                    );
                     return;
                 }
             };
 
-            process_stream_events(stream, &sink, &sid, &model_id).await;
+            process_stream_events(stream, &sink, &sid, &model_id, dispatched_at).await;
         });
 
         // Update session state.
         if let Some(session) = self.sessions.get_mut(&session_id) {
-            session.begin_streaming();
+            session.begin_streaming(dispatched_at);
         }
 
         self.tasks.insert(session_id, handle);
@@ -513,6 +547,10 @@ impl LlmActor {
         if let Some(handle) = self.tasks.remove(session_id) {
             handle.abort();
         }
+        let dispatched_at = self
+            .sessions
+            .get(session_id)
+            .and_then(|s| s.dispatched_at());
         let had_session = self.sessions.remove(session_id).is_some();
         // Only emit StreamCompleted if there was actually an active session
         // to cancel. Avoids pushing a spurious "Cancelled" error entry when
@@ -527,6 +565,7 @@ impl LlmActor {
                 cost: None,
                 provider_completion_tokens: None,
                 thinking_content: None,
+                dispatched_at: dispatched_at.unwrap_or_else(Timestamp::now),
             }));
         }
     }
@@ -586,6 +625,7 @@ mod tests {
             cost: None,
             provider_completion_tokens: None,
             thinking_content: None,
+            dispatched_at: jiff::Timestamp::now(),
         };
         actor.handle_stream_completed(&payload);
 
@@ -614,6 +654,7 @@ mod tests {
             cost: None,
             provider_completion_tokens: None,
             thinking_content: None,
+            dispatched_at: jiff::Timestamp::now(),
         };
         actor.handle_stream_completed(&payload);
 
@@ -643,6 +684,7 @@ mod tests {
             cost: None,
             provider_completion_tokens: None,
             thinking_content: None,
+            dispatched_at: jiff::Timestamp::now(),
         };
         actor.handle_stream_completed(&payload);
 
@@ -669,6 +711,7 @@ mod tests {
             cost: None,
             provider_completion_tokens: None,
             thinking_content: None,
+            dispatched_at: jiff::Timestamp::now(),
         };
         actor.handle_stream_completed(&payload);
 
@@ -808,6 +851,7 @@ mod tests {
             tool_definitions: vec![],
             provider_id: None,
             estimated_tokens: 0,
+            dispatched_at: jiff::Timestamp::now(),
         };
 
         // When starting a stream.
@@ -875,6 +919,7 @@ mod tests {
             tool_definitions: vec![],
             provider_id: None,
             estimated_tokens: 0,
+            dispatched_at: jiff::Timestamp::now(),
         };
 
         // Start first stream and save the handle.
@@ -922,6 +967,7 @@ mod tests {
             tool_definitions: vec![],
             provider_id: None,
             estimated_tokens: 0,
+            dispatched_at: jiff::Timestamp::now(),
         };
 
         // When starting a stream.
@@ -963,6 +1009,7 @@ mod tests {
             tool_definitions: vec![],
             provider_id: None,
             estimated_tokens: 0,
+            dispatched_at: jiff::Timestamp::now(),
         });
 
         // When dispatching via handle_command.
