@@ -20,8 +20,10 @@ fn make_config(
         providers,
         aliases,
         default_provider: default_provider.map(String::from),
+        alloys: vec![],
     }
 }
+
 
 fn ollama_entry() -> ProviderEntry {
     ProviderEntry {

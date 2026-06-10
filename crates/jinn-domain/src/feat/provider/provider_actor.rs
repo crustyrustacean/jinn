@@ -326,6 +326,7 @@ mod tests {
             }],
             aliases: vec![],
             default_provider: None,
+            alloys: vec![],
         }
     }
 
@@ -443,6 +444,7 @@ mod tests {
             }],
             aliases: vec![],
             default_provider: None,
+            alloys: vec![],
         };
         let (mut actor, services, _sink, ctx, state) = create_actor_with_config(config);
 
@@ -503,6 +505,7 @@ mod tests {
             }],
             aliases: vec![],
             default_provider: None,
+            alloys: vec![],
         };
         let (mut actor, _services, _sink, ctx, state) = create_actor_with_config(config);
 
@@ -619,6 +622,7 @@ mod tests {
             }],
             aliases: vec![],
             default_provider: None,
+            alloys: vec![],
         };
         let (mut actor, services, _sink, ctx, state) = create_actor_with_config(config);
 
@@ -679,6 +683,7 @@ mod tests {
             }],
             aliases: vec![],
             default_provider: None,
+            alloys: vec![],
         };
         let (mut actor, _services, _sink, ctx, state) = create_actor_with_config(config);
 

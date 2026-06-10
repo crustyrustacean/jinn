@@ -136,6 +136,7 @@ impl Default for TestServices {
                 providers: vec![],
                 aliases: vec![],
                 default_provider: None,
+                alloys: vec![],
             },
             handle: None,
             actor_channel_sender: None,

@@ -216,6 +216,7 @@ mod tests {
             }],
             aliases: vec![],
             default_provider: None,
+            alloys: vec![],
         };
 
         // When processing EnvironmentLoaded.
@@ -253,6 +254,7 @@ mod tests {
             }],
             aliases: vec![],
             default_provider: None,
+            alloys: vec![],
         };
 
         // When processing EnvironmentLoaded.
@@ -311,6 +313,7 @@ mod tests {
             }],
             aliases: vec![],
             default_provider: None,
+            alloys: vec![],
         };
 
         // When processing EnvironmentLoaded with no API keys resolved.
@@ -368,6 +371,7 @@ mod tests {
             }],
             aliases: vec![],
             default_provider: None,
+            alloys: vec![],
         };
 
         // When processing EnvironmentLoaded.
@@ -426,6 +430,7 @@ mod tests {
             }],
             aliases: vec![],
             default_provider: None,
+            alloys: vec![],
         };
 
         // When processing EnvironmentLoaded.
