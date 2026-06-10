@@ -165,7 +165,9 @@ impl TokenCountActor {
     ) {
         let should_recompute = {
             let state = self.state.read();
-            let session = state.session(session_id);
+            let Some(session) = state.try_session(session_id) else {
+                return;
+            };
             let Some(idx) = session.find_entry_index_by_id(entry_id) else {
                 return;
             };
@@ -185,7 +187,9 @@ impl TokenCountActor {
 
         let tokens = {
             let state = self.state.read();
-            let session = state.session(session_id);
+            let Some(session) = state.try_session(session_id) else {
+                return;
+            };
             let Some(idx) = session.find_entry_index_by_id(entry_id) else {
                 return;
             };
@@ -356,7 +360,9 @@ mod tests {
         let state_guard = state.read();
         let cache = state_guard.frontend.caches.entry_token_cache.read();
         let count = cache.get(&entry_id);
+        assert_eq!(count, Some(2));
     }
+
 
     #[rstest::rstest]
     fn context_override_changed_noop_for_nonzero_cache() {
@@ -439,5 +445,6 @@ mod tests {
         let state_guard = state.read();
         let cache = state_guard.frontend.caches.entry_token_cache.read();
         let count = cache.get(&entry_id);
+        assert_eq!(count, Some(2));
     }
 }
