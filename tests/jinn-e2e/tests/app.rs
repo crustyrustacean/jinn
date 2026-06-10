@@ -686,6 +686,7 @@ async fn when_submit_stream_completed(world: &mut AppWorld, reason: String) {
     let session_id = world.active_session_id();
     let parsed_reason = parse_stream_reason(&reason);
     world.submit_event(Event::StreamCompleted(StreamCompleted {
+        model_used: None,
         session_id,
         reason: parsed_reason,
         assistant_content: None,

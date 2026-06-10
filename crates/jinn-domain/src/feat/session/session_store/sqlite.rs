@@ -861,7 +861,7 @@ fn save_blocking(
                     tokens_sent: record.tokens_sent as i32,
                     tokens_received: record.tokens_received as i32,
                     cost: record.cost,
-                    model_used: None,
+                    model_used: record.model_used.clone(),
                 })
                 .execute(txn)?;
         }
@@ -1004,6 +1004,7 @@ fn load_session_blocking(
     let ledger: Vec<TokenRecord> = ledger_rows
         .into_iter()
         .map(|row| TokenRecord {
+            model_used: row.model_used,
             timestamp: row
                 .timestamp
                 .parse()

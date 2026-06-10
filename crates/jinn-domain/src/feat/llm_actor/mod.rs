@@ -77,6 +77,7 @@ fn emit_stream_error(sink: &Arc<dyn MessageSink>, session_id: &SessionId, messag
         entry: ChatEntry::error(message),
     }));
     let _ = sink.send_event(Event::StreamCompleted(StreamCompleted {
+        model_used: None,
         session_id: session_id.clone(),
         reason: StreamCompletedReason::Error,
         assistant_content: None,
@@ -271,6 +272,7 @@ async fn process_stream_events(
                         // Emit StreamCompleted with ToolUse reason so the session
                         // actor knows the stream ended due to tool calls.
                         let _ = sink.send_event(Event::StreamCompleted(StreamCompleted {
+                            model_used: Some(model_id.to_owned()),
                             session_id: sid.clone(),
                             reason: StreamCompletedReason::ToolUse,
                             thinking_content,
@@ -282,6 +284,7 @@ async fn process_stream_events(
                     } else {
                         // Normal end_turn - emit StreamCompleted.
                         let _ = sink.send_event(Event::StreamCompleted(StreamCompleted {
+                            model_used: Some(model_id.to_owned()),
                             session_id: sid.clone(),
                             reason: StreamCompletedReason::Finished,
                             thinking_content,
@@ -380,8 +383,13 @@ impl LlmActor {
             handle.abort();
         }
 
-        // Track the session.
-        self.sessions.insert(session_id.clone(), SessionData::new());
+        // Track the session and store the resolved model.
+        let model_used = payload.model_used.clone();
+        self.sessions
+            .insert(session_id.clone(), SessionData::new());
+        if let Some(data) = self.sessions.get_mut(&session_id) {
+            data.set_model_used(model_used);
+        }
 
         // Resolve the factory: per-request if provider_id is set, global fallback otherwise.
         let factory = if let Some(pid) = payload.provider_id.as_deref() {
@@ -511,6 +519,7 @@ impl LlmActor {
         // the user presses ESC with nothing streaming.
         if had_session {
             let _ = ctx.send_event(Event::StreamCompleted(StreamCompleted {
+                model_used: None,
                 session_id: session_id.clone(),
                 reason: StreamCompletedReason::Canceled,
                 assistant_content: None,
@@ -569,6 +578,7 @@ mod tests {
 
         // When handling StreamCompleted with Error reason.
         let payload = StreamCompleted {
+            model_used: None,
             session_id: session_id.clone(),
             reason: StreamCompletedReason::Error,
             assistant_content: None,
@@ -596,6 +606,7 @@ mod tests {
 
         // When handling StreamCompleted with Finished reason.
         let payload = StreamCompleted {
+            model_used: None,
             session_id: session_id.clone(),
             reason: StreamCompletedReason::Finished,
             assistant_content: Some("hello".to_owned()),
@@ -624,6 +635,7 @@ mod tests {
 
         // When handling StreamCompleted with ToolUse reason.
         let payload = StreamCompleted {
+            model_used: None,
             session_id: session_id.clone(),
             reason: StreamCompletedReason::ToolUse,
             assistant_content: Some("thinking...".to_owned()),
@@ -649,6 +661,7 @@ mod tests {
 
         // When handling StreamCompleted for an unknown session.
         let payload = StreamCompleted {
+            model_used: None,
             session_id: session_id.clone(),
             reason: StreamCompletedReason::Error,
             assistant_content: None,
@@ -789,6 +802,7 @@ mod tests {
 
         let session_id = SessionId::new();
         let payload = SendToLlmProvider {
+            model_used: None,
             session_id: session_id.clone(),
             messages: vec![],
             tool_definitions: vec![],
@@ -855,6 +869,7 @@ mod tests {
 
         let session_id = SessionId::new();
         let payload = SendToLlmProvider {
+            model_used: None,
             session_id: session_id.clone(),
             messages: vec![],
             tool_definitions: vec![],
@@ -901,6 +916,7 @@ mod tests {
 
         let session_id = SessionId::new();
         let payload = SendToLlmProvider {
+            model_used: None,
             session_id: session_id.clone(),
             messages: vec![],
             tool_definitions: vec![],
@@ -941,6 +957,7 @@ mod tests {
 
         let session_id = SessionId::new();
         let command = Command::SendToLlmProvider(SendToLlmProvider {
+            model_used: None,
             session_id: session_id.clone(),
             messages: vec![],
             tool_definitions: vec![],

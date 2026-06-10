@@ -51,6 +51,12 @@ pub struct StreamCompleted {
     /// thinking tokens in `tokens_received`.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub thinking_content: Option<String>,
+    /// The concrete model ID that handled this request.
+    ///
+    /// For alloys, this is the resolved model that was picked for this particular
+    /// request. For single-model sessions, this is the model itself.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub model_used: Option<String>,
 }
 
 /// A single token from a streaming LLM response.

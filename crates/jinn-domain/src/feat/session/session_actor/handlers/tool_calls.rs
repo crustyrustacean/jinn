@@ -169,6 +169,7 @@ impl SessionPersistenceActor {
             let old_phase = session.phase();
             session.begin_streaming();
             session.push_token_record(TokenRecord {
+                model_used: None,
                 timestamp: jiff::Timestamp::now(),
                 tokens_sent: assembled.estimated_tokens(),
                 tokens_received: 0,
@@ -192,6 +193,7 @@ impl SessionPersistenceActor {
         let estimated_tokens = assembled.estimated_tokens();
 
         if let Err(e) = ctx.send_command(Command::SendToLlmProvider(SendToLlmProvider {
+            model_used: None,
             session_id: session_id.clone(),
             messages: assembled.messages,
             provider_id,
@@ -359,6 +361,7 @@ mod tests {
             let mut state = actor.state.write();
             let session = state.active_session_mut();
             session.push_token_record(TokenRecord {
+                model_used: None,
                 timestamp: jiff::Timestamp::now(),
                 tokens_sent: 100,
                 tokens_received: 0,
@@ -370,6 +373,7 @@ mod tests {
 
         // When handling StreamCompleted(ToolUse) with tool calls.
         let event = StreamCompleted {
+            model_used: None,
             session_id: session_id.clone(),
             reason: StreamCompletedReason::ToolUse,
             assistant_content: Some("checking".to_owned()),

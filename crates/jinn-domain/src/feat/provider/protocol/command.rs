@@ -60,6 +60,10 @@ pub struct SendToLlmProvider {
     /// Estimated token count of all messages + tool schemas.
     #[serde(default)]
     pub estimated_tokens: u32,
+    /// The concrete model ID that will handle this request.
+    /// Set by the dispatch layer after resolving alloys.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub model_used: Option<String>,
 }
 
 /// Refresh the model list from all providers.

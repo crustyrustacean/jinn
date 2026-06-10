@@ -131,6 +131,7 @@ fn render_shows_token_counts_with_values() {
         .active_session_mut()
         .set_model(ModelSelection::Single("ollama/llama3".to_owned()));
     state.active_session_mut().push_token_record(TokenRecord {
+        model_used: None,
         timestamp: jiff::Timestamp::now(),
         tokens_sent: 1500,
         tokens_received: 750,
@@ -162,6 +163,7 @@ fn render_shows_zero_percent_max_when_context_size_but_no_limit() {
         .active_session_mut()
         .set_model(ModelSelection::Single("ollama/llama3".to_owned()));
     state.active_session_mut().push_token_record(TokenRecord {
+        model_used: None,
         timestamp: jiff::Timestamp::now(),
         tokens_sent: 5000,
         tokens_received: 0,
@@ -407,6 +409,7 @@ fn render_shows_context_limit_with_usage_and_percentage() {
         "openrouter/anthropic/claude-sonnet-4".to_owned(),
     ));
     state.active_session_mut().push_token_record(TokenRecord {
+        model_used: None,
         timestamp: jiff::Timestamp::now(),
         tokens_sent: 5000,
         tokens_received: 0,
@@ -451,6 +454,7 @@ fn render_falls_back_when_no_context_limit_in_cache() {
         .active_session_mut()
         .set_model(ModelSelection::Single("ollama/llama3".to_owned()));
     state.active_session_mut().push_token_record(TokenRecord {
+        model_used: None,
         timestamp: jiff::Timestamp::now(),
         tokens_sent: 5000,
         tokens_received: 0,
@@ -498,6 +502,7 @@ fn render_falls_back_when_no_model_cache() {
         .active_session_mut()
         .set_model(ModelSelection::Single("ollama/llama3".to_owned()));
     state.active_session_mut().push_token_record(TokenRecord {
+        model_used: None,
         timestamp: jiff::Timestamp::now(),
         tokens_sent: 5000,
         tokens_received: 0,
@@ -631,6 +636,7 @@ fn render_shows_cost_with_non_zero_value() {
         .active_session_mut()
         .set_model(ModelSelection::Single("ollama/llama3".to_owned()));
     state.active_session_mut().push_token_record(TokenRecord {
+        model_used: None,
         timestamp: jiff::Timestamp::now(),
         tokens_sent: 1500,
         tokens_received: 750,
@@ -668,6 +674,7 @@ fn render_shows_cost_before_turns_indicator() {
         .active_session_mut()
         .push_entry(crate::protocol::ChatEntry::assistant("hi there"));
     state.active_session_mut().push_token_record(TokenRecord {
+        model_used: None,
         timestamp: jiff::Timestamp::now(),
         tokens_sent: 1000,
         tokens_received: 500,
@@ -732,6 +739,7 @@ fn render_shows_tree_aggregate_when_parent_has_child() {
 
     // Add token records to the active (parent) session.
     state.active_session_mut().push_token_record(TokenRecord {
+        model_used: None,
         timestamp: jiff::Timestamp::now(),
         tokens_sent: 1000,
         tokens_received: 500,
@@ -744,6 +752,7 @@ fn render_shows_tree_aggregate_when_parent_has_child() {
     {
         let child = state.session_mut_or_create(&child_id);
         child.push_token_record(TokenRecord {
+            model_used: None,
             timestamp: jiff::Timestamp::now(),
             tokens_sent: 500,
             tokens_received: 250,
