@@ -271,9 +271,8 @@ mod tests {
 
     #[rstest::rstest]
     #[tokio::test]
-    async fn execute_no_pin_on_write_error() {
-        // Given a path inside a read-only directory (simulated by writing to
-        // a non-existent nested path under /proc which will fail).
+    async fn execute_no_pin_on_dir_creation_failure() {
+        // Given a path inside /proc where create_dir_all will fail.
         let call = ToolCall {
             id: "call_4".to_owned(),
             name: "save_plan".to_owned(),
@@ -289,6 +288,38 @@ mod tests {
 
         // Then the result has no pin and is a failure.
         assert!(!result.success);
+        assert_eq!(result.pin_position, None);
+    }
+
+    #[rstest::rstest]
+    #[tokio::test]
+    async fn execute_no_pin_on_file_write_failure() {
+        // Given a temp directory with a read-only subdirectory so that
+        // create_dir_all succeeds but the file write fails.
+        let dir = tempfile::tempdir().expect("create temp dir");
+        let readonly = dir.path().join("readonly");
+        std::fs::create_dir_all(&readonly).expect("create readonly dir");
+        let _perms = std::fs::set_permissions(
+            &readonly,
+            std::os::unix::fs::PermissionsExt::from_mode(0o555),
+        );
+        let file_path = readonly.join("plan.md");
+
+        let call = ToolCall {
+            id: "call_4b".to_owned(),
+            name: "save_plan".to_owned(),
+            arguments: serde_json::json!({
+                "path": file_path.to_string_lossy(),
+                "content": "will fail"
+            })
+            .to_string(),
+        };
+
+        // When executing the save_plan tool.
+        let result = execute(call, test_ctx()).await;
+
+        // Then the result has no pin and is a failure.
+        assert!(!result.success, "expected failure, got: {}", result.content);
         assert_eq!(result.pin_position, None);
     }
 
