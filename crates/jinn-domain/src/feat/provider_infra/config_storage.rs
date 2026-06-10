@@ -138,6 +138,7 @@ impl ConfigStorage for InMemoryConfigStorage {
                     providers: vec![],
                     aliases: vec![],
                     default_provider: None,
+                    alloys: vec![],
                 })
             }
         }
@@ -242,6 +243,7 @@ mod tests {
             }],
             aliases: vec![],
             default_provider: Some("ollama".to_owned()),
+            alloys: vec![],
         };
 
         // When saving and reloading.
@@ -270,6 +272,7 @@ mod tests {
             }],
             aliases: vec![],
             default_provider: None,
+            alloys: vec![],
         };
         let storage = InMemoryConfigStorage::with_config(&config);
 
@@ -318,6 +321,7 @@ mod tests {
             }],
             aliases: vec![],
             default_provider: Some("ollama".to_owned()),
+            alloys: vec![],
         };
 
         // When saving and reloading.
@@ -350,6 +354,7 @@ mod tests {
             }],
             aliases: vec![],
             default_provider: None,
+            alloys: vec![],
         };
 
         service.save(&config).expect("save");

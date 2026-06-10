@@ -128,6 +128,7 @@ impl AppWorld {
                 providers: vec![],
                 aliases: vec![],
                 default_provider: None,
+                alloys: vec![],
             };
             let provider_registry = ProviderRegistryService::new(
                 ProviderRegistry::from_config(empty_config).expect("empty config is valid"),
@@ -570,6 +571,7 @@ fn when_restart_app(world: &mut AppWorld) {
             providers: vec![],
             aliases: vec![],
             default_provider: None,
+            alloys: vec![],
         };
         let provider_registry = ProviderRegistryService::new(
             ProviderRegistry::from_config(empty_config).expect("empty config is valid"),
