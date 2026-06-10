@@ -363,7 +363,6 @@ mod tests {
         assert_eq!(count, Some(2));
     }
 
-
     #[rstest::rstest]
     fn context_override_changed_noop_for_nonzero_cache() {
         // Given a state with one user entry already cached at 500.
