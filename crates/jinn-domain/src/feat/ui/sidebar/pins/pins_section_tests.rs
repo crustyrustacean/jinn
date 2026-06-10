@@ -55,10 +55,12 @@ fn sidebar_persona_edit_opens_picker_when_persona_focused() {
         Some(crate::protocol::PickerKind::Persona)
     );
     // And a LoadPersonaPickerEntries command is returned.
-    assert!(result
-        .commands
-        .iter()
-        .any(|c| matches!(c, Command::LoadPersonaPickerEntries(..))));
+    assert!(
+        result
+            .commands
+            .iter()
+            .any(|c| matches!(c, Command::LoadPersonaPickerEntries(..)))
+    );
 }
 
 #[rstest::rstest]
@@ -88,10 +90,12 @@ fn pins_unpin_returns_command() {
     let result = handle_pins_unpin(&mut state);
 
     // Then an UnpinChatEntry command is returned.
-    assert!(result
-        .commands
-        .iter()
-        .any(|c| matches!(c, Command::UnpinChatEntry(..))));
+    assert!(
+        result
+            .commands
+            .iter()
+            .any(|c| matches!(c, Command::UnpinChatEntry(..)))
+    );
 }
 
 #[rstest::rstest]
@@ -461,7 +465,7 @@ fn sync_chat_log_cursor_sets_cursor_by_entry_id_with_visual_items() {
     // Given a session with ignored entries (causing visual-item index != history index)
     // and a pinned entry deep in history.
     use crate::feat::ui::chat_log::visual_item::{
-        build_visual_items, DEFAULT_MIN_COLLAPSE_COUNT, PROXIMITY_COUNT,
+        DEFAULT_MIN_COLLAPSE_COUNT, PROXIMITY_COUNT, build_visual_items,
     };
 
     let mut state = AppState::default();

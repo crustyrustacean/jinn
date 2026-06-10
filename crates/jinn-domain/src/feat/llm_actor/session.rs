@@ -3,6 +3,8 @@
 //! Each active LLM conversation is tracked by a [`SessionData`] instance
 //! that records the current state and stream data.
 
+use jiff::Timestamp;
+
 /// Per-session state machine.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub(crate) enum SessionState {
@@ -16,6 +18,9 @@ pub(crate) enum SessionState {
 pub(crate) struct SessionData {
     /// Current state in the streaming lifecycle.
     state: SessionState,
+    /// When the LLM request was dispatched. Stored here so cancellation
+    /// events can carry the original dispatch time.
+    dispatched_at: Option<Timestamp>,
 }
 
 impl SessionData {
@@ -23,6 +28,7 @@ impl SessionData {
     pub(crate) fn new() -> Self {
         Self {
             state: SessionState::Idle,
+            dispatched_at: None,
         }
     }
 
@@ -33,7 +39,13 @@ impl SessionData {
     }
 
     /// Transitions to [`SessionState::Streaming`].
-    pub(crate) fn begin_streaming(&mut self) {
+    pub(crate) fn begin_streaming(&mut self, dispatched_at: Timestamp) {
         self.state = SessionState::Streaming;
+        self.dispatched_at = Some(dispatched_at);
+    }
+
+    /// Returns the dispatch timestamp, if the session has been dispatched.
+    pub(crate) fn dispatched_at(&self) -> Option<Timestamp> {
+        self.dispatched_at
     }
 }

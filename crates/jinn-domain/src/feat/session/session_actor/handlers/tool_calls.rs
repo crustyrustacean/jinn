@@ -197,6 +197,7 @@ impl SessionPersistenceActor {
             provider_id,
             estimated_tokens,
             tool_definitions: assembled.tool_definitions,
+            dispatched_at: jiff::Timestamp::now(),
         })) {
             tracing::warn!(
                 err = ?e,
@@ -381,6 +382,7 @@ mod tests {
             cost: None,
             provider_completion_tokens: None,
             thinking_content: None,
+            dispatched_at: jiff::Timestamp::now(),
         };
         actor.on_stream_completed(&event, &ctx).await;
 
@@ -566,6 +568,7 @@ mod tests {
             index: 0,
             id: "tc-1".to_owned(),
             name: "bash".to_owned(),
+            dispatched_at: jiff::Timestamp::now(),
         });
 
         // Then a ToolCall entry is in history with empty arguments.
@@ -602,6 +605,7 @@ mod tests {
 "#
                 .to_owned(),
             },
+            dispatched_at: jiff::Timestamp::now(),
         });
 
         // Then the tool call entry has the complete arguments.
@@ -678,6 +682,7 @@ mod tests {
             session_id: session_id.clone(),
             tool_call_id: "tc-1".to_owned(),
             name: "bash".to_owned(),
+            dispatched_at: jiff::Timestamp::now(),
         });
 
         // Then a ToolResult entry with Pending status is in history.
