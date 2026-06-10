@@ -931,6 +931,7 @@ mod tests {
                 cost: None,
                 provider_completion_tokens: None,
                 thinking_content: None,
+                dispatched_at: jiff::Timestamp::now(),
             },
             &ctx,
         );

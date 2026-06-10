@@ -274,6 +274,8 @@ async fn execute_builtin_get_time_tool() {
         shell: "/bin/sh".to_owned(),
         max_output_lines: None,
         max_output_bytes: None,
+
+        dispatched_at: jiff::Timestamp::now(),
     };
 
     // When executing the get_time tool.
@@ -312,6 +314,8 @@ async fn execute_builtin_read_tool() {
         shell: "/bin/sh".to_owned(),
         max_output_lines: None,
         max_output_bytes: None,
+
+        dispatched_at: jiff::Timestamp::now(),
     };
 
     // When executing the read tool.
@@ -348,6 +352,8 @@ async fn execute_builtin_read_tool_returns_error_on_missing_file() {
         shell: "/bin/sh".to_owned(),
         max_output_lines: None,
         max_output_bytes: None,
+
+        dispatched_at: jiff::Timestamp::now(),
     };
 
     // When executing the read tool.
@@ -378,6 +384,7 @@ async fn execute_batch_with_get_time_tool_emits_completion() {
             name: "get_time".to_owned(),
             arguments: "{}".to_owned(),
         }],
+        dispatched_at: jiff::Timestamp::now(),
     });
     actor.handle_command(&cmd, &ctx);
 
@@ -407,6 +414,7 @@ async fn completion_event_triggers_batch_completed() {
             name: "get_time".to_owned(),
             arguments: "{}".to_owned(),
         }],
+        dispatched_at: jiff::Timestamp::now(),
     });
     actor.handle_command(&cmd, &ctx);
 
@@ -454,6 +462,7 @@ async fn execute_batch_with_two_tools_emits_two_completions() {
                 arguments: "{}".to_owned(),
             },
         ],
+        dispatched_at: jiff::Timestamp::now(),
     });
     actor.handle_command(&cmd, &ctx);
 
@@ -488,6 +497,7 @@ async fn first_completion_does_not_complete_batch() {
                 arguments: "{}".to_owned(),
             },
         ],
+        dispatched_at: jiff::Timestamp::now(),
     });
     actor.handle_command(&cmd, &ctx);
 
@@ -533,6 +543,7 @@ async fn second_completion_emits_batch_completed() {
                 arguments: "{}".to_owned(),
             },
         ],
+        dispatched_at: jiff::Timestamp::now(),
     });
     actor.handle_command(&cmd, &ctx);
 
@@ -583,6 +594,7 @@ async fn execute_batch_with_unknown_tool_emits_error_completion() {
             name: "nonexistent_tool".to_owned(),
             arguments: "{}".to_owned(),
         }],
+        dispatched_at: jiff::Timestamp::now(),
     });
     actor.handle_command(&cmd, &ctx);
 
@@ -611,6 +623,7 @@ async fn error_completion_triggers_batch_completed() {
             name: "nonexistent_tool".to_owned(),
             arguments: "{}".to_owned(),
         }],
+        dispatched_at: jiff::Timestamp::now(),
     });
     actor.handle_command(&cmd, &ctx);
 
@@ -648,6 +661,7 @@ async fn execute_batch_with_no_tool_calls_emits_empty_batch_completed() {
     let cmd = Command::ExecuteToolBatch(ExecuteToolBatch {
         session_id: session_id.clone(),
         tool_calls: vec![],
+        dispatched_at: jiff::Timestamp::now(),
     });
     actor.handle_command(&cmd, &ctx);
 
@@ -685,6 +699,8 @@ async fn write_tool_returns_success() {
         shell: "/bin/sh".to_owned(),
         max_output_lines: None,
         max_output_bytes: None,
+
+        dispatched_at: jiff::Timestamp::now(),
     };
 
     // When executing the write tool.
@@ -723,6 +739,8 @@ async fn write_tool_creates_file_with_content() {
         shell: "/bin/sh".to_owned(),
         max_output_lines: None,
         max_output_bytes: None,
+
+        dispatched_at: jiff::Timestamp::now(),
     };
 
     // When executing the write tool.
@@ -760,6 +778,8 @@ async fn write_tool_creates_parent_dirs_and_file() {
         shell: "/bin/sh".to_owned(),
         max_output_lines: None,
         max_output_bytes: None,
+
+        dispatched_at: jiff::Timestamp::now(),
     };
 
     // When executing the write tool.
@@ -801,6 +821,8 @@ async fn write_tool_overwrites_existing_file() {
         shell: "/bin/sh".to_owned(),
         max_output_lines: None,
         max_output_bytes: None,
+
+        dispatched_at: jiff::Timestamp::now(),
     };
 
     // When executing the write tool.
@@ -832,6 +854,8 @@ async fn write_tool_returns_error_on_bad_json() {
         shell: "/bin/sh".to_owned(),
         max_output_lines: None,
         max_output_bytes: None,
+
+        dispatched_at: jiff::Timestamp::now(),
     };
 
     // When executing the write tool.
@@ -889,7 +913,7 @@ async fn build_tool_context_reads_session_cwd() {
     };
 
     // When building tool context for that session.
-    let tool_ctx = actor.build_tool_context(&session_id, sink.clone());
+    let tool_ctx = actor.build_tool_context(&session_id, sink.clone(), jiff::Timestamp::now());
 
     // Then the CWD matches the session's CWD.
     assert_eq!(tool_ctx.cwd, PathBuf::from("/custom/cwd"));
@@ -904,7 +928,7 @@ async fn build_tool_context_returns_default_cwd_for_unknown_session() {
 
     // When building tool context for an unknown session.
     let unknown_session = SessionId::new();
-    let tool_ctx = actor.build_tool_context(&unknown_session, sink.clone());
+    let tool_ctx = actor.build_tool_context(&unknown_session, sink.clone(), jiff::Timestamp::now());
 
     // Then the CWD falls back to default_cwd (which is "/" by default).
     assert_eq!(tool_ctx.cwd, PathBuf::from("/"));
@@ -936,6 +960,7 @@ async fn cancel_tool_batch_removes_pending_batch() {
                 arguments: "{}".to_owned(),
             },
         ],
+        dispatched_at: jiff::Timestamp::now(),
     });
     actor.handle_command(&cmd, &ctx);
 
@@ -969,6 +994,7 @@ async fn cancel_tool_batch_aborts_spawned_tasks() {
             name: "get_time".to_owned(),
             arguments: "{}".to_owned(),
         }],
+        dispatched_at: jiff::Timestamp::now(),
     });
     actor.handle_command(&cmd, &ctx);
 
@@ -1032,7 +1058,7 @@ async fn build_tool_context_uses_session_default_cwd_when_not_overridden() {
     };
 
     // When building tool context for that session.
-    let tool_ctx = actor.build_tool_context(&session_id, sink.clone());
+    let tool_ctx = actor.build_tool_context(&session_id, sink.clone(), jiff::Timestamp::now());
 
     // Then the session cwd is used ("." from default).
     assert_eq!(tool_ctx.cwd, PathBuf::from("."));
@@ -1089,6 +1115,7 @@ async fn handle_processes_tool_execution_completed_event() {
             name: "nonexistent".to_owned(),
             arguments: "{}".to_owned(),
         }],
+        dispatched_at: jiff::Timestamp::now(),
     });
     actor.handle_command(&cmd, &ctx);
     sink.take_events(); // Clear the error completion event.

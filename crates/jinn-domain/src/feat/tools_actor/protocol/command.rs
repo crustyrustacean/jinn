@@ -6,6 +6,8 @@ use crate::feat::tools_actor::tool_types::{ToolCall, ToolDefinition};
 use crate::protocol::CommandMsg;
 use crate::protocol::SessionId;
 
+use jiff::Timestamp;
+
 /// Register tools that an actor can execute.
 ///
 /// Sent by actors at startup to declare which tools they provide.
@@ -29,6 +31,8 @@ pub struct ExecuteToolBatch {
     pub session_id: SessionId,
     /// The tool calls to execute.
     pub tool_calls: Vec<ToolCall>,
+    /// When the original LLM request was dispatched.
+    pub dispatched_at: Timestamp,
 }
 
 /// Execute a single tool call.
@@ -43,6 +47,8 @@ pub struct ExecuteTool {
     pub session_id: SessionId,
     /// The tool call to execute.
     pub tool_call: ToolCall,
+    /// When the original LLM request was dispatched.
+    pub dispatched_at: Timestamp,
 }
 
 /// Cancel all pending tool executions for a session.
