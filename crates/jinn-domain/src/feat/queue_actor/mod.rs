@@ -178,19 +178,22 @@ impl QueueActor {
             assemble_prompt(&guard, session_id, &self.counter, None)
         };
 
-        let provider_id = {
-            let state = self.state.read();
-            let model = state.session(session_id).profile().model.clone();
+        let (provider_id, model_used) = {
+            let mut state = self.state.write();
+            let model =
+                &mut state.session_mut(session_id).profile_mut().model;
             if model.is_no_provider() {
-                None
+                (None, None)
             } else {
-                Some(model.display_str().to_owned())
+                let resolved = model.resolve_model().to_owned();
+                (Some(resolved.clone()), Some(resolved))
             }
         };
 
         let estimated_tokens = assembled.estimated_tokens();
 
         if let Err(e) = ctx.send_command(Command::SendToLlmProvider(SendToLlmProvider {
+            model_used,
             session_id: session_id.clone(),
             messages: assembled.messages,
             provider_id,
@@ -255,19 +258,22 @@ impl QueueActor {
             assemble_prompt(&guard, session_id, &self.counter, None)
         };
 
-        let provider_id = {
-            let state = self.state.read();
-            let model = state.session(session_id).profile().model.clone();
+        let (provider_id, model_used) = {
+            let mut state = self.state.write();
+            let model =
+                &mut state.session_mut(session_id).profile_mut().model;
             if model.is_no_provider() {
-                None
+                (None, None)
             } else {
-                Some(model.display_str().to_owned())
+                let resolved = model.resolve_model().to_owned();
+                (Some(resolved.clone()), Some(resolved))
             }
         };
 
         let estimated_tokens = assembled.estimated_tokens();
 
         if let Err(e) = ctx.send_command(Command::SendToLlmProvider(SendToLlmProvider {
+            model_used,
             session_id: session_id.clone(),
             messages: assembled.messages,
             provider_id,

@@ -2410,6 +2410,7 @@ impl ChatSessionState {
         &mut self,
         tokens_received: u32,
         cost: Option<f64>,
+        model_used: Option<String>,
     ) -> Result<(), StreamingError> {
         let last = self
             .core
@@ -2418,6 +2419,7 @@ impl ChatSessionState {
             .ok_or(StreamingError::EmptyLedger)?;
         last.tokens_received = tokens_received;
         last.cost = cost;
+        last.model_used = model_used;
         Ok(())
     }
 

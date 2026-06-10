@@ -924,6 +924,7 @@ mod tests {
         // When StreamCompleted fires.
         actor.handle_stream_completed(
             &StreamCompleted {
+                model_used: None,
                 session_id: session_id.clone(),
                 reason:
                     jinn_domain::feat::provider::protocol::event::StreamCompletedReason::Finished,

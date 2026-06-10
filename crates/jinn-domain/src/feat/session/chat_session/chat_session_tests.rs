@@ -4497,6 +4497,7 @@ fn restore_token_ledger_sets_records() {
 
     // When restoring a token ledger.
     let records = vec![TokenRecord {
+        model_used: None,
         timestamp: jiff::Timestamp::now(),
         tokens_sent: 100,
         tokens_received: 50,

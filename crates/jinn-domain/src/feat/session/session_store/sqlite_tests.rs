@@ -435,6 +435,7 @@ async fn token_ledger_round_trips() {
     session.set_title("Tokens".to_owned());
     session.push_entry(ChatEntry::user("hello"));
     session.push_token_record(crate::feat::session::token_stats::TokenRecord {
+        model_used: None,
         timestamp: jiff::Timestamp::now(),
         tokens_sent: 100,
         tokens_received: 50,

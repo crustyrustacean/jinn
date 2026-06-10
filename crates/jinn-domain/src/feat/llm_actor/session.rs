@@ -16,6 +16,9 @@ pub(crate) enum SessionState {
 pub(crate) struct SessionData {
     /// Current state in the streaming lifecycle.
     state: SessionState,
+    /// The concrete model ID handling the current/last request.
+    /// Propagated from `SendToLlmProvider` to `StreamCompleted`.
+    model_used: Option<String>,
 }
 
 impl SessionData {
@@ -23,6 +26,7 @@ impl SessionData {
     pub(crate) fn new() -> Self {
         Self {
             state: SessionState::Idle,
+            model_used: None,
         }
     }
 
@@ -35,5 +39,15 @@ impl SessionData {
     /// Transitions to [`SessionState::Streaming`].
     pub(crate) fn begin_streaming(&mut self) {
         self.state = SessionState::Streaming;
+    }
+
+    /// Sets the concrete model ID for the current stream.
+    pub(crate) fn set_model_used(&mut self, model: Option<String>) {
+        self.model_used = model;
+    }
+
+    /// Returns the concrete model ID for the current/last stream.
+    pub(crate) fn model_used(&self) -> Option<&str> {
+        self.model_used.as_deref()
     }
 }
