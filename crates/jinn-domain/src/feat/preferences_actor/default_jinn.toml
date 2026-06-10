@@ -237,8 +237,11 @@ min_age = 100
 
 [auto_prune.anchored_assistant]
 enabled = true
-# Number of chat entries from an anchor (user message or conversation history
-# start/end) before pruning is allowed.
-radius = 100
 # Candidate message must be at least this old before prune-eligible.
 min_age = 50
+
+[auto_prune.anchor_shield]
+enabled = true
+# Number of entries around each anchor (user message or conversation
+# start/end) that are shielded from exclusion by other workers.
+radius = 20
