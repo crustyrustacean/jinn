@@ -802,8 +802,6 @@ fn tool_result_with_wide_emoji_fits_narrow_sidebar() {
         combined.contains('✓'),
         "should still contain ✓ even in narrow sidebar: {combined}"
     );
-}
-
 #[rstest::rstest]
 fn long_content_is_truncated_to_fit_area_width() {
     // Given a pinned user entry with very long content.
