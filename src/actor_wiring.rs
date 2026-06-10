@@ -49,6 +49,7 @@ use jinn_domain::feat::discovery_notifier::{DiscoveryNotifierActor, DiscoveryNot
 use jinn_domain::feat::queue_actor::{QueueActor, QueueActorDeps};
 use jinn_domain::feat::provider::discover_actor::{DiscoverActor, DiscoverActorDeps};
 use jinn_domain::feat::llm_actor::{LlmActor, LlmActorDeps};
+use jinn_domain::feat::skills::skills_scan_actor::{SkillsScanActor, SkillsScanActorDeps};
 
 use jinn_domain::feat::preferences_actor::user_preferences::WebFetchBackend;
 use jinn_domain::feat::web_fetch_actor::{WebFetchActor, WebFetchActorDeps};
@@ -478,19 +479,10 @@ impl ActorSystemBuilder {
             );
 
         // Skills scan actor.
-        actors.push(spawn::<
-            jinn_domain::feat::skills::skills_scan_actor::SkillsScanActor,
-        >(
-            "skills-scan",
-            &sink,
-            handle,
-            &counter,
-            &shutdown_tracker,
-            jinn_domain::feat::skills::skills_scan_actor::SkillsScanActorDeps {
-                services: services.clone(),
-                state: state.clone(),
-            },
-        ));
+        let _skills_scan = SkillsScanActor::spawn(SkillsScanActorDeps {
+            deps: ActorDeps { services: services.clone() },
+            state: state.clone(),
+        });
 
         // Discovery coordinator — coalesces the three resource-loaded events
         let _discovery_coordinator =
