@@ -1,47 +1,38 @@
-//! Shared helpers used across multiple handler concern modules.
-
-use crate::common::actor::ActorContext;
+use crate::common::services::bus_service::BusService;
+use crate::common::actor_deps::BusPublish;
 use crate::feat::session::phase_machine::PhaseKind;
-use crate::protocol::{Event, SessionId};
+use crate::protocol::SessionId;
 
 /// Emit a `SessionPhaseChanged` event if the phase actually changed.
 ///
 /// Call this outside the write lock with the before/after phases captured inside.
-pub(in crate::feat::session::session_actor) fn emit_phase_changed(
-    ctx: &ActorContext,
+pub(in crate::feat::session::session_actor) async fn emit_phase_changed(
+    bus: &BusService,
     session_id: &SessionId,
     old_phase: impl Into<PhaseKind>,
     new_phase: impl Into<PhaseKind>,
 ) {
     let old_phase = old_phase.into();
     let new_phase = new_phase.into();
-    if old_phase != new_phase
-        && let Err(e) = ctx.send_event(Event::SessionPhaseChanged(
-            crate::feat::session::protocol::session_phase_changed::SessionPhaseChanged {
-                session_id: session_id.clone(),
-                old_phase,
-                new_phase,
-            },
-        ))
-    {
-        tracing::warn!(err = ?e, "failed to emit SessionPhaseChanged");
+    if old_phase != new_phase {
+        bus.publish(crate::feat::session::protocol::session_phase_changed::SessionPhaseChanged {
+            session_id: session_id.clone(),
+            old_phase,
+            new_phase,
+        }).await;
     }
 }
 
 /// Emit a `HistoryAppended` event.
 ///
 /// Call this outside the write lock.
-pub(in crate::feat::session::session_actor) fn emit_history_appended(
-    ctx: &ActorContext,
+pub(in crate::feat::session::session_actor) async fn emit_history_appended(
+    bus: &BusService,
     session_id: &SessionId,
 ) {
-    if let Err(e) = ctx.send_event(Event::HistoryAppended(
-        crate::feat::session::protocol::history_appended::HistoryAppended {
-            session_id: session_id.clone(),
-        },
-    )) {
-        tracing::warn!(err = ?e, "failed to emit HistoryAppended");
-    }
+    bus.publish(crate::feat::session::protocol::history_appended::HistoryAppended {
+        session_id: session_id.clone(),
+    }).await;
 }
 
 #[cfg(test)]
@@ -59,18 +50,6 @@ pub(super) async fn test_actor() -> super::SessionPersistenceActor {
         lifecycle_child: None,
     }
 }
-#[cfg(test)]
-pub(super) fn test_context() -> (
-    std::sync::Arc<crate::common::actor::RecordingSink>,
-    crate::common::actor::ActorContext,
-) {
-    use crate::common::actor::{ActorContext, RecordingSink};
-
-    let sink = std::sync::Arc::new(RecordingSink::new());
-    let ctx = ActorContext::new("test-session-actor", sink.clone());
-    (sink, ctx)
-}
-
 // --- Shared test store helpers ---
 
 /// A fake session store that returns pre-loaded sessions for testing.
