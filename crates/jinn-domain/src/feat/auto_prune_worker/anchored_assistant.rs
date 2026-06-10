@@ -116,7 +116,6 @@ pub(crate) fn collect_user_anchor_indices(history: &[ChatEntry]) -> Vec<usize> {
         .collect()
 }
 
-
 /// Compute `(d_back, d_fwd)` — index distances to the nearest preceding and
 /// following anchors.
 ///
@@ -1132,7 +1131,6 @@ mod tests {
         let anchors = collect_user_anchor_indices(&history);
         assert!(anchors.is_empty());
     }
-
 
     // ------------------------------------------------------------------
     // 21. no_user_entries_first_and_last_still_anchor
