@@ -196,11 +196,7 @@ pub fn execute(call: ToolCall, ctx: ToolContext) -> BoxedToolFuture {
         let output = match cmd.output().await {
             Ok(o) => o,
             Err(e) => {
-                return error_tool_result(
-                    call.id,
-                    call.name,
-                    format!("failed to execute rg: {e}"),
-                );
+                return error_tool_result(call.id, call.name, format!("failed to execute rg: {e}"));
             }
         };
 
@@ -290,8 +286,11 @@ mod tests {
     async fn execute_returns_matching_lines() {
         // Given a directory with a file containing known text.
         let dir = tempfile::tempdir().expect("create temp dir");
-        std::fs::write(dir.path().join("sample.txt"), "hello world\nfoo bar\nhello rust\n")
-            .expect("write file");
+        std::fs::write(
+            dir.path().join("sample.txt"),
+            "hello world\nfoo bar\nhello rust\n",
+        )
+        .expect("write file");
 
         let call = tool_call("hello");
         let ctx = test_ctx_with_cwd(dir.path().to_owned());
@@ -317,10 +316,7 @@ mod tests {
         std::fs::write(sub_a.join("f.txt"), "target_match in a\n").expect("write a");
         std::fs::write(sub_b.join("f.txt"), "target_match in b\n").expect("write b");
 
-        let call = tool_call_with_args(
-            "target_match",
-            serde_json::json!({ "path": "a" }),
-        );
+        let call = tool_call_with_args("target_match", serde_json::json!({ "path": "a" }));
         let ctx = test_ctx_with_cwd(dir.path().to_owned());
 
         // When executing with path pointing at subdirectory a.
@@ -338,13 +334,9 @@ mod tests {
         // Given a directory with .rs and .txt files.
         let dir = tempfile::tempdir().expect("create temp dir");
         std::fs::write(dir.path().join("code.rs"), "fn special_func() {}\n").expect("write rs");
-        std::fs::write(dir.path().join("notes.txt"), "special_func is great\n")
-            .expect("write txt");
+        std::fs::write(dir.path().join("notes.txt"), "special_func is great\n").expect("write txt");
 
-        let call = tool_call_with_args(
-            "special_func",
-            serde_json::json!({ "glob": "*.rs" }),
-        );
+        let call = tool_call_with_args("special_func", serde_json::json!({ "glob": "*.rs" }));
         let ctx = test_ctx_with_cwd(dir.path().to_owned());
 
         // When executing with glob filtering for .rs files.
@@ -361,13 +353,10 @@ mod tests {
     async fn execute_with_file_type_filters_by_language() {
         // Given a directory with .rs files.
         let dir = tempfile::tempdir().expect("create temp dir");
-        std::fs::write(dir.path().join("main.rs"), "fn my_unique_func() {}\n")
-            .expect("write rs");
+        std::fs::write(dir.path().join("main.rs"), "fn my_unique_func() {}\n").expect("write rs");
 
-        let call = tool_call_with_args(
-            "my_unique_func",
-            serde_json::json!({ "file_type": "rust" }),
-        );
+        let call =
+            tool_call_with_args("my_unique_func", serde_json::json!({ "file_type": "rust" }));
         let ctx = test_ctx_with_cwd(dir.path().to_owned());
 
         // When executing with file_type=rust.
@@ -458,11 +447,10 @@ mod tests {
     async fn execute_truncates_large_output() {
         // Given a file with many matching lines.
         let dir = tempfile::tempdir().expect("create temp dir");
-        let content: String = (0..3000)
-            .fold(String::new(), |mut s, i| {
-                s.push_str(&format!("match_line_{i}\n"));
-                s
-            });
+        let content: String = (0..3000).fold(String::new(), |mut s, i| {
+            s.push_str(&format!("match_line_{i}\n"));
+            s
+        });
         std::fs::write(dir.path().join("big.txt"), content).expect("write file");
 
         let call = tool_call("match_line");
