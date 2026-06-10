@@ -18,6 +18,7 @@ pub mod get_time;
 pub mod protocol;
 pub mod read;
 pub mod registry;
+pub mod save_plan;
 pub mod skill;
 pub mod tool_entry;
 pub mod tool_types;
