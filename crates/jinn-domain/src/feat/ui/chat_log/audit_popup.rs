@@ -38,16 +38,17 @@ pub fn format_audit_lines(entry: &ChatEntry, theme: &Theme) -> Vec<Line<'static>
         format!("Sent: {}", format_timestamp(&entry.timestamp)),
         body_style,
     )]));
-    lines.push(Line::from(vec![Span::styled(
-        String::new(),
-        body_style,
-    )]));
+    lines.push(Line::from(vec![Span::styled(String::new(), body_style)]));
 
     // --- Audit section ---
     let count = entry.context_history.len();
     let current = context_override_label(entry.context_override);
     let audit_label = format!("audit ({count} events) ({current})");
-    lines.push(centered_title(&audit_label, AUDIT_POPUP_WIDTH, header_style));
+    lines.push(centered_title(
+        &audit_label,
+        AUDIT_POPUP_WIDTH,
+        header_style,
+    ));
 
     if entry.context_history.is_empty() {
         lines.push(Line::from(vec![Span::styled(
@@ -103,9 +104,9 @@ fn context_override_label(o: ContextOverride) -> &'static str {
 /// fill the remaining width. If the padding is odd, the extra `-` goes right.
 fn centered_title(label: &str, width: u16, style: Style) -> Line<'static> {
     let inner = (width as usize).saturating_sub(2);
-    let dash_count = inner.saturating_sub(label.len());
-    let left = dash_count / 2;
-    let right = dash_count - left;
+    let dash_budget = inner.saturating_sub(label.len() + 2); // +2 for spaces around label
+    let left = dash_budget / 2;
+    let right = dash_budget - left;
     let text = format!("{} {} {}", "-".repeat(left), label, "-".repeat(right));
     Line::from(vec![Span::styled(text, style)])
 }
@@ -260,20 +261,26 @@ mod tests {
 
     #[test]
     fn centered_title_produces_exact_width_line() {
-        // Given label "Metadata" and width 60.
+        // Given label "Metadata" and popup width 60.
+        // Content area is 58 (60 - 2 borders).
         let theme = default_theme();
-        let style = Style::default().fg(theme.infopopup_title).bg(theme.infopopup_bg);
+        let style = Style::default()
+            .fg(theme.infopopup_title)
+            .bg(theme.infopopup_bg);
         let line = centered_title("Metadata", 60, style);
 
-        // Then the rendered text is exactly 60 characters.
-        assert_eq!(text(&line).len(), 60);
+        // Then the rendered text is exactly 58 characters (content width).
+        assert_eq!(text(&line).len(), 58);
     }
 
     #[test]
     fn centered_title_centers_label_with_dash_padding() {
-        // Given label "Metadata" and width 60.
+        // Given label "Metadata" and popup width 60.
+        // Content area is 58 (60 - 2 borders).
         let theme = default_theme();
-        let style = Style::default().fg(theme.infopopup_title).bg(theme.infopopup_bg);
+        let style = Style::default()
+            .fg(theme.infopopup_title)
+            .bg(theme.infopopup_bg);
         let line = centered_title("Metadata", 60, style);
         let rendered = text(&line);
 
@@ -282,10 +289,9 @@ mod tests {
         // And the line starts and ends with dashes.
         assert!(rendered.starts_with('-'));
         assert!(rendered.ends_with('-'));
-        // And when padding is even (50 dashes for 8-char label in 60 cols),
-        // left and right dash counts are equal.
+        // And dash count is 48 (58 content - 8 label - 2 spaces).
         let dash_count = rendered.chars().filter(|c| *c == '-').count();
-        assert_eq!(dash_count, 50);
+        assert_eq!(dash_count, 48);
     }
 
     #[test]
@@ -309,7 +315,6 @@ mod tests {
             "should say 'just now' for 30s ago: {result}"
         );
     }
-
 
     #[test]
     fn format_timestamp_old_shows_absolute_and_days_ago() {
@@ -376,11 +381,14 @@ mod tests {
         // When formatting.
         let lines = format(&entry);
 
-        // Then the header reflects 0 events and current state.
-        assert_eq!(lines.len(), 2);
-        assert_eq!(text(&lines[0]), "--- audit (0 events) (Default) ---");
+        // Then line count is 5: Metadata title, Sent, blank, audit title, placeholder.
+        assert_eq!(lines.len(), 5);
+        assert_eq!(
+            text(&lines[3]),
+            "--------------- audit (0 events) (Default) ---------------"
+        );
         // And the body is the placeholder.
-        assert_eq!(text(&lines[1]), "(no events recorded)");
+        assert_eq!(text(&lines[4]), "(no events recorded)");
     }
 
     #[test]
@@ -393,10 +401,13 @@ mod tests {
         let lines = format(&entry);
 
         // Then the header shows the current override.
-        assert_eq!(lines.len(), 2);
-        assert_eq!(text(&lines[0]), "--- audit (1 events) (ForcedExclude) ---");
+        assert_eq!(lines.len(), 5);
+        assert_eq!(
+            text(&lines[3]),
+            "------------ audit (1 events) (ForcedExclude) ------------"
+        );
         // And the body line shows the transition with [user] source.
-        assert_eq!(text(&lines[1]), "[user] Default -> ForcedExclude");
+        assert_eq!(text(&lines[4]), "[user] Default -> ForcedExclude");
     }
 
     #[test]
@@ -414,7 +425,7 @@ mod tests {
         let lines = format(&entry);
 
         // Then the source label is the bare worker name (no `worker:` prefix).
-        assert_eq!(text(&lines[1]), "[compactor] Default -> ForcedExclude");
+        assert_eq!(text(&lines[4]), "[compactor] Default -> ForcedExclude");
     }
 
     #[test]
@@ -433,7 +444,7 @@ mod tests {
 
         // Then the source label is the bare internal label.
         assert_eq!(
-            text(&lines[1]),
+            text(&lines[4]),
             "[dangling-cleanup] Default -> ForcedExclude"
         );
     }
@@ -448,10 +459,10 @@ mod tests {
         // When formatting.
         let lines = format(&entry);
 
-        // Then 3 lines (header + 2 events) and order matches insertion.
-        assert_eq!(lines.len(), 3);
-        assert_eq!(text(&lines[1]), "[user] Default -> ForcedExclude");
-        assert_eq!(text(&lines[2]), "[user] ForcedExclude -> Default");
+        // Then 6 lines total (3 metadata + 3 audit) and order matches insertion.
+        assert_eq!(lines.len(), 6);
+        assert_eq!(text(&lines[4]), "[user] Default -> ForcedExclude");
+        assert_eq!(text(&lines[5]), "[user] ForcedExclude -> Default");
     }
 
     #[test]
@@ -466,9 +477,9 @@ mod tests {
         let lines = format(&entry);
 
         // Then the header parenthetical shows the *current* Default, not the last event's `to`.
-        assert!(text(&lines[0]).contains("(Default) ---"));
+        assert!(text(&lines[3]).contains("(Default) ---"));
         // And event count is 2, not 1.
-        assert!(text(&lines[0]).contains("(2 events)"));
+        assert!(text(&lines[3]).contains("(2 events)"));
     }
 
     mod rect_tests {
