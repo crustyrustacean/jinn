@@ -50,6 +50,7 @@ diesel::table! {
         tokens_sent -> Integer,
         tokens_received -> Integer,
         cost -> Nullable<Double>,
+        model_used -> Nullable<Text>,
     }
 }
 
