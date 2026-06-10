@@ -165,6 +165,6 @@ impl<M: Clone + Send + 'static> Message<GetRecorded<M>> for Recorder<M> {
         _msg: GetRecorded<M>,
         _ctx: &mut Context<Self, Self::Reply>,
     ) -> Self::Reply {
-        self.messages.clone()
+        std::mem::take(&mut self.messages)
     }
 }
