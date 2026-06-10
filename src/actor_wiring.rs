@@ -904,19 +904,17 @@ impl ActorSystemBuilder {
 
         // HistoryWorkerChatEntryTokenCache eviction actor — single instance,
         // owns session lifecycle.
-        actors.push(spawn::<
-        jinn_domain::feat::auto_prune_worker::HistoryWorkerChatEntryTokenCacheEvictionActor,
-    >(
-        "history-worker-token-cache-eviction",
-        &sink,
-        handle,
-        &counter,
-        &shutdown_tracker,
-        jinn_domain::feat::auto_prune_worker::HistoryWorkerChatEntryTokenCacheEvictionActorDeps {
-            cache: entry_token_cache.clone(),
-        },
-    ));
-        // Auto-prune worker: tool-age-window context pruning.
+        {
+            use jinn_domain::feat::auto_prune_worker::HistoryWorkerChatEntryTokenCacheEvictionActor;
+            use jinn_domain::feat::auto_prune_worker::HistoryWorkerChatEntryTokenCacheEvictionActorDeps;
+
+            let _eviction = HistoryWorkerChatEntryTokenCacheEvictionActor::spawn(
+                HistoryWorkerChatEntryTokenCacheEvictionActorDeps {
+                    deps: ActorDeps { services: services.clone() },
+                    cache: entry_token_cache.clone(),
+                },
+            );
+        }
         {
             use jinn_domain::feat::auto_prune_worker::ToolAgeWindowAutoPruneWorker;
             use jinn_domain::feat::history_worker::actor::{
