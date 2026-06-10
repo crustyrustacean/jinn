@@ -52,6 +52,10 @@ use crate::protocol::SessionId;
 pub struct AnchoredAssistantAutoPruneWorker {
     /// Configuration for the anchor-radius strategy.
     pub config: AnchoredAssistantAutoPruneConfig,
+    /// The anchor radius, sourced from [`AnchorShieldConfig::radius`](super::anchor_shield::AnchorShieldConfig::radius)
+    /// at wiring time. Centralized on the shield worker so the shield boundary
+    /// and prune boundary always align.
+    pub radius: usize,
     /// Minimum token count for an entry to be considered a pruning candidate.
     /// Entries at or below this threshold are owned by
     /// [`TrivialAssistantAutoPruneWorker`](super::TrivialAssistantAutoPruneWorker).
@@ -285,7 +289,7 @@ impl HistoryWorker for AnchoredAssistantAutoPruneWorker {
     ) -> Vec<HistoryMutation> {
         let mutations = build_prune_mutations(&PruneCtx {
             history: &history,
-            radius: self.config.radius,
+            radius: self.radius,
             min_age: self.config.min_age,
             min_candidate_tokens: self.min_candidate_tokens,
             session_id,
@@ -295,9 +299,8 @@ impl HistoryWorker for AnchoredAssistantAutoPruneWorker {
         });
         tracing::debug!(
             mutations = mutations.len(),
-            radius = self.config.radius,
+            radius = self.radius,
             history_len = history.len(),
-            "anchored_assistant evaluate done"
         );
         mutations
     }
@@ -341,6 +344,7 @@ mod tests {
                 radius,
                 min_age,
             },
+            radius,
             min_candidate_tokens: 81,
             token_cache: super::super::HistoryWorkerChatEntryTokenCache::new(),
             counter: TiktokenCounter::o200k_base(),
