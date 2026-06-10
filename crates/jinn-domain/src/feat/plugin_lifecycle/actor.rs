@@ -4,11 +4,14 @@
 //! Fires `on_app_started` and `on_session_created` plugin hooks respectively
 //! via [`PluginFire`](crate::feat::plugin_dispatch::PluginFire).
 
+use std::convert::Infallible;
+
+use kameo::prelude::{Actor, ActorRef, Context, Message};
+
 use crate::common::actor::protocol::event::AllActorsSpawned;
-use crate::common::actor::{Actor, ActorContext, ActorEnvelope, NoDirectMsg};
-use crate::common::services::Services;
+use crate::common::actor_deps::{ActorDeps, BusPublish};
+use crate::common::services::bus_service::BusService;
 use crate::feat::session_lifecycle::protocol::event::SessionCreated;
-use crate::protocol::{Command, Event};
 
 /// Actor that bridges domain lifecycle events to plugin hooks.
 ///
@@ -16,79 +19,76 @@ use crate::protocol::{Command, Event};
 /// - [`AllActorsSpawned`] → fires `on_app_started`
 /// - [`SessionCreated`] → fires `on_session_created`
 pub struct PluginLifecycleActor {
-    /// Runtime services (for `plugins: PluginFireService`).
-    services: Services,
+    /// Runtime services.
+    services: crate::common::services::Services,
     /// The session ID active at startup (for `on_app_started` ctx).
     startup_session_id: String,
 }
 
 /// Dependencies for [`PluginLifecycleActor`].
 pub struct PluginLifecycleActorDeps {
-    /// Runtime services.
-    pub services: Services,
+    /// Runtime deps (services + bus).
+    pub deps: ActorDeps,
     /// The active session ID at startup.
     pub startup_session_id: String,
 }
 
 impl Actor for PluginLifecycleActor {
-    type Message = NoDirectMsg;
-    type Deps = PluginLifecycleActorDeps;
+    type Args = PluginLifecycleActorDeps;
+    type Error = Infallible;
 
-    fn activate(deps: Self::Deps, ctx: &mut ActorContext) -> Self {
-        ctx.subscribe_event::<AllActorsSpawned>();
-        ctx.subscribe_event::<SessionCreated>();
-        ctx.set_description("Fires plugin lifecycle hooks (on_app_started, on_session_created)");
+    async fn on_start(args: Self::Args, actor_ref: ActorRef<Self>) -> Result<Self, Self::Error> {
+        let r1 = actor_ref.clone().recipient::<AllActorsSpawned>();
+        let r2 = actor_ref.recipient::<SessionCreated>();
+        args.deps.subscribe(r1).await;
+        args.deps.subscribe(r2).await;
 
-        Self {
-            services: deps.services,
-            startup_session_id: deps.startup_session_id,
-        }
+        Ok(Self {
+            services: args.deps.services,
+            startup_session_id: args.startup_session_id,
+        })
     }
+}
 
-    async fn handle(&mut self, msg: ActorEnvelope<NoDirectMsg>, _ctx: &ActorContext) {
-        match msg {
-            ActorEnvelope::Event(event) => {
-                self.handle_event(event).await;
-            }
-            ActorEnvelope::Command(_) | ActorEnvelope::System(_) => {}
+impl BusPublish for PluginLifecycleActor {
+    fn bus(&self) -> &BusService {
+        &self.services.bus
+    }
+}
+
+impl Message<AllActorsSpawned> for PluginLifecycleActor {
+    type Reply = ();
+
+    async fn handle(&mut self, _msg: AllActorsSpawned, _ctx: &mut Context<Self, Self::Reply>) {
+        let ctx = serde_json::json!({
+            "session_id": self.startup_session_id,
+        });
+        if let Err(e) = self
+            .services
+            .plugins
+            .fire_async_json("on_app_started", &ctx)
+            .await
+        {
+            tracing::warn!(err = %e, "on_app_started plugin hook failed");
         }
     }
 }
 
-impl PluginLifecycleActor {
-    async fn handle_event(&self, event: Event) {
-        match event {
-            Event::AllActorsSpawned(_) => {
-                let ctx = serde_json::json!({
-                    "session_id": self.startup_session_id,
-                });
-                if let Err(e) = self
-                    .services
-                    .plugins
-                    .fire_async_json("on_app_started", &ctx)
-                    .await
-                {
-                    tracing::warn!(err = %e, "on_app_started plugin hook failed");
-                }
-            }
-            Event::SessionCreated(SessionCreated { session_id }) => {
-                tracing::debug!(session_id = %session_id, "firing on_session_created plugin hook");
-                let ctx = serde_json::json!({
-                    "session_id": session_id.to_string(),
-                });
-                if let Err(e) = self
-                    .services
-                    .plugins
-                    .fire_async_json("on_session_created", &ctx)
-                    .await
-                {
-                    tracing::warn!(err = %e, "on_session_created plugin hook failed");
-                }
-            }
-            _ => {}
+impl Message<SessionCreated> for PluginLifecycleActor {
+    type Reply = ();
+
+    async fn handle(&mut self, msg: SessionCreated, _ctx: &mut Context<Self, Self::Reply>) {
+        tracing::debug!(session_id = %msg.session_id, "firing on_session_created plugin hook");
+        let ctx = serde_json::json!({
+            "session_id": msg.session_id.to_string(),
+        });
+        if let Err(e) = self
+            .services
+            .plugins
+            .fire_async_json("on_session_created", &ctx)
+            .await
+        {
+            tracing::warn!(err = %e, "on_session_created plugin hook failed");
         }
     }
 }
-
-// Unused but needed for type inference in some contexts.
-fn _command_type_hint(_: Command) {}

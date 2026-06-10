@@ -40,8 +40,11 @@ impl BusService {
         &self,
         recipient: kameo::actor::Recipient<M>,
     ) {
+        // Use ask() instead of tell() to ensure the bus has fully processed
+        // the registration before returning. This prevents a race where on_start
+        // completes but the bus hasn't added the recipient yet.
         self.bus
-            .tell(Register(recipient))
+            .ask(Register(recipient))
             .await
             .expect("bus register should succeed");
     }

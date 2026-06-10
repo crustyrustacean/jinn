@@ -1,61 +1,63 @@
 //! Persona scan actor - scans and loads persona files on command.
 //!
-//! Subscribes to [`RescanPersonas`](crate::protocol::Command::RescanPersonas) commands,
-//! scans the personas directory, and emits [`PersonasLoaded`] events with the results.
+//! Subscribes to [`RescanPersonas`] commands, scans the personas directory,
+//! and publishes [`PersonasLoaded`] events with the results.
 
-use crate::common::actor::scan_actor::NoDirectMsg;
-use crate::common::actor::{Actor, ActorContext, ActorEnvelope};
-use crate::common::services::Services;
+use crate::common::actor_deps::{ActorDeps, BusPublish};
 use crate::feat::context::protocol::command::RescanPersonas;
 use crate::feat::context::protocol::event::PersonasLoaded;
 use crate::feat::persona::scan_personas_merged;
-use crate::protocol::{Command, Event};
-
-/// Dependencies for [`PersonaScanActor`].
-pub struct PersonaScanActorDeps {
-    /// Runtime services.
-    pub services: Services,
-}
+use kameo::prelude::{Actor, ActorRef, Context, Message};
 
 /// Scans and loads persona files on `RescanPersonas`.
 ///
 /// On command, scans user and system persona directories, parses all
-/// `*.md` files, and emits `PersonasLoaded` with the results.
+/// `*.md` files, and publishes `PersonasLoaded` with the results.
 pub struct PersonaScanActor {
-    /// Runtime services.
-    services: Services,
+    deps: ActorDeps,
+}
+
+/// Dependencies for spawning a [`PersonaScanActor`].
+pub struct PersonaScanActorDeps {
+    /// Universal actor dependencies (bus, services, etc.).
+    pub deps: ActorDeps,
 }
 
 impl Actor for PersonaScanActor {
-    type Message = NoDirectMsg;
-    type Deps = PersonaScanActorDeps;
+    type Args = PersonaScanActorDeps;
+    type Error = kameo::error::Infallible;
 
-    fn activate(deps: Self::Deps, ctx: &mut ActorContext) -> Self {
-        ctx.set_description("Scans and loads persona files from ~/.config/jinn/personas");
-        ctx.subscribe_command::<RescanPersonas>();
-        Self {
-            services: deps.services,
-        }
+    async fn on_start(args: Self::Args, actor_ref: ActorRef<Self>) -> Result<Self, Self::Error> {
+        args.deps
+            .subscribe(actor_ref.recipient::<RescanPersonas>())
+            .await;
+
+        Ok(Self { deps: args.deps })
     }
+}
 
-    async fn handle(&mut self, msg: ActorEnvelope<NoDirectMsg>, ctx: &ActorContext) {
-        if let ActorEnvelope::Command(command) = msg {
-            self.handle_command(&command, ctx).await;
-        }
+impl Message<RescanPersonas> for PersonaScanActor {
+    type Reply = ();
+
+    async fn handle(
+        &mut self,
+        _msg: RescanPersonas,
+        _ctx: &mut Context<Self, Self::Reply>,
+    ) -> Self::Reply {
+        self.run_scan().await;
+    }
+}
+
+impl BusPublish for PersonaScanActor {
+    fn bus(&self) -> &crate::common::services::bus_service::BusService {
+        self.deps.bus()
     }
 }
 
 impl PersonaScanActor {
-    /// Dispatches incoming commands.
-    async fn handle_command(&mut self, command: &Command, ctx: &ActorContext) {
-        if matches!(command, Command::RescanPersonas(..)) {
-            self.run_scan(ctx).await;
-        }
-    }
-
-    /// Runs the blocking scan and emits the result.
-    async fn run_scan(&self, ctx: &ActorContext) {
-        let paths = self.services.paths.clone();
+    /// Runs the blocking scan and publishes the result.
+    async fn run_scan(&self) {
+        let paths = self.deps.services.paths.clone();
         let result = tokio::task::spawn_blocking(move || {
             scan_personas_merged(&paths.personas_dir(), &paths.system_personas_dir())
         })
@@ -64,17 +66,19 @@ impl PersonaScanActor {
         match result {
             Ok(personas) => {
                 tracing::info!(count = personas.len(), "rescanned personas");
-                let _ = ctx.send_event(Event::PersonasLoaded(PersonasLoaded {
+                self.publish(PersonasLoaded {
                     personas,
                     error: None,
-                }));
+                })
+                .await;
             }
             Err(join_error) => {
                 tracing::error!("persona rescan task panicked: {join_error}");
-                let _ = ctx.send_event(Event::PersonasLoaded(PersonasLoaded {
+                self.publish(PersonasLoaded {
                     personas: vec![],
                     error: Some(format!("rescan task failed: {join_error}")),
-                }));
+                })
+                .await;
             }
         }
     }
@@ -82,104 +86,105 @@ impl PersonaScanActor {
 
 #[cfg(test)]
 mod tests {
-    #![allow(clippy::expect_used, clippy::panic, clippy::unreachable, clippy::indexing_slicing, reason = "test code")]
-    use std::sync::Arc;
+    #![allow(
+        clippy::expect_used,
+        clippy::panic,
+        clippy::unreachable,
+        clippy::indexing_slicing,
+        reason = "test code"
+    )]
 
-    use crate::common::actor::{Actor, ActorContext, ActorEnvelope, MessageSink, RecordingSink};
+    use std::time::Duration;
+
     use crate::common::app_paths::AppPaths;
+    use crate::common::bus::test_harness::{TestHarness, await_recorded};
+    use crate::common::services::test_services::TestServices;
     use crate::feat::context::protocol::command::RescanPersonas;
     use crate::feat::context::protocol::event::PersonasLoaded;
-    use crate::protocol::{Command, Event};
 
-    use super::*;
+    use super::{PersonaScanActor, PersonaScanActorDeps};
 
-    fn find_personas_loaded(events: &[Event]) -> Option<&PersonasLoaded> {
-        for evt in events {
-            if let Event::PersonasLoaded(payload) = evt {
-                return Some(payload);
-            }
-        }
-        None
-    }
-
-    fn create_actor(
-        dir: &tempfile::TempDir,
-    ) -> (PersonaScanActor, Arc<RecordingSink>, ActorContext) {
-        let sink = Arc::new(RecordingSink::new());
-        let mut ctx = ActorContext::new("persona-scan-test", sink.clone() as Arc<dyn MessageSink>);
-        let services = crate::common::services::test_services::TestServices::builder()
-            .paths(AppPaths::new_in(dir.path()))
-            .build();
-        let deps = PersonaScanActorDeps { services };
-
-        let actor = PersonaScanActor::activate(deps, &mut ctx);
-        (actor, sink, ctx)
+    async fn create_harness_with_dir(dir: &tempfile::TempDir) -> TestHarness {
+        let harness = TestHarness::new().await;
+        let _ = dir; // just ensuring the dir exists
+        harness
     }
 
     #[rstest::rstest]
     #[tokio::test]
-    async fn scan_personas_command_emits_personas_loaded() {
+    async fn scan_personas_command_publishes_personas_loaded() {
         // Given an actor with a temp directory.
         let dir = tempfile::tempdir().expect("create temp dir");
-        let (mut actor, sink, ctx) = create_actor(&dir);
-
-        // When processing RescanPersonas command.
-        actor
-            .handle(
-                ActorEnvelope::Command(Command::RescanPersonas(RescanPersonas)),
-                &ctx,
-            )
+        let harness = TestHarness::new().await;
+        let services = TestServices::builder()
+            .paths(AppPaths::new_in(dir.path()))
+            .with_bus(harness.bus())
+            .build();
+        let _actor = harness
+            .spawn_actor::<PersonaScanActor>(PersonaScanActorDeps {
+                deps: crate::common::actor_deps::ActorDeps { services },
+            })
             .await;
+        let recorder = harness.spawn_recorder::<PersonasLoaded>().await;
 
-        // Then PersonasLoaded event is emitted.
-        let events = sink.events();
-        let loaded = find_personas_loaded(&events);
-        assert!(loaded.is_some());
-        let loaded = loaded.expect("should have PersonasLoaded");
-        assert!(loaded.error.is_none());
+        // When publishing RescanPersonas.
+        harness.publish(RescanPersonas).await;
+
+        // Then PersonasLoaded is published.
+        let events = await_recorded(&recorder, 1, Duration::from_secs(2)).await;
+        assert_eq!(events.len(), 1);
+        assert!(events[0].error.is_none());
     }
 
     #[rstest::rstest]
     #[tokio::test]
-    async fn scan_personas_empty_dir_emits_empty_loaded() {
+    async fn scan_personas_empty_dir_publishes_empty_loaded() {
         // Given an actor with an empty temp directory.
         let dir = tempfile::tempdir().expect("create temp dir");
-        let (mut actor, sink, ctx) = create_actor(&dir);
-
-        // When processing RescanPersonas command.
-        actor
-            .handle(
-                ActorEnvelope::Command(Command::RescanPersonas(RescanPersonas)),
-                &ctx,
-            )
+        let harness = TestHarness::new().await;
+        let services = TestServices::builder()
+            .paths(AppPaths::new_in(dir.path()))
+            .with_bus(harness.bus())
+            .build();
+        let _actor = harness
+            .spawn_actor::<PersonaScanActor>(PersonaScanActorDeps {
+                deps: crate::common::actor_deps::ActorDeps { services },
+            })
             .await;
+        let recorder = harness.spawn_recorder::<PersonasLoaded>().await;
+
+        // When publishing RescanPersonas.
+        harness.publish(RescanPersonas).await;
 
         // Then PersonasLoaded has empty list.
-        let events = sink.events();
-        let loaded = find_personas_loaded(&events).expect("should have PersonasLoaded");
-        assert!(loaded.personas.is_empty());
-        assert!(loaded.error.is_none());
+        let events = await_recorded(&recorder, 1, Duration::from_secs(2)).await;
+        assert!(events[0].personas.is_empty());
+        assert!(events[0].error.is_none());
     }
 
     #[rstest::rstest]
     #[tokio::test]
-    async fn scan_personas_nonexistent_dir_emits_empty_loaded() {
+    async fn scan_personas_nonexistent_dir_publishes_empty_loaded() {
         // Given an actor with a nonexistent directory.
         let dir = tempfile::tempdir().expect("create temp dir");
-        let (mut actor, sink, ctx) = create_actor(&dir);
-
-        // When processing RescanPersonas command.
-        actor
-            .handle(
-                ActorEnvelope::Command(Command::RescanPersonas(RescanPersonas)),
-                &ctx,
-            )
+        let harness = TestHarness::new().await;
+        let services = TestServices::builder()
+            .paths(AppPaths::new_in(dir.path()))
+            .with_bus(harness.bus())
+            .build();
+        let _actor = harness
+            .spawn_actor::<PersonaScanActor>(PersonaScanActorDeps {
+                deps: crate::common::actor_deps::ActorDeps { services },
+            })
             .await;
+        let recorder = harness.spawn_recorder::<PersonasLoaded>().await;
+
+        // When publishing RescanPersonas.
+        harness.publish(RescanPersonas).await;
 
         // Then PersonasLoaded has empty list.
-        let events = sink.events();
-        let loaded = find_personas_loaded(&events).expect("should have PersonasLoaded");
-        assert!(loaded.personas.is_empty());
-        assert!(loaded.error.is_none());
+        let events = await_recorded(&recorder, 1, Duration::from_secs(2)).await;
+        assert!(events[0].personas.is_empty());
+        assert!(events[0].error.is_none());
     }
 }

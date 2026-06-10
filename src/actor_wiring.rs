@@ -34,6 +34,7 @@ use jinn_domain::UserPreferencesStorageService;
 use jinn_domain::actor_channel::ActorChannelService;
 use jinn_domain::common::actor::protocol::event::{ActorStarted, ActorStarting, AllActorsSpawned};
 use jinn_domain::common::actor_deps::ActorDeps;
+use jinn_domain::feat::preferences_actor::preferences_actor::{PreferencesActor, PreferencesActorDeps};
 use jinn_domain::feat::context::strategy::token_estimator::TiktokenCounter;
 
 use jinn_domain::feat::plugin_dispatch::{PluginDispatchActor, PluginDispatchActorDeps};
@@ -357,19 +358,12 @@ impl ActorSystemBuilder {
             },
         ));
 
-        // Preferences: loads and persists user preferences.
-        actors.push(spawn::<
-            jinn_domain::feat::preferences_actor::preferences_actor::PreferencesActor,
-        >(
-            "preferences",
-            &sink,
-            handle,
-            &counter,
-            &shutdown_tracker,
-            jinn_domain::feat::preferences_actor::preferences_actor::PreferencesActorDeps {
+        // Preferences: loads and persists user preferences. (Migrated to kameo.)
+        let _preferences = PreferencesActor::spawn(PreferencesActorDeps {
+            deps: ActorDeps {
                 services: services.clone(),
             },
-        ));
+        });
 
         // Preferences state sync: updates AppState from PreferencesUpdated events.
         actors.push(spawn::<
@@ -565,20 +559,16 @@ impl ActorSystemBuilder {
             },
         );
 
-        // Persona scan actor.
-        actors.push(spawn::<
-            jinn_domain::feat::persona::persona_scan_actor::PersonaScanActor,
-        >(
-            "persona-scan",
-            &sink,
-            handle,
-            &counter,
-            &shutdown_tracker,
-            jinn_domain::feat::persona::persona_scan_actor::PersonaScanActorDeps {
-                services: services.clone(),
-            },
-        ));
 
+        // Persona scan actor.
+        {
+            use jinn_domain::feat::persona::persona_scan_actor::PersonaScanActor;
+            use jinn_domain::feat::persona::persona_scan_actor::PersonaScanActorDeps;
+
+            let _persona_scan = PersonaScanActor::spawn(PersonaScanActorDeps {
+                deps: ActorDeps { services: services.clone() },
+            });
+        }
         // Provider actor.
         actors.push(spawn::<
             jinn_domain::feat::provider::provider_actor::ProviderActor,

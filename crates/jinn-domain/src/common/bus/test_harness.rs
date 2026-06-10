@@ -28,7 +28,7 @@ impl TestHarness {
     /// Create a new harness with a fresh `MessageBus`.
     pub async fn new() -> Self {
         let bus =
-            kameo_actors::message_bus::MessageBus::new(kameo_actors::DeliveryStrategy::BestEffort);
+            kameo_actors::message_bus::MessageBus::new(kameo_actors::DeliveryStrategy::Guaranteed);
         let bus_ref = Spawn::spawn(bus);
         let bus = BusService::new(bus_ref.clone());
         Self { bus, bus_ref }
@@ -58,7 +58,7 @@ impl TestHarness {
     pub async fn spawn_recorder<M: Clone + Send + 'static>(&self) -> ActorRef<Recorder<M>> {
         let recorder = Recorder::<M>::spawn(());
         self.bus_ref
-            .tell(Register(recorder.clone().recipient::<M>()))
+            .ask(Register(recorder.clone().recipient::<M>()))
             .await
             .expect("register recorder");
         recorder
