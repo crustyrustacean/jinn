@@ -15,7 +15,7 @@ use crate::feat::ui::chat_log::visual_item::{
     DEFAULT_MIN_COLLAPSE_COUNT, PROXIMITY_COUNT, build_visual_items,
 };
 use crate::protocol::{
-    ChatEntry, ChatEntryId, ChatEntryKind, ContextOverride, PinPosition, SessionId,
+    ChatEntry, ChatEntryId, ChatEntryKind, ContextOverride, EntryTiming, PinPosition, SessionId,
 };
 use std::path::PathBuf;
 
@@ -2017,6 +2017,34 @@ fn finalize_tool_result_completes_pending_entry() {
             .streaming_tool_result_indices()
             .contains_key("call_1")
     );
+}
+
+#[test]
+fn tool_result_entry_gets_finished_at_on_finalize() {
+    // Given a session in streaming state with a pending tool result.
+    let mut session = ChatSessionState::new();
+    session.begin_sending();
+    session.begin_streaming();
+    session.begin_tool_result("call_1", "bash", jiff::Timestamp::now());
+
+    // When finalizing the tool result.
+    session.finalize_tool_result("call_1", "bash", "done", true, None, None, None);
+
+    // Then the ToolResult entry has finished_at set.
+    let entry = session
+        .history()
+        .iter()
+        .find(|e| matches!(&e.kind, ChatEntryKind::ToolResult { id, .. } if id == "call_1"))
+        .expect("tool result entry");
+    match &entry.timing {
+        EntryTiming::Streamed { finished_at, .. } => {
+            assert!(
+                finished_at.is_some(),
+                "finished_at should be set after finalize"
+            );
+        }
+        other => panic!("expected Streamed, got {other:?}"),
+    }
 }
 
 #[test]
@@ -4828,4 +4856,138 @@ fn loaded_skills_returns_only_valid_pinned_skill_names() {
         std::collections::HashSet::from(["phased-task-loop".to_owned()]),
         "loaded_skills() should return exactly the one valid pinned skill name"
     );
+}
+
+// ─── EntryTiming integration tests ────────────────────────────────
+// ─── EntryTiming integration tests ────────────────────────────────
+
+fn streaming_session() -> ChatSessionState {
+    let mut session = ChatSessionState::new();
+    session.begin_streaming();
+    session
+}
+
+fn dispatched_at() -> jiff::Timestamp {
+    jiff::Timestamp::now()
+}
+
+#[test]
+fn streamed_entry_begins_with_dispatched_at_only() {
+    // Given a session in streaming phase.
+    let mut session = streaming_session();
+    let da = dispatched_at();
+
+    // When starting a thinking entry.
+    session.begin_thinking(da);
+
+    // Then the entry has dispatched_at set and first_token_at is Some.
+    let entry = session.history().last().expect("entry exists");
+    match &entry.timing {
+        EntryTiming::Streamed {
+            dispatched_at: d,
+            first_token_at: Some(ft),
+            finished_at: None,
+            ..
+        } => {
+            assert_eq!(*d, da, "dispatched_at should match");
+            assert!(*ft >= da, "first_token_at should be >= dispatched_at");
+        }
+        other => {
+            panic!("expected Streamed with first_token_at=Some, finished_at=None, got {other:?}")
+        }
+    };
+}
+
+#[test]
+fn streamed_entry_gets_first_token_at_on_creation() {
+    // Given a session in streaming phase.
+    let mut session = streaming_session();
+    let da = dispatched_at();
+
+    // When appending a stream token (lazily creates assistant entry).
+    let _ = session.append_stream_token("Hello", da);
+
+    // Then the assistant entry has first_token_at set.
+    let entry = session
+        .history()
+        .iter()
+        .find(|e| matches!(e.kind, ChatEntryKind::Assistant(_)))
+        .expect("assistant entry");
+    match &entry.timing {
+        EntryTiming::Streamed {
+            dispatched_at: d,
+            first_token_at: Some(ft),
+            finished_at: None,
+            ..
+        } => {
+            assert_eq!(*d, da);
+            assert!(*ft >= da);
+        }
+        other => panic!("expected Streamed with first_token_at=Some, got {other:?}"),
+    };
+}
+
+#[test]
+fn streamed_entry_gets_finished_at_on_stream_complete() {
+    // Given a session in streaming phase with an assistant entry.
+    let mut session = streaming_session();
+    let da = dispatched_at();
+    let _ = session.append_stream_token("Hello", da);
+
+    // When finishing the stream.
+    session.finish_streaming_entry(
+        session
+            .history()
+            .iter()
+            .rposition(|e| matches!(e.kind, ChatEntryKind::Assistant(_)))
+            .expect("assistant index"),
+    );
+
+    // Then the assistant entry has finished_at set.
+    let entry = session
+        .history()
+        .iter()
+        .find(|e| matches!(e.kind, ChatEntryKind::Assistant(_)))
+        .expect("assistant entry");
+    match &entry.timing {
+        EntryTiming::Streamed {
+            dispatched_at: d,
+            first_token_at: Some(ft),
+            finished_at: Some(fin),
+            ..
+        } => {
+            assert_eq!(*d, da);
+            assert!(*ft >= da);
+            assert!(*fin >= *ft);
+        }
+        other => panic!("expected Streamed with all timestamps set, got {other:?}"),
+    };
+}
+
+#[test]
+fn tool_call_entry_gets_dispatched_at_from_tool_use_started() {
+    // Given a session in streaming phase.
+    let mut session = streaming_session();
+    let da = dispatched_at();
+
+    // When beginning a tool call.
+    session.begin_tool_call(0, "call_1", "echo", da);
+
+    // Then the tool call entry has dispatched_at from the event.
+    let entry = session
+        .history()
+        .iter()
+        .find(|e| matches!(e.kind, ChatEntryKind::ToolCall { .. }))
+        .expect("tool call entry");
+    match &entry.timing {
+        EntryTiming::Streamed {
+            dispatched_at: d,
+            first_token_at: Some(_),
+            finished_at: None,
+            ..
+        } => {
+            assert_eq!(*d, da, "dispatched_at should come from ToolUseStarted");
+        }
+        other => panic!("expected Streamed, got {other:?}"),
+    };
 }

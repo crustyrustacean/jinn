@@ -16,7 +16,9 @@ use crate::feat::tools_actor::get_time;
 use crate::feat::tools_actor::protocol::command::{
     CancelToolBatch, ExecuteToolBatch, RegisterTools,
 };
-use crate::feat::tools_actor::protocol::event::{ToolBatchCompleted, ToolExecutionCompleted};
+use crate::feat::tools_actor::protocol::event::{
+    ToolBatchCompleted, ToolExecutionCompleted, ToolExecutionStarted,
+};
 use crate::feat::tools_actor::read;
 use crate::feat::tools_actor::tool_types::{ToolCall, ToolContext, ToolDefinition, ToolResult};
 use crate::feat::tools_actor::write;
@@ -69,6 +71,16 @@ fn find_execution_completed(events: &[Event]) -> Vec<&ToolExecutionCompleted> {
         .iter()
         .filter_map(|e| match e {
             Event::ToolExecutionCompleted(payload) => Some(payload),
+            _ => None,
+        })
+        .collect()
+}
+
+fn find_execution_started(events: &[Event]) -> Vec<&ToolExecutionStarted> {
+    events
+        .iter()
+        .filter_map(|e| match e {
+            Event::ToolExecutionStarted(payload) => Some(payload),
             _ => None,
         })
         .collect()
@@ -1174,4 +1186,44 @@ fn tool_registration_debug_shows_name() {
         debug_str.contains("my_tool"),
         "Debug output should contain tool name: {debug_str}"
     );
+}
+
+// --- dispatched_at integration tests ---
+
+#[rstest::rstest]
+#[tokio::test]
+async fn dispatched_at_flows_to_tool_execution_started() {
+    // Given an activated tool orchestrator with bash registered.
+    let (sink, mut ctx, deps) = default_test_ctx();
+    let mut actor = ToolOrchestratorActor::activate(deps, &mut ctx);
+    sink.clear();
+
+    let session_id = SessionId::new();
+    let dispatched = jiff::Timestamp::now();
+
+    // When executing a batch with a bash tool call.
+    let cmd = Command::ExecuteToolBatch(ExecuteToolBatch {
+        session_id: session_id.clone(),
+        tool_calls: vec![ToolCall {
+            id: "call_dispatched".to_owned(),
+            name: "bash".to_owned(),
+            arguments: serde_json::json!({ "command": "echo hello" }).to_string(),
+        }],
+        dispatched_at: dispatched,
+    });
+    actor.handle_command(&cmd, &ctx);
+
+    // Then the emitted ToolExecutionStarted carries the same dispatched_at.
+    tokio::time::sleep(std::time::Duration::from_millis(100)).await;
+    let events = sink.take_events();
+    let started = find_execution_started(&events);
+    assert!(
+        !started.is_empty(),
+        "expected ToolExecutionStarted event, got {:?}",
+        events
+            .iter()
+            .map(|e| format!("{:?}", e))
+            .collect::<Vec<_>>()
+    );
+    assert_eq!(started[0].dispatched_at, dispatched);
 }

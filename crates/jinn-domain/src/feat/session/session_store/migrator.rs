@@ -1187,4 +1187,36 @@ mod tests {
                 .collect::<Vec<_>>()
         );
     }
+
+    #[test]
+    fn migrate_v17_renames_timestamp_and_preserves_value() {
+        #[derive(QueryableByName)]
+        struct TimingRow {
+            #[diesel(sql_type = diesel::sql_types::Text)]
+            timing: String,
+        }
+
+        // Given a database at v16 (timestamp column, before rename).
+        let (_dir, mut conn) = make_conn();
+        apply_migrations_up_to(&mut conn, 15);
+        migrate_v16(&mut conn).expect("v16");
+        record_version(&mut conn, 16, "add_persist_and_is_automated").expect("record v16");
+
+        // Insert a row with the old `timestamp` column.
+        let legacy_ts = "2024-01-15T10:30:00Z";
+        sql_query("INSERT INTO entries (id, timestamp, kind) VALUES ('e1', ?, 'user')")
+            .bind::<diesel::sql_types::Text, _>(legacy_ts)
+            .execute(&mut conn)
+            .expect("insert legacy row");
+
+        // When running migrations (v17 renames timestamp → timing).
+        run_migrations(&mut conn).expect("run_migrations");
+
+        // Then the column is renamed and the value is preserved.
+        let rows: Vec<TimingRow> = sql_query("SELECT timing FROM entries WHERE id = 'e1'")
+            .load(&mut conn)
+            .expect("read timing");
+        assert_eq!(rows.len(), 1, "entry should exist");
+        assert_eq!(rows[0].timing, legacy_ts, "value preserved through rename");
+    }
 }
