@@ -77,7 +77,6 @@ mod tests {
     )]
     use super::*;
     use crate::common::bus::test_harness::TestHarness;
-    use crate::common::services::Services;
     use crate::feat::preferences_actor::user_preferences::UserPreferences;
 
     async fn create_deps(harness: &TestHarness) -> PreferencesStateSyncActorDeps {

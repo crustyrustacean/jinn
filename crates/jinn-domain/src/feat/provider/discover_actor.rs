@@ -220,7 +220,6 @@ mod tests {
 
     use std::time::Duration;
 
-    use crate::common::actor_deps::ActorDeps;
     use crate::common::app_state::AppState;
     use crate::common::bus::test_harness::{TestHarness, await_recorded};
     use crate::common::state::State;

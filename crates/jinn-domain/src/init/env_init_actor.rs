@@ -109,7 +109,6 @@ mod tests {
     )]
     use std::time::Duration;
 
-    use crate::common::actor_deps::ActorDeps;
     use crate::common::bus::test_harness::{TestHarness, await_recorded};
 
     use super::{EnvInitActor, EnvInitActorDeps, EnvironmentLoaded};

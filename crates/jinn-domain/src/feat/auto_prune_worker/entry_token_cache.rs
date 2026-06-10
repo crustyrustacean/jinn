@@ -121,7 +121,7 @@ impl HistoryWorkerChatEntryTokenCache {
 // Actor: session-lifecycle eviction.
 // ---------------------------------------------------------------------------
 
-use crate::common::actor_deps::{ActorDeps, BusPublish};
+use crate::common::actor_deps::ActorDeps;
 use crate::feat::session::protocol::session_closed::SessionClosed;
 use kameo::prelude::{Actor, ActorRef, Context, Message};
 
@@ -197,7 +197,6 @@ mod tests {
     use std::sync::atomic::{AtomicUsize, Ordering};
     use std::time::Duration;
 
-    use crate::feat::session::protocol::session_closed::SessionClosed;
 
     use super::*;
 
