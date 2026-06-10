@@ -129,7 +129,11 @@ impl SessionPersistenceActor {
                 // Finalize the last record if one exists (i.e., prompt assembled first).
                 // If no record exists (e.g., session restored mid-stream), skip silently.
                 if !session.token_ledger().is_empty()
-                    && let Err(e) = session.finalize_last_token_record(output_tokens, event.cost, event.model_used.clone())
+                    && let Err(e) = session.finalize_last_token_record(
+                        output_tokens,
+                        event.cost,
+                        event.model_used.clone(),
+                    )
                 {
                     tracing::error!(err = ?e, "failed to finalize token record");
                 }

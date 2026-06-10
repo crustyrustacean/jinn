@@ -10,10 +10,11 @@ use crate::common::app_state::AppState;
 use crate::common::app_state::FocusScope;
 use crate::feat::context::protocol::command::{LoadPersonaPickerEntries, ScanContextFiles};
 use crate::feat::preferences_actor::protocol::app_state_command::{AppStateUpdate, UpdateAppState};
+use crate::feat::provider::picker_entry::PickerEntry;
 use crate::feat::provider::protocol::command::{
     LoadProviderPickerEntries, ProviderSwitch, RescanPromptTemplates,
 };
-use crate::feat::session::model_selection::ModelSelection;
+use crate::feat::session::model_selection::{AlloyStrategy, ModelSelection};
 use crate::feat::session::protocol::load_session_picker_entries::LoadSessionPickerEntries;
 use crate::feat::session::protocol::session_load_requested::SessionLoadRequested;
 use crate::feat::skills::ScanSkills;
@@ -339,25 +340,70 @@ pub fn handle_move_cursor_right(state: &mut AppState) -> IntentResult {
 
 /// Confirms the selected provider and dispatches a switch command.
 fn confirm_provider(state: &mut AppState) -> IntentResult {
-    let Some(entry) = state.provider.provider_picker.selected_item() else {
-        return IntentResult::empty();
+    let selected: Vec<String> = state
+        .provider
+        .provider_picker
+        .items()
+        .iter()
+        .filter(|entry| entry.selected && entry.is_available)
+        .map(|entry| entry.provider_id.clone())
+        .collect();
+
+    // Check if the single selected/highlighted entry is a named alloy.
+    let model_selection = if selected.is_empty() {
+        // Fallback to the highlighted entry if nothing is explicitly selected.
+        let Some(entry) = state.provider.provider_picker.selected_item() else {
+            return IntentResult::empty();
+        };
+        if !entry.is_available {
+            return IntentResult::empty();
+        }
+        entry_to_model_selection(entry)
+    } else if selected.len() == 1 {
+        // One selected entry — could be a named alloy or a single model.
+        if let Some(entry) = state.provider.provider_picker.items().iter().find(|e| {
+            let first_pid = selected.first().expect("guarded by len() == 1");
+            e.provider_id == *first_pid && e.selected
+        }) {
+            entry_to_model_selection(entry)
+        } else {
+            ModelSelection::default()
+        }
+    } else {
+        // Multiple selected entries — build an anonymous alloy.
+        ModelSelection::Alloy {
+            models: selected,
+            strategy: AlloyStrategy::RoundRobin { index: 0 },
+        }
     };
-    if !entry.is_available {
-        return IntentResult::empty();
-    }
-    let provider_id = entry.provider_id.clone();
+
+    let last_model = model_selection.last_model().map(ToOwned::to_owned);
     let session_id = state.session.active_session_id().clone();
 
     state.frontend.scope_stack.pop();
     IntentResult::with_commands(vec![
         Command::ProviderSwitch(ProviderSwitch {
             session_id,
-            provider_id: ModelSelection::Single(provider_id.clone()),
+            provider_id: model_selection,
         }),
         Command::UpdateAppState(UpdateAppState {
-            updates: vec![AppStateUpdate::SetLastModel(Some(provider_id))],
+            updates: vec![AppStateUpdate::SetLastModel(last_model)],
         }),
     ])
+}
+
+/// Converts a picker entry into a [`ModelSelection`].
+/// Named alloys (entries with `alloy_models`) become `ModelSelection::Alloy`;
+/// regular entries become `ModelSelection::Single`.
+fn entry_to_model_selection(entry: &PickerEntry) -> ModelSelection {
+    if let Some(models) = &entry.alloy_models {
+        ModelSelection::Alloy {
+            models: models.clone(),
+            strategy: AlloyStrategy::RoundRobin { index: 0 },
+        }
+    } else {
+        ModelSelection::Single(entry.provider_id.clone())
+    }
 }
 
 /// Confirms the selected persona and sets it as active.
@@ -684,6 +730,31 @@ pub fn handle_skill_toggle(state: &mut AppState) -> IntentResult {
     IntentResult::empty()
 }
 
+/// Toggles the selected model's `selected` state in the provider picker.
+///
+/// Used for multi-select alloy building. When toggled on, the entry gets a
+/// checkmark and is sorted to the top of the list. The cursor moves down after toggle.
+pub fn handle_model_toggle(state: &mut AppState) -> IntentResult {
+    state.provider.provider_picker.with_selected_mut(|entry| {
+        entry.selected = !entry.selected;
+    });
+    state.provider.provider_picker.move_down(PICKER_MAX_VISIBLE);
+
+    // Re-sort: selected entries to top, then alphabetical.
+    resort_provider_picker(&mut state.provider.provider_picker);
+
+    IntentResult::empty()
+}
+
+/// Re-sorts provider picker entries: selected first (alphabetical), then unselected (alphabetical).
+fn resort_provider_picker(picker: &mut jinn_selection_widget::SelectionState<PickerEntry>) {
+    let entries: Vec<PickerEntry> = picker.items().to_vec();
+    let (selected, unselected): (Vec<_>, Vec<_>) = entries.into_iter().partition(|e| e.selected);
+    let mut sorted: Vec<PickerEntry> = selected;
+    sorted.extend(unselected);
+    picker.set_items(sorted);
+}
+
 /// Refreshes discovered project resources (skills, prompts, AGENTS.md) by
 /// rescanning the session's cwd. Issues all three scan commands so the
 /// discovery coordinator receives a complete set of `*Loaded` events and
@@ -755,6 +826,8 @@ mod tests {
             is_available: false, // Unavailable!
             is_remote: false,
             is_active: false,
+            selected: false,
+            alloy_models: None,
             theme: crate::feat::theme::default_theme(),
         };
         state.provider.provider_picker.set_items(vec![entry]);
@@ -788,6 +861,8 @@ mod tests {
             is_available: true, // Available!
             is_remote: false,
             is_active: false,
+            selected: false,
+            alloy_models: None,
             theme: crate::feat::theme::default_theme(),
         };
         state.provider.provider_picker.set_items(vec![entry]);
@@ -797,6 +872,207 @@ mod tests {
 
         // Then commands are emitted.
         assert!(!result.commands.is_empty());
+    }
+
+    #[rstest::rstest]
+    fn confirm_provider_with_alloy_entry_creates_alloy_selection() {
+        // Given a picker with an alloy entry selected.
+        let mut state = AppState::default();
+        let origin = ChatSessionState::new();
+        state.session.insert(origin);
+        state
+            .session
+            .set_active(state.session.active_session_id().clone());
+
+        let entry = crate::protocol::PickerEntry {
+            provider_id: "alloy:round-robin".to_owned(),
+            name: "round-robin".to_owned(),
+            provider_name: String::new(),
+            backend: String::new(),
+            model: "2 models".to_owned(),
+            search_text: "round-robin".to_owned(),
+            is_alias: false,
+            alias_target: None,
+            is_available: true,
+            is_remote: false,
+            is_active: false,
+            selected: false,
+            alloy_models: Some(vec![
+                "ollama/llama3".to_owned(),
+                "openrouter/gpt-4".to_owned(),
+            ]),
+            theme: crate::feat::theme::default_theme(),
+        };
+        state.provider.provider_picker.set_items(vec![entry]);
+        state.provider.provider_picker.move_down(1);
+
+        let result = confirm_provider(&mut state);
+
+        // Then a command is emitted (the alloy was accepted).
+        assert!(!result.commands.is_empty());
+        // And the command carries a ModelSelection::Alloy.
+        let cmd = &result.commands[0];
+        let json = serde_json::to_string(cmd).expect("serialize");
+        assert!(
+            json.contains("alloy"),
+            "command should contain alloy: {json}"
+        );
+    }
+
+    #[rstest::rstest]
+    fn handle_model_toggle_flips_selected() {
+        // Given a picker with two available entries.
+        let mut state = AppState::default();
+        let origin = ChatSessionState::new();
+        state.session.insert(origin);
+        state
+            .session
+            .set_active(state.session.active_session_id().clone());
+        state.frontend.scope_stack.push(FocusScope::Picker {
+            kind: PickerKind::Provider,
+        });
+
+        let entries = vec![
+            crate::protocol::PickerEntry {
+                provider_id: "ollama/llama3".to_owned(),
+                name: "ollama".to_owned(),
+                provider_name: "ollama".to_owned(),
+                backend: "ollama".to_owned(),
+                model: "llama3".to_owned(),
+                search_text: "llama3".to_owned(),
+                is_alias: false,
+                alias_target: None,
+                is_available: true,
+                is_remote: false,
+                is_active: false,
+                selected: false,
+                alloy_models: None,
+                theme: crate::feat::theme::default_theme(),
+            },
+            crate::protocol::PickerEntry {
+                provider_id: "openrouter/gpt-4".to_owned(),
+                name: "openrouter".to_owned(),
+                provider_name: "openrouter".to_owned(),
+                backend: "openrouter".to_owned(),
+                model: "gpt-4".to_owned(),
+                search_text: "gpt-4".to_owned(),
+                is_alias: false,
+                alias_target: None,
+                is_available: true,
+                is_remote: false,
+                is_active: false,
+                selected: false,
+                alloy_models: None,
+                theme: crate::feat::theme::default_theme(),
+            },
+        ];
+        state.provider.provider_picker.set_items(entries);
+        state.provider.provider_picker.move_down(1); // Highlight first entry.
+
+        // When toggling model selection.
+        handle_model_toggle(&mut state);
+
+        // Then the first entry is now selected.
+        let first = state.provider.provider_picker.items()[0].selected;
+        assert!(first, "first entry should be selected after toggle");
+    }
+
+    #[rstest::rstest]
+    fn handle_model_toggle_toggles_off() {
+        // Given a picker with one entry already selected.
+        let mut state = AppState::default();
+        let origin = ChatSessionState::new();
+        state.session.insert(origin);
+        state
+            .session
+            .set_active(state.session.active_session_id().clone());
+        state.frontend.scope_stack.push(FocusScope::Picker {
+            kind: PickerKind::Provider,
+        });
+
+        let entries = vec![crate::protocol::PickerEntry {
+            provider_id: "ollama/llama3".to_owned(),
+            name: "ollama".to_owned(),
+            provider_name: "ollama".to_owned(),
+            backend: "ollama".to_owned(),
+            model: "llama3".to_owned(),
+            search_text: "llama3".to_owned(),
+            is_alias: false,
+            alias_target: None,
+            is_available: true,
+            is_remote: false,
+            is_active: false,
+            selected: true, // Already selected
+            alloy_models: None,
+            theme: crate::feat::theme::default_theme(),
+        }];
+        state.provider.provider_picker.set_items(entries);
+        state.provider.provider_picker.move_down(1);
+
+        // When toggling model selection again.
+        handle_model_toggle(&mut state);
+
+        // Then the entry is now deselected.
+        let first = state.provider.provider_picker.items()[0].selected;
+        assert!(!first, "entry should be deselected after second toggle");
+    }
+
+    #[rstest::rstest]
+    fn confirm_provider_with_multiple_selected_creates_alloy() {
+        // Given a picker with two available entries, both selected.
+        let mut state = AppState::default();
+        let origin = ChatSessionState::new();
+        state.session.insert(origin);
+        state
+            .session
+            .set_active(state.session.active_session_id().clone());
+
+        let entries = vec![
+            crate::protocol::PickerEntry {
+                provider_id: "ollama/llama3".to_owned(),
+                name: "ollama".to_owned(),
+                provider_name: "ollama".to_owned(),
+                backend: "ollama".to_owned(),
+                model: "llama3".to_owned(),
+                search_text: "llama3".to_owned(),
+                is_alias: false,
+                alias_target: None,
+                is_available: true,
+                is_remote: false,
+                is_active: false,
+                selected: true, // Selected!
+                alloy_models: None,
+                theme: crate::feat::theme::default_theme(),
+            },
+            crate::protocol::PickerEntry {
+                provider_id: "openrouter/gpt-4".to_owned(),
+                name: "openrouter".to_owned(),
+                provider_name: "openrouter".to_owned(),
+                backend: "openrouter".to_owned(),
+                model: "gpt-4".to_owned(),
+                search_text: "gpt-4".to_owned(),
+                is_alias: false,
+                alias_target: None,
+                is_available: true,
+                is_remote: false,
+                is_active: false,
+                selected: true, // Selected!
+                alloy_models: None,
+                theme: crate::feat::theme::default_theme(),
+            },
+        ];
+        state.provider.provider_picker.set_items(entries);
+
+        let result = confirm_provider(&mut state);
+
+        // Then a command is emitted with ModelSelection::Alloy.
+        assert!(!result.commands.is_empty());
+        let cmd = &result.commands[0];
+        let json = serde_json::to_string(cmd).expect("serialize");
+        assert!(
+            json.contains("alloy") && json.contains("round_robin"),
+            "command should be an alloy with round_robin strategy: {json}"
+        );
     }
 
     #[rstest::rstest]

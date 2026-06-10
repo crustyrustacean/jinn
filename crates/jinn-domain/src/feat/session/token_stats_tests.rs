@@ -245,7 +245,6 @@ fn aggregate_handles_nested_children() {
 
 // --- TokenRecord serde ---
 
-
 #[rstest::rstest]
 fn token_record_with_model_used_round_trips_through_serde() {
     // Given a record with model_used set.

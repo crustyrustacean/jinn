@@ -65,6 +65,8 @@ pub fn load_compaction_model_picker_items(services: &Services, state: &mut AppSt
         is_available: true,
         is_remote: false,
         is_active: sentinel_active,
+        selected: false,
+        alloy_models: None,
         theme: state.frontend.theme.clone(),
     };
 

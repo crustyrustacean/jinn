@@ -24,7 +24,6 @@ fn make_config(
     }
 }
 
-
 fn ollama_entry() -> ProviderEntry {
     ProviderEntry {
         name: "ollama".to_owned(),

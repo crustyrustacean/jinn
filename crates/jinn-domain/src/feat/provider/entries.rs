@@ -30,6 +30,9 @@ pub fn sorted_entries(
     available.sort_by(|a, b| a.model.to_lowercase().cmp(&b.model.to_lowercase()));
     unavailable.sort_by(|a, b| a.model.to_lowercase().cmp(&b.model.to_lowercase()));
 
+    // Promote selected entries to top (for multi-select alloy building).
+    promote_selected_to_top(&mut available);
+
     // Promote active provider to top when filter is empty.
     if filter.is_empty() && active_provider != crate::feat::provider_infra::NO_PROVIDER_ID {
         promote_active_to_top(&mut available, |e| e.provider_id == active_provider, filter);
@@ -45,6 +48,15 @@ pub fn sorted_entries(
     available
 }
 
+/// Promotes entries with `selected == true` to the top of the list.
+fn promote_selected_to_top(entries: &mut Vec<PickerEntry>) {
+    // Stable partition: selected entries move to top, preserving alphabetical order within each group.
+    let selected: Vec<PickerEntry> = entries.extract_if(.., |e| e.selected).collect();
+    let mut result = selected;
+    result.append(entries);
+    *entries = result;
+}
+
 /// Formats the footer line showing refresh keybind and last update time.
 ///
 /// Returns a styled [`Line`] with the pipe separator in muted text.
@@ -53,6 +65,7 @@ pub fn format_footer(
     model_cache: Option<&crate::feat::provider_infra::ModelCache>,
     width: usize,
     theme: &Theme,
+    selected_count: usize,
 ) -> ratatui::text::Line<'static> {
     use ratatui::style::Style;
     use ratatui::text::{Line, Span};
@@ -74,12 +87,16 @@ pub fn format_footer(
         let pipe = "|";
         let mid = format!(" Updated {formatted_ts} (");
         let right = format!("{human} ago)");
+        let selected_text = format!(" {selected_count} selected");
 
         let line = Line::from(vec![
             Span::styled(left.to_owned(), orange),
             Span::styled(pipe.to_owned(), gray),
             Span::styled(mid, gray),
             Span::styled(right, Style::default().fg(age_color)),
+            Span::styled(pipe.to_owned(), gray),
+            Span::styled(selected_text, orange),
+            Span::styled(" \u{00b7} TAB toggle".to_owned(), gray),
         ]);
         truncate_line(line, width)
     } else {
@@ -87,10 +104,15 @@ pub fn format_footer(
         let pipe = "|";
         let right = " Updated never";
 
+        let selected_text = format!(" {selected_count} selected");
+
         let line = Line::from(vec![
             Span::styled(left.to_owned(), orange),
             Span::styled(pipe.to_owned(), gray),
             Span::styled(right.to_owned(), gray),
+            Span::styled(pipe.to_owned(), gray),
+            Span::styled(selected_text, orange),
+            Span::styled(" \u{00b7} TAB toggle".to_owned(), gray),
         ]);
         truncate_line(line, width)
     }
@@ -171,6 +193,8 @@ fn static_provider_entry(
         is_available: registry.is_available(&provider.id, api_keys),
         is_remote: false,
         is_active: false,
+        selected: false,
+        alloy_models: None,
         theme: theme.clone(),
     }
 }
@@ -212,6 +236,8 @@ fn alias_entry(
         is_available,
         is_remote: false,
         is_active: false,
+        selected: false,
+        alloy_models: None,
         theme: theme.clone(),
     }
 }
@@ -241,6 +267,8 @@ fn remote_entry(
         is_available,
         is_remote: true,
         is_active: false,
+        selected: false,
+        alloy_models: None,
         theme: theme.clone(),
     }
 }
@@ -335,6 +363,29 @@ pub fn load_provider_entries(
     // `{provider_name}/{model}`, the remote version is skipped.
     if let Some(cache) = model_cache {
         merge_remote_entries(&mut entries, &static_ids, registry, api_keys, cache, theme);
+    }
+
+    // Phase 4: Load named alloys.
+    // Each alloy is a single picker entry that carries multiple model IDs.
+    // When confirmed, it sets ModelSelection::Alloy on the session.
+    for alloy in registry.alloys() {
+        let entry = PickerEntry {
+            provider_id: format!("alloy:{}", alloy.name),
+            name: alloy.name.clone(),
+            provider_name: String::new(),
+            backend: String::new(),
+            model: format!("{} models", alloy.models.len()),
+            search_text: format!("{} {}", alloy.name, alloy.models.join(" ")),
+            is_alias: false,
+            alias_target: None,
+            is_available: true,
+            is_remote: false,
+            is_active: false,
+            selected: false,
+            alloy_models: Some(alloy.models.clone()),
+            theme: theme.clone(),
+        };
+        entries.push(entry);
     }
 
     entries

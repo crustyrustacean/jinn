@@ -139,7 +139,8 @@ fn render_provider_picker_shows_active_model_marker() {
     let popup = compute_popup_rect(Rect::new(0, 0, 80, 24));
     // Results start at popup.y + 3 (border + input + separator)
     let result_y = popup.y + 3;
-    let marker_cell = buffer.cell((popup.x + 1, result_y)).expect("marker cell");
+    // Selection marker (2 chars) + active_marker position
+    let marker_cell = buffer.cell((popup.x + 3, result_y)).expect("marker cell");
     assert_eq!(marker_cell.symbol(), ">");
     assert_eq!(marker_cell.fg, Color::Green);
 }
