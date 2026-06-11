@@ -887,7 +887,7 @@ async fn streamed_timing_roundtrips_through_db() {
             assert!(first_token_at.is_some(), "first_token_at should be Some");
             assert!(finished_at.is_some(), "finished_at should be Some");
         }
-    other => panic!("expected Streamed timing, got {other:?}"),
+        other => panic!("expected Streamed timing, got {other:?}"),
     }
 }
 

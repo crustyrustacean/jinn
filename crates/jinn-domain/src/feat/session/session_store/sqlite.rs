@@ -1163,7 +1163,12 @@ fn fork_blocking(
                 lifecycle_args: source_meta.lifecycle_args,
                 archived: false,
                 lifecycle_script_state: source_meta.lifecycle_script_state,
-                metadata: fork_metadata(source_meta.metadata.as_ref(), &source_str, &new_id_str, at_ordinal),
+                metadata: fork_metadata(
+                    source_meta.metadata.as_ref(),
+                    &source_str,
+                    &new_id_str,
+                    at_ordinal,
+                ),
                 is_automated: source_meta.is_automated,
                 persist: source_meta.persist,
             })

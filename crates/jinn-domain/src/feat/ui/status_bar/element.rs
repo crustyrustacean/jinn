@@ -159,7 +159,10 @@ impl UiElement for StatusBarElement {
 
         let left_side = {
             // Build left side: cost + turn count.
-            let turn_count = turn_counter::compute_turn_count(state.active_session().history(), state.active_session().fork_ordinal());
+            let turn_count = turn_counter::compute_turn_count(
+                state.active_session().history(),
+                state.active_session().fork_ordinal(),
+            );
             let turn_symbol = '\u{21BB}';
             let left_spans: Vec<Span> = vec![
                 Span::styled(token_info, style),
