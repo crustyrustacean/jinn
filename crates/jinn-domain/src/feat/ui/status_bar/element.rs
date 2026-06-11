@@ -149,12 +149,26 @@ impl UiElement for StatusBarElement {
         };
         token_info = format!("{token_info} {context_display}");
 
-        let model = if active_model.is_no_provider() {
-            "no model selected".to_owned()
-        } else if let Some((provider, m)) = active_model.display_str().split_once('/') {
-            format!("({provider})/{m}")
-        } else {
-            active_model.display_str().to_owned()
+        let model = {
+            let last_dispatched = state
+                .active_session()
+                .token_ledger()
+                .last()
+                .and_then(|r| r.model_used.as_deref());
+            let resolved = last_dispatched.unwrap_or_else(|| active_model.display_str());
+
+            if active_model.is_no_provider() {
+                "no model selected".to_owned()
+            } else if let Some((provider, m)) = resolved.split_once('/') {
+                format!("({provider})/{m}")
+            } else {
+                resolved.to_owned()
+            }
+        };
+
+        let model = match active_model.as_alloy() {
+            Some(alloy) => format!("[alloy {}] {model}", alloy.models.len()),
+            None => model,
         };
 
         let left_side = {
