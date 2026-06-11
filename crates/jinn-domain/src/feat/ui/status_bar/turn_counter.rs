@@ -17,11 +17,20 @@ use crate::feat::session::tool_result_status::ToolResultStatus;
 /// A user entry always counts as a turn. An assistant entry counts as a turn
 /// only if it is the last entry or is NOT followed by a `ToolCall` - intermediate
 /// tool-loop assistant messages are part of the same turn.
+///
+/// When `fork_ordinal` is `Some(n)`, entries at indices 0..=n are treated as inherited
+/// from a parent session and are skipped — only entries after the fork point count.
 #[must_use]
-pub fn compute_turn_count(history: &[ChatEntry]) -> u32 {
+pub fn compute_turn_count(history: &[ChatEntry], fork_ordinal: Option<usize>) -> u32 {
     let len = history.len();
     let mut count = 0u32;
     for (i, entry) in history.iter().enumerate() {
+        // Skip inherited entries — they belong to a parent session.
+        if let Some(ordinal) = fork_ordinal {
+            if i <= ordinal {
+                continue;
+            }
+        }
         match &entry.kind {
             ChatEntryKind::User { .. } => count += 1,
             ChatEntryKind::Assistant(..) => {
@@ -58,7 +67,7 @@ mod tests {
         let history: Vec<ChatEntry> = vec![];
 
         // When computing the turn count.
-        let count = compute_turn_count(&history);
+        let count = compute_turn_count(&history, None);
 
         // Then the count is zero.
         assert_eq!(count, 0);
@@ -70,7 +79,7 @@ mod tests {
         let history = vec![ChatEntry::user("hello")];
 
         // When computing the turn count.
-        let count = compute_turn_count(&history);
+        let count = compute_turn_count(&history, None);
 
         // Then the count is one.
         assert_eq!(count, 1);
@@ -82,7 +91,7 @@ mod tests {
         let history = vec![ChatEntry::assistant("hi there")];
 
         // When computing the turn count.
-        let count = compute_turn_count(&history);
+        let count = compute_turn_count(&history, None);
 
         // Then the count is one.
         assert_eq!(count, 1);
@@ -105,7 +114,7 @@ mod tests {
         ];
 
         // When computing the turn count.
-        let count = compute_turn_count(&history);
+        let count = compute_turn_count(&history, None);
 
         // Then the intermediate assistant (followed by tool_call) is not a turn.
         // User = 1, final assistant = 1. Total = 2.
@@ -118,7 +127,7 @@ mod tests {
         let history = vec![ChatEntry::user("hello"), ChatEntry::assistant("hi there")];
 
         // When computing the turn count.
-        let count = compute_turn_count(&history);
+        let count = compute_turn_count(&history, None);
 
         // Then both entries count as turns.
         assert_eq!(count, 2);
@@ -133,7 +142,7 @@ mod tests {
         ];
 
         // When computing the turn count.
-        let count = compute_turn_count(&history);
+        let count = compute_turn_count(&history, None);
 
         // Then the count is zero.
         assert_eq!(count, 0);
@@ -154,10 +163,59 @@ mod tests {
         ];
 
         // When computing the turn count.
-        let count = compute_turn_count(&history);
+        let count = compute_turn_count(&history, None);
 
         // Then only the user entry and final assistant entry count.
         // The two intermediate assistants (followed by tool_call) are skipped.
+        assert_eq!(count, 2);
+    }
+
+    #[rstest::rstest]
+    fn forked_session_turn_count_is_zero() {
+        // Given a history with 5 entries (3 user + 2 assistant) and a fork_ordinal covering all of them.
+        let history = vec![
+            ChatEntry::user("hello"),
+            ChatEntry::assistant("hi"),
+            ChatEntry::user("how are you"),
+            ChatEntry::assistant("good"),
+            ChatEntry::user("great"),
+        ];
+
+        // When computing the turn count with fork_ordinal = 4 (all entries inherited).
+        let count = compute_turn_count(&history, Some(4));
+
+        // Then the count is zero — no turns taken in this forked session.
+        assert_eq!(count, 0);
+    }
+
+    #[rstest::rstest]
+    fn forked_session_counts_only_new_turns() {
+        // Given a history with 5 inherited entries and 1 new user entry added after the fork.
+        let history = vec![
+            ChatEntry::user("hello"),
+            ChatEntry::assistant("hi"),
+            ChatEntry::user("how are you"),
+            ChatEntry::assistant("good"),
+            ChatEntry::user("great"),
+            ChatEntry::user("new question"),
+        ];
+
+        // When computing the turn count with fork_ordinal = 4 (entries 0-4 inherited).
+        let count = compute_turn_count(&history, Some(4));
+
+        // Then only the new user entry counts as a turn.
+        assert_eq!(count, 1);
+    }
+
+    #[rstest::rstest]
+    fn fork_ordinal_with_none_counts_all() {
+        // Given a history with 2 user entries.
+        let history = vec![ChatEntry::user("hello"), ChatEntry::assistant("hi")];
+
+        // When computing the turn count with fork_ordinal = None (root session).
+        let count = compute_turn_count(&history, None);
+
+        // Then all entries are counted.
         assert_eq!(count, 2);
     }
 }
