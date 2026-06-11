@@ -87,6 +87,8 @@ pub(crate) enum PluginJob {
         registry_id: crate::session_registry::SessionRegistryId,
         /// Names of attachable plugins to load.
         plugin_names: Vec<String>,
+        /// The session that owns these plugins. Used for plugin_data scoping in tool handlers.
+        origin_session_id: SessionId,
         /// Responder. Returns tool definitions extracted from loaded plugins.
         respond_to:
             oneshot::Sender<Result<Vec<crate::tool_def::PluginToolMetadata>, Report<PluginError>>>,
@@ -98,6 +100,8 @@ pub(crate) enum PluginJob {
     ExecuteTool {
         /// If `Some`, use the per-session Lua state; otherwise global.
         target: Option<crate::session_registry::SessionRegistryId>,
+        /// Domain session ID for plugin_data scoping.
+        session_id: SessionId,
         /// Plugin that defined this tool.
         plugin_name: String,
         /// Tool name to execute.
@@ -272,6 +276,7 @@ impl AsyncPluginHandle {
     pub async fn create_session_registry_impl(
         &self,
         plugin_names: Vec<String>,
+        origin_session_id: SessionId,
     ) -> Result<CreateSessionRegistryResult, Report<PluginError>> {
         let registry_id = crate::session_registry::SessionRegistryId::new();
         let (respond_to, rx) = oneshot::channel();
@@ -279,6 +284,7 @@ impl AsyncPluginHandle {
             .send(PluginJob::LoadSession {
                 registry_id,
                 plugin_names,
+                origin_session_id,
                 respond_to,
             })
             .await
@@ -351,6 +357,7 @@ impl AsyncPluginHandle {
     pub async fn execute_tool(
         &self,
         target: Option<crate::session_registry::SessionRegistryId>,
+        session_id: SessionId,
         plugin_name: &str,
         tool_name: &str,
         arguments: &serde_json::Value,
@@ -359,6 +366,7 @@ impl AsyncPluginHandle {
         self.tx
             .send(PluginJob::ExecuteTool {
                 target,
+                session_id,
                 plugin_name: plugin_name.to_owned(),
                 tool_name: tool_name.to_owned(),
                 arguments: arguments.clone(),
@@ -384,14 +392,18 @@ impl jinn_domain::feat::plugin_system::SessionPluginRegistry for AsyncPluginHand
     async fn create_session_registry(
         &self,
         plugin_names: Vec<String>,
+        origin_session_id: SessionId,
     ) -> Result<
         jinn_domain::feat::plugin_system::CreateSessionRegistryResult,
         Report<jinn_domain::feat::plugin_system::SessionPluginRegistryError>,
     > {
-        let result = AsyncPluginHandle::create_session_registry_impl(self, plugin_names)
-            .await
-            .map_err(|_e| Report::new(jinn_domain::feat::plugin_system::SessionPluginRegistryError))
-            .attach("create per-session plugin registry")?;
+        let result =
+            AsyncPluginHandle::create_session_registry_impl(self, plugin_names, origin_session_id)
+                .await
+                .map_err(|_e| {
+                    Report::new(jinn_domain::feat::plugin_system::SessionPluginRegistryError)
+                })
+                .attach("create per-session plugin registry")?;
         Ok(
             jinn_domain::feat::plugin_system::CreateSessionRegistryResult {
                 registry_id: result.registry_id,

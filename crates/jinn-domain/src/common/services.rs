@@ -217,6 +217,7 @@ impl PluginFire for NoopPluginFire {
     async fn execute_plugin_tool(
         &self,
         _target: Option<SessionRegistryId>,
+        _session_id: &crate::protocol::SessionId,
         _plugin_name: &str,
         _tool_name: &str,
         _arguments: &serde_json::Value,
@@ -264,6 +265,7 @@ impl crate::feat::plugin_system::SessionPluginRegistry for NoopSessionPluginRegi
     async fn create_session_registry(
         &self,
         _plugin_names: Vec<String>,
+        _origin_session_id: crate::protocol::SessionId,
     ) -> Result<
         crate::feat::plugin_system::CreateSessionRegistryResult,
         Report<crate::feat::plugin_system::SessionPluginRegistryError>,

@@ -138,7 +138,8 @@ impl ProviderActor {
             | Command::TogglePlugin(..)
             | Command::RegisterPluginTools(..)
             | Command::SubmitSteeringMessage(..)
-            | Command::ResetSessionHistory(..) => {}
+            | Command::ResetSessionHistory(..)
+            | Command::SetManagedSession(..) => {}
         }
     }
 

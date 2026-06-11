@@ -34,7 +34,9 @@ use crate::PhaseKind;
 use crate::SessionId;
 use crate::feat::attached_plugin::AttachedPlugin;
 use crate::feat::plugin_dispatch::DomainNodeContext;
-use crate::feat::plugin_dispatch::protocol::command::{AttachPlugin, DetachPlugin, TogglePlugin};
+use crate::feat::plugin_dispatch::protocol::command::{
+    AttachPlugin, DetachPlugin, SetManagedSession, TogglePlugin,
+};
 use crate::feat::plugin_dispatch::protocol::event::{
     PluginAttached, PluginDetached, PluginToggled,
 };
@@ -115,6 +117,7 @@ impl Actor for PluginDispatchActor {
         ctx.subscribe_command::<AttachPlugin>();
         ctx.subscribe_command::<DetachPlugin>();
         ctx.subscribe_command::<TogglePlugin>();
+        ctx.subscribe_command::<SetManagedSession>();
 
         // Generic async-handoff: plugins emit this to route an arbitrary hook
         // name to the plugin-async VM. Routed by runtime name via Command::Dynamic.
@@ -170,6 +173,9 @@ impl PluginDispatchActor {
             Command::AttachPlugin(cmd) => self.handle_attach(cmd, ctx).await,
             Command::DetachPlugin(cmd) => self.handle_detach(cmd, ctx).await,
             Command::TogglePlugin(cmd) => self.handle_toggle(cmd, ctx).await,
+            Command::SetManagedSession(cmd) => {
+                self.handle_set_managed_session(cmd, ctx);
+            }
             Command::Dynamic(ref d) if d.name == "plugin::fire_async" => {
                 self.handle_fire_async_hook(&d.payload, ctx);
             }
@@ -281,7 +287,7 @@ impl PluginDispatchActor {
         match self
             .services
             .session_plugin_registry
-            .create_session_registry(plugin_names)
+            .create_session_registry(plugin_names, session_id.clone())
             .await
         {
             Ok(result) => {
@@ -397,6 +403,33 @@ impl PluginDispatchActor {
             enabled: now_enabled,
         }));
     }
+
+    fn handle_set_managed_session(&mut self, cmd: SetManagedSession, _ctx: &ActorContext) {
+        let SetManagedSession {
+            session_id,
+            plugin_name,
+            managed_session_id,
+        } = cmd;
+        tracing::debug!(session_id = %session_id, plugin = %plugin_name, managed = %managed_session_id, "setting managed session");
+
+        let state = &mut self.state.write().session;
+        let Some(session) = state.get_mut(&session_id) else {
+            tracing::warn!(session_id = %session_id, "session not found for set_managed_session");
+            return;
+        };
+        let Some(plugin) = session
+            .core
+            .attached_plugins
+            .iter_mut()
+            .find(|p| p.name.as_str() == plugin_name.as_str())
+        else {
+            tracing::warn!(session_id = %session_id, plugin = %plugin_name, "plugin not attached");
+            return;
+        };
+        plugin.managed_session_id = Some(managed_session_id);
+    }
+
+    // ─── Lifecycle hook firings ────────────────────────────────────────────
 
     // ─── Lifecycle hook firings ────────────────────────────────────────────
 
@@ -928,6 +961,7 @@ mod tests {
         async fn execute_plugin_tool(
             &self,
             _target: Option<SessionRegistryId>,
+            _session_id: &crate::protocol::SessionId,
             _plugin_name: &str,
             _tool_name: &str,
             _arguments: &Value,

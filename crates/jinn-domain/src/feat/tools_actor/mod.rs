@@ -575,6 +575,10 @@ impl ToolOrchestratorActor {
                 ..
             }) => {
                 let sink = ctx.sink();
+                let _plugin_fire = self.services.plugins.clone();
+                let target = target.clone();
+                let sid = session_id.clone();
+                let plugin_name = plugin_name.clone();
                 let plugin_fire = self.services.plugins.clone();
                 let target = target.clone();
                 let plugin_name = plugin_name.clone();
@@ -583,7 +587,13 @@ impl ToolOrchestratorActor {
 
                 let handle = tokio::spawn(async move {
                     let result = match plugin_fire
-                        .execute_plugin_tool(target, &plugin_name, &tool_call.name, &arguments)
+                        .execute_plugin_tool(
+                            target,
+                            &sid,
+                            &plugin_name,
+                            &tool_call.name,
+                            &arguments,
+                        )
                         .await
                     {
                         Ok(content) => ToolResult {

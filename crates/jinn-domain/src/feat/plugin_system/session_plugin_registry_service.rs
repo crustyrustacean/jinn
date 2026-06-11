@@ -13,7 +13,7 @@ use crate::feat::plugin_system::{
     CreateSessionRegistryResult, SessionPluginRegistry, SessionPluginRegistryError,
     SessionRegistryId,
 };
-
+use crate::protocol::SessionId;
 /// Service wrapper for [`SessionPluginRegistry`].
 ///
 /// Cheap to clone (Arc). Construct once at startup, share via [`crate::Services`].
@@ -39,8 +39,11 @@ impl SessionPluginRegistryService {
     pub async fn create_session_registry(
         &self,
         plugin_names: Vec<String>,
+        origin_session_id: SessionId,
     ) -> Result<CreateSessionRegistryResult, Report<SessionPluginRegistryError>> {
-        self.backend.create_session_registry(plugin_names).await
+        self.backend
+            .create_session_registry(plugin_names, origin_session_id)
+            .await
     }
 
     /// Drop a per-session Lua state.

@@ -61,6 +61,9 @@ struct SessionState {
     hooks: HashMap<String, PluginHooks>,
     /// Tool definitions from attached plugins in this session.
     tools: Vec<crate::tool_def::PluginToolDef>,
+    /// The domain session that owns this Lua state (the "origin" session).
+    /// Used to scope plugin_data correctly when tool handlers run in child sessions.
+    origin_session_id: Option<SessionId>,
 }
 
 /// Thread state passed through the loop.
@@ -188,9 +191,10 @@ async fn execute_plugin_job(state: &mut ThreadState, job: PluginJob) {
         PluginJob::LoadSession {
             registry_id,
             plugin_names,
+            origin_session_id,
             respond_to,
         } => {
-            let result = load_session_plugins(state, registry_id, &plugin_names);
+            let result = load_session_plugins(state, registry_id, &plugin_names, origin_session_id);
             let _ = respond_to.send(result);
         }
         PluginJob::DestroySession { registry_id } => {
@@ -198,12 +202,20 @@ async fn execute_plugin_job(state: &mut ThreadState, job: PluginJob) {
         }
         PluginJob::ExecuteTool {
             target,
+            session_id,
             plugin_name,
             tool_name,
             arguments,
             respond_to,
         } => {
-            let result = execute_plugin_tool(state, target, &plugin_name, &tool_name, &arguments);
+            let result = execute_plugin_tool(
+                state,
+                target,
+                &session_id,
+                &plugin_name,
+                &tool_name,
+                &arguments,
+            );
             let _ = respond_to.send(result);
         }
     }
@@ -217,18 +229,23 @@ async fn execute_plugin_job(state: &mut ThreadState, job: PluginJob) {
 fn execute_plugin_tool(
     state: &mut ThreadState,
     target: Option<SessionRegistryId>,
+    session_id: &SessionId,
     plugin_name: &str,
     tool_name: &str,
     arguments: &serde_json::Value,
 ) -> Result<String, Report<PluginError>> {
     // Locate the correct Lua state and tools list.
-    let (lua, tools) = if let Some(id) = &target {
+    let (lua, tools, data_scope_id) = if let Some(id) = &target {
         let session = state.sessions.get_mut(id).ok_or_else(|| {
             Report::new(PluginError).attach(format!("no session for registry id {id:?}"))
         })?;
-        (&session.lua, &session.tools)
+        let scope = session
+            .origin_session_id
+            .clone()
+            .unwrap_or_else(|| session_id.clone());
+        (&session.lua, &session.tools, scope)
     } else {
-        (&state.global_lua, &state.global_tools)
+        (&state.global_lua, &state.global_tools, session_id.clone())
     };
 
     // Find the tool definition.
@@ -248,7 +265,7 @@ fn execute_plugin_tool(
         &state.plugin_data,
         &state.emit_tx,
         &state.request_handler,
-        None,
+        Some(&data_scope_id),
     )
     .map_err(|e| Report::new(PluginError).attach(e.to_string()))
     .attach("failed to build tool handler ctx")?;
@@ -290,6 +307,7 @@ fn load_session_plugins(
     state: &mut ThreadState,
     registry_id: SessionRegistryId,
     plugin_names: &[String],
+    origin_session_id: SessionId,
 ) -> Result<Vec<crate::tool_def::PluginToolMetadata>, Report<PluginError>> {
     // Resolve each name to a PluginMeta in the attachable set.
     let metas: Vec<PluginMeta> = plugin_names
@@ -329,6 +347,7 @@ fn load_session_plugins(
             lua,
             hooks: result.hooks,
             tools: result.tools,
+            origin_session_id: Some(origin_session_id),
         },
     );
     Ok(metadata)

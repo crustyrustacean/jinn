@@ -40,3 +40,16 @@ pub struct TogglePlugin {
     pub session_id: SessionId,
     pub plugin_name: String,
 }
+
+/// Set the managed session ID on an attached plugin.
+///
+/// Called when a plugin creates a child session and wants the sidebar
+/// to be able to navigate to it. The activate path reads this field
+/// to determine which session to switch to.
+#[derive(Debug, Clone, Serialize, Deserialize, CommandMsg)]
+#[cmd("plugin")]
+pub struct SetManagedSession {
+    pub session_id: SessionId,
+    pub plugin_name: String,
+    pub managed_session_id: SessionId,
+}

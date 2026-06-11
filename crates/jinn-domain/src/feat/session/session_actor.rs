@@ -325,7 +325,8 @@ impl SessionPersistenceActor {
             | Command::AttachPlugin(..)
             | Command::DetachPlugin(..)
             | Command::TogglePlugin(..)
-            | Command::RegisterPluginTools(..) => {}
+            | Command::RegisterPluginTools(..)
+            | Command::SetManagedSession(..) => {}
         }
     }
 }

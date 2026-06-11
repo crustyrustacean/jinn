@@ -316,7 +316,7 @@ async fn load_session_registry_creates_isolated_state() {
     let sys = build_system(dir.path());
     let result = sys
         .async_handle
-        .create_session_registry(vec!["judge_fail".to_owned()])
+        .create_session_registry(vec!["judge_fail".to_owned()], SessionId::new())
         .await
         .expect("create registry");
 
@@ -363,12 +363,12 @@ async fn fire_for_session_excludes_other_sessions_plugins() {
     let sys = build_system(dir.path());
     let _session_a = sys
         .async_handle
-        .create_session_registry(vec!["judge_fail".to_owned()])
+        .create_session_registry(vec!["judge_fail".to_owned()], SessionId::new())
         .await
         .expect("create registry A");
     let session_b = sys
         .async_handle
-        .create_session_registry(vec![])
+        .create_session_registry(vec![], SessionId::new())
         .await
         .expect("create registry B (empty)")
         .registry_id;
@@ -434,7 +434,7 @@ async fn fire_for_session_merges_global_and_session_plugins() {
     let sys = build_system(dir.path());
     let result = sys
         .async_handle
-        .create_session_registry(vec!["judge_fail".to_owned()])
+        .create_session_registry(vec!["judge_fail".to_owned()], SessionId::new())
         .await
         .expect("create registry");
 
@@ -489,7 +489,7 @@ async fn disabled_plugin_is_skipped() {
     let sys = build_system(dir.path());
     let result = sys
         .async_handle
-        .create_session_registry(vec!["judge_fail".to_owned()])
+        .create_session_registry(vec!["judge_fail".to_owned()], SessionId::new())
         .await
         .expect("create registry");
 
@@ -543,7 +543,7 @@ async fn enabled_plugin_fires() {
     let sys = build_system(dir.path());
     let result = sys
         .async_handle
-        .create_session_registry(vec!["judge_fail".to_owned()])
+        .create_session_registry(vec!["judge_fail".to_owned()], SessionId::new())
         .await
         .expect("create registry");
 

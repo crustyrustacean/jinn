@@ -8,6 +8,7 @@ use error_stack::Report;
 use wherror::Error;
 
 use crate::feat::plugin_system::SessionRegistryId;
+use crate::protocol::SessionId;
 
 /// Result of creating a per-session plugin registry.
 #[derive(Debug)]
@@ -71,6 +72,7 @@ pub trait SessionPluginRegistry: Send + Sync {
     async fn create_session_registry(
         &self,
         plugin_names: Vec<String>,
+        origin_session_id: SessionId,
     ) -> Result<CreateSessionRegistryResult, Report<SessionPluginRegistryError>>;
 
     /// Drop a per-session Lua state.

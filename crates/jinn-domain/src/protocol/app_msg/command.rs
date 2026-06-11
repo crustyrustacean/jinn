@@ -148,6 +148,8 @@ pub enum Command {
     DetachPlugin(crate::feat::plugin_dispatch::protocol::command::DetachPlugin),
     /// Toggle an attached plugin on/off.
     TogglePlugin(crate::feat::plugin_dispatch::protocol::command::TogglePlugin),
+    /// Set the managed session ID on an attached plugin.
+    SetManagedSession(crate::feat::plugin_dispatch::protocol::command::SetManagedSession),
 
     /// A dynamic command from a plugin, carrying an arbitrary JSON payload.
     Dynamic(DynamicCommand),
@@ -218,6 +220,9 @@ impl Command {
             }
             Self::TogglePlugin(..) => {
                 Some(crate::feat::plugin_dispatch::protocol::command::TogglePlugin::NAME)
+            }
+            Self::SetManagedSession(..) => {
+                Some(crate::feat::plugin_dispatch::protocol::command::SetManagedSession::NAME)
             }
             Self::Dynamic(..) | Self::TriggerCompaction(..) => None,
         }
@@ -378,6 +383,13 @@ impl std::fmt::Display for Command {
             }
             Command::TogglePlugin(p) => {
                 write!(f, "toggle plugin {} on {}", p.plugin_name, p.session_id)
+            }
+            Command::SetManagedSession(p) => {
+                write!(
+                    f,
+                    "set managed session for plugin {} on {}",
+                    p.plugin_name, p.session_id
+                )
             }
 
             Command::Dynamic(d) => {
