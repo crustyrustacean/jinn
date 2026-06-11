@@ -20,7 +20,8 @@ use crate::feat::context::assemble::AssemblyOverrides;
 use crate::feat::session::chat_entry::ChatEntry;
 use crate::feat::session::chat_session::ChatSessionState;
 use crate::feat::session::chat_session::SessionCoreEphemeral;
-use crate::protocol::{Command, SessionId};
+use crate::common::bridge::Bridge;
+use crate::protocol::SessionId;
 
 /// Error for domain context operations.
 #[derive(Debug, Error)]
@@ -58,9 +59,12 @@ impl DomainNodeContext {
         }
     }
 
-    /// Send a command through the actor channel.
-    pub fn send_command(&self, cmd: Command) {
-        self.services.actor_channel.send_command(cmd);
+    /// Send a typed message through the actor channel as a bus closure.
+    pub fn send_message<M>(&self, msg: M)
+    where
+        M: crate::common::bus::BusMessage,
+    {
+        self.services.actor_channel.send(Bridge::publish_closure(msg));
     }
 
     /// Returns `true` if there is a pending oneshot for the given session ID.
@@ -151,10 +155,10 @@ impl DomainNodeContext {
         let entry = ChatEntry::user(&user_prompt);
         self.services
             .actor_channel
-            .send_command(Command::EnqueueUserMessage(EnqueueUserMessage {
+            .send_message(EnqueueUserMessage {
                 session_id: session_id.clone(),
                 entry,
-            }));
+            });
 
         match rx.await {
             Ok(Ok(response)) => Ok(response),
@@ -242,10 +246,10 @@ impl DomainNodeContext {
         let entry = ChatEntry::user(&user_prompt);
         self.services
             .actor_channel
-            .send_command(Command::EnqueueUserMessage(EnqueueUserMessage {
+            .send_message(EnqueueUserMessage {
                 session_id: session_id.clone(),
                 entry,
-            }));
+            });
 
         // 7. Await with a bounded timeout. On expiry: hard-cancel the underlying
         //    session (no zombie stream burning provider tokens) and drop the pending
@@ -260,9 +264,9 @@ impl DomainNodeContext {
                 self.pending.lock().remove(&session_id);
                 self.services
                     .actor_channel
-                    .send_command(Command::CancelStream(CancelStream {
+                    .send_message(CancelStream {
                         session_id: session_id.clone(),
-                    }));
+                    });
                 Err(Report::new(DomainContextError).attach(format!(
                     "one-shot LLM request timed out after {timeout_ms}ms"
                 )))

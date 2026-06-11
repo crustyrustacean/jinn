@@ -2,11 +2,9 @@
 
 use serde::{Deserialize, Serialize};
 
-use crate::protocol::EventMsg;
 
 /// An actor is starting up.
-#[derive(Debug, Clone, Serialize, Deserialize, EventMsg)]
-#[event_msg("actor")]
+#[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct ActorStarting {
     /// The actor's name.
     pub name: String,
@@ -15,8 +13,7 @@ pub struct ActorStarting {
 }
 
 /// An actor has finished starting up.
-#[derive(Debug, Clone, Serialize, Deserialize, EventMsg)]
-#[event_msg("actor")]
+#[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct ActorStarted {
     /// The actor's name.
     pub name: String,
@@ -25,8 +22,7 @@ pub struct ActorStarted {
 }
 
 /// An actor has completed shutdown.
-#[derive(Debug, Clone, Serialize, Deserialize, EventMsg)]
-#[event_msg("actor")]
+#[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct ActorShutdownCompleted {
     /// The actor's name.
     pub name: String,
@@ -37,8 +33,7 @@ pub struct ActorShutdownCompleted {
 /// Emitted after the wiring code finishes spawning every actor.
 /// The system-ready actor waits for this event before checking whether
 /// its running count of `ActorStarted` events matches the total.
-#[derive(Debug, Clone, Serialize, Deserialize, EventMsg)]
-#[event_msg("actor")]
+#[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct AllActorsSpawned;
 
 impl crate::common::bus::BusMessage for AllActorsSpawned {}

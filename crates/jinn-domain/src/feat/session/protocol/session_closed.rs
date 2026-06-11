@@ -8,11 +8,10 @@
 
 use serde::{Deserialize, Serialize};
 
-use crate::protocol::{EventMsg, SessionId};
+use crate::protocol::{SessionId};
 
 /// Session closed and removed from the sessions map.
-#[derive(Debug, Clone, Serialize, Deserialize, EventMsg)]
-#[event_msg("session")]
+#[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct SessionClosed {
     /// The session that was closed.
     pub session_id: SessionId,

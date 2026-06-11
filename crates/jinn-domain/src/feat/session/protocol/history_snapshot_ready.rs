@@ -9,7 +9,7 @@ use std::sync::Arc;
 use serde::{Deserialize, Deserializer, Serialize, Serializer};
 
 use crate::feat::session::chat_entry::ChatEntry;
-use crate::protocol::{EventMsg, SessionId};
+use crate::protocol::{SessionId};
 
 /// Emitted by `HistorySnapshotActor` after cloning history into a shared `Arc`.
 ///
@@ -23,8 +23,7 @@ use crate::protocol::{EventMsg, SessionId};
 /// This event is purely in-process — it is never persisted or sent over a wire.
 /// Manual `Serialize`/`Deserialize` impls serialize only the `session_id` and
 /// deserialize with an empty history slice.
-#[derive(Debug, Clone, EventMsg)]
-#[event_msg("session")]
+#[derive(Debug, Clone)]
 pub struct HistorySnapshotReady {
     /// The session whose history was snapshotted.
     pub session_id: SessionId,

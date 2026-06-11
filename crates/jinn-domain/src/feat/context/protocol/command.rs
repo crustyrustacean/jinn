@@ -4,15 +4,13 @@ use serde::{Deserialize, Serialize};
 
 use crate::BusMessage;
 use crate::protocol::ChatEntryId;
-use crate::protocol::CommandMsg;
 use crate::protocol::PinPosition;
 use crate::protocol::SessionId;
 
 /// Pin a chat entry so it survives context management strategies.
 ///
 /// The entry will be positioned according to `position` in the assembled prompt.
-#[derive(Debug, Clone, Serialize, Deserialize, CommandMsg)]
-#[cmd("context")]
+#[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct PinChatEntry {
     /// The session containing the entry.
     pub session_id: SessionId,
@@ -27,8 +25,7 @@ impl BusMessage for PinChatEntry {}
 /// Remove the pin from a chat entry, allowing normal context management.
 ///
 /// If the entry is not pinned, this is a no-op.
-#[derive(Debug, Clone, Serialize, Deserialize, CommandMsg)]
-#[cmd("context")]
+#[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct UnpinChatEntry {
     /// The session containing the entry.
     pub session_id: SessionId,
@@ -39,13 +36,11 @@ pub struct UnpinChatEntry {
 impl BusMessage for UnpinChatEntry {}
 
 /// Rescan the personas directory and reload persona files.
-#[derive(Debug, Clone, Serialize, Deserialize, CommandMsg)]
-#[cmd("context")]
+#[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct RescanPersonas;
 
 /// Load entries for the persona picker.
-#[derive(Debug, Clone, Serialize, Deserialize, CommandMsg)]
-#[cmd("context")]
+#[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct LoadPersonaPickerEntries;
 
 impl BusMessage for LoadPersonaPickerEntries {}
@@ -56,8 +51,7 @@ impl BusMessage for LoadPersonaPickerEntries {}
 /// (stopping at an exclusive `$HOME` or inclusive VCS root, whichever comes
 /// first), reads the first existing candidate per walked dir, and writes the
 /// result into that session's ephemeral discovered-context-files set.
-#[derive(Debug, Clone, Serialize, Deserialize, CommandMsg)]
-#[cmd("context")]
+#[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct ScanContextFiles {
     /// The session whose cwd drives the scan.
     pub session_id: SessionId,

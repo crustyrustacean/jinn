@@ -8,15 +8,13 @@
 use serde::{Deserialize, Serialize};
 
 use crate::feat::session::history_mutation::HistoryMutation;
-use crate::protocol::CommandMsg;
 use crate::protocol::SessionId;
 
 /// Submit a batch of history mutations for deferred application.
 ///
 /// The session actor queues these in `pending_mutations`. They are applied
 /// at the next safe drain point (tool batch completion or stream completion).
-#[derive(Debug, Clone, Serialize, Deserialize, CommandMsg)]
-#[cmd("submit_history_mutations")]
+#[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct SubmitHistoryMutations {
     /// The session to apply mutations to.
     pub session_id: SessionId,

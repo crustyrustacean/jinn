@@ -5,14 +5,13 @@ use serde::{Deserialize, Serialize};
 
 use crate::feat::provider::llm_message::LlmMessage;
 use crate::feat::tools_actor::tool_types::ToolDefinition;
-use crate::protocol::{CommandMsg, SessionId};
+use crate::protocol::{SessionId};
 
 /// Switch the active LLM provider.
 ///
 /// Carries the target provider ID. The handler validates it against the registry,
 /// swaps the factory, and emits [`ProviderSwitched`](super::ProviderSwitched).
-#[derive(Debug, Clone, Serialize, Deserialize, CommandMsg)]
-#[cmd("provider")]
+#[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct ProviderSwitch {
     /// The session whose model should be switched.
     pub session_id: SessionId,
@@ -23,8 +22,7 @@ pub struct ProviderSwitch {
 impl BusMessage for ProviderSwitch {}
 
 /// Send a message to the AI provider.
-#[derive(Debug, Clone, Serialize, Deserialize, CommandMsg)]
-#[cmd("provider")]
+#[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct SendMessage {
     /// The session this message belongs to.
     pub session_id: SessionId,
@@ -33,8 +31,7 @@ pub struct SendMessage {
 }
 
 /// Cancel the active provider stream for a session.
-#[derive(Debug, Clone, Serialize, Deserialize, CommandMsg)]
-#[cmd("provider")]
+#[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct CancelStream {
     /// The session whose stream should be cancelled.
     pub session_id: SessionId,
@@ -45,8 +42,7 @@ impl BusMessage for CancelStream {}
 ///
 /// Emitted by `LlmRequestHandler` when a user message is submitted.
 /// Carries the full conversation history as pre-converted messages.
-#[derive(Debug, Clone, Serialize, Deserialize, CommandMsg)]
-#[cmd("provider")]
+#[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct SendToLlmProvider {
     /// The session this request belongs to.
     pub session_id: SessionId,
@@ -67,8 +63,7 @@ pub struct SendToLlmProvider {
 impl crate::common::bus::BusMessage for SendToLlmProvider {}
 
 /// Refresh the model list from all providers.
-#[derive(Debug, Clone, Serialize, Deserialize, CommandMsg)]
-#[cmd("provider")]
+#[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct RefreshModels;
 impl BusMessage for RefreshModels {}
 
@@ -76,8 +71,7 @@ impl BusMessage for RefreshModels {}
 ///
 /// The actor reads the session's cwd, scans user/system plus project-local
 /// `.agents/prompts` dirs (most-local wins), and emits `PromptTemplatesLoaded`.
-#[derive(Debug, Clone, Serialize, Deserialize, CommandMsg)]
-#[cmd("provider")]
+#[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct RescanPromptTemplates {
     /// The session whose cwd drives the scan.
     pub session_id: crate::SessionId,
@@ -88,16 +82,14 @@ impl BusMessage for RescanPromptTemplates {}
 ///
 /// The provider actor receives this, loads entries from the provider registry,
 /// and writes them into `AppState`.
-#[derive(Debug, Clone, Serialize, Deserialize, CommandMsg)]
-#[cmd("provider")]
+#[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct LoadProviderPickerEntries;
 
 impl BusMessage for LoadProviderPickerEntries {}
 
 /// The provider actor receives this, loads compaction model entries (provider
 /// entries + a "session default" sentinel) and writes them into `AppState`.
-#[derive(Debug, Clone, Serialize, Deserialize, CommandMsg)]
-#[cmd("provider")]
+#[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct LoadCompactionModelPickerEntries;
 
 impl BusMessage for LoadCompactionModelPickerEntries {}

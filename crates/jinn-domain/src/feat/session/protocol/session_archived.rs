@@ -8,11 +8,10 @@
 
 use serde::{Deserialize, Serialize};
 
-use crate::protocol::{EventMsg, SessionId};
+use crate::protocol::{SessionId};
 
 /// Session archived in persistent storage.
-#[derive(Debug, Clone, Serialize, Deserialize, EventMsg)]
-#[event_msg("session")]
+#[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct SessionArchived {
     /// The session that was archived.
     pub session_id: SessionId,

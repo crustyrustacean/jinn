@@ -3,14 +3,12 @@
 use serde::{Deserialize, Serialize};
 
 use crate::feat::preferences_actor::UserPreferences;
-use crate::protocol::EventMsg;
 
 /// Emitted after preferences have been persisted to disk.
 ///
 /// Carries the full [`UserPreferences`] - the source of truth after save.
 /// Listeners replace their cached copy wholesale.
-#[derive(Debug, Clone, Serialize, Deserialize, EventMsg)]
-#[event_msg("preferences")]
+#[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct PreferencesUpdated {
     /// The full preferences as persisted to disk.
     pub preferences: UserPreferences,

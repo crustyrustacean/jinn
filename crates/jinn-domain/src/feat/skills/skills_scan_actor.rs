@@ -17,7 +17,6 @@
 use kameo::prelude::{Actor, ActorRef, Context, Message};
 use serde::{Deserialize, Serialize};
 use crate::common::services::bus_service::BusService;
-use crate::protocol::{CommandMsg, EventMsg};
 
 use crate::common::actor::scan_actor::scan_cwd_for_session;
 use crate::common::actor_deps::{ActorDeps, BusPublish};
@@ -223,8 +222,7 @@ impl SkillsScanActor {
 ///
 /// On success, `skills` contains the discovered skills and `error` is `None`.
 /// On failure, `skills` is empty and `error` contains a description.
-#[derive(Debug, Clone, Serialize, Deserialize, EventMsg)]
-#[event_msg("skills")]
+#[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct SkillsLoaded {
     /// The session whose cwd drove the scan.
     pub session_id: crate::SessionId,
@@ -240,8 +238,7 @@ pub struct SkillsLoaded {
 /// The actor reads the session's cwd from state, scans global + project
 /// dirs discovered via the bounded walk, and writes the merged result into
 /// that session's ephemeral discovered-skills set.
-#[derive(Debug, Clone, Serialize, Deserialize, CommandMsg)]
-#[cmd("skills")]
+#[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct ScanSkills {
     /// The session whose cwd drives the scan.
     pub session_id: crate::SessionId,

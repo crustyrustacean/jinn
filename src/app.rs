@@ -71,7 +71,7 @@ impl App {
     /// `wal_checkpoint(TRUNCATE)`) so that a clean exit leaves a
     /// self-contained, up-to-date database. It runs on the live runtime
     /// after the runner has returned, at which point the actor system has
-    /// already drained via `coordinated_shutdown`, so no competing writers
+    /// already drained via graceful shutdown, so no competing writers
     /// remain.
     ///
     /// # Errors
@@ -209,7 +209,7 @@ impl App {
                 return Ok(());
             }
             Commands::Tui => {
-                let (core, services, _plugins, actor_host) =
+                let (core, services, _plugins) =
                     actor_wiring::ActorSystemBuilder::new(actor_wiring::ActorSystemBuilderArgs {
                         handle: self.handle(),
                         llm_service: llm_service.clone(),
@@ -222,7 +222,7 @@ impl App {
                         paths: jinn_domain::AppPaths::default(),
                     })
                     .build();
-                let app = jinn_tui::launch(core, services, actor_host, _plugins)
+                let app = jinn_tui::launch(core, services, _plugins)
                     .change_context(AppError)?;
                 let runner = Runner::Tui(Box::new(app));
                 self.run_and_shutdown(runner, &session_store)?;
@@ -230,7 +230,7 @@ impl App {
             #[cfg(debug_assertions)]
             Commands::Headless { command, .. } => {
                 let store_for_shutdown = session_store.clone();
-                let (core, _services, _plugins, actor_host) =
+                let (core, _services, _plugins) =
                     actor_wiring::ActorSystemBuilder::new(actor_wiring::ActorSystemBuilderArgs {
                         handle: self.handle(),
                         llm_service: llm_service.clone(),
@@ -255,7 +255,7 @@ impl App {
                     &_services.paths.themes_dir(),
                     &_services.paths.system_themes_dir(),
                 );
-                let mut headless = HeadlessApp::new(core, actor_host, self.handle());
+                let mut headless = HeadlessApp::new(core);
                 match command {
                     Some(HeadlessCommands::SendChat { message }) => {
                         headless.send_chat(&message).change_context(AppError)?;
@@ -320,7 +320,7 @@ impl App {
                             SqliteSessionStore::open_or_create(db_path).change_context(AppError)?,
                         ));
                         let store_for_shutdown = session_store.clone();
-                        let (core, services, plugins, actor_host) =
+                        let (core, services, plugins) =
                             actor_wiring::ActorSystemBuilder::new(
                                 actor_wiring::ActorSystemBuilderArgs {
                                     handle: self.handle(),
@@ -336,7 +336,7 @@ impl App {
                             )
                             .with_bench_actor(csv, plan, artifact_dir)
                             .build();
-                        let app = jinn_tui::launch(core, services, actor_host, plugins)
+                        let app = jinn_tui::launch(core, services, plugins)
                             .change_context(AppError)?;
                         let runner = Runner::Tui(Box::new(app));
                         self.run_and_shutdown(runner, &store_for_shutdown)?;
@@ -359,7 +359,7 @@ impl App {
                             SqliteSessionStore::open_or_create(db_path).change_context(AppError)?,
                         ));
                         let store_for_shutdown = session_store.clone();
-                        let (core, services, plugins, actor_host) =
+                        let (core, services, plugins) =
                             actor_wiring::ActorSystemBuilder::new(
                                 actor_wiring::ActorSystemBuilderArgs {
                                     handle: self.handle(),
@@ -374,7 +374,7 @@ impl App {
                                 },
                             )
                             .build();
-                        let app = jinn_tui::launch(core, services, actor_host, plugins)
+                        let app = jinn_tui::launch(core, services, plugins)
                             .change_context(AppError)?;
                         let runner = Runner::Tui(Box::new(app));
                         self.run_and_shutdown(runner, &store_for_shutdown)?;

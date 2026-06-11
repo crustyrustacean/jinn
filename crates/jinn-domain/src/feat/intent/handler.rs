@@ -31,7 +31,7 @@
 
 use crate::AppState;
 
-use crate::protocol::{Command, Event, PickerKind, PinPosition};
+use crate::protocol::{PickerKind, PinPosition};
 
 use crate::Intent;
 use crate::feat;

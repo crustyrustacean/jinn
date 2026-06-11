@@ -8,13 +8,12 @@
 
 use serde::{Deserialize, Serialize};
 
-use crate::protocol::{EventMsg, SessionId};
+use crate::protocol::{SessionId};
 
 /// Session was interacted with by the user.
 ///
 /// Broadcast after the session's `has_interacted` flag is set to `true`.
-#[derive(Debug, Clone, Serialize, Deserialize, EventMsg)]
-#[event_msg("session")]
+#[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct UserInteracted {
     /// The session that was interacted with.
     pub session_id: SessionId,

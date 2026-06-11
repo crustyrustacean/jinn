@@ -17,7 +17,7 @@
 use serde::{Deserialize, Serialize};
 
 use crate::feat::session::chat_session::ChatSessionState;
-use crate::{common::bus::BusMessage, protocol::{EventMsg, SessionId}};
+use crate::{common::bus::BusMessage, protocol::{SessionId}};
 /// Emitted after a session has been loaded and inserted into state.
 ///
 /// Carries the fully loaded session. The session-actor's
@@ -25,8 +25,7 @@ use crate::{common::bus::BusMessage, protocol::{EventMsg, SessionId}};
 /// (system message, model, CWD, context size). External subscribers
 /// (token-count actor, sidebar) use `session_id()` to look up the session
 /// from state.
-#[derive(Debug, Clone, Serialize, Deserialize, EventMsg)]
-#[event_msg("session")]
+#[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct SessionLoadCompleted {
     /// The fully loaded session from disk.
     pub session: ChatSessionState,
