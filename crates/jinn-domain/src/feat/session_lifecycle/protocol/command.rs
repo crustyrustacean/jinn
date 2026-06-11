@@ -73,6 +73,8 @@ pub struct SetSessionCwd {
     pub cwd: PathBuf,
 }
 
+impl crate::common::bus::BusMessage for SetSessionCwd {}
+
 /// Result of an async teardown shell command, sent back to the session actor.
 ///
 /// Emitted by the tokio task spawned during `handle_run_session_teardown` or

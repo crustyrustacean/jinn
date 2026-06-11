@@ -53,6 +53,8 @@ pub struct StreamCompleted {
     pub thinking_content: Option<String>,
 }
 
+impl crate::common::bus::BusMessage for StreamCompleted {}
+
 /// A single token from a streaming LLM response.
 ///
 /// Emitted by the LLM actor during streaming. Handlers append
@@ -73,6 +75,8 @@ pub struct StreamToken {
     #[serde(default)]
     pub is_thinking: bool,
 }
+
+impl crate::common::bus::BusMessage for StreamToken {}
 
 /// The active provider was switched.
 ///

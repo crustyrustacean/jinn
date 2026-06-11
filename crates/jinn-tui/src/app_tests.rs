@@ -29,6 +29,7 @@ async fn test_app() -> TuiApp {
     let core = AppCore {
         state: State::new(AppState::default()),
         sender,
+        bridge: services.bridge.clone(),
     };
     let fake_host = ActorHostService::new(Arc::new(FakeActorHost::new()));
     let mut ui_registry = AppUiRegistry::new();
@@ -227,6 +228,7 @@ async fn mouse_events_not_handled_when_mouse_selection_disabled() {
     let core = AppCore {
         state: State::new(AppState::default()),
         sender,
+        bridge: services.bridge.clone(),
     };
     let fake_host = ActorHostService::new(Arc::new(FakeActorHost::new()));
     let mut ui_registry = AppUiRegistry::new();

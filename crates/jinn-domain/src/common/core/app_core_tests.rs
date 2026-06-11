@@ -11,11 +11,12 @@ use super::app_core::*;
 use crate::common::core::app_msg::AppMsg;
 
 #[rstest::rstest]
-fn submit_command_sends_on_channel() {
+#[tokio::test]
+async fn submit_command_sends_on_channel() {
     // Given an AppCore with a sender/receiver pair.
     let (tx, rx) = kanal::unbounded::<AppMsg>();
     let state = crate::State::new(crate::common::app_state::AppState::default());
-    let core = AppCore { state, sender: tx };
+    let core = AppCore { state, sender: tx, bridge: crate::common::bridge::Bridge::new_for_test() };
 
     // When submitting a command.
     core.submit_command(crate::protocol::Command::RefreshModels);

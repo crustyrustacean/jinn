@@ -113,16 +113,16 @@ pub fn handle_pin_selected(state: &mut AppState) -> IntentResult {
     let entry_id = selected.id.clone();
 
     if selected.is_pinned() {
-        IntentResult::with_commands(vec![Command::UnpinChatEntry(UnpinChatEntry {
+        IntentResult::with_message(UnpinChatEntry {
             session_id,
             entry_id,
-        })])
+        })
     } else {
-        IntentResult::with_commands(vec![Command::PinChatEntry(PinChatEntry {
+        IntentResult::with_message(PinChatEntry {
             session_id,
             entry_id,
             position: PinPosition::Relative,
-        })])
+        })
     }
 }
 

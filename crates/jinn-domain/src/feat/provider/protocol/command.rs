@@ -1,6 +1,7 @@
 //! Provider commands.
 
 use serde::{Deserialize, Serialize};
+use crate::common::bus::BusMessage;
 
 use crate::feat::provider::llm_message::LlmMessage;
 use crate::feat::tools_actor::tool_types::ToolDefinition;
@@ -36,6 +37,7 @@ pub struct CancelStream {
     /// The session whose stream should be cancelled.
     pub session_id: SessionId,
 }
+impl BusMessage for CancelStream {}
 
 /// Command to send conversation context to the LLM provider.
 ///
@@ -66,6 +68,7 @@ impl crate::common::bus::BusMessage for SendToLlmProvider {}
 #[derive(Debug, Clone, Serialize, Deserialize, CommandMsg)]
 #[cmd("provider")]
 pub struct RefreshModels;
+impl BusMessage for RefreshModels {}
 
 /// Rescan prompt templates for a specific session.
 ///
@@ -77,6 +80,7 @@ pub struct RescanPromptTemplates {
     /// The session whose cwd drives the scan.
     pub session_id: crate::SessionId,
 }
+impl BusMessage for RescanPromptTemplates {}
 
 /// Load entries for the provider/model picker.
 ///

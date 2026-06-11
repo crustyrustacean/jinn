@@ -3,7 +3,7 @@
 use crate::common::app_state::{AppState, FocusScope, RenameSessionInputState};
 use crate::feat::session_lifecycle::protocol::command::PersistSession;
 use crate::feat::ui::sidebar::sessions::sorted_open_sessions;
-use crate::protocol::{Command, IntentResult};
+use crate::protocol::IntentResult;
 
 /// Opens the rename session input popup.
 ///
@@ -72,7 +72,7 @@ pub fn handle_rename_session_confirm(state: &mut AppState) -> IntentResult {
     state.frontend.scope_stack.pop();
     state.frontend.rename_session_input = RenameSessionInputState::default();
 
-    IntentResult::with_commands(vec![Command::PersistSession(PersistSession { session_id })])
+    IntentResult::with_message(PersistSession { session_id })
 }
 
 /// Cancels the rename session input popup.
@@ -235,13 +235,7 @@ mod tests {
         // And input state is cleared.
         assert!(state.frontend.rename_session_input.text.input.is_empty());
         // And a PersistSession command is emitted.
-        assert!(
-            result
-                .commands
-                .iter()
-                .any(|c| matches!(c, Command::PersistSession(p) if p.session_id == session_id)),
-            "expected PersistSession command for the renamed session"
-        );
+        assert_eq!(result.messages.len(), 1, "expected PersistSession message for the renamed session");
     }
 
     #[rstest::rstest]
@@ -311,13 +305,7 @@ mod tests {
             "session should be marked as interacted after rename"
         );
         // And a PersistSession command is emitted.
-        assert!(
-            result
-                .commands
-                .iter()
-                .any(|c| matches!(c, Command::PersistSession(p) if p.session_id == session_id)),
-            "expected PersistSession command for non-interacted session after rename"
-        );
+        assert_eq!(result.messages.len(), 1, "expected PersistSession message for non-interacted session after rename");
     }
 
     #[rstest::rstest]

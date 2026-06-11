@@ -46,6 +46,8 @@ pub struct UpdateAppState {
     pub updates: Vec<AppStateUpdate>,
 }
 
+impl crate::common::bus::BusMessage for UpdateAppState {}
+
 #[cfg(test)]
 mod tests {
     #![allow(
