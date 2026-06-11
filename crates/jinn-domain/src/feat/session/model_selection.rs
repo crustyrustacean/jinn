@@ -16,7 +16,10 @@ pub enum AlloyStrategy {
     /// Advance through models in order, wrapping around.
     RoundRobin { index: usize },
     /// Pick a random model on each call.
-    Random,
+    Random {
+        #[serde(default)]
+        last_index: usize,
+    },
 }
 
 /// How a session selects which model handles each LLM call.
@@ -73,7 +76,11 @@ impl ModelSelection {
                         *index = (*index + 1) % models.len();
                         i
                     }
-                    AlloyStrategy::Random => rand::rng().random_range(0..models.len()),
+                    AlloyStrategy::Random { last_index } => {
+                        let idx = rand::rng().random_range(0..models.len());
+                        *last_index = idx;
+                        idx
+                    }
                 };
                 #[expect(clippy::indexing_slicing, reason = "idx bounded by modulo or len")]
                 models[idx].clone()
@@ -104,7 +111,7 @@ impl ModelSelection {
             Self::Alloy { models, strategy } => {
                 let idx = match strategy {
                     AlloyStrategy::RoundRobin { index } => *index,
-                    AlloyStrategy::Random => 0,
+                    AlloyStrategy::Random { last_index } => *last_index,
                 };
                 models.get(idx).map(String::as_str)
             }
@@ -232,7 +239,7 @@ mod tests {
         // Given an Alloy with Random strategy.
         let selection = ModelSelection::Alloy {
             models: test_models(),
-            strategy: AlloyStrategy::Random,
+            strategy: AlloyStrategy::Random { last_index: 0 },
         };
 
         // When serializing and deserializing.
@@ -311,7 +318,7 @@ mod tests {
         let models = test_models();
         let mut selection = ModelSelection::Alloy {
             models: models.clone(),
-            strategy: AlloyStrategy::Random,
+            strategy: AlloyStrategy::Random { last_index: 0 },
         };
 
         // When resolving multiple times.
@@ -348,7 +355,7 @@ mod tests {
         // Given an Alloy selection.
         let selection = ModelSelection::Alloy {
             models: test_models(),
-            strategy: AlloyStrategy::Random,
+            strategy: AlloyStrategy::Random { last_index: 0 },
         };
 
         // Then is_no_provider is false.
@@ -372,7 +379,7 @@ mod tests {
         // Given an Alloy selection.
         let selection = ModelSelection::Alloy {
             models: test_models(),
-            strategy: AlloyStrategy::Random,
+            strategy: AlloyStrategy::Random { last_index: 0 },
         };
 
         // When calling as_single.
