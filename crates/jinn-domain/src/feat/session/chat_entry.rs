@@ -675,6 +675,27 @@ impl ChatEntry {
         )
     }
 
+    /// Whether this entry's most recent context change was a user-initiated
+    /// `ForcedExclude`.
+    ///
+    /// Used by `apply_mutations` to prevent workers from re-including entries
+    /// the user has explicitly excluded via the `x` key or an x-sweep.
+    ///
+    /// Returns `false` when `context_history` is empty (freshly constructed
+    /// entries, or old data predating the audit trail feature).
+    ///
+    /// # Semantics
+    ///
+    /// Only the **most recent** audit event is consulted. If the user excluded
+    /// an entry but later toggled it back to `Default`, the guard does not
+    /// block re-inclusion.
+    #[must_use]
+    pub fn is_user_force_excluded(&self) -> bool {
+        self.context_history.last().is_some_and(|event| {
+            event.to == ContextOverride::ForcedExclude && event.source == ChangeSource::User
+        })
+    }
+
     /// Whether this entry kind can be pinned to the context.
     /// Whether this entry is a compaction summary.
     ///

@@ -2780,6 +2780,14 @@ impl ChatSessionState {
                         {
                             continue;
                         }
+                        // Don't allow workers to re-include entries the user
+                        // explicitly excluded.
+                        if value == ContextOverride::ForcedInclude
+                            && matches!(source, ChangeSource::Worker { .. })
+                            && entry.is_user_force_excluded()
+                        {
+                            continue;
+                        }
                         let was_changed = entry.apply_context_override(value, source);
                         if was_changed {
                             changed.push(entry_id);
