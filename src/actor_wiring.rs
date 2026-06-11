@@ -53,6 +53,7 @@ use jinn_domain::feat::skills::skills_scan_actor::{SkillsScanActor, SkillsScanAc
 
 use jinn_domain::feat::preferences_actor::user_preferences::WebFetchBackend;
 use jinn_domain::feat::web_fetch_actor::{WebFetchActor, WebFetchActorDeps};
+use jinn_domain::feat::session::session_actor::{SessionPersistenceActor, SessionPersistenceActorDeps};
 use jinn_web_fetch::{HttpFetcher, MarkdownExtractor, OutputFormat};
 
 use jinn_domain::{
@@ -433,18 +434,10 @@ impl ActorSystemBuilder {
 
         // Session persistence actor.
         let token_counter = TiktokenCounter::o200k_base();
-        actors.push(spawn::<
-            jinn_domain::feat::session::session_actor::SessionPersistenceActor,
-        >(
-            "session-persistence",
-            &sink,
-            handle,
-            &counter,
-            &shutdown_tracker,
-            jinn_domain::feat::session::session_actor::SessionPersistenceActorDeps {
+        let _session_persistence = SessionPersistenceActor::spawn(
+            SessionPersistenceActorDeps {
+                deps: ActorDeps { services: services.clone() },
                 state: state.clone(),
-                services: services.clone(),
-
                 counter: token_counter,
                 builtin_registry: {
                     let mut registry =
@@ -457,7 +450,7 @@ impl ActorSystemBuilder {
                 },
                 shell: std::env::var("SHELL").unwrap_or_else(|_| "/bin/sh".to_owned()),
             },
-        ));
+        );
 
         // Prompt scan actor.
         let _prompt_scan =
