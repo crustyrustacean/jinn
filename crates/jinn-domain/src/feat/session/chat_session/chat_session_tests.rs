@@ -5076,7 +5076,7 @@ fn streamed_entry_begins_with_dispatched_at_only() {
         other => {
             panic!("expected Streamed with first_token_at=Some, finished_at=None, got {other:?}")
         }
-    };
+    }
 }
 
 #[test]
@@ -5105,7 +5105,7 @@ fn streamed_entry_gets_first_token_at_on_creation() {
             assert!(*ft >= da);
         }
         other => panic!("expected Streamed with first_token_at=Some, got {other:?}"),
-    };
+    }
 }
 
 #[test]
@@ -5142,7 +5142,7 @@ fn streamed_entry_gets_finished_at_on_stream_complete() {
             assert!(*fin >= *ft);
         }
         other => panic!("expected Streamed with all timestamps set, got {other:?}"),
-    };
+    }
 }
 
 #[test]
@@ -5170,5 +5170,5 @@ fn tool_call_entry_gets_dispatched_at_from_tool_use_started() {
             assert_eq!(*d, da, "dispatched_at should come from ToolUseStarted");
         }
         other => panic!("expected Streamed, got {other:?}"),
-    };
+    }
 }
