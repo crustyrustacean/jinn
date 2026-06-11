@@ -18,6 +18,9 @@ pub(crate) enum SessionState {
 pub(crate) struct SessionData {
     /// Current state in the streaming lifecycle.
     state: SessionState,
+    /// The concrete model ID handling the current/last request.
+    /// Propagated from `SendToLlmProvider` to `StreamCompleted`.
+    model_used: Option<String>,
     /// When the LLM request was dispatched. Stored here so cancellation
     /// events can carry the original dispatch time.
     dispatched_at: Option<Timestamp>,
@@ -28,6 +31,7 @@ impl SessionData {
     pub(crate) fn new() -> Self {
         Self {
             state: SessionState::Idle,
+            model_used: None,
             dispatched_at: None,
         }
     }
@@ -47,5 +51,10 @@ impl SessionData {
     /// Returns the dispatch timestamp, if the session has been dispatched.
     pub(crate) fn dispatched_at(&self) -> Option<Timestamp> {
         self.dispatched_at
+    }
+
+    /// Sets the concrete model ID for the current stream.
+    pub(crate) fn set_model_used(&mut self, model: Option<String>) {
+        self.model_used = model;
     }
 }

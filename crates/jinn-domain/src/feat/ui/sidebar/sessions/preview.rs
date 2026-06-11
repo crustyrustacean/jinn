@@ -19,7 +19,6 @@ use unicode_segmentation::UnicodeSegmentation;
 
 use crate::common::app_state::{AppState, FocusScope};
 use crate::common::render_ctx::RenderCtx;
-use crate::feat::provider_infra::NO_PROVIDER_ID;
 use crate::feat::session::chat_session::ChatSessionState;
 use crate::feat::theme::Theme;
 use crate::feat::ui::chat_log::entry_to_lines;
@@ -310,13 +309,20 @@ fn render_model_line(
         height: 1,
     };
 
-    let model = session.model();
-    let model_display = if model == NO_PROVIDER_ID {
+    let model = session.model_selection();
+    let model_display = if model.is_no_provider() {
         "no model selected".to_owned()
-    } else if let Some((provider, model_suffix)) = model.split_once('/') {
-        format!("({provider})/{model_suffix}")
+    } else if let Some(single) = model.as_single() {
+        if let Some((provider, model_suffix)) = single.split_once('/') {
+            format!("({provider})/{model_suffix}")
+        } else {
+            single.to_owned()
+        }
     } else {
-        model.to_owned()
+        // Alloy — show "alloy (N models)"
+        model.as_alloy().map_or("alloy".to_owned(), |a| {
+            format!("alloy ({} models)", a.models.len())
+        })
     };
 
     let cwd_raw = session.cwd().to_string_lossy();
