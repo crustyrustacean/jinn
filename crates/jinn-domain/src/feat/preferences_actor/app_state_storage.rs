@@ -223,6 +223,8 @@ mod tests {
     )]
     use super::*;
 
+    use crate::feat::session::model_selection::ModelSelection;
+
     #[rstest::rstest]
     fn in_memory_load_returns_default_when_empty() {
         // Given an empty InMemoryAppStateStorage.
@@ -240,7 +242,7 @@ mod tests {
         // Given an InMemoryAppStateStorage.
         let storage = InMemoryAppStateStorage::new();
         let state = AppStateFile {
-            last_model: Some("ollama/llama3".to_owned()),
+            last_model: Some(ModelSelection::from_single("ollama/llama3".to_owned())),
             theme_name: None,
             persona_name: None,
             sidebar_width: Some(40),
@@ -251,7 +253,10 @@ mod tests {
         let reloaded = storage.reload().expect("reload");
 
         // Then the round-tripped data matches.
-        assert_eq!(reloaded.last_model.as_deref(), Some("ollama/llama3"));
+        assert_eq!(
+            reloaded.last_model,
+            Some(ModelSelection::from_single("ollama/llama3".to_owned()))
+        );
         assert_eq!(reloaded.sidebar_width, Some(40));
     }
 
@@ -283,7 +288,7 @@ mod tests {
         let storage = FilesystemAppStateStorage::new(path);
 
         let state = AppStateFile {
-            last_model: Some("test/model".to_owned()),
+            last_model: Some(ModelSelection::from_single("test/model".to_owned())),
             theme_name: Some("gruvbox-dark".to_owned()),
             persona_name: None,
             sidebar_width: None,
@@ -294,7 +299,10 @@ mod tests {
         let reloaded = storage.reload().expect("reload");
 
         // Then the round-tripped data matches.
-        assert_eq!(reloaded.last_model.as_deref(), Some("test/model"));
+        assert_eq!(
+            reloaded.last_model,
+            Some(ModelSelection::from_single("test/model".to_owned()))
+        );
         assert_eq!(reloaded.theme_name.as_deref(), Some("gruvbox-dark"));
     }
 
@@ -306,7 +314,7 @@ mod tests {
         let storage = InMemoryAppStateStorage::new();
         let service = AppStateStorageService::new(Arc::new(storage));
         let state = AppStateFile {
-            last_model: Some("ollama/llama3".to_owned()),
+            last_model: Some(ModelSelection::from_single("ollama/llama3".to_owned())),
             theme_name: None,
             persona_name: None,
             sidebar_width: None,
@@ -319,7 +327,10 @@ mod tests {
 
         // Then both return the same value.
         assert_eq!(first.last_model, second.last_model);
-        assert_eq!(first.last_model.as_deref(), Some("ollama/llama3"));
+        assert_eq!(
+            first.last_model,
+            Some(ModelSelection::from_single("ollama/llama3".to_owned()))
+        );
     }
 
     #[rstest::rstest]
@@ -328,7 +339,7 @@ mod tests {
         let storage = InMemoryAppStateStorage::new();
         let service = AppStateStorageService::new(Arc::new(storage));
         let state = AppStateFile {
-            last_model: Some("ollama/llama3".to_owned()),
+            last_model: Some(ModelSelection::from_single("ollama/llama3".to_owned())),
             theme_name: None,
             persona_name: None,
             sidebar_width: None,
@@ -337,7 +348,7 @@ mod tests {
 
         // When saving new state.
         let updated = AppStateFile {
-            last_model: Some("openrouter/gpt-4".to_owned()),
+            last_model: Some(ModelSelection::from_single("openrouter/gpt-4".to_owned())),
             theme_name: None,
             persona_name: None,
             sidebar_width: None,
@@ -346,7 +357,10 @@ mod tests {
 
         // Then load returns the updated value.
         let loaded = service.reload().expect("reload");
-        assert_eq!(loaded.last_model.as_deref(), Some("openrouter/gpt-4"));
+        assert_eq!(
+            loaded.last_model,
+            Some(ModelSelection::from_single("openrouter/gpt-4".to_owned()))
+        );
     }
 
     #[rstest::rstest]
@@ -355,7 +369,7 @@ mod tests {
         let storage = InMemoryAppStateStorage::new();
         let service = AppStateStorageService::new(Arc::new(storage));
         let state = AppStateFile {
-            last_model: Some("ollama/llama3".to_owned()),
+            last_model: Some(ModelSelection::from_single("ollama/llama3".to_owned())),
             theme_name: None,
             persona_name: None,
             sidebar_width: None,
@@ -366,7 +380,10 @@ mod tests {
         let reloaded = service.reload().expect("reload");
 
         // Then fresh state is returned from storage.
-        assert_eq!(reloaded.last_model.as_deref(), Some("ollama/llama3"));
+        assert_eq!(
+            reloaded.last_model,
+            Some(ModelSelection::from_single("ollama/llama3".to_owned()))
+        );
     }
 
     #[rstest::rstest]

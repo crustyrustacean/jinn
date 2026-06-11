@@ -33,6 +33,10 @@ pub struct TokenRecord {
     /// Cost in USD reported by the provider for this request.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub cost: Option<f64>,
+    /// The concrete model ID that handled this request.
+    /// For alloys, this is the resolved model; for single models, the model itself.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub model_used: Option<String>,
 }
 
 /// Summary statistics derived from a token ledger.
@@ -192,6 +196,7 @@ mod tests {
     fn build_tree() -> HashMap<SessionId, ChatSessionState> {
         let mut root = ChatSessionState::new();
         root.push_token_record(TokenRecord {
+            model_used: None,
             timestamp: Timestamp::now(),
             tokens_sent: 100,
             tokens_received: 200,
@@ -202,6 +207,7 @@ mod tests {
         let mut child = ChatSessionState::new();
         child.set_parent_session(root_id.clone());
         child.push_token_record(TokenRecord {
+            model_used: None,
             timestamp: Timestamp::now(),
             tokens_sent: 300,
             tokens_received: 400,
@@ -212,6 +218,7 @@ mod tests {
         let mut grandchild = ChatSessionState::new();
         grandchild.set_parent_session(child_id.clone());
         grandchild.push_token_record(TokenRecord {
+            model_used: None,
             timestamp: Timestamp::now(),
             tokens_sent: 500,
             tokens_received: 600,

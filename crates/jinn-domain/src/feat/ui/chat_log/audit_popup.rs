@@ -35,7 +35,7 @@ pub fn format_audit_lines(entry: &ChatEntry, theme: &Theme) -> Vec<Line<'static>
     let mut lines = Vec::new();
     lines.push(centered_title("Metadata", AUDIT_POPUP_WIDTH, header_style));
     lines.push(Line::from(vec![Span::styled(
-        format!("Sent: {}", format_timestamp(&entry.timestamp)),
+        format!("Sent: {}", format_timestamp(&entry.timing.at())),
         body_style,
     )]));
     lines.push(Line::from(vec![Span::styled(String::new(), body_style)]));
