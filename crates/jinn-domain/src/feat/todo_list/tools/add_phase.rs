@@ -107,12 +107,10 @@ pub fn execute(call: ToolCall, ctx: ToolContext) -> BoxedToolFuture {
             rendered = list.render_text_with_blockers();
         }
 
-        if let Some(sink) = &ctx.sink {
-            let _ = sink.send_event(crate::protocol::Event::TaskListUpdated(
-                crate::feat::session::protocol::task_list_updated::TaskListUpdated {
-                    session_id: session_id.clone(),
-                },
-            ));
+        if let Some(bus) = &ctx.bus {
+            bus.publish(crate::feat::session::protocol::task_list_updated::TaskListUpdated {
+                session_id: session_id.clone(),
+            }).await;
         }
 
         ToolResult {

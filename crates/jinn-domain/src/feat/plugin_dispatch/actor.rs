@@ -27,7 +27,6 @@ use serde_json::Value;
 
 use crate::common::actor::protocol::dynamic_command::DynamicCommand;
 use crate::common::actor::protocol::event::AllActorsSpawned;
-use crate::common::actor::{Actor as OldActor, ActorContext, ActorEnvelope, NoDirectMsg, RecordingSink};
 use crate::common::actor_deps::{ActorDeps, BusPublish};
 use crate::common::services::bus_service::BusService;
 use crate::common::services::Services;
@@ -45,8 +44,7 @@ use crate::feat::plugin_system::SessionRegistryId;
 use crate::feat::session::chat_entry::ChatEntryKind;
 use crate::feat::session::protocol::session_phase_changed::SessionPhaseChanged;
 use crate::feat::session_lifecycle::protocol::event::SessionCreated;
-use crate::protocol::{Command, Event};
-use kameo::prelude::{Actor as KameoActor, ActorRef, Context, Message};
+use kameo::prelude::{Actor, ActorRef, Context, Message};
 /// Errors raised by [`PluginDispatchActor`] operations.
 ///
 /// All error context lives in attached `.attach(...)` values on the
@@ -111,7 +109,7 @@ pub struct PluginDispatchActorDeps {
 // Kameo Actor impl
 // ---------------------------------------------------------------------------
 
-impl KameoActor for PluginDispatchActor {
+impl Actor for PluginDispatchActor {
     type Args = PluginDispatchActorDeps;
     type Error = kameo::error::Infallible;
 
@@ -147,14 +145,14 @@ impl KameoActor for PluginDispatchActor {
 }
 
 // ---------------------------------------------------------------------------
-// Message handlers — bridge to old dispatch
+// Message handlers
 // ---------------------------------------------------------------------------
 
 impl Message<AllActorsSpawned> for PluginDispatchActor {
     type Reply = ();
 
     async fn handle(&mut self, msg: AllActorsSpawned, _ctx: &mut Context<Self, Self::Reply>) {
-        self.handle_event(Event::AllActorsSpawned(msg));
+        self.fire_on_app_started();
     }
 }
 
@@ -162,7 +160,7 @@ impl Message<SessionCreated> for PluginDispatchActor {
     type Reply = ();
 
     async fn handle(&mut self, msg: SessionCreated, _ctx: &mut Context<Self, Self::Reply>) {
-        self.handle_event(Event::SessionCreated(msg));
+        self.fire_on_session_created(&msg.session_id);
     }
 }
 
@@ -170,7 +168,7 @@ impl Message<SessionPhaseChanged> for PluginDispatchActor {
     type Reply = ();
 
     async fn handle(&mut self, msg: SessionPhaseChanged, _ctx: &mut Context<Self, Self::Reply>) {
-        self.handle_event(Event::SessionPhaseChanged(msg));
+        self.fire_on_phase_changed(&msg.session_id, msg.new_phase);
     }
 }
 
@@ -178,7 +176,7 @@ impl Message<AttachPlugin> for PluginDispatchActor {
     type Reply = ();
 
     async fn handle(&mut self, msg: AttachPlugin, _ctx: &mut Context<Self, Self::Reply>) {
-        self.dispatch_command(Command::AttachPlugin(msg)).await;
+        self.handle_attach(msg).await;
     }
 }
 
@@ -186,7 +184,7 @@ impl Message<DetachPlugin> for PluginDispatchActor {
     type Reply = ();
 
     async fn handle(&mut self, msg: DetachPlugin, _ctx: &mut Context<Self, Self::Reply>) {
-        self.dispatch_command(Command::DetachPlugin(msg)).await;
+        self.handle_detach(msg).await;
     }
 }
 
@@ -194,7 +192,7 @@ impl Message<TogglePlugin> for PluginDispatchActor {
     type Reply = ();
 
     async fn handle(&mut self, msg: TogglePlugin, _ctx: &mut Context<Self, Self::Reply>) {
-        self.dispatch_command(Command::TogglePlugin(msg)).await;
+        self.handle_toggle(msg).await;
     }
 }
 
@@ -202,7 +200,7 @@ impl Message<DynamicCommand> for PluginDispatchActor {
     type Reply = ();
 
     async fn handle(&mut self, msg: DynamicCommand, _ctx: &mut Context<Self, Self::Reply>) {
-        self.dispatch_command(Command::Dynamic(msg)).await;
+        self.handle_dynamic(msg).await;
     }
 }
 
@@ -213,106 +211,13 @@ impl BusPublish for PluginDispatchActor {
 }
 
 // ---------------------------------------------------------------------------
-// Bridge: old dispatch → bus flush
+// Handler methods
 // ---------------------------------------------------------------------------
 
 impl PluginDispatchActor {
-    async fn dispatch_command(&mut self, cmd: Command) {
-        let sink = std::sync::Arc::new(RecordingSink::new());
-        let ctx = ActorContext::new("plugin-dispatch", sink.clone());
-        self.handle_command(cmd, &ctx).await;
-        self.flush_sink_to_bus(sink).await;
-    }
-
-    async fn flush_sink_to_bus(&self, sink: std::sync::Arc<RecordingSink>) {
-        for event in sink.take_events() {
-            self.publish_event(event).await;
-        }
-        for cmd in sink.take_commands() {
-            self.publish_command(cmd).await;
-        }
-    }
-
-    async fn publish_event(&self, event: Event) {
-        match event {
-            Event::PluginAttached(m) => self.publish(m).await,
-            Event::PluginDetached(m) => self.publish(m).await,
-            Event::PluginToggled(m) => self.publish(m).await,
-            other => tracing::warn!(?other, "plugin-dispatch: unhandled event variant"),
-        }
-    }
-
-    async fn publish_command(&self, cmd: Command) {
-        tracing::warn!(?cmd, "plugin-dispatch: unexpected command from handler");
-    }
-}
-
-// ---------------------------------------------------------------------------
-// Old Actor trait impl — retained for test compat, cleaned up in Phase 4
-// ---------------------------------------------------------------------------
-
-impl OldActor for PluginDispatchActor {
-    type Message = NoDirectMsg;
-    type Deps = PluginDispatchActorDeps;
-
-    fn activate(deps: Self::Deps, _ctx: &mut ActorContext) -> Self {
-        Self {
-            deps: deps.deps,
-            services: deps.services,
-            state: deps.state,
-            registry: AttachedPluginRegistry::default(),
-            startup_session_id: deps.startup_session_id,
-            domain_ctx: deps.domain_ctx,
-        }
-    }
-
-    async fn handle(&mut self, msg: ActorEnvelope<Self::Message>, ctx: &ActorContext) {
-        match msg {
-            ActorEnvelope::Event(event) => self.handle_event(event),
-            ActorEnvelope::Command(command) => self.handle_command(command, ctx).await,
-            ActorEnvelope::System(_) => {}
-        }
-    }
-}
-
-impl PluginDispatchActor {
-    // ─── Event dispatch ────────────────────────────────────────────────────
-
-    fn handle_event(&self, event: Event) {
-        match event {
-            Event::AllActorsSpawned(_) => self.fire_on_app_started(),
-            Event::SessionCreated(SessionCreated { session_id }) => {
-                self.fire_on_session_created(&session_id);
-            }
-            Event::SessionPhaseChanged(SessionPhaseChanged {
-                session_id,
-                new_phase,
-                ..
-            }) => {
-                let hook_session = session_id.clone();
-                self.fire_on_phase_changed(&hook_session, new_phase);
-            }
-            _ => {}
-        }
-    }
-
-    // ─── Command dispatch ──────────────────────────────────────────────────
-
-    async fn handle_command(&mut self, command: Command, ctx: &ActorContext) {
-        match command {
-            Command::AttachPlugin(cmd) => self.handle_attach(cmd, ctx).await,
-            Command::DetachPlugin(cmd) => self.handle_detach(cmd, ctx).await,
-            Command::TogglePlugin(cmd) => self.handle_toggle(cmd, ctx).await,
-            Command::Dynamic(ref d) if d.name == "plugin::fire_async" => {
-                self.handle_fire_async_hook(&d.payload, ctx);
-            }
-            _ => {}
-        }
-    }
-
     // ─── Command handlers ──────────────────────────────────────────────────
 
-    async fn handle_attach(&mut self, cmd: AttachPlugin, ctx: &ActorContext) {
+    async fn handle_attach(&mut self, cmd: AttachPlugin) {
         let AttachPlugin {
             session_id,
             plugin_name,
@@ -343,13 +248,13 @@ impl PluginDispatchActor {
             .await;
 
         // 3. Publish event.
-        let _ = ctx.send_event(Event::PluginAttached(PluginAttached {
+        self.publish(PluginAttached {
             session_id,
             plugin_name,
-        }));
+        }).await;
     }
 
-    async fn handle_detach(&mut self, cmd: DetachPlugin, ctx: &ActorContext) {
+    async fn handle_detach(&mut self, cmd: DetachPlugin) {
         let DetachPlugin {
             session_id,
             plugin_name,
@@ -381,15 +286,13 @@ impl PluginDispatchActor {
             .await;
 
         // 3. Publish event.
-        let _ = ctx.send_event(Event::PluginDetached(PluginDetached {
+        self.publish(PluginDetached {
             session_id,
             plugin_name,
-        }));
+        }).await;
     }
 
-    /// Destroy any existing registry for `session_id`, then create a new one
-    /// loading `plugin_names`. If `plugin_names` is empty, the registry is
-    /// destroyed and no new one is created.
+
     async fn recreate_session_registry(
         &mut self,
         session_id: &SessionId,
@@ -423,19 +326,14 @@ impl PluginDispatchActor {
             }
         }
     }
-
-    #[expect(
-        clippy::unused_async,
-        reason = "trait contract requires async; the awaited event send is fire-and-forget"
-    )]
-    async fn handle_toggle(&mut self, cmd: TogglePlugin, ctx: &ActorContext) {
+    async fn handle_toggle(&mut self, cmd: TogglePlugin) {
         let TogglePlugin {
             session_id,
             plugin_name,
         } = cmd;
         tracing::debug!(session_id = %session_id, plugin = %plugin_name, "toggling plugin");
 
-        let (now_enabled, still_attached) = {
+        let now_enabled = {
             let state = &mut self.state.write().session;
             let Some(session) = state.get_mut(&session_id) else {
                 tracing::warn!(session_id = %session_id, "session not found for toggle");
@@ -451,33 +349,22 @@ impl PluginDispatchActor {
                 return;
             };
             plugin.enabled = !plugin.enabled;
-            let now_enabled = plugin.enabled;
-            // If toggling off we keep the entry around — detach is the explicit
-            // removal path. So `still_attached` is always true here.
-            (now_enabled, true)
+            plugin.enabled
         };
 
-        // Recreate registry only if disabling removed the only enabled plugin, or
-        // enabling added a plugin. Simplest: always recreate from the enabled set.
-        // We only need to recreate when there was a state change affecting which
-        // plugins should be loaded into the Lua state — that's the enabled subset.
-        // For simplicity in this pass: recreate from all attached_plugins names.
-        // (Toggle affects in-fire filtering, not registry composition.)
-        //
-        // Actually no — the Lua state loads plugins at create time. If we want a
-        // disabled plugin to be skipped at fire time without recreating the state,
-        // the fire path must filter by enabled. Keep registry stable on toggle.
-        //
-        // If the toggle removes the *last* enabled plugin, registry recreation is
-        // still optional (fire-time filtering handles it). So: no registry
-        // recreation here.
-        let _ = (now_enabled, still_attached);
+        // No registry recreation on toggle — fire-time filtering handles enabled/disabled.
 
-        let _ = ctx.send_event(Event::PluginToggled(PluginToggled {
+        self.publish(PluginToggled {
             session_id,
             plugin_name,
             enabled: now_enabled,
-        }));
+        }).await;
+    }
+
+    async fn handle_dynamic(&mut self, d: DynamicCommand) {
+        if d.name == "plugin::fire_async" {
+            self.handle_fire_async_hook(&d.payload);
+        }
     }
 
     // ─── Lifecycle hook firings ────────────────────────────────────────────
@@ -523,15 +410,6 @@ impl PluginDispatchActor {
 
     /// Fire a hook for a session on a background task, so the actor loop is not
     /// blocked while the hook runs.
-    ///
-    /// The registry id is resolved synchronously (cheap lookup) before spawning, so the
-    /// spawned task captures only cheap clones: the `PluginFireService`, the resolved
-    /// `SessionRegistryId` (Copy), the hook name, and the ctx JSON.
-    ///
-    /// Needed because a fired hook may `ctx.request(...)` something whose resolution
-    /// depends on an event routed back to this actor (e.g. `on_enrich` → `llm_oneshot` →
-    /// `SessionPhaseChanged(Idle)`). Awaiting the fire inline would block the mailbox
-    /// and deadlock until the 30s `AsyncPluginHandle` timeout.
     fn spawn_fire_for_session(&self, session_id: &SessionId, hook: &str, ctx_json: &Value) {
         let plugins = self.services.plugins.clone();
         let registry_id = self.registry.get(session_id).copied();
@@ -553,8 +431,6 @@ impl PluginDispatchActor {
     }
 
     /// Extract the text of the last assistant entry for a session.
-    /// Used to resolve a pending plugin LLM one-shot oneshot when an automated
-    /// session completes. Returns an empty string if no assistant entry exists.
     fn extract_last_assistant_text(&self, session_id: &SessionId) -> String {
         let guard = self.state.read();
         let Some(session) = guard.session.get(session_id) else {
@@ -570,12 +446,8 @@ impl PluginDispatchActor {
             })
             .unwrap_or_default()
     }
+
     /// Determine the one-shot outcome to resolve the pending sender with.
-    ///
-    /// Reads the session's last entry: if it's an `Error`, the one-shot failed
-    /// and the error message is surfaced (the session actor pushes a `ChatEntry::error`
-    /// before transitioning to `Idle`). Otherwise the last assistant entry text is
-    /// the successful response (empty string if there is none).
     fn resolve_response_for_session(&self, session_id: &SessionId) -> Result<String, String> {
         let guard = self.state.read();
         let Some(session) = guard.session.get(session_id) else {
@@ -588,11 +460,8 @@ impl PluginDispatchActor {
         }
     }
 
-    /// Handle the generic `plugin::fire_async` dynamic command: route an
-    /// arbitrary hook name to the plugin-async VM for the session.
-    ///
-    /// Payload: `{ hook: String, session_id: String, text: Option<String> }`.
-    fn handle_fire_async_hook(&self, payload: &Value, _ctx: &ActorContext) {
+    /// Handle the generic `plugin::fire_async` dynamic command.
+    fn handle_fire_async_hook(&self, payload: &Value) {
         #[derive(serde::Deserialize)]
         struct FireAsyncPayload {
             hook: String,
@@ -624,13 +493,13 @@ impl PluginDispatchActor {
 }
 
 // Pull in a typed-error conversion so `?` works in callers that bubble up
-// errors via `Report<PluginDispatchActorError>`. Currently no internal helpers
-// return Result, but this is here to keep the door open.
+// errors via `Report<PluginDispatchActorError>`.
 #[expect(dead_code, reason = "kept for future internal helpers")]
 fn into_error<E: std::fmt::Display>(e: E) -> Report<PluginDispatchActorError> {
     let _ = e;
     Report::new(PluginDispatchActorError)
 }
+
 
 #[cfg(test)]
 mod tests {
