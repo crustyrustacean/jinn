@@ -6,7 +6,9 @@
 use crate::feat::preferences_actor::user_preferences::BashConfig;
 use crate::feat::tools_actor::tool_types::{ToolCall, ToolContext, ToolDefinition};
 
-use super::{BoxedToolFuture, bash, edit, get_time, grep, read, save_plan, session_query, skill, write};
+use super::{
+    BoxedToolFuture, bash, edit, get_time, grep, read, save_plan, session_query, skill, write,
+};
 
 use crate::feat::todo_list;
 
