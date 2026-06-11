@@ -2489,6 +2489,11 @@ impl ChatSessionState {
         self.core.fork_ordinal
     }
 
+    /// Set the fork ordinal for testing and construction.
+    pub fn set_fork_ordinal(&mut self, ordinal: usize) {
+        self.core.fork_ordinal = Some(ordinal);
+    }
+
     /// Set the parent session.
     pub fn set_parent_session(&mut self, parent: SessionId) {
         self.core.parent_session = Some(parent);
