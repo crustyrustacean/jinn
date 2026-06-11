@@ -16,6 +16,8 @@
 use serde::de::DeserializeOwned;
 use serde_json::Value;
 
+pub use super::hook_context::{HookContext, ProvidesSessionId};
+
 /// Call plugin hooks synchronously, directly on the caller's thread.
 ///
 /// Non-`Send`: implementations own a `!Send` Lua state and must only be called
@@ -25,7 +27,7 @@ use serde_json::Value;
 /// Implemented by `jinn_plugin::SyncPlugins`.
 pub trait PluginSyncHooks {
     /// Call all hooks for the given name, returning non-nil results as JSON.
-    fn call_hooks(&self, hook: &str, ctx: &Value) -> Vec<Value>;
+    fn call_hooks(&self, hook: &str, ctx: &HookContext) -> Vec<Value>;
 }
 
 /// Typed wrapper over [`PluginSyncHooks::call_hooks`].
@@ -37,7 +39,7 @@ pub trait PluginSyncHooks {
 pub fn call_hooks_typed<T: DeserializeOwned>(
     plugins: &dyn PluginSyncHooks,
     hook: &str,
-    ctx: &Value,
+    ctx: &HookContext,
 ) -> Vec<T> {
     plugins
         .call_hooks(hook, ctx)
@@ -126,7 +128,7 @@ mod tests {
     }
 
     impl PluginSyncHooks for Stub {
-        fn call_hooks(&self, _hook: &str, _ctx: &Value) -> Vec<Value> {
+        fn call_hooks(&self, _hook: &str, _ctx: &HookContext) -> Vec<Value> {
             self.values.clone()
         }
     }
@@ -145,7 +147,7 @@ mod tests {
                 serde_json::json!({ "a": 2, "b": "y" }),
             ],
         };
-        let got: Vec<Pair> = call_hooks_typed(&stub, "any", &Value::Null);
+        let got: Vec<Pair> = call_hooks_typed(&stub, "any", &HookContext::from(Value::Null));
         assert_eq!(
             got,
             vec![
@@ -170,7 +172,7 @@ mod tests {
                 serde_json::json!({ "a": 3, "b": "z" }),
             ],
         };
-        let got: Vec<Pair> = call_hooks_typed(&stub, "any", &Value::Null);
+        let got: Vec<Pair> = call_hooks_typed(&stub, "any", &HookContext::from(Value::Null));
         assert_eq!(
             got,
             vec![
@@ -191,7 +193,7 @@ mod tests {
         let stub = Stub {
             values: vec![Value::Null, serde_json::json!("string")],
         };
-        let got: Vec<Pair> = call_hooks_typed(&stub, "any", &Value::Null);
+        let got: Vec<Pair> = call_hooks_typed(&stub, "any", &HookContext::from(Value::Null));
         assert!(got.is_empty());
     }
 
@@ -248,6 +250,6 @@ mod tests {
     fn trait_is_object_safe() {
         // Compiles only if the trait is object-safe.
         let stub: &dyn PluginSyncHooks = &Stub { values: vec![] };
-        let _ = stub.call_hooks("any", &Value::Null);
+        let _ = stub.call_hooks("any", &HookContext::from(Value::Null));
     }
 }

@@ -396,6 +396,7 @@ fn popup_height_capped_when_cursor_near_top() {
 use crate::common::app_state::AppState;
 use crate::common::render_ctx::RenderCtx;
 use crate::common::state::State;
+use crate::feat::plugin_dispatch::HookContext;
 use crate::feat::plugin_dispatch::plugin_sync_hooks::PluginSyncHooks;
 use crate::feat::ui::sidebar::sessions::preview::resolve_plugin_preview;
 use crate::feat::ui::sidebar::sessions::state::{SessionEntry, SessionEntryKind};
@@ -408,7 +409,7 @@ struct PreviewStub {
 }
 
 impl PluginSyncHooks for PreviewStub {
-    fn call_hooks(&self, hook: &str, _ctx: &serde_json::Value) -> Vec<serde_json::Value> {
+    fn call_hooks(&self, hook: &str, _ctx: &HookContext) -> Vec<serde_json::Value> {
         match hook {
             "on_session_preview" => self.preview_value.clone().into_iter().collect(),
             _ => vec![],

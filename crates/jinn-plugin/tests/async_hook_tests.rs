@@ -8,6 +8,7 @@
     reason = "test code"
 )]
 
+use jinn_domain::SessionId;
 use jinn_domain::feat::plugin_system::SessionPluginRegistry;
 use std::path::Path;
 use std::sync::{Arc, Mutex};
@@ -144,7 +145,7 @@ async fn async_hook_with_request_resolves() {
     // Verify plugin_data was set.
     let data = sys
         .async_handle
-        .get_plugin_data("llm_caller")
+        .get_plugin_data_for_session(&SessionId::from("s1".to_owned()), "llm_caller")
         .expect("plugin data should exist");
     assert_eq!(
         data["verdict"],
@@ -327,6 +328,7 @@ async fn load_session_registry_creates_isolated_state() {
                 session_id: "s1".to_owned(),
                 last_assistant_message: "hello".to_owned(),
             },
+            vec![],
         )
         .await
         .expect("fire for session");
@@ -379,6 +381,7 @@ async fn fire_for_session_excludes_other_sessions_plugins() {
                 session_id: "sB".to_owned(),
                 last_assistant_message: "hello".to_owned(),
             },
+            vec![],
         )
         .await
         .expect("fire for B");
@@ -443,6 +446,7 @@ async fn fire_for_session_merges_global_and_session_plugins() {
                 session_id: "s1".to_owned(),
                 last_assistant_message: "hello".to_owned(),
             },
+            vec![],
         )
         .await
         .expect("fire");
@@ -460,5 +464,113 @@ async fn fire_for_session_merges_global_and_session_plugins() {
     assert!(
         messages.contains(&"from-session"),
         "session plugin must fire: {messages:?}"
+    );
+}
+
+#[tokio::test]
+async fn disabled_plugin_is_skipped() {
+    let dir = tempfile::tempdir().expect("tempdir");
+    write_plugin_kind(
+        dir.path(),
+        "attachable",
+        "judge_fail",
+        r#"
+            local M = {}
+            function M.on_turn_end(ctx)
+                ctx.emit("push_chat_entry", {
+                    session_id = ctx.session_id,
+                    message = "from-judge",
+                })
+            end
+            return M
+        "#,
+    );
+
+    let sys = build_system(dir.path());
+    let result = sys
+        .async_handle
+        .create_session_registry(vec!["judge_fail".to_owned()])
+        .await
+        .expect("create registry");
+
+    // Fire with enabled_plugins set to a different plugin — judge_fail should be skipped.
+    sys.async_handle
+        .fire_async_for_session(
+            Some(result.registry_id),
+            "on_turn_end",
+            &TurnEndCtx {
+                session_id: "s1".to_owned(),
+                last_assistant_message: "hello".to_owned(),
+            },
+            vec!["other_plugin".to_owned()],
+        )
+        .await
+        .expect("fire");
+
+    tokio::time::sleep(std::time::Duration::from_millis(100)).await;
+    let cmds = sys.captured.lock().expect("lock");
+    let messages: Vec<&str> = cmds
+        .iter()
+        .map(|c| c.data["message"].as_str().expect("message"))
+        .collect();
+
+    // Then: judge_fail's hook did not fire.
+    assert!(
+        !messages.contains(&"from-judge"),
+        "disabled plugin must not fire: {messages:?}"
+    );
+}
+
+#[tokio::test]
+async fn enabled_plugin_fires() {
+    let dir = tempfile::tempdir().expect("tempdir");
+    write_plugin_kind(
+        dir.path(),
+        "attachable",
+        "judge_fail",
+        r#"
+            local M = {}
+            function M.on_turn_end(ctx)
+                ctx.emit("push_chat_entry", {
+                    session_id = ctx.session_id,
+                    message = "from-judge",
+                })
+            end
+            return M
+        "#,
+    );
+
+    let sys = build_system(dir.path());
+    let result = sys
+        .async_handle
+        .create_session_registry(vec!["judge_fail".to_owned()])
+        .await
+        .expect("create registry");
+
+    // Fire with judge_fail in enabled_plugins — it should fire.
+    sys.async_handle
+        .fire_async_for_session(
+            Some(result.registry_id),
+            "on_turn_end",
+            &TurnEndCtx {
+                session_id: "s1".to_owned(),
+                last_assistant_message: "hello".to_owned(),
+            },
+            vec!["judge_fail".to_owned()],
+        )
+        .await
+        .expect("fire");
+
+    tokio::time::sleep(std::time::Duration::from_millis(100)).await;
+    let cmds = sys.captured.lock().expect("lock");
+    let messages: Vec<&str> = cmds
+        .iter()
+        .map(|c| c.data["message"].as_str().expect("message"))
+        .collect();
+
+    // Then: judge_fail's hook fired.
+    assert!(
+        messages.contains(&"from-judge"),
+        "enabled plugin must fire: {messages:?}"
     );
 }

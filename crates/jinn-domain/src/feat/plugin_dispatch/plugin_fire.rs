@@ -44,6 +44,7 @@ pub trait PluginFire: Send + Sync {
         session: SessionRegistryId,
         hook: &str,
         ctx: &Value,
+        enabled_plugins: Vec<String>,
     ) -> Result<(), Report<PluginFireError>>;
 
     /// Fire an async hook, collecting return values from all global plugins.
@@ -132,9 +133,10 @@ impl PluginFireService {
         session: SessionRegistryId,
         hook: &str,
         ctx: &Value,
+        enabled_plugins: Vec<String>,
     ) -> Result<(), Report<PluginFireError>> {
         self.backend
-            .fire_async_for_session_json(session, hook, ctx)
+            .fire_async_for_session_json(session, hook, ctx, enabled_plugins)
             .await
     }
 

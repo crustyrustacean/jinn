@@ -105,9 +105,11 @@ impl PluginSystem {
         let plugins = discover_plugins(user_dir, system_dir);
         tracing::info!(count = plugins.len(), "discovered plugins");
 
-        // Partition: globals load at startup into both sync + async states.
-        // Attachable plugins are loaded on-demand into per-session async states
-        // via `AsyncPluginHandle::create_session_registry`.
+        // All discovered plugins load into the sync Lua state so that sync hooks
+        // (e.g. on_session_preview) work for attachable plugins too.
+        // Async-only hooks (on_turn_end) are never called from the sync path.
+        // The async thread loads globals at startup and attachable on-demand per-session.
+
         let global_plugins: Vec<PluginMeta> = plugins
             .iter()
             .filter(|m| m.kind == crate::loader::PluginKind::Global)
@@ -116,7 +118,7 @@ impl PluginSystem {
 
         // Load into sync Lua state.
         let sync_lua = mlua::Lua::new();
-        let sync_result = load_all(&sync_lua, &global_plugins);
+        let sync_result = load_all(&sync_lua, &plugins);
 
         // Async channel: async fire → background thread.
         let (job_tx, job_rx) = kanal::unbounded_async::<PluginJob>();
