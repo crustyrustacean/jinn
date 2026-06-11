@@ -2478,6 +2478,14 @@ impl ChatSessionState {
         Ok(())
     }
 
+    /// Sets `model_used` on the last token record (the placeholder pushed at enqueue time).
+    /// This makes the model visible in the status bar immediately, before streaming completes.
+    pub fn set_last_token_model(&mut self, model: String) {
+        if let Some(last) = self.core.token_ledger.last_mut() {
+            last.model_used = Some(model);
+        }
+    }
+
     /// The parent session, if this session was forked from another.
     pub fn parent_session(&self) -> &Option<SessionId> {
         &self.core.parent_session

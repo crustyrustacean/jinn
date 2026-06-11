@@ -120,11 +120,13 @@ impl SessionPersistenceActor {
 
                 let (provider_id, model_used) = {
                     let mut state = self.state.write();
-                    let model = &mut state.session_mut(&payload.session_id).profile_mut().model;
+                    let session = state.session_mut(&payload.session_id);
+                    let model = &mut session.profile_mut().model;
                     if model.is_no_provider() {
                         (None, None)
                     } else {
                         let resolved = model.resolve_model();
+                        session.set_last_token_model(resolved.clone());
                         (Some(resolved.clone()), Some(resolved))
                     }
                 };
