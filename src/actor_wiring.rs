@@ -375,6 +375,29 @@ impl ActorSystemBuilder {
         );
         _tools.wait_for_startup().await;
 
+
+        // Session persistence actor — must spawn before WebFetchActor so
+        // ToolsRegistered subscription is ready when tools register.
+        let token_counter = TiktokenCounter::o200k_base();
+        let _session = jinn_domain::feat::session::session_actor::SessionPersistenceActor::spawn(
+            jinn_domain::feat::session::session_actor::SessionPersistenceActorDeps {
+                deps: actor_deps.clone(),
+                state: state.clone(),
+                counter: token_counter,
+                builtin_registry: {
+                    let mut registry =
+                        jinn_domain::feat::session_lifecycle::builtin::BuiltinRegistry::new();
+                    jinn_bench::bench_tasks::register_bench_tasks(
+                        &mut registry,
+                        bench.as_ref().and_then(|b| b.artifact_dir.as_deref()),
+                    );
+                    registry
+                },
+                shell: std::env::var("SHELL").unwrap_or_else(|_| "/bin/sh".to_owned()),
+            },
+        );
+        _session.wait_for_startup().await;
+
         // Web fetch actor.
         let web_fetch_backend = user_preferences_storage.read().web_fetch.backend;
         tracing::info!(backend = ?web_fetch_backend, "constructing web fetcher");
@@ -403,25 +426,6 @@ impl ActorSystemBuilder {
             web_fetcher,
         });
 
-        // Session persistence actor.
-        let token_counter = TiktokenCounter::o200k_base();
-        let _session = jinn_domain::feat::session::session_actor::SessionPersistenceActor::spawn(
-            jinn_domain::feat::session::session_actor::SessionPersistenceActorDeps {
-                deps: actor_deps.clone(),
-                state: state.clone(),
-                counter: token_counter,
-                builtin_registry: {
-                    let mut registry =
-                        jinn_domain::feat::session_lifecycle::builtin::BuiltinRegistry::new();
-                    jinn_bench::bench_tasks::register_bench_tasks(
-                        &mut registry,
-                        bench.as_ref().and_then(|b| b.artifact_dir.as_deref()),
-                    );
-                    registry
-                },
-                shell: std::env::var("SHELL").unwrap_or_else(|_| "/bin/sh".to_owned()),
-            },
-        );
 
         // Prompt scan actor.
         let _prompt_scan =
