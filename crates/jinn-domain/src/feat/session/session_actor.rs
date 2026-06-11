@@ -883,7 +883,7 @@ impl SessionPersistenceActor {
                 self.on_tool_execution_completed(payload, ctx).await;
             }
             Event::ToolBatchCompleted(payload) => {
-                self.on_tool_batch_completed(payload, ctx);
+                self.on_tool_batch_completed(payload, ctx).await;
             }
             Event::ToolExecutionStarted(payload) => {
                 self.on_tool_execution_started(payload);
@@ -962,13 +962,13 @@ impl SessionPersistenceActor {
                 self.handle_persist_session(payload).await;
             }
             Command::PinChatEntry(payload) => {
-                self.handle_pin_chat_entry(payload, ctx);
+                self.handle_pin_chat_entry(payload, ctx).await;
             }
             Command::UnpinChatEntry(payload) => {
-                self.handle_unpin_chat_entry(payload, ctx);
+                self.handle_unpin_chat_entry(payload, ctx).await;
             }
             Command::LoadPersonaPickerEntries(payload) => {
-                self.handle_load_persona_picker_entries(payload);
+                self.handle_load_persona_picker_entries(payload).await;
             }
             Command::FinishSessionTeardown(payload) => {
                 self.handle_finish_session_teardown(payload, ctx).await;
@@ -980,13 +980,13 @@ impl SessionPersistenceActor {
                 self.handle_cancel_lifecycle_command(payload, ctx);
             }
             Command::SetSessionCwd(payload) => {
-                self.handle_set_session_cwd(payload, ctx);
+                self.handle_set_session_cwd(payload, ctx).await;
             }
             Command::MarkSessionInteracted(payload) => {
                 self.handle_mark_session_interacted(payload, ctx).await;
             }
             Command::SubmitHistoryMutations(payload) => {
-                self.handle_submit_history_mutations(payload, ctx);
+                self.handle_submit_history_mutations(payload, ctx).await;
             }
             // Commands NOT subscribed to - these should not arrive.
             Command::SendToLlmProvider(..)

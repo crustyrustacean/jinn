@@ -10,6 +10,7 @@
 
 use crate::common::actor::ActorContext;
 
+use crate::common::actor_deps::BusPublish;
 use crate::feat::context::protocol::command::{
     LoadPersonaPickerEntries, PinChatEntry, UnpinChatEntry,
 };
@@ -24,7 +25,7 @@ use super::super::SessionPersistenceActor;
 
 impl SessionPersistenceActor {
     /// PinChatEntry: pin entry in session.
-    pub(in crate::feat::session::session_actor) fn handle_pin_chat_entry(
+    pub(in crate::feat::session::session_actor) async fn handle_pin_chat_entry(
         &self,
         payload: &PinChatEntry,
         ctx: &ActorContext,
@@ -34,13 +35,14 @@ impl SessionPersistenceActor {
             let session = state.session_mut_or_create(&payload.session_id);
             session.pin_entry(&payload.entry_id, payload.position);
         }
-        let _ = ctx.send_event(Event::ChatEntryPinChanged(ChatEntryPinChanged {
+        self.publish(ChatEntryPinChanged {
             session_id: payload.session_id.clone(),
-        }));
+        })
+        .await;
     }
 
     /// UnpinChatEntry: unpin entry in session.
-    pub(in crate::feat::session::session_actor) fn handle_unpin_chat_entry(
+    pub(in crate::feat::session::session_actor) async fn handle_unpin_chat_entry(
         &self,
         payload: &UnpinChatEntry,
         ctx: &ActorContext,
@@ -50,9 +52,10 @@ impl SessionPersistenceActor {
             let session = state.session_mut_or_create(&payload.session_id);
             session.unpin_entry(&payload.entry_id);
         }
-        let _ = ctx.send_event(Event::ChatEntryPinChanged(ChatEntryPinChanged {
+        self.publish(ChatEntryPinChanged {
             session_id: payload.session_id.clone(),
-        }));
+        })
+        .await;
     }
 
     pub(in crate::feat::session::session_actor) fn on_tools_registered(
@@ -142,7 +145,7 @@ impl SessionPersistenceActor {
     }
 
     /// Loads persona picker entries into `AppState`.
-    pub(in crate::feat::session::session_actor) fn handle_load_persona_picker_entries(
+    pub(in crate::feat::session::session_actor) async fn handle_load_persona_picker_entries(
         &self,
         _payload: &LoadPersonaPickerEntries,
     ) {
@@ -217,7 +220,7 @@ mod tests {
     }
 
     #[rstest::rstest]
-#[tokio::test]
+    #[tokio::test]
     async fn on_tools_registered_keeps_regular_tools_in_global_map() {
         // Given a session actor.
         let (actor, state) = create_actor().await;
@@ -244,7 +247,7 @@ mod tests {
     }
 
     #[rstest::rstest]
-#[tokio::test]
+    #[tokio::test]
     async fn on_personas_loaded_selects_coding_assistant_when_none_active() {
         // Given a session actor with no active persona.
         let (actor, state) = create_actor().await;
@@ -273,7 +276,7 @@ mod tests {
     }
 
     #[rstest::rstest]
-#[tokio::test]
+    #[tokio::test]
     async fn on_personas_loaded_keeps_existing_active_persona() {
         // Given a session actor with active persona "learning-tutor".
         let (actor, state) = create_actor().await;
@@ -306,7 +309,7 @@ mod tests {
     }
 
     #[rstest::rstest]
-#[tokio::test]
+    #[tokio::test]
     async fn on_personas_loaded_falls_back_when_active_missing() {
         // Given a session actor where active persona "foo" was deleted from disk.
         let (actor, state) = create_actor().await;
@@ -336,7 +339,7 @@ mod tests {
     }
 
     #[rstest::rstest]
-#[tokio::test]
+    #[tokio::test]
     async fn on_personas_loaded_uses_first_when_coding_assistant_missing() {
         // Given a session actor with no coding-assistant in the scanned list.
         let (actor, state) = create_actor().await;
@@ -362,7 +365,7 @@ mod tests {
     }
 
     #[rstest::rstest]
-#[tokio::test]
+    #[tokio::test]
     async fn on_personas_loaded_clears_active_when_list_empty() {
         // Given a session actor with some active persona.
         let (actor, state) = create_actor().await;
@@ -386,7 +389,7 @@ mod tests {
     // --- handle_pin_chat_entry ---
 
     #[rstest::rstest]
-#[tokio::test]
+    #[tokio::test]
     async fn handle_pin_chat_entry_pins_and_emits() {
         // Given a session with a user entry.
         let (actor, state) = create_actor().await;
@@ -436,7 +439,7 @@ mod tests {
     // --- handle_unpin_chat_entry ---
 
     #[rstest::rstest]
-#[tokio::test]
+    #[tokio::test]
     async fn handle_unpin_chat_entry_unpins_and_emits() {
         // Given a session with a pinned entry.
         let (actor, state) = create_actor().await;
@@ -488,7 +491,7 @@ mod tests {
     // --- handle_load_persona_picker_entries ---
 
     #[rstest::rstest]
-#[tokio::test]
+    #[tokio::test]
     async fn handle_load_persona_picker_entries_populates_picker() {
         // Given a session actor with personas loaded.
         let (actor, state) = create_actor().await;

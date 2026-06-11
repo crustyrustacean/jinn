@@ -91,13 +91,11 @@ impl SessionPersistenceActor {
     ///
     /// The session is inserted **before** the event is emitted, so
     /// subscribers can look it up by ID immediately.
-    pub(in crate::feat::session::session_actor) fn load_and_insert(
+    pub(in crate::feat::session::session_actor) async fn load_and_insert(
         &self,
         session: crate::feat::session::chat_session::ChatSessionState,
         ctx: &crate::common::actor::ActorContext,
     ) {
-        use crate::feat::session::protocol::session_load_completed::SessionLoadCompleted as CompletedPayload;
-
         let session_id = session.session_id().clone();
         {
             let mut state = self.state.write();
@@ -105,9 +103,7 @@ impl SessionPersistenceActor {
             // Remove the frozen node snapshot - the live session replaces it.
             state.session.remove_frozen_node(&session_id);
         }
-        let _ = ctx.send_event(Event::SessionLoadCompleted(Box::new(CompletedPayload {
-            session,
-        })));
+        self.publish(SessionLoadCompleted { session }).await;
     }
 
     /// Creates an empty session with the given ID and emits a `SessionLoadCompleted` command.
@@ -117,18 +113,14 @@ impl SessionPersistenceActor {
         clippy::unused_self,
         reason = "trait contract requires #[allow(clippy::unused_self)]self method"
     )]
-    fn create_empty_session_response(
+    async fn create_empty_session_response(
         &self,
         session_id: &crate::protocol::SessionId,
         ctx: &crate::common::actor::ActorContext,
     ) {
-        use crate::feat::session::protocol::session_load_completed::SessionLoadCompleted as CompletedPayload;
-
         let mut session = crate::feat::session::chat_session::ChatSessionState::new();
         session.set_session_id(session_id.clone());
-        let _ = ctx.send_event(Event::SessionLoadCompleted(Box::new(CompletedPayload {
-            session,
-        })));
+        self.publish(SessionLoadCompleted { session }).await;
     }
 
     /// Hydrate frozen nodes for all live sessions' tree members.
@@ -365,7 +357,7 @@ impl SessionPersistenceActor {
                 session.set_session_state(crate::feat::session::chat_session::SessionState::Loaded);
 
                 // Insert into state and emit SessionLoadCompleted for subscribers.
-                self.load_and_insert(session, ctx);
+                self.load_and_insert(session, ctx).await;
 
                 // Run the full restore flow (CWD validation, context size, persist).
                 let session_id = evt.session_id.clone();
@@ -390,11 +382,13 @@ impl SessionPersistenceActor {
                     session_id = ?evt.session_id,
                     "session load returned None"
                 );
-                self.create_empty_session_response(&evt.session_id, ctx);
+                self.create_empty_session_response(&evt.session_id, ctx)
+                    .await;
             }
             Err(e) => {
                 tracing::warn!(err = ?e, "failed to load session");
-                self.create_empty_session_response(&evt.session_id, ctx);
+                self.create_empty_session_response(&evt.session_id, ctx)
+                    .await;
             }
         }
     }

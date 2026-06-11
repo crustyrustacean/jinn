@@ -5,6 +5,8 @@
 
 use super::super::SessionPersistenceActor;
 use crate::common::actor::ActorContext;
+use crate::common::actor_deps::BusPublish;
+use crate::feat::context::protocol::event::ContextOverrideChanged;
 use crate::feat::provider::protocol::event::ModelsRefreshed;
 use crate::feat::session::phase_machine::PhaseKind;
 use crate::feat::session::protocol::load_session_picker_entries::LoadSessionPickerEntries;
@@ -94,7 +96,7 @@ impl SessionPersistenceActor {
     /// `pending_mutations` and applies them immediately if the session is
     /// idle (no active stream). If the session is streaming or sending,
     /// mutations are deferred until the next stream completion.
-    pub(in crate::feat::session::session_actor) fn handle_submit_history_mutations(
+    pub(in crate::feat::session::session_actor) async fn handle_submit_history_mutations(
         &self,
         payload: &SubmitHistoryMutations,
         ctx: &ActorContext,
@@ -126,14 +128,11 @@ impl SessionPersistenceActor {
         // Emit ContextOverrideChanged events for any entry whose override actually changed.
         // Doing this outside the write lock keeps the bus dispatch decoupled from session state.
         for entry_id in changed {
-            if let Err(e) = ctx.send_event(Event::ContextOverrideChanged(
-                crate::feat::context::protocol::event::ContextOverrideChanged {
-                    session_id: session_id.clone(),
-                    entry_id,
-                },
-            )) {
-                tracing::warn!(err = ?e, "failed to emit ContextOverrideChanged");
-            }
+            self.publish(ContextOverrideChanged {
+                session_id: session_id.clone(),
+                entry_id,
+            })
+            .await;
         }
     }
 }

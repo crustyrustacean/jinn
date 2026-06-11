@@ -4,7 +4,9 @@
 //! execution tracking, result collection, and batch completion routing.
 
 use crate::common::actor::ActorContext;
+use crate::common::actor_deps::BusPublish;
 use crate::feat::context::assemble::assemble_prompt;
+use crate::feat::context::protocol::event::ContextOverrideChanged;
 use crate::feat::provider::protocol::command::SendToLlmProvider;
 use crate::feat::session::chat_entry::PinPosition;
 use crate::feat::session::token_stats::TokenRecord;
@@ -102,7 +104,7 @@ impl SessionPersistenceActor {
 
     /// Drains pending history mutations and steering buffer entries, emitting
     /// ContextOverrideChanged events for any modified entries.
-    fn apply_pending_mutations_and_steering(
+    async fn apply_pending_mutations_and_steering(
         &self,
         session_id: &crate::protocol::SessionId,
         ctx: &ActorContext,
@@ -123,14 +125,11 @@ impl SessionPersistenceActor {
         };
         // Emit ContextOverrideChanged events outside the write lock.
         for entry_id in changed {
-            if let Err(e) = ctx.send_event(Event::ContextOverrideChanged(
-                crate::feat::context::protocol::event::ContextOverrideChanged {
-                    session_id: session_id.clone(),
-                    entry_id,
-                },
-            )) {
-                tracing::warn!(err = ?e, "failed to emit ContextOverrideChanged");
-            }
+            self.publish(ContextOverrideChanged {
+                session_id: session_id.clone(),
+                entry_id,
+            })
+            .await;
         }
 
         // Drain any pending steering fragments into history.
@@ -152,7 +151,7 @@ impl SessionPersistenceActor {
 
     /// Assembles the continuation prompt, transitions to streaming phase,
     /// and emits the SendToLlmProvider command.
-    fn assemble_and_send_continuation(
+    async fn assemble_and_send_continuation(
         &self,
         session_id: &crate::protocol::SessionId,
         assembly_overrides: Option<&crate::feat::context::assemble::AssemblyOverrides>,
@@ -160,6 +159,7 @@ impl SessionPersistenceActor {
     ) {
         let assembled = {
             let guard = self.state.read();
+            // FIXME: make spawn_blocking probably
             assemble_prompt(&guard, session_id, &self.counter, assembly_overrides)
         };
 
@@ -191,18 +191,14 @@ impl SessionPersistenceActor {
 
         let estimated_tokens = assembled.estimated_tokens();
 
-        if let Err(e) = ctx.send_command(Command::SendToLlmProvider(SendToLlmProvider {
+        self.publish(SendToLlmProvider {
             session_id: session_id.clone(),
             messages: assembled.messages,
             provider_id,
             estimated_tokens,
             tool_definitions: assembled.tool_definitions,
-        })) {
-            tracing::warn!(
-                err = ?e,
-                "session-actor failed to emit SendToLlmProvider from tool batch completion"
-            );
-        }
+        })
+        .await;
     }
 
     /// All tools in a batch have finished — route the continuation through
@@ -213,7 +209,7 @@ impl SessionPersistenceActor {
     /// and the session is already in sending state (set by `on_stream_completed`
     /// for the `ToolUse` reason). We just need to assemble the prompt via
     /// the full session history.
-    pub(in crate::feat::session::session_actor) fn on_tool_batch_completed(
+    pub(in crate::feat::session::session_actor) async fn on_tool_batch_completed(
         &self,
         event: &ToolBatchCompleted,
         ctx: &ActorContext,
@@ -246,7 +242,8 @@ impl SessionPersistenceActor {
             return;
         }
 
-        self.apply_pending_mutations_and_steering(&event.session_id, ctx);
+        self.apply_pending_mutations_and_steering(&event.session_id, ctx)
+            .await;
 
         let assembly_overrides = {
             let state = self.state.read();
@@ -257,7 +254,8 @@ impl SessionPersistenceActor {
                 .flatten()
         };
 
-        self.assemble_and_send_continuation(&event.session_id, assembly_overrides.as_ref(), ctx);
+        self.assemble_and_send_continuation(&event.session_id, assembly_overrides.as_ref(), ctx)
+            .await;
     }
 }
 

@@ -119,12 +119,11 @@ impl SessionPersistenceActor {
             let session = state.session_mut_or_create(session_id);
             session.push_entry(entry.clone());
         }
-        if let Err(e) = ctx.send_event(Event::ChatEntrySubmitted(ChatEntrySubmitted {
+        self.publish(ChatEntrySubmitted {
             session_id: session_id.clone(),
             entry,
-        })) {
-            tracing::warn!(err = ?e, "session-actor failed to emit ChatEntrySubmitted");
-        }
+        })
+        .await;
         self.save_active_session(session_id).await;
     }
 
@@ -538,14 +537,11 @@ impl SessionPersistenceActor {
                     .await;
 
                 if !success {
-                    if let Err(e) =
-                        ctx.send_event(Event::SessionTeardownFinished(SessionTeardownFinished {
-                            session_id: payload.session_id.clone(),
-                            error: Some("teardown failed".to_owned()),
-                        }))
-                    {
-                        tracing::warn!(err = ?e, "session-actor failed to emit SessionTeardownFinished");
-                    }
+                    self.publish(SessionTeardownFinished {
+                        session_id: payload.session_id.clone(),
+                        error: Some("teardown failed".to_owned()),
+                    })
+                    .await;
                     return;
                 }
 
@@ -769,17 +765,15 @@ impl SessionPersistenceActor {
         self.remove_and_replace(&payload.session_id);
 
         // Step 4: Notify.
-        if let Err(e) = ctx.send_event(Event::SessionArchived(SessionArchived {
+        self.publish(SessionArchived {
             session_id: payload.session_id.clone(),
-        })) {
-            tracing::warn!(err = ?e, "session-actor failed to emit SessionArchived");
-        }
+        })
+        .await;
 
-        if let Err(e) = ctx.send_event(Event::SessionClosed(SessionClosed {
+        self.publish(SessionClosed {
             session_id: payload.session_id.clone(),
-        })) {
-            tracing::warn!(err = ?e, "session-actor failed to emit SessionClosed");
-        }
+        })
+        .await;
     }
 
     /// Handle `FinishSessionTeardown` - completion of an async teardown shell command.
@@ -863,16 +857,19 @@ impl SessionPersistenceActor {
             self.remove_and_replace(&payload.session_id);
 
             // Emit events.
-            let _ = ctx.send_event(Event::SessionArchived(SessionArchived {
+            self.publish(SessionArchived {
                 session_id: payload.session_id.clone(),
-            }));
-            let _ = ctx.send_event(Event::SessionClosed(SessionClosed {
+            })
+            .await;
+            self.publish(SessionClosed {
                 session_id: payload.session_id.clone(),
-            }));
-            let _ = ctx.send_event(Event::SessionTeardownFinished(SessionTeardownFinished {
+            })
+            .await;
+            self.publish(SessionTeardownFinished {
                 session_id: payload.session_id.clone(),
                 error: None,
-            }));
+            })
+            .await;
         } else {
             // Teardown-only: advance lifecycle, persist, push success entry, emit.
             {
@@ -971,17 +968,15 @@ impl SessionPersistenceActor {
         self.remove_and_replace(&payload.session_id);
 
         // Step 3: Notify.
-        if let Err(e) = ctx.send_event(Event::SessionArchived(SessionArchived {
+        self.publish(SessionArchived {
             session_id: payload.session_id.clone(),
-        })) {
-            tracing::warn!(err = ?e, "session-actor failed to emit SessionArchived");
-        }
+        })
+        .await;
 
-        if let Err(e) = ctx.send_event(Event::SessionClosed(SessionClosed {
+        self.publish(SessionClosed {
             session_id: payload.session_id.clone(),
-        })) {
-            tracing::warn!(err = ?e, "session-actor failed to emit SessionClosed");
-        }
+        })
+        .await;
     }
 
     /// Remove session from HashMap, create replacement if empty, reconcile cursor.
@@ -1035,7 +1030,7 @@ impl SessionPersistenceActor {
     /// Writes the cwd onto the session in state, then emits `SessionCwdChanged`
     /// so subscribed discovery scan actors re-scan skills, prompts, and context
     /// files for the new cwd.
-    pub(in crate::feat::session::session_actor) fn handle_set_session_cwd(
+    pub(in crate::feat::session::session_actor) async fn handle_set_session_cwd(
         &self,
         payload: &SetSessionCwd,
         ctx: &ActorContext,
@@ -1046,12 +1041,11 @@ impl SessionPersistenceActor {
                 session.set_cwd(payload.cwd.clone());
             }
         }
-        if let Err(e) = ctx.send_event(Event::SessionCwdChanged(SessionCwdChanged {
+        self.publish(SessionCwdChanged {
             session_id: payload.session_id.clone(),
             cwd: payload.cwd.clone(),
-        })) {
-            tracing::warn!(err = ?e, "session-actor failed to emit SessionCwdChanged");
-        }
+        })
+        .await;
     }
 }
 
