@@ -3,7 +3,6 @@
 //! Handles the full tool call lifecycle: creation via streaming, argument assembly,
 //! execution tracking, result collection, and batch completion routing.
 
-use crate::common::actor::ActorContext;
 use crate::common::actor_deps::BusPublish;
 use crate::feat::context::assemble::assemble_prompt;
 use crate::feat::context::protocol::event::ContextOverrideChanged;
@@ -16,7 +15,6 @@ use crate::feat::tools_actor::protocol::event::{
 };
 
 use super::super::SessionPersistenceActor;
-use crate::protocol::{Command, Event};
 
 impl SessionPersistenceActor {
     /// Begins tracking a streaming tool call.

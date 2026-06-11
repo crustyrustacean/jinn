@@ -4,13 +4,9 @@
 //! default session, loads unarchived sessions from SQLite, and emits commands
 //! to initialize the context and preferences pipelines.
 
-use crate::common::actor::ActorContext;
-
+use super::super::SessionPersistenceActor;
 use crate::common::actor_deps::BusPublish;
 use crate::feat::preferences_actor::protocol::app_state_command::{AppStateUpdate, UpdateAppState};
-use crate::protocol::Command;
-
-use super::super::SessionPersistenceActor;
 
 impl SessionPersistenceActor {
     /// Applies config defaults to the default session profile on startup.

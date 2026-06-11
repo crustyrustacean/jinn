@@ -8,7 +8,7 @@ use crate::common::actor_deps::BusPublish;
 use crate::feat::session::protocol::UserInteracted;
 use crate::feat::session::protocol::session_load_completed::SessionLoadCompleted;
 use crate::feat::session::tree_aggregate::snapshot_frozen_node;
-use crate::protocol::{Event, SessionId};
+use crate::protocol::SessionId;
 
 impl SessionPersistenceActor {
     /// Saves the current state of a session to disk.
