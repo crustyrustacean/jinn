@@ -145,7 +145,7 @@ fn centered_title(label: &str, width: u16, style: Style) -> Line<'static> {
 ///
 /// Deliberately constant regardless of terminal size so the popup is always the
 /// same shape. See `audit_popup_rect` for placement.
-pub const AUDIT_POPUP_WIDTH: u16 = 60;
+pub const AUDIT_POPUP_WIDTH: u16 = 70;
 
 /// Format a timestamp as `YYYY-MM-DD HH:MM:SS (<relative>)`.
 ///
@@ -435,7 +435,7 @@ mod tests {
         assert_eq!(lines.len(), 5);
         assert_eq!(
             text(&lines[3]),
-            "--------------- audit (0 events) (Default) ---------------"
+            "-------------------- audit (0 events) (Default) --------------------"
         );
         // And the body is the placeholder.
         assert_eq!(text(&lines[4]), "(no events recorded)");
@@ -454,7 +454,7 @@ mod tests {
         assert_eq!(lines.len(), 5);
         assert_eq!(
             text(&lines[3]),
-            "------------ audit (1 events) (ForcedExclude) ------------"
+            "----------------- audit (1 events) (ForcedExclude) -----------------"
         );
         // And the body line shows the transition with [user] source.
         assert_eq!(text(&lines[4]), "[user] Default -> ForcedExclude");
@@ -613,18 +613,17 @@ mod tests {
             // Then popup right edge = chat right edge = 100.
             assert_eq!(rect.x + rect.width, chat.x + chat.width);
             assert_eq!(rect.x + rect.width, 100);
-            // And popup left edge = 100 - 60 = 40.
-            assert_eq!(rect.x, 40);
+            // And popup left edge = 100 - 70 = 30.
+            assert_eq!(rect.x, 30);
         }
 
         #[test]
-        fn audit_popup_rect_chat_log_narrower_than_60_shrinks_popup_width() {
+        fn audit_popup_rect_chat_log_narrower_than_70_shrinks_popup_width() {
             // Given a chat-log area only 50 columns wide.
             let chat = Rect::new(0, 0, 50, 40);
             // When computing the rect.
             let rect = audit_popup_rect(chat, 5, 2);
-
-            // Then popup width shrinks to chat width (50), not the constant 60.
+            // Then popup width shrinks to chat width (50), not the constant 70.
             assert_eq!(rect.width, 50);
             // And popup left edge is at chat left edge.
             assert_eq!(rect.x, chat.x);
