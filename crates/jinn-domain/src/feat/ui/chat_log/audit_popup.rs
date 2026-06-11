@@ -10,6 +10,7 @@
 use crate::feat::session::chat_entry::{
     ChangeSource, ChatEntry, ContextChangeEvent, ContextOverride,
 };
+use crate::feat::session::entry_timing::EntryTiming;
 use crate::feat::theme::Theme;
 
 use ratatui::style::Style;
@@ -38,6 +39,35 @@ pub fn format_audit_lines(entry: &ChatEntry, theme: &Theme) -> Vec<Line<'static>
         format!("Sent: {}", format_timestamp(&entry.timing.at())),
         body_style,
     )]));
+
+    // --- Timing line (streamed entries only) ---
+    if let EntryTiming::Streamed { .. } = &entry.timing {
+        let ttft_text = match entry.timing.ttft() {
+            Some(d) => format_duration(&d),
+            None => "(pending)".to_owned(),
+        };
+        let duration_text = match entry.timing.total_duration() {
+            Some(d) => format_duration(&d),
+            None => "(pending)".to_owned(),
+        };
+        lines.push(Line::from(vec![
+            Span::styled("TTFT: ".to_owned(), body_style),
+            Span::styled(
+                ttft_text,
+                Style::default()
+                    .fg(theme.input_mode_queue)
+                    .bg(theme.infopopup_bg),
+            ),
+            Span::styled("  Duration: ".to_owned(), body_style),
+            Span::styled(
+                duration_text,
+                Style::default()
+                    .fg(theme.streaming)
+                    .bg(theme.infopopup_bg),
+            ),
+        ]));
+    }
+
     lines.push(Line::from(vec![Span::styled(String::new(), body_style)]));
 
     // --- Audit section ---
