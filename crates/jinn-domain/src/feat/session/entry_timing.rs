@@ -94,9 +94,7 @@ impl EntryTiming {
                 first_token_at: Some(ft),
                 ..
             } => {
-                let span = ft
-                    .since(*dispatched_at)
-                    .expect("timestamps are ordered");
+                let span = ft.since(*dispatched_at).expect("timestamps are ordered");
                 Some(jiff::SignedDuration::from_secs(span.get_seconds()))
             }
             Self::Streamed {
@@ -121,14 +119,11 @@ impl EntryTiming {
                 finished_at: Some(fin),
                 ..
             } => {
-                let span = fin
-                    .since(*dispatched_at)
-                    .expect("timestamps are ordered");
+                let span = fin.since(*dispatched_at).expect("timestamps are ordered");
                 Some(jiff::SignedDuration::from_secs(span.get_seconds()))
             }
             Self::Streamed {
-                finished_at: None,
-                ..
+                finished_at: None, ..
             } => None,
         }
     }
