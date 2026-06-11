@@ -348,6 +348,8 @@ mod tests {
             shell: "/bin/sh".to_owned(),
             max_output_lines: None,
             max_output_bytes: None,
+
+            dispatched_at: jiff::Timestamp::now(),
         }
     }
 
@@ -441,6 +443,8 @@ mod tests {
             shell: "/bin/sh".to_owned(),
             max_output_lines: None,
             max_output_bytes: None,
+
+            dispatched_at: jiff::Timestamp::now(),
         };
 
         let call = ToolCall {
@@ -522,6 +526,8 @@ mod tests {
             shell: "/bin/sh".to_owned(),
             max_output_lines: Some(3),
             max_output_bytes: Some(50 * 1024),
+
+            dispatched_at: jiff::Timestamp::now(),
         };
 
         let call = ToolCall {
@@ -564,6 +570,8 @@ mod tests {
             shell: "/bin/sh".to_owned(),
             max_output_lines: Some(2),
             max_output_bytes: Some(50 * 1024),
+
+            dispatched_at: jiff::Timestamp::now(),
         };
 
         let call = ToolCall {

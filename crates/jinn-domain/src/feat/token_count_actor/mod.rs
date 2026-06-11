@@ -171,7 +171,9 @@ impl TokenCountActor {
             let Some(idx) = session.find_entry_index_by_id(entry_id) else {
                 return;
             };
-            let entry = &session.history()[idx];
+            let Some(entry) = session.history().get(idx) else {
+                return;
+            };
 
             if !entry.is_in_context() {
                 return;
@@ -193,7 +195,9 @@ impl TokenCountActor {
             let Some(idx) = session.find_entry_index_by_id(entry_id) else {
                 return;
             };
-            let entry = &session.history()[idx];
+            let Some(entry) = session.history().get(idx) else {
+                return;
+            };
             let estimator = TiktokenEstimator(self.counter);
             estimate_entry_tokens(&estimator, entry) as u32
         };

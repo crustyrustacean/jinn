@@ -1,6 +1,6 @@
 //! Conversation data model for the chat log.
 //!
-//! Each [`ChatEntry`] records a timestamped message from the user,
+//! Each [`ChatEntry`] records a timed message from the user,
 //! the system, or an actor.
 
 use serde::{Deserialize, Deserializer, Serialize, Serializer};
@@ -139,8 +139,8 @@ pub struct ContextChangeEvent {
 pub struct ChatEntry {
     /// Unique identifier for this entry.
     pub id: ChatEntryId,
-    /// When this entry was created.
-    pub timestamp: jiff::Timestamp,
+    /// Timing data for this entry.
+    pub timing: super::entry_timing::EntryTiming,
     /// What kind of entry this is.
     pub kind: ChatEntryKind,
     /// Whether this entry is pinned to the context, and where.
@@ -277,7 +277,7 @@ impl ChatEntry {
         let t = text.into();
         Self {
             id: ChatEntryId::new(),
-            timestamp: jiff::Timestamp::now(),
+            timing: super::entry_timing::EntryTiming::instant_now(),
             kind: ChatEntryKind::User {
                 display: t.clone(),
                 expanded: t,
@@ -300,7 +300,7 @@ impl ChatEntry {
     {
         Self {
             id: ChatEntryId::new(),
-            timestamp: jiff::Timestamp::now(),
+            timing: super::entry_timing::EntryTiming::instant_now(),
             kind: ChatEntryKind::User {
                 display: display.into(),
                 expanded: expanded.into(),
@@ -319,7 +319,7 @@ impl ChatEntry {
     {
         Self {
             id: ChatEntryId::new(),
-            timestamp: jiff::Timestamp::now(),
+            timing: super::entry_timing::EntryTiming::instant_now(),
             kind: ChatEntryKind::System(text.into()),
             pin_position: None,
             context_override: ContextOverride::Default,
@@ -335,7 +335,7 @@ impl ChatEntry {
     {
         Self {
             id: ChatEntryId::new(),
-            timestamp: jiff::Timestamp::now(),
+            timing: super::entry_timing::EntryTiming::instant_now(),
             kind: ChatEntryKind::Error(text.into()),
             pin_position: None,
             context_override: ContextOverride::Default,
@@ -351,7 +351,7 @@ impl ChatEntry {
     {
         Self {
             id: ChatEntryId::new(),
-            timestamp: jiff::Timestamp::now(),
+            timing: super::entry_timing::EntryTiming::instant_now(),
             kind: ChatEntryKind::Assistant(text.into()),
             pin_position: None,
             context_override: ContextOverride::Default,
@@ -368,7 +368,7 @@ impl ChatEntry {
     {
         Self {
             id: ChatEntryId::new(),
-            timestamp: jiff::Timestamp::now(),
+            timing: super::entry_timing::EntryTiming::instant_now(),
             kind: ChatEntryKind::Actor {
                 source: source.into(),
                 text: text.into(),
@@ -387,7 +387,7 @@ impl ChatEntry {
     {
         Self {
             id: ChatEntryId::new(),
-            timestamp: jiff::Timestamp::now(),
+            timing: super::entry_timing::EntryTiming::instant_now(),
             kind: ChatEntryKind::Thinking(text.into()),
             pin_position: None,
             context_override: ContextOverride::Default,
@@ -405,7 +405,7 @@ impl ChatEntry {
     {
         Self {
             id: ChatEntryId::new(),
-            timestamp: jiff::Timestamp::now(),
+            timing: super::entry_timing::EntryTiming::instant_now(),
             kind: ChatEntryKind::ToolCall {
                 id: id.into(),
                 name: name.into(),
@@ -427,7 +427,7 @@ impl ChatEntry {
     {
         Self {
             id: ChatEntryId::new(),
-            timestamp: jiff::Timestamp::now(),
+            timing: super::entry_timing::EntryTiming::instant_now(),
             kind: ChatEntryKind::ToolResult {
                 id: id.into(),
                 name: name.into(),
@@ -459,7 +459,7 @@ impl ChatEntry {
     {
         Self {
             id: ChatEntryId::new(),
-            timestamp: jiff::Timestamp::now(),
+            timing: super::entry_timing::EntryTiming::instant_now(),
             kind: ChatEntryKind::ToolResult {
                 id: id.into(),
                 name: name.into(),
@@ -489,7 +489,7 @@ impl ChatEntry {
     {
         Self {
             id: ChatEntryId::new(),
-            timestamp: jiff::Timestamp::now(),
+            timing: super::entry_timing::EntryTiming::instant_now(),
             kind: ChatEntryKind::Transient(text.into()),
             pin_position: None,
             context_override: ContextOverride::Default,
@@ -538,13 +538,13 @@ impl ChatEntry {
     #[must_use]
     pub(crate) fn new_with_kind(
         id: ChatEntryId,
-        timestamp: jiff::Timestamp,
+        timing: super::entry_timing::EntryTiming,
         kind: ChatEntryKind,
         pin_position: Option<PinPosition>,
     ) -> Self {
         Self {
             id,
-            timestamp,
+            timing,
             kind,
             pin_position,
             context_override: ContextOverride::Default,

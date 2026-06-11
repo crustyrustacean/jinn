@@ -42,7 +42,9 @@ pub fn handle_toggle_audit_popup(state: &mut AppState) -> IntentResult {
 /// (for headless/scripted use).
 pub fn handle_interrupt(state: &mut AppState, target: Option<&SessionId>) -> IntentResult {
     if let Some(id) = target {
-        state.session_mut(id).cancel_streaming();
+        state
+            .session_mut(id)
+            .cancel_streaming(jiff::Timestamp::now());
         return IntentResult::with_commands(vec![Command::CancelStream(CancelStream {
             session_id: id.clone(),
         })]);
