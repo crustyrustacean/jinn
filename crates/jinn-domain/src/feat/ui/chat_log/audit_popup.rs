@@ -61,9 +61,7 @@ pub fn format_audit_lines(entry: &ChatEntry, theme: &Theme) -> Vec<Line<'static>
             Span::styled("  Duration: ".to_owned(), body_style),
             Span::styled(
                 duration_text,
-                Style::default()
-                    .fg(theme.streaming)
-                    .bg(theme.infopopup_bg),
+                Style::default().fg(theme.streaming).bg(theme.infopopup_bg),
             ),
         ]));
     }
@@ -733,10 +731,7 @@ mod tests {
         // Then there is a line containing both TTFT and Duration.
         let idx = find_timing_line(&lines).expect("should have a timing line");
         let t = text(&lines[idx]);
-        assert!(
-            t.contains("TTFT:"),
-            "timing line should contain TTFT: {t}"
-        );
+        assert!(t.contains("TTFT:"), "timing line should contain TTFT: {t}");
         assert!(
             t.contains("Duration:"),
             "timing line should contain Duration: {t}"
@@ -750,11 +745,7 @@ mod tests {
     #[test]
     fn streamed_entry_shows_pending_for_missing_first_token() {
         // Given a streamed entry with no first_token_at.
-        let entry = streamed_entry(
-            "2024-01-15T10:30:00Z",
-            None,
-            Some("2024-01-15T10:30:15Z"),
-        );
+        let entry = streamed_entry("2024-01-15T10:30:00Z", None, Some("2024-01-15T10:30:15Z"));
 
         // When formatting.
         let lines = format(&entry);
@@ -762,20 +753,13 @@ mod tests {
         // Then the timing line shows (pending) for TTFT.
         let idx = find_timing_line(&lines).expect("should have a timing line");
         let t = text(&lines[idx]);
-        assert!(
-            t.contains("(pending)"),
-            "TTFT should show (pending): {t}"
-        );
+        assert!(t.contains("(pending)"), "TTFT should show (pending): {t}");
     }
 
     #[test]
     fn streamed_entry_shows_pending_for_missing_finished() {
         // Given a streamed entry with no finished_at.
-        let entry = streamed_entry(
-            "2024-01-15T10:30:00Z",
-            Some("2024-01-15T10:30:02Z"),
-            None,
-        );
+        let entry = streamed_entry("2024-01-15T10:30:00Z", Some("2024-01-15T10:30:02Z"), None);
 
         // When formatting.
         let lines = format(&entry);
@@ -835,4 +819,3 @@ mod tests {
         );
     }
 }
-        
