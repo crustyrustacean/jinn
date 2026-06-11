@@ -134,7 +134,7 @@ mod tests {
         let result = handle_refresh_models(&mut state);
 
         // Then no commands.
-        assert!(result.commands.is_empty());
+        assert!(result.message_names.is_empty());
     }
 
     #[rstest::rstest]

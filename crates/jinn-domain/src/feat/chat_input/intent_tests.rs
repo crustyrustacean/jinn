@@ -33,7 +33,7 @@ fn insert_char_emits_no_commands() {
     let result = crate::feat::chat_input::intent::handle_insert_char('x', &mut state);
 
     // Then no commands are emitted.
-    assert!(result.commands.is_empty());
+    assert!(result.message_names.is_empty());
 }
 
 #[rstest::rstest]
@@ -59,7 +59,7 @@ fn delete_grapheme_emits_no_commands() {
     let result = crate::feat::chat_input::intent::handle_delete_grapheme(&mut state);
 
     // Then no commands are emitted.
-    assert!(result.commands.is_empty());
+    assert!(result.message_names.is_empty());
 }
 
 #[rstest::rstest]
@@ -87,7 +87,7 @@ fn delete_grapheme_forward_emits_no_commands() {
     let result = crate::feat::chat_input::intent::handle_delete_grapheme_forward(&mut state);
 
     // Then no commands are emitted.
-    assert!(result.commands.is_empty());
+    assert!(result.message_names.is_empty());
 }
 
 #[rstest::rstest]
@@ -100,15 +100,9 @@ fn submit_message_returns_enqueue_command() {
     let result = crate::feat::chat_input::intent::handle_submit_message(&mut state);
 
     // Then a MarkSessionInteracted and an EnqueueUserMessage command are returned.
-    assert_eq!(result.commands.len(), 2);
-    assert!(matches!(
-        &result.commands[0],
-        Command::MarkSessionInteracted(..)
-    ));
-    assert!(matches!(
-        &result.commands[1],
-        Command::EnqueueUserMessage(..)
-    ));
+    assert_eq!(result.message_names.len(), 2);
+    assert!(result.message_names[0].contains("MarkSessionInteracted"));
+    assert!(result.message_names[1].contains("EnqueueUserMessage"));
 }
 
 #[rstest::rstest]
@@ -133,7 +127,7 @@ fn submit_message_noop_with_empty_buffer() {
     let result = crate::feat::chat_input::intent::handle_submit_message(&mut state);
 
     // Then no commands are returned.
-    assert!(result.commands.is_empty());
+    assert!(result.message_names.is_empty());
 }
 
 #[rstest::rstest]
@@ -155,9 +149,9 @@ fn submit_message_completes_and_submits_when_hash_autocomplete_active() {
     // Then the autocomplete is completed and the message is submitted.
     assert!(
         result
-            .commands
+            .message_names
             .iter()
-            .any(|c| matches!(c, Command::EnqueueUserMessage(..))),
+            .any(|n| n.contains("EnqueueUserMessage")),
         "Enter should complete autocomplete and submit the message"
     );
 }
@@ -233,8 +227,8 @@ fn queue_submit_always_enqueues() {
     let result = crate::feat::chat_input::intent::handle_submit_message(&mut state);
 
     // Then an EnqueueUserMessage command is emitted.
-    assert_eq!(result.commands.len(), 2);
-    assert!(matches!(result.commands[1], Command::EnqueueUserMessage(_)));
+    assert_eq!(result.message_names.len(), 2);
+    assert!(result.message_names.iter().any(|n| n.contains("EnqueueUserMessage")));
 }
 
 #[rstest::rstest]
@@ -262,7 +256,7 @@ fn steer_submit_while_busy_routes_to_steer(
 
     // Then SubmitSteeringMessage command emitted (not EnqueueUserMessage).
     assert!(
-        matches!(result.commands[1], Command::SubmitSteeringMessage(_)),
+        result.message_names.iter().any(|n| n.contains("SubmitSteeringMessage")),
         "phase {:?}: expected SubmitSteeringMessage",
         phase
     );
@@ -288,7 +282,7 @@ fn steer_submit_while_idle_falls_back_to_enqueue() {
     let result = crate::feat::chat_input::intent::handle_submit_message(&mut state);
 
     // Then EnqueueUserMessage command emitted (fall-through).
-    assert!(matches!(result.commands[1], Command::EnqueueUserMessage(_)));
+    assert!(result.message_names.iter().any(|n| n.contains("EnqueueUserMessage")));
     // And mode display remains Steer.
     assert_eq!(
         state.active_chat_input().input_mode(),
@@ -306,7 +300,7 @@ fn autocomplete_confirm_no_op_when_no_autocomplete() {
     let result = crate::feat::chat_input::intent::handle_autocomplete_confirm(&mut state);
 
     // Then nothing changes and no commands are emitted.
-    assert!(result.commands.is_empty());
+    assert!(result.message_names.is_empty());
 }
 
 #[rstest::rstest]
@@ -334,7 +328,7 @@ fn move_cursor_left_emits_no_commands() {
     let result = crate::feat::chat_input::intent::handle_move_cursor_left(&mut state);
 
     // Then no commands are emitted.
-    assert!(result.commands.is_empty());
+    assert!(result.message_names.is_empty());
 }
 
 #[rstest::rstest]
@@ -362,7 +356,7 @@ fn move_cursor_right_emits_no_commands() {
     let result = crate::feat::chat_input::intent::handle_move_cursor_right(&mut state);
 
     // Then no commands are emitted.
-    assert!(result.commands.is_empty());
+    assert!(result.message_names.is_empty());
 }
 
 #[rstest::rstest]
@@ -388,7 +382,7 @@ fn move_cursor_to_start_emits_no_commands() {
     let result = crate::feat::chat_input::intent::handle_move_cursor_to_start(&mut state);
 
     // Then no commands are emitted.
-    assert!(result.commands.is_empty());
+    assert!(result.message_names.is_empty());
 }
 
 #[rstest::rstest]
@@ -416,7 +410,7 @@ fn move_cursor_to_end_emits_no_commands() {
     let result = crate::feat::chat_input::intent::handle_move_cursor_to_end(&mut state);
 
     // Then no commands are emitted.
-    assert!(result.commands.is_empty());
+    assert!(result.message_names.is_empty());
 }
 
 #[rstest::rstest]
@@ -442,7 +436,7 @@ fn move_cursor_word_left_emits_no_commands() {
     let result = crate::feat::chat_input::intent::handle_move_cursor_word_left(&mut state);
 
     // Then no commands are emitted.
-    assert!(result.commands.is_empty());
+    assert!(result.message_names.is_empty());
 }
 
 #[rstest::rstest]
@@ -470,7 +464,7 @@ fn move_cursor_word_right_emits_no_commands() {
     let result = crate::feat::chat_input::intent::handle_move_cursor_word_right(&mut state);
 
     // Then no commands are emitted.
-    assert!(result.commands.is_empty());
+    assert!(result.message_names.is_empty());
 }
 
 #[rstest::rstest]
@@ -505,7 +499,7 @@ fn cursor_left_reactivates_autocomplete_emits_no_commands() {
     let result = crate::feat::chat_input::intent::handle_move_cursor_left(&mut state);
 
     // Then no commands are emitted.
-    assert!(result.commands.is_empty());
+    assert!(result.message_names.is_empty());
 }
 
 #[rstest::rstest]
@@ -534,7 +528,7 @@ fn backspace_reactivates_autocomplete_emits_no_commands() {
     let result = crate::feat::chat_input::intent::handle_delete_grapheme(&mut state);
 
     // Then no commands are emitted.
-    assert!(result.commands.is_empty());
+    assert!(result.message_names.is_empty());
 }
 
 #[rstest::rstest]
@@ -575,7 +569,7 @@ fn cursor_move_away_emits_no_commands() {
     let result = crate::feat::chat_input::intent::handle_move_cursor_left(&mut state);
 
     // Then no commands are emitted.
-    assert!(result.commands.is_empty());
+    assert!(result.message_names.is_empty());
 }
 
 #[rstest::rstest]
@@ -588,7 +582,7 @@ fn move_cursor_up_delegates_to_state() {
     let result = crate::feat::chat_input::intent::handle_move_cursor_up(&mut state);
 
     // Then no crash and no commands.
-    assert!(result.commands.is_empty());
+    assert!(result.message_names.is_empty());
 }
 
 #[rstest::rstest]
@@ -601,7 +595,7 @@ fn move_cursor_down_delegates_to_state() {
     let result = crate::feat::chat_input::intent::handle_move_cursor_down(&mut state);
 
     // Then no crash and no commands.
-    assert!(result.commands.is_empty());
+    assert!(result.message_names.is_empty());
 }
 
 // --- Mode transition tests ---
@@ -630,7 +624,7 @@ fn enter_insert_mode_emits_no_commands() {
     let result = crate::feat::chat_input::intent::handle_enter_insert_mode(&mut state);
 
     // Then no commands are emitted.
-    assert!(result.commands.is_empty());
+    assert!(result.message_names.is_empty());
 }
 
 #[rstest::rstest]
@@ -660,7 +654,7 @@ fn enter_normal_mode_from_input_emits_no_commands() {
     let result = crate::feat::chat_input::intent::handle_enter_normal_mode(&mut state);
 
     // Then no commands are emitted.
-    assert!(result.commands.is_empty());
+    assert!(result.message_names.is_empty());
 }
 
 #[rstest::rstest]
@@ -697,7 +691,7 @@ fn enter_normal_mode_from_picker_emits_no_commands() {
     let result = crate::feat::chat_input::intent::handle_enter_normal_mode(&mut state);
 
     // Then no commands are emitted.
-    assert!(result.commands.is_empty());
+    assert!(result.message_names.is_empty());
 }
 
 #[rstest::rstest]
@@ -730,7 +724,7 @@ fn enter_normal_mode_from_sidebar_input_emits_no_commands() {
     let result = crate::feat::chat_input::intent::handle_enter_normal_mode(&mut state);
 
     // Then no commands are emitted.
-    assert!(result.commands.is_empty());
+    assert!(result.message_names.is_empty());
 }
 
 #[rstest::rstest]
@@ -748,9 +742,9 @@ fn enter_normal_mode_does_not_cancel_stream() {
     // Then no CancelStream command is emitted.
     assert!(
         !result
-            .commands
+            .message_names
             .iter()
-            .any(|c| matches!(c, Command::CancelStream(..)))
+            .any(|n| n.contains("CancelStream"))
     );
 }
 
@@ -826,9 +820,9 @@ fn enter_normal_mode_with_queue_emits_no_cancel_stream() {
     // Then no CancelStream command is emitted.
     assert!(
         !result
-            .commands
+            .message_names
             .iter()
-            .any(|c| matches!(c, Command::CancelStream(..)))
+            .any(|n| n.contains("CancelStream"))
     );
 }
 
@@ -867,7 +861,7 @@ fn normal_escape_emits_no_commands() {
     let result = crate::feat::chat_input::intent::handle_normal_escape(&mut state);
 
     // Then no commands are emitted.
-    assert!(result.commands.is_empty());
+    assert!(result.message_names.is_empty());
 }
 
 #[rstest::rstest]
@@ -893,7 +887,7 @@ fn normal_escape_when_streaming_emits_no_commands() {
     let result = crate::feat::chat_input::intent::handle_normal_escape(&mut state);
 
     // Then no commands are emitted.
-    assert!(result.commands.is_empty());
+    assert!(result.message_names.is_empty());
 }
 
 #[rstest::rstest]
@@ -917,7 +911,7 @@ fn normal_escape_when_idle_emits_no_commands() {
     let result = crate::feat::chat_input::intent::handle_normal_escape(&mut state);
 
     // Then no commands are emitted.
-    assert!(result.commands.is_empty());
+    assert!(result.message_names.is_empty());
 }
 
 // --- Slash autocomplete tests ---
@@ -948,7 +942,7 @@ fn slash_at_position_0_emits_no_commands() {
     let result = crate::feat::chat_input::intent::handle_insert_char('/', &mut state);
 
     // Then no commands are emitted.
-    assert!(result.commands.is_empty());
+    assert!(result.message_names.is_empty());
 }
 
 #[rstest::rstest]
@@ -977,7 +971,7 @@ fn slash_with_content_emits_no_commands() {
     let result = crate::feat::chat_input::intent::handle_insert_char('/', &mut state);
 
     // Then no commands are emitted.
-    assert!(result.commands.is_empty());
+    assert!(result.message_names.is_empty());
 }
 
 #[rstest::rstest]
@@ -1041,7 +1035,7 @@ fn slash_autocomplete_tab_confirm_emits_no_commands() {
     let result = crate::feat::chat_input::intent::handle_autocomplete_confirm(&mut state);
 
     // Then no commands were emitted (autocomplete confirm doesn't execute).
-    assert!(result.commands.is_empty());
+    assert!(result.message_names.is_empty());
 }
 
 #[rstest::rstest]
@@ -1098,7 +1092,7 @@ fn slash_autocomplete_cursor_reentry_emits_no_commands() {
     let result = crate::feat::chat_input::intent::handle_move_cursor_left(&mut state); // on 'n'
 
     // Then no commands are emitted.
-    assert!(result.commands.is_empty());
+    assert!(result.message_names.is_empty());
 }
 
 #[rstest::rstest]
@@ -1133,7 +1127,7 @@ fn slash_autocomplete_cursor_leaves_token_emits_no_commands() {
     let result = crate::feat::chat_input::intent::handle_move_cursor_left(&mut state); // space
 
     // Then no commands are emitted.
-    assert!(result.commands.is_empty());
+    assert!(result.message_names.is_empty());
 }
 
 // --- Slash command execution tests ---
@@ -1166,9 +1160,9 @@ fn submit_new_command_emits_no_enqueue_command() {
     // Then no EnqueueUserMessage was emitted.
     assert!(
         !result
-            .commands
+            .message_names
             .iter()
-            .any(|c| matches!(c, Command::EnqueueUserMessage(..))),
+            .any(|n| n.contains("EnqueueUserMessage")),
         "/new should not enqueue a chat message"
     );
 }
@@ -1184,13 +1178,13 @@ fn submit_unknown_slash_command_sends_as_chat() {
 
     // Then the message is submitted as a normal chat message.
     // MarkSessionInteracted + EnqueueUserMessage.
-    assert_eq!(result.commands.len(), 2);
+    assert_eq!(result.message_names.len(), 2);
     assert!(
-        matches!(&result.commands[0], Command::MarkSessionInteracted(..)),
+        result.message_names.iter().any(|n| n.contains("MarkSessionInteracted")),
         "first command should be MarkSessionInteracted"
     );
     assert!(
-        matches!(&result.commands[1], Command::EnqueueUserMessage(..)),
+        result.message_names.iter().any(|n| n.contains("EnqueueUserMessage")),
         "unknown /command should be sent as chat"
     );
 }
@@ -1218,13 +1212,13 @@ fn submit_compact_slash_command_pushes_system_message() {
     let result = crate::feat::chat_input::intent::handle_submit_message(&mut state);
 
     // Then a MarkSessionInteracted and TriggerCompaction command are dispatched.
-    assert_eq!(result.commands.len(), 2);
+    assert_eq!(result.message_names.len(), 2);
     assert!(
-        matches!(&result.commands[0], Command::MarkSessionInteracted(..)),
+        result.message_names.iter().any(|n| n.contains("MarkSessionInteracted")),
         "first command should be MarkSessionInteracted"
     );
     assert!(
-        matches!(&result.commands[1], Command::TriggerCompaction(..)),
+        result.message_names.iter().any(|n| n.contains("TriggerCompaction")),
         "second command should be TriggerCompaction"
     );
 }
@@ -1274,7 +1268,7 @@ fn tab_confirm_slash_emits_no_commands() {
     let result = crate::feat::chat_input::intent::handle_autocomplete_confirm(&mut state);
 
     // Then no commands are emitted.
-    assert!(result.commands.is_empty());
+    assert!(result.message_names.is_empty());
 }
 
 #[rstest::rstest]
@@ -1311,9 +1305,9 @@ fn enter_slash_command_emits_no_enqueue() {
     // Then no EnqueueUserMessage was emitted.
     assert!(
         !result
-            .commands
+            .message_names
             .iter()
-            .any(|c| matches!(c, Command::EnqueueUserMessage(..))),
+            .any(|n| n.contains("EnqueueUserMessage")),
         "/new should not enqueue a chat message"
     );
 }
@@ -1341,7 +1335,7 @@ fn paste_text_emits_no_commands() {
     let result = crate::feat::chat_input::intent::handle_paste_text("hello\nworld", &mut state);
 
     // Then no commands are emitted.
-    assert!(result.commands.is_empty());
+    assert!(result.message_names.is_empty());
 }
 
 #[rstest::rstest]
@@ -1374,7 +1368,7 @@ fn paste_text_at_cursor_emits_no_commands() {
     let result = crate::feat::chat_input::intent::handle_paste_text("XY", &mut state);
 
     // Then no commands are emitted.
-    assert!(result.commands.is_empty());
+    assert!(result.message_names.is_empty());
 }
 
 // --- Hash after newline tests ---
@@ -1407,7 +1401,7 @@ fn hash_after_newline_emits_no_commands() {
     let result = crate::feat::chat_input::intent::handle_insert_char('#', &mut state);
 
     // Then no commands are emitted.
-    assert!(result.commands.is_empty());
+    assert!(result.message_names.is_empty());
 }
 
 #[rstest::rstest]
@@ -1436,7 +1430,7 @@ fn hash_after_newline_start_emits_no_commands() {
     let result = crate::feat::chat_input::intent::handle_insert_char('#', &mut state);
 
     // Then no commands are emitted.
-    assert!(result.commands.is_empty());
+    assert!(result.message_names.is_empty());
 }
 
 #[rstest::rstest]
@@ -1465,7 +1459,7 @@ fn hash_after_non_boundary_emits_no_commands() {
     let result = crate::feat::chat_input::intent::handle_insert_char('#', &mut state);
 
     // Then no commands are emitted.
-    assert!(result.commands.is_empty());
+    assert!(result.message_names.is_empty());
 }
 
 #[rstest::rstest]
@@ -1496,7 +1490,7 @@ fn hash_cursor_reentry_emits_no_commands() {
     let result = crate::feat::chat_input::intent::handle_move_cursor_left(&mut state);
 
     // Then no commands are emitted.
-    assert!(result.commands.is_empty());
+    assert!(result.message_names.is_empty());
 }
 
 // --- Popup auto-close on cursor move past token ---
@@ -1676,7 +1670,7 @@ fn enter_normal_mode_dismissing_autocomplete_emits_no_commands() {
     let result = crate::feat::chat_input::intent::handle_enter_normal_mode(&mut state);
 
     // Then no commands are emitted.
-    assert!(result.commands.is_empty());
+    assert!(result.message_names.is_empty());
 }
 
 #[rstest::rstest]
@@ -1764,7 +1758,7 @@ fn ctrl_clear_input_empties_chat_input_via_handler() {
         0,
         "cursor reset to 0"
     );
-    assert!(result.commands.is_empty(), "no commands emitted");
+    assert!(result.message_names.is_empty(), "no commands emitted");
     assert_eq!(
         state.frontend.scope_stack.current(),
         &FocusScope::Input,
@@ -1789,7 +1783,7 @@ fn ctrl_clear_input_empty_is_noop_via_handler() {
     // Then nothing changes: no scope change, no commands, buffer still empty.
     assert!(state.active_chat_input().is_empty(), "buffer still empty");
     assert_eq!(state.active_chat_input().cursor_pos(), 0, "cursor still 0");
-    assert!(result.commands.is_empty(), "no commands emitted");
+    assert!(result.message_names.is_empty(), "no commands emitted");
     assert_eq!(
         state.frontend.scope_stack.current(),
         &FocusScope::Input,

@@ -16,7 +16,6 @@
 use std::sync::Arc;
 
 use jinn_domain::ActorHostService;
-use jinn_domain::FakeActorHost;
 use jinn_domain::ApiKeysService;
 use jinn_domain::AppState;
 use jinn_domain::ConfigStorageService;
@@ -235,7 +234,7 @@ impl ActorSystemBuilder {
         let domain_ctx_cell: std::sync::Arc<
             std::sync::OnceLock<jinn_domain::feat::plugin_dispatch::DomainNodeContext>,
         > = std::sync::Arc::new(std::sync::OnceLock::new());
-        let handler_cell = domain_ctx_cell.clone();
+        let _handler_cell = domain_ctx_cell.clone();
 
         // Create the kameo message bus and closure bridge first.
         let bus = {
@@ -891,7 +890,7 @@ impl ActorSystemBuilder {
                     .await;
 
                 // Ask EnvInitActor for config and publish EnvironmentLoaded to trigger init chain.
-                use kameo::prelude::Message;
+                
                 use jinn_domain::init::env_init_actor::GetEnvironmentConfig;
                 match env_init.ask(GetEnvironmentConfig).await {
                     Ok(Some(config)) => {

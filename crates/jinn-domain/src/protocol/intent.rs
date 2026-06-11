@@ -416,6 +416,8 @@ pub struct IntentResult {
     pub events: Vec<Event>,
     /// Typed message closures to publish to the kameo bus.
     pub messages: Vec<BridgeClosure>,
+    /// Type names of messages, for test inspection.
+    pub message_names: Vec<&'static str>,
 }
 
 impl IntentResult {
@@ -426,6 +428,7 @@ impl IntentResult {
             commands: vec![],
             events: vec![],
             messages: vec![],
+            message_names: vec![],
         }
     }
 
@@ -436,6 +439,7 @@ impl IntentResult {
             commands,
             events: vec![],
             messages: vec![],
+            message_names: vec![],
         }
     }
 
@@ -446,6 +450,7 @@ impl IntentResult {
             commands,
             events,
             messages: vec![],
+            message_names: vec![],
         }
     }
 
@@ -462,6 +467,7 @@ impl IntentResult {
             commands: vec![],
             events: vec![],
             messages: vec![crate::common::bridge::Bridge::publish_closure(msg)],
+            message_names: vec![std::any::type_name::<M>()],
         }
     }
 
@@ -474,6 +480,7 @@ impl IntentResult {
     {
         for msg in msgs {
             self.messages.push(Bridge::publish_closure(msg));
+            self.message_names.push(std::any::type_name::<M>());
         }
         self
     }
@@ -482,6 +489,15 @@ impl IntentResult {
     #[must_use]
     pub fn message<M: BusMessage>(mut self, msg: M) -> Self {
         self.messages.push(Bridge::publish_closure(msg));
+        self.message_names.push(std::any::type_name::<M>());
+        self
+    }
+
+    /// Merge another IntentResult's messages into this one.
+    #[must_use]
+    pub fn merge(mut self, other: IntentResult) -> Self {
+        self.messages.extend(other.messages);
+        self.message_names.extend(other.message_names);
         self
     }
 }

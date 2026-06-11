@@ -404,5 +404,5 @@ fn enter_normal_mode_dismisses_active_autocomplete_without_scope_change() {
         &FocusScope::Input,
         "first ESC should stay in Input, not switch to Normal"
     );
-    assert!(result.commands.is_empty());
+    assert!(result.message_names.is_empty());
 }

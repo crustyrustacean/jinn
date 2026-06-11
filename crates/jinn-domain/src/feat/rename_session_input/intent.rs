@@ -165,7 +165,7 @@ mod tests {
             FocusScope::RenameSessionInput
         ));
         // And no commands are emitted.
-        assert!(result.commands.is_empty());
+        assert!(result.message_names.is_empty());
     }
 
     #[rstest::rstest]
@@ -201,7 +201,7 @@ mod tests {
             state.frontend.scope_stack.current(),
             FocusScope::SidebarSessions
         ));
-        assert!(result.commands.is_empty());
+        assert!(result.message_names.is_empty());
     }
 
     #[rstest::rstest]
@@ -258,7 +258,7 @@ mod tests {
         let result = handle_rename_session_confirm(&mut state);
 
         // Then no commands are emitted.
-        assert!(result.commands.is_empty());
+        assert!(result.message_names.is_empty());
         // And scope is NOT popped (user stays in popup).
         assert!(matches!(
             state.frontend.scope_stack.current(),
@@ -341,7 +341,7 @@ mod tests {
         // And session title is unchanged.
         assert_eq!(state.session_mut(&session_id).title(), Some("Original"));
         // And no commands are emitted.
-        assert!(result.commands.is_empty());
+        assert!(result.message_names.is_empty());
     }
 
     #[rstest::rstest]

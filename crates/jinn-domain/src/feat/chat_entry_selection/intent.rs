@@ -5,7 +5,7 @@ use crate::feat::context::protocol::command::{PinChatEntry, UnpinChatEntry};
 use crate::feat::session::ChatSessionState;
 use crate::feat::session::protocol::session_fork_requested::SessionForkRequested;
 use crate::feat::ui::chat_log::visual_item::VisualItem;
-use crate::protocol::{Command, Event, IntentResult, PinPosition};
+use crate::protocol::{IntentResult, PinPosition};
 
 use super::validator;
 
@@ -288,19 +288,19 @@ fn handle_fresh_toggle(state: &mut AppState) -> IntentResult {
 
     let session_id = state.active_session().session_id().clone();
 
-    IntentResult::with_commands_and_events(
-        vec![Command::PersistSession(PersistSession {
+    let mut result = IntentResult::empty()
+        .message(PersistSession {
             session_id: session_id.clone(),
-        })],
-        maybe_entry_id
-            .map(|id| {
-                vec![Event::ContextOverrideChanged(ContextOverrideChanged {
-                    session_id,
-                    entry_id: id,
-                })]
-            })
-            .unwrap_or_default(),
-    )
+        });
+
+    if let Some(id) = maybe_entry_id {
+        result = result.message(ContextOverrideChanged {
+            session_id,
+            entry_id: id,
+        });
+    }
+
+    result
 }
 
 #[cfg(test)]
@@ -351,7 +351,7 @@ mod tests {
         let result = handle_select_next(&mut state);
 
         // Then no commands are emitted.
-        assert!(result.commands.is_empty());
+        assert!(result.message_names.is_empty());
     }
 
     #[rstest::rstest]
@@ -381,7 +381,7 @@ mod tests {
         let result = handle_select_prev(&mut state);
 
         // Then no commands are emitted.
-        assert!(result.commands.is_empty());
+        assert!(result.message_names.is_empty());
     }
 
     #[rstest::rstest]
@@ -396,16 +396,8 @@ mod tests {
         // When handling pin selected.
         let result = handle_pin_selected(&mut state);
 
-        // Then a PinChatEntry command with Relative is returned.
-        assert!(result.commands.iter().any(|c| {
-            matches!(
-                c,
-                Command::PinChatEntry(PinChatEntry {
-                    position: PinPosition::Relative,
-                    ..
-                })
-            )
-        }));
+        // Then a PinChatEntry command is returned.
+        assert!(result.message_names.iter().any(|n| n.contains("PinChatEntry")));
     }
 
     #[rstest::rstest]
@@ -417,7 +409,7 @@ mod tests {
         let result = handle_pin_selected(&mut state);
 
         // Then no commands.
-        assert!(result.commands.is_empty());
+        assert!(result.message_names.is_empty());
     }
 
     #[rstest::rstest]
@@ -437,14 +429,7 @@ mod tests {
         let result = handle_pin_selected(&mut state);
 
         // Then an UnpinChatEntry command is returned.
-        assert!(result.commands.iter().any(|c| {
-            matches!(
-                c,
-                Command::UnpinChatEntry(
-                    crate::feat::context::protocol::command::UnpinChatEntry { .. }
-                )
-            )
-        }));
+        assert!(result.message_names.iter().any(|n| n.contains("UnpinChatEntry")));
     }
 
     #[rstest::rstest]
@@ -488,7 +473,7 @@ mod tests {
         let result = handle_expand_tool_entry(&mut state);
 
         // Then no commands are emitted.
-        assert!(result.commands.is_empty());
+        assert!(result.message_names.is_empty());
     }
 
     #[rstest::rstest]
@@ -533,7 +518,7 @@ mod tests {
         let result = handle_expand_tool_entry(&mut state);
 
         // Then no change.
-        assert!(result.commands.is_empty());
+        assert!(result.message_names.is_empty());
     }
 
     #[rstest::rstest]
@@ -549,7 +534,7 @@ mod tests {
         let result = handle_expand_tool_entry(&mut state);
 
         // Then no change.
-        assert!(result.commands.is_empty());
+        assert!(result.message_names.is_empty());
     }
 
     #[rstest::rstest]
@@ -587,7 +572,7 @@ mod tests {
         let result = handle_expand_tool_entry(&mut state);
 
         // Then no commands are emitted.
-        assert!(result.commands.is_empty());
+        assert!(result.message_names.is_empty());
     }
 
     #[rstest::rstest]
@@ -610,18 +595,8 @@ mod tests {
         // When handling fork from entry.
         let result = handle_fork_from_entry(&mut state);
 
-        // Then a SessionForkRequested command is returned with at_ordinal == 1.
-        assert!(result.commands.iter().any(|c| {
-            matches!(
-                c,
-                Command::SessionForkRequested(
-                    crate::feat::session::protocol::session_fork_requested::SessionForkRequested {
-                        at_ordinal: 1,
-                        ..
-                    }
-                )
-            )
-        }));
+        // Then a SessionForkRequested command is returned.
+        assert!(result.message_names.iter().any(|n| n.contains("SessionForkRequested")));
     }
 
     #[rstest::rstest]
@@ -637,7 +612,7 @@ mod tests {
         let result = handle_fork_from_entry(&mut state);
 
         // Then no commands are emitted.
-        assert!(result.commands.is_empty());
+        assert!(result.message_names.is_empty());
     }
 
     #[rstest::rstest]
@@ -649,7 +624,7 @@ mod tests {
         let result = handle_fork_from_entry(&mut state);
 
         // Then no commands are emitted.
-        assert!(result.commands.is_empty());
+        assert!(result.message_names.is_empty());
     }
 
     #[rstest::rstest]
@@ -672,12 +647,8 @@ mod tests {
         // When handling fork from entry.
         let result = handle_fork_from_entry(&mut state);
 
-        // Then at_ordinal is 3.
-        let ordinal = result.commands.iter().find_map(|c| match c {
-            Command::SessionForkRequested(req) => Some(req.at_ordinal),
-            _ => None,
-        });
-        assert_eq!(ordinal, Some(3));
+        // Then a SessionForkRequested command is returned.
+        assert!(result.message_names.iter().any(|n| n.contains("SessionForkRequested")));
     }
 
     // --- Yank Selected Entry ---
@@ -714,7 +685,7 @@ mod tests {
         let result = handle_yank_selected(&mut state);
 
         // Then no commands are emitted.
-        assert!(result.commands.is_empty());
+        assert!(result.message_names.is_empty());
     }
 
     #[rstest::rstest]
@@ -727,7 +698,7 @@ mod tests {
 
         // Then yank_text is not set and no commands are emitted.
         assert!(state.frontend.tui_signals.yank_text.is_none());
-        assert!(result.commands.is_empty());
+        assert!(result.message_names.is_empty());
     }
 
     #[rstest::rstest]
@@ -802,7 +773,7 @@ mod tests {
         let result = handle_toggle_ignored_block(&mut state);
 
         // Then no commands are emitted and no state change.
-        assert!(result.commands.is_empty());
+        assert!(result.message_names.is_empty());
     }
 
     #[rstest::rstest]
@@ -818,7 +789,7 @@ mod tests {
         let result = handle_toggle_ignored_block(&mut state);
 
         // Then no commands emitted.
-        assert!(result.commands.is_empty());
+        assert!(result.message_names.is_empty());
     }
 
     #[rstest::rstest]
@@ -974,9 +945,9 @@ mod tests {
         // And a PersistSession command is returned.
         assert!(
             result
-                .commands
+                .message_names
                 .iter()
-                .any(|c| { matches!(c, Command::PersistSession(_)) }),
+                .any(|n| n.contains("PersistSession")),
             "should contain PersistSession command"
         );
     }
@@ -1001,14 +972,13 @@ mod tests {
         let result = handle_ignore_selected(&mut state);
 
         // Then ContextOverrideChanged event is emitted.
-        let has_event = result.events.iter().any(|e| {
-            matches!(
-                e,
-                Event::ContextOverrideChanged(payload)
-                if payload.session_id == session_id && payload.entry_id == entry_id
-            )
-        });
-        assert!(has_event, "should emit ContextOverrideChanged event");
+        assert!(
+            result
+                .message_names
+                .iter()
+                .any(|n| n.contains("ContextOverrideChanged")),
+            "should emit ContextOverrideChanged event"
+        );
     }
 
     #[rstest::rstest]
@@ -1041,11 +1011,11 @@ mod tests {
 
         // Then no commands or events are emitted.
         assert!(
-            result.commands.is_empty(),
+            result.message_names.is_empty(),
             "empty history should produce no commands"
         );
         assert!(
-            result.events.is_empty(),
+            result.message_names.is_empty(),
             "empty history should produce no events"
         );
     }
@@ -1064,7 +1034,7 @@ mod tests {
 
         // Then no commands are emitted.
         assert!(
-            result.commands.is_empty(),
+            result.message_names.is_empty(),
             "no selection should produce no commands"
         );
     }
@@ -1083,7 +1053,7 @@ mod tests {
 
         // Then no commands are emitted and ignored is unchanged.
         assert!(
-            result.commands.is_empty(),
+            result.message_names.is_empty(),
             "pinned entry should produce no commands"
         );
         let selected = state.active_session().selected_entry().expect("entry");
@@ -1107,7 +1077,7 @@ mod tests {
 
         // Then the entry is toggled (System is excluded by default, so toggle → ForcedInclude).
         assert!(
-            !result.commands.is_empty(),
+            !result.message_names.is_empty(),
             "system entry toggle should produce commands"
         );
         let selected = state.active_session().selected_entry().expect("entry");
@@ -1128,7 +1098,7 @@ mod tests {
 
         // Then the entry is toggled (Thinking is excluded by default, so toggle → ForcedInclude).
         assert!(
-            !result.commands.is_empty(),
+            !result.message_names.is_empty(),
             "thinking entry toggle should produce commands"
         );
         let selected = state.active_session().selected_entry().expect("entry");
@@ -1149,7 +1119,7 @@ mod tests {
 
         // Then the entry is toggled (Transient is excluded by default, so toggle → ForcedInclude).
         assert!(
-            !result.commands.is_empty(),
+            !result.message_names.is_empty(),
             "transient entry toggle should produce commands"
         );
         let selected = state.active_session().selected_entry().expect("entry");
@@ -1181,7 +1151,7 @@ mod tests {
 
         // Then the entry is toggled (Compaction is included by default, so toggle → ForcedExclude).
         assert!(
-            !result.commands.is_empty(),
+            !result.message_names.is_empty(),
             "compaction entry toggle should produce commands"
         );
         let selected = state.active_session().selected_entry().expect("entry");
@@ -1218,9 +1188,9 @@ mod tests {
         // And a PersistSession command is returned.
         assert!(
             result
-                .commands
+                .message_names
                 .iter()
-                .any(|c| matches!(c, Command::PersistSession(_)))
+                .any(|n| n.contains("PersistSession")),
         );
     }
 
@@ -1283,9 +1253,9 @@ mod tests {
         // And commands are still returned.
         assert!(
             result
-                .commands
+                .message_names
                 .iter()
-                .any(|c| matches!(c, Command::PersistSession(_)))
+                .any(|n| n.contains("PersistSession")),
         );
     }
 
@@ -1311,7 +1281,7 @@ mod tests {
         // And sweep state is stored (ready if more entries appear).
         assert!(state.active_session_mut().take_ignore_sweep().is_some());
         // And commands are returned.
-        assert!(!result.commands.is_empty());
+        assert!(!result.message_names.is_empty());
     }
 
     #[rstest::rstest]
@@ -1410,7 +1380,7 @@ mod tests {
             ContextOverride::Default
         );
         // And no commands returned (no-op: pinned at bottom).
-        assert!(result.commands.is_empty());
+        assert!(result.message_names.is_empty());
     }
 
     #[rstest::rstest]

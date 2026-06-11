@@ -10,7 +10,7 @@
 use crate::common::actor::protocol::event::AllActorsSpawned;
 use crate::common::actor_deps::{ActorDeps, BusPublish};
 use crate::common::services::bus_service::BusService;
-use kameo::prelude::{Actor, ActorRef, Context, Message, Spawn};
+use kameo::prelude::{Actor, ActorRef, Context, Message};
 
 /// The system-ready actor.
 ///
@@ -78,6 +78,7 @@ mod tests {
 
     use super::*;
     use crate::common::bus::test_harness::TestHarness;
+    use kameo::actor::Spawn;
 
     #[tokio::test]
     async fn signals_on_all_actors_spawned() {

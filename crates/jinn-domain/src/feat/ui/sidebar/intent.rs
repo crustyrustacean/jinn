@@ -128,7 +128,7 @@ mod tests {
 
         // Then Sidebar is on the scope stack.
         assert!(state.frontend.scope_stack.is_sidebar());
-        assert!(result.commands.is_empty());
+        assert!(result.message_names.is_empty());
     }
 
     #[rstest::rstest]
@@ -175,7 +175,7 @@ mod tests {
 
         // Then scope is back to Normal.
         assert_eq!(state.frontend.scope_stack.current(), &FocusScope::Normal);
-        assert!(result.commands.is_empty());
+        assert!(result.message_names.is_empty());
     }
 
     #[rstest::rstest]
@@ -204,7 +204,7 @@ mod tests {
 
         // Then no cancel prompt is set.
         assert!(!state.frontend.cancel_stream_prompt);
-        assert!(result.commands.is_empty());
+        assert!(result.message_names.is_empty());
         // And scope is back to Normal.
         assert_eq!(state.frontend.scope_stack.current(), &FocusScope::Normal);
     }
@@ -224,7 +224,7 @@ mod tests {
         );
         // And sessions section has a cursor.
         assert!(state.frontend.sessions_section.selected_index.is_some());
-        assert!(result.commands.is_empty());
+        assert!(result.message_names.is_empty());
     }
 
     #[rstest::rstest]
@@ -281,7 +281,7 @@ mod tests {
         );
         // And cursor is unchanged.
         assert_eq!(state.frontend.sessions_section.selected_index, Some(0));
-        assert!(result.commands.is_empty());
+        assert!(result.message_names.is_empty());
     }
 
     #[rstest::rstest]

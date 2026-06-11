@@ -22,7 +22,7 @@ mod helpers;
 
 pub use handlers::lifecycle::setup_running_msg;
 
-use crate::common::actor::{ActorContext, ActorEnvelope, RecordingSink};
+use crate::common::actor::{ActorContext, RecordingSink};
 use crate::common::actor_deps::{ActorDeps, BusPublish};
 use crate::common::services::bus_service::BusService;
 use crate::common::state::State;

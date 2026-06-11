@@ -129,7 +129,11 @@ impl IntentHandler {
 
         for outcome in call_hooks_typed::<InterceptOutcome>(plugins, "on_submit_intercept", &ctx) {
             match outcome {
-                InterceptOutcome::Block => result.commands.clear(),
+                InterceptOutcome::Block => {
+                    result.commands.clear();
+                    result.messages.clear();
+                    result.message_names.clear();
+                }
                 InterceptOutcome::Pass => {}
                 InterceptOutcome::Replace { commands } => {
                     let mapped: Vec<Command> = commands
@@ -146,6 +150,11 @@ impl IntentHandler {
                         })
                         .collect();
                     result.commands = mapped;
+                    result.messages.clear();
+                    result.message_names.clear();
+                    // Note: Replace provides Command enum variants (JSON).
+                    // The messages will be populated from commands by the TUI bridge.
+                    // This is a temporary bridge until Phase 4 removes Command entirely.
                 }
             }
         }
@@ -360,10 +369,7 @@ impl IntentHandler {
                 let (result, maybe_intent) = feat::picker::intent::handle_picker_confirm(state);
                 if let Some(intent) = maybe_intent {
                     let redispatch = IntentHandler::handle(&intent, state, None);
-                    IntentResult::with_commands_and_events(
-                        [result.commands, redispatch.commands].concat(),
-                        [result.events, redispatch.events].concat(),
-                    )
+                    result.merge(redispatch)
                 } else {
                     result
                 }
@@ -372,10 +378,7 @@ impl IntentHandler {
                 let (result, maybe_intent) = feat::global::intent::handle_ctrl_clear(state);
                 if let Some(intent) = maybe_intent {
                     let redispatch = IntentHandler::handle(&intent, state, None);
-                    IntentResult::with_commands_and_events(
-                        [result.commands, redispatch.commands].concat(),
-                        [result.events, redispatch.events].concat(),
-                    )
+                    result.merge(redispatch)
                 } else {
                     result
                 }
@@ -650,20 +653,19 @@ fn try_handle_cancel_stream_prompt(intent: &Intent, state: &mut AppState) -> Opt
 
     // Cancel stream.
     state.active_session_mut().cancel_stream_and_drain();
-    let mut commands = vec![Command::CancelStream(
-        crate::feat::provider::protocol::command::CancelStream {
+    let mut result = IntentResult::empty()
+        .message(crate::feat::provider::protocol::command::CancelStream {
             session_id: session_id.clone(),
-        },
-    )];
+        });
 
     // Also cancel any running lifecycle command.
     if was_busy {
-        commands.push(Command::CancelLifecycleCommand(
+        result = result.message(
             crate::feat::session_lifecycle::protocol::CancelLifecycleCommand { session_id },
-        ));
+        );
     }
 
-    Some(IntentResult::with_commands(commands))
+    Some(result)
 }
 
 /// Close session confirmation prompt intercept.
@@ -721,7 +723,7 @@ mod tests {
 
         // Then the buffer is empty and no commands are emitted.
         assert!(state.active_chat_input().is_empty());
-        assert!(result.commands.is_empty());
+        assert!(result.message_names.is_empty());
     }
 
     #[rstest::rstest]
@@ -744,7 +746,7 @@ mod tests {
 
         // Then the buffer has the pasted text.
         assert_eq!(state.active_chat_input().text(), "hello\nworld");
-        assert!(result.commands.is_empty());
+        assert!(result.message_names.is_empty());
     }
 
     #[rstest::rstest]
@@ -769,7 +771,7 @@ mod tests {
         assert_eq!(state.frontend.rename_session_input.text.input, "Helo");
         assert_eq!(state.frontend.rename_session_input.text.cursor_pos, 4);
         assert!(state.active_chat_input().is_empty());
-        assert!(result.commands.is_empty());
+        assert!(result.message_names.is_empty());
     }
 
     #[rstest::rstest]
@@ -792,7 +794,7 @@ mod tests {
 
         // Then cursor moved left.
         assert_eq!(state.frontend.rename_session_input.text.cursor_pos, 4);
-        assert!(result.commands.is_empty());
+        assert!(result.message_names.is_empty());
     }
 
     #[rstest::rstest]
@@ -815,7 +817,7 @@ mod tests {
 
         // Then cursor moved right.
         assert_eq!(state.frontend.rename_session_input.text.cursor_pos, 1);
-        assert!(result.commands.is_empty());
+        assert!(result.message_names.is_empty());
     }
 
     #[rstest::rstest]
@@ -839,7 +841,7 @@ mod tests {
         // Then last char deleted.
         assert_eq!(state.frontend.rename_session_input.text.input, "Hell");
         assert_eq!(state.frontend.rename_session_input.text.cursor_pos, 4);
-        assert!(result.commands.is_empty());
+        assert!(result.message_names.is_empty());
     }
 
     #[rstest::rstest]
@@ -863,7 +865,7 @@ mod tests {
         // Then char after cursor deleted.
         assert_eq!(state.frontend.rename_session_input.text.input, "Hllo");
         assert_eq!(state.frontend.rename_session_input.text.cursor_pos, 1);
-        assert!(result.commands.is_empty());
+        assert!(result.message_names.is_empty());
     }
 
     #[test]
@@ -1079,11 +1081,11 @@ mod tests {
         assert!(!state.frontend.cancel_stream_prompt);
         assert!(
             result
-                .commands
+                .message_names
                 .iter()
-                .any(|c| matches!(c, crate::protocol::Command::CancelStream(_))),
+                .any(|n| n.contains("CancelStream")),
             "should emit CancelStream: {:?}",
-            result.commands
+            result.message_names
         );
     }
 
@@ -1153,11 +1155,11 @@ mod tests {
         assert!(!state.frontend.cancel_stream_prompt);
         assert!(
             !result
-                .commands
+                .message_names
                 .iter()
-                .any(|c| matches!(c, crate::protocol::Command::CancelStream(_))),
+                .any(|n| n.contains("CancelStream")),
             "should not emit CancelStream: {:?}",
-            result.commands
+            result.message_names
         );
     }
 
@@ -1183,8 +1185,7 @@ mod tests {
         let result = IntentHandler::handle(&Intent::NoOp, &mut state, None);
 
         // Then result is empty.
-        assert!(result.commands.is_empty());
-        assert!(result.events.is_empty());
+        assert!(result.message_names.is_empty());
     }
 
     #[rstest::rstest]
@@ -1252,7 +1253,7 @@ mod tests {
 
         // Then no close prompt is set and no commands are emitted.
         assert!(!state.frontend.close_session_prompt);
-        assert!(result.commands.is_empty());
+        assert!(result.message_names.is_empty());
     }
 
     #[rstest::rstest]
@@ -1264,7 +1265,7 @@ mod tests {
         let result = IntentHandler::handle(&Intent::SidebarSessionTeardown, &mut state, None);
 
         // Then no commands are emitted.
-        assert!(result.commands.is_empty());
+        assert!(result.message_names.is_empty());
     }
 
     #[rstest::rstest]
@@ -1278,7 +1279,7 @@ mod tests {
 
         // Then no session was removed and no commands emitted.
         assert_eq!(state.session.session_count(), original_count);
-        assert!(result.commands.is_empty());
+        assert!(result.message_names.is_empty());
     }
 
     #[rstest::rstest]
@@ -1290,7 +1291,7 @@ mod tests {
         let result = IntentHandler::handle(&Intent::SidebarSessionContinue, &mut state, None);
 
         // Then no commands are emitted.
-        assert!(result.commands.is_empty());
+        assert!(result.message_names.is_empty());
     }
 }
 
@@ -1345,7 +1346,7 @@ mod intercept_tests {
 
         // Then the normal submit commands are produced (not blocked).
         assert!(
-            !result.commands.is_empty(),
+            !result.message_names.is_empty(),
             "submit should enqueue a message"
         );
     }
@@ -1360,7 +1361,7 @@ mod intercept_tests {
         let result = IntentHandler::handle(&Intent::SubmitMessage, &mut state, Some(&plugins));
 
         // Then no commands are emitted (the submit was blocked).
-        assert!(result.commands.is_empty(), "block must clear commands");
+        assert!(result.message_names.is_empty(), "block must clear commands");
     }
 
     #[test]
@@ -1370,7 +1371,7 @@ mod intercept_tests {
         let baseline = {
             let mut s = state_with_input("hello");
             IntentHandler::handle(&Intent::SubmitMessage, &mut s, None)
-                .commands
+                .message_names
                 .len()
         };
         let mut state = state_with_input("hello");
@@ -1379,7 +1380,7 @@ mod intercept_tests {
         let result = IntentHandler::handle(&Intent::SubmitMessage, &mut state, Some(&plugins));
 
         // Then the command count matches the unintercepted baseline.
-        assert_eq!(result.commands.len(), baseline, "pass must be a no-op");
+        assert_eq!(result.message_names.len(), baseline, "pass must be a no-op");
     }
 
     #[test]
@@ -1394,7 +1395,7 @@ mod intercept_tests {
 
         // Then the malformed return is dropped (pass-through) with no panic.
         assert!(
-            !result.commands.is_empty(),
+            !result.message_names.is_empty(),
             "malformed outcome degrades to pass-through"
         );
     }
@@ -1462,7 +1463,7 @@ mod intercept_scope_tests {
         // Then the hook fired and the submit was blocked.
         assert_eq!(plugins.calls.get(), 1, "submit must consult the hook");
         assert!(
-            result.commands.is_empty(),
+            result.message_names.is_empty(),
             "block must clear submit commands"
         );
     }

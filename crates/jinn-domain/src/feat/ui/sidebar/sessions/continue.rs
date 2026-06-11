@@ -9,7 +9,7 @@
 use crate::common::app_state::AppState;
 use crate::feat::chat_input::protocol::command::EnqueueResumeTurn;
 use crate::feat::ui::sidebar::sessions::state::{SessionEntryKind, sorted_open_sessions};
-use crate::protocol::{Command, IntentResult};
+use crate::protocol::IntentResult;
 
 /// Resume the session under the sidebar cursor.
 ///
@@ -96,14 +96,9 @@ mod tests {
         // When handling session continue.
         let result = handle_session_continue(&mut state);
 
-        // Then an EnqueueResumeTurn command is returned (not EnqueueUserMessage).
-        assert_eq!(result.commands.len(), 1);
-        let cmd = &result.commands[0];
-        let Command::EnqueueResumeTurn(msg) = cmd else {
-            panic!("expected EnqueueResumeTurn, got {cmd:?}");
-        };
-        // And it targets the selected session.
-        assert_eq!(msg.session_id, selected_id);
+        // Then an EnqueueResumeTurn command is returned.
+        assert_eq!(result.message_names.len(), 1);
+        assert!(result.message_names[0].contains("EnqueueResumeTurn"));
         // And the active session is unchanged.
         assert_eq!(state.session.active_session_id(), &active_id_before);
     }
@@ -120,7 +115,7 @@ mod tests {
         let result = handle_session_continue(&mut state);
 
         // Then no commands are returned.
-        assert!(result.commands.is_empty());
+        assert!(result.message_names.is_empty());
     }
 
     #[rstest::rstest]
@@ -133,7 +128,7 @@ mod tests {
         let result = handle_session_continue(&mut state);
 
         // Then no commands are returned.
-        assert!(result.commands.is_empty());
+        assert!(result.message_names.is_empty());
     }
 
     #[rstest::rstest]

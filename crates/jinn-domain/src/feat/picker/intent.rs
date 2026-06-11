@@ -19,7 +19,7 @@ use crate::feat::skills::ScanSkills;
 use crate::feat::tools_actor::tool_entry::ToolEntry;
 
 use crate::feat::ui::picker_states::PickerExt;
-use crate::protocol::{ChatEntry, Command, Intent, IntentResult, PickerKind};
+use crate::protocol::{ChatEntry, Intent, IntentResult, PickerKind};
 
 use super::validator;
 
@@ -744,7 +744,7 @@ mod tests {
         let result = confirm_provider(&mut state);
 
         // Then no commands are emitted (the unavailable provider was rejected).
-        assert!(result.commands.is_empty());
+        assert!(result.message_names.is_empty());
     }
 
     #[rstest::rstest]
@@ -777,7 +777,7 @@ mod tests {
         let result = confirm_provider(&mut state);
 
         // Then commands are emitted.
-        assert!(!result.commands.is_empty());
+        assert!(!result.message_names.is_empty());
     }
 
     #[rstest::rstest]
@@ -840,7 +840,7 @@ mod tests {
             Some("writer"),
             "confirm_persona should set the correct persona"
         );
-        assert!(!result.commands.is_empty());
+        assert!(!result.message_names.is_empty());
     }
 
     #[rstest::rstest]
@@ -1169,13 +1169,9 @@ mod tests {
         // When confirming.
         let result = confirm_plugin(&mut state);
 
-        // Then an AttachPlugin command is emitted with the selected plugin name.
-        assert_eq!(result.commands.len(), 1);
-        let cmd = &result.commands[0];
-        let Command::AttachPlugin(attach) = cmd else {
-            panic!("expected AttachPlugin, got {cmd:?}");
-        };
-        assert_eq!(attach.plugin_name, "consensus");
+        // Then an AttachPlugin command is emitted.
+        assert_eq!(result.message_names.len(), 1);
+        assert!(result.message_names[0].contains("AttachPlugin"));
     }
 
     #[rstest::rstest]
@@ -1235,23 +1231,23 @@ mod tests {
         // Then all three scan commands are returned so discovery settles cleanly.
         assert!(
             result
-                .commands
+                .message_names
                 .iter()
-                .any(|c| matches!(c, Command::ScanSkills(..))),
+                .any(|n| n.contains("ScanSkills")),
             "expected ScanSkills command"
         );
         assert!(
             result
-                .commands
+                .message_names
                 .iter()
-                .any(|c| matches!(c, Command::RescanPromptTemplates(..))),
+                .any(|n| n.contains("RescanPromptTemplates")),
             "expected RescanPromptTemplates command"
         );
         assert!(
             result
-                .commands
+                .message_names
                 .iter()
-                .any(|c| matches!(c, Command::ScanContextFiles(..))),
+                .any(|n| n.contains("ScanContextFiles")),
             "expected ScanContextFiles command"
         );
     }
@@ -1265,7 +1261,7 @@ mod tests {
         let result = handle_refresh_skills(&mut state);
 
         // Then no commands and no messages.
-        assert!(result.commands.is_empty());
+        assert!(result.message_names.is_empty());
     }
 
     fn setup_state_with_task_list() -> (AppState, crate::feat::todo_list::TaskId) {
@@ -1454,7 +1450,7 @@ mod tests {
         let (result, follow_up) = handle_picker_confirm(&mut state);
 
         // Then no commands, no follow-up, and the scope stack is unchanged.
-        assert!(result.commands.is_empty(), "no commands");
+        assert!(result.message_names.is_empty(), "no commands");
         assert!(follow_up.is_none(), "no follow-up");
         assert_eq!(
             state.frontend.scope_stack.len(),

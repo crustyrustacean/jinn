@@ -5,7 +5,7 @@
 //! [`EntryTokenCache`] in `FrontendCaches`. The minimap render pipeline
 //! reads the cache synchronously during rendering.
 
-use kameo::actor::{ActorRef, Spawn};
+use kameo::actor::ActorRef;
 use kameo::prelude::{Context, Message};
 
 use crate::common::actor_deps::{ActorDeps, BusPublish};
