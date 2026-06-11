@@ -181,6 +181,7 @@ mod tests {
     )]
     use std::sync::Arc;
 
+    use crate::Event;
     use crate::common::actor::{Actor as _, ActorContext, MessageSink, RecordingSink};
     use crate::common::app_state::AppState;
     use crate::common::services::test_services::TestServices;
