@@ -32,7 +32,6 @@ impl SessionPersistenceActor {
     pub(in crate::feat::session::session_actor) async fn handle_enqueue_user_message(
         &self,
         payload: &EnqueueUserMessage,
-        ctx: &ActorContext,
     ) {
         let (action, assembly_overrides) = {
             let mut state = self.state.write();
@@ -70,7 +69,7 @@ impl SessionPersistenceActor {
 
         match action {
             EnqueueAction::DispatchDirectly => {
-                super::super::helpers::emit_history_appended(ctx, &payload.session_id);
+                super::super::helpers::emit_history_appended(self.bus(), &payload.session_id).await;
                 // Drain any pending steering fragments into history before assembly.
                 {
                     let mut state = self.state.write();
@@ -112,11 +111,12 @@ impl SessionPersistenceActor {
                     (old_phase, session.phase())
                 };
                 super::super::helpers::emit_phase_changed(
-                    ctx,
+                    self.bus(),
                     &payload.session_id,
                     old_phase,
                     new_phase,
-                );
+                )
+                .await;
 
                 let provider_id = {
                     let state = self.state.read();
@@ -166,7 +166,6 @@ impl SessionPersistenceActor {
     pub(in crate::feat::session::session_actor) async fn handle_enqueue_resume_turn(
         &self,
         payload: &EnqueueResumeTurn,
-        ctx: &ActorContext,
     ) {
         use crate::feat::session::protocol::session_phase_changed::SessionPhaseChanged;
         use crate::feat::session::token_stats::TokenRecord;
@@ -202,7 +201,7 @@ impl SessionPersistenceActor {
             .await;
         }
 
-        super::super::helpers::emit_history_appended(ctx, &payload.session_id);
+        super::super::helpers::emit_history_appended(self.bus(), &payload.session_id).await;
 
         self.publish(ChatEntrySubmitted {
             session_id: payload.session_id.clone(),
@@ -258,7 +257,12 @@ impl SessionPersistenceActor {
             (old_phase, session.phase())
         };
 
-        super::super::helpers::emit_phase_changed(ctx, &payload.session_id, old_phase, new_phase);
+        super::super::helpers::emit_phase_changed(
+            self.bus(),
+            &payload.session_id,
+            old_phase,
+            new_phase,
+        );
 
         self.publish(SendToLlmProvider {
             session_id: payload.session_id.clone(),
@@ -313,7 +317,6 @@ impl SessionPersistenceActor {
     pub(in crate::feat::session::session_actor) async fn handle_push_chat_entry(
         &self,
         payload: &PushChatEntry,
-        ctx: &ActorContext,
     ) {
         {
             let mut state = self.state.write();
@@ -327,7 +330,7 @@ impl SessionPersistenceActor {
         })
         .await;
 
-        super::super::helpers::emit_history_appended(ctx, &payload.session_id);
+        super::super::helpers::emit_history_appended(self.bus(), &payload.session_id).await;
 
         self.save_active_session(&payload.session_id).await;
     }
@@ -336,7 +339,6 @@ impl SessionPersistenceActor {
     pub(in crate::feat::session::session_actor) async fn handle_send_message(
         &self,
         payload: &SendMessage,
-        ctx: &ActorContext,
     ) {
         self.publish(EnqueueUserMessage {
             session_id: payload.session_id.clone(),
@@ -379,13 +381,10 @@ mod tests {
 
         // When enqueuing a user message.
         actor
-            .handle_enqueue_user_message(
-                &EnqueueUserMessage {
-                    session_id: session_id.clone(),
-                    entry: ChatEntry::user("hello world"),
-                },
-                &ctx,
-            )
+            .handle_enqueue_user_message(&EnqueueUserMessage {
+                session_id: session_id.clone(),
+                entry: ChatEntry::user("hello world"),
+            })
             .await;
 
         // Then the message is dispatched (history has the entry, phase is streaming).
@@ -419,13 +418,10 @@ mod tests {
 
         // When enqueuing the first user message.
         actor
-            .handle_enqueue_user_message(
-                &EnqueueUserMessage {
-                    session_id: session_id.clone(),
-                    entry: ChatEntry::user("My First Question"),
-                },
-                &ctx,
-            )
+            .handle_enqueue_user_message(&EnqueueUserMessage {
+                session_id: session_id.clone(),
+                entry: ChatEntry::user("My First Question"),
+            })
             .await;
 
         // Then the title is set from the first line of the message.
@@ -448,13 +444,10 @@ mod tests {
 
         // When enqueuing a user message.
         actor
-            .handle_enqueue_user_message(
-                &EnqueueUserMessage {
-                    session_id: session_id.clone(),
-                    entry: ChatEntry::user("queued msg"),
-                },
-                &ctx,
-            )
+            .handle_enqueue_user_message(&EnqueueUserMessage {
+                session_id: session_id.clone(),
+                entry: ChatEntry::user("queued msg"),
+            })
             .await;
 
         // Then the message is queued (not dispatched - phase stays Streaming).
@@ -480,13 +473,10 @@ mod tests {
 
         // When enqueuing a message.
         actor
-            .handle_enqueue_user_message(
-                &EnqueueUserMessage {
-                    session_id: session_id.clone(),
-                    entry: ChatEntry::user("test"),
-                },
-                &ctx,
-            )
+            .handle_enqueue_user_message(&EnqueueUserMessage {
+                session_id: session_id.clone(),
+                entry: ChatEntry::user("test"),
+            })
             .await;
 
         // Then SendToLlmProvider has provider_id = None (because model == NO_PROVIDER_ID).
@@ -542,13 +532,10 @@ mod tests {
         // When pushing a chat entry.
         let entry = ChatEntry::user("pushed");
         actor
-            .handle_push_chat_entry(
-                &PushChatEntry {
-                    session_id: session_id.clone(),
-                    entry: entry.clone(),
-                },
-                &ctx,
-            )
+            .handle_push_chat_entry(&PushChatEntry {
+                session_id: session_id.clone(),
+                entry: entry.clone(),
+            })
             .await;
 
         // Then the entry is in history.
@@ -586,13 +573,10 @@ mod tests {
 
         // When calling handle_send_message.
         actor
-            .handle_send_message(
-                &SendMessage {
-                    session_id: session_id.clone(),
-                    text: "legacy message".to_owned(),
-                },
-                &ctx,
-            )
+            .handle_send_message(&SendMessage {
+                session_id: session_id.clone(),
+                text: "legacy message".to_owned(),
+            })
             .await;
 
         // Then EnqueueUserMessage command was emitted.
@@ -621,13 +605,10 @@ mod tests {
 
         // When enqueuing a user message.
         actor
-            .handle_enqueue_user_message(
-                &EnqueueUserMessage {
-                    session_id: session_id.clone(),
-                    entry: ChatEntry::user("hello"),
-                },
-                &ctx,
-            )
+            .handle_enqueue_user_message(&EnqueueUserMessage {
+                session_id: session_id.clone(),
+                entry: ChatEntry::user("hello"),
+            })
             .await;
 
         // Then the message dispatches normally.
@@ -653,12 +634,9 @@ mod tests {
 
         // When resume is requested.
         actor
-            .handle_enqueue_resume_turn(
-                &EnqueueResumeTurn {
-                    session_id: session_id.clone(),
-                },
-                &ctx,
-            )
+            .handle_enqueue_resume_turn(&EnqueueResumeTurn {
+                session_id: session_id.clone(),
+            })
             .await;
 
         // Then no commands were emitted (silent no-op).
@@ -688,12 +666,9 @@ mod tests {
 
         // When resume is requested.
         actor
-            .handle_enqueue_resume_turn(
-                &EnqueueResumeTurn {
-                    session_id: session_id.clone(),
-                },
-                &ctx,
-            )
+            .handle_enqueue_resume_turn(&EnqueueResumeTurn {
+                session_id: session_id.clone(),
+            })
             .await;
 
         // Then SendToLlmProvider is emitted directly (inline dispatch on Idle).
@@ -756,12 +731,9 @@ mod tests {
 
         // When resume is requested.
         actor
-            .handle_enqueue_resume_turn(
-                &EnqueueResumeTurn {
-                    session_id: session_id.clone(),
-                },
-                &ctx,
-            )
+            .handle_enqueue_resume_turn(&EnqueueResumeTurn {
+                session_id: session_id.clone(),
+            })
             .await;
 
         // Then the steering buffer is drained.
@@ -812,13 +784,10 @@ mod tests {
 
         // When enqueuing a user message from Idle (inline dispatch path).
         actor
-            .handle_enqueue_user_message(
-                &EnqueueUserMessage {
-                    session_id: session_id.clone(),
-                    entry: ChatEntry::user("user prompt"),
-                },
-                &ctx,
-            )
+            .handle_enqueue_user_message(&EnqueueUserMessage {
+                session_id: session_id.clone(),
+                entry: ChatEntry::user("user prompt"),
+            })
             .await;
 
         // Then the steering buffer is drained before assembly.

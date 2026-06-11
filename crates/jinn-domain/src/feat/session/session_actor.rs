@@ -247,8 +247,7 @@ impl SessionPersistenceActor {
     /// any emitted commands/events to the bus.
     async fn dispatch_event(&mut self, event: Event) {
         let sink = std::sync::Arc::new(RecordingSink::new());
-        let ctx = ActorContext::new("session-persistence", sink.clone());
-        self.handle_event(&event, &ctx).await;
+        self.handle_event(&event).await;
         self.flush_sink_to_bus(sink).await;
     }
 
@@ -872,18 +871,18 @@ impl kameo::message::Message<PersonasLoaded> for SessionPersistenceActor {
 
 impl SessionPersistenceActor {
     /// Dispatches a bus event to the appropriate handler.
-    async fn handle_event(&mut self, event: &Event, ctx: &ActorContext) {
+    async fn handle_event(&mut self, event: &Event) {
         match event {
             Event::StreamToken(payload) => self.on_stream_token(payload),
-            Event::StreamCompleted(payload) => self.on_stream_completed(payload, ctx).await,
+            Event::StreamCompleted(payload) => self.on_stream_completed(payload).await,
             Event::ToolUseStarted(payload) => self.on_tool_use_started(payload),
             Event::ToolCallReceived(payload) => self.on_tool_call_received(payload),
             Event::ToolCallStreaming(payload) => self.on_tool_call_streaming(payload),
             Event::ToolExecutionCompleted(payload) => {
-                self.on_tool_execution_completed(payload, ctx).await;
+                self.on_tool_execution_completed(payload).await;
             }
             Event::ToolBatchCompleted(payload) => {
-                self.on_tool_batch_completed(payload, ctx).await;
+                self.on_tool_batch_completed(payload).await;
             }
             Event::ToolExecutionStarted(payload) => {
                 self.on_tool_execution_started(payload);
@@ -898,7 +897,7 @@ impl SessionPersistenceActor {
                 self.on_skills_loaded(payload);
             }
             Event::EnvironmentLoaded(payload) => {
-                self.on_environment_loaded(&payload.config, ctx).await;
+                self.on_environment_loaded(&payload.config).await;
             }
             Event::ChatEntryPinChanged(payload) => {
                 self.save_active_session(&payload.session_id).await;
@@ -907,7 +906,7 @@ impl SessionPersistenceActor {
                 self.save_active_session(&payload.session_id).await;
             }
             Event::SessionLoadCompleted(payload) => {
-                self.handle_session_load_completed(payload, ctx).await;
+                self.handle_session_load_completed(payload).await;
             }
             Event::ToolsRegistered(payload) => {
                 self.on_tools_registered(payload);
@@ -925,68 +924,68 @@ impl SessionPersistenceActor {
     /// Dispatches a command to the appropriate handler.
     async fn handle_command(&mut self, cmd: &Command, ctx: &ActorContext) {
         match cmd {
-            Command::SessionLoadRequested(payload) => self.on_load_requested(payload, ctx).await,
+            Command::SessionLoadRequested(payload) => self.on_load_requested(payload).await,
             Command::SessionForkRequested(payload) => {
-                self.on_session_fork_requested(payload, ctx).await;
+                self.on_session_fork_requested(payload).await;
             }
             Command::LoadSessionPickerEntries(payload) => {
                 self.handle_load_session_picker_entries(payload).await;
             }
             Command::EnqueueUserMessage(payload) => {
-                self.handle_enqueue_user_message(payload, ctx).await;
+                self.handle_enqueue_user_message(payload).await;
             }
             Command::EnqueueResumeTurn(payload) => {
-                self.handle_enqueue_resume_turn(payload, ctx).await;
+                self.handle_enqueue_resume_turn(payload).await;
             }
             Command::SubmitSteeringMessage(payload) => {
                 self.handle_submit_steering_message(payload);
             }
             Command::SetChatInputText(payload) => self.handle_set_chat_input_text(payload),
             Command::PushChatEntry(payload) => {
-                self.handle_push_chat_entry(payload, ctx).await;
+                self.handle_push_chat_entry(payload).await;
             }
-            Command::SendMessage(payload) => self.handle_send_message(payload, ctx).await,
+            Command::SendMessage(payload) => self.handle_send_message(payload).await,
             Command::RunSessionSetup(payload) => {
-                self.handle_run_session_setup(payload, ctx).await;
+                self.handle_run_session_setup(payload).await;
             }
             Command::RunSessionTeardown(payload) => {
-                self.handle_run_session_teardown(payload, ctx).await;
+                self.handle_run_session_teardown(payload).await;
             }
             Command::CloseSession(payload) => {
-                self.handle_close_session(payload, ctx).await;
+                self.handle_close_session(payload).await;
             }
             Command::ArchiveSession(payload) => {
-                self.handle_archive_session(payload, ctx).await;
+                self.handle_archive_session(payload).await;
             }
             Command::PersistSession(payload) => {
                 self.handle_persist_session(payload).await;
             }
             Command::PinChatEntry(payload) => {
-                self.handle_pin_chat_entry(payload, ctx).await;
+                self.handle_pin_chat_entry(payload).await;
             }
             Command::UnpinChatEntry(payload) => {
-                self.handle_unpin_chat_entry(payload, ctx).await;
+                self.handle_unpin_chat_entry(payload).await;
             }
             Command::LoadPersonaPickerEntries(payload) => {
                 self.handle_load_persona_picker_entries(payload).await;
             }
             Command::FinishSessionTeardown(payload) => {
-                self.handle_finish_session_teardown(payload, ctx).await;
+                self.handle_finish_session_teardown(payload).await;
             }
             Command::FinishSessionSetup(payload) => {
-                self.handle_finish_session_setup(payload, ctx).await;
+                self.handle_finish_session_setup(payload).await;
             }
             Command::CancelLifecycleCommand(payload) => {
-                self.handle_cancel_lifecycle_command(payload, ctx);
+                self.handle_cancel_lifecycle_command(payload);
             }
             Command::SetSessionCwd(payload) => {
-                self.handle_set_session_cwd(payload, ctx).await;
+                self.handle_set_session_cwd(payload).await;
             }
             Command::MarkSessionInteracted(payload) => {
-                self.handle_mark_session_interacted(payload, ctx).await;
+                self.handle_mark_session_interacted(payload).await;
             }
             Command::SubmitHistoryMutations(payload) => {
-                self.handle_submit_history_mutations(payload, ctx).await;
+                self.handle_submit_history_mutations(payload).await;
             }
             // Commands NOT subscribed to - these should not arrive.
             Command::SendToLlmProvider(..)
@@ -1097,16 +1096,10 @@ mod dispatch_tests {
 
         // When handling an EnqueueUserMessage command.
         actor
-            .handle_enqueue_user_message(
-                &EnqueueUserMessage {
-                    session_id: session_id.clone(),
-                    entry: crate::protocol::ChatEntry::user("hello world"),
-                },
-                &crate::common::actor::ActorContext::new(
-                    "test",
-                    std::sync::Arc::new(crate::common::actor::RecordingSink::new()),
-                ),
-            )
+            .handle_enqueue_user_message(&EnqueueUserMessage {
+                session_id: session_id.clone(),
+                entry: crate::protocol::ChatEntry::user("hello world"),
+            })
             .await;
 
         // Then the handler was invoked (no panic = dispatch worked).
@@ -1134,17 +1127,11 @@ mod dispatch_tests {
 
         // When handling an EnvironmentLoaded event.
         actor
-            .on_environment_loaded(
-                &crate::feat::provider_infra::ProvidersConfig {
-                    providers: vec![],
-                    aliases: vec![],
-                    default_provider: None,
-                },
-                &crate::common::actor::ActorContext::new(
-                    "test",
-                    std::sync::Arc::new(crate::common::actor::RecordingSink::new()),
-                ),
-            )
+            .on_environment_loaded(&crate::feat::provider_infra::ProvidersConfig {
+                providers: vec![],
+                aliases: vec![],
+                default_provider: None,
+            })
             .await;
 
         // Then no panic (handler worked).

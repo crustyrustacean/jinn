@@ -63,7 +63,6 @@ impl SessionPersistenceActor {
     pub(in crate::feat::session::session_actor) async fn handle_mark_session_interacted(
         &mut self,
         payload: &crate::feat::session::protocol::mark_session_interacted::MarkSessionInteracted,
-        ctx: &crate::common::actor::ActorContext,
     ) {
         {
             let mut state = self.state.write();
@@ -94,7 +93,6 @@ impl SessionPersistenceActor {
     pub(in crate::feat::session::session_actor) async fn load_and_insert(
         &self,
         session: crate::feat::session::chat_session::ChatSessionState,
-        ctx: &crate::common::actor::ActorContext,
     ) {
         let session_id = session.session_id().clone();
         {
@@ -113,11 +111,7 @@ impl SessionPersistenceActor {
         clippy::unused_self,
         reason = "trait contract requires #[allow(clippy::unused_self)]self method"
     )]
-    async fn create_empty_session_response(
-        &self,
-        session_id: &crate::protocol::SessionId,
-        ctx: &crate::common::actor::ActorContext,
-    ) {
+    async fn create_empty_session_response(&self, session_id: &crate::protocol::SessionId) {
         let mut session = crate::feat::session::chat_session::ChatSessionState::new();
         session.set_session_id(session_id.clone());
         self.publish(SessionLoadCompleted { session }).await;
@@ -342,7 +336,6 @@ impl SessionPersistenceActor {
     pub(in crate::feat::session::session_actor) async fn on_load_requested(
         &mut self,
         evt: &SessionLoadRequested,
-        ctx: &crate::common::actor::ActorContext,
     ) {
         let store = self.services.session_store.clone();
 
@@ -357,7 +350,7 @@ impl SessionPersistenceActor {
                 session.set_session_state(crate::feat::session::chat_session::SessionState::Loaded);
 
                 // Insert into state and emit SessionLoadCompleted for subscribers.
-                self.load_and_insert(session, ctx).await;
+                self.load_and_insert(session).await;
 
                 // Run the full restore flow (CWD validation, context size, persist).
                 let session_id = evt.session_id.clone();
@@ -369,7 +362,7 @@ impl SessionPersistenceActor {
                     .expect("just inserted")
                     .clone();
                 let payload = SessionLoadCompleted { session };
-                self.handle_session_load_completed(&payload, ctx).await;
+                self.handle_session_load_completed(&payload).await;
 
                 // Hydrate frozen nodes for tree members not in memory.
                 // This ensures the tree summary shows ancestors/siblings even
@@ -382,13 +375,11 @@ impl SessionPersistenceActor {
                     session_id = ?evt.session_id,
                     "session load returned None"
                 );
-                self.create_empty_session_response(&evt.session_id, ctx)
-                    .await;
+                self.create_empty_session_response(&evt.session_id).await;
             }
             Err(e) => {
                 tracing::warn!(err = ?e, "failed to load session");
-                self.create_empty_session_response(&evt.session_id, ctx)
-                    .await;
+                self.create_empty_session_response(&evt.session_id).await;
             }
         }
     }
@@ -424,12 +415,9 @@ mod tests {
 
         // When loading the archived session.
         actor
-            .on_load_requested(
-                &SessionLoadRequested {
-                    session_id: session_id.clone(),
-                },
-                &ctx,
-            )
+            .on_load_requested(&SessionLoadRequested {
+                session_id: session_id.clone(),
+            })
             .await;
 
         // Then SessionLoadCompleted is emitted with session_state == Loaded.
@@ -511,12 +499,9 @@ mod tests {
 
         // When handling MarkSessionInteracted.
         actor
-            .handle_mark_session_interacted(
-                &MarkSessionInteracted {
-                    session_id: session_id.clone(),
-                },
-                &ctx,
-            )
+            .handle_mark_session_interacted(&MarkSessionInteracted {
+                session_id: session_id.clone(),
+            })
             .await;
 
         // Then the session has_interacted flag is set.
@@ -560,12 +545,9 @@ mod tests {
 
         // When loading the child session.
         actor
-            .on_load_requested(
-                &SessionLoadRequested {
-                    session_id: child_id.clone(),
-                },
-                &ctx,
-            )
+            .on_load_requested(&SessionLoadRequested {
+                session_id: child_id.clone(),
+            })
             .await;
 
         // Then the parent has a frozen node (not loaded as a live session).
