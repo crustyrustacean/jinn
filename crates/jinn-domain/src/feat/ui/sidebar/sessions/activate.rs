@@ -14,7 +14,7 @@ use crate::protocol::IntentResult;
 ///   are emitted: each session's discovered skills/prompts/context-files
 ///   are ephemeral and persist across activation changes, and were
 ///   hydrated when the session was created/loaded.
-/// - For plugin entries: no-op (informational only).
+/// - For plugin entries: if the plugin has a managed session, activates it. Otherwise no-op.
 pub fn handle_session_activate(state: &mut AppState) -> IntentResult {
     use crate::common::app_state::FocusScope;
     use crate::feat::ui::sidebar::section_trait::SidebarSectionId;
@@ -41,7 +41,19 @@ pub fn handle_session_activate(state: &mut AppState) -> IntentResult {
             IntentResult::empty()
         }
         SessionEntryKind::Plugin { .. } => {
-            // Plugin entries are informational only; activating them is a no-op.
+            // Look up the managed session from the attached plugin.
+            let managed_id = state.session.get(&entry.id).and_then(|session| {
+                session
+                    .core
+                    .attached_plugins
+                    .iter()
+                    .find(|p| p.name == entry.title)
+                    .and_then(|p| p.managed_session_id.clone())
+            });
+            if let Some(managed_id) = managed_id {
+                state.session.set_active(managed_id);
+                state.frontend.scope_stack.swap_base(FocusScope::Normal);
+            }
             IntentResult::empty()
         }
     }
@@ -56,7 +68,7 @@ pub fn handle_session_activate(state: &mut AppState) -> IntentResult {
 /// correctly returns to Normal, with Input on top as the active mode.
 /// - For session entries: activates the session, swaps to Normal as the
 ///   base, then pushes Input.
-/// - For plugin entries: a no-op, identical to [`handle_session_activate`].
+/// - For plugin entries: if the plugin has a managed session, activates it. Otherwise no-op.
 pub fn handle_session_activate_insert(state: &mut AppState) -> IntentResult {
     use crate::common::app_state::FocusScope;
     use crate::feat::ui::sidebar::section_trait::SidebarSectionId;
@@ -84,7 +96,19 @@ pub fn handle_session_activate_insert(state: &mut AppState) -> IntentResult {
             IntentResult::empty()
         }
         SessionEntryKind::Plugin { .. } => {
-            // Plugin entries are informational only; activating them is a no-op.
+            let managed_id = state.session.get(&entry.id).and_then(|session| {
+                session
+                    .core
+                    .attached_plugins
+                    .iter()
+                    .find(|p| p.name == entry.title)
+                    .and_then(|p| p.managed_session_id.clone())
+            });
+            if let Some(managed_id) = managed_id {
+                state.session.set_active(managed_id);
+                state.frontend.scope_stack.swap_base(FocusScope::Normal);
+                state.frontend.scope_stack.push(FocusScope::Input);
+            }
             IntentResult::empty()
         }
     }
@@ -220,9 +244,8 @@ mod tests {
         assert_eq!(state.frontend.scope_stack.current(), &initial_scope);
     }
 
-    #[rstest::rstest]
-    fn activate_insert_on_plugin_entry_is_noop() {
-        // Given a sessions sidebar with a plugin entry under the cursor.
+    fn activate_insert_on_plugin_entry_without_managed_session_is_noop() {
+        // Given a sessions sidebar with a plugin entry (no managed session) under the cursor.
         use crate::feat::attached_plugin::AttachedPlugin;
         use crate::feat::ui::sidebar::sessions::state::SessionEntryKind;
 
@@ -249,5 +272,129 @@ mod tests {
 
         // Then the scope is unchanged.
         assert_eq!(state.frontend.scope_stack.current(), &initial_scope);
+    }
+
+    #[rstest::rstest]
+    fn activate_on_plugin_entry_with_managed_session_switches_to_it() {
+        // Given a sessions sidebar with a plugin entry that has a managed session.
+        use crate::feat::attached_plugin::AttachedPlugin;
+        use crate::feat::session::chat_session::ChatSessionState;
+        use crate::feat::ui::sidebar::sessions::state::SessionEntryKind;
+
+        let mut state = AppState::default();
+        let root_id = state.session.active_session_id().clone();
+
+        // Create a child session and attach a plugin that manages it.
+        let child = ChatSessionState::default();
+        let child_id = child.session_id().clone();
+        state.session.insert(child);
+
+        let mut plugin = AttachedPlugin::new("judge");
+        plugin.managed_session_id = Some(child_id.clone());
+        state
+            .session
+            .get_mut(&root_id)
+            .expect("root session")
+            .core
+            .attached_plugins
+            .push(plugin);
+
+        // Place the cursor on the plugin entry.
+        let sessions = sorted_open_sessions(&state);
+        let plugin_idx = sessions
+            .iter()
+            .position(|e| matches!(e.kind, SessionEntryKind::Plugin { .. }))
+            .expect("plugin entry present");
+        state.frontend.sessions_section.selected_index = Some(plugin_idx);
+        state.frontend.scope_stack.push(FocusScope::SidebarSessions);
+
+        // When activating.
+        handle_session_activate(&mut state);
+
+        // Then the active session is the managed child session.
+        assert_eq!(state.session.active_session_id(), &child_id);
+        // And the scope is Normal (chat view).
+        assert_eq!(state.frontend.scope_stack.current(), &FocusScope::Normal);
+    }
+
+    #[rstest::rstest]
+    fn activate_on_plugin_entry_without_managed_session_is_noop() {
+        // Given a sessions sidebar with a plugin entry that has no managed session.
+        use crate::feat::attached_plugin::AttachedPlugin;
+        use crate::feat::ui::sidebar::sessions::state::SessionEntryKind;
+
+        let mut state = AppState::default();
+        let root_id = state.session.active_session_id().clone();
+        let initial_active = state.session.active_session_id().clone();
+        state
+            .session
+            .get_mut(&root_id)
+            .expect("root session")
+            .core
+            .attached_plugins
+            .push(AttachedPlugin::new("consensus"));
+
+        // Place the cursor on the plugin entry.
+        let sessions = sorted_open_sessions(&state);
+        let plugin_idx = sessions
+            .iter()
+            .position(|e| matches!(e.kind, SessionEntryKind::Plugin { .. }))
+            .expect("plugin entry present");
+        state.frontend.sessions_section.selected_index = Some(plugin_idx);
+        state.frontend.scope_stack.push(FocusScope::SidebarSessions);
+
+        // When activating.
+        handle_session_activate(&mut state);
+
+        // Then the active session is unchanged.
+        assert_eq!(state.session.active_session_id(), &initial_active);
+    }
+
+    #[rstest::rstest]
+    fn activate_insert_on_plugin_entry_with_managed_session_switches_and_enters_insert() {
+        // Given a sessions sidebar with a plugin entry that has a managed session.
+        use crate::feat::attached_plugin::AttachedPlugin;
+        use crate::feat::session::chat_session::ChatSessionState;
+        use crate::feat::ui::sidebar::sessions::state::SessionEntryKind;
+
+        let mut state = AppState::default();
+        let root_id = state.session.active_session_id().clone();
+
+        // Create a child session and attach a plugin that manages it.
+        let child = ChatSessionState::default();
+        let child_id = child.session_id().clone();
+        state.session.insert(child);
+
+        let mut plugin = AttachedPlugin::new("judge");
+        plugin.managed_session_id = Some(child_id.clone());
+        state
+            .session
+            .get_mut(&root_id)
+            .expect("root session")
+            .core
+            .attached_plugins
+            .push(plugin);
+
+        // Place the cursor on the plugin entry.
+        let sessions = sorted_open_sessions(&state);
+        let plugin_idx = sessions
+            .iter()
+            .position(|e| matches!(e.kind, SessionEntryKind::Plugin { .. }))
+            .expect("plugin entry present");
+        state.frontend.sessions_section.selected_index = Some(plugin_idx);
+        state.frontend.scope_stack.push(FocusScope::SidebarSessions);
+
+        // When activating into insert mode.
+        handle_session_activate_insert(&mut state);
+
+        // Then the active session is the managed child session.
+        assert_eq!(state.session.active_session_id(), &child_id);
+        // And the top of the stack is Input.
+        assert_eq!(state.frontend.scope_stack.current(), &FocusScope::Input);
+        // And the base is Normal.
+        assert_eq!(
+            state.frontend.scope_stack.parent(),
+            Some(&FocusScope::Normal)
+        );
     }
 }

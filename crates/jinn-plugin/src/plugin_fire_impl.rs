@@ -59,13 +59,20 @@ impl PluginFire for AsyncPluginHandle {
     async fn execute_plugin_tool(
         &self,
         target: Option<SessionRegistryId>,
+        session_id: &jinn_domain::SessionId,
         plugin_name: &str,
         tool_name: &str,
         arguments: &Value,
     ) -> Result<String, Report<PluginFireError>> {
-        self.execute_tool(target, plugin_name, tool_name, arguments)
-            .await
-            .map_err(|report| report.change_context(PluginFireError))
+        self.execute_tool(
+            target,
+            session_id.clone(),
+            plugin_name,
+            tool_name,
+            arguments,
+        )
+        .await
+        .map_err(|report| report.change_context(PluginFireError))
     }
 
     fn name(&self) -> &'static str {

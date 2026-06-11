@@ -95,6 +95,13 @@ struct LuaResetSession {
     session_id: SessionId,
 }
 
+#[derive(serde::Deserialize)]
+struct LuaSetManagedSession {
+    session_id: SessionId,
+    plugin_name: String,
+    managed_session_id: SessionId,
+}
+
 // ─── Verb → Command conversions ───────────────────────────────────────
 
 fn push_chat_entry_from_lua(
@@ -171,6 +178,19 @@ fn reset_session_from_lua(
     }))
 }
 
+fn set_managed_session_from_lua(
+    _ctx: CmdCtx,
+    lua: LuaSetManagedSession,
+) -> Result<Command, Report<PluginWiringError>> {
+    Ok(Command::SetManagedSession(
+        jinn_domain::feat::plugin_dispatch::protocol::command::SetManagedSession {
+            session_id: lua.session_id,
+            plugin_name: lua.plugin_name,
+            managed_session_id: lua.managed_session_id,
+        },
+    ))
+}
+
 fn translate<LuaT>(
     cmd: &PluginCommand,
     convert: fn(CmdCtx, LuaT) -> Result<Command, Report<PluginWiringError>>,
@@ -233,6 +253,9 @@ fn translate_command(cmd: &PluginCommand) -> Result<Command, Report<PluginWiring
         "fire_async_hook" => translate::<LuaFireAsyncHook>(cmd, fire_async_hook_from_lua),
         "set_chat_input" => translate::<LuaSetChatInput>(cmd, set_chat_input_from_lua),
         "reset_session" => translate::<LuaResetSession>(cmd, reset_session_from_lua),
+        "set_managed_session" => {
+            translate::<LuaSetManagedSession>(cmd, set_managed_session_from_lua)
+        }
         other => {
             let ctx = CmdCtx {
                 plugin_name: cmd.plugin_name.clone(),
@@ -250,9 +273,6 @@ fn translate_command(cmd: &PluginCommand) -> Result<Command, Report<PluginWiring
     }
 }
 
-/// Handle a request from an async hook's `ctx.request(name, data)` call.
-///
-/// Returns a JSON response value. Unknown requests return null.
 /// Handle a request from an async hook's `ctx.request(name, data)` call.
 ///
 /// Returns a result envelope: `{ ok: true, value }` on success, or

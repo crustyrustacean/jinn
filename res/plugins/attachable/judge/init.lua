@@ -78,6 +78,12 @@ function M.on_turn_end(ctx)
             judge_session_id = judge_id,
             origin_session_id = ctx.session_id,
         })
+        -- Tell the domain layer about the managed session so the sidebar can navigate to it.
+        ctx.emit("set_managed_session", {
+            session_id = ctx.session_id,
+            plugin_name = ctx.plugin_name,
+            managed_session_id = judge_id,
+        })
     else
         -- Subsequent turns: reset the existing session.
         ctx.emit("reset_session", {

@@ -11,6 +11,7 @@
 use std::path::Path;
 use std::sync::{Arc, Mutex};
 
+use jinn_domain::SessionId;
 use jinn_domain::feat::plugin_system::SessionPluginRegistry;
 use jinn_plugin::{PluginCommand, PluginSyncHandle, PluginSystem, PluginSystemBuildResult};
 use serde::Serialize;
@@ -208,7 +209,7 @@ fn sync_call_hooks_for_session_includes_global_and_session_plugins() {
     let session_id = rt
         .block_on(async {
             async_handle
-                .create_session_registry(vec!["a".to_owned()])
+                .create_session_registry(vec!["a".to_owned()], SessionId::new())
                 .await
                 .expect("create registry")
         })
@@ -258,7 +259,7 @@ fn sync_call_hooks_for_session_excludes_unattached() {
     let session_id = rt
         .block_on(async {
             async_handle
-                .create_session_registry(vec![])
+                .create_session_registry(vec![], SessionId::new())
                 .await
                 .expect("create registry")
         })
