@@ -1584,10 +1584,22 @@ mod tests {
 
         // Then plugin tools are enabled (not in disabled_tools set).
         let items = state.frontend.tool_picker().items();
-        let passed = items.iter().find(|e| e.name == "judgment_passed").expect("entry");
-        assert!(passed.enabled, "judgment_passed should be enabled by default");
-        let failed = items.iter().find(|e| e.name == "judgment_failed").expect("entry");
-        assert!(failed.enabled, "judgment_failed should be enabled by default");
+        let passed = items
+            .iter()
+            .find(|e| e.name == "judgment_passed")
+            .expect("entry");
+        assert!(
+            passed.enabled,
+            "judgment_passed should be enabled by default"
+        );
+        let failed = items
+            .iter()
+            .find(|e| e.name == "judgment_failed")
+            .expect("entry");
+        assert!(
+            failed.enabled,
+            "judgment_failed should be enabled by default"
+        );
     }
 
     #[rstest::rstest]
@@ -1596,16 +1608,24 @@ mod tests {
         let mut state = setup_state_with_plugin_tools();
         state
             .active_session_mut()
-            .set_disabled_tools(std::collections::HashSet::from(["judgment_passed".to_owned()]));
+            .set_disabled_tools(std::collections::HashSet::from([
+                "judgment_passed".to_owned()
+            ]));
 
         // When loading tool picker entries.
         load_tool_picker_entries(&mut state);
 
         // Then 'judgment_passed' is disabled but 'judgment_failed' is still enabled.
         let items = state.frontend.tool_picker().items();
-        let passed = items.iter().find(|e| e.name == "judgment_passed").expect("entry");
+        let passed = items
+            .iter()
+            .find(|e| e.name == "judgment_passed")
+            .expect("entry");
         assert!(!passed.enabled, "judgment_passed should be disabled");
-        let failed = items.iter().find(|e| e.name == "judgment_failed").expect("entry");
+        let failed = items
+            .iter()
+            .find(|e| e.name == "judgment_failed")
+            .expect("entry");
         assert!(failed.enabled, "judgment_failed should still be enabled");
     }
 }

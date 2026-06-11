@@ -5,6 +5,7 @@
 //! on a dedicated background thread (see `async_thread.rs`).
 
 use error_stack::{Report, ResultExt};
+use jinn_domain::SessionId;
 use serde::Serialize;
 use serde::de::DeserializeOwned;
 use tokio::sync::oneshot;
@@ -49,8 +50,10 @@ pub(crate) enum PluginJob {
         ctx_json: serde_json::Value,
         /// Oneshot responder.
         respond_to: oneshot::Sender<Result<(), Report<PluginError>>>,
-        /// If `Some`, additionally fire hooks from this session's per-session plugins.
         target_session: Option<crate::session_registry::SessionRegistryId>,
+        /// Plugin names that are currently enabled. When non-empty,
+        /// only plugins in this list will have their hooks fired.
+        enabled_plugins: Vec<String>,
     },
     /// Fire all hooks, collect return values (async).
     Collect {
@@ -145,7 +148,7 @@ impl AsyncPluginHandle {
         hook: &str,
         ctx: &T,
     ) -> Result<(), Report<PluginError>> {
-        self.fire_async_for_session(None, hook, ctx).await
+        self.fire_async_for_session(None, hook, ctx, vec![]).await
     }
 
     /// Fire an async hook, optionally scoped to a session's attached plugins.
@@ -163,6 +166,7 @@ impl AsyncPluginHandle {
         target_session: Option<crate::session_registry::SessionRegistryId>,
         hook: &str,
         ctx: &T,
+        enabled_plugins: Vec<String>,
     ) -> Result<(), Report<PluginError>> {
         let ctx_json = serde_json::to_value(ctx)
             .change_context(PluginError)
@@ -174,6 +178,7 @@ impl AsyncPluginHandle {
                 ctx_json,
                 respond_to,
                 target_session,
+                enabled_plugins,
             })
             .await
             .map_err(|_e| Report::new(PluginError))
@@ -317,10 +322,21 @@ impl AsyncPluginHandle {
         self.plugin_data.set(plugin_name, value);
     }
 
-    /// Get a snapshot of a plugin's data.
+    /// Get a snapshot of a plugin's data (no session scope — for global plugins).
     #[must_use]
     pub fn get_plugin_data(&self, plugin_name: &str) -> Option<serde_json::Value> {
         self.plugin_data.get(plugin_name)
+    }
+
+    /// Get a snapshot of a plugin's data scoped to a session.
+    #[must_use]
+    pub fn get_plugin_data_for_session(
+        &self,
+        session_id: &SessionId,
+        plugin_name: &str,
+    ) -> Option<serde_json::Value> {
+        self.plugin_data
+            .get_for_session(Some(session_id), plugin_name)
     }
     /// Execute a plugin-defined tool handler on the background thread.
     ///

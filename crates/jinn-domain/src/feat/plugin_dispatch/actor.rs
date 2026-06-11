@@ -408,14 +408,14 @@ impl PluginDispatchActor {
         let ctx_json = serde_json::json!({
             "session_id": self.startup_session_id,
         });
-        self.spawn_fire_for_session(&session_id, "on_app_started", &ctx_json);
+        self.spawn_fire_for_session(&session_id, "on_app_started", &ctx_json, vec![]);
     }
 
     fn fire_on_session_created(&self, session_id: &SessionId) {
         let ctx_json = serde_json::json!({
             "session_id": session_id.to_string(),
         });
-        self.spawn_fire_for_session(session_id, "on_session_created", &ctx_json);
+        self.spawn_fire_for_session(session_id, "on_session_created", &ctx_json, vec![]);
     }
 
     fn fire_on_phase_changed(&self, session_id: &SessionId, new_phase: PhaseKind) {
@@ -436,7 +436,24 @@ impl PluginDispatchActor {
         let ctx_json = serde_json::json!({
             "session_id": session_id.to_string(),
         });
-        self.spawn_fire_for_session(session_id, hook, &ctx_json);
+
+        let enabled_plugins = {
+            let state = self.state.read();
+            state
+                .session
+                .get(session_id)
+                .map(|s| {
+                    s.core
+                        .attached_plugins
+                        .iter()
+                        .filter(|p| p.enabled)
+                        .map(|p| p.name.clone())
+                        .collect::<Vec<_>>()
+                })
+                .unwrap_or_default()
+        };
+
+        self.spawn_fire_for_session(session_id, hook, &ctx_json, enabled_plugins);
     }
 
     /// Fire a hook for a session on a background task, so the actor loop is not
@@ -450,7 +467,13 @@ impl PluginDispatchActor {
     /// depends on an event routed back to this actor (e.g. `on_enrich` → `llm_oneshot` →
     /// `SessionPhaseChanged(Idle)`). Awaiting the fire inline would block the mailbox
     /// and deadlock until the 30s `AsyncPluginHandle` timeout.
-    fn spawn_fire_for_session(&self, session_id: &SessionId, hook: &str, ctx_json: &Value) {
+    fn spawn_fire_for_session(
+        &self,
+        session_id: &SessionId,
+        hook: &str,
+        ctx_json: &Value,
+        enabled_plugins: Vec<String>,
+    ) {
         let plugins = self.services.plugins.clone();
         let registry_id = self.registry.get(session_id).copied();
         let hook = hook.to_owned();
@@ -459,7 +482,7 @@ impl PluginDispatchActor {
             let result = match registry_id {
                 Some(rid) => {
                     plugins
-                        .fire_async_for_session_json(rid, &hook, &ctx_json)
+                        .fire_async_for_session_json(rid, &hook, &ctx_json, enabled_plugins)
                         .await
                 }
                 None => plugins.fire_async_json(&hook, &ctx_json).await,
@@ -537,7 +560,7 @@ impl PluginDispatchActor {
             map.insert("text".to_owned(), serde_json::Value::String(text));
         }
 
-        self.spawn_fire_for_session(&payload.session_id, &payload.hook, &ctx_json);
+        self.spawn_fire_for_session(&payload.session_id, &payload.hook, &ctx_json, vec![]);
     }
 }
 
@@ -876,6 +899,7 @@ mod tests {
             _session: SessionRegistryId,
             _hook: &str,
             _ctx: &Value,
+            _enabled_plugins: Vec<String>,
         ) -> Result<(), Report<PluginFireError>> {
             self.gate.notified().await;
 

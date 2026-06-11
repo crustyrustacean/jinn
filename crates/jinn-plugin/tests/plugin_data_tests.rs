@@ -16,6 +16,7 @@
 use std::path::Path;
 use std::sync::{Arc, Mutex};
 
+use jinn_domain::feat::plugin_dispatch::HookContext;
 use jinn_plugin::{PluginCommand, PluginSystem, PluginSystemBuildResult};
 use serde::Serialize;
 use serde_json::json;
@@ -66,12 +67,6 @@ fn build_system(dir: &Path) -> TestSystem {
         sync,
         async_handle,
     }
-}
-
-#[derive(Debug, Serialize)]
-struct FilterCtx {
-    text: String,
-    session_id: String,
 }
 
 #[derive(Debug, Serialize)]
@@ -132,10 +127,10 @@ async fn async_write_sync_read_plugin_data() {
         .sync_hooks("on_filter_input")
         .next()
         .expect("should have hook")
-        .call(&FilterCtx {
-            text: "hello".to_owned(),
-            session_id: "s1".to_owned(),
-        })
+        .call::<String>(&HookContext::from(json!({
+            "text": "hello",
+            "session_id": "s1",
+        })))
         .expect("sync call");
 
     // The async hook wrote verdict="FAIL", so sync hook prefixes with ⚠.
@@ -168,10 +163,10 @@ fn plugin_data_absent_returns_nil_in_ctx() {
         .sync_hooks("on_filter_input")
         .next()
         .expect("should have hook")
-        .call(&FilterCtx {
-            text: "hello".to_owned(),
-            session_id: "s1".to_owned(),
-        })
+        .call::<String>(&HookContext::from(json!({
+            "text": "hello",
+            "session_id": "s1",
+        })))
         .expect("call");
 
     assert_eq!(result, "hello (no data)");
@@ -229,10 +224,10 @@ async fn multiple_plugins_have_isolated_plugin_data() {
         .sync
         .sync_hooks("on_check")
         .map(|h| {
-            h.call::<_, String>(&FilterCtx {
-                text: String::new(),
-                session_id: "s1".to_owned(),
-            })
+            h.call::<String>(&HookContext::from(json!({
+                "text": "",
+                "session_id": "s1",
+            })))
             .expect("call")
         })
         .collect();

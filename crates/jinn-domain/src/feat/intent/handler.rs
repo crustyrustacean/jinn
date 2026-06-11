@@ -127,7 +127,9 @@ impl IntentHandler {
             "intent": intent.to_string(),
         });
 
-        for outcome in call_hooks_typed::<InterceptOutcome>(plugins, "on_submit_intercept", &ctx) {
+        for outcome in
+            call_hooks_typed::<InterceptOutcome>(plugins, "on_submit_intercept", &ctx.into())
+        {
             match outcome {
                 InterceptOutcome::Block => result.commands.clear(),
                 InterceptOutcome::Pass => {}
@@ -1365,7 +1367,7 @@ mod intercept_tests {
     )]
     use crate::common::app_state::AppState;
     use crate::feat::intent::IntentHandler;
-    use crate::feat::plugin_dispatch::PluginSyncHooks;
+    use crate::feat::plugin_dispatch::{HookContext, PluginSyncHooks};
     use crate::protocol::{Intent, SessionId};
     use serde_json::{Value, json};
 
@@ -1375,7 +1377,7 @@ mod intercept_tests {
     struct StubPlugins(Vec<Value>);
 
     impl PluginSyncHooks for StubPlugins {
-        fn call_hooks(&self, _hook: &str, _ctx: &Value) -> Vec<Value> {
+        fn call_hooks(&self, _hook: &str, _ctx: &HookContext) -> Vec<Value> {
             self.0.clone()
         }
     }
@@ -1478,7 +1480,7 @@ mod intercept_scope_tests {
     )]
     use crate::common::app_state::AppState;
     use crate::feat::intent::IntentHandler;
-    use crate::feat::plugin_dispatch::PluginSyncHooks;
+    use crate::feat::plugin_dispatch::{HookContext, PluginSyncHooks};
     use crate::protocol::Intent;
     use serde_json::{Value, json};
     use std::cell::Cell;
@@ -1492,7 +1494,7 @@ mod intercept_scope_tests {
     }
 
     impl PluginSyncHooks for CountingPlugins {
-        fn call_hooks(&self, _hook: &str, _ctx: &Value) -> Vec<Value> {
+        fn call_hooks(&self, _hook: &str, _ctx: &HookContext) -> Vec<Value> {
             self.calls.set(self.calls.get() + 1);
             vec![json!({ "action": "block" })]
         }
@@ -1575,7 +1577,7 @@ mod intercept_scope_tests {
         )]
         use crate::common::app_state::AppState;
         use crate::feat::intent::IntentHandler;
-        use crate::feat::plugin_dispatch::PluginSyncHooks;
+        use crate::feat::plugin_dispatch::{HookContext, PluginSyncHooks};
         use crate::protocol::Intent;
         use serde_json::{Value, json};
         use std::cell::RefCell;
@@ -1590,8 +1592,8 @@ mod intercept_scope_tests {
         }
 
         impl PluginSyncHooks for CapturingPlugins {
-            fn call_hooks(&self, _hook: &str, ctx: &Value) -> Vec<Value> {
-                *self.seen_ctx.borrow_mut() = Some(ctx.clone());
+            fn call_hooks(&self, _hook: &str, ctx: &HookContext) -> Vec<Value> {
+                *self.seen_ctx.borrow_mut() = Some(ctx.value().clone());
                 vec![json!({ "action": "block" })]
             }
         }

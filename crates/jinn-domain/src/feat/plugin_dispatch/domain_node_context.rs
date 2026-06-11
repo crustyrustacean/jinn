@@ -73,9 +73,20 @@ impl DomainNodeContext {
         persist: bool,
     ) -> SessionId {
         let mut session = ChatSessionState::default();
-        session.core.parent_session = Some(parent_session_id);
+        session.core.parent_session = Some(parent_session_id.clone());
         session.core.is_automated = automated;
         session.core.persist = persist;
+
+        // Inherit the parent session's model so the child can send to the LLM provider.
+        if let Some(model) = self
+            .state
+            .read()
+            .session
+            .get(&parent_session_id)
+            .map(|s| s.model().to_owned())
+        {
+            session.set_model(model);
+        }
 
         let session_id = session.session_id().clone();
         self.state.write().session.insert(session);
@@ -831,5 +842,39 @@ mod tests {
         // Then the session map contains the child.
         let state = ctx.state.read();
         assert!(state.session.contains(&child_id));
+    }
+
+    #[test]
+    fn create_child_session_inherits_parent_model() {
+        // Given a domain context and a parent session with a specific model.
+        let ctx = make_ctx();
+        let parent_id = SessionId::new();
+        let mut parent = ChatSessionState::default();
+        parent.core.session_id = parent_id.clone();
+        parent.set_model("my-model".to_owned());
+        ctx.state.write().session.insert(parent);
+
+        // When creating a child session.
+        let child_id = ctx.create_child_session(parent_id.clone(), true, true);
+
+        // Then the child inherits the parent's model.
+        let state = ctx.state.read();
+        let child = state.session.get(&child_id).expect("child session exists");
+        assert_eq!(child.model(), "my-model");
+    }
+
+    #[test]
+    fn create_child_session_uses_default_model_when_parent_not_found() {
+        // Given a domain context with no parent session in state.
+        let ctx = make_ctx();
+        let orphan_parent = SessionId::new();
+
+        // When creating a child session.
+        let child_id = ctx.create_child_session(orphan_parent, true, true);
+
+        // Then the child keeps the default model.
+        let state = ctx.state.read();
+        let child = state.session.get(&child_id).expect("child session exists");
+        assert_eq!(child.model(), "__no_provider__");
     }
 }

@@ -11,8 +11,8 @@
 use std::path::Path;
 use std::sync::{Arc, Mutex};
 
+use jinn_domain::feat::plugin_dispatch::HookContext;
 use jinn_plugin::{PluginCommand, PluginSystem, PluginSystemBuildResult, SyncPlugins};
-use serde::Serialize;
 
 // ── Helpers ──────────────────────────────────────────────────────────────
 
@@ -40,10 +40,9 @@ fn build_system_with_capture(dir: &Path) -> (SyncPlugins, Arc<Mutex<Vec<PluginCo
     (sync, captured)
 }
 
-#[derive(Debug, Serialize)]
-struct FilterCtx {
-    text: String,
-    session_id: String,
+fn write_attachable_plugin(dir: &Path, name: &str, lua_source: &str) {
+    let attachable_dir = dir.join("attachable");
+    write_plugin(&attachable_dir, name, lua_source);
 }
 
 // ── Tests ────────────────────────────────────────────────────────────────
@@ -68,10 +67,10 @@ fn sync_hook_returns_deserialized_value() {
     let results: Vec<String> = sync
         .sync_hooks("on_filter_input")
         .map(|h| {
-            h.call::<_, String>(&FilterCtx {
-                text: "this is bad".to_owned(),
-                session_id: "s1".to_owned(),
-            })
+            h.call::<String>(&HookContext::from(serde_json::json!({
+                "text": "this is bad",
+                "session_id": "s1",
+            })))
             .expect("hook call")
         })
         .collect();
@@ -116,10 +115,10 @@ fn sync_hook_returns_nil_deserializes_to_none() {
         .sync_hooks("on_validate")
         .next()
         .expect("should have hook")
-        .call(&FilterCtx {
-            text: "test".to_owned(),
-            session_id: "s1".to_owned(),
-        })
+        .call(&HookContext::from(serde_json::json!({
+            "text": "test",
+            "session_id": "s1",
+        })))
         .expect("call");
 
     assert_eq!(result, None);
@@ -146,10 +145,10 @@ fn sync_hook_script_error_returns_err() {
         .sync_hooks("on_filter_input")
         .next()
         .expect("should have hook")
-        .call(&FilterCtx {
-            text: "hello".to_owned(),
-            session_id: "s1".to_owned(),
-        });
+        .call(&HookContext::from(serde_json::json!({
+            "text": "hello",
+            "session_id": "s1",
+        })));
 
     assert!(result.is_err(), "script error should be Err not panic");
 }
@@ -180,10 +179,10 @@ fn sync_hook_emit_sends_command() {
         .sync_hooks("on_turn_end")
         .next()
         .expect("should have hook")
-        .call(&FilterCtx {
-            text: String::new(),
-            session_id: "s1".to_owned(),
-        })
+        .call(&HookContext::from(serde_json::json!({
+            "text": "",
+            "session_id": "s1",
+        })))
         .expect("call");
 
     // Give the drainer task time to process.
@@ -194,4 +193,39 @@ fn sync_hook_emit_sends_command() {
     assert_eq!(cmds[0].name, "push_chat_entry");
     assert_eq!(cmds[0].data["session_id"], "s1");
     assert_eq!(cmds[0].data["message"], "hello from plugin");
+}
+
+#[test]
+fn attachable_plugin_sync_hook_is_loaded_and_callable() {
+    // Given an attachable plugin that defines on_session_preview.
+    let dir = tempfile::tempdir().expect("tempdir");
+    write_attachable_plugin(
+        dir.path(),
+        "test_judge",
+        r#"
+            local M = {}
+            function M.on_session_preview(ctx)
+                return { session_id = "judge-123" }
+            end
+            return M
+        "#,
+    );
+
+    let (sync, _) = build_system_with_capture(dir.path());
+
+    // When calling the on_session_preview hook.
+    let results: Vec<serde_json::Value> = sync
+        .sync_hooks("on_session_preview")
+        .map(|h| {
+            h.call::<serde_json::Value>(&HookContext::from(serde_json::json!({
+                "text": "",
+                "session_id": "origin-session",
+            })))
+            .expect("hook call")
+        })
+        .collect();
+
+    // Then the attachable plugin's hook responds with the expected value.
+    assert_eq!(results.len(), 1);
+    assert_eq!(results[0]["session_id"], "judge-123");
 }

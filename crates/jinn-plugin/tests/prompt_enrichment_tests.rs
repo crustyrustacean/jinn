@@ -19,7 +19,7 @@
     reason = "test code"
 )]
 
-use jinn_domain::feat::plugin_dispatch::PluginSyncHooks;
+use jinn_domain::feat::plugin_dispatch::{HookContext, PluginSyncHooks};
 use jinn_plugin::{PluginCommand, PluginSystem, PluginSystemBuildResult, SyncPlugins};
 use serde_json::{Value, json};
 use std::path::{Path, PathBuf};
@@ -345,7 +345,7 @@ async fn badge_returns_accent_action_for_e_in_input_mode() {
     // When the renderer fires the badge hook in Input mode.
     let directives = sys.sync.call_hooks(
         "on_chat_input_badges_render",
-        &json!({ "active_session_id": "s1", "mode": "input" }),
+        &HookContext::from(json!({ "active_session_id": "s1", "mode": "input" })),
     );
 
     // Then the E segment is styled accent_action.
@@ -364,7 +364,7 @@ async fn badge_returns_muted_text_for_e_outside_input_mode() {
     // When the renderer fires the badge hook in Normal mode.
     let directives = sys.sync.call_hooks(
         "on_chat_input_badges_render",
-        &json!({ "active_session_id": "s1", "mode": "normal" }),
+        &HookContext::from(json!({ "active_session_id": "s1", "mode": "normal" })),
     );
 
     // Then the E segment is styled muted_text.
@@ -384,7 +384,7 @@ async fn badge_always_returns_enrich_directive() {
     for mode in ["input", "normal"] {
         let directives = sys.sync.call_hooks(
             "on_chat_input_badges_render",
-            &json!({ "active_session_id": "s1", "mode": mode }),
+            &HookContext::from(json!({ "active_session_id": "s1", "mode": mode })),
         );
 
         // Then the directive's segments join to "[Enrich]".
@@ -418,7 +418,7 @@ async fn badge_returns_working_when_enriching() {
     // When the renderer fires the badge hook.
     let directives = sys.sync.call_hooks(
         "on_chat_input_badges_render",
-        &json!({ "active_session_id": "s1", "mode": "input" }),
+        &HookContext::from(json!({ "active_session_id": "s1", "mode": "input" })),
     );
 
     // Then the badge text is [Working].
@@ -443,7 +443,7 @@ async fn working_badge_uses_streaming_style() {
     // When the renderer fires the badge hook.
     let directives = sys.sync.call_hooks(
         "on_chat_input_badges_render",
-        &json!({ "active_session_id": "s1", "mode": "input" }),
+        &HookContext::from(json!({ "active_session_id": "s1", "mode": "input" })),
     );
 
     // Then the Working segment is styled streaming.
@@ -469,7 +469,7 @@ async fn badge_returns_idle_enrich_when_no_plugin_data() {
     // When the renderer fires the badge hook.
     let directives = sys.sync.call_hooks(
         "on_chat_input_badges_render",
-        &json!({ "active_session_id": "s1", "mode": "input" }),
+        &HookContext::from(json!({ "active_session_id": "s1", "mode": "input" })),
     );
 
     // Then the badge text is [Enrich] (the idle state).

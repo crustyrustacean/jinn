@@ -63,7 +63,13 @@ M.tools = {
 
 ---@param ctx OnTurnEndCtx
 function M.on_turn_end(ctx)
-    local pd = ctx.get_plugin_data() or {}
+    -- Push a transient status indicator to the origin session.
+    ctx.emit("push_chat_entry", {
+        session_id = ctx.session_id,
+        kind = { transient = "⚖ Judge evaluating..." },
+    })
+
+    pd = ctx.get_plugin_data() or {}
     local judge_id = pd.judge_session_id
 
     if not judge_id then

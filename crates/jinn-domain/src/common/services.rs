@@ -198,6 +198,7 @@ impl PluginFire for NoopPluginFire {
         _session: SessionRegistryId,
         hook: &str,
         _ctx: &serde_json::Value,
+        _enabled_plugins: Vec<String>,
     ) -> Result<(), Report<PluginFireError>> {
         tracing::debug!(hook, "noop plugin fire for session");
         Ok(())

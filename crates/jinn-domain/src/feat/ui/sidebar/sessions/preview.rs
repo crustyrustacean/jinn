@@ -118,7 +118,7 @@ pub(crate) fn resolve_plugin_preview<'a>(
         "plugin_name": entry.title,
     });
     let directives =
-        call_hooks_typed::<PreviewDirective>(plugins, "on_session_preview", &preview_ctx);
+        call_hooks_typed::<PreviewDirective>(plugins, "on_session_preview", &preview_ctx.into());
     let directive = directives.into_iter().next()?;
     let session_id = SessionId::from(directive.session_id);
     ctx.state.session.get(&session_id)
