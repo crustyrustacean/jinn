@@ -66,7 +66,7 @@ pub fn snapshot_frozen_node(session: &ChatSessionState) -> FrozenTreeNode {
         total_sent: token_stats.total_sent,
         total_received: token_stats.total_received,
         total_cost: TokenStats::total_cost(session.token_ledger()),
-        total_turns: turn_counter::compute_turn_count(session.history()),
+        total_turns: turn_counter::compute_turn_count(session.history(), session.fork_ordinal()),
     }
 }
 
@@ -185,7 +185,7 @@ pub fn aggregate_tree_stats<S: ::std::hash::BuildHasher>(
         stats.total_sent += token_stats.total_sent;
         stats.total_received += token_stats.total_received;
         stats.total_cost += TokenStats::total_cost(session.token_ledger());
-        stats.total_turns += turn_counter::compute_turn_count(session.history());
+        stats.total_turns += turn_counter::compute_turn_count(session.history(), session.fork_ordinal());
     }
 
     // Aggregate stats from frozen nodes.

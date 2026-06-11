@@ -201,6 +201,14 @@ pub struct SessionCore {
     /// OWNER: session-actor (set at session creation).
     #[serde(default)]
     pub parent_session: Option<SessionId>,
+    /// Highest entry ordinal inherited from the parent at fork time.
+    /// `None` for root sessions (all entries are "own").
+    /// `Some(n)` means entries at indices 0..=n were inherited;
+    /// only entries after index n count as turns for this session.
+    /// Set once at fork creation, never mutated.
+    /// OWNER: session-actor (set during fork).
+    #[serde(default)]
+    pub fork_ordinal: Option<usize>,
 
     /// Generic blob storage for future subsystems.
     #[serde(default)]
@@ -271,6 +279,7 @@ impl Default for SessionCore {
             cwd: std::path::PathBuf::from("."),
             token_ledger: Vec::new(),
             parent_session: None,
+            fork_ordinal: None,
 
             blobs: HashMap::new(),
             lifecycle_name: None,
@@ -2472,6 +2481,12 @@ impl ChatSessionState {
     /// The parent session, if this session was forked from another.
     pub fn parent_session(&self) -> &Option<SessionId> {
         &self.core.parent_session
+    }
+
+    /// The highest entry ordinal inherited from parent at fork time.
+    /// `None` for root sessions.
+    pub fn fork_ordinal(&self) -> Option<usize> {
+        self.core.fork_ordinal
     }
 
     /// Set the parent session.
