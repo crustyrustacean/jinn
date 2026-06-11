@@ -1162,7 +1162,7 @@ mod tests {
         let mut state = AppState::default();
         state.active_session_mut().push_entry(ChatEntry {
             id: crate::protocol::ChatEntryId::new(),
-            timestamp: jiff::Timestamp::now(),
+            timing: crate::protocol::EntryTiming::instant_now(),
             kind: crate::protocol::ChatEntryKind::Compaction {
                 summary: "summary".to_owned(),
                 tokens_before: 100,

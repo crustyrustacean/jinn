@@ -67,10 +67,10 @@ fn entry_has_timestamp() {
     // When creating a user entry.
     let entry = ChatEntry::user("test");
 
-    // Then the timestamp is close to now.
+    // Then the timing is close to now.
     let after = jiff::Timestamp::now();
-    assert!(entry.timestamp >= before);
-    assert!(entry.timestamp <= after);
+    assert!(entry.timing.at() >= before);
+    assert!(entry.timing.at() <= after);
 }
 
 #[rstest::rstest]
@@ -244,7 +244,7 @@ fn pin_position_returns_none_when_unpinned() {
 #[rstest::rstest]
 fn pin_position_deserializes_old_format() {
     // Given JSON without pin_position field (old format).
-    let json = r#"{"id":"550e8400-e29b-41d4-a716-446655440000","timestamp":"2024-01-01T00:00:00Z","kind":{"User":{"display":"hello","expanded":"hello"}}}"#;
+    let json = r#"{"id":"550e8400-e29b-41d4-a716-446655440000","timing":{"Instant":{"at":"2024-01-01T00:00:00Z"}},"kind":{"User":{"display":"hello","expanded":"hello"}}}"#;
 
     // When deserializing.
     let entry: ChatEntry = serde_json::from_str(json).expect("deserialize");
@@ -428,7 +428,7 @@ fn tool_result_status_failure_serializes() {
 #[rstest::rstest]
 fn tool_result_deserializes_old_success_true_format() {
     // Given JSON in the old format with success: true.
-    let json = r#"{"id":"550e8400-e29b-41d4-a716-446655440000","timestamp":"2024-01-01T00:00:00Z","kind":{"ToolResult":{"id":"call_1","name":"bash","content":"ok","success":true}}}"#;
+    let json = r#"{"id":"550e8400-e29b-41d4-a716-446655440000","timing":{"Instant":{"at":"2024-01-01T00:00:00Z"}},"kind":{"ToolResult":{"id":"call_1","name":"bash","content":"ok","success":true}}}"#;
 
     // When deserializing.
     let entry: ChatEntry = serde_json::from_str(json).expect("deserialize");
@@ -451,7 +451,7 @@ fn tool_result_deserializes_old_success_true_format() {
 #[rstest::rstest]
 fn tool_result_deserializes_old_success_false_format() {
     // Given JSON in the old format with success: false.
-    let json = r#"{"id":"550e8400-e29b-41d4-a716-446655440000","timestamp":"2024-01-01T00:00:00Z","kind":{"ToolResult":{"id":"call_1","name":"bash","content":"err","success":false}}}"#;
+    let json = r#"{"id":"550e8400-e29b-41d4-a716-446655440000","timing":{"Instant":{"at":"2024-01-01T00:00:00Z"}},"kind":{"ToolResult":{"id":"call_1","name":"bash","content":"err","success":false}}}"#;
 
     // When deserializing.
     let entry: ChatEntry = serde_json::from_str(json).expect("deserialize");

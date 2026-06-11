@@ -217,7 +217,7 @@ mod tests {
             ChatEntry::user("hello"),
             ChatEntry {
                 id: ChatEntryId::new(),
-                timestamp: jiff::Timestamp::now(),
+                timing: crate::protocol::EntryTiming::instant_now(),
                 kind: ChatEntryKind::Compaction {
                     summary: "summary1".to_owned(),
                     tokens_before: 0,

@@ -188,7 +188,7 @@ mod tests {
     fn make_entry(kind: ChatEntryKind) -> ChatEntry {
         ChatEntry {
             id: crate::feat::session::chat_entry::ChatEntryId::new(),
-            timestamp: jiff::Timestamp::now(),
+            timing: crate::feat::session::entry_timing::EntryTiming::instant_now(),
             kind,
             pin_position: None,
             context_override: crate::feat::session::chat_entry::ContextOverride::Default,

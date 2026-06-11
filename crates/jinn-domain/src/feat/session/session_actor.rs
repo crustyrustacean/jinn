@@ -388,6 +388,7 @@ mod dispatch_tests {
             index: 0,
             token: "hello".to_owned(),
             is_thinking: false,
+            dispatched_at: jiff::Timestamp::now(),
         });
         actor.handle(ActorEnvelope::Event(event), &ctx).await;
 
@@ -413,6 +414,7 @@ mod dispatch_tests {
                 name: "bash".to_owned(),
                 arguments: "{}".to_owned(),
             },
+            dispatched_at: jiff::Timestamp::now(),
         });
         actor.handle(ActorEnvelope::Event(event), &ctx).await;
 
