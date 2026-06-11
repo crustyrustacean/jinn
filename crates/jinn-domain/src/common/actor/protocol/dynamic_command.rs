@@ -22,3 +22,5 @@ pub struct DynamicCommand {
 impl CommandMsg for DynamicCommand {
     const NAME: &'static str = "dynamic";
 }
+
+impl crate::common::bus::BusMessage for DynamicCommand {}

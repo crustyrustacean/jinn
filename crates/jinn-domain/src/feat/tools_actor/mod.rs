@@ -5,7 +5,7 @@
 //! all calls in a batch finish.
 //!
 //! Built-in tools (`get_time`, `read`, `write`) are registered at
-//! activation and executed via spawned tokio tasks. Actor-provided tools
+//! startup and executed via spawned tokio tasks. Actor-provided tools
 //! are routed via [`ExecuteTool`] commands on the bus.
 //!
 //! Each tool execution receives a [`ToolContext`] containing the session's CWD
@@ -29,7 +29,10 @@ use std::collections::HashMap;
 use std::future::Future;
 use std::pin::Pin;
 
-use crate::common::actor::{Actor, ActorContext, ActorEnvelope, MessageSink, NoDirectMsg};
+use crate::common::actor::{ActorContext, ActorEnvelope, MessageSink, NoDirectMsg};
+use crate::common::actor::{Actor as OldActor, RecordingSink};
+use crate::common::actor_deps::{ActorDeps, BusPublish};
+use crate::common::services::bus_service::BusService;
 use crate::common::services::Services;
 use crate::common::state::State;
 use crate::feat::preferences_actor::OpenrouterWebSearchConfig;
@@ -43,6 +46,7 @@ use crate::feat::tools_actor::protocol::event::{
 use crate::feat::tools_actor::tool_types::{ToolCall, ToolContext, ToolDefinition, ToolResult};
 use crate::protocol::{Command, Event, SessionId};
 use jinn_provider::ServerToolType;
+use kameo::prelude::{Actor, ActorRef, Context, Message};
 
 /// A boxed future returned by built-in tool execute functions.
 pub type BoxedToolFuture = Pin<Box<dyn Future<Output = ToolResult> + Send>>;
@@ -100,6 +104,8 @@ pub(crate) struct PendingBatch {
 /// [`ToolExecutionCompleted`] events. Dispatches tool calls to the appropriate
 /// handler and aggregates results into batch completion events.
 pub struct ToolOrchestratorActor {
+    /// Universal actor dependencies.
+    deps: ActorDeps,
     /// Tool name → registration info.
     tools: HashMap<String, ToolRegistration>,
     /// Session ID → pending batch tracker.
@@ -114,9 +120,10 @@ pub struct ToolOrchestratorActor {
 
 /// Dependencies for [`ToolOrchestratorActor`].
 pub struct ToolOrchestratorActorDeps {
+    /// Universal actor dependencies.
+    pub deps: ActorDeps,
     /// Shared application state.
     pub state: State,
-    /// Application paths for working directory.
     /// Runtime services.
     pub services: Services,
     /// Override which built-in tools to register. `None` means register all.
@@ -168,36 +175,43 @@ fn build_openrouter_web_search_definition(config: &OpenrouterWebSearchConfig) ->
 }
 
 impl Actor for ToolOrchestratorActor {
-    type Message = NoDirectMsg;
-    type Deps = ToolOrchestratorActorDeps;
+    type Args = ToolOrchestratorActorDeps;
+    type Error = kameo::error::Infallible;
 
-    fn activate(deps: Self::Deps, ctx: &mut ActorContext) -> Self {
-        ctx.set_description("Dispatches and manages tool execution");
-        ctx.subscribe_command::<RegisterTools>();
-        ctx.subscribe_command::<ExecuteToolBatch>();
-        ctx.subscribe_command::<CancelToolBatch>();
-        ctx.subscribe_event::<ToolExecutionCompleted>();
+    async fn on_start(
+        args: Self::Args,
+        actor_ref: ActorRef<Self>,
+    ) -> Result<Self, Self::Error> {
+        let deps = args.deps;
+        deps.subscribe(actor_ref.clone().recipient::<RegisterTools>())
+            .await;
+        deps.subscribe(actor_ref.clone().recipient::<ExecuteToolBatch>())
+            .await;
+        deps.subscribe(actor_ref.clone().recipient::<CancelToolBatch>())
+            .await;
+        deps.subscribe(actor_ref.recipient::<ToolExecutionCompleted>())
+            .await;
 
         // Read web search config from preferences storage.
-
-        let web_search_config = deps
+        let web_search_config = args
             .services
             .user_preferences_storage
             .read()
             .openrouter_web_search
             .clone();
 
-        let bash_config = deps.services.user_preferences_storage.read().bash.clone();
+        let bash_config = args.services.user_preferences_storage.read().bash.clone();
 
         let mut actor = Self {
+            deps,
             tools: HashMap::new(),
             pending: HashMap::new(),
-            services: deps.services,
-            state: deps.state,
-            shell: deps.shell,
+            services: args.services,
+            state: args.state,
+            shell: args.shell,
         };
         let all_builtins = registry::builtin_tools(&bash_config);
-        let builtins: Vec<_> = if let Some(ref filter) = deps.builtin_filter {
+        let builtins: Vec<_> = if let Some(ref filter) = args.builtin_filter {
             all_builtins
                 .into_iter()
                 .filter(|(def, _)| filter.contains(&def.name))
@@ -242,17 +256,189 @@ impl Actor for ToolOrchestratorActor {
         builtin_definitions.push(web_search_def);
 
         // Announce built-in tools so the LLM actor can cache them.
-        if let Err(e) = ctx.send_event(Event::ToolsRegistered(ToolsRegistered {
+        actor
+            .publish(ToolsRegistered {
+                provider: "builtin".to_owned(),
+                definitions: builtin_definitions,
+            })
+            .await;
+
+        Ok(actor)
+    }
+}
+
+// ---------------------------------------------------------------------------
+// Bridge: impl Message<T> blocks that delegate to old handler methods
+//         via a temporary RecordingSink → publish to bus
+// ---------------------------------------------------------------------------
+
+impl ToolOrchestratorActor {
+    /// Runs a command handler through the old dispatch, then publishes
+    /// any emitted commands/events to the bus.
+    async fn dispatch_command(&mut self, cmd: Command) {
+        let sink = std::sync::Arc::new(RecordingSink::new());
+        let ctx = ActorContext::new("tool-orchestrator", sink.clone());
+        self.handle_command(&cmd, &ctx);
+        self.flush_sink_to_bus(sink).await;
+    }
+
+    /// Runs an event handler through the old dispatch, then publishes
+    /// any emitted commands/events to the bus.
+    async fn dispatch_event(&mut self, event: Event) {
+        let sink = std::sync::Arc::new(RecordingSink::new());
+        let ctx = ActorContext::new("tool-orchestrator", sink.clone());
+        self.handle_event(&event, &ctx);
+        self.flush_sink_to_bus(sink).await;
+    }
+
+    /// Drains a RecordingSink and publishes each message to the bus.
+    async fn flush_sink_to_bus(&self, sink: std::sync::Arc<RecordingSink>) {
+        for cmd in sink.take_commands() {
+            self.publish_command(cmd).await;
+        }
+        for event in sink.take_events() {
+            self.publish_event(event).await;
+        }
+    }
+
+    /// Publishes a single command to the bus by extracting the inner typed struct.
+    async fn publish_command(&self, cmd: Command) {
+        match cmd {
+            Command::ExecuteWebFetch(m) => self.publish(m).await,
+            other => tracing::warn!(?other, "tool-orchestrator: unhandled command variant"),
+        }
+    }
+
+    /// Publishes a single event to the bus by extracting the inner typed struct.
+    async fn publish_event(&self, event: Event) {
+        match event {
+            Event::ToolsRegistered(m) => self.publish(m).await,
+            Event::ToolBatchCompleted(m) => self.publish(m).await,
+            Event::ToolExecutionCompleted(m) => self.publish(m).await,
+            other => tracing::warn!(?other, "tool-orchestrator: unhandled event variant"),
+        }
+    }
+}
+
+// ---------------------------------------------------------------------------
+// Message handlers — bridge to old dispatch
+// ---------------------------------------------------------------------------
+
+impl Message<RegisterTools> for ToolOrchestratorActor {
+    type Reply = ();
+
+    async fn handle(&mut self, msg: RegisterTools, _ctx: &mut Context<Self, Self::Reply>) {
+        self.dispatch_command(Command::RegisterTools(msg)).await;
+    }
+}
+
+impl Message<ExecuteToolBatch> for ToolOrchestratorActor {
+    type Reply = ();
+
+    async fn handle(&mut self, msg: ExecuteToolBatch, _ctx: &mut Context<Self, Self::Reply>) {
+        self.dispatch_command(Command::ExecuteToolBatch(msg)).await;
+    }
+}
+
+impl Message<CancelToolBatch> for ToolOrchestratorActor {
+    type Reply = ();
+
+    async fn handle(&mut self, msg: CancelToolBatch, _ctx: &mut Context<Self, Self::Reply>) {
+        self.dispatch_command(Command::CancelToolBatch(msg)).await;
+    }
+}
+
+impl Message<ToolExecutionCompleted> for ToolOrchestratorActor {
+    type Reply = ();
+
+    async fn handle(&mut self, msg: ToolExecutionCompleted, _ctx: &mut Context<Self, Self::Reply>) {
+        self.dispatch_event(Event::ToolExecutionCompleted(msg)).await;
+    }
+}
+
+impl BusPublish for ToolOrchestratorActor {
+    fn bus(&self) -> &BusService {
+        &self.deps.services.bus
+    }
+}
+
+// ---------------------------------------------------------------------------
+// Old handler methods — retained during migration, cleaned up in Phase 4
+// ---------------------------------------------------------------------------
+
+impl OldActor for ToolOrchestratorActor {
+    type Message = NoDirectMsg;
+    type Deps = ToolOrchestratorActorDeps;
+    fn activate(deps: Self::Deps, ctx: &mut ActorContext) -> Self {
+        let bash_config = deps.services.user_preferences_storage.read().bash.clone();
+        let web_search_config = deps
+            .services
+            .user_preferences_storage
+            .read()
+            .openrouter_web_search
+            .clone();
+
+        let mut actor = Self {
+            deps: deps.deps,
+            tools: HashMap::default(),
+            pending: HashMap::default(),
+            state: deps.state,
+            services: deps.services,
+            shell: deps.shell,
+        };
+
+        let all_builtins = registry::builtin_tools(&bash_config);
+        let builtins: Vec<_> = if let Some(ref filter) = deps.builtin_filter {
+            all_builtins
+                .into_iter()
+                .filter(|(def, _)| filter.contains(&def.name))
+                .collect()
+        } else {
+            all_builtins
+        };
+        let mut builtin_definitions: Vec<ToolDefinition> =
+            builtins.iter().map(|(d, _)| d.clone()).collect();
+
+        for (def, execute_fn) in builtins {
+            let name = def.name.clone();
+            actor.tools.insert(
+                name,
+                ToolRegistration::Builtin {
+                    definition: def,
+                    execute: execute_fn,
+                },
+            );
+        }
+
+        let web_search_def = build_openrouter_web_search_definition(&web_search_config);
+        actor.tools.insert(
+            web_search_def.name.clone(),
+            ToolRegistration::Builtin {
+                definition: web_search_def.clone(),
+                execute: |_call, _ctx| {
+                    Box::pin(std::future::ready(ToolResult {
+                        tool_call_id: String::new(),
+                        name: "openrouter:web_search".to_owned(),
+                        content: "server tool should not be dispatched".to_owned(),
+                        success: false,
+                        full_content: None,
+                        truncation: None,
+                        pin_position: None,
+                    }))
+                },
+            },
+        );
+        builtin_definitions.push(web_search_def);
+
+        ctx.send_event(Event::ToolsRegistered(ToolsRegistered {
             provider: "builtin".to_owned(),
             definitions: builtin_definitions,
-        })) {
-            tracing::warn!(err = ?e, "failed to emit ToolsRegistered for built-in tools");
-        }
+        }));
 
         actor
     }
 
-    async fn handle(&mut self, msg: ActorEnvelope<NoDirectMsg>, ctx: &ActorContext) {
+    async fn handle(&mut self, msg: ActorEnvelope<Self::Message>, ctx: &ActorContext) {
         match msg {
             ActorEnvelope::Command(command) => self.handle_command(&command, ctx),
             ActorEnvelope::Event(event) => self.handle_event(&event, ctx),
@@ -487,7 +673,7 @@ impl ToolOrchestratorActor {
                     other => {
                         tracing::warn!(
                             tool = %other,
-                            "unknown actor tool \u{2014} no command mapping"
+                            "unknown actor tool — no command mapping"
                         );
                         return None;
                     }

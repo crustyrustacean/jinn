@@ -44,6 +44,7 @@ fn default_test_ctx() -> (
     let ctx = test_context_with_state(&sink, state.clone());
     let test_services = crate::common::services::test_services::TestServices::builder().build();
     let deps = ToolOrchestratorActorDeps {
+        deps: crate::common::actor_deps::ActorDeps { services: test_services.clone() },
         services: test_services,
         state,
         builtin_filter: None,

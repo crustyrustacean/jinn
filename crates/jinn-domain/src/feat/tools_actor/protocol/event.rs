@@ -121,3 +121,12 @@ pub struct ToolExecutionOutput {
     /// New output text (delta, not accumulated).
     pub output: String,
 }
+
+impl crate::common::bus::BusMessage for ToolBatchCompleted {}
+impl crate::common::bus::BusMessage for ToolExecutionCompleted {}
+impl crate::common::bus::BusMessage for ToolsRegistered {}
+impl crate::common::bus::BusMessage for ToolUseStarted {}
+impl crate::common::bus::BusMessage for ToolCallReceived {}
+impl crate::common::bus::BusMessage for ToolCallStreaming {}
+impl crate::common::bus::BusMessage for ToolExecutionStarted {}
+impl crate::common::bus::BusMessage for ToolExecutionOutput {}

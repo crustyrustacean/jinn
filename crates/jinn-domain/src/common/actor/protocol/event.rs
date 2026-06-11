@@ -40,3 +40,5 @@ pub struct ActorShutdownCompleted {
 #[derive(Debug, Clone, Serialize, Deserialize, EventMsg)]
 #[event_msg("actor")]
 pub struct AllActorsSpawned;
+
+impl crate::common::bus::BusMessage for AllActorsSpawned {}

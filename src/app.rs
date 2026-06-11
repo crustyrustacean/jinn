@@ -209,7 +209,7 @@ impl App {
                 return Ok(());
             }
             Commands::Tui => {
-                let (core, services, actor_host, _plugins) =
+                let (core, services, _plugins, actor_host) =
                     actor_wiring::ActorSystemBuilder::new(actor_wiring::ActorSystemBuilderArgs {
                         handle: self.handle(),
                         llm_service: llm_service.clone(),
@@ -230,7 +230,7 @@ impl App {
             #[cfg(debug_assertions)]
             Commands::Headless { command, .. } => {
                 let store_for_shutdown = session_store.clone();
-                let (core, _services, actor_host, _plugins) =
+                let (core, _services, _plugins, actor_host) =
                     actor_wiring::ActorSystemBuilder::new(actor_wiring::ActorSystemBuilderArgs {
                         handle: self.handle(),
                         llm_service: llm_service.clone(),
@@ -320,7 +320,7 @@ impl App {
                             SqliteSessionStore::open_or_create(db_path).change_context(AppError)?,
                         ));
                         let store_for_shutdown = session_store.clone();
-                        let (core, services, actor_host, plugins) =
+                        let (core, services, plugins, actor_host) =
                             actor_wiring::ActorSystemBuilder::new(
                                 actor_wiring::ActorSystemBuilderArgs {
                                     handle: self.handle(),
@@ -359,7 +359,7 @@ impl App {
                             SqliteSessionStore::open_or_create(db_path).change_context(AppError)?,
                         ));
                         let store_for_shutdown = session_store.clone();
-                        let (core, services, actor_host, plugins) =
+                        let (core, services, plugins, actor_host) =
                             actor_wiring::ActorSystemBuilder::new(
                                 actor_wiring::ActorSystemBuilderArgs {
                                     handle: self.handle(),
