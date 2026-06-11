@@ -670,4 +670,169 @@ mod tests {
             assert_eq!(result, "1m 23s");
         }
     }
+
+    // ── Timing line tests ──────────────────────────────────────────────
+
+    /// Helper: create a streamed entry with specific timing.
+    fn streamed_entry(
+        dispatched_at: &str,
+        first_token_at: Option<&str>,
+        finished_at: Option<&str>,
+    ) -> ChatEntry {
+        let dispatched = dispatched_at.parse().expect("valid timestamp");
+        let first_token = first_token_at.map(|s| s.parse().expect("valid timestamp"));
+        let finished = finished_at.map(|s| s.parse().expect("valid timestamp"));
+        let mut entry = ChatEntry::assistant("hello");
+        entry.timing = EntryTiming::Streamed {
+            dispatched_at: dispatched,
+            first_token_at: first_token,
+            finished_at: finished,
+        };
+        entry
+    }
+
+    /// Helper: find the timing line (contains both TTFT and Duration).
+    fn find_timing_line(lines: &[Line<'_>]) -> Option<usize> {
+        lines.iter().position(|l| text(l).contains("TTFT:"))
+    }
+
+    #[test]
+    fn instant_entry_shows_only_sent_no_timing() {
+        // Given an instant entry (default user entry).
+        let entry = ChatEntry::user("hi");
+
+        // When formatting.
+        let lines = format(&entry);
+
+        // Then no line contains TTFT or Duration.
+        for (i, line) in lines.iter().enumerate() {
+            let t = text(line);
+            assert!(
+                !t.contains("TTFT:"),
+                "line {i} should not contain TTFT: {t}"
+            );
+            assert!(
+                !t.contains("Duration:"),
+                "line {i} should not contain Duration: {t}"
+            );
+        }
+    }
+
+    #[test]
+    fn streamed_entry_shows_ttft_and_duration() {
+        // Given a streamed entry with both timestamps set.
+        let entry = streamed_entry(
+            "2024-01-15T10:30:00Z",
+            Some("2024-01-15T10:30:02Z"),
+            Some("2024-01-15T10:30:15Z"),
+        );
+
+        // When formatting.
+        let lines = format(&entry);
+
+        // Then there is a line containing both TTFT and Duration.
+        let idx = find_timing_line(&lines).expect("should have a timing line");
+        let t = text(&lines[idx]);
+        assert!(
+            t.contains("TTFT:"),
+            "timing line should contain TTFT: {t}"
+        );
+        assert!(
+            t.contains("Duration:"),
+            "timing line should contain Duration: {t}"
+        );
+        // And TTFT shows ~2s.
+        assert!(t.contains("2.0s"), "TTFT should be 2.0s: {t}");
+        // And Duration shows ~15s.
+        assert!(t.contains("15.0s"), "Duration should be 15.0s: {t}");
+    }
+
+    #[test]
+    fn streamed_entry_shows_pending_for_missing_first_token() {
+        // Given a streamed entry with no first_token_at.
+        let entry = streamed_entry(
+            "2024-01-15T10:30:00Z",
+            None,
+            Some("2024-01-15T10:30:15Z"),
+        );
+
+        // When formatting.
+        let lines = format(&entry);
+
+        // Then the timing line shows (pending) for TTFT.
+        let idx = find_timing_line(&lines).expect("should have a timing line");
+        let t = text(&lines[idx]);
+        assert!(
+            t.contains("(pending)"),
+            "TTFT should show (pending): {t}"
+        );
+    }
+
+    #[test]
+    fn streamed_entry_shows_pending_for_missing_finished() {
+        // Given a streamed entry with no finished_at.
+        let entry = streamed_entry(
+            "2024-01-15T10:30:00Z",
+            Some("2024-01-15T10:30:02Z"),
+            None,
+        );
+
+        // When formatting.
+        let lines = format(&entry);
+
+        // Then the timing line shows (pending) for Duration.
+        let idx = find_timing_line(&lines).expect("should have a timing line");
+        let t = text(&lines[idx]);
+        assert!(
+            t.contains("(pending)"),
+            "Duration should show (pending): {t}"
+        );
+    }
+
+    #[test]
+    fn ttft_value_uses_queue_color() {
+        // Given a streamed entry.
+        let entry = streamed_entry(
+            "2024-01-15T10:30:00Z",
+            Some("2024-01-15T10:30:02Z"),
+            Some("2024-01-15T10:30:15Z"),
+        );
+        let theme = default_theme();
+
+        // When formatting.
+        let lines = format_audit_lines(&entry, &theme);
+
+        // Then the TTFT value span uses the queue color.
+        let idx = find_timing_line(&lines).expect("should have a timing line");
+        let ttft_span = &lines[idx].spans[1]; // index 1 is the TTFT value
+        assert_eq!(
+            ttft_span.style.fg,
+            Some(theme.input_mode_queue),
+            "TTFT value should use input_mode_queue color"
+        );
+    }
+
+    #[test]
+    fn duration_value_uses_streaming_color() {
+        // Given a streamed entry.
+        let entry = streamed_entry(
+            "2024-01-15T10:30:00Z",
+            Some("2024-01-15T10:30:02Z"),
+            Some("2024-01-15T10:30:15Z"),
+        );
+        let theme = default_theme();
+
+        // When formatting.
+        let lines = format_audit_lines(&entry, &theme);
+
+        // Then the Duration value span uses the streaming color.
+        let idx = find_timing_line(&lines).expect("should have a timing line");
+        let duration_span = &lines[idx].spans[3]; // index 3 is the Duration value
+        assert_eq!(
+            duration_span.style.fg,
+            Some(theme.streaming),
+            "Duration value should use streaming color"
+        );
+    }
 }
+        
