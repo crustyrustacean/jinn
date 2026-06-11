@@ -4,12 +4,11 @@
 //! reasoning/thinking tokens), and finalizing the stream with token accounting
 //! and queue draining on `StreamCompleted`.
 
-use crate::common::actor::ActorContext;
 use crate::common::actor_deps::BusPublish;
 use crate::feat::context::protocol::event::ContextOverrideChanged;
 use crate::feat::context::strategy::token_estimator::TokenCounter;
 use crate::feat::provider::protocol::event::{StreamCompleted, StreamCompletedReason, StreamToken};
-use crate::protocol::{ChatEntry, Event};
+use crate::protocol::ChatEntry;
 
 use super::super::SessionPersistenceActor;
 use crate::feat::session::phase_machine::PhaseKind;

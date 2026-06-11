@@ -4,7 +4,6 @@
 //! (with queueing when session is busy), updating the input buffer, pushing arbitrary
 //! chat entries, and the legacy `SendMessage` compatibility shim.
 
-use crate::common::actor::ActorContext;
 use crate::common::actor_deps::BusPublish;
 use crate::feat::chat_input::protocol::command::{
     EnqueueResumeTurn, EnqueueUserMessage, PushChatEntry, SetChatInputText, SubmitSteeringMessage,
@@ -13,7 +12,7 @@ use crate::feat::chat_input::protocol::event::ChatEntrySubmitted;
 use crate::feat::context::assemble::assemble_prompt;
 use crate::feat::provider::protocol::command::{SendMessage, SendToLlmProvider};
 use crate::feat::session::token_stats::TokenRecord;
-use crate::protocol::{ChatEntry, ChatEntryKind, Command, Event};
+use crate::protocol::{ChatEntry, ChatEntryKind};
 
 use super::super::SessionPersistenceActor;
 use crate::feat::session::phase_machine::PhaseKind;

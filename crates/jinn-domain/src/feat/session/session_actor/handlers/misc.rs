@@ -4,7 +4,6 @@
 //! and loading session picker entries from the session store into app state.
 
 use super::super::SessionPersistenceActor;
-use crate::common::actor::ActorContext;
 use crate::common::actor_deps::BusPublish;
 use crate::feat::context::protocol::event::ContextOverrideChanged;
 use crate::feat::provider::protocol::event::ModelsRefreshed;
@@ -13,7 +12,6 @@ use crate::feat::session::protocol::load_session_picker_entries::LoadSessionPick
 use crate::feat::session::protocol::submit_history_mutations::SubmitHistoryMutations;
 
 use crate::feat::ui::picker_states::PickerExt;
-use crate::protocol::Event;
 use crate::protocol::{ChatEntry, PickerKind};
 
 impl SessionPersistenceActor {
@@ -208,14 +206,6 @@ mod tests {
     use crate::protocol::{ChatEntryKind, SessionId};
     use jinn_provider::ModelInfo;
     use std::collections::HashMap;
-
-    fn test_ctx() -> crate::common::actor::context::ActorContext {
-        use crate::common::actor::context::ActorContext;
-        use crate::common::actor::message_sink::{MessageSink, RecordingSink};
-        use std::sync::Arc;
-        let sink: Arc<dyn MessageSink> = Arc::new(RecordingSink::new());
-        ActorContext::new("test", sink)
-    }
 
     // --- on_models_refreshed ---
 

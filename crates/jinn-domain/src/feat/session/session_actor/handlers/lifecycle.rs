@@ -5,7 +5,6 @@
 //! when the last one is removed. Also contains the helper functions for building lifecycle
 //! chat entries and formatting command errors.
 
-use crate::common::actor::ActorContext;
 use crate::common::actor_deps::BusPublish;
 use crate::feat::chat_input::protocol::command::PushChatEntry;
 use crate::feat::chat_input::protocol::event::ChatEntrySubmitted;
@@ -23,7 +22,7 @@ use crate::feat::session_lifecycle::protocol::command::{
 use crate::feat::session_lifecycle::protocol::event::{
     SessionCwdChanged, SessionSetupCompleted, SessionTeardownFinished,
 };
-use crate::protocol::{ChatEntry, Command, Event};
+use crate::protocol::ChatEntry;
 
 use super::super::SessionPersistenceActor;
 

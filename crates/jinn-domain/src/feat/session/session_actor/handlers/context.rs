@@ -8,8 +8,6 @@
 //! Relocated from `PromptAssemblyActor` - these concerns are session-related
 //! mutations of `AppState`, not part of prompt assembly.
 
-use crate::common::actor::ActorContext;
-
 use crate::common::actor_deps::BusPublish;
 use crate::feat::context::protocol::command::{
     LoadPersonaPickerEntries, PinChatEntry, UnpinChatEntry,
@@ -19,7 +17,6 @@ use crate::feat::persona::PersonaEntry;
 use crate::feat::provider::protocol::event::PromptTemplatesLoaded;
 use crate::feat::tools_actor::protocol::event::ToolsRegistered;
 use crate::feat::ui::picker_states::PickerExt;
-use crate::protocol::Event;
 
 use super::super::SessionPersistenceActor;
 

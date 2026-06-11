@@ -4,12 +4,10 @@
 //! follow-up commands for strategy restoration) and forking a session at a specific
 //! point in its history.
 
-use crate::common::actor::ActorContext;
-
 use crate::common::actor_deps::BusPublish;
 use crate::feat::session::protocol::session_load_completed::SessionLoadCompleted;
+use crate::protocol::ChatEntry;
 use crate::protocol::system::ActiveSessionChanged;
-use crate::protocol::{ChatEntry, Event};
 
 use super::super::SessionPersistenceActor;
 use crate::SessionForkRequested;
