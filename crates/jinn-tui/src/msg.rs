@@ -3,7 +3,6 @@
 //! Provides a unified message type that merges crossterm terminal events,
 //! periodic tick messages, and commands into a single stream.
 
-use jinn_domain as npr;
 
 pub mod handler;
 pub mod sender;

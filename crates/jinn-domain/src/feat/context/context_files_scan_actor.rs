@@ -16,7 +16,7 @@
 //!   per walked dir, writes the result into that session's ephemeral
 //!   discovered set, and emits [`ContextFilesLoaded`] events.
 
-use kameo::actor::{ActorRef, Spawn};
+use kameo::actor::ActorRef;
 use kameo::prelude::{Context, Message};
 
 use crate::common::actor_deps::{ActorDeps, BusPublish};

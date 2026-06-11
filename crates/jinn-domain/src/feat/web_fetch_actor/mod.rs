@@ -12,7 +12,7 @@
 
 use std::sync::Arc;
 
-use kameo::actor::{ActorRef, Spawn};
+use kameo::actor::ActorRef;
 use kameo::prelude::{Context, Message};
 
 use crate::common::actor_deps::{ActorDeps, BusPublish};

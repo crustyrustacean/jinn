@@ -158,7 +158,7 @@ impl SessionPersistenceActor {
         match store.load_session(&new_id).await {
             Ok(Some(session)) => {
                 // Insert session and emit SessionLoadCompleted for external subscribers.
-                self.load_and_insert(session);
+                self.load_and_insert(session).await;
 
                 // Run the user-facing restore flow.
                 // Re-read from state since load_and_insert consumed the session.

@@ -15,7 +15,6 @@
 //!   discovered set, and emits [`PromptTemplatesLoaded`] events.
 
 use crate::common::actor_deps::{ActorDeps, BusPublish};
-use crate::common::bus::BusMessage;
 use crate::common::state::State;
 use crate::feat::context::prompt_template::PromptTemplateStore;
 use crate::feat::discovery::project_prompts_dirs;

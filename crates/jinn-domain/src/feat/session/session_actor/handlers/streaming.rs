@@ -209,7 +209,7 @@ impl SessionPersistenceActor {
             &event.session_id,
             old_phase,
             new_phase,
-        );
+        ).await;
         super::super::helpers::emit_history_appended(self.bus(), &event.session_id).await;
 
         // Persist session after stream finishes.

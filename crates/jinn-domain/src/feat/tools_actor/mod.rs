@@ -275,7 +275,7 @@ impl Message<RegisterTools> for ToolOrchestratorActor {
     type Reply = ();
 
     async fn handle(&mut self, msg: RegisterTools, _ctx: &mut Context<Self, Self::Reply>) {
-        self.handle_register_tools(&msg.provider, &msg.definitions);
+        self.handle_register_tools(&msg.provider, &msg.definitions).await;
     }
 }
 
@@ -311,7 +311,7 @@ impl BusPublish for ToolOrchestratorActor {
 
 impl ToolOrchestratorActor {
     /// Stores actor-provided tools and emits a [`ToolsRegistered`] event.
-    fn handle_register_tools(
+    async fn handle_register_tools(
         &mut self,
         provider: &str,
         definitions: &[ToolDefinition],
@@ -330,7 +330,7 @@ impl ToolOrchestratorActor {
         self.publish(ToolsRegistered {
             provider: provider.to_owned(),
             definitions: definitions.to_vec(),
-        });
+        }).await;
     }
 
     /// Dispatches each tool call and tracks the pending batch.

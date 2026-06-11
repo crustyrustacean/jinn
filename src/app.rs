@@ -209,7 +209,7 @@ impl App {
                 return Ok(());
             }
             Commands::Tui => {
-                let (core, services, _plugins) =
+                let (core, services, _plugins) = self.runtime.block_on(async {
                     actor_wiring::ActorSystemBuilder::new(actor_wiring::ActorSystemBuilderArgs {
                         handle: self.handle(),
                         llm_service: llm_service.clone(),
@@ -221,7 +221,8 @@ impl App {
                         app_state_storage: app_state_storage.clone(),
                         paths: jinn_domain::AppPaths::default(),
                     })
-                    .build();
+                    .build().await
+                });
                 let app = jinn_tui::launch(core, services, _plugins)
                     .change_context(AppError)?;
                 let runner = Runner::Tui(Box::new(app));
@@ -230,7 +231,7 @@ impl App {
             #[cfg(debug_assertions)]
             Commands::Headless { command, .. } => {
                 let store_for_shutdown = session_store.clone();
-                let (core, _services, _plugins) =
+                let (core, _services, _plugins) = self.runtime.block_on(async {
                     actor_wiring::ActorSystemBuilder::new(actor_wiring::ActorSystemBuilderArgs {
                         handle: self.handle(),
                         llm_service: llm_service.clone(),
@@ -242,7 +243,8 @@ impl App {
                         app_state_storage: app_state_storage.clone(),
                         paths: jinn_domain::AppPaths::default(),
                     })
-                    .build();
+                    .build().await
+                });
 
                 jinn_tui::load_compaction_prompt(
                     &core.state,
@@ -320,7 +322,7 @@ impl App {
                             SqliteSessionStore::open_or_create(db_path).change_context(AppError)?,
                         ));
                         let store_for_shutdown = session_store.clone();
-                        let (core, services, plugins) =
+                        let (core, services, plugins) = self.runtime.block_on(async {
                             actor_wiring::ActorSystemBuilder::new(
                                 actor_wiring::ActorSystemBuilderArgs {
                                     handle: self.handle(),
@@ -335,7 +337,8 @@ impl App {
                                 },
                             )
                             .with_bench_actor(csv, plan, artifact_dir)
-                            .build();
+                            .build().await
+                        });
                         let app = jinn_tui::launch(core, services, plugins)
                             .change_context(AppError)?;
                         let runner = Runner::Tui(Box::new(app));
@@ -359,7 +362,7 @@ impl App {
                             SqliteSessionStore::open_or_create(db_path).change_context(AppError)?,
                         ));
                         let store_for_shutdown = session_store.clone();
-                        let (core, services, plugins) =
+                        let (core, services, plugins) = self.runtime.block_on(async {
                             actor_wiring::ActorSystemBuilder::new(
                                 actor_wiring::ActorSystemBuilderArgs {
                                     handle: self.handle(),
@@ -373,7 +376,8 @@ impl App {
                                     paths: jinn_domain::AppPaths::default(),
                                 },
                             )
-                            .build();
+                            .build().await
+                        });
                         let app = jinn_tui::launch(core, services, plugins)
                             .change_context(AppError)?;
                         let runner = Runner::Tui(Box::new(app));
