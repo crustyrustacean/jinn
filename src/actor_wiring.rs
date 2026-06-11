@@ -302,11 +302,12 @@ impl ActorSystemBuilder {
 
         // ── Init actors ────────────────────────────────────────────────────
 
-        // Env init: loads providers.toml, resolves API keys, emits EnvironmentLoaded.
-        let _env_init = EnvInitActor::spawn(EnvInitActorDeps {
+        // Env init: registers in actor registry, defers config loading to GetEnvironmentConfig ask.
+        let env_init = EnvInitActor::spawn(EnvInitActorDeps {
             deps: actor_deps.clone(),
+            registry_name: Some("env-init"),
         });
-
+        handle.block_on(async { env_init.wait_for_startup().await });
         // Provider init: on EnvironmentLoaded, builds registry, merges cache, resolves last_model.
         let _provider_init = ProviderInitActor::spawn(ProviderInitActorDeps {
             deps: actor_deps.clone(),
@@ -877,9 +878,41 @@ impl ActorSystemBuilder {
             );
         }
 
-        // Wait for the actor system to become ready.
-        // TODO: Replace with kameo-based readiness check.
-        let _ = ready_rx;
+        // Signal system readiness and trigger init chain.
+        {
+            let bus_ref = services.bus.actor_ref();
+            let env_init = env_init.clone();
+            handle.block_on(async {
+                // Signal all actors spawned.
+                let _ = bus_ref
+                    .tell(kameo_actors::message_bus::Publish(
+                        jinn_domain::common::actor::protocol::event::AllActorsSpawned,
+                    ))
+                    .await;
+
+                // Ask EnvInitActor for config and publish EnvironmentLoaded to trigger init chain.
+                use kameo::prelude::Message;
+                use jinn_domain::init::env_init_actor::GetEnvironmentConfig;
+                match env_init.ask(GetEnvironmentConfig).await {
+                    Ok(Some(config)) => {
+                        let _ = bus_ref
+                            .tell(kameo_actors::message_bus::Publish(
+                                jinn_domain::init::env_init_actor::EnvironmentLoaded { config },
+                            ))
+                            .await;
+                    }
+                    Ok(None) => {
+                        tracing::warn!("no provider config found — skipping EnvironmentLoaded");
+                    }
+                    Err(e) => {
+                        tracing::error!(err = ?e, "failed to get environment config from EnvInitActor");
+                    }
+                }
+            });
+        }
+
+        // Wait for SystemReadyActor to confirm readiness.
+        let _ = handle.block_on(ready_rx);
 
         // Build AppCore with shared state and sender.
         let core = AppCore {
