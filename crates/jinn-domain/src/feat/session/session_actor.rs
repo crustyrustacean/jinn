@@ -22,7 +22,6 @@ mod helpers;
 
 pub use handlers::lifecycle::setup_running_msg;
 
-use crate::common::actor::{ActorContext, RecordingSink};
 use crate::common::actor_deps::{ActorDeps, BusPublish};
 use crate::common::services::bus_service::BusService;
 use crate::common::state::State;
@@ -58,7 +57,7 @@ use crate::feat::tools_actor::protocol::event::{
     ToolExecutionOutput, ToolExecutionStarted, ToolUseStarted, ToolsRegistered,
 };
 use crate::init::EnvironmentLoaded;
-use crate::protocol::{Command, Event};
+use crate::feat::session::protocol::session_load_completed::SessionLoadCompleted;
 
 /// Session lifecycle and persistence actor.
 ///
@@ -216,6 +215,8 @@ impl kameo::Actor for SessionPersistenceActor {
         .await;
         bus.register::<PersonasLoaded>(actor_ref.clone().recipient::<PersonasLoaded>())
             .await;
+        bus.register::<SessionLoadCompleted>(actor_ref.clone().recipient::<SessionLoadCompleted>())
+            .await;
 
         Ok(Self {
             state: args.state,
@@ -233,165 +234,10 @@ impl kameo::Actor for SessionPersistenceActor {
 //         via a temporary RecordingSink → publish to bus
 // ---------------------------------------------------------------------------
 
-impl SessionPersistenceActor {
-    /// Runs a command handler through the old dispatch, then publishes
-    /// any emitted commands/events to the bus.
-    async fn dispatch_command(&mut self, cmd: Command) {
-        let sink = std::sync::Arc::new(RecordingSink::new());
-        let ctx = ActorContext::new("session-persistence", sink.clone());
-        self.handle_command(&cmd, &ctx).await;
-        self.flush_sink_to_bus(sink).await;
-    }
-
-    /// Runs an event handler through the old dispatch, then publishes
-    /// any emitted commands/events to the bus.
-    async fn dispatch_event(&mut self, event: Event) {
-        let sink = std::sync::Arc::new(RecordingSink::new());
-        self.handle_event(&event).await;
-        self.flush_sink_to_bus(sink).await;
-    }
-
-    /// Drains a RecordingSink and publishes each message to the bus.
-    async fn flush_sink_to_bus(&self, sink: std::sync::Arc<RecordingSink>) {
-        for cmd in sink.take_commands() {
-            self.publish_command(cmd).await;
-        }
-        for event in sink.take_events() {
-            self.publish_event(event).await;
-        }
-    }
-
-    /// Publishes a single command to the bus by extracting the inner typed struct.
-    async fn publish_command(&self, cmd: Command) {
-        match cmd {
-            Command::SessionLoadRequested(m) => self.publish(m).await,
-            Command::LoadSessionPickerEntries(m) => self.publish(m).await,
-            Command::SessionForkRequested(m) => self.publish(m).await,
-            Command::EnqueueUserMessage(m) => self.publish(m).await,
-            Command::SubmitSteeringMessage(m) => self.publish(m).await,
-            Command::EnqueueResumeTurn(m) => self.publish(m).await,
-            Command::SetChatInputText(m) => self.publish(m).await,
-            Command::PushChatEntry(m) => self.publish(m).await,
-            Command::SendMessage(m) => self.publish(m).await,
-            Command::RunSessionSetup(m) => self.publish(m).await,
-            Command::RunSessionTeardown(m) => self.publish(m).await,
-            Command::FinishSessionTeardown(m) => self.publish(m).await,
-            Command::FinishSessionSetup(m) => self.publish(m).await,
-            Command::CancelLifecycleCommand(m) => self.publish(m).await,
-            Command::SetSessionCwd(m) => self.publish(m).await,
-            Command::PersistSession(m) => self.publish(m).await,
-            Command::CloseSession(m) => self.publish(m).await,
-            Command::ArchiveSession(m) => self.publish(m).await,
-            Command::SubmitHistoryMutations(m) => self.publish(m).await,
-            Command::MarkSessionInteracted(m) => self.publish(m).await,
-            Command::PinChatEntry(m) => self.publish(m).await,
-            Command::UnpinChatEntry(m) => self.publish(m).await,
-            Command::LoadPersonaPickerEntries(m) => self.publish(m).await,
-            Command::SendToLlmProvider(m) => self.publish(m).await,
-            Command::ExecuteTool(m) => self.publish(m).await,
-            Command::ProceedWithShutdown(m) => self.publish(m).await,
-            Command::CancelStream(m) => self.publish(m).await,
-            Command::RefreshModels => { /* no payload */ }
-            Command::RescanPromptTemplates(m) => self.publish(m).await,
-            Command::ExecuteToolBatch(m) => self.publish(m).await,
-            Command::RegisterTools(m) => self.publish(m).await,
-            Command::ProviderSwitch(m) => self.publish(m).await,
-            Command::LoadProviderPickerEntries(m) => self.publish(m).await,
-            Command::CancelToolBatch(m) => self.publish(m).await,
-            Command::ScanSkills(m) => self.publish(m).await,
-            Command::ScanContextFiles(m) => self.publish(m).await,
-            Command::RescanPersonas(m) => self.publish(m).await,
-            Command::UpdatePreferences(m) => self.publish(m).await,
-            Command::UpdateAppState(m) => self.publish(m).await,
-            Command::LoadCompactionModelPickerEntries(m) => self.publish(m).await,
-            Command::TriggerCompaction(m) => self.publish(m).await,
-            Command::Dynamic(m) => self.publish(m).await,
-            Command::ExecuteWebFetch(m) => self.publish(m).await,
-            Command::AttachPlugin(m) => self.publish(m).await,
-            Command::DetachPlugin(m) => self.publish(m).await,
-            Command::TogglePlugin(m) => self.publish(m).await,
-        }
-    }
-
-    /// Publishes a single event to the bus by extracting the inner typed struct.
-    async fn publish_event(&self, event: Event) {
-        match event {
-            Event::StreamToken(m) => self.publish(m).await,
-            Event::StreamCompleted(m) => self.publish(m).await,
-            Event::ToolUseStarted(m) => self.publish(m).await,
-            Event::ToolCallReceived(m) => self.publish(m).await,
-            Event::ToolCallStreaming(m) => self.publish(m).await,
-            Event::ToolExecutionCompleted(m) => self.publish(m).await,
-            Event::ToolBatchCompleted(m) => self.publish(m).await,
-            Event::ToolExecutionStarted(m) => self.publish(m).await,
-            Event::ToolExecutionOutput(m) => self.publish(m).await,
-            Event::ModelsRefreshed(m) => self.publish(m).await,
-            Event::SkillsLoaded(m) => self.publish(m).await,
-            Event::EnvironmentLoaded(m) => self.publish(m).await,
-            Event::ChatEntryPinChanged(m) => self.publish(m).await,
-            Event::TaskListUpdated(m) => self.publish(m).await,
-            Event::SessionLoadCompleted(m) => self.publish(*m).await,
-            Event::ToolsRegistered(m) => self.publish(m).await,
-            Event::PromptTemplatesLoaded(m) => self.publish(m).await,
-            Event::PersonasLoaded(m) => self.publish(m).await,
-            Event::SessionDiscoverySettled(m) => self.publish(m).await,
-            Event::SessionPhaseChanged(m) => self.publish(m).await,
-            Event::HistoryAppended(m) => self.publish(m).await,
-            Event::ChatEntrySubmitted(m) => self.publish(m).await,
-            Event::SessionSetupCompleted(m) => self.publish(m).await,
-            Event::SessionTeardownFinished(m) => self.publish(m).await,
-            Event::AppStateUpdated(m) => self.publish(m).await,
-            Event::ActorStarting(m) => self.publish(m).await,
-            Event::ActorStarted(m) => self.publish(m).await,
-            Event::Dynamic(m) => self.publish(m).await,
-            Event::UserInteracted(m) => self.publish(m).await,
-            Event::ActorShutdownCompleted(m) => self.publish(m).await,
-            Event::AllActorsSpawned(m) => self.publish(m).await,
-            Event::ActiveSessionChanged(m) => self.publish(m).await,
-            Event::SessionCreated(m) => self.publish(m).await,
-            Event::SessionCwdChanged(m) => self.publish(m).await,
-            Event::SessionClosed(m) => self.publish(m).await,
-            Event::SessionArchived(m) => self.publish(m).await,
-            Event::HistorySnapshotReady(m) => self.publish(m).await,
-            Event::PluginAttached(m) => self.publish(m).await,
-            Event::PluginDetached(m) => self.publish(m).await,
-            Event::PluginToggled(m) => self.publish(m).await,
-            Event::ModelCacheLoaded(m) => self.publish(m).await,
-            Event::ProviderSwitched(m) => self.publish(m).await,
-            Event::PreferencesUpdated(m) => self.publish(m).await,
-            Event::ContextFilesLoaded(m) => self.publish(m).await,
-            Event::ContextOverrideChanged(m) => self.publish(m).await,
-            Event::KeyDown(m) => self.publish(m).await,
-            Event::KeyUp(m) => self.publish(m).await,
-            Event::ModeChanged(m) => self.publish(m).await,
-        }
-    }
-}
 
 // ---------------------------------------------------------------------------
 // Command Message impls
 // ---------------------------------------------------------------------------
-
-macro_rules! command_message {
-    ($msg:ty) => {
-        impl kameo::message::Message<$msg> for SessionPersistenceActor {
-            type Reply = ();
-
-            async fn handle(
-                &mut self,
-                msg: $msg,
-                _ctx: &mut kameo::message::Context<Self, Self::Reply>,
-            ) {
-                self.dispatch_command(Command::$msg(msg)).await;
-            }
-        }
-    };
-}
-
-// Unfortunately, macro paths don't work for enum variant construction.
-// The macro expands `Command::$msg(msg)` but the variant name must match
-// the type name exactly. For types where the variant name differs from
-// the type name, we write the impl manually.
 
 // --- Persistence commands ---
 impl kameo::message::Message<SessionLoadRequested> for SessionPersistenceActor {
@@ -401,8 +247,7 @@ impl kameo::message::Message<SessionLoadRequested> for SessionPersistenceActor {
         msg: SessionLoadRequested,
         _ctx: &mut kameo::message::Context<Self, Self::Reply>,
     ) {
-        self.dispatch_command(Command::SessionLoadRequested(msg))
-            .await;
+        self.on_load_requested(&msg).await;
     }
 }
 
@@ -413,8 +258,7 @@ impl kameo::message::Message<LoadSessionPickerEntries> for SessionPersistenceAct
         msg: LoadSessionPickerEntries,
         _ctx: &mut kameo::message::Context<Self, Self::Reply>,
     ) {
-        self.dispatch_command(Command::LoadSessionPickerEntries(msg))
-            .await;
+        self.handle_load_session_picker_entries(&msg).await;
     }
 }
 
@@ -425,8 +269,7 @@ impl kameo::message::Message<SessionForkRequested> for SessionPersistenceActor {
         msg: SessionForkRequested,
         _ctx: &mut kameo::message::Context<Self, Self::Reply>,
     ) {
-        self.dispatch_command(Command::SessionForkRequested(msg))
-            .await;
+        self.on_session_fork_requested(&msg).await;
     }
 }
 
@@ -438,8 +281,7 @@ impl kameo::message::Message<EnqueueUserMessage> for SessionPersistenceActor {
         msg: EnqueueUserMessage,
         _ctx: &mut kameo::message::Context<Self, Self::Reply>,
     ) {
-        self.dispatch_command(Command::EnqueueUserMessage(msg))
-            .await;
+        self.handle_enqueue_user_message(&msg).await;
     }
 }
 
@@ -450,8 +292,7 @@ impl kameo::message::Message<SubmitSteeringMessage> for SessionPersistenceActor 
         msg: SubmitSteeringMessage,
         _ctx: &mut kameo::message::Context<Self, Self::Reply>,
     ) {
-        self.dispatch_command(Command::SubmitSteeringMessage(msg))
-            .await;
+        self.handle_submit_steering_message(&msg);
     }
 }
 
@@ -462,7 +303,7 @@ impl kameo::message::Message<EnqueueResumeTurn> for SessionPersistenceActor {
         msg: EnqueueResumeTurn,
         _ctx: &mut kameo::message::Context<Self, Self::Reply>,
     ) {
-        self.dispatch_command(Command::EnqueueResumeTurn(msg)).await;
+        self.handle_enqueue_resume_turn(&msg).await;
     }
 }
 
@@ -473,7 +314,7 @@ impl kameo::message::Message<SetChatInputText> for SessionPersistenceActor {
         msg: SetChatInputText,
         _ctx: &mut kameo::message::Context<Self, Self::Reply>,
     ) {
-        self.dispatch_command(Command::SetChatInputText(msg)).await;
+        self.handle_set_chat_input_text(&msg);
     }
 }
 
@@ -484,7 +325,7 @@ impl kameo::message::Message<PushChatEntry> for SessionPersistenceActor {
         msg: PushChatEntry,
         _ctx: &mut kameo::message::Context<Self, Self::Reply>,
     ) {
-        self.dispatch_command(Command::PushChatEntry(msg)).await;
+        self.handle_push_chat_entry(&msg).await;
     }
 }
 
@@ -495,7 +336,7 @@ impl kameo::message::Message<SendMessage> for SessionPersistenceActor {
         msg: SendMessage,
         _ctx: &mut kameo::message::Context<Self, Self::Reply>,
     ) {
-        self.dispatch_command(Command::SendMessage(msg)).await;
+        self.handle_send_message(&msg).await;
     }
 }
 
@@ -507,7 +348,7 @@ impl kameo::message::Message<RunSessionSetup> for SessionPersistenceActor {
         msg: RunSessionSetup,
         _ctx: &mut kameo::message::Context<Self, Self::Reply>,
     ) {
-        self.dispatch_command(Command::RunSessionSetup(msg)).await;
+        self.handle_run_session_setup(&msg).await;
     }
 }
 
@@ -518,8 +359,7 @@ impl kameo::message::Message<RunSessionTeardown> for SessionPersistenceActor {
         msg: RunSessionTeardown,
         _ctx: &mut kameo::message::Context<Self, Self::Reply>,
     ) {
-        self.dispatch_command(Command::RunSessionTeardown(msg))
-            .await;
+        self.handle_run_session_teardown(&msg).await;
     }
 }
 
@@ -530,8 +370,7 @@ impl kameo::message::Message<FinishSessionTeardown> for SessionPersistenceActor 
         msg: FinishSessionTeardown,
         _ctx: &mut kameo::message::Context<Self, Self::Reply>,
     ) {
-        self.dispatch_command(Command::FinishSessionTeardown(msg))
-            .await;
+        self.handle_finish_session_teardown(&msg).await;
     }
 }
 
@@ -542,8 +381,7 @@ impl kameo::message::Message<FinishSessionSetup> for SessionPersistenceActor {
         msg: FinishSessionSetup,
         _ctx: &mut kameo::message::Context<Self, Self::Reply>,
     ) {
-        self.dispatch_command(Command::FinishSessionSetup(msg))
-            .await;
+        self.handle_finish_session_setup(&msg).await;
     }
 }
 
@@ -554,8 +392,7 @@ impl kameo::message::Message<CancelLifecycleCommand> for SessionPersistenceActor
         msg: CancelLifecycleCommand,
         _ctx: &mut kameo::message::Context<Self, Self::Reply>,
     ) {
-        self.dispatch_command(Command::CancelLifecycleCommand(msg))
-            .await;
+        self.handle_cancel_lifecycle_command(&msg);
     }
 }
 
@@ -566,7 +403,7 @@ impl kameo::message::Message<SetSessionCwd> for SessionPersistenceActor {
         msg: SetSessionCwd,
         _ctx: &mut kameo::message::Context<Self, Self::Reply>,
     ) {
-        self.dispatch_command(Command::SetSessionCwd(msg)).await;
+        self.handle_set_session_cwd(&msg).await;
     }
 }
 
@@ -577,7 +414,7 @@ impl kameo::message::Message<PersistSession> for SessionPersistenceActor {
         msg: PersistSession,
         _ctx: &mut kameo::message::Context<Self, Self::Reply>,
     ) {
-        self.dispatch_command(Command::PersistSession(msg)).await;
+        self.handle_persist_session(&msg).await;
     }
 }
 
@@ -588,7 +425,7 @@ impl kameo::message::Message<CloseSession> for SessionPersistenceActor {
         msg: CloseSession,
         _ctx: &mut kameo::message::Context<Self, Self::Reply>,
     ) {
-        self.dispatch_command(Command::CloseSession(msg)).await;
+        self.handle_close_session(&msg).await;
     }
 }
 
@@ -599,7 +436,7 @@ impl kameo::message::Message<ArchiveSession> for SessionPersistenceActor {
         msg: ArchiveSession,
         _ctx: &mut kameo::message::Context<Self, Self::Reply>,
     ) {
-        self.dispatch_command(Command::ArchiveSession(msg)).await;
+        self.handle_archive_session(&msg).await;
     }
 }
 
@@ -610,8 +447,7 @@ impl kameo::message::Message<SubmitHistoryMutations> for SessionPersistenceActor
         msg: SubmitHistoryMutations,
         _ctx: &mut kameo::message::Context<Self, Self::Reply>,
     ) {
-        self.dispatch_command(Command::SubmitHistoryMutations(msg))
-            .await;
+        self.handle_submit_history_mutations(&msg).await;
     }
 }
 
@@ -622,8 +458,7 @@ impl kameo::message::Message<MarkSessionInteracted> for SessionPersistenceActor 
         msg: MarkSessionInteracted,
         _ctx: &mut kameo::message::Context<Self, Self::Reply>,
     ) {
-        self.dispatch_command(Command::MarkSessionInteracted(msg))
-            .await;
+        self.handle_mark_session_interacted(&msg).await;
     }
 }
 
@@ -635,7 +470,7 @@ impl kameo::message::Message<PinChatEntry> for SessionPersistenceActor {
         msg: PinChatEntry,
         _ctx: &mut kameo::message::Context<Self, Self::Reply>,
     ) {
-        self.dispatch_command(Command::PinChatEntry(msg)).await;
+        self.handle_pin_chat_entry(&msg).await;
     }
 }
 
@@ -646,7 +481,7 @@ impl kameo::message::Message<UnpinChatEntry> for SessionPersistenceActor {
         msg: UnpinChatEntry,
         _ctx: &mut kameo::message::Context<Self, Self::Reply>,
     ) {
-        self.dispatch_command(Command::UnpinChatEntry(msg)).await;
+        self.handle_unpin_chat_entry(&msg).await;
     }
 }
 
@@ -657,8 +492,7 @@ impl kameo::message::Message<LoadPersonaPickerEntries> for SessionPersistenceAct
         msg: LoadPersonaPickerEntries,
         _ctx: &mut kameo::message::Context<Self, Self::Reply>,
     ) {
-        self.dispatch_command(Command::LoadPersonaPickerEntries(msg))
-            .await;
+        self.handle_load_persona_picker_entries(&msg).await;
     }
 }
 
@@ -673,7 +507,7 @@ impl kameo::message::Message<StreamToken> for SessionPersistenceActor {
         msg: StreamToken,
         _ctx: &mut kameo::message::Context<Self, Self::Reply>,
     ) {
-        self.dispatch_event(Event::StreamToken(msg)).await;
+        self.on_stream_token(&msg);
     }
 }
 
@@ -684,7 +518,7 @@ impl kameo::message::Message<StreamCompleted> for SessionPersistenceActor {
         msg: StreamCompleted,
         _ctx: &mut kameo::message::Context<Self, Self::Reply>,
     ) {
-        self.dispatch_event(Event::StreamCompleted(msg)).await;
+        self.on_stream_completed(&msg).await;
     }
 }
 
@@ -695,7 +529,7 @@ impl kameo::message::Message<ToolUseStarted> for SessionPersistenceActor {
         msg: ToolUseStarted,
         _ctx: &mut kameo::message::Context<Self, Self::Reply>,
     ) {
-        self.dispatch_event(Event::ToolUseStarted(msg)).await;
+        self.on_tool_use_started(&msg);
     }
 }
 
@@ -706,7 +540,7 @@ impl kameo::message::Message<ToolCallReceived> for SessionPersistenceActor {
         msg: ToolCallReceived,
         _ctx: &mut kameo::message::Context<Self, Self::Reply>,
     ) {
-        self.dispatch_event(Event::ToolCallReceived(msg)).await;
+        self.on_tool_call_received(&msg);
     }
 }
 
@@ -717,7 +551,7 @@ impl kameo::message::Message<ToolCallStreaming> for SessionPersistenceActor {
         msg: ToolCallStreaming,
         _ctx: &mut kameo::message::Context<Self, Self::Reply>,
     ) {
-        self.dispatch_event(Event::ToolCallStreaming(msg)).await;
+        self.on_tool_call_streaming(&msg);
     }
 }
 
@@ -728,8 +562,7 @@ impl kameo::message::Message<ToolExecutionCompleted> for SessionPersistenceActor
         msg: ToolExecutionCompleted,
         _ctx: &mut kameo::message::Context<Self, Self::Reply>,
     ) {
-        self.dispatch_event(Event::ToolExecutionCompleted(msg))
-            .await;
+        self.on_tool_execution_completed(&msg).await;
     }
 }
 
@@ -740,7 +573,7 @@ impl kameo::message::Message<ToolBatchCompleted> for SessionPersistenceActor {
         msg: ToolBatchCompleted,
         _ctx: &mut kameo::message::Context<Self, Self::Reply>,
     ) {
-        self.dispatch_event(Event::ToolBatchCompleted(msg)).await;
+        self.on_tool_batch_completed(&msg).await;
     }
 }
 
@@ -751,7 +584,7 @@ impl kameo::message::Message<ToolExecutionStarted> for SessionPersistenceActor {
         msg: ToolExecutionStarted,
         _ctx: &mut kameo::message::Context<Self, Self::Reply>,
     ) {
-        self.dispatch_event(Event::ToolExecutionStarted(msg)).await;
+        self.on_tool_execution_started(&msg);
     }
 }
 
@@ -762,7 +595,7 @@ impl kameo::message::Message<ToolExecutionOutput> for SessionPersistenceActor {
         msg: ToolExecutionOutput,
         _ctx: &mut kameo::message::Context<Self, Self::Reply>,
     ) {
-        self.dispatch_event(Event::ToolExecutionOutput(msg)).await;
+        self.on_tool_execution_output(&msg);
     }
 }
 
@@ -773,7 +606,7 @@ impl kameo::message::Message<ModelsRefreshed> for SessionPersistenceActor {
         msg: ModelsRefreshed,
         _ctx: &mut kameo::message::Context<Self, Self::Reply>,
     ) {
-        self.dispatch_event(Event::ModelsRefreshed(msg)).await;
+        self.on_models_refreshed(&msg);
     }
 }
 
@@ -784,7 +617,7 @@ impl kameo::message::Message<SkillsLoaded> for SessionPersistenceActor {
         msg: SkillsLoaded,
         _ctx: &mut kameo::message::Context<Self, Self::Reply>,
     ) {
-        self.dispatch_event(Event::SkillsLoaded(msg)).await;
+        self.on_skills_loaded(&msg);
     }
 }
 
@@ -795,7 +628,7 @@ impl kameo::message::Message<EnvironmentLoaded> for SessionPersistenceActor {
         msg: EnvironmentLoaded,
         _ctx: &mut kameo::message::Context<Self, Self::Reply>,
     ) {
-        self.dispatch_event(Event::EnvironmentLoaded(msg)).await;
+        self.on_environment_loaded(&msg.config).await;
     }
 }
 
@@ -806,7 +639,7 @@ impl kameo::message::Message<ChatEntryPinChanged> for SessionPersistenceActor {
         msg: ChatEntryPinChanged,
         _ctx: &mut kameo::message::Context<Self, Self::Reply>,
     ) {
-        self.dispatch_event(Event::ChatEntryPinChanged(msg)).await;
+        self.save_active_session(&msg.session_id).await;
     }
 }
 
@@ -817,7 +650,7 @@ impl kameo::message::Message<TaskListUpdated> for SessionPersistenceActor {
         msg: TaskListUpdated,
         _ctx: &mut kameo::message::Context<Self, Self::Reply>,
     ) {
-        self.dispatch_event(Event::TaskListUpdated(msg)).await;
+        self.save_active_session(&msg.session_id).await;
     }
 }
 
@@ -828,7 +661,8 @@ impl kameo::message::Message<UserInteracted> for SessionPersistenceActor {
         msg: UserInteracted,
         _ctx: &mut kameo::message::Context<Self, Self::Reply>,
     ) {
-        self.dispatch_event(Event::UserInteracted(msg)).await;
+        // No-op: user interaction tracking is handled by other actors.
+        let _ = msg;
     }
 }
 
@@ -839,7 +673,7 @@ impl kameo::message::Message<ToolsRegistered> for SessionPersistenceActor {
         msg: ToolsRegistered,
         _ctx: &mut kameo::message::Context<Self, Self::Reply>,
     ) {
-        self.dispatch_event(Event::ToolsRegistered(msg)).await;
+        self.on_tools_registered(&msg);
     }
 }
 
@@ -850,7 +684,7 @@ impl kameo::message::Message<PromptTemplatesLoaded> for SessionPersistenceActor 
         msg: PromptTemplatesLoaded,
         _ctx: &mut kameo::message::Context<Self, Self::Reply>,
     ) {
-        self.dispatch_event(Event::PromptTemplatesLoaded(msg)).await;
+        self.on_prompt_templates_loaded(&msg);
     }
 }
 
@@ -861,159 +695,21 @@ impl kameo::message::Message<PersonasLoaded> for SessionPersistenceActor {
         msg: PersonasLoaded,
         _ctx: &mut kameo::message::Context<Self, Self::Reply>,
     ) {
-        self.dispatch_event(Event::PersonasLoaded(msg)).await;
+        self.on_personas_loaded(&msg);
     }
 }
 
-// ---------------------------------------------------------------------------
-// Old dispatch methods — kept for bridge compatibility during migration
-// ---------------------------------------------------------------------------
-
-impl SessionPersistenceActor {
-    /// Dispatches a bus event to the appropriate handler.
-    async fn handle_event(&mut self, event: &Event) {
-        match event {
-            Event::StreamToken(payload) => self.on_stream_token(payload),
-            Event::StreamCompleted(payload) => self.on_stream_completed(payload).await,
-            Event::ToolUseStarted(payload) => self.on_tool_use_started(payload),
-            Event::ToolCallReceived(payload) => self.on_tool_call_received(payload),
-            Event::ToolCallStreaming(payload) => self.on_tool_call_streaming(payload),
-            Event::ToolExecutionCompleted(payload) => {
-                self.on_tool_execution_completed(payload).await;
-            }
-            Event::ToolBatchCompleted(payload) => {
-                self.on_tool_batch_completed(payload).await;
-            }
-            Event::ToolExecutionStarted(payload) => {
-                self.on_tool_execution_started(payload);
-            }
-            Event::ToolExecutionOutput(payload) => {
-                self.on_tool_execution_output(payload);
-            }
-            Event::ModelsRefreshed(payload) => {
-                self.on_models_refreshed(payload);
-            }
-            Event::SkillsLoaded(payload) => {
-                self.on_skills_loaded(payload);
-            }
-            Event::EnvironmentLoaded(payload) => {
-                self.on_environment_loaded(&payload.config).await;
-            }
-            Event::ChatEntryPinChanged(payload) => {
-                self.save_active_session(&payload.session_id).await;
-            }
-            Event::TaskListUpdated(payload) => {
-                self.save_active_session(&payload.session_id).await;
-            }
-            Event::SessionLoadCompleted(payload) => {
-                self.handle_session_load_completed(payload).await;
-            }
-            Event::ToolsRegistered(payload) => {
-                self.on_tools_registered(payload);
-            }
-            Event::PromptTemplatesLoaded(payload) => {
-                self.on_prompt_templates_loaded(payload);
-            }
-            Event::PersonasLoaded(payload) => {
-                self.on_personas_loaded(payload);
-            }
-            _ => {}
-        }
-    }
-
-    /// Dispatches a command to the appropriate handler.
-    async fn handle_command(&mut self, cmd: &Command, ctx: &ActorContext) {
-        match cmd {
-            Command::SessionLoadRequested(payload) => self.on_load_requested(payload).await,
-            Command::SessionForkRequested(payload) => {
-                self.on_session_fork_requested(payload).await;
-            }
-            Command::LoadSessionPickerEntries(payload) => {
-                self.handle_load_session_picker_entries(payload).await;
-            }
-            Command::EnqueueUserMessage(payload) => {
-                self.handle_enqueue_user_message(payload).await;
-            }
-            Command::EnqueueResumeTurn(payload) => {
-                self.handle_enqueue_resume_turn(payload).await;
-            }
-            Command::SubmitSteeringMessage(payload) => {
-                self.handle_submit_steering_message(payload);
-            }
-            Command::SetChatInputText(payload) => self.handle_set_chat_input_text(payload),
-            Command::PushChatEntry(payload) => {
-                self.handle_push_chat_entry(payload).await;
-            }
-            Command::SendMessage(payload) => self.handle_send_message(payload).await,
-            Command::RunSessionSetup(payload) => {
-                self.handle_run_session_setup(payload).await;
-            }
-            Command::RunSessionTeardown(payload) => {
-                self.handle_run_session_teardown(payload).await;
-            }
-            Command::CloseSession(payload) => {
-                self.handle_close_session(payload).await;
-            }
-            Command::ArchiveSession(payload) => {
-                self.handle_archive_session(payload).await;
-            }
-            Command::PersistSession(payload) => {
-                self.handle_persist_session(payload).await;
-            }
-            Command::PinChatEntry(payload) => {
-                self.handle_pin_chat_entry(payload).await;
-            }
-            Command::UnpinChatEntry(payload) => {
-                self.handle_unpin_chat_entry(payload).await;
-            }
-            Command::LoadPersonaPickerEntries(payload) => {
-                self.handle_load_persona_picker_entries(payload).await;
-            }
-            Command::FinishSessionTeardown(payload) => {
-                self.handle_finish_session_teardown(payload).await;
-            }
-            Command::FinishSessionSetup(payload) => {
-                self.handle_finish_session_setup(payload).await;
-            }
-            Command::CancelLifecycleCommand(payload) => {
-                self.handle_cancel_lifecycle_command(payload);
-            }
-            Command::SetSessionCwd(payload) => {
-                self.handle_set_session_cwd(payload).await;
-            }
-            Command::MarkSessionInteracted(payload) => {
-                self.handle_mark_session_interacted(payload).await;
-            }
-            Command::SubmitHistoryMutations(payload) => {
-                self.handle_submit_history_mutations(payload).await;
-            }
-            // Commands NOT subscribed to - these should not arrive.
-            Command::SendToLlmProvider(..)
-            | Command::ExecuteTool(..)
-            | Command::ProceedWithShutdown(..)
-            | Command::CancelStream(..)
-            | Command::RefreshModels
-            | Command::RescanPromptTemplates(..)
-            | Command::ExecuteToolBatch(..)
-            | Command::RegisterTools(..)
-            | Command::ProviderSwitch(..)
-            | Command::LoadProviderPickerEntries(..)
-            | Command::CancelToolBatch(..)
-            | Command::ScanSkills(..)
-            | Command::ScanContextFiles(..)
-            | Command::RescanPersonas(..)
-            | Command::UpdatePreferences(..)
-            | Command::UpdateAppState(..)
-            | Command::LoadCompactionModelPickerEntries(..)
-            | Command::TriggerCompaction(..)
-            | Command::Dynamic(..)
-            | Command::ExecuteWebFetch(..)
-            | Command::AttachPlugin(..)
-            | Command::DetachPlugin(..)
-            | Command::TogglePlugin(..) => {}
-        }
+impl kameo::message::Message<SessionLoadCompleted> for SessionPersistenceActor {
+    type Reply = ();
+    async fn handle(
+        &mut self,
+        msg: SessionLoadCompleted,
+        _ctx: &mut kameo::message::Context<Self, Self::Reply>,
+    ) {
+        self.handle_session_load_completed(&msg).await;
     }
 }
+
 
 #[cfg(test)]
 mod dispatch_tests {
