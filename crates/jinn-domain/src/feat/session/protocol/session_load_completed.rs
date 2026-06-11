@@ -17,8 +17,7 @@
 use serde::{Deserialize, Serialize};
 
 use crate::feat::session::chat_session::ChatSessionState;
-use crate::protocol::{EventMsg, SessionId};
-
+use crate::{common::bus::BusMessage, protocol::{EventMsg, SessionId}};
 /// Emitted after a session has been loaded and inserted into state.
 ///
 /// Carries the fully loaded session. The session-actor's
@@ -39,3 +38,5 @@ impl SessionLoadCompleted {
         self.session.session_id()
     }
 }
+
+impl BusMessage for SessionLoadCompleted {}
