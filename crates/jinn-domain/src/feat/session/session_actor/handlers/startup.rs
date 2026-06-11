@@ -6,6 +6,8 @@
 
 use crate::common::actor::ActorContext;
 
+use crate::common::actor_deps::BusPublish;
+use crate::feat::preferences_actor::protocol::app_state_command::{AppStateUpdate, UpdateAppState};
 use crate::protocol::Command;
 
 use super::super::SessionPersistenceActor;
@@ -111,13 +113,10 @@ impl SessionPersistenceActor {
 
         tracing::info!("DIAG on_environment_loaded sending UpdateAppState");
         // Send UpdateAppState command so the pipeline handles persistence + state sync.
-        if let Err(e) = ctx.send_command(Command::UpdateAppState(crate::feat::preferences_actor::protocol::app_state_command::UpdateAppState {
-                updates: vec![
-                    crate::feat::preferences_actor::protocol::app_state_command::AppStateUpdate::SetLastModel(app_state.last_model.clone()),
-                ],
-            })) {
-            tracing::warn!(err = ?e, "session-actor failed to send UpdateAppState on startup");
-        }
+        self.publish(UpdateAppState {
+            updates: vec![AppStateUpdate::SetLastModel(app_state.last_model.clone())],
+        })
+        .await;
         tracing::info!("DIAG on_environment_loaded DONE");
     }
 }

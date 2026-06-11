@@ -6,7 +6,9 @@
 
 use crate::common::actor::ActorContext;
 
+use crate::common::actor_deps::BusPublish;
 use crate::feat::session::protocol::session_load_completed::SessionLoadCompleted;
+use crate::protocol::system::ActiveSessionChanged;
 use crate::protocol::{ChatEntry, Event};
 
 use super::super::SessionPersistenceActor;
@@ -89,13 +91,10 @@ impl SessionPersistenceActor {
         }
 
         // Notify other actors that the active session changed.
-        {
-            let _ = ctx.send_event(Event::ActiveSessionChanged(
-                crate::protocol::system::ActiveSessionChanged {
-                    session_id: session_id.clone(),
-                },
-            ));
-        }
+        self.publish(ActiveSessionChanged {
+            session_id: session_id.clone(),
+        })
+        .await;
 
         // Note: no scan commands are emitted here. The three scan actors
         // (skills, prompts, context-files) subscribe to the `SessionLoadCompleted`

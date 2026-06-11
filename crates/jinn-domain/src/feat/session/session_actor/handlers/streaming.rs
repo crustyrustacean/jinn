@@ -5,6 +5,8 @@
 //! and queue draining on `StreamCompleted`.
 
 use crate::common::actor::ActorContext;
+use crate::common::actor_deps::BusPublish;
+use crate::feat::context::protocol::event::ContextOverrideChanged;
 use crate::feat::context::strategy::token_estimator::TokenCounter;
 use crate::feat::provider::protocol::event::{StreamCompleted, StreamCompletedReason, StreamToken};
 use crate::protocol::{ChatEntry, Event};
@@ -197,14 +199,11 @@ impl SessionPersistenceActor {
         // Emit ContextOverrideChanged events for any entry whose override actually changed
         // (from dangling-tool-call sweep or pending worker mutations). Outside the write lock.
         for entry_id in all_changed {
-            if let Err(e) = ctx.send_event(Event::ContextOverrideChanged(
-                crate::feat::context::protocol::event::ContextOverrideChanged {
-                    session_id: event.session_id.clone(),
-                    entry_id,
-                },
-            )) {
-                tracing::warn!(err = ?e, "failed to emit ContextOverrideChanged");
-            }
+            self.publish(ContextOverrideChanged {
+                session_id: event.session_id.clone(),
+                entry_id,
+            })
+            .await;
         }
 
         super::super::helpers::emit_phase_changed(ctx, &event.session_id, old_phase, new_phase);
