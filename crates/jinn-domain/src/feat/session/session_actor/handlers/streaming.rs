@@ -66,7 +66,6 @@ impl SessionPersistenceActor {
     pub(in crate::feat::session::session_actor) async fn on_stream_completed(
         &self,
         event: &StreamCompleted,
-        ctx: &ActorContext,
     ) {
         let should_save = event.reason == StreamCompletedReason::Finished
             || event.reason == StreamCompletedReason::Error
@@ -206,8 +205,13 @@ impl SessionPersistenceActor {
             .await;
         }
 
-        super::super::helpers::emit_phase_changed(ctx, &event.session_id, old_phase, new_phase);
-        super::super::helpers::emit_history_appended(ctx, &event.session_id);
+        super::super::helpers::emit_phase_changed(
+            self.bus(),
+            &event.session_id,
+            old_phase,
+            new_phase,
+        );
+        super::super::helpers::emit_history_appended(self.bus(), &event.session_id).await;
 
         // Persist session after stream finishes.
         if should_save {
@@ -256,7 +260,7 @@ mod tests {
             provider_completion_tokens: None,
             thinking_content: None,
         };
-        actor.on_stream_completed(&event, &ctx).await;
+        actor.on_stream_completed(&event).await;
 
         // Then the session is no longer streaming.
         let state = actor.state.read();
@@ -290,7 +294,7 @@ mod tests {
             provider_completion_tokens: None,
             thinking_content: None,
         };
-        actor.on_stream_completed(&event, &ctx).await;
+        actor.on_stream_completed(&event).await;
 
         // Then the queue is empty and the message text is in the input buffer.
         let state = actor.state.read();
@@ -327,7 +331,7 @@ mod tests {
             provider_completion_tokens: None,
             thinking_content: None,
         };
-        actor.on_stream_completed(&event, &ctx).await;
+        actor.on_stream_completed(&event).await;
 
         // Then both messages are joined with newline in the input buffer.
         let state = actor.state.read();
@@ -362,7 +366,7 @@ mod tests {
             provider_completion_tokens: None,
             thinking_content: None,
         };
-        actor.on_stream_completed(&event, &ctx).await;
+        actor.on_stream_completed(&event).await;
 
         // Then the queue is empty and the message text is in the input buffer.
         let state = actor.state.read();
@@ -394,7 +398,7 @@ mod tests {
             provider_completion_tokens: None,
             thinking_content: None,
         };
-        actor.on_stream_completed(&event, &ctx).await;
+        actor.on_stream_completed(&event).await;
 
         // Then a HistoryAppended event was emitted.
         let events = sink.events();
@@ -430,7 +434,7 @@ mod tests {
             provider_completion_tokens: None,
             thinking_content: None,
         };
-        actor.on_stream_completed(&event, &ctx).await;
+        actor.on_stream_completed(&event).await;
 
         // Then a HistoryAppended event was emitted.
         let events = sink.events();
@@ -466,7 +470,7 @@ mod tests {
             provider_completion_tokens: None,
             thinking_content: None,
         };
-        actor.on_stream_completed(&event, &ctx).await;
+        actor.on_stream_completed(&event).await;
 
         // Then a HistoryAppended event was emitted.
         let events = sink.events();
@@ -504,7 +508,7 @@ mod tests {
             provider_completion_tokens: None,
             thinking_content: None,
         };
-        actor.on_stream_completed(&event, &ctx).await;
+        actor.on_stream_completed(&event).await;
 
         // Then the dangling ToolCall and empty Assistant are ForcedExclude.
         let state = actor.state.read();
@@ -656,7 +660,7 @@ mod tests {
             provider_completion_tokens: None,
             thinking_content: None,
         };
-        actor.on_stream_completed(&event, &ctx).await;
+        actor.on_stream_completed(&event).await;
 
         // Then the session was persisted (should_save = true for Finished).
         assert!(
@@ -689,7 +693,7 @@ mod tests {
             provider_completion_tokens: None,
             thinking_content: None,
         };
-        actor.on_stream_completed(&event, &ctx).await;
+        actor.on_stream_completed(&event).await;
 
         // Then the session was persisted (should_save = true for Error).
         assert!(
@@ -722,7 +726,7 @@ mod tests {
             provider_completion_tokens: None,
             thinking_content: None,
         };
-        actor.on_stream_completed(&event, &ctx).await;
+        actor.on_stream_completed(&event).await;
 
         // Then the session was persisted.
         assert!(
@@ -759,7 +763,7 @@ mod tests {
             provider_completion_tokens: None,
             thinking_content: None,
         };
-        actor.on_stream_completed(&event, &ctx).await;
+        actor.on_stream_completed(&event).await;
 
         // Then no tokens were counted (Error skips token counting).
         let state = actor.state.read();
@@ -806,7 +810,7 @@ mod tests {
             provider_completion_tokens: None,
             thinking_content: None,
         };
-        actor.on_stream_completed(&event, &ctx).await;
+        actor.on_stream_completed(&event).await;
 
         // Then the assistant entry is preserved (not removed from history).
         let state = actor.state.read();
@@ -853,7 +857,7 @@ mod tests {
             provider_completion_tokens: None,
             thinking_content: None,
         };
-        actor.on_stream_completed(&event, &ctx).await;
+        actor.on_stream_completed(&event).await;
 
         // Then the token record includes tokens from both text and tool call arguments.
         let state = actor.state.read();
@@ -899,7 +903,7 @@ mod tests {
             provider_completion_tokens: None,
             thinking_content: None,
         };
-        actor.on_stream_completed(&event, &ctx).await;
+        actor.on_stream_completed(&event).await;
 
         // Then the assistant entry is preserved in history (not removed).
         let state = actor.state.read();
@@ -945,7 +949,7 @@ mod tests {
             provider_completion_tokens: None,
             thinking_content: None,
         };
-        actor.on_stream_completed(&event, &ctx).await;
+        actor.on_stream_completed(&event).await;
 
         // Then no entries are ForcedExclude.
         let state = actor.state.read();
@@ -987,7 +991,7 @@ mod tests {
             provider_completion_tokens: None,
             thinking_content: None,
         };
-        actor.on_stream_completed(&event, &ctx).await;
+        actor.on_stream_completed(&event).await;
 
         // Then the session is in Idle (normal path).
         let state = actor.state.read();
@@ -1037,7 +1041,7 @@ mod tests {
             provider_completion_tokens: None,
             thinking_content: None,
         };
-        actor.on_stream_completed(&event, &ctx).await;
+        actor.on_stream_completed(&event).await;
 
         // Then the mutation was applied - the assistant entry is now ForcedExclude.
         let state = actor.state.read();
@@ -1099,7 +1103,7 @@ mod tests {
             provider_completion_tokens: None,
             thinking_content: None,
         };
-        actor.on_stream_completed(&event, &ctx).await;
+        actor.on_stream_completed(&event).await;
 
         // Then the mutation was applied.
         let state = actor.state.read();
@@ -1151,7 +1155,7 @@ mod tests {
             provider_completion_tokens: None,
             thinking_content: None,
         };
-        actor.on_stream_completed(&event, &ctx).await;
+        actor.on_stream_completed(&event).await;
 
         // Then the mutation was applied.
         let state = actor.state.read();
@@ -1207,7 +1211,7 @@ mod tests {
             provider_completion_tokens: None,
             thinking_content: None,
         };
-        actor.on_stream_completed(&event, &ctx).await;
+        actor.on_stream_completed(&event).await;
 
         // Then the mutation was NOT applied (ToolUse defers to tool batch).
         let state = actor.state.read();
@@ -1258,7 +1262,7 @@ mod tests {
             provider_completion_tokens: Some(5000),
             thinking_content: Some("very long thinking content here".to_owned()),
         };
-        actor.on_stream_completed(&event, &ctx).await;
+        actor.on_stream_completed(&event).await;
 
         // Then tokens_received equals the provider value (not local count).
         let state = actor.state.read();
@@ -1300,7 +1304,7 @@ mod tests {
             provider_completion_tokens: None,
             thinking_content: Some("a substantial amount of reasoning text".to_owned()),
         };
-        actor.on_stream_completed(&event, &ctx).await;
+        actor.on_stream_completed(&event).await;
 
         // Then tokens_received includes thinking tokens (> just "short").
         let state = actor.state.read();
@@ -1342,7 +1346,7 @@ mod tests {
             provider_completion_tokens: None,
             thinking_content: None,
         };
-        actor.on_stream_completed(&event, &ctx).await;
+        actor.on_stream_completed(&event).await;
 
         // Then tokens_received counts only the text (backward compat).
         let state = actor.state.read();
@@ -1387,7 +1391,7 @@ mod tests {
                 "extremely long thinking content that would produce many tokens".to_owned(),
             ),
         };
-        actor.on_stream_completed(&event, &ctx).await;
+        actor.on_stream_completed(&event).await;
 
         // Then the provider value wins (not local counting).
         let state = actor.state.read();
@@ -1429,7 +1433,7 @@ mod tests {
             provider_completion_tokens: Some(3),
             thinking_content: None,
         };
-        actor.on_stream_completed(&event, &ctx).await;
+        actor.on_stream_completed(&event).await;
 
         // Then tokens_received is the local count (much higher than 3),
         // because max(local, provider) is used.
@@ -1470,7 +1474,7 @@ mod tests {
             provider_completion_tokens: Some(50000),
             thinking_content: None,
         };
-        actor.on_stream_completed(&event, &ctx).await;
+        actor.on_stream_completed(&event).await;
 
         // Then tokens_received is 50000 (provider wins the max).
         let state = actor.state.read();
@@ -1513,7 +1517,7 @@ mod tests {
             provider_completion_tokens: None,
             thinking_content: None,
         };
-        actor.on_stream_completed(&event, &ctx).await;
+        actor.on_stream_completed(&event).await;
 
         // Then tokens_received equals the local tiktoken count.
         let counter =

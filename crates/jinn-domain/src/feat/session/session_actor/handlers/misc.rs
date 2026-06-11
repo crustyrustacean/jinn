@@ -99,7 +99,6 @@ impl SessionPersistenceActor {
     pub(in crate::feat::session::session_actor) async fn handle_submit_history_mutations(
         &self,
         payload: &SubmitHistoryMutations,
-        ctx: &ActorContext,
     ) {
         if payload.mutations.is_empty() {
             return;
@@ -388,7 +387,6 @@ mod tests {
                     },
                 ],
             },
-            &mut test_ctx(),
         );
 
         // Then mutations are applied immediately (session is idle).
@@ -417,7 +415,6 @@ mod tests {
                 session_id: session_id.clone(),
                 mutations: vec![],
             },
-            &mut test_ctx(),
         );
 
         // Then no batch was queued.
@@ -446,7 +443,6 @@ mod tests {
                     },
                 ],
             },
-            &mut test_ctx(),
         );
 
         // Then the session was created and mutations applied immediately.
@@ -494,7 +490,6 @@ mod tests {
                     },
                 ],
             },
-            &mut test_ctx(),
         );
         actor.handle_submit_history_mutations(
             &crate::feat::session::protocol::submit_history_mutations::SubmitHistoryMutations {
@@ -509,7 +504,6 @@ mod tests {
                     },
                 ],
             },
-            &mut test_ctx(),
         );
 
         // Then both mutations are applied and queue is empty.
@@ -561,7 +555,6 @@ mod tests {
                     },
                 ],
             },
-            &ctx,
         );
 
         // Then ContextOverrideChanged event was emitted.
@@ -619,7 +612,6 @@ mod tests {
                     },
                 ],
             },
-            &ctx,
         );
 
         // Then no ContextOverrideChanged event is emitted.

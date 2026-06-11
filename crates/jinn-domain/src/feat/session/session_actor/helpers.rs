@@ -1,11 +1,14 @@
+use crate::BusService;
 use crate::feat::session::phase_machine::PhaseKind;
+use crate::feat::session::protocol::history_appended::HistoryAppended;
+use crate::feat::session::protocol::session_phase_changed::SessionPhaseChanged;
 use crate::protocol::SessionId;
 
 /// Emit a `SessionPhaseChanged` event if the phase actually changed.
 ///
 /// Call this outside the write lock with the before/after phases captured inside.
-pub(in crate::feat::session::session_actor) fn emit_phase_changed(
-    ctx: &crate::common::actor::ActorContext,
+pub(in crate::feat::session::session_actor) async fn emit_phase_changed(
+    bus: &BusService,
     session_id: &SessionId,
     old_phase: impl Into<PhaseKind>,
     new_phase: impl Into<PhaseKind>,
@@ -13,32 +16,26 @@ pub(in crate::feat::session::session_actor) fn emit_phase_changed(
     let old_phase = old_phase.into();
     let new_phase = new_phase.into();
     if old_phase != new_phase {
-        if let Err(e) = ctx.sink().send_event(crate::protocol::app_msg::event::Event::SessionPhaseChanged(
-            crate::feat::session::protocol::session_phase_changed::SessionPhaseChanged {
-                session_id: session_id.clone(),
-                old_phase,
-                new_phase,
-            },
-        )) {
-            tracing::warn!(err = ?e, "session-actor failed to emit SessionPhaseChanged");
-        }
+        bus.publish(SessionPhaseChanged {
+            session_id: session_id.clone(),
+            old_phase,
+            new_phase,
+        })
+        .await;
     }
 }
 
 /// Emit a `HistoryAppended` event.
 ///
 /// Call this outside the write lock.
-pub(in crate::feat::session::session_actor) fn emit_history_appended(
-    ctx: &crate::common::actor::ActorContext,
+pub(in crate::feat::session::session_actor) async fn emit_history_appended(
+    bus: &BusService,
     session_id: &SessionId,
 ) {
-    if let Err(e) = ctx.sink().send_event(crate::protocol::app_msg::event::Event::HistoryAppended(
-        crate::feat::session::protocol::history_appended::HistoryAppended {
-            session_id: session_id.clone(),
-        },
-    )) {
-        tracing::warn!(err = ?e, "session-actor failed to emit HistoryAppended");
-    }
+    bus.publish(HistoryAppended {
+        session_id: session_id.clone(),
+    })
+    .await;
 }
 
 /// Creates a test context with a recording sink for observing emitted commands/events.

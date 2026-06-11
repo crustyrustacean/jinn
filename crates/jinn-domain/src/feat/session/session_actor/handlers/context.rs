@@ -28,7 +28,6 @@ impl SessionPersistenceActor {
     pub(in crate::feat::session::session_actor) async fn handle_pin_chat_entry(
         &self,
         payload: &PinChatEntry,
-        ctx: &ActorContext,
     ) {
         {
             let mut state = self.state.write();
@@ -45,7 +44,6 @@ impl SessionPersistenceActor {
     pub(in crate::feat::session::session_actor) async fn handle_unpin_chat_entry(
         &self,
         payload: &UnpinChatEntry,
-        ctx: &ActorContext,
     ) {
         {
             let mut state = self.state.write();
@@ -409,14 +407,11 @@ mod tests {
         let session_id = state.read().session.active_session_id().clone();
 
         // When pinning the entry.
-        actor.handle_pin_chat_entry(
-            &PinChatEntry {
-                session_id: session_id.clone(),
-                entry_id: entry_id.clone(),
-                position: PinPosition::Top,
-            },
-            &ctx,
-        );
+        actor.handle_pin_chat_entry(&PinChatEntry {
+            session_id: session_id.clone(),
+            entry_id: entry_id.clone(),
+            position: PinPosition::Top,
+        });
 
         // Then the entry is pinned.
         let guard = state.read();
@@ -460,13 +455,10 @@ mod tests {
         let session_id = state.read().session.active_session_id().clone();
 
         // When unpinning the entry.
-        actor.handle_unpin_chat_entry(
-            &UnpinChatEntry {
-                session_id: session_id.clone(),
-                entry_id: entry_id.clone(),
-            },
-            &ctx,
-        );
+        actor.handle_unpin_chat_entry(&UnpinChatEntry {
+            session_id: session_id.clone(),
+            entry_id: entry_id.clone(),
+        });
 
         // Then the entry is no longer pinned.
         let guard = state.read();

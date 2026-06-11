@@ -62,7 +62,6 @@ impl SessionPersistenceActor {
     pub(in crate::feat::session::session_actor) async fn on_tool_execution_completed(
         &self,
         event: &ToolExecutionCompleted,
-        ctx: &ActorContext,
     ) {
         {
             let mut state = self.state.write();
@@ -78,7 +77,7 @@ impl SessionPersistenceActor {
             );
         };
 
-        super::super::helpers::emit_history_appended(ctx, &event.session_id);
+        super::super::helpers::emit_history_appended(self.bus(), &event.session_id).await;
         self.save_active_session(&event.session_id).await;
     }
 
@@ -104,11 +103,7 @@ impl SessionPersistenceActor {
 
     /// Drains pending history mutations and steering buffer entries, emitting
     /// ContextOverrideChanged events for any modified entries.
-    async fn apply_pending_mutations_and_steering(
-        &self,
-        session_id: &crate::protocol::SessionId,
-        ctx: &ActorContext,
-    ) {
+    async fn apply_pending_mutations_and_steering(&self, session_id: &crate::protocol::SessionId) {
         // Drain and apply pending history mutations.
         let changed = {
             let mut state = self.state.write();
@@ -155,7 +150,6 @@ impl SessionPersistenceActor {
         &self,
         session_id: &crate::protocol::SessionId,
         assembly_overrides: Option<&crate::feat::context::assemble::AssemblyOverrides>,
-        ctx: &ActorContext,
     ) {
         let assembled = {
             let guard = self.state.read();
@@ -177,7 +171,7 @@ impl SessionPersistenceActor {
 
             (old_phase, session.phase())
         };
-        super::super::helpers::emit_phase_changed(ctx, session_id, old_phase, new_phase);
+        super::super::helpers::emit_phase_changed(self.bus(), session_id, old_phase, new_phase);
 
         let provider_id = {
             let state = self.state.read();
@@ -212,7 +206,6 @@ impl SessionPersistenceActor {
     pub(in crate::feat::session::session_actor) async fn on_tool_batch_completed(
         &self,
         event: &ToolBatchCompleted,
-        ctx: &ActorContext,
     ) {
         tracing::trace!(
             session_id = ?event.session_id,
@@ -238,11 +231,16 @@ impl SessionPersistenceActor {
                 session.finish_sending_via_machine();
                 (old_phase, session.phase())
             };
-            super::super::helpers::emit_phase_changed(ctx, &event.session_id, old_phase, new_phase);
+            super::super::helpers::emit_phase_changed(
+                self.bus(),
+                &event.session_id,
+                old_phase,
+                new_phase,
+            );
             return;
         }
 
-        self.apply_pending_mutations_and_steering(&event.session_id, ctx)
+        self.apply_pending_mutations_and_steering(&event.session_id)
             .await;
 
         let assembly_overrides = {
@@ -254,7 +252,7 @@ impl SessionPersistenceActor {
                 .flatten()
         };
 
-        self.assemble_and_send_continuation(&event.session_id, assembly_overrides.as_ref(), ctx)
+        self.assemble_and_send_continuation(&event.session_id, assembly_overrides.as_ref())
             .await;
     }
 }
@@ -308,7 +306,7 @@ mod tests {
                 pin_position: None,
             }],
         };
-        actor.on_tool_batch_completed(&event, &ctx);
+        actor.on_tool_batch_completed(&event);
 
         // Then a SendToLlmProvider command was emitted.
         let commands = sink.commands();
@@ -340,7 +338,7 @@ mod tests {
             session_id: session_id.clone(),
             results: vec![],
         };
-        actor.on_tool_batch_completed(&event, &ctx);
+        actor.on_tool_batch_completed(&event);
 
         // Then the session transitions to streaming (assemble + send are now synchronous).
         let state = actor.state.read();
@@ -380,7 +378,7 @@ mod tests {
             provider_completion_tokens: None,
             thinking_content: None,
         };
-        actor.on_stream_completed(&event, &ctx).await;
+        actor.on_stream_completed(&event).await;
 
         // Then the token record includes tokens from both text and tool call arguments.
         let state = actor.state.read();
@@ -429,7 +427,7 @@ mod tests {
                 pin_position: None,
             },
         };
-        actor.on_tool_execution_completed(&event, &ctx).await;
+        actor.on_tool_execution_completed(&event).await;
 
         // Then a HistoryAppended event was emitted.
         let events = sink.events();
@@ -470,7 +468,7 @@ mod tests {
                 pin_position: None,
             }],
         };
-        actor.on_tool_batch_completed(&event, &ctx);
+        actor.on_tool_batch_completed(&event);
 
         // Then the session transitions to Idle.
         let state = actor.state.read();
@@ -532,7 +530,7 @@ mod tests {
                 pin_position: None,
             }],
         };
-        actor.on_tool_batch_completed(&event, &ctx);
+        actor.on_tool_batch_completed(&event);
 
         // Then SendToLlmProvider IS emitted (normal behavior).
         let commands = sink.commands();
@@ -775,7 +773,7 @@ mod tests {
                 pin_position: None,
             }],
         };
-        actor.on_tool_batch_completed(&event, &ctx);
+        actor.on_tool_batch_completed(&event);
 
         // Then the mutation was applied - the assistant entry is now ForcedExclude.
         let state = actor.state.read();
@@ -833,7 +831,7 @@ mod tests {
                 pin_position: None,
             }],
         };
-        actor.on_tool_batch_completed(&event, &ctx);
+        actor.on_tool_batch_completed(&event);
 
         // Then SendToLlmProvider was emitted (no side effects from empty queue).
         let commands = sink.commands();
@@ -894,7 +892,7 @@ mod tests {
                 pin_position: None,
             }],
         };
-        actor.on_tool_batch_completed(&event, &ctx);
+        actor.on_tool_batch_completed(&event);
 
         // Then the drained steering entry's index is greater than both tool_result indices.
         let state = actor.state.read();

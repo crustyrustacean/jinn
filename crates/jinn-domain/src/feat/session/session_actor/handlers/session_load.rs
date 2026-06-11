@@ -23,7 +23,6 @@ impl SessionPersistenceActor {
     pub(in crate::feat::session::session_actor) async fn handle_session_load_completed(
         &self,
         payload: &SessionLoadCompleted,
-        ctx: &ActorContext,
     ) {
         let session_id = payload.session.session_id().clone();
         let original_cwd;
@@ -139,7 +138,6 @@ impl SessionPersistenceActor {
     pub(in crate::feat::session::session_actor) async fn on_session_fork_requested(
         &self,
         payload: &SessionForkRequested,
-        ctx: &ActorContext,
     ) {
         let store = &self.services.session_store;
 
@@ -162,7 +160,7 @@ impl SessionPersistenceActor {
         match store.load_session(&new_id).await {
             Ok(Some(session)) => {
                 // Insert session and emit SessionLoadCompleted for external subscribers.
-                self.load_and_insert(session, ctx);
+                self.load_and_insert(session);
 
                 // Run the user-facing restore flow.
                 // Re-read from state since load_and_insert consumed the session.
@@ -174,7 +172,7 @@ impl SessionPersistenceActor {
                     .expect("just inserted")
                     .clone();
                 let payload = SessionLoadCompleted { session };
-                self.handle_session_load_completed(&payload, ctx).await;
+                self.handle_session_load_completed(&payload).await;
             }
             Ok(None) => {
                 tracing::warn!("forked session not found after creation");
@@ -228,7 +226,7 @@ mod tests {
         let payload = SessionLoadCompleted { session };
 
         // When handling SessionLoadCompleted.
-        actor.handle_session_load_completed(&payload, &ctx).await;
+        actor.handle_session_load_completed(&payload).await;
 
         // Then context_size is NOT set by the session actor (ContextSizeActor handles this).
         let state = actor.state.read();
@@ -251,7 +249,7 @@ mod tests {
         let payload = SessionLoadCompleted { session };
 
         // When handling SessionLoadCompleted.
-        actor.handle_session_load_completed(&payload, &ctx).await;
+        actor.handle_session_load_completed(&payload).await;
 
         // Then the session has been marked as interacted (it came from disk).
         let state = actor.state.read();
@@ -278,7 +276,7 @@ mod tests {
         let payload = SessionLoadCompleted { session };
 
         // When handling SessionLoadCompleted.
-        actor.handle_session_load_completed(&payload, &ctx).await;
+        actor.handle_session_load_completed(&payload).await;
 
         // Then no scan commands are emitted. The three scan actors
         // (skills, prompts, context-files) subscribe to `SessionLoadCompleted`
