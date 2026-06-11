@@ -225,7 +225,7 @@ mod tests {
     )]
     use super::*;
     use crate::common::app_state::AppState;
-    use crate::feat::session::chat_entry::{ChatEntry, ContextOverride};
+    use crate::feat::session::chat_entry::{ChatEntry, ChatEntryKind, ContextOverride};
 
     #[rstest::rstest]
     fn history_appended_computes_count_for_new_entry() {
@@ -449,5 +449,63 @@ mod tests {
         let cache = state_guard.frontend.caches.entry_token_cache.read();
         let count = cache.get(&entry_id);
         assert_eq!(count, Some(2));
+    }
+
+    #[rstest::rstest]
+    fn large_tool_call_arguments_counted_correctly() {
+        // Given a tool call entry with large arguments (simulating write tool).
+        let large_content = "fn main() { println!(\"hello\"); }\n".repeat(200);
+        let arguments = format!(
+            r#"{{\"path\":\"test.rs\",\"content\":\"{}\"}}"#,
+            large_content
+        );
+        let counter = TiktokenCounter::o200k_base();
+        let direct_count = counter.count(&arguments);
+
+        let mut app_state = AppState::default();
+        app_state
+            .active_session_mut()
+            .push_entry(ChatEntry::tool_call("call_1", "write", &arguments));
+
+        // Verify the entry actually has the full arguments.
+        let entry = &app_state.active_session().history()[0];
+        if let ChatEntryKind::ToolCall {
+            name: _,
+            arguments: ref args,
+            ..
+        } = entry.kind
+        {
+            assert_eq!(args.len(), arguments.len());
+        }
+
+        let state = State::new(app_state);
+        let actor = TokenCountActor {
+            state: state.clone(),
+            counter: TiktokenCounter::o200k_base(),
+        };
+
+        // When handling HistoryAppended.
+        let session_id = state.read().session.active_session_id().clone();
+        actor.handle_history_appended(&session_id);
+
+        // Then the cached count should be close to the direct count.
+        let entry_id = state.read().active_session().history()[0].id.clone();
+        let state_guard = state.read();
+        let cache = state_guard.frontend.caches.entry_token_cache.read();
+        let count = cache.get(&entry_id).expect("entry should be cached");
+        let tool_name_tokens = counter.count("write");
+        let expected_min = direct_count + tool_name_tokens;
+        assert!(
+            count as usize > expected_min / 2,
+            "expected count > {} (half of {}), got {}",
+            expected_min / 2,
+            expected_min,
+            count
+        );
+        assert!(
+            count as usize > 500,
+            "expected count > 500 for large tool call, got {}",
+            count
+        );
     }
 }
