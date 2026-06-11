@@ -83,21 +83,9 @@ pub fn handle_open_picker(state: &mut AppState, kind: PickerKind) -> IntentResul
     }
 
     match kind {
-        PickerKind::Provider => {
-            IntentResult::with_commands(vec![Command::LoadProviderPickerEntries(
-                LoadProviderPickerEntries,
-            )])
-        }
-        PickerKind::Session => {
-            IntentResult::with_commands(vec![Command::LoadSessionPickerEntries(
-                LoadSessionPickerEntries,
-            )])
-        }
-        PickerKind::Persona => {
-            IntentResult::with_commands(vec![Command::LoadPersonaPickerEntries(
-                LoadPersonaPickerEntries,
-            )])
-        }
+        PickerKind::Provider => IntentResult::with_message(LoadProviderPickerEntries),
+        PickerKind::Session => IntentResult::with_message(LoadSessionPickerEntries),
+        PickerKind::Persona => IntentResult::with_message(LoadPersonaPickerEntries),
         PickerKind::Theme | PickerKind::Tool | PickerKind::Skill | PickerKind::TaskList => {
             IntentResult::empty()
         }
@@ -112,11 +100,9 @@ pub fn handle_open_picker(state: &mut AppState, kind: PickerKind) -> IntentResul
             IntentResult::empty()
         }
 
-        PickerKind::CompactionModel => {
-            IntentResult::with_commands(vec![Command::LoadCompactionModelPickerEntries(
-                crate::feat::provider::protocol::command::LoadCompactionModelPickerEntries,
-            )])
-        }
+        PickerKind::CompactionModel => IntentResult::with_message(
+            crate::feat::provider::protocol::command::LoadCompactionModelPickerEntries,
+        ),
     }
 }
 
@@ -348,15 +334,14 @@ fn confirm_provider(state: &mut AppState) -> IntentResult {
     let session_id = state.session.active_session_id().clone();
 
     state.frontend.scope_stack.pop();
-    IntentResult::with_commands(vec![
-        Command::ProviderSwitch(ProviderSwitch {
+    IntentResult::empty()
+        .message(ProviderSwitch {
             session_id,
             provider_id: provider_id.clone(),
-        }),
-        Command::UpdateAppState(UpdateAppState {
+        })
+        .message(UpdateAppState {
             updates: vec![AppStateUpdate::SetLastModel(Some(provider_id))],
-        }),
-    ])
+        })
 }
 
 /// Confirms the selected persona and sets it as active.
@@ -384,9 +369,9 @@ fn confirm_persona(state: &mut AppState) -> IntentResult {
 
     state.frontend.scope_stack.pop();
 
-    IntentResult::with_commands(vec![Command::UpdateAppState(UpdateAppState {
+    IntentResult::with_message(UpdateAppState {
         updates: vec![AppStateUpdate::SetPersona(Some(persona_name))],
-    })])
+    })
 }
 
 /// Confirms the selected theme and persists it to preferences.
@@ -400,9 +385,9 @@ fn confirm_theme(state: &mut AppState) -> IntentResult {
     *state.frontend.theme_preview_original_mut() = None;
     state.frontend.scope_stack.pop();
 
-    IntentResult::with_commands(vec![Command::UpdateAppState(UpdateAppState {
+    IntentResult::with_message(UpdateAppState {
         updates: vec![AppStateUpdate::SetTheme(Some(theme_name))],
-    })])
+    })
 }
 
 /// Confirms the selected session and dispatches a switch command.
@@ -415,9 +400,7 @@ fn confirm_session(state: &mut AppState) -> IntentResult {
     state.session.begin_load(session_id.clone());
     state.frontend.scope_stack.pop();
 
-    IntentResult::with_commands(vec![Command::SessionLoadRequested(SessionLoadRequested {
-        session_id,
-    })])
+    IntentResult::with_message(SessionLoadRequested { session_id })
 }
 
 /// Populates the lifecycle picker entries from user preferences.
@@ -532,12 +515,12 @@ fn confirm_plugin(state: &mut AppState) -> IntentResult {
     state.frontend.scope_stack.pop();
 
     let session_id = state.session.active_session_id().clone();
-    IntentResult::with_commands(vec![Command::AttachPlugin(
+    IntentResult::with_message(
         crate::feat::plugin_dispatch::protocol::command::AttachPlugin {
             session_id,
             plugin_name: script.clone(),
         },
-    )])
+    )
 }
 
 /// Marks each entry as enabled/disabled based on the session's `disabled_tools` set.
@@ -702,15 +685,14 @@ pub fn handle_refresh_skills(state: &mut AppState) -> IntentResult {
 
     let session_id = state.active_session().session_id().clone();
 
-    IntentResult::with_commands(vec![
-        Command::ScanSkills(ScanSkills {
+    IntentResult::empty()
+        .message(ScanSkills {
             session_id: session_id.clone(),
-        }),
-        Command::RescanPromptTemplates(RescanPromptTemplates {
+        })
+        .message(RescanPromptTemplates {
             session_id: session_id.clone(),
-        }),
-        Command::ScanContextFiles(ScanContextFiles { session_id }),
-    ])
+        })
+        .message(ScanContextFiles { session_id })
 }
 
 #[cfg(test)]

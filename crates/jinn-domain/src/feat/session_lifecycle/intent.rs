@@ -127,9 +127,9 @@ pub fn handle_session_lifecycle_setup(
         .push(crate::common::app_state::FocusScope::Input);
 
     // Build the session-created event.
-    let created_event = Event::SessionCreated(SessionCreated {
+    let created_event = SessionCreated {
         session_id: new_id.clone(),
-    });
+    };
 
     // If the lifecycle has a setup command, emit it for async execution.
     if let Some(ref setup_cmd) = setup_command {
@@ -147,31 +147,28 @@ pub fn handle_session_lifecycle_setup(
             }
         };
 
-        return IntentResult::with_commands_and_events(
-            vec![
-                Command::PersistSession(PersistSession {
-                    session_id: new_id.clone(),
-                }),
-                Command::PushChatEntry(PushChatEntry {
-                    session_id: new_id.clone(),
-                    entry: crate::feat::session::session_actor::setup_running_msg(),
-                }),
-                Command::RunSessionSetup(RunSessionSetup {
-                    session_id: new_id,
-                    command: rendered,
-                    args: args.to_vec(),
-                    lifecycle_command: Some(setup_cmd.clone()),
-                }),
-            ],
-            vec![created_event],
-        );
+        return IntentResult::empty()
+            .message(PersistSession {
+                session_id: new_id.clone(),
+            })
+            .message(PushChatEntry {
+                session_id: new_id.clone(),
+                entry: crate::feat::session::session_actor::setup_running_msg(),
+            })
+            .message(RunSessionSetup {
+                session_id: new_id,
+                command: rendered,
+                args: args.to_vec(),
+                lifecycle_command: Some(setup_cmd.clone()),
+            })
+            .message(created_event);
     }
 
     // No setup command - use default CWD immediately.
     let default_cwd = state.session.default_cwd().clone();
     state.session_mut(&new_id).set_cwd(default_cwd);
 
-    IntentResult::with_commands_and_events(vec![], vec![created_event])
+    IntentResult::with_message(created_event)
 }
 
 /// Handle `Intent::SessionClose`.
@@ -309,18 +306,17 @@ pub fn handle_session_rerun_setup(state: &mut AppState) -> IntentResult {
         crate::feat::session_lifecycle::builtin::LifecycleCommand::Builtin(id) => id.to_string(),
     };
 
-    IntentResult::with_commands(vec![
-        Command::PushChatEntry(PushChatEntry {
+    IntentResult::empty()
+        .message(PushChatEntry {
             session_id: target_id.clone(),
             entry: setup_running_msg(),
-        }),
-        Command::RunSessionSetup(RunSessionSetup {
+        })
+        .message(RunSessionSetup {
             session_id: target_id,
             command: rendered,
             args: lifecycle_args,
             lifecycle_command: Some(setup_cmd.clone()),
-        }),
-    ])
+        })
 }
 
 /// Look up a lifecycle by name in the user preferences.
@@ -338,9 +334,9 @@ fn find_lifecycle<'a>(state: &'a AppState, name: &str) -> Option<&'a SessionLife
 /// `SessionClosed` for the sidebar actor to clamp the cursor.
 fn close_session_and_switch(closing_id: &SessionId) -> IntentResult {
     use crate::feat::session::protocol::close_session::CloseSession;
-    IntentResult::with_commands(vec![Command::CloseSession(CloseSession {
+    IntentResult::with_message(CloseSession {
         session_id: closing_id.clone(),
-    })])
+    })
 }
 
 #[cfg(test)]

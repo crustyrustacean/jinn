@@ -54,9 +54,7 @@ pub fn handle_session_continue(state: &mut AppState) -> IntentResult {
 
     let session_id = entry.id.clone();
 
-    IntentResult::with_commands(vec![Command::EnqueueResumeTurn(EnqueueResumeTurn {
-        session_id,
-    })])
+    IntentResult::with_message(EnqueueResumeTurn { session_id })
 }
 
 #[cfg(test)]

@@ -1,7 +1,7 @@
 //! Provider commands.
 
-use serde::{Deserialize, Serialize};
 use crate::common::bus::BusMessage;
+use serde::{Deserialize, Serialize};
 
 use crate::feat::provider::llm_message::LlmMessage;
 use crate::feat::tools_actor::tool_types::ToolDefinition;
@@ -19,6 +19,8 @@ pub struct ProviderSwitch {
     /// The provider to switch to.
     pub provider_id: String,
 }
+
+impl BusMessage for ProviderSwitch {}
 
 /// Send a message to the AI provider.
 #[derive(Debug, Clone, Serialize, Deserialize, CommandMsg)]
@@ -90,11 +92,15 @@ impl BusMessage for RescanPromptTemplates {}
 #[cmd("provider")]
 pub struct LoadProviderPickerEntries;
 
+impl BusMessage for LoadProviderPickerEntries {}
+
 /// The provider actor receives this, loads compaction model entries (provider
 /// entries + a "session default" sentinel) and writes them into `AppState`.
 #[derive(Debug, Clone, Serialize, Deserialize, CommandMsg)]
 #[cmd("provider")]
 pub struct LoadCompactionModelPickerEntries;
+
+impl BusMessage for LoadCompactionModelPickerEntries {}
 
 #[cfg(test)]
 mod tests {

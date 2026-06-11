@@ -2,6 +2,7 @@
 
 use serde::{Deserialize, Serialize};
 
+use crate::BusMessage;
 use crate::protocol::EventMsg;
 use crate::protocol::SessionId;
 
@@ -43,6 +44,8 @@ pub struct ContextOverrideChanged {
     /// The entry whose context override changed.
     pub entry_id: crate::protocol::ChatEntryId,
 }
+
+impl BusMessage for ContextOverrideChanged {}
 
 /// Emitted when project context files (AGENTS.md/CLAUDE.md) have been scanned
 /// and loaded for a session.

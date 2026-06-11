@@ -8,6 +8,7 @@
 
 use serde::{Deserialize, Serialize};
 
+use crate::BusMessage;
 use crate::protocol::CommandMsg;
 use crate::protocol::SessionId;
 
@@ -20,3 +21,5 @@ pub struct SessionLoadRequested {
     /// The session to load.
     pub session_id: SessionId,
 }
+
+impl BusMessage for SessionLoadRequested {}

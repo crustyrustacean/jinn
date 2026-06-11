@@ -4,7 +4,10 @@ use std::path::PathBuf;
 
 use serde::{Deserialize, Serialize};
 
-use crate::protocol::{CommandMsg, SessionId};
+use crate::{
+    BusMessage,
+    protocol::{CommandMsg, SessionId},
+};
 
 /// Request to run a lifecycle setup command asynchronously.
 ///
@@ -26,6 +29,8 @@ pub struct RunSessionSetup {
     pub lifecycle_command: Option<crate::feat::session_lifecycle::builtin::LifecycleCommand>,
 }
 
+impl BusMessage for RunSessionSetup {}
+
 /// Request to run a lifecycle teardown command asynchronously.
 ///
 /// Sent by the sidebar teardown handler when the user triggers teardown-only
@@ -42,6 +47,8 @@ pub struct RunSessionTeardown {
     /// Positional arguments (replayed from setup).
     pub args: Vec<String>,
 }
+
+impl BusMessage for RunSessionTeardown {}
 
 /// Request to persist a session to SQLite immediately.
 ///

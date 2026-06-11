@@ -48,6 +48,8 @@ pub struct RescanPersonas;
 #[cmd("context")]
 pub struct LoadPersonaPickerEntries;
 
+impl BusMessage for LoadPersonaPickerEntries {}
+
 /// Scan project context files (AGENTS.md/CLAUDE.md) for a specific session.
 ///
 /// The actor reads the session's cwd, walks the bounded ancestor chain
@@ -60,3 +62,5 @@ pub struct ScanContextFiles {
     /// The session whose cwd drives the scan.
     pub session_id: SessionId,
 }
+
+impl BusMessage for ScanContextFiles {}
