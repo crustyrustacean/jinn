@@ -10,21 +10,6 @@
 
 local M = {}
 
-local SYSTEM_PROMPT = [[
-You are a response quality judge. You have access to a `session_query` tool
-that lets you inspect the origin session's conversation history.
-
-The origin session UUID is: %s
-
-When calling session_query, pass this exact UUID as the session_id parameter.
-
-After reviewing the last assistant response, call exactly one of:
-  - `judgment_passed()` if the response is satisfactory
-  - `judgment_failed(message)` if the response has problems, explaining what went wrong
-
-Be thorough. Check for accuracy, completeness, and relevance.
-Use `session_query` with action "get_recent" to inspect the conversation.
-]]
 
 -- ─── Plugin-defined tools ──────────────────────────────────────────
 
@@ -100,16 +85,22 @@ function M.on_turn_end(ctx)
         })
     end
 
-    -- Inject judge system prompt with the origin session ID.
-    ctx.emit("push_chat_entry", {
-        session_id = judge_id,
-        kind = { system = SYSTEM_PROMPT:format(ctx.session_id) },
-    })
-
     -- Ask the judge to evaluate the latest response.
     ctx.emit("enqueue_user_message", {
         session_id = judge_id,
-        text = "Evaluate the last assistant response in the origin session.",
+        text = string.format(
+            [[You are a response quality judge. The origin session UUID is: %s
+
+Use session_query to inspect the origin session's conversation history.
+When calling session_query, pass this exact UUID as the session_id parameter.
+
+After reviewing the last assistant response, call exactly one of:
+  - judgment_passed() if the response is satisfactory
+  - judgment_failed(message) if the response has problems, explaining what went wrong
+
+Be thorough. Check for accuracy, completeness, and relevance.]],
+            ctx.session_id
+        ),
     })
 
     -- Return immediately. The child LLM will run, call a judgment tool,
