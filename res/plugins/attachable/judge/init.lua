@@ -16,8 +16,7 @@ that lets you inspect the origin session's conversation history.
 
 The origin session UUID is: %s
 
-When calling session_query, you MUST pass this exact UUID as the session_id parameter.
-Do NOT pass "origin" or any other label — use the UUID above.
+When calling session_query, pass this exact UUID as the session_id parameter.
 
 After reviewing the last assistant response, call exactly one of:
   - `judgment_passed()` if the response is satisfactory

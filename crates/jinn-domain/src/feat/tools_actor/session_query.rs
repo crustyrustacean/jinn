@@ -15,7 +15,7 @@ use super::BoxedToolFuture;
 pub fn definition() -> ToolDefinition {
     ToolDefinition {
         name: "session_query".to_owned(),
-        description: "Query another session's chat history. Use this to inspect conversations in other sessions.".to_owned(),
+        description: "Query another session's chat history. Use this to inspect conversations in other sessions.\n\nExamples:\n  Get the last 5 messages from a session:\n    session_query({\"session_id\": \"s-0196a3b2-4f8c-7d2e-8a1b-5c3d2e1f0a0b\", \"action\": \"get_recent\", \"count\": 5})\n\n  Search for text in a session:\n    session_query({\"session_id\": \"s-0196a3b2-4f8c-7d2e-8a1b-5c3d2e1f0a0b\", \"action\": \"search\", \"query\": \"hello world\"})".to_owned(),
         prompt_snippet: None,
         prompt_guidelines: vec![],
         parameters: serde_json::json!({
@@ -23,7 +23,7 @@ pub fn definition() -> ToolDefinition {
             "properties": {
                 "session_id": {
                     "type": "string",
-                    "description": "The UUID of the session to query. Pass the exact UUID string, not a label like 'origin'."
+                    "description": "Session ID to query (e.g. 's-0196a3b2-4f8c-7d2e-8a1b-5c3d2e1f0a0b')."
                 },
                 "action": {
                     "type": "string",
