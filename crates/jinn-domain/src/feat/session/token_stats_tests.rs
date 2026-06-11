@@ -30,6 +30,7 @@ fn from_ledger_returns_defaults_for_empty() {
 fn from_ledger_sums_single_record() {
     // Given a ledger with one record.
     let records = vec![TokenRecord {
+        model_used: None,
         timestamp: jiff::Timestamp::now(),
         tokens_sent: 100,
         tokens_received: 50,
@@ -50,18 +51,21 @@ fn from_ledger_sums_multiple_records() {
     // Given a ledger with three records.
     let records = vec![
         TokenRecord {
+            model_used: None,
             timestamp: jiff::Timestamp::now(),
             tokens_sent: 100,
             tokens_received: 50,
             cost: None,
         },
         TokenRecord {
+            model_used: None,
             timestamp: jiff::Timestamp::now(),
             tokens_sent: 200,
             tokens_received: 75,
             cost: None,
         },
         TokenRecord {
+            model_used: None,
             timestamp: jiff::Timestamp::now(),
             tokens_sent: 150,
             tokens_received: 60,
@@ -126,6 +130,7 @@ fn aggregate_returns_own_stats_for_session_with_no_children() {
     let session_id = SessionId::new();
     let mut session = ChatSessionState::new();
     session.push_token_record(TokenRecord {
+        model_used: None,
         timestamp: jiff::Timestamp::now(),
         tokens_sent: 500,
         tokens_received: 250,
@@ -152,6 +157,7 @@ fn aggregate_includes_child_session_stats() {
 
     let mut parent = ChatSessionState::new();
     parent.push_token_record(TokenRecord {
+        model_used: None,
         timestamp: jiff::Timestamp::now(),
         tokens_sent: 100,
         tokens_received: 50,
@@ -161,6 +167,7 @@ fn aggregate_includes_child_session_stats() {
     let mut child = ChatSessionState::new();
     child.set_parent_session(parent_id.clone());
     child.push_token_record(TokenRecord {
+        model_used: None,
         timestamp: jiff::Timestamp::now(),
         tokens_sent: 200,
         tokens_received: 100,
@@ -194,6 +201,7 @@ fn aggregate_handles_nested_children() {
 
     let mut grandparent = ChatSessionState::new();
     grandparent.push_token_record(TokenRecord {
+        model_used: None,
         timestamp: jiff::Timestamp::now(),
         tokens_sent: 1000,
         tokens_received: 500,
@@ -203,6 +211,7 @@ fn aggregate_handles_nested_children() {
     let mut parent = ChatSessionState::new();
     parent.set_parent_session(grandparent_id.clone());
     parent.push_token_record(TokenRecord {
+        model_used: None,
         timestamp: jiff::Timestamp::now(),
         tokens_sent: 500,
         tokens_received: 250,
@@ -212,6 +221,7 @@ fn aggregate_handles_nested_children() {
     let mut child = ChatSessionState::new();
     child.set_parent_session(parent_id.clone());
     child.push_token_record(TokenRecord {
+        model_used: None,
         timestamp: jiff::Timestamp::now(),
         tokens_sent: 200,
         tokens_received: 100,
@@ -234,3 +244,40 @@ fn aggregate_handles_nested_children() {
 }
 
 // --- TokenRecord serde ---
+
+#[rstest::rstest]
+fn token_record_with_model_used_round_trips_through_serde() {
+    // Given a record with model_used set.
+    let record = TokenRecord {
+        model_used: Some("ollama/llama3".to_owned()),
+        timestamp: jiff::Timestamp::now(),
+        tokens_sent: 100,
+        tokens_received: 50,
+        cost: Some(0.003),
+    };
+
+    // When round-tripping through JSON.
+    let json = serde_json::to_string(&record).expect("serialize");
+    let deserialized: TokenRecord = serde_json::from_str(&json).expect("deserialize");
+
+    // Then model_used is preserved.
+    assert_eq!(deserialized.model_used.as_deref(), Some("ollama/llama3"));
+}
+
+#[rstest::rstest]
+fn token_record_without_model_used_deserializes_as_none() {
+    // Given a JSON record without model_used (legacy format).
+    let json = serde_json::json!({
+        "timestamp": "2024-01-01T00:00:00Z",
+        "tokens_sent": 100,
+        "tokens_received": 50,
+        "cost": null
+    })
+    .to_string();
+
+    // When deserializing.
+    let record: TokenRecord = serde_json::from_str(&json).expect("deserialize");
+
+    // Then model_used is None (backward compat).
+    assert!(record.model_used.is_none());
+}

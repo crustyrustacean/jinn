@@ -27,6 +27,7 @@ use crate::feat::provider_infra::{FakeLlmServiceFactory, LlmServiceFactoryServic
 use crate::feat::session::chat_entry::{ChatEntry, ChatEntryId, ChatEntryKind, ContextOverride};
 use crate::feat::session::chat_session::ChatSessionState;
 use crate::feat::session::history_mutation::HistoryMutation;
+use crate::feat::session::model_selection::ModelSelection;
 use crate::protocol::SessionId;
 
 // ── Helpers ─────────────────────────────────────────────────────────────
@@ -550,7 +551,7 @@ impl ThresholdTestEnv {
     /// (enough to produce mutations if the threshold gate passes and reserve is small).
     fn new() -> Self {
         let mut session = ChatSessionState::new();
-        session.set_model("provider/model-200k".to_owned());
+        session.set_model(ModelSelection::Single("provider/model-200k".to_owned()));
         let history = alternating_history(20);
         for entry in &history {
             session.push_entry(entry.clone());
@@ -1019,7 +1020,7 @@ fn gate_splits_provider_model_format() {
     {
         let mut app = env.state.write();
         let session = app.session.get_mut(&env.session_id).expect("session");
-        session.set_model("ollama/llama3".to_owned());
+        session.set_model(ModelSelection::Single("ollama/llama3".to_owned()));
     }
     env.set_context_size(Some(150_000)); // 150k/200k = 75% > 70%
     env.set_model_cache(model_cache_with("ollama", "llama3", 200_000));
@@ -1044,7 +1045,9 @@ fn gate_handles_nested_provider_path() {
     {
         let mut app = env.state.write();
         let session = app.session.get_mut(&env.session_id).expect("session");
-        session.set_model("openrouter/anthropic/claude-sonnet".to_owned());
+        session.set_model(ModelSelection::Single(
+            "openrouter/anthropic/claude-sonnet".to_owned(),
+        ));
     }
     env.set_context_size(Some(150_000)); // 150k/200k = 75% > 70%
     env.set_model_cache(model_cache_with(
@@ -1069,7 +1072,7 @@ fn gate_handles_nested_provider_path() {
 #[test]
 fn gate_passes_but_nothing_to_compact_with_empty_history() {
     let mut session = ChatSessionState::new();
-    session.set_model("provider/model-200k".to_owned());
+    session.set_model(ModelSelection::Single("provider/model-200k".to_owned()));
     // No entries - empty history.
     let session_id = session.session_id().clone();
     session.set_context_size(150_000);
@@ -1349,7 +1352,7 @@ fn error_clears_flag_and_allows_retry() {
         .build();
     let handle = services.handle.clone();
     let mut session = ChatSessionState::new();
-    session.set_model("provider/model-200k".to_owned());
+    session.set_model(ModelSelection::Single("provider/model-200k".to_owned()));
     let history = alternating_history(20);
     for entry in &history {
         session.push_entry(entry.clone());
