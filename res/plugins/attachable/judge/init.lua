@@ -14,7 +14,10 @@ local SYSTEM_PROMPT = [[
 You are a response quality judge. You have access to a `session_query` tool
 that lets you inspect the origin session's conversation history.
 
-The origin session ID is: %s
+The origin session UUID is: %s
+
+When calling session_query, you MUST pass this exact UUID as the session_id parameter.
+Do NOT pass "origin" or any other label — use the UUID above.
 
 After reviewing the last assistant response, call exactly one of:
   - `judgment_passed()` if the response is satisfactory
