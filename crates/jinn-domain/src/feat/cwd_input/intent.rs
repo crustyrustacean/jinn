@@ -135,7 +135,7 @@ mod tests {
             state.frontend.cwd_input.text.cursor_pos,
             "/tmp/some-project".len()
         );
-        assert!(result.commands.is_empty());
+        assert!(result.message_names.is_empty());
     }
 
     #[rstest::rstest]
@@ -201,7 +201,7 @@ mod tests {
             FocusScope::CwdInput
         ));
         assert_eq!(state.frontend.cwd_input.text.input, "");
-        assert!(result.commands.is_empty());
+        assert!(result.message_names.is_empty());
     }
 
     #[rstest::rstest]
@@ -288,7 +288,7 @@ mod tests {
         ));
         assert_eq!(state.active_session().cwd(), original_cwd);
         assert_eq!(state.frontend.cwd_input.text.input, "/this/does/not/exist");
-        assert!(result.commands.is_empty());
+        assert!(result.message_names.is_empty());
     }
 
     #[rstest::rstest]
@@ -307,6 +307,6 @@ mod tests {
             FocusScope::CwdInput
         ));
         assert_eq!(state.active_session().cwd(), original_cwd);
-        assert!(result.commands.is_empty());
+        assert!(result.message_names.is_empty());
     }
 }

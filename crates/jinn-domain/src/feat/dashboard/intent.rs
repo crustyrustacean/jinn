@@ -48,7 +48,7 @@ mod tests {
 
         // Then the selection has moved.
         assert_eq!(state.frontend.dashboard.selected_index(), 1);
-        assert!(result.commands.is_empty());
+        assert!(result.message_names.is_empty());
     }
 
     #[rstest::rstest]
@@ -64,7 +64,7 @@ mod tests {
 
         // Then the selection is at 0.
         assert_eq!(state.frontend.dashboard.selected_index(), 0);
-        assert!(result.commands.is_empty());
+        assert!(result.message_names.is_empty());
     }
 
     #[rstest::rstest]
@@ -82,7 +82,7 @@ mod tests {
 
         // Then the selection is at 0.
         assert_eq!(state.frontend.dashboard.selected_index(), 0);
-        assert!(result.commands.is_empty());
+        assert!(result.message_names.is_empty());
     }
 
     #[rstest::rstest]
@@ -98,6 +98,6 @@ mod tests {
 
         // Then the selection is at the last index.
         assert_eq!(state.frontend.dashboard.selected_index(), 2);
-        assert!(result.commands.is_empty());
+        assert!(result.message_names.is_empty());
     }
 }

@@ -100,7 +100,7 @@ mod tests {
             FocusScope::SidebarResize
         ));
         // And no commands are emitted.
-        assert!(result.commands.is_empty());
+        assert!(result.message_names.is_empty());
     }
 
     #[rstest::rstest]
@@ -165,7 +165,7 @@ mod tests {
         // Then sidebar_width stays at minimum.
         assert_eq!(state.frontend.sidebar_width, MIN_SIDEBAR_WIDTH);
         // And no commands are emitted (no change).
-        assert!(result.commands.is_empty());
+        assert!(result.message_names.is_empty());
     }
 
     #[rstest::rstest]
@@ -183,7 +183,7 @@ mod tests {
             FocusScope::Normal
         ));
         // And no commands are emitted.
-        assert!(result.commands.is_empty());
+        assert!(result.message_names.is_empty());
     }
 
     #[rstest::rstest]

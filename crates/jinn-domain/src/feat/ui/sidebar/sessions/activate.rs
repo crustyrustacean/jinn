@@ -136,7 +136,7 @@ mod tests {
         // And no commands are emitted: each session's discovered
         // skills/prompts/context-files are ephemeral and were hydrated when the
         // session was created/loaded, so activation needs no re-scan.
-        assert!(result.commands.is_empty());
+        assert!(result.message_names.is_empty());
     }
 
     #[rstest::rstest]
@@ -150,7 +150,7 @@ mod tests {
         let result = handle_session_activate(&mut state);
 
         // Then no commands emitted.
-        assert!(result.commands.is_empty());
+        assert!(result.message_names.is_empty());
     }
 
     #[rstest::rstest]
@@ -162,7 +162,7 @@ mod tests {
         let result = handle_session_activate(&mut state);
 
         // Then no commands emitted.
-        assert!(result.commands.is_empty());
+        assert!(result.message_names.is_empty());
     }
     #[rstest::rstest]
     fn activate_insert_switches_active_session() {

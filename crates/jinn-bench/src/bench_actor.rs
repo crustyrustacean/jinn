@@ -33,7 +33,6 @@ use jinn_domain::{Actor, ActorContext, ActorEnvelope, NoDirectMsg, RecordingSink
 
 use jinn_domain::common::actor_deps::{ActorDeps, BusPublish};
 use jinn_domain::common::services::bus_service::BusService;
-use jinn_domain::common::bus::BusMessage;
 use kameo::prelude::{Actor as KameoActor, ActorRef as KameoActorRef, Context as KameoContext, Message};
 
 /// A tracked bench session.
@@ -292,7 +291,7 @@ impl BenchActor {
         }
     }
 
-    async fn publish_evt(bus: &BusService, event: Event) {
+    async fn publish_evt(_bus: &BusService, event: Event) {
         match event {
             other => tracing::warn!(?other, "bench: unhandled event variant"),
         }

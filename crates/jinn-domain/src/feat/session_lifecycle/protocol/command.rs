@@ -125,3 +125,5 @@ pub struct CancelLifecycleCommand {
     /// The session whose lifecycle command should be cancelled.
     pub session_id: SessionId,
 }
+
+impl crate::common::bus::BusMessage for CancelLifecycleCommand {}

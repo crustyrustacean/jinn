@@ -14,7 +14,7 @@ use crate::feat::context::strategy::token_estimator::TiktokenCounter;
 use crate::feat::session::protocol::history_appended::HistoryAppended;
 use crate::feat::session::protocol::session_load_completed::SessionLoadCompleted;
 use crate::protocol::system::ActiveSessionChanged;
-use kameo::actor::{ActorRef, Spawn};
+use kameo::actor::ActorRef;
 use kameo::prelude::{Context, Message};
 use tracing::error;
 

@@ -4,9 +4,8 @@
 //! `selected_index` and `scroll_offset` so they never point past the end
 //! of the sessions list.
 
-use kameo::actor::{ActorRef, Spawn};
+use kameo::actor::ActorRef;
 use kameo::prelude::{Context, Message};
-use std::sync::Arc;
 
 use crate::common::actor_deps::{ActorDeps, BusPublish};
 use crate::common::state::State;

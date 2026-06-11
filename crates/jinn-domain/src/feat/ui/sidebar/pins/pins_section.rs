@@ -16,7 +16,7 @@ use crate::feat::ui::sidebar::section_trait::{
     EnterFrom, SectionNavResult, SidebarIntent, SidebarSection, SidebarSectionId,
 };
 use crate::protocol::{
-    ChatEntryId, ChatEntryKind, Command, IntentResult, PickerKind, PinPosition, SessionId,
+    ChatEntryId, ChatEntryKind, IntentResult, PickerKind, PinPosition, SessionId,
 };
 use ratatui::Frame;
 use ratatui::layout::Rect;

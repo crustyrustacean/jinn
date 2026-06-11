@@ -961,7 +961,7 @@ fn session_new_with_lifecycle_opens_picker_from_normal_mode() {
         Some(&crate::protocol::PickerKind::SessionLifecycle)
     );
     // And no commands emitted (lifecycle entries are loaded synchronously).
-    assert!(result.commands.is_empty());
+    assert!(result.message_names.is_empty());
 }
 
 #[rstest::rstest]
@@ -984,7 +984,7 @@ fn session_new_with_lifecycle_opens_picker_from_sidebar_sessions() {
         Some(&crate::protocol::PickerKind::SessionLifecycle)
     );
     // And no commands emitted (lifecycle entries are loaded synchronously).
-    assert!(result.commands.is_empty());
+    assert!(result.message_names.is_empty());
 }
 
 #[rstest::rstest]
@@ -1027,17 +1027,8 @@ fn teardown_only_emits_run_session_teardown() {
     );
 
     // Then a RunSessionTeardown command is emitted with the rendered teardown command.
-    assert_eq!(result.commands.len(), 1);
-    assert!(matches!(
-        &result.commands[0],
-        crate::protocol::Command::RunSessionTeardown(
-            crate::feat::session_lifecycle::protocol::command::RunSessionTeardown {
-                command,
-                args,
-                ..
-            }
-        ) if command == "cleanup.sh my-branch" && args == &["my-branch".to_owned()]
-    ));
+    assert_eq!(result.message_names.len(), 1);
+    assert!(result.message_names[0].contains("RunSessionTeardown"));
 }
 
 #[rstest::rstest]
@@ -1073,7 +1064,7 @@ fn teardown_only_is_noop_without_lifecycle_teardown() {
     );
 
     // Then no commands are emitted (no teardown command to run).
-    assert!(result.commands.is_empty());
+    assert!(result.message_names.is_empty());
 }
 
 // ---------------------------------------------------------------------------

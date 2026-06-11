@@ -9,7 +9,7 @@ use crate::common::app_state::AppState;
 use crate::feat::context::protocol::event::ContextOverrideChanged;
 use crate::feat::session::chat_entry::ChatEntry;
 use crate::feat::session_lifecycle::protocol::command::PersistSession;
-use crate::protocol::{ChatEntryId, Command, ContextOverride, Event, IntentResult, SessionId};
+use crate::protocol::{ChatEntryId, ContextOverride, IntentResult, SessionId};
 
 use super::intent::advance_selection_one;
 

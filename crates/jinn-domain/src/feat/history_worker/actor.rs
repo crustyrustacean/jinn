@@ -8,7 +8,6 @@ use std::collections::HashSet;
 use std::sync::Arc;
 
 use crate::common::actor_deps::{ActorDeps, BusPublish};
-use crate::common::bus::BusMessage;
 use crate::common::services::bus_service::BusService;
 use crate::feat::history_worker::worker_trait::HistoryWorker;
 use crate::feat::session::chat_entry::ChatEntry;

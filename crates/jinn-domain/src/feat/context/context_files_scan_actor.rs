@@ -91,7 +91,7 @@ impl Message<ScanContextFiles> for ContextFilesScanActor {
 impl Message<EnvironmentLoaded> for ContextFilesScanActor {
     type Reply = ();
 
-    async fn handle(&mut self, msg: EnvironmentLoaded, _ctx: &mut Context<Self, Self::Reply>) {
+    async fn handle(&mut self, _msg: EnvironmentLoaded, _ctx: &mut Context<Self, Self::Reply>) {
         let session_id = self.state.read().session.active_session_id().clone();
         if crate::common::actor::scan_actor::scan_cwd_for_session(&self.state, &session_id)
             .is_some()
