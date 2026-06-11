@@ -373,6 +373,7 @@ impl ActorSystemBuilder {
                 shell: std::env::var("SHELL").unwrap_or_else(|_| "/bin/sh".to_owned()),
             },
         );
+        _tools.wait_for_startup().await;
 
         // Web fetch actor.
         let web_fetch_backend = user_preferences_storage.read().web_fetch.backend;
