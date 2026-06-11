@@ -5,6 +5,7 @@
 //! chat entries, and the legacy `SendMessage` compatibility shim.
 
 use crate::common::actor::ActorContext;
+use crate::common::actor_deps::BusPublish;
 use crate::feat::chat_input::protocol::command::{
     EnqueueResumeTurn, EnqueueUserMessage, PushChatEntry, SetChatInputText, SubmitSteeringMessage,
 };
@@ -129,25 +130,20 @@ impl SessionPersistenceActor {
 
                 let estimated_tokens = assembled.estimated_tokens();
 
-                if let Err(e) = ctx.send_command(Command::SendToLlmProvider(SendToLlmProvider {
+                self.publish(SendToLlmProvider {
                     session_id: payload.session_id.clone(),
                     messages: assembled.messages,
                     provider_id,
                     estimated_tokens,
                     tool_definitions: assembled.tool_definitions,
-                })) {
-                    tracing::warn!(
-                        err = ?e,
-                        "session-actor failed to emit SendToLlmProvider"
-                    );
-                }
+                })
+                .await;
 
-                if let Err(e) = ctx.send_event(Event::ChatEntrySubmitted(ChatEntrySubmitted {
+                self.publish(ChatEntrySubmitted {
                     session_id: payload.session_id.clone(),
                     entry: payload.entry.clone(),
-                })) {
-                    tracing::warn!(err = ?e, "session-actor failed to emit ChatEntrySubmitted");
-                }
+                })
+                .await;
 
                 self.save_active_session(&payload.session_id).await;
             }
@@ -197,24 +193,22 @@ impl SessionPersistenceActor {
             (old_phase, session.phase())
         };
 
-        if old_phase != new_phase
-            && let Err(e) = ctx.send_event(Event::SessionPhaseChanged(SessionPhaseChanged {
+        if old_phase != new_phase {
+            self.publish(SessionPhaseChanged {
                 session_id: payload.session_id.clone(),
                 old_phase,
                 new_phase,
-            }))
-        {
-            tracing::warn!(err = ?e, "session-actor failed to emit SessionPhaseChanged for resume");
+            })
+            .await;
         }
 
         super::super::helpers::emit_history_appended(ctx, &payload.session_id);
 
-        if let Err(e) = ctx.send_event(Event::ChatEntrySubmitted(ChatEntrySubmitted {
+        self.publish(ChatEntrySubmitted {
             session_id: payload.session_id.clone(),
             entry: marker,
-        })) {
-            tracing::warn!(err = ?e, "session-actor failed to emit ChatEntrySubmitted for resume marker");
-        }
+        })
+        .await;
 
         // Drain any pending steering fragments into history before assembly.
         {
@@ -266,15 +260,14 @@ impl SessionPersistenceActor {
 
         super::super::helpers::emit_phase_changed(ctx, &payload.session_id, old_phase, new_phase);
 
-        if let Err(e) = ctx.send_command(Command::SendToLlmProvider(SendToLlmProvider {
+        self.publish(SendToLlmProvider {
             session_id: payload.session_id.clone(),
             messages: assembled.messages,
             provider_id,
             estimated_tokens,
             tool_definitions: assembled.tool_definitions,
-        })) {
-            tracing::warn!(err = ?e, "session-actor failed to emit SendToLlmProvider for resume");
-        }
+        })
+        .await;
 
         self.save_active_session(&payload.session_id).await;
     }
@@ -328,12 +321,11 @@ impl SessionPersistenceActor {
             session.push_entry(payload.entry.clone());
         };
 
-        if let Err(e) = ctx.send_event(Event::ChatEntrySubmitted(ChatEntrySubmitted {
+        self.publish(ChatEntrySubmitted {
             session_id: payload.session_id.clone(),
             entry: payload.entry.clone(),
-        })) {
-            tracing::warn!(err = ?e, "session-actor failed to emit ChatEntrySubmitted");
-        }
+        })
+        .await;
 
         super::super::helpers::emit_history_appended(ctx, &payload.session_id);
 
@@ -341,16 +333,16 @@ impl SessionPersistenceActor {
     }
 
     /// SendMessage: backward compat - emit EnqueueUserMessage.
-    pub(in crate::feat::session::session_actor) fn handle_send_message(
+    pub(in crate::feat::session::session_actor) async fn handle_send_message(
+        &self,
         payload: &SendMessage,
         ctx: &ActorContext,
     ) {
-        if let Err(e) = ctx.send_command(Command::EnqueueUserMessage(EnqueueUserMessage {
+        self.publish(EnqueueUserMessage {
             session_id: payload.session_id.clone(),
             entry: ChatEntry::user(&payload.text),
-        })) {
-            tracing::warn!(err = ?e, "session-actor failed to emit EnqueueUserMessage");
-        }
+        })
+        .await;
     }
 }
 
@@ -588,18 +580,20 @@ mod tests {
     #[tokio::test]
     async fn handle_send_message_emits_enqueue_user_message() {
         // Given a test context.
-        let _actor = test_actor().await;
+        let actor = test_actor().await;
         let (sink, ctx) = test_context();
         let session_id = crate::protocol::SessionId::new();
 
         // When calling handle_send_message.
-        crate::feat::session::session_actor::SessionPersistenceActor::handle_send_message(
-            &SendMessage {
-                session_id: session_id.clone(),
-                text: "legacy message".to_owned(),
-            },
-            &ctx,
-        );
+        actor
+            .handle_send_message(
+                &SendMessage {
+                    session_id: session_id.clone(),
+                    text: "legacy message".to_owned(),
+                },
+                &ctx,
+            )
+            .await;
 
         // Then EnqueueUserMessage command was emitted.
         let commands = sink.commands();

@@ -6,6 +6,7 @@
 //! chat entries and formatting command errors.
 
 use crate::common::actor::ActorContext;
+use crate::common::actor_deps::BusPublish;
 use crate::feat::chat_input::protocol::command::PushChatEntry;
 use crate::feat::chat_input::protocol::event::ChatEntrySubmitted;
 use crate::feat::session::chat_session::ChatSessionState;
@@ -15,8 +16,9 @@ use crate::feat::session::protocol::session_archived::SessionArchived;
 use crate::feat::session::protocol::session_closed::SessionClosed;
 use crate::feat::session_lifecycle::command_runner::LifecycleCommandError;
 
+use crate::feat::session_lifecycle::protocol::FinishSessionSetup;
 use crate::feat::session_lifecycle::protocol::command::{
-    PersistSession, RunSessionSetup, RunSessionTeardown, SetSessionCwd,
+    FinishSessionTeardown, PersistSession, RunSessionSetup, RunSessionTeardown, SetSessionCwd,
 };
 use crate::feat::session_lifecycle::protocol::event::{
     SessionCwdChanged, SessionSetupCompleted, SessionTeardownFinished,
@@ -182,15 +184,15 @@ impl SessionPersistenceActor {
                     session.complete_busy();
                 }
                 drop(state);
-                let _ = ctx.send_command(Command::PushChatEntry(PushChatEntry {
+                self.publish(PushChatEntry {
                     session_id: payload.session_id.clone(),
                     entry: ChatEntry::error(&error_msg),
-                }));
-                let _ = ctx.send_event(Event::SessionSetupCompleted(SessionSetupCompleted {
+                });
+                self.publish(SessionSetupCompleted {
                     session_id: payload.session_id.clone(),
                     cwd: std::path::PathBuf::new(),
                     error: Some(error_msg),
-                }));
+                });
                 return;
             }
         };
@@ -198,6 +200,7 @@ impl SessionPersistenceActor {
         let session_id = payload.session_id.clone();
         let sink = ctx.sink();
 
+        let bus = self.bus().clone();
         let _handle = tokio::spawn(async move {
             let result = handle.await;
             let (cwd, error) = match result {
@@ -216,13 +219,11 @@ impl SessionPersistenceActor {
                     (None, Some("Setup command was cancelled".to_owned()))
                 }
             };
-            let _ = sink.send_command(crate::protocol::Command::FinishSessionSetup(
-                crate::feat::session_lifecycle::protocol::command::FinishSessionSetup {
-                    session_id,
-                    cwd,
-                    error,
-                },
-            ));
+            bus.publish(FinishSessionSetup {
+                session_id,
+                cwd,
+                error,
+            });
         });
 
         self.lifecycle_child = Some(cancel_handle);
@@ -261,22 +262,18 @@ impl SessionPersistenceActor {
                     }
                 }
 
-                if let Err(e) = ctx.send_command(Command::PushChatEntry(PushChatEntry {
+                self.publish(PushChatEntry {
                     session_id: payload.session_id.clone(),
                     entry: setup_complete_msg(cwd),
-                })) {
-                    tracing::warn!(err = ?e, "session-actor failed to emit PushChatEntry for setup complete");
-                }
+                })
+                .await;
 
-                if let Err(e) =
-                    ctx.send_event(Event::SessionSetupCompleted(SessionSetupCompleted {
-                        session_id: payload.session_id.clone(),
-                        cwd: cwd.clone(),
-                        error: None,
-                    }))
-                {
-                    tracing::warn!(err = ?e, "session-actor failed to emit SessionSetupCompleted");
-                }
+                self.publish(SessionSetupCompleted {
+                    session_id: payload.session_id.clone(),
+                    cwd: cwd.clone(),
+                    error: None,
+                })
+                .await;
             }
             (_, Some(error_msg)) => {
                 // Error.
@@ -291,22 +288,18 @@ impl SessionPersistenceActor {
 
                 let entry = ChatEntry::error(error_msg);
 
-                if let Err(e) = ctx.send_command(Command::PushChatEntry(PushChatEntry {
+                self.publish(PushChatEntry {
                     session_id: payload.session_id.clone(),
                     entry,
-                })) {
-                    tracing::warn!(err = ?e, "session-actor failed to emit PushChatEntry for setup error");
-                }
+                })
+                .await;
 
-                if let Err(e) =
-                    ctx.send_event(Event::SessionSetupCompleted(SessionSetupCompleted {
-                        session_id: payload.session_id.clone(),
-                        cwd: default_cwd,
-                        error: Some(error_msg.clone()),
-                    }))
-                {
-                    tracing::warn!(err = ?e, "session-actor failed to emit SessionSetupCompleted");
-                }
+                self.publish(SessionSetupCompleted {
+                    session_id: payload.session_id.clone(),
+                    cwd: default_cwd,
+                    error: Some(error_msg.clone()),
+                })
+                .await;
             }
             (None, None) => {
                 // Success without a CWD - side-effect-only setup (no stdout output).
@@ -321,27 +314,23 @@ impl SessionPersistenceActor {
                     }
                     default
                 };
-                if let Err(e) = ctx.send_command(Command::PushChatEntry(PushChatEntry {
+                self.publish(PushChatEntry {
                     session_id: payload.session_id.clone(),
                     entry: no_output_info(&default_cwd),
-                })) {
-                    tracing::warn!(err = ?e, "session-actor failed to emit PushChatEntry for setup no-output");
-                }
-                if let Err(e) =
-                    ctx.send_event(Event::SessionSetupCompleted(SessionSetupCompleted {
-                        session_id: payload.session_id.clone(),
-                        cwd: default_cwd,
-                        error: None,
-                    }))
-                {
-                    tracing::warn!(err = ?e, "session-actor failed to emit SessionSetupCompleted");
-                }
+                })
+                .await;
+                self.publish(SessionSetupCompleted {
+                    session_id: payload.session_id.clone(),
+                    cwd: default_cwd,
+                    error: None,
+                })
+                .await;
             }
         }
     }
 
     /// Runs a builtin lifecycle setup by looking up the handler in the registry.
-    fn run_builtin_setup(
+    async fn run_builtin_setup(
         &self,
         session_id: &crate::protocol::SessionId,
         id: &crate::feat::session_lifecycle::builtin::BuiltinId,
@@ -361,20 +350,18 @@ impl SessionPersistenceActor {
                 default
             };
 
-            if let Err(e) = ctx.send_command(Command::PushChatEntry(PushChatEntry {
+            self.publish(PushChatEntry {
                 session_id: session_id.clone(),
                 entry: ChatEntry::error(&error_msg),
-            })) {
-                tracing::warn!(err = ?e, "session-actor failed to emit PushChatEntry for builtin setup error");
-            }
+            })
+            .await;
 
-            if let Err(e) = ctx.send_event(Event::SessionSetupCompleted(SessionSetupCompleted {
+            self.publish(SessionSetupCompleted {
                 session_id: session_id.clone(),
                 cwd: default_cwd,
                 error: Some(error_msg),
-            })) {
-                tracing::warn!(err = ?e, "session-actor failed to emit SessionSetupCompleted");
-            }
+            })
+            .await;
             return;
         };
 
@@ -388,22 +375,18 @@ impl SessionPersistenceActor {
                     }
                 }
 
-                if let Err(e) = ctx.send_command(Command::PushChatEntry(PushChatEntry {
+                self.publish(PushChatEntry {
                     session_id: session_id.clone(),
                     entry: setup_complete_msg(&cwd),
-                })) {
-                    tracing::warn!(err = ?e, "session-actor failed to emit PushChatEntry for builtin setup complete");
-                }
+                })
+                .await;
 
-                if let Err(e) =
-                    ctx.send_event(Event::SessionSetupCompleted(SessionSetupCompleted {
-                        session_id: session_id.clone(),
-                        cwd,
-                        error: None,
-                    }))
-                {
-                    tracing::warn!(err = ?e, "session-actor failed to emit SessionSetupCompleted");
-                }
+                self.publish(SessionSetupCompleted {
+                    session_id: session_id.clone(),
+                    cwd,
+                    error: None,
+                })
+                .await;
             }
             Err(report) => {
                 let error_msg = format!("builtin setup failed: {report:#?}");
@@ -416,22 +399,18 @@ impl SessionPersistenceActor {
                     default
                 };
 
-                if let Err(e) = ctx.send_command(Command::PushChatEntry(PushChatEntry {
+                self.publish(PushChatEntry {
                     session_id: session_id.clone(),
                     entry: ChatEntry::error(&error_msg),
-                })) {
-                    tracing::warn!(err = ?e, "session-actor failed to emit PushChatEntry for builtin setup error");
-                }
+                })
+                .await;
 
-                if let Err(e) =
-                    ctx.send_event(Event::SessionSetupCompleted(SessionSetupCompleted {
-                        session_id: session_id.clone(),
-                        cwd: default_cwd,
-                        error: Some(error_msg),
-                    }))
-                {
-                    tracing::warn!(err = ?e, "session-actor failed to emit SessionSetupCompleted");
-                }
+                self.publish(SessionSetupCompleted {
+                    session_id: session_id.clone(),
+                    cwd: default_cwd,
+                    error: Some(error_msg),
+                })
+                .await;
             }
         }
     }
@@ -515,6 +494,7 @@ impl SessionPersistenceActor {
                     Ok((cancel_handle, join_handle)) => {
                         self.lifecycle_child = Some(cancel_handle);
 
+                        let bus = self.bus().clone();
                         let _handle = tokio::spawn(async move {
                             let result = join_handle.await;
                             let error = match result {
@@ -532,24 +512,22 @@ impl SessionPersistenceActor {
                                 }
                                 Err(_) => Some("Teardown command was cancelled".to_owned()),
                             };
-                            let _ = sink.send_command(crate::protocol::Command::FinishSessionTeardown(
-                                crate::feat::session_lifecycle::protocol::command::FinishSessionTeardown {
-                                    session_id,
-                                    close_after: false,
-                                    error,
-                                },
-                            ));
+                            bus.publish(FinishSessionTeardown {
+                                session_id,
+                                close_after: false,
+                                error,
+                            })
+                            .await;
                         });
                     }
                     Err(report) => {
                         let error_msg = format!("Failed to start teardown command: {report}");
-                        let _ = sink.send_command(crate::protocol::Command::FinishSessionTeardown(
-                            crate::feat::session_lifecycle::protocol::command::FinishSessionTeardown {
-                                session_id,
-                                close_after: false,
-                                error: Some(error_msg),
-                            },
-                        ));
+                        self.publish(FinishSessionTeardown {
+                            session_id,
+                            close_after: false,
+                            error: Some(error_msg),
+                        })
+                        .await;
                     }
                 }
             }
@@ -572,21 +550,17 @@ impl SessionPersistenceActor {
                 }
 
                 // Push success entry via PushChatEntry (persists automatically).
-                if let Err(e) = ctx.send_command(Command::PushChatEntry(PushChatEntry {
+                self.publish(PushChatEntry {
                     session_id: payload.session_id.clone(),
                     entry: teardown_success_msg(),
-                })) {
-                    tracing::warn!(err = ?e, "session-actor failed to emit PushChatEntry for teardown success");
-                }
+                })
+                .await;
 
-                if let Err(e) =
-                    ctx.send_event(Event::SessionTeardownFinished(SessionTeardownFinished {
-                        session_id: payload.session_id.clone(),
-                        error: None,
-                    }))
-                {
-                    tracing::warn!(err = ?e, "session-actor failed to emit SessionTeardownFinished");
-                }
+                self.publish(SessionTeardownFinished {
+                    session_id: payload.session_id.clone(),
+                    error: None,
+                })
+                .await;
             }
         }
     }
@@ -606,12 +580,11 @@ impl SessionPersistenceActor {
             let error_msg = format!("unknown builtin lifecycle: {id}");
             tracing::error!(%id, "builtin handler not found in registry for teardown");
 
-            if let Err(e) = ctx.send_command(Command::PushChatEntry(PushChatEntry {
+            self.publish(PushChatEntry {
                 session_id: session_id.clone(),
                 entry: ChatEntry::error(&error_msg),
-            })) {
-                tracing::warn!(err = ?e, "session-actor failed to emit PushChatEntry for builtin teardown error");
-            }
+            })
+            .await;
             return false;
         };
 
@@ -627,12 +600,11 @@ impl SessionPersistenceActor {
             true
         } else {
             let error_msg = format!("builtin teardown failed for: {id}");
-            if let Err(e) = ctx.send_command(Command::PushChatEntry(PushChatEntry {
+            self.publish(PushChatEntry {
                 session_id: session_id.clone(),
                 entry: ChatEntry::error(&error_msg),
-            })) {
-                tracing::warn!(err = ?e, "session-actor failed to emit PushChatEntry for builtin teardown failure");
-            }
+            })
+            .await;
             false
         }
     }
@@ -720,6 +692,7 @@ impl SessionPersistenceActor {
                         match spawn_result {
                             Ok((cancel_handle, join_handle)) => {
                                 self.lifecycle_child = Some(cancel_handle);
+                                let bus = self.bus().clone();
                                 let _handle = tokio::spawn(async move {
                                     let result = join_handle.await;
                                     let error = match result {
@@ -737,29 +710,23 @@ impl SessionPersistenceActor {
                                         }
                                         Err(_) => Some("Teardown command was cancelled".to_owned()),
                                     };
-                                    let _ = sink.send_command(
-                                        crate::protocol::Command::FinishSessionTeardown(
-                                            crate::feat::session_lifecycle::protocol::command::FinishSessionTeardown {
-                                                session_id,
-                                                close_after: true,
-                                                error,
-                                            },
-                                        ),
-                                    );
+                                    bus.publish(FinishSessionTeardown {
+                                        session_id,
+                                        close_after: true,
+                                        error,
+                                    })
+                                    .await;
                                 });
                             }
                             Err(report) => {
                                 let error_msg =
                                     format!("Failed to start teardown command: {report}");
-                                let _ = sink.send_command(
-                                    crate::protocol::Command::FinishSessionTeardown(
-                                        crate::feat::session_lifecycle::protocol::command::FinishSessionTeardown {
-                                            session_id,
-                                            close_after: true,
-                                            error: Some(error_msg),
-                                        },
-                                    ),
-                                );
+                                self.publish(FinishSessionTeardown {
+                                    session_id,
+                                    close_after: true,
+                                    error: Some(error_msg),
+                                })
+                                .await;
                             }
                         }
 
@@ -844,15 +811,17 @@ impl SessionPersistenceActor {
 
         if let Some(ref error_msg) = payload.error {
             // Teardown failed - push error entry, emit failure, cancel working.
-            let _ = ctx.send_command(Command::PushChatEntry(PushChatEntry {
+            self.publish(PushChatEntry {
                 session_id: payload.session_id.clone(),
                 entry: ChatEntry::error(format!("Teardown failed: {error_msg}")),
-            }));
+            })
+            .await;
 
-            let _ = ctx.send_event(Event::SessionTeardownFinished(SessionTeardownFinished {
+            self.publish(SessionTeardownFinished {
                 session_id: payload.session_id.clone(),
                 error: Some(error_msg.clone()),
-            }));
+            })
+            .await;
 
             // Busy count already decremented by complete_busy(). No phase change to emit.
             return;
@@ -918,16 +887,18 @@ impl SessionPersistenceActor {
             self.save_active_session(&payload.session_id).await;
 
             // Push success entry.
-            let _ = ctx.send_command(Command::PushChatEntry(PushChatEntry {
+            self.publish(PushChatEntry {
                 session_id: payload.session_id.clone(),
                 entry: teardown_success_msg(),
-            }));
+            })
+            .await;
 
             // Emit completion event.
-            let _ = ctx.send_event(Event::SessionTeardownFinished(SessionTeardownFinished {
+            self.publish(SessionTeardownFinished {
                 session_id: payload.session_id.clone(),
                 error: None,
-            }));
+            })
+            .await;
         }
     }
 
@@ -1106,7 +1077,7 @@ mod tests {
     // --- Helper function tests ---
 
     #[rstest::rstest]
-#[tokio::test]
+    #[tokio::test]
     async fn strip_ansi_removes_bold_codes() {
         // Given text with bold ANSI codes.
         let input = "\x1b[1mbold text\x1b[22m";
@@ -1119,7 +1090,7 @@ mod tests {
     }
 
     #[rstest::rstest]
-#[tokio::test]
+    #[tokio::test]
     async fn strip_ansi_removes_color_codes() {
         let input = "\x1b[31mred\x1b[0m";
         let result = strip_ansi(input);
@@ -1127,7 +1098,7 @@ mod tests {
     }
 
     #[rstest::rstest]
-#[tokio::test]
+    #[tokio::test]
     async fn strip_ansi_passes_plain_text() {
         let input = "hello world";
         let result = strip_ansi(input);
@@ -1135,7 +1106,7 @@ mod tests {
     }
 
     #[rstest::rstest]
-#[tokio::test]
+    #[tokio::test]
     async fn strip_ansi_handles_chained_codes() {
         let input = "\x1b[1m\x1b[31mbold red\x1b[0m";
         let result = strip_ansi(input);
@@ -1143,7 +1114,7 @@ mod tests {
     }
 
     #[rstest::rstest]
-#[tokio::test]
+    #[tokio::test]
     async fn strip_ansi_handles_complex_csi_sequences() {
         // 38;5;196 is foreground 256-color (bright red).
         let input = "\x1b[38;5;196mcolored\x1b[0m";
@@ -1152,14 +1123,14 @@ mod tests {
     }
 
     #[rstest::rstest]
-#[tokio::test]
+    #[tokio::test]
     async fn strip_ansi_handles_empty_string() {
         let result = strip_ansi("");
         assert_eq!(result, "");
     }
 
     #[rstest::rstest]
-#[tokio::test]
+    #[tokio::test]
     async fn strip_ansi_handles_text_with_no_ansi() {
         let input = "normal text\nwith newlines";
         let result = strip_ansi(input);
@@ -1167,7 +1138,7 @@ mod tests {
     }
 
     #[rstest::rstest]
-#[tokio::test]
+    #[tokio::test]
     async fn no_output_info_is_system_entry_with_cwd() {
         // Given a default CWD path.
         let cwd = Path::new("/tmp/test-project");
@@ -1184,7 +1155,7 @@ mod tests {
     }
 
     #[rstest::rstest]
-#[tokio::test]
+    #[tokio::test]
     async fn setup_running_msg_is_system_with_gear_emoji() {
         // When building the setup running message.
         let entry = setup_running_msg();
@@ -1198,7 +1169,7 @@ mod tests {
     }
 
     #[rstest::rstest]
-#[tokio::test]
+    #[tokio::test]
     async fn setup_complete_msg_is_system_with_checkmark_and_cwd() {
         // Given a CWD path.
         let cwd = Path::new("/tmp/my-project");
@@ -1216,7 +1187,7 @@ mod tests {
     }
 
     #[rstest::rstest]
-#[tokio::test]
+    #[tokio::test]
     async fn teardown_running_msg_is_system_with_gear_emoji() {
         // When building the teardown running message.
         let entry = teardown_running_msg();
@@ -2496,7 +2467,7 @@ mod tests {
     }
 
     #[rstest::rstest]
-#[tokio::test]
+    #[tokio::test]
     async fn cancel_with_no_lifecycle_in_flight_is_noop() {
         // Given an actor with no lifecycle child running.
         let mut actor = test_actor().await;
