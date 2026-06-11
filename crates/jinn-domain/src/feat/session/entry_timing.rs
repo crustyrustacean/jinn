@@ -78,6 +78,60 @@ impl EntryTiming {
             Self::Streamed { dispatched_at, .. } => *dispatched_at,
         }
     }
+
+    /// Return the time-to-first-token duration, if available.
+    ///
+    /// For `Streamed` entries with a recorded `first_token_at`, this is the
+    /// elapsed time between dispatch and the first token arriving.
+    /// Returns `None` for `Instant` entries or when `first_token_at` has not
+    /// been recorded yet.
+    #[must_use]
+    pub fn ttft(&self) -> Option<jiff::SignedDuration> {
+        match self {
+            Self::Instant { .. } => None,
+            Self::Streamed {
+                dispatched_at,
+                first_token_at: Some(ft),
+                ..
+            } => {
+                let span = ft
+                    .since(*dispatched_at)
+                    .expect("timestamps are ordered");
+                Some(jiff::SignedDuration::from_secs(span.get_seconds()))
+            }
+            Self::Streamed {
+                first_token_at: None,
+                ..
+            } => None,
+        }
+    }
+
+    /// Return the total generation duration, if available.
+    ///
+    /// For `Streamed` entries with a recorded `finished_at`, this is the
+    /// elapsed time between dispatch and completion.
+    /// Returns `None` for `Instant` entries or when `finished_at` has not
+    /// been recorded yet.
+    #[must_use]
+    pub fn total_duration(&self) -> Option<jiff::SignedDuration> {
+        match self {
+            Self::Instant { .. } => None,
+            Self::Streamed {
+                dispatched_at,
+                finished_at: Some(fin),
+                ..
+            } => {
+                let span = fin
+                    .since(*dispatched_at)
+                    .expect("timestamps are ordered");
+                Some(jiff::SignedDuration::from_secs(span.get_seconds()))
+            }
+            Self::Streamed {
+                finished_at: None,
+                ..
+            } => None,
+        }
+    }
 }
 
 #[cfg(test)]
@@ -231,5 +285,90 @@ mod tests {
             }
             other => panic!("expected Instant, got {other:?}"),
         }
+    }
+
+    #[test]
+    fn ttft_returns_none_for_instant() {
+        // Given an instant timing.
+        let timing = EntryTiming::instant_now();
+
+        // When querying ttft.
+        // Then it returns None.
+        assert!(timing.ttft().is_none());
+    }
+
+    #[test]
+    fn ttft_returns_none_when_first_token_not_recorded() {
+        // Given a streamed timing with no first_token_at.
+        let timing = EntryTiming::streamed(Timestamp::now());
+
+        // When querying ttft.
+        // Then it returns None.
+        assert!(timing.ttft().is_none());
+    }
+
+    #[test]
+    fn ttft_returns_duration_when_first_token_recorded() {
+        // Given a streamed timing with a 2-second gap between dispatch and first token.
+        let dispatched = Timestamp::now();
+        let first_token = dispatched
+            .checked_add(jiff::SignedDuration::from_secs(2))
+            .expect("2s later");
+        let timing = EntryTiming::Streamed {
+            dispatched_at: dispatched,
+            first_token_at: Some(first_token),
+            finished_at: None,
+        };
+
+        // When querying ttft.
+        let ttft = timing.ttft().expect("ttft should be present");
+
+        // Then the duration is 2 seconds.
+        assert_eq!(ttft.as_secs(), 2);
+    }
+
+    #[test]
+    fn total_duration_returns_none_for_instant() {
+        // Given an instant timing.
+        let timing = EntryTiming::instant_now();
+
+        // When querying total_duration.
+        // Then it returns None.
+        assert!(timing.total_duration().is_none());
+    }
+
+    #[test]
+    fn total_duration_returns_none_when_finished_not_recorded() {
+        // Given a streamed timing with no finished_at.
+        let mut timing = EntryTiming::streamed(Timestamp::now());
+        timing.set_first_token();
+
+        // When querying total_duration.
+        // Then it returns None.
+        assert!(timing.total_duration().is_none());
+    }
+
+    #[test]
+    fn total_duration_returns_duration_when_finished_recorded() {
+        // Given a streamed timing with a 15-second total duration.
+        let dispatched = Timestamp::now();
+        let finished = dispatched
+            .checked_add(jiff::SignedDuration::from_secs(15))
+            .expect("15s later");
+        let timing = EntryTiming::Streamed {
+            dispatched_at: dispatched,
+            first_token_at: Some(
+                dispatched
+                    .checked_add(jiff::SignedDuration::from_secs(2))
+                    .expect("2s later"),
+            ),
+            finished_at: Some(finished),
+        };
+
+        // When querying total_duration.
+        let dur = timing.total_duration().expect("duration should be present");
+
+        // Then the duration is 15 seconds.
+        assert_eq!(dur.as_secs(), 15);
     }
 }

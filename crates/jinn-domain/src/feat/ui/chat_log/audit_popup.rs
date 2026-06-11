@@ -35,7 +35,7 @@ pub fn format_audit_lines(entry: &ChatEntry, theme: &Theme) -> Vec<Line<'static>
     let mut lines = Vec::new();
     lines.push(centered_title("Metadata", AUDIT_POPUP_WIDTH, header_style));
     lines.push(Line::from(vec![Span::styled(
-        format!("Sent: {}", format_timestamp(&entry.timestamp)),
+        format!("Sent: {}", format_timestamp(&entry.timing.at())),
         body_style,
     )]));
     lines.push(Line::from(vec![Span::styled(String::new(), body_style)]));
@@ -175,6 +175,22 @@ fn format_units(count: u32, unit: &str) -> String {
         format!("1 {unit} ago")
     } else {
         format!("{count} {unit}s ago")
+    }
+}
+
+/// Format a [`jiff::SignedDuration`] as a human-readable elapsed-time string.
+///
+/// Durations under 60 seconds render as `X.Xs` (e.g. "2.1s", "0.5s").
+/// Durations of 60 seconds or more render as `Xm Ys` (e.g. "1m 23s").
+fn format_duration(d: &jiff::SignedDuration) -> String {
+    let total_secs = d.as_secs();
+    if total_secs < 60 {
+        let tenths = (d.subsec_millis() / 100) as u32;
+        format!("{total_secs}.{tenths}s")
+    } else {
+        let mins = total_secs / 60;
+        let secs = total_secs % 60;
+        format!("{mins}m {secs}s")
     }
 }
 
@@ -582,6 +598,47 @@ mod tests {
             assert_eq!(rect.width, 50);
             // And popup left edge is at chat left edge.
             assert_eq!(rect.x, chat.x);
+        }
+    }
+    mod format_duration_tests {
+        //! Tests for the `format_duration` free function.
+
+        use super::*;
+
+        #[test]
+        fn format_duration_seconds() {
+            // Given a 2.1-second duration.
+            let d = jiff::SignedDuration::from_secs(2) + jiff::SignedDuration::from_millis(100);
+
+            // When formatting.
+            let result = format_duration(&d);
+
+            // Then it renders as "2.1s".
+            assert_eq!(result, "2.1s");
+        }
+
+        #[test]
+        fn format_duration_sub_second() {
+            // Given a 0.5-second duration.
+            let d = jiff::SignedDuration::from_millis(500);
+
+            // When formatting.
+            let result = format_duration(&d);
+
+            // Then it renders as "0.5s".
+            assert_eq!(result, "0.5s");
+        }
+
+        #[test]
+        fn format_duration_minutes() {
+            // Given an 83-second duration (1m 23s).
+            let d = jiff::SignedDuration::from_secs(83);
+
+            // When formatting.
+            let result = format_duration(&d);
+
+            // Then it renders as "1m 23s".
+            assert_eq!(result, "1m 23s");
         }
     }
 }
