@@ -604,32 +604,11 @@ impl ActorSystemBuilder {
 
         // Compaction trigger actor - handles /compact and /compact-all commands.
         {
-            use jinn_domain::feat::compaction_worker::{CompactionWorker, CompactionTriggerActor, CompactionTriggerActorDeps};
+            use jinn_domain::feat::compaction_worker::{CompactionTriggerActor, CompactionTriggerActorDeps, CompactionWorker};
 
             let _compaction_trigger = CompactionTriggerActor::spawn(
-            use jinn_domain::feat::compaction_worker::{CompactionWorker, CompactionTriggerActor, CompactionTriggerActorDeps};
-
-            actors.push(spawn::<CompactionTriggerActor::spawn(
-            use jinn_domain::feat::compaction_worker::{
-                CompactionTriggerActor, CompactionTriggerActorDeps, CompactionWorker,
-            };
-
-
-            actors.push(spawn::<CompactionTriggerActor>(
-                "compaction-trigger",
-                &sink,
-                handle,
-                &counter,
-                &shutdown_tracker,
                 CompactionTriggerActorDeps {
                     deps: ActorDeps { services: services.clone() },
-                    worker: CompactionWorker::new(
-                        services.clone(),
-                        handle.clone(),
-                        state.clone(),
-                    ),
-                    deps: ActorDeps { services: services.clone() },
-                    worker: CompactionWorker::new(services.clone(), handle.clone(), state.clone()),
                     worker: CompactionWorker::new(
                         services.clone(),
                         handle.clone(),
