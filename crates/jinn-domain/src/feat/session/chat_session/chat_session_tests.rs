@@ -20,6 +20,7 @@ use crate::protocol::{
 use std::path::PathBuf;
 
 use super::*;
+use crate::feat::session::model_selection::ModelSelection;
 
 #[rstest::rstest]
 fn push_entry_adds_to_history() {
@@ -1846,7 +1847,7 @@ fn serde_round_trips_lifecycle_fields() {
 #[rstest::rstest]
 fn serde_defaults_lifecycle_fields_when_missing() {
     // Given a JSON object without lifecycle fields.
-    let json = r#"{"session_id":"test","updated_at":"2026-01-01T00:00:00Z","created_at":"2026-01-01T00:00:00Z","history":[],"profile":{"model":"","strategy":"passthrough"},"cwd":"."}"#;
+    let json = r#"{"session_id":"test","updated_at":"2026-01-01T00:00:00Z","created_at":"2026-01-01T00:00:00Z","history":[],"profile":{"model":{"single":""},"strategy":"passthrough"},"cwd":"."}"#;
 
     // When deserializing.
     let back: ChatSessionState = serde_json::from_str(json).expect("deserialize");
@@ -4501,7 +4502,7 @@ fn select_prev_entry_at_first_index_stays() {
 fn new_with_profile_preserves_profile() {
     // Given a profile with a custom model.
     let profile = SessionProfile {
-        model: "ollama/llama3".to_owned(),
+        model: ModelSelection::Single("ollama/llama3".to_owned()),
         ..SessionProfile::default()
     };
 
@@ -4509,7 +4510,10 @@ fn new_with_profile_preserves_profile() {
     let session = ChatSessionState::new_with_profile(profile.clone());
 
     // Then the session carries the profile.
-    assert_eq!(session.profile().model, "ollama/llama3");
+    assert_eq!(
+        session.profile().model,
+        ModelSelection::Single("ollama/llama3".to_owned())
+    );
 }
 
 #[rstest::rstest]
@@ -4518,10 +4522,13 @@ fn profile_mut_returns_mutable_reference() {
     let mut session = ChatSessionState::new();
 
     // When mutating the profile.
-    session.profile_mut().model = "openai/gpt-4".to_owned();
+    session.profile_mut().model = ModelSelection::Single("openai/gpt-4".to_owned());
 
     // Then the change is visible via the immutable accessor.
-    assert_eq!(session.profile().model, "openai/gpt-4");
+    assert_eq!(
+        session.profile().model,
+        ModelSelection::Single("openai/gpt-4".to_owned())
+    );
 }
 
 #[rstest::rstest]
@@ -4532,6 +4539,7 @@ fn restore_token_ledger_sets_records() {
 
     // When restoring a token ledger.
     let records = vec![TokenRecord {
+        model_used: None,
         timestamp: jiff::Timestamp::now(),
         tokens_sent: 100,
         tokens_received: 50,

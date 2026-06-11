@@ -9,6 +9,7 @@
 )]
 
 use crate::feat::session::chat_session::ChatSessionState;
+use crate::feat::session::model_selection::ModelSelection;
 use crate::feat::theme::default_theme;
 use crate::feat::ui::sidebar::sessions::preview::{
     SessionPreviewCache, render_session_preview, session_preview_popup_rect,
@@ -202,7 +203,7 @@ fn popup_title_shows_session_title() {
 fn model_line_shows_provider_and_model() {
     // Given a session with a specific model set.
     let mut session = ChatSessionState::new();
-    session.set_model("ollama/llama3".to_owned());
+    session.set_model(ModelSelection::Single("ollama/llama3".to_owned()));
 
     // When rendering the preview.
     let (buffer, popup_area) = render_preview(&session, 80, 40);
@@ -242,7 +243,7 @@ fn cwd_shows_on_model_line() {
     // Given a session with a cwd and a model.
     let mut session = ChatSessionState::new();
     session.set_cwd(std::path::PathBuf::from("/home/user/jinn"));
-    session.set_model("ollama/llama3".to_owned());
+    session.set_model(ModelSelection::Single("ollama/llama3".to_owned()));
 
     // When rendering the preview.
     let (buffer, popup_area) = render_preview(&session, 80, 40);
@@ -266,7 +267,7 @@ fn cwd_left_truncated_when_long() {
     let mut session = ChatSessionState::new();
     let long_cwd = "/very/long/path/that/should/be/truncated/to/fit/the/popup/jinn";
     session.set_cwd(std::path::PathBuf::from(long_cwd));
-    session.set_model("ollama/llama3".to_owned());
+    session.set_model(ModelSelection::Single("ollama/llama3".to_owned()));
 
     // When rendering the preview.
     let (buffer, popup_area) = render_preview(&session, 80, 40);

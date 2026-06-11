@@ -3,6 +3,8 @@
 use serde::{Deserialize, Serialize};
 
 use crate::feat::provider::llm_message::LlmMessage;
+
+use crate::feat::session::model_selection::ModelSelection;
 use crate::feat::tools_actor::tool_types::ToolDefinition;
 use crate::protocol::{CommandMsg, SessionId};
 
@@ -15,10 +17,10 @@ use jiff::Timestamp;
 #[derive(Debug, Clone, Serialize, Deserialize, CommandMsg)]
 #[cmd("provider")]
 pub struct ProviderSwitch {
-    /// The session whose model should be switched.
+    /// The session to switch provider for.
     pub session_id: SessionId,
-    /// The provider to switch to.
-    pub provider_id: String,
+    /// The model selection to switch to.
+    pub provider_id: ModelSelection,
 }
 
 /// Send a message to the AI provider.
@@ -60,6 +62,10 @@ pub struct SendToLlmProvider {
     /// Estimated token count of all messages + tool schemas.
     #[serde(default)]
     pub estimated_tokens: u32,
+    /// The concrete model ID that will handle this request.
+    /// Set by the dispatch layer after resolving alloys.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub model_used: Option<String>,
     /// When this request was dispatched to the LLM.
     pub dispatched_at: Timestamp,
 }

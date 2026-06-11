@@ -11,6 +11,7 @@ use jinn_testutil::{buffer_row, setup_term};
 use crate::common::app_state::AppState;
 use crate::common::render_ctx::RenderCtx;
 use crate::common::ui_element::UiElement;
+use crate::feat::session::model_selection::ModelSelection;
 use crate::feat::ui::status_bar::element::StatusBarElement;
 
 #[rstest::rstest]
@@ -42,7 +43,7 @@ fn render_shows_provider_and_model() {
     let mut state = AppState::default();
     state
         .active_session_mut()
-        .set_model("ollama/llama3".to_owned());
+        .set_model(ModelSelection::Single("ollama/llama3".to_owned()));
     let (mut terminal, area) = setup_term(50, 2);
     terminal
         .draw(|frame| {
@@ -62,7 +63,7 @@ fn render_right_aligns_text() {
     let mut state = AppState::default();
     state
         .active_session_mut()
-        .set_model("ollama/llama3".to_owned());
+        .set_model(ModelSelection::Single("ollama/llama3".to_owned()));
     let (mut terminal, area) = setup_term(50, 2);
     terminal
         .draw(|frame| {
@@ -82,9 +83,9 @@ fn render_right_aligns_text() {
 fn render_shows_provider_with_slash_in_model() {
     let mut element = StatusBarElement;
     let mut state = AppState::default();
-    state
-        .active_session_mut()
-        .set_model("openrouter/anthropic/claude-sonnet-4".to_owned());
+    state.active_session_mut().set_model(ModelSelection::Single(
+        "openrouter/anthropic/claude-sonnet-4".to_owned(),
+    ));
     let (mut terminal, area) = setup_term(80, 2);
     terminal
         .draw(|frame| {
@@ -128,8 +129,9 @@ fn render_shows_token_counts_with_values() {
     let mut state = AppState::default();
     state
         .active_session_mut()
-        .set_model("ollama/llama3".to_owned());
+        .set_model(ModelSelection::Single("ollama/llama3".to_owned()));
     state.active_session_mut().push_token_record(TokenRecord {
+        model_used: None,
         timestamp: jiff::Timestamp::now(),
         tokens_sent: 1500,
         tokens_received: 750,
@@ -159,8 +161,9 @@ fn render_shows_zero_percent_max_when_context_size_but_no_limit() {
     let mut state = AppState::default();
     state
         .active_session_mut()
-        .set_model("ollama/llama3".to_owned());
+        .set_model(ModelSelection::Single("ollama/llama3".to_owned()));
     state.active_session_mut().push_token_record(TokenRecord {
+        model_used: None,
         timestamp: jiff::Timestamp::now(),
         tokens_sent: 5000,
         tokens_received: 0,
@@ -209,7 +212,7 @@ fn render_shows_zero_turns_when_no_history() {
     let mut state = AppState::default();
     state
         .active_session_mut()
-        .set_model("ollama/llama3".to_owned());
+        .set_model(ModelSelection::Single("ollama/llama3".to_owned()));
     let (mut terminal, area) = setup_term(80, 2);
     terminal
         .draw(|frame| {
@@ -230,7 +233,7 @@ fn render_shows_turn_count_with_history() {
     let mut state = AppState::default();
     state
         .active_session_mut()
-        .set_model("ollama/llama3".to_owned());
+        .set_model(ModelSelection::Single("ollama/llama3".to_owned()));
     state
         .active_session_mut()
         .push_entry(crate::protocol::ChatEntry::user("hello"));
@@ -263,7 +266,7 @@ fn render_turn_count_skips_tool_loop_intermediates() {
     let mut state = AppState::default();
     state
         .active_session_mut()
-        .set_model("ollama/llama3".to_owned());
+        .set_model(ModelSelection::Single("ollama/llama3".to_owned()));
     state
         .active_session_mut()
         .push_entry(crate::protocol::ChatEntry::user("fix the bug"));
@@ -320,7 +323,7 @@ fn render_shows_absolute_path_for_non_home_cwd() {
     let mut state = AppState::default();
     state
         .active_session_mut()
-        .set_model("ollama/llama3".to_owned());
+        .set_model(ModelSelection::Single("ollama/llama3".to_owned()));
     state
         .active_session_mut()
         .set_cwd(std::path::PathBuf::from("/tmp/test-project"));
@@ -347,7 +350,7 @@ fn render_shows_tilde_for_home_cwd() {
     let mut state = AppState::default();
     state
         .active_session_mut()
-        .set_model("ollama/llama3".to_owned());
+        .set_model(ModelSelection::Single("ollama/llama3".to_owned()));
     let home = dirs::home_dir().expect("home dir exists");
     state.active_session_mut().set_cwd(home);
     let (mut terminal, area) = setup_term(80, 2);
@@ -373,7 +376,7 @@ fn render_shows_tilde_substitution_for_path_under_home() {
     let mut state = AppState::default();
     state
         .active_session_mut()
-        .set_model("ollama/llama3".to_owned());
+        .set_model(ModelSelection::Single("ollama/llama3".to_owned()));
     let home = dirs::home_dir().expect("home dir exists");
     state
         .active_session_mut()
@@ -402,10 +405,11 @@ fn render_shows_context_limit_with_usage_and_percentage() {
     use crate::feat::session::token_stats::TokenRecord;
     let mut element = StatusBarElement;
     let mut state = AppState::default();
-    state
-        .active_session_mut()
-        .set_model("openrouter/anthropic/claude-sonnet-4".to_owned());
+    state.active_session_mut().set_model(ModelSelection::Single(
+        "openrouter/anthropic/claude-sonnet-4".to_owned(),
+    ));
     state.active_session_mut().push_token_record(TokenRecord {
+        model_used: None,
         timestamp: jiff::Timestamp::now(),
         tokens_sent: 5000,
         tokens_received: 0,
@@ -448,8 +452,9 @@ fn render_falls_back_when_no_context_limit_in_cache() {
     let mut state = AppState::default();
     state
         .active_session_mut()
-        .set_model("ollama/llama3".to_owned());
+        .set_model(ModelSelection::Single("ollama/llama3".to_owned()));
     state.active_session_mut().push_token_record(TokenRecord {
+        model_used: None,
         timestamp: jiff::Timestamp::now(),
         tokens_sent: 5000,
         tokens_received: 0,
@@ -495,8 +500,9 @@ fn render_falls_back_when_no_model_cache() {
     let mut state = AppState::default();
     state
         .active_session_mut()
-        .set_model("ollama/llama3".to_owned());
+        .set_model(ModelSelection::Single("ollama/llama3".to_owned()));
     state.active_session_mut().push_token_record(TokenRecord {
+        model_used: None,
         timestamp: jiff::Timestamp::now(),
         tokens_sent: 5000,
         tokens_received: 0,
@@ -529,9 +535,9 @@ fn render_shows_zero_percent_with_max_when_no_messages_sent() {
     // Given a model with a known context length but no messages sent (no context_size).
     let mut element = StatusBarElement;
     let mut state = AppState::default();
-    state
-        .active_session_mut()
-        .set_model("openrouter/anthropic/claude-sonnet-4".to_owned());
+    state.active_session_mut().set_model(ModelSelection::Single(
+        "openrouter/anthropic/claude-sonnet-4".to_owned(),
+    ));
 
     // And a model cache with context_length for the active model.
     let mut cache_entries = std::collections::HashMap::new();
@@ -567,7 +573,7 @@ fn render_shows_used_over_unknown_when_no_context_length() {
     let mut state = AppState::default();
     state
         .active_session_mut()
-        .set_model("ollama/llama3".to_owned());
+        .set_model(ModelSelection::Single("ollama/llama3".to_owned()));
     state.active_session_mut().set_context_size(15_000);
 
     // Model cache exists but has no context_length.
@@ -628,8 +634,9 @@ fn render_shows_cost_with_non_zero_value() {
     let mut state = AppState::default();
     state
         .active_session_mut()
-        .set_model("ollama/llama3".to_owned());
+        .set_model(ModelSelection::Single("ollama/llama3".to_owned()));
     state.active_session_mut().push_token_record(TokenRecord {
+        model_used: None,
         timestamp: jiff::Timestamp::now(),
         tokens_sent: 1500,
         tokens_received: 750,
@@ -659,7 +666,7 @@ fn render_shows_cost_before_turns_indicator() {
     let mut state = AppState::default();
     state
         .active_session_mut()
-        .set_model("ollama/llama3".to_owned());
+        .set_model(ModelSelection::Single("ollama/llama3".to_owned()));
     state
         .active_session_mut()
         .push_entry(crate::protocol::ChatEntry::user("hello"));
@@ -667,6 +674,7 @@ fn render_shows_cost_before_turns_indicator() {
         .active_session_mut()
         .push_entry(crate::protocol::ChatEntry::assistant("hi there"));
     state.active_session_mut().push_token_record(TokenRecord {
+        model_used: None,
         timestamp: jiff::Timestamp::now(),
         tokens_sent: 1000,
         tokens_received: 500,
@@ -701,7 +709,7 @@ fn render_hides_tree_aggregate_for_single_session() {
     let mut state = AppState::default();
     state
         .active_session_mut()
-        .set_model("ollama/llama3".to_owned());
+        .set_model(ModelSelection::Single("ollama/llama3".to_owned()));
     let (mut terminal, area) = setup_term(120, 2);
     terminal
         .draw(|frame| {
@@ -727,10 +735,11 @@ fn render_shows_tree_aggregate_when_parent_has_child() {
     let mut state = AppState::default();
     state
         .active_session_mut()
-        .set_model("ollama/llama3".to_owned());
+        .set_model(ModelSelection::Single("ollama/llama3".to_owned()));
 
     // Add token records to the active (parent) session.
     state.active_session_mut().push_token_record(TokenRecord {
+        model_used: None,
         timestamp: jiff::Timestamp::now(),
         tokens_sent: 1000,
         tokens_received: 500,
@@ -743,6 +752,7 @@ fn render_shows_tree_aggregate_when_parent_has_child() {
     {
         let child = state.session_mut_or_create(&child_id);
         child.push_token_record(TokenRecord {
+            model_used: None,
             timestamp: jiff::Timestamp::now(),
             tokens_sent: 500,
             tokens_received: 250,
@@ -797,7 +807,7 @@ fn render_shows_tree_aggregate_from_child_viewpoint() {
     state.session.set_active(child_id);
     state
         .active_session_mut()
-        .set_model("ollama/llama3".to_owned());
+        .set_model(ModelSelection::Single("ollama/llama3".to_owned()));
 
     let (mut terminal, area) = setup_term(120, 2);
     terminal

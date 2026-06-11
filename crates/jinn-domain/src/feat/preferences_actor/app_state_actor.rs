@@ -9,6 +9,7 @@ use crate::common::actor::{Actor, ActorContext, ActorEnvelope, NoDirectMsg};
 use crate::common::services::Services;
 use crate::feat::preferences_actor::protocol::app_state_command::UpdateAppState;
 use crate::feat::preferences_actor::protocol::app_state_event::AppStateUpdated;
+use crate::feat::session::model_selection::ModelSelection;
 
 use crate::protocol::{Command, Event};
 
@@ -87,6 +88,7 @@ mod tests {
     use crate::feat::preferences_actor::app_state_storage::InMemoryAppStateStorage;
     use crate::feat::preferences_actor::protocol::app_state_command::AppStateUpdate;
     use crate::feat::preferences_actor::protocol::app_state_command::UpdateAppState;
+    use crate::feat::session::model_selection::ModelSelection;
     use crate::protocol::Command;
 
     use super::{AppStateActor, AppStateActorDeps};
@@ -121,7 +123,7 @@ mod tests {
             .handle(
                 ActorEnvelope::Command(Command::UpdateAppState(UpdateAppState {
                     updates: vec![AppStateUpdate::SetLastModel(Some(
-                        "anthropic/claude-sonnet-4".to_owned(),
+                        ModelSelection::from_single("anthropic/claude-sonnet-4".to_owned()),
                     ))],
                 })),
                 &ctx,
@@ -130,10 +132,8 @@ mod tests {
 
         // Then the storage has the last model.
         let loaded = services.app_state_storage.read();
-        assert_eq!(
-            loaded.last_model.as_deref(),
-            Some("anthropic/claude-sonnet-4")
-        );
+        let expected = ModelSelection::from_single("anthropic/claude-sonnet-4".to_owned());
+        assert_eq!(loaded.last_model, Some(expected));
 
         // And an AppStateUpdated event was emitted.
         let events = sink.events();
@@ -195,7 +195,9 @@ mod tests {
             .handle(
                 ActorEnvelope::Command(Command::UpdateAppState(UpdateAppState {
                     updates: vec![
-                        AppStateUpdate::SetLastModel(Some("openrouter/gpt-4".to_owned())),
+                        AppStateUpdate::SetLastModel(Some(ModelSelection::from_single(
+                            "openrouter/gpt-4".to_owned(),
+                        ))),
                         AppStateUpdate::SetSidebarWidth(Some(40)),
                         AppStateUpdate::SetTheme(Some("nord".to_owned())),
                     ],
@@ -206,7 +208,8 @@ mod tests {
 
         // Then all three fields are persisted.
         let loaded = services.app_state_storage.read();
-        assert_eq!(loaded.last_model.as_deref(), Some("openrouter/gpt-4"));
+        let expected = ModelSelection::from_single("openrouter/gpt-4".to_owned());
+        assert_eq!(loaded.last_model, Some(expected));
         assert_eq!(loaded.sidebar_width, Some(40));
         assert_eq!(loaded.theme_name.as_deref(), Some("nord"));
     }
