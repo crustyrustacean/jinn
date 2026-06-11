@@ -163,37 +163,40 @@ impl SessionPersistenceActor {
             assemble_prompt(&guard, session_id, &self.counter, assembly_overrides)
         };
 
-        let (old_phase, new_phase) = {
+        // Resolve model under write lock (round-robin mutates index), push token
+        // record, and transition phase — all in one lock acquisition.
+        let (provider_id, model_used, old_phase, new_phase) = {
             let mut state = self.state.write();
             let session = state.session_mut_or_create(session_id);
             let old_phase = session.phase();
             session.begin_streaming();
+
+            let (provider_id, model_used) = {
+                let model = &mut session.profile_mut().model;
+                if model.is_no_provider() {
+                    (None, None)
+                } else {
+                    let resolved = model.resolve_model();
+                    (Some(resolved.clone()), Some(resolved))
+                }
+            };
+
             session.push_token_record(TokenRecord {
-                model_used: None,
+                model_used: model_used.clone(),
                 timestamp: jiff::Timestamp::now(),
                 tokens_sent: assembled.estimated_tokens(),
                 tokens_received: 0,
                 cost: None,
             });
 
-            (old_phase, session.phase())
+            (provider_id, model_used, old_phase, session.phase())
         };
         super::super::helpers::emit_phase_changed(ctx, session_id, old_phase, new_phase);
-
-        let provider_id = {
-            let state = self.state.read();
-            let model = state.session(session_id).profile().model.clone();
-            if model.is_no_provider() {
-                None
-            } else {
-                Some(model.display_str().to_owned())
-            }
-        };
 
         let estimated_tokens = assembled.estimated_tokens();
 
         if let Err(e) = ctx.send_command(Command::SendToLlmProvider(SendToLlmProvider {
-            model_used: None,
+            model_used,
             session_id: session_id.clone(),
             messages: assembled.messages,
             provider_id,
