@@ -114,16 +114,9 @@ impl HeadlessApp {
                     let result = IntentHandler::handle(&intent, &mut state, None);
                     drop(state);
 
-                    // Send resulting commands to core.
-                    for cmd in result.commands {
-                        self.core
-                            .sender()
-                            .send(AppMsg::Command {
-                                command: cmd,
-                                source: None,
-                            })
-                            .change_context(HeadlessError)
-                            .attach("failed to send script command")?;
+                    // Send resulting messages to bus.
+                    for closure in result.messages {
+                        let _ = self.core.bridge.send(closure);
                     }
                 }
             }

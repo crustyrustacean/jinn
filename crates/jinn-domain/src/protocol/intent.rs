@@ -2,7 +2,7 @@
 use crate::Bridge;
 use crate::common::bridge::BridgeClosure;
 use crate::common::bus::BusMessage;
-use crate::protocol::{Command, Event, PickerKind, SessionId};
+use crate::protocol::{PickerKind, SessionId};
 
 /// The search root for the directory picker.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -410,10 +410,6 @@ impl std::fmt::Display for Intent {
 /// Carries typed message closures to be dispatched to the actor system
 /// via the kameo message bus.
 pub struct IntentResult {
-    /// Commands to send to the actor system (legacy, will be removed in phase 4).
-    pub commands: Vec<Command>,
-    /// Events to broadcast to the actor system (legacy, will be removed in phase 4).
-    pub events: Vec<Event>,
     /// Typed message closures to publish to the kameo bus.
     pub messages: Vec<BridgeClosure>,
     /// Type names of messages, for test inspection.
@@ -421,34 +417,10 @@ pub struct IntentResult {
 }
 
 impl IntentResult {
-    /// An empty result with no commands, events, or messages.
+    /// An empty result with no messages.
     #[must_use]
     pub fn empty() -> Self {
         Self {
-            commands: vec![],
-            events: vec![],
-            messages: vec![],
-            message_names: vec![],
-        }
-    }
-
-    /// A result with commands (legacy path).
-    #[must_use]
-    pub fn with_commands(commands: Vec<Command>) -> Self {
-        Self {
-            commands,
-            events: vec![],
-            messages: vec![],
-            message_names: vec![],
-        }
-    }
-
-    /// A result with both commands and events (legacy path).
-    #[must_use]
-    pub fn with_commands_and_events(commands: Vec<Command>, events: Vec<Event>) -> Self {
-        Self {
-            commands,
-            events,
             messages: vec![],
             message_names: vec![],
         }
@@ -464,8 +436,6 @@ impl IntentResult {
         M: BusMessage,
     {
         Self {
-            commands: vec![],
-            events: vec![],
             messages: vec![crate::common::bridge::Bridge::publish_closure(msg)],
             message_names: vec![std::any::type_name::<M>()],
         }

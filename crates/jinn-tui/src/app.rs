@@ -93,17 +93,15 @@ impl TuiApp {
                     };
                     let mut state = self.core.state.write();
                     state.session.clear_load();
-                    let _ = self.core.sender().send(jinn_domain::AppMsg::Command {
-                        command: jinn_domain::Command::PushChatEntry(
-                            jinn_domain::feat::chat_input::protocol::command::PushChatEntry {
-                                session_id,
-                                entry: jinn_domain::ChatEntry::system(
-                                    "Failed to load session: timed out",
-                                ),
-                            },
-                        ),
-                        source: None,
-                    });
+                    let closure = jinn_domain::common::bridge::Bridge::publish_closure(
+                        jinn_domain::feat::chat_input::protocol::command::PushChatEntry {
+                            session_id,
+                            entry: jinn_domain::ChatEntry::system(
+                                "Failed to load session: timed out",
+                            ),
+                        },
+                    );
+                    let _ = self.core.bridge.send(closure);
                 }
             }
             Msg::Input(event) => {
@@ -169,10 +167,9 @@ impl TuiApp {
                 }
             }
             Msg::Command(cmd) => {
-                let _ = self.core.sender().send(AppMsg::Command {
-                    command: cmd,
-                    source: None,
-                });
+                //FIXME: disabled during actor migration — Msg::Command uses Command enum
+                // Convert to bus closure when Command enum is removed.
+                let _ = cmd; // suppress unused warning
             }
         }
     }
@@ -231,7 +228,7 @@ impl TuiApp {
     )]
     pub fn route_intent(&mut self, intent: Intent) {
         // Step 1-3: Handle intent, collect results, release lock.
-        let (commands, events, messages, signals) = {
+        let (messages, signals) = {
             let mut state = self.core.state.write();
 
             let result = IntentHandler::handle(&intent, &mut state, Some(&self.plugins));
@@ -243,56 +240,39 @@ impl TuiApp {
 
             // Collect signals before releasing lock.
             let signals = signals::TuiSignalsSnapshot::from_state(&state);
-            (result.commands, result.events, result.messages, signals)
+            (result.messages, signals)
         };
 
+        //FIXME: disabled during actor migration — redesign plugin protocol for typed bus messages
         // TriggerPlugin: TUI-only intent. Fire the plugin's named action on the async VM
-        // via the generic plugin::fire_async command path. The action hook itself writes
-        // plugin_data (visible to both VMs); we just kick off the async fire here, passing
-        // the current draft so action hooks (e.g. on_enrich) can act on it.
-        if let Intent::TriggerPlugin {
-            action, session_id, ..
-        } = intent.clone()
-        {
-            let (sid, text) = {
-                let state = self.core.state.read();
-                let sid = session_id.unwrap_or_else(|| state.session.active_session_id().clone());
-                let text = state.active_chat_input().text().to_owned();
-                (sid, text)
-            };
-            let payload = serde_json::json!({
-                "hook": action,
-                "session_id": sid,
-                "text": text,
-            });
+        // via the generic plugin::fire_async command path.
+        //
+        // if let Intent::TriggerPlugin {
+        //     action, session_id, ..
+        // } = intent.clone()
+        // {
+        //     let (sid, text) = {
+        //         let state = self.core.state.read();
+        //         let sid = session_id.unwrap_or_else(|| state.session.active_session_id().clone());
+        //         let text = state.active_chat_input().text().to_owned();
+        //         (sid, text)
+        //     };
+        //     let payload = serde_json::json!({
+        //         "hook": action,
+        //         "session_id": sid,
+        //         "text": text,
+        //     });
+        //     let closure = jinn_domain::common::bridge::Bridge::publish_closure(
+        //         jinn_domain::protocol::DynamicCommand {
+        //             name: "plugin::fire_async".into(),
+        //             payload,
+        //         },
+        //     );
+        //     let _ = self.core.bridge.send(closure);
+        //     return;
+        // }
 
-            let closure = jinn_domain::common::bridge::Bridge::publish_closure(
-                jinn_domain::protocol::DynamicCommand {
-                    name: "plugin::fire_async".into(),
-                    payload,
-                },
-            );
-            let _ = self.core.bridge.send(closure);
-            return;
-        }
-
-        // Step 4: Send legacy commands to core channel (temporary during migration).
-        for cmd in &commands {
-            let _ = self.core.sender().send(AppMsg::Command {
-                command: cmd.clone(),
-                source: None,
-            });
-        }
-
-        // Step 5: Send legacy events to core channel (temporary during migration).
-        for event in &events {
-            let _ = self.core.sender().send(AppMsg::Event {
-                event: event.clone(),
-                source: None,
-            });
-        }
-
-        // Step 5b: Send bus closures via bridge.
+        // Send bus closures via bridge.
         for closure in messages {
             let _ = self.core.bridge.send(closure);
         }
