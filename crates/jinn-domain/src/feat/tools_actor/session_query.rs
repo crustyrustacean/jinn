@@ -23,7 +23,7 @@ pub fn definition() -> ToolDefinition {
             "properties": {
                 "session_id": {
                     "type": "string",
-                    "description": "The ID of the session to query."
+                    "description": "The UUID of the session to query. Pass the exact UUID string, not a label like 'origin'."
                 },
                 "action": {
                     "type": "string",
