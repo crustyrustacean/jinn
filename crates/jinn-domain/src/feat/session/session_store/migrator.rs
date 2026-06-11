@@ -713,7 +713,6 @@ fn migrate_v17(conn: &mut SqliteConnection) -> Result<(), Report<SessionStoreErr
     Ok(())
 }
 
-
 /// v18: Rename `entries.timestamp` column to `timing`.
 ///
 /// The column now stores `EntryTiming` JSON (instant or streamed timing data)
