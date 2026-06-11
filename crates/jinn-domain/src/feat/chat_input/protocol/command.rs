@@ -7,14 +7,12 @@ use serde::{Deserialize, Serialize};
 
 use crate::BusMessage;
 use crate::protocol::ChatEntry;
-use crate::protocol::CommandMsg;
 use crate::protocol::SessionId;
 
 /// Push a chat entry into the conversation history.
 ///
 /// Any component or actor can send this to add an entry to the chat log.
-#[derive(Debug, Clone, Serialize, Deserialize, CommandMsg)]
-#[cmd("chat_input")]
+#[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct PushChatEntry {
     /// The session this entry belongs to.
     pub session_id: SessionId,
@@ -27,8 +25,7 @@ impl crate::common::bus::BusMessage for PushChatEntry {}
 /// Enqueue a user message for processing by the message queue.
 ///
 /// Submitted instead of directly pushing a chat entry when the queue is active.
-#[derive(Debug, Clone, Serialize, Deserialize, CommandMsg)]
-#[cmd("chat_input")]
+#[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct EnqueueUserMessage {
     /// The session this message belongs to.
     pub session_id: SessionId,
@@ -43,8 +40,7 @@ impl BusMessage for EnqueueUserMessage {}
 ///
 /// Submitted instead of pushing a fresh user entry when the user wants to
 /// resume after an error or after restarting the app mid-stream.
-#[derive(Debug, Clone, Serialize, Deserialize, CommandMsg)]
-#[cmd("chat_input")]
+#[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct EnqueueResumeTurn {
     /// The session to resume.
     pub session_id: SessionId,
@@ -61,8 +57,7 @@ impl BusMessage for EnqueueResumeTurn {}
 /// for routing to [`EnqueueUserMessage`] instead.
 ///
 /// See [`crate::feat::session::steering_buffer::SteeringBuffer`].
-#[derive(Debug, Clone, Serialize, Deserialize, CommandMsg)]
-#[cmd("chat_input")]
+#[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct SubmitSteeringMessage {
     /// The session whose steering buffer to append to.
     pub session_id: SessionId,
@@ -75,8 +70,7 @@ impl crate::common::bus::BusMessage for SubmitSteeringMessage {}
 /// Set the chat input buffer text directly.
 ///
 /// Used when draining queued messages back into the input box (e.g. on cancel).
-#[derive(Debug, Clone, Serialize, Deserialize, CommandMsg)]
-#[cmd("chat_input")]
+#[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct SetChatInputText {
     /// The session whose input buffer to set.
     pub session_id: SessionId,

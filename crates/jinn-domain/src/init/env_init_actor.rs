@@ -8,7 +8,6 @@
 
 use crate::common::actor_deps::{ActorDeps, BusPublish};
 use crate::common::bus::BusMessage;
-use crate::common::actor::event_msg::EventMsg;
 use crate::feat::provider_infra::ProvidersConfig;
 use crate::protocol;
 use error_stack::{ResultExt, Report};
@@ -25,8 +24,7 @@ pub struct EnvInitError;
 /// Emitted after the env init actor has populated `ApiKeysService`.
 /// Published at runtime for environment reloads (not during startup).
 /// Downstream actors should use `ask(GetEnvironmentConfig)` for initial config.
-#[derive(Debug, Clone, serde::Serialize, serde::Deserialize, protocol::EventMsg)]
-#[event_msg("environment")]
+#[derive(Debug, Clone, serde::Serialize, serde::Deserialize)]
 pub struct EnvironmentLoaded {
     /// The parsed provider configuration from `providers.toml`.
     pub config: ProvidersConfig,

@@ -15,7 +15,6 @@
 
 use std::sync::Arc;
 
-use jinn_domain::ActorHostService;
 use jinn_domain::ApiKeysService;
 use jinn_domain::AppState;
 use jinn_domain::ConfigStorageService;
@@ -119,7 +118,6 @@ impl ActorSystemBuilder {
         AppCore,
         Services,
         jinn_plugin::SyncPlugins,
-        ActorHostService,
     ) {
         let ActorSystemBuilderArgs {
             handle,
@@ -177,11 +175,11 @@ impl ActorSystemBuilder {
         // ── Plugin system ────────────────────────────────────────────────────
         // Constructed early — handles go into Services and TuiApp.
 
+        //FIXME: disabled during actor migration — plugin command dispatch needs redesign for typed bus messages
         let plugin_command_dispatcher: jinn_plugin::CommandDispatcher = std::sync::Arc::new({
-            let sender = sender.clone();
-            move |cmd: jinn_plugin::PluginCommand| {
-                let sink = jinn_domain::ActorMessageSink::new(sender.clone());
-                crate::plugin_wiring::handle_plugin_command(cmd, &sink);
+            let _sender = sender.clone();
+            move |_cmd: jinn_plugin::PluginCommand| {
+                // crate::plugin_wiring::handle_plugin_command(cmd, &sink);
             }
         });
         let handler_cell = domain_ctx_cell.clone();
@@ -920,10 +918,6 @@ impl ActorSystemBuilder {
             bridge: services.bridge.clone(),
         };
 
-        // Create a no-op actor host to satisfy the type system.
-        // Phase 4 will replace this with kameo-native coordinated shutdown.
-        let actor_host = ActorHostService::new(Arc::new(jinn_domain::FakeActorHost::new()));
-
-        (core, services, sync_plugins, actor_host)
+        (core, services, sync_plugins)
     }
 }

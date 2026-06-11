@@ -3,7 +3,6 @@
 use serde::{Deserialize, Serialize};
 
 use crate::BusMessage;
-use crate::protocol::EventMsg;
 use crate::protocol::SessionId;
 
 /// Emitted when a chat entry has been pinned or unpinned.
@@ -11,8 +10,7 @@ use crate::protocol::SessionId;
 /// The context actor emits this after mutating pin state in `AppState`.
 /// The session actor subscribes to this event and persists the updated
 /// session to disk.
-#[derive(Debug, Clone, Serialize, Deserialize, EventMsg)]
-#[event_msg("context")]
+#[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct ChatEntryPinChanged {
     /// The session whose pin state changed.
     pub session_id: SessionId,
@@ -22,8 +20,7 @@ pub struct ChatEntryPinChanged {
 ///
 /// The context actor receives this event and stores the loaded personas
 /// in `AppState`. If no active persona is set, the first one becomes default.
-#[derive(Debug, Clone, Serialize, Deserialize, EventMsg)]
-#[event_msg("context")]
+#[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct PersonasLoaded {
     /// The loaded persona files.
     pub personas: Vec<crate::feat::persona::Persona>,
@@ -36,8 +33,7 @@ pub struct PersonasLoaded {
 /// The intent handler emits this after toggling an entry's inclusion in
 /// the LLM context. The `ContextSizeActor` subscribes to this event to
 /// recalculate the context size for the status bar.
-#[derive(Debug, Clone, Serialize, Deserialize, EventMsg)]
-#[event_msg("context")]
+#[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct ContextOverrideChanged {
     /// The session whose entry was toggled.
     pub session_id: SessionId,
@@ -53,8 +49,7 @@ impl BusMessage for ContextOverrideChanged {}
 /// The context-files scan actor emits this after walking the bounded ancestor
 /// chain for the session's cwd and reading the first existing candidate per dir.
 /// Downstream handlers store the result in the session's ephemeral discovered set.
-#[derive(Debug, Clone, Serialize, Deserialize, EventMsg)]
-#[event_msg("context")]
+#[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct ContextFilesLoaded {
     /// The session whose cwd drove the scan.
     pub session_id: SessionId,

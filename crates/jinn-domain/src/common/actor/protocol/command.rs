@@ -2,11 +2,9 @@
 
 use serde::{Deserialize, Serialize};
 
-use crate::protocol::CommandMsg;
 
 /// Proceed with shutdown after actor coordination.
-#[derive(Debug, Clone, Serialize, Deserialize, CommandMsg)]
-#[cmd("actor")]
+#[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct ProceedWithShutdown {
     /// Actors that completed shutdown successfully.
     pub completed: Vec<String>,

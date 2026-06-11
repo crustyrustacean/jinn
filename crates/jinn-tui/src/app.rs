@@ -7,11 +7,10 @@ use std::mem;
 
 use crossterm::event::{MouseButton, MouseEventKind};
 use derive_more::Debug;
-use jinn_domain::ActorHostService;
 use jinn_domain::AppUiRegistry;
 use jinn_domain::IntentHandler;
 use jinn_domain::feat::ui::sidebar::Sidebar;
-use jinn_domain::{AppCore, AppMsg};
+use jinn_domain::{AppCore};
 use jinn_domain::{FocusScope, Intent, PickerKind};
 use ratatui::Frame;
 use ratatui_which_key::{CrosstermKeymapExt as _, WhichKeyState};
@@ -41,8 +40,6 @@ pub struct TuiApp {
     /// Plugin system for sync hook calls (render thread only, !Send).
     #[debug(skip)]
     pub plugins: jinn_plugin::SyncPlugins,
-    /// Actor host for coordinated shutdown.
-    pub actor_host: ActorHostService,
     /// UI element registry.
     pub ui_registry: AppUiRegistry,
     /// Message channel for the event loop.
@@ -166,10 +163,8 @@ impl TuiApp {
                     _ => {}
                 }
             }
-            Msg::Command(cmd) => {
-                //FIXME: disabled during actor migration — Msg::Command uses Command enum
-                // Convert to bus closure when Command enum is removed.
-                let _ = cmd; // suppress unused warning
+            Msg::Bridge(closure) => {
+                let _ = self.core.sender().send(closure);
             }
         }
     }

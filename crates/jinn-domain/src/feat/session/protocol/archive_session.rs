@@ -11,11 +11,10 @@
 use serde::{Deserialize, Serialize};
 
 use crate::BusMessage;
-use crate::protocol::{CommandMsg, SessionId};
+use crate::protocol::{SessionId};
 
 /// Archive a session without running teardown.
-#[derive(Debug, Clone, Serialize, Deserialize, CommandMsg)]
-#[cmd("session")]
+#[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct ArchiveSession {
     /// The session to archive.
     pub session_id: SessionId,

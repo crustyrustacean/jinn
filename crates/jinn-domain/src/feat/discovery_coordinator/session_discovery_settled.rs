@@ -5,7 +5,7 @@
 //! timer fires first. Consumers (e.g. the discovery notifier) read the
 //! snapshot and may surface the `delayed` reason.
 
-use crate::protocol::{EventMsg, SessionId};
+use crate::protocol::{SessionId};
 
 /// A snapshot of what a session's discovery scan settled with.
 #[derive(Debug, Clone, Default, serde::Serialize, serde::Deserialize, PartialEq, Eq)]
@@ -33,8 +33,7 @@ pub struct DiscoverySnapshot {
 /// 3000ms). It is `Some("discovery delayed by <resource>")` when the
 /// safety-net timer fired before all three arrived — surfaced so consumers
 /// can show the reason (relevant on slow disks, e.g. ZFS raidz2 on spinners).
-#[derive(Debug, Clone, serde::Serialize, serde::Deserialize, EventMsg)]
-#[event_msg("discovery_coordinator")]
+#[derive(Debug, Clone, serde::Serialize, serde::Deserialize)]
 pub struct SessionDiscoverySettled {
     /// The session whose discovery settled.
     pub session_id: SessionId,

@@ -8,11 +8,6 @@
 use kameo::prelude::ActorRef;
 use kameo_actors::message_bus::MessageBus;
 
-use crate::common::actor::message_sink::MessageSink;
-use crate::common::actor::actor_ref::{ActorSendError, SendResult};
-use error_stack::Report;
-use crate::protocol::{Command, Event};
-
 /// A closure that publishes a typed message to the bus.
 pub type BridgeClosure = Box<dyn FnOnce(&ActorRef<MessageBus>) + Send + 'static>;
 
@@ -90,67 +85,6 @@ impl Bridge {
 }
 
 /// A [`MessageSink`] adapter that publishes commands/events via the [`Bridge`].
-///
-/// Used during migration to allow code that depends on `MessageSink` to
-/// publish through the kameo bus without changes.
-pub struct BridgeSink {
-    bridge: Bridge,
-}
-
-impl BridgeSink {
-    /// Creates a new sink wrapping the given bridge.
-    #[must_use]
-    pub fn new(bridge: Bridge) -> Self {
-        Self { bridge }
-    }
-}
-
-impl MessageSink for BridgeSink {
-    fn name(&self) -> &'static str {
-        "bridge_sink"
-    }
-
-    fn send_command(&self, command: Command) -> SendResult {
-        let closure = Self::command_to_closure(command);
-        self.bridge.send(closure).map_err(|_e| Report::new(ActorSendError))?;
-        Ok(())
-    }
-
-    fn send_event(&self, event: Event) -> SendResult {
-        let closure = Self::event_to_closure(event);
-        self.bridge.send(closure).map_err(|_e| Report::new(ActorSendError))?;
-        Ok(())
-    }
-}
-
-impl BridgeSink {
-    fn command_to_closure(
-        command: crate::protocol::app_msg::command::Command,
-    ) -> BridgeClosure {
-        Box::new(move |bus| {
-            let bus = bus.clone();
-            tokio::spawn(async move {
-                let _ = bus
-                    .tell(kameo_actors::message_bus::Publish(command))
-                    .await;
-            });
-        })
-    }
-
-    fn event_to_closure(
-        event: crate::protocol::app_msg::event::Event,
-    ) -> BridgeClosure {
-        Box::new(move |bus| {
-            let bus = bus.clone();
-            tokio::spawn(async move {
-                let _ = bus
-                    .tell(kameo_actors::message_bus::Publish(event))
-                    .await;
-            });
-        })
-    }
-}
-
 #[cfg(test)]
 mod tests {
     #![allow(

@@ -2,8 +2,8 @@
 //!
 //! This module defines cross-cutting types that are used across feature boundaries:
 //!
-//! - **[`app_msg`]** - `AppMsg` (processing loop message), `Command` (mega-enum),
-//!   `Event` (mega-enum)
+//!
+//! - **[`app_msg`]** - `AppMsg` (bridge closure for the processing loop)
 //! - **[`intent`]** - `Intent` (user-initiated action) and `IntentResult`
 //! - **[`key`]** - `Key`, `KeyEvent`, `Modifiers` (keyboard input types)
 //! - **[`mode`]** - `Mode` (application interaction mode)
@@ -21,16 +21,11 @@ pub mod mode;
 pub mod system;
 
 // Re-export primary types
-pub use crate::common::actor::{CommandMsg, CommandName, EventMsg, EventTypeName};
 pub use app_msg::AppMsg;
-pub use app_msg::Command;
-pub use app_msg::DynamicCommand;
-pub use app_msg::DynamicEvent;
-pub use app_msg::Event;
+pub use crate::common::bus::BusMessage;
 pub use intent::CwdRoot;
 pub use intent::Intent;
 pub use intent::IntentResult;
-pub use jinn_protocol_derive::{CommandMsg, EventMsg};
 pub use key::{Key, KeyEvent, Modifiers};
 pub use mode::Mode;
 

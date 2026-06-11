@@ -28,8 +28,8 @@ use jinn_domain::feat::session::token_stats::TokenStats;
 use jinn_domain::feat::session_lifecycle::builtin::{BuiltinId, LifecycleCommand};
 use jinn_domain::feat::session_lifecycle::protocol::command::RunSessionSetup;
 use jinn_domain::feat::session_lifecycle::protocol::event::SessionSetupCompleted;
-use jinn_domain::protocol::{ChatEntry, Command, Event, SessionId};
-use jinn_domain::{Actor, ActorContext, ActorEnvelope, NoDirectMsg, RecordingSink, State};
+use jinn_domain::protocol::{ChatEntry, SessionId};
+use jinn_domain::State;
 
 use jinn_domain::common::actor_deps::{ActorDeps, BusPublish};
 use jinn_domain::common::services::bus_service::BusService;
@@ -99,68 +99,7 @@ pub struct BenchActorKameoDeps {
 // Old Actor impl — retained for test compat
 // ---------------------------------------------------------------------------
 
-impl Actor for BenchActor {
-    type Message = NoDirectMsg;
-    type Deps = BenchActorDeps;
-
-    fn activate(deps: Self::Deps, ctx: &mut ActorContext) -> Self {
-        ctx.set_description("Orchestrates bench sessions and writes CSV results");
-        ctx.subscribe_event::<SessionSetupCompleted>();
-        ctx.subscribe_event::<StreamCompleted>();
-        ctx.subscribe_event::<SessionPhaseChanged>();
-
-        let csv_writer = deps.csv_path.and_then(|path| {
-            BenchCsvWriter::create(&path)
-                .inspect_err(|e| {
-                    tracing::error!(path = %path.display(), error = %e, "failed to create CSV writer");
-                })
-                .ok()
-        });
-
-        // Build task lookup from all bench tasks.
-        let task_lookup = tasks::bench_tasks()
-            .into_iter()
-            .map(|t| (t.name.to_owned(), t))
-            .collect();
-
-        let plan = deps.plan;
-
-        let mut actor = Self {
-            bus: None,
-            state: deps.state,
-            pending: HashMap::new(),
-            csv_writer,
-            task_lookup,
-            plan,
-            current_pair_index: 0,
-        };
-
-        // If we have a plan, start the first pair immediately.
-        if actor.plan.is_some() {
-            actor.start_next_pair(ctx);
-        }
-
-        actor
-    }
-
-    async fn handle(&mut self, msg: ActorEnvelope<Self::Message>, ctx: &ActorContext) {
-        match msg {
-            ActorEnvelope::Event(Event::SessionSetupCompleted(payload)) => {
-                self.handle_session_setup_completed(&payload, ctx);
-            }
-            ActorEnvelope::Event(Event::StreamCompleted(payload)) => {
-                self.handle_stream_completed(&payload, ctx);
-            }
-            ActorEnvelope::Event(Event::SessionPhaseChanged(payload)) => {
-                self.handle_session_phase_changed(&payload, ctx).await;
-            }
-            ActorEnvelope::Command(_)
-            | ActorEnvelope::Event(_)
-            | ActorEnvelope::System(_)
-            | ActorEnvelope::Direct(_) => {}
-        }
-    }
-}
+// DELETED: old impl Actor for BenchActor — migrated to kameo
 
 // ---------------------------------------------------------------------------
 // Kameo Actor impl — for production spawning
@@ -210,33 +149,18 @@ impl KameoActor for BenchActor {
 
         // If we have a plan, start the first pair.
         if actor.plan.is_some() {
-            let sink = std::sync::Arc::new(RecordingSink::new());
-            let ctx = ActorContext::new("bench", sink.clone());
-            actor.start_next_pair(&ctx);
-            // Flush commands from start_next_pair to the bus.
-            if let Some(ref bus) = actor.bus {
-                for cmd in sink.take_commands() {
-                    BenchActor::publish_cmd(bus, cmd).await;
-                }
-            }
+            actor.start_next_pair().await;
         }
 
         Ok(actor)
     }
 }
 
-// ---------------------------------------------------------------------------
-// Kameo Message impls — bridge pattern
-// ---------------------------------------------------------------------------
-
 impl Message<SessionSetupCompleted> for BenchActor {
     type Reply = ();
 
     async fn handle(&mut self, msg: SessionSetupCompleted, _ctx: &mut KameoContext<Self, Self::Reply>) {
-        let sink = std::sync::Arc::new(RecordingSink::new());
-        let ctx = ActorContext::new("bench", sink.clone());
-        self.handle_session_setup_completed(&msg, &ctx);
-        self.flush_sink(sink).await;
+        self.handle_session_setup_completed(&msg).await;
     }
 }
 
@@ -244,10 +168,7 @@ impl Message<StreamCompleted> for BenchActor {
     type Reply = ();
 
     async fn handle(&mut self, msg: StreamCompleted, _ctx: &mut KameoContext<Self, Self::Reply>) {
-        let sink = std::sync::Arc::new(RecordingSink::new());
-        let ctx = ActorContext::new("bench", sink.clone());
-        self.handle_stream_completed(&msg, &ctx);
-        self.flush_sink(sink).await;
+        self.handle_stream_completed(&msg).await;
     }
 }
 
@@ -255,10 +176,7 @@ impl Message<SessionPhaseChanged> for BenchActor {
     type Reply = ();
 
     async fn handle(&mut self, msg: SessionPhaseChanged, _ctx: &mut KameoContext<Self, Self::Reply>) {
-        let sink = std::sync::Arc::new(RecordingSink::new());
-        let ctx = ActorContext::new("bench", sink.clone());
-        self.handle_session_phase_changed(&msg, &ctx).await;
-        self.flush_sink(sink).await;
+        self.handle_session_phase_changed(&msg).await;
     }
 }
 
@@ -268,38 +186,8 @@ impl BusPublish for BenchActor {
     }
 }
 
-impl BenchActor {
-    async fn flush_sink(&self, sink: std::sync::Arc<RecordingSink>) {
-        if let Some(ref bus) = self.bus {
-            for cmd in sink.take_commands() {
-                Self::publish_cmd(bus, cmd).await;
-            }
-            for event in sink.take_events() {
-                Self::publish_evt(bus, event).await;
-            }
-        }
-    }
-
-    async fn publish_cmd(bus: &BusService, cmd: Command) {
-        match cmd {
-            Command::EnqueueUserMessage(m) => bus.publish(m).await,
-            Command::PushChatEntry(m) => bus.publish(m).await,
-            Command::RunSessionSetup(m) => bus.publish(m).await,
-            Command::CancelStream(m) => bus.publish(m).await,
-            Command::PersistSession(m) => bus.publish(m).await,
-            other => tracing::warn!(?other, "bench: unhandled command variant"),
-        }
-    }
-
-    async fn publish_evt(_bus: &BusService, event: Event) {
-        match event {
-            other => tracing::warn!(?other, "bench: unhandled event variant"),
-        }
-    }
-}
-
 // ---------------------------------------------------------------------------
-// Handler methods (shared between old and kameo paths)
+// Handler methods
 // ---------------------------------------------------------------------------
 
 impl BenchActor {
@@ -310,7 +198,7 @@ impl BenchActor {
     /// the initial prompt for the current pair in the plan.
     ///
     /// No-ops if there is no plan or all pairs have been started.
-    fn start_next_pair(&mut self, ctx: &ActorContext) {
+    async fn start_next_pair(&mut self) {
         let Some(ref plan) = self.plan else {
             return;
         };
@@ -358,35 +246,29 @@ impl BenchActor {
 
         // Emit setup commands.
         let lifecycle_command = LifecycleCommand::Builtin(BuiltinId(task_name.clone()));
-        let _ = ctx.send_command(Command::PersistSession(
-            jinn_domain::feat::session_lifecycle::protocol::command::PersistSession {
-                session_id: session_id.clone(),
-            },
-        ));
-        let _ = ctx.send_command(Command::PushChatEntry(
-            jinn_domain::feat::chat_input::protocol::command::PushChatEntry {
-                session_id: session_id.clone(),
-                entry: setup_running_msg(),
-            },
-        ));
-        let _ = ctx.send_command(Command::RunSessionSetup(RunSessionSetup {
+        self.publish(jinn_domain::feat::session_lifecycle::protocol::command::PersistSession {
+            session_id: session_id.clone(),
+        }).await;
+        self.publish(jinn_domain::feat::chat_input::protocol::command::PushChatEntry {
+            session_id: session_id.clone(),
+            entry: setup_running_msg(),
+        }).await;
+        self.publish(RunSessionSetup {
             session_id: session_id.clone(),
             command: task_name.clone(),
             args: vec![],
             lifecycle_command: Some(lifecycle_command),
-        }));
+        }).await;
     }
 
-    /// Enqueue a message for the given session.
-    fn enqueue_message(session_id: &SessionId, message: &str, ctx: &ActorContext) {
-        let _ = ctx.send_command(Command::EnqueueUserMessage(EnqueueUserMessage {
+    async fn enqueue_message(&mut self, session_id: &SessionId, message: &str) {
+        self.publish(EnqueueUserMessage {
             session_id: session_id.clone(),
             entry: jinn_domain::ChatEntry::user(message.to_owned()),
-        }));
+        }).await;
     }
 
-    /// Handle setup errors for bench sessions: record a failure row and advance.
-    fn handle_setup_error(&mut self, session_id: &SessionId, error: &str, ctx: &ActorContext) {
+    async fn handle_setup_error(&mut self, session_id: &SessionId, error: &str) {
         // Check if this session has a bench lifecycle name.
         let task_name = {
             let state = self.state.read();
@@ -443,13 +325,13 @@ impl BenchActor {
 
         // Push a failure chat entry.
         let msg = format!("❌ Setup failed: {error}");
-        let _ = ctx.send_command(Command::PushChatEntry(PushChatEntry {
+        self.publish(PushChatEntry {
             session_id: session_id.clone(),
             entry: ChatEntry::system(msg),
-        }));
+        }).await;
 
         // Advance to the next pair.
-        self.start_next_pair(ctx);
+        self.start_next_pair().await;
 
         // If no more pending sessions and no more pairs, signal completion.
         if self.pending.is_empty() {
@@ -466,15 +348,13 @@ impl BenchActor {
         }
     }
 
-    /// Handle `SessionSetupCompleted` - start tracking if this is a bench session.
-    fn handle_session_setup_completed(
+    async fn handle_session_setup_completed(
         &mut self,
         payload: &SessionSetupCompleted,
-        ctx: &ActorContext,
     ) {
         // Handle setup errors: record failure and advance to next pair.
         if let Some(ref error) = payload.error {
-            self.handle_setup_error(&payload.session_id, error, ctx);
+            self.handle_setup_error(&payload.session_id, error).await;
             return;
         }
 
@@ -520,18 +400,15 @@ impl BenchActor {
             },
         );
 
-        // Enqueue the first message for this session.
-        if let Some(first_message) = task.messages.first() {
-            Self::enqueue_message(&payload.session_id, first_message, ctx);
-            if let Some(tracked) = self.pending.get_mut(&payload.session_id) {
-                tracked.messages_remaining -= 1;
-                tracked.next_message_index += 1;
-            }
+        let first_message = task.messages[0];
+        self.enqueue_message(&payload.session_id, first_message).await;
+        if let Some(tracked) = self.pending.get_mut(&payload.session_id) {
+            tracked.messages_remaining -= 1;
+            tracked.next_message_index += 1;
         }
     }
 
-    /// Handle `StreamCompleted` - check timeout for tracked sessions.
-    fn handle_stream_completed(&mut self, payload: &StreamCompleted, ctx: &ActorContext) {
+    async fn handle_stream_completed(&mut self, payload: &StreamCompleted) {
         let Some(tracked) = self.pending.get(&payload.session_id) else {
             return;
         };
@@ -547,25 +424,12 @@ impl BenchActor {
             "bench session timed out, sending CancelStream"
         );
 
-        let _ = ctx.send_command(Command::CancelStream(CancelStream {
+        self.publish(CancelStream {
             session_id: payload.session_id.clone(),
-        }));
+        }).await;
     }
 
-    /// Handle `SessionPhaseChanged` - finalize result when tracked session returns to Idle.
-    #[expect(
-        clippy::unused_async,
-        reason = "called via .await from the async handle method"
-    )]
-    #[expect(
-        clippy::too_many_lines,
-        reason = "linear lifecycle handler orchestrating teardown, archive, cleanup phases"
-    )]
-    async fn handle_session_phase_changed(
-        &mut self,
-        payload: &SessionPhaseChanged,
-        ctx: &ActorContext,
-    ) {
+    async fn handle_session_phase_changed(&mut self, payload: &SessionPhaseChanged) {
         // Only care about Idle transitions for tracked sessions.
         if payload.new_phase != PhaseKind::Idle {
             return;
@@ -587,7 +451,7 @@ impl BenchActor {
             {
                 // We don't use `task` but need it for the `and_then` chain.
                 let _ = task;
-                Self::enqueue_message(&payload.session_id, message, ctx);
+                self.enqueue_message(&payload.session_id, message).await;
                 if let Some(tracked) = self.pending.get_mut(&payload.session_id) {
                     tracked.messages_remaining -= 1;
                     tracked.next_message_index += 1;
@@ -660,10 +524,10 @@ impl BenchActor {
             } else {
                 format!("❌ {}: {}", check.name, check.detail)
             };
-            let _ = ctx.send_command(Command::PushChatEntry(PushChatEntry {
+            self.publish(PushChatEntry {
                 session_id: payload.session_id.clone(),
                 entry: ChatEntry::system(msg),
-            }));
+            }).await;
         }
 
         // Push summary line.
@@ -677,10 +541,10 @@ impl BenchActor {
                 report.checks.len()
             )
         };
-        let _ = ctx.send_command(Command::PushChatEntry(PushChatEntry {
+        self.publish(PushChatEntry {
             session_id: payload.session_id.clone(),
             entry: ChatEntry::system(summary),
-        }));
+        }).await;
 
         let category = self
             .task_lookup
@@ -721,7 +585,7 @@ impl BenchActor {
         }
 
         // Advance to the next pair.
-        self.start_next_pair(ctx);
+        self.start_next_pair().await;
 
         // If no more pending sessions and no more pairs, signal completion.
         if self.pending.is_empty() {

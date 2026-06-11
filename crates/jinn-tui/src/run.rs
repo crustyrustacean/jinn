@@ -85,13 +85,7 @@ pub fn run(mut app: TuiApp) -> Result<(), Report<TuiRunError>> {
         guard.stop();
     }
 
-    // Shut down actor host - coordinated shutdown.
-    jinn_domain::coordinated_shutdown(
-        app.actor_host.backend(),
-        &app.core.state,
-        &app.services.handle,
-        jinn_domain::SHUTDOWN_TIMEOUT,
-    );
+    // TODO: Coordinated shutdown via kameo actor lifecycle.
 
     // Restore terminal.
     if let Err(e) = execute!(terminal.backend_mut(), PopKeyboardEnhancementFlags) {
@@ -310,17 +304,13 @@ fn handle_suspend_action(
                             return Ok(());
                         }
                     };
-                    // Submit a single SetSessionCwd command so the session
-                    // actor applies the cwd and broadcasts SessionCwdChanged;
-                    // the event-driven scan actors then re-discover
-                    // skills/prompts/context-files for the new cwd.
                     let session_id = app.core.state.read().active_session().session_id().clone();
-                    app.core.submit_command(jinn_domain::Command::SetSessionCwd(
+                    app.core.sender().send(jinn_domain::Bridge::publish_closure(
                         jinn_domain::feat::session_lifecycle::protocol::command::SetSessionCwd {
                             session_id,
                             cwd: canonical,
                         },
-                    ));
+                    )).ok();
 
                     tracing::info!(
                         cwd = %app.core.state.read().active_session().cwd().display(),

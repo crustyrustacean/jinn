@@ -3,7 +3,6 @@
 use serde::{Deserialize, Serialize};
 
 use crate::feat::preferences_actor::app_state_file::AppStateFile;
-use crate::protocol::CommandMsg;
 
 /// A single atomic app-state update.
 ///
@@ -39,8 +38,7 @@ impl AppStateUpdate {
 /// Carries a batch of [`AppStateUpdate`] diffs. The `AppStateActor`
 /// loads current state, applies all diffs, saves, and emits
 /// [`AppStateUpdated`](super::event::AppStateUpdated) with the full result.
-#[derive(Debug, Clone, Serialize, Deserialize, CommandMsg)]
-#[cmd("app_state")]
+#[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct UpdateAppState {
     /// The atomic diffs to apply.
     pub updates: Vec<AppStateUpdate>,

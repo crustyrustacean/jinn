@@ -2,7 +2,6 @@
 
 pub mod actor_deps;
 pub mod actor;
-pub mod actor_host;
 pub mod app_info;
 pub mod app_paths;
 pub mod app_state;

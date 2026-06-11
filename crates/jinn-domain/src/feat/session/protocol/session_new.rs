@@ -7,9 +7,7 @@
 
 use serde::{Deserialize, Serialize};
 
-use crate::protocol::CommandMsg;
 
 /// Signal to close the session picker and start a fresh empty session.
-#[derive(Debug, Clone, Serialize, Deserialize, CommandMsg)]
-#[cmd("session")]
+#[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct SessionNew;
