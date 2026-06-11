@@ -3,6 +3,7 @@
 use serde::{Deserialize, Serialize};
 
 use crate::protocol::EventMsg;
+use crate::common::bus::BusMessage;
 use crate::protocol::Mode;
 use crate::protocol::key::KeyEvent;
 
@@ -33,6 +34,8 @@ pub struct ModeChanged {
     /// The new mode.
     pub to: Mode,
 }
+impl BusMessage for KeyDown {}
+impl BusMessage for KeyUp {}
 
 /// The active session changed.
 #[derive(Debug, Clone, Serialize, Deserialize, EventMsg)]
@@ -41,3 +44,5 @@ pub struct ActiveSessionChanged {
     /// The new active session ID.
     pub session_id: crate::protocol::SessionId,
 }
+
+impl BusMessage for ActiveSessionChanged {}

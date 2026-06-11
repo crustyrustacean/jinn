@@ -531,13 +531,13 @@ mod tests {
                 .expect("picker still active")
                 .is_filter_empty()
         );
-        assert!(result1.commands.is_empty());
+        assert!(result1.messages.is_empty());
 
         // Second press: filter is now empty, so picker should close.
         let result2 = IntentHandler::handle(&Intent::CtrlClear, &mut state, None);
         assert!(!state.frontend.scope_stack.is_picker());
         assert_eq!(state.frontend.scope_stack.current(), &FocusScope::Normal);
-        assert!(result2.commands.is_empty());
+        assert!(result2.messages.is_empty());
     }
 
     #[rstest::rstest]
