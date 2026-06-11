@@ -204,17 +204,15 @@ mod tests {
     }
 
     async fn create_actor() -> (SessionPersistenceActor, State) {
-        let sink: Arc<dyn MessageSink> = Arc::new(RecordingSink::new());
-        let mut ctx = ActorContext::new("test", sink);
         let state = State::new(AppState::default());
-        let deps = SessionPersistenceActorDeps {
+        let actor = SessionPersistenceActor {
             state: state.clone(),
-            services: TestServices::builder().build(),
+            services: crate::common::services::Services::new_fake().await,
             counter: crate::feat::context::strategy::token_estimator::TiktokenCounter::o200k_base(),
             builtin_registry: crate::feat::session_lifecycle::builtin::BuiltinRegistry::new(),
             shell: "/bin/sh".to_owned(),
+            lifecycle_child: None,
         };
-        let actor = SessionPersistenceActor::activate(deps, &mut ctx);
         (actor, state)
     }
 
