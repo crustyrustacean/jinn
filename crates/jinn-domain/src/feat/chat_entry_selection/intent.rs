@@ -203,10 +203,10 @@ pub fn handle_fork_from_entry(state: &mut AppState) -> IntentResult {
 
     state.session.begin_load(source_session_id.clone());
 
-    IntentResult::with_commands(vec![Command::SessionForkRequested(SessionForkRequested {
+    IntentResult::with_message(SessionForkRequested {
         source_session_id,
         at_ordinal,
-    })])
+    })
 }
 
 /// Yanks (copies) the text of the currently selected chat entry to the clipboard.

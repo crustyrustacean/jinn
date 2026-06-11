@@ -10,6 +10,7 @@
 
 use serde::{Deserialize, Serialize};
 
+use crate::BusMessage;
 use crate::protocol::{CommandMsg, SessionId};
 
 /// Archive a session without running teardown.
@@ -19,3 +20,5 @@ pub struct ArchiveSession {
     /// The session to archive.
     pub session_id: SessionId,
 }
+
+impl BusMessage for ArchiveSession {}

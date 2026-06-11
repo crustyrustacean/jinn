@@ -2,6 +2,7 @@
 
 use serde::{Deserialize, Serialize};
 
+use crate::BusMessage;
 use crate::protocol::CommandMsg;
 
 /// Load entries for the session picker.
@@ -11,3 +12,5 @@ use crate::protocol::CommandMsg;
 #[derive(Debug, Clone, Serialize, Deserialize, CommandMsg)]
 #[cmd("session")]
 pub struct LoadSessionPickerEntries;
+
+impl BusMessage for LoadSessionPickerEntries {}

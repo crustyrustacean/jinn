@@ -1,4 +1,5 @@
 //! The [`Intent`] enum - one variant per user-initiated action.
+use crate::Bridge;
 use crate::common::bridge::BridgeClosure;
 use crate::common::bus::BusMessage;
 use crate::protocol::{Command, Event, PickerKind, SessionId};
@@ -462,6 +463,26 @@ impl IntentResult {
             events: vec![],
             messages: vec![crate::common::bridge::Bridge::publish_closure(msg)],
         }
+    }
+
+    /// Append multiple messages of one type at the same time.
+    #[must_use]
+    pub fn with_messages<I, M>(mut self, msgs: I) -> Self
+    where
+        M: BusMessage,
+        I: IntoIterator<Item = M>,
+    {
+        for msg in msgs {
+            self.messages.push(Bridge::publish_closure(msg));
+        }
+        self
+    }
+
+    /// Append a typed message and return self for chaining.
+    #[must_use]
+    pub fn message<M: BusMessage>(mut self, msg: M) -> Self {
+        self.messages.push(Bridge::publish_closure(msg));
+        self
     }
 }
 

@@ -89,17 +89,12 @@ fn finalize_sweep(
     session_id: SessionId,
     changed_ids: Vec<ChatEntryId>,
 ) -> IntentResult {
-    let events: Vec<Event> = changed_ids
-        .into_iter()
-        .map(|id| {
-            Event::ContextOverrideChanged(ContextOverrideChanged {
-                session_id: session_id.clone(),
-                entry_id: id,
-            })
-        })
-        .collect();
-    IntentResult::with_commands_and_events(
-        vec![Command::PersistSession(PersistSession { session_id })],
-        events,
-    )
+    let events = changed_ids.into_iter().map(|id| ContextOverrideChanged {
+        session_id: session_id.clone(),
+        entry_id: id,
+    });
+    IntentResult::with_message(PersistSession {
+        session_id: session_id.clone(),
+    })
+    .with_messages(events)
 }

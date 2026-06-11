@@ -5,6 +5,7 @@
 
 use serde::{Deserialize, Serialize};
 
+use crate::BusMessage;
 use crate::protocol::ChatEntry;
 use crate::protocol::CommandMsg;
 use crate::protocol::SessionId;
@@ -34,6 +35,9 @@ pub struct EnqueueUserMessage {
     /// The fully constructed user chat entry (with display/expanded text).
     pub entry: ChatEntry,
 }
+
+impl BusMessage for EnqueueUserMessage {}
+
 /// Enqueue a manual resume for a session: re-assemble current history and
 /// re-send to the provider. Adds no user message.
 ///
@@ -46,6 +50,7 @@ pub struct EnqueueResumeTurn {
     pub session_id: SessionId,
 }
 
+impl BusMessage for EnqueueResumeTurn {}
 /// Append a fragment to a session's steering buffer.
 ///
 /// Submitted when the user picks STEER mode and the LLM is currently

@@ -28,7 +28,7 @@ pub fn handle_session_archive(state: &mut AppState) -> crate::protocol::IntentRe
     let target_id = target.id.clone();
 
     // Emit ArchiveSession - the actor handles archival without teardown.
-    crate::protocol::IntentResult::with_commands(vec![Command::ArchiveSession(ArchiveSession {
+    crate::protocol::IntentResult::with_message(ArchiveSession {
         session_id: target_id,
-    })])
+    })
 }

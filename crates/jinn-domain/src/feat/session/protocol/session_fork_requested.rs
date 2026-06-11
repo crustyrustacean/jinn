@@ -8,6 +8,7 @@
 
 use serde::{Deserialize, Serialize};
 
+use crate::BusMessage;
 use crate::protocol::CommandMsg;
 use crate::protocol::SessionId;
 
@@ -24,3 +25,5 @@ pub struct SessionForkRequested {
     /// Include entries with ordinal <= this value in the forked session.
     pub at_ordinal: usize,
 }
+
+impl BusMessage for SessionForkRequested {}

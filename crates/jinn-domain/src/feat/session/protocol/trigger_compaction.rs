@@ -2,6 +2,7 @@
 
 use serde::{Deserialize, Serialize};
 
+use crate::BusMessage;
 use crate::protocol::CommandMsg;
 use crate::protocol::SessionId;
 
@@ -18,3 +19,5 @@ pub struct TriggerCompaction {
     /// Whether to force-compact all entries (ignore reserve).
     pub compact_all: bool,
 }
+
+impl BusMessage for TriggerCompaction {}
