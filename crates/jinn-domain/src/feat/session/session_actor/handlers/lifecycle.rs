@@ -146,7 +146,7 @@ impl SessionPersistenceActor {
             Some(ref cmd) => match cmd {
                 crate::feat::session_lifecycle::builtin::LifecycleCommand::Builtin(id) => {
                     // Builtin: run inline, then complete Working.
-                    self.run_builtin_setup(&payload.session_id, id, &payload.args);
+                    self.run_builtin_setup(&payload.session_id, id, &payload.args).await;
                     // Complete busy.
                     {
                         let mut state = self.state.write();
@@ -156,16 +156,16 @@ impl SessionPersistenceActor {
                     }
                 }
                 crate::feat::session_lifecycle::builtin::LifecycleCommand::Shell(_) => {
-                    self.spawn_shell_setup(payload);
+                    self.spawn_shell_setup(payload).await;
                 }
             },
             None => {
-                self.spawn_shell_setup(payload);
+                self.spawn_shell_setup(payload).await;
             }
         }
     }
 
-    fn spawn_shell_setup(&mut self, payload: &RunSessionSetup) {
+    async fn spawn_shell_setup(&mut self, payload: &RunSessionSetup) {
         use crate::feat::session_lifecycle::command_runner::spawn_setup_command;
 
         let (cancel_handle, handle) = match spawn_setup_command(&payload.command, &self.shell) {
@@ -173,22 +173,23 @@ impl SessionPersistenceActor {
             Err(e) => {
                 // Failed to even start the command.
                 let error_msg = format!("Failed to start setup command: {e}");
-                let mut state = self.state.write();
-                let default = state.session.default_cwd().clone();
-                if let Some(session) = state.session.get_mut(&payload.session_id) {
-                    session.set_cwd(default);
-                    session.complete_busy();
+                {
+                    let mut state = self.state.write();
+                    let default = state.session.default_cwd().clone();
+                    if let Some(session) = state.session.get_mut(&payload.session_id) {
+                        session.set_cwd(default);
+                        session.complete_busy();
+                    }
                 }
-                drop(state);
                 self.publish(PushChatEntry {
                     session_id: payload.session_id.clone(),
                     entry: ChatEntry::error(&error_msg),
-                });
+                }).await;
                 self.publish(SessionSetupCompleted {
                     session_id: payload.session_id.clone(),
                     cwd: std::path::PathBuf::new(),
                     error: Some(error_msg),
-                });
+                }).await;
                 return;
             }
         };
@@ -218,7 +219,7 @@ impl SessionPersistenceActor {
                 session_id,
                 cwd,
                 error,
-            });
+            }).await;
         });
 
         self.lifecycle_child = Some(cancel_handle);

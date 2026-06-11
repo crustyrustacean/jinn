@@ -86,7 +86,7 @@ impl SessionPersistenceActor {
                         // Mark startup-loaded sessions as interacted - they came from disk.
                         session.mark_interacted();
                         let session_id = session.session_id().clone();
-                        self.load_and_insert(session);
+                        self.load_and_insert(session).await;
                         self.rehydrate_attached_plugins(&session_id);
                     }
 

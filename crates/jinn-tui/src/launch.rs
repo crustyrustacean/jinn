@@ -7,7 +7,6 @@
 //! divergence that previously left plugin keybinds unbound in production.
 
 use std::path::Path;
-use std::sync::Arc;
 
 use error_stack::{Report, ResultExt};
 use jinn_domain::common::system_resource::load_system_resource;

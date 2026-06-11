@@ -169,7 +169,7 @@ impl SessionPersistenceActor {
 
             (old_phase, session.phase())
         };
-        super::super::helpers::emit_phase_changed(self.bus(), session_id, old_phase, new_phase);
+        super::super::helpers::emit_phase_changed(self.bus(), session_id, old_phase, new_phase).await;
 
         let provider_id = {
             let state = self.state.read();
@@ -234,7 +234,7 @@ impl SessionPersistenceActor {
                 &event.session_id,
                 old_phase,
                 new_phase,
-            );
+            ).await;
             return;
         }
 

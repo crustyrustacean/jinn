@@ -6,7 +6,6 @@
 
 use std::fmt;
 use std::path::PathBuf;
-use std::sync::Arc;
 use std::time::Duration;
 
 use crate::common::services::bus_service::BusService;

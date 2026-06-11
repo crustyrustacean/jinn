@@ -261,7 +261,7 @@ impl SessionPersistenceActor {
             &payload.session_id,
             old_phase,
             new_phase,
-        );
+        ).await;
 
         self.publish(SendToLlmProvider {
             session_id: payload.session_id.clone(),

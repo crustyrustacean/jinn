@@ -13,7 +13,6 @@
 //! EnvInitActor is spawned first with `wait_for_startup()` so dependent actors
 //! can look it up in the kameo registry and pull config via `ask()`.
 
-use std::sync::Arc;
 
 use jinn_domain::ApiKeysService;
 use jinn_domain::AppState;
@@ -112,7 +111,7 @@ impl ActorSystemBuilder {
     }
 
     /// Spawn all actors via kameo, build the bus and bridge, and wait for readiness.
-    pub fn build(
+    pub async fn build(
         self,
     ) -> (
         AppCore,
@@ -304,7 +303,7 @@ impl ActorSystemBuilder {
             deps: actor_deps.clone(),
             registry_name: Some("env-init"),
         });
-        handle.block_on(async { env_init.wait_for_startup().await });
+        env_init.wait_for_startup().await;
         // Provider init: on EnvironmentLoaded, builds registry, merges cache, resolves last_model.
         let _provider_init = ProviderInitActor::spawn(ProviderInitActorDeps {
             deps: actor_deps.clone(),

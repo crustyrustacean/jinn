@@ -9,7 +9,6 @@
 use crate::common::actor_deps::{ActorDeps, BusPublish};
 use crate::common::bus::BusMessage;
 use crate::feat::provider_infra::ProvidersConfig;
-use crate::protocol;
 use error_stack::{ResultExt, Report};
 use kameo::prelude::{Actor, ActorRef, Context, Message};
 use wherror::Error;
