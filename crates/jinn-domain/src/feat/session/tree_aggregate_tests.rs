@@ -614,3 +614,66 @@ fn empty_sessions_produce_zeros() {
     assert!(stats.total_cost < f64::EPSILON);
     assert_eq!(stats.total_turns, 0);
 }
+
+// --- fork_ordinal tests ---
+
+#[rstest::rstest]
+fn forked_session_excluded_from_tree_turn_count() {
+    // Given a parent with 2 user entries and a forked child that inherited them.
+    let parent_id = SessionId::new();
+    let child_id = SessionId::new();
+
+    let mut sessions = HashMap::new();
+    sessions.insert(
+        parent_id.clone(),
+        make_session_with_stats(parent_id.clone(), 100, 50, Some(0.01), 2),
+    );
+
+    // The forked child inherited 2 user entries from the parent.
+    let mut child = make_session_with_stats(child_id.clone(), 0, 0, None, 2);
+    child.set_parent_session(parent_id.clone());
+    child.set_fork_ordinal(1); // inherited both entries (ordinal 0 and 1)
+    sessions.insert(child_id.clone(), child);
+
+    // When aggregating from the parent.
+    let stats = aggregate_tree_stats(&sessions, &HashMap::new(), &parent_id);
+
+    // Then parent contributes 2 turns, forked child contributes 0.
+    assert_eq!(stats.session_count, 2);
+    assert_eq!(stats.total_turns, 2);
+}
+
+#[rstest::rstest]
+fn fork_from_fork_turns_counted_correctly() {
+    // Given root (2 user entries) -> fork A (fork_ordinal=1, adds 1 entry) -> fork B (fork_ordinal=2, no new entries).
+    let root_id = SessionId::new();
+    let fork_a_id = SessionId::new();
+    let fork_b_id = SessionId::new();
+
+    let mut sessions = HashMap::new();
+    // Root has 2 user entries -> 2 turns.
+    sessions.insert(
+        root_id.clone(),
+        make_session_with_stats(root_id.clone(), 100, 50, None, 2),
+    );
+
+    // Fork A inherited entries 0..=1, then added its own entry (index 2) -> 1 turn.
+    let mut fork_a = make_session_with_stats(fork_a_id.clone(), 50, 25, None, 3);
+    fork_a.set_parent_session(root_id.clone());
+    fork_a.set_fork_ordinal(1); // skip inherited entries 0..=1
+    sessions.insert(fork_a_id.clone(), fork_a);
+
+    // Fork B inherited entries 0..=2 from Fork A -> 0 turns.
+    let mut fork_b = make_session_with_stats(fork_b_id.clone(), 0, 0, None, 3);
+    fork_b.set_parent_session(fork_a_id.clone());
+    fork_b.set_fork_ordinal(2); // skip inherited entries 0..=2
+    sessions.insert(fork_b_id.clone(), fork_b);
+
+    // When aggregating from root.
+    let stats = aggregate_tree_stats(&sessions, &HashMap::new(), &root_id);
+
+    // Then root=2 turns, fork_a=1 turn (entry 2), fork_b=0 turns.
+    // No double-counting: each session counts only its own entries.
+    assert_eq!(stats.session_count, 3);
+    assert_eq!(stats.total_turns, 3); // 2 + 1 + 0
+}
