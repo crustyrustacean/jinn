@@ -363,21 +363,9 @@ impl ActorSystemBuilder {
             },
         );
 
-        // Tool orchestrator actor.
-        let _tools = jinn_domain::feat::tools_actor::ToolOrchestratorActor::spawn(
-            jinn_domain::feat::tools_actor::ToolOrchestratorActorDeps {
-                deps: actor_deps.clone(),
-                state: state.clone(),
-                services: services.clone(),
-                builtin_filter: None,
-                shell: std::env::var("SHELL").unwrap_or_else(|_| "/bin/sh".to_owned()),
-            },
-        );
-        _tools.wait_for_startup().await;
 
-
-        // Session persistence actor — must spawn before WebFetchActor so
-        // ToolsRegistered subscription is ready when tools register.
+        // Session persistence actor — must spawn before ToolOrchestratorActor so
+        // ToolsRegistered subscription is ready when tools register builtins in on_start.
         let token_counter = TiktokenCounter::o200k_base();
         let _session = jinn_domain::feat::session::session_actor::SessionPersistenceActor::spawn(
             jinn_domain::feat::session::session_actor::SessionPersistenceActorDeps {
@@ -397,6 +385,18 @@ impl ActorSystemBuilder {
             },
         );
         _session.wait_for_startup().await;
+
+        // Tool orchestrator actor.
+        let _tools = jinn_domain::feat::tools_actor::ToolOrchestratorActor::spawn(
+            jinn_domain::feat::tools_actor::ToolOrchestratorActorDeps {
+                deps: actor_deps.clone(),
+                state: state.clone(),
+                services: services.clone(),
+                builtin_filter: None,
+                shell: std::env::var("SHELL").unwrap_or_else(|_| "/bin/sh".to_owned()),
+            },
+        );
+        _tools.wait_for_startup().await;
 
         // Web fetch actor.
         let web_fetch_backend = user_preferences_storage.read().web_fetch.backend;
