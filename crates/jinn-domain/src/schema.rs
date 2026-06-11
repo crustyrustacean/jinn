@@ -3,7 +3,7 @@
 diesel::table! {
     entries (id) {
         id -> Nullable<Text>,
-        timestamp -> Text,
+        timing -> Text,
         kind -> Text,
         context_history -> Text,
     }

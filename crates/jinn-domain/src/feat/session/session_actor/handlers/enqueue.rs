@@ -135,6 +135,7 @@ impl SessionPersistenceActor {
                     provider_id,
                     estimated_tokens,
                     tool_definitions: assembled.tool_definitions,
+                    dispatched_at: jiff::Timestamp::now(),
                 })) {
                     tracing::warn!(
                         err = ?e,
@@ -272,6 +273,7 @@ impl SessionPersistenceActor {
             provider_id,
             estimated_tokens,
             tool_definitions: assembled.tool_definitions,
+            dispatched_at: jiff::Timestamp::now(),
         })) {
             tracing::warn!(err = ?e, "session-actor failed to emit SendToLlmProvider for resume");
         }

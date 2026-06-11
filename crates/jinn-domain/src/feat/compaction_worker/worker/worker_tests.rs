@@ -80,7 +80,7 @@ fn alternating_history(turns: usize) -> Vec<ChatEntry> {
 fn compaction_entry(summary: &str) -> ChatEntry {
     ChatEntry {
         id: ChatEntryId::new(),
-        timestamp: jiff::Timestamp::now(),
+        timing: crate::protocol::EntryTiming::instant_now(),
         kind: ChatEntryKind::Compaction {
             summary: summary.to_owned(),
             tokens_before: 100,

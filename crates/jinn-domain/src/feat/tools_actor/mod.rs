@@ -15,6 +15,7 @@
 pub mod bash;
 pub mod edit;
 pub mod get_time;
+pub mod grep;
 pub mod protocol;
 pub mod read;
 pub mod registry;
@@ -44,6 +45,7 @@ use crate::feat::tools_actor::protocol::event::{
 };
 use crate::feat::tools_actor::tool_types::{ToolCall, ToolContext, ToolDefinition, ToolResult};
 use crate::protocol::{Command, Event, SessionId};
+use jiff::Timestamp;
 use jinn_provider::ServerToolType;
 
 /// A boxed future returned by built-in tool execute functions.
@@ -302,6 +304,7 @@ impl ToolOrchestratorActor {
                 self.handle_execute_tool_batch(
                     payload.session_id.clone(),
                     payload.tool_calls.clone(),
+                    payload.dispatched_at,
                     ctx,
                 );
             }
@@ -385,6 +388,7 @@ impl ToolOrchestratorActor {
         &mut self,
         session_id: SessionId,
         tool_calls: Vec<ToolCall>,
+        dispatched_at: Timestamp,
         ctx: &ActorContext,
     ) {
         tracing::trace!(
@@ -406,7 +410,9 @@ impl ToolOrchestratorActor {
         let remaining = tool_calls.len();
         let mut handles = Vec::new();
         for tc in tool_calls {
-            if let Some(handle) = self.dispatch_tool_call(session_id.clone(), tc, ctx) {
+            if let Some(handle) =
+                self.dispatch_tool_call(session_id.clone(), tc, dispatched_at, ctx)
+            {
                 handles.push(handle);
             }
         }
@@ -444,6 +450,7 @@ impl ToolOrchestratorActor {
         &self,
         session_id: &SessionId,
         sink: std::sync::Arc<dyn MessageSink>,
+        dispatched_at: Timestamp,
     ) -> ToolContext {
         let prefs = self.services.user_preferences_storage.read();
         let cwd = {
@@ -470,6 +477,7 @@ impl ToolOrchestratorActor {
             shell: self.shell.clone(),
             max_output_lines,
             max_output_bytes,
+            dispatched_at,
         }
     }
 
@@ -482,6 +490,7 @@ impl ToolOrchestratorActor {
         &self,
         session_id: SessionId,
         tool_call: ToolCall,
+        dispatched_at: Timestamp,
         ctx: &ActorContext,
     ) -> Option<tokio::task::JoinHandle<()>> {
         tracing::trace!(
@@ -500,7 +509,7 @@ impl ToolOrchestratorActor {
             Some(ToolRegistration::Builtin { execute, .. }) => {
                 let sink = ctx.sink();
                 let execute_fn = *execute;
-                let tool_ctx = self.build_tool_context(&session_id, sink.clone());
+                let tool_ctx = self.build_tool_context(&session_id, sink.clone(), dispatched_at);
                 let timeout = tool_ctx.timeout;
 
                 let handle = tokio::spawn(async move {
