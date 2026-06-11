@@ -791,7 +791,6 @@ fn truncate_str_strips_ansi_before_truncating() {
 // --- area_width constraint tests ---
 
 #[test]
-
 fn tool_result_with_wide_emoji_fits_narrow_sidebar() {
     // Given a pinned tool result with the ✓ success icon.
     let state = state_with_pinned_tool_result("write", &"x".repeat(100));
@@ -807,6 +806,7 @@ fn tool_result_with_wide_emoji_fits_narrow_sidebar() {
         "should still contain ✓ even in narrow sidebar: {combined}"
     );
 }
+
 #[rstest::rstest]
 fn long_content_is_truncated_to_fit_area_width() {
     // Given a pinned user entry with very long content.

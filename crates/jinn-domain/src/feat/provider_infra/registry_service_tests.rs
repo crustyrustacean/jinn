@@ -25,6 +25,7 @@ fn clone_sees_same_providers() {
         }],
         aliases: vec![],
         default_provider: None,
+        alloys: vec![],
     };
     let registry = crate::feat::provider_infra::registry::ProviderRegistry::from_config(config)
         .expect("registry");
@@ -72,6 +73,7 @@ fn service_with_providers() -> ProviderRegistryService {
             target: "ollama/llama3".to_owned(),
         }],
         default_provider: None,
+        alloys: vec![],
     };
     let registry = crate::feat::provider_infra::registry::ProviderRegistry::from_config(config)
         .expect("registry");
@@ -195,6 +197,7 @@ fn default_provider_id_delegates_to_registry() {
         }],
         aliases: vec![],
         default_provider: Some("ollama/llama3".to_owned()),
+        alloys: vec![],
     };
     let registry = crate::feat::provider_infra::registry::ProviderRegistry::from_config(config)
         .expect("registry");
@@ -228,6 +231,7 @@ fn create_factory_delegates_to_registry() {
         }],
         aliases: vec![],
         default_provider: None,
+        alloys: vec![],
     };
     let registry = crate::feat::provider_infra::registry::ProviderRegistry::from_config(config)
         .expect("registry");

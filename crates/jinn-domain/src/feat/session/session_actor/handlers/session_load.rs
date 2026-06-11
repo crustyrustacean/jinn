@@ -6,6 +6,7 @@
 
 use crate::common::actor::ActorContext;
 
+use crate::feat::session::model_selection::ModelSelection;
 use crate::feat::session::protocol::session_load_completed::SessionLoadCompleted;
 use crate::protocol::{ChatEntry, Event};
 
@@ -31,15 +32,15 @@ impl SessionPersistenceActor {
             let loaded = payload.session.clone();
 
             // Restore model - fallback to config if not in payload (old session migration).
-            let model = if loaded.model() == crate::feat::provider_infra::NO_PROVIDER_ID {
+            let model = if loaded.model_selection().is_no_provider() {
                 state
                     .frontend
                     .app_state
                     .last_model
                     .clone()
-                    .unwrap_or_else(|| crate::feat::provider_infra::NO_PROVIDER_ID.to_owned())
+                    .unwrap_or_default()
             } else {
-                loaded.model().to_owned()
+                loaded.model_selection().clone()
             };
 
             // Insert loaded session into HashMap.

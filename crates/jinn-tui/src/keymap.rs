@@ -278,6 +278,7 @@ pub fn init() -> Keymap<KeyEvent, Scope, Intent, KeyCategory> {
     keymap
         .scope(Scope::PickerProvider, |b| {
             add_picker_base(b);
+            b.bind("<Tab>", Intent::ModelToggleSelected, KeyCategory::General);
             b.bind("<c-r>", Intent::RefreshModels, KeyCategory::Model);
         })
         .scope(Scope::PickerSession, |b| {

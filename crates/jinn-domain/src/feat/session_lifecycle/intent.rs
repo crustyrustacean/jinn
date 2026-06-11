@@ -9,9 +9,9 @@ use wherror::Error;
 use crate::common::app_state::AppState;
 use crate::feat::chat_input::protocol::command::PushChatEntry;
 use crate::feat::preferences_actor::user_preferences::SessionLifecycle;
-use crate::feat::provider_infra::NO_PROVIDER_ID;
 use crate::feat::session::chat_session::ChatSessionState;
 use crate::feat::session::chat_session::LifecycleScriptState;
+use crate::feat::session::model_selection::ModelSelection;
 use crate::feat::session::profile::SessionProfile;
 use crate::feat::session::session_actor::setup_running_msg;
 use crate::feat::session_lifecycle::command_template::{CommandTemplate, parse_quoted_args};
@@ -94,7 +94,7 @@ pub fn handle_session_lifecycle_setup(
         .app_state
         .last_model
         .clone()
-        .unwrap_or_else(|| NO_PROVIDER_ID.to_owned());
+        .unwrap_or_default();
 
     let persona_name = state
         .context

@@ -35,6 +35,7 @@ fn make_session_with_stats(
 
     if tokens_sent > 0 || tokens_received > 0 {
         state.push_token_record(TokenRecord {
+            model_used: None,
             timestamp: jiff::Timestamp::now(),
             tokens_sent,
             tokens_received,

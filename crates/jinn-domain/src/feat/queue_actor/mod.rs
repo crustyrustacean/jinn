@@ -178,19 +178,21 @@ impl QueueActor {
             assemble_prompt(&guard, session_id, &self.counter, None)
         };
 
-        let provider_id = {
-            let state = self.state.read();
-            let model = state.session(session_id).profile().model.clone();
-            if model == crate::feat::provider_infra::NO_PROVIDER_ID {
-                None
+        let (provider_id, model_used) = {
+            let mut state = self.state.write();
+            let model = &mut state.session_mut(session_id).profile_mut().model;
+            if model.is_no_provider() {
+                (None, None)
             } else {
-                Some(model)
+                let resolved = model.resolve_model();
+                (Some(resolved.clone()), Some(resolved))
             }
         };
 
         let estimated_tokens = assembled.estimated_tokens();
 
         if let Err(e) = ctx.send_command(Command::SendToLlmProvider(SendToLlmProvider {
+            model_used,
             session_id: session_id.clone(),
             messages: assembled.messages,
             provider_id,
@@ -256,19 +258,21 @@ impl QueueActor {
             assemble_prompt(&guard, session_id, &self.counter, None)
         };
 
-        let provider_id = {
-            let state = self.state.read();
-            let model = state.session(session_id).profile().model.clone();
-            if model == crate::feat::provider_infra::NO_PROVIDER_ID {
-                None
+        let (provider_id, model_used) = {
+            let mut state = self.state.write();
+            let model = &mut state.session_mut(session_id).profile_mut().model;
+            if model.is_no_provider() {
+                (None, None)
             } else {
-                Some(model)
+                let resolved = model.resolve_model();
+                (Some(resolved.clone()), Some(resolved))
             }
         };
 
         let estimated_tokens = assembled.estimated_tokens();
 
         if let Err(e) = ctx.send_command(Command::SendToLlmProvider(SendToLlmProvider {
+            model_used,
             session_id: session_id.clone(),
             messages: assembled.messages,
             provider_id,
@@ -298,6 +302,7 @@ mod tests {
     use super::*;
     use crate::common::actor::{ActorContext, RecordingSink};
     use crate::common::app_state::AppState;
+    use crate::feat::session::model_selection::ModelSelection;
     use crate::feat::session::phase_machine::PhaseKind;
     use crate::protocol::ChatEntry;
 
@@ -543,7 +548,9 @@ mod tests {
         let (sink, ctx) = test_context();
         let session_id = {
             let mut state = actor.state.write();
-            state.active_session_mut().set_model("my-model".to_owned());
+            state
+                .active_session_mut()
+                .set_model(ModelSelection::Single("my-model".to_owned()));
             state.session.active_session_id().clone()
         };
 
@@ -603,7 +610,7 @@ mod tests {
             session.push_entry(ChatEntry::user("previous message"));
             state
                 .active_session_mut()
-                .set_model("tool-model".to_owned());
+                .set_model(ModelSelection::Single("tool-model".to_owned()));
             state.session.active_session_id().clone()
         };
 

@@ -116,3 +116,8 @@ tool_stream = true
 # [[aliases]]
 # name = "smart"
 # target = "openrouter/openai/gpt-oss-120b"
+
+# [[alloys]]
+# name = "balanced"
+# models = ["openrouter/anthropic/claude-sonnet-4-20250514", "openrouter/google/gemini-2.5-flash"]
+# strategy = "round_robin"

@@ -139,10 +139,10 @@ impl DiscoverActor {
         // Apply models.dev context length fallback to models
         // that didn't get it from the provider API.
         for model in &mut models {
-            if model.context_length.is_none() {
-                if let Some(ctx) = models_dev.get(&model.id) {
-                    model.context_length = Some(ctx);
-                }
+            if model.context_length.is_none()
+                && let Some(ctx) = models_dev.get(&model.id)
+            {
+                model.context_length = Some(ctx);
             }
         }
 
