@@ -11,7 +11,8 @@ use jinn_testutil::{buffer_row, setup_term};
 use crate::common::app_state::AppState;
 use crate::common::render_ctx::RenderCtx;
 use crate::common::ui_element::UiElement;
-use crate::feat::session::model_selection::ModelSelection;
+use crate::feat::session::model_selection::{AlloyStrategy, ModelSelection};
+use crate::feat::session::token_stats::TokenRecord;
 use crate::feat::ui::status_bar::element::StatusBarElement;
 
 #[rstest::rstest]
@@ -822,5 +823,136 @@ fn render_shows_tree_aggregate_from_child_viewpoint() {
     assert!(
         row0.contains("\u{29C9}2"),
         "tree aggregate from child should show \u{29C9}2, got: {row0}"
+    );
+}
+
+// --- Alloy display tests ---
+
+#[rstest::rstest]
+fn render_single_model_shows_provider_and_model_without_alloy_prefix() {
+    // Given a single model selection.
+    let mut element = StatusBarElement;
+    let mut state = AppState::default();
+    state
+        .active_session_mut()
+        .set_model(ModelSelection::Single("ollama/llama3".to_owned()));
+
+    // When rendering.
+    let (mut terminal, area) = setup_term(50, 2);
+    terminal
+        .draw(|frame| {
+            let ctx = RenderCtx::new(&state);
+            element.render(frame, area, &ctx);
+        })
+        .unwrap();
+    let buffer = terminal.backend().buffer().clone();
+    let row = buffer_row(&buffer, 1, 50);
+
+    // Then the model shows (provider)/model without alloy prefix.
+    assert!(
+        row.contains("(ollama)/llama3"),
+        "should contain (ollama)/llama3, got: {row}"
+    );
+    assert!(
+        !row.contains("[alloy"),
+        "single model should not have alloy prefix, got: {row}"
+    );
+}
+
+#[rstest::rstest]
+fn render_alloy_with_token_records_shows_prefix_and_last_dispatched_model() {
+    // Given an alloy with 3 models and a token record showing model-2 as last dispatched.
+    let mut element = StatusBarElement;
+    let mut state = AppState::default();
+    state.active_session_mut().set_model(ModelSelection::Alloy {
+        models: vec![
+            "provider-a/model-1".to_owned(),
+            "provider-b/model-2".to_owned(),
+            "provider-c/model-3".to_owned(),
+        ],
+        strategy: AlloyStrategy::RoundRobin { index: 0 },
+    });
+    state.active_session_mut().push_token_record(TokenRecord {
+        timestamp: jiff::Timestamp::now(),
+        tokens_sent: 100,
+        tokens_received: 50,
+        cost: None,
+        model_used: Some("provider-b/model-2".to_owned()),
+    });
+
+    // When rendering.
+    let (mut terminal, area) = setup_term(60, 2);
+    terminal
+        .draw(|frame| {
+            let ctx = RenderCtx::new(&state);
+            element.render(frame, area, &ctx);
+        })
+        .unwrap();
+    let buffer = terminal.backend().buffer().clone();
+    let row = buffer_row(&buffer, 1, 60);
+
+    // Then the model shows [alloy 3] prefix with the last-dispatched model.
+    assert!(
+        row.contains("[alloy 3] (provider-b)/model-2"),
+        "should contain [alloy 3] (provider-b)/model-2, got: {row}"
+    );
+}
+
+#[rstest::rstest]
+fn render_alloy_with_no_token_records_falls_back_to_first_model() {
+    // Given an alloy with no LLM calls yet.
+    let mut element = StatusBarElement;
+    let mut state = AppState::default();
+    state.active_session_mut().set_model(ModelSelection::Alloy {
+        models: vec![
+            "provider-a/model-1".to_owned(),
+            "provider-b/model-2".to_owned(),
+        ],
+        strategy: AlloyStrategy::RoundRobin { index: 0 },
+    });
+
+    // When rendering.
+    let (mut terminal, area) = setup_term(50, 2);
+    terminal
+        .draw(|frame| {
+            let ctx = RenderCtx::new(&state);
+            element.render(frame, area, &ctx);
+        })
+        .unwrap();
+    let buffer = terminal.backend().buffer().clone();
+    let row = buffer_row(&buffer, 1, 50);
+
+    // Then the model shows [alloy 2] prefix with the first model as fallback.
+    assert!(
+        row.contains("[alloy 2] (provider-a)/model-1"),
+        "should contain [alloy 2] (provider-a)/model-1, got: {row}"
+    );
+}
+
+#[rstest::rstest]
+fn render_alloy_with_one_model_shows_alloy_1() {
+    // Given a 1-model alloy.
+    let mut element = StatusBarElement;
+    let mut state = AppState::default();
+    state.active_session_mut().set_model(ModelSelection::Alloy {
+        models: vec!["ollama/llama3".to_owned()],
+        strategy: AlloyStrategy::RoundRobin { index: 0 },
+    });
+
+    // When rendering.
+    let (mut terminal, area) = setup_term(50, 2);
+    terminal
+        .draw(|frame| {
+            let ctx = RenderCtx::new(&state);
+            element.render(frame, area, &ctx);
+        })
+        .unwrap();
+    let buffer = terminal.backend().buffer().clone();
+    let row = buffer_row(&buffer, 1, 50);
+
+    // Then the model shows [alloy 1] prefix.
+    assert!(
+        row.contains("[alloy 1] (ollama)/llama3"),
+        "should contain [alloy 1] (ollama)/llama3, got: {row}"
     );
 }
