@@ -4,6 +4,8 @@ use std::collections::{HashMap, HashSet};
 
 use super::super::SessionPersistenceActor;
 use crate::SessionLoadRequested;
+use crate::common::actor_deps::BusPublish;
+use crate::feat::session::protocol::UserInteracted;
 use crate::feat::session::protocol::session_load_completed::SessionLoadCompleted;
 use crate::feat::session::tree_aggregate::snapshot_frozen_node;
 use crate::protocol::{Event, SessionId};
@@ -70,13 +72,10 @@ impl SessionPersistenceActor {
             }
         }
 
-        if let Err(e) = ctx.send_event(crate::protocol::Event::UserInteracted(
-            crate::feat::session::protocol::user_interacted::UserInteracted {
-                session_id: payload.session_id.clone(),
-            },
-        )) {
-            tracing::warn!(err = ?e, "session-actor failed to emit UserInteracted");
-        }
+        self.publish(UserInteracted {
+            session_id: payload.session_id.clone(),
+        })
+        .await;
 
         self.save_active_session(&payload.session_id).await;
     }
