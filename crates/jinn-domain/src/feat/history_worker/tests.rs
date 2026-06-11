@@ -1,7 +1,7 @@
 //! Integration tests for the history worker pipeline.
 //!
 //! Tests cover the full lifecycle: worker evaluates history snapshot → produces
-//! mutations → actor submits them via command bus.
+//! mutations → actor submits them via message bus.
 
 #![allow(
     clippy::expect_used,
@@ -13,15 +13,15 @@
 
 use std::sync::Arc;
 
-use crate::common::actor::actor::Actor;
-use crate::common::actor::{ActorContext, RecordingSink};
+use crate::common::bus::test_harness::TestHarness;
 use crate::feat::history_worker::actor::{HistoryWorkerActor, HistoryWorkerActorDeps};
 use crate::feat::history_worker::worker_trait::HistoryWorker;
 use crate::feat::session::chat_entry::{ChatEntry, ChatEntryKind, ContextOverride};
 use crate::feat::session::history_mutation::HistoryMutation;
 use crate::feat::session::protocol::history_snapshot_ready::HistorySnapshotReady;
-use crate::protocol::{ChangeSource, Command, SessionId};
-
+use crate::feat::session::protocol::submit_history_mutations::SubmitHistoryMutations;
+use crate::protocol::{ChangeSource, SessionId};
+use kameo::prelude::Spawn;
 // ── Test workers ───────────────────────────────────────────────────
 
 /// A test worker that marks all User entries beyond the first 3 as excluded.
@@ -82,19 +82,7 @@ impl HistoryWorker for NoOpWorker {
     }
 }
 
-// ── Test helpers ───────────────────────────────────────────────────
-
-fn make_actor<H: HistoryWorker + Clone>(worker: H) -> HistoryWorkerActor<H> {
-    let sink = Arc::new(RecordingSink::new());
-    let mut ctx = ActorContext::new("test-worker", sink);
-    HistoryWorkerActor::activate(HistoryWorkerActorDeps { worker }, &mut ctx)
-}
-
-fn test_ctx() -> (Arc<RecordingSink>, ActorContext) {
-    let sink = Arc::new(RecordingSink::new());
-    let ctx = ActorContext::new("test-worker", sink.clone());
-    (sink, ctx)
-}
+// ── Test helpers ───────────────────��───────────────────────────────
 
 fn snapshot_event(session_id: SessionId, entries: Vec<ChatEntry>) -> HistorySnapshotReady {
     HistorySnapshotReady {
@@ -136,56 +124,74 @@ fn worker_produces_no_mutations_for_short_history() {
 }
 
 #[tokio::test]
-async fn actor_emits_submit_command_for_long_history() {
+async fn actor_publishes_submit_mutations_for_long_history() {
+    // Given a history worker actor and a recorder for SubmitHistoryMutations.
+    let harness = TestHarness::new().await;
+    let _actor = HistoryWorkerActor::spawn(HistoryWorkerActorDeps {
+        deps: harness.actor_deps().await,
+        worker: TruncateOldUserEntries,
+    });
+
+
+    let recorder = harness.spawn_recorder::<SubmitHistoryMutations>().await;
+
     let entries: Vec<ChatEntry> = (0..5)
         .map(|i| ChatEntry::user(format!("msg {i}")))
         .collect();
     let session_id = SessionId::new();
-    let mut actor = make_actor(TruncateOldUserEntries);
-    let (sink, ctx) = test_ctx();
 
-    let event = snapshot_event(session_id.clone(), entries);
-    actor.handle_snapshot_ready(&event, &ctx).await;
+    // When publishing a HistorySnapshotReady with 5 user entries.
+    harness.publish(snapshot_event(session_id.clone(), entries)).await;
 
-    let commands = sink.take_commands();
-    assert_eq!(commands.len(), 1);
-    match &commands[0] {
-        Command::SubmitHistoryMutations(cmd) => {
-            assert_eq!(cmd.session_id, session_id);
-            assert_eq!(cmd.mutations.len(), 2);
-        }
-        other => panic!("expected SubmitHistoryMutations, got {other:?}"),
-    }
+    // Then the worker publishes SubmitHistoryMutations.
+    let recorded = crate::common::bus::test_harness::await_recorded(&recorder, 1, std::time::Duration::from_secs(2)).await;
+    assert_eq!(recorded.len(), 1);
+    assert_eq!(recorded[0].session_id, session_id);
+    assert_eq!(recorded[0].mutations.len(), 2);
 }
 
 #[tokio::test]
-async fn actor_emits_nothing_for_short_history() {
+async fn actor_publishes_nothing_for_short_history() {
+    // Given a history worker actor and a recorder.
+    let harness = TestHarness::new().await;
+    let _actor = HistoryWorkerActor::spawn(HistoryWorkerActorDeps {
+        deps: harness.actor_deps().await,
+        worker: TruncateOldUserEntries,
+    });
+
+    let recorder = harness.spawn_recorder::<SubmitHistoryMutations>().await;
+
     let entries: Vec<ChatEntry> = (0..2)
         .map(|i| ChatEntry::user(format!("msg {i}")))
         .collect();
-    let session_id = SessionId::new();
-    let mut actor = make_actor(TruncateOldUserEntries);
-    let (sink, ctx) = test_ctx();
 
-    let event = snapshot_event(session_id, entries);
-    actor.handle_snapshot_ready(&event, &ctx).await;
+    // When publishing a HistorySnapshotReady with 2 entries.
+    harness.publish(snapshot_event(SessionId::new(), entries)).await;
 
-    let commands = sink.take_commands();
-    assert!(commands.is_empty());
+    // Then no mutations are published.
+    let recorded = crate::common::bus::test_harness::await_recorded(&recorder, 1, std::time::Duration::from_secs(2)).await;
+    assert!(recorded.is_empty());
 }
 
 #[tokio::test]
 async fn noop_worker_never_produces_mutations() {
+    // Given a noop worker actor and a recorder.
+    let harness = TestHarness::new().await;
+    let _actor = HistoryWorkerActor::spawn(HistoryWorkerActorDeps {
+        deps: harness.actor_deps().await,
+        worker: NoOpWorker,
+    });
+
+    let recorder = harness.spawn_recorder::<SubmitHistoryMutations>().await;
+
     let entries: Vec<ChatEntry> = (0..10)
         .map(|i| ChatEntry::user(format!("msg {i}")))
         .collect();
-    let session_id = SessionId::new();
-    let mut actor = make_actor(NoOpWorker);
-    let (sink, ctx) = test_ctx();
 
-    let event = snapshot_event(session_id, entries);
-    actor.handle_snapshot_ready(&event, &ctx).await;
+    // When publishing a HistorySnapshotReady with 10 entries.
+    harness.publish(snapshot_event(SessionId::new(), entries)).await;
 
-    let commands = sink.take_commands();
-    assert!(commands.is_empty());
+    // Then no mutations are published.
+    let recorded = crate::common::bus::test_harness::await_recorded(&recorder, 1, std::time::Duration::from_secs(2)).await;
+    assert!(recorded.is_empty());
 }

@@ -28,3 +28,7 @@ pub struct PluginToggled {
     pub plugin_name: String,
     pub enabled: bool,
 }
+
+impl crate::common::bus::BusMessage for PluginAttached {}
+impl crate::common::bus::BusMessage for PluginDetached {}
+impl crate::common::bus::BusMessage for PluginToggled {}

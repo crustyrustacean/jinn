@@ -23,3 +23,5 @@ pub struct SubmitHistoryMutations {
     /// The mutation batch. Empty batches are silently ignored.
     pub mutations: Vec<HistoryMutation>,
 }
+
+impl crate::common::bus::BusMessage for SubmitHistoryMutations {}

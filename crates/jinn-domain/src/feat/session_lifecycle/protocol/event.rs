@@ -61,3 +61,5 @@ pub struct SessionTeardownFinished {
     /// Error message if teardown failed.
     pub error: Option<String>,
 }
+
+impl crate::common::bus::BusMessage for SessionCreated {}

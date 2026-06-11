@@ -40,3 +40,7 @@ pub struct TogglePlugin {
     pub session_id: SessionId,
     pub plugin_name: String,
 }
+
+impl crate::common::bus::BusMessage for AttachPlugin {}
+impl crate::common::bus::BusMessage for DetachPlugin {}
+impl crate::common::bus::BusMessage for TogglePlugin {}

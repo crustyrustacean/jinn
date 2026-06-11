@@ -1758,6 +1758,7 @@ dependencies = [
  "jiff",
  "jinn-domain",
  "jinn-provider",
+ "kameo",
  "rstest",
  "strip-ansi-escapes",
  "tempfile",

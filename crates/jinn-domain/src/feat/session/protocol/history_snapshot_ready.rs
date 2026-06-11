@@ -62,3 +62,5 @@ impl<'de> Deserialize<'de> for HistorySnapshotReady {
         })
     }
 }
+
+impl crate::common::bus::BusMessage for HistorySnapshotReady {}

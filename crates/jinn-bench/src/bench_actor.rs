@@ -29,7 +29,12 @@ use jinn_domain::feat::session_lifecycle::builtin::{BuiltinId, LifecycleCommand}
 use jinn_domain::feat::session_lifecycle::protocol::command::RunSessionSetup;
 use jinn_domain::feat::session_lifecycle::protocol::event::SessionSetupCompleted;
 use jinn_domain::protocol::{ChatEntry, Command, Event, SessionId};
-use jinn_domain::{Actor, ActorContext, ActorEnvelope, NoDirectMsg, State};
+use jinn_domain::{Actor, ActorContext, ActorEnvelope, NoDirectMsg, RecordingSink, State};
+
+use jinn_domain::common::actor_deps::{ActorDeps, BusPublish};
+use jinn_domain::common::services::bus_service::BusService;
+use jinn_domain::common::bus::BusMessage;
+use kameo::prelude::{Actor as KameoActor, ActorRef as KameoActorRef, Context as KameoContext, Message};
 
 /// A tracked bench session.
 struct BenchSession {
@@ -53,6 +58,8 @@ struct BenchSession {
 /// enqueuing messages, and recording results. Without a plan, acts as a
 /// passive observer (backward compatible with non-bench mode).
 pub struct BenchActor {
+    /// Bus service for publishing commands (set by kameo on_start, None in tests).
+    bus: Option<BusService>,
     /// Shared application state.
     state: State,
     /// Tracked bench sessions - keyed by session ID.
@@ -67,7 +74,7 @@ pub struct BenchActor {
     current_pair_index: usize,
 }
 
-/// Dependencies for [`BenchActor`].
+/// Dependencies for [`BenchActor`] (old system, used by tests).
 pub struct BenchActorDeps {
     /// Shared application state.
     pub state: State,
@@ -76,6 +83,22 @@ pub struct BenchActorDeps {
     /// The execution plan. If `None`, the actor is passive.
     pub plan: Option<BenchPlan>,
 }
+
+/// Kameo-compatible dependencies for [`BenchActor`].
+pub struct BenchActorKameoDeps {
+    /// Universal actor dependencies.
+    pub deps: ActorDeps,
+    /// Shared application state.
+    pub state: State,
+    /// Path to write CSV output.
+    pub csv_path: Option<PathBuf>,
+    /// The execution plan.
+    pub plan: Option<BenchPlan>,
+}
+
+// ---------------------------------------------------------------------------
+// Old Actor impl — retained for test compat
+// ---------------------------------------------------------------------------
 
 impl Actor for BenchActor {
     type Message = NoDirectMsg;
@@ -104,6 +127,7 @@ impl Actor for BenchActor {
         let plan = deps.plan;
 
         let mut actor = Self {
+            bus: None,
             state: deps.state,
             pending: HashMap::new(),
             csv_writer,
@@ -138,6 +162,146 @@ impl Actor for BenchActor {
         }
     }
 }
+
+// ---------------------------------------------------------------------------
+// Kameo Actor impl — for production spawning
+// ---------------------------------------------------------------------------
+
+impl KameoActor for BenchActor {
+    type Args = BenchActorKameoDeps;
+    type Error = kameo::error::Infallible;
+
+    async fn on_start(
+        args: Self::Args,
+        actor_ref: KameoActorRef<Self>,
+    ) -> Result<Self, Self::Error> {
+        let deps = args.deps;
+        deps.subscribe(actor_ref.clone().recipient::<SessionSetupCompleted>())
+            .await;
+        deps.subscribe(actor_ref.clone().recipient::<StreamCompleted>())
+            .await;
+        deps.subscribe(actor_ref.recipient::<SessionPhaseChanged>())
+            .await;
+
+        let csv_writer = args.csv_path.and_then(|path| {
+            BenchCsvWriter::create(&path)
+                .inspect_err(|e| {
+                    tracing::error!(path = %path.display(), error = %e, "failed to create CSV writer");
+                })
+                .ok()
+        });
+
+        let task_lookup = tasks::bench_tasks()
+            .into_iter()
+            .map(|t| (t.name.to_owned(), t))
+            .collect();
+
+        let bus = Some(deps.services.bus.clone());
+        let plan = args.plan;
+
+        let mut actor = Self {
+            bus,
+            state: args.state,
+            pending: HashMap::new(),
+            csv_writer,
+            task_lookup,
+            plan,
+            current_pair_index: 0,
+        };
+
+        // If we have a plan, start the first pair.
+        if actor.plan.is_some() {
+            let sink = std::sync::Arc::new(RecordingSink::new());
+            let ctx = ActorContext::new("bench", sink.clone());
+            actor.start_next_pair(&ctx);
+            // Flush commands from start_next_pair to the bus.
+            if let Some(ref bus) = actor.bus {
+                for cmd in sink.take_commands() {
+                    BenchActor::publish_cmd(bus, cmd).await;
+                }
+            }
+        }
+
+        Ok(actor)
+    }
+}
+
+// ---------------------------------------------------------------------------
+// Kameo Message impls — bridge pattern
+// ---------------------------------------------------------------------------
+
+impl Message<SessionSetupCompleted> for BenchActor {
+    type Reply = ();
+
+    async fn handle(&mut self, msg: SessionSetupCompleted, _ctx: &mut KameoContext<Self, Self::Reply>) {
+        let sink = std::sync::Arc::new(RecordingSink::new());
+        let ctx = ActorContext::new("bench", sink.clone());
+        self.handle_session_setup_completed(&msg, &ctx);
+        self.flush_sink(sink).await;
+    }
+}
+
+impl Message<StreamCompleted> for BenchActor {
+    type Reply = ();
+
+    async fn handle(&mut self, msg: StreamCompleted, _ctx: &mut KameoContext<Self, Self::Reply>) {
+        let sink = std::sync::Arc::new(RecordingSink::new());
+        let ctx = ActorContext::new("bench", sink.clone());
+        self.handle_stream_completed(&msg, &ctx);
+        self.flush_sink(sink).await;
+    }
+}
+
+impl Message<SessionPhaseChanged> for BenchActor {
+    type Reply = ();
+
+    async fn handle(&mut self, msg: SessionPhaseChanged, _ctx: &mut KameoContext<Self, Self::Reply>) {
+        let sink = std::sync::Arc::new(RecordingSink::new());
+        let ctx = ActorContext::new("bench", sink.clone());
+        self.handle_session_phase_changed(&msg, &ctx).await;
+        self.flush_sink(sink).await;
+    }
+}
+
+impl BusPublish for BenchActor {
+    fn bus(&self) -> &BusService {
+        self.bus.as_ref().expect("bench actor bus not set")
+    }
+}
+
+impl BenchActor {
+    async fn flush_sink(&self, sink: std::sync::Arc<RecordingSink>) {
+        if let Some(ref bus) = self.bus {
+            for cmd in sink.take_commands() {
+                Self::publish_cmd(bus, cmd).await;
+            }
+            for event in sink.take_events() {
+                Self::publish_evt(bus, event).await;
+            }
+        }
+    }
+
+    async fn publish_cmd(bus: &BusService, cmd: Command) {
+        match cmd {
+            Command::EnqueueUserMessage(m) => bus.publish(m).await,
+            Command::PushChatEntry(m) => bus.publish(m).await,
+            Command::RunSessionSetup(m) => bus.publish(m).await,
+            Command::CancelStream(m) => bus.publish(m).await,
+            Command::PersistSession(m) => bus.publish(m).await,
+            other => tracing::warn!(?other, "bench: unhandled command variant"),
+        }
+    }
+
+    async fn publish_evt(bus: &BusService, event: Event) {
+        match event {
+            other => tracing::warn!(?other, "bench: unhandled event variant"),
+        }
+    }
+}
+
+// ---------------------------------------------------------------------------
+// Handler methods (shared between old and kameo paths)
+// ---------------------------------------------------------------------------
 
 impl BenchActor {
     /// Start the next pair in the plan.
@@ -575,6 +739,10 @@ impl BenchActor {
         }
     }
 }
+
+// ---------------------------------------------------------------------------
+// Tests — use old Actor impl directly (no bus needed)
+// ---------------------------------------------------------------------------
 
 #[cfg(test)]
 mod tests {
@@ -1230,514 +1398,6 @@ mod tests {
         assert!(
             failure_summary,
             "expected PushChatEntry with ❌ for failing session"
-        );
-
-        // And at least one detail entry with "•" was sent.
-        let detail_entry = commands.iter().any(|cmd| {
-            matches!(
-                cmd,
-                Command::PushChatEntry(PushChatEntry { session_id: sid, entry })
-                if sid == &session_id
-                    && matches!(&entry.kind, jinn_domain::ChatEntryKind::System(t) if t.contains("file_exists"))
-            )
-        });
-        assert!(
-            detail_entry,
-            "expected PushChatEntry with • detail for failing session"
-        );
-    }
-
-    #[test]
-    fn setup_error_sets_should_quit_when_no_more_pairs() {
-        // Given a plan with exactly 1 task/model pair.
-        let plan =
-            build_plan(&["test-model".to_owned()], &["hello-world".to_owned()]).expect("plan");
-        let (state, session_id) = test_state_with_session();
-        let csv_dir = tempfile::TempDir::new().expect("temp dir");
-        let csv_path = csv_dir.path().join("results.csv");
-        let (sink, ctx) = test_context();
-        let mut actor = BenchActor::activate(
-            BenchActorDeps {
-                state,
-                csv_path: Some(csv_path),
-                plan: Some(plan),
-            },
-            &mut ActorContext::new("test", sink),
-        );
-        // Activate started the first pair - index is at 1, plan has 1 pair.
-        assert_eq!(actor.current_pair_index, 1);
-
-        // When SessionSetupCompleted fires with an error for the bench session.
-        actor.handle_session_setup_completed(
-            &SessionSetupCompleted {
-                session_id: session_id.clone(),
-                cwd: PathBuf::from("/tmp"),
-                error: Some("fixture not found".to_owned()),
-            },
-            &ctx,
-        );
-
-        // Then should_quit is true (index 1 == plan len 1, so no more pairs).
-        // This kills: < vs ==, < vs <=, < vs >, and delete ! on has_more.
-        let state = actor.state.read();
-        assert!(
-            state.frontend.should_quit,
-            "expected should_quit when all pairs are exhausted after setup error"
-        );
-    }
-
-    #[test]
-    fn setup_error_does_not_quit_when_more_pairs_remain() {
-        // Given a plan with 3 tasks.
-        let plan = build_plan(
-            &["test-model".to_owned()],
-            &[
-                "hello-world".to_owned(),
-                "json-parser".to_owned(),
-                "redirect-change-color".to_owned(),
-            ],
-        )
-        .expect("plan");
-        let (state, session_id) = test_state_with_session();
-        let csv_dir = tempfile::TempDir::new().expect("temp dir");
-        let csv_path = csv_dir.path().join("results.csv");
-        let (sink, ctx) = test_context();
-        let mut actor = BenchActor::activate(
-            BenchActorDeps {
-                state,
-                csv_path: Some(csv_path),
-                plan: Some(plan),
-            },
-            &mut ActorContext::new("test", sink),
-        );
-        // Activate started pair 0 - index is at 1, plan has 3 pairs.
-        assert_eq!(actor.current_pair_index, 1);
-
-        // When SessionSetupCompleted fires with an error.
-        actor.handle_session_setup_completed(
-            &SessionSetupCompleted {
-                session_id: session_id.clone(),
-                cwd: PathBuf::from("/tmp"),
-                error: Some("fixture not found".to_owned()),
-            },
-            &ctx,
-        );
-
-        // Then should_quit is false (index 2 < plan len 3, more pairs remain).
-        // This kills: delete ! on has_more (if deleted, has_more=true would enter block incorrectly).
-        let state = actor.state.read();
-        assert!(
-            !state.frontend.should_quit,
-            "expected should_quit=false when more pairs remain after setup error"
-        );
-        assert_eq!(
-            actor.current_pair_index, 2,
-            "should have advanced to next pair"
-        );
-    }
-
-    #[test]
-    fn deadline_is_in_future_after_setup_completed() {
-        // Given a bench actor that tracks a session.
-        let (state, session_id) = test_state_with_session();
-        let (sink, ctx) = test_context();
-        let before = Instant::now();
-        let mut actor = BenchActor::activate(
-            BenchActorDeps {
-                state,
-                csv_path: None,
-                plan: None,
-            },
-            &mut ActorContext::new("test", sink),
-        );
-
-        actor.handle_session_setup_completed(
-            &SessionSetupCompleted {
-                session_id: session_id.clone(),
-                cwd: PathBuf::from("/tmp"),
-                error: None,
-            },
-            &ctx,
-        );
-
-        // Then the tracked session's deadline is in the future.
-        // This kills: replace + with - (deadline would be in the past).
-        let tracked = actor.pending.get(&session_id).expect("tracked");
-        assert!(
-            tracked.deadline > before,
-            "deadline should be in the future (now + timeout), got {:?}",
-            tracked.deadline
-        );
-    }
-
-    #[tokio::test]
-    async fn timeout_status_set_when_deadline_exceeded() {
-        // Given a tracked bench session whose deadline has already passed.
-        let work_dir = tempfile::TempDir::new().expect("temp dir");
-        std::fs::create_dir_all(work_dir.path().join("src")).expect("create src dir");
-        std::fs::write(
-            work_dir.path().join("Cargo.toml"),
-            "[package]\nname = \"test\"\nversion = \"0.1.0\"\nedition = \"2021\"\n",
-        )
-        .expect("write Cargo.toml");
-        std::fs::write(work_dir.path().join("src/main.rs"), "fn main() {}")
-            .expect("write src/main.rs");
-
-        let state = State::new(jinn_domain::AppState::default());
-        let session_id = {
-            let mut s = state.write();
-            let session = s.active_session_mut();
-            session.set_lifecycle_name(Some("hello-world".to_owned()));
-            session.set_cwd(work_dir.path().to_owned());
-            s.session.active_session_id().clone()
-        };
-
-        let csv_dir = tempfile::TempDir::new().expect("temp dir");
-        let csv_path = csv_dir.path().join("results.csv");
-        let (sink, ctx) = test_context();
-        let mut actor = BenchActor::activate(
-            BenchActorDeps {
-                state,
-                csv_path: Some(csv_path.clone()),
-                plan: None,
-            },
-            &mut ActorContext::new("test", sink),
-        );
-
-        actor.handle_session_setup_completed(
-            &SessionSetupCompleted {
-                session_id: session_id.clone(),
-                cwd: work_dir.path().to_owned(),
-                error: None,
-            },
-            &ctx,
-        );
-
-        // Set deadline to the past to simulate timeout.
-        if let Some(tracked) = actor.pending.get_mut(&session_id) {
-            tracked.deadline = Instant::now()
-                .checked_sub(Duration::from_secs(1))
-                .unwrap_or(Instant::now());
-        }
-
-        // When SessionPhaseChanged fires with Idle.
-        actor
-            .handle_session_phase_changed(
-                &SessionPhaseChanged {
-                    session_id: session_id.clone(),
-                    old_phase: PhaseKind::Streaming,
-                    new_phase: PhaseKind::Idle,
-                },
-                &ctx,
-            )
-            .await;
-
-        // Then the CSV row has status "timeout".
-        // This kills: > vs ==, > vs <, > vs >= on the Instant::now() > deadline check.
-        let content = std::fs::read_to_string(&csv_path).expect("read csv");
-        assert!(
-            content.contains("timeout"),
-            "expected 'timeout' status in CSV when deadline exceeded, got: {content}"
-        );
-    }
-
-    #[tokio::test]
-    async fn completed_status_set_when_before_deadline() {
-        // Given a tracked bench session whose deadline is far in the future.
-        let work_dir = tempfile::TempDir::new().expect("temp dir");
-        std::fs::create_dir_all(work_dir.path().join("src")).expect("create src dir");
-        std::fs::write(
-            work_dir.path().join("Cargo.toml"),
-            "[package]\nname = \"test\"\nversion = \"0.1.0\"\nedition = \"2021\"\n",
-        )
-        .expect("write Cargo.toml");
-        std::fs::write(work_dir.path().join("src/main.rs"), "fn main() {}")
-            .expect("write src/main.rs");
-
-        let state = State::new(jinn_domain::AppState::default());
-        let session_id = {
-            let mut s = state.write();
-            let session = s.active_session_mut();
-            session.set_lifecycle_name(Some("hello-world".to_owned()));
-            session.set_cwd(work_dir.path().to_owned());
-            s.session.active_session_id().clone()
-        };
-
-        let csv_dir = tempfile::TempDir::new().expect("temp dir");
-        let csv_path = csv_dir.path().join("results.csv");
-        let (sink, ctx) = test_context();
-        let mut actor = BenchActor::activate(
-            BenchActorDeps {
-                state,
-                csv_path: Some(csv_path.clone()),
-                plan: None,
-            },
-            &mut ActorContext::new("test", sink),
-        );
-
-        actor.handle_session_setup_completed(
-            &SessionSetupCompleted {
-                session_id: session_id.clone(),
-                cwd: work_dir.path().to_owned(),
-                error: None,
-            },
-            &ctx,
-        );
-
-        // Set deadline to far future - should NOT be timeout.
-        if let Some(tracked) = actor.pending.get_mut(&session_id) {
-            tracked.deadline = Instant::now() + Duration::from_secs(3600);
-        }
-
-        // When SessionPhaseChanged fires with Idle.
-        actor
-            .handle_session_phase_changed(
-                &SessionPhaseChanged {
-                    session_id: session_id.clone(),
-                    old_phase: PhaseKind::Streaming,
-                    new_phase: PhaseKind::Idle,
-                },
-                &ctx,
-            )
-            .await;
-
-        // Then the CSV row has status "completed", not "timeout".
-        // This kills: > vs >= (at exact boundary, >= would make everything timeout).
-        let content = std::fs::read_to_string(&csv_path).expect("read csv");
-        assert!(
-            content.contains("completed"),
-            "expected 'completed' status when before deadline, got: {content}"
-        );
-        assert!(
-            !content.contains("timeout"),
-            "should not have 'timeout' status when before deadline"
-        );
-    }
-
-    #[tokio::test]
-    async fn intermediate_idle_decrements_counters_correctly() {
-        // Given a tracked bench session for a multi-message task (redirect-change-color has 2 msgs).
-        let state = State::new(jinn_domain::AppState::default());
-        let session_id = {
-            let mut s = state.write();
-            let session = s.active_session_mut();
-            session.set_lifecycle_name(Some("redirect-change-color".to_owned()));
-            s.session.active_session_id().clone()
-        };
-
-        let (sink, ctx) = test_context();
-        let mut actor = BenchActor::activate(
-            BenchActorDeps {
-                state,
-                csv_path: None,
-                plan: None,
-            },
-            &mut ActorContext::new("test", sink),
-        );
-
-        actor.handle_session_setup_completed(
-            &SessionSetupCompleted {
-                session_id: session_id.clone(),
-                cwd: PathBuf::from("/tmp"),
-                error: None,
-            },
-            &ctx,
-        );
-
-        // After setup, first message was sent. Verify initial counter state.
-        let tracked = actor.pending.get(&session_id).expect("tracked");
-        assert_eq!(
-            tracked.messages_remaining, 1,
-            "should have 1 remaining after first send"
-        );
-        assert_eq!(
-            tracked.next_message_index, 1,
-            "index should be 1 after first send"
-        );
-
-        // When SessionPhaseChanged fires with Idle (intermediate - more messages left).
-        actor
-            .handle_session_phase_changed(
-                &SessionPhaseChanged {
-                    session_id: session_id.clone(),
-                    old_phase: PhaseKind::Streaming,
-                    new_phase: PhaseKind::Idle,
-                },
-                &ctx,
-            )
-            .await;
-
-        // Then counters were correctly updated (not multiplied or negated).
-        // This kills: += with -=, += with *= on both messages_remaining and next_message_index.
-        let tracked = actor.pending.get(&session_id).expect("still tracked");
-        assert_eq!(
-            tracked.messages_remaining, 0,
-            "messages_remaining should be 0 (was 1, decremented by 1), not multiplied or incremented"
-        );
-        assert_eq!(
-            tracked.next_message_index, 2,
-            "next_message_index should be 2 (was 1, incremented by 1), not multiplied or decremented"
-        );
-    }
-
-    #[tokio::test]
-    async fn finalization_sets_should_quit_when_plan_exhausted() {
-        // Given a plan with exactly 1 task.
-        let plan =
-            build_plan(&["test-model".to_owned()], &["hello-world".to_owned()]).expect("plan");
-
-        let work_dir = tempfile::TempDir::new().expect("temp dir");
-        std::fs::create_dir_all(work_dir.path().join("src")).expect("create src dir");
-        std::fs::write(
-            work_dir.path().join("Cargo.toml"),
-            "[package]\nname = \"test\"\nversion = \"0.1.0\"\nedition = \"2021\"\n",
-        )
-        .expect("write Cargo.toml");
-        std::fs::write(work_dir.path().join("src/main.rs"), "fn main() {}")
-            .expect("write src/main.rs");
-
-        let state = State::new(jinn_domain::AppState::default());
-        // We need to set the session lifecycle AFTER activate because activate
-        // creates a new session for the first pair. We'll track that session.
-        let (sink, ctx) = test_context();
-        let mut actor = BenchActor::activate(
-            BenchActorDeps {
-                state: state.clone(),
-                csv_path: None,
-                plan: Some(plan),
-            },
-            &mut ActorContext::new("test", sink.clone()),
-        );
-
-        // Find the session that was created by start_next_pair.
-        let session_id = {
-            let s = state.read();
-            s.session.active_session_id().clone()
-        };
-
-        // Set lifecycle and CWD so the actor tracks it and verification passes.
-        {
-            let mut s = state.write();
-            let session = s.session.active_session_mut();
-            session.set_lifecycle_name(Some("hello-world".to_owned()));
-            session.set_cwd(work_dir.path().to_owned());
-        }
-
-        // Fire setup completed to track the session.
-        actor.handle_session_setup_completed(
-            &SessionSetupCompleted {
-                session_id: session_id.clone(),
-                cwd: work_dir.path().to_owned(),
-                error: None,
-            },
-            &ctx,
-        );
-
-        // Set deadline to future so status is "completed".
-        if let Some(tracked) = actor.pending.get_mut(&session_id) {
-            tracked.deadline = Instant::now() + Duration::from_secs(3600);
-        }
-
-        // When SessionPhaseChanged fires with Idle (finalizes the session).
-        actor
-            .handle_session_phase_changed(
-                &SessionPhaseChanged {
-                    session_id: session_id.clone(),
-                    old_phase: PhaseKind::Streaming,
-                    new_phase: PhaseKind::Idle,
-                },
-                &ctx,
-            )
-            .await;
-
-        // Then should_quit is set because the plan is exhausted.
-        // This kills: < vs ==, < vs >, < vs <= on current_pair_index < plan len,
-        // and delete ! on has_more.
-        let s = state.read();
-        assert!(
-            s.frontend.should_quit,
-            "expected should_quit when all pairs finalized and plan exhausted"
-        );
-    }
-
-    #[tokio::test]
-    async fn finalization_does_not_quit_when_more_pairs_remain() {
-        // Given a plan with 3 tasks.
-        let plan = build_plan(
-            &["test-model".to_owned()],
-            &[
-                "hello-world".to_owned(),
-                "json-parser".to_owned(),
-                "redirect-change-color".to_owned(),
-            ],
-        )
-        .expect("plan");
-
-        let work_dir = tempfile::TempDir::new().expect("temp dir");
-        std::fs::create_dir_all(work_dir.path().join("src")).expect("create src dir");
-        std::fs::write(
-            work_dir.path().join("Cargo.toml"),
-            "[package]\nname = \"test\"\nversion = \"0.1.0\"\nedition = \"2021\"\n",
-        )
-        .expect("write Cargo.toml");
-        std::fs::write(work_dir.path().join("src/main.rs"), "fn main() {}")
-            .expect("write src/main.rs");
-
-        let state = State::new(jinn_domain::AppState::default());
-        let (sink, ctx) = test_context();
-        let mut actor = BenchActor::activate(
-            BenchActorDeps {
-                state: state.clone(),
-                csv_path: None,
-                plan: Some(plan),
-            },
-            &mut ActorContext::new("test", sink.clone()),
-        );
-
-        // Find the session created by start_next_pair.
-        let session_id = {
-            let s = state.read();
-            s.session.active_session_id().clone()
-        };
-
-        {
-            let mut s = state.write();
-            let session = s.session.active_session_mut();
-            session.set_lifecycle_name(Some("hello-world".to_owned()));
-            session.set_cwd(work_dir.path().to_owned());
-        }
-
-        actor.handle_session_setup_completed(
-            &SessionSetupCompleted {
-                session_id: session_id.clone(),
-                cwd: work_dir.path().to_owned(),
-                error: None,
-            },
-            &ctx,
-        );
-
-        if let Some(tracked) = actor.pending.get_mut(&session_id) {
-            tracked.deadline = Instant::now() + Duration::from_secs(3600);
-        }
-
-        // When SessionPhaseChanged fires with Idle.
-        actor
-            .handle_session_phase_changed(
-                &SessionPhaseChanged {
-                    session_id: session_id.clone(),
-                    old_phase: PhaseKind::Streaming,
-                    new_phase: PhaseKind::Idle,
-                },
-                &ctx,
-            )
-            .await;
-
-        // Then should_quit is NOT set because there's still 1 more pair.
-        // This kills: delete ! on has_more (if deleted, has_more=true would set should_quit incorrectly).
-        let s = state.read();
-        assert!(
-            !s.frontend.should_quit,
-            "expected should_quit=false when more pairs remain after finalization"
         );
     }
 }

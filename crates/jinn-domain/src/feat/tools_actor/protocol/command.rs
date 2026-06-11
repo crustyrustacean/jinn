@@ -68,3 +68,9 @@ pub struct ExecuteWebFetch {
     /// The tool call containing URL and options.
     pub tool_call: ToolCall,
 }
+
+impl crate::common::bus::BusMessage for RegisterTools {}
+impl crate::common::bus::BusMessage for ExecuteToolBatch {}
+impl crate::common::bus::BusMessage for ExecuteTool {}
+impl crate::common::bus::BusMessage for CancelToolBatch {}
+impl crate::common::bus::BusMessage for ExecuteWebFetch {}

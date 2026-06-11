@@ -1,30 +1,25 @@
-//! Actor wiring - spawns all actors and assembles the actor host.
+//! Actor wiring — spawns all actors as kameo actors.
 //!
 //! This module encapsulates the one-time startup wiring: creating shared state,
-//! spawning each actor via the unified [`spawn`]/[`system_spawn`] functions,
-//! building the actor host, starting the forwarding task, and waiting for the
-//! actor system to become ready. Called once from `App::dispatch`.
+//! spawning each actor via kameo's `Spawn::spawn()`, building the bus and bridge,
+//! and waiting for the actor system to become ready. Called once from `App::dispatch`.
 //!
 //! # Spawn order
 //!
-//! 1. Infrastructure actors via [`system_spawn`] (no lifecycle events):
-//!    - `system-ready` - counts `ActorStarted`, signals main thread
-//! 2. Lifecycle events emitted for both infrastructure actors
-//! 3. Init actors via [`spawn`] (self-schedule on startup):
-//!    - `env-init` - loads config, resolves API keys
-//!    - `provider-init` - builds registry, merges cache, resolves `last_model`
-//!    - `preferences` - loads user preferences
-//! 4. Domain actors via [`spawn`]:
-//!    - All remaining actors
+//! 1. Infrastructure actors (system-ready, env-init).
+//! 2. Init actors (provider-init, preferences, scan actors).
+//! 3. Domain actors (session, tools, history workers, etc.).
+//!
+//! EnvInitActor is spawned first with `wait_for_startup()` so dependent actors
+//! can look it up in the kameo registry and pull config via `ask()`.
 
 use std::sync::Arc;
 
-use kameo::actor::Spawn;
-
+use jinn_domain::ActorHostService;
+use jinn_domain::FakeActorHost;
 use jinn_domain::ApiKeysService;
 use jinn_domain::AppState;
 use jinn_domain::ConfigStorageService;
-use jinn_domain::Event;
 use jinn_domain::LlmServiceFactoryService;
 use jinn_domain::ProviderRegistryService;
 use jinn_domain::Services;
@@ -32,35 +27,21 @@ use jinn_domain::SessionStoreService;
 use jinn_domain::UserPreferencesStorageService;
 
 use jinn_domain::actor_channel::ActorChannelService;
-use jinn_domain::common::actor::protocol::event::{ActorStarted, ActorStarting, AllActorsSpawned};
 use jinn_domain::common::actor_deps::ActorDeps;
-use jinn_domain::feat::preferences_actor::preferences_actor::{PreferencesActor, PreferencesActorDeps};
 use jinn_domain::feat::context::strategy::token_estimator::TiktokenCounter;
 
 use jinn_domain::feat::plugin_dispatch::{PluginDispatchActor, PluginDispatchActorDeps};
 use jinn_domain::init::env_init_actor::{EnvInitActor, EnvInitActorDeps};
 use jinn_domain::init::provider_init_actor::{ProviderInitActor, ProviderInitActorDeps};
 use jinn_domain::init::system_ready_actor::{SystemReadyActor, SystemReadyActorDeps};
-use jinn_domain::feat::ui::sidebar::sidebar_state_actor::{SidebarStateActor, SidebarStateActorDeps};
-use jinn_domain::feat::token_count_actor::{TokenCountActor, TokenCountActorDeps};
-use jinn_domain::feat::preferences_actor::app_state_actor::{AppStateActor, AppStateActorDeps};
-use jinn_domain::feat::preferences_actor::app_state_sync_actor::{AppStateSyncActor, AppStateSyncActorDeps};
-use jinn_domain::feat::discovery_notifier::{DiscoveryNotifierActor, DiscoveryNotifierActorDeps};
-use jinn_domain::feat::queue_actor::{QueueActor, QueueActorDeps};
-use jinn_domain::feat::provider::discover_actor::{DiscoverActor, DiscoverActorDeps};
-use jinn_domain::feat::llm_actor::{LlmActor, LlmActorDeps};
-use jinn_domain::feat::skills::skills_scan_actor::{SkillsScanActor, SkillsScanActorDeps};
 
 use jinn_domain::feat::preferences_actor::user_preferences::WebFetchBackend;
 use jinn_domain::feat::web_fetch_actor::{WebFetchActor, WebFetchActorDeps};
-use jinn_domain::feat::session::session_actor::{SessionPersistenceActor, SessionPersistenceActorDeps};
 use jinn_web_fetch::{HttpFetcher, MarkdownExtractor, OutputFormat};
 
-use jinn_domain::{
-    ActorCounter, ActorHostService, ActorMessageSink, AppCore, AppMsg, InMemoryActorHost,
-    MessageSink, ShutdownTracker, State, spawn, spawn_forwarding_task, system_spawn,
-    wait_for_system_ready,
-};
+use jinn_domain::{AppCore, AppMsg, State};
+
+use kameo::actor::Spawn;
 
 /// The fixed (required) inputs to actor-system construction.
 ///
@@ -98,7 +79,7 @@ pub struct BenchInputs {
     pub artifact_dir: Option<std::path::PathBuf>,
 }
 
-/// Builds the actor system: spawns all actors and assembles the actor host.
+/// Builds the actor system: spawns all actors via kameo.
 ///
 /// Construct with [`ActorSystemBuilder::new`], optionally add bench via
 /// [`ActorSystemBuilder::with_bench_actor`], then call
@@ -132,15 +113,14 @@ impl ActorSystemBuilder {
         self
     }
 
-    /// Spawn all actors, build the host, start the forwarding task, and wait
-    /// for readiness.
+    /// Spawn all actors via kameo, build the bus and bridge, and wait for readiness.
     pub fn build(
         self,
     ) -> (
         AppCore,
         Services,
-        ActorHostService,
         jinn_plugin::SyncPlugins,
+        ActorHostService,
     ) {
         let ActorSystemBuilderArgs {
             handle,
@@ -153,41 +133,22 @@ impl ActorSystemBuilder {
             app_state_storage,
             paths,
         } = self.args;
-        // Body passes `handle` as `&tokio::runtime::Handle`; rebind as a ref.
-        let handle: &tokio::runtime::Handle = &handle;
         let bench = self.bench;
 
-        // Create channel first - actors need the sender, but AppCore needs services
-        // which needs the actor host which needs actors. Break the cycle by creating
-        // the channel independently.
+        // Create channel first — actors need the sender, but AppCore needs services
+        // which needs the bus. Break the cycle by creating the channel independently.
         let (sender, receiver) = kanal::unbounded::<AppMsg>();
-        let async_receiver = receiver.to_async();
+        let _async_receiver = receiver.to_async();
 
-        // Spawn the kameo MessageBus for type-based pub/sub routing.
-        // We need to enter the tokio runtime context because kameo's Actor::spawn()
-        // calls tokio::spawn internally.
-        let _guard = handle.enter();
-        let bus_actor_ref =
-            kameo_actors::message_bus::MessageBus::spawn(
-                kameo_actors::message_bus::MessageBus::new(
-                    kameo_actors::DeliveryStrategy::Guaranteed,
-                ),
-            );
-        let bus = jinn_domain::BusService::new(bus_actor_ref);
+        // `DomainNodeContext` is needed by the plugin request handler (for `llm_oneshot`)
+        // but it can't be constructed until `services` is assembled.
+        // Bridge with a `OnceLock` filled in once `services` exists.
+        let domain_ctx_cell: std::sync::Arc<
+            std::sync::OnceLock<jinn_domain::feat::plugin_dispatch::DomainNodeContext>,
+        > = std::sync::Arc::new(std::sync::OnceLock::new());
 
-        // Create the kanal closure bridge from sync TUI to async bus.
-        let bridge = jinn_domain::Bridge::new(bus.actor_ref().clone());
 
-        // Create the message sink that bridges actor output to AppCore's channel.
-        let sink: Arc<dyn MessageSink> = Arc::new(ActorMessageSink::new(sender.clone()));
-
-        // Create the actor counter - incremented by every spawn/system_spawn call.
-        let counter = ActorCounter::new();
-
-        // Create the shutdown tracker - shared across all actors for coordinated shutdown.
-        let shutdown_tracker = ShutdownTracker::new();
-
-        // Create shared State FIRST - injected into multiple actors.
+        // Create shared State FIRST — injected into multiple actors.
         let state = State::new(AppState::default());
 
         // Set preferences
@@ -205,6 +166,7 @@ impl ActorSystemBuilder {
             guard.frontend.app_state.persona_name = app_state.persona_name.clone();
             guard.frontend.app_state.sidebar_width = app_state.sidebar_width;
         }
+
         // Set default CWD for sessions (inherited from shell).
         {
             let cwd = std::env::current_dir().unwrap_or_else(|_| std::path::PathBuf::from("/"));
@@ -217,17 +179,12 @@ impl ActorSystemBuilder {
         // Constructed early — handles go into Services and TuiApp.
 
         let plugin_command_dispatcher: jinn_plugin::CommandDispatcher = std::sync::Arc::new({
-            let sink = sink.clone();
+            let sender = sender.clone();
             move |cmd: jinn_plugin::PluginCommand| {
-                crate::plugin_wiring::handle_plugin_command(cmd, &*sink);
+                let sink = jinn_domain::ActorMessageSink::new(sender.clone());
+                crate::plugin_wiring::handle_plugin_command(cmd, &sink);
             }
         });
-        // `DomainNodeContext` is needed by the plugin request handler (for `llm_oneshot`)
-        // but it can't be constructed until `services` is assembled (line ~168, after
-        // `PluginSystem::new`). Bridge with a `OnceLock` filled in once `services` exists.
-        let domain_ctx_cell: std::sync::Arc<
-            std::sync::OnceLock<jinn_domain::feat::plugin_dispatch::DomainNodeContext>,
-        > = std::sync::Arc::new(std::sync::OnceLock::new());
         let handler_cell = domain_ctx_cell.clone();
         let plugin_request_handler: jinn_plugin::RequestHandler = std::sync::Arc::new({
             move |name: &str, data: &serde_json::Value| {
@@ -274,6 +231,22 @@ impl ActorSystemBuilder {
             state.write().discovered_plugins = plugins;
         }
 
+
+        let domain_ctx_cell: std::sync::Arc<
+            std::sync::OnceLock<jinn_domain::feat::plugin_dispatch::DomainNodeContext>,
+        > = std::sync::Arc::new(std::sync::OnceLock::new());
+        let handler_cell = domain_ctx_cell.clone();
+
+        // Create the kameo message bus and closure bridge first.
+        let bus = {
+            let bus_actor = kameo_actors::message_bus::MessageBus::new(
+                kameo_actors::DeliveryStrategy::BestEffort,
+            );
+            let bus_ref = kameo_actors::message_bus::MessageBus::spawn(bus_actor);
+            jinn_domain::common::services::bus_service::BusService::new(bus_ref)
+        };
+        let bridge = jinn_domain::common::bridge::Bridge::new(bus.actor_ref().clone());
+
         let services = Services {
             paths: paths.clone(),
             handle: handle.clone(),
@@ -314,100 +287,97 @@ impl ActorSystemBuilder {
             ));
         let _ = domain_ctx_cell.set((*shared_domain_ctx).clone());
 
-        // ── Infrastructure actors (no lifecycle events) ──────────────────────
+        let actor_deps = ActorDeps {
+            services: services.clone(),
+        };
 
-        let mut actors = Vec::new();
+        // ── Infrastructure actors ──────────────────────────────────────────
 
-        let (ready_tx, ready_rx) = tokio::sync::oneshot::channel();
+        // System-ready actor: signals main thread when all actors started.
+        let (ready_tx, ready_rx) = tokio::sync::oneshot::channel::<()>();
+        let _system_ready = SystemReadyActor::spawn(SystemReadyActorDeps {
+            deps: actor_deps.clone(),
+            ready_tx,
+        });
 
-        actors.push(system_spawn::<SystemReadyActor>(
-            "system-ready",
-            sink.clone(),
-            handle,
-            &counter,
-            &shutdown_tracker,
-            SystemReadyActorDeps {
-                ready_tx,
-                counter: counter.clone(),
-            },
-        ));
+        // ── Init actors ────────────────────────────────────────────────────
 
-        // ── Init actors (self-schedule Initialize during activate) ────────────
-
-        // Env init: loads providers.toml, resolves API keys, publishes EnvironmentLoaded.
+        // Env init: loads providers.toml, resolves API keys, emits EnvironmentLoaded.
         let _env_init = EnvInitActor::spawn(EnvInitActorDeps {
-            deps: ActorDeps { services: services.clone() },
+            deps: actor_deps.clone(),
         });
 
         // Provider init: on EnvironmentLoaded, builds registry, merges cache, resolves last_model.
         let _provider_init = ProviderInitActor::spawn(ProviderInitActorDeps {
-            deps: ActorDeps { services: services.clone() },
+            deps: actor_deps.clone(),
             state: state.clone(),
         });
 
-        // Preferences: loads and persists user preferences. (Migrated to kameo.)
-        let _preferences = PreferencesActor::spawn(PreferencesActorDeps {
-            deps: ActorDeps {
-                services: services.clone(),
-            },
-        });
+        // Preferences: loads and persists user preferences.
+        let _preferences =
+            jinn_domain::feat::preferences_actor::preferences_actor::PreferencesActor::spawn(
+                jinn_domain::feat::preferences_actor::preferences_actor::PreferencesActorDeps {
+                    deps: actor_deps.clone(),
+                },
+            );
 
         // Preferences state sync: updates AppState from PreferencesUpdated events.
-        let _preferences_state_sync = jinn_domain::feat::preferences_actor::preferences_state_sync_actor::PreferencesStateSyncActor::spawn(
-            jinn_domain::feat::preferences_actor::preferences_state_sync_actor::PreferencesStateSyncActorDeps {
-                deps: ActorDeps { services: services.clone() },
+        let _preferences_sync =
+            jinn_domain::feat::preferences_actor::preferences_state_sync_actor::PreferencesStateSyncActor::spawn(
+                jinn_domain::feat::preferences_actor::preferences_state_sync_actor::PreferencesStateSyncActorDeps {
+                    deps: actor_deps.clone(),
+                    state: state.clone(),
+                },
+            );
+
+        // App state actor: persists state changes to state.toml.
+        let _app_state =
+            jinn_domain::feat::preferences_actor::app_state_actor::AppStateActor::spawn(
+                jinn_domain::feat::preferences_actor::app_state_actor::AppStateActorDeps {
+                    deps: actor_deps.clone(),
+                },
+            );
+
+        // App state sync: updates AppState from AppStateUpdated events.
+        let _app_state_sync =
+            jinn_domain::feat::preferences_actor::app_state_sync_actor::AppStateSyncActor::spawn(
+                jinn_domain::feat::preferences_actor::app_state_sync_actor::AppStateSyncActorDeps {
+                    deps: actor_deps.clone(),
+                    state: state.clone(),
+                },
+            );
+
+        // ── Domain actors ──────────────────────────────────────────────────
+
+        // LLM streaming actor.
+        let _llm = jinn_domain::feat::llm_actor::LlmActor::spawn(
+            jinn_domain::feat::llm_actor::LlmActorDeps {
+                factory: llm_service.clone(),
+                deps: actor_deps.clone(),
                 state: state.clone(),
             },
         );
 
-        // App state actor: persists state changes to state.toml. (Migrated to kameo.)
-        let _app_state = AppStateActor::spawn(AppStateActorDeps {
-            deps: jinn_domain::common::actor_deps::ActorDeps {
-                services: services.clone(),
-            },
-        });
-
-        // App state sync: updates AppState from AppStateUpdated events. (Migrated to kameo.)
-        let _app_state_sync = AppStateSyncActor::spawn(AppStateSyncActorDeps {
-            deps: jinn_domain::common::actor_deps::ActorDeps {
-                services: services.clone(),
-            },
-            state: state.clone(),
-        });
-
-        // ── Domain actors ────────────────────────────────────────────────────
-
-        // LLM streaming actor.
-        let _llm = LlmActor::spawn(LlmActorDeps {
-            factory: llm_service.clone(),
-            deps: ActorDeps { services: services.clone() },
-            state: state.clone(),
-        });
-
         // Model discovery actor.
-        let _discover = DiscoverActor::spawn(DiscoverActorDeps {
-            deps: ActorDeps { services: services.clone() },
-            state: state.clone(),
-        });
-
-        // Tool orchestrator actor.
-        actors.push(
-            spawn::<jinn_domain::feat::tools_actor::ToolOrchestratorActor>(
-                "tool-orchestrator",
-                &sink,
-                handle,
-                &counter,
-                &shutdown_tracker,
-                jinn_domain::feat::tools_actor::ToolOrchestratorActorDeps {
-                    services: services.clone(),
-                    state: state.clone(),
-                    builtin_filter: None,
-                    shell: std::env::var("SHELL").unwrap_or_else(|_| "/bin/sh".to_owned()),
-                },
-            ),
+        let _discover = jinn_domain::feat::provider::discover_actor::DiscoverActor::spawn(
+            jinn_domain::feat::provider::discover_actor::DiscoverActorDeps {
+                deps: actor_deps.clone(),
+                state: state.clone(),
+            },
         );
 
-        // Web fetch actor - reads backend from preferences, constructs fetcher.
+        // Tool orchestrator actor.
+        let _tools = jinn_domain::feat::tools_actor::ToolOrchestratorActor::spawn(
+            jinn_domain::feat::tools_actor::ToolOrchestratorActorDeps {
+                deps: actor_deps.clone(),
+                state: state.clone(),
+                services: services.clone(),
+                builtin_filter: None,
+                shell: std::env::var("SHELL").unwrap_or_else(|_| "/bin/sh".to_owned()),
+            },
+        );
+
+        // Web fetch actor.
         let web_fetch_backend = user_preferences_storage.read().web_fetch.backend;
         tracing::info!(backend = ?web_fetch_backend, "constructing web fetcher");
         let extractors = {
@@ -430,13 +400,16 @@ impl ActorSystemBuilder {
                 ))
             }
         };
-        let _web_fetch = WebFetchActor::spawn(WebFetchActorDeps { deps: ActorDeps { services: services.clone() }, web_fetcher });
+        let _web_fetch = WebFetchActor::spawn(WebFetchActorDeps {
+            deps: actor_deps.clone(),
+            web_fetcher,
+        });
 
         // Session persistence actor.
         let token_counter = TiktokenCounter::o200k_base();
-        let _session_persistence = SessionPersistenceActor::spawn(
-            SessionPersistenceActorDeps {
-                deps: ActorDeps { services: services.clone() },
+        let _session = jinn_domain::feat::session::session_actor::SessionPersistenceActor::spawn(
+            jinn_domain::feat::session::session_actor::SessionPersistenceActorDeps {
+                deps: actor_deps.clone(),
                 state: state.clone(),
                 counter: token_counter,
                 builtin_registry: {
@@ -456,159 +429,138 @@ impl ActorSystemBuilder {
         let _prompt_scan =
             jinn_domain::feat::context::prompt_scan_actor::PromptScanActor::spawn(
                 jinn_domain::feat::context::prompt_scan_actor::PromptScanActorDeps {
-                    deps: jinn_domain::common::actor_deps::ActorDeps { services: services.clone() },
+                    deps: actor_deps.clone(),
                     state: state.clone(),
                 },
             );
 
         // Context-files scan actor.
-        let _context_files_scan =
+        let _context_files =
             jinn_domain::feat::context::context_files_scan_actor::ContextFilesScanActor::spawn(
                 jinn_domain::feat::context::context_files_scan_actor::ContextFilesScanActorDeps {
-                    deps: jinn_domain::common::actor_deps::ActorDeps { services: services.clone() },
+                    deps: actor_deps.clone(),
                     state: state.clone(),
                 },
             );
 
         // Skills scan actor.
-        let _skills_scan = SkillsScanActor::spawn(SkillsScanActorDeps {
-            deps: ActorDeps { services: services.clone() },
-            state: state.clone(),
-        });
+        let _skills_scan = jinn_domain::feat::skills::skills_scan_actor::SkillsScanActor::spawn(
+            jinn_domain::feat::skills::skills_scan_actor::SkillsScanActorDeps {
+                deps: actor_deps.clone(),
+                state: state.clone(),
+            },
+        );
 
-        // Discovery coordinator — coalesces the three resource-loaded events
+        // Discovery coordinator.
         let _discovery_coordinator =
             jinn_domain::feat::discovery_coordinator::DiscoveryCoordinatorActor::spawn(
                 jinn_domain::feat::discovery_coordinator::DiscoveryCoordinatorActorDeps {
-                    deps: jinn_domain::common::actor_deps::ActorDeps { services: services.clone() },
+                    deps: actor_deps.clone(),
                     state: state.clone(),
                 },
             );
 
-        // Discovery notifier — posts a transient chat entry when a session's
-        // discovery settles. (Migrated to kameo — registers on bus during on_start.)
-        let _discovery_notifier = DiscoveryNotifierActor::spawn(
-            DiscoveryNotifierActorDeps {
-                deps: jinn_domain::common::actor_deps::ActorDeps {
-                    services: services.clone(),
+        // Discovery notifier.
+        let _discovery_notifier =
+            jinn_domain::feat::discovery_notifier::DiscoveryNotifierActor::spawn(
+                jinn_domain::feat::discovery_notifier::DiscoveryNotifierActorDeps {
+                    deps: actor_deps.clone(),
                 },
-            },
-        );
-
+            );
 
         // Persona scan actor.
-        {
-            use jinn_domain::feat::persona::persona_scan_actor::PersonaScanActor;
-            use jinn_domain::feat::persona::persona_scan_actor::PersonaScanActorDeps;
-
-            let _persona_scan = PersonaScanActor::spawn(PersonaScanActorDeps {
-                deps: ActorDeps { services: services.clone() },
-            });
-        }
-        // Provider actor.
-        let _provider_actor =
-            jinn_domain::feat::provider::provider_actor::ProviderActor::spawn(
-                jinn_domain::feat::provider::provider_actor::ProviderActorDeps {
-                    deps: jinn_domain::common::actor_deps::ActorDeps { services: services.clone() },
-                    state: state.clone(),
-                },
-            );
-
-        // Token count actor - computes tiktoken counts for chat entries.
-        let _token_count = TokenCountActor::spawn(TokenCountActorDeps {
-            deps: ActorDeps { services: services.clone() },
-            state: state.clone(),
-        });
-
-        // Queue actor — dispatches queued turns when sessions become idle.
-        // (Migrated to kameo — registers on bus during on_start.)
-        let _queue_actor = QueueActor::spawn(
-            QueueActorDeps {
-                deps: jinn_domain::common::actor_deps::ActorDeps {
-                    services: services.clone(),
-                },
-                state: state.clone(),
-                counter: token_counter.clone(),
+        let _persona_scan = jinn_domain::feat::persona::persona_scan_actor::PersonaScanActor::spawn(
+            jinn_domain::feat::persona::persona_scan_actor::PersonaScanActorDeps {
+                deps: actor_deps.clone(),
             },
         );
 
-        // Context size actor - recalculates context size for the status bar.
+        // Provider actor.
+        let _provider = jinn_domain::feat::provider::provider_actor::ProviderActor::spawn(
+            jinn_domain::feat::provider::provider_actor::ProviderActorDeps {
+                state: state.clone(),
+                deps: actor_deps.clone(),
+            },
+        );
+
+        let _token_count = jinn_domain::feat::token_count_actor::TokenCountActor::spawn(
+            jinn_domain::feat::token_count_actor::TokenCountActorDeps {
+                deps: actor_deps.clone(),
+                state: state.clone(),
+            },
+        );
+
+        // Queue actor.
+        let _queue = jinn_domain::feat::queue_actor::QueueActor::spawn(
+            jinn_domain::feat::queue_actor::QueueActorDeps {
+                deps: actor_deps.clone(),
+                state: state.clone(),
+                counter: token_counter,
+            },
+        );
+
+        // Context size actor.
         let _context_size =
             jinn_domain::feat::context::context_size_actor::ContextSizeActor::spawn(
                 jinn_domain::feat::context::context_size_actor::ContextSizeActorDeps {
-                    deps: jinn_domain::common::actor_deps::ActorDeps { services: services.clone() },
+                    deps: actor_deps.clone(),
                     state: state.clone(),
                     counter: token_counter,
                 },
             );
 
-        // ── History mutation workers ────────────────��─────────────────────────
+        // Echo actor.
+        let _echo = jinn_domain::feat::echo_actor::EchoActor::spawn(
+            jinn_domain::feat::echo_actor::EchoActorDeps {
+                deps: actor_deps.clone(),
+            },
+        );
+
+        // ── History mutation workers ───────────────────��──────────────────────
         //
         // To add a new history mutation worker:
         //
         //   1. Implement `HistoryWorker` for your heuristic type
         //      (see `crates/jinn-domain/src/feat/history_worker/worker_trait.rs`).
-        //   2. Add a spawn call here:
-        //
-        //   use jinn_domain::feat::history_worker::{HistoryWorkerActor, HistoryWorkerActorDeps};
-        //
-        //   actors.push(spawn::<HistoryWorkerActor<MyWorker>>(
-        //       "history-worker-my-worker",
-        //       &sink, handle, &counter, &shutdown_tracker,
-        //       HistoryWorkerActorDeps {
-        //           worker: MyWorker::new(),
-        //       },
-        //   ));
-        //
+        //   2. Add a spawn call here following the pattern below.
 
-        // ── History snapshot actor ──────────────────────────────────────────
-        // Clones history once per HistoryAppended into Arc<[ChatEntry]>,
-        // then emits HistorySnapshotReady for all workers to share.
+        // History snapshot actor.
         {
             use jinn_domain::feat::history_worker::snapshot_actor::{
                 HistorySnapshotActor, HistorySnapshotActorDeps,
             };
 
-            let _history_snapshot = HistorySnapshotActor::spawn(
-                HistorySnapshotActorDeps {
-                    deps: ActorDeps { services: services.clone() },
-                    state: state.clone(),
-                },
-            );
+            let _snapshot = HistorySnapshotActor::spawn(HistorySnapshotActorDeps {
+                deps: actor_deps.clone(),
+                state: state.clone(),
+            });
         }
-        // Compaction worker - summarizes conversation history into structured checkpoints.
+
+        // Compaction worker.
         {
             use jinn_domain::feat::compaction_worker::CompactionWorker;
             use jinn_domain::feat::history_worker::actor::{
                 HistoryWorkerActor, HistoryWorkerActorDeps,
             };
 
-            actors.push(spawn::<HistoryWorkerActor<CompactionWorker>>(
-                "history-worker-compaction",
-                &sink,
-                handle,
-                &counter,
-                &shutdown_tracker,
+            let _compaction = HistoryWorkerActor::<CompactionWorker>::spawn(
                 HistoryWorkerActorDeps {
+                    deps: actor_deps.clone(),
                     worker: CompactionWorker::new(services.clone(), handle.clone(), state.clone()),
                 },
-            ));
+            );
         }
 
-        // Compaction trigger actor - handles /compact and /compact-all commands.
+        // Compaction trigger actor.
         {
-            use jinn_domain::feat::compaction_worker::{CompactionTriggerActor, CompactionTriggerActorDeps, CompactionWorker};
+            use jinn_domain::feat::compaction_worker::{
+                CompactionTriggerActor, CompactionTriggerActorDeps, CompactionWorker,
+            };
 
-            let _compaction_trigger = CompactionTriggerActor::spawn(
-                CompactionTriggerActorDeps {
-                    deps: ActorDeps { services: services.clone() },
-                    worker: CompactionWorker::new(
-                        services.clone(),
-                        handle.clone(),
-                        state.clone(),
-                    ),
-                },
-            );
+            let _trigger = CompactionTriggerActor::spawn(CompactionTriggerActorDeps {
+                deps: actor_deps.clone(),
+                worker: CompactionWorker::new(services.clone(), handle.clone(), state.clone()),
+            });
         }
 
         // Auto-prune worker: read→edit context pruning.
@@ -621,16 +573,12 @@ impl ActorSystemBuilder {
             let config = user_preferences_storage.read().auto_prune.read_edit.clone();
 
             if config.enabled {
-                actors.push(spawn::<HistoryWorkerActor<ReadEditAutoPruneWorker>>(
-                    "history-worker-auto-prune-read-edit",
-                    &sink,
-                    handle,
-                    &counter,
-                    &shutdown_tracker,
+                let _worker = HistoryWorkerActor::<ReadEditAutoPruneWorker>::spawn(
                     HistoryWorkerActorDeps {
+                        deps: actor_deps.clone(),
                         worker: ReadEditAutoPruneWorker { config },
                     },
-                ));
+                );
             }
         }
 
@@ -644,16 +592,12 @@ impl ActorSystemBuilder {
             let config = user_preferences_storage.read().auto_prune.edit_read.clone();
 
             if config.enabled {
-                actors.push(spawn::<HistoryWorkerActor<EditReadAutoPruneWorker>>(
-                    "history-worker-auto-prune-edit-read",
-                    &sink,
-                    handle,
-                    &counter,
-                    &shutdown_tracker,
+                let _worker = HistoryWorkerActor::<EditReadAutoPruneWorker>::spawn(
                     HistoryWorkerActorDeps {
+                        deps: actor_deps.clone(),
                         worker: EditReadAutoPruneWorker { config },
                     },
-                ));
+                );
             }
         }
 
@@ -668,14 +612,12 @@ impl ActorSystemBuilder {
             if regex_config.enabled && !regex_config.rules.is_empty() {
                 match RegexAutoPruneWorker::from_config(&regex_config) {
                     Ok(worker) => {
-                        actors.push(spawn::<HistoryWorkerActor<RegexAutoPruneWorker>>(
-                            "history-worker-auto-prune-regex",
-                            &sink,
-                            handle,
-                            &counter,
-                            &shutdown_tracker,
-                            HistoryWorkerActorDeps { worker },
-                        ));
+                        let _worker = HistoryWorkerActor::<RegexAutoPruneWorker>::spawn(
+                            HistoryWorkerActorDeps {
+                                deps: actor_deps.clone(),
+                                worker,
+                            },
+                        );
                     }
                     Err(e) => {
                         tracing::warn!(err=?e, "invalid regex in auto_prune config, skipping");
@@ -700,16 +642,12 @@ impl ActorSystemBuilder {
             let config = user_preferences_storage.read().auto_prune.todo.clone();
 
             if config.enabled {
-                actors.push(spawn::<HistoryWorkerActor<TodoAutoPruneWorker>>(
-                    "history-worker-auto-prune-todo",
-                    &sink,
-                    handle,
-                    &counter,
-                    &shutdown_tracker,
+                let _worker = HistoryWorkerActor::<TodoAutoPruneWorker>::spawn(
                     HistoryWorkerActorDeps {
+                        deps: actor_deps.clone(),
                         worker: TodoAutoPruneWorker { config },
                     },
-                ));
+                );
             }
         }
 
@@ -727,16 +665,12 @@ impl ActorSystemBuilder {
                 .clone();
 
             if config.enabled {
-                actors.push(spawn::<HistoryWorkerActor<BrokenEditAutoPruneWorker>>(
-                    "history-worker-auto-prune-broken-edit",
-                    &sink,
-                    handle,
-                    &counter,
-                    &shutdown_tracker,
+                let _worker = HistoryWorkerActor::<BrokenEditAutoPruneWorker>::spawn(
                     HistoryWorkerActorDeps {
+                        deps: actor_deps.clone(),
                         worker: BrokenEditAutoPruneWorker { config },
                     },
-                ));
+                );
             }
         }
 
@@ -754,16 +688,12 @@ impl ActorSystemBuilder {
                 .clone();
 
             if config.enabled {
-                actors.push(spawn::<HistoryWorkerActor<DoubleEditAutoPruneWorker>>(
-                    "history-worker-auto-prune-double-edit",
-                    &sink,
-                    handle,
-                    &counter,
-                    &shutdown_tracker,
+                let _worker = HistoryWorkerActor::<DoubleEditAutoPruneWorker>::spawn(
                     HistoryWorkerActorDeps {
+                        deps: actor_deps.clone(),
                         worker: DoubleEditAutoPruneWorker { config },
                     },
-                ));
+                );
             }
         }
 
@@ -781,42 +711,34 @@ impl ActorSystemBuilder {
                 .clone();
 
             if config.enabled {
-                actors.push(
-                    spawn::<HistoryWorkerActor<ConsecutiveReadsAutoPruneWorker>>(
-                        "history-worker-auto-prune-consecutive-reads",
-                        &sink,
-                        handle,
-                        &counter,
-                        &shutdown_tracker,
+                let _worker =
+                    HistoryWorkerActor::<ConsecutiveReadsAutoPruneWorker>::spawn(
                         HistoryWorkerActorDeps {
+                            deps: actor_deps.clone(),
                             worker: ConsecutiveReadsAutoPruneWorker { config },
                         },
-                    ),
-                );
+                    );
             }
         }
 
         // Shared entry-token cache for history workers.
-        //
-        // Constructed once, cloned into any worker (or peer actor) that needs
-        // per-entry token counts. Eviction is handled by
-        // HistoryWorkerChatEntryTokenCacheEvictionActor below.
         let entry_token_cache =
             jinn_domain::feat::auto_prune_worker::HistoryWorkerChatEntryTokenCache::new();
 
-        // HistoryWorkerChatEntryTokenCache eviction actor — single instance,
-        // owns session lifecycle.
+        // HistoryWorkerChatEntryTokenCache eviction actor.
         {
             use jinn_domain::feat::auto_prune_worker::HistoryWorkerChatEntryTokenCacheEvictionActor;
             use jinn_domain::feat::auto_prune_worker::HistoryWorkerChatEntryTokenCacheEvictionActorDeps;
 
             let _eviction = HistoryWorkerChatEntryTokenCacheEvictionActor::spawn(
                 HistoryWorkerChatEntryTokenCacheEvictionActorDeps {
-                    deps: ActorDeps { services: services.clone() },
+                    deps: actor_deps.clone(),
                     cache: entry_token_cache.clone(),
                 },
             );
         }
+
+        // Auto-prune worker: tool-age-window context pruning.
         {
             use jinn_domain::feat::auto_prune_worker::ToolAgeWindowAutoPruneWorker;
             use jinn_domain::feat::history_worker::actor::{
@@ -830,16 +752,12 @@ impl ActorSystemBuilder {
                 .clone();
 
             if config.enabled {
-                actors.push(spawn::<HistoryWorkerActor<ToolAgeWindowAutoPruneWorker>>(
-                    "history-worker-auto-prune-tool-age-window",
-                    &sink,
-                    handle,
-                    &counter,
-                    &shutdown_tracker,
+                let _worker = HistoryWorkerActor::<ToolAgeWindowAutoPruneWorker>::spawn(
                     HistoryWorkerActorDeps {
+                        deps: actor_deps.clone(),
                         worker: ToolAgeWindowAutoPruneWorker { config },
                     },
-                ));
+                );
             }
         }
 
@@ -858,29 +776,21 @@ impl ActorSystemBuilder {
                 .clone();
 
             if config.enabled {
-                actors.push(
-                    spawn::<HistoryWorkerActor<TrivialAssistantAutoPruneWorker>>(
-                        "history-worker-auto-prune-trivial-assistant",
-                        &sink,
-                        handle,
-                        &counter,
-                        &shutdown_tracker,
+                let _worker =
+                    HistoryWorkerActor::<TrivialAssistantAutoPruneWorker>::spawn(
                         HistoryWorkerActorDeps {
+                            deps: actor_deps.clone(),
                             worker: TrivialAssistantAutoPruneWorker {
                                 config,
                                 token_cache: entry_token_cache.clone(),
                                 counter: TiktokenCounter::o200k_base(),
                             },
                         },
-                    ),
-                );
+                    );
             }
         }
 
         // Auto-prune worker: anchor shield.
-        // Force-includes in-context-by-default entries (Assistant, ToolCall, ToolResult,
-        // User) within a configurable radius of any anchor (User entries, first/last
-        // index), preventing other workers from excluding them.
         {
             use jinn_domain::feat::auto_prune_worker::AnchorShieldAutoPruneWorker;
             use jinn_domain::feat::history_worker::actor::{
@@ -893,25 +803,18 @@ impl ActorSystemBuilder {
             };
 
             if shield_config.enabled {
-                actors.push(spawn::<HistoryWorkerActor<AnchorShieldAutoPruneWorker>>(
-                    "history-worker-auto-prune-anchor-shield",
-                    &sink,
-                    handle,
-                    &counter,
-                    &shutdown_tracker,
+                let _worker = HistoryWorkerActor::<AnchorShieldAutoPruneWorker>::spawn(
                     HistoryWorkerActorDeps {
+                        deps: actor_deps.clone(),
                         worker: AnchorShieldAutoPruneWorker {
                             config: shield_config,
                         },
                     },
-                ));
+                );
             }
         }
 
         // Auto-prune worker: anchored-assistant context pruning.
-        // Prunes large (>80 token) Assistant entries whose index distance to the
-        // nearest anchor entry (first index, last index, or any User entry)
-        // exceeds the shield's radius (shared with AnchorShieldAutoPruneWorker).
         {
             use jinn_domain::feat::auto_prune_worker::AnchoredAssistantAutoPruneWorker;
             use jinn_domain::feat::context::strategy::token_estimator::TiktokenCounter;
@@ -928,14 +831,10 @@ impl ActorSystemBuilder {
             };
 
             if config.enabled {
-                actors.push(
-                    spawn::<HistoryWorkerActor<AnchoredAssistantAutoPruneWorker>>(
-                        "history-worker-auto-prune-anchored-assistant",
-                        &sink,
-                        handle,
-                        &counter,
-                        &shutdown_tracker,
+                let _worker =
+                    HistoryWorkerActor::<AnchoredAssistantAutoPruneWorker>::spawn(
                         HistoryWorkerActorDeps {
+                            deps: actor_deps.clone(),
                             worker: AnchoredAssistantAutoPruneWorker {
                                 config,
                                 radius: shield_radius,
@@ -944,71 +843,54 @@ impl ActorSystemBuilder {
                                 counter: TiktokenCounter::o200k_base(),
                             },
                         },
-                    ),
-                );
+                    );
             }
         }
-        // Sidebar state actor - keeps sidebar cursor in sync after session removal.
-        let _sidebar_state = SidebarStateActor::spawn(SidebarStateActorDeps {
-            deps: ActorDeps { services: services.clone() },
-            state: state.clone(),
-        });
 
-        // ── Plugin dispatch actor (replaces plugin_lifecycle + workflow_controller) ─
-        actors.push(spawn::<PluginDispatchActor>(
-            "plugin-dispatch",
-            &sink,
-            handle,
-            &counter,
-            &shutdown_tracker,
-            PluginDispatchActorDeps {
-                services: services.clone(),
-                state: state.clone(),
-                startup_session_id: state.read().session.active_session_id().to_string(),
-                domain_ctx: shared_domain_ctx.clone(),
-            },
-        ));
+        // Sidebar state actor.
+        let _sidebar =
+            jinn_domain::feat::ui::sidebar::sidebar_state_actor::SidebarStateActor::spawn(
+                jinn_domain::feat::ui::sidebar::sidebar_state_actor::SidebarStateActorDeps {
+                    deps: actor_deps.clone(),
+                    state: state.clone(),
+                },
+            );
+
+        // Plugin dispatch actor.
+        let _plugin_dispatch = PluginDispatchActor::spawn(PluginDispatchActorDeps {
+            deps: actor_deps.clone(),
+            services: services.clone(),
+            state: state.clone(),
+            startup_session_id: state.read().session.active_session_id().to_string(),
+            domain_ctx: shared_domain_ctx.clone(),
+        });
 
         // ── Bench actor (conditional) ─────────────────────────────────────────
         if let Some(b) = bench {
-            actors.push(spawn::<jinn_bench::bench_actor::BenchActor>(
-                "bench",
-                &sink,
-                handle,
-                &counter,
-                &shutdown_tracker,
-                jinn_bench::bench_actor::BenchActorDeps {
+            let _bench = jinn_bench::bench_actor::BenchActor::spawn(
+                jinn_bench::bench_actor::BenchActorKameoDeps {
+                    deps: actor_deps.clone(),
                     state: state.clone(),
                     csv_path: Some(b.csv_path.clone()),
                     plan: Some(b.plan),
                 },
-            ));
+            );
         }
 
-        // Spawn the async forwarding task - continuously drains AppMsg channel → actor host.
-        let actor_host_service = ActorHostService::new(Arc::new(
-            InMemoryActorHost::from_actors_with_handle(actors, handle.clone(), shutdown_tracker),
-        ));
-        spawn_forwarding_task(async_receiver, actor_host_service.clone(), handle);
+        // Wait for the actor system to become ready.
+        // TODO: Replace with kameo-based readiness check.
+        let _ = ready_rx;
 
-        // Signal that all actors have been spawned.
-        // SystemReadyActor waits for this before checking its count.
-        let _ = sink.send_event(Event::AllActorsSpawned(AllActorsSpawned));
-
-        // Wait for the actor system to become ready (3-second timeout).
-        wait_for_system_ready(ready_rx, handle);
-
-        // Build AppCore with shared state and sender only.
+        // Build AppCore with shared state and sender.
         let core = AppCore {
             state: state.clone(),
             sender: sender.clone(),
         };
 
-        // Trigger initial persona scan.
-        let _ = sink.send_command(jinn_domain::Command::RescanPersonas(
-            jinn_domain::feat::context::protocol::command::RescanPersonas,
-        ));
+        // Create a no-op actor host to satisfy the type system.
+        // Phase 4 will replace this with kameo-native coordinated shutdown.
+        let actor_host = ActorHostService::new(Arc::new(jinn_domain::FakeActorHost::new()));
 
-        (core, services, actor_host_service, sync_plugins)
+        (core, services, sync_plugins, actor_host)
     }
 }

@@ -650,11 +650,6 @@ mod tests {
     impl BusMessage for CancelStream {}
     impl BusMessage for StreamCompleted {}
     impl BusMessage for StreamToken {}
-    impl BusMessage for ExecuteToolBatch {}
-    impl BusMessage for CancelToolBatch {}
-    impl BusMessage for ToolUseStarted {}
-    impl BusMessage for ToolCallStreaming {}
-    impl BusMessage for ToolCallReceived {}
     async fn test_llm_actor() -> LlmActor {
         let factory = LlmServiceFactoryService::new(Arc::new(FakeLlmServiceFactory::new(vec![])));
         LlmActor {
