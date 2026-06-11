@@ -4866,6 +4866,187 @@ fn loaded_skills_returns_only_valid_pinned_skill_names() {
     );
 }
 
+// --- apply_mutations user-force-exclude guard ---
+
+use crate::feat::session::history_mutation::HistoryMutation;
+
+fn session_with_excluded_entry(
+    source: crate::protocol::ChangeSource,
+) -> (super::ChatSessionState, ChatEntryId) {
+    let mut entry = ChatEntry::assistant("excluded");
+    let id = entry.id.clone();
+    entry.apply_context_override(ContextOverride::ForcedExclude, source);
+    let session = super::ChatSessionState::builder().with_entry(entry).build();
+    (session, id)
+}
+
+fn session_with_toggled_back_entry() -> (super::ChatSessionState, ChatEntryId) {
+    let mut entry = ChatEntry::assistant("toggled back");
+    let id = entry.id.clone();
+    entry.apply_context_override(ContextOverride::ForcedExclude, ChangeSource::User);
+    entry.apply_context_override(ContextOverride::Default, ChangeSource::User);
+    let session = super::ChatSessionState::builder().with_entry(entry).build();
+    (session, id)
+}
+
+fn session_with_included_entry() -> (super::ChatSessionState, ChatEntryId) {
+    let mut entry = ChatEntry::assistant("included");
+    let id = entry.id.clone();
+    entry.apply_context_override(ContextOverride::ForcedInclude, ChangeSource::User);
+    let session = super::ChatSessionState::builder().with_entry(entry).build();
+    (session, id)
+}
+
+#[test]
+fn apply_mutations_worker_forced_include_blocked_on_user_force_excluded() {
+    // Given an entry with ForcedExclude set by User.
+    let (mut session, entry_id) = session_with_excluded_entry(ChangeSource::User);
+
+    // When apply_mutations receives ForcedInclude from a Worker.
+    let changed = session.apply_mutations(vec![HistoryMutation::SetContextOverride {
+        entry_id: entry_id.clone(),
+        value: ContextOverride::ForcedInclude,
+        source: ChangeSource::Worker {
+            name: "anchor-shield".into(),
+        },
+    }]);
+
+    // Then the mutation is blocked; entry stays ForcedExclude.
+    assert!(changed.is_empty(), "mutation should be blocked");
+    let entry = session
+        .history()
+        .iter()
+        .find(|e| e.id == entry_id)
+        .expect("entry");
+    assert_eq!(
+        entry.context_override(),
+        ContextOverride::ForcedExclude,
+        "entry should remain ForcedExclude"
+    );
+}
+
+#[test]
+fn apply_mutations_worker_forced_include_allowed_on_worker_force_excluded() {
+    // Given an entry with ForcedExclude set by Worker.
+    let (mut session, entry_id) = session_with_excluded_entry(ChangeSource::Worker {
+        name: "other-worker".into(),
+    });
+
+    // When apply_mutations receives ForcedInclude from a Worker.
+    let changed = session.apply_mutations(vec![HistoryMutation::SetContextOverride {
+        entry_id: entry_id.clone(),
+        value: ContextOverride::ForcedInclude,
+        source: ChangeSource::Worker {
+            name: "anchor-shield".into(),
+        },
+    }]);
+
+    // Then the mutation is applied; entry becomes ForcedInclude.
+    assert_eq!(changed.len(), 1, "mutation should be applied");
+    let entry = session
+        .history()
+        .iter()
+        .find(|e| e.id == entry_id)
+        .expect("entry");
+    assert_eq!(
+        entry.context_override(),
+        ContextOverride::ForcedInclude,
+        "entry should be upgraded to ForcedInclude"
+    );
+}
+
+#[test]
+fn apply_mutations_internal_forced_include_bypasses_user_guard() {
+    // Given an entry with ForcedExclude set by User.
+    let (mut session, entry_id) = session_with_excluded_entry(ChangeSource::User);
+
+    // When apply_mutations receives ForcedInclude from Internal.
+    let changed = session.apply_mutations(vec![HistoryMutation::SetContextOverride {
+        entry_id: entry_id.clone(),
+        value: ContextOverride::ForcedInclude,
+        source: ChangeSource::Internal {
+            label: "dangling-tool-call-sweep".into(),
+        },
+    }]);
+
+    // Then the mutation is applied; entry becomes ForcedInclude.
+    assert_eq!(changed.len(), 1, "internal mutation should bypass guard");
+    let entry = session
+        .history()
+        .iter()
+        .find(|e| e.id == entry_id)
+        .expect("entry");
+    assert_eq!(
+        entry.context_override(),
+        ContextOverride::ForcedInclude,
+        "internal sweep should override user exclusion"
+    );
+}
+
+#[test]
+fn apply_mutations_user_toggled_back_to_default_allows_worker_re_include() {
+    // Given an entry whose most recent audit event is User → Default
+    // (was previously ForcedExclude by user, then toggled back).
+    let (mut session, entry_id) = session_with_toggled_back_entry();
+
+    // When apply_mutations receives ForcedInclude from a Worker.
+    let changed = session.apply_mutations(vec![HistoryMutation::SetContextOverride {
+        entry_id: entry_id.clone(),
+        value: ContextOverride::ForcedInclude,
+        source: ChangeSource::Worker {
+            name: "anchor-shield".into(),
+        },
+    }]);
+
+    // Then the mutation is applied; entry becomes ForcedInclude.
+    assert_eq!(
+        changed.len(),
+        1,
+        "mutation should be applied after toggle-back"
+    );
+    let entry = session
+        .history()
+        .iter()
+        .find(|e| e.id == entry_id)
+        .expect("entry");
+    assert_eq!(
+        entry.context_override(),
+        ContextOverride::ForcedInclude,
+        "entry should be re-includable after user toggled back"
+    );
+}
+
+#[test]
+fn apply_mutations_existing_forced_include_guard_still_works() {
+    // Given an entry at ForcedInclude.
+    let (mut session, entry_id) = session_with_included_entry();
+
+    // When apply_mutations receives ForcedExclude from a Worker.
+    let changed = session.apply_mutations(vec![HistoryMutation::SetContextOverride {
+        entry_id: entry_id.clone(),
+        value: ContextOverride::ForcedExclude,
+        source: ChangeSource::Worker {
+            name: "some-worker".into(),
+        },
+    }]);
+
+    // Then the mutation is blocked (existing guard).
+    assert!(
+        changed.is_empty(),
+        "existing guard should block ForcedExclude on ForcedInclude"
+    );
+    let entry = session
+        .history()
+        .iter()
+        .find(|e| e.id == entry_id)
+        .expect("entry");
+    assert_eq!(
+        entry.context_override(),
+        ContextOverride::ForcedInclude,
+        "entry should remain ForcedInclude"
+    );
+}
+
 // ─── EntryTiming integration tests ────────────────────────────────
 // ─── EntryTiming integration tests ────────────────────────────────
 
@@ -4903,7 +5084,7 @@ fn streamed_entry_begins_with_dispatched_at_only() {
         other => {
             panic!("expected Streamed with first_token_at=Some, finished_at=None, got {other:?}")
         }
-    };
+    }
 }
 
 #[test]
@@ -4932,7 +5113,7 @@ fn streamed_entry_gets_first_token_at_on_creation() {
             assert!(*ft >= da);
         }
         other => panic!("expected Streamed with first_token_at=Some, got {other:?}"),
-    };
+    }
 }
 
 #[test]
@@ -4969,7 +5150,7 @@ fn streamed_entry_gets_finished_at_on_stream_complete() {
             assert!(*fin >= *ft);
         }
         other => panic!("expected Streamed with all timestamps set, got {other:?}"),
-    };
+    }
 }
 
 #[test]
@@ -4997,5 +5178,5 @@ fn tool_call_entry_gets_dispatched_at_from_tool_use_started() {
             assert_eq!(*d, da, "dispatched_at should come from ToolUseStarted");
         }
         other => panic!("expected Streamed, got {other:?}"),
-    };
+    }
 }
