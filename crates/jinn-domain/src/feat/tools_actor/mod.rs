@@ -29,8 +29,7 @@ use std::collections::HashMap;
 use std::future::Future;
 use std::pin::Pin;
 
-use crate::common::actor::{ActorContext, ActorEnvelope, MessageSink, NoDirectMsg};
-use crate::common::actor::{Actor as OldActor, RecordingSink};
+use crate::common::actor::{ActorContext, MessageSink, RecordingSink};
 use crate::common::actor_deps::{ActorDeps, BusPublish};
 use crate::common::services::bus_service::BusService;
 use crate::common::services::Services;
@@ -278,16 +277,34 @@ impl ToolOrchestratorActor {
     async fn dispatch_command(&mut self, cmd: Command) {
         let sink = std::sync::Arc::new(RecordingSink::new());
         let ctx = ActorContext::new("tool-orchestrator", sink.clone());
-        self.handle_command(&cmd, &ctx);
+        match cmd {
+            Command::RegisterTools(msg) => self.handle_register_tools(
+                &msg.provider,
+                &msg.definitions,
+                &ctx,
+            ),
+            Command::ExecuteToolBatch(msg) => self.handle_execute_tool_batch(
+                msg.session_id,
+                msg.tool_calls,
+                &ctx,
+            ),
+            Command::CancelToolBatch(msg) => self.handle_cancel_tool_batch(&msg.session_id),
+            other => tracing::warn!(?other, "tool-orchestrator: unhandled command"),
+        }
         self.flush_sink_to_bus(sink).await;
     }
 
-    /// Runs an event handler through the old dispatch, then publishes
-    /// any emitted commands/events to the bus.
     async fn dispatch_event(&mut self, event: Event) {
         let sink = std::sync::Arc::new(RecordingSink::new());
         let ctx = ActorContext::new("tool-orchestrator", sink.clone());
-        self.handle_event(&event, &ctx);
+        match event {
+            Event::ToolExecutionCompleted(msg) => self.handle_tool_execution_completed(
+                msg.session_id,
+                msg.result,
+                &ctx,
+            ),
+            other => tracing::warn!(?other, "tool-orchestrator: unhandled event"),
+        }
         self.flush_sink_to_bus(sink).await;
     }
 
@@ -301,7 +318,6 @@ impl ToolOrchestratorActor {
         }
     }
 
-    /// Publishes a single command to the bus by extracting the inner typed struct.
     async fn publish_command(&self, cmd: Command) {
         match cmd {
             Command::ExecuteWebFetch(m) => self.publish(m).await,
@@ -362,126 +378,11 @@ impl BusPublish for ToolOrchestratorActor {
     }
 }
 
-// ---------------------------------------------------------------------------
-// Old handler methods — retained during migration, cleaned up in Phase 4
-// ---------------------------------------------------------------------------
-
-impl OldActor for ToolOrchestratorActor {
-    type Message = NoDirectMsg;
-    type Deps = ToolOrchestratorActorDeps;
-    fn activate(deps: Self::Deps, ctx: &mut ActorContext) -> Self {
-        let bash_config = deps.services.user_preferences_storage.read().bash.clone();
-        let web_search_config = deps
-            .services
-            .user_preferences_storage
-            .read()
-            .openrouter_web_search
-            .clone();
-
-        let mut actor = Self {
-            deps: deps.deps,
-            tools: HashMap::default(),
-            pending: HashMap::default(),
-            state: deps.state,
-            services: deps.services,
-            shell: deps.shell,
-        };
-
-        let all_builtins = registry::builtin_tools(&bash_config);
-        let builtins: Vec<_> = if let Some(ref filter) = deps.builtin_filter {
-            all_builtins
-                .into_iter()
-                .filter(|(def, _)| filter.contains(&def.name))
-                .collect()
-        } else {
-            all_builtins
-        };
-        let mut builtin_definitions: Vec<ToolDefinition> =
-            builtins.iter().map(|(d, _)| d.clone()).collect();
-
-        for (def, execute_fn) in builtins {
-            let name = def.name.clone();
-            actor.tools.insert(
-                name,
-                ToolRegistration::Builtin {
-                    definition: def,
-                    execute: execute_fn,
-                },
-            );
-        }
-
-        let web_search_def = build_openrouter_web_search_definition(&web_search_config);
-        actor.tools.insert(
-            web_search_def.name.clone(),
-            ToolRegistration::Builtin {
-                definition: web_search_def.clone(),
-                execute: |_call, _ctx| {
-                    Box::pin(std::future::ready(ToolResult {
-                        tool_call_id: String::new(),
-                        name: "openrouter:web_search".to_owned(),
-                        content: "server tool should not be dispatched".to_owned(),
-                        success: false,
-                        full_content: None,
-                        truncation: None,
-                        pin_position: None,
-                    }))
-                },
-            },
-        );
-        builtin_definitions.push(web_search_def);
-
-        ctx.send_event(Event::ToolsRegistered(ToolsRegistered {
-            provider: "builtin".to_owned(),
-            definitions: builtin_definitions,
-        }));
-
-        actor
-    }
-
-    async fn handle(&mut self, msg: ActorEnvelope<Self::Message>, ctx: &ActorContext) {
-        match msg {
-            ActorEnvelope::Command(command) => self.handle_command(&command, ctx),
-            ActorEnvelope::Event(event) => self.handle_event(&event, ctx),
-            _ => {}
-        }
-    }
-}
+// OldActor impl and dispatch methods deleted — actor spawned via kameo.
+// Bridge (dispatch_command/dispatch_event) retained until handler methods are
+// converted from ctx.send_* to self.publish(). See Phase 4.
 
 impl ToolOrchestratorActor {
-    /// Dispatches incoming commands to the appropriate handler.
-    fn handle_command(&mut self, command: &Command, ctx: &ActorContext) {
-        match command {
-            Command::RegisterTools(payload) => {
-                self.handle_register_tools(&payload.provider, &payload.definitions, ctx);
-            }
-            Command::ExecuteToolBatch(payload) => {
-                self.handle_execute_tool_batch(
-                    payload.session_id.clone(),
-                    payload.tool_calls.clone(),
-                    ctx,
-                );
-            }
-            Command::CancelToolBatch(payload) => {
-                self.handle_cancel_tool_batch(&payload.session_id);
-            }
-            _ => {}
-        }
-    }
-
-    /// Dispatches incoming events to the appropriate handler.
-    fn handle_event(&mut self, event: &Event, ctx: &ActorContext) {
-        match event {
-            Event::ToolExecutionCompleted(payload) => {
-                self.handle_tool_execution_completed(
-                    payload.session_id.clone(),
-                    payload.result.clone(),
-                    ctx,
-                );
-            }
-            _ => {}
-        }
-    }
-
     /// Stores actor-provided tools and emits a [`ToolsRegistered`] event.
     fn handle_register_tools(
         &mut self,
