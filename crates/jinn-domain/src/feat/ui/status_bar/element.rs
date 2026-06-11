@@ -7,7 +7,6 @@
 use crate::common::path_display::shorten_path;
 use crate::common::render_ctx::RenderCtx;
 use crate::common::ui_element::UiElement;
-use crate::feat::provider_infra::NO_PROVIDER_ID;
 use crate::feat::session::{TokenStats, aggregate_tree_stats};
 use crate::feat::ui::status_bar::turn_counter;
 use ratatui::Frame;
@@ -125,8 +124,10 @@ impl UiElement for StatusBarElement {
         );
 
         let ctx_size = state.active_session().context_size();
-        let ctx_limit = resolve_context_limit(state.provider.model_cache.as_ref(), &active_model);
-
+        let ctx_limit = resolve_context_limit(
+            state.provider.model_cache.as_ref(),
+            active_model.display_str(),
+        );
         let context_display = match (ctx_size, ctx_limit) {
             (Some(used), Some(max)) => {
                 let ctx_used = u64::from(used);
@@ -148,12 +149,12 @@ impl UiElement for StatusBarElement {
         };
         token_info = format!("{token_info} {context_display}");
 
-        let model = if active_model == NO_PROVIDER_ID {
+        let model = if active_model.is_no_provider() {
             "no model selected".to_owned()
-        } else if let Some((provider, model)) = active_model.split_once('/') {
-            format!("({provider})/{model}")
+        } else if let Some((provider, m)) = active_model.display_str().split_once('/') {
+            format!("({provider})/{m}")
         } else {
-            active_model.clone()
+            active_model.display_str().to_owned()
         };
 
         let left_side = {

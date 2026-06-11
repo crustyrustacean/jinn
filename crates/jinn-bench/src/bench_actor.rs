@@ -20,6 +20,7 @@ use jinn_domain::feat::chat_input::protocol::command::{EnqueueUserMessage, PushC
 use jinn_domain::feat::provider::protocol::command::CancelStream;
 use jinn_domain::feat::provider::protocol::event::StreamCompleted;
 use jinn_domain::feat::session::chat_session::ChatSessionState;
+use jinn_domain::feat::session::model_selection::ModelSelection;
 use jinn_domain::feat::session::phase_machine::PhaseKind;
 use jinn_domain::feat::session::profile::SessionProfile;
 use jinn_domain::feat::session::protocol::session_phase_changed::SessionPhaseChanged;
@@ -173,7 +174,7 @@ impl BenchActor {
                 .as_ref()
                 .map_or_else(|| "coding-assistant".to_owned(), |p| p.name.clone());
             let mut new_session = ChatSessionState::new_with_profile(SessionProfile::new(
-                model.clone(),
+                ModelSelection::Single(model.clone()),
                 persona_name,
                 std::collections::HashSet::new(),
                 std::collections::HashSet::new(),
@@ -261,7 +262,7 @@ impl BenchActor {
         let result = BenchResult {
             name: task_name.clone(),
             category: task.category.to_owned(),
-            model,
+            model: model.display_str().to_owned(),
             turns: 0,
             tokens_in: 0,
             tokens_out: 0,
@@ -528,7 +529,7 @@ impl BenchActor {
         let result = BenchResult {
             name: tracked.task_name.clone(),
             category,
-            model,
+            model: model.display_str().to_owned(),
             turns: u32::try_from(token_stats.request_count).unwrap_or(u32::MAX),
             tokens_in: token_stats.total_sent,
             tokens_out: token_stats.total_received,
@@ -923,6 +924,7 @@ mod tests {
         // When StreamCompleted fires.
         actor.handle_stream_completed(
             &StreamCompleted {
+                model_used: None,
                 session_id: session_id.clone(),
                 reason:
                     jinn_domain::feat::provider::protocol::event::StreamCompletedReason::Finished,
