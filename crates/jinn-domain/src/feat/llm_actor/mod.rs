@@ -647,9 +647,6 @@ mod tests {
     use crate::feat::provider::protocol::event::StreamToken;
     use jinn_provider::FakeLlmServiceFactory;
 
-    impl BusMessage for CancelStream {}
-    impl BusMessage for StreamCompleted {}
-    impl BusMessage for StreamToken {}
     async fn test_llm_actor() -> LlmActor {
         let factory = LlmServiceFactoryService::new(Arc::new(FakeLlmServiceFactory::new(vec![])));
         LlmActor {

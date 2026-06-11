@@ -918,6 +918,7 @@ impl ActorSystemBuilder {
         let core = AppCore {
             state: state.clone(),
             sender: sender.clone(),
+            bridge: services.bridge.clone(),
         };
 
         // Create a no-op actor host to satisfy the type system.

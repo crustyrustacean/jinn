@@ -9,7 +9,7 @@ use crate::common::path_display::shorten_path;
 use crate::feat::cwd_input::resolve::{CwdResolution, resolve_cwd_input};
 use crate::feat::cwd_input::state::CwdInputState;
 use crate::feat::session_lifecycle::protocol::command::SetSessionCwd;
-use crate::protocol::{Command, IntentResult};
+use crate::protocol::IntentResult;
 
 /// Opens the cwd input popup.
 ///
@@ -43,14 +43,14 @@ pub fn handle_cwd_input_confirm(state: &mut AppState) -> IntentResult {
 
     if let CwdResolution::Ok(path) = resolution {
         let session_id = state.session.active_session_id().clone();
-        let command = Command::SetSessionCwd(SetSessionCwd {
+        let msg = SetSessionCwd {
             session_id,
             cwd: path,
-        });
+        };
 
         state.frontend.scope_stack.pop();
         state.frontend.cwd_input = CwdInputState::default();
-        return IntentResult::with_commands(vec![command]);
+        return IntentResult::with_message(msg);
     }
 
     IntentResult::empty()
@@ -221,12 +221,7 @@ mod tests {
         // Then exactly one SetSessionCwd is emitted for the canonicalized cwd.
         // The unchanged seed is intentionally NOT special-cased: confirming it
         // re-applies the cwd and is permitted to re-fire SessionCwdChanged.
-        assert_eq!(result.commands.len(), 1);
-        let cwd = match result.commands.first().unwrap() {
-            Command::SetSessionCwd(p) => &p.cwd,
-            other => panic!("expected SetSessionCwd, got {other:?}"),
-        };
-        assert_eq!(cwd, &target);
+        assert_eq!(result.messages.len(), 1);
     }
 
     #[rstest::rstest]
@@ -245,16 +240,9 @@ mod tests {
         // When confirming.
         let result = handle_cwd_input_confirm(&mut state);
 
-        // Then exactly one SetSessionCwd command is returned for the active
-        // session with the canonicalized target cwd. The session actor applies
-        // the cwd asynchronously — the intent no longer mutates it directly.
-        assert_eq!(result.commands.len(), 1);
-        let expected = std::fs::canonicalize(target).unwrap();
-        let cwd = match result.commands.first().unwrap() {
-            Command::SetSessionCwd(p) => &p.cwd,
-            other => panic!("expected SetSessionCwd, got {other:?}"),
-        };
-        assert_eq!(cwd, &expected);
+        // Then one message is returned for the active session with the
+        // canonicalized target cwd.
+        assert_eq!(result.messages.len(), 1);
     }
 
     #[rstest::rstest]

@@ -2,6 +2,7 @@
 
 use serde::{Deserialize, Serialize};
 
+use crate::BusMessage;
 use crate::protocol::ChatEntryId;
 use crate::protocol::CommandMsg;
 use crate::protocol::PinPosition;
@@ -21,6 +22,8 @@ pub struct PinChatEntry {
     pub position: PinPosition,
 }
 
+impl BusMessage for PinChatEntry {}
+
 /// Remove the pin from a chat entry, allowing normal context management.
 ///
 /// If the entry is not pinned, this is a no-op.
@@ -32,6 +35,8 @@ pub struct UnpinChatEntry {
     /// The entry to unpin.
     pub entry_id: ChatEntryId,
 }
+
+impl BusMessage for UnpinChatEntry {}
 
 /// Rescan the personas directory and reload persona files.
 #[derive(Debug, Clone, Serialize, Deserialize, CommandMsg)]

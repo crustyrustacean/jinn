@@ -51,6 +51,17 @@ impl Bridge {
         Self { sender }
     }
 
+    /// Creates a minimal bridge for tests that don't need actual bus delivery.
+    #[cfg(test)]
+    #[must_use]
+    pub fn new_for_test() -> Self {
+        let bus_actor = kameo_actors::message_bus::MessageBus::new(
+            kameo_actors::DeliveryStrategy::BestEffort,
+        );
+        let bus_ref = kameo::prelude::Spawn::spawn(bus_actor);
+        Self::with_handle(bus_ref, crate::common::services::test_services::shared_test_handle())
+    }
+
     /// Sends a closure through the bridge (synchronous, non-blocking).
     ///
     /// The closure will be called by the async drain task with a reference

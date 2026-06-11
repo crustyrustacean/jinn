@@ -58,6 +58,7 @@ impl TuiAppBuilder {
         let core = AppCore {
             state: jinn_domain::State::new(state),
             sender,
+            bridge: services.bridge.clone(),
         };
         let plugins = self.plugins.unwrap_or_else(jinn_plugin::SyncPlugins::empty);
 

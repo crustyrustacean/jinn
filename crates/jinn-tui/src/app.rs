@@ -230,8 +230,8 @@ impl TuiApp {
         reason = "Intent is consumed by intent routing, ownership is semantic"
     )]
     pub fn route_intent(&mut self, intent: Intent) {
-        // Step 1–3: Handle intent, collect results, release lock.
-        let (commands, events, signals) = {
+        // Step 1-3: Handle intent, collect results, release lock.
+        let (commands, events, messages, signals) = {
             let mut state = self.core.state.write();
 
             let result = IntentHandler::handle(&intent, &mut state, Some(&self.plugins));
@@ -243,9 +243,7 @@ impl TuiApp {
 
             // Collect signals before releasing lock.
             let signals = signals::TuiSignalsSnapshot::from_state(&state);
-            let commands = result.commands;
-            let events = result.events;
-            (commands, events, signals)
+            (result.commands, result.events, result.messages, signals)
         };
 
         // TriggerPlugin: TUI-only intent. Fire the plugin's named action on the async VM
@@ -268,19 +266,17 @@ impl TuiApp {
                 "text": text,
             });
 
-            let _ = self.core.sender().send(AppMsg::Command {
-                command: jinn_domain::protocol::Command::Dynamic(
-                    jinn_domain::protocol::DynamicCommand {
-                        name: "plugin::fire_async".into(),
-                        payload,
-                    },
-                ),
-                source: None,
-            });
+            let closure = jinn_domain::common::bridge::Bridge::publish_closure(
+                jinn_domain::protocol::DynamicCommand {
+                    name: "plugin::fire_async".into(),
+                    payload,
+                },
+            );
+            let _ = self.core.bridge.send(closure);
             return;
         }
 
-        // Step 4: Send commands to core channel.
+        // Step 4: Send legacy commands to core channel (temporary during migration).
         for cmd in &commands {
             let _ = self.core.sender().send(AppMsg::Command {
                 command: cmd.clone(),
@@ -288,13 +284,17 @@ impl TuiApp {
             });
         }
 
-        // Step 5: Send events to core channel.
-
+        // Step 5: Send legacy events to core channel (temporary during migration).
         for event in &events {
             let _ = self.core.sender().send(AppMsg::Event {
                 event: event.clone(),
                 source: None,
             });
+        }
+
+        // Step 5b: Send bus closures via bridge.
+        for closure in messages {
+            let _ = self.core.bridge.send(closure);
         }
 
         // Step 6: Handle TUI signals.

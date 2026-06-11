@@ -7,6 +7,7 @@
 
 use std::time::Duration;
 
+use crate::common::bridge::Bridge;
 use crate::State;
 use crate::SystemMessage;
 use kanal::Sender;
@@ -30,6 +31,8 @@ pub struct AppCore {
     /// Sender half of the internal message channel.
     /// The async forwarding task holds the receiver and routes to the actor host.
     pub sender: Sender<AppMsg>,
+    /// Bridge for sending typed message closures to the kameo bus.
+    pub bridge: Bridge,
 }
 
 impl std::fmt::Debug for AppCore {

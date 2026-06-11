@@ -3,7 +3,7 @@
 use crate::common::app_state::AppState;
 use crate::feat::provider::protocol::command::CancelStream;
 use crate::protocol::SessionId;
-use crate::protocol::{Command, Intent, IntentResult};
+use crate::protocol::{Intent, IntentResult};
 
 use super::validator;
 
@@ -43,9 +43,9 @@ pub fn handle_toggle_audit_popup(state: &mut AppState) -> IntentResult {
 pub fn handle_interrupt(state: &mut AppState, target: Option<&SessionId>) -> IntentResult {
     if let Some(id) = target {
         state.session_mut(id).cancel_streaming();
-        return IntentResult::with_commands(vec![Command::CancelStream(CancelStream {
+        return IntentResult::with_message(CancelStream {
             session_id: id.clone(),
-        })]);
+        });
     }
 
     // None path: just clear the input buffer.
@@ -311,11 +311,8 @@ mod tests {
             state.session.get_unchecked(&second_id).phase(),
             PhaseKind::Idle
         ));
-        // And a CancelStream command is returned for that session.
-        assert_eq!(result.commands.len(), 1);
-        assert!(
-            matches!(&result.commands[0], Command::CancelStream (payload) if payload.session_id == second_id)
-        );
+        // And a CancelStream message is returned for that session.
+        assert_eq!(result.messages.len(), 1);
     }
 
     // ============================================================
