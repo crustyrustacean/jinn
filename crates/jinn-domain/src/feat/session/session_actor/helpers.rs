@@ -1,13 +1,11 @@
-use crate::common::services::bus_service::BusService;
-use crate::common::actor_deps::BusPublish;
 use crate::feat::session::phase_machine::PhaseKind;
 use crate::protocol::SessionId;
 
 /// Emit a `SessionPhaseChanged` event if the phase actually changed.
 ///
 /// Call this outside the write lock with the before/after phases captured inside.
-pub(in crate::feat::session::session_actor) async fn emit_phase_changed(
-    bus: &BusService,
+pub(in crate::feat::session::session_actor) fn emit_phase_changed(
+    ctx: &crate::common::actor::ActorContext,
     session_id: &SessionId,
     old_phase: impl Into<PhaseKind>,
     new_phase: impl Into<PhaseKind>,
@@ -15,24 +13,44 @@ pub(in crate::feat::session::session_actor) async fn emit_phase_changed(
     let old_phase = old_phase.into();
     let new_phase = new_phase.into();
     if old_phase != new_phase {
-        bus.publish(crate::feat::session::protocol::session_phase_changed::SessionPhaseChanged {
-            session_id: session_id.clone(),
-            old_phase,
-            new_phase,
-        }).await;
+        if let Err(e) = ctx.sink().send_event(crate::protocol::app_msg::event::Event::SessionPhaseChanged(
+            crate::feat::session::protocol::session_phase_changed::SessionPhaseChanged {
+                session_id: session_id.clone(),
+                old_phase,
+                new_phase,
+            },
+        )) {
+            tracing::warn!(err = ?e, "session-actor failed to emit SessionPhaseChanged");
+        }
     }
 }
 
 /// Emit a `HistoryAppended` event.
 ///
 /// Call this outside the write lock.
-pub(in crate::feat::session::session_actor) async fn emit_history_appended(
-    bus: &BusService,
+pub(in crate::feat::session::session_actor) fn emit_history_appended(
+    ctx: &crate::common::actor::ActorContext,
     session_id: &SessionId,
 ) {
-    bus.publish(crate::feat::session::protocol::history_appended::HistoryAppended {
-        session_id: session_id.clone(),
-    }).await;
+    if let Err(e) = ctx.sink().send_event(crate::protocol::app_msg::event::Event::HistoryAppended(
+        crate::feat::session::protocol::history_appended::HistoryAppended {
+            session_id: session_id.clone(),
+        },
+    )) {
+        tracing::warn!(err = ?e, "session-actor failed to emit HistoryAppended");
+    }
+}
+
+/// Creates a test context with a recording sink for observing emitted commands/events.
+/// Used by session actor tests that haven't been migrated to kameo yet.
+#[cfg(test)]
+pub(super) fn test_context() -> (
+    std::sync::Arc<crate::common::actor::RecordingSink>,
+    crate::common::actor::ActorContext,
+) {
+    let sink = std::sync::Arc::new(crate::common::actor::RecordingSink::new());
+    let ctx = crate::common::actor::ActorContext::new("test-session-actor", sink.clone());
+    (sink, ctx)
 }
 
 #[cfg(test)]
