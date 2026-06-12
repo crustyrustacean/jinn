@@ -57,43 +57,18 @@ impl IntentHandler {
     pub fn handle(
         intent: &Intent,
         state: &mut AppState,
-        plugins: Option<&dyn crate::feat::plugin_dispatch::PluginSyncHooks>,
     ) -> IntentResult {
         state.frontend.tui_signals.clear();
 
         // Capture active session ID before processing for diff-after check.
         let prev_active = state.session.active_session_id().clone();
 
-        // Capture the session id and user input text BEFORE handle_inner mutates
-        // state. Submit handling clears the chat-input buffer as a side effect, so a
-        // post-mutation read would hand the plugin an empty string. These snapshots
-        // are only consumed when interception actually fires (submit intents).
-        let captured_session_id = state.session.active_session_id().clone();
-        let captured_input_text = state.active_chat_input().text().to_owned();
-
         // Process the intent and get the result.
         let mut result = Self::handle_inner(intent, state);
 
-        // Sync plugin interception: plugins may block/replace/pass the
-        // submit's commands. Fires only for submit-family intents (the
-        // hook is named `on_submit_intercept`); other intents pass through
-
-        //FIXME: disabled during actor migration — redesign plugin protocol for typed bus messages
-        // Plugin interception loop removed. The plugin system's InterceptionOutcome
-        // reads/writes Command enum variants via JSON. Until redesigned for typed bus
-        // messages, plugin interception is dormant.
-        //
-        // if matches!(intent, Intent::SubmitMessage)
-        //     && let Some(p) = plugins
-        // {
-        //     result = Self::apply_interceptions(
-        //         intent,
-        //         p,
-        //         &captured_session_id,
-        //         &captured_input_text,
-        //         result,
-        //     );
-        // }
+        //FIXME: plugin migration — Sync plugin interception removed.
+        // The interception loop read/wrote Command enum variants via JSON.
+        // Until redesigned for typed bus messages, plugin interception is dormant.
 
         // If the active session changed, emit ActiveSessionChanged.
         if state.session.active_session_id() != &prev_active {
@@ -102,39 +77,10 @@ impl IntentHandler {
             });
         }
 
+
         result
     }
-    //FIXME: disabled during actor migration — redesign plugin protocol for typed bus messages
-    // fn apply_interceptions(...) { ... }
-    // The entire method body is commented out below for reference.
-    //
-    // fn apply_interceptions(
-    //     intent: &Intent,
-    //     plugins: &dyn crate::feat::plugin_dispatch::PluginSyncHooks,
-    //     session_id: &crate::protocol::SessionId,
-    //     input_text: &str,
-    //     mut result: IntentResult,
-    // ) -> IntentResult {
-    //     use crate::feat::plugin_dispatch::{InterceptOutcome, call_hooks_typed};
-    //     let ctx = serde_json::json!({
-    //         "session_id": session_id,
-    //         "input_text": input_text,
-    //         "intent": intent.to_string(),
-    //     });
-    //     for outcome in call_hooks_typed::<InterceptOutcome>(plugins, "on_submit_intercept", &ctx) {
-    //         match outcome {
-    //             InterceptOutcome::Block => {
-    //                 result.messages.clear();
-    //                 result.message_names.clear();
-    //             }
-    //             InterceptOutcome::Pass => {}
-    //             InterceptOutcome::Replace { commands } => {
-    //                 // TODO: redesign for typed bus messages
-    //             }
-    //         }
-    //     }
-    //     result
-    // }
+    //FIXME: plugin migration — apply_interceptions removed. Will be redesigned for typed bus messages.
 
     /// Internal intent dispatch — separated from `handle` to allow post-processing.
     #[expect(
@@ -342,7 +288,7 @@ impl IntentHandler {
             Intent::PickerConfirm => {
                 let (result, maybe_intent) = feat::picker::intent::handle_picker_confirm(state);
                 if let Some(intent) = maybe_intent {
-                    let redispatch = IntentHandler::handle(&intent, state, None);
+                    let redispatch = IntentHandler::handle(&intent, state);
                     result.merge(redispatch)
                 } else {
                     result
@@ -351,7 +297,7 @@ impl IntentHandler {
             Intent::CtrlClear => {
                 let (result, maybe_intent) = feat::global::intent::handle_ctrl_clear(state);
                 if let Some(intent) = maybe_intent {
-                    let redispatch = IntentHandler::handle(&intent, state, None);
+                    let redispatch = IntentHandler::handle(&intent, state);
                     result.merge(redispatch)
                 } else {
                     result
@@ -693,7 +639,6 @@ mod tests {
                 text: "hello".into(),
             },
             &mut state,
-            None,
         );
 
         // Then the buffer is empty and no commands are emitted.
@@ -716,7 +661,6 @@ mod tests {
                 text: "hello\nworld".into(),
             },
             &mut state,
-            None,
         );
 
         // Then the buffer has the pasted text.
@@ -740,7 +684,7 @@ mod tests {
         };
 
         // When handling RenameInsertChar { ch: 'o' }.
-        let result = IntentHandler::handle(&Intent::RenameInsertChar { ch: 'o' }, &mut state, None);
+        let result = IntentHandler::handle(&Intent::RenameInsertChar { ch: 'o' }, &mut state);
 
         // Then rename input is "Helo" (not chat input).
         assert_eq!(state.frontend.rename_session_input.text.input, "Helo");
@@ -765,7 +709,7 @@ mod tests {
         };
 
         // When handling RenameCursorLeft.
-        let result = IntentHandler::handle(&Intent::RenameCursorLeft, &mut state, None);
+        let result = IntentHandler::handle(&Intent::RenameCursorLeft, &mut state);
 
         // Then cursor moved left.
         assert_eq!(state.frontend.rename_session_input.text.cursor_pos, 4);
@@ -788,7 +732,7 @@ mod tests {
         };
 
         // When handling RenameCursorRight.
-        let result = IntentHandler::handle(&Intent::RenameCursorRight, &mut state, None);
+        let result = IntentHandler::handle(&Intent::RenameCursorRight, &mut state);
 
         // Then cursor moved right.
         assert_eq!(state.frontend.rename_session_input.text.cursor_pos, 1);
@@ -811,7 +755,7 @@ mod tests {
         };
 
         // When handling RenameDeleteGrapheme.
-        let result = IntentHandler::handle(&Intent::RenameDeleteGrapheme, &mut state, None);
+        let result = IntentHandler::handle(&Intent::RenameDeleteGrapheme, &mut state);
 
         // Then last char deleted.
         assert_eq!(state.frontend.rename_session_input.text.input, "Hell");
@@ -835,7 +779,7 @@ mod tests {
         };
 
         // When handling RenameDeleteForward.
-        let result = IntentHandler::handle(&Intent::RenameDeleteForward, &mut state, None);
+        let result = IntentHandler::handle(&Intent::RenameDeleteForward, &mut state);
 
         // Then char after cursor deleted.
         assert_eq!(state.frontend.rename_session_input.text.input, "Hllo");
@@ -858,7 +802,7 @@ mod tests {
         };
 
         // When handling InsertChar.
-        let _result = IntentHandler::handle(&Intent::InsertChar { ch: 'o' }, &mut state, None);
+        let _result = IntentHandler::handle(&Intent::InsertChar { ch: 'o' }, &mut state);
 
         // Then arg_input received the char, not the chat input.
         assert_eq!(state.frontend.arg_input.text.input, "helo");
@@ -875,7 +819,7 @@ mod tests {
         state.frontend.scope_stack.push(FocusScope::Input);
 
         // When handling InsertChar.
-        let _result = IntentHandler::handle(&Intent::InsertChar { ch: 'x' }, &mut state, None);
+        let _result = IntentHandler::handle(&Intent::InsertChar { ch: 'x' }, &mut state);
 
         // Then the chat input received the char.
         assert_eq!(state.active_chat_input().text(), "x");
@@ -900,7 +844,7 @@ mod tests {
         };
 
         // When handling DeleteGrapheme.
-        let _result = IntentHandler::handle(&Intent::DeleteGrapheme, &mut state, None);
+        let _result = IntentHandler::handle(&Intent::DeleteGrapheme, &mut state);
 
         // Then arg_input had a char deleted.
         assert_eq!(state.frontend.arg_input.text.input, "ab");
@@ -921,7 +865,7 @@ mod tests {
         };
 
         // When handling MoveCursorLeft.
-        let _result = IntentHandler::handle(&Intent::MoveCursorLeft, &mut state, None);
+        let _result = IntentHandler::handle(&Intent::MoveCursorLeft, &mut state);
 
         // Then arg_input cursor moved.
         assert_eq!(state.frontend.arg_input.text.cursor_pos, 1);
@@ -942,7 +886,7 @@ mod tests {
         };
 
         // When handling MoveCursorRight.
-        let _result = IntentHandler::handle(&Intent::MoveCursorRight, &mut state, None);
+        let _result = IntentHandler::handle(&Intent::MoveCursorRight, &mut state);
 
         // Then arg_input cursor moved.
         assert_eq!(state.frontend.arg_input.text.cursor_pos, 1);
@@ -963,7 +907,7 @@ mod tests {
         };
 
         // When handling DeleteGraphemeForward.
-        let _result = IntentHandler::handle(&Intent::DeleteGraphemeForward, &mut state, None);
+        let _result = IntentHandler::handle(&Intent::DeleteGraphemeForward, &mut state);
 
         // Then the char after cursor was deleted from arg_input.
         assert_eq!(state.frontend.arg_input.text.input, "ac");
@@ -984,7 +928,7 @@ mod tests {
         };
 
         // When handling EnterNormalMode.
-        let _result = IntentHandler::handle(&Intent::EnterNormalMode, &mut state, None);
+        let _result = IntentHandler::handle(&Intent::EnterNormalMode, &mut state);
 
         // Then ArgInput scope is popped and state cleared.
         assert!(!matches!(
@@ -1008,7 +952,6 @@ mod tests {
                 text: "hello".into(),
             },
             &mut state,
-            None,
         );
 
         // Then it doesn't panic and completes (paste is handled by picker).
@@ -1036,7 +979,6 @@ mod tests {
                 text: " new".into(),
             },
             &mut state,
-            None,
         );
 
         // Then rename input received the paste.
@@ -1050,7 +992,7 @@ mod tests {
         state.frontend.cancel_stream_prompt = true;
 
         // When handling NormalEscape.
-        let result = IntentHandler::handle(&Intent::NormalEscape, &mut state, None);
+        let result = IntentHandler::handle(&Intent::NormalEscape, &mut state);
 
         // Then the prompt is dismissed and a CancelStream command is emitted.
         assert!(!state.frontend.cancel_stream_prompt);
@@ -1071,7 +1013,7 @@ mod tests {
         state.frontend.cancel_stream_prompt = true;
 
         // When handling a different intent (InsertChar).
-        let _result = IntentHandler::handle(&Intent::InsertChar { ch: 'a' }, &mut state, None);
+        let _result = IntentHandler::handle(&Intent::InsertChar { ch: 'a' }, &mut state);
 
         // Then the prompt is dismissed but no CancelStream command.
         assert!(!state.frontend.cancel_stream_prompt);
@@ -1084,7 +1026,7 @@ mod tests {
         state.frontend.cancel_stream_prompt = false;
 
         // When handling NormalEscape.
-        let _result = IntentHandler::handle(&Intent::NormalEscape, &mut state, None);
+        let _result = IntentHandler::handle(&Intent::NormalEscape, &mut state);
 
         // Then no cancel command is emitted (falls through to normal escape handling).
         // The prompt remains false.
@@ -1098,7 +1040,7 @@ mod tests {
         state.frontend.close_session_prompt = true;
 
         // When handling SidebarSessionClose.
-        let _result = IntentHandler::handle(&Intent::SidebarSessionClose, &mut state, None);
+        let _result = IntentHandler::handle(&Intent::SidebarSessionClose, &mut state);
 
         // Then the prompt is dismissed.
         assert!(!state.frontend.close_session_prompt);
@@ -1111,7 +1053,7 @@ mod tests {
         state.frontend.close_session_prompt = true;
 
         // When handling a different intent (ScrollUp).
-        let _result = IntentHandler::handle(&Intent::ScrollUp, &mut state, None);
+        let _result = IntentHandler::handle(&Intent::ScrollUp, &mut state);
 
         // Then the prompt is dismissed.
         assert!(!state.frontend.close_session_prompt);
@@ -1124,7 +1066,7 @@ mod tests {
         state.frontend.cancel_stream_prompt = true;
 
         // When handling NoOp (unmapped key).
-        let result = IntentHandler::handle(&Intent::NoOp, &mut state, None);
+        let result = IntentHandler::handle(&Intent::NoOp, &mut state);
 
         // Then the prompt is dismissed and no CancelStream command is emitted.
         assert!(!state.frontend.cancel_stream_prompt);
@@ -1145,7 +1087,7 @@ mod tests {
         state.frontend.close_session_prompt = true;
 
         // When handling NoOp (unmapped key).
-        let _result = IntentHandler::handle(&Intent::NoOp, &mut state, None);
+        let _result = IntentHandler::handle(&Intent::NoOp, &mut state);
 
         // Then the prompt is dismissed.
         assert!(!state.frontend.close_session_prompt);
@@ -1157,7 +1099,7 @@ mod tests {
         let mut state = AppState::default();
 
         // When handling NoOp.
-        let result = IntentHandler::handle(&Intent::NoOp, &mut state, None);
+        let result = IntentHandler::handle(&Intent::NoOp, &mut state);
 
         // Then result is empty.
         assert!(result.message_names.is_empty());
@@ -1184,7 +1126,7 @@ mod tests {
         // The easiest way: call handle with an intent that doesn't change active session,
         // verify no event. Then manually switch and verify event.
         state.session.set_active(first_id.clone());
-        let result = IntentHandler::handle(&Intent::ChatEntrySelectNext, &mut state, None);
+        let result = IntentHandler::handle(&Intent::ChatEntrySelectNext, &mut state);
 
         // Then no ActiveSessionChanged event (same session).
         let has_event = result
@@ -1223,7 +1165,7 @@ mod tests {
         let mut state = state_with_plugin_selected();
 
         // When handling SidebarSessionClose.
-        let result = IntentHandler::handle(&Intent::SidebarSessionClose, &mut state, None);
+        let result = IntentHandler::handle(&Intent::SidebarSessionClose, &mut state);
 
         // Then no close prompt is set and no commands are emitted.
         assert!(!state.frontend.close_session_prompt);
@@ -1236,7 +1178,7 @@ mod tests {
         let mut state = state_with_plugin_selected();
 
         // When handling SidebarSessionTeardown.
-        let result = IntentHandler::handle(&Intent::SidebarSessionTeardown, &mut state, None);
+        let result = IntentHandler::handle(&Intent::SidebarSessionTeardown, &mut state);
 
         // Then no commands are emitted.
         assert!(result.message_names.is_empty());
@@ -1249,7 +1191,7 @@ mod tests {
         let original_count = state.session.session_count();
 
         // When handling SidebarSessionArchive.
-        let result = IntentHandler::handle(&Intent::SidebarSessionArchive, &mut state, None);
+        let result = IntentHandler::handle(&Intent::SidebarSessionArchive, &mut state);
 
         // Then no session was removed and no commands emitted.
         assert_eq!(state.session.session_count(), original_count);
@@ -1262,7 +1204,7 @@ mod tests {
         let mut state = state_with_plugin_selected();
 
         // When handling SidebarSessionContinue.
-        let result = IntentHandler::handle(&Intent::SidebarSessionContinue, &mut state, None);
+        let result = IntentHandler::handle(&Intent::SidebarSessionContinue, &mut state);
 
         // Then no commands are emitted.
         assert!(result.message_names.is_empty());
@@ -1317,7 +1259,7 @@ mod intercept_tests {
         let mut state = state_with_input("hello");
 
         // When handle is called with no plugins.
-        let result = IntentHandler::handle(&Intent::SubmitMessage, &mut state, None);
+        let result = IntentHandler::handle(&Intent::SubmitMessage, &mut state);
 
         // Then the normal submit commands are produced (not blocked).
         assert!(
@@ -1345,7 +1287,7 @@ mod intercept_tests {
         let plugins = StubPlugins(vec![json!({ "action": "pass" })]);
         let baseline = {
             let mut s = state_with_input("hello");
-            IntentHandler::handle(&Intent::SubmitMessage, &mut s, None)
+            IntentHandler::handle(&Intent::SubmitMessage, &mut s)
                 .message_names
                 .len()
         };
