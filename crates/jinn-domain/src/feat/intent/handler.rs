@@ -46,6 +46,53 @@ use crate::IntentResult;
 /// Some intents set "TUI signals" on `state.frontend.tui_signals` - flags that the
 /// outer platform layer reads after `handle()` returns and acts upon
 /// (e.g., opening an external editor, toggling a popup).
+/// Dispatch a replacement command from a plugin's `Replace` interception outcome.
+///
+/// Each JSON command object goes through the same verb dispatch as `handle_plugin_command`.
+/// Returns a bus closure if the verb is recognized, or `None` (with a warning log) if not.
+fn dispatch_replacement_command(
+    cmd_json: serde_json::Value,
+    session_id: &crate::protocol::SessionId,
+) -> Option<Box<dyn FnOnce(&kameo::prelude::ActorRef<kameo_actors::message_bus::MessageBus>) + Send + 'static>> {
+    use crate::common::bridge::Bridge;
+    use crate::common::bridge::BridgeClosure;
+
+    // The replacement JSON should have a "verb" key and a "payload" key.
+    // If it doesn't match this shape, try treating the whole thing as a verb payload.
+    let (verb, payload) = if let Some(obj) = cmd_json.as_object() {
+        if let Some(verb_val) = obj.get("verb").and_then(|v| v.as_str()) {
+            (verb_val.to_owned(), obj.get("payload").cloned().unwrap_or(cmd_json.clone()))
+        } else {
+            // No "verb" key — can't dispatch.
+            tracing::warn!(?cmd_json, "plugin replacement command missing 'verb' key");
+            return None;
+        }
+    } else {
+        tracing::warn!(?cmd_json, "plugin replacement command is not a JSON object");
+        return None;
+    };
+
+    // Dispatch through the same verb table used by plugin_wiring.
+    // For now, we handle the common cases inline.
+    // FIXME: plugin migration — this should use a shared verb registry with plugin_wiring
+    match verb.as_str() {
+        "push_chat_entry" => {
+            let entry = crate::feat::session::chat_entry::ChatEntry::system(
+                payload.get("text").and_then(|v| v.as_str()).unwrap_or("").to_owned(),
+            );
+            let msg = crate::feat::chat_input::protocol::command::PushChatEntry {
+                session_id: session_id.clone(),
+                entry,
+            };
+            Some(Bridge::publish_closure(msg))
+        }
+        _ => {
+            tracing::warn!(verb, "unknown verb in plugin replacement command");
+            None
+        }
+    }
+}
+
 pub struct IntentHandler;
 
 impl IntentHandler {
@@ -57,6 +104,7 @@ impl IntentHandler {
     pub fn handle(
         intent: &Intent,
         state: &mut AppState,
+        plugins: Option<&dyn crate::feat::plugin_dispatch::PluginSyncHooks>,
     ) -> IntentResult {
         state.frontend.tui_signals.clear();
 
@@ -73,27 +121,23 @@ impl IntentHandler {
         // Process the intent and get the result.
         let mut result = Self::handle_inner(intent, state);
 
-        //FIXME: plugin migration — disabled during actor migration
-        // if matches!(intent, Intent::SubmitMessage)
-        //     && let Some(p) = plugins
-        // {
-        //     result = Self::apply_interceptions(
-        //         intent,
-        //         p,
-        //         &captured_session_id,
-        //         &captured_input_text,
-        //         result,
-        //     );
-        // }
+        if matches!(intent, Intent::SubmitMessage)
+            && let Some(p) = plugins
+        {
+            result = Self::apply_interceptions(
+                intent,
+                p,
+                &captured_session_id,
+                &captured_input_text,
+                result,
+            );
+        }
 
-        //FIXME: plugin migration — ActiveSessionChanged should be published via bus
-        // if state.session.active_session_id() != &prev_active {
-        //     result.events.push(Event::ActiveSessionChanged(
-        //         crate::protocol::system::ActiveSessionChanged {
-        //             session_id: state.session.active_session_id().clone(),
-        //         },
-        //     ));
-        // }
+        if state.session.active_session_id() != &prev_active {
+            result = result.message(crate::protocol::system::ActiveSessionChanged {
+                session_id: state.session.active_session_id().clone(),
+            });
+        }
 
         result
     }
@@ -106,17 +150,52 @@ impl IntentHandler {
     /// `replace` (swap in new commands). Malformed returns are dropped with a
     /// `warn!` so a buggy plugin degrades rather than stalls.
     fn apply_interceptions(
-        intent: &Intent,
+        _intent: &Intent,
         plugins: &dyn crate::feat::plugin_dispatch::PluginSyncHooks,
         session_id: &crate::protocol::SessionId,
         input_text: &str,
         mut result: IntentResult,
     ) -> IntentResult {
         use crate::feat::plugin_dispatch::{InterceptOutcome, call_hooks_typed};
+        use serde_json::json;
 
-        // `input_text` and `session_id` are captured before submit handling clears
-        //FIXME: plugin migration — intercept submit disabled
-        let _ = (plugins, session_id, input_text, intent);
+        let hook_ctx = crate::feat::plugin_dispatch::HookContext::from(serde_json::json!({
+            "session_id": session_id.to_string(),
+            "user_input": input_text,
+        }));
+
+        let responses = call_hooks_typed::<InterceptOutcome>(plugins, "on_submit", &hook_ctx);
+
+        for outcome in responses {
+            match outcome {
+                InterceptOutcome::Block => {
+                    tracing::debug!(plugin_hook = "on_submit", "plugin blocked submit");
+                    result.messages.clear();
+                    result.message_names.clear();
+                    return result;
+                }
+                InterceptOutcome::Pass => {}
+                InterceptOutcome::Replace { commands } => {
+                    tracing::debug!(
+                        plugin_hook = "on_submit",
+                        replacement_count = commands.len(),
+                        "plugin replaced submit commands"
+                    );
+                    // Convert each replacement JSON command through the PluginVerb dispatch.
+                    // The JSON shape uses the same verb/payload format as handle_plugin_command.
+                    let new_messages: Vec<_> = commands
+                        .into_iter()
+                        .filter_map(|cmd_json| {
+                            dispatch_replacement_command(cmd_json, session_id)
+                        })
+                        .collect();
+                    result.messages = new_messages;
+                    result.message_names.clear();
+                    return result;
+                }
+            }
+        }
+
         result
     }
 
@@ -326,7 +405,7 @@ impl IntentHandler {
             Intent::PickerConfirm => {
                 let (result, maybe_intent) = feat::picker::intent::handle_picker_confirm(state);
                 if let Some(intent) = maybe_intent {
-                    let redispatch = IntentHandler::handle(&intent, state);
+                    let redispatch = IntentHandler::handle(&intent, state, None);
                     result.merge(redispatch)
                 } else {
                     result
@@ -335,7 +414,7 @@ impl IntentHandler {
             Intent::CtrlClear => {
                 let (result, maybe_intent) = feat::global::intent::handle_ctrl_clear(state);
                 if let Some(intent) = maybe_intent {
-                    let redispatch = IntentHandler::handle(&intent, state);
+                    let redispatch = IntentHandler::handle(&intent, state, None);
                     result.merge(redispatch)
                 } else {
                     result
