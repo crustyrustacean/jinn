@@ -146,7 +146,8 @@ impl SessionPersistenceActor {
             Some(ref cmd) => match cmd {
                 crate::feat::session_lifecycle::builtin::LifecycleCommand::Builtin(id) => {
                     // Builtin: run inline, then complete Working.
-                    self.run_builtin_setup(&payload.session_id, id, &payload.args).await;
+                    self.run_builtin_setup(&payload.session_id, id, &payload.args)
+                        .await;
                     // Complete busy.
                     {
                         let mut state = self.state.write();
@@ -184,12 +185,14 @@ impl SessionPersistenceActor {
                 self.publish(PushChatEntry {
                     session_id: payload.session_id.clone(),
                     entry: ChatEntry::error(&error_msg),
-                }).await;
+                })
+                .await;
                 self.publish(SessionSetupCompleted {
                     session_id: payload.session_id.clone(),
                     cwd: std::path::PathBuf::new(),
                     error: Some(error_msg),
-                }).await;
+                })
+                .await;
                 return;
             }
         };
@@ -219,7 +222,8 @@ impl SessionPersistenceActor {
                 session_id,
                 cwd,
                 error,
-            }).await;
+            })
+            .await;
         });
 
         self.lifecycle_child = Some(cancel_handle);

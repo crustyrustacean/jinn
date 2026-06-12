@@ -28,8 +28,8 @@ use serde_json::Value;
 use crate::common::actor::protocol::dynamic_command::DynamicCommand;
 use crate::common::actor::protocol::event::AllActorsSpawned;
 use crate::common::actor_deps::{ActorDeps, BusPublish};
-use crate::common::services::bus_service::BusService;
 use crate::common::services::Services;
+use crate::common::services::bus_service::BusService;
 use crate::common::state::State;
 
 use crate::PhaseKind;
@@ -113,10 +113,7 @@ impl Actor for PluginDispatchActor {
     type Args = PluginDispatchActorDeps;
     type Error = kameo::error::Infallible;
 
-    async fn on_start(
-        args: Self::Args,
-        actor_ref: ActorRef<Self>,
-    ) -> Result<Self, Self::Error> {
+    async fn on_start(args: Self::Args, actor_ref: ActorRef<Self>) -> Result<Self, Self::Error> {
         let deps = args.deps;
         deps.subscribe(actor_ref.clone().recipient::<AllActorsSpawned>())
             .await;
@@ -251,7 +248,8 @@ impl PluginDispatchActor {
         self.publish(PluginAttached {
             session_id,
             plugin_name,
-        }).await;
+        })
+        .await;
     }
 
     async fn handle_detach(&mut self, cmd: DetachPlugin) {
@@ -289,9 +287,9 @@ impl PluginDispatchActor {
         self.publish(PluginDetached {
             session_id,
             plugin_name,
-        }).await;
+        })
+        .await;
     }
-
 
     async fn recreate_session_registry(
         &mut self,
@@ -358,7 +356,8 @@ impl PluginDispatchActor {
             session_id,
             plugin_name,
             enabled: now_enabled,
-        }).await;
+        })
+        .await;
     }
 
     async fn handle_dynamic(&mut self, d: DynamicCommand) {
@@ -500,7 +499,6 @@ fn into_error<E: std::fmt::Display>(e: E) -> Report<PluginDispatchActorError> {
     Report::new(PluginDispatchActorError)
 }
 
-
 //FIXME: disabled during actor migration — tests reference deleted types
 // #[cfg(test)]
 #[cfg(any())]
@@ -549,7 +547,9 @@ mod tests {
         let mut ctx = ActorContext::new("plugin-dispatch-test", sink.clone());
         let actor = PluginDispatchActor::activate(
             PluginDispatchActorDeps {
-                deps: ActorDeps { services: Services::new_fake().await },
+                deps: ActorDeps {
+                    services: Services::new_fake().await,
+                },
                 services: Services::new_fake().await,
                 state,
                 startup_session_id: session_id.to_string(),
@@ -878,7 +878,9 @@ mod tests {
         let mut ctx = ActorContext::new("plugin-dispatch-test", sink);
         let actor = PluginDispatchActor::activate(
             PluginDispatchActorDeps {
-                deps: ActorDeps { services: services.clone() },
+                deps: ActorDeps {
+                    services: services.clone(),
+                },
                 services,
                 state,
                 startup_session_id: session_id.to_string(),
@@ -1003,7 +1005,9 @@ mod tests {
 
         let actor = PluginDispatchActor::activate(
             PluginDispatchActorDeps {
-                deps: ActorDeps { services: services.clone() },
+                deps: ActorDeps {
+                    services: services.clone(),
+                },
                 services,
                 state,
                 startup_session_id: session_id.to_string(),

@@ -2,7 +2,6 @@
 
 use serde::{Deserialize, Serialize};
 
-
 /// An actor is starting up.
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct ActorStarting {

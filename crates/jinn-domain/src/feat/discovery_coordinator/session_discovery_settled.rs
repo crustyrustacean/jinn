@@ -5,7 +5,7 @@
 //! timer fires first. Consumers (e.g. the discovery notifier) read the
 //! snapshot and may surface the `delayed` reason.
 
-use crate::protocol::{SessionId};
+use crate::protocol::SessionId;
 
 /// A snapshot of what a session's discovery scan settled with.
 #[derive(Debug, Clone, Default, serde::Serialize, serde::Deserialize, PartialEq, Eq)]

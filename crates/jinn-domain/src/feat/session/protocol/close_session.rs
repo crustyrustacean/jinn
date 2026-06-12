@@ -9,10 +9,7 @@
 
 use serde::{Deserialize, Serialize};
 
-use crate::{
-    BusMessage,
-    protocol::{SessionId},
-};
+use crate::{BusMessage, protocol::SessionId};
 
 /// Close a session.
 #[derive(Debug, Clone, Serialize, Deserialize)]

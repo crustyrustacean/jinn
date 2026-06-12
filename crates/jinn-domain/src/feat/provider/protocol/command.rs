@@ -5,7 +5,7 @@ use serde::{Deserialize, Serialize};
 
 use crate::feat::provider::llm_message::LlmMessage;
 use crate::feat::tools_actor::tool_types::ToolDefinition;
-use crate::protocol::{SessionId};
+use crate::protocol::SessionId;
 
 /// Switch the active LLM provider.
 ///

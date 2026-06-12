@@ -132,7 +132,6 @@ async fn actor_publishes_submit_mutations_for_long_history() {
         worker: TruncateOldUserEntries,
     });
 
-
     let recorder = harness.spawn_recorder::<SubmitHistoryMutations>().await;
 
     let entries: Vec<ChatEntry> = (0..5)
@@ -141,10 +140,17 @@ async fn actor_publishes_submit_mutations_for_long_history() {
     let session_id = SessionId::new();
 
     // When publishing a HistorySnapshotReady with 5 user entries.
-    harness.publish(snapshot_event(session_id.clone(), entries)).await;
+    harness
+        .publish(snapshot_event(session_id.clone(), entries))
+        .await;
 
     // Then the worker publishes SubmitHistoryMutations.
-    let recorded = crate::common::bus::test_harness::await_recorded(&recorder, 1, std::time::Duration::from_secs(2)).await;
+    let recorded = crate::common::bus::test_harness::await_recorded(
+        &recorder,
+        1,
+        std::time::Duration::from_secs(2),
+    )
+    .await;
     assert_eq!(recorded.len(), 1);
     assert_eq!(recorded[0].session_id, session_id);
     assert_eq!(recorded[0].mutations.len(), 2);
@@ -166,10 +172,17 @@ async fn actor_publishes_nothing_for_short_history() {
         .collect();
 
     // When publishing a HistorySnapshotReady with 2 entries.
-    harness.publish(snapshot_event(SessionId::new(), entries)).await;
+    harness
+        .publish(snapshot_event(SessionId::new(), entries))
+        .await;
 
     // Then no mutations are published.
-    let recorded = crate::common::bus::test_harness::await_recorded(&recorder, 1, std::time::Duration::from_secs(2)).await;
+    let recorded = crate::common::bus::test_harness::await_recorded(
+        &recorder,
+        1,
+        std::time::Duration::from_secs(2),
+    )
+    .await;
     assert!(recorded.is_empty());
 }
 
@@ -189,9 +202,16 @@ async fn noop_worker_never_produces_mutations() {
         .collect();
 
     // When publishing a HistorySnapshotReady with 10 entries.
-    harness.publish(snapshot_event(SessionId::new(), entries)).await;
+    harness
+        .publish(snapshot_event(SessionId::new(), entries))
+        .await;
 
     // Then no mutations are published.
-    let recorded = crate::common::bus::test_harness::await_recorded(&recorder, 1, std::time::Duration::from_secs(2)).await;
+    let recorded = crate::common::bus::test_harness::await_recorded(
+        &recorder,
+        1,
+        std::time::Duration::from_secs(2),
+    )
+    .await;
     assert!(recorded.is_empty());
 }

@@ -164,20 +164,13 @@ impl Actor for DiscoveryCoordinatorActor {
     type Args = DiscoveryCoordinatorActorDeps;
     type Error = std::convert::Infallible;
 
-    async fn on_start(
-        args: Self::Args,
-        actor_ref: ActorRef<Self>,
-    ) -> Result<Self, Self::Error> {
+    async fn on_start(args: Self::Args, actor_ref: ActorRef<Self>) -> Result<Self, Self::Error> {
         // Register on bus for the three resource-loaded events.
         args.deps
             .subscribe(actor_ref.clone().recipient::<SkillsLoaded>())
             .await;
         args.deps
-            .subscribe(
-                actor_ref
-                    .clone()
-                    .recipient::<PromptTemplatesLoaded>(),
-            )
+            .subscribe(actor_ref.clone().recipient::<PromptTemplatesLoaded>())
             .await;
         let stored_ref = actor_ref.clone();
         args.deps
@@ -204,11 +197,7 @@ impl BusPublish for DiscoveryCoordinatorActor {
 impl Message<SkillsLoaded> for DiscoveryCoordinatorActor {
     type Reply = ();
 
-    async fn handle(
-        &mut self,
-        msg: SkillsLoaded,
-        _ctx: &mut Context<Self, Self::Reply>,
-    ) {
+    async fn handle(&mut self, msg: SkillsLoaded, _ctx: &mut Context<Self, Self::Reply>) {
         let snapshot = ResourceSnapshot::Skills {
             count: msg.skills.len(),
             error: msg.error.clone(),
@@ -226,11 +215,7 @@ impl Message<SkillsLoaded> for DiscoveryCoordinatorActor {
 impl Message<PromptTemplatesLoaded> for DiscoveryCoordinatorActor {
     type Reply = ();
 
-    async fn handle(
-        &mut self,
-        msg: PromptTemplatesLoaded,
-        _ctx: &mut Context<Self, Self::Reply>,
-    ) {
+    async fn handle(&mut self, msg: PromptTemplatesLoaded, _ctx: &mut Context<Self, Self::Reply>) {
         let snapshot = ResourceSnapshot::Prompts {
             count: msg.templates.len(),
             error: msg.error.clone(),
@@ -248,11 +233,7 @@ impl Message<PromptTemplatesLoaded> for DiscoveryCoordinatorActor {
 impl Message<ContextFilesLoaded> for DiscoveryCoordinatorActor {
     type Reply = ();
 
-    async fn handle(
-        &mut self,
-        msg: ContextFilesLoaded,
-        _ctx: &mut Context<Self, Self::Reply>,
-    ) {
+    async fn handle(&mut self, msg: ContextFilesLoaded, _ctx: &mut Context<Self, Self::Reply>) {
         let snapshot = ResourceSnapshot::Context {
             count: msg.files.len(),
             error: msg.error.clone(),
@@ -270,11 +251,7 @@ impl Message<ContextFilesLoaded> for DiscoveryCoordinatorActor {
 impl Message<DiscoveryDirectMsg> for DiscoveryCoordinatorActor {
     type Reply = ();
 
-    async fn handle(
-        &mut self,
-        msg: DiscoveryDirectMsg,
-        _ctx: &mut Context<Self, Self::Reply>,
-    ) {
+    async fn handle(&mut self, msg: DiscoveryDirectMsg, _ctx: &mut Context<Self, Self::Reply>) {
         match msg {
             DiscoveryDirectMsg::Record {
                 session_id,
@@ -369,7 +346,7 @@ mod tests {
 
     use crate::SessionId;
     use crate::common::app_state::AppState;
-    use crate::common::bus::test_harness::{TestHarness, await_recorded, Recorder};
+    use crate::common::bus::test_harness::{Recorder, TestHarness, await_recorded};
     use crate::common::state::State;
     use crate::feat::context::env_context::ContextFile;
     use crate::feat::context::protocol::event::ContextFilesLoaded;
@@ -379,7 +356,7 @@ mod tests {
     use crate::feat::skills::skills_scan_actor::SkillsLoaded;
     use crate::feat::skills::{Skill, SkillSource};
 
-    use super::{DiscoveryCoordinatorActor, DiscoveryCoordinatorActorDeps, ActorDeps};
+    use super::{ActorDeps, DiscoveryCoordinatorActor, DiscoveryCoordinatorActorDeps};
 
     fn skill_named(name: &str) -> Skill {
         Skill {
@@ -413,11 +390,12 @@ mod tests {
         kameo::prelude::ActorRef<Recorder<SessionDiscoverySettled>>,
     ) {
         let harness = TestHarness::new().await;
-        let actor = harness.spawn_actor::<DiscoveryCoordinatorActor>(DiscoveryCoordinatorActorDeps {
-            deps: harness.actor_deps().await,
-            state: State::new(AppState::default()),
-        })
-        .await;
+        let actor = harness
+            .spawn_actor::<DiscoveryCoordinatorActor>(DiscoveryCoordinatorActorDeps {
+                deps: harness.actor_deps().await,
+                state: State::new(AppState::default()),
+            })
+            .await;
         let recorder = harness.spawn_recorder::<SessionDiscoverySettled>().await;
         (harness, actor, recorder)
     }
@@ -490,11 +468,7 @@ mod tests {
         actor
             .tell(SkillsLoaded {
                 session_id: id.clone(),
-                skills: vec![
-                    skill_named("s-0"),
-                    skill_named("s-1"),
-                    skill_named("s-2"),
-                ],
+                skills: vec![skill_named("s-0"), skill_named("s-1"), skill_named("s-2")],
                 error: None,
             })
             .await
@@ -754,10 +728,6 @@ mod tests {
         tokio::time::advance(std::time::Duration::from_millis(3100)).await;
         tokio::time::sleep(std::time::Duration::from_millis(10)).await;
         let recorded2 = await_recorded(&recorder, 0, std::time::Duration::from_millis(100)).await;
-        assert_eq!(
-            recorded2.len(),
-            0,
-            "timer must not re-emit after settle"
-        );
+        assert_eq!(recorded2.len(), 0, "timer must not re-emit after settle");
     }
 }

@@ -198,7 +198,11 @@ mod tests {
         }
     }
 
-    async fn create_actor() -> (super::super::super::SessionPersistenceActor, State, BusAudit) {
+    async fn create_actor() -> (
+        super::super::super::SessionPersistenceActor,
+        State,
+        BusAudit,
+    ) {
         let state = State::new(AppState::default());
         let (actor, audit) = super::super::super::helpers::test_actor_recording().await;
         let actor = super::super::super::SessionPersistenceActor {
@@ -393,11 +397,13 @@ mod tests {
         let session_id = state.read().session.active_session_id().clone();
 
         // When pinning the entry.
-        actor.handle_pin_chat_entry(&PinChatEntry {
-            session_id: session_id.clone(),
-            entry_id: entry_id.clone(),
-            position: PinPosition::Top,
-        }).await;
+        actor
+            .handle_pin_chat_entry(&PinChatEntry {
+                session_id: session_id.clone(),
+                entry_id: entry_id.clone(),
+                position: PinPosition::Top,
+            })
+            .await;
 
         // Then the entry is pinned.
         let guard = state.read();
@@ -411,7 +417,10 @@ mod tests {
         drop(guard);
 
         // And ChatEntryPinChanged event was emitted.
-        assert!(audit.contains_name("ChatEntryPinChanged"), "expected ChatEntryPinChanged event");
+        assert!(
+            audit.contains_name("ChatEntryPinChanged"),
+            "expected ChatEntryPinChanged event"
+        );
     }
 
     // --- handle_unpin_chat_entry ---
@@ -433,10 +442,12 @@ mod tests {
         let session_id = state.read().session.active_session_id().clone();
 
         // When unpinning the entry.
-        actor.handle_unpin_chat_entry(&UnpinChatEntry {
-            session_id: session_id.clone(),
-            entry_id: entry_id.clone(),
-        }).await;
+        actor
+            .handle_unpin_chat_entry(&UnpinChatEntry {
+                session_id: session_id.clone(),
+                entry_id: entry_id.clone(),
+            })
+            .await;
 
         // Then the entry is no longer pinned.
         let guard = state.read();
@@ -450,7 +461,10 @@ mod tests {
         drop(guard);
 
         // And ChatEntryPinChanged event was emitted.
-        assert!(audit.contains_name("ChatEntryPinChanged"), "expected ChatEntryPinChanged event");
+        assert!(
+            audit.contains_name("ChatEntryPinChanged"),
+            "expected ChatEntryPinChanged event"
+        );
     }
 
     // --- on_prompt_templates_loaded ---
@@ -472,7 +486,9 @@ mod tests {
         }
 
         // When loading persona picker entries.
-        actor.handle_load_persona_picker_entries(&LoadPersonaPickerEntries).await;
+        actor
+            .handle_load_persona_picker_entries(&LoadPersonaPickerEntries)
+            .await;
 
         // Then the picker has entries with correct active state.
         let guard = state.read();

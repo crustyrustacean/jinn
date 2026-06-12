@@ -627,8 +627,8 @@ fn try_handle_cancel_stream_prompt(intent: &Intent, state: &mut AppState) -> Opt
 
     // Cancel stream.
     state.active_session_mut().cancel_stream_and_drain();
-    let mut result = IntentResult::empty()
-        .message(crate::feat::provider::protocol::command::CancelStream {
+    let mut result =
+        IntentResult::empty().message(crate::feat::provider::protocol::command::CancelStream {
             session_id: session_id.clone(),
         });
 

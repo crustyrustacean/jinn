@@ -119,7 +119,12 @@ fn pins_pin_top_returns_command() {
     let result = handle_pins_pin(&mut state, PinPosition::Top);
 
     // Then a PinChatEntry command is returned.
-    assert!(result.message_names.iter().any(|n| n.contains("PinChatEntry")));
+    assert!(
+        result
+            .message_names
+            .iter()
+            .any(|n| n.contains("PinChatEntry"))
+    );
 }
 
 #[rstest::rstest]
@@ -148,7 +153,12 @@ fn pins_pin_relative_returns_command() {
     let result = handle_pins_pin(&mut state, PinPosition::Relative);
 
     // Then a PinChatEntry command is returned.
-    assert!(result.message_names.iter().any(|n| n.contains("PinChatEntry")));
+    assert!(
+        result
+            .message_names
+            .iter()
+            .any(|n| n.contains("PinChatEntry"))
+    );
 }
 
 #[rstest::rstest]
@@ -168,7 +178,12 @@ fn pins_pin_cycle_rotates_top_to_bottom() {
     let result = handle_pins_pin_cycle(&mut state);
 
     // Then a PinChatEntry command is returned.
-    assert!(result.message_names.iter().any(|n| n.contains("PinChatEntry")));
+    assert!(
+        result
+            .message_names
+            .iter()
+            .any(|n| n.contains("PinChatEntry"))
+    );
 }
 
 #[rstest::rstest]
@@ -432,7 +447,12 @@ fn session_new_works_when_sidebar_sessions_focused() {
     // And SessionCreated is emitted.
     assert_eq!(result.message_names.len(), 2);
     assert!(result.message_names[0].contains("SessionCreated"));
-    assert!(result.message_names.iter().any(|n| n.contains("ActiveSessionChanged")));
+    assert!(
+        result
+            .message_names
+            .iter()
+            .any(|n| n.contains("ActiveSessionChanged"))
+    );
 }
 
 #[rstest::rstest]
@@ -585,7 +605,10 @@ fn resolve_selected_entry_id_returns_real_session_and_entry_ids() {
 
     // Then the UnpinChatEntry command is returned.
     assert!(
-        result.message_names.iter().any(|n| n.contains("UnpinChatEntry")),
+        result
+            .message_names
+            .iter()
+            .any(|n| n.contains("UnpinChatEntry")),
         "should return an UnpinChatEntry command"
     );
 }

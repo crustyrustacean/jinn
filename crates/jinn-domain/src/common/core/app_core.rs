@@ -6,8 +6,8 @@
 
 use std::time::Duration;
 
-use crate::common::bridge::Bridge;
 use crate::State;
+use crate::common::bridge::Bridge;
 use kanal::Sender;
 
 use crate::AppMsg;

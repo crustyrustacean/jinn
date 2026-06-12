@@ -7,7 +7,6 @@
 
 use serde::{Deserialize, Serialize};
 
-
 /// Signal to close the session picker and start a fresh empty session.
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct SessionNew;

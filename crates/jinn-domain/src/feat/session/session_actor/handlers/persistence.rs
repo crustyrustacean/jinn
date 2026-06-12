@@ -430,7 +430,11 @@ mod tests {
 
         // And the loaded session has Loaded state.
         let state = actor.state.read();
-        let loaded = state.session.sessions().get(&session_id).expect("loaded session");
+        let loaded = state
+            .session
+            .sessions()
+            .get(&session_id)
+            .expect("loaded session");
         assert_eq!(
             loaded.session_state(),
             SessionState::Loaded,
@@ -512,7 +516,8 @@ mod tests {
         child.push_entry(crate::protocol::ChatEntry::user("child msg"));
         let child_id = child.session_id().clone();
 
-        let (mut actor, _store, _audit) = test_actor_with_store_recording(vec![parent, child]).await;
+        let (mut actor, _store, _audit) =
+            test_actor_with_store_recording(vec![parent, child]).await;
 
         actor
             .on_load_requested(&SessionLoadRequested {

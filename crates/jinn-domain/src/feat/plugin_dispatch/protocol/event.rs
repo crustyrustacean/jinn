@@ -2,7 +2,7 @@
 
 use serde::{Deserialize, Serialize};
 
-use crate::protocol::{SessionId};
+use crate::protocol::SessionId;
 
 /// A plugin was attached to a session.
 #[derive(Debug, Clone, Serialize, Deserialize)]

@@ -381,7 +381,9 @@ fn with_mark_interacted(session_id: SessionId, mut result: IntentResult) -> Inte
         0,
         crate::common::bridge::Bridge::publish_closure(MarkSessionInteracted { session_id }),
     );
-    result.message_names.insert(0, std::any::type_name::<MarkSessionInteracted>());
+    result
+        .message_names
+        .insert(0, std::any::type_name::<MarkSessionInteracted>());
     result
 }
 

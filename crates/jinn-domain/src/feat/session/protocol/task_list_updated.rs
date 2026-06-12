@@ -20,7 +20,7 @@
 
 use serde::{Deserialize, Serialize};
 
-use crate::protocol::{SessionId};
+use crate::protocol::SessionId;
 
 /// A task list mutation was applied successfully.
 ///

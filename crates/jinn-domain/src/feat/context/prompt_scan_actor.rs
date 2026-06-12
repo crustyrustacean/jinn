@@ -26,9 +26,9 @@ use crate::feat::session_lifecycle::protocol::event::{
 };
 use crate::init::env_init_actor::EnvironmentLoaded;
 use crate::protocol::SessionId;
+use kameo::Actor;
 use kameo::actor::ActorRef;
 use kameo::message::{Context as MsgContext, Message};
-use kameo::Actor;
 
 /// Dependencies for [`PromptScanActor`].
 pub struct PromptScanActorDeps {
@@ -61,10 +61,7 @@ impl Actor for PromptScanActor {
     type Args = PromptScanActorDeps;
     type Error = std::convert::Infallible;
 
-    async fn on_start(
-        args: Self::Args,
-        actor_ref: ActorRef<Self>,
-    ) -> Result<Self, Self::Error> {
+    async fn on_start(args: Self::Args, actor_ref: ActorRef<Self>) -> Result<Self, Self::Error> {
         let deps = args.deps;
         deps.subscribe(actor_ref.clone().recipient::<RescanPromptTemplates>())
             .await;
@@ -101,11 +98,7 @@ impl Message<RescanPromptTemplates> for PromptScanActor {
 impl Message<EnvironmentLoaded> for PromptScanActor {
     type Reply = ();
 
-    async fn handle(
-        &mut self,
-        _msg: EnvironmentLoaded,
-        _ctx: &mut MsgContext<Self, Self::Reply>,
-    ) {
+    async fn handle(&mut self, _msg: EnvironmentLoaded, _ctx: &mut MsgContext<Self, Self::Reply>) {
         let session_id = self.state.read().session.active_session_id().clone();
         if crate::common::actor::scan_actor::scan_cwd_for_session(&self.state, &session_id)
             .is_some()
@@ -118,11 +111,7 @@ impl Message<EnvironmentLoaded> for PromptScanActor {
 impl Message<SessionCreated> for PromptScanActor {
     type Reply = ();
 
-    async fn handle(
-        &mut self,
-        msg: SessionCreated,
-        _ctx: &mut MsgContext<Self, Self::Reply>,
-    ) {
+    async fn handle(&mut self, msg: SessionCreated, _ctx: &mut MsgContext<Self, Self::Reply>) {
         if crate::common::actor::scan_actor::scan_cwd_for_session(&self.state, &msg.session_id)
             .is_some()
         {
@@ -166,11 +155,7 @@ impl Message<SessionLoadCompleted> for PromptScanActor {
 impl Message<SessionCwdChanged> for PromptScanActor {
     type Reply = ();
 
-    async fn handle(
-        &mut self,
-        msg: SessionCwdChanged,
-        _ctx: &mut MsgContext<Self, Self::Reply>,
-    ) {
+    async fn handle(&mut self, msg: SessionCwdChanged, _ctx: &mut MsgContext<Self, Self::Reply>) {
         if crate::common::actor::scan_actor::scan_cwd_for_session(&self.state, &msg.session_id)
             .is_some()
         {
@@ -241,8 +226,12 @@ impl PromptScanActor {
     fn resolve_scan_inputs(
         &self,
         session_id: &SessionId,
-    ) -> Option<(std::path::PathBuf, std::path::PathBuf, std::path::PathBuf, std::path::PathBuf)>
-    {
+    ) -> Option<(
+        std::path::PathBuf,
+        std::path::PathBuf,
+        std::path::PathBuf,
+        std::path::PathBuf,
+    )> {
         let guard = self.state.read();
         let session = guard.try_session(session_id)?;
         let cwd = session.cwd().to_path_buf();
@@ -267,18 +256,17 @@ mod tests {
 
     use crate::common::app_paths::AppPaths;
     use crate::common::app_state::AppState;
+    use crate::common::bus::test_harness::{TestHarness, await_recorded};
     use crate::common::state::State;
+    use crate::feat::provider::protocol::command::RescanPromptTemplates;
     use crate::feat::provider::protocol::event::PromptTemplatesLoaded;
-    use crate::init::env_init_actor::EnvironmentLoaded;
+    use crate::feat::session::protocol::session_load_completed::SessionLoadCompleted;
     use crate::feat::session_lifecycle::protocol::event::{
         SessionCreated, SessionCwdChanged, SessionSetupCompleted,
     };
-    use crate::feat::session::protocol::session_load_completed::SessionLoadCompleted;
-    use crate::feat::provider::protocol::command::RescanPromptTemplates;
-    use crate::common::bus::test_harness::{TestHarness, await_recorded};
+    use crate::init::env_init_actor::EnvironmentLoaded;
 
     use super::*;
-
 
     /// Writes a project prompt `name.md` under `cwd/.agents/prompts`.
     fn write_project_prompt(cwd: &std::path::Path, name: &str) {
@@ -344,7 +332,10 @@ mod tests {
 
         // Then the project prompt is in the session's discovered store.
         let loaded = await_recorded(&recorder, 1, std::time::Duration::from_secs(5)).await;
-        let found = loaded.iter().find(|l| l.error.is_none()).expect("should have PromptTemplatesLoaded");
+        let found = loaded
+            .iter()
+            .find(|l| l.error.is_none())
+            .expect("should have PromptTemplatesLoaded");
         assert_eq!(found.session_id, session_id);
 
         let guard = state.read();

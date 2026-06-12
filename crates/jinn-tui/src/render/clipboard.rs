@@ -69,7 +69,7 @@ mod tests {
     }
 
     #[rstest::rstest]
-#[tokio::test]
+    #[tokio::test]
     async fn clipboard_copy_clears_pending_flag_on_idle_selection() {
         // Given an app with pending_clipboard set but Idle selection.
         let mut app = render_test_app().await;
@@ -87,7 +87,7 @@ mod tests {
     }
 
     #[rstest::rstest]
-#[tokio::test]
+    #[tokio::test]
     async fn clipboard_copy_skips_empty_selection() {
         // Given an app with pending_clipboard and an Active selection over empty cells.
         let area = Rect::new(0, 0, 20, 5);
@@ -111,7 +111,7 @@ mod tests {
     }
 
     #[rstest::rstest]
-#[tokio::test]
+    #[tokio::test]
     async fn clipboard_clears_pending_flag_immediately() {
         // Given a buffer with known text and an active selection.
         let area = Rect::new(0, 0, 20, 5);

@@ -17,7 +17,7 @@
 use serde::{Deserialize, Serialize};
 
 use crate::feat::session::chat_session::ChatSessionState;
-use crate::{common::bus::BusMessage, protocol::{SessionId}};
+use crate::{common::bus::BusMessage, protocol::SessionId};
 /// Emitted after a session has been loaded and inserted into state.
 ///
 /// Carries the fully loaded session. The session-actor's

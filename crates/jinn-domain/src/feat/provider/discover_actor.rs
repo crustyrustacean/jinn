@@ -47,7 +47,9 @@ impl Actor for DiscoverActor {
     type Error = kameo::error::Infallible;
 
     async fn on_start(args: Self::Args, actor_ref: ActorRef<Self>) -> Result<Self, Self::Error> {
-        args.deps.subscribe(actor_ref.recipient::<RefreshModels>()).await;
+        args.deps
+            .subscribe(actor_ref.recipient::<RefreshModels>())
+            .await;
 
         Ok(Self {
             deps: args.deps,
@@ -245,6 +247,9 @@ mod tests {
         // Then a ModelsRefreshed event is emitted (with empty results).
         let events = await_recorded(&recorder, 1, Duration::from_secs(2)).await;
         assert_eq!(events.len(), 1, "should emit one ModelsRefreshed event");
-        assert!(events[0].results.is_empty(), "no providers configured, so results are empty");
+        assert!(
+            events[0].results.is_empty(),
+            "no providers configured, so results are empty"
+        );
     }
 }

@@ -9,8 +9,8 @@
 use std::time::Duration;
 
 use super::*;
-use crate::common::bus::test_harness::{TestHarness, await_recorded};
 use crate::common::bus::BusMessage;
+use crate::common::bus::test_harness::{TestHarness, await_recorded};
 use crate::feat::preferences_actor::protocol::command::{PreferenceUpdate, UpdatePreferences};
 use crate::feat::preferences_actor::protocol::event::PreferencesUpdated;
 
@@ -20,9 +20,11 @@ impl BusMessage for UpdatePreferences {}
 async fn set_compaction_model_overwrites_previous() {
     // Given a preferences actor.
     let harness = TestHarness::new().await;
-    let _actor = harness.spawn_actor::<PreferencesActor>(PreferencesActorDeps {
-        deps: harness.actor_deps().await,
-    }).await;
+    let _actor = harness
+        .spawn_actor::<PreferencesActor>(PreferencesActorDeps {
+            deps: harness.actor_deps().await,
+        })
+        .await;
     let recorder = harness.spawn_recorder::<PreferencesUpdated>().await;
 
     // When sending first UpdatePreferences.
@@ -46,9 +48,9 @@ async fn set_compaction_model_overwrites_previous() {
     let recorded = await_recorded(&recorder, 1, Duration::from_secs(2)).await;
 
     // Then only the latest model is in the emitted event.
-    let found = recorded.iter().any(|e| {
-        e.preferences.compaction.model.as_deref() == Some("openrouter/gpt-4")
-    });
+    let found = recorded
+        .iter()
+        .any(|e| e.preferences.compaction.model.as_deref() == Some("openrouter/gpt-4"));
     assert!(
         found,
         "expected PreferencesUpdated with compaction.model=openrouter/gpt-4, got {} events: {recorded:?}",
@@ -60,9 +62,11 @@ async fn set_compaction_model_overwrites_previous() {
 async fn emits_preferences_updated_event() {
     // Given a preferences actor and a recorder.
     let harness = TestHarness::new().await;
-    let _actor = harness.spawn_actor::<PreferencesActor>(PreferencesActorDeps {
-        deps: harness.actor_deps().await,
-    }).await;
+    let _actor = harness
+        .spawn_actor::<PreferencesActor>(PreferencesActorDeps {
+            deps: harness.actor_deps().await,
+        })
+        .await;
     let recorder = harness.spawn_recorder::<PreferencesUpdated>().await;
 
     // When sending UpdatePreferences.
@@ -76,19 +80,24 @@ async fn emits_preferences_updated_event() {
 
     // Then a PreferencesUpdated event was emitted with the full preferences.
     let recorded = await_recorded(&recorder, 1, Duration::from_secs(2)).await;
-    let found = recorded.iter().any(|e| {
-        e.preferences.compaction.model.as_deref() == Some("ollama/llama3")
-    });
-    assert!(found, "expected PreferencesUpdated event with compaction.model=ollama/llama3");
+    let found = recorded
+        .iter()
+        .any(|e| e.preferences.compaction.model.as_deref() == Some("ollama/llama3"));
+    assert!(
+        found,
+        "expected PreferencesUpdated event with compaction.model=ollama/llama3"
+    );
 }
 
 #[tokio::test]
 async fn empty_diffs_does_not_change_storage() {
     // Given a preferences actor.
     let harness = TestHarness::new().await;
-    let _actor = harness.spawn_actor::<PreferencesActor>(PreferencesActorDeps {
-        deps: harness.actor_deps().await,
-    }).await;
+    let _actor = harness
+        .spawn_actor::<PreferencesActor>(PreferencesActorDeps {
+            deps: harness.actor_deps().await,
+        })
+        .await;
     let recorder = harness.spawn_recorder::<PreferencesUpdated>().await;
 
     // When setting a compaction model.
@@ -104,17 +113,13 @@ async fn empty_diffs_does_not_change_storage() {
     let first_prefs = &recorded[0].preferences;
 
     // When sending UpdatePreferences with empty diffs.
-    harness
-        .publish(UpdatePreferences {
-            updates: vec![],
-        })
-        .await;
+    harness.publish(UpdatePreferences { updates: vec![] }).await;
     let recorded = await_recorded(&recorder, 1, Duration::from_secs(2)).await;
     assert!(!recorded.is_empty(), "expected second PreferencesUpdated");
 
     // Then the existing preferences are preserved.
-    let found = recorded.iter().any(|e| {
-        e.preferences.compaction.model.as_deref() == Some("ollama/llama3")
-    });
+    let found = recorded
+        .iter()
+        .any(|e| e.preferences.compaction.model.as_deref() == Some("ollama/llama3"));
     assert!(found, "expected model to be preserved after empty update");
 }

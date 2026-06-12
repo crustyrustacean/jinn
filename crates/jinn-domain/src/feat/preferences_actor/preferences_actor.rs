@@ -42,7 +42,8 @@ impl Actor for PreferencesActor {
 
     async fn on_start(args: Self::Args, actor_ref: ActorRef<Self>) -> Result<Self, Self::Error> {
         args.deps
-            .subscribe(actor_ref.recipient::<UpdatePreferences>()).await;
+            .subscribe(actor_ref.recipient::<UpdatePreferences>())
+            .await;
         Ok(Self { deps: args.deps })
     }
 }
@@ -72,9 +73,8 @@ impl PreferencesActor {
             tracing::warn!(err = ?e, "preferences-actor failed to save user preferences");
             return;
         }
-        self.publish(PreferencesUpdated {
-            preferences: prefs,
-        }).await;
+        self.publish(PreferencesUpdated { preferences: prefs })
+            .await;
     }
 }
 

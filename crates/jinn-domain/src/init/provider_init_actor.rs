@@ -42,7 +42,9 @@ impl Actor for ProviderInitActor {
     type Error = std::convert::Infallible;
 
     async fn on_start(args: Self::Args, actor_ref: ActorRef<Self>) -> Result<Self, Self::Error> {
-        args.deps.subscribe(actor_ref.recipient::<EnvironmentLoaded>()).await;
+        args.deps
+            .subscribe(actor_ref.recipient::<EnvironmentLoaded>())
+            .await;
         Ok(Self {
             deps: args.deps,
             state: args.state,
@@ -116,7 +118,10 @@ impl ProviderInitActor {
             let id = crate::feat::provider_infra::ProviderId::new(model.clone());
             let is_available = {
                 let api_keys = self.deps.services.api_keys.read();
-                self.deps.services.provider_registry.is_available(&id, &api_keys)
+                self.deps
+                    .services
+                    .provider_registry
+                    .is_available(&id, &api_keys)
             };
             if is_available {
                 let session_id = self.state.read().session.active_session_id().clone();
@@ -143,9 +148,9 @@ mod tests {
         reason = "test code"
     )]
 
+    use crate::AppState;
     use crate::common::bus::test_harness::TestHarness;
     use crate::common::state::State;
-    use crate::AppState;
     use crate::feat::chat_input::protocol::command::PushChatEntry;
     use crate::feat::provider::protocol::command::ProviderSwitch;
     use crate::feat::provider::protocol::event::ModelCacheLoaded;
@@ -208,18 +213,27 @@ mod tests {
 
         let state = State::new(AppState::default());
         let _actor = ProviderInitActor::spawn(ProviderInitActorDeps {
-            deps: ActorDeps { services: services.clone() },
+            deps: ActorDeps {
+                services: services.clone(),
+            },
             state: state.clone(),
         });
 
         let recorder = harness.spawn_recorder::<ProviderSwitch>().await;
 
         // When publishing EnvironmentLoaded.
-        harness.publish(EnvironmentLoaded { config: sample_config() }).await;
+        harness
+            .publish(EnvironmentLoaded {
+                config: sample_config(),
+            })
+            .await;
 
         let recorded = crate::common::bus::test_harness::await_recorded(
-            &recorder, 1, std::time::Duration::from_secs(2),
-        ).await;
+            &recorder,
+            1,
+            std::time::Duration::from_secs(2),
+        )
+        .await;
 
         // Then a ProviderSwitch command was sent.
         let found = recorded.iter().any(|c| c.provider_id == "sample/sample");
@@ -233,18 +247,27 @@ mod tests {
         let services = harness.services().await;
         let state = State::new(AppState::default());
         let _actor = ProviderInitActor::spawn(ProviderInitActorDeps {
-            deps: ActorDeps { services: services.clone() },
+            deps: ActorDeps {
+                services: services.clone(),
+            },
             state,
         });
 
         let recorder = harness.spawn_recorder::<ProviderSwitch>().await;
 
         // When publishing EnvironmentLoaded.
-        harness.publish(EnvironmentLoaded { config: sample_config() }).await;
+        harness
+            .publish(EnvironmentLoaded {
+                config: sample_config(),
+            })
+            .await;
 
         let recorded = crate::common::bus::test_harness::await_recorded(
-            &recorder, 1, std::time::Duration::from_millis(500),
-        ).await;
+            &recorder,
+            1,
+            std::time::Duration::from_millis(500),
+        )
+        .await;
 
         // Then no ProviderSwitch command was sent.
         assert!(recorded.is_empty(), "expected no ProviderSwitch command");
@@ -257,7 +280,9 @@ mod tests {
         let services = harness.services().await;
         let state = State::new(AppState::default());
         let _actor = ProviderInitActor::spawn(ProviderInitActorDeps {
-            deps: ActorDeps { services: services.clone() },
+            deps: ActorDeps {
+                services: services.clone(),
+            },
             state,
         });
 
@@ -282,12 +307,20 @@ mod tests {
         harness.publish(EnvironmentLoaded { config }).await;
 
         let recorded = crate::common::bus::test_harness::await_recorded(
-            &recorder, 1, std::time::Duration::from_secs(2),
-        ).await;
+            &recorder,
+            1,
+            std::time::Duration::from_secs(2),
+        )
+        .await;
 
         // Then a PushChatEntry command was emitted with the no-api-keys guidance.
-        let has_no_api_keys = recorded.iter().any(|cmd| cmd.entry.text().contains("No API keys found"));
-        assert!(has_no_api_keys, "expected PushChatEntry with no-api-keys guidance");
+        let has_no_api_keys = recorded
+            .iter()
+            .any(|cmd| cmd.entry.text().contains("No API keys found"));
+        assert!(
+            has_no_api_keys,
+            "expected PushChatEntry with no-api-keys guidance"
+        );
     }
 
     #[tokio::test]
@@ -310,21 +343,32 @@ mod tests {
 
         let state = State::new(AppState::default());
         let _actor = ProviderInitActor::spawn(ProviderInitActorDeps {
-            deps: ActorDeps { services: services.clone() },
+            deps: ActorDeps {
+                services: services.clone(),
+            },
             state,
         });
 
         let recorder = harness.spawn_recorder::<ModelCacheLoaded>().await;
 
         // When publishing EnvironmentLoaded.
-        harness.publish(EnvironmentLoaded { config: ollama_config() }).await;
+        harness
+            .publish(EnvironmentLoaded {
+                config: ollama_config(),
+            })
+            .await;
 
         let recorded = crate::common::bus::test_harness::await_recorded(
-            &recorder, 1, std::time::Duration::from_secs(2),
-        ).await;
+            &recorder,
+            1,
+            std::time::Duration::from_secs(2),
+        )
+        .await;
 
         // Then a ModelCacheLoaded event was emitted.
-        let found = recorded.iter().any(|e| e.cache.entries.contains_key("ollama"));
+        let found = recorded
+            .iter()
+            .any(|e| e.cache.entries.contains_key("ollama"));
         assert!(found, "expected ModelCacheLoaded event with ollama entries");
     }
 
@@ -354,18 +398,27 @@ mod tests {
             .expect("save app state");
 
         let _actor = ProviderInitActor::spawn(ProviderInitActorDeps {
-            deps: ActorDeps { services: services.clone() },
+            deps: ActorDeps {
+                services: services.clone(),
+            },
             state,
         });
 
         let recorder = harness.spawn_recorder::<ProviderSwitch>().await;
 
         // When publishing EnvironmentLoaded.
-        harness.publish(EnvironmentLoaded { config: sample_config() }).await;
+        harness
+            .publish(EnvironmentLoaded {
+                config: sample_config(),
+            })
+            .await;
 
         let recorded = crate::common::bus::test_harness::await_recorded(
-            &recorder, 1, std::time::Duration::from_millis(500),
-        ).await;
+            &recorder,
+            1,
+            std::time::Duration::from_millis(500),
+        )
+        .await;
 
         // Then no ProviderSwitch command was sent (session model was preserved).
         assert!(

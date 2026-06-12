@@ -4,7 +4,7 @@ use std::path::PathBuf;
 
 use serde::{Deserialize, Serialize};
 
-use crate::protocol::{SessionId};
+use crate::protocol::SessionId;
 
 /// Setup command completed (success or failure).
 ///

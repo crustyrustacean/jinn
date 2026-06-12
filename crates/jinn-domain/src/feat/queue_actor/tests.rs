@@ -10,7 +10,7 @@ use std::time::Duration;
 
 use super::*;
 use crate::common::app_state::AppState;
-use crate::common::bus::test_harness::{await_recorded, Recorder, TestHarness};
+use crate::common::bus::test_harness::{Recorder, TestHarness, await_recorded};
 use crate::protocol::ChatEntry;
 
 fn test_state() -> State {
@@ -35,11 +35,13 @@ impl QueueTestHarness {
         let state = test_state();
         let counter = test_counter();
 
-        let _queue = harness.spawn_actor::<super::QueueActor>(QueueActorDeps {
-            state: state.clone(),
-            counter,
-            deps: harness.actor_deps().await,
-        }).await;
+        let _queue = harness
+            .spawn_actor::<super::QueueActor>(QueueActorDeps {
+                state: state.clone(),
+                counter,
+                deps: harness.actor_deps().await,
+            })
+            .await;
 
         let send_recorder = harness.spawn_recorder::<SendToLlmProvider>().await;
         let chat_recorder = harness.spawn_recorder::<ChatEntrySubmitted>().await;
@@ -77,7 +79,8 @@ async fn session_phase_changed_idle_pops_user_message_from_queue() {
         session_id: session_id.clone(),
         old_phase: PhaseKind::Sending,
         new_phase: PhaseKind::Idle,
-    }).await;
+    })
+    .await;
 
     // Then SendToLlmProvider was emitted for the queued message.
     let send_cmds = await_recorded(&th.send_recorder, 1, Duration::from_millis(500)).await;
@@ -114,7 +117,8 @@ async fn session_phase_changed_non_idle_does_not_pop_queue() {
         session_id: session_id.clone(),
         old_phase: PhaseKind::Streaming,
         new_phase: PhaseKind::Sending,
-    }).await;
+    })
+    .await;
 
     // Then no SendToLlmProvider was emitted.
     let send_cmds = await_recorded(&th.send_recorder, 1, Duration::from_millis(500)).await;
@@ -143,7 +147,8 @@ async fn session_phase_changed_idle_with_empty_queue_is_noop() {
         session_id: session_id.clone(),
         old_phase: PhaseKind::Streaming,
         new_phase: PhaseKind::Idle,
-    }).await;
+    })
+    .await;
 
     // Then no commands were emitted.
     let send_cmds = await_recorded(&th.send_recorder, 1, Duration::from_millis(500)).await;
@@ -169,14 +174,12 @@ async fn dispatch_user_message_emits_chat_entry_submitted() {
         session_id: session_id.clone(),
         old_phase: PhaseKind::Sending,
         new_phase: PhaseKind::Idle,
-    }).await;
+    })
+    .await;
 
     // Then ChatEntrySubmitted was emitted.
     let chat_events = await_recorded(&th.chat_recorder, 1, Duration::from_millis(500)).await;
-    assert!(
-        !chat_events.is_empty(),
-        "expected ChatEntrySubmitted event"
-    );
+    assert!(!chat_events.is_empty(), "expected ChatEntrySubmitted event");
 }
 
 #[tokio::test]
@@ -192,13 +195,16 @@ async fn dispatch_user_message_sets_title_on_first_message() {
     {
         let mut s = th.state.write();
         s.active_session_mut()
-            .enqueue(QueueItem::UserMessage(Box::new(ChatEntry::user("my new chat"))));
+            .enqueue(QueueItem::UserMessage(Box::new(ChatEntry::user(
+                "my new chat",
+            ))));
     }
     th.publish(SessionPhaseChanged {
         session_id: session_id.clone(),
         old_phase: PhaseKind::Sending,
         new_phase: PhaseKind::Idle,
-    }).await;
+    })
+    .await;
 
     // Then the session title was set to the first line of the message.
     let _ = await_recorded(&th.send_recorder, 1, Duration::from_millis(500)).await;
@@ -226,7 +232,8 @@ async fn dispatch_user_message_transitions_to_sending() {
         session_id: session_id.clone(),
         old_phase: PhaseKind::Sending,
         new_phase: PhaseKind::Idle,
-    }).await;
+    })
+    .await;
 
     // Then the session is in Sending phase.
     let _ = await_recorded(&th.send_recorder, 1, Duration::from_millis(500)).await;
@@ -252,7 +259,8 @@ async fn dispatch_tool_continuation_emits_send_to_llm_provider() {
         session_id: session_id.clone(),
         old_phase: PhaseKind::Sending,
         new_phase: PhaseKind::Idle,
-    }).await;
+    })
+    .await;
 
     // Then SendToLlmProvider was emitted.
     let send_cmds = await_recorded(&th.send_recorder, 1, Duration::from_millis(500)).await;
@@ -278,7 +286,8 @@ async fn dispatch_user_message_provider_id_is_none_when_no_provider() {
         session_id: session_id.clone(),
         old_phase: PhaseKind::Sending,
         new_phase: PhaseKind::Idle,
-    }).await;
+    })
+    .await;
 
     // Then SendToLlmProvider has provider_id = None.
     let send_cmds = await_recorded(&th.send_recorder, 1, Duration::from_millis(500)).await;
@@ -307,7 +316,8 @@ async fn dispatch_user_message_provider_id_is_some_when_model_set() {
         session_id: session_id.clone(),
         old_phase: PhaseKind::Sending,
         new_phase: PhaseKind::Idle,
-    }).await;
+    })
+    .await;
 
     // Then SendToLlmProvider has provider_id = Some("my-model").
     let send_cmds = await_recorded(&th.send_recorder, 1, Duration::from_millis(500)).await;
@@ -336,7 +346,8 @@ async fn dispatch_tool_continuation_provider_id_is_none_when_no_provider() {
         session_id: session_id.clone(),
         old_phase: PhaseKind::Sending,
         new_phase: PhaseKind::Idle,
-    }).await;
+    })
+    .await;
 
     // Then SendToLlmProvider has provider_id = None.
     let send_cmds = await_recorded(&th.send_recorder, 1, Duration::from_millis(500)).await;
@@ -357,8 +368,7 @@ async fn dispatch_tool_continuation_provider_id_is_some_when_model_set() {
         let session = s.active_session_mut();
         session.push_entry(ChatEntry::user("previous message"));
         session.enqueue(QueueItem::ToolContinuation);
-        s.active_session_mut()
-            .set_model("tool-model".to_owned());
+        s.active_session_mut().set_model("tool-model".to_owned());
         s.session.active_session_id().clone()
     };
 
@@ -367,7 +377,8 @@ async fn dispatch_tool_continuation_provider_id_is_some_when_model_set() {
         session_id: session_id.clone(),
         old_phase: PhaseKind::Sending,
         new_phase: PhaseKind::Idle,
-    }).await;
+    })
+    .await;
 
     // Then SendToLlmProvider has provider_id = Some("tool-model").
     let send_cmds = await_recorded(&th.send_recorder, 1, Duration::from_millis(500)).await;
@@ -398,7 +409,8 @@ async fn dispatch_user_message_drains_steering_buffer_before_assembly() {
         session_id: session_id.clone(),
         old_phase: PhaseKind::Sending,
         new_phase: PhaseKind::Idle,
-    }).await;
+    })
+    .await;
 
     // Then the steering buffer is drained before assembly.
     let _ = await_recorded(&th.send_recorder, 1, Duration::from_millis(500)).await;
@@ -442,7 +454,8 @@ async fn dispatch_resume_drains_steering_buffer_before_assembly() {
         session_id: session_id.clone(),
         old_phase: PhaseKind::Sending,
         new_phase: PhaseKind::Idle,
-    }).await;
+    })
+    .await;
 
     // Then the steering buffer is drained before assembly.
     let _ = await_recorded(&th.send_recorder, 1, Duration::from_millis(500)).await;

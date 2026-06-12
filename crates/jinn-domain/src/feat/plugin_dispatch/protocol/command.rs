@@ -6,7 +6,7 @@
 
 use serde::{Deserialize, Serialize};
 
-use crate::protocol::{SessionId};
+use crate::protocol::SessionId;
 
 /// Attach an attachable plugin to a session.
 ///

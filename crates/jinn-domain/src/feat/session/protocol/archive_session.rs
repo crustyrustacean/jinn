@@ -11,7 +11,7 @@
 use serde::{Deserialize, Serialize};
 
 use crate::BusMessage;
-use crate::protocol::{SessionId};
+use crate::protocol::SessionId;
 
 /// Archive a session without running teardown.
 #[derive(Debug, Clone, Serialize, Deserialize)]

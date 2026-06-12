@@ -2,7 +2,6 @@
 
 use serde::{Deserialize, Serialize};
 
-
 /// Proceed with shutdown after actor coordination.
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct ProceedWithShutdown {

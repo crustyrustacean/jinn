@@ -8,7 +8,7 @@
 
 use serde::{Deserialize, Serialize};
 
-use crate::protocol::{SessionId};
+use crate::protocol::SessionId;
 
 /// Session was interacted with by the user.
 ///

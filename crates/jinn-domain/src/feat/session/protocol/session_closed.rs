@@ -8,7 +8,7 @@
 
 use serde::{Deserialize, Serialize};
 
-use crate::protocol::{SessionId};
+use crate::protocol::SessionId;
 
 /// Session closed and removed from the sessions map.
 #[derive(Debug, Clone, Serialize, Deserialize)]

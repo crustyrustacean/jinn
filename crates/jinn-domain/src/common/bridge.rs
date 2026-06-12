@@ -55,9 +55,7 @@ impl Bridge {
         let async_rx = receiver.to_async();
         // Spawn a drain task that silently discards all closures.
         // This keeps the channel open (sends succeed) but does nothing.
-        tokio::spawn(async move {
-            while async_rx.recv().await.is_ok() {}
-        });
+        tokio::spawn(async move { while async_rx.recv().await.is_ok() {} });
         Self { sender }
     }
 
@@ -65,11 +63,13 @@ impl Bridge {
     #[cfg(test)]
     #[must_use]
     pub fn new_for_test() -> Self {
-        let bus_actor = kameo_actors::message_bus::MessageBus::new(
-            kameo_actors::DeliveryStrategy::BestEffort,
-        );
+        let bus_actor =
+            kameo_actors::message_bus::MessageBus::new(kameo_actors::DeliveryStrategy::BestEffort);
         let bus_ref = kameo::prelude::Spawn::spawn(bus_actor);
-        Self::with_handle(bus_ref, crate::common::services::test_services::shared_test_handle())
+        Self::with_handle(
+            bus_ref,
+            crate::common::services::test_services::shared_test_handle(),
+        )
     }
 
     /// Sends a closure through the bridge (synchronous, non-blocking).
@@ -91,9 +91,7 @@ impl Bridge {
         Box::new(move |bus| {
             let bus = bus.clone();
             tokio::spawn(async move {
-                let _ = bus
-                    .tell(kameo_actors::message_bus::Publish(msg))
-                    .await;
+                let _ = bus.tell(kameo_actors::message_bus::Publish(msg)).await;
             });
         })
     }
@@ -112,8 +110,8 @@ mod tests {
 
     use super::*;
     use kameo::prelude::*;
-    use kameo_actors::message_bus::{Publish, Register};
     use kameo_actors::DeliveryStrategy;
+    use kameo_actors::message_bus::{Publish, Register};
     use std::sync::{Arc, Mutex};
 
     #[derive(Actor)]
@@ -130,11 +128,7 @@ mod tests {
     impl<T: Clone + Send + 'static> Message<T> for RecorderActor<T> {
         type Reply = ();
 
-        async fn handle(
-            &mut self,
-            msg: T,
-            _ctx: &mut Context<Self, Self::Reply>,
-        ) {
+        async fn handle(&mut self, msg: T, _ctx: &mut Context<Self, Self::Reply>) {
             self.received.lock().unwrap().push(msg);
         }
     }
@@ -158,10 +152,8 @@ mod tests {
         MessageBus::spawn(MessageBus::new(DeliveryStrategy::BestEffort))
     }
 
-    fn spawn_recorder<T: Clone + Send + 'static>() -> (
-        ActorRef<RecorderActor<T>>,
-        Arc<Mutex<Vec<T>>>,
-    ) {
+    fn spawn_recorder<T: Clone + Send + 'static>()
+    -> (ActorRef<RecorderActor<T>>, Arc<Mutex<Vec<T>>>) {
         let buffer = Arc::new(Mutex::new(Vec::new()));
         let actor = RecorderActor::spawn(RecorderActor::new(buffer.clone()));
         (actor, buffer)
@@ -179,9 +171,7 @@ mod tests {
                 .unwrap();
 
             // When publishing a message.
-            bus.tell(Publish(TestMsg { value: 42 }))
-                .await
-                .unwrap();
+            bus.tell(Publish(TestMsg { value: 42 })).await.unwrap();
 
             // Then the registered actor receives it.
             tokio::time::sleep(std::time::Duration::from_millis(50)).await;

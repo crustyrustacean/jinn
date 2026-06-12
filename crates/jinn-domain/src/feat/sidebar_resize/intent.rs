@@ -126,7 +126,6 @@ mod tests {
         assert_eq!(result.messages.len(), 1);
     }
 
-
     #[rstest::rstest]
     fn contract_decrements_sidebar_width() {
         // Given default state (sidebar_width = 30).
@@ -150,7 +149,6 @@ mod tests {
         // Then an UpdateAppState message was emitted.
         assert_eq!(result.messages.len(), 1);
     }
-
 
     #[rstest::rstest]
     fn contract_clamps_at_minimum() {

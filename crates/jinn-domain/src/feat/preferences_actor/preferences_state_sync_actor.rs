@@ -4,10 +4,10 @@
 //! On each event, replaces `state.frontend.preferences` with the full payload.
 //! This is the ONLY actor that writes to `frontend.preferences`.
 
+use super::protocol::event::PreferencesUpdated;
 use crate::common::actor_deps::{ActorDeps, BusPublish};
 use crate::common::services::bus_service::BusService;
 use crate::common::state::State;
-use super::protocol::event::PreferencesUpdated;
 use kameo::prelude::{Actor, ActorRef, Context, Message};
 /// Keeps `AppState.frontend.preferences` in sync with the persisted preferences.
 ///
@@ -30,12 +30,10 @@ impl Actor for PreferencesStateSyncActor {
     type Args = PreferencesStateSyncActorDeps;
     type Error = std::convert::Infallible;
 
-    async fn on_start(
-        args: Self::Args,
-        actor_ref: ActorRef<Self>,
-    ) -> Result<Self, Self::Error> {
+    async fn on_start(args: Self::Args, actor_ref: ActorRef<Self>) -> Result<Self, Self::Error> {
         args.deps
-            .subscribe(actor_ref.recipient::<PreferencesUpdated>()).await;
+            .subscribe(actor_ref.recipient::<PreferencesUpdated>())
+            .await;
 
         Ok(Self {
             state: args.state,
@@ -53,11 +51,7 @@ impl BusPublish for PreferencesStateSyncActor {
 impl Message<PreferencesUpdated> for PreferencesStateSyncActor {
     type Reply = ();
 
-    async fn handle(
-        &mut self,
-        msg: PreferencesUpdated,
-        _ctx: &mut Context<Self, Self::Reply>,
-    ) {
+    async fn handle(&mut self, msg: PreferencesUpdated, _ctx: &mut Context<Self, Self::Reply>) {
         let mut state = self.state.write();
         state.frontend.preferences = msg.preferences.clone();
     }
@@ -91,9 +85,7 @@ mod tests {
         let harness = TestHarness::new().await;
         let deps = create_deps(&harness).await;
         let state = deps.state.clone();
-        let _actor = harness
-            .spawn_actor::<PreferencesStateSyncActor>(deps)
-            .await;
+        let _actor = harness.spawn_actor::<PreferencesStateSyncActor>(deps).await;
 
         // When publishing a PreferencesUpdated event with custom preferences.
         let prefs = UserPreferences::default();

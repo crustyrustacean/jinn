@@ -32,10 +32,10 @@ use error_stack::Report;
 use futures::StreamExt as _;
 
 use jinn_provider::{LlmService, LlmServiceError, OnRetry, RetryingLlmService};
+use kameo::Actor;
 use kameo::actor::{ActorRef, WeakActorRef};
 use kameo::error::ActorStopReason;
 use kameo::message::{Context as MsgContext, Message};
-use kameo::Actor;
 use session::SessionData;
 
 /// OnRetry callback that pushes a system chat entry to notify the user.
@@ -109,7 +109,8 @@ impl Actor for LlmActor {
         let deps = &args.deps;
         deps.subscribe(actor_ref.clone().recipient::<SendToLlmProvider>())
             .await;
-        deps.subscribe(actor_ref.clone().recipient::<CancelStream>()).await;
+        deps.subscribe(actor_ref.clone().recipient::<CancelStream>())
+            .await;
         deps.subscribe(actor_ref.recipient::<StreamCompleted>())
             .await;
 
@@ -141,11 +142,7 @@ impl BusPublish for LlmActor {
 impl Message<SendToLlmProvider> for LlmActor {
     type Reply = ();
 
-    async fn handle(
-        &mut self,
-        msg: SendToLlmProvider,
-        _ctx: &mut MsgContext<Self, Self::Reply>,
-    ) {
+    async fn handle(&mut self, msg: SendToLlmProvider, _ctx: &mut MsgContext<Self, Self::Reply>) {
         self.start_stream(msg);
     }
 }
@@ -161,11 +158,7 @@ impl Message<CancelStream> for LlmActor {
 impl Message<StreamCompleted> for LlmActor {
     type Reply = ();
 
-    async fn handle(
-        &mut self,
-        msg: StreamCompleted,
-        _ctx: &mut MsgContext<Self, Self::Reply>,
-    ) {
+    async fn handle(&mut self, msg: StreamCompleted, _ctx: &mut MsgContext<Self, Self::Reply>) {
         self.handle_stream_completed(&msg);
     }
 }
@@ -379,11 +372,7 @@ impl LlmActor {
                             .await;
                             token_index += 1;
                         }
-                        StreamEvent::ToolUseStart {
-                            index,
-                            id,
-                            name,
-                        } => {
+                        StreamEvent::ToolUseStart { index, id, name } => {
                             bus.publish(ToolUseStarted {
                                 session_id: sid.clone(),
                                 index,
@@ -403,9 +392,7 @@ impl LlmActor {
                             })
                             .await;
                         }
-                        StreamEvent::ToolUseComplete {
-                            tool_call, ..
-                        } => {
+                        StreamEvent::ToolUseComplete { tool_call, .. } => {
                             accumulated_tool_calls.push(tool_call.clone());
                             bus.publish(ToolCallReceived {
                                 session_id: sid.clone(),
@@ -413,10 +400,7 @@ impl LlmActor {
                             })
                             .await;
                         }
-                        StreamEvent::Done {
-                            stop_reason,
-                            usage,
-                        } => {
+                        StreamEvent::Done { stop_reason, usage } => {
                             stream_ended_normally = true;
                             tracing::trace!(
                                 session_id = ?sid,
@@ -644,8 +628,8 @@ mod tests {
     use super::session::SessionState;
     use super::*;
 
-    use crate::common::bus::test_harness::{TestHarness, await_recorded};
     use crate::common::bus::BusMessage;
+    use crate::common::bus::test_harness::{TestHarness, await_recorded};
     use crate::feat::provider::protocol::event::StreamToken;
     use jinn_provider::FakeLlmServiceFactory;
 
@@ -852,10 +836,7 @@ mod tests {
         // Then the task is aborted.
         tokio::task::yield_now().await;
         for handle in actor.tasks.values() {
-            assert!(
-                handle.is_finished(),
-                "task should be aborted after on_stop"
-            );
+            assert!(handle.is_finished(), "task should be aborted after on_stop");
         }
     }
 
@@ -891,8 +872,8 @@ mod tests {
         harness.publish(payload).await;
 
         // Then StreamCompleted was emitted.
-        let completed = await_recorded(&recorder_completed, 1, std::time::Duration::from_secs(5))
-            .await;
+        let completed =
+            await_recorded(&recorder_completed, 1, std::time::Duration::from_secs(5)).await;
         let finished = completed
             .iter()
             .find(|sc| sc.reason == StreamCompletedReason::Finished);
@@ -901,8 +882,8 @@ mod tests {
         assert_eq!(finished.assistant_content.as_deref(), Some("Hello World"));
 
         // And StreamToken events were emitted with sequential indices.
-        let token_events = await_recorded(&recorder_tokens, 2, std::time::Duration::from_secs(2))
-            .await;
+        let token_events =
+            await_recorded(&recorder_tokens, 2, std::time::Duration::from_secs(2)).await;
         assert_eq!(token_events.len(), 2, "should have 2 token events");
         assert_eq!(token_events[0].index, 0, "first token index should be 0");
         assert_eq!(token_events[1].index, 1, "second token index should be 1");
@@ -1031,6 +1012,9 @@ mod tests {
 
         // Then no StreamCompleted is emitted (nothing to cancel).
         let completed = await_recorded(&recorder, 1, std::time::Duration::from_millis(100)).await;
-        assert!(completed.is_empty(), "CancelStream with no active stream should be a no-op");
+        assert!(
+            completed.is_empty(),
+            "CancelStream with no active stream should be a no-op"
+        );
     }
 }

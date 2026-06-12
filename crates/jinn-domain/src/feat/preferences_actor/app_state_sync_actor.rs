@@ -12,8 +12,8 @@ use kameo::prelude::{Actor, ActorRef, Context, Message};
 
 use crate::common::actor_deps::ActorDeps;
 use crate::common::state::State;
-use crate::feat::theme;
 use crate::feat::preferences_actor::protocol::app_state_event::AppStateUpdated;
+use crate::feat::theme;
 
 /// Keeps `AppState.frontend` in sync with persisted app state.
 ///
@@ -42,7 +42,8 @@ impl Actor for AppStateSyncActor {
 
     async fn on_start(args: Self::Args, actor_ref: ActorRef<Self>) -> Result<Self, Self::Error> {
         args.deps
-            .subscribe(actor_ref.recipient::<AppStateUpdated>()).await;
+            .subscribe(actor_ref.recipient::<AppStateUpdated>())
+            .await;
 
         Ok(Self {
             state: args.state,

@@ -66,7 +66,9 @@ impl Actor for QueueActor {
     type Error = std::convert::Infallible;
 
     async fn on_start(args: Self::Args, actor_ref: ActorRef<Self>) -> Result<Self, Self::Error> {
-        args.deps.subscribe(actor_ref.recipient::<SessionPhaseChanged>()).await;
+        args.deps
+            .subscribe(actor_ref.recipient::<SessionPhaseChanged>())
+            .await;
 
         Ok(Self {
             state: args.state,

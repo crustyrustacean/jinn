@@ -29,12 +29,10 @@ impl kameo::Actor for SidebarStateActor {
     type Args = SidebarStateActorDeps;
     type Error = kameo::error::Infallible;
 
-    async fn on_start(
-        args: Self::Args,
-        actor_ref: ActorRef<Self>,
-    ) -> Result<Self, Self::Error> {
+    async fn on_start(args: Self::Args, actor_ref: ActorRef<Self>) -> Result<Self, Self::Error> {
         args.deps
-            .subscribe(actor_ref.recipient::<SessionClosed>()).await;
+            .subscribe(actor_ref.recipient::<SessionClosed>())
+            .await;
 
         Ok(Self { state: args.state })
     }

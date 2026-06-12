@@ -38,7 +38,6 @@ pub(in crate::feat::session::session_actor) async fn emit_history_appended(
     .await;
 }
 
-
 #[cfg(test)]
 pub(super) async fn test_actor() -> super::SessionPersistenceActor {
     use crate::common::app_state::AppState;
@@ -56,7 +55,10 @@ pub(super) async fn test_actor() -> super::SessionPersistenceActor {
 }
 
 #[cfg(test)]
-pub(super) async fn test_actor_recording() -> (super::SessionPersistenceActor, crate::common::services::BusAudit) {
+pub(super) async fn test_actor_recording() -> (
+    super::SessionPersistenceActor,
+    crate::common::services::BusAudit,
+) {
     use crate::common::app_state::AppState;
     use crate::common::state::State;
     use crate::feat::context::strategy::token_estimator::TiktokenCounter;

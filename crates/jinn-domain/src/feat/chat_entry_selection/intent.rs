@@ -288,10 +288,9 @@ fn handle_fresh_toggle(state: &mut AppState) -> IntentResult {
 
     let session_id = state.active_session().session_id().clone();
 
-    let mut result = IntentResult::empty()
-        .message(PersistSession {
-            session_id: session_id.clone(),
-        });
+    let mut result = IntentResult::empty().message(PersistSession {
+        session_id: session_id.clone(),
+    });
 
     if let Some(id) = maybe_entry_id {
         result = result.message(ContextOverrideChanged {
@@ -396,7 +395,12 @@ mod tests {
         let result = handle_pin_selected(&mut state);
 
         // Then a PinChatEntry command is returned.
-        assert!(result.message_names.iter().any(|n| n.contains("PinChatEntry")));
+        assert!(
+            result
+                .message_names
+                .iter()
+                .any(|n| n.contains("PinChatEntry"))
+        );
     }
 
     #[rstest::rstest]
@@ -428,7 +432,12 @@ mod tests {
         let result = handle_pin_selected(&mut state);
 
         // Then an UnpinChatEntry command is returned.
-        assert!(result.message_names.iter().any(|n| n.contains("UnpinChatEntry")));
+        assert!(
+            result
+                .message_names
+                .iter()
+                .any(|n| n.contains("UnpinChatEntry"))
+        );
     }
 
     #[rstest::rstest]
@@ -595,7 +604,12 @@ mod tests {
         let result = handle_fork_from_entry(&mut state);
 
         // Then a SessionForkRequested command is returned.
-        assert!(result.message_names.iter().any(|n| n.contains("SessionForkRequested")));
+        assert!(
+            result
+                .message_names
+                .iter()
+                .any(|n| n.contains("SessionForkRequested"))
+        );
     }
 
     #[rstest::rstest]
@@ -647,7 +661,12 @@ mod tests {
         let result = handle_fork_from_entry(&mut state);
 
         // Then a SessionForkRequested command is returned.
-        assert!(result.message_names.iter().any(|n| n.contains("SessionForkRequested")));
+        assert!(
+            result
+                .message_names
+                .iter()
+                .any(|n| n.contains("SessionForkRequested"))
+        );
     }
 
     // --- Yank Selected Entry ---

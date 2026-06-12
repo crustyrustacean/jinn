@@ -40,10 +40,7 @@ impl<H: HistoryWorker + Clone + Send + 'static> Actor for HistoryWorkerActor<H> 
     type Args = HistoryWorkerActorDeps<H>;
     type Error = kameo::error::Infallible;
 
-    async fn on_start(
-        args: Self::Args,
-        actor_ref: ActorRef<Self>,
-    ) -> Result<Self, Self::Error> {
+    async fn on_start(args: Self::Args, actor_ref: ActorRef<Self>) -> Result<Self, Self::Error> {
         args.deps
             .subscribe(actor_ref.recipient::<HistorySnapshotReady>())
             .await;
@@ -61,11 +58,7 @@ impl<H: HistoryWorker + Clone + Send + 'static> Message<HistorySnapshotReady>
 {
     type Reply = ();
 
-    async fn handle(
-        &mut self,
-        msg: HistorySnapshotReady,
-        _ctx: &mut Context<Self, Self::Reply>,
-    ) {
+    async fn handle(&mut self, msg: HistorySnapshotReady, _ctx: &mut Context<Self, Self::Reply>) {
         self.handle_snapshot_ready(&msg).await;
     }
 }
@@ -77,10 +70,7 @@ impl<H: HistoryWorker + Clone> BusPublish for HistoryWorkerActor<H> {
 }
 
 impl<H: HistoryWorker + Clone> HistoryWorkerActor<H> {
-    pub(crate) async fn handle_snapshot_ready(
-        &mut self,
-        event: &HistorySnapshotReady,
-    ) {
+    pub(crate) async fn handle_snapshot_ready(&mut self, event: &HistorySnapshotReady) {
         tracing::info!(
             worker = self.worker.name(),
             session_id = %event.session_id,

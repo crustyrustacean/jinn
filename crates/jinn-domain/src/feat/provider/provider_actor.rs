@@ -26,9 +26,9 @@ use crate::feat::provider::protocol::command::{
 use crate::feat::provider::protocol::event::{ModelCacheLoaded, ModelsRefreshed, ProviderSwitched};
 
 use super::loader::{load_compaction_model_picker_items, load_provider_picker_items};
+use kameo::Actor;
 use kameo::actor::ActorRef;
 use kameo::message::{Context as MsgContext, Message};
-use kameo::Actor;
 
 /// The provider actor.
 ///
@@ -55,11 +55,20 @@ impl Actor for ProviderActor {
 
     async fn on_start(args: Self::Args, actor_ref: ActorRef<Self>) -> Result<Self, Self::Error> {
         let bus = &args.deps.services.bus;
-        bus.register(actor_ref.clone().recipient::<ProviderSwitch>()).await;
-        bus.register(actor_ref.clone().recipient::<LoadProviderPickerEntries>()).await;
-        bus.register(actor_ref.clone().recipient::<LoadCompactionModelPickerEntries>()).await;
-        bus.register(actor_ref.clone().recipient::<ModelsRefreshed>()).await;
-        bus.register(actor_ref.recipient::<ModelCacheLoaded>()).await;
+        bus.register(actor_ref.clone().recipient::<ProviderSwitch>())
+            .await;
+        bus.register(actor_ref.clone().recipient::<LoadProviderPickerEntries>())
+            .await;
+        bus.register(
+            actor_ref
+                .clone()
+                .recipient::<LoadCompactionModelPickerEntries>(),
+        )
+        .await;
+        bus.register(actor_ref.clone().recipient::<ModelsRefreshed>())
+            .await;
+        bus.register(actor_ref.recipient::<ModelCacheLoaded>())
+            .await;
 
         Ok(Self {
             state: args.state,
@@ -71,11 +80,7 @@ impl Actor for ProviderActor {
 impl Message<ProviderSwitch> for ProviderActor {
     type Reply = ();
 
-    async fn handle(
-        &mut self,
-        msg: ProviderSwitch,
-        _ctx: &mut MsgContext<Self, Self::Reply>,
-    ) {
+    async fn handle(&mut self, msg: ProviderSwitch, _ctx: &mut MsgContext<Self, Self::Reply>) {
         self.handle_provider_switch(&msg);
         self.publish(ProviderSwitched {
             session_id: msg.session_id.clone(),
@@ -114,11 +119,7 @@ impl Message<LoadCompactionModelPickerEntries> for ProviderActor {
 impl Message<ModelsRefreshed> for ProviderActor {
     type Reply = ();
 
-    async fn handle(
-        &mut self,
-        msg: ModelsRefreshed,
-        _ctx: &mut MsgContext<Self, Self::Reply>,
-    ) {
+    async fn handle(&mut self, msg: ModelsRefreshed, _ctx: &mut MsgContext<Self, Self::Reply>) {
         self.handle_models_refreshed(&msg);
     }
 }
@@ -126,11 +127,7 @@ impl Message<ModelsRefreshed> for ProviderActor {
 impl Message<ModelCacheLoaded> for ProviderActor {
     type Reply = ();
 
-    async fn handle(
-        &mut self,
-        msg: ModelCacheLoaded,
-        _ctx: &mut MsgContext<Self, Self::Reply>,
-    ) {
+    async fn handle(&mut self, msg: ModelCacheLoaded, _ctx: &mut MsgContext<Self, Self::Reply>) {
         self.handle_model_cache_loaded(&msg.cache);
     }
 }
@@ -321,12 +318,17 @@ mod tests {
 
         // When publishing ModelCacheLoaded via bus.
         harness
-            .publish(ModelCacheLoaded { cache: cache.clone() })
+            .publish(ModelCacheLoaded {
+                cache: cache.clone(),
+            })
             .await;
 
         // Then the model cache is set in state.
         tokio::time::sleep(std::time::Duration::from_millis(50)).await;
-        assert!(state.read().provider.model_cache.is_some(), "actor should have processed the event");
+        assert!(
+            state.read().provider.model_cache.is_some(),
+            "actor should have processed the event"
+        );
 
         let s = state.read();
         assert!(s.provider.model_cache.is_some());
@@ -359,7 +361,9 @@ mod tests {
 
         // When publishing ModelCacheLoaded via bus.
         harness
-            .publish(ModelCacheLoaded { cache: cache.clone() })
+            .publish(ModelCacheLoaded {
+                cache: cache.clone(),
+            })
             .await;
 
         tokio::time::sleep(std::time::Duration::from_millis(50)).await;
@@ -599,7 +603,9 @@ mod tests {
         cache.last_updated_at = Some(jiff::Timestamp::now());
 
         harness
-            .publish(ModelCacheLoaded { cache: cache.clone() })
+            .publish(ModelCacheLoaded {
+                cache: cache.clone(),
+            })
             .await;
 
         tokio::time::sleep(std::time::Duration::from_millis(50)).await;
@@ -663,7 +669,9 @@ mod tests {
         cache.last_updated_at = Some(jiff::Timestamp::now());
 
         harness
-            .publish(ModelCacheLoaded { cache: cache.clone() })
+            .publish(ModelCacheLoaded {
+                cache: cache.clone(),
+            })
             .await;
 
         tokio::time::sleep(std::time::Duration::from_millis(50)).await;
