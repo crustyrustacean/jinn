@@ -54,6 +54,28 @@ pub(super) async fn test_actor() -> super::SessionPersistenceActor {
         lifecycle_child: None,
     }
 }
+
+#[cfg(test)]
+pub(super) async fn test_actor_recording() -> (super::SessionPersistenceActor, crate::common::services::BusAudit) {
+    use crate::common::app_state::AppState;
+    use crate::common::state::State;
+    use crate::feat::context::strategy::token_estimator::TiktokenCounter;
+
+    let (bus, audit) = crate::common::services::BusService::new_recording();
+    let services = crate::common::services::Services::new_fake_with_bus(bus).await;
+
+    (
+        super::SessionPersistenceActor {
+            state: State::new(AppState::default()),
+            services,
+            counter: TiktokenCounter::o200k_base(),
+            builtin_registry: crate::feat::session_lifecycle::builtin::BuiltinRegistry::new(),
+            shell: "/bin/sh".to_owned(),
+            lifecycle_child: None,
+        },
+        audit,
+    )
+}
 // --- Shared test store helpers ---
 
 /// A fake session store that returns pre-loaded sessions for testing.

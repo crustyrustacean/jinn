@@ -170,9 +170,7 @@ impl SessionPersistenceActor {
     }
 }
 
-//FIXME: disabled during actor migration — tests reference deleted types
-// #[cfg(test)]
-#[cfg(any())]
+#[cfg(test)]
 mod tests {
     #![allow(
         clippy::expect_used,
@@ -181,17 +179,13 @@ mod tests {
         clippy::indexing_slicing,
         reason = "test code"
     )]
-    use std::sync::Arc;
 
-    use crate::Event;
-    use crate::common::actor::{Actor as _, ActorContext, MessageSink, RecordingSink};
     use crate::common::app_state::AppState;
-    use crate::common::services::test_services::TestServices;
+    use crate::common::services::BusAudit;
     use crate::common::state::State;
-    use crate::feat::context::protocol::event::PersonasLoaded;
+    use crate::feat::context::protocol::event::{ChatEntryPinChanged, PersonasLoaded};
     use crate::feat::persona::Persona;
 
-    use super::super::super::SessionPersistenceActorDeps;
     use super::*;
     use crate::protocol::PinPosition;
 
@@ -204,24 +198,21 @@ mod tests {
         }
     }
 
-    async fn create_actor() -> (SessionPersistenceActor, State) {
+    async fn create_actor() -> (super::super::super::SessionPersistenceActor, State, BusAudit) {
         let state = State::new(AppState::default());
-        let actor = SessionPersistenceActor {
+        let (actor, audit) = super::super::super::helpers::test_actor_recording().await;
+        let actor = super::super::super::SessionPersistenceActor {
             state: state.clone(),
-            services: crate::common::services::Services::new_fake().await,
-            counter: crate::feat::context::strategy::token_estimator::TiktokenCounter::o200k_base(),
-            builtin_registry: crate::feat::session_lifecycle::builtin::BuiltinRegistry::new(),
-            shell: "/bin/sh".to_owned(),
-            lifecycle_child: None,
+            ..actor
         };
-        (actor, state)
+        (actor, state, audit)
     }
 
     #[rstest::rstest]
     #[tokio::test]
     async fn on_tools_registered_keeps_regular_tools_in_global_map() {
         // Given a session actor.
-        let (actor, state) = create_actor().await;
+        let (mut actor, state, _audit) = create_actor().await;
 
         // Build a ToolsRegistered with all builtin tools.
         let all_tools = crate::feat::tools_actor::registry::builtin_tools(
@@ -248,7 +239,7 @@ mod tests {
     #[tokio::test]
     async fn on_personas_loaded_selects_coding_assistant_when_none_active() {
         // Given a session actor with no active persona.
-        let (actor, state) = create_actor().await;
+        let (mut actor, state, _audit) = create_actor().await;
         let personas = vec![
             make_persona("learning-tutor"),
             make_persona("coding-assistant"),
@@ -277,7 +268,7 @@ mod tests {
     #[tokio::test]
     async fn on_personas_loaded_keeps_existing_active_persona() {
         // Given a session actor with active persona "learning-tutor".
-        let (actor, state) = create_actor().await;
+        let (mut actor, state, _audit) = create_actor().await;
         {
             let mut guard = state.write();
             guard.context.active_persona = Some(make_persona("learning-tutor"));
@@ -310,7 +301,7 @@ mod tests {
     #[tokio::test]
     async fn on_personas_loaded_falls_back_when_active_missing() {
         // Given a session actor where active persona "foo" was deleted from disk.
-        let (actor, state) = create_actor().await;
+        let (mut actor, state, _audit) = create_actor().await;
         {
             let mut guard = state.write();
             guard.context.active_persona = Some(make_persona("foo"));
@@ -340,7 +331,7 @@ mod tests {
     #[tokio::test]
     async fn on_personas_loaded_uses_first_when_coding_assistant_missing() {
         // Given a session actor with no coding-assistant in the scanned list.
-        let (actor, state) = create_actor().await;
+        let (mut actor, state, _audit) = create_actor().await;
         let personas = vec![make_persona("learning-tutor")];
         let payload = PersonasLoaded {
             personas,
@@ -366,7 +357,7 @@ mod tests {
     #[tokio::test]
     async fn on_personas_loaded_clears_active_when_list_empty() {
         // Given a session actor with some active persona.
-        let (actor, state) = create_actor().await;
+        let (mut actor, state, _audit) = create_actor().await;
         {
             let mut guard = state.write();
             guard.context.active_persona = Some(make_persona("foo"));
@@ -390,12 +381,7 @@ mod tests {
     #[tokio::test]
     async fn handle_pin_chat_entry_pins_and_emits() {
         // Given a session with a user entry.
-        let (actor, state) = create_actor().await;
-        let (sink, ctx) = {
-            let sink = Arc::new(RecordingSink::new());
-            let ctx = ActorContext::new("test", sink.clone());
-            (sink, ctx)
-        };
+        let (mut actor, state, audit) = create_actor().await;
         let entry_id = {
             let mut guard = state.write();
             let session = guard.active_session_mut();
@@ -411,7 +397,7 @@ mod tests {
             session_id: session_id.clone(),
             entry_id: entry_id.clone(),
             position: PinPosition::Top,
-        });
+        }).await;
 
         // Then the entry is pinned.
         let guard = state.read();
@@ -422,13 +408,10 @@ mod tests {
             .find(|e| e.id == entry_id)
             .expect("entry");
         assert!(entry.is_pinned(), "expected entry to be pinned");
+        drop(guard);
 
         // And ChatEntryPinChanged event was emitted.
-        let has_event = sink
-            .events()
-            .iter()
-            .any(|e| matches!(e, Event::ChatEntryPinChanged(e) if e.session_id == session_id));
-        assert!(has_event, "expected ChatEntryPinChanged event");
+        assert!(audit.contains_name("ChatEntryPinChanged"), "expected ChatEntryPinChanged event");
     }
 
     // --- handle_unpin_chat_entry ---
@@ -437,12 +420,7 @@ mod tests {
     #[tokio::test]
     async fn handle_unpin_chat_entry_unpins_and_emits() {
         // Given a session with a pinned entry.
-        let (actor, state) = create_actor().await;
-        let (sink, ctx) = {
-            let sink = Arc::new(RecordingSink::new());
-            let ctx = ActorContext::new("test", sink.clone());
-            (sink, ctx)
-        };
+        let (mut actor, state, audit) = create_actor().await;
         let entry_id = {
             let mut guard = state.write();
             let session = guard.active_session_mut();
@@ -458,7 +436,7 @@ mod tests {
         actor.handle_unpin_chat_entry(&UnpinChatEntry {
             session_id: session_id.clone(),
             entry_id: entry_id.clone(),
-        });
+        }).await;
 
         // Then the entry is no longer pinned.
         let guard = state.read();
@@ -469,13 +447,10 @@ mod tests {
             .find(|e| e.id == entry_id)
             .expect("entry");
         assert!(!entry.is_pinned(), "expected entry to be unpinned");
+        drop(guard);
 
         // And ChatEntryPinChanged event was emitted.
-        let has_event = sink
-            .events()
-            .iter()
-            .any(|e| matches!(e, Event::ChatEntryPinChanged(e) if e.session_id == session_id));
-        assert!(has_event, "expected ChatEntryPinChanged event");
+        assert!(audit.contains_name("ChatEntryPinChanged"), "expected ChatEntryPinChanged event");
     }
 
     // --- on_prompt_templates_loaded ---
@@ -486,7 +461,7 @@ mod tests {
     #[tokio::test]
     async fn handle_load_persona_picker_entries_populates_picker() {
         // Given a session actor with personas loaded.
-        let (actor, state) = create_actor().await;
+        let (mut actor, state, _audit) = create_actor().await;
         {
             let mut guard = state.write();
             guard.context.personas = vec![
@@ -497,7 +472,7 @@ mod tests {
         }
 
         // When loading persona picker entries.
-        actor.handle_load_persona_picker_entries(&LoadPersonaPickerEntries);
+        actor.handle_load_persona_picker_entries(&LoadPersonaPickerEntries).await;
 
         // Then the picker has entries with correct active state.
         let guard = state.read();

@@ -178,6 +178,67 @@ impl Services {
             bridge,
         }
     }
+
+    /// Construct a fake Services with a pre-built bus (e.g. BusService::new_recording()).
+    #[cfg(test)]
+    pub async fn new_fake_with_bus(bus: bus_service::BusService) -> Self {
+        let handle = test_services::shared_test_handle();
+        let tempdir = Arc::new(tempfile::TempDir::new().expect("test temp dir"));
+
+        // Keep a live drainer so the sender doesn't return ReceiveClosed.
+        let (actor_tx, actor_rx) = kanal::unbounded::<AppMsg>();
+        handle.spawn(async move {
+            let rx = actor_rx.to_async();
+            while rx.recv().await.is_ok() {}
+        });
+        let bridge = crate::common::bridge::Bridge::new_for_test();
+
+        Self {
+            paths: crate::common::app_paths::AppPaths::new_in(tempdir.path()),
+            handle,
+            actor_channel: ActorChannelService::new(actor_tx),
+            llm_service: LlmServiceFactoryService::new(Arc::new(
+                crate::feat::provider_infra::FakeLlmServiceFactory::new(vec![]),
+            )),
+            provider_registry: ProviderRegistryService::new(
+                ProviderRegistry::from_config(ProvidersConfig {
+                    providers: vec![],
+                    aliases: vec![],
+                    default_provider: None,
+                })
+                .expect("empty config is valid"),
+            ),
+            api_keys: ApiKeysService::new(ApiKeys::new()),
+            config_storage: ConfigStorageService::new(Arc::new(InMemoryConfigStorage::new())),
+            session_store: SessionStoreService::new(Arc::new(test_services::FakeSessionStore)),
+            user_preferences_storage: {
+                let svc = UserPreferencesStorageService::new(Arc::new(
+                    InMemoryUserPreferencesStorage::new(),
+                ));
+                svc.reload().expect("test prefs storage initial reload");
+                svc
+            },
+            app_state_storage: {
+                let svc = AppStateStorageService::new(Arc::new(InMemoryAppStateStorage::new()));
+                svc.reload().expect("test app state storage initial reload");
+                svc
+            },
+            plugins: crate::feat::plugin_dispatch::PluginFireService::new(std::sync::Arc::new(
+                NoopPluginFire,
+            )
+                as std::sync::Arc<dyn PluginFire>),
+            plugin_sync: crate::feat::plugin_dispatch::PluginSyncCallService::new(
+                std::sync::Arc::new(NoopPluginSyncCall) as std::sync::Arc<dyn PluginSyncCall>,
+            ),
+            session_plugin_registry: crate::feat::plugin_system::SessionPluginRegistryService::new(
+                std::sync::Arc::new(NoopSessionPluginRegistry)
+                    as std::sync::Arc<dyn crate::feat::plugin_system::SessionPluginRegistry>,
+            ),
+            tempdir: Some(tempdir),
+            bus,
+            bridge,
+        }
+    }
 }
 
 // ── Noop plugin implementations for test defaults ─────────────────────
