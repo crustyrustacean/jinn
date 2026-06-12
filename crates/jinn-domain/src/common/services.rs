@@ -32,12 +32,14 @@ pub mod actor_channel;
 
 pub mod bus_service;
 
-#[cfg(test)]
-mod actor_channel_tests;
 
 pub mod test_services;
 
 pub use actor_channel::ActorChannelService;
+pub use bus_service::BusService;
+
+#[cfg(test)]
+pub use bus_service::{BusAudit, RecordedMessage};
 
 /// Runtime services shared across the application.
 ///

@@ -31,3 +31,5 @@ pub struct TaskListUpdated {
     /// The session whose task list was updated.
     pub session_id: SessionId,
 }
+
+impl crate::common::bus::BusMessage for TaskListUpdated {}

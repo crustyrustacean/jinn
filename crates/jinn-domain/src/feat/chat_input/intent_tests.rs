@@ -10,7 +10,7 @@
 use crate::common::app_state::AppState;
 use crate::feat::chat_input::{AutocompleteMatch, AutocompleteTrigger, InputMode};
 use crate::feat::session::phase_machine::PhaseKind;
-use crate::protocol::{ChatEntry, Command};
+use crate::protocol::ChatEntry;
 
 #[rstest::rstest]
 fn insert_char_appends_to_buffer() {

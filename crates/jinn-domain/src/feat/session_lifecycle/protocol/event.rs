@@ -21,6 +21,8 @@ pub struct SessionSetupCompleted {
     pub error: Option<String>,
 }
 
+impl crate::common::bus::BusMessage for SessionSetupCompleted {}
+
 /// A new chat session was created.
 ///
 /// Emitted by the intent handler when `handle_session_lifecycle_setup()` inserts
@@ -45,6 +47,8 @@ pub struct SessionCwdChanged {
     pub cwd: PathBuf,
 }
 
+impl crate::common::bus::BusMessage for SessionCwdChanged {}
+
 /// Teardown command finished (success or failure).
 ///
 /// Emitted by the session-persistence actor after running a lifecycle teardown command.
@@ -57,5 +61,7 @@ pub struct SessionTeardownFinished {
     /// Error message if teardown failed.
     pub error: Option<String>,
 }
+
+impl crate::common::bus::BusMessage for SessionTeardownFinished {}
 
 impl crate::common::bus::BusMessage for SessionCreated {}

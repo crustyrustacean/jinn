@@ -16,6 +16,8 @@ pub struct ChatEntryPinChanged {
     pub session_id: SessionId,
 }
 
+impl BusMessage for ChatEntryPinChanged {}
+
 /// Emitted when personas have been scanned and loaded from disk.
 ///
 /// The context actor receives this event and stores the loaded personas
@@ -27,6 +29,8 @@ pub struct PersonasLoaded {
     /// Error message if scanning failed, `None` on success.
     pub error: Option<String>,
 }
+
+impl BusMessage for PersonasLoaded {}
 
 /// Emitted when a chat entry's context override is toggled (e.g. via the `x` keybind).
 ///
@@ -60,3 +64,5 @@ pub struct ContextFilesLoaded {
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub error: Option<String>,
 }
+
+impl BusMessage for ContextFilesLoaded {}

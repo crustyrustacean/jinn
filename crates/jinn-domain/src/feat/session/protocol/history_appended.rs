@@ -36,3 +36,5 @@ pub struct HistoryAppended {
     /// The session whose history was appended to.
     pub session_id: SessionId,
 }
+
+impl crate::common::bus::BusMessage for HistoryAppended {}

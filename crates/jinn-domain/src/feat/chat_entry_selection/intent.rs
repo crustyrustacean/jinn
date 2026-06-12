@@ -313,10 +313,9 @@ mod tests {
         reason = "test code"
     )]
     use crate::common::app_state::AppState;
-    use crate::feat::context::protocol::command::PinChatEntry;
     use crate::feat::session::chat_entry::ChangeSource;
     use crate::feat::session::tool_result_status::ToolResultStatus;
-    use crate::protocol::{ChatEntry, Command, ContextOverride, PinPosition};
+    use crate::protocol::{ChatEntry, ContextOverride, PinPosition};
 
     use super::*;
 
@@ -960,8 +959,8 @@ mod tests {
             .active_session_mut()
             .push_entry(ChatEntry::user("hello"));
         state.active_session_mut().select_next_entry();
-        let session_id = state.active_session().session_id().clone();
-        let entry_id = state
+        let _session_id = state.active_session().session_id().clone();
+        let _entry_id = state
             .active_session()
             .selected_entry()
             .expect("entry")
