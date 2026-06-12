@@ -78,7 +78,5 @@ impl PreferencesActor {
     }
 }
 
-//FIXME: disabled during actor migration
-// #[cfg(test)]
-#[cfg(any())]
+#[cfg(test)]
 mod preferences_actor_tests;

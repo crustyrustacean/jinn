@@ -65,9 +65,7 @@ pub fn handle_resize_leave(state: &mut AppState) -> IntentResult {
     IntentResult::empty()
 }
 
-//FIXME: disabled during actor migration
-// #[cfg(test)]
-#[cfg(any())]
+#[cfg(test)]
 mod tests {
     #![allow(
         clippy::expect_used,
@@ -79,7 +77,6 @@ mod tests {
     use crate::common::app_state::AppState;
     use crate::common::app_state::FocusScope;
     use crate::feat::preferences_actor::protocol::app_state_command::AppStateUpdate;
-    use crate::protocol::Command;
 
     use super::*;
 

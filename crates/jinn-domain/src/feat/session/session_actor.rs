@@ -712,8 +712,7 @@ impl kameo::message::Message<SessionLoadCompleted> for SessionPersistenceActor {
 
 
 //FIXME: disabled during actor migration — tests reference deleted types
-// #[cfg(test)]
-#[cfg(any())]
+#[cfg(test)]
 mod dispatch_tests {
     #![allow(
         clippy::expect_used,

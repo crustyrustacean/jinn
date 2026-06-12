@@ -249,6 +249,5 @@ impl crate::common::bus::BusMessage for SkillsLoaded {}
 impl crate::common::bus::BusMessage for ScanSkills {}
 
 //FIXME: disabled during actor migration — tests reference deleted types
-// #[cfg(test)]
-#[cfg(any())]
+#[cfg(test)]
 mod tests;

@@ -46,9 +46,7 @@ pub struct UpdateAppState {
 
 impl crate::common::bus::BusMessage for UpdateAppState {}
 
-//FIXME: disabled during actor migration
-// #[cfg(test)]
-#[cfg(any())]
+#[cfg(test)]
 mod tests {
     #![allow(
         clippy::expect_used,
