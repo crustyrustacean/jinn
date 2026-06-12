@@ -199,6 +199,7 @@ impl PluginFire for NoopPluginFire {
         _session: SessionRegistryId,
         hook: &str,
         _ctx: &serde_json::Value,
+        _enabled_plugins: Vec<String>,
     ) -> Result<(), Report<PluginFireError>> {
         tracing::debug!(hook, "noop plugin fire for session");
         Ok(())
@@ -212,6 +213,18 @@ impl PluginFire for NoopPluginFire {
     ) -> Result<Vec<serde_json::Value>, Report<PluginFireError>> {
         tracing::debug!(hook, "noop plugin collect for session");
         Ok(vec![])
+    }
+
+    async fn execute_plugin_tool(
+        &self,
+        _target: Option<SessionRegistryId>,
+        _session_id: &crate::protocol::SessionId,
+        _plugin_name: &str,
+        _tool_name: &str,
+        _arguments: &serde_json::Value,
+    ) -> Result<String, Report<PluginFireError>> {
+        tracing::debug!("noop plugin execute tool");
+        Ok(String::new())
     }
 
     fn name(&self) -> &'static str {
@@ -253,11 +266,15 @@ impl crate::feat::plugin_system::SessionPluginRegistry for NoopSessionPluginRegi
     async fn create_session_registry(
         &self,
         _plugin_names: Vec<String>,
+        _origin_session_id: crate::protocol::SessionId,
     ) -> Result<
-        crate::feat::plugin_system::SessionRegistryId,
+        crate::feat::plugin_system::CreateSessionRegistryResult,
         Report<crate::feat::plugin_system::SessionPluginRegistryError>,
     > {
-        Ok(crate::feat::plugin_system::SessionRegistryId::new())
+        Ok(crate::feat::plugin_system::CreateSessionRegistryResult {
+            registry_id: crate::feat::plugin_system::SessionRegistryId::new(),
+            tool_metadata: Vec::new(),
+        })
     }
 
     async fn destroy_session_registry(

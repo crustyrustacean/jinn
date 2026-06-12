@@ -28,8 +28,9 @@ impl PluginFire for AsyncPluginHandle {
         session: SessionRegistryId,
         hook: &str,
         ctx: &Value,
+        enabled_plugins: Vec<String>,
     ) -> Result<(), Report<PluginFireError>> {
-        self.fire_async_for_session(Some(session), hook, ctx)
+        self.fire_async_for_session(Some(session), hook, ctx, enabled_plugins)
             .await
             .map_err(|report| report.change_context(PluginFireError))
     }
@@ -53,6 +54,25 @@ impl PluginFire for AsyncPluginHandle {
         self.fire_async_collect_for_session(Some(session), hook, ctx)
             .await
             .map_err(|report| report.change_context(PluginFireError))
+    }
+
+    async fn execute_plugin_tool(
+        &self,
+        target: Option<SessionRegistryId>,
+        session_id: &jinn_domain::SessionId,
+        plugin_name: &str,
+        tool_name: &str,
+        arguments: &Value,
+    ) -> Result<String, Report<PluginFireError>> {
+        self.execute_tool(
+            target,
+            session_id.clone(),
+            plugin_name,
+            tool_name,
+            arguments,
+        )
+        .await
+        .map_err(|report| report.change_context(PluginFireError))
     }
 
     fn name(&self) -> &'static str {

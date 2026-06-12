@@ -516,6 +516,11 @@ impl ChatSessionState {
         &self.core.history
     }
 
+    /// Clear the chat history, removing all entries.
+    pub(in crate::feat::session) fn clear_history(&mut self) {
+        self.core.history.clear();
+    }
+
     /// Mark entries at the given indices as ignored.
     ///
     /// Used by the compaction actor to mark entries that have been summarized.

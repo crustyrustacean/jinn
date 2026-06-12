@@ -109,7 +109,7 @@ pub fn assemble_prompt(
     // Apply overrides: tool definitions.
     let mut tool_defs: Vec<ToolDefinition> = overrides
         .and_then(|o| o.tool_definitions.clone())
-        .unwrap_or_else(|| state.context.tool_definitions.values().cloned().collect());
+        .unwrap_or_else(|| state.context.tools_for_session(session_id));
 
     // Filter out disabled tools from the default tool list.
     // Override tool_definitions are not filtered (user-provided takes priority).
@@ -149,10 +149,10 @@ pub fn assemble_prompt(
         // Filter disabled tools from the tool context block.
         let filtered_map: HashMap<String, ToolDefinition> = state
             .context
-            .tool_definitions
-            .iter()
-            .filter(|(name, _)| !disabled.contains(*name))
-            .map(|(k, v)| (k.clone(), v.clone()))
+            .tools_for_session(session_id)
+            .into_iter()
+            .filter(|def| !disabled.contains(def.name.as_str()))
+            .map(|def| (def.name.clone(), def))
             .collect();
         build_tool_context_block(&filtered_map)
     };
@@ -569,8 +569,7 @@ mod tests {
         {
             let mut guard = state.write();
             guard
-                .context
-                .tool_definitions
+                .context.global_tool_definitions
                 .insert("bash".to_owned(), make_tool("bash"));
         }
 
@@ -655,8 +654,7 @@ mod tests {
         {
             let mut guard = state.write();
             guard
-                .context
-                .tool_definitions
+                .context.global_tool_definitions
                 .insert("global_tool".to_owned(), make_tool("global_tool"));
         }
 
@@ -752,8 +750,7 @@ mod tests {
                 .active_session_mut()
                 .set_discovered_skills(vec![make_skill("test-skill")]);
             guard
-                .context
-                .tool_definitions
+                .context.global_tool_definitions
                 .insert("bash".to_owned(), make_tool("bash"));
         }
 
@@ -780,16 +777,13 @@ mod tests {
         {
             let mut guard = state.write();
             guard
-                .context
-                .tool_definitions
+                .context.global_tool_definitions
                 .insert("bash".to_owned(), make_tool("bash"));
             guard
-                .context
-                .tool_definitions
+                .context.global_tool_definitions
                 .insert("read".to_owned(), make_tool("read"));
             guard
-                .context
-                .tool_definitions
+                .context.global_tool_definitions
                 .insert("write".to_owned(), make_tool("write"));
             // Disable bash and write.
             let mut disabled = std::collections::HashSet::new();
@@ -833,12 +827,10 @@ mod tests {
         {
             let mut guard = state.write();
             guard
-                .context
-                .tool_definitions
+                .context.global_tool_definitions
                 .insert("bash".to_owned(), make_tool("bash"));
             guard
-                .context
-                .tool_definitions
+                .context.global_tool_definitions
                 .insert("read".to_owned(), make_tool("read"));
             // Disable bash.
             let mut disabled = std::collections::HashSet::new();
@@ -920,8 +912,7 @@ mod tests {
         {
             let mut guard = state.write();
             guard
-                .context
-                .tool_definitions
+                .context.global_tool_definitions
                 .insert("bash".to_owned(), make_tool("bash"));
             // Disable bash.
             let mut disabled = std::collections::HashSet::new();
@@ -1157,5 +1148,79 @@ mod tests {
             user_msg_count, 1,
             "top pinned user should appear exactly once, appeared {user_msg_count}"
         );
+    }
+
+    fn assemble_prompt_excludes_other_sessions_attached_tools() {
+        use crate::protocol::SessionId;
+
+        // Given a session with global tools.
+        let mut state = AppState::default();
+        let origin_id = SessionId::new();
+        let judge_id = SessionId::new();
+
+        // Insert a global tool.
+        let global_tool = ToolDefinition {
+            name: "bash".to_owned(),
+            description: "Run commands".to_owned(),
+            prompt_snippet: None,
+            prompt_guidelines: vec![],
+            parameters: serde_json::json!({"type": "object", "properties": {}}),
+            server_tool_type: None,
+        };
+        state.context.global_tool_definitions.insert("bash".to_owned(), global_tool);
+
+        // Insert an attached tool for the judge session only.
+        let attached_tool = ToolDefinition {
+            name: "judgment_passed".to_owned(),
+            description: "Call when passed".to_owned(),
+            prompt_snippet: None,
+            prompt_guidelines: vec![],
+            parameters: serde_json::json!({"type": "object", "properties": {}}),
+            server_tool_type: None,
+        };
+        state
+            .context
+            .session_tool_definitions
+            .entry(judge_id.clone())
+            .or_default()
+            .insert("judgment_passed".to_owned(), attached_tool);
+
+        // When assembling prompt for the origin session.
+        let result = assemble_prompt(&state, &origin_id, &counter(), None);
+
+        // Then the origin session sees bash but NOT judgment_passed.
+        let tool_names: Vec<&str> = result.tool_definitions.iter().map(|t| t.name.as_str()).collect();
+        assert!(tool_names.contains(&"bash"), "origin should see global tool 'bash'");
+        assert!(!tool_names.contains(&"judgment_passed"), "origin should NOT see attached tool 'judgment_passed'");
+    }
+
+    fn assemble_prompt_includes_own_sessions_attached_tools() {
+        use crate::protocol::SessionId;
+
+        // Given a session with global tools and session-specific tools.
+        let mut state = AppState::default();
+        let judge_id = SessionId::new();
+
+        let attached_tool = ToolDefinition {
+            name: "judgment_passed".to_owned(),
+            description: "Call when passed".to_owned(),
+            prompt_snippet: None,
+            prompt_guidelines: vec![],
+            parameters: serde_json::json!({"type": "object", "properties": {}}),
+            server_tool_type: None,
+        };
+        state
+            .context
+            .session_tool_definitions
+            .entry(judge_id.clone())
+            .or_default()
+            .insert("judgment_passed".to_owned(), attached_tool);
+
+        // When assembling prompt for the judge session.
+        let result = assemble_prompt(&state, &judge_id, &counter(), None);
+
+        // Then the judge session sees judgment_passed.
+        let tool_names: Vec<&str> = result.tool_definitions.iter().map(|t| t.name.as_str()).collect();
+        assert!(tool_names.contains(&"judgment_passed"), "judge session should see its attached tool");
     }
 }
