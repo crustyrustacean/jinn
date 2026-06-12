@@ -155,7 +155,15 @@ fn run_pending_migrations(conn: &mut SqliteConnection) -> Result<(), Report<Sess
     }
     if current < 17 {
         migrate_v17(conn)?;
-        record_version(conn, 17, "rename_entries_timestamp_to_timing")?;
+        record_version(
+            conn,
+            17,
+            "rewrite_model_to_model_selection_and_add_model_used",
+        )?;
+    }
+    if current < 18 {
+        migrate_v18(conn)?;
+        record_version(conn, 18, "rename_entries_timestamp_to_timing")?;
     }
     Ok(())
 }
@@ -476,6 +484,31 @@ fn rewrite_profile_strategy(raw: &str) -> String {
     serde_json::to_string(&serde_json::Value::Object(map)).unwrap_or_else(|_| raw.to_owned())
 }
 
+/// Rewrites profile JSON `model` field from bare string to tagged object.
+///
+/// Before: `"model": "ollama/llama3"`
+/// After:  `"model": {"single": "ollama/llama3"}`
+///
+/// If the `model` field is already an object (already migrated), leaves it unchanged.
+/// If the profile JSON is unparseable, leaves it unchanged.
+fn rewrite_profile_model(raw: &str) -> String {
+    let mut map: serde_json::Map<String, serde_json::Value> = match serde_json::from_str(raw) {
+        Ok(serde_json::Value::Object(m)) => m,
+        _ => return raw.to_owned(),
+    };
+
+    // Only rewrite if `model` is a bare string.
+    let Some(model_value) = map.get("model") else {
+        return raw.to_owned();
+    };
+    if let serde_json::Value::String(s) = model_value {
+        map.insert("model".to_owned(), serde_json::json!({"single": s}));
+    }
+    // If model is already an object or missing, leave it alone.
+
+    serde_json::to_string(&serde_json::Value::Object(map)).unwrap_or_else(|_| raw.to_owned())
+}
+
 /// v11: Add `is_workflow` column to sessions.
 ///
 /// Marks sessions created by workflow LLM nodes. Enables filtering
@@ -628,19 +661,70 @@ fn migrate_v16(conn: &mut SqliteConnection) -> Result<(), Report<SessionStoreErr
     Ok(())
 }
 
-/// v17: Rename `entries.timestamp` column to `timing`.
+/// v17: Rewrite profile JSON `model` field from bare string to tagged object,
+/// and add `model_used` column to `token_ledger`.
+///
+/// Before: `"model": "ollama/llama3"`
+/// After:  `"model": {"single": "ollama/llama3"}`
+///
+/// This enables the `ModelSelection` enum to deserialize correctly.
+/// Unparseable JSON is left unchanged.
+fn migrate_v17(conn: &mut SqliteConnection) -> Result<(), Report<SessionStoreError>> {
+    #[derive(QueryableByName)]
+    struct SessionRow {
+        #[diesel(sql_type = diesel::sql_types::Integer)]
+        rowid: i32,
+        #[diesel(sql_type = diesel::sql_types::Text)]
+        profile: String,
+    }
+
+    let rows: Vec<SessionRow> = sql_query("SELECT rowid, profile FROM sessions")
+        .load(conn)
+        .change_context(SessionStoreError)
+        .attach("v17: query sessions")?;
+
+    for row in rows {
+        let new_profile = rewrite_profile_model(&row.profile);
+
+        sql_query("UPDATE sessions SET profile = ? WHERE rowid = ?")
+            .bind::<diesel::sql_types::Text, _>(&new_profile)
+            .bind::<diesel::sql_types::Integer, _>(&row.rowid)
+            .execute(conn)
+            .change_context(SessionStoreError)
+            .attach("v17: update session profile")?;
+    }
+
+    let add_result = sql_query("ALTER TABLE token_ledger ADD COLUMN model_used TEXT").execute(conn);
+
+    // Idempotent: ignore "duplicate column" error if migration runs twice.
+    match add_result {
+        Err(diesel::result::Error::DatabaseError(
+            diesel::result::DatabaseErrorKind::Unknown,
+            msg,
+        )) if msg.message().contains("duplicate column name") => {}
+        Err(e) => {
+            return Err(e)
+                .change_context(SessionStoreError)
+                .attach("v17: add model_used column to token_ledger");
+        }
+        _ => {}
+    }
+
+    Ok(())
+}
+
+/// v18: Rename `entries.timestamp` column to `timing`.
 ///
 /// The column now stores `EntryTiming` JSON (instant or streamed timing data)
 /// rather than a plain timestamp string. The rename aligns the column name
 /// with the Rust field it maps to.
-fn migrate_v17(conn: &mut SqliteConnection) -> Result<(), Report<SessionStoreError>> {
+fn migrate_v18(conn: &mut SqliteConnection) -> Result<(), Report<SessionStoreError>> {
     sql_query("ALTER TABLE entries RENAME COLUMN timestamp TO timing")
         .execute(conn)
         .change_context(SessionStoreError)
-        .attach("v17: rename entries.timestamp to timing")?;
+        .attach("v18: rename entries.timestamp to timing")?;
     Ok(())
 }
-
 fn migrate_v12(conn: &mut SqliteConnection) -> Result<(), Report<SessionStoreError>> {
     sql_query(
         "ALTER TABLE session_history ADD COLUMN context_override TEXT NOT NULL DEFAULT 'default'",
@@ -701,7 +785,7 @@ mod tests {
                 .load(&mut conn)
                 .expect("query migrations");
 
-        assert_eq!(rows.len(), 18);
+        assert_eq!(rows.len(), 19);
         assert_eq!(rows[0].version, 0);
         assert_eq!(rows[0].name, "create_initial_schema");
         assert_eq!(rows[1].version, 1);
@@ -755,7 +839,7 @@ mod tests {
             .load(&mut conn)
             .expect("query count");
 
-        assert_eq!(rows[0].count, 18);
+        assert_eq!(rows[0].count, 19);
     }
 
     /// Applies migrations up to (and including) `target` version.
@@ -830,6 +914,24 @@ mod tests {
             migrate_v15(conn).expect("v15");
             record_version(conn, 15, "drop_strategy_state_column").expect("record v15");
         }
+        if target >= 16 {
+            migrate_v16(conn).expect("v16");
+            record_version(
+                conn,
+                16,
+                "rename_is_workflow_to_is_automated_and_add_persist",
+            )
+            .expect("record v16");
+        }
+        if target >= 17 {
+            migrate_v17(conn).expect("v17");
+            record_version(
+                conn,
+                17,
+                "rewrite_model_to_model_selection_and_add_model_used",
+            )
+            .expect("record v17");
+        }
     }
 
     /// Verifies that each migration guard uses `<` not `<=`.
@@ -851,7 +953,7 @@ mod tests {
             count: i64,
         }
 
-        for target_version in 0..=16_i32 {
+        for target_version in 0..=17_i32 {
             let (_dir, mut conn) = make_conn();
 
             // Build the database at exactly `target_version`.
@@ -867,8 +969,8 @@ mod tests {
                 .load(&mut conn)
                 .expect("query count");
             assert_eq!(
-                rows[0].count, 18,
-                "at target_version={target_version}: expected 18 migration rows, no duplicates"
+                rows[0].count, 19,
+                "at target_version={target_version}: expected 19 migration rows, no duplicates"
             );
         }
     }
@@ -1189,7 +1291,147 @@ mod tests {
     }
 
     #[test]
-    fn migrate_v17_renames_timestamp_and_preserves_value() {
+    fn migrate_v17_rewrites_bare_string_model_to_single() {
+        #[derive(QueryableByName)]
+        struct ProfileRow {
+            #[diesel(sql_type = diesel::sql_types::Text)]
+            profile: String,
+        }
+
+        // Given a database at v16 with a session having a bare-string model.
+        let (_dir, mut conn) = make_conn();
+        apply_migrations_up_to(&mut conn, 16);
+        sql_query(
+            "INSERT INTO sessions (id, title, updated_at, created_at, cwd, profile, blobs, lifecycle_script_state, is_automated, persist) \
+             VALUES ('test-v17', 'Test', '2024-01-01T00:00:00Z', '2024-01-01T00:00:00Z', '.', \
+             '{\"strategy\": \"sliding_window\", \"model\": \"ollama/llama3\", \"persona_name\": \"coding-assistant\", \"token_budget\": 150000, \"sliding_window_size\": 5}', \
+             '{}', 'nothing_ran', 0, 0)"
+        )
+        .execute(&mut conn)
+        .expect("insert pre-v17 session");
+
+        // When running migration v17.
+        migrate_v17(&mut conn).expect("migrate v17");
+
+        // Then the profile JSON has model rewritten as {"single":"ollama/llama3"}.
+        let rows: Vec<ProfileRow> = sql_query("SELECT profile FROM sessions WHERE id = 'test-v17'")
+            .load(&mut conn)
+            .expect("query");
+
+        assert_eq!(rows.len(), 1);
+        let profile: serde_json::Map<String, serde_json::Value> =
+            serde_json::from_str(&rows[0].profile).expect("parse profile");
+        assert_eq!(
+            profile["model"],
+            serde_json::json!({"single": "ollama/llama3"})
+        );
+        // And other profile fields are preserved.
+        assert_eq!(profile["strategy"], "sliding_window");
+        assert_eq!(profile["persona_name"], "coding-assistant");
+    }
+
+    #[test]
+    fn migrate_v17_handles_no_provider_id() {
+        #[derive(QueryableByName)]
+        struct ProfileRow {
+            #[diesel(sql_type = diesel::sql_types::Text)]
+            profile: String,
+        }
+
+        // Given a database at v16 with a session having <none> as model.
+        let (_dir, mut conn) = make_conn();
+        apply_migrations_up_to(&mut conn, 16);
+        sql_query(
+            "INSERT INTO sessions (id, title, updated_at, created_at, cwd, profile, blobs, lifecycle_script_state, is_automated, persist) \
+             VALUES ('test-none', 'Test', '2024-01-01T00:00:00Z', '2024-01-01T00:00:00Z', '.', \
+             '{\"strategy\": \"sliding_window\", \"model\": \"<none>\", \"persona_name\": \"coding-assistant\"}', \
+             '{}', 'nothing_ran', 0, 0)"
+        )
+        .execute(&mut conn)
+        .expect("insert pre-v17 session");
+
+        // When running migration v17.
+        migrate_v17(&mut conn).expect("migrate v17");
+
+        // Then the profile JSON has model rewritten as {"single":"<none>"}.
+        let rows: Vec<ProfileRow> =
+            sql_query("SELECT profile FROM sessions WHERE id = 'test-none'")
+                .load(&mut conn)
+                .expect("query");
+
+        assert_eq!(rows.len(), 1);
+        let profile: serde_json::Map<String, serde_json::Value> =
+            serde_json::from_str(&rows[0].profile).expect("parse profile");
+        assert_eq!(profile["model"], serde_json::json!({"single": "<none>"}));
+    }
+
+    #[test]
+    fn migrate_v17_is_idempotent() {
+        #[derive(QueryableByName)]
+        struct ProfileRow {
+            #[diesel(sql_type = diesel::sql_types::Text)]
+            profile: String,
+        }
+
+        // Given a database at v16 with a session.
+        let (_dir, mut conn) = make_conn();
+        apply_migrations_up_to(&mut conn, 16);
+        sql_query(
+            "INSERT INTO sessions (id, title, updated_at, created_at, cwd, profile, blobs, lifecycle_script_state, is_automated, persist) \
+             VALUES ('test-idem', 'Test', '2024-01-01T00:00:00Z', '2024-01-01T00:00:00Z', '.', \
+             '{\"strategy\": \"sliding_window\", \"model\": \"ollama/llama3\"}', \
+             '{}', 'nothing_ran', 0, 0)"
+        )
+        .execute(&mut conn)
+        .expect("insert pre-v17 session");
+
+        // When running migration v17 twice.
+        migrate_v17(&mut conn).expect("migrate v17 first");
+        migrate_v17(&mut conn).expect("migrate v17 second");
+
+        // Then the profile is still correct, not double-wrapped.
+        let rows: Vec<ProfileRow> =
+            sql_query("SELECT profile FROM sessions WHERE id = 'test-idem'")
+                .load(&mut conn)
+                .expect("query");
+
+        assert_eq!(rows.len(), 1);
+        let profile: serde_json::Map<String, serde_json::Value> =
+            serde_json::from_str(&rows[0].profile).expect("parse profile");
+        assert_eq!(
+            profile["model"],
+            serde_json::json!({"single": "ollama/llama3"})
+        );
+    }
+
+    #[test]
+    fn migrate_v17_adds_model_used_column() {
+        #[derive(QueryableByName)]
+        struct ColumnRow {
+            #[diesel(sql_type = diesel::sql_types::Text)]
+            name: String,
+        }
+
+        // Given a database at v16 (no model_used column).
+        let (_dir, mut conn) = make_conn();
+        apply_migrations_up_to(&mut conn, 16);
+
+        // When running migration v17.
+        migrate_v17(&mut conn).expect("migrate v17");
+
+        // Then the token_ledger table has a model_used column.
+        let cols: Vec<ColumnRow> = sql_query("PRAGMA table_info(token_ledger)")
+            .load(&mut conn)
+            .expect("pragma");
+        let col_names: Vec<&str> = cols.iter().map(|c| c.name.as_str()).collect();
+        assert!(
+            col_names.contains(&"model_used"),
+            "expected model_used column, got: {col_names:?}"
+        );
+    }
+
+    #[test]
+    fn migrate_v18_renames_timestamp_and_preserves_value() {
         #[derive(QueryableByName)]
         struct TimingRow {
             #[diesel(sql_type = diesel::sql_types::Text)]
@@ -1209,7 +1451,7 @@ mod tests {
             .execute(&mut conn)
             .expect("insert legacy row");
 
-        // When running migrations (v17 renames timestamp → timing).
+        // When running migrations (v18 renames timestamp → timing).
         run_migrations(&mut conn).expect("run_migrations");
 
         // Then the column is renamed and the value is preserved.

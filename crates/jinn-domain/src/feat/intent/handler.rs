@@ -388,6 +388,7 @@ impl IntentHandler {
             Intent::PickerMoveCursorRight => feat::picker::intent::handle_move_cursor_right(state),
             Intent::ToolToggleSelected => feat::picker::intent::handle_tool_toggle(state),
             Intent::SkillToggleSelected => feat::picker::intent::handle_skill_toggle(state),
+            Intent::ModelToggleSelected => feat::picker::intent::handle_model_toggle(state),
             Intent::PreviewScrollUp => feat::picker::intent::handle_preview_scroll_up(state),
             Intent::PreviewScrollDown => feat::picker::intent::handle_preview_scroll_down(state),
             Intent::SessionNew => feat::session::intent::handle_session_new(state),

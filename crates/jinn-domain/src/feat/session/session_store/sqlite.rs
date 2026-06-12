@@ -463,6 +463,11 @@ struct TokenLedgerRow {
     tokens_sent: i32,
     tokens_received: i32,
     cost: Option<f64>,
+    #[expect(
+        dead_code,
+        reason = "required by Diesel Queryable derive to match SELECT * columns"
+    )]
+    model_used: Option<String>,
 }
 
 /// Insert model for the `token_ledger` table.
@@ -474,6 +479,7 @@ struct NewTokenLedgerRow {
     tokens_sent: i32,
     tokens_received: i32,
     cost: Option<f64>,
+    model_used: Option<String>,
 }
 
 // ── Conversions ──────────────────────────────────────────────────────────
@@ -495,6 +501,10 @@ struct PersistableCore {
     profile: SessionProfile,
     cwd: std::path::PathBuf,
     parent_session: Option<SessionId>,
+    /// Highest entry ordinal inherited from parent at fork time.
+    /// `None` for root sessions.
+    #[serde(default)]
+    fork_ordinal: Option<usize>,
 
     blobs: HashMap<String, JsonValue>,
     lifecycle_name: Option<String>,
@@ -524,7 +534,7 @@ impl From<&SessionCore> for PersistableCore {
             profile: core.profile.clone(),
             cwd: core.cwd.clone(),
             parent_session: core.parent_session.clone(),
-
+            fork_ordinal: core.fork_ordinal,
             blobs: core.blobs.clone(),
             lifecycle_name: core.lifecycle_name.clone(),
             lifecycle_args: core.lifecycle_args.clone(),
@@ -548,7 +558,7 @@ impl From<PersistableCore> for SessionCore {
             cwd: core.cwd,
             token_ledger: vec![],
             parent_session: core.parent_session,
-
+            fork_ordinal: core.fork_ordinal,
             blobs: core.blobs,
             lifecycle_name: core.lifecycle_name,
             lifecycle_args: core.lifecycle_args,
@@ -584,6 +594,8 @@ impl TryFrom<&ChatSessionState> for NewSessionRow {
                     cwd,
                     token_ledger: _ledger, // persisted via token_ledger table below
                     parent_session,
+
+                    fork_ordinal: _fork_ordinal, // included in metadata blob via PersistableCore
 
                     blobs,
                     lifecycle_name,
@@ -704,7 +716,7 @@ impl TryFrom<SessionLoadContext> for ChatSessionState {
                 cwd: std::path::PathBuf::from(cwd),
                 token_ledger: vec![],
                 parent_session: parent_session.map(SessionId::from),
-
+                fork_ordinal: None, // legacy sessions without metadata blob have no fork ordinal
                 blobs,
                 lifecycle_name,
                 lifecycle_args: serde_json::from_str(&lifecycle_args).unwrap_or_default(),
@@ -856,6 +868,7 @@ fn save_blocking(
                     tokens_sent: record.tokens_sent as i32,
                     tokens_received: record.tokens_received as i32,
                     cost: record.cost,
+                    model_used: record.model_used.clone(),
                 })
                 .execute(txn)?;
         }
@@ -1006,6 +1019,7 @@ fn load_session_blocking(
     let ledger: Vec<TokenRecord> = ledger_rows
         .into_iter()
         .map(|row| TokenRecord {
+            model_used: row.model_used,
             timestamp: row
                 .timestamp
                 .parse()
@@ -1097,6 +1111,7 @@ fn fork_metadata(
     source_metadata: Option<&String>,
     source_id_str: &str,
     new_id_str: &str,
+    at_ordinal: usize,
 ) -> Option<String> {
     let json = source_metadata.as_ref()?;
     let mut core: PersistableCore = serde_json::from_str(json).ok()?;
@@ -1104,6 +1119,7 @@ fn fork_metadata(
     core.session_id = SessionId::from(new_id_str.to_owned());
     core.created_at = jiff::Timestamp::now();
     core.updated_at = jiff::Timestamp::now();
+    core.fork_ordinal = Some(at_ordinal);
     serde_json::to_string(&core).ok()
 }
 
@@ -1147,7 +1163,12 @@ fn fork_blocking(
                 lifecycle_args: source_meta.lifecycle_args,
                 archived: false,
                 lifecycle_script_state: source_meta.lifecycle_script_state,
-                metadata: fork_metadata(source_meta.metadata.as_ref(), &source_str, &new_id_str),
+                metadata: fork_metadata(
+                    source_meta.metadata.as_ref(),
+                    &source_str,
+                    &new_id_str,
+                    at_ordinal,
+                ),
                 is_automated: source_meta.is_automated,
                 persist: source_meta.persist,
             })

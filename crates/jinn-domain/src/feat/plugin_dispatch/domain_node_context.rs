@@ -20,6 +20,7 @@ use crate::feat::context::assemble::AssemblyOverrides;
 use crate::feat::session::chat_entry::ChatEntry;
 use crate::feat::session::chat_session::ChatSessionState;
 use crate::feat::session::chat_session::SessionCoreEphemeral;
+use crate::feat::session::model_selection::ModelSelection;
 use crate::protocol::{Command, SessionId};
 
 /// Error for domain context operations.
@@ -162,7 +163,10 @@ impl DomainNodeContext {
         session.core.parent_session = Some(source_session_id.clone());
 
         // 5. Resolve model
-        let model = provider_id.unwrap_or_else(|| session.core.profile.model.clone());
+        let model = provider_id.map_or_else(
+            || session.core.profile.model.clone(),
+            ModelSelection::from_single,
+        );
         session.set_model(model);
 
         let session_id = session.session_id().clone();
@@ -386,7 +390,7 @@ mod tests {
     fn seed_source_session(ctx: &DomainNodeContext, model: &str) -> SessionId {
         use crate::feat::session::profile::SessionProfile;
         let mut session = ChatSessionState::new_with_profile(SessionProfile {
-            model: model.to_owned(),
+            model: ModelSelection::Single(model.to_owned()),
             ..SessionProfile::default()
         });
         let id = SessionId::new();
@@ -447,7 +451,10 @@ mod tests {
             .session
             .get(&new_session_id)
             .expect("new session inserted");
-        assert_eq!(new.core.profile.model, "ollama/llama3");
+        assert_eq!(
+            new.core.profile.model,
+            ModelSelection::Single("ollama/llama3".to_owned())
+        );
         assert!(new.core.is_automated);
         assert_eq!(new.core.parent_session.as_ref(), Some(&source_id));
         assert_eq!(
@@ -851,7 +858,7 @@ mod tests {
         let parent_id = SessionId::new();
         let mut parent = ChatSessionState::default();
         parent.core.session_id = parent_id.clone();
-        parent.set_model("my-model".to_owned());
+        parent.set_model(ModelSelection::Single("my-model".to_owned()));
         ctx.state.write().session.insert(parent);
 
         // When creating a child session.
@@ -860,7 +867,7 @@ mod tests {
         // Then the child inherits the parent's model.
         let state = ctx.state.read();
         let child = state.session.get(&child_id).expect("child session exists");
-        assert_eq!(child.model(), "my-model");
+        assert_eq!(child.model(), &ModelSelection::Single("my-model".to_owned()));
     }
 
     #[test]
@@ -875,6 +882,6 @@ mod tests {
         // Then the child keeps the default model.
         let state = ctx.state.read();
         let child = state.session.get(&child_id).expect("child session exists");
-        assert_eq!(child.model(), "__no_provider__");
+        assert_eq!(child.model(), &ModelSelection::default());
     }
 }

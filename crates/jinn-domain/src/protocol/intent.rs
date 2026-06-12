@@ -133,6 +133,8 @@ pub enum Intent {
     ToolToggleSelected,
     /// Toggle the selected skill's enabled/disabled state in the skill picker.
     SkillToggleSelected,
+    /// Toggle the selected model's selected state for multi-select alloy building.
+    ModelToggleSelected,
     /// Scroll the preview pane up one page.
     PreviewScrollUp,
     /// Scroll the preview pane down one page.
@@ -340,6 +342,7 @@ impl std::fmt::Display for Intent {
             Intent::PickerMoveCursorRight => write!(f, "picker cursor right"),
             Intent::ToolToggleSelected => write!(f, "toggle tool"),
             Intent::SkillToggleSelected => write!(f, "toggle skill"),
+            Intent::ModelToggleSelected => write!(f, "toggle model"),
             Intent::PreviewScrollUp => write!(f, "preview scroll up"),
             Intent::PreviewScrollDown => write!(f, "preview scroll down"),
             Intent::SessionNew => write!(f, "new session"),

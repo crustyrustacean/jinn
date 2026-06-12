@@ -468,6 +468,7 @@ mod dispatch_tests {
                 providers: vec![],
                 aliases: vec![],
                 default_provider: None,
+                alloys: vec![],
             },
         });
         actor.handle(ActorEnvelope::Event(event), &ctx).await;
