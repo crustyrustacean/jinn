@@ -13,10 +13,10 @@ use mlua::{Lua, LuaSerdeExt, RegistryKey, Value};
 use serde::de::DeserializeOwned;
 use wherror::Error;
 
-use crate::PluginData;
-use crate::bindings;
-use crate::command::PluginCommand;
-use jinn_domain::feat::plugin_dispatch::{HookContext, PluginHookSite, ProvidesSessionId};
+use super::plugin_data::PluginData;
+use super::bindings;
+use super::command::PluginCommand;
+use crate::feat::plugin_dispatch::{HookContext, PluginHookSite, ProvidesSessionId};
 
 /// Stored hook data for a loaded plugin.
 pub struct PluginHooks {
@@ -283,7 +283,7 @@ impl SyncPlugins {
     /// Used as a default for tests that don't need plugin functionality.
     #[must_use]
     pub fn empty() -> Self {
-        let (emit_tx, _emit_rx) = kanal::unbounded::<crate::command::PluginCommand>();
+        let (emit_tx, _emit_rx) = kanal::unbounded::<super::command::PluginCommand>();
         Self {
             lua: Lua::new(),
             hooks: HashMap::new(),
@@ -356,7 +356,7 @@ impl SyncPlugins {
     }
 }
 
-impl jinn_domain::feat::plugin_dispatch::PluginSyncHooks for SyncPlugins {
+impl crate::feat::plugin_dispatch::PluginSyncHooks for SyncPlugins {
     fn call_hooks(&self, hook: &str, ctx: &HookContext) -> Vec<serde_json::Value> {
         self.sync_hooks(hook)
             .filter_map(|h| match h.call::<serde_json::Value>(ctx) {

@@ -5,11 +5,11 @@
 //! `jinn-domain`, which `jinn-plugin` depends on.
 
 use error_stack::Report;
-use jinn_domain::feat::plugin_dispatch::{PluginSyncCall, PluginSyncCallError};
-use jinn_domain::feat::plugin_system::SessionRegistryId;
+use crate::feat::plugin_dispatch::{PluginSyncCall, PluginSyncCallError};
+use crate::feat::plugin_system::SessionRegistryId;
 use serde_json::Value;
 
-use crate::PluginSyncHandle;
+use super::sync_handle::PluginSyncHandle;
 
 impl PluginSyncCall for PluginSyncHandle {
     fn call_hooks_json(

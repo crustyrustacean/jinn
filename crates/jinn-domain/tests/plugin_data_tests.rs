@@ -17,7 +17,7 @@ use std::path::Path;
 use std::sync::{Arc, Mutex};
 
 use jinn_domain::feat::plugin_dispatch::HookContext;
-use jinn_plugin::{PluginCommand, PluginSystem, PluginSystemBuildResult};
+use jinn_domain::feat::plugin_system::{PluginCommand, PluginSystem, PluginSystemBuildResult};
 use serde::Serialize;
 use serde_json::json;
 
@@ -32,8 +32,8 @@ fn write_plugin(dir: &Path, name: &str, lua_source: &str) {
 struct TestSystem {
     #[expect(dead_code, reason = "captured commands unused in these tests")]
     captured: Arc<Mutex<Vec<PluginCommand>>>,
-    sync: jinn_plugin::SyncPlugins,
-    async_handle: jinn_plugin::AsyncPluginHandle,
+    sync: jinn_domain::feat::plugin_system::SyncPlugins,
+    async_handle: jinn_domain::feat::plugin_system::AsyncPluginHandle,
 }
 
 fn build_system(dir: &Path) -> TestSystem {

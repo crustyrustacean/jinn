@@ -1725,7 +1725,6 @@ dependencies = [
  "jinn-bench",
  "jinn-cli",
  "jinn-domain",
- "jinn-plugin",
  "jinn-tui",
  "jinn-web-fetch",
  "kameo",
@@ -1806,6 +1805,7 @@ dependencies = [
  "kanal",
  "kill_tree",
  "libc",
+ "mlua",
  "parking_lot",
  "rand 0.9.4",
  "ratatui",
@@ -1829,27 +1829,6 @@ dependencies = [
  "twox-hash",
  "unicode-segmentation",
  "unicode-width",
- "uuid",
- "wherror",
-]
-
-[[package]]
-name = "jinn-plugin"
-version = "0.65.0"
-dependencies = [
- "async-trait",
- "dashmap",
- "error-stack",
- "jinn-domain",
- "kanal",
- "mlua",
- "parking_lot",
- "rstest",
- "serde",
- "serde_json",
- "tempfile",
- "tokio",
- "tracing",
  "uuid",
  "wherror",
 ]
@@ -1930,7 +1909,6 @@ dependencies = [
  "dirs",
  "error-stack",
  "jinn-domain",
- "jinn-plugin",
  "jinn-selection-widget",
  "jinn-testutil",
  "kanal",

@@ -5,11 +5,11 @@
 //! `jinn-domain`, which `jinn-plugin` depends on.
 
 use error_stack::Report;
-use jinn_domain::feat::plugin_dispatch::{PluginFire, PluginFireError};
-use jinn_domain::feat::plugin_system::SessionRegistryId;
+use crate::feat::plugin_dispatch::{PluginFire, PluginFireError};
+use crate::feat::plugin_system::SessionRegistryId;
 use serde_json::Value;
 
-use crate::AsyncPluginHandle;
+use super::async_handle::AsyncPluginHandle;
 
 #[async_trait::async_trait]
 impl PluginFire for AsyncPluginHandle {
@@ -59,7 +59,7 @@ impl PluginFire for AsyncPluginHandle {
     async fn execute_plugin_tool(
         &self,
         target: Option<SessionRegistryId>,
-        session_id: &jinn_domain::SessionId,
+        session_id: &crate::SessionId,
         plugin_name: &str,
         tool_name: &str,
         arguments: &Value,

@@ -5,21 +5,21 @@
 //! on a dedicated background thread (see `async_thread.rs`).
 
 use error_stack::{Report, ResultExt};
-use jinn_domain::SessionId;
+use crate::SessionId;
 use serde::Serialize;
 use serde::de::DeserializeOwned;
 use tokio::sync::oneshot;
 use wherror::Error;
 
-use crate::PluginData;
+use super::plugin_data::PluginData;
 
 /// Result of creating a per-session plugin registry.
 #[derive(Debug)]
 pub struct CreateSessionRegistryResult {
     /// The newly created registry ID.
-    pub registry_id: crate::session_registry::SessionRegistryId,
+    pub registry_id: super::session_registry::SessionRegistryId,
     /// Tool definitions extracted from the loaded plugins.
-    pub tool_metadata: Vec<crate::tool_def::PluginToolMetadata>,
+    pub tool_metadata: Vec<super::tool_def::PluginToolMetadata>,
 }
 
 /// Error type for plugin system failures.
@@ -50,7 +50,7 @@ pub(crate) enum PluginJob {
         ctx_json: serde_json::Value,
         /// Oneshot responder.
         respond_to: oneshot::Sender<Result<(), Report<PluginError>>>,
-        target_session: Option<crate::session_registry::SessionRegistryId>,
+        target_session: Option<super::session_registry::SessionRegistryId>,
         /// Plugin names that are currently enabled. When non-empty,
         /// only plugins in this list will have their hooks fired.
         enabled_plugins: Vec<String>,
@@ -64,7 +64,7 @@ pub(crate) enum PluginJob {
         /// Oneshot responder.
         respond_to: oneshot::Sender<Result<Vec<serde_json::Value>, Report<PluginError>>>,
         /// If `Some`, additionally fire hooks from this session's per-session plugins.
-        target_session: Option<crate::session_registry::SessionRegistryId>,
+        target_session: Option<super::session_registry::SessionRegistryId>,
     },
     /// Fire all hooks, collect return values (sync, blocking caller).
     SyncCollect {
@@ -75,7 +75,7 @@ pub(crate) enum PluginJob {
         /// Oneshot responder (sync caller will `blocking_recv()`).
         respond_to: oneshot::Sender<Result<Vec<serde_json::Value>, Report<PluginError>>>,
         /// If `Some`, additionally fire hooks from this session's per-session plugins.
-        target_session: Option<crate::session_registry::SessionRegistryId>,
+        target_session: Option<super::session_registry::SessionRegistryId>,
     },
     /// Load attachable plugins into a new per-session Lua state.
     ///
@@ -84,14 +84,14 @@ pub(crate) enum PluginJob {
     /// and stores the resulting hooks map keyed by `registry_id`.
     LoadSession {
         /// Registry ID returned by `create_session_registry`.
-        registry_id: crate::session_registry::SessionRegistryId,
+        registry_id: super::session_registry::SessionRegistryId,
         /// Names of attachable plugins to load.
         plugin_names: Vec<String>,
         /// The session that owns these plugins. Used for plugin_data scoping in tool handlers.
         origin_session_id: SessionId,
         /// Responder. Returns tool definitions extracted from loaded plugins.
         respond_to:
-            oneshot::Sender<Result<Vec<crate::tool_def::PluginToolMetadata>, Report<PluginError>>>,
+            oneshot::Sender<Result<Vec<super::tool_def::PluginToolMetadata>, Report<PluginError>>>,
     },
     /// Execute a plugin-defined tool handler.
     ///
@@ -99,7 +99,7 @@ pub(crate) enum PluginJob {
     /// finds the tool handler, calls it with arguments, returns result string.
     ExecuteTool {
         /// If `Some`, use the per-session Lua state; otherwise global.
-        target: Option<crate::session_registry::SessionRegistryId>,
+        target: Option<super::session_registry::SessionRegistryId>,
         /// Domain session ID for plugin_data scoping.
         session_id: SessionId,
         /// Plugin that defined this tool.
@@ -113,7 +113,7 @@ pub(crate) enum PluginJob {
     },
     DestroySession {
         /// Registry ID previously returned by `create_session_registry`.
-        registry_id: crate::session_registry::SessionRegistryId,
+        registry_id: super::session_registry::SessionRegistryId,
     },
 }
 
@@ -167,7 +167,7 @@ impl AsyncPluginHandle {
     /// or a hook errors.
     pub async fn fire_async_for_session<T: Serialize>(
         &self,
-        target_session: Option<crate::session_registry::SessionRegistryId>,
+        target_session: Option<super::session_registry::SessionRegistryId>,
         hook: &str,
         ctx: &T,
         enabled_plugins: Vec<String>,
@@ -224,7 +224,7 @@ impl AsyncPluginHandle {
     /// or a hook errors.
     pub async fn fire_async_collect_for_session<T: Serialize, R: DeserializeOwned>(
         &self,
-        target_session: Option<crate::session_registry::SessionRegistryId>,
+        target_session: Option<super::session_registry::SessionRegistryId>,
         hook: &str,
         ctx: &T,
     ) -> Result<Vec<R>, Report<PluginError>> {
@@ -278,7 +278,7 @@ impl AsyncPluginHandle {
         plugin_names: Vec<String>,
         origin_session_id: SessionId,
     ) -> Result<CreateSessionRegistryResult, Report<PluginError>> {
-        let registry_id = crate::session_registry::SessionRegistryId::new();
+        let registry_id = super::session_registry::SessionRegistryId::new();
         let (respond_to, rx) = oneshot::channel();
         self.tx
             .send(PluginJob::LoadSession {
@@ -313,7 +313,7 @@ impl AsyncPluginHandle {
     /// Returns an error only if the plugin thread is dead.
     pub async fn destroy_session_registry_impl(
         &self,
-        registry_id: crate::session_registry::SessionRegistryId,
+        registry_id: super::session_registry::SessionRegistryId,
     ) -> Result<(), Report<PluginError>> {
         self.tx
             .send(PluginJob::DestroySession { registry_id })
@@ -356,7 +356,7 @@ impl AsyncPluginHandle {
     /// or the handler itself errors.
     pub async fn execute_tool(
         &self,
-        target: Option<crate::session_registry::SessionRegistryId>,
+        target: Option<super::session_registry::SessionRegistryId>,
         session_id: SessionId,
         plugin_name: &str,
         tool_name: &str,
@@ -388,24 +388,24 @@ impl AsyncPluginHandle {
 }
 
 #[async_trait::async_trait]
-impl jinn_domain::feat::plugin_system::SessionPluginRegistry for AsyncPluginHandle {
+impl crate::feat::plugin_system::SessionPluginRegistry for AsyncPluginHandle {
     async fn create_session_registry(
         &self,
         plugin_names: Vec<String>,
         origin_session_id: SessionId,
     ) -> Result<
-        jinn_domain::feat::plugin_system::CreateSessionRegistryResult,
-        Report<jinn_domain::feat::plugin_system::SessionPluginRegistryError>,
+        crate::feat::plugin_system::CreateSessionRegistryResult,
+        Report<crate::feat::plugin_system::SessionPluginRegistryError>,
     > {
         let result =
             AsyncPluginHandle::create_session_registry_impl(self, plugin_names, origin_session_id)
                 .await
                 .map_err(|_e| {
-                    Report::new(jinn_domain::feat::plugin_system::SessionPluginRegistryError)
+                    Report::new(crate::feat::plugin_system::SessionPluginRegistryError)
                 })
                 .attach("create per-session plugin registry")?;
         Ok(
-            jinn_domain::feat::plugin_system::CreateSessionRegistryResult {
+            crate::feat::plugin_system::CreateSessionRegistryResult {
                 registry_id: result.registry_id,
                 tool_metadata: result.tool_metadata.into_iter().map(|m| m.into()).collect(),
             },
@@ -414,11 +414,11 @@ impl jinn_domain::feat::plugin_system::SessionPluginRegistry for AsyncPluginHand
 
     async fn destroy_session_registry(
         &self,
-        registry_id: jinn_domain::feat::plugin_system::SessionRegistryId,
-    ) -> Result<(), Report<jinn_domain::feat::plugin_system::SessionPluginRegistryError>> {
+        registry_id: crate::feat::plugin_system::SessionRegistryId,
+    ) -> Result<(), Report<crate::feat::plugin_system::SessionPluginRegistryError>> {
         AsyncPluginHandle::destroy_session_registry_impl(self, registry_id)
             .await
-            .map_err(|_e| Report::new(jinn_domain::feat::plugin_system::SessionPluginRegistryError))
+            .map_err(|_e| Report::new(crate::feat::plugin_system::SessionPluginRegistryError))
             .attach("destroy per-session plugin registry")
     }
 
