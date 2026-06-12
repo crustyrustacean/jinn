@@ -441,13 +441,13 @@ fn session_new_works_when_sidebar_sessions_focused() {
 
     // When handling SessionNew via IntentHandler.
     let result =
-        crate::feat::intent::IntentHandler::handle(&crate::Intent::SessionNew, &mut state);
+        crate::feat::intent::IntentHandler::handle(&crate::Intent::SessionNew, &mut state, None);
 
     // Then a new session is created.
-    // And SessionCreated is emitted.
-    //FIXME: plugin migration — ActiveSessionChanged is disabled, only 1 message
-    assert_eq!(result.message_names.len(), 1);
-    assert!(result.message_names[0].contains("SessionCreated"));
+    // And SessionCreated and ActiveSessionChanged are emitted.
+    assert_eq!(result.message_names.len(), 2);
+    assert!(result.message_names.iter().any(|n| n.contains("SessionCreated")));
+    assert!(result.message_names.iter().any(|n| n.contains("ActiveSessionChanged")));
 }
 
 #[rstest::rstest]
@@ -458,7 +458,7 @@ fn session_new_works_when_not_in_sidebar() {
 
     // When handling SessionNew via IntentHandler.
     let _result =
-        crate::feat::intent::IntentHandler::handle(&crate::Intent::SessionNew, &mut state);
+        crate::feat::intent::IntentHandler::handle(&crate::Intent::SessionNew, &mut state, None);
 
     // Then a new session is created (no section restriction outside sidebar).
     assert_ne!(*state.session.active_session_id(), old_id);
