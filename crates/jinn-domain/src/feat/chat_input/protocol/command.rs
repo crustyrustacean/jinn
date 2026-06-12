@@ -47,6 +47,7 @@ pub struct EnqueueResumeTurn {
 }
 
 impl BusMessage for EnqueueResumeTurn {}
+impl BusMessage for SetChatInputText {}
 /// Append a fragment to a session's steering buffer.
 ///
 /// Submitted when the user picks STEER mode and the LLM is currently
