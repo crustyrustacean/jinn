@@ -195,6 +195,8 @@ mod tests {
     )]
     use std::sync::Arc;
 
+    use super::super::super::SessionPersistenceActorDeps;
+    use super::*;
     use crate::common::actor::{Actor as _, ActorContext, MessageSink, RecordingSink};
     use crate::common::app_state::AppState;
     use crate::common::services::test_services::TestServices;
@@ -202,10 +204,8 @@ mod tests {
     use crate::feat::context::protocol::event::PersonasLoaded;
     use crate::feat::persona::Persona;
     use crate::feat::tools_actor::tool_types::ToolDefinition;
-    use crate::protocol::SessionId;
-    use super::super::super::SessionPersistenceActorDeps;
-    use super::*;
     use crate::protocol::PinPosition;
+    use crate::protocol::SessionId;
 
     fn make_persona(name: &str) -> Persona {
         Persona {
@@ -284,7 +284,10 @@ mod tests {
         // Then the tool is NOT stored.
         let guard = state.read();
         assert!(
-            !guard.context.tool_definitions.contains_key("judgment_passed"),
+            !guard
+                .context
+                .tool_definitions
+                .contains_key("judgment_passed"),
             "attached tool for different session should not be stored"
         );
     }
@@ -315,7 +318,10 @@ mod tests {
         // Then the tool IS stored.
         let guard = state.read();
         assert!(
-            guard.context.tool_definitions.contains_key("judgment_passed"),
+            guard
+                .context
+                .tool_definitions
+                .contains_key("judgment_passed"),
             "attached tool for own session should be stored"
         );
     }

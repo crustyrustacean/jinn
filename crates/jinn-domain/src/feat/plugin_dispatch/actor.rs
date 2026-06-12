@@ -27,7 +27,7 @@ use serde_json::Value;
 
 use crate::common::actor::protocol::event::AllActorsSpawned;
 use crate::common::actor::{Actor, ActorContext, ActorEnvelope, NoDirectMsg};
-use crate::common::services::{ActorChannelService, Services};
+use crate::common::services::Services;
 use crate::common::state::State;
 
 use crate::PhaseKind;
@@ -316,8 +316,8 @@ impl PluginDispatchActor {
         registry_id: &crate::feat::plugin_system::SessionRegistryId,
         tools: Vec<crate::feat::plugin_system::PluginToolMetadata>,
     ) {
-        use crate::feat::tools_actor::protocol::command::RegisterPluginTools;
         use crate::feat::plugin_system::ToolScope;
+        use crate::feat::tools_actor::protocol::command::RegisterPluginTools;
 
         // Partition tools by scope: global vs attached.
         let mut global_by_plugin: std::collections::HashMap<
@@ -334,9 +334,7 @@ impl PluginDispatchActor {
                 ToolScope::Global => &mut global_by_plugin,
                 ToolScope::Attached => &mut attached_by_plugin,
             };
-            map.entry(tool.plugin_name.clone())
-                .or_default()
-                .push(tool);
+            map.entry(tool.plugin_name.clone()).or_default().push(tool);
         }
 
         // Register global tools (broadcast, no session target).
@@ -647,6 +645,7 @@ mod tests {
     use crate::common::actor::context::ActorContext;
     use crate::common::actor::message_sink::RecordingSink;
     use crate::common::actor::protocol::dynamic_command::DynamicCommand;
+    use crate::common::services::ActorChannelService;
     use crate::common::app_state::AppState;
     use crate::feat::attached_plugin::PluginRunState;
     use crate::feat::plugin_dispatch::plugin_fire::{
@@ -1268,5 +1267,5 @@ mod tests {
         assert_eq!(rpc.plugin_name, "judge");
         assert!(rpc.target.is_some());
         assert_eq!(rpc.session_id, Some(session_id));
-}
+    }
 }
