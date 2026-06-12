@@ -1203,7 +1203,7 @@ async fn register_plugin_tools_stores_tool_as_plugin_variant() {
         prompt_guidelines: vec![],
         server_tool_type: None,
     }];
-    actor.handle_register_plugin_tools("judge", &None, &definitions, &ctx);
+    actor.handle_register_plugin_tools("judge", &None, &definitions, None, &ctx);
 
     // Then the tool is stored with the Plugin variant.
     let reg = actor
@@ -1240,7 +1240,7 @@ async fn register_plugin_tools_emits_tools_registered_event() {
         prompt_guidelines: vec![],
         server_tool_type: None,
     }];
-    actor.handle_register_plugin_tools("judge", &None, &definitions, &ctx);
+    actor.handle_register_plugin_tools("judge", &None, &definitions, None, &ctx);
 
     // Then a ToolsRegistered event was emitted.
     let events = sink.events();
@@ -1270,7 +1270,7 @@ async fn register_plugin_tools_with_session_target_stores_target() {
         prompt_guidelines: vec![],
         server_tool_type: None,
     }];
-    actor.handle_register_plugin_tools("my_plugin", &Some(target_id), &definitions, &ctx);
+    actor.handle_register_plugin_tools("my_plugin", &Some(target_id), &definitions, None, &ctx);
 
     // Then the tool is stored with the session target.
     let reg = actor
@@ -1300,7 +1300,7 @@ async fn plugin_tool_execution_dispatches_to_plugin_fire_service() {
         prompt_guidelines: vec![],
         server_tool_type: None,
     }];
-    actor.handle_register_plugin_tools("judge", &None, &definitions, &ctx);
+    actor.handle_register_plugin_tools("judge", &None, &definitions, None, &ctx);
 
     let session_id = SessionId::new();
 
@@ -1345,7 +1345,7 @@ async fn plugin_tool_with_arguments_executes_successfully() {
         prompt_guidelines: vec![],
         server_tool_type: None,
     }];
-    actor.handle_register_plugin_tools("judge", &None, &definitions, &ctx);
+    actor.handle_register_plugin_tools("judge", &None, &definitions, None, &ctx);
 
     let session_id = SessionId::new();
 

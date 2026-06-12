@@ -20,6 +20,21 @@
 //! key for the handler function. The domain layer converts these into `ToolDefinition`
 //! instances when registering with the tools actor.
 
+
+/// Whether a plugin tool is available globally or only in the session it's attached to.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub enum ToolScope {
+    /// Available in all sessions.
+    Global,
+    /// Available only in the session the plugin is attached to.
+    Attached,
+}
+
+impl Default for ToolScope {
+    fn default() -> Self {
+        Self::Attached
+    }
+}
 use mlua::RegistryKey;
 use serde::{Deserialize, Serialize};
 
@@ -35,6 +50,8 @@ pub struct PluginToolDef {
     pub handler_key: RegistryKey,
     /// Plugin name that owns this tool.
     pub plugin_name: String,
+    /// Whether this tool is global or session-attached.
+    pub scope: ToolScope,
 }
 
 /// Send-safe metadata for a plugin-defined tool, used to communicate tool
@@ -52,6 +69,8 @@ pub struct PluginToolMetadata {
     pub parameters: serde_json::Value,
     /// Plugin name that owns this tool.
     pub plugin_name: String,
+    /// Whether this tool is global or session-attached.
+    pub scope: ToolScope,
 }
 
 impl PluginToolDef {
@@ -62,6 +81,7 @@ impl PluginToolDef {
             description: self.description.clone(),
             parameters: self.parameters.clone(),
             plugin_name: self.plugin_name.clone(),
+            scope: self.scope.clone(),
         }
     }
 }
@@ -167,6 +187,22 @@ fn extract_single_tool(
     let params = extract_params(entry);
     let parameters = expand_parameters_to_schema(&params);
 
+    // Extract scope (defaults to Attached for safety).
+    let scope: ToolScope = match entry.get::<String>("scope") {
+        Ok(s) if s == "global" => ToolScope::Global,
+        Ok(s) if s == "attached" => ToolScope::Attached,
+        Ok(other) => {
+            tracing::warn!(
+                plugin = plugin_name,
+                tool = name,
+                scope = %other,
+                "unknown tool scope, defaulting to attached"
+            );
+            ToolScope::default()
+        }
+        Err(_) => ToolScope::default(),
+    };
+
     let handler_key = lua.create_registry_value(handler).ok()?;
 
     Some(PluginToolDef {
@@ -175,6 +211,7 @@ fn extract_single_tool(
         parameters,
         handler_key,
         plugin_name: plugin_name.to_owned(),
+        scope,
     })
 }
 
@@ -382,6 +419,16 @@ impl From<PluginToolMetadata> for jinn_domain::feat::plugin_system::PluginToolMe
             description: value.description,
             parameters: value.parameters,
             plugin_name: value.plugin_name,
+            scope: value.scope.into(),
+        }
+    }
+}
+
+impl From<ToolScope> for jinn_domain::feat::plugin_system::ToolScope {
+    fn from(value: ToolScope) -> Self {
+        match value {
+            ToolScope::Global => Self::Global,
+            ToolScope::Attached => Self::Attached,
         }
     }
 }

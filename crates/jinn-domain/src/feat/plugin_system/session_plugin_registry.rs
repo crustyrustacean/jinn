@@ -32,6 +32,8 @@ pub struct PluginToolMetadata {
     pub parameters: serde_json::Value,
     /// Plugin that defines this tool.
     pub plugin_name: String,
+    /// Whether this tool is global or session-attached.
+    pub scope: ToolScope,
 }
 
 impl PluginToolMetadata {
@@ -45,6 +47,24 @@ impl PluginToolMetadata {
             prompt_guidelines: Vec::new(),
             server_tool_type: None,
         }
+    }
+}
+
+/// Whether a plugin tool is available globally or only in the session it was attached to.
+///
+/// Set via the `scope` field in Lua tool definitions: `scope = "global"` or `scope = "attached"`.
+/// Defaults to `Attached` when omitted (least privilege).
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum ToolScope {
+    /// Available in all sessions.
+    Global,
+    /// Available only in the session the plugin is attached to.
+    Attached,
+}
+
+impl Default for ToolScope {
+    fn default() -> Self {
+        Self::Attached
     }
 }
 

@@ -303,6 +303,7 @@ impl ActorSystemBuilder {
                         jinn_domain::feat::tools_actor::protocol::command::RegisterPluginTools {
                             plugin_name,
                             target: None,
+                            session_id: None,
                             definitions,
                         },
                     ));
