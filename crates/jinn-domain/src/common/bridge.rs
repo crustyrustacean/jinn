@@ -46,6 +46,21 @@ impl Bridge {
         Self { sender }
     }
 
+    /// Creates a dummy bridge that discards all messages.
+    ///
+    /// Used in tests with a recording BusService where no real bus exists.
+    #[must_use]
+    pub fn new_dummy() -> Self {
+        let (sender, receiver) = kanal::unbounded::<BridgeClosure>();
+        let async_rx = receiver.to_async();
+        // Spawn a drain task that silently discards all closures.
+        // This keeps the channel open (sends succeed) but does nothing.
+        tokio::spawn(async move {
+            while async_rx.recv().await.is_ok() {}
+        });
+        Self { sender }
+    }
+
     /// Creates a minimal bridge for tests that don't need actual bus delivery.
     #[cfg(test)]
     #[must_use]

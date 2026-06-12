@@ -255,7 +255,12 @@ impl TestServices {
             };
             super::bus_service::BusService::new(bus_ref)
         };
-        let bridge = crate::common::bridge::Bridge::with_handle(bus.actor_ref().clone(), handle.clone());
+        let bridge = if bus.is_recording() {
+            // Recording mode — no real bus, no bridge needed.
+            crate::common::bridge::Bridge::new_dummy()
+        } else {
+            crate::common::bridge::Bridge::with_handle(bus.actor_ref().clone(), handle.clone())
+        };
 
         Services {
             paths,

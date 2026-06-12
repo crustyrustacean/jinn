@@ -233,3 +233,33 @@ pub(super) async fn test_actor_with_store(
         store,
     )
 }
+
+#[cfg(test)]
+pub(super) async fn test_actor_with_store_recording(
+    sessions: Vec<crate::feat::session::chat_session::ChatSessionState>,
+) -> (
+    super::SessionPersistenceActor,
+    std::sync::Arc<PopulatedFakeStore>,
+    crate::common::services::BusAudit,
+) {
+    let store = std::sync::Arc::new(PopulatedFakeStore::new(sessions));
+    let (bus, audit) = crate::common::services::BusService::new_recording();
+    let services = crate::TestServices::builder()
+        .session_store(crate::feat::session::SessionStoreService::new(
+            store.clone(),
+        ))
+        .with_bus(bus)
+        .build();
+    (
+        super::SessionPersistenceActor {
+            state: crate::common::state::State::new(crate::common::app_state::AppState::default()),
+            services,
+            counter: crate::feat::context::strategy::token_estimator::TiktokenCounter::o200k_base(),
+            builtin_registry: crate::feat::session_lifecycle::builtin::BuiltinRegistry::new(),
+            shell: "/bin/sh".to_owned(),
+            lifecycle_child: None,
+        },
+        store,
+        audit,
+    )
+}
