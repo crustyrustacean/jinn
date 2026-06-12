@@ -338,9 +338,7 @@ fn close_session_and_switch(closing_id: &SessionId) -> IntentResult {
     })
 }
 
-//FIXME: disabled during actor migration — tests reference deleted types
-// #[cfg(test)]
-#[cfg(any())]
+#[cfg(test)]
 mod tests {
     #![allow(
         clippy::expect_used,
