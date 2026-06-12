@@ -9,7 +9,7 @@ use std::path::{Path, PathBuf};
 
 use mlua::{Lua, RegistryKey};
 
-use crate::sync_state::PluginHooks;
+use super::sync_state::PluginHooks;
 
 // ── Plugin Kinds ─────────────────────────────────────────────────────────
 
@@ -157,7 +157,7 @@ pub struct LoadResult {
     /// Plugin name → hook data.
     pub hooks: HashMap<String, PluginHooks>,
     /// All tool definitions extracted from loaded plugins.
-    pub tools: Vec<crate::tool_def::PluginToolDef>,
+    pub tools: Vec<super::tool_def::PluginToolDef>,
 }
 
 /// Load all plugins into a Lua state with `_ENV` isolation.
@@ -185,7 +185,7 @@ pub fn load_all(lua: &Lua, plugins: &[PluginMeta]) -> LoadResult {
                 let table: mlua::Table = lua
                     .registry_value(&table_key)
                     .expect("just-stored key must resolve");
-                let plugin_tools = crate::tool_def::extract_tools(lua, &table, &meta.name);
+                let plugin_tools = super::tool_def::extract_tools(lua, &table, &meta.name);
                 tracing::debug!(
                     plugin = meta.name,
                     tools = plugin_tools.len(),

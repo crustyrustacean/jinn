@@ -23,7 +23,7 @@ use jinn_domain::feat::plugin_dispatch::protocol::command::TogglePlugin;
 use jinn_domain::feat::session::chat_entry::ChatEntry;
 use jinn_domain::feat::session::protocol::ResetSessionHistory;
 use jinn_domain::protocol::SessionId;
-use jinn_plugin::PluginCommand;
+use jinn_domain::feat::plugin_system::PluginCommand;
 use wherror::Error;
 
 /// Plugin wiring error — failure to translate a `PluginCommand` into a typed
@@ -405,7 +405,7 @@ mod tests {
     use jinn_domain::Event;
     use jinn_domain::common::actor::actor_ref::SendResult;
     use jinn_domain::common::actor::message_sink::MessageSink;
-    use jinn_plugin::PluginCommand;
+    use jinn_domain::feat::plugin_system::PluginCommand;
     use std::sync::{Arc, Mutex};
 
     /// A mock message sink that captures commands for inspection.

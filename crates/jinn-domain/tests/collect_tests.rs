@@ -11,7 +11,7 @@
 use std::path::Path;
 use std::sync::{Arc, Mutex};
 
-use jinn_plugin::{PluginCommand, PluginSystemBuildResult};
+use jinn_domain::feat::plugin_system::{PluginCommand, PluginSystemBuildResult};
 use serde::Serialize;
 
 fn write_plugin(dir: &Path, name: &str, lua_source: &str) {
@@ -23,8 +23,8 @@ fn write_plugin(dir: &Path, name: &str, lua_source: &str) {
 fn build_system(
     dir: &Path,
 ) -> (
-    jinn_plugin::SyncPlugins,
-    jinn_plugin::AsyncPluginHandle,
+    jinn_domain::feat::plugin_system::SyncPlugins,
+    jinn_domain::feat::plugin_system::AsyncPluginHandle,
     Arc<Mutex<Vec<PluginCommand>>>,
 ) {
     let captured: Arc<Mutex<Vec<PluginCommand>>> = Arc::new(Mutex::new(Vec::new()));
@@ -33,7 +33,7 @@ fn build_system(
     let rt = Box::leak(Box::new(tokio::runtime::Runtime::new().expect("runtime")));
     let PluginSystemBuildResult {
         sync, async_handle, ..
-    } = jinn_plugin::PluginSystem::build(
+    } = jinn_domain::feat::plugin_system::PluginSystem::build(
         dir,
         Path::new("/nonexistent"),
         rt.handle().clone(),

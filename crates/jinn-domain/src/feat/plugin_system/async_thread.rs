@@ -27,16 +27,16 @@ use error_stack::{Report, ResultExt};
 use mlua::Lua;
 use tokio::runtime::Runtime;
 
-use jinn_domain::SessionId;
-use jinn_domain::feat::plugin_dispatch::PluginHookSite;
+use crate::SessionId;
+use crate::feat::plugin_dispatch::PluginHookSite;
 
-use crate::async_handle::{PluginError, PluginJob};
-use crate::bindings;
-use crate::command::PluginCommand;
-use crate::loader::{PluginMeta, load_all};
-use crate::plugin_data::PluginData;
-use crate::session_registry::SessionRegistryId;
-use crate::sync_state::PluginHooks;
+use super::async_handle::{PluginError, PluginJob};
+use super::bindings;
+use super::command::PluginCommand;
+use super::loader::{PluginMeta, load_all};
+use super::plugin_data::PluginData;
+use super::session_registry::SessionRegistryId;
+use super::sync_state::PluginHooks;
 
 /// Callback type for handling async requests from plugins.
 ///
@@ -60,7 +60,7 @@ struct SessionState {
     /// Hooks registered per plugin for this session.
     hooks: HashMap<String, PluginHooks>,
     /// Tool definitions from attached plugins in this session.
-    tools: Vec<crate::tool_def::PluginToolDef>,
+    tools: Vec<super::tool_def::PluginToolDef>,
     /// The domain session that owns this Lua state (the "origin" session).
     /// Used to scope plugin_data correctly when tool handlers run in child sessions.
     origin_session_id: Option<SessionId>,
@@ -73,7 +73,7 @@ struct ThreadState {
     /// Hooks registered for global plugins.
     global_hooks: HashMap<String, PluginHooks>,
     /// Tool definitions from global plugins.
-    global_tools: Vec<crate::tool_def::PluginToolDef>,
+    global_tools: Vec<super::tool_def::PluginToolDef>,
     /// Per-session states keyed by registry ID.
     sessions: HashMap<SessionRegistryId, SessionState>,
     /// All discovered attachable plugins (loaded on demand).
@@ -94,7 +94,7 @@ pub(crate) fn run_async_thread(
     rx: kanal::AsyncReceiver<PluginJob>,
     lua: Lua,
     hooks: HashMap<String, PluginHooks>,
-    global_tools: Vec<crate::tool_def::PluginToolDef>,
+    global_tools: Vec<super::tool_def::PluginToolDef>,
     all_plugins: Vec<PluginMeta>,
     plugin_data: PluginData,
     emit_tx: kanal::AsyncSender<PluginCommand>,
@@ -113,7 +113,7 @@ pub(crate) fn run_async_thread(
     // attachable plugins are kept here for on-demand per-session loading.
     let attachable_plugins: Vec<PluginMeta> = all_plugins
         .into_iter()
-        .filter(|m| m.kind == crate::loader::PluginKind::Attachable)
+        .filter(|m| m.kind == super::loader::PluginKind::Attachable)
         .collect();
 
     let state = ThreadState {
@@ -308,7 +308,7 @@ fn load_session_plugins(
     registry_id: SessionRegistryId,
     plugin_names: &[String],
     origin_session_id: SessionId,
-) -> Result<Vec<crate::tool_def::PluginToolMetadata>, Report<PluginError>> {
+) -> Result<Vec<super::tool_def::PluginToolMetadata>, Report<PluginError>> {
     // Resolve each name to a PluginMeta in the attachable set.
     let metas: Vec<PluginMeta> = plugin_names
         .iter()

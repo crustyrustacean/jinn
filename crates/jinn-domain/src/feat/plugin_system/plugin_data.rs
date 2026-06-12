@@ -15,7 +15,7 @@
 //! data, scoped to the session it was invoked for.
 
 use dashmap::DashMap;
-use jinn_domain::SessionId;
+use crate::SessionId;
 use std::sync::Arc;
 
 /// Sentinel session ID used for global plugins that don't belong to a session.

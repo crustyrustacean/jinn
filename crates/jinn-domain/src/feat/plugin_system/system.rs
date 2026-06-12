@@ -7,14 +7,14 @@
 use std::path::Path;
 use std::sync::Arc;
 
-use crate::async_handle::PluginJob;
-use crate::async_thread::{RequestHandler, run_async_thread};
-use crate::command::PluginCommand;
-use crate::loader::{PluginMeta, discover_plugins, load_all};
-use crate::plugin_data::PluginData;
-use crate::sync_state::SyncPlugins;
-use crate::tool_def::PluginToolMetadata;
-use crate::{AsyncPluginHandle, PluginSyncHandle};
+use super::async_handle::PluginJob;
+use super::async_thread::{RequestHandler, run_async_thread};
+use super::command::PluginCommand;
+use super::loader::{PluginMeta, discover_plugins, load_all};
+use super::plugin_data::PluginData;
+use super::sync_state::SyncPlugins;
+use super::tool_def::PluginToolMetadata;
+use super::{async_handle::AsyncPluginHandle, sync_handle::PluginSyncHandle};
 
 /// Result of [`PluginSystem::build`] — all handles and metadata.
 pub struct PluginSystemBuildResult {
@@ -109,7 +109,7 @@ impl PluginSystem {
 
         let global_plugins: Vec<PluginMeta> = plugins
             .iter()
-            .filter(|m| m.kind == crate::loader::PluginKind::Global)
+            .filter(|m| m.kind == super::loader::PluginKind::Global)
             .cloned()
             .collect();
 

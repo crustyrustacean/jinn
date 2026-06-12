@@ -12,8 +12,8 @@ use serde::Serialize;
 use serde::de::DeserializeOwned;
 use tokio::sync::oneshot;
 
-use crate::async_handle::{PluginError, PluginJob};
-use crate::session_registry::SessionRegistryId;
+use super::async_handle::{PluginError, PluginJob};
+use super::session_registry::SessionRegistryId;
 
 /// Handle for calling plugin hooks synchronously from actor threads.
 ///

@@ -13,7 +13,7 @@ use std::sync::{Arc, Mutex};
 
 use jinn_domain::SessionId;
 use jinn_domain::feat::plugin_system::SessionPluginRegistry;
-use jinn_plugin::{PluginCommand, PluginSyncHandle, PluginSystem, PluginSystemBuildResult};
+use jinn_domain::feat::plugin_system::{PluginCommand, PluginSyncHandle, PluginSystem, PluginSystemBuildResult};
 use serde::Serialize;
 
 fn write_plugin(dir: &Path, name: &str, lua_source: &str) {
@@ -153,7 +153,7 @@ fn sync_handle_excludes_nil() {
 fn build_both(
     dir: &Path,
 ) -> (
-    jinn_plugin::AsyncPluginHandle,
+    jinn_domain::feat::plugin_system::AsyncPluginHandle,
     PluginSyncHandle,
     Arc<Mutex<Vec<PluginCommand>>>,
 ) {

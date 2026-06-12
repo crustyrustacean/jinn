@@ -11,7 +11,7 @@
 use std::path::Path;
 use std::sync::{Arc, Mutex};
 
-use jinn_plugin::{
+use jinn_domain::feat::plugin_system::{
     AsyncPluginHandle, PluginCommand, PluginSystem, PluginSystemBuildResult, SyncPlugins,
 };
 
@@ -23,7 +23,7 @@ fn build_system(
 ) -> (
     SyncPlugins,
     AsyncPluginHandle,
-    jinn_plugin::PluginSyncHandle,
+    jinn_domain::feat::plugin_system::PluginSyncHandle,
 ) {
     let rt = tokio::runtime::Runtime::new().expect("runtime");
     let captured: Arc<Mutex<Vec<PluginCommand>>> = Arc::new(Mutex::new(Vec::new()));
