@@ -1209,7 +1209,7 @@ mod tests {
     #[test]
     fn register_global_tools_sends_target_none() {
         // Given a dispatch actor with a real channel.
-        let (mut actor, rx, session_id, registry_id) = make_actor_with_channel();
+        let (actor, rx, session_id, registry_id) = make_actor_with_channel();
 
         // And a global tool definition.
         let tools = vec![crate::feat::plugin_system::PluginToolMetadata {
@@ -1241,7 +1241,7 @@ mod tests {
     #[test]
     fn register_attached_tools_sends_target_some_with_session_id() {
         // Given a dispatch actor with a real channel.
-        let (mut actor, rx, session_id, registry_id) = make_actor_with_channel();
+        let (actor, rx, session_id, registry_id) = make_actor_with_channel();
 
         // And an attached tool definition.
         let tools = vec![crate::feat::plugin_system::PluginToolMetadata {

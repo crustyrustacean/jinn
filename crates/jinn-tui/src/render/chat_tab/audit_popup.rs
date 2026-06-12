@@ -180,7 +180,7 @@ mod tests {
         }
 
         // The chat-log area we render against. Wide enough to fit the
-        // 60-col popup with room to spare.
+        // 70-col popup with room to spare.
         let chat_log_area = Rect::new(30, 0, 70, 24);
 
         // When rendering the popup directly.

@@ -102,6 +102,7 @@ impl SessionPersistenceActor {
                     let old_phase = session.phase();
                     session.begin_streaming();
                     session.push_token_record(TokenRecord {
+                        model_used: None,
                         timestamp: jiff::Timestamp::now(),
                         tokens_sent: assembled.estimated_tokens(),
                         tokens_received: 0,
@@ -117,19 +118,23 @@ impl SessionPersistenceActor {
                     new_phase,
                 );
 
-                let provider_id = {
-                    let state = self.state.read();
-                    let model = state.session(&payload.session_id).profile().model.clone();
-                    if model == crate::feat::provider_infra::NO_PROVIDER_ID {
-                        None
+                let (provider_id, model_used) = {
+                    let mut state = self.state.write();
+                    let session = state.session_mut(&payload.session_id);
+                    let model = &mut session.profile_mut().model;
+                    if model.is_no_provider() {
+                        (None, None)
                     } else {
-                        Some(model)
+                        let resolved = model.resolve_model();
+                        session.set_last_token_model(resolved.clone());
+                        (Some(resolved.clone()), Some(resolved))
                     }
                 };
 
                 let estimated_tokens = assembled.estimated_tokens();
 
                 if let Err(e) = ctx.send_command(Command::SendToLlmProvider(SendToLlmProvider {
+                    model_used,
                     session_id: payload.session_id.clone(),
                     messages: assembled.messages,
                     provider_id,
@@ -238,36 +243,36 @@ impl SessionPersistenceActor {
             assemble_prompt(&guard, &payload.session_id, &self.counter, None)
         };
 
-        let provider_id = {
-            let state = self.state.read();
-            let model = state.session(&payload.session_id).profile().model.clone();
-            if model == crate::feat::provider_infra::NO_PROVIDER_ID {
-                None
+        // Resolve model under write lock (round-robin mutates index).
+        // Sending → Streaming + record outgoing token count.
+        let (provider_id, model_used, old_phase, new_phase) = {
+            let mut state = self.state.write();
+            let session = state.session_mut_or_create(&payload.session_id);
+            let model = &mut session.profile_mut().model;
+            let (provider_id, model_used) = if model.is_no_provider() {
+                (None, None)
             } else {
-                Some(model)
-            }
+                let resolved = model.resolve_model();
+                (Some(resolved.clone()), Some(resolved))
+            };
+            let old_phase = session.phase();
+            session.begin_streaming();
+            session.push_token_record(TokenRecord {
+                model_used: model_used.clone(),
+                timestamp: jiff::Timestamp::now(),
+                tokens_sent: assembled.estimated_tokens(),
+                tokens_received: 0,
+                cost: None,
+            });
+            (provider_id, model_used, old_phase, session.phase())
         };
 
         let estimated_tokens = assembled.estimated_tokens();
 
-        // Sending → Streaming + record outgoing token count.
-        let (old_phase, new_phase) = {
-            let mut state = self.state.write();
-            let session = state.session_mut_or_create(&payload.session_id);
-            let old_phase = session.phase();
-            session.begin_streaming();
-            session.push_token_record(TokenRecord {
-                timestamp: jiff::Timestamp::now(),
-                tokens_sent: estimated_tokens,
-                tokens_received: 0,
-                cost: None,
-            });
-            (old_phase, session.phase())
-        };
-
         super::super::helpers::emit_phase_changed(ctx, &payload.session_id, old_phase, new_phase);
 
         if let Err(e) = ctx.send_command(Command::SendToLlmProvider(SendToLlmProvider {
+            model_used,
             session_id: payload.session_id.clone(),
             messages: assembled.messages,
             provider_id,

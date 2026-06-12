@@ -20,6 +20,7 @@ use serde_json::Value as JsonValue;
 use crate::feat::chat_input::ChatInputBoxState;
 
 use crate::feat::session::chat_history::ChatHistory;
+use crate::feat::session::model_selection::ModelSelection;
 use crate::feat::session::phase_machine::PhaseKind;
 use crate::feat::session::profile::SessionProfile;
 use crate::feat::session::steering_buffer::SteeringBuffer;
@@ -200,6 +201,14 @@ pub struct SessionCore {
     /// OWNER: session-actor (set at session creation).
     #[serde(default)]
     pub parent_session: Option<SessionId>,
+    /// Highest entry ordinal inherited from the parent at fork time.
+    /// `None` for root sessions (all entries are "own").
+    /// `Some(n)` means entries at indices 0..=n were inherited;
+    /// only entries after index n count as turns for this session.
+    /// Set once at fork creation, never mutated.
+    /// OWNER: session-actor (set during fork).
+    #[serde(default)]
+    pub fork_ordinal: Option<usize>,
 
     /// Generic blob storage for future subsystems.
     #[serde(default)]
@@ -270,6 +279,7 @@ impl Default for SessionCore {
             cwd: std::path::PathBuf::from("."),
             token_ledger: Vec::new(),
             parent_session: None,
+            fork_ordinal: None,
 
             blobs: HashMap::new(),
             lifecycle_name: None,
@@ -1403,8 +1413,8 @@ impl ChatSessionState {
         &mut self.core.profile
     }
 
-    /// Set the model for this session.
-    pub fn set_model(&mut self, model: String) {
+    /// Set the model selection for this session.
+    pub fn set_model(&mut self, model: ModelSelection) {
         self.core.profile.model = model;
     }
 
@@ -1485,8 +1495,11 @@ impl ChatSessionState {
         out
     }
 
-    /// The model for this session.
-    pub fn model(&self) -> &str {
+    /// The model selection for this session.
+    pub fn model_selection(&self) -> &ModelSelection {
+        &self.core.profile.model
+    }
+    pub fn model(&self) -> &ModelSelection {
         &self.core.profile.model
     }
 
@@ -2457,6 +2470,7 @@ impl ChatSessionState {
         &mut self,
         tokens_received: u32,
         cost: Option<f64>,
+        model_used: Option<String>,
     ) -> Result<(), StreamingError> {
         let last = self
             .core
@@ -2465,12 +2479,32 @@ impl ChatSessionState {
             .ok_or(StreamingError::EmptyLedger)?;
         last.tokens_received = tokens_received;
         last.cost = cost;
+        last.model_used = model_used;
         Ok(())
+    }
+
+    /// Sets `model_used` on the last token record (the placeholder pushed at enqueue time).
+    /// This makes the model visible in the status bar immediately, before streaming completes.
+    pub fn set_last_token_model(&mut self, model: String) {
+        if let Some(last) = self.core.token_ledger.last_mut() {
+            last.model_used = Some(model);
+        }
     }
 
     /// The parent session, if this session was forked from another.
     pub fn parent_session(&self) -> &Option<SessionId> {
         &self.core.parent_session
+    }
+
+    /// The highest entry ordinal inherited from parent at fork time.
+    /// `None` for root sessions.
+    pub fn fork_ordinal(&self) -> Option<usize> {
+        self.core.fork_ordinal
+    }
+
+    /// Set the fork ordinal for testing and construction.
+    pub fn set_fork_ordinal(&mut self, ordinal: usize) {
+        self.core.fork_ordinal = Some(ordinal);
     }
 
     /// Set the parent session.
@@ -2776,6 +2810,14 @@ impl ChatSessionState {
                     if let Some(entry) = self.core.history.iter_mut().find(|e| e.id == entry_id) {
                         if entry.context_override() == ContextOverride::ForcedInclude
                             && value == ContextOverride::ForcedExclude
+                        {
+                            continue;
+                        }
+                        // Don't allow workers to re-include entries the user
+                        // explicitly excluded.
+                        if value == ContextOverride::ForcedInclude
+                            && matches!(source, ChangeSource::Worker { .. })
+                            && entry.is_user_force_excluded()
                         {
                             continue;
                         }

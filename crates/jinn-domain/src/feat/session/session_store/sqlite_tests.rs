@@ -435,6 +435,7 @@ async fn token_ledger_round_trips() {
     session.set_title("Tokens".to_owned());
     session.push_entry(ChatEntry::user("hello"));
     session.push_token_record(crate::feat::session::token_stats::TokenRecord {
+        model_used: None,
         timestamp: jiff::Timestamp::now(),
         tokens_sent: 100,
         tokens_received: 50,
@@ -888,4 +889,64 @@ async fn streamed_timing_roundtrips_through_db() {
         }
         other => panic!("expected Streamed timing, got {other:?}"),
     }
+}
+
+#[rstest::rstest]
+#[tokio::test]
+async fn fork_ordinal_persists_across_save_and_load() {
+    // Given a store with a session that has 3 entries.
+    let (_dir, store) = make_store();
+    let source_id = SessionId::new();
+    let mut source = ChatSessionState::new();
+    source.set_session_id(source_id.clone());
+    source.push_entry(ChatEntry::user("first"));
+    source.push_entry(ChatEntry::assistant("second"));
+    source.push_entry(ChatEntry::user("third"));
+    store.save(&source).await.expect("save source");
+
+    // When forking at ordinal 1.
+    let forked_id = store.fork(&source_id, 1).await.expect("fork");
+
+    // Then the forked session has fork_ordinal = Some(1) after loading.
+    let forked = store
+        .load_session(&forked_id)
+        .await
+        .expect("load forked")
+        .expect("should exist");
+    assert_eq!(forked.fork_ordinal(), Some(1));
+}
+
+#[rstest::rstest]
+#[tokio::test]
+async fn fork_blocking_sets_fork_ordinal() {
+    // Given a store with a session that has 5 entries.
+    let (_dir, store) = make_store();
+    let source_id = SessionId::new();
+    let mut source = ChatSessionState::new();
+    source.set_session_id(source_id.clone());
+    source.push_entry(ChatEntry::user("a"));
+    source.push_entry(ChatEntry::assistant("b"));
+    source.push_entry(ChatEntry::user("c"));
+    source.push_entry(ChatEntry::assistant("d"));
+    source.push_entry(ChatEntry::user("e"));
+    store.save(&source).await.expect("save source");
+
+    // When forking at ordinal 4 (all entries inherited).
+    let forked_id = store.fork(&source_id, 4).await.expect("fork");
+
+    // Then the forked session has fork_ordinal = Some(4).
+    let forked = store
+        .load_session(&forked_id)
+        .await
+        .expect("load forked")
+        .expect("should exist");
+    assert_eq!(forked.fork_ordinal(), Some(4));
+
+    // And the root session has fork_ordinal = None.
+    let root = store
+        .load_session(&source_id)
+        .await
+        .expect("load root")
+        .expect("should exist");
+    assert_eq!(root.fork_ordinal(), None);
 }

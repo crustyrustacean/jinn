@@ -20,6 +20,7 @@ use ratatui::style::Color;
 
 use super::loader::load_provider_picker_items;
 use super::render::render_provider_picker;
+use crate::feat::session::model_selection::ModelSelection;
 
 fn picker_state_with_ollama() -> (AppState, Services) {
     let config = ProvidersConfig {
@@ -35,6 +36,7 @@ fn picker_state_with_ollama() -> (AppState, Services) {
         }],
         aliases: vec![],
         default_provider: None,
+        alloys: vec![],
     };
     let services = crate::common::services::test_services::TestServices::builder()
         .with_providers(config)
@@ -109,7 +111,7 @@ fn render_provider_picker_uses_dark_gray_border() {
 }
 
 #[rstest::rstest]
-fn render_provider_picker_shows_active_model_marker() {
+fn render_provider_picker_no_active_marker_for_active_model() {
     // Given a state with active_provider set to "ollama/llama3" and items loaded.
 
     let (mut state, services) = picker_state_with_ollama();
@@ -118,7 +120,7 @@ fn render_provider_picker_shows_active_model_marker() {
     });
     state
         .active_session_mut()
-        .set_model("ollama/llama3".to_owned());
+        .set_model(ModelSelection::Single("ollama/llama3".to_owned()));
     load_picker_items(&mut state, &services);
 
     let (mut terminal, _area) = setup_term(80, 24);
@@ -132,12 +134,12 @@ fn render_provider_picker_shows_active_model_marker() {
         })
         .unwrap();
 
-    // Then the first result row starts with ">" (active marker) in green.
+    // Then the first result row does not contain ">".
     let buffer = terminal.backend().buffer().clone();
     let popup = compute_popup_rect(Rect::new(0, 0, 80, 24));
     // Results start at popup.y + 3 (border + input + separator)
     let result_y = popup.y + 3;
-    let marker_cell = buffer.cell((popup.x + 1, result_y)).expect("marker cell");
-    assert_eq!(marker_cell.symbol(), ">");
-    assert_eq!(marker_cell.fg, Color::Green);
+    // The first 2 chars are selection_marker (spaces, no checkmark since not selected).
+    let marker_cell = buffer.cell((popup.x + 3, result_y)).expect("marker cell");
+    assert_ne!(marker_cell.symbol(), ">");
 }

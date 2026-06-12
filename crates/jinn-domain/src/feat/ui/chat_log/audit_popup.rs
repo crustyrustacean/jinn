@@ -10,6 +10,7 @@
 use crate::feat::session::chat_entry::{
     ChangeSource, ChatEntry, ContextChangeEvent, ContextOverride,
 };
+use crate::feat::session::entry_timing::EntryTiming;
 use crate::feat::theme::Theme;
 
 use ratatui::style::Style;
@@ -38,6 +39,33 @@ pub fn format_audit_lines(entry: &ChatEntry, theme: &Theme) -> Vec<Line<'static>
         format!("Sent: {}", format_timestamp(&entry.timing.at())),
         body_style,
     )]));
+
+    // --- Timing line (streamed entries only) ---
+    if let EntryTiming::Streamed { .. } = &entry.timing {
+        let ttft_text = match entry.timing.ttft() {
+            Some(d) => format_duration(&d),
+            None => "(pending)".to_owned(),
+        };
+        let duration_text = match entry.timing.total_duration() {
+            Some(d) => format_duration(&d),
+            None => "(pending)".to_owned(),
+        };
+        lines.push(Line::from(vec![
+            Span::styled("TTFT: ".to_owned(), body_style),
+            Span::styled(
+                ttft_text,
+                Style::default()
+                    .fg(theme.input_mode_queue)
+                    .bg(theme.infopopup_bg),
+            ),
+            Span::styled("  Duration: ".to_owned(), body_style),
+            Span::styled(
+                duration_text,
+                Style::default().fg(theme.streaming).bg(theme.infopopup_bg),
+            ),
+        ]));
+    }
+
     lines.push(Line::from(vec![Span::styled(String::new(), body_style)]));
 
     // --- Audit section ---
@@ -115,7 +143,7 @@ fn centered_title(label: &str, width: u16, style: Style) -> Line<'static> {
 ///
 /// Deliberately constant regardless of terminal size so the popup is always the
 /// same shape. See `audit_popup_rect` for placement.
-pub const AUDIT_POPUP_WIDTH: u16 = 60;
+pub const AUDIT_POPUP_WIDTH: u16 = 70;
 
 /// Format a timestamp as `YYYY-MM-DD HH:MM:SS (<relative>)`.
 ///
@@ -175,6 +203,22 @@ fn format_units(count: u32, unit: &str) -> String {
         format!("1 {unit} ago")
     } else {
         format!("{count} {unit}s ago")
+    }
+}
+
+/// Format a [`jiff::SignedDuration`] as a human-readable elapsed-time string.
+///
+/// Durations under 60 seconds render as `X.Xs` (e.g. "2.1s", "0.5s").
+/// Durations of 60 seconds or more render as `Xm Ys` (e.g. "1m 23s").
+fn format_duration(d: &jiff::SignedDuration) -> String {
+    let total_secs = d.as_secs();
+    if total_secs < 60 {
+        let tenths = (d.subsec_millis() / 100) as u32;
+        format!("{total_secs}.{tenths}s")
+    } else {
+        let mins = total_secs / 60;
+        let secs = total_secs % 60;
+        format!("{mins}m {secs}s")
     }
 }
 
@@ -389,7 +433,7 @@ mod tests {
         assert_eq!(lines.len(), 5);
         assert_eq!(
             text(&lines[3]),
-            "--------------- audit (0 events) (Default) ---------------"
+            "-------------------- audit (0 events) (Default) --------------------"
         );
         // And the body is the placeholder.
         assert_eq!(text(&lines[4]), "(no events recorded)");
@@ -408,7 +452,7 @@ mod tests {
         assert_eq!(lines.len(), 5);
         assert_eq!(
             text(&lines[3]),
-            "------------ audit (1 events) (ForcedExclude) ------------"
+            "----------------- audit (1 events) (ForcedExclude) -----------------"
         );
         // And the body line shows the transition with [user] source.
         assert_eq!(text(&lines[4]), "[user] Default -> ForcedExclude");
@@ -567,21 +611,211 @@ mod tests {
             // Then popup right edge = chat right edge = 100.
             assert_eq!(rect.x + rect.width, chat.x + chat.width);
             assert_eq!(rect.x + rect.width, 100);
-            // And popup left edge = 100 - 60 = 40.
-            assert_eq!(rect.x, 40);
+            // And popup left edge = 100 - 70 = 30.
+            assert_eq!(rect.x, 30);
         }
 
         #[test]
-        fn audit_popup_rect_chat_log_narrower_than_60_shrinks_popup_width() {
+        fn audit_popup_rect_chat_log_narrower_than_70_shrinks_popup_width() {
             // Given a chat-log area only 50 columns wide.
             let chat = Rect::new(0, 0, 50, 40);
             // When computing the rect.
             let rect = audit_popup_rect(chat, 5, 2);
-
-            // Then popup width shrinks to chat width (50), not the constant 60.
+            // Then popup width shrinks to chat width (50), not the constant 70.
             assert_eq!(rect.width, 50);
             // And popup left edge is at chat left edge.
             assert_eq!(rect.x, chat.x);
         }
+    }
+    mod format_duration_tests {
+        //! Tests for the `format_duration` free function.
+
+        use super::*;
+
+        #[test]
+        fn format_duration_seconds() {
+            // Given a 2.1-second duration.
+            let d = jiff::SignedDuration::from_secs(2) + jiff::SignedDuration::from_millis(100);
+
+            // When formatting.
+            let result = format_duration(&d);
+
+            // Then it renders as "2.1s".
+            assert_eq!(result, "2.1s");
+        }
+
+        #[test]
+        fn format_duration_sub_second() {
+            // Given a 0.5-second duration.
+            let d = jiff::SignedDuration::from_millis(500);
+
+            // When formatting.
+            let result = format_duration(&d);
+
+            // Then it renders as "0.5s".
+            assert_eq!(result, "0.5s");
+        }
+
+        #[test]
+        fn format_duration_minutes() {
+            // Given an 83-second duration (1m 23s).
+            let d = jiff::SignedDuration::from_secs(83);
+
+            // When formatting.
+            let result = format_duration(&d);
+
+            // Then it renders as "1m 23s".
+            assert_eq!(result, "1m 23s");
+        }
+    }
+
+    // ── Timing line tests ──────────────────────────────────────────────
+
+    /// Helper: create a streamed entry with specific timing.
+    fn streamed_entry(
+        dispatched_at: &str,
+        first_token_at: Option<&str>,
+        finished_at: Option<&str>,
+    ) -> ChatEntry {
+        let dispatched = dispatched_at.parse().expect("valid timestamp");
+        let first_token = first_token_at.map(|s| s.parse().expect("valid timestamp"));
+        let finished = finished_at.map(|s| s.parse().expect("valid timestamp"));
+        let mut entry = ChatEntry::assistant("hello");
+        entry.timing = EntryTiming::Streamed {
+            dispatched_at: dispatched,
+            first_token_at: first_token,
+            finished_at: finished,
+        };
+        entry
+    }
+
+    /// Helper: find the timing line (contains both TTFT and Duration).
+    fn find_timing_line(lines: &[Line<'_>]) -> Option<usize> {
+        lines.iter().position(|l| text(l).contains("TTFT:"))
+    }
+
+    #[test]
+    fn instant_entry_shows_only_sent_no_timing() {
+        // Given an instant entry (default user entry).
+        let entry = ChatEntry::user("hi");
+
+        // When formatting.
+        let lines = format(&entry);
+
+        // Then no line contains TTFT or Duration.
+        for (i, line) in lines.iter().enumerate() {
+            let t = text(line);
+            assert!(
+                !t.contains("TTFT:"),
+                "line {i} should not contain TTFT: {t}"
+            );
+            assert!(
+                !t.contains("Duration:"),
+                "line {i} should not contain Duration: {t}"
+            );
+        }
+    }
+
+    #[test]
+    fn streamed_entry_shows_ttft_and_duration() {
+        // Given a streamed entry with both timestamps set.
+        let entry = streamed_entry(
+            "2024-01-15T10:30:00Z",
+            Some("2024-01-15T10:30:02Z"),
+            Some("2024-01-15T10:30:15Z"),
+        );
+
+        // When formatting.
+        let lines = format(&entry);
+
+        // Then there is a line containing both TTFT and Duration.
+        let idx = find_timing_line(&lines).expect("should have a timing line");
+        let t = text(&lines[idx]);
+        assert!(t.contains("TTFT:"), "timing line should contain TTFT: {t}");
+        assert!(
+            t.contains("Duration:"),
+            "timing line should contain Duration: {t}"
+        );
+        // And TTFT shows ~2s.
+        assert!(t.contains("2.0s"), "TTFT should be 2.0s: {t}");
+        // And Duration shows ~15s.
+        assert!(t.contains("15.0s"), "Duration should be 15.0s: {t}");
+    }
+
+    #[test]
+    fn streamed_entry_shows_pending_for_missing_first_token() {
+        // Given a streamed entry with no first_token_at.
+        let entry = streamed_entry("2024-01-15T10:30:00Z", None, Some("2024-01-15T10:30:15Z"));
+
+        // When formatting.
+        let lines = format(&entry);
+
+        // Then the timing line shows (pending) for TTFT.
+        let idx = find_timing_line(&lines).expect("should have a timing line");
+        let t = text(&lines[idx]);
+        assert!(t.contains("(pending)"), "TTFT should show (pending): {t}");
+    }
+
+    #[test]
+    fn streamed_entry_shows_pending_for_missing_finished() {
+        // Given a streamed entry with no finished_at.
+        let entry = streamed_entry("2024-01-15T10:30:00Z", Some("2024-01-15T10:30:02Z"), None);
+
+        // When formatting.
+        let lines = format(&entry);
+
+        // Then the timing line shows (pending) for Duration.
+        let idx = find_timing_line(&lines).expect("should have a timing line");
+        let t = text(&lines[idx]);
+        assert!(
+            t.contains("(pending)"),
+            "Duration should show (pending): {t}"
+        );
+    }
+
+    #[test]
+    fn ttft_value_uses_queue_color() {
+        // Given a streamed entry.
+        let entry = streamed_entry(
+            "2024-01-15T10:30:00Z",
+            Some("2024-01-15T10:30:02Z"),
+            Some("2024-01-15T10:30:15Z"),
+        );
+        let theme = default_theme();
+
+        // When formatting.
+        let lines = format_audit_lines(&entry, &theme);
+
+        // Then the TTFT value span uses the queue color.
+        let idx = find_timing_line(&lines).expect("should have a timing line");
+        let ttft_span = &lines[idx].spans[1]; // index 1 is the TTFT value
+        assert_eq!(
+            ttft_span.style.fg,
+            Some(theme.input_mode_queue),
+            "TTFT value should use input_mode_queue color"
+        );
+    }
+
+    #[test]
+    fn duration_value_uses_streaming_color() {
+        // Given a streamed entry.
+        let entry = streamed_entry(
+            "2024-01-15T10:30:00Z",
+            Some("2024-01-15T10:30:02Z"),
+            Some("2024-01-15T10:30:15Z"),
+        );
+        let theme = default_theme();
+
+        // When formatting.
+        let lines = format_audit_lines(&entry, &theme);
+
+        // Then the Duration value span uses the streaming color.
+        let idx = find_timing_line(&lines).expect("should have a timing line");
+        let duration_span = &lines[idx].spans[3]; // index 3 is the Duration value
+        assert_eq!(
+            duration_span.style.fg,
+            Some(theme.streaming),
+            "Duration value should use streaming color"
+        );
     }
 }

@@ -15,10 +15,18 @@ use super::entries;
 /// horizontal separator, scrollable results, and a footer line.
 pub fn render_provider_picker(frame: &mut Frame<'_>, area: Rect, ctx: &RenderCtx) {
     let state = ctx.state;
+    let selected_count = state
+        .provider
+        .provider_picker
+        .items()
+        .iter()
+        .filter(|e| e.selected)
+        .count();
     let footer = entries::format_footer(
         state.provider.model_cache.as_ref(),
         area.width as usize,
         &state.frontend.theme,
+        selected_count,
     );
     let widget = SelectionWidget::new(&state.provider.provider_picker)
         .title(ratatui::text::Line::from(" Model "))

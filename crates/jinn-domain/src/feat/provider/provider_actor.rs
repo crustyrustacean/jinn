@@ -156,7 +156,7 @@ impl ProviderActor {
 
         if let Err(e) = ctx.send_event(Event::ProviderSwitched(ProviderSwitched {
             session_id: payload.session_id.clone(),
-            provider_name: payload.provider_id.clone(),
+            provider_name: payload.provider_id.display_str().to_owned(),
         })) {
             tracing::warn!(err = ?e, "provider-actor failed to emit ProviderSwitched");
         }
@@ -292,6 +292,7 @@ mod tests {
     use super::{ModelsRefreshed, ProviderActor, ProviderActorDeps};
     use crate::feat::provider::protocol::command::LoadProviderPickerEntries;
     use crate::feat::provider::protocol::command::ProviderSwitch;
+    use crate::feat::session::model_selection::ModelSelection;
     use crate::feat::ui::picker_states::PickerExt;
 
     fn create_actor() -> (
@@ -328,6 +329,7 @@ mod tests {
             }],
             aliases: vec![],
             default_provider: None,
+            alloys: vec![],
         }
     }
 
@@ -445,6 +447,7 @@ mod tests {
             }],
             aliases: vec![],
             default_provider: None,
+            alloys: vec![],
         };
         let (mut actor, services, _sink, ctx, state) = create_actor_with_config(config);
 
@@ -505,6 +508,7 @@ mod tests {
             }],
             aliases: vec![],
             default_provider: None,
+            alloys: vec![],
         };
         let (mut actor, _services, _sink, ctx, state) = create_actor_with_config(config);
 
@@ -621,6 +625,7 @@ mod tests {
             }],
             aliases: vec![],
             default_provider: None,
+            alloys: vec![],
         };
         let (mut actor, services, _sink, ctx, state) = create_actor_with_config(config);
 
@@ -681,6 +686,7 @@ mod tests {
             }],
             aliases: vec![],
             default_provider: None,
+            alloys: vec![],
         };
         let (mut actor, _services, _sink, ctx, state) = create_actor_with_config(config);
 
@@ -892,13 +898,16 @@ mod tests {
         // When sending a ProviderSwitch command.
         let cmd = Command::ProviderSwitch(ProviderSwitch {
             session_id: session_id.clone(),
-            provider_id: "ollama/llama3".to_owned(),
+            provider_id: ModelSelection::Single("ollama/llama3".to_owned()),
         });
         actor.handle(ActorEnvelope::Command(cmd), &ctx).await;
 
         // Then the session model is updated.
         let s = state.read();
-        assert_eq!(s.session.active_session().profile().model, "ollama/llama3");
+        assert_eq!(
+            s.session.active_session().profile().model,
+            ModelSelection::Single("ollama/llama3".to_owned())
+        );
 
         // And a ProviderSwitched event is emitted.
         let events = sink.take_events();

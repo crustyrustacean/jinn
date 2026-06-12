@@ -129,7 +129,11 @@ impl SessionPersistenceActor {
                 // Finalize the last record if one exists (i.e., prompt assembled first).
                 // If no record exists (e.g., session restored mid-stream), skip silently.
                 if !session.token_ledger().is_empty()
-                    && let Err(e) = session.finalize_last_token_record(output_tokens, event.cost)
+                    && let Err(e) = session.finalize_last_token_record(
+                        output_tokens,
+                        event.cost,
+                        event.model_used.clone(),
+                    )
                 {
                     tracing::error!(err = ?e, "failed to finalize token record");
                 }
@@ -249,6 +253,7 @@ mod tests {
 
         // When handling StreamCompleted with Error reason.
         let event = StreamCompleted {
+            model_used: None,
             session_id: session_id.clone(),
             reason: StreamCompletedReason::Error,
             assistant_content: None,
@@ -284,6 +289,7 @@ mod tests {
 
         // When handling StreamCompleted with Error reason.
         let event = StreamCompleted {
+            model_used: None,
             session_id: session_id.clone(),
             reason: StreamCompletedReason::Error,
             assistant_content: None,
@@ -322,6 +328,7 @@ mod tests {
 
         // When handling StreamCompleted with Error reason.
         let event = StreamCompleted {
+            model_used: None,
             session_id: session_id.clone(),
             reason: StreamCompletedReason::Error,
             assistant_content: None,
@@ -358,6 +365,7 @@ mod tests {
 
         // When handling StreamCompleted with Canceled reason.
         let event = StreamCompleted {
+            model_used: None,
             session_id: session_id.clone(),
             reason: StreamCompletedReason::Canceled,
             assistant_content: None,
@@ -391,6 +399,7 @@ mod tests {
 
         // When handling StreamCompleted with Finished reason.
         let event = StreamCompleted {
+            model_used: None,
             session_id: session_id.clone(),
             reason: StreamCompletedReason::Finished,
             assistant_content: Some("response".to_owned()),
@@ -428,6 +437,7 @@ mod tests {
 
         // When handling StreamCompleted with Error reason.
         let event = StreamCompleted {
+            model_used: None,
             session_id: session_id.clone(),
             reason: StreamCompletedReason::Error,
             assistant_content: None,
@@ -465,6 +475,7 @@ mod tests {
 
         // When handling StreamCompleted with Canceled reason.
         let event = StreamCompleted {
+            model_used: None,
             session_id: session_id.clone(),
             reason: StreamCompletedReason::Canceled,
             assistant_content: None,
@@ -504,6 +515,7 @@ mod tests {
 
         // When handling StreamCompleted with Canceled reason.
         let event = StreamCompleted {
+            model_used: None,
             session_id: session_id.clone(),
             reason: StreamCompletedReason::Canceled,
             assistant_content: None,
@@ -661,6 +673,7 @@ mod tests {
 
         // When handling StreamCompleted with Finished reason.
         let event = StreamCompleted {
+            model_used: None,
             session_id: session_id.clone(),
             reason: StreamCompletedReason::Finished,
             assistant_content: Some("response".to_owned()),
@@ -695,6 +708,7 @@ mod tests {
 
         // When handling StreamCompleted with Error reason.
         let event = StreamCompleted {
+            model_used: None,
             session_id: session_id.clone(),
             reason: StreamCompletedReason::Error,
             assistant_content: None,
@@ -729,6 +743,7 @@ mod tests {
 
         // When handling StreamCompleted with Canceled reason.
         let event = StreamCompleted {
+            model_used: None,
             session_id: session_id.clone(),
             reason: StreamCompletedReason::Canceled,
             assistant_content: None,
@@ -756,6 +771,7 @@ mod tests {
             let mut state = actor.state.write();
             let session = state.active_session_mut();
             session.push_token_record(TokenRecord {
+                model_used: None,
                 timestamp: jiff::Timestamp::now(),
                 tokens_sent: 100,
                 tokens_received: 0,
@@ -767,6 +783,7 @@ mod tests {
 
         // When handling StreamCompleted with Error reason and some content.
         let event = StreamCompleted {
+            model_used: None,
             session_id: session_id.clone(),
             reason: StreamCompletedReason::Error,
             assistant_content: Some("some error content".to_owned()),
@@ -812,6 +829,7 @@ mod tests {
 
         // When handling StreamCompleted with ToolUse reason.
         let event = StreamCompleted {
+            model_used: None,
             session_id: session_id.clone(),
             reason: StreamCompletedReason::ToolUse,
             assistant_content: Some("response".to_owned()),
@@ -849,6 +867,7 @@ mod tests {
             let mut state = actor.state.write();
             let session = state.active_session_mut();
             session.push_token_record(TokenRecord {
+                model_used: None,
                 timestamp: jiff::Timestamp::now(),
                 tokens_sent: 100,
                 tokens_received: 0,
@@ -860,6 +879,7 @@ mod tests {
 
         // When handling StreamCompleted(ToolUse) with tool calls.
         let event = StreamCompleted {
+            model_used: None,
             session_id: session_id.clone(),
             reason: StreamCompletedReason::ToolUse,
             assistant_content: Some("checking".to_owned()),
@@ -912,6 +932,7 @@ mod tests {
 
         // When handling StreamCompleted with Finished reason.
         let event = StreamCompleted {
+            model_used: None,
             session_id: session_id.clone(),
             reason: StreamCompletedReason::Finished,
             assistant_content: Some("world".to_owned()),
@@ -959,6 +980,7 @@ mod tests {
 
         // When handling StreamCompleted with Canceled reason.
         let event = StreamCompleted {
+            model_used: None,
             session_id: session_id.clone(),
             reason: StreamCompletedReason::Canceled,
             assistant_content: None,
@@ -1002,6 +1024,7 @@ mod tests {
 
         // When handling StreamCompleted with Finished reason.
         let event = StreamCompleted {
+            model_used: None,
             session_id: session_id.clone(),
             reason: StreamCompletedReason::Finished,
             assistant_content: Some("response".to_owned()),
@@ -1053,6 +1076,7 @@ mod tests {
 
         // When handling StreamCompleted with Finished reason.
         let event = StreamCompleted {
+            model_used: None,
             session_id: session_id.clone(),
             reason: StreamCompletedReason::Finished,
             assistant_content: Some("response".to_owned()),
@@ -1116,6 +1140,7 @@ mod tests {
 
         // When handling StreamCompleted with Error reason.
         let event = StreamCompleted {
+            model_used: None,
             session_id: session_id.clone(),
             reason: StreamCompletedReason::Error,
             assistant_content: None,
@@ -1169,6 +1194,7 @@ mod tests {
 
         // When handling StreamCompleted with Canceled reason.
         let event = StreamCompleted {
+            model_used: None,
             session_id: session_id.clone(),
             reason: StreamCompletedReason::Canceled,
             assistant_content: None,
@@ -1222,6 +1248,7 @@ mod tests {
 
         // When handling StreamCompleted with ToolUse reason.
         let event = StreamCompleted {
+            model_used: None,
             session_id: session_id.clone(),
             reason: StreamCompletedReason::ToolUse,
             assistant_content: Some("response".to_owned()),
@@ -1267,6 +1294,7 @@ mod tests {
             let mut state = actor.state.write();
             let session = state.active_session_mut();
             session.push_token_record(TokenRecord {
+                model_used: None,
                 timestamp: jiff::Timestamp::now(),
                 tokens_sent: 100,
                 tokens_received: 0,
@@ -1278,6 +1306,7 @@ mod tests {
 
         // When handling StreamCompleted with provider_completion_tokens set.
         let event = StreamCompleted {
+            model_used: None,
             session_id: session_id.clone(),
             reason: StreamCompletedReason::Finished,
             assistant_content: Some("short".to_owned()),
@@ -1310,6 +1339,7 @@ mod tests {
             let mut state = actor.state.write();
             let session = state.active_session_mut();
             session.push_token_record(TokenRecord {
+                model_used: None,
                 timestamp: jiff::Timestamp::now(),
                 tokens_sent: 100,
                 tokens_received: 0,
@@ -1321,6 +1351,7 @@ mod tests {
 
         // When handling StreamCompleted without provider tokens but with thinking.
         let event = StreamCompleted {
+            model_used: None,
             session_id: session_id.clone(),
             reason: StreamCompletedReason::Finished,
             assistant_content: Some("short".to_owned()),
@@ -1353,6 +1384,7 @@ mod tests {
             let mut state = actor.state.write();
             let session = state.active_session_mut();
             session.push_token_record(TokenRecord {
+                model_used: None,
                 timestamp: jiff::Timestamp::now(),
                 tokens_sent: 100,
                 tokens_received: 0,
@@ -1364,6 +1396,7 @@ mod tests {
 
         // When handling StreamCompleted with no provider tokens and no thinking.
         let event = StreamCompleted {
+            model_used: None,
             session_id: session_id.clone(),
             reason: StreamCompletedReason::Finished,
             assistant_content: Some("response text".to_owned()),
@@ -1396,6 +1429,7 @@ mod tests {
             let mut state = actor.state.write();
             let session = state.active_session_mut();
             session.push_token_record(TokenRecord {
+                model_used: None,
                 timestamp: jiff::Timestamp::now(),
                 tokens_sent: 100,
                 tokens_received: 0,
@@ -1408,6 +1442,7 @@ mod tests {
         // When both provider tokens and thinking content are present.
         // Local count would be much higher than 9999 due to thinking.
         let event = StreamCompleted {
+            model_used: None,
             session_id: session_id.clone(),
             reason: StreamCompletedReason::Finished,
             assistant_content: Some("short".to_owned()),
@@ -1437,6 +1472,7 @@ mod tests {
             let mut state = actor.state.write();
             let session = state.active_session_mut();
             session.push_token_record(TokenRecord {
+                model_used: None,
                 timestamp: jiff::Timestamp::now(),
                 tokens_sent: 100,
                 tokens_received: 0,
@@ -1448,6 +1484,7 @@ mod tests {
 
         // When provider reports only 3 tokens but tool calls have much more.
         let event = StreamCompleted {
+            model_used: None,
             session_id: session_id.clone(),
             reason: StreamCompletedReason::ToolUse,
             assistant_content: Some("I'll read that file".to_owned()),
@@ -1484,6 +1521,7 @@ mod tests {
             let mut state = actor.state.write();
             let session = state.active_session_mut();
             session.push_token_record(TokenRecord {
+                model_used: None,
                 timestamp: jiff::Timestamp::now(),
                 tokens_sent: 100,
                 tokens_received: 0,
@@ -1495,6 +1533,7 @@ mod tests {
 
         // When provider reports 50000 tokens but content is tiny.
         let event = StreamCompleted {
+            model_used: None,
             session_id: session_id.clone(),
             reason: StreamCompletedReason::Finished,
             assistant_content: Some("ok".to_owned()),
@@ -1527,6 +1566,7 @@ mod tests {
             let mut state = actor.state.write();
             let session = state.active_session_mut();
             session.push_token_record(TokenRecord {
+                model_used: None,
                 timestamp: jiff::Timestamp::now(),
                 tokens_sent: 100,
                 tokens_received: 0,
@@ -1539,6 +1579,7 @@ mod tests {
         // When provider does not report completion tokens.
         let content = "hello world this is a test";
         let event = StreamCompleted {
+            model_used: None,
             session_id: session_id.clone(),
             reason: StreamCompletedReason::Finished,
             assistant_content: Some(content.to_owned()),
@@ -1683,6 +1724,7 @@ mod tests {
             provider_completion_tokens: Some(10),
             thinking_content: None,
             dispatched_at: dispatched,
+            model_used: None,
         };
         actor.on_stream_completed(&event, &ctx).await;
 
@@ -1735,6 +1777,7 @@ mod tests {
             provider_completion_tokens: None,
             thinking_content: None,
             dispatched_at: dispatched,
+            model_used: None,
         };
         actor.on_stream_completed(&event, &ctx).await;
 
