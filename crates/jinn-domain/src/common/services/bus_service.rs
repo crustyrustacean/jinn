@@ -72,6 +72,12 @@ impl BusService {
         }
     }
 
+    /// Returns `true` if this bus is in recording mode (test-only).
+    #[must_use]
+    pub fn is_recording(&self) -> bool {
+        matches!(&self.inner, BusInner::Recording(_))
+    }
+
     /// Registers a recipient to receive messages of type `M` on the bus.
     ///
     /// No-op in recording mode.

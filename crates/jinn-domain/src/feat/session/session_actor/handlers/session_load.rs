@@ -187,8 +187,8 @@ impl SessionPersistenceActor {
 }
 
 //FIXME: disabled during actor migration — tests reference deleted types
-// #[cfg(test)]
-#[cfg(any())]
+
+#[cfg(test)]
 mod tests {
     #![allow(
         clippy::expect_used,
@@ -202,17 +202,6 @@ mod tests {
     use crate::feat::session::chat_session::ChatSessionState;
     use crate::protocol::ChatEntry;
 
-    async fn test_actor() -> SessionPersistenceActor {
-        super::super::super::helpers::test_actor().await
-    }
-
-    fn test_context() -> (
-        std::sync::Arc<crate::common::actor::RecordingSink>,
-        crate::common::actor::ActorContext,
-    ) {
-        super::super::super::helpers::test_context()
-    }
-
     #[tokio::test]
     async fn session_load_does_not_set_context_size() {
         // Given a session with chat history.
@@ -220,8 +209,7 @@ mod tests {
         session.push_entry(ChatEntry::user("hello world"));
         session.push_entry(ChatEntry::assistant("hi there"));
 
-        let actor = test_actor().await;
-        let (_sink, ctx) = test_context();
+        let (mut actor, _audit) = super::super::super::helpers::test_actor_recording().await;
 
         let payload = SessionLoadCompleted { session };
 
@@ -236,6 +224,7 @@ mod tests {
             "context_size should NOT be set by session actor (ContextSizeActor owns this)"
         );
     }
+
     #[tokio::test]
     async fn handle_session_load_completed_marks_session_as_interacted() {
         // Given a session loaded from disk.
@@ -243,8 +232,7 @@ mod tests {
         session.push_entry(ChatEntry::user("hello"));
         let session_id = session.session_id().clone();
 
-        let actor = test_actor().await;
-        let (_sink, ctx) = test_context();
+        let (mut actor, _audit) = super::super::super::helpers::test_actor_recording().await;
 
         let payload = SessionLoadCompleted { session };
 
@@ -270,8 +258,7 @@ mod tests {
         let mut session = ChatSessionState::new();
         session.push_entry(ChatEntry::user("hello"));
 
-        let actor = test_actor().await;
-        let (sink, ctx) = test_context();
+        let (mut actor, _audit) = super::super::super::helpers::test_actor_recording().await;
 
         let payload = SessionLoadCompleted { session };
 
@@ -281,21 +268,17 @@ mod tests {
         // Then no scan commands are emitted. The three scan actors
         // (skills, prompts, context-files) subscribe to `SessionLoadCompleted`
         // themselves and self-trigger their per-session scans.
-        let scan_commands = sink
-            .commands()
-            .iter()
-            .filter(|c| {
-                matches!(
-                    c,
-                    crate::protocol::Command::ScanSkills(_)
-                        | crate::protocol::Command::RescanPromptTemplates(_)
-                        | crate::protocol::Command::ScanContextFiles(_)
-                )
-            })
-            .count();
-        assert_eq!(
-            scan_commands, 0,
-            "scan actors self-trigger off SessionLoadCompleted; load handler should not emit scan commands"
+        assert!(
+            !_audit.contains_name("ScanSkills"),
+            "should not emit ScanSkills"
+        );
+        assert!(
+            !_audit.contains_name("RescanPromptTemplates"),
+            "should not emit RescanPromptTemplates"
+        );
+        assert!(
+            !_audit.contains_name("ScanContextFiles"),
+            "should not emit ScanContextFiles"
         );
     }
 }

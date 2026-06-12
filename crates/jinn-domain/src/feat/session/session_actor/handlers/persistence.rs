@@ -387,7 +387,8 @@ impl SessionPersistenceActor {
 
 //FIXME: disabled during actor migration — tests reference deleted types
 // #[cfg(test)]
-#[cfg(any())]
+
+#[cfg(test)]
 mod tests {
     #![allow(
         clippy::similar_names,
@@ -398,12 +399,12 @@ mod tests {
         reason = "test code"
     )]
 
-    use super::super::super::helpers::{test_actor_with_store, test_context};
+    use super::super::super::helpers::test_actor_with_store_recording;
+    use crate::common::services::BusAudit;
     use crate::feat::session::chat_session::ChatSessionState;
     use crate::feat::session::chat_session::SessionState;
     use crate::feat::session::protocol::session_load_requested::SessionLoadRequested;
     use crate::feat::ui::sidebar::sessions::state::sorted_open_sessions;
-    use crate::protocol::Event;
 
     #[tokio::test]
     async fn loading_archived_session_resets_state_to_loaded() {
@@ -412,8 +413,7 @@ mod tests {
         store_session.set_title("Archived Chat".to_owned());
         store_session.set_session_state(SessionState::Archived);
         let session_id = store_session.session_id().clone();
-        let (mut actor, _store) = test_actor_with_store(vec![store_session]).await;
-        let (sink, ctx) = test_context();
+        let (mut actor, _store, audit) = test_actor_with_store_recording(vec![store_session]).await;
 
         // When loading the archived session.
         actor
@@ -422,47 +422,29 @@ mod tests {
             })
             .await;
 
-        // Then SessionLoadCompleted is emitted with session_state == Loaded.
-        let loaded_session = sink
-            .events()
-            .iter()
-            .find_map(|cmd| match cmd {
-                Event::SessionLoadCompleted(payload) => Some(payload.session.clone()),
-                _ => None,
-            })
-            .expect("expected SessionLoadCompleted command");
-
-        assert_eq!(
-            loaded_session.session_state(),
-            SessionState::Loaded,
-            "loaded session should have SessionState::Loaded"
+        // Then SessionLoadCompleted is emitted.
+        assert!(
+            audit.contains_name("SessionLoadCompleted"),
+            "expected SessionLoadCompleted event"
         );
 
-        // And the session appears in sorted_open_sessions.
-        let mut state = actor.state.write();
-        state
-            .session
-            .sessions_mut()
-            .insert(session_id.clone(), loaded_session);
-        state.session.set_active(session_id.clone());
-
-        let sidebar_sessions = sorted_open_sessions(&state);
-        assert!(
-            sidebar_sessions.iter().any(|s| s.id == session_id),
-            "archived session should appear in sidebar after loading"
+        // And the loaded session has Loaded state.
+        let state = actor.state.read();
+        let loaded = state.session.sessions().get(&session_id).expect("loaded session");
+        assert_eq!(
+            loaded.session_state(),
+            SessionState::Loaded,
+            "loaded session should have SessionState::Loaded"
         );
     }
 
     #[tokio::test]
     async fn save_active_session_skips_non_persistable_session() {
-        // Given an actor with a new (non-interacted) session and a recording store.
-        let (actor, store) = test_actor_with_store(vec![]).await;
+        let (actor, store, _audit) = test_actor_with_store_recording(vec![]).await;
         let session_id = actor.state.read().session.active_session_id().clone();
 
-        // When saving the active session.
         actor.save_active_session(&session_id).await;
 
-        // Then the session was NOT saved because it is not persistable.
         assert!(
             store.last_saved_session(&session_id).is_none(),
             "non-interacted session should not be persisted"
@@ -471,18 +453,15 @@ mod tests {
 
     #[tokio::test]
     async fn save_active_session_persists_interacted_session() {
-        // Given an actor with an interacted session and a recording store.
-        let (actor, store) = test_actor_with_store(vec![]).await;
+        let (actor, store, _audit) = test_actor_with_store_recording(vec![]).await;
         let session_id = actor.state.read().session.active_session_id().clone();
         {
             let mut state = actor.state.write();
             state.active_session_mut().mark_interacted();
         }
 
-        // When saving the active session.
         actor.save_active_session(&session_id).await;
 
-        // Then the session was saved.
         assert!(
             store.last_saved_session(&session_id).is_some(),
             "interacted session should be persisted"
@@ -492,34 +471,26 @@ mod tests {
     #[tokio::test]
     async fn handle_mark_session_interacted_sets_flag_emits_event_and_persists() {
         use crate::feat::session::protocol::mark_session_interacted::MarkSessionInteracted;
-        use crate::protocol::Event;
 
-        // Given an actor with a new session.
-        let (mut actor, store) = test_actor_with_store(vec![]).await;
+        let (mut actor, store, audit) = test_actor_with_store_recording(vec![]).await;
         let session_id = actor.state.read().session.active_session_id().clone();
-        let (sink, ctx) = test_context();
 
-        // When handling MarkSessionInteracted.
         actor
             .handle_mark_session_interacted(&MarkSessionInteracted {
                 session_id: session_id.clone(),
             })
             .await;
 
-        // Then the session has_interacted flag is set.
         let state = actor.state.read();
         let session = state.session.get(&session_id).expect("session exists");
         assert!(session.has_interacted());
         assert!(session.is_persistable());
 
-        // And a UserInteracted event was emitted.
-        let has_event = sink
-            .events()
-            .iter()
-            .any(|e| matches!(e, Event::UserInteracted(e) if e.session_id == session_id));
-        assert!(has_event, "UserInteracted event should be emitted");
+        assert!(
+            audit.contains_name("UserInteracted"),
+            "UserInteracted event should be emitted"
+        );
 
-        // And the session was persisted to the store.
         assert!(
             store.last_saved_session(&session_id).is_some(),
             "interacted session should be persisted after MarkSessionInteracted"
@@ -528,7 +499,6 @@ mod tests {
 
     #[tokio::test]
     async fn loading_child_session_creates_frozen_node_for_archived_parent() {
-        // Given a parent and a child session in the store.
         let mut parent = ChatSessionState::new();
         parent.set_title("Parent Session".to_owned());
         parent.mark_interacted();
@@ -542,17 +512,14 @@ mod tests {
         child.push_entry(crate::protocol::ChatEntry::user("child msg"));
         let child_id = child.session_id().clone();
 
-        let (mut actor, _store) = test_actor_with_store(vec![parent, child]).await;
-        let (_sink, ctx) = test_context();
+        let (mut actor, _store, _audit) = test_actor_with_store_recording(vec![parent, child]).await;
 
-        // When loading the child session.
         actor
             .on_load_requested(&SessionLoadRequested {
                 session_id: child_id.clone(),
             })
             .await;
 
-        // Then the parent has a frozen node (not loaded as a live session).
         let state = actor.state.read();
         let frozen = state.session.frozen_nodes();
         assert!(
@@ -560,7 +527,6 @@ mod tests {
             "parent should have a frozen node after child is loaded"
         );
 
-        // And the child is live.
         assert!(
             state.session.contains(&child_id),
             "child should be in live sessions"

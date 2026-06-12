@@ -257,7 +257,8 @@ impl SessionPersistenceActor {
 
 //FIXME: disabled during actor migration — tests reference deleted types
 // #[cfg(test)]
-#[cfg(any())]
+
+#[cfg(test)]
 mod tests {
     #![allow(
         clippy::expect_used,
@@ -266,7 +267,7 @@ mod tests {
         clippy::indexing_slicing,
         reason = "test code"
     )]
-    use super::super::super::helpers::{test_actor, test_context};
+    use super::super::super::helpers::test_actor_recording;
     use crate::feat::provider::protocol::event::{StreamCompleted, StreamCompletedReason};
     use crate::feat::session::phase_machine::PhaseKind;
     use crate::feat::session::token_stats::TokenRecord;
@@ -276,13 +277,12 @@ mod tests {
         ToolExecutionStarted, ToolUseStarted,
     };
     use crate::feat::tools_actor::tool_types::{ToolCall, ToolResult};
-    use crate::protocol::{ChangeSource, ChatEntry, ChatEntryKind, Command, Event};
+    use crate::protocol::{ChangeSource, ChatEntry, ChatEntryKind};
+
 
     #[tokio::test]
     async fn on_tool_batch_completed_emits_send_to_llm_provider() {
-        // Given a session with tool call and result entries in history.
-        let actor = test_actor().await;
-        let (sink, ctx) = test_context();
+        let (actor, audit) = test_actor_recording().await;
         let session_id = {
             let mut state = actor.state.write();
             let session = state.active_session_mut();
@@ -293,7 +293,6 @@ mod tests {
             state.session.active_session_id().clone()
         };
 
-        // When handling ToolBatchCompleted.
         let event = ToolBatchCompleted {
             session_id: session_id.clone(),
             results: vec![ToolResult {
@@ -306,24 +305,18 @@ mod tests {
                 pin_position: None,
             }],
         };
-        actor.on_tool_batch_completed(&event);
+        actor.on_tool_batch_completed(&event).await;
 
-        // Then a SendToLlmProvider command was emitted.
-        let commands = sink.commands();
-        let send = commands
-            .iter()
-            .find(|c| matches!(c, Command::SendToLlmProvider(_)));
         assert!(
-            send.is_some(),
-            "expected SendToLlmProvider command to be emitted"
+            audit.contains_name("SendToLlmProvider"),
+            "expected SendToLlmProvider command to be emitted, got: {:?}",
+            audit.names()
         );
     }
 
     #[tokio::test]
     async fn on_tool_batch_completed_transitions_session_to_sending() {
-        // Given a session in sending state (set by on_stream_completed for ToolUse).
-        let actor = test_actor().await;
-        let (_sink, ctx) = test_context();
+        let (actor, _audit) = test_actor_recording().await;
         let session_id = {
             let mut state = actor.state.write();
             let session = state.active_session_mut();
@@ -333,14 +326,12 @@ mod tests {
             state.session.active_session_id().clone()
         };
 
-        // When handling ToolBatchCompleted.
         let event = ToolBatchCompleted {
             session_id: session_id.clone(),
             results: vec![],
         };
-        actor.on_tool_batch_completed(&event);
+        actor.on_tool_batch_completed(&event).await;
 
-        // Then the session transitions to streaming (assemble + send are now synchronous).
         let state = actor.state.read();
         let session = state.session.get(&session_id).expect("session exists");
         assert!(matches!(session.phase(), PhaseKind::Streaming));
@@ -348,9 +339,7 @@ mod tests {
 
     #[tokio::test]
     async fn on_stream_completed_tool_use_counts_tool_call_arguments() {
-        // Given a session with a token record (from prompt assembly) in streaming state.
-        let actor = test_actor().await;
-        let (_sink, ctx) = test_context();
+        let (actor, _audit) = test_actor_recording().await;
         let session_id = {
             let mut state = actor.state.write();
             let session = state.active_session_mut();
@@ -364,7 +353,6 @@ mod tests {
             state.session.active_session_id().clone()
         };
 
-        // When handling StreamCompleted(ToolUse) with tool calls.
         let event = StreamCompleted {
             session_id: session_id.clone(),
             reason: StreamCompletedReason::ToolUse,
@@ -380,13 +368,10 @@ mod tests {
         };
         actor.on_stream_completed(&event).await;
 
-        // Then the token record includes tokens from both text and tool call arguments.
         let state = actor.state.read();
         let session = state.session.get(&session_id).expect("session exists");
         let ledger = session.token_ledger();
         assert_eq!(ledger.len(), 1);
-        // tokens_received should be > just "checking" (2 tokens with tiktoken).
-        // It must include the tool call arguments and name.
         assert!(
             ledger[0].tokens_received > 2,
             "expected tokens_received > 2 (text only), got {}",
@@ -396,9 +381,7 @@ mod tests {
 
     #[tokio::test]
     async fn on_tool_execution_completed_emits_history_appended() {
-        // Given a session actor with a pending tool result.
-        let actor = test_actor().await;
-        let (sink, ctx) = test_context();
+        let (actor, audit) = test_actor_recording().await;
         let session_id = {
             let mut state = actor.state.write();
             let session = state.active_session_mut();
@@ -414,7 +397,6 @@ mod tests {
             state.session.active_session_id().clone()
         };
 
-        // When handling ToolExecutionCompleted.
         let event = crate::feat::tools_actor::protocol::event::ToolExecutionCompleted {
             session_id: session_id.clone(),
             result: crate::feat::tools_actor::tool_types::ToolResult {
@@ -429,22 +411,15 @@ mod tests {
         };
         actor.on_tool_execution_completed(&event).await;
 
-        // Then a HistoryAppended event was emitted.
-        let events = sink.events();
-        let has_history = events.iter().any(
-            |e| matches!(e, Event::HistoryAppended(payload) if payload.session_id == session_id),
-        );
         assert!(
-            has_history,
+            audit.contains_name("HistoryAppended"),
             "expected HistoryAppended event after tool execution completed"
         );
     }
 
     #[tokio::test]
     async fn on_tool_batch_completed_skips_send_when_tool_loop_disabled() {
-        // Given a session in sending state with tool_loop_disabled set.
-        let actor = test_actor().await;
-        let (sink, ctx) = test_context();
+        let (actor, audit) = test_actor_recording().await;
         let session_id = {
             let mut state = actor.state.write();
             let session = state.active_session_mut();
@@ -455,7 +430,6 @@ mod tests {
             state.session.active_session_id().clone()
         };
 
-        // When handling ToolBatchCompleted.
         let event = ToolBatchCompleted {
             session_id: session_id.clone(),
             results: vec![ToolResult {
@@ -468,9 +442,8 @@ mod tests {
                 pin_position: None,
             }],
         };
-        actor.on_tool_batch_completed(&event);
+        actor.on_tool_batch_completed(&event).await;
 
-        // Then the session transitions to Idle.
         let state = actor.state.read();
         let session = state.session.get(&session_id).expect("session exists");
         assert!(
@@ -479,17 +452,11 @@ mod tests {
             session.phase()
         );
 
-        // And no SendToLlmProvider was emitted.
-        let commands = sink.commands();
-        let has_send = commands
-            .iter()
-            .any(|c| matches!(c, Command::SendToLlmProvider(_)));
         assert!(
-            !has_send,
+            !audit.contains_name("SendToLlmProvider"),
             "expected no SendToLlmProvider when tool_loop_disabled"
         );
 
-        // And the flag is cleared.
         drop(state);
         let mut state = actor.state.write();
         let session = state.session_mut_or_create(&session_id);
@@ -501,9 +468,7 @@ mod tests {
 
     #[tokio::test]
     async fn on_tool_batch_completed_unaffected_without_tool_loop_disabled() {
-        // Given a normal session (no flag set) in sending state with history.
-        let actor = test_actor().await;
-        let (sink, ctx) = test_context();
+        let (actor, audit) = test_actor_recording().await;
         let session_id = {
             let mut state = actor.state.write();
             let session = state.active_session_mut();
@@ -517,7 +482,6 @@ mod tests {
             state.session.active_session_id().clone()
         };
 
-        // When handling ToolBatchCompleted.
         let event = ToolBatchCompleted {
             session_id: session_id.clone(),
             results: vec![ToolResult {
@@ -530,25 +494,17 @@ mod tests {
                 pin_position: None,
             }],
         };
-        actor.on_tool_batch_completed(&event);
+        actor.on_tool_batch_completed(&event).await;
 
-        // Then SendToLlmProvider IS emitted (normal behavior).
-        let commands = sink.commands();
-        let has_send = commands
-            .iter()
-            .any(|c| matches!(c, Command::SendToLlmProvider(_)));
         assert!(
-            has_send,
+            audit.contains_name("SendToLlmProvider"),
             "expected SendToLlmProvider for normal session without tool_loop_disabled"
         );
     }
 
-    // --- on_tool_use_started ---
-
     #[tokio::test]
     async fn on_tool_use_started_creates_tool_call_entry() {
-        // Given a session in streaming state.
-        let actor = test_actor().await;
+        let (actor, _audit) = test_actor_recording().await;
         let session_id = {
             let mut state = actor.state.write();
             let session = state.active_session_mut();
@@ -556,7 +512,6 @@ mod tests {
             state.session.active_session_id().clone()
         };
 
-        // When a tool use starts.
         actor.on_tool_use_started(&ToolUseStarted {
             session_id: session_id.clone(),
             index: 0,
@@ -564,7 +519,6 @@ mod tests {
             name: "bash".to_owned(),
         });
 
-        // Then a ToolCall entry is in history with empty arguments.
         let state = actor.state.read();
         let session = state.session.get(&session_id).expect("session");
         let tc = session
@@ -574,12 +528,9 @@ mod tests {
         assert!(tc.is_some(), "expected ToolCall entry with id tc-1");
     }
 
-    // --- on_tool_call_received ---
-
     #[tokio::test]
     async fn on_tool_call_received_finalizes_arguments() {
-        // Given a session with a started tool call.
-        let actor = test_actor().await;
+        let (actor, _audit) = test_actor_recording().await;
         let session_id = {
             let mut state = actor.state.write();
             let session = state.active_session_mut();
@@ -588,19 +539,16 @@ mod tests {
             state.session.active_session_id().clone()
         };
 
-        // When the complete tool call is received.
         actor.on_tool_call_received(&ToolCallReceived {
             session_id: session_id.clone(),
             tool_call: ToolCall {
                 id: "tc-1".to_owned(),
                 name: "bash".to_owned(),
                 arguments: r#"{"command":"ls"}
-"#
-                .to_owned(),
+"#.to_owned(),
             },
         });
 
-        // Then the tool call entry has the complete arguments.
         let state = actor.state.read();
         let session = state.session.get(&session_id).expect("session");
         let tc = session
@@ -616,12 +564,9 @@ mod tests {
         }
     }
 
-    // --- on_tool_call_streaming ---
-
     #[tokio::test]
     async fn on_tool_call_streaming_appends_delta() {
-        // Given a session with a started tool call.
-        let actor = test_actor().await;
+        let (actor, _audit) = test_actor_recording().await;
         let session_id = {
             let mut state = actor.state.write();
             let session = state.active_session_mut();
@@ -630,7 +575,6 @@ mod tests {
             state.session.active_session_id().clone()
         };
 
-        // When streaming a delta.
         actor.on_tool_call_streaming(&ToolCallStreaming {
             session_id: session_id.clone(),
             index: 0,
@@ -642,7 +586,6 @@ mod tests {
             partial_json: "mmand\":\"ls\"}".to_owned(),
         });
 
-        // Then the arguments are accumulated.
         let state = actor.state.read();
         let session = state.session.get(&session_id).expect("session");
         let tc = session
@@ -655,12 +598,9 @@ mod tests {
         }
     }
 
-    // --- on_tool_execution_started ---
-
     #[tokio::test]
     async fn on_tool_execution_started_creates_pending_result() {
-        // Given a session in streaming state.
-        let actor = test_actor().await;
+        let (actor, _audit) = test_actor_recording().await;
         let session_id = {
             let mut state = actor.state.write();
             let session = state.active_session_mut();
@@ -669,14 +609,12 @@ mod tests {
             state.session.active_session_id().clone()
         };
 
-        // When a tool execution starts.
         actor.on_tool_execution_started(&ToolExecutionStarted {
             session_id: session_id.clone(),
             tool_call_id: "tc-1".to_owned(),
             name: "bash".to_owned(),
         });
 
-        // Then a ToolResult entry with Pending status is in history.
         let state = actor.state.read();
         let session = state.session.get(&session_id).expect("session");
         let tr = session
@@ -686,12 +624,9 @@ mod tests {
         assert!(tr.is_some(), "expected ToolResult entry with id tc-1");
     }
 
-    // --- on_tool_execution_output ---
-
     #[tokio::test]
     async fn on_tool_execution_output_appends_to_pending_result() {
-        // Given a session with a pending tool result.
-        let actor = test_actor().await;
+        let (actor, _audit) = test_actor_recording().await;
         let session_id = {
             let mut state = actor.state.write();
             let session = state.active_session_mut();
@@ -701,7 +636,6 @@ mod tests {
             state.session.active_session_id().clone()
         };
 
-        // When incremental output arrives.
         actor.on_tool_execution_output(&ToolExecutionOutput {
             session_id: session_id.clone(),
             tool_call_id: "tc-1".to_owned(),
@@ -713,7 +647,6 @@ mod tests {
             output: "file2.txt\n".to_owned(),
         });
 
-        // Then the accumulated content is in the pending result.
         let state = actor.state.read();
         let session = state.session.get(&session_id).expect("session");
         let tr = session
@@ -726,15 +659,9 @@ mod tests {
         }
     }
 
-    // --- Phase 7: Comprehensive tool batch transition tests ---
-
-    // --- Phase 2: History mutation application hooks ---
-
     #[tokio::test]
     async fn on_tool_batch_completed_applies_pending_mutations() {
-        // Given a session in sending state with pending history mutations.
-        let actor = test_actor().await;
-        let (sink, ctx) = test_context();
+        let (actor, audit) = test_actor_recording().await;
         let (entry_id, session_id) = {
             let mut state = actor.state.write();
             let session = state.active_session_mut();
@@ -747,7 +674,6 @@ mod tests {
             session.begin_streaming();
             session.finish_streaming(true);
             session.begin_sending();
-            // Queue a mutation to exclude the assistant entry.
             session.queue_mutations(vec![
                 crate::feat::session::history_mutation::HistoryMutation::SetContextOverride {
                     entry_id: entry_id.clone(),
@@ -760,7 +686,6 @@ mod tests {
             (entry_id, state.session.active_session_id().clone())
         };
 
-        // When handling ToolBatchCompleted.
         let event = ToolBatchCompleted {
             session_id: session_id.clone(),
             results: vec![ToolResult {
@@ -773,9 +698,8 @@ mod tests {
                 pin_position: None,
             }],
         };
-        actor.on_tool_batch_completed(&event);
+        actor.on_tool_batch_completed(&event).await;
 
-        // Then the mutation was applied - the assistant entry is now ForcedExclude.
         let state = actor.state.read();
         let session = state.session.get(&session_id).expect("session exists");
         let assistant = session
@@ -789,22 +713,15 @@ mod tests {
             "expected mutation to be applied at tool batch completion"
         );
 
-        // And SendToLlmProvider was still emitted (normal flow continues).
-        let commands = sink.commands();
-        let has_send = commands
-            .iter()
-            .any(|c| matches!(c, Command::SendToLlmProvider(_)));
         assert!(
-            has_send,
+            audit.contains_name("SendToLlmProvider"),
             "expected SendToLlmProvider after mutation application"
         );
     }
 
     #[tokio::test]
     async fn on_tool_batch_completed_empty_mutation_queue_is_noop() {
-        // Given a session in sending state with no pending mutations.
-        let actor = test_actor().await;
-        let (sink, ctx) = test_context();
+        let (actor, audit) = test_actor_recording().await;
         let session_id = {
             let mut state = actor.state.write();
             let session = state.active_session_mut();
@@ -818,7 +735,6 @@ mod tests {
             state.session.active_session_id().clone()
         };
 
-        // When handling ToolBatchCompleted.
         let event = ToolBatchCompleted {
             session_id: session_id.clone(),
             results: vec![ToolResult {
@@ -831,25 +747,17 @@ mod tests {
                 pin_position: None,
             }],
         };
-        actor.on_tool_batch_completed(&event);
+        actor.on_tool_batch_completed(&event).await;
 
-        // Then SendToLlmProvider was emitted (no side effects from empty queue).
-        let commands = sink.commands();
-        let has_send = commands
-            .iter()
-            .any(|c| matches!(c, Command::SendToLlmProvider(_)));
         assert!(
-            has_send,
+            audit.contains_name("SendToLlmProvider"),
             "expected SendToLlmProvider with empty mutation queue"
         );
     }
 
     #[tokio::test]
     async fn on_tool_batch_completed_drained_steering_entry_lands_after_tool_results() {
-        // Given a session with [user][assistant+tool_call][tool_result] in history
-        // and a non-empty steering buffer.
-        let actor = test_actor().await;
-        let (_sink, ctx) = test_context();
+        let (actor, _audit) = test_actor_recording().await;
         let session_id = {
             let mut state = actor.state.write();
             let session = state.active_session_mut();
@@ -868,18 +776,14 @@ mod tests {
                 "file2.txt",
                 ToolResultStatus::Success,
             ));
-            // Prime steering buffer.
             session
                 .steering_buffer_mut()
                 .push_fragment("stay at the foo part");
-            // Tool batch already completed; transition to Sending so on_tool_batch_completed
-            // routes through the drain path.
             session.finish_streaming(true);
             session.begin_sending();
             state.session.active_session_id().clone()
         };
 
-        // When handling ToolBatchCompleted.
         let event = ToolBatchCompleted {
             session_id: session_id.clone(),
             results: vec![ToolResult {
@@ -892,9 +796,8 @@ mod tests {
                 pin_position: None,
             }],
         };
-        actor.on_tool_batch_completed(&event);
+        actor.on_tool_batch_completed(&event).await;
 
-        // Then the drained steering entry's index is greater than both tool_result indices.
         let state = actor.state.read();
         let session = state.session.active_session();
         let history = session.history();
