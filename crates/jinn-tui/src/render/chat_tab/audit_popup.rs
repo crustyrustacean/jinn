@@ -167,7 +167,7 @@ mod tests {
         // Given a state with audit visible and one excluded entry, with
         // pre-populated line ranges (simulating what render_chat_log does).
         let app = app_with_audit_visible().await;
-        let (mut terminal, _area) = setup_term(80, 24);
+        let (mut terminal, _area) = setup_term(120, 24);
 
         // Pre-populate the line-range cache that render_chat_log normally fills.
         // The selected entry occupies wrapped-line 0..=0 (one line).
@@ -181,7 +181,7 @@ mod tests {
         }
 
         // The chat-log area we render against. Wide enough to fit the
-        // 60-col popup with room to spare.
+        // 70-col popup with room to spare.
         let chat_log_area = Rect::new(30, 0, 70, 24);
 
         // When rendering the popup directly.
@@ -208,32 +208,55 @@ mod tests {
             "popup right edge should align to chat-log right edge"
         );
 
-        // And the popup height accommodates header + body + 2 borders
-        // (1 header + 1 body = 2 content lines + 2 borders = 4).
+        // And the popup height accommodates Metadata section + audit section + 2 borders
+        // (3 Metadata lines + 1 audit header + 1 audit body = 5 content lines + 2 borders = 7).
         assert_eq!(
-            popup.height, 4,
+            popup.height, 7,
             "popup height should be content + 2 borders"
         );
 
-        // And the rendered buffer contains the header text on the first body
-        // line (popup.y + 1, since row 0 is the top border).
-        // And the rendered buffer contains the header text on the first body
+        // And the rendered buffer contains the Metadata title on the first body
         // line (popup.y + 1, since row 0 is the top border).
         let buffer = terminal.backend().buffer();
-        let header_y = popup.y + 1;
-        let header_row: String = (popup.x..popup.x + popup.width)
-            .filter_map(|x| buffer.cell((x, header_y)).map(|c| c.symbol().to_owned()))
+        let metadata_y = popup.y + 1;
+        let metadata_row: String = (popup.x..popup.x + popup.width)
+            .filter_map(|x| buffer.cell((x, metadata_y)).map(|c| c.symbol().to_owned()))
             .collect();
         assert!(
-            header_row.contains("audit")
-                && header_row.contains("1 events")
-                && header_row.contains("ForcedExclude"),
-            "header row at y={header_y}: {header_row:?}"
+            metadata_row.contains("Metadata"),
+            "metadata title row at y={metadata_y}: {metadata_row:?}"
         );
 
-        // And the rendered buffer contains the body line text on the second
-        // body line (popup.y + 2).
-        let body_y = popup.y + 2;
+        // And the Sent line appears on the second body line (popup.y + 2).
+        let sent_y = popup.y + 2;
+        let sent_row: String = (popup.x..popup.x + popup.width)
+            .filter_map(|x| buffer.cell((x, sent_y)).map(|c| c.symbol().to_owned()))
+            .collect();
+        assert!(
+            sent_row.contains("Sent:"),
+            "sent row at y={sent_y}: {sent_row:?}"
+        );
+
+        // And the rendered buffer contains the audit header text on the fourth
+        // body line (popup.y + 4, after Metadata title + Sent + blank).
+        let audit_header_y = popup.y + 4;
+        let audit_header_row: String = (popup.x..popup.x + popup.width)
+            .filter_map(|x| {
+                buffer
+                    .cell((x, audit_header_y))
+                    .map(|c| c.symbol().to_owned())
+            })
+            .collect();
+        assert!(
+            audit_header_row.contains("audit")
+                && audit_header_row.contains("1 events")
+                && audit_header_row.contains("ForcedExclude"),
+            "audit header row at y={audit_header_y}: {audit_header_row:?}"
+        );
+
+        // And the rendered buffer contains the event body text on the fifth
+        // body line (popup.y + 5).
+        let body_y = popup.y + 5;
         let body_row: String = (popup.x..popup.x + popup.width)
             .filter_map(|x| buffer.cell((x, body_y)).map(|c| c.symbol().to_owned()))
             .collect();

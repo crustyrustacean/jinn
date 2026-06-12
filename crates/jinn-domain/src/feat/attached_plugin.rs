@@ -8,6 +8,8 @@
 
 use serde::{Deserialize, Serialize};
 
+use crate::protocol::SessionId;
+
 /// A plugin attached to a session.
 ///
 /// Stored in `SessionCore::attached_plugins`. Persists across restarts.
@@ -27,6 +29,11 @@ pub struct AttachedPlugin {
     /// Current execution state. Reset to `Idle` on actor activate (crash rehydration).
     #[serde(default)]
     pub run_state: PluginRunState,
+    /// Session ID managed by this plugin (e.g. a judge's child session).
+    /// Written by the plugin via `ctx.emit('set_managed_session', ...)`.
+    /// Used by the sidebar to preview and activate the plugin's session.
+    #[serde(default)]
+    pub managed_session_id: Option<SessionId>,
 }
 
 fn default_true() -> bool {
@@ -48,9 +55,9 @@ impl AttachedPlugin {
             label,
             enabled: true,
             run_state: PluginRunState::Idle,
+            managed_session_id: None,
         }
     }
-
     /// Display label, falling back to the plugin name when empty.
     #[must_use]
     pub fn label_or_name(&self) -> &str {

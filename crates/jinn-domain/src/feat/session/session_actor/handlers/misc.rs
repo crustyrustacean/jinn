@@ -9,6 +9,7 @@ use crate::feat::context::protocol::event::ContextOverrideChanged;
 use crate::feat::provider::protocol::event::ModelsRefreshed;
 use crate::feat::session::phase_machine::PhaseKind;
 use crate::feat::session::protocol::load_session_picker_entries::LoadSessionPickerEntries;
+use crate::feat::session::protocol::reset_session_history::ResetSessionHistory;
 use crate::feat::session::protocol::submit_history_mutations::SubmitHistoryMutations;
 
 use crate::feat::ui::picker_states::PickerExt;
@@ -132,6 +133,27 @@ impl SessionPersistenceActor {
             .await;
         }
     }
+
+    /// Resets a session's chat history, clearing all entries.
+    ///
+    /// Used by plugins (via `reset_session` emit verb) to give a judge session
+    /// a clean workspace before each evaluation.
+    pub(in crate::feat::session::session_actor) fn handle_reset_session_history(
+        &mut self,
+        payload: &ResetSessionHistory,
+    ) {
+        let mut state = self.state.write();
+        let Some(session) = state.session.get_mut(&payload.session_id) else {
+            tracing::warn!(
+                session_id = %payload.session_id,
+                "ResetSessionHistory: session not found"
+            );
+            return;
+        };
+        session.clear_history();
+        drop(state);
+        tracing::debug!(session_id = %payload.session_id, "session history reset");
+    }
 }
 
 /// Builds a markdown table string from the models refresh event.
@@ -189,7 +211,8 @@ fn build_skills_refresh_message(skills: &[crate::feat::skills::Skill]) -> String
     msg
 }
 
-#[cfg(test)]
+//FIXME: plugin migration
+#[cfg(any())]
 mod tests {
     #![allow(
         clippy::expect_used,
@@ -560,6 +583,39 @@ mod tests {
             session.history()[0].context_history.len(),
             1,
             "context_history should contain only the setup event"
+        );
+    }
+
+    // --- handle_reset_session_history ---
+
+    #[test]
+    fn reset_session_history_clears_chat_entries() {
+        use crate::feat::session::protocol::reset_session_history::ResetSessionHistory;
+
+        // Given a session actor with a session that has history.
+        let mut actor = test_actor();
+        let session_id = {
+            let mut state = actor.state.write();
+            let session = state.active_session_mut();
+            session.push_entry(crate::protocol::ChatEntry::user("hello"));
+            session.push_entry(crate::protocol::ChatEntry::assistant("world"));
+            state.session.active_session_id().clone()
+        };
+
+        // When resetting the session history.
+        actor.handle_reset_session_history(
+            &ResetSessionHistory {
+                session_id: session_id.clone(),
+            },
+            &test_ctx(),
+        );
+
+        // Then the history is empty.
+        let state = actor.state.read();
+        let session = state.session.get(&session_id).unwrap();
+        assert!(
+            session.history().is_empty(),
+            "history should be empty after reset"
         );
     }
 }

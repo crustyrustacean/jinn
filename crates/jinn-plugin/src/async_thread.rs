@@ -27,6 +27,7 @@ use error_stack::{Report, ResultExt};
 use mlua::Lua;
 use tokio::runtime::Runtime;
 
+use jinn_domain::SessionId;
 use jinn_domain::feat::plugin_dispatch::PluginHookSite;
 
 use crate::async_handle::{PluginError, PluginJob};
@@ -58,6 +59,11 @@ struct SessionState {
     lua: Lua,
     /// Hooks registered per plugin for this session.
     hooks: HashMap<String, PluginHooks>,
+    /// Tool definitions from attached plugins in this session.
+    tools: Vec<crate::tool_def::PluginToolDef>,
+    /// The domain session that owns this Lua state (the "origin" session).
+    /// Used to scope plugin_data correctly when tool handlers run in child sessions.
+    origin_session_id: Option<SessionId>,
 }
 
 /// Thread state passed through the loop.
@@ -66,6 +72,8 @@ struct ThreadState {
     global_lua: Lua,
     /// Hooks registered for global plugins.
     global_hooks: HashMap<String, PluginHooks>,
+    /// Tool definitions from global plugins.
+    global_tools: Vec<crate::tool_def::PluginToolDef>,
     /// Per-session states keyed by registry ID.
     sessions: HashMap<SessionRegistryId, SessionState>,
     /// All discovered attachable plugins (loaded on demand).
@@ -86,6 +94,7 @@ pub(crate) fn run_async_thread(
     rx: kanal::AsyncReceiver<PluginJob>,
     lua: Lua,
     hooks: HashMap<String, PluginHooks>,
+    global_tools: Vec<crate::tool_def::PluginToolDef>,
     all_plugins: Vec<PluginMeta>,
     plugin_data: PluginData,
     emit_tx: kanal::AsyncSender<PluginCommand>,
@@ -110,6 +119,7 @@ pub(crate) fn run_async_thread(
     let state = ThreadState {
         global_lua: lua,
         global_hooks: hooks,
+        global_tools,
         sessions: HashMap::new(),
         attachable_plugins,
         plugin_data,
@@ -154,8 +164,10 @@ async fn execute_plugin_job(state: &mut ThreadState, job: PluginJob) {
             ctx_json,
             respond_to,
             target_session,
+            enabled_plugins,
         } => {
-            let result = run_hooks_fire(state, target_session, &hook, &ctx_json).await;
+            let result =
+                run_hooks_fire(state, target_session, &hook, &ctx_json, &enabled_plugins).await;
             let _ = respond_to.send(result);
         }
         PluginJob::Collect {
@@ -179,15 +191,115 @@ async fn execute_plugin_job(state: &mut ThreadState, job: PluginJob) {
         PluginJob::LoadSession {
             registry_id,
             plugin_names,
+            origin_session_id,
             respond_to,
         } => {
-            let result = load_session_plugins(state, registry_id, &plugin_names);
+            let result = load_session_plugins(state, registry_id, &plugin_names, origin_session_id);
             let _ = respond_to.send(result);
         }
         PluginJob::DestroySession { registry_id } => {
             state.sessions.remove(&registry_id);
         }
+        PluginJob::ExecuteTool {
+            target,
+            session_id,
+            plugin_name,
+            tool_name,
+            arguments,
+            respond_to,
+        } => {
+            let result = execute_plugin_tool(
+                state,
+                target,
+                &session_id,
+                &plugin_name,
+                &tool_name,
+                &arguments,
+            );
+            let _ = respond_to.send(result);
+        }
     }
+}
+
+/// Execute a plugin-defined tool handler.
+///
+/// Routes to the correct Lua state (global or per-session),
+/// finds the tool handler by plugin + tool name, builds a ctx,
+/// calls the handler with (ctx, arguments), returns the result string.
+fn execute_plugin_tool(
+    state: &mut ThreadState,
+    target: Option<SessionRegistryId>,
+    session_id: &SessionId,
+    plugin_name: &str,
+    tool_name: &str,
+    arguments: &serde_json::Value,
+) -> Result<String, Report<PluginError>> {
+    // Locate the correct Lua state and tools list.
+    let (lua, tools, data_scope_id) = if let Some(id) = &target {
+        let session = state.sessions.get_mut(id).ok_or_else(|| {
+            Report::new(PluginError).attach(format!("no session for registry id {id:?}"))
+        })?;
+        let scope = session
+            .origin_session_id
+            .clone()
+            .unwrap_or_else(|| session_id.clone());
+        (&session.lua, &session.tools, scope)
+    } else {
+        (&state.global_lua, &state.global_tools, session_id.clone())
+    };
+
+    // Find the tool definition.
+    let tool_def = tools
+        .iter()
+        .find(|t| t.plugin_name == plugin_name && t.name == tool_name)
+        .ok_or_else(|| {
+            Report::new(PluginError)
+                .attach(format!("no tool '{tool_name}' for plugin '{plugin_name}'"))
+        })?;
+
+    // Build the ctx table for the handler.
+    let ctx = build_async_ctx(
+        lua,
+        &serde_json::json!({}),
+        plugin_name,
+        &state.plugin_data,
+        &state.emit_tx,
+        &state.request_handler,
+        Some(&data_scope_id),
+    )
+    .map_err(|e| Report::new(PluginError).attach(e.to_string()))
+    .attach("failed to build tool handler ctx")?;
+
+    // Convert arguments JSON to a Lua table.
+    let args_value = bindings::json_to_lua_value(lua, &arguments)
+        .map_err(|e| Report::new(PluginError).attach(e.to_string()))?;
+    let args_table = match args_value {
+        mlua::Value::Table(t) => t,
+        _ => lua
+            .create_table()
+            .map_err(|e| Report::new(PluginError).attach(e.to_string()))?,
+    };
+
+    // Get the handler function from the registry.
+    let handler: mlua::Function = lua
+        .registry_value(&tool_def.handler_key)
+        .map_err(|e: mlua::Error| Report::new(PluginError).attach(e.to_string()))
+        .attach("tool handler not found in Lua registry")?;
+
+    // Call the handler with (ctx, args).
+    let result: mlua::Value = handler
+        .call::<mlua::Value>((ctx, mlua::Value::Table(args_table)))
+        .map_err(|e: mlua::Error| Report::new(PluginError).attach(e.to_string()))
+        .attach(format!("tool handler '{tool_name}' failed"))?;
+
+    // Convert the return value to a string.
+    let result_str = match result {
+        mlua::Value::String(s) => s.to_str().map(|s| s.to_owned()).unwrap_or_default(),
+        mlua::Value::Nil => String::new(),
+        _ => format!("{result:?}"),
+    };
+
+    Ok(result_str)
 }
 
 /// Load attachable plugins into a new per-session Lua state.
@@ -195,7 +307,8 @@ fn load_session_plugins(
     state: &mut ThreadState,
     registry_id: SessionRegistryId,
     plugin_names: &[String],
-) -> Result<(), Report<PluginError>> {
+    origin_session_id: SessionId,
+) -> Result<Vec<crate::tool_def::PluginToolMetadata>, Report<PluginError>> {
     // Resolve each name to a PluginMeta in the attachable set.
     let metas: Vec<PluginMeta> = plugin_names
         .iter()
@@ -214,19 +327,30 @@ fn load_session_plugins(
         })?;
 
     let lua = Lua::new();
-    let hooks = load_all(&lua, &metas);
+    let result = load_all(&lua, &metas);
 
-    if hooks.len() != plugin_names.len() {
-        let loaded_names: Vec<&str> = hooks.keys().map(String::as_str).collect();
+    if result.hooks.len() != plugin_names.len() {
+        let loaded_names: Vec<&str> = result.hooks.keys().map(String::as_str).collect();
         return Err(Report::new(PluginError)
             .attach("some plugins failed to load")
             .attach(format!("requested: {plugin_names:?}"))
             .attach(format!("loaded: {loaded_names:?}")));
     }
-    state
-        .sessions
-        .insert(registry_id, SessionState { lua, hooks });
-    Ok(())
+    let metadata: Vec<_> = result
+        .tools
+        .iter()
+        .map(super::tool_def::PluginToolDef::to_metadata)
+        .collect();
+    state.sessions.insert(
+        registry_id,
+        SessionState {
+            lua,
+            hooks: result.hooks,
+            tools: result.tools,
+            origin_session_id: Some(origin_session_id),
+        },
+    );
+    Ok(metadata)
 }
 
 /// Run global hooks + optional session hooks, discarding return values.
@@ -235,6 +359,7 @@ async fn run_hooks_fire(
     target_session: Option<SessionRegistryId>,
     hook: &str,
     ctx_json: &serde_json::Value,
+    enabled_plugins: &[String],
 ) -> Result<(), Report<PluginError>> {
     for (plugin_name, plugin_hooks) in &state.global_hooks {
         run_single_hook(
@@ -249,11 +374,14 @@ async fn run_hooks_fire(
         )
         .await?;
     }
-    // Then session's plugins.
+    // Then session's plugins (filtered by enabled list).
     if let Some(id) = target_session
         && let Some(session) = state.sessions.get(&id)
     {
         for (plugin_name, plugin_hooks) in &session.hooks {
+            if !enabled_plugins.is_empty() && !enabled_plugins.contains(plugin_name) {
+                continue;
+            }
             run_single_hook(
                 &session.lua,
                 plugin_hooks,
@@ -378,11 +506,12 @@ async fn run_single_hook(
         _ => return Ok(None),
     };
 
-    // Inject plugin_data into ctx JSON.
+    // Inject plugin_data into ctx JSON, scoped by session.
     let mut ctx_json = ctx_json.clone();
+    let session_id = extract_session_id(&ctx_json);
     if let Some(obj) = ctx_json.as_object_mut() {
         let data = plugin_data
-            .get(plugin_name)
+            .get_for_session(session_id.as_ref(), plugin_name)
             .unwrap_or(serde_json::Value::Null);
         obj.insert("plugin_data".to_owned(), data);
     }
@@ -394,6 +523,7 @@ async fn run_single_hook(
         plugin_data,
         emit_tx,
         request_handler,
+        session_id.as_ref(),
     )
     .map_err(|e| Report::new(PluginError).attach(e.to_string()))
     .attach("build ctx")?;
@@ -427,6 +557,7 @@ fn build_async_ctx(
     plugin_data: &PluginData,
     emit_tx: &kanal::AsyncSender<PluginCommand>,
     request_handler: &RequestHandler,
+    session_id: Option<&SessionId>,
 ) -> Result<mlua::Table, mlua::Error> {
     let ctx = lua.create_table()?;
 
@@ -478,9 +609,10 @@ fn build_async_ctx(
     {
         let pd = plugin_data.clone();
         let pname = plugin_name.to_owned();
+        let sid = session_id.cloned();
         let set_data_fn = lua.create_function(move |lua, value: mlua::Value| {
             let json = bindings::value_to_json(lua, &value).unwrap_or_default();
-            pd.set(pname.clone(), json);
+            pd.set_for_session(sid.as_ref(), &pname, json);
             Ok(())
         })?;
         ctx.set("set_plugin_data", set_data_fn)?;
@@ -495,9 +627,10 @@ fn build_async_ctx(
     {
         let pd = plugin_data.clone();
         let pname = plugin_name.to_owned();
+        let sid = session_id.cloned();
         let merge_data_fn = lua.create_function(move |lua, value: mlua::Value| {
             let json = bindings::value_to_json(lua, &value).unwrap_or_default();
-            pd.merge(&pname, json);
+            pd.merge_for_session(sid.as_ref(), &pname, json);
             Ok(())
         })?;
         ctx.set("merge_plugin_data", merge_data_fn)?;
@@ -513,8 +646,11 @@ fn build_async_ctx(
     {
         let pd = plugin_data.clone();
         let pname = plugin_name.to_owned();
+        let sid = session_id.cloned();
         let get_data_fn = lua.create_function(move |lua, (): ()| {
-            let json = pd.get(&pname).unwrap_or_else(|| serde_json::json!({}));
+            let json = pd
+                .get_for_session(sid.as_ref(), &pname)
+                .unwrap_or_else(|| serde_json::json!({}));
             bindings::json_to_lua_value(lua, &json)
         })?;
         ctx.set("get_plugin_data", get_data_fn)?;
@@ -524,4 +660,15 @@ fn build_async_ctx(
     let _: Option<PathBuf> = None;
 
     Ok(ctx)
+}
+
+/// Extract a `SessionId` from a hook context JSON value.
+///
+/// Looks for `ctx_json["session_id"]` as a string. Returns `None` for
+/// global plugin hooks that don't carry a session ID.
+fn extract_session_id(ctx_json: &serde_json::Value) -> Option<SessionId> {
+    ctx_json
+        .get("session_id")
+        .and_then(|v| v.as_str())
+        .map(|s| SessionId::from(s.to_owned()))
 }

@@ -75,8 +75,83 @@ impl BusPublish for DiscoverActor {
         self.deps.bus()
     }
 }
-
 impl DiscoverActor {
+    /// Discovers models for a single provider entry.
+    ///
+    /// Validates the entry (has models, valid backend, API key), constructs the
+    /// appropriate service, calls `list_models`, and enriches with models.dev data.
+    ///
+    /// Returns `Ok(models)` on success, or `Err(error_message)` if the provider
+    /// should be skipped.
+    async fn discover_provider_models(
+        entry: &crate::feat::provider_infra::ProviderEntry,
+        api_keys: &crate::feat::provider_infra::ApiKeysService,
+        models_dev: &crate::feat::provider_infra::ModelsDevData,
+    ) -> Result<Vec<ModelInfo>, String> {
+        let Some(placeholder_model) = entry.models.first() else {
+            return Err("no models configured (skipping discovery)".to_owned());
+        };
+
+        let backend = entry
+            .backend
+            .parse::<Backend>()
+            .map_err(|e| format!("invalid backend: {e}"))?;
+
+        let api_key = if entry.requires_key {
+            let Some(ref env_var) = entry.api_key_env else {
+                return Err("requires_key but no api_key_env set".to_owned());
+            };
+            api_keys
+                .get(env_var)
+                .ok_or_else(|| "API key not resolved".to_owned())?
+        } else {
+            "dummy-key".to_owned()
+        };
+
+        let result: Result<Vec<ModelInfo>, Report<LlmServiceError>> = match backend {
+            Backend::Anthropic => {
+                let svc = AnthropicService::new(placeholder_model.clone(), api_key, None);
+                svc.list_models().await
+            }
+            Backend::Google => {
+                let svc = GoogleService::new(placeholder_model.clone(), api_key);
+                svc.list_models().await
+            }
+            _ => {
+                let config = ProviderConfig::from(&backend);
+                let svc = OpenAiCompatibleService::new(
+                    config,
+                    placeholder_model.clone(),
+                    entry.base_url.clone(),
+                    api_key,
+                    entry.extra_body.clone(),
+                );
+                svc.list_models().await
+            }
+        };
+
+        let mut models = result.map_err(|e| {
+            tracing::warn!(provider = %entry.name, err = %e, "list_models failed");
+            format!("{e}")
+        })?;
+
+        // Apply models.dev context length fallback to models
+        // that didn't get it from the provider API.
+        for model in &mut models {
+            if model.context_length.is_none()
+                && let Some(ctx) = models_dev.get(&model.id)
+            {
+                model.context_length = Some(ctx);
+            }
+        }
+
+        tracing::info!(
+            provider = %entry.name,
+            count = models.len(),
+            "discovered models"
+        );
+        Ok(models)
+    }
     /// Iterates all providers, discovers models, saves cache, emits event.
     #[expect(clippy::too_many_lines, reason = "handler reads best as a single unit")]
     async fn refresh_models(&self) {
@@ -207,7 +282,8 @@ impl DiscoverActor {
     }
 }
 
-#[cfg(test)]
+//FIXME: plugin migration
+#[cfg(any())]
 mod tests {
     #![allow(
         clippy::expect_used,

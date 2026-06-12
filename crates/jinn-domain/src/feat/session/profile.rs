@@ -9,7 +9,7 @@ use std::collections::HashSet;
 
 use serde::{Deserialize, Serialize};
 
-use crate::feat::provider_infra::NO_PROVIDER_ID;
+use crate::feat::session::model_selection::ModelSelection;
 
 /// Default persona name used when none is explicitly set.
 const DEFAULT_PERSONA_NAME: &str = "coding-assistant";
@@ -27,10 +27,10 @@ fn default_persona_name() -> String {
 /// and is updated by the picker, but session load/restore never touches it.
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct SessionProfile {
-    /// The model/provider for this session (e.g., "ollama/llama3").
-    /// Defaults to `NO_PROVIDER_ID` - the user must select a model.
-    pub model: String,
-    /// The persona name for this session. Always populated - defaults to `"coding-assistant"`.
+    /// The model selection for this session — either a single model or an alloy.
+    /// Defaults to `Single(NO_PROVIDER_ID)` — the user must select a model.
+    pub model: ModelSelection,
+    /// The persona name for this session. Always populated — defaults to `"coding-assistant"`.
     /// Old serialized sessions without this field deserialize to the default.
     #[serde(default = "default_persona_name")]
     pub persona_name: String,
@@ -55,7 +55,7 @@ pub struct SessionProfile {
 impl Default for SessionProfile {
     fn default() -> Self {
         Self {
-            model: NO_PROVIDER_ID.to_owned(),
+            model: ModelSelection::default(),
             persona_name: DEFAULT_PERSONA_NAME.to_owned(),
             disabled_tools: HashSet::new(),
             disabled_skills: HashSet::new(),
@@ -67,6 +67,16 @@ impl SessionProfile {
     /// Creates a profile seeded from config values.
     pub fn from_config(model: String) -> Self {
         Self {
+            model: ModelSelection::Single(model),
+            persona_name: DEFAULT_PERSONA_NAME.to_owned(),
+            disabled_tools: HashSet::new(),
+            disabled_skills: HashSet::new(),
+        }
+    }
+
+    /// Creates a profile from a [`ModelSelection`] (single model or alloy).
+    pub fn from_model_selection(model: ModelSelection) -> Self {
+        Self {
             model,
             persona_name: DEFAULT_PERSONA_NAME.to_owned(),
             disabled_tools: HashSet::new(),
@@ -76,7 +86,7 @@ impl SessionProfile {
 
     /// Creates a profile with all fields specified.
     pub fn new(
-        model: String,
+        model: ModelSelection,
         persona_name: String,
         disabled_tools: HashSet<String>,
         disabled_skills: HashSet<String>,
@@ -99,6 +109,8 @@ mod tests {
         clippy::indexing_slicing,
         reason = "test code"
     )]
+    use crate::feat::provider_infra::NO_PROVIDER_ID;
+
     use super::*;
 
     #[rstest::rstest]
@@ -106,8 +118,11 @@ mod tests {
         // Given a default SessionProfile.
         let profile = SessionProfile::default();
 
-        // Then model is NO_PROVIDER_ID.
-        assert_eq!(profile.model, NO_PROVIDER_ID);
+        // Then model is Single(NO_PROVIDER_ID).
+        assert_eq!(
+            profile.model,
+            ModelSelection::Single(NO_PROVIDER_ID.to_owned())
+        );
     }
 
     #[rstest::rstest]
@@ -116,7 +131,10 @@ mod tests {
         let profile = SessionProfile::from_config("ollama/llama3".to_owned());
 
         // Then the profile uses that model.
-        assert_eq!(profile.model, "ollama/llama3");
+        assert_eq!(
+            profile.model,
+            ModelSelection::Single("ollama/llama3".to_owned())
+        );
     }
 
     #[rstest::rstest]
@@ -126,7 +144,7 @@ mod tests {
         disabled.insert("bash".to_owned());
         disabled.insert("edit".to_owned());
         let profile = SessionProfile::new(
-            "ollama/llama3".to_owned(),
+            ModelSelection::Single("ollama/llama3".to_owned()),
             "coding-assistant".to_owned(),
             disabled.clone(),
             HashSet::new(),
@@ -147,7 +165,7 @@ mod tests {
         disabled.insert("phased-task-loop".to_owned());
         disabled.insert("web-coder".to_owned());
         let profile = SessionProfile::new(
-            "ollama/llama3".to_owned(),
+            ModelSelection::Single("ollama/llama3".to_owned()),
             "coding-assistant".to_owned(),
             HashSet::new(),
             disabled.clone(),
@@ -164,8 +182,7 @@ mod tests {
     #[rstest::rstest]
     fn legacy_json_without_disabled_skills_deserializes_to_empty_set() {
         // Given JSON from an older version that lacks disabled_skills.
-        let json =
-            r#"{"model":"ollama/llama3","persona_name":"coding-assistant","disabled_tools":[]}"#;
+        let json = r#"{"model":{"single":"ollama/llama3"},"persona_name":"coding-assistant","disabled_tools":[]}"#;
 
         // When deserialized.
         let profile: SessionProfile = serde_json::from_str(json).expect("deserialize");
@@ -183,7 +200,7 @@ mod tests {
     #[rstest::rstest]
     fn legacy_json_without_disabled_tools_deserializes_to_empty_set() {
         // Given JSON from an older version that lacks disabled_tools.
-        let json = r#"{"model":"ollama/llama3","persona_name":"coding-assistant"}"#;
+        let json = r#"{"model":{"single":"ollama/llama3"},"persona_name":"coding-assistant"}"#;
 
         // When deserialized.
         let profile: SessionProfile = serde_json::from_str(json).expect("deserialize");
@@ -212,7 +229,7 @@ mod tests {
     #[rstest::rstest]
     fn legacy_json_without_persona_uses_default() {
         // Given JSON from an older version that lacks persona_name.
-        let json = r#"{"model":"ollama/llama3"}"#;
+        let json = r#"{"model":{"single":"ollama/llama3"}}"#;
 
         // When deserialized.
         let profile: SessionProfile = serde_json::from_str(json).expect("deserialize");
@@ -225,13 +242,16 @@ mod tests {
     fn legacy_json_with_strategy_fields_is_ignored() {
         // Given JSON from an older version that still carries strategy / sliding_window_size.
         // These fields are now removed from SessionProfile; serde must ignore them silently.
-        let json = r#"{"model":"ollama/llama3","strategy":"passthrough","persona_name":"coding-assistant","sliding_window_size":5}"#;
+        let json = r#"{"model":{"single":"ollama/llama3"},"strategy":"passthrough","persona_name":"coding-assistant","sliding_window_size":5}"#;
 
         // When deserialized.
         let profile: SessionProfile = serde_json::from_str(json).expect("deserialize");
 
         // Then the known fields load normally.
-        assert_eq!(profile.model, "ollama/llama3");
+        assert_eq!(
+            profile.model,
+            ModelSelection::Single("ollama/llama3".to_owned())
+        );
         assert_eq!(profile.persona_name, "coding-assistant");
     }
 }

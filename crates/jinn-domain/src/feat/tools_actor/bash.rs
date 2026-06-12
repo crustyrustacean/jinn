@@ -453,6 +453,7 @@ pub fn execute(call: ToolCall, ctx: ToolContext) -> BoxedToolFuture {
                 session_id: ctx.session_id.clone().unwrap_or_default(),
                 tool_call_id: call.id.clone(),
                 name: call.name.clone(),
+                dispatched_at: jiff::Timestamp::now(),
             },
         )
         .await;
@@ -564,6 +565,8 @@ mod tests {
             shell: "/bin/sh".to_owned(),
             max_output_lines: None,
             max_output_bytes: None,
+
+            dispatched_at: jiff::Timestamp::now(),
         }
     }
 
@@ -647,6 +650,8 @@ mod tests {
             shell: "/bin/sh".to_owned(),
             max_output_lines: None,
             max_output_bytes: None,
+
+            dispatched_at: jiff::Timestamp::now(),
         };
 
         let call = ToolCall {

@@ -4,8 +4,12 @@ use crate::common::bus::BusMessage;
 use serde::{Deserialize, Serialize};
 
 use crate::feat::provider::llm_message::LlmMessage;
+
+use crate::feat::session::model_selection::ModelSelection;
 use crate::feat::tools_actor::tool_types::ToolDefinition;
 use crate::protocol::SessionId;
+
+use jiff::Timestamp;
 
 /// Switch the active LLM provider.
 ///
@@ -13,10 +17,10 @@ use crate::protocol::SessionId;
 /// swaps the factory, and emits [`ProviderSwitched`](super::ProviderSwitched).
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct ProviderSwitch {
-    /// The session whose model should be switched.
+    /// The session to switch provider for.
     pub session_id: SessionId,
-    /// The provider to switch to.
-    pub provider_id: String,
+    /// The model selection to switch to.
+    pub provider_id: ModelSelection,
 }
 
 impl BusMessage for ProviderSwitch {}
@@ -58,6 +62,12 @@ pub struct SendToLlmProvider {
     /// Estimated token count of all messages + tool schemas.
     #[serde(default)]
     pub estimated_tokens: u32,
+    /// The concrete model ID that will handle this request.
+    /// Set by the dispatch layer after resolving alloys.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub model_used: Option<String>,
+    /// When this request was dispatched to the LLM.
+    pub dispatched_at: Timestamp,
 }
 
 impl crate::common::bus::BusMessage for SendToLlmProvider {}
@@ -108,7 +118,7 @@ mod tests {
     #[rstest::rstest]
     fn send_to_llm_provider_deserializes_without_provider_id() {
         // Given JSON without the provider_id field (old format).
-        let json = r#"{"session_id":"sid-1","messages":[]}"#;
+        let json = r#"{"session_id":"sid-1","messages":[],"dispatched_at":"2024-01-01T00:00:00Z"}"#;
 
         // When deserializing.
         let cmd: SendToLlmProvider = serde_json::from_str(json).expect("deserialize");

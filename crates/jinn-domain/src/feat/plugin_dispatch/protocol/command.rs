@@ -6,7 +6,9 @@
 
 use serde::{Deserialize, Serialize};
 
+use crate::common::bus::BusMessage;
 use crate::protocol::SessionId;
+
 
 /// Attach an attachable plugin to a session.
 ///
@@ -38,6 +40,19 @@ pub struct TogglePlugin {
     pub plugin_name: String,
 }
 
-impl crate::common::bus::BusMessage for AttachPlugin {}
-impl crate::common::bus::BusMessage for DetachPlugin {}
-impl crate::common::bus::BusMessage for TogglePlugin {}
+/// Set the managed session ID on an attached plugin.
+///
+/// Called when a plugin creates a child session and wants the sidebar
+/// to be able to navigate to it. The activate path reads this field
+/// to determine which session to switch to.
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct SetManagedSession {
+    pub session_id: SessionId,
+    pub plugin_name: String,
+    pub managed_session_id: SessionId,
+}
+
+impl BusMessage for AttachPlugin {}
+impl BusMessage for DetachPlugin {}
+impl BusMessage for TogglePlugin {}
+impl BusMessage for SetManagedSession {}

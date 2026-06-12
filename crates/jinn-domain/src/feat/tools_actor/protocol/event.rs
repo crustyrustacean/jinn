@@ -5,6 +5,8 @@ use serde::{Deserialize, Serialize};
 use crate::feat::tools_actor::tool_types::{ToolCall, ToolDefinition, ToolResult};
 use crate::protocol::SessionId;
 
+use jiff::Timestamp;
+
 /// All tool calls in a batch have completed execution.
 ///
 /// Emitted by the tool orchestrator when every tool call in a batch
@@ -39,6 +41,9 @@ pub struct ToolsRegistered {
     pub provider: String,
     /// The tool definitions that were registered.
     pub definitions: Vec<ToolDefinition>,
+    /// `None` for global tools (broadcast to all sessions).
+    /// `Some(session_id)` for attached tools (only that session should store them).
+    pub session_id: Option<SessionId>,
 }
 
 /// A tool call has started in the LLM stream (name and ID known, arguments pending).
@@ -55,6 +60,8 @@ pub struct ToolUseStarted {
     pub id: String,
     /// The name of the tool being called.
     pub name: String,
+    /// When the original LLM request was dispatched.
+    pub dispatched_at: Timestamp,
 }
 
 /// A complete tool call received from the LLM stream.
@@ -67,6 +74,8 @@ pub struct ToolCallReceived {
     pub session_id: SessionId,
     /// The assembled tool call.
     pub tool_call: ToolCall,
+    /// When the original LLM request was dispatched.
+    pub dispatched_at: Timestamp,
 }
 
 /// Streaming update for a tool call being assembled.
@@ -96,6 +105,8 @@ pub struct ToolExecutionStarted {
     pub tool_call_id: String,
     /// The name of the tool being executed.
     pub name: String,
+    /// When the original LLM request was dispatched.
+    pub dispatched_at: Timestamp,
 }
 
 /// Incremental output from a running tool.

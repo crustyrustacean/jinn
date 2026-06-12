@@ -50,6 +50,10 @@ pub struct ToolContext {
     pub max_output_lines: Option<usize>,
     /// Maximum bytes for tool output truncation. `None` uses built-in default.
     pub max_output_bytes: Option<usize>,
+    /// When the original LLM request was dispatched. Carried from
+    /// `SendToLlmProvider` through the tool execution chain so tool
+    /// events can carry accurate timing.
+    pub dispatched_at: jiff::Timestamp,
 }
 
 impl fmt::Debug for ToolContext {
@@ -91,6 +95,7 @@ mod tests {
             shell: "/bin/sh".to_owned(),
             max_output_lines: None,
             max_output_bytes: None,
+            dispatched_at: jiff::Timestamp::now(),
         };
 
         // When debugging.

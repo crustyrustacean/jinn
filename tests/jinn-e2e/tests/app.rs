@@ -44,6 +44,7 @@ use jinn_domain::ToolDefinition;
 use jinn_domain::ToolResult;
 use jinn_domain::UnpinChatEntry;
 use jinn_domain::UserPreferencesStorageService;
+use jinn_domain::feat::session::model_selection::ModelSelection;
 
 use jinn_plugin::SyncPlugins;
 use jinn_tui::AppStatus;
@@ -127,6 +128,7 @@ impl AppWorld {
                 providers: vec![],
                 aliases: vec![],
                 default_provider: None,
+                alloys: vec![],
             };
             let provider_registry = ProviderRegistryService::new(
                 ProviderRegistry::from_config(empty_config).expect("empty config is valid"),
@@ -410,7 +412,7 @@ fn given_active_provider_set(world: &mut AppWorld) {
         .state
         .write()
         .active_session_mut()
-        .set_model("test".to_owned());
+        .set_model(ModelSelection::Single("test".to_owned()));
 }
 
 /// Pre-populates the active session with user and assistant messages.
@@ -569,6 +571,7 @@ fn when_restart_app(world: &mut AppWorld) {
             providers: vec![],
             aliases: vec![],
             default_provider: None,
+            alloys: vec![],
         };
         let provider_registry = ProviderRegistryService::new(
             ProviderRegistry::from_config(empty_config).expect("empty config is valid"),
@@ -683,6 +686,7 @@ async fn when_submit_stream_completed(world: &mut AppWorld, reason: String) {
     let session_id = world.active_session_id();
     let parsed_reason = parse_stream_reason(&reason);
     world.submit_event(Event::StreamCompleted(StreamCompleted {
+        model_used: None,
         session_id,
         reason: parsed_reason,
         assistant_content: None,

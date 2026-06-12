@@ -136,6 +136,8 @@ pub enum Intent {
     ToolToggleSelected,
     /// Toggle the selected skill's enabled/disabled state in the skill picker.
     SkillToggleSelected,
+    /// Toggle the selected model's selected state for multi-select alloy building.
+    ModelToggleSelected,
     /// Scroll the preview pane up one page.
     PreviewScrollUp,
     /// Scroll the preview pane down one page.
@@ -192,6 +194,9 @@ pub enum Intent {
     /// Re-run the lifecycle setup command for the sidebar-selected session.
     /// Only valid when the session's lifecycle_script_state is NothingRan.
     SidebarSessionRerunSetup,
+    /// Toggle the enabled/disabled state of the sidebar-selected plugin entry.
+    /// Only valid when the cursor is on a `SessionEntryKind::Plugin` entry.
+    SidebarTogglePlugin,
 
     // --- Chat Entry Selection ---
     /// Select the next chat entry.
@@ -340,6 +345,7 @@ impl std::fmt::Display for Intent {
             Intent::PickerMoveCursorRight => write!(f, "picker cursor right"),
             Intent::ToolToggleSelected => write!(f, "toggle tool"),
             Intent::SkillToggleSelected => write!(f, "toggle skill"),
+            Intent::ModelToggleSelected => write!(f, "toggle model"),
             Intent::PreviewScrollUp => write!(f, "preview scroll up"),
             Intent::PreviewScrollDown => write!(f, "preview scroll down"),
             Intent::SessionNew => write!(f, "new session"),
@@ -367,6 +373,7 @@ impl std::fmt::Display for Intent {
             Intent::SessionNewWithLifecycle => write!(f, "new session with lifecycle"),
             Intent::SidebarSessionContinue => write!(f, "continue session"),
             Intent::SidebarSessionRerunSetup => write!(f, "rerun session setup"),
+            Intent::SidebarTogglePlugin => write!(f, "toggle plugin"),
 
             Intent::ChatEntrySelectNext => write!(f, "select next entry"),
             Intent::ChatEntrySelectPrev => write!(f, "select prev entry"),

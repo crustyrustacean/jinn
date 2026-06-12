@@ -9,6 +9,7 @@
 )]
 
 use crate::feat::session::chat_session::ChatSessionState;
+use crate::feat::session::model_selection::ModelSelection;
 use crate::feat::theme::default_theme;
 use crate::feat::ui::sidebar::sessions::preview::{
     SessionPreviewCache, render_session_preview, session_preview_popup_rect,
@@ -202,7 +203,7 @@ fn popup_title_shows_session_title() {
 fn model_line_shows_provider_and_model() {
     // Given a session with a specific model set.
     let mut session = ChatSessionState::new();
-    session.set_model("ollama/llama3".to_owned());
+    session.set_model(ModelSelection::Single("ollama/llama3".to_owned()));
 
     // When rendering the preview.
     let (buffer, popup_area) = render_preview(&session, 80, 40);
@@ -242,7 +243,7 @@ fn cwd_shows_on_model_line() {
     // Given a session with a cwd and a model.
     let mut session = ChatSessionState::new();
     session.set_cwd(std::path::PathBuf::from("/home/user/jinn"));
-    session.set_model("ollama/llama3".to_owned());
+    session.set_model(ModelSelection::Single("ollama/llama3".to_owned()));
 
     // When rendering the preview.
     let (buffer, popup_area) = render_preview(&session, 80, 40);
@@ -266,7 +267,7 @@ fn cwd_left_truncated_when_long() {
     let mut session = ChatSessionState::new();
     let long_cwd = "/very/long/path/that/should/be/truncated/to/fit/the/popup/jinn";
     session.set_cwd(std::path::PathBuf::from(long_cwd));
-    session.set_model("ollama/llama3".to_owned());
+    session.set_model(ModelSelection::Single("ollama/llama3".to_owned()));
 
     // When rendering the preview.
     let (buffer, popup_area) = render_preview(&session, 80, 40);
@@ -387,4 +388,113 @@ fn popup_height_capped_when_cursor_near_top() {
         popup_rect.y + popup_rect.height < cursor_y,
         "popup should not encroach on the 1-row gap above cursor"
     );
+}
+
+// ---------------------------------------------------------------------------
+// Plugin preview tests
+// ---------------------------------------------------------------------------
+
+use crate::common::app_state::AppState;
+use crate::common::render_ctx::RenderCtx;
+use crate::common::state::State;
+use crate::feat::plugin_dispatch::HookContext;
+use crate::feat::plugin_dispatch::plugin_sync_hooks::PluginSyncHooks;
+use crate::feat::ui::sidebar::sessions::preview::resolve_plugin_preview;
+use crate::feat::ui::sidebar::sessions::state::{SessionEntry, SessionEntryKind};
+use crate::protocol::SessionId;
+
+/// Stub plugin hooks that returns a fixed JSON value for `on_session_preview`.
+struct PreviewStub {
+    /// `Some(value)` to return from `on_session_preview`, `None` to return nothing.
+    preview_value: Option<serde_json::Value>,
+}
+
+impl PluginSyncHooks for PreviewStub {
+    fn call_hooks(&self, hook: &str, _ctx: &HookContext) -> Vec<serde_json::Value> {
+        match hook {
+            "on_session_preview" => self.preview_value.clone().into_iter().collect(),
+            _ => vec![],
+        }
+    }
+}
+
+fn plugin_entry(title: &str, parent_id: SessionId) -> SessionEntry {
+    SessionEntry {
+        kind: SessionEntryKind::Plugin { enabled: true },
+        id: parent_id,
+        title: title.to_owned(),
+        is_active: false,
+        created_at: jiff::Timestamp::now(),
+        is_idle: true,
+        last_entry_is_error: false,
+        parent_id: None,
+        depth: 0,
+        ancestor_continuations: vec![],
+        is_last_child: true,
+    }
+}
+
+//FIXME: plugin migration
+#[cfg(any())]
+#[rstest::rstest]
+fn plugin_preview_returns_session_when_hook_responds() {
+    // Given a plugin entry and a child session in the state.
+    let state = State::new(AppState::default());
+    let child_id = SessionId::new();
+    let mut child = ChatSessionState::new();
+    child.set_session_id(child_id.clone());
+    state.write().session.insert(child);
+
+    let parent_id = SessionId::new();
+    let entry = plugin_entry("judge", parent_id);
+    let stub = PreviewStub {
+        preview_value: Some(serde_json::json!({ "session_id": child_id.to_string() })),
+    };
+    let guard = state.read();
+    let render_ctx = RenderCtx::new(&guard).with_plugins(&stub);
+
+    // When resolving plugin preview.
+    let result = resolve_plugin_preview(&entry, &render_ctx);
+
+    // Then it returns the child session.
+    let session = result.expect("should return a session");
+    assert_eq!(session.session_id(), &child_id);
+}
+
+#[rstest::rstest]
+fn plugin_preview_returns_none_when_hook_returns_nil() {
+    // Given a plugin entry with no preview.
+    let state = State::new(AppState::default());
+    let parent_id = SessionId::new();
+    let entry = plugin_entry("judge", parent_id);
+    let stub = PreviewStub {
+        preview_value: None,
+    };
+    let guard = state.read();
+    let render_ctx = RenderCtx::new(&guard).with_plugins(&stub);
+
+    // When resolving plugin preview.
+    let result = resolve_plugin_preview(&entry, &render_ctx);
+
+    // Then it returns None.
+    assert!(result.is_none());
+}
+
+#[rstest::rstest]
+fn plugin_preview_returns_none_when_session_id_missing_from_state() {
+    // Given a plugin entry where the hook returns a session ID that doesn't exist.
+    let state = State::new(AppState::default());
+    let parent_id = SessionId::new();
+    let entry = plugin_entry("judge", parent_id);
+    let stub = PreviewStub {
+        preview_value: Some(serde_json::json!({ "session_id": "s-nonexistent" })),
+    };
+    let guard = state.read();
+    let render_ctx = RenderCtx::new(&guard).with_plugins(&stub);
+
+    // When resolving plugin preview.
+    let result = resolve_plugin_preview(&entry, &render_ctx);
+
+    // Then it returns None (session not found).
+    assert!(result.is_none());
 }

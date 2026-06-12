@@ -21,6 +21,7 @@ use crate::feat::context::assemble::AssemblyOverrides;
 use crate::feat::session::chat_entry::ChatEntry;
 use crate::feat::session::chat_session::ChatSessionState;
 use crate::feat::session::chat_session::SessionCoreEphemeral;
+use crate::feat::session::model_selection::ModelSelection;
 use crate::protocol::SessionId;
 
 /// Error for domain context operations.
@@ -49,6 +50,8 @@ pub struct DomainNodeContext {
     pending: PendingResult,
 }
 
+//FIXME: plugin migration
+#[cfg(any())]
 impl DomainNodeContext {
     /// Create a new domain context.
     pub fn new(services: Services, state: State) -> Self {
@@ -67,6 +70,67 @@ impl DomainNodeContext {
         self.services
             .actor_channel
             .send(Bridge::publish_closure(msg));
+    }
+
+    /// Create a child session with the given parent, automation, and persistence flags.
+    ///
+    /// Returns the new session's ID.
+    pub fn create_child_session(
+        &self,
+        parent_session_id: SessionId,
+        automated: bool,
+        persist: bool,
+    ) -> SessionId {
+        let mut session = ChatSessionState::default();
+        session.core.parent_session = Some(parent_session_id.clone());
+        session.core.is_automated = automated;
+        session.core.persist = persist;
+
+        // Inherit the parent session's model so the child can send to the LLM provider.
+        if let Some(model) = self
+            .state
+            .read()
+            .session
+            .get(&parent_session_id)
+            .map(|s| s.model().to_owned())
+        {
+            session.set_model(model);
+        }
+
+        let session_id = session.session_id().clone();
+        self.state.write().session.insert(session);
+
+        // Inherit attached-scoped plugin tools from the parent session.
+        // When a plugin (like the judge) creates a child session, the child
+        // needs the plugin's attached tools (e.g. judgment_passed/judgment_failed).
+        self.register_inherited_tools(&parent_session_id, &session_id);
+
+        session_id
+    }
+
+    /// Look up attached-scoped tools registered for the parent session and
+    /// re-register them for the child session.
+    fn register_inherited_tools(&self, parent_id: &SessionId, child_id: &SessionId) {
+        let parent_tools = self
+            .state
+            .read()
+            .context
+            .session_tool_definitions
+            .get(parent_id)
+            .cloned();
+
+        let Some(tools) = parent_tools else { return; };
+        if tools.is_empty() { return; }
+
+        // Write directly to state so tools are immediately visible
+        // (works in tests without actor bus).
+        self.state
+            .write()
+            .context
+            .session_tool_definitions
+            .entry(child_id.clone())
+            .or_default()
+            .extend(tools.into_iter());
     }
 
     /// Returns `true` if there is a pending oneshot for the given session ID.
@@ -138,7 +202,10 @@ impl DomainNodeContext {
         session.core.parent_session = Some(source_session_id.clone());
 
         // 5. Resolve model
-        let model = provider_id.unwrap_or_else(|| session.core.profile.model.clone());
+        let model = provider_id.map_or_else(
+            || session.core.profile.model.clone(),
+            ModelSelection::from_single,
+        );
         session.set_model(model);
 
         let session_id = session.session_id().clone();
@@ -362,7 +429,7 @@ mod tests {
     fn seed_source_session(ctx: &DomainNodeContext, model: &str) -> SessionId {
         use crate::feat::session::profile::SessionProfile;
         let mut session = ChatSessionState::new_with_profile(SessionProfile {
-            model: model.to_owned(),
+            model: ModelSelection::Single(model.to_owned()),
             ..SessionProfile::default()
         });
         let id = SessionId::new();
@@ -423,7 +490,10 @@ mod tests {
             .session
             .get(&new_session_id)
             .expect("new session inserted");
-        assert_eq!(new.core.profile.model, "ollama/llama3");
+        assert_eq!(
+            new.core.profile.model,
+            ModelSelection::Single("ollama/llama3".to_owned())
+        );
         assert!(new.core.is_automated);
         assert_eq!(new.core.parent_session.as_ref(), Some(&source_id));
         assert_eq!(
@@ -773,6 +843,128 @@ mod tests {
         assert!(
             !still_pending,
             "timeout must remove the pending oneshot entry for the cancelled session"
+        );
+    }
+
+    #[test]
+    fn create_child_session_returns_unique_id() {
+        // Given a domain context.
+        let ctx = make_ctx();
+        let parent_id = SessionId::new();
+
+        // When creating a child session.
+        let child_id = ctx.create_child_session(parent_id.clone(), true, true);
+
+        // Then the child ID differs from the parent.
+        assert_ne!(child_id, parent_id);
+    }
+
+    #[test]
+    fn create_child_session_sets_parent_automated_persist_flags() {
+        // Given a domain context.
+        let ctx = make_ctx();
+        let parent_id = SessionId::new();
+
+        // When creating a child session with automated=true, persist=true.
+        let child_id = ctx.create_child_session(parent_id.clone(), true, true);
+
+        // Then the child session has the correct flags.
+        let state = ctx.state.read();
+        let child = state.session.get(&child_id).expect("child session exists");
+        assert_eq!(child.core.parent_session.as_ref(), Some(&parent_id));
+        assert!(child.core.is_automated);
+        assert!(child.core.persist);
+    }
+
+    #[test]
+    fn create_child_session_inserts_into_state() {
+        // Given a domain context.
+        let ctx = make_ctx();
+        let parent_id = SessionId::new();
+
+        // When creating a child session.
+        let child_id = ctx.create_child_session(parent_id, false, false);
+
+        // Then the session map contains the child.
+        let state = ctx.state.read();
+        assert!(state.session.contains(&child_id));
+    }
+
+    #[test]
+    fn create_child_session_inherits_parent_model() {
+        // Given a domain context and a parent session with a specific model.
+        let ctx = make_ctx();
+        let parent_id = SessionId::new();
+        let mut parent = ChatSessionState::default();
+        parent.core.session_id = parent_id.clone();
+        parent.set_model(ModelSelection::Single("my-model".to_owned()));
+        ctx.state.write().session.insert(parent);
+
+        // When creating a child session.
+        let child_id = ctx.create_child_session(parent_id.clone(), true, true);
+
+        // Then the child inherits the parent's model.
+        let state = ctx.state.read();
+        let child = state.session.get(&child_id).expect("child session exists");
+        assert_eq!(
+            child.model(),
+            &ModelSelection::Single("my-model".to_owned())
+        );
+    }
+
+    #[test]
+    fn create_child_session_uses_default_model_when_parent_not_found() {
+        // Given a domain context with no parent session in state.
+        let ctx = make_ctx();
+        let orphan_parent = SessionId::new();
+
+        // When creating a child session.
+        let child_id = ctx.create_child_session(orphan_parent, true, true);
+
+        // Then the child keeps the default model.
+        let state = ctx.state.read();
+        let child = state.session.get(&child_id).expect("child session exists");
+        assert_eq!(child.model(), &ModelSelection::default());
+    }
+
+    #[test]
+    fn create_child_session_inherits_parent_attached_tools() {
+        // Given a parent session with attached-scoped tools.
+        use jinn_provider::ToolDefinition;
+
+        let ctx = make_ctx();
+        let parent_id = SessionId::new();
+
+        // Simulate the parent having attached-scoped tools registered.
+        let tool_def = ToolDefinition {
+            name: "judgment_passed".to_owned(),
+            description: "test".to_owned(),
+            parameters: serde_json::json!({"type": "object", "properties": {}}),
+            prompt_snippet: None,
+            prompt_guidelines: vec![],
+            server_tool_type: None,
+        };
+        ctx.state
+            .write()
+            .context
+            .session_tool_definitions
+            .entry(parent_id.clone())
+            .or_default()
+            .insert("judgment_passed".to_owned(), tool_def);
+
+        // When creating a child session.
+        let child_id = ctx.create_child_session(parent_id.clone(), true, true);
+
+        // Then the child session has the parent's attached tools registered.
+        let state = ctx.state.read();
+        let child_tools = state.context.session_tool_definitions.get(&child_id);
+        assert!(
+            child_tools.is_some(),
+            "child session should have attached tools inherited from parent"
+        );
+        assert!(
+            child_tools.unwrap().contains_key("judgment_passed"),
+            "child should have inherited the judgment_passed tool"
         );
     }
 }

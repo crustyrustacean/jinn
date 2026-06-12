@@ -44,6 +44,7 @@ pub trait PluginFire: Send + Sync {
         session: SessionRegistryId,
         hook: &str,
         ctx: &Value,
+        enabled_plugins: Vec<String>,
     ) -> Result<(), Report<PluginFireError>>;
 
     /// Fire an async hook, collecting return values from all global plugins.
@@ -68,6 +69,24 @@ pub trait PluginFire: Send + Sync {
         hook: &str,
         ctx: &Value,
     ) -> Result<Vec<Value>, Report<PluginFireError>>;
+
+    /// Execute a plugin-defined tool handler on the background thread.
+    ///
+    /// Routes to the correct Lua state (global or per-session),
+    /// finds the tool handler, calls it with arguments, returns the result string.
+    ///
+    /// # Errors
+    ///
+    /// Returns an error if the plugin system is unavailable, the tool handler is not found,
+    /// or the handler itself errors.
+    async fn execute_plugin_tool(
+        &self,
+        target: Option<SessionRegistryId>,
+        session_id: &crate::protocol::SessionId,
+        plugin_name: &str,
+        tool_name: &str,
+        arguments: &Value,
+    ) -> Result<String, Report<PluginFireError>>;
 
     /// Returns the name of this backend for debugging.
     fn name(&self) -> &'static str;
@@ -115,9 +134,10 @@ impl PluginFireService {
         session: SessionRegistryId,
         hook: &str,
         ctx: &Value,
+        enabled_plugins: Vec<String>,
     ) -> Result<(), Report<PluginFireError>> {
         self.backend
-            .fire_async_for_session_json(session, hook, ctx)
+            .fire_async_for_session_json(session, hook, ctx, enabled_plugins)
             .await
     }
 
@@ -147,6 +167,25 @@ impl PluginFireService {
     ) -> Result<Vec<Value>, Report<PluginFireError>> {
         self.backend
             .fire_async_collect_for_session_json(session, hook, ctx)
+            .await
+    }
+
+    /// Execute a plugin-defined tool handler on the background thread.
+    ///
+    /// # Errors
+    ///
+    /// Returns an error if the plugin system is unavailable, the tool handler is not found,
+    /// or the handler itself errors.
+    pub async fn execute_plugin_tool(
+        &self,
+        target: Option<SessionRegistryId>,
+        session_id: &crate::protocol::SessionId,
+        plugin_name: &str,
+        tool_name: &str,
+        arguments: &Value,
+    ) -> Result<String, Report<PluginFireError>> {
+        self.backend
+            .execute_plugin_tool(target, session_id, plugin_name, tool_name, arguments)
             .await
     }
 

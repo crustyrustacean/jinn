@@ -158,6 +158,67 @@ impl TokenCountActor {
                 .bulk_insert(new_counts);
         }
     }
+
+    /// Handle a [`ContextOverrideChanged`] event.
+    ///
+    /// Recomputes the token count for the entry if it is now in context
+    /// but the cached value is 0 or missing. This handles the case where
+    /// an entry was excluded by a pruner, cached at 0, then re-inserted
+    /// by the user.
+    fn handle_context_override_changed(
+        &self,
+        session_id: &crate::protocol::SessionId,
+        entry_id: &crate::protocol::ChatEntryId,
+    ) {
+        let should_recompute = {
+            let state = self.state.read();
+            let Some(session) = state.try_session(session_id) else {
+                return;
+            };
+            let Some(idx) = session.find_entry_index_by_id(entry_id) else {
+                return;
+            };
+            let Some(entry) = session.history().get(idx) else {
+                return;
+            };
+
+            if !entry.is_in_context() {
+                return;
+            }
+
+            let cache = state.frontend.caches.entry_token_cache.read();
+            matches!(cache.get(&entry.id), None | Some(0))
+        };
+
+        if !should_recompute {
+            return;
+        }
+
+        let tokens = {
+            let state = self.state.read();
+            let Some(session) = state.try_session(session_id) else {
+                return;
+            };
+            let Some(idx) = session.find_entry_index_by_id(entry_id) else {
+                return;
+            };
+            let Some(entry) = session.history().get(idx) else {
+                return;
+            };
+            let estimator = TiktokenEstimator(self.counter);
+            estimate_entry_tokens(&estimator, entry) as u32
+        };
+
+        if tokens > 0 {
+            let state = self.state.write();
+            state
+                .frontend
+                .caches
+                .entry_token_cache
+                .write()
+                .insert(entry_id.clone(), tokens);
+        }
+    }
 }
 
 #[cfg(test)]
@@ -171,7 +232,7 @@ mod tests {
     )]
     use super::*;
     use crate::common::app_state::AppState;
-    use crate::feat::session::chat_entry::ChatEntry;
+    use crate::feat::session::chat_entry::{ChatEntry, ChatEntryKind, ContextOverride};
 
     #[rstest::rstest]
     fn history_appended_computes_count_for_new_entry() {
@@ -279,5 +340,179 @@ mod tests {
 
         // Then the count matches direct tiktoken counting.
         assert_eq!(actual, expected);
+    }
+
+    #[rstest::rstest]
+    fn context_override_changed_recomputes_stale_zero_count() {
+        // Given a state with one user entry that was excluded and cached at 0.
+        let mut app_state = AppState::default();
+        app_state
+            .active_session_mut()
+            .push_entry(ChatEntry::user("hello world"));
+        let entry_id = app_state.active_session().history()[0].id.clone();
+        app_state
+            .frontend
+            .caches
+            .entry_token_cache
+            .write()
+            .insert(entry_id.clone(), 0);
+
+        let state = State::new(app_state);
+        let actor = TokenCountActor {
+            state: state.clone(),
+            counter: TiktokenCounter::o200k_base(),
+        };
+
+        // When handling ContextOverrideChanged.
+        let session_id = state.read().session.active_session_id().clone();
+        actor.handle_context_override_changed(&session_id, &entry_id);
+
+        // Then the cache now has a nonzero count.
+        let state_guard = state.read();
+        let cache = state_guard.frontend.caches.entry_token_cache.read();
+        let count = cache.get(&entry_id);
+        assert_eq!(count, Some(2));
+    }
+
+    #[rstest::rstest]
+    fn context_override_changed_noop_for_nonzero_cache() {
+        // Given a state with one user entry already cached at 500.
+        let mut app_state = AppState::default();
+        app_state
+            .active_session_mut()
+            .push_entry(ChatEntry::user("hello world"));
+        let entry_id = app_state.active_session().history()[0].id.clone();
+        app_state
+            .frontend
+            .caches
+            .entry_token_cache
+            .write()
+            .insert(entry_id.clone(), 500);
+
+        let state = State::new(app_state);
+        let actor = TokenCountActor {
+            state: state.clone(),
+            counter: TiktokenCounter::o200k_base(),
+        };
+
+        // When handling ContextOverrideChanged.
+        let session_id = state.read().session.active_session_id().clone();
+        actor.handle_context_override_changed(&session_id, &entry_id);
+
+        // Then the cached count is unchanged.
+        let state_guard = state.read();
+        let cache = state_guard.frontend.caches.entry_token_cache.read();
+        assert_eq!(cache.get(&entry_id), Some(500));
+    }
+
+    #[rstest::rstest]
+    fn context_override_changed_noop_when_excluded() {
+        // Given a state with one user entry that is ForcedExclude.
+        let mut app_state = AppState::default();
+        let mut entry = ChatEntry::user("hello world");
+        entry.context_override = ContextOverride::ForcedExclude;
+        app_state.active_session_mut().push_entry(entry);
+        let entry_id = app_state.active_session().history()[0].id.clone();
+        // No cache entry — should still be noop because entry is excluded.
+
+        let state = State::new(app_state);
+        let actor = TokenCountActor {
+            state: state.clone(),
+            counter: TiktokenCounter::o200k_base(),
+        };
+
+        // When handling ContextOverrideChanged.
+        let session_id = state.read().session.active_session_id().clone();
+        actor.handle_context_override_changed(&session_id, &entry_id);
+
+        // Then no cache entry was created.
+        let state_guard = state.read();
+        let cache = state_guard.frontend.caches.entry_token_cache.read();
+        assert_eq!(cache.get(&entry_id), None);
+    }
+
+    #[rstest::rstest]
+    fn context_override_changed_recomputes_missing_cache_entry() {
+        // Given a state with one user entry that has no cache entry.
+        let mut app_state = AppState::default();
+        app_state
+            .active_session_mut()
+            .push_entry(ChatEntry::user("hello world"));
+        let entry_id = app_state.active_session().history()[0].id.clone();
+        // Entry is in context (Default) but has never been cached.
+
+        let state = State::new(app_state);
+        let actor = TokenCountActor {
+            state: state.clone(),
+            counter: TiktokenCounter::o200k_base(),
+        };
+
+        // When handling ContextOverrideChanged.
+        let session_id = state.read().session.active_session_id().clone();
+        actor.handle_context_override_changed(&session_id, &entry_id);
+
+        // Then the cache now has a nonzero count.
+        let state_guard = state.read();
+        let cache = state_guard.frontend.caches.entry_token_cache.read();
+        let count = cache.get(&entry_id);
+        assert_eq!(count, Some(2));
+    }
+
+    #[rstest::rstest]
+    fn large_tool_call_arguments_counted_correctly() {
+        // Given a tool call entry with large arguments (simulating write tool).
+        let large_content = "fn main() { println!(\"hello\"); }\n".repeat(200);
+        let arguments = format!(
+            r#"{{\"path\":\"test.rs\",\"content\":\"{}\"}}"#,
+            large_content
+        );
+        let counter = TiktokenCounter::o200k_base();
+        let direct_count = counter.count(&arguments);
+
+        let mut app_state = AppState::default();
+        app_state
+            .active_session_mut()
+            .push_entry(ChatEntry::tool_call("call_1", "write", &arguments));
+
+        // Verify the entry actually has the full arguments.
+        let entry = &app_state.active_session().history()[0];
+        if let ChatEntryKind::ToolCall {
+            name: _,
+            arguments: ref args,
+            ..
+        } = entry.kind
+        {
+            assert_eq!(args.len(), arguments.len());
+        }
+
+        let state = State::new(app_state);
+        let actor = TokenCountActor {
+            state: state.clone(),
+            counter: TiktokenCounter::o200k_base(),
+        };
+
+        // When handling HistoryAppended.
+        let session_id = state.read().session.active_session_id().clone();
+        actor.handle_history_appended(&session_id);
+
+        // Then the cached count should be close to the direct count.
+        let entry_id = state.read().active_session().history()[0].id.clone();
+        let state_guard = state.read();
+        let cache = state_guard.frontend.caches.entry_token_cache.read();
+        let count = cache.get(&entry_id).expect("entry should be cached");
+        let tool_name_tokens = counter.count("write");
+        let expected_min = direct_count + tool_name_tokens;
+        assert!(
+            count as usize > expected_min / 2,
+            "expected count > {} (half of {}), got {}",
+            expected_min / 2,
+            expected_min,
+            count
+        );
+        assert!(
+            count as usize > 500,
+            "expected count > 500 for large tool call, got {}",
+            count
+        );
     }
 }

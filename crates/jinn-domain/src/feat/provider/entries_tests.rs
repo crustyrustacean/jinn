@@ -50,6 +50,7 @@ fn make_config(
         providers,
         aliases,
         default_provider: default_provider.map(String::from),
+        alloys: vec![],
     }
 }
 
@@ -451,6 +452,8 @@ fn active_provider_promoted_to_first() {
             is_available: true,
             is_remote: false,
             is_active: false,
+            selected: false,
+            alloy_models: None,
             theme: default_theme(),
         },
         PickerEntry {
@@ -465,6 +468,8 @@ fn active_provider_promoted_to_first() {
             is_available: true,
             is_remote: false,
             is_active: false,
+            selected: false,
+            alloy_models: None,
             theme: default_theme(),
         },
         PickerEntry {
@@ -479,6 +484,8 @@ fn active_provider_promoted_to_first() {
             is_available: true,
             is_remote: false,
             is_active: false,
+            selected: false,
+            alloy_models: None,
             theme: default_theme(),
         },
     ];
@@ -508,6 +515,8 @@ fn active_entry_marked_active() {
             is_available: true,
             is_remote: false,
             is_active: false,
+            selected: false,
+            alloy_models: None,
             theme: default_theme(),
         },
         PickerEntry {
@@ -522,6 +531,8 @@ fn active_entry_marked_active() {
             is_available: true,
             is_remote: false,
             is_active: false,
+            selected: false,
+            alloy_models: None,
             theme: default_theme(),
         },
         PickerEntry {
@@ -536,6 +547,8 @@ fn active_entry_marked_active() {
             is_available: true,
             is_remote: false,
             is_active: false,
+            selected: false,
+            alloy_models: None,
             theme: default_theme(),
         },
     ];
@@ -565,6 +578,8 @@ fn sorted_entries_preserves_order_when_filtering() {
             is_available: true,
             is_remote: false,
             is_active: false,
+            selected: false,
+            alloy_models: None,
             theme: default_theme(),
         },
         PickerEntry {
@@ -579,6 +594,8 @@ fn sorted_entries_preserves_order_when_filtering() {
             is_available: true,
             is_remote: false,
             is_active: false,
+            selected: false,
+            alloy_models: None,
             theme: default_theme(),
         },
     ];
@@ -607,6 +624,8 @@ fn available_entry_comes_first() {
             is_available: false,
             is_remote: false,
             is_active: false,
+            selected: false,
+            alloy_models: None,
             theme: default_theme(),
         },
         PickerEntry {
@@ -621,6 +640,8 @@ fn available_entry_comes_first() {
             is_available: true,
             is_remote: false,
             is_active: false,
+            selected: false,
+            alloy_models: None,
             theme: default_theme(),
         },
         PickerEntry {
@@ -635,6 +656,8 @@ fn available_entry_comes_first() {
             is_available: false,
             is_remote: false,
             is_active: false,
+            selected: false,
+            alloy_models: None,
             theme: default_theme(),
         },
     ];
@@ -664,6 +687,8 @@ fn sorted_entries_sorts_by_model_name_within_blocks() {
             is_available: true,
             is_remote: false,
             is_active: false,
+            selected: false,
+            alloy_models: None,
             theme: default_theme(),
         },
         PickerEntry {
@@ -678,6 +703,8 @@ fn sorted_entries_sorts_by_model_name_within_blocks() {
             is_available: true,
             is_remote: false,
             is_active: false,
+            selected: false,
+            alloy_models: None,
             theme: default_theme(),
         },
     ];
@@ -696,7 +723,7 @@ fn sorted_entries_sorts_by_model_name_within_blocks() {
 fn format_footer_without_timestamp_shows_never() {
     // Given no model cache.
     // When formatting the footer.
-    let line = format_footer(None, 80, &default_theme());
+    let line = format_footer(None, 80, &default_theme(), 0);
 
     // Then the footer contains "Updated never".
     let text: String = line.spans.iter().map(|s| &*s.content).collect();
@@ -714,7 +741,7 @@ fn format_footer_with_timestamp_shows_age() {
     cache.last_updated_at = Some(ts);
 
     // When formatting the footer.
-    let line = format_footer(Some(&cache), 120, &default_theme());
+    let line = format_footer(Some(&cache), 120, &default_theme(), 0);
 
     // Then the footer contains "Updated" and "ago".
     let text: String = line.spans.iter().map(|s| &*s.content).collect();
@@ -727,7 +754,7 @@ fn format_footer_with_timestamp_shows_age() {
 fn format_footer_truncates_to_width() {
     // Given no timestamp and a very narrow width.
     // When formatting the footer with width 10.
-    let line = format_footer(None, 10, &default_theme());
+    let line = format_footer(None, 10, &default_theme(), 0);
 
     // Then the total character count fits within 10.
     let total_len: usize = line
@@ -736,6 +763,18 @@ fn format_footer_truncates_to_width() {
         .map(|s| s.content.graphemes(true).count())
         .sum();
     assert!(total_len <= 10);
+}
+
+#[rstest::rstest]
+fn format_footer_with_selected_count_shows_count() {
+    // Given no model cache but 3 selected entries.
+    // When formatting the footer.
+    let line = format_footer(None, 120, &default_theme(), 3);
+
+    // Then the footer contains the selected count and TAB hint.
+    let text: String = line.spans.iter().map(|s| &*s.content).collect();
+    assert!(text.contains("3 selected"));
+    assert!(text.contains("TAB toggle"));
 }
 
 #[rstest::rstest]
@@ -914,6 +953,8 @@ fn make_picker_entry(
         is_available,
         is_remote: false,
         is_active: false,
+        selected: false,
+        alloy_models: None,
         theme: default_theme(),
     }
 }
@@ -1014,7 +1055,82 @@ fn provider_name_match_appears_in_highlighted_row() {
     );
 }
 
+// --- Alloy picker entry tests ---
+
+fn make_alloy_config() -> ProvidersConfig {
+    use crate::feat::provider_infra::AlloyEntry;
+
+    ProvidersConfig {
+        providers: vec![ollama_entry(), openrouter_entry()],
+        aliases: vec![],
+        default_provider: None,
+        alloys: vec![AlloyEntry {
+            name: "round-robin".to_owned(),
+            models: vec!["ollama/llama3".to_owned(), "openrouter/gpt-4".to_owned()],
+            strategy: crate::feat::provider_infra::AlloyStrategy::RoundRobin,
+        }],
+    }
+}
+
 #[rstest::rstest]
+fn load_provider_entries_includes_alloy_entry() {
+    // Given a registry with two providers and one named alloy.
+    let config = make_alloy_config();
+    let registry = ProviderRegistry::from_config(config).expect("registry");
+    let mut api_keys = ApiKeys::new();
+    api_keys.insert("OPENROUTER_API_KEY".to_owned(), "sk-test".to_owned());
+
+    // When loading provider entries.
+    let entries = load_provider_entries(&registry, &api_keys, None, &default_theme());
+
+    // Then an alloy entry is present with the alloy name.
+    let alloy = entries
+        .iter()
+        .find(|e| e.alloy_models.is_some())
+        .expect("alloy entry");
+    assert_eq!(alloy.provider_id, "alloy:round-robin");
+    assert_eq!(alloy.name, "round-robin");
+}
+
+#[rstest::rstest]
+fn alloy_entry_carries_member_models() {
+    // Given a registry with a named alloy.
+    let config = make_alloy_config();
+    let registry = ProviderRegistry::from_config(config).expect("registry");
+    let api_keys = ApiKeys::new();
+
+    // When loading provider entries.
+    let entries = load_provider_entries(&registry, &api_keys, None, &default_theme());
+
+    // Then the alloy entry carries the model list.
+    let alloy = entries
+        .iter()
+        .find(|e| e.alloy_models.is_some())
+        .expect("alloy entry");
+    let models = alloy.alloy_models.as_ref().expect("models");
+    assert_eq!(models.len(), 2);
+    assert_eq!(models[0], "ollama/llama3");
+    assert_eq!(models[1], "openrouter/gpt-4");
+}
+
+#[rstest::rstest]
+fn alloy_entry_is_always_available() {
+    // Given a registry with a named alloy (no API keys set).
+    let config = make_alloy_config();
+    let registry = ProviderRegistry::from_config(config).expect("registry");
+    let api_keys = ApiKeys::new();
+
+    // When loading provider entries.
+    let entries = load_provider_entries(&registry, &api_keys, None, &default_theme());
+
+    // Then the alloy entry is available regardless of key status.
+    let alloy = entries
+        .iter()
+        .find(|e| e.alloy_models.is_some())
+        .expect("alloy entry");
+    assert!(alloy.is_available);
+}
+
 fn sorted_entries_does_not_promote_when_filter_is_nonempty() {
     // Kills: replace && with || in sorted_entries.
     // If && became ||, the condition `filter.is_empty() || active_provider != NO_PROVIDER_ID`
@@ -1032,6 +1148,8 @@ fn sorted_entries_does_not_promote_when_filter_is_nonempty() {
             is_available: true,
             is_remote: false,
             is_active: false,
+            selected: false,
+            alloy_models: None,
             theme: default_theme(),
         },
         PickerEntry {
@@ -1046,6 +1164,8 @@ fn sorted_entries_does_not_promote_when_filter_is_nonempty() {
             is_available: true,
             is_remote: false,
             is_active: false,
+            selected: false,
+            alloy_models: None,
             theme: default_theme(),
         },
     ];

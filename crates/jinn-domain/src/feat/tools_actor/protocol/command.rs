@@ -5,6 +5,8 @@ use serde::{Deserialize, Serialize};
 use crate::feat::tools_actor::tool_types::{ToolCall, ToolDefinition};
 use crate::protocol::SessionId;
 
+use jiff::Timestamp;
+
 /// Register tools that an actor can execute.
 ///
 /// Sent by actors at startup to declare which tools they provide.
@@ -26,6 +28,8 @@ pub struct ExecuteToolBatch {
     pub session_id: SessionId,
     /// The tool calls to execute.
     pub tool_calls: Vec<ToolCall>,
+    /// When the original LLM request was dispatched.
+    pub dispatched_at: Timestamp,
 }
 
 /// Execute a single tool call.
@@ -39,6 +43,26 @@ pub struct ExecuteTool {
     pub session_id: SessionId,
     /// The tool call to execute.
     pub tool_call: ToolCall,
+    /// When the original LLM request was dispatched.
+    pub dispatched_at: Timestamp,
+}
+
+/// Register tools provided by a Lua plugin.
+///
+/// Sent by the plugin dispatch actor when a plugin with tool definitions is loaded.
+/// Carries the plugin name, target scope (global or session-attached), and tool definitions.
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct RegisterPluginTools {
+    /// The name of the plugin providing these tools.
+    pub plugin_name: String,
+    /// `None` for global plugins (registered everywhere), `Some(id)` for session-attached plugins.
+    pub target: Option<crate::feat::plugin_system::SessionRegistryId>,
+    /// The session these tools are attached to.
+    /// `None` for global tools (broadcast to all sessions).
+    /// `Some(session_id)` for attached tools (only that session should store them).
+    pub session_id: Option<SessionId>,
+    /// The tool definitions being registered.
+    pub definitions: Vec<ToolDefinition>,
 }
 
 /// Cancel all pending tool executions for a session.
@@ -68,3 +92,4 @@ impl crate::common::bus::BusMessage for ExecuteToolBatch {}
 impl crate::common::bus::BusMessage for ExecuteTool {}
 impl crate::common::bus::BusMessage for CancelToolBatch {}
 impl crate::common::bus::BusMessage for ExecuteWebFetch {}
+impl crate::common::bus::BusMessage for RegisterPluginTools {}

@@ -6,6 +6,8 @@ use crate::feat::context::protocol::prompt_template::PromptTemplate;
 use crate::feat::tools_actor::tool_types::ToolCall;
 use crate::protocol::SessionId;
 
+use jiff::Timestamp;
+
 /// Why the stream completed.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "snake_case")]
@@ -49,6 +51,14 @@ pub struct StreamCompleted {
     /// thinking tokens in `tokens_received`.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub thinking_content: Option<String>,
+    /// The concrete model ID that handled this request.
+    ///
+    /// For alloys, this is the resolved model that was picked for this particular
+    /// request. For single-model sessions, this is the model itself.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub model_used: Option<String>,
+    /// When the original LLM request was dispatched.
+    pub dispatched_at: Timestamp,
 }
 
 impl crate::common::bus::BusMessage for StreamCompleted {}
@@ -71,6 +81,8 @@ pub struct StreamToken {
     /// chat entry instead of the `Assistant` entry.
     #[serde(default)]
     pub is_thinking: bool,
+    /// When the original LLM request was dispatched.
+    pub dispatched_at: Timestamp,
 }
 
 impl crate::common::bus::BusMessage for StreamToken {}
