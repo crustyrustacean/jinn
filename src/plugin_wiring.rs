@@ -204,7 +204,6 @@ mod verb_translations {
     }
 }
 
-
 /// Handle a request from an async hook's `ctx.request(name, data)` call.
 ///
 /// Returns a JSON response value. Unknown requests return null.

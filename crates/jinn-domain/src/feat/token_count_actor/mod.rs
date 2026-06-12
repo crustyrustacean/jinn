@@ -54,12 +54,13 @@ impl kameo::Actor for TokenCountActor {
     type Args = TokenCountActorDeps;
     type Error = kameo::error::Infallible;
 
-    async fn on_start(
-        args: Self::Args,
-        actor_ref: ActorRef<Self>,
-    ) -> Result<Self, Self::Error> {
-        args.deps.subscribe(actor_ref.clone().recipient::<HistoryAppended>()).await;
-        args.deps.subscribe(actor_ref.recipient::<SessionLoadCompleted>()).await;
+    async fn on_start(args: Self::Args, actor_ref: ActorRef<Self>) -> Result<Self, Self::Error> {
+        args.deps
+            .subscribe(actor_ref.clone().recipient::<HistoryAppended>())
+            .await;
+        args.deps
+            .subscribe(actor_ref.recipient::<SessionLoadCompleted>())
+            .await;
 
         Ok(Self {
             state: args.state,

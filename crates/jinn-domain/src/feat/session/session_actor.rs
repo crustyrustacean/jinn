@@ -42,6 +42,7 @@ use crate::feat::session::protocol::close_session::CloseSession;
 use crate::feat::session::protocol::load_session_picker_entries::LoadSessionPickerEntries;
 use crate::feat::session::protocol::mark_session_interacted::MarkSessionInteracted;
 use crate::feat::session::protocol::session_fork_requested::SessionForkRequested;
+use crate::feat::session::protocol::session_load_completed::SessionLoadCompleted;
 use crate::feat::session::protocol::session_load_requested::SessionLoadRequested;
 use crate::feat::session::protocol::submit_history_mutations::SubmitHistoryMutations;
 use crate::feat::session::protocol::task_list_updated::TaskListUpdated;
@@ -57,7 +58,6 @@ use crate::feat::tools_actor::protocol::event::{
     ToolExecutionOutput, ToolExecutionStarted, ToolUseStarted, ToolsRegistered,
 };
 use crate::init::EnvironmentLoaded;
-use crate::feat::session::protocol::session_load_completed::SessionLoadCompleted;
 
 /// Session lifecycle and persistence actor.
 ///
@@ -233,7 +233,6 @@ impl kameo::Actor for SessionPersistenceActor {
 // Bridge: impl Message<T> blocks that delegate to old handler methods
 //         via a temporary RecordingSink → publish to bus
 // ---------------------------------------------------------------------------
-
 
 // ---------------------------------------------------------------------------
 // Command Message impls
@@ -709,7 +708,6 @@ impl kameo::message::Message<SessionLoadCompleted> for SessionPersistenceActor {
         self.handle_session_load_completed(&msg).await;
     }
 }
-
 
 //FIXME: disabled during actor migration — tests reference deleted types
 #[cfg(test)]

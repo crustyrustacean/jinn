@@ -32,7 +32,9 @@ impl Actor for DiscoveryNotifierActor {
     type Error = Infallible;
 
     async fn on_start(args: Self::Args, actor_ref: ActorRef<Self>) -> Result<Self, Self::Error> {
-        args.deps.subscribe(actor_ref.recipient::<SessionDiscoverySettled>()).await;
+        args.deps
+            .subscribe(actor_ref.recipient::<SessionDiscoverySettled>())
+            .await;
         Ok(Self { deps: args.deps })
     }
 }

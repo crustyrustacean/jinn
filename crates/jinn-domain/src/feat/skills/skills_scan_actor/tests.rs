@@ -13,15 +13,15 @@ use kameo::prelude::Spawn;
 use crate::common::actor_deps::ActorDeps;
 use crate::common::app_paths::AppPaths;
 use crate::common::app_state::AppState;
+use crate::common::bus::test_harness::{Recorder, TestHarness, await_recorded};
 use crate::common::services::bus_service::BusService;
 use crate::common::services::test_services::TestServices;
 use crate::common::state::State;
-use crate::common::bus::test_harness::{Recorder, TestHarness, await_recorded};
-use jinn_selection_widget::PreviewCache;
 use crate::feat::session_lifecycle::protocol::event::{
     SessionCreated, SessionCwdChanged, SessionSetupCompleted,
 };
 use crate::init::env_init_actor::EnvironmentLoaded;
+use jinn_selection_widget::PreviewCache;
 
 use super::*;
 
@@ -93,9 +93,11 @@ async fn scan_skills_command_writes_to_app_state() {
     let _actor = spawn_actor(&deps, &state).await;
 
     // When publishing ScanSkills command.
-    harness.publish(ScanSkills {
-        session_id: session_id.clone(),
-    }).await;
+    harness
+        .publish(ScanSkills {
+            session_id: session_id.clone(),
+        })
+        .await;
 
     // Then skills are written to the session's ephemeral discovered set.
     let recorder = harness.spawn_recorder::<SkillsLoaded>().await;
@@ -124,9 +126,11 @@ async fn session_created_event_scans_skills() {
     let _actor = spawn_actor(&deps, &state).await;
 
     // When publishing SessionCreated for that session.
-    harness.publish(SessionCreated {
-        session_id: session_id.clone(),
-    }).await;
+    harness
+        .publish(SessionCreated {
+            session_id: session_id.clone(),
+        })
+        .await;
 
     // Then the skill is written to the session's discovered set.
     let recorder = harness.spawn_recorder::<SkillsLoaded>().await;
@@ -148,9 +152,11 @@ async fn session_created_event_skips_scan_when_cwd_is_sentinel() {
     let _actor = spawn_actor(&deps, &state).await;
 
     // When publishing SessionCreated for the sentinel-cwd session.
-    harness.publish(SessionCreated {
-        session_id: session_id.clone(),
-    }).await;
+    harness
+        .publish(SessionCreated {
+            session_id: session_id.clone(),
+        })
+        .await;
 
     // Then no scan runs: the discovered set stays empty.
     tokio::time::sleep(std::time::Duration::from_millis(100)).await;
@@ -175,11 +181,13 @@ async fn session_setup_completed_event_scans_skills() {
     let _actor = spawn_actor(&deps, &state).await;
 
     // When publishing SessionSetupCompleted.
-    harness.publish(SessionSetupCompleted {
-        session_id: session_id.clone(),
-        cwd: dir.path().to_path_buf(),
-        error: None,
-    }).await;
+    harness
+        .publish(SessionSetupCompleted {
+            session_id: session_id.clone(),
+            cwd: dir.path().to_path_buf(),
+            error: None,
+        })
+        .await;
 
     // Then the skill is written to the session's discovered set.
     let recorder = harness.spawn_recorder::<SkillsLoaded>().await;
@@ -207,10 +215,12 @@ async fn session_cwd_changed_event_scans_skills() {
     let _actor = spawn_actor(&deps, &state).await;
 
     // When publishing SessionCwdChanged.
-    harness.publish(SessionCwdChanged {
-        session_id: session_id.clone(),
-        cwd: dir.path().to_path_buf(),
-    }).await;
+    harness
+        .publish(SessionCwdChanged {
+            session_id: session_id.clone(),
+            cwd: dir.path().to_path_buf(),
+        })
+        .await;
 
     // Then the skill is written to the session's discovered set.
     let recorder = harness.spawn_recorder::<SkillsLoaded>().await;
@@ -238,13 +248,15 @@ async fn environment_loaded_event_scans_active_session_skills() {
     let _actor = spawn_actor(&deps, &state).await;
 
     // When publishing EnvironmentLoaded.
-    harness.publish(EnvironmentLoaded {
-        config: crate::ProvidersConfig {
-            providers: vec![],
-            aliases: vec![],
-            default_provider: None,
-        },
-    }).await;
+    harness
+        .publish(EnvironmentLoaded {
+            config: crate::ProvidersConfig {
+                providers: vec![],
+                aliases: vec![],
+                default_provider: None,
+            },
+        })
+        .await;
 
     // Then the active session's skill is discovered.
     let recorder = harness.spawn_recorder::<SkillsLoaded>().await;
@@ -274,9 +286,7 @@ async fn scan_skills_clears_skill_preview_cache() {
     let _actor = spawn_actor(&deps, &state).await;
 
     // When publishing ScanSkills command (rescan).
-    harness.publish(ScanSkills {
-        session_id,
-    }).await;
+    harness.publish(ScanSkills { session_id }).await;
 
     // Then the cache is cleared so rescanned bodies are re-rendered fresh.
     let recorder = harness.spawn_recorder::<SkillsLoaded>().await;
@@ -305,9 +315,7 @@ async fn scan_skills_command_emits_skills_loaded() {
     let recorder = harness.spawn_recorder::<SkillsLoaded>().await;
 
     // When publishing ScanSkills command.
-    harness.publish(ScanSkills {
-        session_id,
-    }).await;
+    harness.publish(ScanSkills { session_id }).await;
 
     // Then SkillsLoaded event is emitted.
     let recorded = await_recorded(&recorder, 1, std::time::Duration::from_secs(2)).await;
@@ -326,9 +334,7 @@ async fn scan_skills_empty_dir_emits_empty_loaded() {
     let recorder = harness.spawn_recorder::<SkillsLoaded>().await;
 
     // When publishing ScanSkills command.
-    harness.publish(ScanSkills {
-        session_id,
-    }).await;
+    harness.publish(ScanSkills { session_id }).await;
 
     // Then SkillsLoaded has empty skills list.
     let recorded = await_recorded(&recorder, 1, std::time::Duration::from_secs(2)).await;
@@ -379,9 +385,11 @@ async fn scan_skills_replacing_cwd_clears_previous_discovered_skills() {
     let recorder = harness.spawn_recorder::<SkillsLoaded>().await;
 
     // First scan: discovers `alpha`.
-    harness.publish(ScanSkills {
-        session_id: session_id.clone(),
-    }).await;
+    harness
+        .publish(ScanSkills {
+            session_id: session_id.clone(),
+        })
+        .await;
     let recorded = await_recorded(&recorder, 1, std::time::Duration::from_secs(2)).await;
     assert!(!recorded.is_empty());
 
@@ -404,11 +412,16 @@ async fn scan_skills_replacing_cwd_clears_previous_discovered_skills() {
             .active_session_mut()
             .set_cwd(empty_dir.clone());
     }
-    harness.publish(ScanSkills {
-        session_id: session_id.clone(),
-    }).await;
+    harness
+        .publish(ScanSkills {
+            session_id: session_id.clone(),
+        })
+        .await;
     let recorded2 = await_recorded(&recorder, 1, std::time::Duration::from_secs(2)).await;
-    assert!(!recorded2.is_empty(), "second scan should emit SkillsLoaded");
+    assert!(
+        !recorded2.is_empty(),
+        "second scan should emit SkillsLoaded"
+    );
 
     // Then the discovered set is empty — no stale `alpha` carryover.
     let guard = state.read();
@@ -432,9 +445,7 @@ async fn scan_skills_nonexistent_dir_emits_empty_loaded() {
     let recorder = harness.spawn_recorder::<SkillsLoaded>().await;
 
     // When publishing ScanSkills command.
-    harness.publish(ScanSkills {
-        session_id,
-    }).await;
+    harness.publish(ScanSkills { session_id }).await;
 
     // Then SkillsLoaded has empty skills list.
     let recorded = await_recorded(&recorder, 1, std::time::Duration::from_secs(2)).await;
@@ -465,9 +476,11 @@ async fn scan_skills_project_overrides_global_same_name() {
     let _actor = spawn_actor(&deps, &state).await;
 
     // When scanning.
-    harness.publish(ScanSkills {
-        session_id: session_id.clone(),
-    }).await;
+    harness
+        .publish(ScanSkills {
+            session_id: session_id.clone(),
+        })
+        .await;
 
     // Then exactly one `shared` skill exists and it is the PROJECT one.
     let recorder = harness.spawn_recorder::<SkillsLoaded>().await;
@@ -496,8 +509,7 @@ async fn scan_skills_discovers_ancestor_project_skill_from_nested_cwd() {
     let subdir = repo.join("subdir");
     std::fs::create_dir_all(&subdir).expect("create nested dirs");
     let ancestor_skill = repo.join(".agents/skills/ancestor/SKILL.md");
-    std::fs::create_dir_all(ancestor_skill.parent().unwrap())
-        .expect("create ancestor skill dir");
+    std::fs::create_dir_all(ancestor_skill.parent().unwrap()).expect("create ancestor skill dir");
     std::fs::write(
         &ancestor_skill,
         "---\nname: ancestor\ndescription: ancestor skill\n---\n\n# ancestor body",
@@ -523,9 +535,11 @@ async fn scan_skills_discovers_ancestor_project_skill_from_nested_cwd() {
     let _actor = spawn_actor(&deps, &state).await;
 
     // When scanning from the nested cwd.
-    harness.publish(ScanSkills {
-        session_id: session_id.clone(),
-    }).await;
+    harness
+        .publish(ScanSkills {
+            session_id: session_id.clone(),
+        })
+        .await;
 
     // Then the ancestor skill (one level up from cwd, within the bounded
     // walk) is discovered.
@@ -599,9 +613,11 @@ async fn scan_skills_routes_discovery_per_session_cwd() {
 
     // Scan session A, then session B.
     for id in [&session_a, &session_b] {
-        harness.publish(ScanSkills {
-            session_id: id.clone(),
-        }).await;
+        harness
+            .publish(ScanSkills {
+                session_id: id.clone(),
+            })
+            .await;
     }
 
     let recorded = await_recorded(&recorder, 1, std::time::Duration::from_secs(2)).await;

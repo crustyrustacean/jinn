@@ -9,7 +9,7 @@
 use serde::{Deserialize, Serialize};
 
 use crate::feat::session::phase_machine::PhaseKind;
-use crate::protocol::{SessionId};
+use crate::protocol::SessionId;
 
 /// Session phase transitioned to a new state.
 #[derive(Debug, Clone, Serialize, Deserialize)]

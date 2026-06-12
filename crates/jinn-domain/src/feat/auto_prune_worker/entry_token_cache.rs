@@ -149,15 +149,24 @@ impl Actor for HistoryWorkerChatEntryTokenCacheEvictionActor {
     type Error = kameo::error::Infallible;
 
     async fn on_start(args: Self::Args, actor_ref: ActorRef<Self>) -> Result<Self, Self::Error> {
-        args.deps.subscribe(actor_ref.recipient::<SessionClosed>()).await;
-        Ok(Self { deps: args.deps, cache: args.cache })
+        args.deps
+            .subscribe(actor_ref.recipient::<SessionClosed>())
+            .await;
+        Ok(Self {
+            deps: args.deps,
+            cache: args.cache,
+        })
     }
 }
 
 impl Message<SessionClosed> for HistoryWorkerChatEntryTokenCacheEvictionActor {
     type Reply = ();
 
-    async fn handle(&mut self, msg: SessionClosed, _ctx: &mut Context<Self, Self::Reply>) -> Self::Reply {
+    async fn handle(
+        &mut self,
+        msg: SessionClosed,
+        _ctx: &mut Context<Self, Self::Reply>,
+    ) -> Self::Reply {
         self.handle_session_closed(&msg.session_id);
     }
 }
@@ -203,7 +212,6 @@ mod tests {
     use std::sync::Arc;
     use std::sync::atomic::{AtomicUsize, Ordering};
     use std::time::Duration;
-
 
     use super::*;
 

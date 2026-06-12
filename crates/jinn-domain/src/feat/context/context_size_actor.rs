@@ -53,11 +53,21 @@ impl kameo::Actor for ContextSizeActor {
     type Error = std::convert::Infallible;
 
     async fn on_start(args: Self::Args, actor_ref: ActorRef<Self>) -> Result<Self, Self::Error> {
-        args.deps.subscribe(actor_ref.clone().recipient::<HistoryAppended>()).await;
-        args.deps.subscribe(actor_ref.clone().recipient::<ContextOverrideChanged>()).await;
-        args.deps.subscribe(actor_ref.clone().recipient::<ActiveSessionChanged>()).await;
-        args.deps.subscribe(actor_ref.clone().recipient::<ChatEntryPinChanged>()).await;
-        args.deps.subscribe(actor_ref.recipient::<SessionLoadCompleted>()).await;
+        args.deps
+            .subscribe(actor_ref.clone().recipient::<HistoryAppended>())
+            .await;
+        args.deps
+            .subscribe(actor_ref.clone().recipient::<ContextOverrideChanged>())
+            .await;
+        args.deps
+            .subscribe(actor_ref.clone().recipient::<ActiveSessionChanged>())
+            .await;
+        args.deps
+            .subscribe(actor_ref.clone().recipient::<ChatEntryPinChanged>())
+            .await;
+        args.deps
+            .subscribe(actor_ref.recipient::<SessionLoadCompleted>())
+            .await;
 
         Ok(Self {
             state: args.state,
@@ -78,7 +88,11 @@ impl Message<HistoryAppended> for ContextSizeActor {
 impl Message<ContextOverrideChanged> for ContextSizeActor {
     type Reply = ();
 
-    async fn handle(&mut self, _msg: ContextOverrideChanged, _ctx: &mut Context<Self, Self::Reply>) {
+    async fn handle(
+        &mut self,
+        _msg: ContextOverrideChanged,
+        _ctx: &mut Context<Self, Self::Reply>,
+    ) {
         self.recalculate().await;
     }
 }

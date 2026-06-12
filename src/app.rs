@@ -221,10 +221,10 @@ impl App {
                         app_state_storage: app_state_storage.clone(),
                         paths: jinn_domain::AppPaths::default(),
                     })
-                    .build().await
+                    .build()
+                    .await
                 });
-                let app = jinn_tui::launch(core, services, _plugins)
-                    .change_context(AppError)?;
+                let app = jinn_tui::launch(core, services, _plugins).change_context(AppError)?;
                 let runner = Runner::Tui(Box::new(app));
                 self.run_and_shutdown(runner, &session_store)?;
             }
@@ -243,7 +243,8 @@ impl App {
                         app_state_storage: app_state_storage.clone(),
                         paths: jinn_domain::AppPaths::default(),
                     })
-                    .build().await
+                    .build()
+                    .await
                 });
 
                 jinn_tui::load_compaction_prompt(
@@ -337,10 +338,11 @@ impl App {
                                 },
                             )
                             .with_bench_actor(csv, plan, artifact_dir)
-                            .build().await
+                            .build()
+                            .await
                         });
-                        let app = jinn_tui::launch(core, services, plugins)
-                            .change_context(AppError)?;
+                        let app =
+                            jinn_tui::launch(core, services, plugins).change_context(AppError)?;
                         let runner = Runner::Tui(Box::new(app));
                         self.run_and_shutdown(runner, &store_for_shutdown)?;
                     }
@@ -376,10 +378,11 @@ impl App {
                                     paths: jinn_domain::AppPaths::default(),
                                 },
                             )
-                            .build().await
+                            .build()
+                            .await
                         });
-                        let app = jinn_tui::launch(core, services, plugins)
-                            .change_context(AppError)?;
+                        let app =
+                            jinn_tui::launch(core, services, plugins).change_context(AppError)?;
                         let runner = Runner::Tui(Box::new(app));
                         self.run_and_shutdown(runner, &store_for_shutdown)?;
                     }

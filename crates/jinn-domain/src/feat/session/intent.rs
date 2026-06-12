@@ -1,9 +1,9 @@
 //! Session management intent handlers - session creation, model refresh, and prompt template rescan.
 
+use crate::RefreshModels;
 use crate::RescanPromptTemplates;
 use crate::common::app_state::AppState;
 use crate::protocol::{ChatEntry, IntentResult};
-use crate::RefreshModels;
 
 use super::validator;
 

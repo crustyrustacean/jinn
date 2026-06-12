@@ -13,6 +13,7 @@ use parking_lot::Mutex;
 use tokio::sync::oneshot;
 use wherror::Error;
 
+use crate::common::bridge::Bridge;
 use crate::common::services::Services;
 use crate::common::state::State;
 use crate::feat::chat_input::protocol::command::EnqueueUserMessage;
@@ -20,7 +21,6 @@ use crate::feat::context::assemble::AssemblyOverrides;
 use crate::feat::session::chat_entry::ChatEntry;
 use crate::feat::session::chat_session::ChatSessionState;
 use crate::feat::session::chat_session::SessionCoreEphemeral;
-use crate::common::bridge::Bridge;
 use crate::protocol::SessionId;
 
 /// Error for domain context operations.
@@ -64,7 +64,9 @@ impl DomainNodeContext {
     where
         M: crate::common::bus::BusMessage,
     {
-        self.services.actor_channel.send(Bridge::publish_closure(msg));
+        self.services
+            .actor_channel
+            .send(Bridge::publish_closure(msg));
     }
 
     /// Returns `true` if there is a pending oneshot for the given session ID.
@@ -262,11 +264,9 @@ impl DomainNodeContext {
             }
             Err(_) => {
                 self.pending.lock().remove(&session_id);
-                self.services
-                    .actor_channel
-                    .send_message(CancelStream {
-                        session_id: session_id.clone(),
-                    });
+                self.services.actor_channel.send_message(CancelStream {
+                    session_id: session_id.clone(),
+                });
                 Err(Report::new(DomainContextError).attach(format!(
                     "one-shot LLM request timed out after {timeout_ms}ms"
                 )))

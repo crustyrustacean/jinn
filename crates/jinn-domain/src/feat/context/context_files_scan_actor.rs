@@ -55,17 +55,20 @@ impl kameo::Actor for ContextFilesScanActor {
     type Args = ContextFilesScanActorDeps;
     type Error = kameo::error::Infallible;
 
-    async fn on_start(
-        args: Self::Args,
-        actor_ref: ActorRef<Self>,
-    ) -> Result<Self, Self::Error> {
+    async fn on_start(args: Self::Args, actor_ref: ActorRef<Self>) -> Result<Self, Self::Error> {
         let deps = args.deps;
-        deps.subscribe(actor_ref.clone().recipient::<ScanContextFiles>()).await;
-        deps.subscribe(actor_ref.clone().recipient::<EnvironmentLoaded>()).await;
-        deps.subscribe(actor_ref.clone().recipient::<SessionCreated>()).await;
-        deps.subscribe(actor_ref.clone().recipient::<SessionSetupCompleted>()).await;
-        deps.subscribe(actor_ref.clone().recipient::<SessionLoadCompleted>()).await;
-        deps.subscribe(actor_ref.recipient::<SessionCwdChanged>()).await;
+        deps.subscribe(actor_ref.clone().recipient::<ScanContextFiles>())
+            .await;
+        deps.subscribe(actor_ref.clone().recipient::<EnvironmentLoaded>())
+            .await;
+        deps.subscribe(actor_ref.clone().recipient::<SessionCreated>())
+            .await;
+        deps.subscribe(actor_ref.clone().recipient::<SessionSetupCompleted>())
+            .await;
+        deps.subscribe(actor_ref.clone().recipient::<SessionLoadCompleted>())
+            .await;
+        deps.subscribe(actor_ref.recipient::<SessionCwdChanged>())
+            .await;
 
         Ok(Self {
             deps,
@@ -240,8 +243,8 @@ mod tests {
     use crate::common::app_paths::AppPaths;
     use crate::common::app_state::AppState;
     use crate::common::bus::test_harness::{TestHarness, await_recorded};
-    use crate::common::state::State;
     use crate::common::services::test_services::TestServices;
+    use crate::common::state::State;
     use crate::feat::session_lifecycle::protocol::event::{
         SessionCreated, SessionCwdChanged, SessionSetupCompleted,
     };
@@ -299,9 +302,11 @@ mod tests {
         let recorder = harness.spawn_recorder::<ContextFilesLoaded>().await;
 
         // When sending ScanContextFiles command.
-        harness.publish(ScanContextFiles {
-            session_id: session_id.clone(),
-        }).await;
+        harness
+            .publish(ScanContextFiles {
+                session_id: session_id.clone(),
+            })
+            .await;
 
         // Then the file is written to the session's ephemeral discovered set.
         let _recorded = await_recorded(&recorder, 1, std::time::Duration::from_secs(2)).await;
@@ -480,9 +485,11 @@ mod tests {
         actor.wait_for_startup().await;
 
         // When sending SessionCreated for that session.
-        harness.publish(SessionCreated {
-            session_id: session_id.clone(),
-        }).await;
+        harness
+            .publish(SessionCreated {
+                session_id: session_id.clone(),
+            })
+            .await;
 
         // Then the file is written to the session's discovered set.
         let recorder = harness.spawn_recorder::<ContextFilesLoaded>().await;
@@ -519,9 +526,11 @@ mod tests {
         let recorder = harness.spawn_recorder::<ContextFilesLoaded>().await;
 
         // When sending SessionCreated for the sentinel-cwd session.
-        harness.publish(SessionCreated {
-            session_id: session_id.clone(),
-        }).await;
+        harness
+            .publish(SessionCreated {
+                session_id: session_id.clone(),
+            })
+            .await;
 
         // Then no scan runs: the discovered set stays empty.
         let recorded = await_recorded(&recorder, 1, std::time::Duration::from_millis(100)).await;
@@ -550,11 +559,13 @@ mod tests {
         actor.wait_for_startup().await;
 
         // When sending SessionSetupCompleted.
-        harness.publish(SessionSetupCompleted {
-            session_id: session_id.clone(),
-            cwd: dir.path().to_path_buf(),
-            error: None,
-        }).await;
+        harness
+            .publish(SessionSetupCompleted {
+                session_id: session_id.clone(),
+                cwd: dir.path().to_path_buf(),
+                error: None,
+            })
+            .await;
 
         let recorder = harness.spawn_recorder::<ContextFilesLoaded>().await;
         let _ = await_recorded(&recorder, 1, std::time::Duration::from_secs(2)).await;
@@ -582,10 +593,12 @@ mod tests {
         actor.wait_for_startup().await;
 
         // When sending SessionCwdChanged.
-        harness.publish(SessionCwdChanged {
-            session_id: session_id.clone(),
-            cwd: dir.path().to_path_buf(),
-        }).await;
+        harness
+            .publish(SessionCwdChanged {
+                session_id: session_id.clone(),
+                cwd: dir.path().to_path_buf(),
+            })
+            .await;
 
         let recorder = harness.spawn_recorder::<ContextFilesLoaded>().await;
         let _ = await_recorded(&recorder, 1, std::time::Duration::from_secs(2)).await;
@@ -613,13 +626,15 @@ mod tests {
         actor.wait_for_startup().await;
 
         // When sending EnvironmentLoaded.
-        harness.publish(EnvironmentLoaded {
-            config: crate::ProvidersConfig {
-                providers: vec![],
-                aliases: vec![],
-                default_provider: None,
-            },
-        }).await;
+        harness
+            .publish(EnvironmentLoaded {
+                config: crate::ProvidersConfig {
+                    providers: vec![],
+                    aliases: vec![],
+                    default_provider: None,
+                },
+            })
+            .await;
 
         let recorder = harness.spawn_recorder::<ContextFilesLoaded>().await;
         let _ = await_recorded(&recorder, 1, std::time::Duration::from_secs(2)).await;

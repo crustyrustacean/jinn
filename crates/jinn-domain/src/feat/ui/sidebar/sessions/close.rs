@@ -123,7 +123,6 @@ pub fn handle_session_close(state: &mut AppState) -> crate::protocol::IntentResu
 /// Panics if `sessions_section.selected_index` is `None`.
 pub fn handle_session_close_with_lifecycle(state: &mut AppState) -> crate::protocol::IntentResult {
     use crate::feat::session::protocol::close_session::CloseSession;
-    
 
     // Validate.
     if validate_session_close(state).is_err() {

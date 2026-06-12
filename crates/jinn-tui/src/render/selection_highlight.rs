@@ -92,7 +92,7 @@ mod tests {
     }
 
     #[rstest::rstest]
-#[tokio::test]
+    #[tokio::test]
     async fn cell_outside_selection_is_unchanged() {
         // Given a buffer with distinctively colored cells and an active selection.
         let area = Rect::new(0, 0, 20, 10);
@@ -122,7 +122,7 @@ mod tests {
     }
 
     #[rstest::rstest]
-#[tokio::test]
+    #[tokio::test]
     async fn cell_at_raw_anchor_not_highlighted() {
         // Given a buffer covering a large area and a selection where the raw anchor
         // extends beyond the selection's constraining bounds.
@@ -157,7 +157,7 @@ mod tests {
     }
 
     #[rstest::rstest]
-#[tokio::test]
+    #[tokio::test]
     async fn highlight_does_nothing_when_idle() {
         // Given a buffer with distinctly colored cells and an Idle selection.
         let area = Rect::new(0, 0, 20, 10);
@@ -179,7 +179,7 @@ mod tests {
     }
 
     #[rstest::rstest]
-#[tokio::test]
+    #[tokio::test]
     async fn backward_selection_highlights_same_cells_as_forward() {
         // Given a buffer with colored cells on rows 1-3.
         let area = Rect::new(0, 0, 10, 5);

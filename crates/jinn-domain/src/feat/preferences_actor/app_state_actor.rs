@@ -32,7 +32,8 @@ impl Actor for AppStateActor {
 
     async fn on_start(args: Self::Args, actor_ref: ActorRef<Self>) -> Result<Self, Self::Error> {
         args.deps
-            .subscribe(actor_ref.recipient::<UpdateAppState>()).await;
+            .subscribe(actor_ref.recipient::<UpdateAppState>())
+            .await;
 
         Ok(Self { deps: args.deps })
     }
@@ -85,10 +86,9 @@ mod tests {
         let harness = TestHarness::new().await;
         let storage = InMemoryAppStateStorage::new();
         let mut services = Services::new_fake().await;
-        let svc =
-            crate::feat::preferences_actor::app_state_storage::AppStateStorageService::new(
-                Arc::new(storage),
-            );
+        let svc = crate::feat::preferences_actor::app_state_storage::AppStateStorageService::new(
+            Arc::new(storage),
+        );
         svc.reload().expect("test app state storage initial reload");
         services.app_state_storage = svc;
         services.bus = harness.bus();
@@ -101,7 +101,9 @@ mod tests {
         let (harness, services) = create_harness().await;
         let _actor = harness
             .spawn_actor::<AppStateActor>(AppStateActorDeps {
-                deps: ActorDeps { services: services.clone() },
+                deps: ActorDeps {
+                    services: services.clone(),
+                },
             })
             .await;
         let recorder = harness.spawn_recorder::<AppStateUpdated>().await;
@@ -133,7 +135,9 @@ mod tests {
         let (harness, services) = create_harness().await;
         let _actor = harness
             .spawn_actor::<AppStateActor>(AppStateActorDeps {
-                deps: ActorDeps { services: services.clone() },
+                deps: ActorDeps {
+                    services: services.clone(),
+                },
             })
             .await;
         let recorder = harness.spawn_recorder::<AppStateUpdated>().await;
@@ -160,7 +164,9 @@ mod tests {
         let (harness, services) = create_harness().await;
         let _actor = harness
             .spawn_actor::<AppStateActor>(AppStateActorDeps {
-                deps: ActorDeps { services: services.clone() },
+                deps: ActorDeps {
+                    services: services.clone(),
+                },
             })
             .await;
         let recorder = harness.spawn_recorder::<AppStateUpdated>().await;

@@ -912,7 +912,10 @@ mod tests {
         let result = handle_arg_input_confirm(&mut state);
 
         // Then a command is emitted with the rendered args.
-        assert!(!result.message_names.is_empty(), "command should be emitted");
+        assert!(
+            !result.message_names.is_empty(),
+            "command should be emitted"
+        );
         // Then PersistSession is emitted first.
         assert!(result.message_names[0].contains("PersistSession"));
         // And RunSessionSetup is emitted third.

@@ -16,6 +16,7 @@ use crate::csv::{BenchCsvWriter, BenchResult};
 use crate::orchestrator::BenchPlan;
 use crate::task::{BenchTask, VerificationReport};
 use crate::tasks;
+use jinn_domain::State;
 use jinn_domain::feat::chat_input::protocol::command::{EnqueueUserMessage, PushChatEntry};
 use jinn_domain::feat::provider::protocol::command::CancelStream;
 use jinn_domain::feat::provider::protocol::event::StreamCompleted;
@@ -29,11 +30,12 @@ use jinn_domain::feat::session_lifecycle::builtin::{BuiltinId, LifecycleCommand}
 use jinn_domain::feat::session_lifecycle::protocol::command::RunSessionSetup;
 use jinn_domain::feat::session_lifecycle::protocol::event::SessionSetupCompleted;
 use jinn_domain::protocol::{ChatEntry, SessionId};
-use jinn_domain::State;
 
 use jinn_domain::common::actor_deps::{ActorDeps, BusPublish};
 use jinn_domain::common::services::bus_service::BusService;
-use kameo::prelude::{Actor as KameoActor, ActorRef as KameoActorRef, Context as KameoContext, Message};
+use kameo::prelude::{
+    Actor as KameoActor, ActorRef as KameoActorRef, Context as KameoContext, Message,
+};
 
 /// A tracked bench session.
 struct BenchSession {
@@ -159,7 +161,11 @@ impl KameoActor for BenchActor {
 impl Message<SessionSetupCompleted> for BenchActor {
     type Reply = ();
 
-    async fn handle(&mut self, msg: SessionSetupCompleted, _ctx: &mut KameoContext<Self, Self::Reply>) {
+    async fn handle(
+        &mut self,
+        msg: SessionSetupCompleted,
+        _ctx: &mut KameoContext<Self, Self::Reply>,
+    ) {
         self.handle_session_setup_completed(&msg).await;
     }
 }
@@ -175,7 +181,11 @@ impl Message<StreamCompleted> for BenchActor {
 impl Message<SessionPhaseChanged> for BenchActor {
     type Reply = ();
 
-    async fn handle(&mut self, msg: SessionPhaseChanged, _ctx: &mut KameoContext<Self, Self::Reply>) {
+    async fn handle(
+        &mut self,
+        msg: SessionPhaseChanged,
+        _ctx: &mut KameoContext<Self, Self::Reply>,
+    ) {
         self.handle_session_phase_changed(&msg).await;
     }
 }
@@ -246,26 +256,34 @@ impl BenchActor {
 
         // Emit setup commands.
         let lifecycle_command = LifecycleCommand::Builtin(BuiltinId(task_name.clone()));
-        self.publish(jinn_domain::feat::session_lifecycle::protocol::command::PersistSession {
-            session_id: session_id.clone(),
-        }).await;
-        self.publish(jinn_domain::feat::chat_input::protocol::command::PushChatEntry {
-            session_id: session_id.clone(),
-            entry: setup_running_msg(),
-        }).await;
+        self.publish(
+            jinn_domain::feat::session_lifecycle::protocol::command::PersistSession {
+                session_id: session_id.clone(),
+            },
+        )
+        .await;
+        self.publish(
+            jinn_domain::feat::chat_input::protocol::command::PushChatEntry {
+                session_id: session_id.clone(),
+                entry: setup_running_msg(),
+            },
+        )
+        .await;
         self.publish(RunSessionSetup {
             session_id: session_id.clone(),
             command: task_name.clone(),
             args: vec![],
             lifecycle_command: Some(lifecycle_command),
-        }).await;
+        })
+        .await;
     }
 
     async fn enqueue_message(&mut self, session_id: &SessionId, message: &str) {
         self.publish(EnqueueUserMessage {
             session_id: session_id.clone(),
             entry: jinn_domain::ChatEntry::user(message.to_owned()),
-        }).await;
+        })
+        .await;
     }
 
     async fn handle_setup_error(&mut self, session_id: &SessionId, error: &str) {
@@ -328,7 +346,8 @@ impl BenchActor {
         self.publish(PushChatEntry {
             session_id: session_id.clone(),
             entry: ChatEntry::system(msg),
-        }).await;
+        })
+        .await;
 
         // Advance to the next pair.
         self.start_next_pair().await;
@@ -348,10 +367,7 @@ impl BenchActor {
         }
     }
 
-    async fn handle_session_setup_completed(
-        &mut self,
-        payload: &SessionSetupCompleted,
-    ) {
+    async fn handle_session_setup_completed(&mut self, payload: &SessionSetupCompleted) {
         // Handle setup errors: record failure and advance to next pair.
         if let Some(ref error) = payload.error {
             self.handle_setup_error(&payload.session_id, error).await;
@@ -401,7 +417,8 @@ impl BenchActor {
         );
 
         let first_message = task.messages[0];
-        self.enqueue_message(&payload.session_id, first_message).await;
+        self.enqueue_message(&payload.session_id, first_message)
+            .await;
         if let Some(tracked) = self.pending.get_mut(&payload.session_id) {
             tracked.messages_remaining -= 1;
             tracked.next_message_index += 1;
@@ -426,7 +443,8 @@ impl BenchActor {
 
         self.publish(CancelStream {
             session_id: payload.session_id.clone(),
-        }).await;
+        })
+        .await;
     }
 
     async fn handle_session_phase_changed(&mut self, payload: &SessionPhaseChanged) {
@@ -527,7 +545,8 @@ impl BenchActor {
             self.publish(PushChatEntry {
                 session_id: payload.session_id.clone(),
                 entry: ChatEntry::system(msg),
-            }).await;
+            })
+            .await;
         }
 
         // Push summary line.
@@ -544,7 +563,8 @@ impl BenchActor {
         self.publish(PushChatEntry {
             session_id: payload.session_id.clone(),
             entry: ChatEntry::system(summary),
-        }).await;
+        })
+        .await;
 
         let category = self
             .task_lookup

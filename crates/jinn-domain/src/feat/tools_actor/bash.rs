@@ -9,8 +9,8 @@ use std::fmt::Write as _;
 use std::process::Stdio;
 use std::time::Duration;
 
-use crate::common::services::bus_service::BusService;
 use crate::common::process_kill::kill_process_tree;
+use crate::common::services::bus_service::BusService;
 use crate::feat::preferences_actor::user_preferences::BashConfig;
 use crate::feat::tools_actor::protocol::event::{ToolExecutionOutput, ToolExecutionStarted};
 use crate::feat::tools_actor::tool_types::{ToolCall, ToolContext, ToolDefinition, ToolResult};
@@ -144,7 +144,8 @@ async fn flush_buffer(
             tool_call_id: tool_call_id.to_owned(),
             output: buffer.to_owned(),
         },
-    ).await;
+    )
+    .await;
 }
 
 /// Emits a streaming tool event if both bus and session_id are available.
@@ -453,7 +454,8 @@ pub fn execute(call: ToolCall, ctx: ToolContext) -> BoxedToolFuture {
                 tool_call_id: call.id.clone(),
                 name: call.name.clone(),
             },
-        ).await;
+        )
+        .await;
 
         let spawn_result = spawn_shell_command(&shell, &command, &cwd);
 

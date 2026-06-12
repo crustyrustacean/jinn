@@ -3,7 +3,6 @@
 //! Provides a unified message type that merges crossterm terminal events,
 //! periodic tick messages, and commands into a single stream.
 
-
 pub mod handler;
 pub mod sender;
 
@@ -45,7 +44,6 @@ mod tests {
     )]
 
     use super::*;
-
 
     //FIXME: disabled during actor migration — rewrite test for Msg::Bridge
     // #[rstest::rstest]

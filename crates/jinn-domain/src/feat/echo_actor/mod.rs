@@ -30,7 +30,9 @@ impl Actor for EchoActor {
 
     async fn on_start(args: Self::Args, actor_ref: ActorRef<Self>) -> Result<Self, Self::Error> {
         // Register to receive ChatEntrySubmitted events from the bus.
-        args.deps.subscribe(actor_ref.recipient::<ChatEntrySubmitted>()).await;
+        args.deps
+            .subscribe(actor_ref.recipient::<ChatEntrySubmitted>())
+            .await;
 
         Ok(Self { deps: args.deps })
     }

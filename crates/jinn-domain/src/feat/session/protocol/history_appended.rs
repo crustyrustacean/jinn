@@ -23,7 +23,7 @@
 
 use serde::{Deserialize, Serialize};
 
-use crate::protocol::{SessionId};
+use crate::protocol::SessionId;
 
 /// Emitted when a new entry is appended to the session history.
 ///

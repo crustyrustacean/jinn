@@ -231,7 +231,7 @@ mod tests {
     use super::*;
 
     #[rstest::rstest]
-#[tokio::test]
+    #[tokio::test]
     async fn session_entry_display_label_returns_title() {
         // Given a SessionTreeEntry with a title.
         let entry = SessionTreeEntry::new(
@@ -249,7 +249,7 @@ mod tests {
     }
 
     #[rstest::rstest]
-#[tokio::test]
+    #[tokio::test]
     async fn render_row_contains_title() {
         // Given a session tree entry.
         let entry = SessionTreeEntry::new(

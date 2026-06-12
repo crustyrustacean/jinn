@@ -57,17 +57,21 @@ impl kameo::Actor for WebFetchActor {
     type Args = WebFetchActorDeps;
     type Error = kameo::error::Infallible;
 
-    async fn on_start(
-        args: Self::Args,
-        actor_ref: ActorRef<Self>,
-    ) -> Result<Self, Self::Error> {
-        args.deps.subscribe(actor_ref.recipient::<ExecuteWebFetch>()).await;
+    async fn on_start(args: Self::Args, actor_ref: ActorRef<Self>) -> Result<Self, Self::Error> {
+        args.deps
+            .subscribe(actor_ref.recipient::<ExecuteWebFetch>())
+            .await;
 
         // Register the web-fetch tool with the orchestrator.
-        let _ = args.deps.services.bus.publish(RegisterTools {
-            provider: "web-fetch".to_owned(),
-            definitions: vec![web_fetch_tool_definition()],
-        }).await;
+        let _ = args
+            .deps
+            .services
+            .bus
+            .publish(RegisterTools {
+                provider: "web-fetch".to_owned(),
+                definitions: vec![web_fetch_tool_definition()],
+            })
+            .await;
 
         Ok(Self {
             deps: args.deps,
@@ -107,10 +111,12 @@ impl Message<ExecuteWebFetch> for WebFetchActor {
             content_len = result.content.len(),
             "web-fetch: fetch complete"
         );
-        let _ = self.publish(ToolExecutionCompleted {
-            session_id: msg.session_id,
-            result,
-        }).await;
+        let _ = self
+            .publish(ToolExecutionCompleted {
+                session_id: msg.session_id,
+                result,
+            })
+            .await;
     }
 }
 
@@ -228,8 +234,8 @@ mod tests {
 
     use crate::common::bus::test_harness::{TestHarness, await_recorded};
     use crate::feat::tools_actor::protocol::command::ExecuteWebFetch;
-    use crate::feat::tools_actor::protocol::event::ToolExecutionCompleted;
     use crate::feat::tools_actor::protocol::command::RegisterTools;
+    use crate::feat::tools_actor::protocol::event::ToolExecutionCompleted;
     use crate::feat::tools_actor::tool_types::ToolCall;
     use crate::protocol::SessionId;
 
@@ -312,10 +318,12 @@ mod tests {
             name: "web-fetch".to_owned(),
             arguments: r#"{"url": "https://example.com/"}"#.to_owned(),
         };
-        harness.publish(ExecuteWebFetch {
-            session_id: session_id.clone(),
-            tool_call,
-        }).await;
+        harness
+            .publish(ExecuteWebFetch {
+                session_id: session_id.clone(),
+                tool_call,
+            })
+            .await;
 
         // Then a ToolExecutionCompleted event was emitted with success.
         let recorded = await_recorded(&recorder, 1, std::time::Duration::from_secs(2)).await;
@@ -343,10 +351,12 @@ mod tests {
             name: "web-fetch".to_owned(),
             arguments: "not json".to_owned(),
         };
-        harness.publish(ExecuteWebFetch {
-            session_id: session_id.clone(),
-            tool_call,
-        }).await;
+        harness
+            .publish(ExecuteWebFetch {
+                session_id: session_id.clone(),
+                tool_call,
+            })
+            .await;
 
         // Then a ToolExecutionCompleted event was emitted with failure.
         let recorded = await_recorded(&recorder, 1, std::time::Duration::from_secs(2)).await;
@@ -373,10 +383,12 @@ mod tests {
             name: "web-fetch".to_owned(),
             arguments: r#"{"url": "https://example.com/"}"#.to_owned(),
         };
-        harness.publish(ExecuteWebFetch {
-            session_id: session_id.clone(),
-            tool_call,
-        }).await;
+        harness
+            .publish(ExecuteWebFetch {
+                session_id: session_id.clone(),
+                tool_call,
+            })
+            .await;
 
         // Then a ToolExecutionCompleted event was emitted with failure.
         let recorded = await_recorded(&recorder, 1, std::time::Duration::from_secs(2)).await;

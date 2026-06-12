@@ -235,7 +235,11 @@ mod tests {
         // And input state is cleared.
         assert!(state.frontend.rename_session_input.text.input.is_empty());
         // And a PersistSession command is emitted.
-        assert_eq!(result.messages.len(), 1, "expected PersistSession message for the renamed session");
+        assert_eq!(
+            result.messages.len(),
+            1,
+            "expected PersistSession message for the renamed session"
+        );
     }
 
     #[rstest::rstest]
@@ -305,7 +309,11 @@ mod tests {
             "session should be marked as interacted after rename"
         );
         // And a PersistSession command is emitted.
-        assert_eq!(result.messages.len(), 1, "expected PersistSession message for non-interacted session after rename");
+        assert_eq!(
+            result.messages.len(),
+            1,
+            "expected PersistSession message for non-interacted session after rename"
+        );
     }
 
     #[rstest::rstest]

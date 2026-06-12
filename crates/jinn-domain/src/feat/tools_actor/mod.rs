@@ -30,8 +30,8 @@ use std::future::Future;
 use std::pin::Pin;
 
 use crate::common::actor_deps::{ActorDeps, BusPublish};
-use crate::common::services::bus_service::BusService;
 use crate::common::services::Services;
+use crate::common::services::bus_service::BusService;
 use crate::common::state::State;
 use crate::feat::preferences_actor::OpenrouterWebSearchConfig;
 use crate::feat::session::chat_session::ChatSessionState;
@@ -176,10 +176,7 @@ impl Actor for ToolOrchestratorActor {
     type Args = ToolOrchestratorActorDeps;
     type Error = kameo::error::Infallible;
 
-    async fn on_start(
-        args: Self::Args,
-        actor_ref: ActorRef<Self>,
-    ) -> Result<Self, Self::Error> {
+    async fn on_start(args: Self::Args, actor_ref: ActorRef<Self>) -> Result<Self, Self::Error> {
         let deps = args.deps;
         deps.subscribe(actor_ref.clone().recipient::<RegisterTools>())
             .await;
@@ -275,7 +272,8 @@ impl Message<RegisterTools> for ToolOrchestratorActor {
     type Reply = ();
 
     async fn handle(&mut self, msg: RegisterTools, _ctx: &mut Context<Self, Self::Reply>) {
-        self.handle_register_tools(&msg.provider, &msg.definitions).await;
+        self.handle_register_tools(&msg.provider, &msg.definitions)
+            .await;
     }
 }
 
@@ -283,7 +281,8 @@ impl Message<ExecuteToolBatch> for ToolOrchestratorActor {
     type Reply = ();
 
     async fn handle(&mut self, msg: ExecuteToolBatch, _ctx: &mut Context<Self, Self::Reply>) {
-        self.handle_execute_tool_batch(msg.session_id, msg.tool_calls).await;
+        self.handle_execute_tool_batch(msg.session_id, msg.tool_calls)
+            .await;
     }
 }
 
@@ -299,7 +298,8 @@ impl Message<ToolExecutionCompleted> for ToolOrchestratorActor {
     type Reply = ();
 
     async fn handle(&mut self, msg: ToolExecutionCompleted, _ctx: &mut Context<Self, Self::Reply>) {
-        self.handle_tool_execution_completed(msg.session_id, msg.result).await;
+        self.handle_tool_execution_completed(msg.session_id, msg.result)
+            .await;
     }
 }
 
@@ -311,11 +311,7 @@ impl BusPublish for ToolOrchestratorActor {
 
 impl ToolOrchestratorActor {
     /// Stores actor-provided tools and emits a [`ToolsRegistered`] event.
-    async fn handle_register_tools(
-        &mut self,
-        provider: &str,
-        definitions: &[ToolDefinition],
-    ) {
+    async fn handle_register_tools(&mut self, provider: &str, definitions: &[ToolDefinition]) {
         for def in definitions {
             let name = def.name.clone();
             self.tools.insert(
@@ -330,7 +326,8 @@ impl ToolOrchestratorActor {
         self.publish(ToolsRegistered {
             provider: provider.to_owned(),
             definitions: definitions.to_vec(),
-        }).await;
+        })
+        .await;
     }
 
     /// Dispatches each tool call and tracks the pending batch.
@@ -349,7 +346,8 @@ impl ToolOrchestratorActor {
             self.publish(ToolBatchCompleted {
                 session_id,
                 results: vec![],
-            }).await;
+            })
+            .await;
             return;
         }
 
@@ -390,11 +388,7 @@ impl ToolOrchestratorActor {
     }
 
     /// Builds a [`ToolContext`] for the given session by reading its CWD from shared state.
-    fn build_tool_context(
-        &self,
-        session_id: &SessionId,
-        bus: BusService,
-    ) -> ToolContext {
+    fn build_tool_context(&self, session_id: &SessionId, bus: BusService) -> ToolContext {
         let prefs = self.services.user_preferences_storage.read();
         let cwd = {
             let guard = self.state.read();
@@ -471,10 +465,8 @@ impl ToolOrchestratorActor {
                         }
                         None => execute_fn(tool_call, tool_ctx).await,
                     };
-                    bus.publish(ToolExecutionCompleted {
-                        session_id,
-                        result,
-                    }).await;
+                    bus.publish(ToolExecutionCompleted { session_id, result })
+                        .await;
                 });
                 Some(handle)
             }
@@ -484,7 +476,8 @@ impl ToolOrchestratorActor {
                         self.publish(ExecuteWebFetch {
                             session_id,
                             tool_call,
-                        }).await;
+                        })
+                        .await;
                     }
                     other => {
                         tracing::warn!(
@@ -508,10 +501,8 @@ impl ToolOrchestratorActor {
                     pin_position: None,
                 };
 
-                self.publish(ToolExecutionCompleted {
-                    session_id,
-                    result,
-                }).await;
+                self.publish(ToolExecutionCompleted { session_id, result })
+                    .await;
                 None
             }
         }
@@ -520,11 +511,7 @@ impl ToolOrchestratorActor {
     /// Aggregates a tool result into the pending batch.
     ///
     /// When all calls in a batch have completed, emits [`ToolBatchCompleted`]
-    async fn handle_tool_execution_completed(
-        &mut self,
-        session_id: SessionId,
-        result: ToolResult,
-    ) {
+    async fn handle_tool_execution_completed(&mut self, session_id: SessionId, result: ToolResult) {
         let Some(batch) = self.pending.get_mut(&session_id) else {
             tracing::trace!(
                 session_id = ?session_id,
@@ -558,7 +545,8 @@ impl ToolOrchestratorActor {
             self.publish(ToolBatchCompleted {
                 session_id,
                 results,
-            }).await;
+            })
+            .await;
         }
     }
 

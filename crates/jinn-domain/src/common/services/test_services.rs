@@ -35,9 +35,8 @@ use super::actor_channel::ActorChannelService;
 /// The `Runtime` itself is intentionally leaked via `Box::leak` at
 /// static-init time; it lives for the lifetime of the test binary.
 /// The `Handle` is cheaply cloneable and shared by all tests.
-static TEST_RUNTIME: LazyLock<&'static Runtime> = LazyLock::new(|| {
-    Box::leak(Box::new(Runtime::new().expect("shared test runtime")))
-});
+static TEST_RUNTIME: LazyLock<&'static Runtime> =
+    LazyLock::new(|| Box::leak(Box::new(Runtime::new().expect("shared test runtime"))));
 
 /// Returns a clone of the shared test runtime handle.
 ///
@@ -249,9 +248,8 @@ impl TestServices {
             let bus_ref = if tokio::runtime::Handle::try_current().is_ok() {
                 kameo_actors::message_bus::MessageBus::spawn(bus_actor)
             } else {
-                TEST_RUNTIME.block_on(async {
-                    kameo_actors::message_bus::MessageBus::spawn(bus_actor)
-                })
+                TEST_RUNTIME
+                    .block_on(async { kameo_actors::message_bus::MessageBus::spawn(bus_actor) })
             };
             super::bus_service::BusService::new(bus_ref)
         };

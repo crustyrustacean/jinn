@@ -9,9 +9,7 @@ pub mod app_core;
 pub mod app_msg;
 
 // Re-export primary types owned by this crate
-pub use app_core::{
-    AppCore, SHUTDOWN_TIMEOUT, STARTUP_TIMEOUT, wait_for_system_ready,
-};
+pub use app_core::{AppCore, SHUTDOWN_TIMEOUT, STARTUP_TIMEOUT, wait_for_system_ready};
 pub use app_msg::AppMsg;
 // Re-export State from jinn-component
 pub use crate::{State, StateReadGuard, StateWriteGuard};

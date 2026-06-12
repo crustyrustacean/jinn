@@ -108,9 +108,12 @@ pub fn execute(call: ToolCall, ctx: ToolContext) -> BoxedToolFuture {
         }
 
         if let Some(bus) = &ctx.bus {
-            bus.publish(crate::feat::session::protocol::task_list_updated::TaskListUpdated {
-                session_id: session_id.clone(),
-            }).await;
+            bus.publish(
+                crate::feat::session::protocol::task_list_updated::TaskListUpdated {
+                    session_id: session_id.clone(),
+                },
+            )
+            .await;
         }
 
         ToolResult {

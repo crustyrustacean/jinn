@@ -38,7 +38,8 @@ impl Actor for HistorySnapshotActor {
 
     async fn on_start(args: Self::Args, actor_ref: ActorRef<Self>) -> Result<Self, Self::Error> {
         args.deps
-            .subscribe(actor_ref.recipient::<HistoryAppended>()).await;
+            .subscribe(actor_ref.recipient::<HistoryAppended>())
+            .await;
 
         Ok(Self {
             deps: args.deps,

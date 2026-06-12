@@ -14,9 +14,9 @@
 //!   results to shared [`State`](crate::common::state::State), and emits
 //!   [`SkillsLoaded`] events.
 
+use crate::common::services::bus_service::BusService;
 use kameo::prelude::{Actor, ActorRef, Context, Message};
 use serde::{Deserialize, Serialize};
-use crate::common::services::bus_service::BusService;
 
 use crate::common::actor::scan_actor::scan_cwd_for_session;
 use crate::common::actor_deps::{ActorDeps, BusPublish};
@@ -64,12 +64,18 @@ impl Actor for SkillsScanActor {
 
     async fn on_start(args: Self::Args, actor_ref: ActorRef<Self>) -> Result<Self, Self::Error> {
         let bus = args.deps.services.bus.clone();
-        bus.register(actor_ref.clone().recipient::<ScanSkills>()).await;
-        bus.register(actor_ref.clone().recipient::<EnvironmentLoaded>()).await;
-        bus.register(actor_ref.clone().recipient::<SessionCreated>()).await;
-        bus.register(actor_ref.clone().recipient::<SessionSetupCompleted>()).await;
-        bus.register(actor_ref.clone().recipient::<SessionLoadCompleted>()).await;
-        bus.register(actor_ref.recipient::<SessionCwdChanged>()).await;
+        bus.register(actor_ref.clone().recipient::<ScanSkills>())
+            .await;
+        bus.register(actor_ref.clone().recipient::<EnvironmentLoaded>())
+            .await;
+        bus.register(actor_ref.clone().recipient::<SessionCreated>())
+            .await;
+        bus.register(actor_ref.clone().recipient::<SessionSetupCompleted>())
+            .await;
+        bus.register(actor_ref.clone().recipient::<SessionLoadCompleted>())
+            .await;
+        bus.register(actor_ref.recipient::<SessionCwdChanged>())
+            .await;
 
         Ok(Self {
             services: args.deps.services,

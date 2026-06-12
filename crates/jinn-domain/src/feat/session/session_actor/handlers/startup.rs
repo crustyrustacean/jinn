@@ -324,8 +324,7 @@ mod tests {
         let mut store_session = ChatSessionState::new();
         let ap = crate::feat::attached_plugin::AttachedPlugin::new("test");
         store_session.core.attached_plugins.push(ap);
-        let (actor, _audit, _store) =
-            test_actor_with_store_recording(vec![store_session]).await;
+        let (actor, _audit, _store) = test_actor_with_store_recording(vec![store_session]).await;
 
         // When handling EnvironmentLoaded (startup).
         actor
@@ -361,8 +360,7 @@ mod tests {
                 ..ap
             });
         let session_id = store_session.session_id().clone();
-        let (actor, _audit, _store) =
-            test_actor_with_store_recording(vec![store_session]).await;
+        let (actor, _audit, _store) = test_actor_with_store_recording(vec![store_session]).await;
 
         // When handling EnvironmentLoaded (startup).
         actor

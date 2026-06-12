@@ -13,7 +13,6 @@
 //! EnvInitActor is spawned first with `wait_for_startup()` so dependent actors
 //! can look it up in the kameo registry and pull config via `ask()`.
 
-
 use jinn_domain::ApiKeysService;
 use jinn_domain::AppState;
 use jinn_domain::ConfigStorageService;
@@ -111,13 +110,7 @@ impl ActorSystemBuilder {
     }
 
     /// Spawn all actors via kameo, build the bus and bridge, and wait for readiness.
-    pub async fn build(
-        self,
-    ) -> (
-        AppCore,
-        Services,
-        jinn_plugin::SyncPlugins,
-    ) {
+    pub async fn build(self) -> (AppCore, Services, jinn_plugin::SyncPlugins) {
         let ActorSystemBuilderArgs {
             handle,
             llm_service,
@@ -142,7 +135,6 @@ impl ActorSystemBuilder {
         let domain_ctx_cell: std::sync::Arc<
             std::sync::OnceLock<jinn_domain::feat::plugin_dispatch::DomainNodeContext>,
         > = std::sync::Arc::new(std::sync::OnceLock::new());
-
 
         // Create shared State FIRST — injected into multiple actors.
         let state = State::new(AppState::default());
@@ -226,7 +218,6 @@ impl ActorSystemBuilder {
                 .collect();
             state.write().discovered_plugins = plugins;
         }
-
 
         let domain_ctx_cell: std::sync::Arc<
             std::sync::OnceLock<jinn_domain::feat::plugin_dispatch::DomainNodeContext>,
@@ -363,7 +354,6 @@ impl ActorSystemBuilder {
             },
         );
 
-
         // Session persistence actor — must spawn before ToolOrchestratorActor so
         // ToolsRegistered subscription is ready when tools register builtins in on_start.
         let token_counter = TiktokenCounter::o200k_base();
@@ -426,15 +416,13 @@ impl ActorSystemBuilder {
             web_fetcher,
         });
 
-
         // Prompt scan actor.
-        let _prompt_scan =
-            jinn_domain::feat::context::prompt_scan_actor::PromptScanActor::spawn(
-                jinn_domain::feat::context::prompt_scan_actor::PromptScanActorDeps {
-                    deps: actor_deps.clone(),
-                    state: state.clone(),
-                },
-            );
+        let _prompt_scan = jinn_domain::feat::context::prompt_scan_actor::PromptScanActor::spawn(
+            jinn_domain::feat::context::prompt_scan_actor::PromptScanActorDeps {
+                deps: actor_deps.clone(),
+                state: state.clone(),
+            },
+        );
 
         // Context-files scan actor.
         let _context_files =
@@ -502,14 +490,13 @@ impl ActorSystemBuilder {
         );
 
         // Context size actor.
-        let _context_size =
-            jinn_domain::feat::context::context_size_actor::ContextSizeActor::spawn(
-                jinn_domain::feat::context::context_size_actor::ContextSizeActorDeps {
-                    deps: actor_deps.clone(),
-                    state: state.clone(),
-                    counter: token_counter,
-                },
-            );
+        let _context_size = jinn_domain::feat::context::context_size_actor::ContextSizeActor::spawn(
+            jinn_domain::feat::context::context_size_actor::ContextSizeActorDeps {
+                deps: actor_deps.clone(),
+                state: state.clone(),
+                counter: token_counter,
+            },
+        );
 
         // Echo actor.
         let _echo = jinn_domain::feat::echo_actor::EchoActor::spawn(
@@ -545,12 +532,11 @@ impl ActorSystemBuilder {
                 HistoryWorkerActor, HistoryWorkerActorDeps,
             };
 
-            let _compaction = HistoryWorkerActor::<CompactionWorker>::spawn(
-                HistoryWorkerActorDeps {
+            let _compaction =
+                HistoryWorkerActor::<CompactionWorker>::spawn(HistoryWorkerActorDeps {
                     deps: actor_deps.clone(),
                     worker: CompactionWorker::new(services.clone(), handle.clone(), state.clone()),
-                },
-            );
+                });
         }
 
         // Compaction trigger actor.
@@ -575,12 +561,11 @@ impl ActorSystemBuilder {
             let config = user_preferences_storage.read().auto_prune.read_edit.clone();
 
             if config.enabled {
-                let _worker = HistoryWorkerActor::<ReadEditAutoPruneWorker>::spawn(
-                    HistoryWorkerActorDeps {
+                let _worker =
+                    HistoryWorkerActor::<ReadEditAutoPruneWorker>::spawn(HistoryWorkerActorDeps {
                         deps: actor_deps.clone(),
                         worker: ReadEditAutoPruneWorker { config },
-                    },
-                );
+                    });
             }
         }
 
@@ -594,12 +579,11 @@ impl ActorSystemBuilder {
             let config = user_preferences_storage.read().auto_prune.edit_read.clone();
 
             if config.enabled {
-                let _worker = HistoryWorkerActor::<EditReadAutoPruneWorker>::spawn(
-                    HistoryWorkerActorDeps {
+                let _worker =
+                    HistoryWorkerActor::<EditReadAutoPruneWorker>::spawn(HistoryWorkerActorDeps {
                         deps: actor_deps.clone(),
                         worker: EditReadAutoPruneWorker { config },
-                    },
-                );
+                    });
             }
         }
 
@@ -644,12 +628,11 @@ impl ActorSystemBuilder {
             let config = user_preferences_storage.read().auto_prune.todo.clone();
 
             if config.enabled {
-                let _worker = HistoryWorkerActor::<TodoAutoPruneWorker>::spawn(
-                    HistoryWorkerActorDeps {
+                let _worker =
+                    HistoryWorkerActor::<TodoAutoPruneWorker>::spawn(HistoryWorkerActorDeps {
                         deps: actor_deps.clone(),
                         worker: TodoAutoPruneWorker { config },
-                    },
-                );
+                    });
             }
         }
 
@@ -713,13 +696,12 @@ impl ActorSystemBuilder {
                 .clone();
 
             if config.enabled {
-                let _worker =
-                    HistoryWorkerActor::<ConsecutiveReadsAutoPruneWorker>::spawn(
-                        HistoryWorkerActorDeps {
-                            deps: actor_deps.clone(),
-                            worker: ConsecutiveReadsAutoPruneWorker { config },
-                        },
-                    );
+                let _worker = HistoryWorkerActor::<ConsecutiveReadsAutoPruneWorker>::spawn(
+                    HistoryWorkerActorDeps {
+                        deps: actor_deps.clone(),
+                        worker: ConsecutiveReadsAutoPruneWorker { config },
+                    },
+                );
             }
         }
 
@@ -778,17 +760,16 @@ impl ActorSystemBuilder {
                 .clone();
 
             if config.enabled {
-                let _worker =
-                    HistoryWorkerActor::<TrivialAssistantAutoPruneWorker>::spawn(
-                        HistoryWorkerActorDeps {
-                            deps: actor_deps.clone(),
-                            worker: TrivialAssistantAutoPruneWorker {
-                                config,
-                                token_cache: entry_token_cache.clone(),
-                                counter: TiktokenCounter::o200k_base(),
-                            },
+                let _worker = HistoryWorkerActor::<TrivialAssistantAutoPruneWorker>::spawn(
+                    HistoryWorkerActorDeps {
+                        deps: actor_deps.clone(),
+                        worker: TrivialAssistantAutoPruneWorker {
+                            config,
+                            token_cache: entry_token_cache.clone(),
+                            counter: TiktokenCounter::o200k_base(),
                         },
-                    );
+                    },
+                );
             }
         }
 
@@ -833,19 +814,18 @@ impl ActorSystemBuilder {
             };
 
             if config.enabled {
-                let _worker =
-                    HistoryWorkerActor::<AnchoredAssistantAutoPruneWorker>::spawn(
-                        HistoryWorkerActorDeps {
-                            deps: actor_deps.clone(),
-                            worker: AnchoredAssistantAutoPruneWorker {
-                                config,
-                                radius: shield_radius,
-                                min_candidate_tokens: trivial_max_tokens + 1,
-                                token_cache: entry_token_cache.clone(),
-                                counter: TiktokenCounter::o200k_base(),
-                            },
+                let _worker = HistoryWorkerActor::<AnchoredAssistantAutoPruneWorker>::spawn(
+                    HistoryWorkerActorDeps {
+                        deps: actor_deps.clone(),
+                        worker: AnchoredAssistantAutoPruneWorker {
+                            config,
+                            radius: shield_radius,
+                            min_candidate_tokens: trivial_max_tokens + 1,
+                            token_cache: entry_token_cache.clone(),
+                            counter: TiktokenCounter::o200k_base(),
                         },
-                    );
+                    },
+                );
             }
         }
 

@@ -334,21 +334,25 @@ mod tests {
         };
         let entry_id = {
             let state = actor.state.read();
-            state.session.get(&session_id).unwrap().history()[0].id.clone()
+            state.session.get(&session_id).unwrap().history()[0]
+                .id
+                .clone()
         };
 
-        actor.handle_submit_history_mutations(
-            &crate::feat::session::protocol::submit_history_mutations::SubmitHistoryMutations {
-                session_id: session_id.clone(),
-                mutations: vec![
+        actor
+            .handle_submit_history_mutations(
+                &crate::feat::session::protocol::submit_history_mutations::SubmitHistoryMutations {
+                    session_id: session_id.clone(),
+                    mutations: vec![
                     crate::feat::session::history_mutation::HistoryMutation::SetContextOverride {
                         entry_id: entry_id.clone(),
                         value: crate::feat::session::chat_entry::ContextOverride::ForcedExclude,
                         source: ChangeSource::Internal { label: "test".to_owned() },
                     },
                 ],
-            },
-        ).await;
+                },
+            )
+            .await;
 
         let state = actor.state.read();
         let session = state.session.get(&session_id).unwrap();
@@ -367,12 +371,14 @@ mod tests {
             state.session.active_session_id().clone()
         };
 
-        actor.handle_submit_history_mutations(
-            &crate::feat::session::protocol::submit_history_mutations::SubmitHistoryMutations {
-                session_id: session_id.clone(),
-                mutations: vec![],
-            },
-        ).await;
+        actor
+            .handle_submit_history_mutations(
+                &crate::feat::session::protocol::submit_history_mutations::SubmitHistoryMutations {
+                    session_id: session_id.clone(),
+                    mutations: vec![],
+                },
+            )
+            .await;
 
         let state = actor.state.read();
         let session = state.session.get(&session_id).unwrap();
@@ -384,18 +390,20 @@ mod tests {
         let (actor, _audit) = test_actor_recording().await;
         let new_session_id = SessionId::new();
 
-        actor.handle_submit_history_mutations(
-            &crate::feat::session::protocol::submit_history_mutations::SubmitHistoryMutations {
-                session_id: new_session_id.clone(),
-                mutations: vec![
+        actor
+            .handle_submit_history_mutations(
+                &crate::feat::session::protocol::submit_history_mutations::SubmitHistoryMutations {
+                    session_id: new_session_id.clone(),
+                    mutations: vec![
                     crate::feat::session::history_mutation::HistoryMutation::SetContextOverride {
                         entry_id: crate::feat::session::chat_entry::ChatEntryId::new(),
                         value: crate::feat::session::chat_entry::ContextOverride::ForcedExclude,
                         source: ChangeSource::Internal { label: "test".to_owned() },
                     },
                 ],
-            },
-        ).await;
+                },
+            )
+            .await;
 
         let state = actor.state.read();
         let session = state.session.get(&new_session_id).unwrap();
@@ -414,37 +422,45 @@ mod tests {
         };
         let entry_id_1 = {
             let state = actor.state.read();
-            state.session.get(&session_id).unwrap().history()[0].id.clone()
+            state.session.get(&session_id).unwrap().history()[0]
+                .id
+                .clone()
         };
         let entry_id_2 = {
             let state = actor.state.read();
-            state.session.get(&session_id).unwrap().history()[1].id.clone()
+            state.session.get(&session_id).unwrap().history()[1]
+                .id
+                .clone()
         };
 
-        actor.handle_submit_history_mutations(
-            &crate::feat::session::protocol::submit_history_mutations::SubmitHistoryMutations {
-                session_id: session_id.clone(),
-                mutations: vec![
+        actor
+            .handle_submit_history_mutations(
+                &crate::feat::session::protocol::submit_history_mutations::SubmitHistoryMutations {
+                    session_id: session_id.clone(),
+                    mutations: vec![
                     crate::feat::session::history_mutation::HistoryMutation::SetContextOverride {
                         entry_id: entry_id_1,
                         value: crate::feat::session::chat_entry::ContextOverride::ForcedExclude,
                         source: ChangeSource::Internal { label: "test".to_owned() },
                     },
                 ],
-            },
-        ).await;
-        actor.handle_submit_history_mutations(
-            &crate::feat::session::protocol::submit_history_mutations::SubmitHistoryMutations {
-                session_id: session_id.clone(),
-                mutations: vec![
+                },
+            )
+            .await;
+        actor
+            .handle_submit_history_mutations(
+                &crate::feat::session::protocol::submit_history_mutations::SubmitHistoryMutations {
+                    session_id: session_id.clone(),
+                    mutations: vec![
                     crate::feat::session::history_mutation::HistoryMutation::SetContextOverride {
                         entry_id: entry_id_2,
                         value: crate::feat::session::chat_entry::ContextOverride::ForcedInclude,
                         source: ChangeSource::Internal { label: "test".to_owned() },
                     },
                 ],
-            },
-        ).await;
+                },
+            )
+            .await;
 
         let state = actor.state.read();
         let session = state.session.get(&session_id).unwrap();
@@ -470,21 +486,25 @@ mod tests {
         };
         let entry_id = {
             let state = actor.state.read();
-            state.session.get(&session_id).unwrap().history()[0].id.clone()
+            state.session.get(&session_id).unwrap().history()[0]
+                .id
+                .clone()
         };
 
-        actor.handle_submit_history_mutations(
-            &crate::feat::session::protocol::submit_history_mutations::SubmitHistoryMutations {
-                session_id: session_id.clone(),
-                mutations: vec![
+        actor
+            .handle_submit_history_mutations(
+                &crate::feat::session::protocol::submit_history_mutations::SubmitHistoryMutations {
+                    session_id: session_id.clone(),
+                    mutations: vec![
                     crate::feat::session::history_mutation::HistoryMutation::SetContextOverride {
                         entry_id: entry_id.clone(),
                         value: crate::feat::session::chat_entry::ContextOverride::ForcedExclude,
                         source: ChangeSource::Worker { name: "test_worker".to_owned() },
                     },
                 ],
-            },
-        ).await;
+                },
+            )
+            .await;
 
         assert!(
             audit.contains_name("ContextOverrideChanged"),
@@ -502,27 +522,33 @@ mod tests {
             let id = session.core.session_id.clone();
             session.core.history[0].apply_context_override(
                 crate::feat::session::chat_entry::ContextOverride::ForcedExclude,
-                ChangeSource::Internal { label: "setup".to_owned() },
+                ChangeSource::Internal {
+                    label: "setup".to_owned(),
+                },
             );
             id
         };
         let entry_id = {
             let state = actor.state.read();
-            state.session.get(&session_id).unwrap().history()[0].id.clone()
+            state.session.get(&session_id).unwrap().history()[0]
+                .id
+                .clone()
         };
 
-        actor.handle_submit_history_mutations(
-            &crate::feat::session::protocol::submit_history_mutations::SubmitHistoryMutations {
-                session_id: session_id.clone(),
-                mutations: vec![
+        actor
+            .handle_submit_history_mutations(
+                &crate::feat::session::protocol::submit_history_mutations::SubmitHistoryMutations {
+                    session_id: session_id.clone(),
+                    mutations: vec![
                     crate::feat::session::history_mutation::HistoryMutation::SetContextOverride {
                         entry_id: entry_id.clone(),
                         value: crate::feat::session::chat_entry::ContextOverride::ForcedExclude,
                         source: ChangeSource::Worker { name: "test_worker".to_owned() },
                     },
                 ],
-            },
-        ).await;
+                },
+            )
+            .await;
 
         assert!(
             !audit.contains_name("ContextOverrideChanged"),

@@ -261,7 +261,8 @@ impl SessionPersistenceActor {
             &payload.session_id,
             old_phase,
             new_phase,
-        ).await;
+        )
+        .await;
 
         self.publish(SendToLlmProvider {
             session_id: payload.session_id.clone(),
@@ -366,7 +367,11 @@ mod tests {
     use crate::feat::session::phase_machine::PhaseKind;
     use crate::protocol::{ChatEntry, ChatEntryKind};
 
-    async fn create_actor() -> (super::super::super::SessionPersistenceActor, crate::common::state::State, BusAudit) {
+    async fn create_actor() -> (
+        super::super::super::SessionPersistenceActor,
+        crate::common::state::State,
+        BusAudit,
+    ) {
         let state = crate::common::state::State::new(crate::common::app_state::AppState::default());
         let (actor, audit) = super::super::super::helpers::test_actor_recording().await;
         let actor = super::super::super::SessionPersistenceActor {

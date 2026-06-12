@@ -228,7 +228,12 @@ fn queue_submit_always_enqueues() {
 
     // Then an EnqueueUserMessage command is emitted.
     assert_eq!(result.message_names.len(), 2);
-    assert!(result.message_names.iter().any(|n| n.contains("EnqueueUserMessage")));
+    assert!(
+        result
+            .message_names
+            .iter()
+            .any(|n| n.contains("EnqueueUserMessage"))
+    );
 }
 
 #[rstest::rstest]
@@ -256,7 +261,10 @@ fn steer_submit_while_busy_routes_to_steer(
 
     // Then SubmitSteeringMessage command emitted (not EnqueueUserMessage).
     assert!(
-        result.message_names.iter().any(|n| n.contains("SubmitSteeringMessage")),
+        result
+            .message_names
+            .iter()
+            .any(|n| n.contains("SubmitSteeringMessage")),
         "phase {:?}: expected SubmitSteeringMessage",
         phase
     );
@@ -282,7 +290,12 @@ fn steer_submit_while_idle_falls_back_to_enqueue() {
     let result = crate::feat::chat_input::intent::handle_submit_message(&mut state);
 
     // Then EnqueueUserMessage command emitted (fall-through).
-    assert!(result.message_names.iter().any(|n| n.contains("EnqueueUserMessage")));
+    assert!(
+        result
+            .message_names
+            .iter()
+            .any(|n| n.contains("EnqueueUserMessage"))
+    );
     // And mode display remains Steer.
     assert_eq!(
         state.active_chat_input().input_mode(),
@@ -1180,11 +1193,17 @@ fn submit_unknown_slash_command_sends_as_chat() {
     // MarkSessionInteracted + EnqueueUserMessage.
     assert_eq!(result.message_names.len(), 2);
     assert!(
-        result.message_names.iter().any(|n| n.contains("MarkSessionInteracted")),
+        result
+            .message_names
+            .iter()
+            .any(|n| n.contains("MarkSessionInteracted")),
         "first command should be MarkSessionInteracted"
     );
     assert!(
-        result.message_names.iter().any(|n| n.contains("EnqueueUserMessage")),
+        result
+            .message_names
+            .iter()
+            .any(|n| n.contains("EnqueueUserMessage")),
         "unknown /command should be sent as chat"
     );
 }
@@ -1214,11 +1233,17 @@ fn submit_compact_slash_command_pushes_system_message() {
     // Then a MarkSessionInteracted and TriggerCompaction command are dispatched.
     assert_eq!(result.message_names.len(), 2);
     assert!(
-        result.message_names.iter().any(|n| n.contains("MarkSessionInteracted")),
+        result
+            .message_names
+            .iter()
+            .any(|n| n.contains("MarkSessionInteracted")),
         "first command should be MarkSessionInteracted"
     );
     assert!(
-        result.message_names.iter().any(|n| n.contains("TriggerCompaction")),
+        result
+            .message_names
+            .iter()
+            .any(|n| n.contains("TriggerCompaction")),
         "second command should be TriggerCompaction"
     );
 }

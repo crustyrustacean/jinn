@@ -21,8 +21,8 @@ pub mod mode;
 pub mod system;
 
 // Re-export primary types
-pub use app_msg::AppMsg;
 pub use crate::common::bus::BusMessage;
+pub use app_msg::AppMsg;
 pub use intent::CwdRoot;
 pub use intent::Intent;
 pub use intent::IntentResult;

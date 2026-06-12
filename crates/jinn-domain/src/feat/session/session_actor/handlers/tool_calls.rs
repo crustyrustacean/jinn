@@ -169,7 +169,8 @@ impl SessionPersistenceActor {
 
             (old_phase, session.phase())
         };
-        super::super::helpers::emit_phase_changed(self.bus(), session_id, old_phase, new_phase).await;
+        super::super::helpers::emit_phase_changed(self.bus(), session_id, old_phase, new_phase)
+            .await;
 
         let provider_id = {
             let state = self.state.read();
@@ -234,7 +235,8 @@ impl SessionPersistenceActor {
                 &event.session_id,
                 old_phase,
                 new_phase,
-            ).await;
+            )
+            .await;
             return;
         }
 
@@ -278,7 +280,6 @@ mod tests {
     };
     use crate::feat::tools_actor::tool_types::{ToolCall, ToolResult};
     use crate::protocol::{ChangeSource, ChatEntry, ChatEntryKind};
-
 
     #[tokio::test]
     async fn on_tool_batch_completed_emits_send_to_llm_provider() {
@@ -545,7 +546,8 @@ mod tests {
                 id: "tc-1".to_owned(),
                 name: "bash".to_owned(),
                 arguments: r#"{"command":"ls"}
-"#.to_owned(),
+"#
+                .to_owned(),
             },
         });
 

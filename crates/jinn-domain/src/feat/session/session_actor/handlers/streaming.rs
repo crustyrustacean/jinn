@@ -209,7 +209,8 @@ impl SessionPersistenceActor {
             &event.session_id,
             old_phase,
             new_phase,
-        ).await;
+        )
+        .await;
         super::super::helpers::emit_history_appended(self.bus(), &event.session_id).await;
 
         // Persist session after stream finishes.
@@ -229,7 +230,9 @@ mod tests {
         reason = "test code"
     )]
     use super::super::super::helpers::{test_actor_recording, test_actor_with_store_recording};
-    use crate::feat::provider::protocol::event::{StreamCompleted, StreamCompletedReason, StreamToken};
+    use crate::feat::provider::protocol::event::{
+        StreamCompleted, StreamCompletedReason, StreamToken,
+    };
     use crate::feat::session::phase_machine::PhaseKind;
     use crate::feat::session::token_stats::TokenRecord;
     use crate::protocol::{ChangeSource, ChatEntry, ChatEntryKind};
@@ -464,10 +467,22 @@ mod tests {
         let state = actor.state.read();
         let session = state.session.get(&session_id).expect("session exists");
         let history = session.history();
-        assert_eq!(history[0].context_override(), crate::protocol::ContextOverride::Default);
-        assert_eq!(history[1].context_override(), crate::protocol::ContextOverride::ForcedExclude);
-        assert_eq!(history[2].context_override(), crate::protocol::ContextOverride::ForcedExclude);
-        assert_eq!(history[3].context_override(), crate::protocol::ContextOverride::Default);
+        assert_eq!(
+            history[0].context_override(),
+            crate::protocol::ContextOverride::Default
+        );
+        assert_eq!(
+            history[1].context_override(),
+            crate::protocol::ContextOverride::ForcedExclude
+        );
+        assert_eq!(
+            history[2].context_override(),
+            crate::protocol::ContextOverride::ForcedExclude
+        );
+        assert_eq!(
+            history[3].context_override(),
+            crate::protocol::ContextOverride::Default
+        );
     }
 
     #[tokio::test]
@@ -620,7 +635,10 @@ mod tests {
         let session = state.session.get(&session_id).expect("session exists");
         let ledger = session.token_ledger();
         assert_eq!(ledger.len(), 1);
-        assert_eq!(ledger[0].tokens_received, 0, "expected 0 tokens_received on Error");
+        assert_eq!(
+            ledger[0].tokens_received, 0,
+            "expected 0 tokens_received on Error"
+        );
     }
 
     #[tokio::test]
@@ -661,7 +679,10 @@ mod tests {
             .history()
             .iter()
             .any(|e| matches!(&e.kind, ChatEntryKind::Assistant(t) if t == "I will help"));
-        assert!(has_assistant, "expected assistant entry 'I will help' to be preserved after ToolUse");
+        assert!(
+            has_assistant,
+            "expected assistant entry 'I will help' to be preserved after ToolUse"
+        );
     }
 
     #[tokio::test]
@@ -740,7 +761,10 @@ mod tests {
             .history()
             .iter()
             .any(|e| matches!(&e.kind, ChatEntryKind::Assistant(t) if t.contains("world")));
-        assert!(has_world, "expected assistant entry with 'world' to be preserved after Finished");
+        assert!(
+            has_world,
+            "expected assistant entry with 'world' to be preserved after Finished"
+        );
     }
 
     #[tokio::test]
@@ -831,7 +855,9 @@ mod tests {
                 crate::feat::session::history_mutation::HistoryMutation::SetContextOverride {
                     entry_id: entry_id.clone(),
                     value: crate::protocol::ContextOverride::ForcedExclude,
-                    source: ChangeSource::Internal { label: "test".into() },
+                    source: ChangeSource::Internal {
+                        label: "test".into(),
+                    },
                 },
             ]);
             (entry_id, state.session.active_session_id().clone())
@@ -850,8 +876,15 @@ mod tests {
 
         let state = actor.state.read();
         let session = state.session.get(&session_id).expect("session exists");
-        let assistant = session.history().iter().find(|e| e.id == entry_id).expect("entry");
-        assert_eq!(assistant.context_override(), crate::protocol::ContextOverride::ForcedExclude);
+        let assistant = session
+            .history()
+            .iter()
+            .find(|e| e.id == entry_id)
+            .expect("entry");
+        assert_eq!(
+            assistant.context_override(),
+            crate::protocol::ContextOverride::ForcedExclude
+        );
         assert!(audit.contains_name("HistoryAppended"));
     }
 
@@ -870,7 +903,9 @@ mod tests {
                 crate::feat::session::history_mutation::HistoryMutation::SetContextOverride {
                     entry_id: entry_id.clone(),
                     value: crate::protocol::ContextOverride::ForcedExclude,
-                    source: ChangeSource::Internal { label: "test".into() },
+                    source: ChangeSource::Internal {
+                        label: "test".into(),
+                    },
                 },
             ]);
             (entry_id, state.session.active_session_id().clone())
@@ -889,8 +924,15 @@ mod tests {
 
         let state = actor.state.read();
         let session = state.session.get(&session_id).expect("session exists");
-        let assistant = session.history().iter().find(|e| e.id == entry_id).expect("entry");
-        assert_eq!(assistant.context_override(), crate::protocol::ContextOverride::ForcedExclude);
+        let assistant = session
+            .history()
+            .iter()
+            .find(|e| e.id == entry_id)
+            .expect("entry");
+        assert_eq!(
+            assistant.context_override(),
+            crate::protocol::ContextOverride::ForcedExclude
+        );
     }
 
     #[tokio::test]
@@ -908,7 +950,9 @@ mod tests {
                 crate::feat::session::history_mutation::HistoryMutation::SetContextOverride {
                     entry_id: entry_id.clone(),
                     value: crate::protocol::ContextOverride::ForcedExclude,
-                    source: ChangeSource::Internal { label: "test".into() },
+                    source: ChangeSource::Internal {
+                        label: "test".into(),
+                    },
                 },
             ]);
             (entry_id, state.session.active_session_id().clone())
@@ -927,8 +971,15 @@ mod tests {
 
         let state = actor.state.read();
         let session = state.session.get(&session_id).expect("session exists");
-        let assistant = session.history().iter().find(|e| e.id == entry_id).expect("entry");
-        assert_eq!(assistant.context_override(), crate::protocol::ContextOverride::ForcedExclude);
+        let assistant = session
+            .history()
+            .iter()
+            .find(|e| e.id == entry_id)
+            .expect("entry");
+        assert_eq!(
+            assistant.context_override(),
+            crate::protocol::ContextOverride::ForcedExclude
+        );
     }
 
     #[tokio::test]
@@ -946,7 +997,9 @@ mod tests {
                 crate::feat::session::history_mutation::HistoryMutation::SetContextOverride {
                     entry_id: entry_id.clone(),
                     value: crate::protocol::ContextOverride::ForcedExclude,
-                    source: ChangeSource::Internal { label: "test".into() },
+                    source: ChangeSource::Internal {
+                        label: "test".into(),
+                    },
                 },
             ]);
             (entry_id, state.session.active_session_id().clone())
@@ -969,7 +1022,11 @@ mod tests {
 
         let state = actor.state.read();
         let session = state.session.get(&session_id).expect("session exists");
-        let assistant = session.history().iter().find(|e| e.id == entry_id).expect("entry");
+        let assistant = session
+            .history()
+            .iter()
+            .find(|e| e.id == entry_id)
+            .expect("entry");
         assert_eq!(
             assistant.context_override(),
             crate::protocol::ContextOverride::Default,
@@ -1105,7 +1162,9 @@ mod tests {
             tool_calls: None,
             cost: None,
             provider_completion_tokens: Some(9999),
-            thinking_content: Some("extremely long thinking content that would produce many tokens".to_owned()),
+            thinking_content: Some(
+                "extremely long thinking content that would produce many tokens".to_owned(),
+            ),
         };
         actor.on_stream_completed(&event).await;
 
@@ -1137,7 +1196,8 @@ mod tests {
             tool_calls: Some(vec![crate::feat::tools_actor::tool_types::ToolCall {
                 id: "tc-1".to_owned(),
                 name: "read_file".to_owned(),
-                arguments: r#"{"path": "/mnt/zed/repos/jinn/some/very/deep/path/to/a/file.rs"}"#.to_owned(),
+                arguments: r#"{"path": "/mnt/zed/repos/jinn/some/very/deep/path/to/a/file.rs"}"#
+                    .to_owned(),
             }]),
             cost: None,
             provider_completion_tokens: Some(3),
@@ -1212,7 +1272,8 @@ mod tests {
         };
         actor.on_stream_completed(&event).await;
 
-        let counter = crate::feat::context::strategy::token_estimator::TiktokenCounter::o200k_base();
+        let counter =
+            crate::feat::context::strategy::token_estimator::TiktokenCounter::o200k_base();
         let expected = counter.count(content) as u32;
 
         let state = actor.state.read();

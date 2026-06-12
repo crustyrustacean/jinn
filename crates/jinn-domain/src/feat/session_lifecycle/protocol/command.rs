@@ -4,10 +4,7 @@ use std::path::PathBuf;
 
 use serde::{Deserialize, Serialize};
 
-use crate::{
-    BusMessage,
-    protocol::{SessionId},
-};
+use crate::{BusMessage, protocol::SessionId};
 
 /// Request to run a lifecycle setup command asynchronously.
 ///

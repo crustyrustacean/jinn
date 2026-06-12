@@ -20,7 +20,6 @@ pub mod init;
 pub mod protocol;
 pub mod schema;
 
-
 // Re-export actor types that are still in use
 pub use common::actor::{ActorCounter, NoDirectMsg};
 // Re-export component types (state, UI)
@@ -30,12 +29,12 @@ pub use common::app_state::{
     AppState, ContextAssemblyState, FocusScope, FrontendState, ProviderState, ScopeStack,
     SessionState,
 };
+pub use common::bridge::{Bridge, BridgeClosure};
+pub use common::bus::BusMessage;
 pub use common::render_ctx::RenderCtx;
 pub use common::state::{State, StateReadGuard, StateWriteGuard};
 pub use common::tui_signals::TuiSignals;
 pub use common::{AppUiRegistry, register_all_ui_elements};
-pub use common::bridge::{Bridge, BridgeClosure};
-pub use common::bus::BusMessage;
 pub use feat::context::prompt_template::PromptTemplateStore;
 pub use feat::plugin_dispatch::{
     BadgeDirective, BadgeSegment, InterceptOutcome, PluginSyncHooks, call_hooks_typed,
@@ -49,7 +48,6 @@ pub use common::services::NoopSessionPluginRegistry;
 pub use common::services::Services;
 pub use common::services::bus_service::BusService;
 pub use common::services::test_services::TestServices;
-
 
 // Re-export core types
 pub use common::core::{AppCore, SHUTDOWN_TIMEOUT, STARTUP_TIMEOUT, wait_for_system_ready};
@@ -97,14 +95,14 @@ pub use feat::persona::{Persona, PersonaEntry};
 pub use common::services::actor_channel;
 
 // Re-export protocol types at crate root
-pub use protocol::entries_to_messages;
-pub use protocol::{
-    AppMsg, ChatEntry, ChatEntryId, ChatEntryKind, Intent, IntentResult,
-    Key, KeyEvent, Mode, Modifiers, PickerKind, PinPosition, PromptTemplate,
-};
 pub use common::actor::protocol::dynamic_command::DynamicCommand;
 pub use common::actor::protocol::dynamic_event::DynamicEvent;
 pub use protocol::PickerEntry;
+pub use protocol::entries_to_messages;
+pub use protocol::{
+    AppMsg, ChatEntry, ChatEntryId, ChatEntryKind, Intent, IntentResult, Key, KeyEvent, Mode,
+    Modifiers, PickerKind, PinPosition, PromptTemplate,
+};
 
 // Re-export domain types from their canonical locations
 pub use common::actor::protocol::command::ProceedWithShutdown;

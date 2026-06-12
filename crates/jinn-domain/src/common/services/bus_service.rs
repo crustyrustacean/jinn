@@ -81,10 +81,7 @@ impl BusService {
     /// Registers a recipient to receive messages of type `M` on the bus.
     ///
     /// No-op in recording mode.
-    pub async fn register<M: Clone + Send + 'static>(
-        &self,
-        recipient: kameo::actor::Recipient<M>,
-    ) {
+    pub async fn register<M: Clone + Send + 'static>(&self, recipient: kameo::actor::Recipient<M>) {
         match &self.inner {
             BusInner::Real(bus) => {
                 bus.ask(Register(recipient))
@@ -223,14 +220,9 @@ impl BusAudit {
 
     /// Returns `true` if a message with the given type name was captured.
     pub fn contains_name(&self, name: &str) -> bool {
-        self.recorded
-            .lock()
-            .unwrap()
-            .iter()
-            .any(|m| m.name == name)
+        self.recorded.lock().unwrap().iter().any(|m| m.name == name)
     }
 }
-
 
 impl fmt::Debug for BusAudit {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
@@ -247,11 +239,15 @@ mod tests {
     use super::*;
 
     #[derive(Debug, Clone, PartialEq, Eq)]
-    struct Alpha { val: u32 }
+    struct Alpha {
+        val: u32,
+    }
     impl crate::common::bus::BusMessage for Alpha {}
 
     #[derive(Debug, Clone, PartialEq, Eq)]
-    struct Beta { text: String }
+    struct Beta {
+        text: String,
+    }
     impl crate::common::bus::BusMessage for Beta {}
 
     #[tokio::test]
@@ -277,7 +273,10 @@ mod tests {
     async fn publish_captures_multiple_types_in_order() {
         let (bus, audit) = BusService::new_recording();
         bus.publish(Alpha { val: 1 }).await;
-        bus.publish(Beta { text: "hello".into() }).await;
+        bus.publish(Beta {
+            text: "hello".into(),
+        })
+        .await;
         bus.publish(Alpha { val: 2 }).await;
         assert_eq!(audit.names(), ["Alpha", "Beta", "Alpha"]);
         assert_eq!(audit.of_type::<Alpha>().len(), 2);

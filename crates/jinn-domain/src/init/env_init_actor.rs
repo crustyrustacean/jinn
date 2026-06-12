@@ -9,7 +9,7 @@
 use crate::common::actor_deps::{ActorDeps, BusPublish};
 use crate::common::bus::BusMessage;
 use crate::feat::provider_infra::ProvidersConfig;
-use error_stack::{ResultExt, Report};
+use error_stack::{Report, ResultExt};
 use kameo::prelude::{Actor, ActorRef, Context, Message};
 use wherror::Error;
 
@@ -95,11 +95,7 @@ impl Message<GetEnvironmentConfig> for EnvInitActor {
 impl Message<EnvironmentLoaded> for EnvInitActor {
     type Reply = ();
 
-    async fn handle(
-        &mut self,
-        _msg: EnvironmentLoaded,
-        _ctx: &mut Context<Self, ()>,
-    ) {
+    async fn handle(&mut self, _msg: EnvironmentLoaded, _ctx: &mut Context<Self, ()>) {
         // No-op: EnvInitActor doesn't react to EnvironmentLoaded.
     }
 }

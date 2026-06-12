@@ -34,10 +34,7 @@ impl Actor for SystemReadyActor {
     type Args = SystemReadyActorDeps;
     type Error = kameo::error::Infallible;
 
-    async fn on_start(
-        args: Self::Args,
-        actor_ref: ActorRef<Self>,
-    ) -> Result<Self, Self::Error> {
+    async fn on_start(args: Self::Args, actor_ref: ActorRef<Self>) -> Result<Self, Self::Error> {
         args.deps
             .subscribe(actor_ref.recipient::<AllActorsSpawned>())
             .await;

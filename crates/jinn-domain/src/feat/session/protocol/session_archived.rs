@@ -8,7 +8,7 @@
 
 use serde::{Deserialize, Serialize};
 
-use crate::protocol::{SessionId};
+use crate::protocol::SessionId;
 
 /// Session archived in persistent storage.
 #[derive(Debug, Clone, Serialize, Deserialize)]
