@@ -20,6 +20,7 @@ pub mod protocol;
 pub mod read;
 pub mod registry;
 pub mod save_plan;
+pub mod session_query;
 pub mod skill;
 pub mod tool_entry;
 pub mod tool_types;
@@ -33,10 +34,11 @@ use std::pin::Pin;
 use crate::common::actor::{Actor, ActorContext, ActorEnvelope, MessageSink, NoDirectMsg};
 use crate::common::services::Services;
 use crate::common::state::State;
+use crate::feat::plugin_system::SessionRegistryId;
 use crate::feat::preferences_actor::OpenrouterWebSearchConfig;
 use crate::feat::session::chat_session::ChatSessionState;
 use crate::feat::tools_actor::protocol::command::{
-    CancelToolBatch, ExecuteToolBatch, ExecuteWebFetch, RegisterTools,
+    CancelToolBatch, ExecuteToolBatch, ExecuteWebFetch, RegisterPluginTools, RegisterTools,
 };
 use crate::feat::tools_actor::protocol::event::{
     ToolBatchCompleted, ToolExecutionCompleted, ToolsRegistered,
@@ -65,6 +67,19 @@ pub(crate) enum ToolRegistration {
         /// The name of the actor providing this tool.
         provider: String,
     },
+    /// A plugin-defined tool routed to the plugin system's async thread.
+    Plugin {
+        /// The tool's JSON-schema definition.
+        definition: ToolDefinition,
+        /// `None` for global plugins, `Some(id)` for session-attached plugins.
+        target: Option<SessionRegistryId>,
+        /// The domain session ID for execution scoping.
+        /// `None` for global tools, `Some(session_id)` for attached tools.
+        /// Used to reject tool calls from sessions other than the target.
+        target_session_id: Option<SessionId>,
+        /// The name of the plugin that owns this tool.
+        plugin_name: String,
+    },
 }
 
 impl std::fmt::Debug for ToolRegistration {
@@ -81,6 +96,18 @@ impl std::fmt::Debug for ToolRegistration {
                 .debug_struct("Actor")
                 .field("name", &definition.name)
                 .field("provider", provider)
+                .finish(),
+            Self::Plugin {
+                definition,
+                target,
+                target_session_id,
+                plugin_name,
+            } => f
+                .debug_struct("Plugin")
+                .field("name", &definition.name)
+                .field("target", target)
+                .field("target_session_id", target_session_id)
+                .field("plugin_name", plugin_name)
                 .finish(),
         }
     }
@@ -176,6 +203,7 @@ impl Actor for ToolOrchestratorActor {
     fn activate(deps: Self::Deps, ctx: &mut ActorContext) -> Self {
         ctx.set_description("Dispatches and manages tool execution");
         ctx.subscribe_command::<RegisterTools>();
+        ctx.subscribe_command::<RegisterPluginTools>();
         ctx.subscribe_command::<ExecuteToolBatch>();
         ctx.subscribe_command::<CancelToolBatch>();
         ctx.subscribe_event::<ToolExecutionCompleted>();
@@ -247,6 +275,7 @@ impl Actor for ToolOrchestratorActor {
         if let Err(e) = ctx.send_event(Event::ToolsRegistered(ToolsRegistered {
             provider: "builtin".to_owned(),
             definitions: builtin_definitions,
+            session_id: None,
         })) {
             tracing::warn!(err = ?e, "failed to emit ToolsRegistered for built-in tools");
         }
@@ -269,6 +298,15 @@ impl ToolOrchestratorActor {
         match command {
             Command::RegisterTools(payload) => {
                 self.handle_register_tools(&payload.provider, &payload.definitions, ctx);
+            }
+            Command::RegisterPluginTools(payload) => {
+                self.handle_register_plugin_tools(
+                    &payload.plugin_name,
+                    &payload.target,
+                    &payload.definitions,
+                    payload.session_id.clone(),
+                    ctx,
+                );
             }
             Command::ExecuteToolBatch(payload) => {
                 self.handle_execute_tool_batch(
@@ -320,8 +358,40 @@ impl ToolOrchestratorActor {
         if let Err(e) = ctx.send_event(Event::ToolsRegistered(ToolsRegistered {
             provider: provider.to_owned(),
             definitions: definitions.to_vec(),
+            session_id: None,
         })) {
             tracing::warn!(err = ?e, "failed to emit ToolsRegistered event");
+        }
+    }
+
+    /// Registers tool definitions from a Lua plugin.
+    fn handle_register_plugin_tools(
+        &mut self,
+        plugin_name: &str,
+        target: &Option<SessionRegistryId>,
+        definitions: &[ToolDefinition],
+        session_id: Option<SessionId>,
+        ctx: &ActorContext,
+    ) {
+        for def in definitions {
+            let name = def.name.clone();
+            self.tools.insert(
+                name,
+                ToolRegistration::Plugin {
+                    definition: def.clone(),
+                    target: *target,
+                    target_session_id: session_id.clone(),
+                    plugin_name: plugin_name.to_owned(),
+                },
+            );
+        }
+
+        if let Err(e) = ctx.send_event(Event::ToolsRegistered(ToolsRegistered {
+            provider: format!("plugin:{plugin_name}"),
+            definitions: definitions.to_vec(),
+            session_id,
+        })) {
+            tracing::warn!(err = ?e, "failed to emit ToolsRegistered event for plugin");
         }
     }
 
@@ -441,6 +511,7 @@ impl ToolOrchestratorActor {
             reg_type = match self.tools.get(&tool_call.name) {
                 Some(ToolRegistration::Builtin { .. }) => "builtin",
                 Some(ToolRegistration::Actor { .. }) => "actor",
+                Some(ToolRegistration::Plugin { .. }) => "plugin",
                 None => "unknown",
             },
             "dispatch_tool_call"
@@ -509,6 +580,98 @@ impl ToolOrchestratorActor {
                     );
                 }
                 None
+            }
+            Some(ToolRegistration::Plugin {
+                target,
+                target_session_id,
+                plugin_name,
+                ..
+            }) => {
+                // Scope check: attached tools can only be called from their target session.
+                if target_session_id.is_some() && target_session_id.as_ref() != Some(&session_id) {
+                    tracing::warn!(
+                        tool = %tool_call.name,
+                        target_session = ?target_session_id,
+                        calling_session = %session_id,
+                        "attached tool called from wrong session"
+                    );
+                    {
+                        let target_display = target_session_id
+                            .as_ref()
+                            .map(|s| s.to_string())
+                            .unwrap_or_default();
+                        let result = ToolResult {
+                            tool_call_id: tool_call.id.clone(),
+                            name: tool_call.name.clone(),
+                            content: format!(
+                                "Error: tool '{}' is only available in session {}",
+                                tool_call.name, target_display
+                            ),
+                            success: false,
+                            full_content: None,
+                            truncation: None,
+                            pin_position: None,
+                        };
+                        let _ =
+                            ctx.send_event(Event::ToolExecutionCompleted(ToolExecutionCompleted {
+                                session_id: session_id.clone(),
+                                result,
+                            }));
+                    }
+                    return None;
+                }
+
+                let sink = ctx.sink();
+                let plugin_fire = self.services.plugins.clone();
+                let target = target.clone();
+                let sid = session_id.clone();
+                let plugin_name = plugin_name.clone();
+                let arguments: serde_json::Value =
+                    serde_json::from_str(&tool_call.arguments).unwrap_or_default();
+
+                let handle = tokio::spawn(async move {
+                    let result = match plugin_fire
+                        .execute_plugin_tool(
+                            target,
+                            &sid,
+                            &plugin_name,
+                            &tool_call.name,
+                            &arguments,
+                        )
+                        .await
+                    {
+                        Ok(content) => ToolResult {
+                            tool_call_id: tool_call.id.clone(),
+                            name: tool_call.name.clone(),
+                            content,
+                            success: true,
+                            full_content: None,
+                            truncation: None,
+                            pin_position: None,
+                        },
+                        Err(report) => {
+                            tracing::warn!(?report, %plugin_name, "plugin tool execution failed");
+                            ToolResult {
+                                tool_call_id: tool_call.id.clone(),
+                                name: tool_call.name.clone(),
+                                content: format!("plugin tool error: {report:#}"),
+                                success: false,
+                                full_content: None,
+                                truncation: None,
+                                pin_position: None,
+                            }
+                        }
+                    };
+                    if let Err(e) =
+                        sink.send_event(Event::ToolExecutionCompleted(ToolExecutionCompleted {
+                            session_id,
+                            result,
+                        }))
+                    {
+                        tracing::warn!(err = ?e, "plugin tool failed to send ToolExecutionCompleted");
+                    }
+                });
+                Some(handle)
             }
             None => {
                 let call_id = tool_call.id.clone();

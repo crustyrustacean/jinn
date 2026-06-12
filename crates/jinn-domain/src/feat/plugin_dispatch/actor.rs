@@ -34,7 +34,9 @@ use crate::PhaseKind;
 use crate::SessionId;
 use crate::feat::attached_plugin::AttachedPlugin;
 use crate::feat::plugin_dispatch::DomainNodeContext;
-use crate::feat::plugin_dispatch::protocol::command::{AttachPlugin, DetachPlugin, TogglePlugin};
+use crate::feat::plugin_dispatch::protocol::command::{
+    AttachPlugin, DetachPlugin, SetManagedSession, TogglePlugin,
+};
 use crate::feat::plugin_dispatch::protocol::event::{
     PluginAttached, PluginDetached, PluginToggled,
 };
@@ -115,6 +117,7 @@ impl Actor for PluginDispatchActor {
         ctx.subscribe_command::<AttachPlugin>();
         ctx.subscribe_command::<DetachPlugin>();
         ctx.subscribe_command::<TogglePlugin>();
+        ctx.subscribe_command::<SetManagedSession>();
 
         // Generic async-handoff: plugins emit this to route an arbitrary hook
         // name to the plugin-async VM. Routed by runtime name via Command::Dynamic.
@@ -170,6 +173,9 @@ impl PluginDispatchActor {
             Command::AttachPlugin(cmd) => self.handle_attach(cmd, ctx).await,
             Command::DetachPlugin(cmd) => self.handle_detach(cmd, ctx).await,
             Command::TogglePlugin(cmd) => self.handle_toggle(cmd, ctx).await,
+            Command::SetManagedSession(cmd) => {
+                self.handle_set_managed_session(cmd, ctx);
+            }
             Command::Dynamic(ref d) if d.name == "plugin::fire_async" => {
                 self.handle_fire_async_hook(&d.payload, ctx);
             }
@@ -281,13 +287,88 @@ impl PluginDispatchActor {
         match self
             .services
             .session_plugin_registry
-            .create_session_registry(plugin_names)
+            .create_session_registry(plugin_names, session_id.clone())
             .await
         {
-            Ok(new_id) => self.registry.insert(session_id.clone(), new_id),
+            Ok(result) => {
+                self.registry.insert(session_id.clone(), result.registry_id);
+
+                // 3. Register plugin tools with the tools actor.
+                if !result.tool_metadata.is_empty() {
+                    let registry_id = result.registry_id;
+                    self.register_plugin_tools_with_actor(
+                        session_id,
+                        &registry_id,
+                        result.tool_metadata,
+                    );
+                }
+            }
             Err(e) => {
                 tracing::warn!(err = %e, session_id = %session_id, "create_session_registry failed");
             }
+        }
+    }
+
+    /// Send plugin tool definitions to the tools actor for registration.
+    fn register_plugin_tools_with_actor(
+        &self,
+        session_id: &SessionId,
+        registry_id: &crate::feat::plugin_system::SessionRegistryId,
+        tools: Vec<crate::feat::plugin_system::PluginToolMetadata>,
+    ) {
+        use crate::feat::plugin_system::ToolScope;
+        use crate::feat::tools_actor::protocol::command::RegisterPluginTools;
+
+        // Partition tools by scope: global vs attached.
+        let mut global_by_plugin: std::collections::HashMap<
+            String,
+            Vec<crate::feat::plugin_system::PluginToolMetadata>,
+        > = std::collections::HashMap::new();
+        let mut attached_by_plugin: std::collections::HashMap<
+            String,
+            Vec<crate::feat::plugin_system::PluginToolMetadata>,
+        > = std::collections::HashMap::new();
+
+        for tool in tools {
+            let map = match tool.scope {
+                ToolScope::Global => &mut global_by_plugin,
+                ToolScope::Attached => &mut attached_by_plugin,
+            };
+            map.entry(tool.plugin_name.clone()).or_default().push(tool);
+        }
+
+        // Register global tools (broadcast, no session target).
+        for (plugin_name, plugin_tools) in global_by_plugin {
+            let definitions: Vec<jinn_provider::ToolDefinition> = plugin_tools
+                .into_iter()
+                .map(|meta| meta.to_tool_definition())
+                .collect();
+
+            self.services.actor_channel.send_command(
+                crate::protocol::Command::RegisterPluginTools(RegisterPluginTools {
+                    plugin_name,
+                    target: None,
+                    session_id: None,
+                    definitions,
+                }),
+            );
+        }
+
+        // Register attached tools (scoped to this session).
+        for (plugin_name, plugin_tools) in attached_by_plugin {
+            let definitions: Vec<jinn_provider::ToolDefinition> = plugin_tools
+                .into_iter()
+                .map(|meta| meta.to_tool_definition())
+                .collect();
+
+            self.services.actor_channel.send_command(
+                crate::protocol::Command::RegisterPluginTools(RegisterPluginTools {
+                    plugin_name,
+                    target: Some(*registry_id),
+                    session_id: Some(session_id.clone()),
+                    definitions,
+                }),
+            );
         }
     }
 
@@ -347,6 +428,33 @@ impl PluginDispatchActor {
         }));
     }
 
+    fn handle_set_managed_session(&mut self, cmd: SetManagedSession, _ctx: &ActorContext) {
+        let SetManagedSession {
+            session_id,
+            plugin_name,
+            managed_session_id,
+        } = cmd;
+        tracing::debug!(session_id = %session_id, plugin = %plugin_name, managed = %managed_session_id, "setting managed session");
+
+        let state = &mut self.state.write().session;
+        let Some(session) = state.get_mut(&session_id) else {
+            tracing::warn!(session_id = %session_id, "session not found for set_managed_session");
+            return;
+        };
+        let Some(plugin) = session
+            .core
+            .attached_plugins
+            .iter_mut()
+            .find(|p| p.name.as_str() == plugin_name.as_str())
+        else {
+            tracing::warn!(session_id = %session_id, plugin = %plugin_name, "plugin not attached");
+            return;
+        };
+        plugin.managed_session_id = Some(managed_session_id);
+    }
+
+    // ─── Lifecycle hook firings ────────────────────────────────────────────
+
     // ─── Lifecycle hook firings ────────────────────────────────────────────
 
     fn fire_on_app_started(&self) {
@@ -357,14 +465,14 @@ impl PluginDispatchActor {
         let ctx_json = serde_json::json!({
             "session_id": self.startup_session_id,
         });
-        self.spawn_fire_for_session(&session_id, "on_app_started", &ctx_json);
+        self.spawn_fire_for_session(&session_id, "on_app_started", &ctx_json, vec![]);
     }
 
     fn fire_on_session_created(&self, session_id: &SessionId) {
         let ctx_json = serde_json::json!({
             "session_id": session_id.to_string(),
         });
-        self.spawn_fire_for_session(session_id, "on_session_created", &ctx_json);
+        self.spawn_fire_for_session(session_id, "on_session_created", &ctx_json, vec![]);
     }
 
     fn fire_on_phase_changed(&self, session_id: &SessionId, new_phase: PhaseKind) {
@@ -385,7 +493,24 @@ impl PluginDispatchActor {
         let ctx_json = serde_json::json!({
             "session_id": session_id.to_string(),
         });
-        self.spawn_fire_for_session(session_id, hook, &ctx_json);
+
+        let enabled_plugins = {
+            let state = self.state.read();
+            state
+                .session
+                .get(session_id)
+                .map(|s| {
+                    s.core
+                        .attached_plugins
+                        .iter()
+                        .filter(|p| p.enabled)
+                        .map(|p| p.name.clone())
+                        .collect::<Vec<_>>()
+                })
+                .unwrap_or_default()
+        };
+
+        self.spawn_fire_for_session(session_id, hook, &ctx_json, enabled_plugins);
     }
 
     /// Fire a hook for a session on a background task, so the actor loop is not
@@ -399,7 +524,13 @@ impl PluginDispatchActor {
     /// depends on an event routed back to this actor (e.g. `on_enrich` → `llm_oneshot` →
     /// `SessionPhaseChanged(Idle)`). Awaiting the fire inline would block the mailbox
     /// and deadlock until the 30s `AsyncPluginHandle` timeout.
-    fn spawn_fire_for_session(&self, session_id: &SessionId, hook: &str, ctx_json: &Value) {
+    fn spawn_fire_for_session(
+        &self,
+        session_id: &SessionId,
+        hook: &str,
+        ctx_json: &Value,
+        enabled_plugins: Vec<String>,
+    ) {
         let plugins = self.services.plugins.clone();
         let registry_id = self.registry.get(session_id).copied();
         let hook = hook.to_owned();
@@ -408,7 +539,7 @@ impl PluginDispatchActor {
             let result = match registry_id {
                 Some(rid) => {
                     plugins
-                        .fire_async_for_session_json(rid, &hook, &ctx_json)
+                        .fire_async_for_session_json(rid, &hook, &ctx_json, enabled_plugins)
                         .await
                 }
                 None => plugins.fire_async_json(&hook, &ctx_json).await,
@@ -486,7 +617,7 @@ impl PluginDispatchActor {
             map.insert("text".to_owned(), serde_json::Value::String(text));
         }
 
-        self.spawn_fire_for_session(&payload.session_id, &payload.hook, &ctx_json);
+        self.spawn_fire_for_session(&payload.session_id, &payload.hook, &ctx_json, vec![]);
     }
 }
 
@@ -514,6 +645,7 @@ mod tests {
     use crate::common::actor::context::ActorContext;
     use crate::common::actor::message_sink::RecordingSink;
     use crate::common::actor::protocol::dynamic_command::DynamicCommand;
+    use crate::common::services::ActorChannelService;
     use crate::common::app_state::AppState;
     use crate::feat::attached_plugin::PluginRunState;
     use crate::feat::plugin_dispatch::plugin_fire::{
@@ -825,6 +957,7 @@ mod tests {
             _session: SessionRegistryId,
             _hook: &str,
             _ctx: &Value,
+            _enabled_plugins: Vec<String>,
         ) -> Result<(), Report<PluginFireError>> {
             self.gate.notified().await;
 
@@ -848,6 +981,18 @@ mod tests {
         ) -> Result<Vec<Value>, Report<PluginFireError>> {
             self.gate.notified().await;
             Ok(vec![])
+        }
+
+        async fn execute_plugin_tool(
+            &self,
+            _target: Option<SessionRegistryId>,
+            _session_id: &crate::protocol::SessionId,
+            _plugin_name: &str,
+            _tool_name: &str,
+            _arguments: &Value,
+        ) -> Result<String, Report<PluginFireError>> {
+            self.gate.notified().await;
+            Ok(String::new())
         }
 
         fn name(&self) -> &'static str {
@@ -1022,5 +1167,105 @@ mod tests {
 
         // Cleanup: release the gate so the parked fire completes.
         gate.notify_waiters();
+    }
+
+    fn make_actor_with_channel() -> (
+        PluginDispatchActor,
+        kanal::Receiver<crate::protocol::AppMsg>,
+        SessionId,
+        crate::feat::plugin_system::SessionRegistryId,
+    ) {
+        use crate::common::session_map::SessionMap;
+        let (tx, rx) = kanal::unbounded();
+        let mut services = Services::new();
+        services.actor_channel = ActorChannelService::new(tx);
+        let session = ChatSessionState::default();
+        let session_id = session.session_id().clone();
+        let app_state = AppState {
+            session: SessionMap::new(session, std::path::PathBuf::from("/tmp")),
+            ..Default::default()
+        };
+        let state = State::new(app_state);
+        let sink = Arc::new(RecordingSink::new());
+        let mut ctx = ActorContext::new("plugin-dispatch-test", sink);
+        let registry_id = SessionRegistryId::new();
+        let mut actor = PluginDispatchActor::activate(
+            PluginDispatchActorDeps {
+                services,
+                state,
+                startup_session_id: session_id.to_string(),
+                domain_ctx: std::sync::Arc::new(DomainNodeContext::new(
+                    Services::new(),
+                    State::new(AppState::default()),
+                )),
+            },
+            &mut ctx,
+        );
+        actor.registry.insert(session_id.clone(), registry_id);
+        (actor, rx, session_id, registry_id)
+    }
+
+    #[test]
+    fn register_global_tools_sends_target_none() {
+        // Given a dispatch actor with a real channel.
+        let (actor, rx, session_id, registry_id) = make_actor_with_channel();
+
+        // And a global tool definition.
+        let tools = vec![crate::feat::plugin_system::PluginToolMetadata {
+            plugin_name: "my_plugin".to_owned(),
+            name: "search_web".to_owned(),
+            description: "Search the web".to_owned(),
+            parameters: serde_json::json!({"type": "object", "properties": {}}),
+            scope: crate::feat::plugin_system::ToolScope::Global,
+        }];
+
+        // When registering plugin tools.
+        actor.register_plugin_tools_with_actor(&session_id, &registry_id, tools);
+
+        // Then a RegisterPluginTools command was sent with target None.
+        let msg = rx.try_recv().expect("message was sent");
+        let cmd = match msg {
+            Some(crate::protocol::AppMsg::Command { command, .. }) => command,
+            _ => panic!("expected command"),
+        };
+        let rpc = match cmd {
+            crate::protocol::Command::RegisterPluginTools(r) => r,
+            _ => panic!("expected RegisterPluginTools"),
+        };
+        assert_eq!(rpc.plugin_name, "my_plugin");
+        assert!(rpc.target.is_none());
+        assert!(rpc.session_id.is_none());
+    }
+
+    #[test]
+    fn register_attached_tools_sends_target_some_with_session_id() {
+        // Given a dispatch actor with a real channel.
+        let (actor, rx, session_id, registry_id) = make_actor_with_channel();
+
+        // And an attached tool definition.
+        let tools = vec![crate::feat::plugin_system::PluginToolMetadata {
+            plugin_name: "judge".to_owned(),
+            name: "judgment_passed".to_owned(),
+            description: "Pass".to_owned(),
+            parameters: serde_json::json!({"type": "object", "properties": {}}),
+            scope: crate::feat::plugin_system::ToolScope::Attached,
+        }];
+
+        // When registering plugin tools.
+        actor.register_plugin_tools_with_actor(&session_id, &registry_id, tools);
+
+        // Then a RegisterPluginTools command was sent with target Some and session_id.
+        let msg = rx.try_recv().expect("message was sent");
+        let cmd = match msg {
+            Some(crate::protocol::AppMsg::Command { command, .. }) => command,
+            _ => panic!("expected command"),
+        };
+        let rpc = match cmd {
+            crate::protocol::Command::RegisterPluginTools(r) => r,
+            _ => panic!("expected RegisterPluginTools"),
+        };
+        assert_eq!(rpc.plugin_name, "judge");
+        assert!(rpc.target.is_some());
+        assert_eq!(rpc.session_id, Some(session_id));
     }
 }

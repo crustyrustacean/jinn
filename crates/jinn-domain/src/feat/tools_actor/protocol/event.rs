@@ -45,6 +45,9 @@ pub struct ToolsRegistered {
     pub provider: String,
     /// The tool definitions that were registered.
     pub definitions: Vec<ToolDefinition>,
+    /// `None` for global tools (broadcast to all sessions).
+    /// `Some(session_id)` for attached tools (only that session should store them).
+    pub session_id: Option<SessionId>,
 }
 
 /// A tool call has started in the LLM stream (name and ID known, arguments pending).

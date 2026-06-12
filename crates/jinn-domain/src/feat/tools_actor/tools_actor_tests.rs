@@ -150,7 +150,7 @@ async fn activate_emits_tools_registered_for_builtins() {
         .iter()
         .find(|p| p.provider == "builtin")
         .expect("expected builtin ToolsRegistered");
-    assert_eq!(builtin_evt.definitions.len(), 18);
+    assert_eq!(builtin_evt.definitions.len(), 19);
 }
 
 // --- RegisterTools command tests ---
@@ -187,7 +187,7 @@ async fn register_tools_stores_actor_tools() {
         ToolRegistration::Actor { provider, .. } => {
             assert_eq!(provider, "web-actor");
         }
-        other @ ToolRegistration::Builtin { .. } => {
+        other => {
             panic!("expected Actor registration, got {other:?}")
         }
     }
@@ -1186,6 +1186,282 @@ fn tool_registration_debug_shows_name() {
         debug_str.contains("my_tool"),
         "Debug output should contain tool name: {debug_str}"
     );
+}
+#[rstest::rstest]
+#[tokio::test]
+async fn register_plugin_tools_stores_tool_as_plugin_variant() {
+    // Given an activated tools actor.
+    let (_sink, mut ctx, deps) = default_test_ctx();
+    let mut actor = ToolOrchestratorActor::activate(deps, &mut ctx);
+
+    // When registering a plugin tool.
+    let definitions = vec![ToolDefinition {
+        name: "judgment_passed".to_owned(),
+        description: "Call when response passes".to_owned(),
+        parameters: serde_json::json!({"type": "object", "properties": {}}),
+        prompt_snippet: None,
+        prompt_guidelines: vec![],
+        server_tool_type: None,
+    }];
+    actor.handle_register_plugin_tools("judge", &None, &definitions, None, &ctx);
+
+    // Then the tool is stored with the Plugin variant.
+    let reg = actor
+        .tools
+        .get("judgment_passed")
+        .expect("tool should be registered");
+    match reg {
+        ToolRegistration::Plugin {
+            plugin_name,
+            target,
+            target_session_id: _,
+            definition,
+        } => {
+            assert!(target.is_none());
+            assert_eq!(definition.name, "judgment_passed");
+        }
+        other => panic!("expected Plugin variant, got {other:?}"),
+    }
+}
+
+#[rstest::rstest]
+#[tokio::test]
+async fn register_plugin_tools_emits_tools_registered_event() {
+    // Given an activated tools actor.
+    let (sink, mut ctx, deps) = default_test_ctx();
+    let mut actor = ToolOrchestratorActor::activate(deps, &mut ctx);
+
+    // When registering a plugin tool.
+    let definitions = vec![ToolDefinition {
+        name: "judgment_failed".to_owned(),
+        description: "Call when response fails".to_owned(),
+        parameters: serde_json::json!({"type": "object", "properties": {}}),
+        prompt_snippet: None,
+        prompt_guidelines: vec![],
+        server_tool_type: None,
+    }];
+    actor.handle_register_plugin_tools("judge", &None, &definitions, None, &ctx);
+
+    // Then a ToolsRegistered event was emitted.
+    let events = sink.events();
+    let found = events.iter().any(|e| {
+        matches!(
+            e,
+            Event::ToolsRegistered(evt) if evt.provider == "plugin:judge"
+        )
+    });
+    assert!(found, "expected ToolsRegistered event from plugin:judge");
+}
+
+#[rstest::rstest]
+#[tokio::test]
+async fn register_plugin_tools_with_session_target_stores_target() {
+    // Given an activated tools actor.
+    let (_sink, mut ctx, deps) = default_test_ctx();
+    let mut actor = ToolOrchestratorActor::activate(deps, &mut ctx);
+    let target_id = crate::feat::plugin_system::SessionRegistryId::new();
+
+    // When registering a plugin tool with a session target.
+    let definitions = vec![ToolDefinition {
+        name: "session_tool".to_owned(),
+        description: "A session-scoped tool".to_owned(),
+        parameters: serde_json::json!({"type": "object", "properties": {}}),
+        prompt_snippet: None,
+        prompt_guidelines: vec![],
+        server_tool_type: None,
+    }];
+    actor.handle_register_plugin_tools("my_plugin", &Some(target_id), &definitions, None, &ctx);
+
+    // Then the tool is stored with the session target.
+    let reg = actor
+        .tools
+        .get("session_tool")
+        .expect("tool should be registered");
+    match reg {
+        ToolRegistration::Plugin { target, .. } => {
+            assert!(target.is_some());
+        }
+        other => panic!("expected Plugin variant, got {other:?}"),
+    }
+}
+
+#[rstest::rstest]
+#[tokio::test]
+async fn plugin_tool_execution_dispatches_to_plugin_fire_service() {
+    // Given an activated actor with a registered plugin tool.
+    let (sink, mut ctx, deps) = default_test_ctx();
+    let mut actor = ToolOrchestratorActor::activate(deps, &mut ctx);
+
+    let definitions = vec![ToolDefinition {
+        name: "judgment_passed".to_owned(),
+        description: "Call when response passes".to_owned(),
+        parameters: serde_json::json!({"type": "object", "properties": {}}),
+        prompt_snippet: None,
+        prompt_guidelines: vec![],
+        server_tool_type: None,
+    }];
+    actor.handle_register_plugin_tools("judge", &None, &definitions, None, &ctx);
+
+    let session_id = SessionId::new();
+
+    // When executing a batch with the plugin tool.
+    let cmd = Command::ExecuteToolBatch(ExecuteToolBatch {
+        session_id: session_id.clone(),
+        tool_calls: vec![ToolCall {
+            id: "call_1".to_owned(),
+            name: "judgment_passed".to_owned(),
+            arguments: "{}".to_owned(),
+        }],
+        dispatched_at: jiff::Timestamp::now(),
+    });
+    actor.handle_command(&cmd, &ctx);
+
+    // Then the tool execution completes (via NoopPluginFire).
+    tokio::time::sleep(std::time::Duration::from_millis(100)).await;
+    let events = sink.take_events();
+    let completed = find_execution_completed(&events);
+    assert_eq!(completed.len(), 1);
+    assert!(completed[0].result.success);
+}
+
+#[rstest::rstest]
+#[tokio::test]
+async fn plugin_tool_with_arguments_executes_successfully() {
+    // Given an activated actor with a registered plugin tool that takes arguments.
+    let (sink, mut ctx, deps) = default_test_ctx();
+    let mut actor = ToolOrchestratorActor::activate(deps, &mut ctx);
+
+    let definitions = vec![ToolDefinition {
+        name: "judgment_failed".to_owned(),
+        description: "Call when response fails".to_owned(),
+        parameters: serde_json::json!({
+            "type": "object",
+            "properties": {
+                "message": { "type": "string", "description": "Why it failed" }
+            },
+            "required": ["message"]
+        }),
+        prompt_snippet: None,
+        prompt_guidelines: vec![],
+        server_tool_type: None,
+    }];
+    actor.handle_register_plugin_tools("judge", &None, &definitions, None, &ctx);
+
+    let session_id = SessionId::new();
+
+    // When executing a batch with arguments.
+    let cmd = Command::ExecuteToolBatch(ExecuteToolBatch {
+        session_id: session_id.clone(),
+        tool_calls: vec![ToolCall {
+            id: "call_1".to_owned(),
+            name: "judgment_failed".to_owned(),
+            arguments: r#"{"message": "test failure"}"#.to_owned(),
+        }],
+        dispatched_at: jiff::Timestamp::now(),
+    });
+    actor.handle_command(&cmd, &ctx);
+
+    // Then the tool execution completes successfully.
+    tokio::time::sleep(std::time::Duration::from_millis(100)).await;
+    let events = sink.take_events();
+    let completed = find_execution_completed(&events);
+    assert_eq!(completed.len(), 1);
+    assert!(completed[0].result.success);
+}
+
+#[rstest::rstest]
+#[tokio::test]
+async fn attached_tool_rejected_when_called_from_wrong_session() {
+    // Given an activated actor with an attached plugin tool scoped to session A.
+    let (sink, mut ctx, deps) = default_test_ctx();
+    let mut actor = ToolOrchestratorActor::activate(deps, &mut ctx);
+
+    let target_session_id = SessionId::new();
+    let definitions = vec![ToolDefinition {
+        name: "judgment_passed".to_owned(),
+        description: "Call when response passes".to_owned(),
+        parameters: serde_json::json!({"type": "object", "properties": {}}),
+        prompt_snippet: None,
+        prompt_guidelines: vec![],
+        server_tool_type: None,
+    }];
+    actor.handle_register_plugin_tools(
+        "judge",
+        &None,
+        &definitions,
+        Some(target_session_id.clone()),
+        &ctx,
+    );
+
+    // When calling the tool from a different session B.
+    let wrong_session_id = SessionId::new();
+    let cmd = Command::ExecuteToolBatch(ExecuteToolBatch {
+        session_id: wrong_session_id.clone(),
+        tool_calls: vec![ToolCall {
+            id: "call_1".to_owned(),
+            name: "judgment_passed".to_owned(),
+            arguments: "{}".to_owned(),
+        }],
+        dispatched_at: jiff::Timestamp::now(),
+    });
+    actor.handle_command(&cmd, &ctx);
+
+    // Then the tool execution completes with a failure.
+    tokio::time::sleep(std::time::Duration::from_millis(100)).await;
+    let events = sink.take_events();
+    let completed = find_execution_completed(&events);
+    assert_eq!(completed.len(), 1);
+    assert!(!completed[0].result.success);
+    assert!(
+        completed[0]
+            .result
+            .content
+            .contains("only available in session")
+    );
+}
+
+#[rstest::rstest]
+#[tokio::test]
+async fn attached_tool_succeeds_when_called_from_target_session() {
+    // Given an activated actor with an attached plugin tool scoped to session A.
+    let (sink, mut ctx, deps) = default_test_ctx();
+    let mut actor = ToolOrchestratorActor::activate(deps, &mut ctx);
+
+    let target_session_id = SessionId::new();
+    let definitions = vec![ToolDefinition {
+        name: "judgment_passed".to_owned(),
+        description: "Call when response passes".to_owned(),
+        parameters: serde_json::json!({"type": "object", "properties": {}}),
+        prompt_snippet: None,
+        prompt_guidelines: vec![],
+        server_tool_type: None,
+    }];
+    actor.handle_register_plugin_tools(
+        "judge",
+        &None,
+        &definitions,
+        Some(target_session_id.clone()),
+        &ctx,
+    );
+
+    // When calling the tool from the correct session A.
+    let cmd = Command::ExecuteToolBatch(ExecuteToolBatch {
+        session_id: target_session_id.clone(),
+        tool_calls: vec![ToolCall {
+            id: "call_1".to_owned(),
+            name: "judgment_passed".to_owned(),
+            arguments: "{}".to_owned(),
+        }],
+        dispatched_at: jiff::Timestamp::now(),
+    });
+    actor.handle_command(&cmd, &ctx);
+
+    // Then the tool execution succeeds.
+    tokio::time::sleep(std::time::Duration::from_millis(100)).await;
+    let events = sink.take_events();
+    let completed = find_execution_completed(&events);
+    assert_eq!(completed.len(), 1);
+    assert!(completed[0].result.success);
 }
 
 // --- dispatched_at integration tests ---

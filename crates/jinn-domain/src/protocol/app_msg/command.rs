@@ -41,7 +41,8 @@ use crate::feat::session_lifecycle::protocol::command::{
 };
 use crate::feat::skills::skills_scan_actor::ScanSkills;
 use crate::feat::tools_actor::protocol::command::{
-    CancelToolBatch, ExecuteTool, ExecuteToolBatch, ExecuteWebFetch, RegisterTools,
+    CancelToolBatch, ExecuteTool, ExecuteToolBatch, ExecuteWebFetch, RegisterPluginTools,
+    RegisterTools,
 };
 
 /// Every domain command the actor system can receive.
@@ -80,6 +81,8 @@ pub enum Command {
     RescanPromptTemplates(RescanPromptTemplates),
     /// Register tools that an actor can execute.
     RegisterTools(RegisterTools),
+    /// Register tools provided by a Lua plugin.
+    RegisterPluginTools(RegisterPluginTools),
     /// Request execution of a batch of tool calls.
     ExecuteToolBatch(ExecuteToolBatch),
     /// Execute a single tool call (routed to provider actor).
@@ -122,6 +125,8 @@ pub enum Command {
     CloseSession(CloseSession),
     /// Mark a session as having been interacted with by the user.
     MarkSessionInteracted(MarkSessionInteracted),
+    /// Reset a session's chat history and lifecycle state.
+    ResetSessionHistory(crate::feat::session::protocol::ResetSessionHistory),
     /// Archive a session without running teardown.
     ArchiveSession(crate::feat::session::protocol::archive_session::ArchiveSession),
     /// Persist a session's full state to SQLite immediately.
@@ -143,6 +148,8 @@ pub enum Command {
     DetachPlugin(crate::feat::plugin_dispatch::protocol::command::DetachPlugin),
     /// Toggle an attached plugin on/off.
     TogglePlugin(crate::feat::plugin_dispatch::protocol::command::TogglePlugin),
+    /// Set the managed session ID on an attached plugin.
+    SetManagedSession(crate::feat::plugin_dispatch::protocol::command::SetManagedSession),
 
     /// A dynamic command from a plugin, carrying an arbitrary JSON payload.
     Dynamic(DynamicCommand),
@@ -170,6 +177,7 @@ impl Command {
             Self::RefreshModels => Some(RefreshModels::NAME),
             Self::RescanPromptTemplates(..) => Some(RescanPromptTemplates::NAME),
             Self::RegisterTools(..) => Some(RegisterTools::NAME),
+            Self::RegisterPluginTools(..) => Some(RegisterPluginTools::NAME),
             Self::ExecuteToolBatch(..) => Some(ExecuteToolBatch::NAME),
             Self::ExecuteTool(..) => Some(ExecuteTool::NAME),
             Self::CancelToolBatch(..) => Some(CancelToolBatch::NAME),
@@ -192,6 +200,9 @@ impl Command {
             Self::RunSessionTeardown(..) => Some(RunSessionTeardown::NAME),
             Self::CloseSession(..) => Some(CloseSession::NAME),
             Self::MarkSessionInteracted(..) => Some(MarkSessionInteracted::NAME),
+            Self::ResetSessionHistory(..) => {
+                Some(crate::feat::session::protocol::ResetSessionHistory::NAME)
+            }
             Self::ArchiveSession(..) => {
                 Some(crate::feat::session::protocol::archive_session::ArchiveSession::NAME)
             }
@@ -209,6 +220,9 @@ impl Command {
             }
             Self::TogglePlugin(..) => {
                 Some(crate::feat::plugin_dispatch::protocol::command::TogglePlugin::NAME)
+            }
+            Self::SetManagedSession(..) => {
+                Some(crate::feat::plugin_dispatch::protocol::command::SetManagedSession::NAME)
             }
             Self::Dynamic(..) | Self::TriggerCompaction(..) => None,
         }
@@ -261,6 +275,14 @@ impl std::fmt::Display for Command {
                     "register {} tools from '{}'",
                     payload.definitions.len(),
                     payload.provider
+                )
+            }
+            Command::RegisterPluginTools(payload) => {
+                write!(
+                    f,
+                    "register {} plugin tools from '{}'",
+                    payload.definitions.len(),
+                    payload.plugin_name
                 )
             }
             Command::ExecuteToolBatch(payload) => {
@@ -323,6 +345,9 @@ impl std::fmt::Display for Command {
             Command::MarkSessionInteracted(payload) => {
                 write!(f, "mark session interacted {}", payload.session_id)
             }
+            Command::ResetSessionHistory(payload) => {
+                write!(f, "reset session history {}", payload.session_id)
+            }
             Command::ArchiveSession(payload) => {
                 write!(f, "archive session {}", payload.session_id)
             }
@@ -358,6 +383,13 @@ impl std::fmt::Display for Command {
             }
             Command::TogglePlugin(p) => {
                 write!(f, "toggle plugin {} on {}", p.plugin_name, p.session_id)
+            }
+            Command::SetManagedSession(p) => {
+                write!(
+                    f,
+                    "set managed session for plugin {} on {}",
+                    p.plugin_name, p.session_id
+                )
             }
 
             Command::Dynamic(d) => {

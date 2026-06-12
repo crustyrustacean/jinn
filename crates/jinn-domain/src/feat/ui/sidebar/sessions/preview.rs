@@ -19,11 +19,14 @@ use unicode_segmentation::UnicodeSegmentation;
 
 use crate::common::app_state::{AppState, FocusScope};
 use crate::common::render_ctx::RenderCtx;
+use crate::feat::plugin_dispatch::{PreviewDirective, call_hooks_typed};
+use crate::feat::provider_infra::NO_PROVIDER_ID;
 use crate::feat::session::chat_session::ChatSessionState;
 use crate::feat::theme::Theme;
 use crate::feat::ui::chat_log::entry_to_lines;
 use crate::feat::ui::chat_log::shared::RenderContext;
 use crate::feat::ui::sidebar::sessions::MAX_VISIBLE_SESSIONS;
+use crate::feat::ui::sidebar::sessions::state::SessionEntryKind;
 use crate::feat::ui::sidebar::sessions::state::sorted_open_sessions;
 use crate::protocol::SessionId;
 
@@ -99,6 +102,28 @@ pub fn sessions_section_content_height(state: &AppState) -> u16 {
     visible.max(1) + 1
 }
 
+/// Resolves the preview session for a plugin entry by calling the
+/// `on_session_preview` sync hook.
+///
+/// The plugin reads `plugin_data` (written by the async side) and returns
+/// a session ID to preview. Returns `None` if the hook returns nothing
+/// or the session doesn't exist.
+pub(crate) fn resolve_plugin_preview<'a>(
+    entry: &crate::feat::ui::sidebar::sessions::state::SessionEntry,
+    ctx: &'a RenderCtx<'a>,
+) -> Option<&'a ChatSessionState> {
+    let plugins = ctx.plugins?;
+    let preview_ctx = serde_json::json!({
+        "session_id": entry.id.to_string(),
+        "plugin_name": entry.title,
+    });
+    let directives =
+        call_hooks_typed::<PreviewDirective>(plugins, "on_session_preview", &preview_ctx.into());
+    let directive = directives.into_iter().next()?;
+    let session_id = SessionId::from(directive.session_id);
+    ctx.state.session.get(&session_id)
+}
+
 /// Renders the session preview popup when the sidebar sessions section is focused.
 ///
 /// Checks focus state, resolves the highlighted session, computes the popup
@@ -129,8 +154,23 @@ pub fn render_session_preview_for_state(
     let Some(entry) = entries.get(idx) else {
         return;
     };
-    let Some(session) = state.session.get(&entry.id) else {
-        return;
+
+    // For plugin entries, ask the plugin which session to preview.
+    // For regular session entries, preview the session directly.
+    let session = match entry.kind {
+        SessionEntryKind::Plugin { .. } => {
+            let preview_session = resolve_plugin_preview(entry, ctx);
+            let Some(preview_session) = preview_session else {
+                return;
+            };
+            preview_session
+        }
+        SessionEntryKind::Session => {
+            let Some(s) = state.session.get(&entry.id) else {
+                return;
+            };
+            s
+        }
     };
 
     let theme = &state.frontend.theme;

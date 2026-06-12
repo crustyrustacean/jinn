@@ -47,7 +47,7 @@ pub(super) fn render_badges(frame: &mut Frame<'_>, input_area: Rect, ctx: &Rende
 
     // Typed loop: each plugin contributes zero or more directives. Malformed
     // returns are silently dropped (see `call_hooks_typed`).
-    let directives = call_hooks_typed::<BadgeDirective>(plugins, HOOK, &badge_ctx);
+    let directives = call_hooks_typed::<BadgeDirective>(plugins, HOOK, &badge_ctx.into());
 
     let style_map = ctx.state.frontend.theme.style_map();
     draw_directives(frame.buffer_mut(), input_area, &directives, &style_map);

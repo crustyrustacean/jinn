@@ -10,14 +10,13 @@ use std::collections::HashSet;
 
 use error_stack::{Report, ResultExt};
 use mlua::{Lua, LuaSerdeExt, RegistryKey, Value};
-use serde::Serialize;
 use serde::de::DeserializeOwned;
 use wherror::Error;
 
 use crate::PluginData;
 use crate::bindings;
 use crate::command::PluginCommand;
-use jinn_domain::feat::plugin_dispatch::PluginHookSite;
+use jinn_domain::feat::plugin_dispatch::{HookContext, PluginHookSite, ProvidesSessionId};
 
 /// Stored hook data for a loaded plugin.
 pub struct PluginHooks {
@@ -199,22 +198,25 @@ impl SyncHook<'_> {
     /// Panics if `ctx_data` serializes to a non-object JSON value (e.g. an array
     /// or scalar). All call sites pass struct-typed contexts, so this is a
     /// programming-error invariant rather than a recoverable failure.
-    pub fn call<T: Serialize, R: DeserializeOwned>(
+    pub fn call<R: DeserializeOwned>(
         &self,
-        ctx_data: &T,
+        ctx: &HookContext,
     ) -> Result<R, Report<PluginSyncStateError>> {
-        // 1. Serialize ctx_data to JSON.
-        let mut ctx_json = serde_json::to_value(ctx_data)
-            .change_context(PluginSyncStateError)
-            .attach("serialize ctx")?;
+        // 1. Extract the inner JSON value.
+        let mut ctx_json = ctx.value().clone();
 
         // 2. Inject plugin_data from DashMap (snapshot at call time).
-        if let Some(data) = self.plugin_data.get(&self.plugin_name) {
+        //    Scoped by session_id when available.
+        let session_id = ctx.session_id();
+        if let Some(data) = self
+            .plugin_data
+            .get_for_session(session_id.as_ref(), &self.plugin_name)
+        {
             let obj = ctx_json.as_object_mut().ok_or_else(|| {
                 Report::new(PluginSyncStateError)
                     .attach("ctx_data did not serialize to a JSON object")
             })?;
-            obj.insert("plugin_data".to_owned(), data.clone());
+            obj.insert("plugin_data".to_owned(), data);
         }
 
         // 3. Build the Lua ctx table.
@@ -355,21 +357,19 @@ impl SyncPlugins {
 }
 
 impl jinn_domain::feat::plugin_dispatch::PluginSyncHooks for SyncPlugins {
-    fn call_hooks(&self, hook: &str, ctx: &serde_json::Value) -> Vec<serde_json::Value> {
+    fn call_hooks(&self, hook: &str, ctx: &HookContext) -> Vec<serde_json::Value> {
         self.sync_hooks(hook)
-            .filter_map(
-                |h| match h.call::<serde_json::Value, serde_json::Value>(ctx) {
-                    Ok(v) => (!v.is_null()).then_some(v),
-                    Err(e) => {
-                        let report = e.attach(PluginHookSite {
-                            plugin: h.plugin_name().to_owned(),
-                            hook: hook.to_owned(),
-                        });
-                        tracing::error!(hook, error = ?report, "plugin hook failed");
-                        None
-                    }
-                },
-            )
+            .filter_map(|h| match h.call::<serde_json::Value>(ctx) {
+                Ok(v) => (!v.is_null()).then_some(v),
+                Err(e) => {
+                    let report = e.attach(PluginHookSite {
+                        plugin: h.plugin_name().to_owned(),
+                        hook: hook.to_owned(),
+                    });
+                    tracing::error!(hook, error = ?report, "plugin hook failed");
+                    None
+                }
+            })
             .collect()
     }
 }

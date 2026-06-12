@@ -8,6 +8,65 @@ use error_stack::Report;
 use wherror::Error;
 
 use crate::feat::plugin_system::SessionRegistryId;
+use crate::protocol::SessionId;
+
+/// Result of creating a per-session plugin registry.
+#[derive(Debug)]
+pub struct CreateSessionRegistryResult {
+    /// The newly created registry ID.
+    pub registry_id: SessionRegistryId,
+    /// Tool definitions extracted from the loaded plugins.
+    /// Each item carries plugin name + tool definition for registration
+    /// with the tools actor.
+    pub tool_metadata: Vec<PluginToolMetadata>,
+}
+
+/// Send-safe metadata about a plugin-defined tool.
+#[derive(Debug, Clone)]
+pub struct PluginToolMetadata {
+    /// Tool name (e.g., "judgment_passed").
+    pub name: String,
+    /// Human-readable description for the LLM.
+    pub description: String,
+    /// Full JSON Schema for parameters.
+    pub parameters: serde_json::Value,
+    /// Plugin that defines this tool.
+    pub plugin_name: String,
+    /// Whether this tool is global or session-attached.
+    pub scope: ToolScope,
+}
+
+impl PluginToolMetadata {
+    /// Convert this metadata into a [`ToolDefinition`] for registration.
+    pub fn to_tool_definition(&self) -> jinn_provider::ToolDefinition {
+        jinn_provider::ToolDefinition {
+            name: self.name.clone(),
+            description: self.description.clone(),
+            parameters: self.parameters.clone(),
+            prompt_snippet: None,
+            prompt_guidelines: Vec::new(),
+            server_tool_type: None,
+        }
+    }
+}
+
+/// Whether a plugin tool is available globally or only in the session it was attached to.
+///
+/// Set via the `scope` field in Lua tool definitions: `scope = "global"` or `scope = "attached"`.
+/// Defaults to `Attached` when omitted (least privilege).
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum ToolScope {
+    /// Available in all sessions.
+    Global,
+    /// Available only in the session the plugin is attached to.
+    Attached,
+}
+
+impl Default for ToolScope {
+    fn default() -> Self {
+        Self::Attached
+    }
+}
 
 /// Error raised by [`SessionPluginRegistry`] implementations.
 #[derive(Debug, Error)]
@@ -33,7 +92,8 @@ pub trait SessionPluginRegistry: Send + Sync {
     async fn create_session_registry(
         &self,
         plugin_names: Vec<String>,
-    ) -> Result<SessionRegistryId, Report<SessionPluginRegistryError>>;
+        origin_session_id: SessionId,
+    ) -> Result<CreateSessionRegistryResult, Report<SessionPluginRegistryError>>;
 
     /// Drop a per-session Lua state.
     ///
