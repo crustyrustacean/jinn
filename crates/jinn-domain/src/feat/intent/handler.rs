@@ -668,8 +668,7 @@ fn try_handle_close_session_prompt(intent: &Intent, state: &mut AppState) -> Opt
 }
 
 //FIXME: disabled during actor migration — tests reference deleted types
-// #[cfg(test)]
-#[cfg(any())]
+#[cfg(test)]
 mod tests {
     #![allow(
         clippy::expect_used,
@@ -1168,7 +1167,6 @@ mod tests {
     fn active_session_changed_emitted_on_session_switch() {
         // Given a state with two sessions.
         use crate::feat::session::chat_session::ChatSessionState;
-        use crate::protocol::Event;
 
         let mut state = AppState::default();
         let first_id = state.session.active_session_id().clone();

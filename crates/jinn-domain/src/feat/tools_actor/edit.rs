@@ -317,6 +317,7 @@ fn parse_args(raw: &str) -> Result<(String, Vec<RawEdit>), serde_json::Error> {
 }
 
 //FIXME: disabled during actor migration — tests reference deleted types
+//FIXME: disabled during actor migration
 // #[cfg(test)]
 #[cfg(any())]
 mod tests {

@@ -39,8 +39,7 @@ pub fn handle_rescan_prompt_templates(state: &mut AppState) -> IntentResult {
 }
 
 //FIXME: disabled during actor migration — tests reference deleted types
-// #[cfg(test)]
-#[cfg(any())]
+#[cfg(test)]
 mod tests {
     #![allow(
         clippy::expect_used,
@@ -50,7 +49,7 @@ mod tests {
         reason = "test code"
     )]
     use crate::common::app_state::AppState;
-    use crate::protocol::{ChatEntry, ChatEntryKind, Command, PickerKind};
+    use crate::protocol::{ChatEntry, ChatEntryKind, PickerKind};
 
     use super::*;
 

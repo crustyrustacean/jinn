@@ -105,9 +105,7 @@ where
         .attach("failed to write app state file")
 }
 
-//FIXME: disabled during actor migration
-// #[cfg(test)]
-#[cfg(any())]
+#[cfg(test)]
 mod tests {
     #![allow(
         clippy::expect_used,
