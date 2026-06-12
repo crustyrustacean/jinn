@@ -17,6 +17,7 @@ M.tools = {
     {
         name = "judgment_passed",
         description = "Call when the assistant's response passes evaluation.",
+        scope = "attached",
         parameters = {},
         handler = function(ctx)
             local pd = ctx.get_plugin_data() or {}
@@ -33,6 +34,7 @@ M.tools = {
     {
         name = "judgment_failed",
         description = "Call when the assistant's response fails evaluation.",
+        scope = "attached",
         parameters = {
             { name = "message", type = "string", description = "Why the response failed" },
         },
