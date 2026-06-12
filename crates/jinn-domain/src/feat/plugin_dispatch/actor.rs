@@ -27,7 +27,7 @@ use serde_json::Value;
 
 use crate::common::actor::protocol::event::AllActorsSpawned;
 use crate::common::actor::{Actor, ActorContext, ActorEnvelope, NoDirectMsg};
-use crate::common::services::Services;
+use crate::common::services::{ActorChannelService, Services};
 use crate::common::state::State;
 
 use crate::PhaseKind;
@@ -312,36 +312,62 @@ impl PluginDispatchActor {
     /// Send plugin tool definitions to the tools actor for registration.
     fn register_plugin_tools_with_actor(
         &self,
-        _session_id: &SessionId,
+        session_id: &SessionId,
         registry_id: &crate::feat::plugin_system::SessionRegistryId,
         tools: Vec<crate::feat::plugin_system::PluginToolMetadata>,
     ) {
         use crate::feat::tools_actor::protocol::command::RegisterPluginTools;
+        use crate::feat::plugin_system::ToolScope;
 
-        // Group tools by plugin name, since RegisterPluginTools takes one plugin name at a time.
-        let mut by_plugin: std::collections::HashMap<
+        // Partition tools by scope: global vs attached.
+        let mut global_by_plugin: std::collections::HashMap<
             String,
             Vec<crate::feat::plugin_system::PluginToolMetadata>,
         > = std::collections::HashMap::new();
+        let mut attached_by_plugin: std::collections::HashMap<
+            String,
+            Vec<crate::feat::plugin_system::PluginToolMetadata>,
+        > = std::collections::HashMap::new();
+
         for tool in tools {
-            by_plugin
-                .entry(tool.plugin_name.clone())
+            let map = match tool.scope {
+                ToolScope::Global => &mut global_by_plugin,
+                ToolScope::Attached => &mut attached_by_plugin,
+            };
+            map.entry(tool.plugin_name.clone())
                 .or_default()
                 .push(tool);
         }
 
-        for (plugin_name, plugin_tools) in by_plugin {
+        // Register global tools (broadcast, no session target).
+        for (plugin_name, plugin_tools) in global_by_plugin {
             let definitions: Vec<jinn_provider::ToolDefinition> = plugin_tools
                 .into_iter()
-                .map(|meta: crate::feat::plugin_system::PluginToolMetadata| {
-                    meta.to_tool_definition()
-                })
+                .map(|meta| meta.to_tool_definition())
+                .collect();
+
+            self.services.actor_channel.send_command(
+                crate::protocol::Command::RegisterPluginTools(RegisterPluginTools {
+                    plugin_name,
+                    target: None,
+                    session_id: None,
+                    definitions,
+                }),
+            );
+        }
+
+        // Register attached tools (scoped to this session).
+        for (plugin_name, plugin_tools) in attached_by_plugin {
+            let definitions: Vec<jinn_provider::ToolDefinition> = plugin_tools
+                .into_iter()
+                .map(|meta| meta.to_tool_definition())
                 .collect();
 
             self.services.actor_channel.send_command(
                 crate::protocol::Command::RegisterPluginTools(RegisterPluginTools {
                     plugin_name,
                     target: Some(*registry_id),
+                    session_id: Some(session_id.clone()),
                     definitions,
                 }),
             );
@@ -1143,4 +1169,104 @@ mod tests {
         // Cleanup: release the gate so the parked fire completes.
         gate.notify_waiters();
     }
+
+    fn make_actor_with_channel() -> (
+        PluginDispatchActor,
+        kanal::Receiver<crate::protocol::AppMsg>,
+        SessionId,
+        crate::feat::plugin_system::SessionRegistryId,
+    ) {
+        use crate::common::session_map::SessionMap;
+        let (tx, rx) = kanal::unbounded();
+        let mut services = Services::new();
+        services.actor_channel = ActorChannelService::new(tx);
+        let session = ChatSessionState::default();
+        let session_id = session.session_id().clone();
+        let app_state = AppState {
+            session: SessionMap::new(session, std::path::PathBuf::from("/tmp")),
+            ..Default::default()
+        };
+        let state = State::new(app_state);
+        let sink = Arc::new(RecordingSink::new());
+        let mut ctx = ActorContext::new("plugin-dispatch-test", sink);
+        let registry_id = SessionRegistryId::new();
+        let mut actor = PluginDispatchActor::activate(
+            PluginDispatchActorDeps {
+                services,
+                state,
+                startup_session_id: session_id.to_string(),
+                domain_ctx: std::sync::Arc::new(DomainNodeContext::new(
+                    Services::new(),
+                    State::new(AppState::default()),
+                )),
+            },
+            &mut ctx,
+        );
+        actor.registry.insert(session_id.clone(), registry_id);
+        (actor, rx, session_id, registry_id)
+    }
+
+    #[test]
+    fn register_global_tools_sends_target_none() {
+        // Given a dispatch actor with a real channel.
+        let (mut actor, rx, session_id, registry_id) = make_actor_with_channel();
+
+        // And a global tool definition.
+        let tools = vec![crate::feat::plugin_system::PluginToolMetadata {
+            plugin_name: "my_plugin".to_owned(),
+            name: "search_web".to_owned(),
+            description: "Search the web".to_owned(),
+            parameters: serde_json::json!({"type": "object", "properties": {}}),
+            scope: crate::feat::plugin_system::ToolScope::Global,
+        }];
+
+        // When registering plugin tools.
+        actor.register_plugin_tools_with_actor(&session_id, &registry_id, tools);
+
+        // Then a RegisterPluginTools command was sent with target None.
+        let msg = rx.try_recv().expect("message was sent");
+        let cmd = match msg {
+            Some(crate::protocol::AppMsg::Command { command, .. }) => command,
+            _ => panic!("expected command"),
+        };
+        let rpc = match cmd {
+            crate::protocol::Command::RegisterPluginTools(r) => r,
+            _ => panic!("expected RegisterPluginTools"),
+        };
+        assert_eq!(rpc.plugin_name, "my_plugin");
+        assert!(rpc.target.is_none());
+        assert!(rpc.session_id.is_none());
+    }
+
+    #[test]
+    fn register_attached_tools_sends_target_some_with_session_id() {
+        // Given a dispatch actor with a real channel.
+        let (mut actor, rx, session_id, registry_id) = make_actor_with_channel();
+
+        // And an attached tool definition.
+        let tools = vec![crate::feat::plugin_system::PluginToolMetadata {
+            plugin_name: "judge".to_owned(),
+            name: "judgment_passed".to_owned(),
+            description: "Pass".to_owned(),
+            parameters: serde_json::json!({"type": "object", "properties": {}}),
+            scope: crate::feat::plugin_system::ToolScope::Attached,
+        }];
+
+        // When registering plugin tools.
+        actor.register_plugin_tools_with_actor(&session_id, &registry_id, tools);
+
+        // Then a RegisterPluginTools command was sent with target Some and session_id.
+        let msg = rx.try_recv().expect("message was sent");
+        let cmd = match msg {
+            Some(crate::protocol::AppMsg::Command { command, .. }) => command,
+            _ => panic!("expected command"),
+        };
+        let rpc = match cmd {
+            crate::protocol::Command::RegisterPluginTools(r) => r,
+            _ => panic!("expected RegisterPluginTools"),
+        };
+        assert_eq!(rpc.plugin_name, "judge");
+        assert!(rpc.target.is_some());
+        assert_eq!(rpc.session_id, Some(session_id));
+}
 }

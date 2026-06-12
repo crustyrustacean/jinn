@@ -34,7 +34,7 @@ pub mod session_plugin_registry;
 
 pub use session_plugin_registry::{
     CreateSessionRegistryResult, PluginToolMetadata, SessionPluginRegistry,
-    SessionPluginRegistryError,
+    SessionPluginRegistryError, ToolScope,
 };
 
 pub mod session_plugin_registry_service;

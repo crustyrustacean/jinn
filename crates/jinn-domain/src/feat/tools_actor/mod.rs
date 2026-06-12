@@ -269,6 +269,7 @@ impl Actor for ToolOrchestratorActor {
         if let Err(e) = ctx.send_event(Event::ToolsRegistered(ToolsRegistered {
             provider: "builtin".to_owned(),
             definitions: builtin_definitions,
+            session_id: None,
         })) {
             tracing::warn!(err = ?e, "failed to emit ToolsRegistered for built-in tools");
         }
@@ -297,6 +298,7 @@ impl ToolOrchestratorActor {
                     &payload.plugin_name,
                     &payload.target,
                     &payload.definitions,
+                    payload.session_id.clone(),
                     ctx,
                 );
             }
@@ -350,6 +352,7 @@ impl ToolOrchestratorActor {
         if let Err(e) = ctx.send_event(Event::ToolsRegistered(ToolsRegistered {
             provider: provider.to_owned(),
             definitions: definitions.to_vec(),
+            session_id: None,
         })) {
             tracing::warn!(err = ?e, "failed to emit ToolsRegistered event");
         }
@@ -361,6 +364,7 @@ impl ToolOrchestratorActor {
         plugin_name: &str,
         target: &Option<SessionRegistryId>,
         definitions: &[ToolDefinition],
+        session_id: Option<SessionId>,
         ctx: &ActorContext,
     ) {
         for def in definitions {
@@ -378,6 +382,7 @@ impl ToolOrchestratorActor {
         if let Err(e) = ctx.send_event(Event::ToolsRegistered(ToolsRegistered {
             provider: format!("plugin:{plugin_name}"),
             definitions: definitions.to_vec(),
+            session_id,
         })) {
             tracing::warn!(err = ?e, "failed to emit ToolsRegistered event for plugin");
         }

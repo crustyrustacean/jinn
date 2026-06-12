@@ -59,6 +59,18 @@ impl SessionPersistenceActor {
         &self,
         evt: &ToolsRegistered,
     ) {
+        // For attached plugin tools (session_id is Some), only store if this session matches.
+        // For global tools (session_id is None), always store.
+        if let Some(target_id) = &evt.session_id {
+            let active = {
+                let state = self.state.read();
+                state.session.active_session_id().clone()
+            };
+            if target_id != &active {
+                return;
+            }
+        }
+
         let mut state = self.state.write();
         for def in &evt.definitions {
             state
@@ -231,6 +243,7 @@ mod tests {
         let payload = ToolsRegistered {
             provider: "builtin".to_owned(),
             definitions,
+            session_id: None,
         };
 
         // When processing the event.
