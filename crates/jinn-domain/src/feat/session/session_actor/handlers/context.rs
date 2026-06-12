@@ -59,24 +59,29 @@ impl SessionPersistenceActor {
         &self,
         evt: &ToolsRegistered,
     ) {
-        // For attached plugin tools (session_id is Some), only store if this session matches.
-        // For global tools (session_id is None), always store.
-        if let Some(target_id) = &evt.session_id {
-            let active = {
-                let state = self.state.read();
-                state.session.active_session_id().clone()
-            };
-            if target_id != &active {
-                return;
-            }
-        }
-
         let mut state = self.state.write();
-        for def in &evt.definitions {
-            state
-                .context
-                .tool_definitions
-                .insert(def.name.clone(), def.clone());
+
+        match &evt.session_id {
+            // Global tools (builtins + global plugins) -> shared map.
+            None => {
+                for def in &evt.definitions {
+                    state
+                        .context
+                        .global_tool_definitions
+                        .insert(def.name.clone(), def.clone());
+                }
+            }
+            // Attached plugin tools -> per-session map.
+            Some(target_id) => {
+                let session_map = state
+                    .context
+                    .session_tool_definitions
+                    .entry(target_id.clone())
+                    .or_default();
+                for def in &evt.definitions {
+                    session_map.insert(def.name.clone(), def.clone());
+                }
+            }
         }
     }
 
@@ -253,7 +258,7 @@ mod tests {
         // Then regular tools are in the global map.
         let guard = state.read();
         assert!(
-            guard.context.tool_definitions.contains_key("bash"),
+            guard.context.global_tool_definitions.contains_key("bash"),
             "bash should be in global tool map"
         );
     }
@@ -275,20 +280,29 @@ mod tests {
                 parameters: serde_json::json!({"type": "object", "properties": {}}),
                 server_tool_type: None,
             }],
-            session_id: Some(other_session_id),
+            session_id: Some(other_session_id.clone()),
         };
 
         // When processing the event.
         actor.on_tools_registered(&payload);
 
-        // Then the tool is NOT stored.
+        // Then the tool is NOT in any global map.
         let guard = state.read();
         assert!(
             !guard
                 .context
-                .tool_definitions
+                .global_tool_definitions
                 .contains_key("judgment_passed"),
-            "attached tool for different session should not be stored"
+            "attached tool for different session should not be in global map"
+        );
+        // And NOT in the target session's map either (it was stored by session_id key).
+        // Since the tool WAS stored in session_tool_definitions[other_session_id],
+        // it should be there, not in global.
+        let session_tools = guard.context.session_tool_definitions.get(&other_session_id);
+        // The tool IS stored under the correct session key (that's the new behavior).
+        assert!(
+            session_tools.is_some_and(|m| m.contains_key("judgment_passed")),
+            "attached tool should be stored under its target session key"
         );
     }
 
@@ -309,22 +323,21 @@ mod tests {
                 parameters: serde_json::json!({"type": "object", "properties": {}}),
                 server_tool_type: None,
             }],
-            session_id: Some(session_id),
+            session_id: Some(session_id.clone()),
         };
 
         // When processing the event.
         actor.on_tools_registered(&payload);
 
-        // Then the tool IS stored.
+        // Then the tool IS stored in the session-specific map.
         let guard = state.read();
+        let session_tools = guard.context.session_tool_definitions.get(&session_id);
         assert!(
-            guard
-                .context
-                .tool_definitions
-                .contains_key("judgment_passed"),
-            "attached tool for own session should be stored"
+            session_tools.is_some_and(|m| m.contains_key("judgment_passed")),
+            "attached tool for own session should be stored in session map"
         );
     }
+
 
     #[rstest::rstest]
     fn on_tools_registered_stores_global_tools_unconditionally() {
@@ -351,7 +364,7 @@ mod tests {
         // Then the global tool is stored.
         let guard = state.read();
         assert!(
-            guard.context.tool_definitions.contains_key("global_helper"),
+            guard.context.global_tool_definitions.contains_key("global_helper"),
             "global tool should be stored unconditionally"
         );
     }
