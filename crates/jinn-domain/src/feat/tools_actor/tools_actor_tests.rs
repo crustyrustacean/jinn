@@ -1412,7 +1412,12 @@ async fn attached_tool_rejected_when_called_from_wrong_session() {
     let completed = find_execution_completed(&events);
     assert_eq!(completed.len(), 1);
     assert!(!completed[0].result.success);
-    assert!(completed[0].result.content.contains("only available in session"));
+    assert!(
+        completed[0]
+            .result
+            .content
+            .contains("only available in session")
+    );
 }
 
 #[rstest::rstest]
@@ -1458,7 +1463,6 @@ async fn attached_tool_succeeds_when_called_from_target_session() {
     assert_eq!(completed.len(), 1);
     assert!(completed[0].result.success);
 }
-
 
 // --- dispatched_at integration tests ---
 

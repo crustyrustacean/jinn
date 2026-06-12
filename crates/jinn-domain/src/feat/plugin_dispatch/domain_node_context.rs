@@ -867,7 +867,10 @@ mod tests {
         // Then the child inherits the parent's model.
         let state = ctx.state.read();
         let child = state.session.get(&child_id).expect("child session exists");
-        assert_eq!(child.model(), &ModelSelection::Single("my-model".to_owned()));
+        assert_eq!(
+            child.model(),
+            &ModelSelection::Single("my-model".to_owned())
+        );
     }
 
     #[test]

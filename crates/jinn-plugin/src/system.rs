@@ -28,9 +28,6 @@ pub struct PluginSystemBuildResult {
     pub global_tool_metadata: Vec<PluginToolMetadata>,
 }
 
-/// Callback type for dispatching commands emitted by plugins.
-
-/// Callback type for dispatching commands emitted by plugins.
 ///
 /// Called by the emit drainer task for each `PluginCommand` sent through
 /// `ctx.emit()`. The wiring layer provides the concrete implementation

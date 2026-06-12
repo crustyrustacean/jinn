@@ -386,7 +386,6 @@ impl ToolOrchestratorActor {
             );
         }
 
-
         if let Err(e) = ctx.send_event(Event::ToolsRegistered(ToolsRegistered {
             provider: format!("plugin:{plugin_name}"),
             definitions: definitions.to_vec(),
@@ -613,12 +612,11 @@ impl ToolOrchestratorActor {
                             truncation: None,
                             pin_position: None,
                         };
-                        let _ = ctx.send_event(Event::ToolExecutionCompleted(
-                            ToolExecutionCompleted {
+                        let _ =
+                            ctx.send_event(Event::ToolExecutionCompleted(ToolExecutionCompleted {
                                 session_id: session_id.clone(),
                                 result,
-                            },
-                        ));
+                            }));
                     }
                     return None;
                 }

@@ -20,7 +20,6 @@
 //! key for the handler function. The domain layer converts these into `ToolDefinition`
 //! instances when registering with the tools actor.
 
-
 /// Whether a plugin tool is available globally or only in the session it's attached to.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 pub enum ToolScope {
