@@ -73,6 +73,10 @@ pub(crate) enum ToolRegistration {
         definition: ToolDefinition,
         /// `None` for global plugins, `Some(id)` for session-attached plugins.
         target: Option<SessionRegistryId>,
+        /// The domain session ID for execution scoping.
+        /// `None` for global tools, `Some(session_id)` for attached tools.
+        /// Used to reject tool calls from sessions other than the target.
+        target_session_id: Option<SessionId>,
         /// The name of the plugin that owns this tool.
         plugin_name: String,
     },
@@ -96,11 +100,13 @@ impl std::fmt::Debug for ToolRegistration {
             Self::Plugin {
                 definition,
                 target,
+                target_session_id,
                 plugin_name,
             } => f
                 .debug_struct("Plugin")
                 .field("name", &definition.name)
                 .field("target", target)
+                .field("target_session_id", target_session_id)
                 .field("plugin_name", plugin_name)
                 .finish(),
         }
@@ -374,10 +380,12 @@ impl ToolOrchestratorActor {
                 ToolRegistration::Plugin {
                     definition: def.clone(),
                     target: *target,
+                    target_session_id: session_id.clone(),
                     plugin_name: plugin_name.to_owned(),
                 },
             );
         }
+
 
         if let Err(e) = ctx.send_event(Event::ToolsRegistered(ToolsRegistered {
             provider: format!("plugin:{plugin_name}"),
@@ -576,16 +584,49 @@ impl ToolOrchestratorActor {
             }
             Some(ToolRegistration::Plugin {
                 target,
+                target_session_id,
                 plugin_name,
                 ..
             }) => {
+                // Scope check: attached tools can only be called from their target session.
+                if target_session_id.is_some() && target_session_id.as_ref() != Some(&session_id) {
+                    tracing::warn!(
+                        tool = %tool_call.name,
+                        target_session = ?target_session_id,
+                        calling_session = %session_id,
+                        "attached tool called from wrong session"
+                    );
+                    {
+                        let target_display = target_session_id
+                            .as_ref()
+                            .map(|s| s.to_string())
+                            .unwrap_or_default();
+                        let result = ToolResult {
+                            tool_call_id: tool_call.id.clone(),
+                            name: tool_call.name.clone(),
+                            content: format!(
+                                "Error: tool '{}' is only available in session {}",
+                                tool_call.name, target_display
+                            ),
+                            success: false,
+                            full_content: None,
+                            truncation: None,
+                            pin_position: None,
+                        };
+                        let _ = ctx.send_event(Event::ToolExecutionCompleted(
+                            ToolExecutionCompleted {
+                                session_id: session_id.clone(),
+                                result,
+                            },
+                        ));
+                    }
+                    return None;
+                }
+
                 let sink = ctx.sink();
-                let _plugin_fire = self.services.plugins.clone();
-                let target = target.clone();
-                let sid = session_id.clone();
-                let plugin_name = plugin_name.clone();
                 let plugin_fire = self.services.plugins.clone();
                 let target = target.clone();
+                let sid = session_id.clone();
                 let plugin_name = plugin_name.clone();
                 let arguments: serde_json::Value =
                     serde_json::from_str(&tool_call.arguments).unwrap_or_default();
