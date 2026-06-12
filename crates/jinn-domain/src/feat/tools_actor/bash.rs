@@ -548,7 +548,6 @@ mod tests {
         reason = "test code"
     )]
     use super::*;
-    use crate::common::actor::RecordingSink;
     use std::path::PathBuf;
 
     fn test_ctx() -> ToolContext {

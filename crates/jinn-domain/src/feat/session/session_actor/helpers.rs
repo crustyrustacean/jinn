@@ -38,17 +38,6 @@ pub(in crate::feat::session::session_actor) async fn emit_history_appended(
     .await;
 }
 
-/// Creates a test context with a recording sink for observing emitted commands/events.
-/// Used by session actor tests that haven't been migrated to kameo yet.
-#[cfg(test)]
-pub(super) fn test_context() -> (
-    std::sync::Arc<crate::common::actor::RecordingSink>,
-    crate::common::actor::ActorContext,
-) {
-    let sink = std::sync::Arc::new(crate::common::actor::RecordingSink::new());
-    let ctx = crate::common::actor::ActorContext::new("test-session-actor", sink.clone());
-    (sink, ctx)
-}
 
 #[cfg(test)]
 pub(super) async fn test_actor() -> super::SessionPersistenceActor {

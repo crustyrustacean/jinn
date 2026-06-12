@@ -13,3 +13,5 @@ pub struct AppStateUpdated {
     /// The full app-state as persisted to disk.
     pub state: AppStateFile,
 }
+
+impl crate::common::bus::BusMessage for AppStateUpdated {}

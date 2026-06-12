@@ -13,3 +13,5 @@ pub struct PreferencesUpdated {
     /// The full preferences as persisted to disk.
     pub preferences: UserPreferences,
 }
+
+impl crate::common::bus::BusMessage for PreferencesUpdated {}

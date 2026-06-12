@@ -86,6 +86,8 @@ pub struct ProviderSwitched {
     pub provider_name: String,
 }
 
+impl crate::common::bus::BusMessage for ProviderSwitched {}
+
 /// Models refresh completed with results and errors.
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct ModelsRefreshed {
@@ -97,6 +99,8 @@ pub struct ModelsRefreshed {
     pub errors: std::collections::HashMap<String, String>,
 }
 
+impl crate::common::bus::BusMessage for ModelsRefreshed {}
+
 /// Model cache loaded from disk at startup.
 ///
 /// Emitted by `ProviderInitActor` after loading the cache from disk.
@@ -107,6 +111,8 @@ pub struct ModelCacheLoaded {
     /// The loaded model cache.
     pub cache: crate::feat::provider_infra::ModelCache,
 }
+
+impl crate::common::bus::BusMessage for ModelCacheLoaded {}
 
 /// Prompt templates loaded after a rescan.
 ///
@@ -123,3 +129,5 @@ pub struct PromptTemplatesLoaded {
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub error: Option<String>,
 }
+
+impl crate::common::bus::BusMessage for PromptTemplatesLoaded {}

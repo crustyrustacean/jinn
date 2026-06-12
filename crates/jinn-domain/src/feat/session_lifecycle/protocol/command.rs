@@ -94,6 +94,8 @@ pub struct FinishSessionTeardown {
     pub error: Option<String>,
 }
 
+impl BusMessage for FinishSessionTeardown {}
+
 /// Result of an async setup shell command, sent back to the session actor.
 ///
 /// Emitted by the tokio task spawned during `handle_run_session_setup`.
@@ -108,6 +110,8 @@ pub struct FinishSessionSetup {
     /// Error message if setup failed.
     pub error: Option<String>,
 }
+
+impl BusMessage for FinishSessionSetup {}
 
 /// Request to cancel a running lifecycle command (setup or teardown).
 ///

@@ -13,7 +13,7 @@ use crate::common::app_state::{AppState, FocusScope};
 use crate::common::render_ctx::RenderCtx;
 use crate::feat::ui::sidebar::pins::pins_section::*;
 use crate::feat::ui::sidebar::section_trait::{SidebarSection, SidebarSectionId};
-use crate::protocol::{ChangeSource, ChatEntry, Command, PinPosition};
+use crate::protocol::{ChangeSource, ChatEntry, PinPosition};
 
 fn state_with_pinned(count: usize) -> AppState {
     let mut state = AppState::default();

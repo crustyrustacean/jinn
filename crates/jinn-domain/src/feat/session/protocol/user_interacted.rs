@@ -18,3 +18,5 @@ pub struct UserInteracted {
     /// The session that was interacted with.
     pub session_id: SessionId,
 }
+
+impl crate::common::bus::BusMessage for UserInteracted {}

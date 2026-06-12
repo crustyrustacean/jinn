@@ -16,3 +16,5 @@ pub struct SessionArchived {
     /// The session that was archived.
     pub session_id: SessionId,
 }
+
+impl crate::common::bus::BusMessage for SessionArchived {}

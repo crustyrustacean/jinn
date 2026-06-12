@@ -16,3 +16,5 @@ pub struct SessionClosed {
     /// The session that was closed.
     pub session_id: SessionId,
 }
+
+impl crate::common::bus::BusMessage for SessionClosed {}
