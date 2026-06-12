@@ -592,10 +592,11 @@ fn load_tool_picker_entries(state: &mut AppState) {
     let disabled = state.active_session().disabled_tools();
     let theme = state.frontend.theme.clone();
 
+    let active_id = state.session.active_session_id().clone();
     let mut entries: Vec<ToolEntry> = state
         .context
-        .tool_definitions
-        .values()
+        .tools_for_session(&active_id)
+        .into_iter()
         .map(|def| {
             let name = def.name.clone();
             let description = def.description.clone();
@@ -1798,7 +1799,7 @@ mod tests {
             .set_active(state.session.active_session_id().clone());
 
         // Simulate plugin tools having been registered via ToolsRegistered event.
-        state.context.tool_definitions.insert(
+        state.context.global_tool_definitions.insert(
             "judgment_passed".to_owned(),
             crate::protocol::ToolDefinition {
                 name: "judgment_passed".to_owned(),
@@ -1809,7 +1810,7 @@ mod tests {
                 server_tool_type: None,
             },
         );
-        state.context.tool_definitions.insert(
+        state.context.global_tool_definitions.insert(
             "judgment_failed".to_owned(),
             crate::protocol::ToolDefinition {
                 name: "judgment_failed".to_owned(),
