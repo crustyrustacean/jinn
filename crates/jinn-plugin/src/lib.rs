@@ -65,7 +65,7 @@ pub use session_registry::SessionRegistryId;
 pub use sync_handle::PluginSyncHandle;
 pub use sync_state::{PluginHooks, SyncPlugins};
 pub use system::{CommandDispatcher, PluginSystem, PluginSystemBuildResult};
-pub use tool_def::{PluginToolDef, PluginToolMetadata};
+pub use tool_def::{PluginToolDef, PluginToolMetadata, ToolScope};
 
 /// A no-op request handler for contexts where async requests aren't needed.
 #[must_use]

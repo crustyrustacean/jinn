@@ -279,12 +279,18 @@ impl ActorSystemBuilder {
             tempdir: None,
         };
 
-        // Register global plugin tools with the tools actor.
-        if !global_tool_metadata.is_empty() {
-            // Group tools by plugin name and send one RegisterPluginTools per plugin.
+        // Register global-scoped plugin tools with the tools actor.
+        // Attached-scoped tools are skipped here — they are registered per-session
+        // when a child session is created.
+        let global_scope_tools: Vec<_> = global_tool_metadata
+            .into_iter()
+            .filter(|meta| matches!(meta.scope, jinn_plugin::ToolScope::Global))
+            .collect();
+
+        if !global_scope_tools.is_empty() {
             let mut by_plugin: std::collections::HashMap<String, Vec<jinn_domain::ToolDefinition>> =
                 std::collections::HashMap::new();
-            for meta in global_tool_metadata {
+            for meta in global_scope_tools {
                 by_plugin.entry(meta.plugin_name.clone()).or_default().push(
                     jinn_domain::ToolDefinition {
                         name: meta.name,
