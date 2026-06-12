@@ -201,7 +201,8 @@ mod tests {
     use crate::common::state::State;
     use crate::feat::context::protocol::event::PersonasLoaded;
     use crate::feat::persona::Persona;
-
+    use crate::feat::tools_actor::tool_types::ToolDefinition;
+    use crate::protocol::SessionId;
     use super::super::super::SessionPersistenceActorDeps;
     use super::*;
     use crate::protocol::PinPosition;
@@ -254,6 +255,98 @@ mod tests {
         assert!(
             guard.context.tool_definitions.contains_key("bash"),
             "bash should be in global tool map"
+        );
+    }
+
+    #[rstest::rstest]
+    fn on_tools_registered_ignores_attached_tools_for_different_session() {
+        // Given a session actor.
+        let (actor, state) = create_actor();
+
+        // Build a ToolsRegistered targeting a different session.
+        let other_session_id = SessionId::new();
+        let payload = ToolsRegistered {
+            provider: "plugin:judge".to_owned(),
+            definitions: vec![ToolDefinition {
+                name: "judgment_passed".to_owned(),
+                description: "Pass".to_owned(),
+                prompt_snippet: None,
+                prompt_guidelines: vec![],
+                parameters: serde_json::json!({"type": "object", "properties": {}}),
+                server_tool_type: None,
+            }],
+            session_id: Some(other_session_id),
+        };
+
+        // When processing the event.
+        actor.on_tools_registered(&payload);
+
+        // Then the tool is NOT stored.
+        let guard = state.read();
+        assert!(
+            !guard.context.tool_definitions.contains_key("judgment_passed"),
+            "attached tool for different session should not be stored"
+        );
+    }
+
+    #[rstest::rstest]
+    fn on_tools_registered_stores_attached_tools_for_own_session() {
+        // Given a session actor.
+        let (actor, state) = create_actor();
+        let session_id = state.read().session.active_session_id().clone();
+
+        // Build a ToolsRegistered targeting this session.
+        let payload = ToolsRegistered {
+            provider: "plugin:judge".to_owned(),
+            definitions: vec![ToolDefinition {
+                name: "judgment_passed".to_owned(),
+                description: "Pass".to_owned(),
+                prompt_snippet: None,
+                prompt_guidelines: vec![],
+                parameters: serde_json::json!({"type": "object", "properties": {}}),
+                server_tool_type: None,
+            }],
+            session_id: Some(session_id),
+        };
+
+        // When processing the event.
+        actor.on_tools_registered(&payload);
+
+        // Then the tool IS stored.
+        let guard = state.read();
+        assert!(
+            guard.context.tool_definitions.contains_key("judgment_passed"),
+            "attached tool for own session should be stored"
+        );
+    }
+
+    #[rstest::rstest]
+    fn on_tools_registered_stores_global_tools_unconditionally() {
+        // Given a session actor.
+        let (actor, state) = create_actor();
+
+        // Build a global ToolsRegistered (session_id: None).
+        let payload = ToolsRegistered {
+            provider: "plugin:helper".to_owned(),
+            definitions: vec![ToolDefinition {
+                name: "global_helper".to_owned(),
+                description: "Help".to_owned(),
+                prompt_snippet: None,
+                prompt_guidelines: vec![],
+                parameters: serde_json::json!({"type": "object", "properties": {}}),
+                server_tool_type: None,
+            }],
+            session_id: None,
+        };
+
+        // When processing the event.
+        actor.on_tools_registered(&payload);
+
+        // Then the global tool is stored.
+        let guard = state.read();
+        assert!(
+            guard.context.tool_definitions.contains_key("global_helper"),
+            "global tool should be stored unconditionally"
         );
     }
 
