@@ -8,6 +8,7 @@ use std::sync::Arc;
 
 use crossterm::event::{KeyCode, KeyEvent, KeyModifiers};
 use cucumber::World;
+use jinn_domain::feat::session::model_selection::ModelSelection;
 use jinn_tui::{Scope, TuiApp};
 
 /// Cucumber world wrapping a full [`TuiApp`].
@@ -35,6 +36,7 @@ impl TuiWorld {
             providers: vec![],
             aliases: vec![],
             default_provider: None,
+            alloys: vec![],
         };
         let (actor_tx, _actor_rx) = kanal::unbounded::<jinn_domain::AppMsg>();
 
@@ -200,7 +202,7 @@ fn given_active_provider_set(world: &mut TuiWorld) {
         .state
         .write()
         .active_session_mut()
-        .set_model("test".to_owned());
+        .set_model(ModelSelection::Single("test".to_owned()));
 }
 
 // --- When steps ---

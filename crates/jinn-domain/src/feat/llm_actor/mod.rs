@@ -30,6 +30,7 @@ use crate::feat::tools_actor::tool_types::ToolCall;
 use crate::protocol::{ChatEntry, SessionId};
 use error_stack::Report;
 use futures::StreamExt as _;
+use jiff::Timestamp;
 
 use jinn_provider::{LlmService, LlmServiceError, OnRetry, RetryingLlmService};
 use kameo::Actor;
@@ -68,10 +69,36 @@ impl OnRetry for PushEntryOnRetry {
             bus.publish(PushChatEntry {
                 session_id,
                 entry: ChatEntry::system(message),
-            })
-            .await;
+            }).await;
         });
     }
+}
+
+/// Emits a [`PushChatEntry`] error and [`StreamCompleted`] error event.
+///
+/// Used at every point where an LLM operation fails and the session needs
+/// to be notified of the error terminal state.
+async fn emit_stream_error(
+    bus: &BusService,
+    session_id: &SessionId,
+    message: String,
+    dispatched_at: Timestamp,
+) {
+    bus.publish(PushChatEntry {
+        session_id: session_id.clone(),
+        entry: ChatEntry::error(message),
+    }).await;
+    bus.publish(StreamCompleted {
+        model_used: None,
+        session_id: session_id.clone(),
+        reason: StreamCompletedReason::Error,
+        assistant_content: None,
+        tool_calls: None,
+        cost: None,
+        provider_completion_tokens: None,
+        thinking_content: None,
+        dispatched_at,
+    }).await;
 }
 
 /// LLM streaming actor.
@@ -91,6 +118,12 @@ pub struct LlmActor {
     sessions: HashMap<SessionId, SessionData>,
 }
 
+impl BusPublish for LlmActor {
+    fn bus(&self) -> &BusService {
+        &self.deps.services.bus
+    }
+}
+
 /// Dependencies for [`LlmActor`].
 pub struct LlmActorDeps {
     /// Factory for creating LLM service instances.
@@ -101,18 +134,15 @@ pub struct LlmActorDeps {
     pub state: State,
 }
 
-impl Actor for LlmActor {
+impl kameo::Actor for LlmActor {
     type Args = LlmActorDeps;
     type Error = std::convert::Infallible;
 
-    async fn on_start(args: Self::Args, actor_ref: ActorRef<Self>) -> Result<Self, Self::Error> {
-        let deps = &args.deps;
-        deps.subscribe(actor_ref.clone().recipient::<SendToLlmProvider>())
-            .await;
-        deps.subscribe(actor_ref.clone().recipient::<CancelStream>())
-            .await;
-        deps.subscribe(actor_ref.recipient::<StreamCompleted>())
-            .await;
+    async fn on_start(args: Self::Args, actor_ref: kameo::actor::ActorRef<Self>) -> Result<Self, Self::Error> {
+        let bus = &args.deps.services.bus;
+        bus.subscribe::<SendToLlmProvider, _>(&actor_ref).await;
+        bus.subscribe::<CancelStream, _>(&actor_ref).await;
+        bus.subscribe::<StreamCompleted, _>(&actor_ref).await;
 
         Ok(Self {
             factory: args.factory,
@@ -122,54 +152,235 @@ impl Actor for LlmActor {
             sessions: HashMap::new(),
         })
     }
-
-    async fn on_stop(
-        &mut self,
-        _actor_ref: WeakActorRef<Self>,
-        _reason: ActorStopReason,
-    ) -> Result<(), Self::Error> {
-        self.cancel_all();
-        Ok(())
-    }
 }
 
-impl BusPublish for LlmActor {
-    fn bus(&self) -> &BusService {
-        &self.deps.services.bus
-    }
-}
-
-impl Message<SendToLlmProvider> for LlmActor {
+impl kameo::message::Message<SendToLlmProvider> for LlmActor {
     type Reply = ();
-
-    async fn handle(&mut self, msg: SendToLlmProvider, _ctx: &mut MsgContext<Self, Self::Reply>) {
-        self.start_stream(msg);
+    async fn handle(&mut self, msg: SendToLlmProvider, _ctx: &mut kameo::message::Context<Self, Self::Reply>) {
+        self.start_stream(&msg);
     }
 }
 
-impl Message<CancelStream> for LlmActor {
+impl kameo::message::Message<CancelStream> for LlmActor {
     type Reply = ();
-
-    async fn handle(&mut self, msg: CancelStream, _ctx: &mut MsgContext<Self, Self::Reply>) {
-        self.cancel_stream(&msg.session_id).await;
+    async fn handle(&mut self, msg: CancelStream, _ctx: &mut kameo::message::Context<Self, Self::Reply>) {
+        self.cancel_stream(&msg.session_id);
     }
 }
 
-impl Message<StreamCompleted> for LlmActor {
+impl kameo::message::Message<StreamCompleted> for LlmActor {
     type Reply = ();
-
-    async fn handle(&mut self, msg: StreamCompleted, _ctx: &mut MsgContext<Self, Self::Reply>) {
+    async fn handle(&mut self, msg: StreamCompleted, _ctx: &mut kameo::message::Context<Self, Self::Reply>) {
         self.handle_stream_completed(&msg);
     }
 }
 
+/// Processes events from an LLM stream, emitting token/tool events via the sink.
+///
+/// Returns `true` if the stream ended with a terminal event (Done or Error),
+/// `false` if the stream ended abnormally without one.
+async fn process_stream_events(
+    mut stream: jinn_provider::ToolStream,
+    bus: &BusService,
+    sid: &SessionId,
+    model_id: &str,
+    dispatched_at: jiff::Timestamp,
+) -> bool {
+    let mut accumulated_text = String::new();
+    let mut accumulated_thinking = String::new();
+    let mut accumulated_tool_calls: Vec<ToolCall> = Vec::new();
+    let mut token_index = 0usize;
+    let mut parser = reasoning_parser::ParserFactory::new().create(model_id);
+
+    let mut stream_ended_normally = false;
+    while let Some(result) = stream.next().await {
+        match result {
+            Ok(event) => match event {
+                StreamEvent::Text(token) => {
+                    tracing::info!(
+                        session_id = ?sid,
+                        token_len = token.len(),
+                        token_preview = %token.get(..token.len().min(50)).unwrap_or_default(),
+                        "LLM ACTOR StreamEvent::Text"
+                    );
+                    accumulated_text.push_str(&token);
+                    let parsed = match parser.parse_reasoning_streaming_incremental(&token) {
+                        Ok(r) => r,
+                        Err(e) => {
+                            tracing::warn!(
+                                err = ?e,
+                                "reasoning parser error, treating as normal text"
+                            );
+                            reasoning_parser::ParserResult::normal(token.clone())
+                        }
+                    };
+                    if !parsed.reasoning_text.is_empty() {
+                        accumulated_thinking.push_str(&parsed.reasoning_text);
+                        bus.publish(StreamToken {
+                            session_id: sid.clone(),
+                            index: token_index,
+                            token: parsed.reasoning_text,
+                            is_thinking: true,
+                            dispatched_at,
+                        }).await;
+                        token_index += 1;
+                    }
+                    if !parsed.normal_text.is_empty() {
+                        bus.publish(StreamToken {
+                            session_id: sid.clone(),
+                            index: token_index,
+                            token: parsed.normal_text,
+                            is_thinking: false,
+                            dispatched_at,
+                        }).await;
+                        token_index += 1;
+                    }
+                }
+                StreamEvent::Reasoning(token) => {
+                    tracing::info!(
+                        session_id = ?sid,
+                        token_len = token.len(),
+                        token_preview = %token.get(..token.len().min(50)).unwrap_or_default(),
+                        "LLM ACTOR StreamEvent::Reasoning"
+                    );
+                    accumulated_thinking.push_str(&token);
+                    bus.publish(StreamToken {
+                        session_id: sid.clone(),
+                        index: token_index,
+                        token,
+                        is_thinking: true,
+                        dispatched_at,
+                    }).await;
+                    token_index += 1;
+                }
+                StreamEvent::ToolUseStart { index, id, name } => {
+                    bus.publish(ToolUseStarted {
+                        session_id: sid.clone(),
+                        index,
+                        id,
+                        name,
+                        dispatched_at,
+                    }).await;
+                }
+                StreamEvent::ToolUseInputDelta {
+                    index,
+                    partial_json,
+                } => {
+                    bus.publish(ToolCallStreaming {
+                        session_id: sid.clone(),
+                        index,
+                        partial_json,
+                    }).await;
+                }
+                StreamEvent::ToolUseComplete { tool_call, .. } => {
+                    accumulated_tool_calls.push(tool_call.clone());
+                    bus.publish(ToolCallReceived {
+                        session_id: sid.clone(),
+                        tool_call,
+                        dispatched_at,
+                    }).await;
+                }
+                StreamEvent::Done { stop_reason, usage } => {
+                    stream_ended_normally = true;
+                    tracing::trace!(
+                        session_id = ?sid,
+                        stop_reason = %stop_reason,
+                        tool_call_count = accumulated_tool_calls.len(),
+                        "stream Done"
+                    );
+                    let cost = usage.as_ref().and_then(|u| u.cost);
+                    let provider_completion_tokens =
+                        usage.as_ref().and_then(|u| u.completion_tokens);
+                    let thinking_content = if accumulated_thinking.is_empty() {
+                        None
+                    } else {
+                        Some(std::mem::take(&mut accumulated_thinking))
+                    };
+                    if stop_reason == StopReason::ToolUse {
+                        // Emit ExecuteToolBatch for the orchestrator.
+                        bus.publish(ExecuteToolBatch {
+                            session_id: sid.clone(),
+                            tool_calls: accumulated_tool_calls.clone(),
+                            dispatched_at,
+                        }).await;
+
+                        // Emit StreamCompleted with ToolUse reason so the session
+                        // actor knows the stream ended due to tool calls.
+                        bus.publish(StreamCompleted {
+                            model_used: Some(model_id.to_owned()),
+                            session_id: sid.clone(),
+                            reason: StreamCompletedReason::ToolUse,
+                            thinking_content,
+                            assistant_content: Some(std::mem::take(&mut accumulated_text)),
+                            tool_calls: Some(std::mem::take(&mut accumulated_tool_calls)),
+                            cost,
+                            provider_completion_tokens,
+                            dispatched_at,
+                        }).await;
+                    } else {
+                        // Normal end_turn - emit StreamCompleted.
+                        bus.publish(StreamCompleted {
+                            model_used: Some(model_id.to_owned()),
+                            session_id: sid.clone(),
+                            reason: StreamCompletedReason::Finished,
+                            thinking_content,
+                            assistant_content: Some(std::mem::take(&mut accumulated_text)),
+                            tool_calls: None,
+                            cost,
+                            provider_completion_tokens,
+                            dispatched_at,
+                        }).await;
+                    }
+                    break;
+                }
+                StreamEvent::Error {
+                    error_type: _,
+                    message,
+                    ..
+                } => {
+                    stream_ended_normally = true;
+                    tracing::error!(
+                        session_id = ?sid,
+                        error = %message,
+                        "LLM stream error event"
+                    );
+                    emit_stream_error(
+                        bus,
+                        sid,
+                        format!("LLM stream error: {message}"),
+                        dispatched_at,
+                    );
+                    break;
+                }
+            },
+            Err(e) => {
+                stream_ended_normally = true;
+                emit_stream_error(bus, sid, format!("LLM stream error: {e:?}"), dispatched_at);
+                break;
+            }
+        }
+    }
+
+    if !stream_ended_normally {
+        tracing::error!(
+            session_id = ?sid,
+            "LLM stream ended without a terminal event (Done/Error)"
+        );
+        emit_stream_error(
+            bus,
+            sid,
+            "LLM stream ended unexpectedly. The connection may have been interrupted.".to_owned(),
+            dispatched_at,
+        );
+    }
+
+    stream_ended_normally
+}
+
 impl LlmActor {
+    /// Dispatches incoming commands to the appropriate handler.
     /// Starts an LLM streaming response for a session, aborting any existing stream.
-    #[expect(
-        clippy::too_many_lines,
-        reason = "stream handling is inherently linear; splitting would obscure the flow"
-    )]
-    fn start_stream(&mut self, payload: SendToLlmProvider) {
+    fn start_stream(&mut self, payload: &SendToLlmProvider) {
         let retry_config = self
             .deps
             .services
@@ -195,8 +406,12 @@ impl LlmActor {
             handle.abort();
         }
 
-        // Track the session.
+        // Track the session and store the resolved model.
+        let model_used = payload.model_used.clone();
         self.sessions.insert(session_id.clone(), SessionData::new());
+        if let Some(data) = self.sessions.get_mut(&session_id) {
+            data.set_model_used(model_used);
+        }
 
         // Resolve the factory: per-request if provider_id is set, global fallback otherwise.
         let factory = if let Some(pid) = payload.provider_id.clone() {
@@ -214,27 +429,12 @@ impl LlmActor {
                 }
                 Err(e) => {
                     tracing::error!(err = ?e, provider_id = %pid, "failed to create per-request factory");
-                    let bus = self.deps.services.bus.clone();
-                    let sid = session_id.clone();
-                    tokio::spawn(async move {
-                        bus.publish(PushChatEntry {
-                            session_id: sid.clone(),
-                            entry: ChatEntry::error(format!(
-                                "LLM factory creation failed for {pid}: {e:?}"
-                            )),
-                        })
-                        .await;
-                        bus.publish(StreamCompleted {
-                            session_id: sid,
-                            reason: StreamCompletedReason::Error,
-                            assistant_content: None,
-                            tool_calls: None,
-                            cost: None,
-                            provider_completion_tokens: None,
-                            thinking_content: None,
-                        })
-                        .await;
-                    });
+                    emit_stream_error(
+                        &self.deps.services.bus,
+                        &session_id,
+                        format!("LLM factory creation failed for {pid}: {e:?}"),
+                        payload.dispatched_at,
+                    );
                     return;
                 }
             }
@@ -248,27 +448,19 @@ impl LlmActor {
             .unwrap_or_default();
         let bus = self.deps.services.bus.clone();
         let sid = session_id.clone();
+        let dispatched_at = payload.dispatched_at;
 
         let handle = tokio::spawn(async move {
             let service: Box<dyn LlmService> = match factory.create() {
                 Ok(s) => s,
                 Err(e) => {
                     tracing::error!(err = ?e, "failed to create LLM service");
-                    bus.publish(PushChatEntry {
-                        session_id: sid.clone(),
-                        entry: ChatEntry::error(format!("LLM service creation failed: {e:?}")),
-                    })
-                    .await;
-                    bus.publish(StreamCompleted {
-                        session_id: sid,
-                        reason: StreamCompletedReason::Error,
-                        assistant_content: None,
-                        tool_calls: None,
-                        cost: None,
-                        provider_completion_tokens: None,
-                        thinking_content: None,
-                    })
-                    .await;
+                    emit_stream_error(
+                        &bus,
+                        &sid,
+                        format!("LLM service creation failed: {e:?}"),
+                        dispatched_at,
+                    );
                     return;
                 }
             };
@@ -283,258 +475,22 @@ impl LlmActor {
                 Ok(s) => s,
                 Err(e) => {
                     tracing::error!(err = ?e, "failed to start LLM stream");
-                    bus.publish(PushChatEntry {
-                        session_id: sid.clone(),
-                        entry: ChatEntry::error(format!("LLM stream error: {e:?}")),
-                    })
-                    .await;
-                    bus.publish(StreamCompleted {
-                        session_id: sid,
-                        reason: StreamCompletedReason::Error,
-                        assistant_content: None,
-                        tool_calls: None,
-                        cost: None,
-                        provider_completion_tokens: None,
-                        thinking_content: None,
-                    })
-                    .await;
+                    emit_stream_error(
+                        &bus,
+                        &sid,
+                        format!("LLM stream error: {e:?}"),
+                        dispatched_at,
+                    );
                     return;
                 }
             };
 
-            // Accumulate text and tool calls from the stream.
-            let mut accumulated_text = String::new();
-            let mut accumulated_thinking = String::new();
-            let mut accumulated_tool_calls: Vec<ToolCall> = Vec::new();
-            let mut token_index = 0usize;
-            let mut parser = reasoning_parser::ParserFactory::new().create(&model_id);
-
-            let mut stream_ended_normally = false;
-            let mut stream = std::pin::pin!(stream);
-            while let Some(result) = stream.next().await {
-                match result {
-                    Ok(event) => match event {
-                        StreamEvent::Text(token) => {
-                            tracing::info!(
-                                session_id = ?sid,
-                                token_len = token.len(),
-                                token_preview = %token.get(..token.len().min(50)).unwrap_or_default(),
-                                "LLM ACTOR StreamEvent::Text"
-                            );
-                            accumulated_text.push_str(&token);
-                            let parsed = match parser.parse_reasoning_streaming_incremental(&token)
-                            {
-                                Ok(r) => r,
-                                Err(e) => {
-                                    tracing::warn!(
-                                        err = ?e,
-                                        "reasoning parser error, treating as normal text"
-                                    );
-                                    reasoning_parser::ParserResult::normal(token.clone())
-                                }
-                            };
-                            if !parsed.reasoning_text.is_empty() {
-                                accumulated_thinking.push_str(&parsed.reasoning_text);
-                                bus.publish(StreamToken {
-                                    session_id: sid.clone(),
-                                    index: token_index,
-                                    token: parsed.reasoning_text,
-                                    is_thinking: true,
-                                })
-                                .await;
-                                token_index += 1;
-                            }
-                            if !parsed.normal_text.is_empty() {
-                                bus.publish(StreamToken {
-                                    session_id: sid.clone(),
-                                    index: token_index,
-                                    token: parsed.normal_text,
-                                    is_thinking: false,
-                                })
-                                .await;
-                                token_index += 1;
-                            }
-                        }
-                        StreamEvent::Reasoning(token) => {
-                            tracing::info!(
-                                session_id = ?sid,
-                                token_len = token.len(),
-                                token_preview = %token.get(..token.len().min(50)).unwrap_or_default(),
-                                "LLM ACTOR StreamEvent::Reasoning"
-                            );
-                            accumulated_thinking.push_str(&token);
-                            bus.publish(StreamToken {
-                                session_id: sid.clone(),
-                                index: token_index,
-                                token,
-                                is_thinking: true,
-                            })
-                            .await;
-                            token_index += 1;
-                        }
-                        StreamEvent::ToolUseStart { index, id, name } => {
-                            bus.publish(ToolUseStarted {
-                                session_id: sid.clone(),
-                                index,
-                                id,
-                                name,
-                            })
-                            .await;
-                        }
-                        StreamEvent::ToolUseInputDelta {
-                            index,
-                            partial_json,
-                        } => {
-                            bus.publish(ToolCallStreaming {
-                                session_id: sid.clone(),
-                                index,
-                                partial_json,
-                            })
-                            .await;
-                        }
-                        StreamEvent::ToolUseComplete { tool_call, .. } => {
-                            accumulated_tool_calls.push(tool_call.clone());
-                            bus.publish(ToolCallReceived {
-                                session_id: sid.clone(),
-                                tool_call,
-                            })
-                            .await;
-                        }
-                        StreamEvent::Done { stop_reason, usage } => {
-                            stream_ended_normally = true;
-                            tracing::trace!(
-                                session_id = ?sid,
-                                stop_reason = %stop_reason,
-                                tool_call_count = accumulated_tool_calls.len(),
-                                "stream Done"
-                            );
-                            let cost = usage.as_ref().and_then(|u| u.cost);
-                            let provider_completion_tokens =
-                                usage.as_ref().and_then(|u| u.completion_tokens);
-                            let thinking_content = if accumulated_thinking.is_empty() {
-                                None
-                            } else {
-                                Some(std::mem::take(&mut accumulated_thinking))
-                            };
-                            if stop_reason == StopReason::ToolUse {
-                                // Emit ExecuteToolBatch for the orchestrator.
-                                bus.publish(ExecuteToolBatch {
-                                    session_id: sid.clone(),
-                                    tool_calls: accumulated_tool_calls.clone(),
-                                })
-                                .await;
-
-                                // Emit StreamCompleted with ToolUse reason so the session
-                                // actor can finalize output tokens. The continuation is
-                                // handled by the session actor via context assembly when
-                                // ToolBatchCompleted arrives.
-                                bus.publish(StreamCompleted {
-                                    session_id: sid.clone(),
-                                    reason: StreamCompletedReason::ToolUse,
-                                    assistant_content: Some(accumulated_text.clone()),
-                                    tool_calls: Some(accumulated_tool_calls.clone()),
-                                    cost,
-                                    provider_completion_tokens,
-                                    thinking_content,
-                                })
-                                .await;
-                            } else {
-                                // Normal end_turn - emit StreamCompleted.
-                                bus.publish(StreamCompleted {
-                                    session_id: sid.clone(),
-                                    reason: StreamCompletedReason::Finished,
-                                    assistant_content: Some(accumulated_text.clone()),
-                                    tool_calls: None,
-                                    cost,
-                                    provider_completion_tokens,
-                                    thinking_content,
-                                })
-                                .await;
-                            }
-                        }
-                        StreamEvent::Error {
-                            error_type,
-                            message,
-                        } => {
-                            tracing::error!(
-                                error_type = %error_type,
-                                message = %message,
-                                "LLM stream error event from provider"
-                            );
-                            bus.publish(PushChatEntry {
-                                session_id: sid.clone(),
-                                entry: ChatEntry::error(format!(
-                                    "LLM error ({error_type}): {message}"
-                                )),
-                            })
-                            .await;
-                            bus.publish(StreamCompleted {
-                                session_id: sid.clone(),
-                                reason: StreamCompletedReason::Error,
-                                assistant_content: None,
-                                tool_calls: None,
-                                cost: None,
-                                provider_completion_tokens: None,
-                                thinking_content: None,
-                            })
-                            .await;
-                            stream_ended_normally = true;
-                            break;
-                        }
-                    },
-                    Err(e) => {
-                        tracing::error!(err = ?e, "LLM stream error");
-                        bus.publish(PushChatEntry {
-                            session_id: sid.clone(),
-                            entry: ChatEntry::error(format!("LLM stream error: {e:?}")),
-                        })
-                        .await;
-                        bus.publish(StreamCompleted {
-                            session_id: sid.clone(),
-                            reason: StreamCompletedReason::Error,
-                            assistant_content: None,
-                            tool_calls: None,
-                            cost: None,
-                            provider_completion_tokens: None,
-                            thinking_content: None,
-                        })
-                        .await;
-                        stream_ended_normally = true;
-                        break;
-                    }
-                }
-            }
-
-            // Guard: if the stream ended without a terminal event, emit fallback error.
-            if !stream_ended_normally {
-                tracing::error!(
-                    session_id = ?sid,
-                    "LLM stream ended without a terminal event (Done/Error)"
-                );
-                bus.publish(PushChatEntry {
-                    session_id: sid.clone(),
-                    entry: ChatEntry::error(
-                        "LLM stream ended unexpectedly. The connection may have been interrupted."
-                            .to_owned(),
-                    ),
-                })
-                .await;
-                bus.publish(StreamCompleted {
-                    session_id: sid.clone(),
-                    reason: StreamCompletedReason::Error,
-                    assistant_content: None,
-                    tool_calls: None,
-                    cost: None,
-                    provider_completion_tokens: None,
-                    thinking_content: None,
-                })
-                .await;
-            }
+            process_stream_events(stream, &bus, &sid, &model_id, dispatched_at).await;
         });
 
         // Update session state.
         if let Some(session) = self.sessions.get_mut(&session_id) {
-            session.begin_streaming();
+            session.begin_streaming(dispatched_at);
         }
 
         self.tasks.insert(session_id, handle);
@@ -588,12 +544,17 @@ impl LlmActor {
         if let Some(handle) = self.tasks.remove(session_id) {
             handle.abort();
         }
+        let dispatched_at = self
+            .sessions
+            .get(session_id)
+            .and_then(|s| s.dispatched_at());
         let had_session = self.sessions.remove(session_id).is_some();
         // Only emit StreamCompleted if there was actually an active session
         // to cancel. Avoids pushing a spurious "Cancelled" error entry when
         // the user presses ESC with nothing streaming.
         if had_session {
             self.publish(StreamCompleted {
+                model_used: None,
                 session_id: session_id.clone(),
                 reason: StreamCompletedReason::Canceled,
                 assistant_content: None,
@@ -601,8 +562,8 @@ impl LlmActor {
                 cost: None,
                 provider_completion_tokens: None,
                 thinking_content: None,
-            })
-            .await;
+                dispatched_at: dispatched_at.unwrap_or_else(Timestamp::now),
+            }).await;
         }
     }
 
@@ -657,6 +618,7 @@ mod tests {
 
         // When handling StreamCompleted with Error reason.
         let payload = StreamCompleted {
+            model_used: None,
             session_id: session_id.clone(),
             reason: StreamCompletedReason::Error,
             assistant_content: None,
@@ -664,6 +626,7 @@ mod tests {
             cost: None,
             provider_completion_tokens: None,
             thinking_content: None,
+            dispatched_at: jiff::Timestamp::now(),
         };
         actor.handle_stream_completed(&payload);
 
@@ -682,6 +645,7 @@ mod tests {
 
         // When handling StreamCompleted with Finished reason.
         let payload = StreamCompleted {
+            model_used: None,
             session_id: session_id.clone(),
             reason: StreamCompletedReason::Finished,
             assistant_content: Some("hello".to_owned()),
@@ -689,6 +653,7 @@ mod tests {
             cost: None,
             provider_completion_tokens: None,
             thinking_content: None,
+            dispatched_at: jiff::Timestamp::now(),
         };
         actor.handle_stream_completed(&payload);
 
@@ -710,6 +675,7 @@ mod tests {
 
         // When handling StreamCompleted with ToolUse reason.
         let payload = StreamCompleted {
+            model_used: None,
             session_id: session_id.clone(),
             reason: StreamCompletedReason::ToolUse,
             assistant_content: Some("thinking...".to_owned()),
@@ -717,6 +683,7 @@ mod tests {
             cost: None,
             provider_completion_tokens: None,
             thinking_content: None,
+            dispatched_at: jiff::Timestamp::now(),
         };
         actor.handle_stream_completed(&payload);
 
@@ -735,6 +702,7 @@ mod tests {
 
         // When handling StreamCompleted for an unknown session.
         let payload = StreamCompleted {
+            model_used: None,
             session_id: session_id.clone(),
             reason: StreamCompletedReason::Error,
             assistant_content: None,
@@ -742,6 +710,7 @@ mod tests {
             cost: None,
             provider_completion_tokens: None,
             thinking_content: None,
+            dispatched_at: jiff::Timestamp::now(),
         };
         actor.handle_stream_completed(&payload);
 
@@ -861,11 +830,13 @@ mod tests {
 
         let session_id = SessionId::new();
         let payload = SendToLlmProvider {
+            model_used: None,
             session_id: session_id.clone(),
             messages: vec![],
             tool_definitions: vec![],
             provider_id: None,
             estimated_tokens: 0,
+            dispatched_at: jiff::Timestamp::now(),
         };
 
         // When starting a stream.
@@ -896,11 +867,13 @@ mod tests {
 
         let session_id = SessionId::new();
         let payload = SendToLlmProvider {
+            model_used: None,
             session_id: session_id.clone(),
             messages: vec![],
             tool_definitions: vec![],
             provider_id: None,
             estimated_tokens: 0,
+            dispatched_at: jiff::Timestamp::now(),
         };
 
         // Start first stream and save the handle.
@@ -929,11 +902,13 @@ mod tests {
 
         let session_id = SessionId::new();
         let payload = SendToLlmProvider {
+            model_used: None,
             session_id: session_id.clone(),
             messages: vec![],
             tool_definitions: vec![],
             provider_id: None,
             estimated_tokens: 0,
+            dispatched_at: jiff::Timestamp::now(),
         };
 
         // When starting a stream.
@@ -967,11 +942,13 @@ mod tests {
 
         let session_id = SessionId::new();
         let payload = SendToLlmProvider {
+            model_used: None,
             session_id: session_id.clone(),
             messages: vec![],
             tool_definitions: vec![],
             provider_id: None,
             estimated_tokens: 0,
+            dispatched_at: jiff::Timestamp::now(),
         };
 
         // When sending via bus.

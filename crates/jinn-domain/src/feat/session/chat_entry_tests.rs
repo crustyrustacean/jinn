@@ -67,10 +67,10 @@ fn entry_has_timestamp() {
     // When creating a user entry.
     let entry = ChatEntry::user("test");
 
-    // Then the timestamp is close to now.
+    // Then the timing is close to now.
     let after = jiff::Timestamp::now();
-    assert!(entry.timestamp >= before);
-    assert!(entry.timestamp <= after);
+    assert!(entry.timing.at() >= before);
+    assert!(entry.timing.at() <= after);
 }
 
 #[rstest::rstest]
@@ -244,7 +244,7 @@ fn pin_position_returns_none_when_unpinned() {
 #[rstest::rstest]
 fn pin_position_deserializes_old_format() {
     // Given JSON without pin_position field (old format).
-    let json = r#"{"id":"550e8400-e29b-41d4-a716-446655440000","timestamp":"2024-01-01T00:00:00Z","kind":{"User":{"display":"hello","expanded":"hello"}}}"#;
+    let json = r#"{"id":"550e8400-e29b-41d4-a716-446655440000","timing":{"Instant":{"at":"2024-01-01T00:00:00Z"}},"kind":{"User":{"display":"hello","expanded":"hello"}}}"#;
 
     // When deserializing.
     let entry: ChatEntry = serde_json::from_str(json).expect("deserialize");
@@ -428,7 +428,7 @@ fn tool_result_status_failure_serializes() {
 #[rstest::rstest]
 fn tool_result_deserializes_old_success_true_format() {
     // Given JSON in the old format with success: true.
-    let json = r#"{"id":"550e8400-e29b-41d4-a716-446655440000","timestamp":"2024-01-01T00:00:00Z","kind":{"ToolResult":{"id":"call_1","name":"bash","content":"ok","success":true}}}"#;
+    let json = r#"{"id":"550e8400-e29b-41d4-a716-446655440000","timing":{"Instant":{"at":"2024-01-01T00:00:00Z"}},"kind":{"ToolResult":{"id":"call_1","name":"bash","content":"ok","success":true}}}"#;
 
     // When deserializing.
     let entry: ChatEntry = serde_json::from_str(json).expect("deserialize");
@@ -451,7 +451,7 @@ fn tool_result_deserializes_old_success_true_format() {
 #[rstest::rstest]
 fn tool_result_deserializes_old_success_false_format() {
     // Given JSON in the old format with success: false.
-    let json = r#"{"id":"550e8400-e29b-41d4-a716-446655440000","timestamp":"2024-01-01T00:00:00Z","kind":{"ToolResult":{"id":"call_1","name":"bash","content":"err","success":false}}}"#;
+    let json = r#"{"id":"550e8400-e29b-41d4-a716-446655440000","timing":{"Instant":{"at":"2024-01-01T00:00:00Z"}},"kind":{"ToolResult":{"id":"call_1","name":"bash","content":"err","success":false}}}"#;
 
     // When deserializing.
     let entry: ChatEntry = serde_json::from_str(json).expect("deserialize");
@@ -963,4 +963,83 @@ fn chat_entry_id_as_uuid_matches_to_string() {
 
     // Then they match.
     assert_eq!(uuid_str, display_str);
+}
+
+// --- is_user_force_excluded ---
+
+fn entry_with_user_force_exclude() -> ChatEntry {
+    let mut entry = ChatEntry::assistant("excluded by user");
+    entry.apply_context_override(ContextOverride::ForcedExclude, ChangeSource::User);
+    entry
+}
+
+fn entry_with_worker_force_exclude() -> ChatEntry {
+    let mut entry = ChatEntry::assistant("excluded by worker");
+    entry.apply_context_override(
+        ContextOverride::ForcedExclude,
+        ChangeSource::Worker {
+            name: "test-worker".into(),
+        },
+    );
+    entry
+}
+
+fn entry_with_user_toggle_back() -> ChatEntry {
+    let mut entry = ChatEntry::assistant("toggled back");
+    entry.apply_context_override(ContextOverride::ForcedExclude, ChangeSource::User);
+    entry.apply_context_override(ContextOverride::Default, ChangeSource::User);
+    entry
+}
+
+#[test]
+fn is_user_force_excluded_returns_true_when_last_event_is_user_force_exclude() {
+    // Given an entry whose last audit event is User → ForcedExclude.
+    let entry = entry_with_user_force_exclude();
+
+    // When checking is_user_force_excluded.
+    // Then it returns true.
+    assert!(
+        entry.is_user_force_excluded(),
+        "entry with User→ForcedExclude must return true"
+    );
+}
+
+#[test]
+fn is_user_force_excluded_returns_false_when_last_event_is_worker_force_exclude() {
+    // Given an entry whose last audit event is Worker → ForcedExclude.
+    let entry = entry_with_worker_force_exclude();
+
+    // When checking is_user_force_excluded.
+    // Then it returns false.
+    assert!(
+        !entry.is_user_force_excluded(),
+        "entry with Worker→ForcedExclude must return false"
+    );
+}
+
+#[test]
+fn is_user_force_excluded_returns_false_when_history_is_empty() {
+    // Given a freshly constructed entry with no audit history.
+    let entry = ChatEntry::assistant("fresh");
+
+    // When checking is_user_force_excluded.
+    // Then it returns false.
+    assert!(
+        !entry.is_user_force_excluded(),
+        "entry with empty history must return false"
+    );
+}
+
+#[test]
+fn is_user_force_excluded_returns_false_when_user_toggled_back_to_default() {
+    // Given an entry whose last audit event is User → Default (after
+    // a prior User → ForcedExclude).
+    let entry = entry_with_user_toggle_back();
+
+    // When checking is_user_force_excluded.
+    // Then it returns false (most recent event wins).
+    assert!(
+        !entry.is_user_force_excluded(),
+        "entry toggled back to Default must return false"
+    );
 }

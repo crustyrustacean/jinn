@@ -95,6 +95,19 @@ impl BusService {
         }
     }
 
+    /// Registers an actor to receive messages of type `M` on the bus.
+    ///
+    /// Convenience wrapper that creates the recipient from the actor ref.
+    /// No-op in recording mode.
+    pub async fn subscribe<M: Clone + Send + 'static, A: kameo::Actor>(
+        &self,
+        actor_ref: &ActorRef<A>,
+    ) where
+        A: kameo::message::Message<M>,
+    {
+        self.register(actor_ref.clone().recipient::<M>()).await;
+    }
+
     /// Publishes a typed message to all registered recipients on the bus.
     ///
     /// In recording mode, captures the message for later assertion.

@@ -10,6 +10,7 @@ pub mod session_store;
 pub mod session_summary;
 
 pub mod chat_entry;
+pub mod entry_timing;
 pub(crate) mod entry_token_cache;
 
 #[cfg(test)]
@@ -22,6 +23,7 @@ pub mod history_mutation;
 #[cfg(test)]
 mod history_mutation_tests;
 pub mod intent;
+pub mod model_selection;
 pub mod phase_machine;
 pub mod picker_entry;
 pub mod profile;

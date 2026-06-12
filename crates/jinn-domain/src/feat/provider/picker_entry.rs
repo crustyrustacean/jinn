@@ -2,7 +2,7 @@
 
 use std::ops::Range;
 
-use crate::feat::picker::style::{active_marker, selected_style};
+use crate::feat::picker::style::selected_style;
 use crate::feat::theme::Theme;
 use jinn_selection_widget::PickerItem;
 use jinn_selection_widget::highlight_text_with_bg;
@@ -37,6 +37,11 @@ pub struct PickerEntry {
     pub is_remote: bool,
     /// Whether this entry is the currently active provider.
     pub is_active: bool,
+    /// Whether this entry has been selected (checked) for multi-select alloy building.
+    pub selected: bool,
+    /// If present, this entry represents a named alloy carrying multiple model IDs.
+    /// When confirmed, sets the session model to `ModelSelection::Alloy`.
+    pub alloy_models: Option<Vec<String>>,
     /// Theme for rendering.
     pub theme: Theme,
 }
@@ -70,7 +75,15 @@ fn render_provider_row(
     is_selected: bool,
     match_indices: &[Range<usize>],
 ) -> Line<'static> {
-    let active_marker = active_marker(entry.is_active, &entry.theme);
+    let selection_marker = if entry.selected {
+        // ✓
+        Span::styled(
+            "\u{2713} ".to_owned(),
+            Style::default().fg(entry.theme.picker_active_marker),
+        )
+    } else {
+        Span::styled("  ".to_owned(), Style::default())
+    };
 
     let status_prefix = if !entry.is_available {
         "\u{2717} " // ✗
@@ -125,7 +138,7 @@ fn render_provider_row(
     spans.push(Span::styled(")".to_owned(), label_style));
 
     Line::from(
-        std::iter::once(active_marker)
+        std::iter::once(selection_marker)
             .chain(spans)
             .collect::<Vec<_>>(),
     )

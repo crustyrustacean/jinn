@@ -3,6 +3,7 @@
 use serde::{Deserialize, Serialize};
 
 use crate::feat::preferences_actor::app_state_file::AppStateFile;
+use crate::feat::session::model_selection::ModelSelection;
 
 /// A single atomic app-state update.
 ///
@@ -10,7 +11,7 @@ use crate::feat::preferences_actor::app_state_file::AppStateFile;
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub enum AppStateUpdate {
     /// Set the last-used model.
-    SetLastModel(Option<String>),
+    SetLastModel(Option<ModelSelection>),
     /// Set the active theme name.
     SetTheme(Option<String>),
     /// Set the active persona name.
@@ -64,21 +65,24 @@ mod tests {
         let mut state = AppStateFile::default();
 
         // When applying SetLastModel with a model.
-        AppStateUpdate::SetLastModel(Some("anthropic/claude-sonnet-4".to_owned()))
-            .apply(&mut state);
+        let expected = crate::feat::session::model_selection::ModelSelection::from_single(
+            "anthropic/claude-sonnet-4".to_owned(),
+        );
+        AppStateUpdate::SetLastModel(Some(expected.clone())).apply(&mut state);
 
         // Then the last model is set.
-        assert_eq!(
-            state.last_model.as_deref(),
-            Some("anthropic/claude-sonnet-4")
-        );
+        assert_eq!(state.last_model, Some(expected));
     }
 
     #[rstest::rstest]
     fn set_last_model_none_clears_existing() {
         // Given app-state with an existing last model.
         let mut state = AppStateFile {
-            last_model: Some("anthropic/claude-sonnet-4".to_owned()),
+            last_model: Some(
+                crate::feat::session::model_selection::ModelSelection::from_single(
+                    "anthropic/claude-sonnet-4".to_owned(),
+                ),
+            ),
             ..Default::default()
         };
 

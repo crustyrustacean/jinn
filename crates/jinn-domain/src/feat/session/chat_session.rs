@@ -20,6 +20,7 @@ use serde_json::Value as JsonValue;
 use crate::feat::chat_input::ChatInputBoxState;
 
 use crate::feat::session::chat_history::ChatHistory;
+use crate::feat::session::model_selection::ModelSelection;
 use crate::feat::session::phase_machine::PhaseKind;
 use crate::feat::session::profile::SessionProfile;
 use crate::feat::session::steering_buffer::SteeringBuffer;
@@ -28,6 +29,8 @@ use crate::feat::ui::chat_log::visual_item::VisualItem;
 use crate::protocol::{
     ChangeSource, ChatEntry, ChatEntryId, ChatEntryKind, ContextOverride, PinPosition, SessionId,
 };
+
+use crate::feat::session::entry_timing::EntryTiming;
 
 /// Error returned when a streaming operation fails.
 #[derive(Debug, wherror::Error)]
@@ -198,6 +201,14 @@ pub struct SessionCore {
     /// OWNER: session-actor (set at session creation).
     #[serde(default)]
     pub parent_session: Option<SessionId>,
+    /// Highest entry ordinal inherited from the parent at fork time.
+    /// `None` for root sessions (all entries are "own").
+    /// `Some(n)` means entries at indices 0..=n were inherited;
+    /// only entries after index n count as turns for this session.
+    /// Set once at fork creation, never mutated.
+    /// OWNER: session-actor (set during fork).
+    #[serde(default)]
+    pub fork_ordinal: Option<usize>,
 
     /// Generic blob storage for future subsystems.
     #[serde(default)]
@@ -268,6 +279,7 @@ impl Default for SessionCore {
             cwd: std::path::PathBuf::from("."),
             token_ledger: Vec::new(),
             parent_session: None,
+            fork_ordinal: None,
 
             blobs: HashMap::new(),
             lifecycle_name: None,
@@ -502,6 +514,11 @@ impl ChatSessionState {
     /// Read-only access to the conversation history.
     pub fn history(&self) -> &[ChatEntry] {
         &self.core.history
+    }
+
+    /// Clear the chat history, removing all entries.
+    pub(in crate::feat::session) fn clear_history(&mut self) {
+        self.core.history.clear();
     }
 
     /// Mark entries at the given indices as ignored.
@@ -777,7 +794,7 @@ impl ChatSessionState {
     /// Called on first `append_stream_token`, `finish_streaming`,
     /// `begin_tool_call`, or `cancel_streaming`. No-op if the entry
     /// already exists or the session is not streaming.
-    fn ensure_assistant_entry(&mut self) {
+    fn ensure_assistant_entry(&mut self, dispatched_at: jiff::Timestamp) {
         if self
             .core
             .ephemeral
@@ -788,9 +805,19 @@ impl ChatSessionState {
         {
             return;
         }
-        let entry = ChatEntry::assistant("");
+        let mut entry = ChatEntry::assistant("");
+        entry.timing = EntryTiming::streamed(dispatched_at);
+        entry.timing.set_first_token();
         let index = self.push_entry(entry);
         self.core.ephemeral.machine.set_streaming_entry_index(index);
+    }
+
+    #[expect(
+        clippy::indexing_slicing,
+        reason = "index comes from streaming_entry_index which is always valid"
+    )]
+    fn finish_streaming_entry(&mut self, idx: usize) {
+        self.core.history[idx].timing.finish();
     }
 
     /// Begin a new streaming response.
@@ -839,7 +866,11 @@ impl ChatSessionState {
         clippy::indexing_slicing,
         reason = "index comes from push_entry which always returns a valid index"
     )]
-    pub fn append_stream_token<S>(&mut self, token: S) -> Result<(), StreamingError>
+    pub fn append_stream_token<S>(
+        &mut self,
+        token: S,
+        dispatched_at: jiff::Timestamp,
+    ) -> Result<(), StreamingError>
     where
         S: AsRef<str>,
     {
@@ -850,7 +881,7 @@ impl ChatSessionState {
             );
             return Err(StreamingError::NoStreamingEntry);
         }
-        self.ensure_assistant_entry();
+        self.ensure_assistant_entry(dispatched_at);
         let index = self
             .core
             .ephemeral
@@ -877,7 +908,7 @@ impl ChatSessionState {
     ///
     /// Soft guard: if the session is not streaming or thinking has already begun,
     /// logs a warning and returns without changing state.
-    pub fn begin_thinking(&mut self) {
+    pub fn begin_thinking(&mut self, dispatched_at: jiff::Timestamp) {
         if !matches!(self.core.ephemeral.machine.kind(), PhaseKind::Streaming) {
             tracing::warn!(
                 current_phase = ?self.core.ephemeral.machine.kind(),
@@ -895,7 +926,9 @@ impl ChatSessionState {
             tracing::warn!("begin_thinking called while already thinking - ignoring");
             return;
         }
-        let entry = ChatEntry::thinking("");
+        let mut entry = ChatEntry::thinking("");
+        entry.timing = EntryTiming::streamed(dispatched_at);
+        entry.timing.set_first_token();
         // Insert thinking BEFORE the assistant entry when the assistant entry
         // already exists. Some providers (OpenRouter) send reasoning tokens
         // AFTER content tokens, so the assistant entry is already in history.
@@ -951,11 +984,17 @@ impl ChatSessionState {
     //
     // Phase 1 wiring: delegates to machine.on_stream_completed_finished()
     // and syncs legacy phase field.
-    pub fn finish_streaming(&mut self, preserve_assistant: bool) {
+    pub fn finish_streaming(&mut self, preserve_assistant: bool, dispatched_at: jiff::Timestamp) {
         use crate::feat::session::phase_machine::PhaseTransitions;
         if preserve_assistant {
-            self.ensure_assistant_entry();
+            self.ensure_assistant_entry(dispatched_at);
         }
+
+        // Set finished_at on the assistant entry.
+        if let Some(idx) = self.core.ephemeral.machine.streaming_entry_index() {
+            self.finish_streaming_entry(idx);
+        }
+
         if let Err(e) = self.core.ephemeral.machine.on_stream_completed_finished() {
             tracing::warn!(
                 current_phase = ?self.core.ephemeral.machine.kind(),
@@ -969,8 +1008,13 @@ impl ChatSessionState {
     /// Cancel streaming but keep partial text in history.
     //
     // Phase 1 wiring: delegates to machine.cancel() and syncs legacy phase.
-    pub fn cancel_streaming(&mut self) {
-        self.ensure_assistant_entry();
+    pub fn cancel_streaming(&mut self, dispatched_at: jiff::Timestamp) {
+        self.ensure_assistant_entry(dispatched_at);
+
+        // Set finished_at on the assistant entry.
+        if let Some(idx) = self.core.ephemeral.machine.streaming_entry_index() {
+            self.finish_streaming_entry(idx);
+        }
         if let Err(e) = self.core.ephemeral.machine.cancel() {
             tracing::warn!(
                 current_phase = ?self.core.ephemeral.machine.kind(),
@@ -990,7 +1034,7 @@ impl ChatSessionState {
     /// in the input box. `ToolContinuation` items are silently discarded.
     /// If nothing was drained, the input box is left untouched.
     pub fn cancel_stream_and_drain(&mut self) {
-        self.cancel_streaming();
+        self.cancel_streaming(jiff::Timestamp::now());
         let drained_text = self.drain_cancel_chunks().join("\n\n---\n\n");
         if !drained_text.is_empty() {
             self.chat_input_mut().replace_all(drained_text);
@@ -1031,9 +1075,17 @@ impl ChatSessionState {
     ///
     /// Called when `ToolUseStarted` arrives - the tool name is known but arguments
     /// are still streaming in.
-    pub fn begin_tool_call(&mut self, index: usize, id: &str, name: &str) {
-        self.ensure_assistant_entry();
-        let entry = ChatEntry::tool_call(id, name, "");
+    pub fn begin_tool_call(
+        &mut self,
+        index: usize,
+        id: &str,
+        name: &str,
+        dispatched_at: jiff::Timestamp,
+    ) {
+        self.ensure_assistant_entry(dispatched_at);
+        let mut entry = ChatEntry::tool_call(id, name, "");
+        entry.timing = EntryTiming::streamed(dispatched_at);
+        entry.timing.set_first_token();
         let history_index = self.push_entry(entry);
         let Some(indices) = self
             .core
@@ -1096,15 +1148,15 @@ impl ChatSessionState {
     pub fn finalize_tool_call(&mut self, id: &str, name: &str, arguments: &str) {
         for entry in self.core.history.iter_mut().rev() {
             if let ChatEntryKind::ToolCall {
-                id: ref entry_id, ..
+                id: ref _entry_id, ..
             } = entry.kind
-                && entry_id == id
             {
                 entry.kind = ChatEntryKind::ToolCall {
                     id: id.to_owned(),
                     name: name.to_owned(),
                     arguments: arguments.to_owned(),
                 };
+                entry.timing.finish();
                 return;
             }
         }
@@ -1118,7 +1170,12 @@ impl ChatSessionState {
     ///
     /// Creates the entry with `ToolResultStatus::Pending` and empty content,
     /// then tracks its history index for later content appends.
-    pub fn begin_tool_result(&mut self, tool_call_id: &str, name: &str) {
+    pub fn begin_tool_result(
+        &mut self,
+        tool_call_id: &str,
+        name: &str,
+        dispatched_at: jiff::Timestamp,
+    ) {
         // Early return if not in Streaming phase — don't push orphaned entries.
         if self
             .core
@@ -1135,12 +1192,14 @@ impl ChatSessionState {
             return;
         }
 
-        let entry = ChatEntry::tool_result(
+        let mut entry = ChatEntry::tool_result(
             tool_call_id,
             name,
             "",
             crate::feat::session::tool_result_status::ToolResultStatus::Pending,
         );
+        entry.timing = EntryTiming::streamed(dispatched_at);
+        entry.timing.set_first_token();
         let history_index = self.push_entry(entry);
 
         // Re-acquire the streaming index map after push_entry releases &mut self.
@@ -1240,6 +1299,7 @@ impl ChatSessionState {
                     // Entry-level pin mirrors the kind-level pin so assembly,
                     // compaction, and UI consumers read a single field.
                     entry.pin_position = pin_position;
+                    entry.timing.finish();
                 }
 
                 _ => {}
@@ -1266,6 +1326,7 @@ impl ChatSessionState {
                         *entry_truncation = truncation.take();
                         *entry_kind_pin = pin_position;
                         entry.pin_position = pin_position;
+                        entry.timing.finish();
                         existing_found = true;
                         break;
                     }
@@ -1352,8 +1413,8 @@ impl ChatSessionState {
         &mut self.core.profile
     }
 
-    /// Set the model for this session.
-    pub fn set_model(&mut self, model: String) {
+    /// Set the model selection for this session.
+    pub fn set_model(&mut self, model: ModelSelection) {
         self.core.profile.model = model;
     }
 
@@ -1434,8 +1495,11 @@ impl ChatSessionState {
         out
     }
 
-    /// The model for this session.
-    pub fn model(&self) -> &str {
+    /// The model selection for this session.
+    pub fn model_selection(&self) -> &ModelSelection {
+        &self.core.profile.model
+    }
+    pub fn model(&self) -> &ModelSelection {
         &self.core.profile.model
     }
 
@@ -2406,6 +2470,7 @@ impl ChatSessionState {
         &mut self,
         tokens_received: u32,
         cost: Option<f64>,
+        model_used: Option<String>,
     ) -> Result<(), StreamingError> {
         let last = self
             .core
@@ -2414,12 +2479,32 @@ impl ChatSessionState {
             .ok_or(StreamingError::EmptyLedger)?;
         last.tokens_received = tokens_received;
         last.cost = cost;
+        last.model_used = model_used;
         Ok(())
+    }
+
+    /// Sets `model_used` on the last token record (the placeholder pushed at enqueue time).
+    /// This makes the model visible in the status bar immediately, before streaming completes.
+    pub fn set_last_token_model(&mut self, model: String) {
+        if let Some(last) = self.core.token_ledger.last_mut() {
+            last.model_used = Some(model);
+        }
     }
 
     /// The parent session, if this session was forked from another.
     pub fn parent_session(&self) -> &Option<SessionId> {
         &self.core.parent_session
+    }
+
+    /// The highest entry ordinal inherited from parent at fork time.
+    /// `None` for root sessions.
+    pub fn fork_ordinal(&self) -> Option<usize> {
+        self.core.fork_ordinal
+    }
+
+    /// Set the fork ordinal for testing and construction.
+    pub fn set_fork_ordinal(&mut self, ordinal: usize) {
+        self.core.fork_ordinal = Some(ordinal);
     }
 
     /// Set the parent session.
@@ -2725,6 +2810,14 @@ impl ChatSessionState {
                     if let Some(entry) = self.core.history.iter_mut().find(|e| e.id == entry_id) {
                         if entry.context_override() == ContextOverride::ForcedInclude
                             && value == ContextOverride::ForcedExclude
+                        {
+                            continue;
+                        }
+                        // Don't allow workers to re-include entries the user
+                        // explicitly excluded.
+                        if value == ContextOverride::ForcedInclude
+                            && matches!(source, ChangeSource::Worker { .. })
+                            && entry.is_user_force_excluded()
                         {
                             continue;
                         }

@@ -13,9 +13,21 @@ use crate::command::PluginCommand;
 use crate::loader::{PluginMeta, discover_plugins, load_all};
 use crate::plugin_data::PluginData;
 use crate::sync_state::SyncPlugins;
+use crate::tool_def::PluginToolMetadata;
 use crate::{AsyncPluginHandle, PluginSyncHandle};
 
-/// Callback type for dispatching commands emitted by plugins.
+/// Result of [`PluginSystem::build`] — all handles and metadata.
+pub struct PluginSystemBuildResult {
+    /// Sync plugin state for render-thread hook calls.
+    pub sync: SyncPlugins,
+    /// Async handle for domain-layer plugin operations.
+    pub async_handle: AsyncPluginHandle,
+    /// Sync handle for test/threaded hook calls.
+    pub sync_handle: PluginSyncHandle,
+    /// Tool definitions extracted from global plugins.
+    pub global_tool_metadata: Vec<PluginToolMetadata>,
+}
+
 ///
 /// Called by the emit drainer task for each `PluginCommand` sent through
 /// `ctx.emit()`. The wiring layer provides the concrete implementation
@@ -62,7 +74,7 @@ impl PluginSystem {
         runtime_handle: tokio::runtime::Handle,
         command_dispatcher: CommandDispatcher,
         request_handler: RequestHandler,
-    ) -> (SyncPlugins, AsyncPluginHandle, PluginSyncHandle) {
+    ) -> PluginSystemBuildResult {
         let plugin_data = PluginData::new();
 
         // Emit channel: constructed sync (sync Lua hooks call sync `.send()`),
@@ -90,9 +102,11 @@ impl PluginSystem {
         let plugins = discover_plugins(user_dir, system_dir);
         tracing::info!(count = plugins.len(), "discovered plugins");
 
-        // Partition: globals load at startup into both sync + async states.
-        // Attachable plugins are loaded on-demand into per-session async states
-        // via `AsyncPluginHandle::create_session_registry`.
+        // All discovered plugins load into the sync Lua state so that sync hooks
+        // (e.g. on_session_preview) work for attachable plugins too.
+        // Async-only hooks (on_turn_end) are never called from the sync path.
+        // The async thread loads globals at startup and attachable on-demand per-session.
+
         let global_plugins: Vec<PluginMeta> = plugins
             .iter()
             .filter(|m| m.kind == crate::loader::PluginKind::Global)
@@ -101,7 +115,7 @@ impl PluginSystem {
 
         // Load into sync Lua state.
         let sync_lua = mlua::Lua::new();
-        let sync_hooks = load_all(&sync_lua, &global_plugins);
+        let sync_result = load_all(&sync_lua, &plugins);
 
         // Async channel: async fire → background thread.
         let (job_tx, job_rx) = kanal::unbounded_async::<PluginJob>();
@@ -123,11 +137,12 @@ impl PluginSystem {
             .name("plugin-async".to_owned())
             .spawn(move || {
                 let async_lua = mlua::Lua::new();
-                let async_hooks = load_all(&async_lua, &async_global_plugins);
+                let async_result = load_all(&async_lua, &async_global_plugins);
                 run_async_thread(
                     job_rx,
                     async_lua,
-                    async_hooks,
+                    async_result.hooks,
+                    async_result.tools,
                     async_plugins,
                     async_plugin_data,
                     async_emit_tx,
@@ -136,7 +151,7 @@ impl PluginSystem {
             })
             .expect("spawn plugin-async thread");
 
-        let sync = SyncPlugins::new(sync_lua, sync_hooks, plugin_data.clone(), emit_tx);
+        let sync = SyncPlugins::new(sync_lua, sync_result.hooks, plugin_data.clone(), emit_tx);
 
         let async_handle = AsyncPluginHandle::new(job_tx.clone(), plugin_data);
 
@@ -144,7 +159,12 @@ impl PluginSystem {
         // sender sharing the same channel internal.
         let sync_handle = PluginSyncHandle::new(job_tx.clone_sync());
 
-        (sync, async_handle, sync_handle)
+        PluginSystemBuildResult {
+            sync,
+            async_handle,
+            sync_handle,
+            global_tool_metadata: sync_result.tools.iter().map(|t| t.to_metadata()).collect(),
+        }
     }
 }
 

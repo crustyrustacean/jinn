@@ -15,10 +15,12 @@
 pub mod bash;
 pub mod edit;
 pub mod get_time;
+pub mod grep;
 pub mod protocol;
 pub mod read;
 pub mod registry;
 pub mod save_plan;
+pub mod session_query;
 pub mod skill;
 pub mod tool_entry;
 pub mod tool_types;
@@ -33,16 +35,18 @@ use crate::common::actor_deps::{ActorDeps, BusPublish};
 use crate::common::services::Services;
 use crate::common::services::bus_service::BusService;
 use crate::common::state::State;
+use crate::feat::plugin_system::SessionRegistryId;
 use crate::feat::preferences_actor::OpenrouterWebSearchConfig;
 use crate::feat::session::chat_session::ChatSessionState;
 use crate::feat::tools_actor::protocol::command::{
-    CancelToolBatch, ExecuteToolBatch, ExecuteWebFetch, RegisterTools,
+    CancelToolBatch, ExecuteToolBatch, ExecuteWebFetch, RegisterPluginTools, RegisterTools,
 };
 use crate::feat::tools_actor::protocol::event::{
     ToolBatchCompleted, ToolExecutionCompleted, ToolsRegistered,
 };
 use crate::feat::tools_actor::tool_types::{ToolCall, ToolContext, ToolDefinition, ToolResult};
 use crate::protocol::SessionId;
+use jiff::Timestamp;
 use jinn_provider::ServerToolType;
 use kameo::prelude::{Actor, ActorRef, Context, Message};
 
@@ -65,6 +69,19 @@ pub(crate) enum ToolRegistration {
         /// The name of the actor providing this tool.
         provider: String,
     },
+    /// A plugin-defined tool routed to the plugin system's async thread.
+    Plugin {
+        /// The tool's JSON-schema definition.
+        definition: ToolDefinition,
+        /// `None` for global plugins, `Some(id)` for session-attached plugins.
+        target: Option<SessionRegistryId>,
+        /// The domain session ID for execution scoping.
+        /// `None` for global tools, `Some(session_id)` for attached tools.
+        /// Used to reject tool calls from sessions other than the target.
+        target_session_id: Option<SessionId>,
+        /// The name of the plugin that owns this tool.
+        plugin_name: String,
+    },
 }
 
 impl std::fmt::Debug for ToolRegistration {
@@ -81,6 +98,18 @@ impl std::fmt::Debug for ToolRegistration {
                 .debug_struct("Actor")
                 .field("name", &definition.name)
                 .field("provider", provider)
+                .finish(),
+            Self::Plugin {
+                definition,
+                target,
+                target_session_id,
+                plugin_name,
+            } => f
+                .debug_struct("Plugin")
+                .field("name", &definition.name)
+                .field("target", target)
+                .field("target_session_id", target_session_id)
+                .field("plugin_name", plugin_name)
                 .finish(),
         }
     }
@@ -174,35 +203,33 @@ fn build_openrouter_web_search_definition(config: &OpenrouterWebSearchConfig) ->
 
 impl Actor for ToolOrchestratorActor {
     type Args = ToolOrchestratorActorDeps;
-    type Error = kameo::error::Infallible;
+    type Error = std::convert::Infallible;
 
     async fn on_start(args: Self::Args, actor_ref: ActorRef<Self>) -> Result<Self, Self::Error> {
-        let deps = args.deps;
-        deps.subscribe(actor_ref.clone().recipient::<RegisterTools>())
-            .await;
-        deps.subscribe(actor_ref.clone().recipient::<ExecuteToolBatch>())
-            .await;
-        deps.subscribe(actor_ref.clone().recipient::<CancelToolBatch>())
-            .await;
-        deps.subscribe(actor_ref.recipient::<ToolExecutionCompleted>())
-            .await;
+        let bus = &args.deps.services.bus;
+        bus.subscribe::<RegisterTools, _>(&actor_ref).await;
+        bus.subscribe::<RegisterPluginTools, _>(&actor_ref).await;
+        bus.subscribe::<ExecuteToolBatch, _>(&actor_ref).await;
+        bus.subscribe::<CancelToolBatch, _>(&actor_ref).await;
+        bus.subscribe::<ToolExecutionCompleted, _>(&actor_ref).await;
 
         // Read web search config from preferences storage.
         let web_search_config = args
+            .deps
             .services
             .user_preferences_storage
             .read()
             .openrouter_web_search
             .clone();
 
-        let bash_config = args.services.user_preferences_storage.read().bash.clone();
+        let bash_config = args.deps.services.user_preferences_storage.read().bash.clone();
 
         let mut actor = Self {
-            deps,
+            deps: args.deps,
             tools: HashMap::new(),
             pending: HashMap::new(),
-            services: args.services,
             state: args.state,
+            services: args.services,
             shell: args.shell,
         };
         let all_builtins = registry::builtin_tools(&bash_config);
@@ -250,11 +277,12 @@ impl Actor for ToolOrchestratorActor {
         );
         builtin_definitions.push(web_search_def);
 
-        // Announce built-in tools so the LLM actor can cache them.
+        // Announce built-in tools so downstream actors can cache them.
         actor
             .publish(ToolsRegistered {
                 provider: "builtin".to_owned(),
                 definitions: builtin_definitions,
+                session_id: None,
             })
             .await;
 
@@ -281,7 +309,7 @@ impl Message<ExecuteToolBatch> for ToolOrchestratorActor {
     type Reply = ();
 
     async fn handle(&mut self, msg: ExecuteToolBatch, _ctx: &mut Context<Self, Self::Reply>) {
-        self.handle_execute_tool_batch(msg.session_id, msg.tool_calls)
+        self.handle_execute_tool_batch(msg.session_id, msg.tool_calls, msg.dispatched_at)
             .await;
     }
 }
@@ -303,6 +331,19 @@ impl Message<ToolExecutionCompleted> for ToolOrchestratorActor {
     }
 }
 
+impl Message<RegisterPluginTools> for ToolOrchestratorActor {
+    type Reply = ();
+
+    async fn handle(&mut self, msg: RegisterPluginTools, _ctx: &mut Context<Self, Self::Reply>) {
+        self.handle_register_plugin_tools(
+            &msg.plugin_name,
+            &msg.target,
+            &msg.definitions,
+            msg.session_id,
+        ).await;
+    }
+}
+
 impl BusPublish for ToolOrchestratorActor {
     fn bus(&self) -> &BusService {
         &self.deps.services.bus
@@ -310,6 +351,7 @@ impl BusPublish for ToolOrchestratorActor {
 }
 
 impl ToolOrchestratorActor {
+
     /// Stores actor-provided tools and emits a [`ToolsRegistered`] event.
     async fn handle_register_tools(&mut self, provider: &str, definitions: &[ToolDefinition]) {
         for def in definitions {
@@ -326,8 +368,36 @@ impl ToolOrchestratorActor {
         self.publish(ToolsRegistered {
             provider: provider.to_owned(),
             definitions: definitions.to_vec(),
-        })
-        .await;
+            session_id: None,
+        }).await;
+    }
+
+    /// Registers tool definitions from a Lua plugin.
+    async fn handle_register_plugin_tools(
+        &mut self,
+        plugin_name: &str,
+        target: &Option<SessionRegistryId>,
+        definitions: &[ToolDefinition],
+        session_id: Option<SessionId>,
+    ) {
+        for def in definitions {
+            let name = def.name.clone();
+            self.tools.insert(
+                name,
+                ToolRegistration::Plugin {
+                    definition: def.clone(),
+                    target: *target,
+                    target_session_id: session_id.clone(),
+                    plugin_name: plugin_name.to_owned(),
+                },
+            );
+        }
+
+        self.publish(ToolsRegistered {
+            provider: format!("plugin:{plugin_name}"),
+            definitions: definitions.to_vec(),
+            session_id,
+        }).await;
     }
 
     /// Dispatches each tool call and tracks the pending batch.
@@ -335,6 +405,7 @@ impl ToolOrchestratorActor {
         &mut self,
         session_id: SessionId,
         tool_calls: Vec<ToolCall>,
+        dispatched_at: Timestamp,
     ) {
         tracing::trace!(
             session_id = ?session_id,
@@ -354,7 +425,9 @@ impl ToolOrchestratorActor {
         let remaining = tool_calls.len();
         let mut handles = Vec::new();
         for tc in tool_calls {
-            if let Some(handle) = self.dispatch_tool_call(session_id.clone(), tc).await {
+            if let Some(handle) =
+                self.dispatch_tool_call(session_id.clone(), tc, dispatched_at).await
+            {
                 handles.push(handle);
             }
         }
@@ -388,7 +461,11 @@ impl ToolOrchestratorActor {
     }
 
     /// Builds a [`ToolContext`] for the given session by reading its CWD from shared state.
-    fn build_tool_context(&self, session_id: &SessionId, bus: BusService) -> ToolContext {
+    fn build_tool_context(
+        &self,
+        session_id: &SessionId,
+        dispatched_at: Timestamp,
+    ) -> ToolContext {
         let prefs = self.services.user_preferences_storage.read();
         let cwd = {
             let guard = self.state.read();
@@ -410,10 +487,11 @@ impl ToolOrchestratorActor {
             state: Some(self.state.clone()),
             session_id: Some(session_id.clone()),
             app_paths: self.services.paths.clone(),
-            bus: Some(bus),
+            bus: Some(self.bus().clone()),
             shell: self.shell.clone(),
             max_output_lines,
             max_output_bytes,
+            dispatched_at,
         }
     }
 
@@ -426,6 +504,7 @@ impl ToolOrchestratorActor {
         &mut self,
         session_id: SessionId,
         tool_call: ToolCall,
+        dispatched_at: Timestamp,
     ) -> Option<tokio::task::JoinHandle<()>> {
         tracing::trace!(
             session_id = ?session_id,
@@ -433,6 +512,7 @@ impl ToolOrchestratorActor {
             reg_type = match self.tools.get(&tool_call.name) {
                 Some(ToolRegistration::Builtin { .. }) => "builtin",
                 Some(ToolRegistration::Actor { .. }) => "actor",
+                Some(ToolRegistration::Plugin { .. }) => "plugin",
                 None => "unknown",
             },
             "dispatch_tool_call"
@@ -442,7 +522,7 @@ impl ToolOrchestratorActor {
             Some(ToolRegistration::Builtin { execute, .. }) => {
                 let bus = self.bus().clone();
                 let execute_fn = *execute;
-                let tool_ctx = self.build_tool_context(&session_id, bus.clone());
+                let tool_ctx = self.build_tool_context(&session_id, dispatched_at);
                 let timeout = tool_ctx.timeout;
 
                 let handle = tokio::spawn(async move {
@@ -487,6 +567,93 @@ impl ToolOrchestratorActor {
                     }
                 }
                 None
+            }
+            Some(ToolRegistration::Plugin {
+                target,
+                target_session_id,
+                plugin_name,
+                ..
+            }) => {
+                // Scope check: attached tools can only be called from their target session.
+                if target_session_id.is_some() && target_session_id.as_ref() != Some(&session_id) {
+                    tracing::warn!(
+                        tool = %tool_call.name,
+                        target_session = ?target_session_id,
+                        calling_session = %session_id,
+                        "attached tool called from wrong session"
+                    );
+                    {
+                        let target_display = target_session_id
+                            .as_ref()
+                            .map(|s| s.to_string())
+                            .unwrap_or_default();
+                        let result = ToolResult {
+                            tool_call_id: tool_call.id.clone(),
+                            name: tool_call.name.clone(),
+                            content: format!(
+                                "Error: tool '{}' is only available in session {}",
+                                tool_call.name, target_display
+                            ),
+                            success: false,
+                            full_content: None,
+                            truncation: None,
+                            pin_position: None,
+                        };
+                        self.publish(ToolExecutionCompleted {
+                            session_id: session_id.clone(),
+                            result,
+                        }).await;
+                    }
+                    return None;
+                }
+
+                let bus = self.bus().clone();
+                let plugin_fire = self.services.plugins.clone();
+                let target = target.clone();
+                let sid = session_id.clone();
+                let plugin_name = plugin_name.clone();
+                let arguments: serde_json::Value =
+                    serde_json::from_str(&tool_call.arguments).unwrap_or_default();
+
+                let handle = tokio::spawn(async move {
+                    let result = match plugin_fire
+                        .execute_plugin_tool(
+                            target,
+                            &sid,
+                            &plugin_name,
+                            &tool_call.name,
+                            &arguments,
+                        )
+                        .await
+                    {
+                        Ok(content) => ToolResult {
+                            tool_call_id: tool_call.id.clone(),
+                            name: tool_call.name.clone(),
+                            content,
+                            success: true,
+                            full_content: None,
+                            truncation: None,
+                            pin_position: None,
+                        },
+                        Err(report) => {
+                            tracing::warn!(?report, %plugin_name, "plugin tool execution failed");
+                            ToolResult {
+                                tool_call_id: tool_call.id.clone(),
+                                name: tool_call.name.clone(),
+                                content: format!("plugin tool error: {report:#}"),
+                                success: false,
+                                full_content: None,
+                                truncation: None,
+                                pin_position: None,
+                            }
+                        }
+                    };
+                    bus.publish(ToolExecutionCompleted {
+                        session_id,
+                        result,
+                    }).await;
+                });
+                Some(handle)
             }
             None => {
                 let call_id = tool_call.id.clone();

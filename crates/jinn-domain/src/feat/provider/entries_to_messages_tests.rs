@@ -414,7 +414,7 @@ fn compaction_entry_produces_user_message_with_summary() {
     // Given a compaction entry.
     let entries = vec![ChatEntry {
         id: crate::protocol::ChatEntryId::new(),
-        timestamp: jiff::Timestamp::now(),
+        timing: crate::protocol::EntryTiming::instant_now(),
         kind: crate::protocol::ChatEntryKind::Compaction {
             summary: "User asked to fix a bug. Work completed.".to_owned(),
             tokens_before: 5000,
@@ -526,7 +526,7 @@ fn message_order_after_compaction() {
         ChatEntry::assistant("old answer").with_ignored(true),
         ChatEntry {
             id: crate::protocol::ChatEntryId::new(),
-            timestamp: jiff::Timestamp::now(),
+            timing: crate::protocol::EntryTiming::instant_now(),
             kind: crate::protocol::ChatEntryKind::Compaction {
                 summary: "The user asked about X and was told Y".to_owned(),
                 tokens_before: 500,

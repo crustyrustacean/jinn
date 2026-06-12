@@ -181,8 +181,10 @@ impl ActorSystemBuilder {
                 let data = data.clone();
                 std::boxed::Box::pin(async move {
                     match cell.get() {
-                        Some(ctx) => {
-                            crate::plugin_wiring::handle_plugin_request(&name, &data, ctx).await
+                        Some(_ctx) => {
+                            // FIXME: plugin migration — handle_plugin_request disabled
+                            // crate::plugin_wiring::handle_plugin_request(&name, &data, ctx).await
+                            serde_json::Value::Null
                         }
                         None => {
                             tracing::warn!(
@@ -196,13 +198,18 @@ impl ActorSystemBuilder {
             }
         });
 
-        let (sync_plugins, async_plugins, plugin_sync_handle) = jinn_plugin::PluginSystem::build(
+        let plugin_build = jinn_plugin::PluginSystem::build(
             &paths.plugins_dir(),
             &paths.system_plugins_dir(),
             handle.clone(),
             plugin_command_dispatcher,
             plugin_request_handler,
         );
+
+        let sync_plugins = plugin_build.sync;
+        let async_plugins = plugin_build.async_handle;
+        let plugin_sync_handle = plugin_build.sync_handle;
+        let global_tool_metadata = plugin_build.global_tool_metadata;
 
         // Store discovered plugin metadata in state for the sidebar.
         {
@@ -265,14 +272,36 @@ impl ActorSystemBuilder {
             bridge,
         };
 
+        // FIXME: plugin migration — register global-scoped plugin tools with the tools actor
+        // This block used Command::RegisterPluginTools which no longer exists.
+        // Re-enable after plugin system is redesigned for typed bus messages.
+        // Register global-scoped plugin tools with the tools actor.
+        // Attached-scoped tools are skipped here — they are registered per-session
+        // when a child session is created.
+        // let global_scope_tools: Vec<_> = global_tool_metadata
+        //     .into_iter()
+        //     .filter(|meta| matches!(meta.scope, jinn_plugin::ToolScope::Global))
+        //     .collect();
+        //
+        // if !global_scope_tools.is_empty() {
+        //     let mut by_plugin: HashMap<String, Vec<ToolDefinition>> = HashMap::new();
+        //     for meta in global_scope_tools {
+        //         by_plugin.entry(meta.plugin_name.clone()).or_default().push(ToolDefinition { ... });
+        //     }
+        //     for (plugin_name, definitions) in by_plugin {
+        //         bus.publish(RegisterPluginTools { ... }).await;
+        //     }
+        // }
+
         // Now that `services` + `state` exist, build the shared `DomainNodeContext`
         // and publish it into the `OnceLock` so the plugin request handler can see it.
-        let shared_domain_ctx =
-            std::sync::Arc::new(jinn_domain::feat::plugin_dispatch::DomainNodeContext::new(
-                services.clone(),
-                state.clone(),
-            ));
-        let _ = domain_ctx_cell.set((*shared_domain_ctx).clone());
+        //FIXME: plugin migration — DomainNodeContext::new disabled
+        // let shared_domain_ctx =
+        //     std::sync::Arc::new(jinn_domain::feat::plugin_dispatch::DomainNodeContext::new(
+        //         services.clone(),
+        //         state.clone(),
+        //     ));
+        // let _ = domain_ctx_cell.set((*shared_domain_ctx).clone());
 
         let actor_deps = ActorDeps {
             services: services.clone(),
@@ -838,14 +867,14 @@ impl ActorSystemBuilder {
                 },
             );
 
-        // Plugin dispatch actor.
-        let _plugin_dispatch = PluginDispatchActor::spawn(PluginDispatchActorDeps {
-            deps: actor_deps.clone(),
-            services: services.clone(),
-            state: state.clone(),
-            startup_session_id: state.read().session.active_session_id().to_string(),
-            domain_ctx: shared_domain_ctx.clone(),
-        });
+        //FIXME: plugin migration — PluginDispatchActor disabled
+        // let _plugin_dispatch = PluginDispatchActor::spawn(PluginDispatchActorDeps {
+        //     deps: actor_deps.clone(),
+        //     services: services.clone(),
+        //     state: state.clone(),
+        //     startup_session_id: state.read().session.active_session_id().to_string(),
+        //     domain_ctx: shared_domain_ctx.clone(),
+        // });
 
         // ── Bench actor (conditional) ─────────────────────────────────────────
         if let Some(b) = bench {

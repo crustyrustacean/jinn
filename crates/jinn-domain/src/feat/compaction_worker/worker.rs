@@ -159,10 +159,10 @@ impl CompactionWorker {
 
         // Read session state.
         let (config, model_name, history, compaction_prompt, retry_config) = {
-            let state = self.state.read();
-            let session = state.session(&trigger.session_id);
+            let mut state = self.state.write();
+            let session = state.session_mut(&trigger.session_id);
             let config = prefs.compaction.clone();
-            let model_name = session.profile().model.clone();
+            let model_name = session.profile_mut().model.resolve_model();
             let history = session.history().to_vec();
             let compaction_prompt = state.context.compaction_prompt.clone();
             let retry_config = prefs.request_retry.to_retry_config();
@@ -251,8 +251,10 @@ impl CompactionWorker {
                 return vec![];
             };
 
-            let context_length =
-                resolve_context_limit(state.provider.model_cache.as_ref(), &model_name);
+            let context_length = resolve_context_limit(
+                state.provider.model_cache.as_ref(),
+                model_name.display_str(),
+            );
 
             let context_limit = match context_length {
                 Some(limit) => limit,
@@ -297,7 +299,7 @@ impl CompactionWorker {
             .evaluate_with_config(
                 &full_history,
                 &config,
-                &model_name,
+                model_name.display_str(),
                 &compaction_prompt,
                 &retry_config,
                 false, // Not compact_all for auto-trigger
@@ -426,7 +428,7 @@ impl CompactionWorker {
         let tokens_after = CharRatioEstimator.estimate(&summary);
         let compaction_entry = ChatEntry::new_with_kind(
             compaction_entry_id,
-            jiff::Timestamp::now(),
+            crate::protocol::EntryTiming::instant_now(),
             ChatEntryKind::Compaction {
                 summary,
                 tokens_before,

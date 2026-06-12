@@ -991,13 +991,10 @@ impl SessionPersistenceActor {
 
         let app_state = self.services.app_state_storage.read();
         let fresh_session = {
-            let model = app_state
-                .last_model
-                .clone()
-                .unwrap_or_else(|| crate::feat::provider_infra::NO_PROVIDER_ID.to_owned());
+            let model = app_state.last_model.clone().unwrap_or_default();
 
             ChatSessionState::new_with_profile(
-                crate::feat::session::profile::SessionProfile::from_config(model),
+                crate::feat::session::profile::SessionProfile::from_model_selection(model),
             )
         };
         state.session.remove_and_replace(session_id, fresh_session);

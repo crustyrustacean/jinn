@@ -51,6 +51,8 @@ mod tests {
     use crate::common::app_state::AppState;
     use crate::protocol::{ChatEntry, ChatEntryKind, PickerKind};
 
+    use crate::feat::session::model_selection::ModelSelection;
+
     use super::*;
 
     #[rstest::rstest]
@@ -98,7 +100,9 @@ mod tests {
     fn refresh_models_posts_transient_message() {
         // Given a state with a provider.
         let mut state = AppState::default();
-        state.active_session_mut().set_model("ollama".to_owned());
+        state
+            .active_session_mut()
+            .set_model(ModelSelection::Single("ollama".to_owned()));
 
         // When handling RefreshModels.
         let _result = handle_refresh_models(&mut state);
@@ -116,7 +120,9 @@ mod tests {
     fn refresh_models_returns_refresh_command() {
         // Given a state with a provider.
         let mut state = AppState::default();
-        state.active_session_mut().set_model("ollama".to_owned());
+        state
+            .active_session_mut()
+            .set_model(ModelSelection::Single("ollama".to_owned()));
         let _initial_len = state.active_session().history().len();
 
         // When handling RefreshModels.

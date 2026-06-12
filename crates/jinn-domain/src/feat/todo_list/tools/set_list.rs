@@ -213,6 +213,8 @@ mod tests {
             shell: "/bin/bash".to_owned(),
             max_output_lines: None,
             max_output_bytes: None,
+
+            dispatched_at: jiff::Timestamp::now(),
         }
     }
 

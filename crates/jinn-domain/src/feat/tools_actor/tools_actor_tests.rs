@@ -16,7 +16,9 @@ use crate::feat::tools_actor::get_time;
 use crate::feat::tools_actor::protocol::command::{
     CancelToolBatch, ExecuteToolBatch, RegisterTools,
 };
-use crate::feat::tools_actor::protocol::event::{ToolBatchCompleted, ToolExecutionCompleted};
+use crate::feat::tools_actor::protocol::event::{
+    ToolBatchCompleted, ToolExecutionCompleted, ToolExecutionStarted,
+};
 use crate::feat::tools_actor::read;
 use crate::feat::tools_actor::tool_types::{ToolCall, ToolContext, ToolDefinition, ToolResult};
 use crate::feat::tools_actor::write;
@@ -70,6 +72,16 @@ fn find_execution_completed(events: &[Event]) -> Vec<&ToolExecutionCompleted> {
         .iter()
         .filter_map(|e| match e {
             Event::ToolExecutionCompleted(payload) => Some(payload),
+            _ => None,
+        })
+        .collect()
+}
+
+fn find_execution_started(events: &[Event]) -> Vec<&ToolExecutionStarted> {
+    events
+        .iter()
+        .filter_map(|e| match e {
+            Event::ToolExecutionStarted(payload) => Some(payload),
             _ => None,
         })
         .collect()
@@ -139,7 +151,7 @@ async fn activate_emits_tools_registered_for_builtins() {
         .iter()
         .find(|p| p.provider == "builtin")
         .expect("expected builtin ToolsRegistered");
-    assert_eq!(builtin_evt.definitions.len(), 17);
+    assert_eq!(builtin_evt.definitions.len(), 19);
 }
 
 // --- RegisterTools command tests ---
@@ -176,7 +188,7 @@ async fn register_tools_stores_actor_tools() {
         ToolRegistration::Actor { provider, .. } => {
             assert_eq!(provider, "web-actor");
         }
-        other @ ToolRegistration::Builtin { .. } => {
+        other => {
             panic!("expected Actor registration, got {other:?}")
         }
     }
@@ -275,6 +287,8 @@ async fn execute_builtin_get_time_tool() {
         shell: "/bin/sh".to_owned(),
         max_output_lines: None,
         max_output_bytes: None,
+
+        dispatched_at: jiff::Timestamp::now(),
     };
 
     // When executing the get_time tool.
@@ -313,6 +327,8 @@ async fn execute_builtin_read_tool() {
         shell: "/bin/sh".to_owned(),
         max_output_lines: None,
         max_output_bytes: None,
+
+        dispatched_at: jiff::Timestamp::now(),
     };
 
     // When executing the read tool.
@@ -349,6 +365,8 @@ async fn execute_builtin_read_tool_returns_error_on_missing_file() {
         shell: "/bin/sh".to_owned(),
         max_output_lines: None,
         max_output_bytes: None,
+
+        dispatched_at: jiff::Timestamp::now(),
     };
 
     // When executing the read tool.
@@ -379,6 +397,7 @@ async fn execute_batch_with_get_time_tool_emits_completion() {
             name: "get_time".to_owned(),
             arguments: "{}".to_owned(),
         }],
+        dispatched_at: jiff::Timestamp::now(),
     });
     actor.handle_command(&cmd, &ctx);
 
@@ -408,6 +427,7 @@ async fn completion_event_triggers_batch_completed() {
             name: "get_time".to_owned(),
             arguments: "{}".to_owned(),
         }],
+        dispatched_at: jiff::Timestamp::now(),
     });
     actor.handle_command(&cmd, &ctx);
 
@@ -455,6 +475,7 @@ async fn execute_batch_with_two_tools_emits_two_completions() {
                 arguments: "{}".to_owned(),
             },
         ],
+        dispatched_at: jiff::Timestamp::now(),
     });
     actor.handle_command(&cmd, &ctx);
 
@@ -489,6 +510,7 @@ async fn first_completion_does_not_complete_batch() {
                 arguments: "{}".to_owned(),
             },
         ],
+        dispatched_at: jiff::Timestamp::now(),
     });
     actor.handle_command(&cmd, &ctx);
 
@@ -534,6 +556,7 @@ async fn second_completion_emits_batch_completed() {
                 arguments: "{}".to_owned(),
             },
         ],
+        dispatched_at: jiff::Timestamp::now(),
     });
     actor.handle_command(&cmd, &ctx);
 
@@ -584,6 +607,7 @@ async fn execute_batch_with_unknown_tool_emits_error_completion() {
             name: "nonexistent_tool".to_owned(),
             arguments: "{}".to_owned(),
         }],
+        dispatched_at: jiff::Timestamp::now(),
     });
     actor.handle_command(&cmd, &ctx);
 
@@ -612,6 +636,7 @@ async fn error_completion_triggers_batch_completed() {
             name: "nonexistent_tool".to_owned(),
             arguments: "{}".to_owned(),
         }],
+        dispatched_at: jiff::Timestamp::now(),
     });
     actor.handle_command(&cmd, &ctx);
 
@@ -649,6 +674,7 @@ async fn execute_batch_with_no_tool_calls_emits_empty_batch_completed() {
     let cmd = Command::ExecuteToolBatch(ExecuteToolBatch {
         session_id: session_id.clone(),
         tool_calls: vec![],
+        dispatched_at: jiff::Timestamp::now(),
     });
     actor.handle_command(&cmd, &ctx);
 
@@ -686,6 +712,8 @@ async fn write_tool_returns_success() {
         shell: "/bin/sh".to_owned(),
         max_output_lines: None,
         max_output_bytes: None,
+
+        dispatched_at: jiff::Timestamp::now(),
     };
 
     // When executing the write tool.
@@ -724,6 +752,8 @@ async fn write_tool_creates_file_with_content() {
         shell: "/bin/sh".to_owned(),
         max_output_lines: None,
         max_output_bytes: None,
+
+        dispatched_at: jiff::Timestamp::now(),
     };
 
     // When executing the write tool.
@@ -761,6 +791,8 @@ async fn write_tool_creates_parent_dirs_and_file() {
         shell: "/bin/sh".to_owned(),
         max_output_lines: None,
         max_output_bytes: None,
+
+        dispatched_at: jiff::Timestamp::now(),
     };
 
     // When executing the write tool.
@@ -802,6 +834,8 @@ async fn write_tool_overwrites_existing_file() {
         shell: "/bin/sh".to_owned(),
         max_output_lines: None,
         max_output_bytes: None,
+
+        dispatched_at: jiff::Timestamp::now(),
     };
 
     // When executing the write tool.
@@ -833,6 +867,8 @@ async fn write_tool_returns_error_on_bad_json() {
         shell: "/bin/sh".to_owned(),
         max_output_lines: None,
         max_output_bytes: None,
+
+        dispatched_at: jiff::Timestamp::now(),
     };
 
     // When executing the write tool.
@@ -890,7 +926,7 @@ async fn build_tool_context_reads_session_cwd() {
     };
 
     // When building tool context for that session.
-    let tool_ctx = actor.build_tool_context(&session_id, sink.clone());
+    let tool_ctx = actor.build_tool_context(&session_id, sink.clone(), jiff::Timestamp::now());
 
     // Then the CWD matches the session's CWD.
     assert_eq!(tool_ctx.cwd, PathBuf::from("/custom/cwd"));
@@ -905,7 +941,7 @@ async fn build_tool_context_returns_default_cwd_for_unknown_session() {
 
     // When building tool context for an unknown session.
     let unknown_session = SessionId::new();
-    let tool_ctx = actor.build_tool_context(&unknown_session, sink.clone());
+    let tool_ctx = actor.build_tool_context(&unknown_session, sink.clone(), jiff::Timestamp::now());
 
     // Then the CWD falls back to default_cwd (which is "/" by default).
     assert_eq!(tool_ctx.cwd, PathBuf::from("/"));
@@ -937,6 +973,7 @@ async fn cancel_tool_batch_removes_pending_batch() {
                 arguments: "{}".to_owned(),
             },
         ],
+        dispatched_at: jiff::Timestamp::now(),
     });
     actor.handle_command(&cmd, &ctx);
 
@@ -970,6 +1007,7 @@ async fn cancel_tool_batch_aborts_spawned_tasks() {
             name: "get_time".to_owned(),
             arguments: "{}".to_owned(),
         }],
+        dispatched_at: jiff::Timestamp::now(),
     });
     actor.handle_command(&cmd, &ctx);
 
@@ -1033,7 +1071,7 @@ async fn build_tool_context_uses_session_default_cwd_when_not_overridden() {
     };
 
     // When building tool context for that session.
-    let tool_ctx = actor.build_tool_context(&session_id, sink.clone());
+    let tool_ctx = actor.build_tool_context(&session_id, sink.clone(), jiff::Timestamp::now());
 
     // Then the session cwd is used ("." from default).
     assert_eq!(tool_ctx.cwd, PathBuf::from("."));
@@ -1090,6 +1128,7 @@ async fn handle_processes_tool_execution_completed_event() {
             name: "nonexistent".to_owned(),
             arguments: "{}".to_owned(),
         }],
+        dispatched_at: jiff::Timestamp::now(),
     });
     actor.handle_command(&cmd, &ctx);
     sink.take_events(); // Clear the error completion event.
@@ -1148,4 +1187,320 @@ fn tool_registration_debug_shows_name() {
         debug_str.contains("my_tool"),
         "Debug output should contain tool name: {debug_str}"
     );
+}
+#[rstest::rstest]
+#[tokio::test]
+async fn register_plugin_tools_stores_tool_as_plugin_variant() {
+    // Given an activated tools actor.
+    let (_sink, mut ctx, deps) = default_test_ctx();
+    let mut actor = ToolOrchestratorActor::activate(deps, &mut ctx);
+
+    // When registering a plugin tool.
+    let definitions = vec![ToolDefinition {
+        name: "judgment_passed".to_owned(),
+        description: "Call when response passes".to_owned(),
+        parameters: serde_json::json!({"type": "object", "properties": {}}),
+        prompt_snippet: None,
+        prompt_guidelines: vec![],
+        server_tool_type: None,
+    }];
+    actor.handle_register_plugin_tools("judge", &None, &definitions, None, &ctx);
+
+    // Then the tool is stored with the Plugin variant.
+    let reg = actor
+        .tools
+        .get("judgment_passed")
+        .expect("tool should be registered");
+    match reg {
+        ToolRegistration::Plugin {
+            plugin_name,
+            target,
+            target_session_id: _,
+            definition,
+        } => {
+            assert!(target.is_none());
+            assert_eq!(definition.name, "judgment_passed");
+        }
+        other => panic!("expected Plugin variant, got {other:?}"),
+    }
+}
+
+#[rstest::rstest]
+#[tokio::test]
+async fn register_plugin_tools_emits_tools_registered_event() {
+    // Given an activated tools actor.
+    let (sink, mut ctx, deps) = default_test_ctx();
+    let mut actor = ToolOrchestratorActor::activate(deps, &mut ctx);
+
+    // When registering a plugin tool.
+    let definitions = vec![ToolDefinition {
+        name: "judgment_failed".to_owned(),
+        description: "Call when response fails".to_owned(),
+        parameters: serde_json::json!({"type": "object", "properties": {}}),
+        prompt_snippet: None,
+        prompt_guidelines: vec![],
+        server_tool_type: None,
+    }];
+    actor.handle_register_plugin_tools("judge", &None, &definitions, None, &ctx);
+
+    // Then a ToolsRegistered event was emitted.
+    let events = sink.events();
+    let found = events.iter().any(|e| {
+        matches!(
+            e,
+            Event::ToolsRegistered(evt) if evt.provider == "plugin:judge"
+        )
+    });
+    assert!(found, "expected ToolsRegistered event from plugin:judge");
+}
+
+#[rstest::rstest]
+#[tokio::test]
+async fn register_plugin_tools_with_session_target_stores_target() {
+    // Given an activated tools actor.
+    let (_sink, mut ctx, deps) = default_test_ctx();
+    let mut actor = ToolOrchestratorActor::activate(deps, &mut ctx);
+    let target_id = crate::feat::plugin_system::SessionRegistryId::new();
+
+    // When registering a plugin tool with a session target.
+    let definitions = vec![ToolDefinition {
+        name: "session_tool".to_owned(),
+        description: "A session-scoped tool".to_owned(),
+        parameters: serde_json::json!({"type": "object", "properties": {}}),
+        prompt_snippet: None,
+        prompt_guidelines: vec![],
+        server_tool_type: None,
+    }];
+    actor.handle_register_plugin_tools("my_plugin", &Some(target_id), &definitions, None, &ctx);
+
+    // Then the tool is stored with the session target.
+    let reg = actor
+        .tools
+        .get("session_tool")
+        .expect("tool should be registered");
+    match reg {
+        ToolRegistration::Plugin { target, .. } => {
+            assert!(target.is_some());
+        }
+        other => panic!("expected Plugin variant, got {other:?}"),
+    }
+}
+
+#[rstest::rstest]
+#[tokio::test]
+async fn plugin_tool_execution_dispatches_to_plugin_fire_service() {
+    // Given an activated actor with a registered plugin tool.
+    let (sink, mut ctx, deps) = default_test_ctx();
+    let mut actor = ToolOrchestratorActor::activate(deps, &mut ctx);
+
+    let definitions = vec![ToolDefinition {
+        name: "judgment_passed".to_owned(),
+        description: "Call when response passes".to_owned(),
+        parameters: serde_json::json!({"type": "object", "properties": {}}),
+        prompt_snippet: None,
+        prompt_guidelines: vec![],
+        server_tool_type: None,
+    }];
+    actor.handle_register_plugin_tools("judge", &None, &definitions, None, &ctx);
+
+    let session_id = SessionId::new();
+
+    // When executing a batch with the plugin tool.
+    let cmd = Command::ExecuteToolBatch(ExecuteToolBatch {
+        session_id: session_id.clone(),
+        tool_calls: vec![ToolCall {
+            id: "call_1".to_owned(),
+            name: "judgment_passed".to_owned(),
+            arguments: "{}".to_owned(),
+        }],
+        dispatched_at: jiff::Timestamp::now(),
+    });
+    actor.handle_command(&cmd, &ctx);
+
+    // Then the tool execution completes (via NoopPluginFire).
+    tokio::time::sleep(std::time::Duration::from_millis(100)).await;
+    let events = sink.take_events();
+    let completed = find_execution_completed(&events);
+    assert_eq!(completed.len(), 1);
+    assert!(completed[0].result.success);
+}
+
+#[rstest::rstest]
+#[tokio::test]
+async fn plugin_tool_with_arguments_executes_successfully() {
+    // Given an activated actor with a registered plugin tool that takes arguments.
+    let (sink, mut ctx, deps) = default_test_ctx();
+    let mut actor = ToolOrchestratorActor::activate(deps, &mut ctx);
+
+    let definitions = vec![ToolDefinition {
+        name: "judgment_failed".to_owned(),
+        description: "Call when response fails".to_owned(),
+        parameters: serde_json::json!({
+            "type": "object",
+            "properties": {
+                "message": { "type": "string", "description": "Why it failed" }
+            },
+            "required": ["message"]
+        }),
+        prompt_snippet: None,
+        prompt_guidelines: vec![],
+        server_tool_type: None,
+    }];
+    actor.handle_register_plugin_tools("judge", &None, &definitions, None, &ctx);
+
+    let session_id = SessionId::new();
+
+    // When executing a batch with arguments.
+    let cmd = Command::ExecuteToolBatch(ExecuteToolBatch {
+        session_id: session_id.clone(),
+        tool_calls: vec![ToolCall {
+            id: "call_1".to_owned(),
+            name: "judgment_failed".to_owned(),
+            arguments: r#"{"message": "test failure"}"#.to_owned(),
+        }],
+        dispatched_at: jiff::Timestamp::now(),
+    });
+    actor.handle_command(&cmd, &ctx);
+
+    // Then the tool execution completes successfully.
+    tokio::time::sleep(std::time::Duration::from_millis(100)).await;
+    let events = sink.take_events();
+    let completed = find_execution_completed(&events);
+    assert_eq!(completed.len(), 1);
+    assert!(completed[0].result.success);
+}
+
+#[rstest::rstest]
+#[tokio::test]
+async fn attached_tool_rejected_when_called_from_wrong_session() {
+    // Given an activated actor with an attached plugin tool scoped to session A.
+    let (sink, mut ctx, deps) = default_test_ctx();
+    let mut actor = ToolOrchestratorActor::activate(deps, &mut ctx);
+
+    let target_session_id = SessionId::new();
+    let definitions = vec![ToolDefinition {
+        name: "judgment_passed".to_owned(),
+        description: "Call when response passes".to_owned(),
+        parameters: serde_json::json!({"type": "object", "properties": {}}),
+        prompt_snippet: None,
+        prompt_guidelines: vec![],
+        server_tool_type: None,
+    }];
+    actor.handle_register_plugin_tools(
+        "judge",
+        &None,
+        &definitions,
+        Some(target_session_id.clone()),
+        &ctx,
+    );
+
+    // When calling the tool from a different session B.
+    let wrong_session_id = SessionId::new();
+    let cmd = Command::ExecuteToolBatch(ExecuteToolBatch {
+        session_id: wrong_session_id.clone(),
+        tool_calls: vec![ToolCall {
+            id: "call_1".to_owned(),
+            name: "judgment_passed".to_owned(),
+            arguments: "{}".to_owned(),
+        }],
+        dispatched_at: jiff::Timestamp::now(),
+    });
+    actor.handle_command(&cmd, &ctx);
+
+    // Then the tool execution completes with a failure.
+    tokio::time::sleep(std::time::Duration::from_millis(100)).await;
+    let events = sink.take_events();
+    let completed = find_execution_completed(&events);
+    assert_eq!(completed.len(), 1);
+    assert!(!completed[0].result.success);
+    assert!(
+        completed[0]
+            .result
+            .content
+            .contains("only available in session")
+    );
+}
+
+#[rstest::rstest]
+#[tokio::test]
+async fn attached_tool_succeeds_when_called_from_target_session() {
+    // Given an activated actor with an attached plugin tool scoped to session A.
+    let (sink, mut ctx, deps) = default_test_ctx();
+    let mut actor = ToolOrchestratorActor::activate(deps, &mut ctx);
+
+    let target_session_id = SessionId::new();
+    let definitions = vec![ToolDefinition {
+        name: "judgment_passed".to_owned(),
+        description: "Call when response passes".to_owned(),
+        parameters: serde_json::json!({"type": "object", "properties": {}}),
+        prompt_snippet: None,
+        prompt_guidelines: vec![],
+        server_tool_type: None,
+    }];
+    actor.handle_register_plugin_tools(
+        "judge",
+        &None,
+        &definitions,
+        Some(target_session_id.clone()),
+        &ctx,
+    );
+
+    // When calling the tool from the correct session A.
+    let cmd = Command::ExecuteToolBatch(ExecuteToolBatch {
+        session_id: target_session_id.clone(),
+        tool_calls: vec![ToolCall {
+            id: "call_1".to_owned(),
+            name: "judgment_passed".to_owned(),
+            arguments: "{}".to_owned(),
+        }],
+        dispatched_at: jiff::Timestamp::now(),
+    });
+    actor.handle_command(&cmd, &ctx);
+
+    // Then the tool execution succeeds.
+    tokio::time::sleep(std::time::Duration::from_millis(100)).await;
+    let events = sink.take_events();
+    let completed = find_execution_completed(&events);
+    assert_eq!(completed.len(), 1);
+    assert!(completed[0].result.success);
+}
+
+// --- dispatched_at integration tests ---
+
+#[rstest::rstest]
+#[tokio::test]
+async fn dispatched_at_flows_to_tool_execution_started() {
+    // Given an activated tool orchestrator with bash registered.
+    let (sink, mut ctx, deps) = default_test_ctx();
+    let mut actor = ToolOrchestratorActor::activate(deps, &mut ctx);
+    sink.clear();
+
+    let session_id = SessionId::new();
+    let dispatched = jiff::Timestamp::now();
+
+    // When executing a batch with a bash tool call.
+    let cmd = Command::ExecuteToolBatch(ExecuteToolBatch {
+        session_id: session_id.clone(),
+        tool_calls: vec![ToolCall {
+            id: "call_dispatched".to_owned(),
+            name: "bash".to_owned(),
+            arguments: serde_json::json!({ "command": "echo hello" }).to_string(),
+        }],
+        dispatched_at: dispatched,
+    });
+    actor.handle_command(&cmd, &ctx);
+
+    // Then the emitted ToolExecutionStarted carries the same dispatched_at.
+    tokio::time::sleep(std::time::Duration::from_millis(100)).await;
+    let events = sink.take_events();
+    let started = find_execution_started(&events);
+    assert!(
+        !started.is_empty(),
+        "expected ToolExecutionStarted event, got {:?}",
+        events
+            .iter()
+            .map(|e| format!("{:?}", e))
+            .collect::<Vec<_>>()
+    );
+    assert_eq!(started[0].dispatched_at, dispatched);
 }
