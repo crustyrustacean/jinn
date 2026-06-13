@@ -615,6 +615,7 @@ impl LlmActor {
 
 #[cfg(test)]
 mod test_fakes {
+    #![allow(clippy::expect_used, clippy::indexing_slicing, reason = "test code")]
     use super::*;
     use jinn_provider::{ChatStream, LlmServiceFactory, ToolStream};
 

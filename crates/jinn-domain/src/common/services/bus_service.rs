@@ -245,7 +245,7 @@ impl fmt::Debug for BusAudit {
 
 #[cfg(test)]
 mod tests {
-    #![allow(clippy::indexing_slicing, reason = "test code")]
+    #![allow(clippy::expect_used, clippy::indexing_slicing, reason = "test code")]
     use super::*;
 
     #[derive(Debug, Clone, PartialEq, Eq)]
