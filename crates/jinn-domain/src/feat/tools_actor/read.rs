@@ -243,8 +243,6 @@ fn apply_offset_limit(content: &str, offset: Option<usize>, limit: Option<usize>
     result
 }
 
-//FIXME: disabled during actor migration — tests reference deleted types
-//FIXME: disabled during actor migration
 // #[cfg(test)]
 #[cfg(test)]
 mod tests {

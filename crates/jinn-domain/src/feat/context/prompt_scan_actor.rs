@@ -242,8 +242,6 @@ impl PromptScanActor {
     }
 }
 
-//FIXME: disabled during actor migration — tests reference deleted types
-//FIXME: plugin migration
 #[cfg(test)]
 mod tests {
     #![allow(

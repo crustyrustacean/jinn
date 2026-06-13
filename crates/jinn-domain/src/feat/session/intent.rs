@@ -38,7 +38,6 @@ pub fn handle_rescan_prompt_templates(state: &mut AppState) -> IntentResult {
     IntentResult::with_message(RescanPromptTemplates { session_id })
 }
 
-//FIXME: disabled during actor migration — tests reference deleted types
 #[cfg(test)]
 mod tests {
     #![allow(

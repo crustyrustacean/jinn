@@ -224,7 +224,6 @@ impl SessionPersistenceActor {
     }
 }
 
-//FIXME: plugin migration
 #[cfg(test)]
 mod tests {
     #![allow(

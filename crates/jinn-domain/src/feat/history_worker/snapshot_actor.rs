@@ -94,7 +94,6 @@ impl BusPublish for HistorySnapshotActor {
     }
 }
 
-//FIXME: disabled during actor migration — tests reference deleted types
 #[cfg(test)]
 mod tests {
     #![allow(
