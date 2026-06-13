@@ -253,7 +253,6 @@ fn merge_context_lengths_from_models_dev(
 
 //FIXME: disabled during actor migration — tests reference deleted types
 //FIXME: plugin migration
-#[cfg(any())]
 mod tests {
     #![allow(
         clippy::expect_used,
@@ -275,6 +274,7 @@ mod tests {
     use crate::feat::provider::protocol::command::LoadCompactionModelPickerEntries;
     use crate::feat::provider::protocol::command::LoadProviderPickerEntries;
     use crate::feat::provider::protocol::command::ProviderSwitch;
+    use crate::feat::provider::protocol::event::ProviderSwitched;
     use crate::feat::session::model_selection::ModelSelection;
     use crate::feat::ui::picker_states::PickerExt;
 
@@ -887,12 +887,13 @@ mod tests {
         spawn_actor(&harness, &state, harness.actor_deps().await).await;
         let session_id = state.read().session.active_session_id().clone();
 
-        // When sending a ProviderSwitch command.
-        let cmd = Command::ProviderSwitch(ProviderSwitch {
-            session_id: session_id.clone(),
-            provider_id: ModelSelection::Single("ollama/llama3".to_owned()),
-        });
-        actor.handle(ActorEnvelope::Command(cmd), &ctx).await;
+        // When publishing ProviderSwitch via bus.
+        harness
+            .publish(ProviderSwitch {
+                session_id: session_id.clone(),
+                provider_id: ModelSelection::Single("ollama/llama3".to_owned()),
+            })
+            .await;
 
         // Then the session model is updated.
         let recorded = await_recorded(&recorder, 1, std::time::Duration::from_secs(2)).await;
