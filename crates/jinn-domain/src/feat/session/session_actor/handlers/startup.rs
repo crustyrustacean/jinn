@@ -116,7 +116,6 @@ impl SessionPersistenceActor {
     }
 }
 
-
 #[cfg(test)]
 mod tests {
     #![allow(
