@@ -215,6 +215,10 @@ impl ActorSystemBuilder {
         };
         let bridge = jinn_domain::common::bridge::Bridge::new(bus.actor_ref().clone());
 
+        // Root supervision tree: every spawned actor becomes a supervised
+        // child so that stopping the root cascades a graceful shutdown.
+        let root = jinn_domain::common::root_supervisor::RootSupervisor::spawn_root().await;
+
         let services = Services {
             paths: paths.clone(),
             handle: handle.clone(),
@@ -244,6 +248,7 @@ impl ActorSystemBuilder {
             tempdir: None,
             bus,
             bridge,
+            root_supervisor: root.clone(),
         };
 
         // Global-scoped plugin tools will be registered after the tools actor spawns.
@@ -262,96 +267,136 @@ impl ActorSystemBuilder {
         // ── Infrastructure actors ──────────────────────────────────────────
 
         // System-ready actor: signals main thread when all actors started.
-        let (ready_tx, ready_rx) = tokio::sync::oneshot::channel::<()>();
-        let _system_ready = SystemReadyActor::spawn(SystemReadyActorDeps {
-            deps: actor_deps.clone(),
-            ready_tx,
-        });
+        let (ready_tx, ready_rx) = kanal::unbounded::<()>();
+        let _system_ready = SystemReadyActor::supervise(
+            &root,
+            SystemReadyActorDeps {
+                deps: actor_deps.clone(),
+                ready_tx,
+            },
+        )
+        .restart_policy(kameo::supervision::RestartPolicy::Never)
+        .spawn()
+        .await;
 
         // ── Init actors ────────────────────────────────────────────────────
 
         // Env init: registers in actor registry, defers config loading to GetEnvironmentConfig ask.
-        let env_init = EnvInitActor::spawn(EnvInitActorDeps {
-            deps: actor_deps.clone(),
-            registry_name: Some("env-init"),
-        });
+        let env_init = EnvInitActor::supervise(
+            &root,
+            EnvInitActorDeps {
+                deps: actor_deps.clone(),
+                registry_name: Some("env-init"),
+            },
+        )
+        .restart_policy(kameo::supervision::RestartPolicy::Never)
+        .spawn()
+        .await;
         env_init.wait_for_startup().await;
         // Provider init: on EnvironmentLoaded, builds registry, merges cache, resolves last_model.
-        let _provider_init = ProviderInitActor::spawn(ProviderInitActorDeps {
-            deps: actor_deps.clone(),
-            state: state.clone(),
-        });
+        let _provider_init = ProviderInitActor::supervise(
+            &root,
+            ProviderInitActorDeps {
+                deps: actor_deps.clone(),
+                state: state.clone(),
+            },
+        )
+        .restart_policy(kameo::supervision::RestartPolicy::Never)
+        .spawn()
+        .await;
 
         // Preferences: loads and persists user preferences.
         let _preferences =
-            jinn_domain::feat::preferences_actor::preferences_actor::PreferencesActor::spawn(
+            jinn_domain::feat::preferences_actor::preferences_actor::PreferencesActor::supervise(
+                &root,
                 jinn_domain::feat::preferences_actor::preferences_actor::PreferencesActorDeps {
                     deps: actor_deps.clone(),
                 },
-            );
+            )
+            .restart_policy(kameo::supervision::RestartPolicy::Never)
+            .spawn()
+            .await;
 
         // Preferences state sync: updates AppState from PreferencesUpdated events.
         let _preferences_sync =
-            jinn_domain::feat::preferences_actor::preferences_state_sync_actor::PreferencesStateSyncActor::spawn(
+            jinn_domain::feat::preferences_actor::preferences_state_sync_actor::PreferencesStateSyncActor::supervise(&root,
                 jinn_domain::feat::preferences_actor::preferences_state_sync_actor::PreferencesStateSyncActorDeps {
                     deps: actor_deps.clone(),
                     state: state.clone(),
                 },
-            );
+            ).restart_policy(kameo::supervision::RestartPolicy::Never).spawn().await;
 
         // App state actor: persists state changes to state.toml.
         let _app_state =
-            jinn_domain::feat::preferences_actor::app_state_actor::AppStateActor::spawn(
+            jinn_domain::feat::preferences_actor::app_state_actor::AppStateActor::supervise(
+                &root,
                 jinn_domain::feat::preferences_actor::app_state_actor::AppStateActorDeps {
                     deps: actor_deps.clone(),
                 },
-            );
+            )
+            .restart_policy(kameo::supervision::RestartPolicy::Never)
+            .spawn()
+            .await;
 
         // App state sync: updates AppState from AppStateUpdated events.
         let _app_state_sync =
-            jinn_domain::feat::preferences_actor::app_state_sync_actor::AppStateSyncActor::spawn(
+            jinn_domain::feat::preferences_actor::app_state_sync_actor::AppStateSyncActor::supervise(&root,
                 jinn_domain::feat::preferences_actor::app_state_sync_actor::AppStateSyncActorDeps {
                     deps: actor_deps.clone(),
                     state: state.clone(),
                 },
-            );
+            ).restart_policy(kameo::supervision::RestartPolicy::Never).spawn().await;
 
         // ── Domain actors ──────────────────────────────────────────────────
 
         // LLM streaming actor.
-        let _llm = jinn_domain::feat::llm_actor::LlmActor::spawn(
+        let _llm = jinn_domain::feat::llm_actor::LlmActor::supervise(
+            &root,
             jinn_domain::feat::llm_actor::LlmActorDeps {
                 factory: llm_service.clone(),
                 deps: actor_deps.clone(),
                 state: state.clone(),
             },
-        );
+        )
+        .restart_policy(kameo::supervision::RestartPolicy::Never)
+        .spawn()
+        .await;
 
         // Model discovery actor.
-        let _discover = jinn_domain::feat::provider::discover_actor::DiscoverActor::spawn(
+        let _discover = jinn_domain::feat::provider::discover_actor::DiscoverActor::supervise(
+            &root,
             jinn_domain::feat::provider::discover_actor::DiscoverActorDeps {
                 deps: actor_deps.clone(),
                 state: state.clone(),
             },
-        );
+        )
+        .restart_policy(kameo::supervision::RestartPolicy::Never)
+        .spawn()
+        .await;
 
         // Session persistence actor — must spawn before ToolOrchestratorActor so
         // ToolsRegistered subscription is ready when tools register builtins in on_start.
         let token_counter = TiktokenCounter::o200k_base();
-        let _session = jinn_domain::feat::session::session_actor::SessionPersistenceActor::spawn(
-            jinn_domain::feat::session::session_actor::SessionPersistenceActorDeps {
-                deps: actor_deps.clone(),
-                state: state.clone(),
-                counter: token_counter,
-                builtin_registry:
-                    jinn_domain::feat::session_lifecycle::builtin::BuiltinRegistry::new(),
-                shell: std::env::var("SHELL").unwrap_or_else(|_| "/bin/sh".to_owned()),
-            },
-        );
+        let _session =
+            jinn_domain::feat::session::session_actor::SessionPersistenceActor::supervise(
+                &root,
+                jinn_domain::feat::session::session_actor::SessionPersistenceActorDeps {
+                    deps: actor_deps.clone(),
+                    state: state.clone(),
+                    counter: token_counter,
+                    builtin_registry:
+                        jinn_domain::feat::session_lifecycle::builtin::BuiltinRegistry::new(),
+                    shell: std::env::var("SHELL").unwrap_or_else(|_| "/bin/sh".to_owned()),
+                },
+            )
+            .restart_policy(kameo::supervision::RestartPolicy::Never)
+            .spawn()
+            .await;
         _session.wait_for_startup().await;
 
         // Tool orchestrator actor.
-        let _tools = jinn_domain::feat::tools_actor::ToolOrchestratorActor::spawn(
+        let _tools = jinn_domain::feat::tools_actor::ToolOrchestratorActor::supervise(
+            &root,
             jinn_domain::feat::tools_actor::ToolOrchestratorActorDeps {
                 deps: actor_deps.clone(),
                 state: state.clone(),
@@ -359,7 +404,10 @@ impl ActorSystemBuilder {
                 builtin_filter: None,
                 shell: std::env::var("SHELL").unwrap_or_else(|_| "/bin/sh".to_owned()),
             },
-        );
+        )
+        .restart_policy(kameo::supervision::RestartPolicy::Never)
+        .spawn()
+        .await;
         _tools.wait_for_startup().await;
 
         // Register global-scoped plugin tools with the tools actor.
@@ -427,99 +475,153 @@ impl ActorSystemBuilder {
                 ))
             }
         };
-        let _web_fetch = WebFetchActor::spawn(WebFetchActorDeps {
-            deps: actor_deps.clone(),
-            web_fetcher,
-        });
+        let _web_fetch = WebFetchActor::supervise(
+            &root,
+            WebFetchActorDeps {
+                deps: actor_deps.clone(),
+                web_fetcher,
+            },
+        )
+        .restart_policy(kameo::supervision::RestartPolicy::Never)
+        .spawn()
+        .await;
 
         // Prompt scan actor.
-        let _prompt_scan = jinn_domain::feat::context::prompt_scan_actor::PromptScanActor::spawn(
-            jinn_domain::feat::context::prompt_scan_actor::PromptScanActorDeps {
-                deps: actor_deps.clone(),
-                state: state.clone(),
-            },
-        );
+        let _prompt_scan =
+            jinn_domain::feat::context::prompt_scan_actor::PromptScanActor::supervise(
+                &root,
+                jinn_domain::feat::context::prompt_scan_actor::PromptScanActorDeps {
+                    deps: actor_deps.clone(),
+                    state: state.clone(),
+                },
+            )
+            .restart_policy(kameo::supervision::RestartPolicy::Never)
+            .spawn()
+            .await;
 
         // Context-files scan actor.
         let _context_files =
-            jinn_domain::feat::context::context_files_scan_actor::ContextFilesScanActor::spawn(
+            jinn_domain::feat::context::context_files_scan_actor::ContextFilesScanActor::supervise(
+                &root,
                 jinn_domain::feat::context::context_files_scan_actor::ContextFilesScanActorDeps {
                     deps: actor_deps.clone(),
                     state: state.clone(),
                 },
-            );
+            )
+            .restart_policy(kameo::supervision::RestartPolicy::Never)
+            .spawn()
+            .await;
 
         // Skills scan actor.
-        let _skills_scan = jinn_domain::feat::skills::skills_scan_actor::SkillsScanActor::spawn(
-            jinn_domain::feat::skills::skills_scan_actor::SkillsScanActorDeps {
-                deps: actor_deps.clone(),
-                state: state.clone(),
-            },
-        );
+        let _skills_scan =
+            jinn_domain::feat::skills::skills_scan_actor::SkillsScanActor::supervise(
+                &root,
+                jinn_domain::feat::skills::skills_scan_actor::SkillsScanActorDeps {
+                    deps: actor_deps.clone(),
+                    state: state.clone(),
+                },
+            )
+            .restart_policy(kameo::supervision::RestartPolicy::Never)
+            .spawn()
+            .await;
 
         // Discovery coordinator.
         let _discovery_coordinator =
-            jinn_domain::feat::discovery_coordinator::DiscoveryCoordinatorActor::spawn(
+            jinn_domain::feat::discovery_coordinator::DiscoveryCoordinatorActor::supervise(
+                &root,
                 jinn_domain::feat::discovery_coordinator::DiscoveryCoordinatorActorDeps {
                     deps: actor_deps.clone(),
                     state: state.clone(),
                 },
-            );
+            )
+            .restart_policy(kameo::supervision::RestartPolicy::Never)
+            .spawn()
+            .await;
 
         // Discovery notifier.
         let _discovery_notifier =
-            jinn_domain::feat::discovery_notifier::DiscoveryNotifierActor::spawn(
+            jinn_domain::feat::discovery_notifier::DiscoveryNotifierActor::supervise(
+                &root,
                 jinn_domain::feat::discovery_notifier::DiscoveryNotifierActorDeps {
                     deps: actor_deps.clone(),
                 },
-            );
+            )
+            .restart_policy(kameo::supervision::RestartPolicy::Never)
+            .spawn()
+            .await;
 
         // Persona scan actor.
-        let _persona_scan = jinn_domain::feat::persona::persona_scan_actor::PersonaScanActor::spawn(
-            jinn_domain::feat::persona::persona_scan_actor::PersonaScanActorDeps {
-                deps: actor_deps.clone(),
-            },
-        );
+        let _persona_scan =
+            jinn_domain::feat::persona::persona_scan_actor::PersonaScanActor::supervise(
+                &root,
+                jinn_domain::feat::persona::persona_scan_actor::PersonaScanActorDeps {
+                    deps: actor_deps.clone(),
+                },
+            )
+            .restart_policy(kameo::supervision::RestartPolicy::Never)
+            .spawn()
+            .await;
 
         // Provider actor.
-        let _provider = jinn_domain::feat::provider::provider_actor::ProviderActor::spawn(
+        let _provider = jinn_domain::feat::provider::provider_actor::ProviderActor::supervise(
+            &root,
             jinn_domain::feat::provider::provider_actor::ProviderActorDeps {
                 state: state.clone(),
                 deps: actor_deps.clone(),
             },
-        );
+        )
+        .restart_policy(kameo::supervision::RestartPolicy::Never)
+        .spawn()
+        .await;
 
-        let _token_count = jinn_domain::feat::token_count_actor::TokenCountActor::spawn(
+        let _token_count = jinn_domain::feat::token_count_actor::TokenCountActor::supervise(
+            &root,
             jinn_domain::feat::token_count_actor::TokenCountActorDeps {
                 deps: actor_deps.clone(),
                 state: state.clone(),
             },
-        );
+        )
+        .restart_policy(kameo::supervision::RestartPolicy::Never)
+        .spawn()
+        .await;
 
         // Queue actor.
-        let _queue = jinn_domain::feat::queue_actor::QueueActor::spawn(
+        let _queue = jinn_domain::feat::queue_actor::QueueActor::supervise(
+            &root,
             jinn_domain::feat::queue_actor::QueueActorDeps {
                 deps: actor_deps.clone(),
                 state: state.clone(),
                 counter: token_counter,
             },
-        );
+        )
+        .restart_policy(kameo::supervision::RestartPolicy::Never)
+        .spawn()
+        .await;
 
         // Context size actor.
-        let _context_size = jinn_domain::feat::context::context_size_actor::ContextSizeActor::spawn(
-            jinn_domain::feat::context::context_size_actor::ContextSizeActorDeps {
-                deps: actor_deps.clone(),
-                state: state.clone(),
-                counter: token_counter,
-            },
-        );
+        let _context_size =
+            jinn_domain::feat::context::context_size_actor::ContextSizeActor::supervise(
+                &root,
+                jinn_domain::feat::context::context_size_actor::ContextSizeActorDeps {
+                    deps: actor_deps.clone(),
+                    state: state.clone(),
+                    counter: token_counter,
+                },
+            )
+            .restart_policy(kameo::supervision::RestartPolicy::Never)
+            .spawn()
+            .await;
 
         // Echo actor.
-        let _echo = jinn_domain::feat::echo_actor::EchoActor::spawn(
+        let _echo = jinn_domain::feat::echo_actor::EchoActor::supervise(
+            &root,
             jinn_domain::feat::echo_actor::EchoActorDeps {
                 deps: actor_deps.clone(),
             },
-        );
+        )
+        .restart_policy(kameo::supervision::RestartPolicy::Never)
+        .spawn()
+        .await;
 
         // ── History mutation workers ───────────────────��──────────────────────
         //
@@ -535,10 +637,16 @@ impl ActorSystemBuilder {
                 HistorySnapshotActor, HistorySnapshotActorDeps,
             };
 
-            let _snapshot = HistorySnapshotActor::spawn(HistorySnapshotActorDeps {
-                deps: actor_deps.clone(),
-                state: state.clone(),
-            });
+            let _snapshot = HistorySnapshotActor::supervise(
+                &root,
+                HistorySnapshotActorDeps {
+                    deps: actor_deps.clone(),
+                    state: state.clone(),
+                },
+            )
+            .restart_policy(kameo::supervision::RestartPolicy::Never)
+            .spawn()
+            .await;
         }
 
         // Compaction worker.
@@ -548,11 +656,16 @@ impl ActorSystemBuilder {
                 HistoryWorkerActor, HistoryWorkerActorDeps,
             };
 
-            let _compaction =
-                HistoryWorkerActor::<CompactionWorker>::spawn(HistoryWorkerActorDeps {
+            let _compaction = HistoryWorkerActor::<CompactionWorker>::supervise(
+                &root,
+                HistoryWorkerActorDeps {
                     deps: actor_deps.clone(),
                     worker: CompactionWorker::new(services.clone(), handle.clone(), state.clone()),
-                });
+                },
+            )
+            .restart_policy(kameo::supervision::RestartPolicy::Never)
+            .spawn()
+            .await;
         }
 
         // Compaction trigger actor.
@@ -561,10 +674,16 @@ impl ActorSystemBuilder {
                 CompactionTriggerActor, CompactionTriggerActorDeps, CompactionWorker,
             };
 
-            let _trigger = CompactionTriggerActor::spawn(CompactionTriggerActorDeps {
-                deps: actor_deps.clone(),
-                worker: CompactionWorker::new(services.clone(), handle.clone(), state.clone()),
-            });
+            let _trigger = CompactionTriggerActor::supervise(
+                &root,
+                CompactionTriggerActorDeps {
+                    deps: actor_deps.clone(),
+                    worker: CompactionWorker::new(services.clone(), handle.clone(), state.clone()),
+                },
+            )
+            .restart_policy(kameo::supervision::RestartPolicy::Never)
+            .spawn()
+            .await;
         }
 
         // Auto-prune worker: read→edit context pruning.
@@ -577,11 +696,16 @@ impl ActorSystemBuilder {
             let config = user_preferences_storage.read().auto_prune.read_edit.clone();
 
             if config.enabled {
-                let _worker =
-                    HistoryWorkerActor::<ReadEditAutoPruneWorker>::spawn(HistoryWorkerActorDeps {
+                let _worker = HistoryWorkerActor::<ReadEditAutoPruneWorker>::supervise(
+                    &root,
+                    HistoryWorkerActorDeps {
                         deps: actor_deps.clone(),
                         worker: ReadEditAutoPruneWorker { config },
-                    });
+                    },
+                )
+                .restart_policy(kameo::supervision::RestartPolicy::Never)
+                .spawn()
+                .await;
             }
         }
 
@@ -595,11 +719,16 @@ impl ActorSystemBuilder {
             let config = user_preferences_storage.read().auto_prune.edit_read.clone();
 
             if config.enabled {
-                let _worker =
-                    HistoryWorkerActor::<EditReadAutoPruneWorker>::spawn(HistoryWorkerActorDeps {
+                let _worker = HistoryWorkerActor::<EditReadAutoPruneWorker>::supervise(
+                    &root,
+                    HistoryWorkerActorDeps {
                         deps: actor_deps.clone(),
                         worker: EditReadAutoPruneWorker { config },
-                    });
+                    },
+                )
+                .restart_policy(kameo::supervision::RestartPolicy::Never)
+                .spawn()
+                .await;
             }
         }
 
@@ -614,12 +743,16 @@ impl ActorSystemBuilder {
             if regex_config.enabled && !regex_config.rules.is_empty() {
                 match RegexAutoPruneWorker::from_config(&regex_config) {
                     Ok(worker) => {
-                        let _worker = HistoryWorkerActor::<RegexAutoPruneWorker>::spawn(
+                        let _worker = HistoryWorkerActor::<RegexAutoPruneWorker>::supervise(
+                            &root,
                             HistoryWorkerActorDeps {
                                 deps: actor_deps.clone(),
                                 worker,
                             },
-                        );
+                        )
+                        .restart_policy(kameo::supervision::RestartPolicy::Never)
+                        .spawn()
+                        .await;
                     }
                     Err(e) => {
                         tracing::warn!(err=?e, "invalid regex in auto_prune config, skipping");
@@ -644,11 +777,16 @@ impl ActorSystemBuilder {
             let config = user_preferences_storage.read().auto_prune.todo.clone();
 
             if config.enabled {
-                let _worker =
-                    HistoryWorkerActor::<TodoAutoPruneWorker>::spawn(HistoryWorkerActorDeps {
+                let _worker = HistoryWorkerActor::<TodoAutoPruneWorker>::supervise(
+                    &root,
+                    HistoryWorkerActorDeps {
                         deps: actor_deps.clone(),
                         worker: TodoAutoPruneWorker { config },
-                    });
+                    },
+                )
+                .restart_policy(kameo::supervision::RestartPolicy::Never)
+                .spawn()
+                .await;
             }
         }
 
@@ -666,12 +804,16 @@ impl ActorSystemBuilder {
                 .clone();
 
             if config.enabled {
-                let _worker = HistoryWorkerActor::<BrokenEditAutoPruneWorker>::spawn(
+                let _worker = HistoryWorkerActor::<BrokenEditAutoPruneWorker>::supervise(
+                    &root,
                     HistoryWorkerActorDeps {
                         deps: actor_deps.clone(),
                         worker: BrokenEditAutoPruneWorker { config },
                     },
-                );
+                )
+                .restart_policy(kameo::supervision::RestartPolicy::Never)
+                .spawn()
+                .await;
             }
         }
 
@@ -689,12 +831,16 @@ impl ActorSystemBuilder {
                 .clone();
 
             if config.enabled {
-                let _worker = HistoryWorkerActor::<DoubleEditAutoPruneWorker>::spawn(
+                let _worker = HistoryWorkerActor::<DoubleEditAutoPruneWorker>::supervise(
+                    &root,
                     HistoryWorkerActorDeps {
                         deps: actor_deps.clone(),
                         worker: DoubleEditAutoPruneWorker { config },
                     },
-                );
+                )
+                .restart_policy(kameo::supervision::RestartPolicy::Never)
+                .spawn()
+                .await;
             }
         }
 
@@ -712,12 +858,16 @@ impl ActorSystemBuilder {
                 .clone();
 
             if config.enabled {
-                let _worker = HistoryWorkerActor::<ConsecutiveReadsAutoPruneWorker>::spawn(
+                let _worker = HistoryWorkerActor::<ConsecutiveReadsAutoPruneWorker>::supervise(
+                    &root,
                     HistoryWorkerActorDeps {
                         deps: actor_deps.clone(),
                         worker: ConsecutiveReadsAutoPruneWorker { config },
                     },
-                );
+                )
+                .restart_policy(kameo::supervision::RestartPolicy::Never)
+                .spawn()
+                .await;
             }
         }
 
@@ -730,12 +880,16 @@ impl ActorSystemBuilder {
             use jinn_domain::feat::auto_prune_worker::HistoryWorkerChatEntryTokenCacheEvictionActor;
             use jinn_domain::feat::auto_prune_worker::HistoryWorkerChatEntryTokenCacheEvictionActorDeps;
 
-            let _eviction = HistoryWorkerChatEntryTokenCacheEvictionActor::spawn(
+            let _eviction = HistoryWorkerChatEntryTokenCacheEvictionActor::supervise(
+                &root,
                 HistoryWorkerChatEntryTokenCacheEvictionActorDeps {
                     deps: actor_deps.clone(),
                     cache: entry_token_cache.clone(),
                 },
-            );
+            )
+            .restart_policy(kameo::supervision::RestartPolicy::Never)
+            .spawn()
+            .await;
         }
 
         // Auto-prune worker: tool-age-window context pruning.
@@ -752,12 +906,16 @@ impl ActorSystemBuilder {
                 .clone();
 
             if config.enabled {
-                let _worker = HistoryWorkerActor::<ToolAgeWindowAutoPruneWorker>::spawn(
+                let _worker = HistoryWorkerActor::<ToolAgeWindowAutoPruneWorker>::supervise(
+                    &root,
                     HistoryWorkerActorDeps {
                         deps: actor_deps.clone(),
                         worker: ToolAgeWindowAutoPruneWorker { config },
                     },
-                );
+                )
+                .restart_policy(kameo::supervision::RestartPolicy::Never)
+                .spawn()
+                .await;
             }
         }
 
@@ -776,7 +934,8 @@ impl ActorSystemBuilder {
                 .clone();
 
             if config.enabled {
-                let _worker = HistoryWorkerActor::<TrivialAssistantAutoPruneWorker>::spawn(
+                let _worker = HistoryWorkerActor::<TrivialAssistantAutoPruneWorker>::supervise(
+                    &root,
                     HistoryWorkerActorDeps {
                         deps: actor_deps.clone(),
                         worker: TrivialAssistantAutoPruneWorker {
@@ -785,7 +944,10 @@ impl ActorSystemBuilder {
                             counter: TiktokenCounter::o200k_base(),
                         },
                     },
-                );
+                )
+                .restart_policy(kameo::supervision::RestartPolicy::Never)
+                .spawn()
+                .await;
             }
         }
 
@@ -802,14 +964,18 @@ impl ActorSystemBuilder {
             };
 
             if shield_config.enabled {
-                let _worker = HistoryWorkerActor::<AnchorShieldAutoPruneWorker>::spawn(
+                let _worker = HistoryWorkerActor::<AnchorShieldAutoPruneWorker>::supervise(
+                    &root,
                     HistoryWorkerActorDeps {
                         deps: actor_deps.clone(),
                         worker: AnchorShieldAutoPruneWorker {
                             config: shield_config,
                         },
                     },
-                );
+                )
+                .restart_policy(kameo::supervision::RestartPolicy::Never)
+                .spawn()
+                .await;
             }
         }
 
@@ -830,7 +996,8 @@ impl ActorSystemBuilder {
             };
 
             if config.enabled {
-                let _worker = HistoryWorkerActor::<AnchoredAssistantAutoPruneWorker>::spawn(
+                let _worker = HistoryWorkerActor::<AnchoredAssistantAutoPruneWorker>::supervise(
+                    &root,
                     HistoryWorkerActorDeps {
                         deps: actor_deps.clone(),
                         worker: AnchoredAssistantAutoPruneWorker {
@@ -841,26 +1008,39 @@ impl ActorSystemBuilder {
                             counter: TiktokenCounter::o200k_base(),
                         },
                     },
-                );
+                )
+                .restart_policy(kameo::supervision::RestartPolicy::Never)
+                .spawn()
+                .await;
             }
         }
 
         // Sidebar state actor.
         let _sidebar =
-            jinn_domain::feat::ui::sidebar::sidebar_state_actor::SidebarStateActor::spawn(
+            jinn_domain::feat::ui::sidebar::sidebar_state_actor::SidebarStateActor::supervise(
+                &root,
                 jinn_domain::feat::ui::sidebar::sidebar_state_actor::SidebarStateActorDeps {
                     deps: actor_deps.clone(),
                     state: state.clone(),
                 },
-            );
+            )
+            .restart_policy(kameo::supervision::RestartPolicy::Never)
+            .spawn()
+            .await;
 
-        let _plugin_dispatch = PluginDispatchActor::spawn(PluginDispatchActorDeps {
-            deps: actor_deps.clone(),
-            services: services.clone(),
-            state: state.clone(),
-            startup_session_id: state.read().session.active_session_id().to_string(),
-            domain_ctx: shared_domain_ctx.clone(),
-        });
+        let _plugin_dispatch = PluginDispatchActor::supervise(
+            &root,
+            PluginDispatchActorDeps {
+                deps: actor_deps.clone(),
+                services: services.clone(),
+                state: state.clone(),
+                startup_session_id: state.read().session.active_session_id().to_string(),
+                domain_ctx: shared_domain_ctx.clone(),
+            },
+        )
+        .restart_policy(kameo::supervision::RestartPolicy::Never)
+        .spawn()
+        .await;
 
         // Signal system readiness and trigger init chain.
         {
@@ -894,7 +1074,7 @@ impl ActorSystemBuilder {
         }
 
         // Wait for SystemReadyActor to confirm readiness.
-        let _ = ready_rx.await;
+        let _ = ready_rx.to_async().recv().await;
 
         // Build AppCore with shared state and sender.
         let core = AppCore {

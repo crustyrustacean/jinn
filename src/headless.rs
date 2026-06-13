@@ -6,7 +6,9 @@
 use error_stack::{Report, ResultExt};
 use jinn_domain::EnqueueUserMessage;
 use jinn_domain::IntentHandler;
+use jinn_domain::common::services::Services;
 use jinn_domain::{AppCore, Bridge, ChatEntry};
+use std::time::Duration;
 use wherror::Error;
 
 /// Error type for headless operations.
@@ -21,13 +23,21 @@ pub struct HeadlessError;
 pub struct HeadlessApp {
     /// Application core (state, message channel).
     core: AppCore,
+    /// Services container — holds the root supervisor for shutdown.
+    services: Services,
 }
 
 impl HeadlessApp {
-    /// Creates a new headless app with the given core.
+    /// Creates a new headless app with the given core and services.
     #[must_use]
-    pub fn new(core: AppCore) -> Self {
-        Self { core }
+    pub fn new(core: AppCore, services: Services) -> Self {
+        Self { core, services }
+    }
+
+    /// Returns a handle to the root supervisor actor ref.
+    #[must_use]
+    pub fn root_supervisor(&self) -> jinn_domain::common::root_supervisor::RootSupervisorRef {
+        self.services.root_supervisor.clone()
     }
 
     /// Sends a chat message through the core pipeline.
@@ -116,10 +126,19 @@ impl HeadlessApp {
         }
     }
 
-    /// Shuts down gracefully.
-    pub fn shutdown(&mut self) {
-        //FIXME: disabled during actor migration — shutdown coordination needs kameo-based design
-        tracing::info!("HeadlessApp::shutdown called (no-op during migration)");
+    /// Shuts down the actor system gracefully.
+    ///
+    /// Signals the root supervisor to stop, cascading to all supervised child
+    /// actors, then races the shutdown barrier against a 20-second timeout.
+    pub fn shutdown(&self) {
+        let root = self.services.root_supervisor.clone();
+        let result = self.services.handle.block_on(async {
+            root.stop_gracefully().await;
+            tokio::time::timeout(Duration::from_secs(20), root.wait_for_shutdown()).await
+        });
+        if result.is_err() {
+            tracing::warn!("headless actor shutdown timed out after 20s; proceeding");
+        }
     }
 }
 

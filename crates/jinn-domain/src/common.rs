@@ -17,6 +17,7 @@ pub mod line_input;
 pub mod path_display;
 pub mod process_kill;
 pub mod render_ctx;
+pub mod root_supervisor;
 pub mod services;
 pub mod session_map;
 pub mod state;

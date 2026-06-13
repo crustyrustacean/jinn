@@ -22,6 +22,7 @@ pub struct CompactionTriggerActor {
 }
 
 /// Dependencies for spawning a [`CompactionTriggerActor`].
+#[derive(Clone)]
 pub struct CompactionTriggerActorDeps {
     /// Universal actor dependencies (bus, services, etc.).
     pub deps: ActorDeps,

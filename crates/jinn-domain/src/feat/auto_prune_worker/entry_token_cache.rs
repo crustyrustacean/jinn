@@ -137,6 +137,7 @@ pub struct HistoryWorkerChatEntryTokenCacheEvictionActor {
 }
 
 /// Dependencies for spawning a [`HistoryWorkerChatEntryTokenCacheEvictionActor`].
+#[derive(Clone)]
 pub struct HistoryWorkerChatEntryTokenCacheEvictionActorDeps {
     /// Universal actor dependencies (bus, services, etc.).
     pub deps: ActorDeps,

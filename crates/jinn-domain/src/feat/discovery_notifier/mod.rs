@@ -17,6 +17,7 @@ use crate::feat::discovery_coordinator::SessionDiscoverySettled;
 use crate::protocol::ChatEntry;
 
 /// Dependencies injected at startup.
+#[derive(Clone)]
 pub struct DiscoveryNotifierActorDeps {
     /// Universal actor dependencies (bus, services, etc.).
     pub deps: ActorDeps,

@@ -28,8 +28,8 @@ pub struct HistoryWorkerActor<H: HistoryWorker> {
     in_flight: HashSet<SessionId>,
 }
 
-/// Dependencies for [`HistoryWorkerActor`].
-pub struct HistoryWorkerActorDeps<H: HistoryWorker> {
+#[derive(Clone)]
+pub struct HistoryWorkerActorDeps<H: HistoryWorker + Clone> {
     /// Universal actor dependencies (bus, services, etc.).
     pub deps: ActorDeps,
     /// The worker heuristic implementation.

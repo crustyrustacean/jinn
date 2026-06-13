@@ -14,6 +14,7 @@ use crate::feat::chat_input::protocol::event::ChatEntrySubmitted;
 use crate::protocol::{ChatEntry, ChatEntryKind};
 
 /// Dependencies for spawning an [`EchoActor`].
+#[derive(Clone)]
 pub struct EchoActorDeps {
     /// Universal actor dependencies (bus, services, etc.).
     pub deps: ActorDeps,

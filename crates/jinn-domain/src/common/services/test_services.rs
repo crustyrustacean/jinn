@@ -261,6 +261,20 @@ impl TestServices {
             crate::common::bridge::Bridge::with_handle(bus.actor_ref().clone(), handle.clone())
         };
 
+        // RootSupervisor::spawn calls tokio::spawn internally — same runtime
+        // detection as the bus spawn above.
+        let root_supervisor = if tokio::runtime::Handle::try_current().is_ok() {
+            crate::common::root_supervisor::RootSupervisor::spawn(
+                crate::common::root_supervisor::RootSupervisor,
+            )
+        } else {
+            TEST_RUNTIME.block_on(async {
+                crate::common::root_supervisor::RootSupervisor::spawn(
+                    crate::common::root_supervisor::RootSupervisor,
+                )
+            })
+        };
+
         Services {
             paths,
             handle,
@@ -301,6 +315,7 @@ impl TestServices {
             tempdir,
             bus,
             bridge,
+            root_supervisor,
         }
     }
 }

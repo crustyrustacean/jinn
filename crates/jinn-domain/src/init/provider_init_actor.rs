@@ -30,6 +30,7 @@ pub struct ProviderInitActor {
 }
 
 /// Dependencies for [`ProviderInitActor`].
+#[derive(Clone)]
 pub struct ProviderInitActorDeps {
     /// Shared dependencies.
     pub deps: ActorDeps,

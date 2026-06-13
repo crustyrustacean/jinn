@@ -29,6 +29,7 @@ pub struct AppStateSyncActor {
 }
 
 /// Dependencies for spawning an [`AppStateSyncActor`].
+#[derive(Clone)]
 pub struct AppStateSyncActorDeps {
     /// Universal actor dependencies (bus, services, etc.).
     pub deps: ActorDeps,

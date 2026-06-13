@@ -32,6 +32,7 @@ use crate::feat::session_lifecycle::protocol::event::{
 use crate::init::env_init_actor::EnvironmentLoaded;
 
 /// Dependencies for [`ContextFilesScanActor`].
+#[derive(Clone)]
 pub struct ContextFilesScanActorDeps {
     /// Common actor dependencies (services + bus).
     pub deps: ActorDeps,

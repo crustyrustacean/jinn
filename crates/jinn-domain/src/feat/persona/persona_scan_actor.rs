@@ -18,6 +18,7 @@ pub struct PersonaScanActor {
 }
 
 /// Dependencies for spawning a [`PersonaScanActor`].
+#[derive(Clone)]
 pub struct PersonaScanActorDeps {
     /// Universal actor dependencies (bus, services, etc.).
     pub deps: ActorDeps,

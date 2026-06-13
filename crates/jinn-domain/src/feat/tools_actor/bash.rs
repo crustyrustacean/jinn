@@ -937,37 +937,46 @@ mod tests {
         assert!(batcher.should_flush());
     }
 
-    //FIXME: disabled during actor migration — flush() now takes BusService, needs rewrite
-    // #[rstest::rstest]
-    // fn flush_is_noop_on_empty_buffer() {
-    //     let mut batcher = StreamingBatcher::new();
-    //     let recording = std::sync::Arc::new(RecordingSink::new());
-    //     let sink: std::sync::Arc<dyn MessageSink> = recording.clone();
-    //     let session_id = SessionId::default();
-    //     batcher.flush(Some(&sink), Some(&session_id), "test_call");
-    //     assert!(recording.events().is_empty());
-    // }
+    #[tokio::test]
+    async fn flush_is_noop_on_empty_buffer() {
+        // Given a fresh batcher and a recording bus.
+        let mut batcher = StreamingBatcher::new();
+        let (bus, audit) = BusService::new_recording();
+        let session_id = SessionId::default();
 
-    //FIXME: disabled during actor migration — flush() now takes BusService, needs rewrite
-    // #[rstest::rstest]
-    // fn flush_emits_and_clears_buffer() {
-    //     let mut batcher = StreamingBatcher::new();
-    //     let mut accumulated = String::new();
-    //     let recording = std::sync::Arc::new(RecordingSink::new());
-    //     let sink: std::sync::Arc<dyn MessageSink> = recording.clone();
-    //     let session_id = SessionId::default();
-    //     batcher.push_line("line one", &mut accumulated);
-    //     batcher.push_line("line two", &mut accumulated);
-    //     batcher.flush(Some(&sink), Some(&session_id), "test_call");
-    //     let events = recording.events();
-    //     assert_eq!(events.len(), 1);
-    //     let Event::ToolExecutionOutput(output) = &events[0] else {
-    //         panic!("expected ToolExecutionOutput event");
-    //     };
-    //     assert!(output.output.contains("line one"));
-    //     assert!(output.output.contains("line two"));
-    //     assert!(!batcher.should_flush());
-    // }
+        // When flushing an empty buffer.
+        batcher
+            .flush(Some(&bus), Some(&session_id), "test_call")
+            .await;
+
+        // Then no ToolExecutionOutput is emitted.
+        let outputs: Vec<ToolExecutionOutput> = audit.of_type::<ToolExecutionOutput>();
+        assert!(outputs.is_empty());
+    }
+
+    #[tokio::test]
+    async fn flush_emits_and_clears_buffer() {
+        // Given a batcher with two buffered lines and a recording bus.
+        let mut batcher = StreamingBatcher::new();
+        let mut accumulated = String::new();
+        let (bus, audit) = BusService::new_recording();
+        let session_id = SessionId::default();
+        batcher.push_line("line one", &mut accumulated);
+        batcher.push_line("line two", &mut accumulated);
+
+        // When flushing the buffer.
+        batcher
+            .flush(Some(&bus), Some(&session_id), "test_call")
+            .await;
+
+        // Then exactly one ToolExecutionOutput is emitted containing both lines.
+        let outputs: Vec<ToolExecutionOutput> = audit.of_type::<ToolExecutionOutput>();
+        assert_eq!(outputs.len(), 1);
+        assert!(outputs[0].output.contains("line one"));
+        assert!(outputs[0].output.contains("line two"));
+        // And the buffer is cleared.
+        assert!(!batcher.should_flush());
+    }
 
     #[rstest::rstest]
     fn push_line_truncates_accumulated_at_max_bytes() {

@@ -20,6 +20,7 @@ pub struct PreferencesStateSyncActor {
 }
 
 /// Dependencies for [`PreferencesStateSyncActor`].
+#[derive(Clone)]
 pub struct PreferencesStateSyncActorDeps {
     /// Shared application state.
     pub state: State,

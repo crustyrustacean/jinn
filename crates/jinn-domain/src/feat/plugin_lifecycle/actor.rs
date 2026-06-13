@@ -26,6 +26,7 @@ pub struct PluginLifecycleActor {
 }
 
 /// Dependencies for [`PluginLifecycleActor`].
+#[derive(Clone)]
 pub struct PluginLifecycleActorDeps {
     /// Runtime deps (services + bus).
     pub deps: ActorDeps,

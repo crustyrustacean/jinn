@@ -85,7 +85,20 @@ pub fn run(mut app: TuiApp) -> Result<(), Report<TuiRunError>> {
         guard.stop();
     }
 
-    // TODO: Coordinated shutdown via kameo actor lifecycle.
+    // Coordinated actor shutdown: signal the root supervisor, then race the
+    // shutdown barrier against a 20-second timeout. Kameo cascades the stop
+    // signal to every supervised child (spawn.rs:216-227), running their
+    // `on_stop` hooks to flush buffers and finalize writes.
+    {
+        let root = app.services.root_supervisor.clone();
+        let result = app.services.handle.block_on(async {
+            root.stop_gracefully().await;
+            tokio::time::timeout(Duration::from_secs(20), root.wait_for_shutdown()).await
+        });
+        if result.is_err() {
+            tracing::warn!("actor shutdown timed out after 20s; proceeding");
+        }
+    }
 
     // Restore terminal.
     if let Err(e) = execute!(terminal.backend_mut(), PopKeyboardEnhancementFlags) {

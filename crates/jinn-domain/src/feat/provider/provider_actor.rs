@@ -42,6 +42,7 @@ pub struct ProviderActor {
 }
 
 /// Dependencies for [`ProviderActor`].
+#[derive(Clone)]
 pub struct ProviderActorDeps {
     /// Shared application state.
     pub state: State,

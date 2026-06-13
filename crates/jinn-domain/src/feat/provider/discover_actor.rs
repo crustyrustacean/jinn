@@ -35,6 +35,7 @@ pub struct DiscoverActor {
 }
 
 /// Dependencies for spawning a [`DiscoverActor`].
+#[derive(Clone)]
 pub struct DiscoverActorDeps {
     /// Universal actor dependencies (bus, services, etc.).
     pub deps: ActorDeps,

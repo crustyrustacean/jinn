@@ -125,6 +125,7 @@ impl BusPublish for LlmActor {
 }
 
 /// Dependencies for [`LlmActor`].
+#[derive(Clone)]
 pub struct LlmActorDeps {
     /// Factory for creating LLM service instances.
     pub factory: LlmServiceFactoryService,
@@ -600,8 +601,6 @@ impl LlmActor {
     }
 }
 
-//FIXME: disabled during actor migration — tests reference deleted types
-// #[cfg(test)]
 #[cfg(test)]
 mod tests {
     #![allow(
