@@ -555,7 +555,7 @@ impl ToolOrchestratorActor {
                 });
                 Some(handle)
             }
-            Some(ToolRegistration::Actor { provider, .. }) => {
+            Some(ToolRegistration::Actor { provider: _, .. }) => {
                 match tool_call.name.as_str() {
                     "web-fetch" => {
                         self.publish(ExecuteWebFetch {
@@ -590,7 +590,7 @@ impl ToolOrchestratorActor {
                     {
                         let target_display = target_session_id
                             .as_ref()
-                            .map(|s| s.to_string())
+                            .map(std::string::ToString::to_string)
                             .unwrap_or_default();
                         let result = ToolResult {
                             tool_call_id: tool_call.id.clone(),
@@ -615,7 +615,7 @@ impl ToolOrchestratorActor {
 
                 let bus = self.bus().clone();
                 let plugin_fire = self.services.plugins.clone();
-                let target = target.clone();
+                let target = *target;
                 let sid = session_id.clone();
                 let plugin_name = plugin_name.clone();
                 let arguments: serde_json::Value =
@@ -727,7 +727,3 @@ impl ToolOrchestratorActor {
         self.tools.get(name)
     }
 }
-
-//FIXME: disabled during actor migration — tests reference deleted types
-// #[cfg(test)]
-// mod tools_actor_tests;

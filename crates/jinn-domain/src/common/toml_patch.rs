@@ -297,7 +297,7 @@ fn apply_array_of_tables_by_key(
         let actual_key: Option<String> = entry.get(key_field).and_then(item_to_string_key);
         match actual_key {
             Some(k) if new_by_key.contains_key(&k) => {
-                *matched.get_mut(idx).expect("idx from enumerate") = true
+                *matched.get_mut(idx).expect("idx from enumerate") = true;
             }
             None => *matched.get_mut(idx).expect("idx from enumerate") = true, // missing key field — preserve
             _ => {}

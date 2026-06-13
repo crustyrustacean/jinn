@@ -76,7 +76,6 @@ mod tests {
     )]
     use crate::common::app_state::AppState;
     use crate::common::app_state::FocusScope;
-    use crate::feat::preferences_actor::protocol::app_state_command::AppStateUpdate;
 
     use super::*;
 

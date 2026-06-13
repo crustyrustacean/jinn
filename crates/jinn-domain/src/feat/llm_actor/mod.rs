@@ -34,9 +34,6 @@ use jiff::Timestamp;
 
 use jinn_provider::{LlmService, LlmServiceError, OnRetry, RetryingLlmService};
 use kameo::Actor;
-use kameo::actor::{ActorRef, WeakActorRef};
-use kameo::error::ActorStopReason;
-use kameo::message::{Context as MsgContext, Message};
 use session::SessionData;
 
 /// OnRetry callback that pushes a system chat entry to notify the user.
@@ -574,7 +571,7 @@ impl LlmActor {
         let dispatched_at = self
             .sessions
             .get(session_id)
-            .and_then(|s| s.dispatched_at());
+            .and_then(session::SessionData::dispatched_at);
         let had_session = self.sessions.remove(session_id).is_some();
         // Only emit StreamCompleted if there was actually an active session
         // to cancel. Avoids pushing a spurious "Cancelled" error entry when
@@ -617,7 +614,6 @@ mod tests {
     use super::session::SessionState;
     use super::*;
 
-    use crate::common::bus::BusMessage;
     use crate::common::bus::test_harness::{TestHarness, await_recorded};
     use crate::feat::provider::protocol::event::StreamToken;
     use jinn_provider::FakeLlmServiceFactory;

@@ -400,11 +400,10 @@ mod tests {
     )]
 
     use super::super::super::helpers::test_actor_with_store_recording;
-    use crate::common::services::BusAudit;
+
     use crate::feat::session::chat_session::ChatSessionState;
     use crate::feat::session::chat_session::SessionState;
     use crate::feat::session::protocol::session_load_requested::SessionLoadRequested;
-    use crate::feat::ui::sidebar::sessions::state::sorted_open_sessions;
 
     #[tokio::test]
     async fn loading_archived_session_resets_state_to_loaded() {

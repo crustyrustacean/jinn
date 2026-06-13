@@ -896,8 +896,12 @@ mod tests {
         assert!(!result.message_names.is_empty());
         // And a ProviderSwitch message is emitted.
         assert!(
-            result.message_names.iter().any(|n| n.contains("ProviderSwitch")),
-            "messages should contain ProviderSwitch: {:?}", result.message_names
+            result
+                .message_names
+                .iter()
+                .any(|n| n.contains("ProviderSwitch")),
+            "messages should contain ProviderSwitch: {:?}",
+            result.message_names
         );
     }
 
@@ -1050,11 +1054,14 @@ mod tests {
         // Then a ProviderSwitch message is emitted for alloy.
         assert!(!result.message_names.is_empty());
         assert!(
-            result.message_names.iter().any(|n| n.contains("ProviderSwitch")),
-            "messages should contain ProviderSwitch: {:?}", result.message_names
+            result
+                .message_names
+                .iter()
+                .any(|n| n.contains("ProviderSwitch")),
+            "messages should contain ProviderSwitch: {:?}",
+            result.message_names
         );
     }
-
 
     #[rstest::rstest]
     fn confirm_persona_sets_correct_persona() {

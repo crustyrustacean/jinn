@@ -21,19 +21,15 @@
 //! instances when registering with the tools actor.
 
 /// Whether a plugin tool is available globally or only in the session it's attached to.
-#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, Default)]
 pub enum ToolScope {
     /// Available in all sessions.
     Global,
     /// Available only in the session the plugin is attached to.
+    #[default]
     Attached,
 }
 
-impl Default for ToolScope {
-    fn default() -> Self {
-        Self::Attached
-    }
-}
 use mlua::RegistryKey;
 use serde::{Deserialize, Serialize};
 
@@ -227,7 +223,7 @@ fn extract_params(entry: &mlua::Table) -> Vec<LuaParamDef> {
 
     params_table
         .sequence_values::<mlua::Table>()
-        .filter_map(|pair| pair.ok())
+        .filter_map(std::result::Result::ok)
         .filter_map(|t| {
             let name: String = t.get("name").ok()?;
             let param_type: String = t.get("type").ok()?;
@@ -239,6 +235,27 @@ fn extract_params(entry: &mlua::Table) -> Vec<LuaParamDef> {
             })
         })
         .collect()
+}
+
+impl From<PluginToolMetadata> for crate::feat::plugin_system::PluginToolMetadata {
+    fn from(value: PluginToolMetadata) -> Self {
+        Self {
+            name: value.name,
+            description: value.description,
+            parameters: value.parameters,
+            plugin_name: value.plugin_name,
+            scope: value.scope.into(),
+        }
+    }
+}
+
+impl From<ToolScope> for crate::feat::plugin_system::ToolScope {
+    fn from(value: ToolScope) -> Self {
+        match value {
+            ToolScope::Global => Self::Global,
+            ToolScope::Attached => Self::Attached,
+        }
+    }
 }
 
 #[cfg(test)]
@@ -408,26 +425,5 @@ mod tests {
 
         // Then the handler returns the expected result.
         assert_eq!(result, "hello");
-    }
-}
-
-impl From<PluginToolMetadata> for crate::feat::plugin_system::PluginToolMetadata {
-    fn from(value: PluginToolMetadata) -> Self {
-        Self {
-            name: value.name,
-            description: value.description,
-            parameters: value.parameters,
-            plugin_name: value.plugin_name,
-            scope: value.scope.into(),
-        }
-    }
-}
-
-impl From<ToolScope> for crate::feat::plugin_system::ToolScope {
-    fn from(value: ToolScope) -> Self {
-        match value {
-            ToolScope::Global => Self::Global,
-            ToolScope::Attached => Self::Attached,
-        }
     }
 }

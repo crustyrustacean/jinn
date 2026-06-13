@@ -356,7 +356,7 @@ mod tests {
     use crate::feat::skills::skills_scan_actor::SkillsLoaded;
     use crate::feat::skills::{Skill, SkillSource};
 
-    use super::{ActorDeps, DiscoveryCoordinatorActor, DiscoveryCoordinatorActorDeps};
+    use super::{DiscoveryCoordinatorActor, DiscoveryCoordinatorActorDeps};
 
     fn skill_named(name: &str) -> Skill {
         Skill {

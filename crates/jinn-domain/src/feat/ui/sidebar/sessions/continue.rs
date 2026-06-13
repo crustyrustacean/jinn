@@ -89,7 +89,7 @@ mod tests {
 
         // Determine which session is at index 1 (the selected one).
         let sessions = sorted_open_sessions(&state);
-        let selected_id = sessions[1].id.clone();
+        let _selected_id = sessions[1].id.clone();
         let active_id_before = state.session.active_session_id().clone();
 
         // When handling session continue.

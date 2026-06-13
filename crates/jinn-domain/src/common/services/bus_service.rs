@@ -264,7 +264,7 @@ mod tests {
 
     #[tokio::test]
     async fn new_recording_starts_empty() {
-        let (bus, audit) = BusService::new_recording();
+        let (_bus, audit) = BusService::new_recording();
         assert!(audit.is_empty());
         assert_eq!(audit.len(), 0);
         assert!(audit.names().is_empty());

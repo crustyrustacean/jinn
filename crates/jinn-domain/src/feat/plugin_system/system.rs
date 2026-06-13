@@ -163,7 +163,11 @@ impl PluginSystem {
             sync,
             async_handle,
             sync_handle,
-            global_tool_metadata: sync_result.tools.iter().map(|t| t.to_metadata()).collect(),
+            global_tool_metadata: sync_result
+                .tools
+                .iter()
+                .map(super::tool_def::PluginToolDef::to_metadata)
+                .collect(),
         }
     }
 }

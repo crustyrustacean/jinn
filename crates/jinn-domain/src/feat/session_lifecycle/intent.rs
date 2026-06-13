@@ -11,7 +11,6 @@ use crate::feat::chat_input::protocol::command::PushChatEntry;
 use crate::feat::preferences_actor::user_preferences::SessionLifecycle;
 use crate::feat::session::chat_session::ChatSessionState;
 use crate::feat::session::chat_session::LifecycleScriptState;
-use crate::feat::session::model_selection::ModelSelection;
 use crate::feat::session::profile::SessionProfile;
 use crate::feat::session::session_actor::setup_running_msg;
 use crate::feat::session_lifecycle::command_template::{CommandTemplate, parse_quoted_args};
@@ -530,7 +529,7 @@ mod tests {
     fn session_close_last_session_emits_close_session() {
         // Given a state with only one session.
         let mut state = AppState::default();
-        let session_id = state.session.active_session_id().clone();
+        let _session_id = state.session.active_session_id().clone();
         assert_eq!(state.session.session_count(), 1);
 
         // When handling SessionClose.
@@ -1265,7 +1264,7 @@ mod tests {
     fn rerun_setup_emits_commands_when_valid() {
         // Given a session in NothingRan with a setup command.
         let mut state = setup_rerun_state();
-        let session_id = state.session.active_session_id().clone();
+        let _session_id = state.session.active_session_id().clone();
 
         // When handling rerun setup.
         let result = handle_session_rerun_setup(&mut state);

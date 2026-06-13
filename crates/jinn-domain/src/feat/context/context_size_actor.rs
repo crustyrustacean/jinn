@@ -167,12 +167,10 @@ mod tests {
         reason = "test code"
     )]
 
-    use crate::common::services::bus_service::BusService;
-
     use super::*;
     use crate::common::app_state::AppState;
     use crate::feat::session::chat_session::ChatSessionState;
-    use crate::protocol::{ChatEntry, SessionId};
+    use crate::protocol::ChatEntry;
 
     async fn test_actor() -> ContextSizeActor {
         let harness = crate::common::bus::test_harness::TestHarness::new().await;

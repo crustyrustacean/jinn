@@ -132,7 +132,7 @@ impl Message<SessionLoadCompleted> for ContextFilesScanActor {
     type Reply = ();
 
     async fn handle(&mut self, msg: SessionLoadCompleted, _ctx: &mut Context<Self, Self::Reply>) {
-        if crate::common::actor::scan_actor::scan_cwd_for_session(&self.state, &msg.session_id())
+        if crate::common::actor::scan_actor::scan_cwd_for_session(&self.state, msg.session_id())
             .is_some()
         {
             self.run_scan(msg.session_id()).await;

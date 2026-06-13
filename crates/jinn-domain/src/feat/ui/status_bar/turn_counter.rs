@@ -26,10 +26,10 @@ pub fn compute_turn_count(history: &[ChatEntry], fork_ordinal: Option<usize>) ->
     let mut count = 0u32;
     for (i, entry) in history.iter().enumerate() {
         // Skip inherited entries — they belong to a parent session.
-        if let Some(ordinal) = fork_ordinal {
-            if i <= ordinal {
-                continue;
-            }
+        if let Some(ordinal) = fork_ordinal
+            && i <= ordinal
+        {
+            continue;
         }
         match &entry.kind {
             ChatEntryKind::User { .. } => count += 1,

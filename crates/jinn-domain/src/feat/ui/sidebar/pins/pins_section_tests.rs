@@ -437,7 +437,7 @@ fn session_new_works_when_sidebar_sessions_focused() {
         .frontend
         .scope_stack
         .set_sidebar_section(SidebarSectionId::Sessions);
-    let old_id = state.session.active_session_id().clone();
+    let _old_id = state.session.active_session_id().clone();
 
     // When handling SessionNew via IntentHandler.
     let result =

@@ -1052,7 +1052,7 @@ mod tests {
     use super::{
         no_output_info, setup_complete_msg, setup_running_msg, strip_ansi, teardown_running_msg,
     };
-    use crate::common::services::bus_service::BusAudit;
+
     use crate::feat::chat_input::protocol::command::PushChatEntry;
     use crate::feat::session::chat_session::ChatSessionState;
     use crate::feat::session::protocol::close_session::CloseSession;
@@ -1641,13 +1641,13 @@ mod tests {
         let state = actor.state.read();
         assert!(!state.session.contains(&session_id));
 
-        let has_teardown = audit.of_type::<SessionTeardownFinished>().iter().count() > 0;
+        let has_teardown = audit.of_type::<SessionTeardownFinished>().len() > 0;
         assert!(
             !has_teardown,
             "did not expect SessionTeardownFinished for NothingRan"
         );
 
-        let has_archived = audit.of_type::<SessionArchived>().iter().count() > 0;
+        let has_archived = audit.of_type::<SessionArchived>().len() > 0;
         assert!(has_archived, "expected SessionArchived");
     }
 
@@ -1690,7 +1690,7 @@ mod tests {
             .any(|e| e.session_id == target_id);
         assert!(has_closed, "expected SessionClosed");
 
-        let has_teardown = audit.of_type::<SessionTeardownFinished>().iter().count() > 0;
+        let has_teardown = audit.of_type::<SessionTeardownFinished>().len() > 0;
         assert!(
             !has_teardown,
             "did not expect SessionTeardownFinished for archive"
@@ -1718,7 +1718,7 @@ mod tests {
 
         assert!(!actor.state.read().session.contains(&target_id));
 
-        let has_archived = audit.of_type::<SessionArchived>().iter().count() > 0;
+        let has_archived = audit.of_type::<SessionArchived>().len() > 0;
         assert!(has_archived, "expected SessionArchived for empty session");
 
         let has_closed = audit
