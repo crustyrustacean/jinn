@@ -230,7 +230,6 @@ fn read_one_context_file(path: &std::path::Path) -> Option<ContextFile> {
     })
 }
 
-//FIXME: plugin migration
 #[cfg(test)]
 mod tests {
     #![allow(

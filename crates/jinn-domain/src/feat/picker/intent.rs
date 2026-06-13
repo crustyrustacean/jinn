@@ -768,7 +768,6 @@ pub fn handle_refresh_skills(state: &mut AppState) -> IntentResult {
         .message(ScanContextFiles { session_id })
 }
 
-//FIXME: plugin migration
 #[cfg(test)]
 mod tests {
     #![allow(

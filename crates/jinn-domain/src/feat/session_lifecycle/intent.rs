@@ -337,7 +337,6 @@ fn close_session_and_switch(closing_id: &SessionId) -> IntentResult {
     })
 }
 
-//FIXME: plugin migration
 #[cfg(test)]
 mod tests {
     #![allow(

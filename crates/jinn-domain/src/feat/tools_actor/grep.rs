@@ -215,7 +215,6 @@ pub fn execute(call: ToolCall, ctx: ToolContext) -> BoxedToolFuture {
     })
 }
 
-//FIXME: plugin migration
 #[cfg(test)]
 mod tests {
     #![allow(

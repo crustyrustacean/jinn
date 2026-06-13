@@ -170,8 +170,6 @@ fn parse_args(raw: &str) -> Result<String, serde_json::Error> {
     Ok(name)
 }
 
-//FIXME: disabled during actor migration — tests reference deleted types
-//FIXME: disabled during actor migration
 // #[cfg(test)]
 #[cfg(test)]
 mod tests {
