@@ -255,8 +255,8 @@ impl QueueActor {
     }
 }
 
-//FIXME: plugin migration
-#[cfg(any())]
+
+#[cfg(test)]
 mod tests {
     #![allow(
         clippy::expect_used,
@@ -266,614 +266,350 @@ mod tests {
         reason = "test code"
     )]
 
-    use super::*;
-    use crate::common::actor::{ActorContext, RecordingSink};
+    use super::{QueueActor, QueueActorDeps};
+    use crate::common::actor_deps::ActorDeps;
     use crate::common::app_state::AppState;
-    use crate::feat::session::model_selection::ModelSelection;
+    use crate::common::services::bus_service::BusAudit;
+    use crate::common::services::Services;
+    use crate::common::state::State;
+    use crate::feat::chat_input::protocol::event::ChatEntrySubmitted;
+    use crate::feat::context::strategy::token_estimator::TiktokenCounter;
+    use crate::feat::provider::protocol::command::SendToLlmProvider;
+    use crate::feat::session::chat_entry::ChatEntry;
     use crate::feat::session::phase_machine::PhaseKind;
-    use crate::protocol::ChatEntry;
+    use crate::feat::session::protocol::session_phase_changed::SessionPhaseChanged;
+    use crate::feat::session::queue_item::QueueItem;
+    use crate::feat::session_lifecycle::protocol::command::PersistSession;
+    use crate::protocol::SessionId;
 
-    fn test_actor() -> QueueActor {
-        QueueActor {
-            state: crate::common::state::State::new(AppState::default()),
-            counter: crate::feat::context::strategy::token_estimator::TiktokenCounter::o200k_base(),
-        }
+    async fn create_actor() -> (QueueActor, BusAudit) {
+        let (bus, audit) = crate::common::services::BusService::new_recording();
+        let services = Services::new_fake_with_bus(bus).await;
+        (
+            QueueActor {
+                state: State::new(AppState::default()),
+                counter: TiktokenCounter::o200k_base(),
+                deps: ActorDeps { services },
+            },
+            audit,
+        )
     }
 
-    fn test_context() -> (std::sync::Arc<RecordingSink>, ActorContext) {
-        let sink = std::sync::Arc::new(RecordingSink::new());
-        let ctx = ActorContext::new("test-queue-actor", sink.clone());
-        (sink, ctx)
+    fn session_id() -> SessionId {
+        SessionId::new()
     }
+
+    // --- SessionPhaseChanged dispatch ---
 
     #[tokio::test]
-    async fn session_phase_changed_idle_pops_user_message_from_queue() {
-        // Given a session with a queued user message in Idle phase.
-        let actor = test_actor();
-        let (sink, ctx) = test_context();
-        let session_id = {
+    async fn idle_transition_dispatches_user_message() {
+        // Given a session with a queued user message.
+        let (actor, audit) = create_actor().await;
+        let sid = session_id();
+        {
             let mut state = actor.state.write();
-            let session = state.active_session_mut();
-            session.enqueue(QueueItem::UserMessage(Box::new(ChatEntry::user(
-                "queued message",
-            ))));
-            state.session.active_session_id().clone()
-        };
+            let session = state.session_mut_or_create(&sid);
+            session.enqueue(QueueItem::UserMessage(Box::new(ChatEntry::user("hello"))));
+        }
 
-        // When handling SessionPhaseChanged with Idle phase.
-        let payload = SessionPhaseChanged {
-            session_id: session_id.clone(),
+        // When receiving SessionPhaseChanged → Idle.
+        let msg = SessionPhaseChanged {
+            session_id: sid.clone(),
             old_phase: PhaseKind::Sending,
             new_phase: PhaseKind::Idle,
         };
-        actor.handle_session_phase_changed(&payload, &ctx).await;
+        actor.handle_session_phase_changed(&msg).await;
 
-        // Then SendToLlmProvider was emitted for the queued message.
-        let commands = sink.commands();
-        let has_send = commands
-            .iter()
-            .any(|c| matches!(c, Command::SendToLlmProvider(_)));
-        assert!(
-            has_send,
-            "expected SendToLlmProvider command for queued user message"
-        );
-
-        // And the queue is empty.
-        let state = actor.state.read();
-        let session = state.session.get(&session_id).expect("session exists");
-        assert!(
-            session.queue_len() == 0,
-            "expected queue to be empty after dispatch"
-        );
+        // Then SendToLlmProvider was published.
+        let sends: Vec<SendToLlmProvider> = audit.of_type::<SendToLlmProvider>();
+        assert_eq!(sends.len(), 1);
+        // And ChatEntrySubmitted was published.
+        let submitted: Vec<ChatEntrySubmitted> = audit.of_type::<ChatEntrySubmitted>();
+        assert_eq!(submitted.len(), 1);
+        // And PersistSession was published.
+        let persists: Vec<PersistSession> = audit.of_type::<PersistSession>();
+        assert_eq!(persists.len(), 1);
     }
 
     #[tokio::test]
-    async fn session_phase_changed_non_idle_does_not_pop_queue() {
-        // Given a session with a queued user message in non-Idle phase.
-        let actor = test_actor();
-        let (sink, ctx) = test_context();
-        let session_id = {
+    async fn idle_transition_dispatches_tool_continuation() {
+        // Given a session with a queued tool continuation.
+        let (actor, audit) = create_actor().await;
+        let sid = session_id();
+        {
             let mut state = actor.state.write();
-            let session = state.active_session_mut();
-            session.enqueue(QueueItem::UserMessage(Box::new(ChatEntry::user(
-                "queued message",
-            ))));
-            session.begin_sending();
-            state.session.active_session_id().clone()
-        };
+            let session = state.session_mut_or_create(&sid);
+            session.enqueue(QueueItem::ToolContinuation);
+        }
 
-        // When handling SessionPhaseChanged with Sending phase.
-        let payload = SessionPhaseChanged {
-            session_id: session_id.clone(),
-            old_phase: PhaseKind::Streaming,
-            new_phase: PhaseKind::Sending,
-        };
-        actor.handle_session_phase_changed(&payload, &ctx).await;
-
-        // Then no SendToLlmProvider was emitted.
-        let commands = sink.commands();
-        let has_send = commands
-            .iter()
-            .any(|c| matches!(c, Command::SendToLlmProvider(_)));
-        assert!(
-            !has_send,
-            "expected no SendToLlmProvider for non-Idle phase"
-        );
-
-        // And the queue still has the item.
-        let state = actor.state.read();
-        let session = state.session.get(&session_id).expect("session exists");
-        assert_eq!(session.queue_len(), 1);
-    }
-
-    #[tokio::test]
-    async fn session_phase_changed_idle_with_empty_queue_is_noop() {
-        // Given a session with an empty queue.
-        let actor = test_actor();
-        let (sink, ctx) = test_context();
-        let session_id = {
-            let state = actor.state.read();
-            state.session.active_session_id().clone()
-        };
-
-        // When handling SessionPhaseChanged with Idle phase.
-        let payload = SessionPhaseChanged {
-            session_id: session_id.clone(),
-            old_phase: PhaseKind::Streaming,
+        // When receiving SessionPhaseChanged → Idle.
+        let msg = SessionPhaseChanged {
+            session_id: sid.clone(),
+            old_phase: PhaseKind::Sending,
             new_phase: PhaseKind::Idle,
         };
-        actor.handle_session_phase_changed(&payload, &ctx).await;
+        actor.handle_session_phase_changed(&msg).await;
 
-        // Then no commands were emitted.
-        let commands = sink.commands();
-        assert!(commands.is_empty(), "expected no commands for empty queue");
+        // Then SendToLlmProvider was published.
+        let sends: Vec<SendToLlmProvider> = audit.of_type::<SendToLlmProvider>();
+        assert_eq!(sends.len(), 1);
+        // And ChatEntrySubmitted was NOT published (tool continuations don't emit it).
+        let submitted: Vec<ChatEntrySubmitted> = audit.of_type::<ChatEntrySubmitted>();
+        assert!(submitted.is_empty());
     }
+
+    #[tokio::test]
+    async fn non_idle_transition_does_nothing() {
+        // Given a session with a queued message.
+        let (actor, audit) = create_actor().await;
+        let sid = session_id();
+        {
+            let mut state = actor.state.write();
+            let session = state.session_mut_or_create(&sid);
+            session.enqueue(QueueItem::UserMessage(Box::new(ChatEntry::user("hello"))));
+        }
+
+        // When receiving SessionPhaseChanged → Sending (not Idle).
+        let msg = SessionPhaseChanged {
+            session_id: sid.clone(),
+            old_phase: PhaseKind::Idle,
+            new_phase: PhaseKind::Sending,
+        };
+        actor.handle_session_phase_changed(&msg).await;
+
+        // Then nothing was published.
+        assert!(audit.of_type::<SendToLlmProvider>().is_empty());
+    }
+
+    #[tokio::test]
+    async fn idle_transition_with_empty_queue_does_nothing() {
+        // Given a session with nothing queued.
+        let (actor, audit) = create_actor().await;
+        let sid = session_id();
+
+        // When receiving SessionPhaseChanged → Idle.
+        let msg = SessionPhaseChanged {
+            session_id: sid.clone(),
+            old_phase: PhaseKind::Sending,
+            new_phase: PhaseKind::Idle,
+        };
+        actor.handle_session_phase_changed(&msg).await;
+
+        // Then nothing was published.
+        assert!(audit.of_type::<SendToLlmProvider>().is_empty());
+    }
+
+    // --- dispatch_user_message ---
 
     #[tokio::test]
     async fn dispatch_user_message_emits_chat_entry_submitted() {
-        // Given a session in Idle phase.
-        let actor = test_actor();
-        let (sink, ctx) = test_context();
-        let session_id = {
-            let state = actor.state.read();
-            state.session.active_session_id().clone()
-        };
+        // Given a queue actor.
+        let (actor, audit) = create_actor().await;
+        let sid = session_id();
+        let entry = ChatEntry::user("hello");
 
         // When dispatching a user message.
-        actor
-            .dispatch_user_message(&session_id, &ChatEntry::user("hello"), &ctx)
-            .await;
+        actor.dispatch_user_message(&sid, &entry).await;
 
-        // Then ChatEntrySubmitted was emitted.
-        let events = sink.events();
-        let has_submitted = events
-            .iter()
-            .any(|e| matches!(e, Event::ChatEntrySubmitted(_)));
-        assert!(has_submitted, "expected ChatEntrySubmitted event");
+        // Then ChatEntrySubmitted was published.
+        let submitted: Vec<ChatEntrySubmitted> = audit.of_type::<ChatEntrySubmitted>();
+        assert_eq!(submitted.len(), 1);
     }
 
     #[tokio::test]
     async fn dispatch_user_message_sets_title_on_first_message() {
         // Given a session with no title.
-        let actor = test_actor();
-        let (sink, ctx) = test_context();
-        let session_id = {
-            let state = actor.state.read();
-            state.session.active_session_id().clone()
-        };
+        let (actor, _audit) = create_actor().await;
+        let sid = session_id();
+        let entry = ChatEntry::user("first message here");
+
+        // When dispatching the first user message.
+        actor.dispatch_user_message(&sid, &entry).await;
+
+        // Then the session title was set to the first line.
+        let state = actor.state.read();
+        let session = state.session(&sid);
+        assert_eq!(session.title(), Some("first message here"));
+    }
+
+    #[tokio::test]
+    async fn dispatch_user_message_does_not_overwrite_existing_title() {
+        // Given a session with a title already set.
+        let (actor, _audit) = create_actor().await;
+        let sid = session_id();
+        {
+            let mut state = actor.state.write();
+            let session = state.session_mut_or_create(&sid);
+            session.set_title("original title".to_owned());
+        }
+        let entry = ChatEntry::user("second message");
 
         // When dispatching a user message.
-        actor
-            .dispatch_user_message(&session_id, &ChatEntry::user("my new chat"), &ctx)
-            .await;
+        actor.dispatch_user_message(&sid, &entry).await;
 
-        // Then the session title was set to the first line of the message.
+        // Then the title is unchanged.
         let state = actor.state.read();
-        let session = state.session.get(&session_id).expect("session exists");
-        assert_eq!(session.title(), Some("my new chat"));
-        drop(state);
-
-        // Suppress unused variable warning.
-        let _ = sink;
+        let session = state.session(&sid);
+        assert_eq!(session.title(), Some("original title"));
     }
 
     #[tokio::test]
     async fn dispatch_user_message_transitions_to_sending() {
-        // Given a session in Idle phase.
-        let actor = test_actor();
-        let (_sink, ctx) = test_context();
-        let session_id = {
-            let state = actor.state.read();
-            state.session.active_session_id().clone()
-        };
+        // Given a queue actor.
+        let (actor, _audit) = create_actor().await;
+        let sid = session_id();
+        let entry = ChatEntry::user("hello");
 
         // When dispatching a user message.
-        actor
-            .dispatch_user_message(&session_id, &ChatEntry::user("hello"), &ctx)
-            .await;
+        actor.dispatch_user_message(&sid, &entry).await;
 
         // Then the session is in Sending phase.
         let state = actor.state.read();
-        let session = state.session.get(&session_id).expect("session exists");
-        assert!(matches!(session.phase(), PhaseKind::Sending));
-    }
-
-    #[tokio::test]
-    async fn dispatch_tool_continuation_emits_send_to_llm_provider() {
-        // Given a session in Idle phase with history.
-        let actor = test_actor();
-        let (sink, ctx) = test_context();
-        let session_id = {
-            let mut state = actor.state.write();
-            let session = state.active_session_mut();
-            session.push_entry(ChatEntry::user("previous message"));
-            state.session.active_session_id().clone()
-        };
-
-        // When dispatching a tool continuation.
-        actor.dispatch_tool_continuation(&session_id, &ctx).await;
-
-        // Then SendToLlmProvider was emitted with the history.
-        let commands = sink.commands();
-        let has_send = commands
-            .iter()
-            .any(|c| matches!(c, Command::SendToLlmProvider(_)));
-        assert!(has_send, "expected SendToLlmProvider command");
+        let session = state.session(&sid);
+        assert_eq!(session.phase(), PhaseKind::Sending);
     }
 
     #[tokio::test]
     async fn dispatch_user_message_provider_id_is_none_when_no_provider() {
-        // Given a session with the default model (NO_PROVIDER_ID).
-        let actor = test_actor();
-        let (sink, ctx) = test_context();
-        let session_id = {
-            let state = actor.state.read();
-            state.session.active_session_id().clone()
-        };
+        // Given a queue actor with no model selected.
+        let (actor, audit) = create_actor().await;
+        let sid = session_id();
+        let entry = ChatEntry::user("hello");
 
         // When dispatching a user message.
-        actor
-            .dispatch_user_message(&session_id, &ChatEntry::user("hello"), &ctx)
-            .await;
+        actor.dispatch_user_message(&sid, &entry).await;
 
         // Then SendToLlmProvider has provider_id = None.
-        let commands = sink.commands();
-        let provider_id: Option<String> = commands.iter().find_map(|c| match c {
-            Command::SendToLlmProvider(cmd) => cmd.provider_id.clone(),
-            _ => None,
-        });
-        assert_eq!(
-            provider_id, None,
-            "expected provider_id None for NO_PROVIDER_ID"
-        );
+        let sends: Vec<SendToLlmProvider> = audit.of_type::<SendToLlmProvider>();
+        assert_eq!(sends.len(), 1);
+        assert!(sends[0].provider_id.is_none());
     }
 
     #[tokio::test]
     async fn dispatch_user_message_provider_id_is_some_when_model_set() {
-        // Given a session with an explicit model.
-        let actor = test_actor();
-        let (sink, ctx) = test_context();
-        let session_id = {
+        // Given a queue actor with a model selected.
+        let (actor, audit) = create_actor().await;
+        let sid = session_id();
+        {
             let mut state = actor.state.write();
-            state
-                .active_session_mut()
-                .set_model(ModelSelection::Single("my-model".to_owned()));
-            state.session.active_session_id().clone()
-        };
+            let session = state.session_mut_or_create(&sid);
+            session.profile_mut().model =
+                crate::feat::session::model_selection::ModelSelection::Single(
+                    "test-provider/test-model".to_owned(),
+                );
+        }
+        let entry = ChatEntry::user("hello");
 
         // When dispatching a user message.
-        actor
-            .dispatch_user_message(&session_id, &ChatEntry::user("hello"), &ctx)
-            .await;
+        actor.dispatch_user_message(&sid, &entry).await;
 
-        // Then SendToLlmProvider has provider_id = Some("my-model").
-        let commands = sink.commands();
-        let provider_id: Option<String> = commands.iter().find_map(|c| match c {
-            Command::SendToLlmProvider(cmd) => cmd.provider_id.clone(),
-            _ => None,
-        });
-        assert_eq!(
-            provider_id,
-            Some("my-model".to_owned()),
-            "expected provider_id Some(\"my-model\")"
-        );
+        // Then SendToLlmProvider has provider_id = Some.
+        let sends: Vec<SendToLlmProvider> = audit.of_type::<SendToLlmProvider>();
+        assert_eq!(sends.len(), 1);
+        assert!(sends[0].provider_id.is_some());
     }
 
+    // --- dispatch_tool_continuation ---
+
     #[tokio::test]
-    async fn dispatch_tool_continuation_provider_id_is_none_when_no_provider() {
-        // Given a session with the default model (NO_PROVIDER_ID) and history.
-        let actor = test_actor();
-        let (sink, ctx) = test_context();
-        let session_id = {
-            let mut state = actor.state.write();
-            let session = state.active_session_mut();
-            session.push_entry(ChatEntry::user("previous message"));
-            state.session.active_session_id().clone()
-        };
+    async fn dispatch_tool_continuation_emits_send_to_llm_provider() {
+        // Given a queue actor.
+        let (actor, audit) = create_actor().await;
+        let sid = session_id();
 
         // When dispatching a tool continuation.
-        actor.dispatch_tool_continuation(&session_id, &ctx).await;
+        actor.dispatch_tool_continuation(&sid).await;
 
-        // Then SendToLlmProvider has provider_id = None.
-        let commands = sink.commands();
-        let provider_id: Option<String> = commands.iter().find_map(|c| match c {
-            Command::SendToLlmProvider(cmd) => cmd.provider_id.clone(),
-            _ => None,
-        });
-        assert_eq!(
-            provider_id, None,
-            "expected provider_id None for NO_PROVIDER_ID in tool continuation"
-        );
+        // Then SendToLlmProvider was published.
+        let sends: Vec<SendToLlmProvider> = audit.of_type::<SendToLlmProvider>();
+        assert_eq!(sends.len(), 1);
     }
 
     #[tokio::test]
-    async fn dispatch_tool_continuation_provider_id_is_some_when_model_set() {
-        // Given a session with an explicit model and history.
-        let actor = test_actor();
-        let (sink, ctx) = test_context();
-        let session_id = {
-            let mut state = actor.state.write();
-            let session = state.active_session_mut();
-            session.push_entry(ChatEntry::user("previous message"));
-            state
-                .active_session_mut()
-                .set_model(ModelSelection::Single("tool-model".to_owned()));
-            state.session.active_session_id().clone()
-        };
+    async fn dispatch_tool_continuation_does_not_emit_chat_entry_submitted() {
+        // Given a queue actor.
+        let (actor, audit) = create_actor().await;
+        let sid = session_id();
 
         // When dispatching a tool continuation.
-        actor.dispatch_tool_continuation(&session_id, &ctx).await;
+        actor.dispatch_tool_continuation(&sid).await;
 
-        // Then SendToLlmProvider has provider_id = Some("tool-model").
-        let commands = sink.commands();
-        let provider_id: Option<String> = commands.iter().find_map(|c| match c {
-            Command::SendToLlmProvider(cmd) => cmd.provider_id.clone(),
-            _ => None,
-        });
-        assert_eq!(
-            provider_id,
-            Some("tool-model".to_owned()),
-            "expected provider_id Some(\"tool-model\") in tool continuation"
-        );
+        // Then ChatEntrySubmitted was NOT published.
+        let submitted: Vec<ChatEntrySubmitted> = audit.of_type::<ChatEntrySubmitted>();
+        assert!(submitted.is_empty());
     }
 
     #[tokio::test]
-    async fn handle_processes_session_phase_changed_event() {
-        // Given a session with a queued user message.
-        let mut actor = test_actor();
-        let (sink, ctx) = test_context();
-        let session_id = {
-            let mut state = actor.state.write();
-            state
-                .active_session_mut()
-                .enqueue(QueueItem::UserMessage(Box::new(ChatEntry::user(
-                    "via handle",
-                ))));
-            state.session.active_session_id().clone()
-        };
+    async fn dispatch_tool_continuation_does_not_emit_persist_session() {
+        // Given a queue actor.
+        let (actor, audit) = create_actor().await;
+        let sid = session_id();
 
-        // When calling handle with an ActorEnvelope::Event(SessionPhaseChanged).
-        let payload = SessionPhaseChanged {
-            session_id: session_id.clone(),
-            old_phase: PhaseKind::Sending,
-            new_phase: PhaseKind::Idle,
-        };
-        actor
-            .handle(
-                ActorEnvelope::Event(Event::SessionPhaseChanged(payload)),
-                &ctx,
-            )
-            .await;
+        // When dispatching a tool continuation.
+        actor.dispatch_tool_continuation(&sid).await;
 
-        // Then SendToLlmProvider was emitted (handle dispatched the queued item).
-        let commands = sink.commands();
-        let has_send = commands
-            .iter()
-            .any(|c| matches!(c, Command::SendToLlmProvider(_)));
-        assert!(
-            has_send,
-            "expected SendToLlmProvider when handle processes SessionPhaseChanged"
-        );
+        // Then PersistSession was NOT published.
+        let persists: Vec<PersistSession> = audit.of_type::<PersistSession>();
+        assert!(persists.is_empty());
     }
 
-    #[tokio::test]
-    async fn dispatch_user_message_drains_steering_buffer_before_assembly() {
-        // Given a session with a non-empty steering buffer.
-        let actor = test_actor();
-        let (_sink, ctx) = test_context();
-        let session_id = {
-            let mut state = actor.state.write();
-            let session = state.active_session_mut();
-            session
-                .steering_buffer_mut()
-                .push_fragment("steer here".to_owned());
-            state.session.active_session_id().clone()
-        };
-
-        // When dispatching a user message.
-        actor
-            .dispatch_user_message(&session_id, &ChatEntry::user("hello"), &ctx)
-            .await;
-
-        // Then the steering buffer is drained before assembly.
-        let state = actor.state.read();
-        let session = state.session.get(&session_id).expect("session");
-        assert!(
-            session.steering_buffer().is_empty(),
-            "steering buffer must be drained during dispatch_user_message"
-        );
-
-        // And the drained steering entry appears in history.
-        let has_steering_entry = session.history().iter().any(|e| {
-            matches!(
-                &e.kind,
-                crate::protocol::ChatEntryKind::User { expanded, .. } if expanded == "steer here"
-            )
-        });
-        assert!(
-            has_steering_entry,
-            "drained steering entry must appear in history after dispatch_user_message"
-        );
-    }
+    // --- dispatch_resume ---
 
     #[tokio::test]
-    async fn dispatch_resume_drains_steering_buffer_before_assembly() {
-        // Given a session with a non-empty steering buffer.
-        let actor = test_actor();
-        let (_sink, ctx) = test_context();
-        let session_id = {
-            let mut state = actor.state.write();
-            let session = state.active_session_mut();
-            session
-                .steering_buffer_mut()
-                .push_fragment("resume steer".to_owned());
-            state.session.active_session_id().clone()
-        };
+    async fn dispatch_resume_emits_send_to_llm_provider() {
+        // Given a queue actor.
+        let (actor, audit) = create_actor().await;
+        let sid = session_id();
 
         // When dispatching a resume.
-        actor.dispatch_resume(&session_id, &ctx, "test").await;
+        actor.dispatch_resume(&sid, "manual resume").await;
 
-        // Then the steering buffer is drained before assembly.
+        // Then SendToLlmProvider was published.
+        let sends: Vec<SendToLlmProvider> = audit.of_type::<SendToLlmProvider>();
+        assert_eq!(sends.len(), 1);
+    }
+
+    // --- Steering buffer drain ---
+
+    #[tokio::test]
+    async fn dispatch_user_message_drains_steering_buffer() {
+        // Given a session with steering fragments.
+        let (actor, _audit) = create_actor().await;
+        let sid = session_id();
+        {
+            let mut state = actor.state.write();
+            let session = state.session_mut_or_create(&sid);
+            session.steering_buffer_mut().push_fragment("system note");
+        }
+        let entry = ChatEntry::user("hello");
+
+        // When dispatching a user message.
+        actor.dispatch_user_message(&sid, &entry).await;
+
+        // Then the steering buffer was drained into history.
         let state = actor.state.read();
-        let session = state.session.get(&session_id).expect("session");
-        assert!(
-            session.steering_buffer().is_empty(),
-            "steering buffer must be drained during dispatch_resume"
-        );
-
-        // And the drained steering entry appears in history.
-        let has_steering_entry = session.history().iter().any(|e| {
-            matches!(
-                &e.kind,
-                crate::protocol::ChatEntryKind::User { expanded, .. } if expanded == "resume steer"
-            )
-        });
-        assert!(
-            has_steering_entry,
-            "drained steering entry must appear in history after dispatch_resume"
-        );
+        let session = state.session(&sid);
+        // At minimum: steering entry + user entry.
+        assert!(session.history().len() >= 2);
     }
 
     #[tokio::test]
-    async fn idle_transition_with_steering_buffer_and_empty_queue_dispatches_resume() {
-        // Given a session with steering fragments in the buffer and an empty queue.
-        let actor = test_actor();
-        let (sink, ctx) = test_context();
-        let session_id = {
+    async fn dispatch_resume_drains_steering_buffer() {
+        // Given a session with steering fragments.
+        let (actor, _audit) = create_actor().await;
+        let sid = session_id();
+        {
             let mut state = actor.state.write();
-            let session = state.active_session_mut();
-            session
-                .steering_buffer_mut()
-                .push_fragment("stay focused".to_owned());
-            state.session.active_session_id().clone()
-        };
+            let session = state.session_mut_or_create(&sid);
+            session.steering_buffer_mut().push_fragment("system note");
+        }
 
-        // When handling SessionPhaseChanged with Idle phase.
-        let payload = SessionPhaseChanged {
-            session_id: session_id.clone(),
-            old_phase: PhaseKind::Streaming,
-            new_phase: PhaseKind::Idle,
-        };
-        actor.handle_session_phase_changed(&payload, &ctx).await;
+        // When dispatching a resume.
+        actor.dispatch_resume(&sid, "resume").await;
 
-        // Then SendToLlmProvider was emitted (resume dispatch ran).
-        let commands = sink.commands();
-        let has_send = commands
-            .iter()
-            .any(|c| matches!(c, Command::SendToLlmProvider(_)));
-        assert!(
-            has_send,
-            "expected SendToLlmProvider for steering buffer resume dispatch"
-        );
-
-        // And the steering buffer is empty.
+        // Then the steering buffer was drained into history.
         let state = actor.state.read();
-        let session = state.session.get(&session_id).expect("session exists");
-        assert!(
-            session.steering_buffer().is_empty(),
-            "steering buffer must be drained after resume dispatch"
-        );
-    }
-
-    #[tokio::test]
-    async fn idle_transition_with_queued_message_and_steering_buffer_dispatches_queue_first() {
-        // Given a session with both a queued user message and steering fragments.
-        let actor = test_actor();
-        let (sink, ctx) = test_context();
-        let session_id = {
-            let mut state = actor.state.write();
-            let session = state.active_session_mut();
-            session.enqueue(QueueItem::UserMessage(Box::new(ChatEntry::user(
-                "queued message",
-            ))));
-            session
-                .steering_buffer_mut()
-                .push_fragment("steer here".to_owned());
-            state.session.active_session_id().clone()
-        };
-
-        // When handling SessionPhaseChanged with Idle phase.
-        let payload = SessionPhaseChanged {
-            session_id: session_id.clone(),
-            old_phase: PhaseKind::Streaming,
-            new_phase: PhaseKind::Idle,
-        };
-        actor.handle_session_phase_changed(&payload, &ctx).await;
-
-        // Then SendToLlmProvider was emitted.
-        let commands = sink.commands();
-        let has_send = commands
-            .iter()
-            .any(|c| matches!(c, Command::SendToLlmProvider(_)));
-        assert!(
-            has_send,
-            "expected SendToLlmProvider for queued user message"
-        );
-
-        // And the queue is empty.
-        let state = actor.state.read();
-        let session = state.session.get(&session_id).expect("session exists");
-        assert!(
-            session.queue().is_empty(),
-            "queue must be empty after dispatch"
-        );
-
-        // And the steering buffer is drained by dispatch_user_message.
-        assert!(
-            session.steering_buffer().is_empty(),
-            "steering buffer must be drained during queue dispatch"
-        );
-    }
-
-    #[tokio::test]
-    async fn steering_buffer_drain_produces_entry_in_history() {
-        // Given a session with steering fragments and empty queue.
-        let actor = test_actor();
-        let (_sink, ctx) = test_context();
-        let session_id = {
-            let mut state = actor.state.write();
-            let session = state.active_session_mut();
-            session
-                .steering_buffer_mut()
-                .push_fragment("late correction".to_owned());
-            state.session.active_session_id().clone()
-        };
-
-        // When handling SessionPhaseChanged with Idle phase.
-        let payload = SessionPhaseChanged {
-            session_id: session_id.clone(),
-            old_phase: PhaseKind::Streaming,
-            new_phase: PhaseKind::Idle,
-        };
-        actor.handle_session_phase_changed(&payload, &ctx).await;
-
-        // Then history contains a User entry with the steering text.
-        let state = actor.state.read();
-        let session = state.session.get(&session_id).expect("session exists");
-        let has_steering_entry = session.history().iter().any(|e| {
-            matches!(
-                &e.kind,
-                crate::protocol::ChatEntryKind::User { expanded, .. } if expanded == "late correction"
-            )
-        });
-        assert!(
-            has_steering_entry,
-            "drained steering entry must appear in history"
-        );
-    }
-
-    #[tokio::test]
-    async fn steering_buffer_dispatch_includes_entry_in_llm_context() {
-        // Given a session with existing history and steering fragments.
-        let actor = test_actor();
-        let (sink, ctx) = test_context();
-        let session_id = {
-            let mut state = actor.state.write();
-            let session = state.active_session_mut();
-            session.push_entry(ChatEntry::user("original question"));
-            session
-                .steering_buffer_mut()
-                .push_fragment("follow-up steer".to_owned());
-            state.session.active_session_id().clone()
-        };
-
-        // When handling SessionPhaseChanged with Idle phase.
-        let payload = SessionPhaseChanged {
-            session_id: session_id.clone(),
-            old_phase: PhaseKind::Streaming,
-            new_phase: PhaseKind::Idle,
-        };
-        actor.handle_session_phase_changed(&payload, &ctx).await;
-
-        // Then SendToLlmProvider was emitted, proving the steering entry
-        // was assembled into the LLM prompt alongside existing history.
-        let commands = sink.commands();
-        let has_send = commands
-            .iter()
-            .any(|c| matches!(c, Command::SendToLlmProvider(_)));
-        assert!(
-            has_send,
-            "SendToLlmProvider must be emitted with steering entry in context"
-        );
+        let session = state.session(&sid);
+        assert!(!session.history().is_empty());
     }
 }

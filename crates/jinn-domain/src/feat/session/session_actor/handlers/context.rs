@@ -188,7 +188,7 @@ impl SessionPersistenceActor {
 }
 
 //FIXME: plugin migration
-#[cfg(any())]
+#[cfg(test)]
 mod tests {
     #![allow(
         clippy::expect_used,
@@ -198,9 +198,7 @@ mod tests {
         reason = "test code"
     )]
 
-    use super::super::super::SessionPersistenceActorDeps;
     use super::*;
-    use crate::common::actor::{Actor as _, ActorContext, MessageSink, RecordingSink};
     use crate::common::app_state::AppState;
     use crate::common::services::BusAudit;
     use crate::common::state::State;
@@ -262,10 +260,10 @@ mod tests {
     }
 
     #[rstest::rstest]
-    fn on_tools_registered_ignores_attached_tools_for_different_session() {
+    #[tokio::test]
+    async fn on_tools_registered_ignores_attached_tools_for_different_session() {
         // Given a session actor.
-        let (actor, state) = create_actor();
-
+        let (actor, state, _audit) = create_actor().await;
         // Build a ToolsRegistered targeting a different session.
         let other_session_id = SessionId::new();
         let payload = ToolsRegistered {
@@ -308,9 +306,10 @@ mod tests {
     }
 
     #[rstest::rstest]
-    fn on_tools_registered_stores_attached_tools_for_own_session() {
+    #[tokio::test]
+    async fn on_tools_registered_stores_attached_tools_for_own_session() {
         // Given a session actor.
-        let (actor, state) = create_actor();
+        let (actor, state, _audit) = create_actor().await;
         let session_id = state.read().session.active_session_id().clone();
 
         // Build a ToolsRegistered targeting this session.
@@ -340,9 +339,11 @@ mod tests {
     }
 
     #[rstest::rstest]
-    fn on_tools_registered_stores_global_tools_unconditionally() {
+    #[tokio::test]
+    async fn on_tools_registered_stores_global_tools_unconditionally() {
         // Given a session actor.
-        let (actor, state) = create_actor();
+        let (actor, state, _audit) = create_actor().await;
+        // Given a session actor.
 
         // Build a global ToolsRegistered (session_id: None).
         let payload = ToolsRegistered {

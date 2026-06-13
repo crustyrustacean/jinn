@@ -231,7 +231,7 @@ fn read_one_context_file(path: &std::path::Path) -> Option<ContextFile> {
 }
 
 //FIXME: plugin migration
-#[cfg(any())]
+#[cfg(test)]
 mod tests {
     #![allow(
         clippy::expect_used,
@@ -614,18 +614,19 @@ mod tests {
         let dir = tempfile::tempdir().expect("create temp dir");
         std::fs::write(dir.path().join("AGENTS.md"), "# Project rules").expect("write");
         let state = State::new(AppState::default());
-        let (actor, _sink, ctx, session_id) = create_actor(&dir, state.clone());
+        let (session_id, services) = create_actor_state(&dir, state.clone());
 
-        // When processing EnvironmentLoaded.
-        let event = Event::EnvironmentLoaded(EnvironmentLoaded {
-            config: crate::ProvidersConfig {
-                providers: vec![],
-                aliases: vec![],
-                default_provider: None,
-                alloys: vec![],
-            },
+        let harness = TestHarness::new().await;
+        let mut services = services;
+        services.bus = harness.bus().clone();
+
+        let actor = ContextFilesScanActor::spawn(ContextFilesScanActorDeps {
+            deps: ActorDeps { services },
+            state: state.clone(),
         });
         actor.wait_for_startup().await;
+
+        let recorder = harness.spawn_recorder::<ContextFilesLoaded>().await;
 
         // When sending EnvironmentLoaded.
         harness
@@ -634,11 +635,12 @@ mod tests {
                     providers: vec![],
                     aliases: vec![],
                     default_provider: None,
+                    alloys: vec![],
                 },
             })
             .await;
 
-        let recorder = harness.spawn_recorder::<ContextFilesLoaded>().await;
+        // Then the file is written to the session's discovered set.
         let _ = await_recorded(&recorder, 1, std::time::Duration::from_secs(2)).await;
         let guard = state.read();
         let session = guard.session.get(&session_id).expect("session exists");
