@@ -39,7 +39,7 @@ pub(in crate::feat::session::session_actor) async fn emit_history_appended(
 }
 
 #[cfg(test)]
-pub(super) async fn test_actor() -> super::SessionPersistenceActor {
+pub(crate) async fn test_actor() -> super::SessionPersistenceActor {
     use crate::common::app_state::AppState;
     use crate::common::state::State;
     use crate::feat::context::strategy::token_estimator::TiktokenCounter;
@@ -55,7 +55,7 @@ pub(super) async fn test_actor() -> super::SessionPersistenceActor {
 }
 
 #[cfg(test)]
-pub(super) async fn test_actor_recording() -> (
+pub(crate) async fn test_actor_recording() -> (
     super::SessionPersistenceActor,
     crate::common::services::BusAudit,
 ) {
@@ -81,8 +81,7 @@ pub(super) async fn test_actor_recording() -> (
 // --- Shared test store helpers ---
 
 /// A fake session store that returns pre-loaded sessions for testing.
-#[cfg(test)]
-pub(super) struct PopulatedFakeStore {
+pub(crate) struct PopulatedFakeStore {
     summaries: Vec<crate::feat::session::session_summary::SessionSummary>,
     sessions: Vec<crate::feat::session::chat_session::ChatSessionState>,
     archived: std::sync::Mutex<Vec<crate::protocol::SessionId>>,
@@ -211,7 +210,7 @@ impl crate::feat::session::session_store::SessionStore for PopulatedFakeStore {
 /// Builds a test actor with services and a populated store.
 /// Returns (actor, store) so tests can inspect store state.
 #[cfg(test)]
-pub(super) async fn test_actor_with_store(
+pub(crate) async fn test_actor_with_store(
     sessions: Vec<crate::feat::session::chat_session::ChatSessionState>,
 ) -> (
     super::SessionPersistenceActor,
@@ -237,7 +236,7 @@ pub(super) async fn test_actor_with_store(
 }
 
 #[cfg(test)]
-pub(super) async fn test_actor_with_store_recording(
+pub(crate) async fn test_actor_with_store_recording(
     sessions: Vec<crate::feat::session::chat_session::ChatSessionState>,
 ) -> (
     super::SessionPersistenceActor,

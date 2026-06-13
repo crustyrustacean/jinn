@@ -211,8 +211,7 @@ fn build_skills_refresh_message(skills: &[crate::feat::skills::Skill]) -> String
     msg
 }
 
-//FIXME: plugin migration
-#[cfg(any())]
+#[cfg(test)]
 mod tests {
     #![allow(
         clippy::expect_used,
@@ -222,7 +221,7 @@ mod tests {
         clippy::unnecessary_mut_passed,
         reason = "test code"
     )]
-    use super::super::super::helpers::{test_actor_recording, test_actor_with_store_recording};
+    use crate::feat::session::session_actor::helpers::{test_actor, test_actor_recording, test_actor_with_store_recording};
     use crate::feat::provider::protocol::event::ModelsRefreshed;
     use crate::feat::session::protocol::load_session_picker_entries::LoadSessionPickerEntries;
     use crate::feat::ui::picker_states::PickerExt;
@@ -588,12 +587,12 @@ mod tests {
 
     // --- handle_reset_session_history ---
 
-    #[test]
-    fn reset_session_history_clears_chat_entries() {
+    #[tokio::test]
+    async fn reset_session_history_clears_chat_entries() {
         use crate::feat::session::protocol::reset_session_history::ResetSessionHistory;
 
         // Given a session actor with a session that has history.
-        let mut actor = test_actor();
+        let mut actor = test_actor().await;
         let session_id = {
             let mut state = actor.state.write();
             let session = state.active_session_mut();
@@ -603,12 +602,9 @@ mod tests {
         };
 
         // When resetting the session history.
-        actor.handle_reset_session_history(
-            &ResetSessionHistory {
-                session_id: session_id.clone(),
-            },
-            &test_ctx(),
-        );
+        actor.handle_reset_session_history(&ResetSessionHistory {
+            session_id: session_id.clone(),
+        });
 
         // Then the history is empty.
         let state = actor.state.read();

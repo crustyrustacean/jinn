@@ -65,8 +65,7 @@ pub fn handle_resize_leave(state: &mut AppState) -> IntentResult {
     IntentResult::empty()
 }
 
-//FIXME: plugin migration
-#[cfg(any())]
+#[cfg(test)]
 mod tests {
     #![allow(
         clippy::expect_used,

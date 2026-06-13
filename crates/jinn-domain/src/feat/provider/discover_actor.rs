@@ -282,8 +282,7 @@ impl DiscoverActor {
     }
 }
 
-//FIXME: plugin migration
-#[cfg(any())]
+#[cfg(test)]
 mod tests {
     #![allow(
         clippy::expect_used,

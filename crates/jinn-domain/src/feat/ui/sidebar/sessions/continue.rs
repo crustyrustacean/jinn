@@ -57,9 +57,7 @@ pub fn handle_session_continue(state: &mut AppState) -> IntentResult {
     IntentResult::with_message(EnqueueResumeTurn { session_id })
 }
 
-//FIXME: disabled during actor migration
-// #[cfg(test)]
-#[cfg(any())]
+#[cfg(test)]
 mod tests {
     #![allow(
         clippy::expect_used,
