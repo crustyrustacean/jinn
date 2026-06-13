@@ -13,7 +13,9 @@ use std::sync::{Arc, Mutex};
 
 use jinn_domain::SessionId;
 use jinn_domain::feat::plugin_system::SessionPluginRegistry;
-use jinn_domain::feat::plugin_system::{PluginCommand, PluginSyncHandle, PluginSystem, PluginSystemBuildResult};
+use jinn_domain::feat::plugin_system::{
+    PluginCommand, PluginSyncHandle, PluginSystem, PluginSystemBuildResult,
+};
 use serde::Serialize;
 
 fn write_plugin(dir: &Path, name: &str, lua_source: &str) {

@@ -248,6 +248,5 @@ impl crate::common::bus::BusMessage for SkillsLoaded {}
 
 impl crate::common::bus::BusMessage for ScanSkills {}
 
-//FIXME: plugin migration
-#[cfg(any())]
+#[cfg(test)]
 mod tests;

@@ -20,7 +20,9 @@
 )]
 
 use jinn_domain::feat::plugin_dispatch::{HookContext, PluginSyncHooks};
-use jinn_domain::feat::plugin_system::{PluginCommand, PluginSystem, PluginSystemBuildResult, SyncPlugins};
+use jinn_domain::feat::plugin_system::{
+    PluginCommand, PluginSystem, PluginSystemBuildResult, SyncPlugins,
+};
 use serde_json::{Value, json};
 use std::path::{Path, PathBuf};
 use std::sync::{Arc, Mutex};

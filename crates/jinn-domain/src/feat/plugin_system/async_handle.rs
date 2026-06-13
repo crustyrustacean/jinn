@@ -4,8 +4,8 @@
 //! sender and the shared plugin data store. The actual Lua execution happens
 //! on a dedicated background thread (see `async_thread.rs`).
 
-use error_stack::{Report, ResultExt};
 use crate::SessionId;
+use error_stack::{Report, ResultExt};
 use serde::Serialize;
 use serde::de::DeserializeOwned;
 use tokio::sync::oneshot;
@@ -400,16 +400,12 @@ impl crate::feat::plugin_system::SessionPluginRegistry for AsyncPluginHandle {
         let result =
             AsyncPluginHandle::create_session_registry_impl(self, plugin_names, origin_session_id)
                 .await
-                .map_err(|_e| {
-                    Report::new(crate::feat::plugin_system::SessionPluginRegistryError)
-                })
+                .map_err(|_e| Report::new(crate::feat::plugin_system::SessionPluginRegistryError))
                 .attach("create per-session plugin registry")?;
-        Ok(
-            crate::feat::plugin_system::CreateSessionRegistryResult {
-                registry_id: result.registry_id,
-                tool_metadata: result.tool_metadata.into_iter().map(|m| m.into()).collect(),
-            },
-        )
+        Ok(crate::feat::plugin_system::CreateSessionRegistryResult {
+            registry_id: result.registry_id,
+            tool_metadata: result.tool_metadata.into_iter().map(|m| m.into()).collect(),
+        })
     }
 
     async fn destroy_session_registry(

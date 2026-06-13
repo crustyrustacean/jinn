@@ -59,7 +59,6 @@ impl DomainNodeContext {
         }
     }
 
-
     /// Create a child session with the given parent, automation, and persistence flags.
     ///
     /// Returns the new session's ID.
@@ -107,8 +106,12 @@ impl DomainNodeContext {
             .get(parent_id)
             .cloned();
 
-        let Some(tools) = parent_tools else { return; };
-        if tools.is_empty() { return; }
+        let Some(tools) = parent_tools else {
+            return;
+        };
+        if tools.is_empty() {
+            return;
+        }
 
         // Write directly to state so tools are immediately visible
         // (works in tests without actor bus).
@@ -321,9 +324,12 @@ impl DomainNodeContext {
             }
             Err(_) => {
                 self.pending.lock().remove(&session_id);
-                self.services.bus.publish(CancelStream {
-                    session_id: session_id.clone(),
-                }).await;
+                self.services
+                    .bus
+                    .publish(CancelStream {
+                        session_id: session_id.clone(),
+                    })
+                    .await;
                 Err(Report::new(DomainContextError).attach(format!(
                     "one-shot LLM request timed out after {timeout_ms}ms"
                 )))

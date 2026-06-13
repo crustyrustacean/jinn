@@ -446,8 +446,18 @@ fn session_new_works_when_sidebar_sessions_focused() {
     // Then a new session is created.
     // And SessionCreated and ActiveSessionChanged are emitted.
     assert_eq!(result.message_names.len(), 2);
-    assert!(result.message_names.iter().any(|n| n.contains("SessionCreated")));
-    assert!(result.message_names.iter().any(|n| n.contains("ActiveSessionChanged")));
+    assert!(
+        result
+            .message_names
+            .iter()
+            .any(|n| n.contains("SessionCreated"))
+    );
+    assert!(
+        result
+            .message_names
+            .iter()
+            .any(|n| n.contains("ActiveSessionChanged"))
+    );
 }
 
 #[rstest::rstest]

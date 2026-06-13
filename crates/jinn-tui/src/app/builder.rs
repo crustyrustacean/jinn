@@ -60,7 +60,9 @@ impl TuiAppBuilder {
             sender,
             bridge: services.bridge.clone(),
         };
-        let plugins = self.plugins.unwrap_or_else(jinn_domain::feat::plugin_system::SyncPlugins::empty);
+        let plugins = self
+            .plugins
+            .unwrap_or_else(jinn_domain::feat::plugin_system::SyncPlugins::empty);
 
         crate::launch::launch_for_test(core, services, plugins)
     }

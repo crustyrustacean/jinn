@@ -14,8 +14,8 @@
 //! [`GLOBAL_SESSION_ID`] as the session key. Each plugin sees only its own
 //! data, scoped to the session it was invoked for.
 
-use dashmap::DashMap;
 use crate::SessionId;
+use dashmap::DashMap;
 use std::sync::Arc;
 
 /// Sentinel session ID used for global plugins that don't belong to a session.

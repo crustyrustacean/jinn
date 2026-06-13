@@ -9,7 +9,6 @@ use serde::{Deserialize, Serialize};
 use crate::common::bus::BusMessage;
 use crate::protocol::SessionId;
 
-
 /// Attach an attachable plugin to a session.
 ///
 /// The plugin must exist under `plugins/attachable/`. The dispatcher will:

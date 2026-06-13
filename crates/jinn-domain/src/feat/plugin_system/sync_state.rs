@@ -13,9 +13,9 @@ use mlua::{Lua, LuaSerdeExt, RegistryKey, Value};
 use serde::de::DeserializeOwned;
 use wherror::Error;
 
-use super::plugin_data::PluginData;
 use super::bindings;
 use super::command::PluginCommand;
+use super::plugin_data::PluginData;
 use crate::feat::plugin_dispatch::{HookContext, PluginHookSite, ProvidesSessionId};
 
 /// Stored hook data for a loaded plugin.

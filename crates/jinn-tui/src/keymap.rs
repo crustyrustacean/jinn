@@ -521,8 +521,8 @@ mod tests {
     #[test]
     fn handle_key_alt_e_in_input_scope_fires_trigger_plugin() {
         use crate::app::WhichKeyInstance;
-        use jinn_domain::{Key, KeyEvent, Modifiers};
         use jinn_domain::feat::plugin_system::{PluginSystem, PluginSystemBuildResult};
+        use jinn_domain::{Key, KeyEvent, Modifiers};
         use std::path::Path;
 
         let manifest_dir = Path::new(env!("CARGO_MANIFEST_DIR"));

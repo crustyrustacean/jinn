@@ -950,7 +950,8 @@ fn session_new_with_lifecycle_opens_picker_from_normal_mode() {
     // When handling the intent via IntentHandler.
     let result = crate::feat::intent::IntentHandler::handle(
         &crate::Intent::SessionNewWithLifecycle,
-        &mut state, None,
+        &mut state,
+        None,
     );
 
     // Then the picker scope is pushed with SessionLifecycle kind.
@@ -972,7 +973,8 @@ fn session_new_with_lifecycle_opens_picker_from_sidebar_sessions() {
     // When handling the intent via IntentHandler.
     let result = crate::feat::intent::IntentHandler::handle(
         &crate::Intent::SessionNewWithLifecycle,
-        &mut state, None,
+        &mut state,
+        None,
     );
 
     // Then the picker scope is pushed with SessionLifecycle kind.
@@ -1020,7 +1022,8 @@ fn teardown_only_emits_run_session_teardown() {
     // When handling SidebarSessionTeardown via IntentHandler.
     let result = crate::feat::intent::IntentHandler::handle(
         &crate::Intent::SidebarSessionTeardown,
-        &mut state, None,
+        &mut state,
+        None,
     );
 
     // Then a RunSessionTeardown command is emitted with the rendered teardown command.
@@ -1056,7 +1059,8 @@ fn teardown_only_is_noop_without_lifecycle_teardown() {
     // When handling SidebarSessionTeardown via IntentHandler.
     let result = crate::feat::intent::IntentHandler::handle(
         &crate::Intent::SidebarSessionTeardown,
-        &mut state, None,
+        &mut state,
+        None,
     );
 
     // Then no commands are emitted (no teardown command to run).

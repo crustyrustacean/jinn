@@ -105,7 +105,8 @@ impl Actor for SessionPersistenceActor {
 
         // Persistence subscriptions.
         bus.subscribe::<SessionLoadRequested, _>(&actor_ref).await;
-        bus.subscribe::<LoadSessionPickerEntries, _>(&actor_ref).await;
+        bus.subscribe::<LoadSessionPickerEntries, _>(&actor_ref)
+            .await;
         bus.subscribe::<SessionForkRequested, _>(&actor_ref).await;
 
         // Session lifecycle subscriptions.
@@ -134,7 +135,8 @@ impl Actor for SessionPersistenceActor {
         // Context-related subscriptions.
         bus.subscribe::<PinChatEntry, _>(&actor_ref).await;
         bus.subscribe::<UnpinChatEntry, _>(&actor_ref).await;
-        bus.subscribe::<LoadPersonaPickerEntries, _>(&actor_ref).await;
+        bus.subscribe::<LoadPersonaPickerEntries, _>(&actor_ref)
+            .await;
 
         // Event subscriptions.
         bus.subscribe::<StreamToken, _>(&actor_ref).await;
@@ -179,7 +181,11 @@ impl Message<SessionLoadRequested> for SessionPersistenceActor {
 
 impl Message<LoadSessionPickerEntries> for SessionPersistenceActor {
     type Reply = ();
-    async fn handle(&mut self, msg: LoadSessionPickerEntries, _ctx: &mut Context<Self, Self::Reply>) {
+    async fn handle(
+        &mut self,
+        msg: LoadSessionPickerEntries,
+        _ctx: &mut Context<Self, Self::Reply>,
+    ) {
         self.handle_load_session_picker_entries(&msg).await;
     }
 }
@@ -312,7 +318,11 @@ impl Message<UnpinChatEntry> for SessionPersistenceActor {
 
 impl Message<LoadPersonaPickerEntries> for SessionPersistenceActor {
     type Reply = ();
-    async fn handle(&mut self, msg: LoadPersonaPickerEntries, _ctx: &mut Context<Self, Self::Reply>) {
+    async fn handle(
+        &mut self,
+        msg: LoadPersonaPickerEntries,
+        _ctx: &mut Context<Self, Self::Reply>,
+    ) {
         self.handle_load_persona_picker_entries(&msg).await;
     }
 }
