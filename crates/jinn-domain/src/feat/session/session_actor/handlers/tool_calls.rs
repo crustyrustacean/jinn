@@ -266,8 +266,7 @@ impl SessionPersistenceActor {
 //FIXME: disabled during actor migration — tests reference deleted types
 // #[cfg(test)]
 
-//FIXME: plugin migration
-#[cfg(any())]
+#[cfg(test)]
 mod tests {
     #![allow(
         clippy::expect_used,
@@ -276,7 +275,7 @@ mod tests {
         clippy::indexing_slicing,
         reason = "test code"
     )]
-    use super::super::super::helpers::test_actor_recording;
+    use super::super::super::helpers::{test_actor, test_actor_recording};
     use crate::feat::provider::protocol::event::{StreamCompleted, StreamCompletedReason};
     use crate::feat::session::phase_machine::PhaseKind;
     use crate::feat::session::token_stats::TokenRecord;
@@ -540,10 +539,10 @@ mod tests {
         assert!(tc.is_some(), "expected ToolCall entry with id tc-1");
     }
 
-    #[test]
-    fn tool_call_entry_gets_dispatched_at_from_tool_use_started() {
+    #[tokio::test]
+    async fn tool_call_entry_gets_dispatched_at_from_tool_use_started() {
         // Given a session in streaming state.
-        let actor = test_actor();
+        let actor = test_actor().await;
         let session_id = {
             let mut state = actor.state.write();
             let session = state.active_session_mut();
@@ -571,7 +570,7 @@ mod tests {
             .expect("tool call entry");
         match &tc.timing {
             crate::protocol::EntryTiming::Streamed { dispatched_at, .. } => {
-                assert_eq!(*dispatched_at, dispatched);
+                assert_eq!(dispatched_at, &dispatched);
             }
             other => panic!("expected Streamed, got {other:?}"),
         }

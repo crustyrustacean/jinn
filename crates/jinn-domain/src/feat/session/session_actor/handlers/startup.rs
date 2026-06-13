@@ -121,7 +121,7 @@ impl SessionPersistenceActor {
 //FIXME: disabled during actor migration — tests reference deleted types
 
 //FIXME: plugin migration
-#[cfg(any())]
+#[cfg(test)]
 mod tests {
     #![allow(
         clippy::expect_used,
@@ -152,7 +152,6 @@ mod tests {
                     default_provider: None,
                     alloys: vec![],
                 },
-                &ctx,
             )
             .await;
 
@@ -175,7 +174,6 @@ mod tests {
                     default_provider: None,
                     alloys: vec![],
                 },
-                &ctx,
             )
             .await;
 
@@ -213,7 +211,6 @@ mod tests {
                     default_provider: None,
                     alloys: vec![],
                 },
-                &ctx,
             )
             .await;
 
@@ -244,7 +241,6 @@ mod tests {
                     default_provider: None,
                     alloys: vec![],
                 },
-                &ctx,
             )
             .await;
 
@@ -286,7 +282,6 @@ mod tests {
                     default_provider: None,
                     alloys: vec![],
                 },
-                &ctx,
             )
             .await;
 
@@ -333,7 +328,6 @@ mod tests {
                     default_provider: None,
                     alloys: vec![],
                 },
-                &ctx,
             )
             .await;
 
@@ -362,7 +356,6 @@ mod tests {
                     default_provider: None,
                     alloys: vec![],
                 },
-                &ctx,
             )
             .await;
 
@@ -402,7 +395,6 @@ mod tests {
                     default_provider: None,
                     alloys: vec![],
                 },
-                &ctx,
             )
             .await;
 
