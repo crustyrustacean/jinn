@@ -102,12 +102,15 @@ pub fn handle_select_prev(state: &mut AppState) -> IntentResult {
 /// If the entry is pinned, sends an `UnpinChatEntry` command.
 /// If the entry is not pinned, sends a `PinChatEntry` command with `Relative` position.
 pub fn handle_pin_selected(state: &mut AppState) -> IntentResult {
+    tracing::debug!("handle_pin_selected called");
     if validator::validate_chat_entry_pin_selected(state).is_err() {
+        tracing::debug!("validation failed");
         return IntentResult::empty();
     }
 
     let session_id = state.session.active_session_id().clone();
     let Some(selected) = state.active_session().selected_entry() else {
+        tracing::debug!("active session doesnt match session id");
         return IntentResult::empty();
     };
     let entry_id = selected.id.clone();

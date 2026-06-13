@@ -434,6 +434,33 @@ mod tests {
     #![allow(clippy::expect_used, clippy::panic, reason = "test code")]
     use super::*;
 
+    /// Regression test for ratatui-which-key v0.12.1: when a key is bound as a
+    /// leaf in one scope (Normal) and used as a describe_group prefix in
+    /// another scope (SidebarSessions), the leaf must survive the
+    /// Leaf→Branch promotion. Before the fix, the library dropped the
+    /// existing binding and the catch-all fired instead.
+    #[test]
+    fn p_prefix_group_in_sidebar_does_not_drop_normal_pin_binding() {
+        use crate::app::WhichKeyInstance;
+        use jinn_domain::{Key, Modifiers};
+
+        // Given a fresh keymap with no plugin bindings.
+        let keymap = init();
+        let mut wk = WhichKeyInstance::new(keymap, Scope::Normal);
+
+        // When pressing 'p' alone.
+        let intent = wk.handle_key(jinn_domain::KeyEvent {
+            key: Key::Char('p'),
+            modifiers: Modifiers::none(),
+        });
+
+        // Then it fires ChatEntryPinSelected (not a chord prefix).
+        assert!(
+            matches!(intent, Some(jinn_domain::Intent::ChatEntryPinSelected)),
+            "'p' in Normal scope should fire ChatEntryPinSelected; got {intent:?}",
+        );
+    }
+
     #[test]
     fn bind_plugin_keybinds_no_plugins_is_noop() {
         // No plugins loaded => no keybinds to bind; function must be a no-op.

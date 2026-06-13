@@ -7,6 +7,11 @@ use crate::common::actor_deps::{ActorDeps, BusPublish};
 use crate::feat::context::protocol::command::RescanPersonas;
 use crate::feat::context::protocol::event::PersonasLoaded;
 use crate::feat::persona::scan_personas_merged;
+use crate::feat::session::protocol::session_load_completed::SessionLoadCompleted;
+use crate::feat::session_lifecycle::protocol::event::{
+    SessionCreated, SessionCwdChanged, SessionSetupCompleted,
+};
+use crate::init::env_init_actor::EnvironmentLoaded;
 use kameo::prelude::{Actor, ActorRef, Context, Message};
 
 /// Scans and loads persona files on `RescanPersonas`.
@@ -30,7 +35,22 @@ impl Actor for PersonaScanActor {
 
     async fn on_start(args: Self::Args, actor_ref: ActorRef<Self>) -> Result<Self, Self::Error> {
         args.deps
-            .subscribe(actor_ref.recipient::<RescanPersonas>())
+            .subscribe(actor_ref.clone().recipient::<RescanPersonas>())
+            .await;
+        args.deps
+            .subscribe(actor_ref.clone().recipient::<EnvironmentLoaded>())
+            .await;
+        args.deps
+            .subscribe(actor_ref.clone().recipient::<SessionCreated>())
+            .await;
+        args.deps
+            .subscribe(actor_ref.clone().recipient::<SessionSetupCompleted>())
+            .await;
+        args.deps
+            .subscribe(actor_ref.clone().recipient::<SessionLoadCompleted>())
+            .await;
+        args.deps
+            .subscribe(actor_ref.recipient::<SessionCwdChanged>())
             .await;
 
         Ok(Self { deps: args.deps })
@@ -45,6 +65,46 @@ impl Message<RescanPersonas> for PersonaScanActor {
         _msg: RescanPersonas,
         _ctx: &mut Context<Self, Self::Reply>,
     ) -> Self::Reply {
+        self.run_scan().await;
+    }
+}
+
+impl Message<EnvironmentLoaded> for PersonaScanActor {
+    type Reply = ();
+
+    async fn handle(&mut self, _msg: EnvironmentLoaded, _ctx: &mut Context<Self, Self::Reply>) {
+        self.run_scan().await;
+    }
+}
+
+impl Message<SessionCreated> for PersonaScanActor {
+    type Reply = ();
+
+    async fn handle(&mut self, _msg: SessionCreated, _ctx: &mut Context<Self, Self::Reply>) {
+        self.run_scan().await;
+    }
+}
+
+impl Message<SessionSetupCompleted> for PersonaScanActor {
+    type Reply = ();
+
+    async fn handle(&mut self, _msg: SessionSetupCompleted, _ctx: &mut Context<Self, Self::Reply>) {
+        self.run_scan().await;
+    }
+}
+
+impl Message<SessionLoadCompleted> for PersonaScanActor {
+    type Reply = ();
+
+    async fn handle(&mut self, _msg: SessionLoadCompleted, _ctx: &mut Context<Self, Self::Reply>) {
+        self.run_scan().await;
+    }
+}
+
+impl Message<SessionCwdChanged> for PersonaScanActor {
+    type Reply = ();
+
+    async fn handle(&mut self, _msg: SessionCwdChanged, _ctx: &mut Context<Self, Self::Reply>) {
         self.run_scan().await;
     }
 }
@@ -187,5 +247,38 @@ mod tests {
         let events = await_recorded(&recorder, 1, Duration::from_secs(2)).await;
         assert!(events[0].personas.is_empty());
         assert!(events[0].error.is_none());
+    }
+
+    #[tokio::test]
+    async fn environment_loaded_triggers_scan() {
+        // Given a persona scan actor subscribed to EnvironmentLoaded.
+        let dir = tempfile::tempdir().expect("create temp dir");
+        let harness = TestHarness::new().await;
+        let services = TestServices::builder()
+            .paths(AppPaths::new_in(dir.path()))
+            .with_bus(harness.bus())
+            .build();
+        let _actor = harness
+            .spawn_actor::<PersonaScanActor>(PersonaScanActorDeps {
+                deps: crate::common::actor_deps::ActorDeps { services },
+            })
+            .await;
+        let recorder = harness.spawn_recorder::<PersonasLoaded>().await;
+
+        // When publishing EnvironmentLoaded.
+        harness
+            .publish(crate::init::env_init_actor::EnvironmentLoaded {
+                config: crate::ProvidersConfig {
+                    providers: vec![],
+                    aliases: vec![],
+                    default_provider: None,
+                    alloys: vec![],
+                },
+            })
+            .await;
+
+        // Then PersonasLoaded is published.
+        let events = await_recorded(&recorder, 1, Duration::from_secs(2)).await;
+        assert_eq!(events.len(), 1);
     }
 }
