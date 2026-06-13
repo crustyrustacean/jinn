@@ -33,12 +33,8 @@ pub use scope::Scope;
 #[cfg(any())]
 mod app_tests;
 
-//FIXME: disabled during actor migration
-// #[cfg(test)]
-#[cfg(any())]
+#[cfg(test)]
 mod render_tests;
 
-//FIXME: disabled during actor migration
-// #[cfg(test)]
-#[cfg(any())]
+#[cfg(test)]
 mod selection_tests;
