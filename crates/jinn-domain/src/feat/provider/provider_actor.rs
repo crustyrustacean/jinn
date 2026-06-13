@@ -895,9 +895,9 @@ mod tests {
             .await;
 
         // Then the session model is updated.
-        let recorded = await_recorded(&recorder, 1, std::time::Duration::from_secs(2)).await;
-        assert_eq!(recorded.len(), 1);
-        assert_eq!(recorded[0].provider_name, "ollama/llama3");
+        let messages = await_recorded(&recorder, 1, std::time::Duration::from_secs(2)).await;
+        assert_eq!(messages.len(), 1);
+        assert_eq!(messages[0].provider_name, "ollama/llama3");
 
         let s = state.read();
         assert_eq!(

@@ -51,11 +51,9 @@ impl BusService {
     /// `register()` is a no-op in recording mode.
     #[cfg(test)]
     pub fn new_recording() -> (Self, BusAudit) {
-        let recorded = Arc::new(Mutex::new(Vec::new()));
-        let service = Self {
-            inner: BusInner::Recording(recorded.clone()),
-        };
-        let audit = BusAudit { recorded };
+        let messages = Arc::new(Mutex::new(Vec::new()));
+        let service = Self { inner: BusInner::Recording(recorded.clone()) };
+        let audit = BusAudit { messages: recorded };
         (service, audit)
     }
 
@@ -182,7 +180,7 @@ impl RecordedMessage {
 /// Created by [`BusService::new_recording()`].
 #[derive(Clone)]
 pub struct BusAudit {
-    recorded: Arc<Mutex<Vec<RecordedMessage>>>,
+    messages: Arc<Mutex<Vec<RecordedMessage>>>,
 }
 
 impl BusAudit {
@@ -193,7 +191,7 @@ impl BusAudit {
     /// assert_eq!(audit.names(), ["PersistSession", "PushChatEntry"]);
     /// ```
     pub fn names(&self) -> Vec<String> {
-        self.recorded
+        self.messages
             .lock()
             .unwrap()
             .iter()
@@ -208,7 +206,7 @@ impl BusAudit {
     /// assert_eq!(entries.len(), 1);
     /// ```
     pub fn of_type<M: BusMessage>(&self) -> Vec<M> {
-        self.recorded
+        self.messages
             .lock()
             .unwrap()
             .iter()
@@ -218,22 +216,22 @@ impl BusAudit {
 
     /// Returns the total number of captured messages.
     pub fn len(&self) -> usize {
-        self.recorded.lock().unwrap().len()
+        self.messages.lock().unwrap().len()
     }
 
     /// Returns `true` if no messages have been captured.
     pub fn is_empty(&self) -> bool {
-        self.recorded.lock().unwrap().is_empty()
+        self.messages.lock().unwrap().is_empty()
     }
 
     /// Clears all captured messages.
     pub fn clear(&self) {
-        self.recorded.lock().unwrap().clear();
+        self.messages.lock().unwrap().clear();
     }
 
     /// Returns `true` if a message with the given type name was captured.
     pub fn contains_name(&self, name: &str) -> bool {
-        self.recorded.lock().unwrap().iter().any(|m| m.name == name)
+        self.messages.lock().unwrap().iter().any(|m| m.name == name)
     }
 }
 

@@ -345,10 +345,10 @@ mod tests {
         harness.publish(ScanContextFiles { session_id }).await;
 
         // Then ContextFilesLoaded is emitted with the file and no error.
-        let recorded = await_recorded(&recorder, 1, std::time::Duration::from_secs(2)).await;
-        assert_eq!(recorded.len(), 1);
-        assert!(recorded[0].error.is_none());
-        assert_eq!(recorded[0].files.len(), 1);
+        let messages = await_recorded(&recorder, 1, std::time::Duration::from_secs(2)).await;
+        assert_eq!(messages.len(), 1);
+        assert!(messages[0].error.is_none());
+        assert_eq!(messages[0].files.len(), 1);
     }
 
     #[tokio::test]
@@ -374,10 +374,10 @@ mod tests {
         harness.publish(ScanContextFiles { session_id }).await;
 
         // Then ContextFilesLoaded is emitted with an empty list.
-        let recorded = await_recorded(&recorder, 1, std::time::Duration::from_secs(2)).await;
-        assert_eq!(recorded.len(), 1);
-        assert!(recorded[0].files.is_empty());
-        assert!(recorded[0].error.is_none());
+        let messages = await_recorded(&recorder, 1, std::time::Duration::from_secs(2)).await;
+        assert_eq!(messages.len(), 1);
+        assert!(messages[0].files.is_empty());
+        assert!(messages[0].error.is_none());
     }
 
     #[tokio::test]
@@ -418,10 +418,10 @@ mod tests {
         harness.publish(ScanContextFiles { session_id }).await;
 
         // Then only the project file is loaded; the home-level file is excluded.
-        let recorded = await_recorded(&recorder, 1, std::time::Duration::from_secs(2)).await;
-        assert_eq!(recorded.len(), 1);
-        assert_eq!(recorded[0].files.len(), 1);
-        assert_eq!(recorded[0].files[0].content, "project file");
+        let messages = await_recorded(&recorder, 1, std::time::Duration::from_secs(2)).await;
+        assert_eq!(messages.len(), 1);
+        assert_eq!(messages[0].files.len(), 1);
+        assert_eq!(messages[0].files[0].content, "project file");
     }
 
     #[tokio::test]
@@ -458,13 +458,13 @@ mod tests {
         let recorder = harness.spawn_recorder::<ContextFilesLoaded>().await;
         harness.publish(ScanContextFiles { session_id }).await;
 
-        let recorded = await_recorded(&recorder, 1, std::time::Duration::from_secs(2)).await;
+        let messages = await_recorded(&recorder, 1, std::time::Duration::from_secs(2)).await;
         assert_eq!(
-            recorded.len(),
+            messages.len(),
             1,
             "ancestor file must be discovered from a descendant cwd"
         );
-        assert_eq!(recorded[0].files[0].content, "ancestor file");
+        assert_eq!(messages[0].files[0].content, "ancestor file");
     }
 
     #[tokio::test]
@@ -534,8 +534,8 @@ mod tests {
             .await;
 
         // Then no scan runs: the discovered set stays empty.
-        let recorded = await_recorded(&recorder, 1, std::time::Duration::from_millis(100)).await;
-        assert!(recorded.is_empty(), "should not scan for sentinel cwd");
+        let messages = await_recorded(&recorder, 1, std::time::Duration::from_millis(100)).await;
+        assert!(messages.is_empty(), "should not scan for sentinel cwd");
         let guard = state.read();
         let session = guard.session.get(&session_id).expect("session exists");
         assert!(session.discovered_context_files().is_empty());

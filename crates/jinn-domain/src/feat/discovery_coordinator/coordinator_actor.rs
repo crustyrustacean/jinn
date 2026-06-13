@@ -417,8 +417,8 @@ mod tests {
             .expect("tell");
 
         // Then no settled event yet.
-        let recorded = await_recorded(&recorder, 0, std::time::Duration::from_millis(100)).await;
-        assert_eq!(recorded.len(), 0, "one resource must not settle");
+        let messages = await_recorded(&recorder, 0, std::time::Duration::from_millis(100)).await;
+        assert_eq!(messages.len(), 0, "one resource must not settle");
     }
 
     #[tokio::test]
@@ -446,8 +446,8 @@ mod tests {
             .expect("tell");
 
         // Then no settled event yet.
-        let recorded = await_recorded(&recorder, 0, std::time::Duration::from_millis(100)).await;
-        assert_eq!(recorded.len(), 0, "two resources must not settle");
+        let messages = await_recorded(&recorder, 0, std::time::Duration::from_millis(100)).await;
+        assert_eq!(messages.len(), 0, "two resources must not settle");
     }
 
     #[tokio::test]
@@ -483,12 +483,12 @@ mod tests {
             .expect("tell");
 
         // Then exactly one settled event, with no delay.
-        let recorded = await_recorded(&recorder, 1, std::time::Duration::from_secs(1)).await;
-        assert_eq!(recorded.len(), 1);
-        assert!(recorded[0].delayed.is_none());
-        assert_eq!(recorded[0].snapshot.skill_count, 3);
-        assert_eq!(recorded[0].snapshot.prompt_count, 2);
-        assert_eq!(recorded[0].snapshot.context_file_count, 1);
+        let messages = await_recorded(&recorder, 1, std::time::Duration::from_secs(1)).await;
+        assert_eq!(messages.len(), 1);
+        assert!(messages[0].delayed.is_none());
+        assert_eq!(messages[0].snapshot.skill_count, 3);
+        assert_eq!(messages[0].snapshot.prompt_count, 2);
+        assert_eq!(messages[0].snapshot.context_file_count, 1);
     }
 
     #[tokio::test]
@@ -524,10 +524,10 @@ mod tests {
             .expect("tell");
 
         // Then settled fires with the error flag set.
-        let recorded = await_recorded(&recorder, 1, std::time::Duration::from_secs(1)).await;
-        assert_eq!(recorded.len(), 1);
+        let messages = await_recorded(&recorder, 1, std::time::Duration::from_secs(1)).await;
+        assert_eq!(messages.len(), 1);
         assert_eq!(
-            recorded[0].snapshot.skill_error.as_deref(),
+            messages[0].snapshot.skill_error.as_deref(),
             Some("disk error")
         );
     }
@@ -567,8 +567,8 @@ mod tests {
         }
 
         // Then two settled events, one per session.
-        let recorded = await_recorded(&recorder, 1, std::time::Duration::from_secs(1)).await;
-        assert_eq!(recorded.len(), 2);
+        let messages = await_recorded(&recorder, 1, std::time::Duration::from_secs(1)).await;
+        assert_eq!(messages.len(), 2);
     }
 
     #[tokio::test]
@@ -675,9 +675,9 @@ mod tests {
         tokio::time::sleep(std::time::Duration::from_millis(10)).await;
 
         // Then settled fires with a delayed reason naming the missing context.
-        let recorded = await_recorded(&recorder, 1, std::time::Duration::from_secs(1)).await;
-        assert_eq!(recorded.len(), 1);
-        let reason = recorded[0].delayed.as_ref().expect("delayed reason set");
+        let messages = await_recorded(&recorder, 1, std::time::Duration::from_secs(1)).await;
+        assert_eq!(messages.len(), 1);
+        let reason = messages[0].delayed.as_ref().expect("delayed reason set");
         assert!(
             reason.contains("context"),
             "reason should name the missing resource: {reason}"
@@ -717,10 +717,10 @@ mod tests {
             .expect("tell");
 
         // Then settled fires exactly once with no delay.
-        let recorded = await_recorded(&recorder, 1, std::time::Duration::from_secs(1)).await;
-        assert_eq!(recorded.len(), 1);
+        let messages = await_recorded(&recorder, 1, std::time::Duration::from_secs(1)).await;
+        assert_eq!(messages.len(), 1);
         assert!(
-            recorded[0].delayed.is_none(),
+            messages[0].delayed.is_none(),
             "settled under the window must not be delayed"
         );
 

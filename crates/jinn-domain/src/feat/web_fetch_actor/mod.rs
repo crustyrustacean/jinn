@@ -294,11 +294,11 @@ mod tests {
         });
 
         // Then a RegisterTools command was published.
-        let recorded = await_recorded(&recorder, 1, std::time::Duration::from_secs(1)).await;
-        assert_eq!(recorded.len(), 1, "should send exactly one RegisterTools");
-        assert_eq!(recorded[0].provider, "web-fetch");
-        assert_eq!(recorded[0].definitions.len(), 1);
-        assert_eq!(recorded[0].definitions[0].name, "web-fetch");
+        let messages = await_recorded(&recorder, 1, std::time::Duration::from_secs(1)).await;
+        assert_eq!(messages.len(), 1, "should send exactly one RegisterTools");
+        assert_eq!(messages[0].provider, "web-fetch");
+        assert_eq!(messages[0].definitions.len(), 1);
+        assert_eq!(messages[0].definitions[0].name, "web-fetch");
     }
 
     #[tokio::test]
@@ -327,11 +327,11 @@ mod tests {
             .await;
 
         // Then a ToolExecutionCompleted event was emitted with success.
-        let recorded = await_recorded(&recorder, 1, std::time::Duration::from_secs(2)).await;
-        assert_eq!(recorded.len(), 1);
-        assert!(recorded[0].result.success);
-        assert_eq!(recorded[0].result.content, "Hello, World!");
-        assert_eq!(recorded[0].session_id, session_id);
+        let messages = await_recorded(&recorder, 1, std::time::Duration::from_secs(2)).await;
+        assert_eq!(messages.len(), 1);
+        assert!(messages[0].result.success);
+        assert_eq!(messages[0].result.content, "Hello, World!");
+        assert_eq!(messages[0].session_id, session_id);
     }
 
     #[tokio::test]
@@ -360,10 +360,10 @@ mod tests {
             .await;
 
         // Then a ToolExecutionCompleted event was emitted with failure.
-        let recorded = await_recorded(&recorder, 1, std::time::Duration::from_secs(2)).await;
-        assert_eq!(recorded.len(), 1);
-        assert!(!recorded[0].result.success);
-        assert!(recorded[0].result.content.contains("invalid arguments"));
+        let messages = await_recorded(&recorder, 1, std::time::Duration::from_secs(2)).await;
+        assert_eq!(messages.len(), 1);
+        assert!(!messages[0].result.success);
+        assert!(messages[0].result.content.contains("invalid arguments"));
     }
 
     #[tokio::test]
@@ -392,9 +392,9 @@ mod tests {
             .await;
 
         // Then a ToolExecutionCompleted event was emitted with failure.
-        let recorded = await_recorded(&recorder, 1, std::time::Duration::from_secs(2)).await;
-        assert_eq!(recorded.len(), 1);
-        assert!(!recorded[0].result.success);
-        assert!(recorded[0].result.content.contains("fetch failed"));
+        let messages = await_recorded(&recorder, 1, std::time::Duration::from_secs(2)).await;
+        assert_eq!(messages.len(), 1);
+        assert!(!messages[0].result.success);
+        assert!(messages[0].result.content.contains("fetch failed"));
     }
 }

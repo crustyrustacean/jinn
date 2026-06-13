@@ -133,7 +133,7 @@ impl HeadlessApp {
     pub fn shutdown(&self) {
         let root = self.services.root_supervisor.clone();
         let result = self.services.handle.block_on(async {
-            root.stop_gracefully().await;
+            let _ = root.stop_gracefully().await;
             tokio::time::timeout(Duration::from_secs(20), root.wait_for_shutdown()).await
         });
         if result.is_err() {
