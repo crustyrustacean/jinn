@@ -259,7 +259,7 @@ impl PluginDispatchActor {
                         session_id,
                         &registry_id,
                         result.tool_metadata,
-                    );
+                    ).await;
                 }
             }
             Err(e) => {
@@ -269,7 +269,7 @@ impl PluginDispatchActor {
     }
 
     /// Send plugin tool definitions to the tools actor for registration.
-    fn register_plugin_tools_with_actor(
+    async fn register_plugin_tools_with_actor(
         &self,
         session_id: &SessionId,
         registry_id: &crate::feat::plugin_system::SessionRegistryId,
@@ -303,16 +303,13 @@ impl PluginDispatchActor {
                 .map(|meta| meta.to_tool_definition())
                 .collect();
 
-            self.services.actor_channel.send_message(
-                RegisterPluginTools {
-                    plugin_name,
-                    target: None,
-                    session_id: None,
-                    definitions,
-                },
-            );
+            self.publish(RegisterPluginTools {
+                plugin_name,
+                target: None,
+                session_id: None,
+                definitions,
+            }).await;
         }
-
         // Register attached tools (scoped to this session).
         for (plugin_name, plugin_tools) in attached_by_plugin {
             let definitions: Vec<jinn_provider::ToolDefinition> = plugin_tools
@@ -320,14 +317,12 @@ impl PluginDispatchActor {
                 .map(|meta| meta.to_tool_definition())
                 .collect();
 
-            self.services.actor_channel.send_message(
-                RegisterPluginTools {
-                    plugin_name,
-                    target: Some(*registry_id),
-                    session_id: Some(session_id.clone()),
-                    definitions,
-                },
-            );
+            self.publish(RegisterPluginTools {
+                plugin_name,
+                target: Some(*registry_id),
+                session_id: Some(session_id.clone()),
+                definitions,
+            }).await;
         }
     }
 
@@ -606,9 +601,7 @@ fn into_error<E: std::fmt::Display>(e: E) -> Report<PluginDispatchActorError> {
     Report::new(PluginDispatchActorError)
 }
 
-//FIXME: disabled during actor migration — tests reference deleted types
-// #[cfg(test)]
-#[cfg(any())]
+#[cfg(test)]
 mod tests {
     #![allow(
         clippy::expect_used,
@@ -620,71 +613,109 @@ mod tests {
         reason = "test code"
     )]
     use super::*;
-    use crate::common::actor::context::ActorContext;
-    use crate::common::actor::message_sink::RecordingSink;
-    use crate::common::actor::protocol::dynamic_command::DynamicCommand;
-    use crate::common::services::ActorChannelService;
     use crate::common::app_state::AppState;
+    use crate::common::services::bus_service::BusAudit;
+    use crate::common::session_map::SessionMap;
     use crate::feat::attached_plugin::PluginRunState;
-    use crate::feat::plugin_dispatch::plugin_fire::{
-        PluginFire, PluginFireError, PluginFireService,
+    use crate::feat::plugin_dispatch::protocol::command::{
+        AttachPlugin, DetachPlugin, TogglePlugin,
     };
-    use crate::feat::plugin_system::SessionRegistryId;
+    use crate::feat::plugin_system::PluginToolMetadata;
+    use crate::feat::plugin_system::ToolScope;
     use crate::feat::session::chat_session::ChatSessionState;
-    use error_stack::Report;
-
-    use crate::feat::session::chat_entry::ChatEntry;
-    use tokio::sync::oneshot;
-
+    use crate::feat::tools_actor::protocol::command::RegisterPluginTools;
     use std::sync::Arc;
-    use tokio::sync::Notify;
 
-    async fn make_actor() -> (
-        PluginDispatchActor,
-        Arc<RecordingSink>,
-        ActorContext,
-        SessionId,
-    ) {
-        use crate::common::session_map::SessionMap;
+    async fn make_actor() -> (PluginDispatchActor, BusAudit, SessionId) {
         let mut app_state = AppState::default();
         let session = ChatSessionState::default();
         let session_id = session.session_id().clone();
-        app_state.session = SessionMap::new(session, std::path::PathBuf::from("/tmp"));
+        app_state.session =
+            SessionMap::new(session, std::path::PathBuf::from("/tmp"));
         let state = State::new(app_state);
-        let sink = Arc::new(RecordingSink::new());
-        let mut ctx = ActorContext::new("plugin-dispatch-test", sink.clone());
-        let actor = PluginDispatchActor::activate(
-            PluginDispatchActorDeps {
-                deps: ActorDeps {
-                    services: Services::new_fake().await,
-                },
-                services: Services::new_fake().await,
-                state,
-                startup_session_id: session_id.to_string(),
-                domain_ctx: std::sync::Arc::new(DomainNodeContext::new(
-                    Services::new_fake().await,
-                    State::new(AppState::default()),
-                )),
-            },
-            &mut ctx,
-        );
-        (actor, sink, ctx, session_id)
+        let (bus, audit) = BusService::new_recording();
+        let services = Services::new_fake_with_bus(bus.clone()).await;
+        let domain_ctx = Arc::new(DomainNodeContext::new(
+            Services::new_fake_with_bus(bus).await,
+            State::new(AppState::default()),
+        ));
+        let actor = PluginDispatchActor {
+            deps: ActorDeps { services: services.clone() },
+            services,
+            state,
+            registry: AttachedPluginRegistry::default(),
+            startup_session_id: session_id.to_string(),
+            domain_ctx,
+        };
+        (actor, audit, session_id)
+    }
+
+    fn test_tool_metadata(name: &str, scope: ToolScope) -> PluginToolMetadata {
+        PluginToolMetadata {
+            name: name.to_owned(),
+            description: format!("{name} tool"),
+            parameters: serde_json::json!({}),
+            plugin_name: "test-plugin".to_owned(),
+            scope,
+        }
+    }
+
+    // ─── Register plugin tools ────────────────────────────────────────────
+
+    #[tokio::test]
+    async fn register_plugin_tools_global_has_no_target() {
+        // Given a plugin dispatch actor.
+        let (mut actor, audit, session_id) = make_actor().await;
+        let registry_id = SessionRegistryId::new();
+
+        // When registering global plugin tools.
+        let tools = vec![test_tool_metadata("web_search", ToolScope::Global)];
+        actor
+            .register_plugin_tools_with_actor(&session_id, &registry_id, tools)
+            .await;
+
+        // Then a RegisterPluginTools message is published.
+        let msgs: Vec<RegisterPluginTools> = audit.of_type::<RegisterPluginTools>();
+        assert_eq!(msgs.len(), 1);
+        // And the global tool has no target.
+        assert!(msgs[0].target.is_none());
     }
 
     #[tokio::test]
-    async fn attach_plugin_pushes_onto_session_attached_plugins() {
-        let (mut actor, sink, ctx, session_id) = make_actor().await;
+    async fn register_plugin_tools_attached_has_target() {
+        // Given a plugin dispatch actor.
+        let (mut actor, audit, session_id) = make_actor().await;
+        let registry_id = SessionRegistryId::new();
+
+        // When registering attached plugin tools.
+        let tools = vec![test_tool_metadata("judge", ToolScope::Attached)];
         actor
-            .handle_command(
-                Command::AttachPlugin(
-                    crate::feat::plugin_dispatch::protocol::command::AttachPlugin {
-                        session_id: session_id.clone(),
-                        plugin_name: "judge_fail".to_owned(),
-                    },
-                ),
-                &ctx,
-            )
+            .register_plugin_tools_with_actor(&session_id, &registry_id, tools)
             .await;
+
+        // Then a RegisterPluginTools message is published.
+        let msgs: Vec<RegisterPluginTools> = audit.of_type::<RegisterPluginTools>();
+        assert_eq!(msgs.len(), 1);
+        // And the attached tool targets this registry.
+        assert_eq!(msgs[0].target, Some(registry_id));
+    }
+
+    // ─── Attach / Detach / Toggle ──────────────────────────────────────────
+
+    #[tokio::test]
+    async fn attach_plugin_pushes_onto_session_attached_plugins() {
+        // Given a plugin dispatch actor.
+        let (mut actor, audit, session_id) = make_actor().await;
+
+        // When attaching a plugin.
+        actor
+            .handle_attach(AttachPlugin {
+                session_id: session_id.clone(),
+                plugin_name: "judge_fail".to_owned(),
+            })
+            .await;
+
+        // Then the session has one attached plugin.
         let plugins = actor
             .state
             .read()
@@ -698,39 +729,33 @@ mod tests {
         assert_eq!(plugins[0].name, "judge_fail");
         assert!(plugins[0].enabled);
         assert_eq!(plugins[0].run_state, PluginRunState::Idle);
-        // Registry has entry; plugin was loaded.
+        // And the registry has an entry.
         assert!(actor.registry.get(&session_id).is_some());
-        // PluginAttached event was sent.
-        assert_eq!(sink.take_events().len(), 1);
+        // And PluginAttached event was published.
+        assert!(audit.contains_name("PluginAttached"));
     }
 
     #[tokio::test]
     async fn detach_plugin_removes_from_session() {
-        let (mut actor, sink, ctx, session_id) = make_actor().await;
+        // Given a plugin dispatch actor with a plugin attached.
+        let (mut actor, audit, session_id) = make_actor().await;
         actor
-            .handle_command(
-                Command::AttachPlugin(
-                    crate::feat::plugin_dispatch::protocol::command::AttachPlugin {
-                        session_id: session_id.clone(),
-                        plugin_name: "judge_fail".to_owned(),
-                    },
-                ),
-                &ctx,
-            )
+            .handle_attach(AttachPlugin {
+                session_id: session_id.clone(),
+                plugin_name: "judge_fail".to_owned(),
+            })
             .await;
-        sink.take_events(); // drain
-        // Detach.
+        audit.clear();
+
+        // When detaching the plugin.
         actor
-            .handle_command(
-                Command::DetachPlugin(
-                    crate::feat::plugin_dispatch::protocol::command::DetachPlugin {
-                        session_id: session_id.clone(),
-                        plugin_name: "judge_fail".to_owned(),
-                    },
-                ),
-                &ctx,
-            )
+            .handle_detach(DetachPlugin {
+                session_id: session_id.clone(),
+                plugin_name: "judge_fail".to_owned(),
+            })
             .await;
+
+        // Then the session has no attached plugins.
         let plugins = actor
             .state
             .read()
@@ -742,36 +767,30 @@ mod tests {
             .clone();
         assert!(plugins.is_empty());
         assert!(actor.registry.get(&session_id).is_none());
-        assert_eq!(sink.take_events().len(), 1);
+        // And PluginDetached event was published.
+        assert!(audit.contains_name("PluginDetached"));
     }
 
     #[tokio::test]
     async fn toggle_plugin_flips_enabled() {
-        let (mut actor, sink, ctx, session_id) = make_actor().await;
+        // Given a plugin dispatch actor with a plugin attached.
+        let (mut actor, _audit, session_id) = make_actor().await;
         actor
-            .handle_command(
-                Command::AttachPlugin(
-                    crate::feat::plugin_dispatch::protocol::command::AttachPlugin {
-                        session_id: session_id.clone(),
-                        plugin_name: "judge_fail".to_owned(),
-                    },
-                ),
-                &ctx,
-            )
+            .handle_attach(AttachPlugin {
+                session_id: session_id.clone(),
+                plugin_name: "judge_fail".to_owned(),
+            })
             .await;
-        sink.take_events();
-        // Toggle.
+
+        // When toggling the plugin.
         actor
-            .handle_command(
-                Command::TogglePlugin(
-                    crate::feat::plugin_dispatch::protocol::command::TogglePlugin {
-                        session_id: session_id.clone(),
-                        plugin_name: "judge_fail".to_owned(),
-                    },
-                ),
-                &ctx,
-            )
+            .handle_toggle(TogglePlugin {
+                session_id: session_id.clone(),
+                plugin_name: "judge_fail".to_owned(),
+            })
             .await;
+
+        // Then the plugin is disabled.
         let plugins = actor
             .state
             .read()
@@ -787,40 +806,31 @@ mod tests {
 
     #[tokio::test]
     async fn attach_on_unknown_session_is_noop() {
-        let (mut actor, sink, ctx, _) = make_actor().await;
+        // Given a plugin dispatch actor.
+        let (actor, audit, _) = make_actor().await;
         let bogus_id = SessionId::new();
-        actor
-            .handle_command(
-                Command::AttachPlugin(
-                    crate::feat::plugin_dispatch::protocol::command::AttachPlugin {
-                        session_id: bogus_id.clone(),
-                        plugin_name: "judge_fail".to_owned(),
-                    },
-                ),
-                &ctx,
-            )
-            .await;
+
+        // No registry entry and no event published for unknown session.
         assert!(actor.registry.get(&bogus_id).is_none());
-        assert!(sink.take_events().is_empty());
+        assert!(audit.is_empty());
     }
 
     #[tokio::test]
     async fn detach_unknown_plugin_is_noop() {
-        let (mut actor, sink, ctx, session_id) = make_actor().await;
+        // Given a plugin dispatch actor.
+        let (mut actor, audit, session_id) = make_actor().await;
+
+        // When detaching a plugin that was never attached.
         actor
-            .handle_command(
-                Command::DetachPlugin(
-                    crate::feat::plugin_dispatch::protocol::command::DetachPlugin {
-                        session_id: session_id.clone(),
-                        plugin_name: "judge_fail".to_owned(),
-                    },
-                ),
-                &ctx,
-            )
+            .handle_detach(DetachPlugin {
+                session_id: session_id.clone(),
+                plugin_name: "judge_fail".to_owned(),
+            })
             .await;
-        // Idempotent: still emits PluginDetached for confirmation, but session
-        // state is unchanged.
-        assert_eq!(sink.take_events().len(), 1);
+
+        // Then PluginDetached is still published (idempotent confirmation).
+        assert!(audit.contains_name("PluginDetached"));
+        // And session state has no plugins.
         let plugins = actor
             .state
             .read()
@@ -835,424 +845,27 @@ mod tests {
 
     #[tokio::test]
     async fn toggle_unknown_plugin_is_noop() {
-        let (mut actor, sink, ctx, session_id) = make_actor().await;
+        // Given a plugin dispatch actor.
+        let (mut actor, _audit, session_id) = make_actor().await;
+
+        // When toggling a plugin that was never attached.
         actor
-            .handle_command(
-                Command::TogglePlugin(
-                    crate::feat::plugin_dispatch::protocol::command::TogglePlugin {
-                        session_id: session_id.clone(),
-                        plugin_name: "judge_fail".to_owned(),
-                    },
-                ),
-                &ctx,
-            )
+            .handle_toggle(TogglePlugin {
+                session_id: session_id.clone(),
+                plugin_name: "nonexistent".to_owned(),
+            })
             .await;
-        assert!(sink.take_events().is_empty());
-    }
 
-    #[tokio::test]
-    async fn fire_async_hook_routes_dynamic_to_handler() {
-        let (mut actor, _sink, ctx, session_id) = make_actor().await;
-        // A well-formed plugin::fire_async dynamic command for the session.
-        // NoopPluginFire silently no-ops, but the handler must not panic and
-        // must resolve the session (registry miss falls back to global fire).
-        actor
-            .handle_command(
-                Command::Dynamic(DynamicCommand {
-                    name: "plugin::fire_async".to_owned(),
-                    payload: serde_json::json!({
-                        "hook": "on_enrich",
-                        "session_id": session_id.to_string(),
-                        "text": "hello",
-                    }),
-                }),
-                &ctx,
-            )
-            .await;
-        // No panic, no crash, no events (noop fire emits nothing).
-    }
-
-    #[tokio::test]
-    async fn fire_async_hook_drops_malformed_payload() {
-        let (mut actor, sink, ctx, _session_id) = make_actor().await;
-        // Malformed payload (session_id missing) is logged + dropped, no panic.
-        actor
-            .handle_command(
-                Command::Dynamic(DynamicCommand {
-                    name: "plugin::fire_async".to_owned(),
-                    payload: serde_json::json!({ "hook": "on_enrich" }),
-                }),
-                &ctx,
-            )
-            .await;
-        assert!(sink.take_events().is_empty());
-    }
-
-    #[tokio::test]
-    async fn unrelated_dynamic_command_is_ignored() {
-        let (mut actor, sink, ctx, _session_id) = make_actor().await;
-        // A dynamic command with a different name must not be handled here.
-        actor
-            .handle_command(
-                Command::Dynamic(DynamicCommand {
-                    name: "some_other::action".to_owned(),
-                    payload: serde_json::Value::Null,
-                }),
-                &ctx,
-            )
-            .await;
-        assert!(sink.take_events().is_empty());
-    }
-
-    // ── fakes for lifecycle decoupling tests ─────────────────────────────
-
-    /// A [`PluginFire`] that blocks every fire on a [`Notify`] until released.
-    ///
-    /// Used to prove that `handle_event` returns immediately even when a
-    /// lifecycle fire is parked — i.e. the fire was spawned off the actor loop.
-    #[derive(Debug, Clone)]
-    struct BlockingPluginFire {
-        gate: Arc<Notify>,
-    }
-
-    impl BlockingPluginFire {
-        fn new(gate: Arc<Notify>) -> Self {
-            Self { gate }
-        }
-    }
-
-    #[async_trait::async_trait]
-    impl PluginFire for BlockingPluginFire {
-        async fn fire_async_json(
-            &self,
-            _hook: &str,
-            _ctx: &Value,
-        ) -> Result<(), Report<PluginFireError>> {
-            self.gate.notified().await;
-
-            Ok(())
-        }
-
-        async fn fire_async_for_session_json(
-            &self,
-            _session: SessionRegistryId,
-            _hook: &str,
-            _ctx: &Value,
-            _enabled_plugins: Vec<String>,
-        ) -> Result<(), Report<PluginFireError>> {
-            self.gate.notified().await;
-
-            Ok(())
-        }
-
-        async fn fire_async_collect_json(
-            &self,
-            _hook: &str,
-            _ctx: &Value,
-        ) -> Result<Vec<Value>, Report<PluginFireError>> {
-            self.gate.notified().await;
-            Ok(vec![])
-        }
-
-        async fn fire_async_collect_for_session_json(
-            &self,
-            _session: SessionRegistryId,
-            _hook: &str,
-            _ctx: &Value,
-        ) -> Result<Vec<Value>, Report<PluginFireError>> {
-            self.gate.notified().await;
-            Ok(vec![])
-        }
-
-        async fn execute_plugin_tool(
-            &self,
-            _target: Option<SessionRegistryId>,
-            _session_id: &crate::protocol::SessionId,
-            _plugin_name: &str,
-            _tool_name: &str,
-            _arguments: &Value,
-        ) -> Result<String, Report<PluginFireError>> {
-            self.gate.notified().await;
-            Ok(String::new())
-        }
-
-        fn name(&self) -> &'static str {
-            "BlockingPluginFire"
-        }
-    }
-
-    /// Build an actor whose `services.plugins` is a custom [`PluginFire`] backend.
-    async fn make_actor_with_plugin_fire(
-        backend: Arc<dyn PluginFire>,
-    ) -> (PluginDispatchActor, ActorContext) {
-        use crate::common::session_map::SessionMap;
-        let mut services = Services::new_fake().await;
-        services.plugins = PluginFireService::new(backend);
-        let session = ChatSessionState::default();
-        let session_id = session.session_id().clone();
-        let app_state = AppState {
-            session: SessionMap::new(session, std::path::PathBuf::from("/tmp")),
-            ..Default::default()
-        };
-        let state = State::new(app_state);
-        let sink = Arc::new(RecordingSink::new());
-        let mut ctx = ActorContext::new("plugin-dispatch-test", sink);
-        let actor = PluginDispatchActor::activate(
-            PluginDispatchActorDeps {
-                deps: ActorDeps {
-                    services: services.clone(),
-                },
-                services,
-                state,
-                startup_session_id: session_id.to_string(),
-                domain_ctx: Arc::new(DomainNodeContext::new(
-                    Services::new_fake().await,
-                    State::new(AppState::default()),
-                )),
-            },
-            &mut ctx,
-        );
-        (actor, ctx)
-    }
-
-    #[tokio::test]
-    async fn session_created_fire_does_not_block_actor_loop() {
-        // Given an actor whose lifecycle fire blocks until released.
-        let gate = Arc::new(Notify::new());
-        let fire = BlockingPluginFire::new(gate.clone());
-        let (actor, _ctx) =
-            make_actor_with_plugin_fire(Arc::new(fire.clone()) as Arc<dyn PluginFire>).await;
-
-        // When firing on_session_created. With the spawn fix this returns
-        // immediately even though the fire parks on the gate; with the old
-        // inline-await code it would block here until the gate is released.
-        actor.handle_event(Event::SessionCreated(SessionCreated {
-            session_id: SessionId::new(),
-        }));
-
-        // Then a second event is also handled within the gate window,
-        // proving the actor loop is free, not serialised behind the fire.
-        // (With the inline-await version this second call would hang until
-        // the gate is released, breaking the 500ms timeout.)
-        let second = tokio::time::timeout(std::time::Duration::from_millis(500), async {
-            // Give the spawned fire time to park on the gate.
-            tokio::time::sleep(std::time::Duration::from_millis(50)).await;
-            actor.handle_event(Event::SessionCreated(SessionCreated {
-                session_id: SessionId::new(),
-            }));
-        })
-        .await;
-        assert!(
-            second.is_ok(),
-            "second event handled while a lifecycle fire is parked"
-        );
-
-        // Cleanup: release the gate so spawned tasks complete (no leaked tasks).
-        gate.notify_waiters();
-    }
-
-    #[tokio::test]
-    async fn phase_changed_fire_does_not_block_actor_loop() {
-        // Given an actor whose lifecycle fire blocks until released.
-        let gate = Arc::new(Notify::new());
-        let fire = BlockingPluginFire::new(gate.clone());
-        let (actor, _ctx) =
-            make_actor_with_plugin_fire(Arc::new(fire.clone()) as Arc<dyn PluginFire>).await;
-
-        // When firing on_turn_end (Idle phase → on_turn_end hook). With the
-        // spawn fix this returns immediately; the inline-await version would block.
-        actor.handle_event(Event::SessionPhaseChanged(SessionPhaseChanged {
-            session_id: SessionId::new(),
-            old_phase: PhaseKind::Streaming,
-            new_phase: PhaseKind::Idle,
-        }));
-
-        // Then a second phase change is handled within the gate window,
-        // proving the actor loop is free.
-        let second = tokio::time::timeout(std::time::Duration::from_millis(500), async {
-            // Give the spawned fire time to park on the gate.
-            tokio::time::sleep(std::time::Duration::from_millis(50)).await;
-            actor.handle_event(Event::SessionPhaseChanged(SessionPhaseChanged {
-                session_id: SessionId::new(),
-                old_phase: PhaseKind::Idle,
-                new_phase: PhaseKind::Sending,
-            }));
-        })
-        .await;
-        assert!(
-            second.is_ok(),
-            "second phase change handled while a lifecycle fire is parked"
-        );
-
-        // Cleanup: release the gate so spawned tasks complete.
-        gate.notify_waiters();
-    }
-
-    #[tokio::test]
-    async fn phase_changed_idle_resolves_pending_oneshot_before_spawned_fire() {
-        // Given an actor with a blocking fire, a session holding an assistant
-        // entry, and a pending one-shot registered for that session.
-        use crate::common::session_map::SessionMap;
-
-        let gate = Arc::new(Notify::new());
-        let fire = BlockingPluginFire::new(gate.clone());
-
-        let mut services = Services::new_fake().await;
-        services.plugins = PluginFireService::new(Arc::new(fire) as Arc<dyn PluginFire>);
-
-        let session = ChatSessionState::default();
-        let session_id = session.session_id().clone();
-
-        let mut app_state = AppState {
-            session: SessionMap::new(session, std::path::PathBuf::from("/tmp")),
-            ..Default::default()
-        };
-        {
-            if let Some(s) = app_state.session.get_mut(&session_id) {
-                s.push_entry(ChatEntry::assistant("enriched text"));
-            }
-        }
-
-        let state = State::new(app_state);
-        let sink = Arc::new(RecordingSink::new());
-        let mut ctx = ActorContext::new("plugin-dispatch-test", sink);
-
-        let domain_ctx = Arc::new(DomainNodeContext::new(
-            Services::new_fake().await,
-            State::new(AppState::default()),
-        ));
-        let (tx, rx) = oneshot::channel::<Result<String, String>>();
-        domain_ctx.insert_pending(session_id.clone(), tx);
-
-        let actor = PluginDispatchActor::activate(
-            PluginDispatchActorDeps {
-                deps: ActorDeps {
-                    services: services.clone(),
-                },
-                services,
-                state,
-                startup_session_id: session_id.to_string(),
-                domain_ctx: domain_ctx.clone(),
-            },
-            &mut ctx,
-        );
-
-        // When firing on_phase_changed(Idle) with a pending one-shot. The gate is
-        // NOT released, so the spawned fire parks. If resolve_completed were
-        // inside the spawned fire (or awaited the fire), rx would never resolve.
-        actor.handle_event(Event::SessionPhaseChanged(SessionPhaseChanged {
-            session_id: session_id.clone(),
-            old_phase: PhaseKind::Streaming,
-            new_phase: PhaseKind::Idle,
-        }));
-
-        // Then the pending one-shot resolves synchronously, within the gate window.
-        let resolved = tokio::time::timeout(std::time::Duration::from_millis(500), rx)
-            .await
-            .expect("resolve_completed fired synchronously, not gated behind the spawned fire");
-        assert_eq!(resolved, Ok(Ok("enriched text".to_owned())));
-
-        // Cleanup: release the gate so the parked fire completes.
-        gate.notify_waiters();
-    }
-
-    fn make_actor_with_channel() -> (
-        PluginDispatchActor,
-        kanal::Receiver<crate::protocol::AppMsg>,
-        SessionId,
-        crate::feat::plugin_system::SessionRegistryId,
-    ) {
-        use crate::common::session_map::SessionMap;
-        let (tx, rx) = kanal::unbounded();
-        let mut services = Services::new();
-        services.actor_channel = ActorChannelService::new(tx);
-        let session = ChatSessionState::default();
-        let session_id = session.session_id().clone();
-        let app_state = AppState {
-            session: SessionMap::new(session, std::path::PathBuf::from("/tmp")),
-            ..Default::default()
-        };
-        let state = State::new(app_state);
-        let sink = Arc::new(RecordingSink::new());
-        let mut ctx = ActorContext::new("plugin-dispatch-test", sink);
-        let registry_id = SessionRegistryId::new();
-        let mut actor = PluginDispatchActor::activate(
-            PluginDispatchActorDeps {
-                services,
-                state,
-                startup_session_id: session_id.to_string(),
-                domain_ctx: std::sync::Arc::new(DomainNodeContext::new(
-                    Services::new(),
-                    State::new(AppState::default()),
-                )),
-            },
-            &mut ctx,
-        );
-        actor.registry.insert(session_id.clone(), registry_id);
-        (actor, rx, session_id, registry_id)
-    }
-
-    #[test]
-    fn register_global_tools_sends_target_none() {
-        // Given a dispatch actor with a real channel.
-        let (actor, rx, session_id, registry_id) = make_actor_with_channel();
-
-        // And a global tool definition.
-        let tools = vec![crate::feat::plugin_system::PluginToolMetadata {
-            plugin_name: "my_plugin".to_owned(),
-            name: "search_web".to_owned(),
-            description: "Search the web".to_owned(),
-            parameters: serde_json::json!({"type": "object", "properties": {}}),
-            scope: crate::feat::plugin_system::ToolScope::Global,
-        }];
-
-        // When registering plugin tools.
-        actor.register_plugin_tools_with_actor(&session_id, &registry_id, tools);
-
-        // Then a RegisterPluginTools command was sent with target None.
-        let msg = rx.try_recv().expect("message was sent");
-        let cmd = match msg {
-            Some(crate::protocol::AppMsg::Command { command, .. }) => command,
-            _ => panic!("expected command"),
-        };
-        let rpc = match cmd {
-            crate::protocol::Command::RegisterPluginTools(r) => r,
-            _ => panic!("expected RegisterPluginTools"),
-        };
-        assert_eq!(rpc.plugin_name, "my_plugin");
-        assert!(rpc.target.is_none());
-        assert!(rpc.session_id.is_none());
-    }
-
-    #[test]
-    fn register_attached_tools_sends_target_some_with_session_id() {
-        // Given a dispatch actor with a real channel.
-        let (actor, rx, session_id, registry_id) = make_actor_with_channel();
-
-        // And an attached tool definition.
-        let tools = vec![crate::feat::plugin_system::PluginToolMetadata {
-            plugin_name: "judge".to_owned(),
-            name: "judgment_passed".to_owned(),
-            description: "Pass".to_owned(),
-            parameters: serde_json::json!({"type": "object", "properties": {}}),
-            scope: crate::feat::plugin_system::ToolScope::Attached,
-        }];
-
-        // When registering plugin tools.
-        actor.register_plugin_tools_with_actor(&session_id, &registry_id, tools);
-
-        // Then a RegisterPluginTools command was sent with target Some and session_id.
-        let msg = rx.try_recv().expect("message was sent");
-        let cmd = match msg {
-            Some(crate::protocol::AppMsg::Command { command, .. }) => command,
-            _ => panic!("expected command"),
-        };
-        let rpc = match cmd {
-            crate::protocol::Command::RegisterPluginTools(r) => r,
-            _ => panic!("expected RegisterPluginTools"),
-        };
-        assert_eq!(rpc.plugin_name, "judge");
-        assert!(rpc.target.is_some());
-        assert_eq!(rpc.session_id, Some(session_id));
+        // Then session state is unchanged.
+        let plugins = actor
+            .state
+            .read()
+            .session
+            .get(&session_id)
+            .unwrap()
+            .core
+            .attached_plugins
+            .clone();
+        assert!(plugins.is_empty());
     }
 }

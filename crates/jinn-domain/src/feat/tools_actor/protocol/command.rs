@@ -65,6 +65,8 @@ pub struct RegisterPluginTools {
     pub definitions: Vec<ToolDefinition>,
 }
 
+impl crate::common::bus::BusMessage for RegisterPluginTools {}
+
 /// Cancel all pending tool executions for a session.
 ///
 /// Sent by the LLM actor when a stream is cancelled while tool results
@@ -92,4 +94,3 @@ impl crate::common::bus::BusMessage for ExecuteToolBatch {}
 impl crate::common::bus::BusMessage for ExecuteTool {}
 impl crate::common::bus::BusMessage for CancelToolBatch {}
 impl crate::common::bus::BusMessage for ExecuteWebFetch {}
-impl crate::common::bus::BusMessage for RegisterPluginTools {}

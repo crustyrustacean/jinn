@@ -13,7 +13,6 @@ use parking_lot::Mutex;
 use tokio::sync::oneshot;
 use wherror::Error;
 
-use crate::common::bridge::Bridge;
 use crate::common::services::Services;
 use crate::common::state::State;
 use crate::feat::chat_input::protocol::command::EnqueueUserMessage;
@@ -60,15 +59,6 @@ impl DomainNodeContext {
         }
     }
 
-    /// Send a typed message through the actor channel as a bus closure.
-    pub fn send_message<M>(&self, msg: M)
-    where
-        M: crate::common::bus::BusMessage,
-    {
-        self.services
-            .actor_channel
-            .send(Bridge::publish_closure(msg));
-    }
 
     /// Create a child session with the given parent, automation, and persistence flags.
     ///
@@ -221,11 +211,12 @@ impl DomainNodeContext {
 
         let entry = ChatEntry::user(&user_prompt);
         self.services
-            .actor_channel
-            .send_message(EnqueueUserMessage {
+            .bus
+            .publish(EnqueueUserMessage {
                 session_id: session_id.clone(),
                 entry,
-            });
+            })
+            .await;
 
         match rx.await {
             Ok(Ok(response)) => Ok(response),
@@ -312,11 +303,12 @@ impl DomainNodeContext {
 
         let entry = ChatEntry::user(&user_prompt);
         self.services
-            .actor_channel
-            .send_message(EnqueueUserMessage {
+            .bus
+            .publish(EnqueueUserMessage {
                 session_id: session_id.clone(),
                 entry,
-            });
+            })
+            .await;
 
         // 7. Await with a bounded timeout. On expiry: hard-cancel the underlying
         //    session (no zombie stream burning provider tokens) and drop the pending
@@ -329,9 +321,9 @@ impl DomainNodeContext {
             }
             Err(_) => {
                 self.pending.lock().remove(&session_id);
-                self.services.actor_channel.send_message(CancelStream {
+                self.services.bus.publish(CancelStream {
                     session_id: session_id.clone(),
-                });
+                }).await;
                 Err(Report::new(DomainContextError).attach(format!(
                     "one-shot LLM request timed out after {timeout_ms}ms"
                 )))
@@ -340,9 +332,7 @@ impl DomainNodeContext {
     }
 }
 
-//FIXME: disabled during actor migration — tests reference deleted types
-// #[cfg(test)]
-#[cfg(any())]
+#[cfg(test)]
 mod tests {
     #![allow(
         clippy::expect_used,
@@ -354,15 +344,22 @@ mod tests {
 
     use super::*;
     use crate::common::app_state::AppState;
+    use crate::common::services::bus_service::{BusAudit, BusService};
     use crate::common::services::test_services::TestServices;
     use crate::common::state::State;
     use crate::feat::session::chat_entry::ChatEntry;
-    use crate::protocol::AppMsg;
 
     fn make_ctx() -> DomainNodeContext {
         let services = TestServices::builder().build();
         let state = State::new(AppState::default());
         DomainNodeContext::new(services, state)
+    }
+
+    fn make_ctx_with_audit() -> (DomainNodeContext, BusAudit) {
+        let (bus, audit) = BusService::new_recording();
+        let services = TestServices::builder().with_bus(bus).build();
+        let state = State::new(AppState::default());
+        (DomainNodeContext::new(services, state), audit)
     }
 
     #[rstest::rstest]
@@ -408,21 +405,14 @@ mod tests {
         ctx.resolve_completed(&SessionId::new(), Ok("response".to_owned()));
     }
 
-    // ── send_llm_request_oneshot ──────────────────────────────────────────
+    // ── send_llm_request_oneshot ────────────────────────────────��─────────
     //
     // Verifies the history-less one-shot path:
     //   - reads ONLY provider+model from the source session (no history clone)
     //   - builds a fresh session with a NEW id, is_automated=true
     //   - inherits the source's model on the new session
-    //   - emits exactly one Command::EnqueueUserMessage for the new session
+    //   - publishes exactly one EnqueueUserMessage for the new session
     //   - awaits a oneshot; resolve_completed fulfills it with the text
-
-    fn make_ctx_with_channel() -> (DomainNodeContext, kanal::Receiver<AppMsg>) {
-        let (tx, rx) = kanal::unbounded::<AppMsg>();
-        let services = TestServices::builder().actor_channel_sender(tx).build();
-        let state = State::new(AppState::default());
-        (DomainNodeContext::new(services, state), rx)
-    }
 
     fn seed_source_session(ctx: &DomainNodeContext, model: &str) -> SessionId {
         use crate::feat::session::profile::SessionProfile;
@@ -443,12 +433,12 @@ mod tests {
     async fn oneshot_inherits_provider_model_and_emits_enqueue() {
         use std::future::Future as _;
 
-        let (ctx, rx) = make_ctx_with_channel();
+        let (ctx, audit) = make_ctx_with_audit();
         let source_id = seed_source_session(&ctx, "ollama/llama3");
 
         // Build the one-shot future but don't await it: poll once to drive it
-        // up to its first await point (it emits the EnqueueUserMessage command
-        // synchronously, then parks on the oneshot).
+        // up to its first await point (it publishes the EnqueueUserMessage
+        // synchronously via bus.publish, then parks on the oneshot).
         let fut = ctx.send_llm_request_oneshot(
             &source_id,
             "rewrite me".to_owned(),
@@ -463,19 +453,14 @@ mod tests {
 
         assert!(
             matches!(fut.as_mut().poll(&mut poll_cx), std::task::Poll::Pending,),
-            "future must park on the oneshot after emitting the command"
+            "future must park on the oneshot after publishing the message"
         );
 
-        // Exactly one command should be emitted: an EnqueueUserMessage for the
+        // Exactly one EnqueueUserMessage should be published for the
         // NEW (plugin) session — not the source session.
-        let msg = rx.recv().expect("expected one AppMsg");
-        let new_session_id = match msg {
-            AppMsg::Command {
-                command: Command::EnqueueUserMessage(e),
-                ..
-            } => e.session_id,
-            other => panic!("expected EnqueueUserMessage, got {other:?}"),
-        };
+        let msgs: Vec<EnqueueUserMessage> = audit.of_type::<EnqueueUserMessage>();
+        assert_eq!(msgs.len(), 1, "expected exactly one EnqueueUserMessage");
+        let new_session_id = msgs[0].session_id.clone();
         assert_ne!(
             new_session_id, source_id,
             "one-shot must create a fresh session, not reuse the source"
@@ -528,7 +513,7 @@ mod tests {
         use std::future::Future as _;
 
         // No #[tokio::test] needed: the error returns before the first .await.
-        let (ctx, _rx) = make_ctx_with_channel();
+        let (ctx, _audit) = make_ctx_with_audit();
         let missing_id = SessionId::new();
         let fut =
             ctx.send_llm_request_oneshot(&missing_id, "x".to_owned(), None, false, true, 30_000);
@@ -554,7 +539,7 @@ mod tests {
         // surfaces to the plugin via the request envelope's `error` field.
         use std::future::Future as _;
 
-        let (ctx, rx) = make_ctx_with_channel();
+        let (ctx, audit) = make_ctx_with_audit();
         let source_id = seed_source_session(&ctx, "ollama/llama3");
 
         let fut = ctx.send_llm_request_oneshot(
@@ -575,14 +560,9 @@ mod tests {
             std::task::Poll::Pending,
         ));
 
-        // Consume the EnqueueUserMessage to discover the new session id.
-        let new_session_id = match rx.recv().expect("expected one AppMsg") {
-            AppMsg::Command {
-                command: Command::EnqueueUserMessage(e),
-                ..
-            } => e.session_id,
-            other => panic!("expected EnqueueUserMessage, got {other:?}"),
-        };
+        // Discover the new session id from the published EnqueueUserMessage.
+        let msgs: Vec<EnqueueUserMessage> = audit.of_type::<EnqueueUserMessage>();
+        let new_session_id = msgs[0].session_id.clone();
 
         // Resolve as an error (simulating the dispatch actor reading an Error entry).
         ctx.resolve_completed(&new_session_id, Err("LLM stream error".to_owned()));
@@ -598,7 +578,7 @@ mod tests {
     #[tokio::test]
     async fn oneshot_does_not_change_active_session() {
         // Given a source session set as the active view.
-        let (ctx, _rx) = make_ctx_with_channel();
+        let (ctx, _audit) = make_ctx_with_audit();
         let source_id = seed_source_session(&ctx, "ollama/llama3");
         ctx.state.write().session.set_active(source_id.clone());
 
@@ -631,7 +611,7 @@ mod tests {
     #[tokio::test]
     async fn oneshot_request_default_persist_is_false() {
         // Given a source session and a one-shot call with persist=false (default).
-        let (ctx, _rx) = make_ctx_with_channel();
+        let (ctx, _audit) = make_ctx_with_audit();
         let source_id = seed_source_session(&ctx, "ollama/llama3");
 
         let fut = ctx.send_llm_request_oneshot(
@@ -664,7 +644,7 @@ mod tests {
     #[tokio::test]
     async fn oneshot_request_persist_true_round_trips() {
         // Given a source session and a one-shot call with persist=true.
-        let (ctx, _rx) = make_ctx_with_channel();
+        let (ctx, _audit) = make_ctx_with_audit();
         let source_id = seed_source_session(&ctx, "ollama/llama3");
 
         let fut = ctx.send_llm_request_oneshot(
@@ -698,7 +678,7 @@ mod tests {
     #[tokio::test]
     async fn disable_tool_loop_true_sets_flag_and_empty_tools() {
         // Given a source session.
-        let (ctx, _rx) = make_ctx_with_channel();
+        let (ctx, _audit) = make_ctx_with_audit();
         let source_id = seed_source_session(&ctx, "ollama/llama3");
 
         // When the one-shot runs with disable_tool_loop=true.
@@ -740,7 +720,7 @@ mod tests {
     #[tokio::test]
     async fn disable_tool_loop_false_inherits_full_catalog() {
         // Given a source session.
-        let (ctx, _rx) = make_ctx_with_channel();
+        let (ctx, _audit) = make_ctx_with_audit();
         let source_id = seed_source_session(&ctx, "ollama/llama3");
 
         // When the one-shot runs with disable_tool_loop=false.
@@ -780,7 +760,7 @@ mod tests {
         );
     }
 
-    // ── timeout_ms knob ──────────────────────���────────────────────────
+    // ── timeout_ms knob ───────────────────────────────────────────────
     //
     // The timeout uses tokio::time::timeout with the test runtime's auto-advance.
     // We never call resolve_completed, so the receiver never resolves; the
@@ -789,7 +769,7 @@ mod tests {
     #[tokio::test]
     async fn oneshot_timeout_cancels_session() {
         // Given a one-shot with a tiny timeout and no resolver.
-        let (ctx, rx) = make_ctx_with_channel();
+        let (ctx, audit) = make_ctx_with_audit();
         let source_id = seed_source_session(&ctx, "ollama/llama3");
 
         let result = ctx
@@ -804,19 +784,10 @@ mod tests {
             "error must mention the timeout, got: {msg}"
         );
 
-        // And a CancelStream command was emitted for the one-shot session.
-        let mut saw_cancel = false;
-        while let Ok(Some(app_msg)) = rx.try_recv() {
-            if let AppMsg::Command {
-                command: Command::CancelStream(_),
-                ..
-            } = app_msg
-            {
-                saw_cancel = true;
-            }
-        }
+        // And a CancelStream message was published for the one-shot session.
+        let cancel_msgs: Vec<CancelStream> = audit.of_type::<CancelStream>();
         assert!(
-            saw_cancel,
+            !cancel_msgs.is_empty(),
             "timeout must hard-cancel the underlying session via CancelStream"
         );
     }
@@ -824,7 +795,7 @@ mod tests {
     #[tokio::test]
     async fn oneshot_timeout_removes_pending() {
         // Given a one-shot with a tiny timeout and no resolver.
-        let (ctx, _rx) = make_ctx_with_channel();
+        let (ctx, _audit) = make_ctx_with_audit();
         let source_id = seed_source_session(&ctx, "ollama/llama3");
 
         // When the one-shot times out.
