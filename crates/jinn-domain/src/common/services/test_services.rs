@@ -256,7 +256,7 @@ impl TestServices {
         };
         let bridge = if bus.is_recording() {
             // Recording mode — no real bus, no bridge needed.
-            crate::common::bridge::Bridge::new_dummy()
+            crate::common::bridge::Bridge::new_dummy(handle.clone())
         } else {
             crate::common::bridge::Bridge::with_handle(bus.actor_ref().clone(), handle.clone())
         };
