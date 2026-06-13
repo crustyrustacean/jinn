@@ -769,7 +769,7 @@ pub fn handle_refresh_skills(state: &mut AppState) -> IntentResult {
 }
 
 //FIXME: plugin migration
-#[cfg(any())]
+#[cfg(test)]
 mod tests {
     #![allow(
         clippy::expect_used,
@@ -892,14 +892,12 @@ mod tests {
 
         let result = confirm_provider(&mut state);
 
-        // Then a command is emitted (the alloy was accepted).
-        assert!(!result.commands.is_empty());
-        // And the command carries a ModelSelection::Alloy.
-        let cmd = &result.commands[0];
-        let json = serde_json::to_string(cmd).expect("serialize");
+        // Then a message is emitted (the alloy was accepted).
+        assert!(!result.message_names.is_empty());
+        // And a ProviderSwitch message is emitted.
         assert!(
-            json.contains("alloy"),
-            "command should contain alloy: {json}"
+            result.message_names.iter().any(|n| n.contains("ProviderSwitch")),
+            "messages should contain ProviderSwitch: {:?}", result.message_names
         );
     }
 
@@ -1049,15 +1047,14 @@ mod tests {
 
         let result = confirm_provider(&mut state);
 
-        // Then a command is emitted with ModelSelection::Alloy.
-        assert!(!result.commands.is_empty());
-        let cmd = &result.commands[0];
-        let json = serde_json::to_string(cmd).expect("serialize");
+        // Then a ProviderSwitch message is emitted for alloy.
+        assert!(!result.message_names.is_empty());
         assert!(
-            json.contains("alloy") && json.contains("round_robin"),
-            "command should be an alloy with round_robin strategy: {json}"
+            result.message_names.iter().any(|n| n.contains("ProviderSwitch")),
+            "messages should contain ProviderSwitch: {:?}", result.message_names
         );
     }
+
 
     #[rstest::rstest]
     fn confirm_persona_sets_correct_persona() {

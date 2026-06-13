@@ -40,10 +40,9 @@ impl Actor for AppStateActor {
     }
 }
 
-impl Message<UpdateAppState> for AppStateActor {
-    type Reply = ();
-
-    async fn handle(&mut self, msg: UpdateAppState, _ctx: &mut Context<Self, Self::Reply>) {
+impl AppStateActor {
+    /// Apply state updates, persist, and emit event.
+    pub(crate) async fn handle_update(&mut self, msg: UpdateAppState) {
         let mut state = self.deps.services.app_state_storage.read();
         for update in &msg.updates {
             update.apply(&mut state);
@@ -56,14 +55,21 @@ impl Message<UpdateAppState> for AppStateActor {
     }
 }
 
+impl Message<UpdateAppState> for AppStateActor {
+    type Reply = ();
+
+    async fn handle(&mut self, msg: UpdateAppState, _ctx: &mut Context<Self, Self::Reply>) {
+        self.handle_update(msg).await;
+    }
+}
+
 impl BusPublish for AppStateActor {
     fn bus(&self) -> &crate::common::services::bus_service::BusService {
         self.deps.bus()
     }
 }
 
-//FIXME: plugin migration
-#[cfg(any())]
+#[cfg(test)]
 mod tests {
     #![allow(
         clippy::expect_used,
@@ -72,81 +78,68 @@ mod tests {
         clippy::indexing_slicing,
         reason = "test code"
     )]
+
     use std::sync::Arc;
-    use std::time::Duration;
 
     use super::{AppStateActor, AppStateActorDeps};
     use crate::common::actor_deps::ActorDeps;
-    use crate::common::bus::test_harness::{TestHarness, await_recorded};
     use crate::common::services::Services;
+    use crate::common::services::bus_service::BusAudit;
     use crate::feat::preferences_actor::app_state_storage::InMemoryAppStateStorage;
-    use crate::feat::preferences_actor::protocol::app_state_command::AppStateUpdate;
-    use crate::feat::preferences_actor::protocol::app_state_command::UpdateAppState;
+    use crate::feat::preferences_actor::protocol::app_state_command::{AppStateUpdate, UpdateAppState};
+    use crate::feat::preferences_actor::protocol::app_state_event::AppStateUpdated;
     use crate::feat::session::model_selection::ModelSelection;
-    use crate::protocol::Command;
-
-    use super::{AppStateActor, AppStateActorDeps};
-
-    fn create_actor() -> (AppStateActor, Arc<RecordingSink>, Services, ActorContext) {
-        let sink = Arc::new(RecordingSink::new());
-        let mut ctx = ActorContext::new("app-state", sink.clone() as Arc<dyn MessageSink>);
+    async fn create_actor() -> (AppStateActor, BusAudit, Services) {
+        let (bus, audit) = crate::common::services::BusService::new_recording();
+        let mut services = Services::new_fake_with_bus(bus).await;
 
         let storage = InMemoryAppStateStorage::new();
-        let mut services = Services::new_fake().await;
         let svc = crate::feat::preferences_actor::app_state_storage::AppStateStorageService::new(
             Arc::new(storage),
         );
         svc.reload().expect("test app state storage initial reload");
         services.app_state_storage = svc;
-        services.bus = harness.bus();
-        (harness, services)
+
+        let actor = AppStateActor {
+            deps: ActorDeps { services: services.clone() },
+        };
+        (actor, audit, services)
     }
 
     #[tokio::test]
     async fn set_last_model_persists_and_emits() {
         // Given an app-state actor.
-        let (mut actor, sink, services, ctx) = create_actor();
+        let (mut actor, audit, services) = create_actor().await;
 
         // When handling UpdateAppState with SetLastModel.
         actor
-            .handle(
-                ActorEnvelope::Command(Command::UpdateAppState(UpdateAppState {
-                    updates: vec![AppStateUpdate::SetLastModel(Some(
-                        ModelSelection::from_single("anthropic/claude-sonnet-4".to_owned()),
-                    ))],
-                })),
-                &ctx,
-            )
+            .handle_update(UpdateAppState {
+                updates: vec![AppStateUpdate::SetLastModel(Some(
+                    ModelSelection::from_single("anthropic/claude-sonnet-4".to_owned()),
+                ))],
+            })
             .await;
 
-        // Then an AppStateUpdated event was emitted.
-        let events = await_recorded(&recorder, 1, Duration::from_secs(1)).await;
-        assert_eq!(events.len(), 1);
-
-        // And the storage has the last model.
+        // Then the storage has the last model.
         let loaded = services.app_state_storage.read();
         let expected = ModelSelection::from_single("anthropic/claude-sonnet-4".to_owned());
         assert_eq!(loaded.last_model, Some(expected));
 
         // And an AppStateUpdated event was emitted.
-        let events = sink.events();
+        let events = audit.of_type::<AppStateUpdated>();
         assert_eq!(events.len(), 1);
     }
 
-    #[rstest::rstest]
     #[tokio::test]
     async fn set_theme_persists_and_emits() {
         // Given an app-state actor.
-        let (mut actor, sink, services, ctx) = create_actor();
+        let (mut actor, audit, services) = create_actor().await;
 
         // When handling UpdateAppState with SetTheme.
         actor
-            .handle(
-                ActorEnvelope::Command(Command::UpdateAppState(UpdateAppState {
-                    updates: vec![AppStateUpdate::SetTheme(Some("dracula".to_owned()))],
-                })),
-                &ctx,
-            )
+            .handle_update(UpdateAppState {
+                updates: vec![AppStateUpdate::SetTheme(Some("dracula".to_owned()))],
+            })
             .await;
 
         // Then the storage has the theme.
@@ -154,49 +147,26 @@ mod tests {
         assert_eq!(loaded.theme_name.as_deref(), Some("dracula"));
 
         // And an AppStateUpdated event was emitted.
-        let events = sink.events();
+        let events = audit.of_type::<AppStateUpdated>();
         assert_eq!(events.len(), 1);
     }
 
-    #[rstest::rstest]
-    #[tokio::test]
-    async fn ignores_unrelated_commands() {
-        // Given an app-state actor.
-        let (mut actor, sink, services, ctx) = create_actor();
-
-        // When handling an unrelated command.
-        actor
-            .handle(ActorEnvelope::Command(Command::RefreshModels), &ctx)
-            .await;
-
-        // Then no events were emitted.
-        assert!(sink.events().is_empty());
-
-        // And storage still has defaults.
-        let loaded = services.app_state_storage.read();
-        assert!(loaded.last_model.is_none());
-    }
-
-    #[rstest::rstest]
     #[tokio::test]
     async fn multiple_updates_in_one_command() {
         // Given an app-state actor.
-        let (mut actor, _sink, services, ctx) = create_actor();
+        let (mut actor, _audit, services) = create_actor().await;
 
         // When handling a batch with multiple updates.
         actor
-            .handle(
-                ActorEnvelope::Command(Command::UpdateAppState(UpdateAppState {
-                    updates: vec![
-                        AppStateUpdate::SetLastModel(Some(ModelSelection::from_single(
-                            "openrouter/gpt-4".to_owned(),
-                        ))),
-                        AppStateUpdate::SetSidebarWidth(Some(40)),
-                        AppStateUpdate::SetTheme(Some("nord".to_owned())),
-                    ],
-                })),
-                &ctx,
-            )
+            .handle_update(UpdateAppState {
+                updates: vec![
+                    AppStateUpdate::SetLastModel(Some(ModelSelection::from_single(
+                        "openrouter/gpt-4".to_owned(),
+                    ))),
+                    AppStateUpdate::SetSidebarWidth(Some(40)),
+                    AppStateUpdate::SetTheme(Some("nord".to_owned())),
+                ],
+            })
             .await;
 
         // Then all three fields are persisted.
