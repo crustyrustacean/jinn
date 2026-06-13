@@ -28,9 +28,7 @@ pub use msg::handler::MsgHandler;
 pub use run::{TuiRunError, run};
 pub use scope::Scope;
 
-//FIXME: disabled during actor migration — references deleted types (InMemoryActorHost, actor_host field)
-// #[cfg(test)]
-#[cfg(any())]
+#[cfg(test)]
 mod app_tests;
 
 #[cfg(test)]

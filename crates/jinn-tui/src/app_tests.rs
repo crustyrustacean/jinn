@@ -4,58 +4,20 @@
     clippy::needless_lifetimes,
     reason = "test file, panics are acceptable"
 )]
-
-use std::sync::Arc;
-
 use crossterm::event::{MouseButton, MouseEvent, MouseEventKind};
-use jinn_domain::feat::ui::sidebar::Sidebar;
-use jinn_domain::{
-    ActorHostService, AppCore, AppState, AppUiRegistry, FakeActorHost, Services, State,
-};
 use ratatui::layout::Rect;
 
+use crate::TuiApp;
 use crate::app::{WhichKeyInstance, scope_for_focus};
 use crate::config::TuiConfig;
 use crate::keymap;
 use crate::msg::Msg;
 use crate::scope::Scope;
-use crate::selection::{SelectableRects, SelectionState};
-use crate::{AppStatus, MsgHandler, TuiApp};
+use crate::selection::SelectionState;
 
 /// Creates a minimal `TuiApp` for testing.
 async fn test_app() -> TuiApp {
-    let services = Services::new_fake().await;
-    let (sender, _receiver) = kanal::unbounded();
-    let core = AppCore {
-        state: State::new(AppState::default()),
-        sender,
-        bridge: services.bridge.clone(),
-    };
-    let fake_host = ActorHostService::new(Arc::new(FakeActorHost::new()));
-    let mut ui_registry = AppUiRegistry::new();
-    jinn_domain::register_all_ui_elements(&mut ui_registry);
-    jinn_domain::feat::ui::status_bar::register(&mut ui_registry);
-    TuiApp {
-        core,
-        services,
-        actor_host: fake_host,
-        ui_registry,
-        events: MsgHandler::new(),
-        which_key: WhichKeyInstance::new(keymap::init(), Scope::Normal),
-        suspend: crate::suspend::Suspend::new(),
-        event_thread: None,
-        status: AppStatus::Starting,
-        selection: SelectionState::Idle,
-        selectable_rects: SelectableRects::default(),
-        pending_clipboard: false,
-        config: TuiConfig::default(),
-        sidebar: {
-            let mut s = Sidebar::new();
-            jinn_domain::feat::ui::sidebar::register_sections(&mut s);
-            s
-        },
-        plugins: jinn_plugin::SyncPlugins::default(),
-    }
+    TuiApp::test_builder().build().await
 }
 
 #[rstest::rstest]
@@ -223,38 +185,8 @@ async fn scroll_events_still_route_to_keymap() {
 #[tokio::test]
 async fn mouse_events_not_handled_when_mouse_selection_disabled() {
     // Given an app with mouse selection disabled and a registered selectable rect.
-    let services = Services::new_fake().await;
-    let (sender, _receiver) = kanal::unbounded();
-    let core = AppCore {
-        state: State::new(AppState::default()),
-        sender,
-        bridge: services.bridge.clone(),
-    };
-    let fake_host = ActorHostService::new(Arc::new(FakeActorHost::new()));
-    let mut ui_registry = AppUiRegistry::new();
-    jinn_domain::register_all_ui_elements(&mut ui_registry);
-    jinn_domain::feat::ui::status_bar::register(&mut ui_registry);
-    let mut app = TuiApp {
-        core,
-        services,
-        actor_host: fake_host,
-        ui_registry,
-        events: MsgHandler::new(),
-        which_key: WhichKeyInstance::new(keymap::init(), Scope::Normal),
-        suspend: crate::suspend::Suspend::new(),
-        event_thread: None,
-        status: AppStatus::Starting,
-        selection: SelectionState::Idle,
-        selectable_rects: SelectableRects::default(),
-        pending_clipboard: false,
-        config: TuiConfig::new(false),
-        sidebar: {
-            let mut s = Sidebar::new();
-            jinn_domain::feat::ui::sidebar::register_sections(&mut s);
-            s
-        },
-        plugins: jinn_plugin::SyncPlugins::default(),
-    };
+    let mut app = test_app().await;
+    app.config = TuiConfig::new(false);
     let rect = Rect::new(5, 5, 20, 10);
     app.selectable_rects.rebuild(vec![rect]);
 
