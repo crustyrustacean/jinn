@@ -82,6 +82,10 @@ impl App {
         runner: crate::runner::Runner,
         store: &jinn_domain::SessionStoreService,
     ) -> Result<(), Report<AppError>> {
+        // Extract the root supervisor ref before the runner is consumed, so we
+        // can coordinate actor shutdown after the event loop exits.
+        let root = runner.root_supervisor();
+
         // Run the runner, but don't short-circuit shutdown on its error.
         // The WAL checkpoint is non-destructive and must run whenever the actor
         // system started, so that a clean quit leaves sessions.db self-contained
@@ -89,6 +93,27 @@ impl App {
         // final result; a shutdown error takes precedence (it indicates storage
         // trouble the caller should see).
         let run_result = runner.run().change_context(AppError);
+
+        // Coordinated actor shutdown: signal the root supervisor to stop, which
+        // cascades a graceful shutdown to every supervised child actor (kameo's
+        // lifecycle calls each child's `on_stop`). Race the barrier against a
+        // 20-second timeout; on timeout we proceed regardless so a wedged actor
+        // can't prevent process exit.
+        if let Some(root) = root {
+            self.runtime.block_on(async {
+                root.stop_gracefully().await.ok();
+                if tokio::time::timeout(
+                    std::time::Duration::from_secs(20),
+                    root.wait_for_shutdown(),
+                )
+                .await
+                .is_err()
+                {
+                    tracing::warn!("actor shutdown timed out after 20s; proceeding");
+                }
+            });
+        }
+
         self.runtime
             .block_on(store.shutdown())
             .change_context(AppError)
@@ -258,7 +283,7 @@ impl App {
                     &_services.paths.themes_dir(),
                     &_services.paths.system_themes_dir(),
                 );
-                let mut headless = HeadlessApp::new(core);
+                let mut headless = HeadlessApp::new(core, _services.clone());
                 match command {
                     Some(HeadlessCommands::SendChat { message }) => {
                         headless.send_chat(&message).change_context(AppError)?;

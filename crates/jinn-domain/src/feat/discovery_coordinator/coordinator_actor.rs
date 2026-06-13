@@ -140,6 +140,7 @@ impl PendingSlot {
 }
 
 /// Dependencies for [`DiscoveryCoordinatorActor`].
+#[derive(Clone)]
 pub struct DiscoveryCoordinatorActorDeps {
     /// Common actor dependencies.
     pub deps: ActorDeps,

@@ -31,6 +31,7 @@ pub struct PreferencesActor {
 }
 
 /// Dependencies for [`PreferencesActor`].
+#[derive(Clone)]
 pub struct PreferencesActorDeps {
     /// Runtime deps (services + bus).
     pub deps: ActorDeps,

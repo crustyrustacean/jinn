@@ -52,6 +52,7 @@ pub struct QueueActor {
 }
 
 /// Dependencies for [`QueueActor`].
+#[derive(Clone)]
 pub struct QueueActorDeps {
     /// Shared application state.
     pub state: State,

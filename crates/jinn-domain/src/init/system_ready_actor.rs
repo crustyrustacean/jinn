@@ -15,19 +15,20 @@ use kameo::prelude::{Actor, ActorRef, Context, Message};
 /// The system-ready actor.
 ///
 /// Waits for `AllActorsSpawned` (confirming all actors have been spawned),
-/// then sends `()` on the injected oneshot sender to wake the main thread.
+/// then sends `()` on the injected kanal sender to wake the main thread.
 pub struct SystemReadyActor {
     deps: ActorDeps,
-    /// Oneshot sender to signal the main thread.
-    ready_tx: Option<tokio::sync::oneshot::Sender<()>>,
+    /// Kanal sender to signal the main thread.
+    ready_tx: Option<kanal::Sender<()>>,
 }
 
 /// Dependencies for [`SystemReadyActor`].
+#[derive(Clone)]
 pub struct SystemReadyActorDeps {
     /// Universal actor dependencies.
     pub deps: ActorDeps,
-    /// One-shot sender to signal system readiness to the main thread.
-    pub ready_tx: tokio::sync::oneshot::Sender<()>,
+    /// Kanal sender to signal system readiness to the main thread.
+    pub ready_tx: kanal::Sender<()>,
 }
 
 impl Actor for SystemReadyActor {
@@ -80,7 +81,7 @@ mod tests {
     #[tokio::test]
     async fn signals_on_all_actors_spawned() {
         // Given a SystemReadyActor.
-        let (tx, rx) = tokio::sync::oneshot::channel::<()>();
+        let (tx, rx) = kanal::unbounded::<()>();
         let harness = TestHarness::new().await;
         let actor = SystemReadyActor::spawn(SystemReadyActorDeps {
             deps: harness.actor_deps().await,
@@ -90,15 +91,16 @@ mod tests {
         // When publishing AllActorsSpawned.
         harness.publish(AllActorsSpawned).await;
 
-        // Then the oneshot is consumed.
-        let result = tokio::time::timeout(std::time::Duration::from_secs(2), rx).await;
+        // Then the kanal signal is received.
+        let async_rx = rx.to_async();
+        let result = tokio::time::timeout(std::time::Duration::from_secs(2), async_rx.recv()).await;
         assert!(result.is_ok(), "oneshot should be sent");
     }
 
     #[tokio::test]
     async fn does_not_signal_without_all_actors_spawned() {
         // Given a SystemReadyActor.
-        let (tx, mut rx) = tokio::sync::oneshot::channel::<()>();
+        let (tx, rx) = kanal::unbounded::<()>();
         let harness = TestHarness::new().await;
         let _actor = SystemReadyActor::spawn(SystemReadyActorDeps {
             deps: harness.actor_deps().await,
@@ -106,8 +108,11 @@ mod tests {
         });
 
         // When NOT publishing AllActorsSpawned.
-        // Then the oneshot is NOT consumed.
+        // Then no signal is received.
         let result = rx.try_recv();
-        assert!(result.is_err(), "oneshot should not be sent yet");
+        assert!(
+            matches!(result, Ok(None)),
+            "signal should not be sent yet, got {result:?}"
+        );
     }
 }

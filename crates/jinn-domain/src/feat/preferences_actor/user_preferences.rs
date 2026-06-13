@@ -1314,8 +1314,6 @@ where
         .attach("failed to write user preferences")
 }
 
-//FIXME: disabled during actor migration
-// #[cfg(test)]
 #[cfg(test)]
 mod tests {
     #![allow(

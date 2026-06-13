@@ -17,6 +17,7 @@ use crate::feat::session::protocol::history_appended::HistoryAppended;
 use crate::feat::session::protocol::session_load_completed::SessionLoadCompleted;
 
 /// Dependencies for [`TokenCountActor`].
+#[derive(Clone)]
 pub struct TokenCountActorDeps {
     /// Common actor dependencies (services + bus).
     pub deps: ActorDeps,

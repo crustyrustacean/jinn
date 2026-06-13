@@ -263,9 +263,6 @@ impl SessionPersistenceActor {
     }
 }
 
-//FIXME: disabled during actor migration — tests reference deleted types
-// #[cfg(test)]
-
 #[cfg(test)]
 mod tests {
     #![allow(

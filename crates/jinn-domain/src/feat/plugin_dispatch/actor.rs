@@ -98,6 +98,7 @@ pub struct PluginDispatchActor {
 }
 
 /// Dependencies for [`PluginDispatchActor`].
+#[derive(Clone)]
 pub struct PluginDispatchActorDeps {
     /// Universal actor dependencies.
     pub deps: ActorDeps,

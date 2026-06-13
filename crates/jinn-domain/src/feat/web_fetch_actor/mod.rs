@@ -31,6 +31,7 @@ pub struct WebFetchActor {
 }
 
 /// Dependencies for [`WebFetchActor`].
+#[derive(Clone)]
 pub struct WebFetchActorDeps {
     /// Common actor dependencies (services + bus).
     pub deps: ActorDeps,

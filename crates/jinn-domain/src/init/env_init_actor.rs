@@ -48,6 +48,7 @@ pub struct EnvInitActor {
 }
 
 /// Dependencies for spawning an [`EnvInitActor`].
+#[derive(Clone)]
 pub struct EnvInitActorDeps {
     /// Universal actor dependencies (bus, services, etc.).
     pub deps: ActorDeps,

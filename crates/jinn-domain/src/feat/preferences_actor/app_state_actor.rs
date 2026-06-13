@@ -12,6 +12,7 @@ use crate::feat::preferences_actor::protocol::app_state_command::UpdateAppState;
 use crate::feat::preferences_actor::protocol::app_state_event::AppStateUpdated;
 
 /// Dependencies for spawning an [`AppStateActor`].
+#[derive(Clone)]
 pub struct AppStateActorDeps {
     /// Universal actor dependencies (bus, services, etc.).
     pub deps: ActorDeps,

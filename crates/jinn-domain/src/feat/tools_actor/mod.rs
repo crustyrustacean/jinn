@@ -146,6 +146,7 @@ pub struct ToolOrchestratorActor {
 }
 
 /// Dependencies for [`ToolOrchestratorActor`].
+#[derive(Clone)]
 pub struct ToolOrchestratorActorDeps {
     /// Universal actor dependencies.
     pub deps: ActorDeps,

@@ -88,6 +88,7 @@ impl BusPublish for SessionPersistenceActor {
     }
 }
 
+#[derive(Clone)]
 pub struct SessionPersistenceActorDeps {
     pub deps: ActorDeps,
     pub state: State,

@@ -31,6 +31,7 @@ use crate::feat::skills::skill::Skill;
 use crate::init::env_init_actor::EnvironmentLoaded;
 
 /// Dependencies for [`SkillsScanActor`].
+#[derive(Clone)]
 pub struct SkillsScanActorDeps {
     /// Runtime services and bus access.
     pub deps: ActorDeps,

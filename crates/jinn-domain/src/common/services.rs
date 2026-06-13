@@ -91,8 +91,15 @@ pub struct Services {
     pub bus: bus_service::BusService,
 
     /// Kanal closure bridge from sync TUI to async bus.
-    #[debug(skip)]
     pub bridge: crate::common::bridge::Bridge,
+
+    /// Root supervision-tree actor.
+    ///
+    /// `Some` in production (spawned in `actor_wiring::build`) so the TUI
+    /// can gracefully shut down the actor system on exit. `None` in tests
+    /// that don't exercise the full shutdown path.
+    #[debug(skip)]
+    pub root_supervisor: crate::common::root_supervisor::RootSupervisorRef,
 }
 
 impl Services {
@@ -130,6 +137,7 @@ impl Services {
             bus_service::BusService::new(bus_ref)
         };
         let bridge = crate::common::bridge::Bridge::new(bus.actor_ref().clone());
+        let root_supervisor = crate::common::root_supervisor::RootSupervisor::spawn_root().await;
 
         Self {
             paths: crate::common::app_paths::AppPaths::new_in(tempdir.path()),
@@ -176,6 +184,7 @@ impl Services {
             tempdir: Some(tempdir),
             bus,
             bridge,
+            root_supervisor,
         }
     }
 
@@ -192,6 +201,7 @@ impl Services {
             while rx.recv().await.is_ok() {}
         });
         let bridge = crate::common::bridge::Bridge::new_for_test();
+        let root_supervisor = crate::common::root_supervisor::RootSupervisor::spawn_root().await;
 
         Self {
             paths: crate::common::app_paths::AppPaths::new_in(tempdir.path()),
@@ -238,6 +248,7 @@ impl Services {
             tempdir: Some(tempdir),
             bus,
             bridge,
+            root_supervisor,
         }
     }
 }

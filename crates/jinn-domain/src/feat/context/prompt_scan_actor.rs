@@ -31,6 +31,7 @@ use kameo::actor::ActorRef;
 use kameo::message::{Context as MsgContext, Message};
 
 /// Dependencies for [`PromptScanActor`].
+#[derive(Clone)]
 pub struct PromptScanActorDeps {
     /// Runtime deps (services, bus).
     pub deps: ActorDeps,

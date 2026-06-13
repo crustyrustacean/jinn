@@ -25,6 +25,7 @@ pub struct HistorySnapshotActor {
 }
 
 /// Dependencies for spawning a [`HistorySnapshotActor`].
+#[derive(Clone)]
 pub struct HistorySnapshotActorDeps {
     /// Universal actor dependencies (bus, services, etc.).
     pub deps: ActorDeps,

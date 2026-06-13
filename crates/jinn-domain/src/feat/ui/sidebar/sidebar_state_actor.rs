@@ -18,6 +18,7 @@ pub struct SidebarStateActor {
 }
 
 /// Dependencies for [`SidebarStateActor`].
+#[derive(Clone)]
 pub struct SidebarStateActorDeps {
     /// Common actor dependencies (services + bus).
     pub deps: ActorDeps,

@@ -33,6 +33,7 @@ pub struct ContextSizeActor {
 }
 
 /// Dependencies for [`ContextSizeActor`].
+#[derive(Clone)]
 pub struct ContextSizeActorDeps {
     /// Common actor dependencies.
     pub deps: ActorDeps,
