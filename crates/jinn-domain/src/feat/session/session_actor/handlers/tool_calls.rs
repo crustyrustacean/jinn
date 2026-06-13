@@ -319,6 +319,67 @@ mod tests {
     }
 
     #[tokio::test]
+    async fn tool_batch_completed_via_bus_emits_continuation() {
+        // Given a spawned session actor with a tool-call entry in its history.
+        use crate::common::bus::test_harness::{TestHarness, await_recorded};
+        use crate::common::state::State;
+        use crate::common::app_state::AppState;
+        use crate::feat::session_lifecycle::builtin::BuiltinRegistry;
+        use crate::feat::context::strategy::token_estimator::TiktokenCounter;
+        use crate::feat::session::session_actor::{SessionPersistenceActor, SessionPersistenceActorDeps};
+        use crate::feat::provider::protocol::command::SendToLlmProvider;
+        use std::time::Duration;
+
+        let harness = TestHarness::new().await;
+        let recorder = harness
+            .spawn_recorder::<SendToLlmProvider>()
+            .await;
+        let state = State::new(AppState::default());
+        {
+            let mut s = state.write();
+            let session = s.active_session_mut();
+            session.push_entry(ChatEntry::user("list files"));
+            session.push_entry(ChatEntry::assistant("checking"));
+            session.push_entry(ChatEntry::tool_call("tc-1", "bash", r#"{"command":"ls"}"#));
+            session.push_entry(ChatEntry::assistant("here are the files"));
+        }
+        let session_id = state.read().session.active_session_id().clone();
+
+        let actor_ref = harness
+            .spawn_actor::<SessionPersistenceActor>(SessionPersistenceActorDeps {
+                deps: harness.actor_deps().await,
+                state,
+                counter: TiktokenCounter::o200k_base(),
+                builtin_registry: BuiltinRegistry::new(),
+                shell: "/bin/sh".to_owned(),
+            })
+            .await;
+        actor_ref.wait_for_startup().await;
+
+        // When ToolBatchCompleted is published to the bus.
+        let event = ToolBatchCompleted {
+            session_id: session_id.clone(),
+            results: vec![ToolResult {
+                tool_call_id: "tc-1".to_owned(),
+                name: "bash".to_owned(),
+                content: "file1.txt".to_owned(),
+                success: true,
+                full_content: None,
+                truncation: None,
+                pin_position: None,
+            }],
+        };
+        harness.publish(event).await;
+        let sent = await_recorded::<SendToLlmProvider>(&recorder, 1, Duration::from_secs(2)).await;
+
+        // Then the actor published SendToLlmProvider via the Message handler.
+        assert!(
+            sent.iter().any(|m| m.session_id == session_id),
+            "expected SendToLlmProvider to reach the bus via the Message handler"
+        );
+    }
+
+    #[tokio::test]
     async fn on_tool_batch_completed_transitions_session_to_sending() {
         let (actor, _audit) = test_actor_recording().await;
         let session_id = {

@@ -46,7 +46,7 @@ use crate::feat::plugin_system::SessionRegistryId;
 use crate::feat::session::chat_entry::ChatEntryKind;
 use crate::feat::session::protocol::session_phase_changed::SessionPhaseChanged;
 use crate::feat::session_lifecycle::protocol::event::SessionCreated;
-use kameo::prelude::{Actor, ActorRef, Context, Message};
+use kameo::prelude::{ActorRef, Context, Message};
 /// Errors raised by [`PluginDispatchActor`] operations.
 ///
 /// All error context lives in attached `.attach(...)` values on the

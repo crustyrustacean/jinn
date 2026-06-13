@@ -33,7 +33,6 @@ use futures::StreamExt as _;
 use jiff::Timestamp;
 
 use jinn_provider::{LlmService, LlmServiceError, OnRetry, RetryingLlmService};
-use kameo::Actor;
 use session::SessionData;
 
 /// OnRetry callback that pushes a system chat entry to notify the user.
@@ -165,7 +164,7 @@ impl kameo::message::Message<SendToLlmProvider> for LlmActor {
         msg: SendToLlmProvider,
         _ctx: &mut kameo::message::Context<Self, Self::Reply>,
     ) {
-        self.start_stream(&msg);
+        self.start_stream(&msg).await;
     }
 }
 
@@ -176,7 +175,7 @@ impl kameo::message::Message<CancelStream> for LlmActor {
         msg: CancelStream,
         _ctx: &mut kameo::message::Context<Self, Self::Reply>,
     ) {
-        self.cancel_stream(&msg.session_id);
+        self.cancel_stream(&msg.session_id).await;
     }
 }
 
@@ -374,13 +373,14 @@ async fn process_stream_events(
                         sid,
                         format!("LLM stream error: {message}"),
                         dispatched_at,
-                    );
+                    )
+                    .await;
                     break;
                 }
             },
             Err(e) => {
                 stream_ended_normally = true;
-                emit_stream_error(bus, sid, format!("LLM stream error: {e:?}"), dispatched_at);
+                emit_stream_error(bus, sid, format!("LLM stream error: {e:?}"), dispatched_at).await;
                 break;
             }
         }
@@ -396,7 +396,8 @@ async fn process_stream_events(
             sid,
             "LLM stream ended unexpectedly. The connection may have been interrupted.".to_owned(),
             dispatched_at,
-        );
+        )
+        .await;
     }
 
     stream_ended_normally
@@ -405,7 +406,7 @@ async fn process_stream_events(
 impl LlmActor {
     /// Dispatches incoming commands to the appropriate handler.
     /// Starts an LLM streaming response for a session, aborting any existing stream.
-    fn start_stream(&mut self, payload: &SendToLlmProvider) {
+    async fn start_stream(&mut self, payload: &SendToLlmProvider) {
         let retry_config = self
             .deps
             .services
@@ -439,32 +440,41 @@ impl LlmActor {
         }
 
         // Resolve the factory: per-request if provider_id is set, global fallback otherwise.
-        let factory = if let Some(pid) = payload.provider_id.clone() {
-            let id = crate::feat::provider_infra::ProviderId::new(pid.clone());
-            let api_keys = self.deps.services.api_keys.read();
-            match self
-                .deps
-                .services
-                .provider_registry
-                .create_factory(&id, &api_keys)
-            {
-                Ok(f) => {
-                    tracing::debug!(provider_id = %pid, "created per-request LLM factory");
-                    LlmServiceFactoryService::new(Arc::from(f))
+        let factory = {
+            if let Some(pid) = payload.provider_id.clone() {
+                let id = crate::feat::provider_infra::ProviderId::new(pid.clone());
+                let api_keys = self.deps.services.api_keys.read();
+                match self
+                    .deps
+                    .services
+                    .provider_registry
+                    .create_factory(&id, &api_keys)
+                {
+                    Ok(f) => {
+                        tracing::debug!(provider_id = %pid, "created per-request LLM factory");
+                        Ok(LlmServiceFactoryService::new(Arc::from(f)))
+                    }
+                    Err(e) => {
+                        tracing::error!(err = ?e, provider_id = %pid, "failed to create per-request factory");
+                        Err(format!("LLM factory creation failed for {pid}: {e:?}"))
+                    }
                 }
-                Err(e) => {
-                    tracing::error!(err = ?e, provider_id = %pid, "failed to create per-request factory");
-                    emit_stream_error(
-                        &self.deps.services.bus,
-                        &session_id,
-                        format!("LLM factory creation failed for {pid}: {e:?}"),
-                        payload.dispatched_at,
-                    );
-                    return;
-                }
+            } else {
+                Ok(self.factory.clone())
             }
-        } else {
-            self.factory.clone()
+        };
+        let factory = match factory {
+            Ok(f) => f,
+            Err(msg) => {
+                emit_stream_error(
+                    &self.deps.services.bus,
+                    &session_id,
+                    msg,
+                    payload.dispatched_at,
+                )
+                .await;
+                return;
+            }
         };
         let model_id = payload
             .provider_id
@@ -485,7 +495,8 @@ impl LlmActor {
                         &sid,
                         format!("LLM service creation failed: {e:?}"),
                         dispatched_at,
-                    );
+                    )
+                    .await;
                     return;
                 }
             };
@@ -505,7 +516,8 @@ impl LlmActor {
                         &sid,
                         format!("LLM stream error: {e:?}"),
                         dispatched_at,
-                    );
+                    )
+                    .await;
                     return;
                 }
             };
@@ -602,6 +614,86 @@ impl LlmActor {
 }
 
 #[cfg(test)]
+mod test_fakes {
+    use super::*;
+    use jinn_provider::{ChatStream, LlmServiceFactory, ToolStream};
+
+    /// An LLM service whose stream never yields — used to test cancel paths
+    /// while a stream is genuinely in flight.
+    #[derive(Debug)]
+    struct HangingLlmService;
+
+    #[async_trait::async_trait]
+    impl LlmService for HangingLlmService {
+        fn name(&self) -> &'static str {
+            "HangingLlm"
+        }
+        async fn chat_stream(
+            &self,
+            _messages: Vec<jinn_provider::LlmMessage>,
+        ) -> Result<ChatStream, Report<LlmServiceError>> {
+            Ok(Box::pin(futures::stream::pending()))
+        }
+        async fn chat_stream_with_tools(
+            &self,
+            _messages: Vec<jinn_provider::LlmMessage>,
+            _tools: Vec<jinn_provider::ToolDefinition>,
+        ) -> Result<ToolStream, Report<LlmServiceError>> {
+            Ok(Box::pin(futures::stream::pending()))
+        }
+    }
+
+    /// Factory that produces [`HangingLlmService`] instances.
+    #[derive(Debug)]
+    pub(super) struct HangingLlmFactory;
+
+    impl LlmServiceFactory for HangingLlmFactory {
+        fn create(&self) -> Result<Box<dyn LlmService>, Report<LlmServiceError>> {
+            Ok(Box::new(HangingLlmService))
+        }
+        fn name(&self) -> &str {
+            "HangingLlm"
+        }
+    }
+
+    /// A factory whose stream creation fails immediately — used to verify the
+    /// error path publishes a chat entry and stream completion.
+    #[derive(Debug)]
+    pub(super) struct ErroringLlmFactory;
+
+    impl LlmServiceFactory for ErroringLlmFactory {
+        fn create(&self) -> Result<Box<dyn LlmService>, Report<LlmServiceError>> {
+            Ok(Box::new(ErroringLlmService))
+        }
+        fn name(&self) -> &str {
+            "ErroringLlm"
+        }
+    }
+
+    /// A service whose stream immediately yields an error.
+    #[derive(Debug)]
+    struct ErroringLlmService;
+
+    #[async_trait::async_trait]
+    impl LlmService for ErroringLlmService {
+        fn name(&self) -> &'static str { "ErroringLlm" }
+        async fn chat_stream(
+            &self,
+            _messages: Vec<jinn_provider::LlmMessage>,
+        ) -> Result<ChatStream, Report<LlmServiceError>> {
+            Err(Report::new(LlmServiceError::Provider))
+        }
+        async fn chat_stream_with_tools(
+            &self,
+            _messages: Vec<jinn_provider::LlmMessage>,
+            _tools: Vec<jinn_provider::ToolDefinition>,
+        ) -> Result<ToolStream, Report<LlmServiceError>> {
+            Err(Report::new(LlmServiceError::Provider))
+        }
+    }
+}
+
+#[cfg(test)]
 mod tests {
     #![allow(
         clippy::expect_used,
@@ -611,6 +703,7 @@ mod tests {
         reason = "test code"
     )]
     use super::session::SessionState;
+    use super::test_fakes::{ErroringLlmFactory, HangingLlmFactory};
     use super::*;
 
     use crate::common::bus::test_harness::{TestHarness, await_recorded};
@@ -783,9 +876,9 @@ mod tests {
             .await;
 
         // Then no StreamCompleted event is emitted.
-        let recorded = await_recorded(&recorder, 0, std::time::Duration::from_millis(100)).await;
+        let messages = await_recorded(&recorder, 0, std::time::Duration::from_millis(100)).await;
         assert!(
-            recorded.is_empty(),
+            messages.is_empty(),
             "should not emit StreamCompleted for non-existent session"
         );
     }
@@ -900,7 +993,7 @@ mod tests {
         };
 
         // Start first stream and save the handle.
-        actor.start_stream(&payload.clone());
+        actor.start_stream(&payload.clone()).await;
         let first_handle = actor.tasks.remove(&session_id);
         assert!(first_handle.is_some());
         // Re-insert for the second start_stream to find and abort.
@@ -909,8 +1002,7 @@ mod tests {
             .insert(session_id.clone(), first_handle.unwrap());
 
         // When starting a second stream for the same session.
-        actor.start_stream(&payload);
-
+        actor.start_stream(&payload).await;
         // Then a new task exists (the old one was aborted internally).
         assert!(
             actor.tasks.contains_key(&session_id),
@@ -935,7 +1027,7 @@ mod tests {
         };
 
         // When starting a stream.
-        actor.start_stream(&payload);
+        actor.start_stream(&payload).await;
 
         // Then the session state is Streaming.
         let session_data = actor.sessions.get(&session_id);
@@ -1015,6 +1107,109 @@ mod tests {
         assert!(
             completed.is_empty(),
             "CancelStream with no active stream should be a no-op"
+        );
+    }
+
+    #[tokio::test]
+    async fn cancel_stream_via_bus_emits_completion() {
+        // Given a test harness with an LLM actor using a never-completing fake.
+        // This ensures the stream is actively streaming when we cancel.
+        let harness = TestHarness::new().await;
+        let factory = LlmServiceFactoryService::new(Arc::new(HangingLlmFactory));
+        let _actor = harness
+            .spawn_actor::<LlmActor>(LlmActorDeps {
+                factory,
+                deps: harness.actor_deps().await,
+                state: State::new(crate::common::app_state::AppState::default()),
+            })
+            .await;
+        let recorder = harness.spawn_recorder::<StreamCompleted>().await;
+
+        let session_id = SessionId::new();
+        harness
+            .publish(SendToLlmProvider {
+                model_used: None,
+                session_id: session_id.clone(),
+                messages: vec![],
+                tool_definitions: vec![],
+                provider_id: None,
+                estimated_tokens: 0,
+                dispatched_at: jiff::Timestamp::now(),
+            })
+            .await;
+        // Give the stream a moment to start.
+        tokio::time::sleep(std::time::Duration::from_millis(200)).await;
+
+        // When sending CancelStream via bus.
+        harness
+            .publish(CancelStream {
+                session_id: session_id.clone(),
+            })
+            .await;
+
+        // Then StreamCompleted(Canceled) is emitted.
+        let completed = await_recorded(&recorder, 1, std::time::Duration::from_secs(5)).await;
+        let found = completed
+            .iter()
+            .any(|sc| sc.reason == StreamCompletedReason::Canceled);
+        assert!(found, "should emit StreamCompleted(Canceled)");
+    }
+
+    #[tokio::test]
+    async fn stream_error_emits_chat_entry_and_completion_via_bus() {
+        // Given a test harness with an LLM actor using an immediately-erroring fake.
+        // The stream errors synchronously on creation, exercising emit_stream_error.
+        let harness = TestHarness::new().await;
+        let factory = LlmServiceFactoryService::new(Arc::new(ErroringLlmFactory));
+        let _actor = harness
+            .spawn_actor::<LlmActor>(LlmActorDeps {
+                factory,
+                deps: harness.actor_deps().await,
+                state: State::new(crate::common::app_state::AppState::default()),
+            })
+            .await;
+        let entry_recorder = harness.spawn_recorder::<PushChatEntry>().await;
+        let completed_recorder = harness.spawn_recorder::<StreamCompleted>().await;
+
+        // When sending SendToLlmProvider, which errors during stream creation.
+        let session_id = SessionId::new();
+        harness
+            .publish(SendToLlmProvider {
+                model_used: None,
+                session_id: session_id.clone(),
+                messages: vec![],
+                tool_definitions: vec![],
+                provider_id: None,
+                estimated_tokens: 0,
+                dispatched_at: jiff::Timestamp::now(),
+            })
+            .await;
+
+        // Then an error PushChatEntry is emitted (from emit_stream_error).
+        let entries = await_recorded(
+            &entry_recorder,
+            1,
+            std::time::Duration::from_secs(5),
+        )
+        .await;
+        assert!(
+            !entries.is_empty(),
+            "stream error should publish an error chat entry"
+        );
+
+        // And a StreamCompleted(Error) is emitted, so the session isn't stuck streaming.
+        let completed = await_recorded(
+            &completed_recorder,
+            1,
+            std::time::Duration::from_secs(5),
+        )
+        .await;
+        let found = completed
+            .iter()
+            .any(|sc| sc.reason == StreamCompletedReason::Error);
+        assert!(
+            found,
+            "stream error should emit StreamCompleted(Error)"
         );
     }
 }

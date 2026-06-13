@@ -158,10 +158,10 @@ mod tests {
             .await;
 
         // Then exactly one PushChatEntry was emitted with a transient entry.
-        let recorded = await_recorded(&recorder, 1, Duration::from_millis(500)).await;
-        assert_eq!(recorded.len(), 1, "expected exactly one PushChatEntry");
+        let messages = await_recorded(&recorder, 1, Duration::from_millis(500)).await;
+        assert_eq!(messages.len(), 1, "expected exactly one PushChatEntry");
 
-        let entry = &recorded[0];
+        let entry = &messages[0];
         assert!(
             matches!(entry.entry.kind, ChatEntryKind::Transient(_)),
             "entry should be transient"
@@ -189,8 +189,8 @@ mod tests {
             .await;
 
         // Then the message says no project resources found.
-        let recorded = await_recorded(&recorder, 1, Duration::from_millis(500)).await;
-        let entry = &recorded[0];
+        let messages = await_recorded(&recorder, 1, Duration::from_millis(500)).await;
+        let entry = &messages[0];
         let ChatEntryKind::Transient(text) = &entry.entry.kind else {
             panic!("expected transient entry");
         };
@@ -224,8 +224,8 @@ mod tests {
             .await;
 
         // Then the reason is surfaced in the message.
-        let recorded = await_recorded(&recorder, 1, Duration::from_millis(500)).await;
-        let entry = &recorded[0];
+        let messages = await_recorded(&recorder, 1, Duration::from_millis(500)).await;
+        let entry = &messages[0];
         let ChatEntryKind::Transient(text) = &entry.entry.kind else {
             panic!("expected transient entry");
         };
@@ -260,8 +260,8 @@ mod tests {
             .await;
 
         // Then the message notes the failure.
-        let recorded = await_recorded(&recorder, 1, Duration::from_millis(500)).await;
-        let entry = &recorded[0];
+        let messages = await_recorded(&recorder, 1, Duration::from_millis(500)).await;
+        let entry = &messages[0];
         let ChatEntryKind::Transient(text) = &entry.entry.kind else {
             panic!("expected transient entry");
         };

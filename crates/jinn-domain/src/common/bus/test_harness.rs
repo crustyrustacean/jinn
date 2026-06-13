@@ -98,12 +98,12 @@ pub async fn await_recorded<M: Clone + Send + 'static>(
 ) -> Vec<M> {
     let deadline = tokio::time::Instant::now() + timeout;
     loop {
-        let recorded: Vec<M> = recorder
+        let messages: Vec<M> = recorder
             .ask(GetRecorded::new())
             .await
             .expect("get recorded");
-        if recorded.len() >= min_count {
-            return recorded;
+        if messages.len() >= min_count {
+            return messages;
         }
         if tokio::time::Instant::now() >= deadline {
             return recorder

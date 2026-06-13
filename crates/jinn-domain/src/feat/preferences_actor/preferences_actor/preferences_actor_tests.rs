@@ -35,8 +35,8 @@ async fn set_compaction_model_overwrites_previous() {
             ))],
         })
         .await;
-    let recorded = await_recorded(&recorder, 1, Duration::from_secs(2)).await;
-    assert!(!recorded.is_empty(), "expected first PreferencesUpdated");
+    let messages = await_recorded(&recorder, 1, Duration::from_secs(2)).await;
+    assert!(!messages.is_empty(), "expected first PreferencesUpdated");
     // When sending a second UpdatePreferences with a different model.
     harness
         .publish(UpdatePreferences {
@@ -45,16 +45,16 @@ async fn set_compaction_model_overwrites_previous() {
             ))],
         })
         .await;
-    let recorded = await_recorded(&recorder, 1, Duration::from_secs(2)).await;
+    let messages = await_recorded(&recorder, 1, Duration::from_secs(2)).await;
 
     // Then only the latest model is in the emitted event.
-    let found = recorded
+    let found = messages
         .iter()
         .any(|e| e.preferences.compaction.model.as_deref() == Some("openrouter/gpt-4"));
     assert!(
         found,
-        "expected PreferencesUpdated with compaction.model=openrouter/gpt-4, got {} events: {recorded:?}",
-        recorded.len()
+        "expected PreferencesUpdated with compaction.model=openrouter/gpt-4, got {} events: {messages:?}",
+        messages.len()
     );
 }
 
@@ -79,8 +79,8 @@ async fn emits_preferences_updated_event() {
         .await;
 
     // Then a PreferencesUpdated event was emitted with the full preferences.
-    let recorded = await_recorded(&recorder, 1, Duration::from_secs(2)).await;
-    let found = recorded
+    let messages = await_recorded(&recorder, 1, Duration::from_secs(2)).await;
+    let found = messages
         .iter()
         .any(|e| e.preferences.compaction.model.as_deref() == Some("ollama/llama3"));
     assert!(
@@ -108,17 +108,17 @@ async fn empty_diffs_does_not_change_storage() {
             ))],
         })
         .await;
-    let recorded = await_recorded(&recorder, 1, Duration::from_secs(2)).await;
-    assert!(!recorded.is_empty(), "expected first PreferencesUpdated");
-    let _first_prefs = &recorded[0].preferences;
+    let messages = await_recorded(&recorder, 1, Duration::from_secs(2)).await;
+    assert!(!messages.is_empty(), "expected first PreferencesUpdated");
+    let _first_prefs = &messages[0].preferences;
 
     // When sending UpdatePreferences with empty diffs.
     harness.publish(UpdatePreferences { updates: vec![] }).await;
-    let recorded = await_recorded(&recorder, 1, Duration::from_secs(2)).await;
-    assert!(!recorded.is_empty(), "expected second PreferencesUpdated");
+    let messages = await_recorded(&recorder, 1, Duration::from_secs(2)).await;
+    assert!(!messages.is_empty(), "expected second PreferencesUpdated");
 
     // Then the existing preferences are preserved.
-    let found = recorded
+    let found = messages
         .iter()
         .any(|e| e.preferences.compaction.model.as_deref() == Some("ollama/llama3"));
     assert!(found, "expected model to be preserved after empty update");

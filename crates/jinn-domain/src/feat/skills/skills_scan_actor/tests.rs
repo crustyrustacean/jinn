@@ -98,8 +98,8 @@ async fn scan_skills_command_writes_to_app_state() {
 
     // Then skills are written to the session's ephemeral discovered set.
     let recorder = harness.spawn_recorder::<SkillsLoaded>().await;
-    let recorded = await_recorded(&recorder, 1, std::time::Duration::from_secs(2)).await;
-    assert!(!recorded.is_empty());
+    let messages = await_recorded(&recorder, 1, std::time::Duration::from_secs(2)).await;
+    assert!(!messages.is_empty());
 
     let guard = state.read();
     let session = guard.session.get(&session_id).expect("session exists");
@@ -131,8 +131,8 @@ async fn session_created_event_scans_skills() {
 
     // Then the skill is written to the session's discovered set.
     let recorder = harness.spawn_recorder::<SkillsLoaded>().await;
-    let recorded = await_recorded(&recorder, 1, std::time::Duration::from_secs(2)).await;
-    assert!(!recorded.is_empty());
+    let messages = await_recorded(&recorder, 1, std::time::Duration::from_secs(2)).await;
+    assert!(!messages.is_empty());
 
     let guard = state.read();
     let session = guard.session.get(&session_id).expect("session exists");
@@ -188,8 +188,8 @@ async fn session_setup_completed_event_scans_skills() {
 
     // Then the skill is written to the session's discovered set.
     let recorder = harness.spawn_recorder::<SkillsLoaded>().await;
-    let recorded = await_recorded(&recorder, 1, std::time::Duration::from_secs(2)).await;
-    assert!(!recorded.is_empty());
+    let messages = await_recorded(&recorder, 1, std::time::Duration::from_secs(2)).await;
+    assert!(!messages.is_empty());
 
     let guard = state.read();
     let session = guard.session.get(&session_id).expect("session exists");
@@ -221,8 +221,8 @@ async fn session_cwd_changed_event_scans_skills() {
 
     // Then the skill is written to the session's discovered set.
     let recorder = harness.spawn_recorder::<SkillsLoaded>().await;
-    let recorded = await_recorded(&recorder, 1, std::time::Duration::from_secs(2)).await;
-    assert!(!recorded.is_empty());
+    let messages = await_recorded(&recorder, 1, std::time::Duration::from_secs(2)).await;
+    assert!(!messages.is_empty());
 
     let guard = state.read();
     let session = guard.session.get(&session_id).expect("session exists");
@@ -258,8 +258,8 @@ async fn environment_loaded_event_scans_active_session_skills() {
 
     // Then the active session's skill is discovered.
     let recorder = harness.spawn_recorder::<SkillsLoaded>().await;
-    let recorded = await_recorded(&recorder, 1, std::time::Duration::from_secs(2)).await;
-    assert!(!recorded.is_empty());
+    let messages = await_recorded(&recorder, 1, std::time::Duration::from_secs(2)).await;
+    assert!(!messages.is_empty());
 
     let guard = state.read();
     let session = guard.session.get(&session_id).expect("session exists");
@@ -288,8 +288,8 @@ async fn scan_skills_clears_skill_preview_cache() {
 
     // Then the cache is cleared so rescanned bodies are re-rendered fresh.
     let recorder = harness.spawn_recorder::<SkillsLoaded>().await;
-    let recorded = await_recorded(&recorder, 1, std::time::Duration::from_secs(2)).await;
-    assert!(!recorded.is_empty());
+    let messages = await_recorded(&recorder, 1, std::time::Duration::from_secs(2)).await;
+    assert!(!messages.is_empty());
 
     assert!(
         state
@@ -316,9 +316,9 @@ async fn scan_skills_command_emits_skills_loaded() {
     harness.publish(ScanSkills { session_id }).await;
 
     // Then SkillsLoaded event is emitted.
-    let recorded = await_recorded(&recorder, 1, std::time::Duration::from_secs(2)).await;
-    assert!(!recorded.is_empty());
-    let loaded = &recorded[0];
+    let messages = await_recorded(&recorder, 1, std::time::Duration::from_secs(2)).await;
+    assert!(!messages.is_empty());
+    let loaded = &messages[0];
     assert!(loaded.error.is_none());
 }
 
@@ -335,9 +335,9 @@ async fn scan_skills_empty_dir_emits_empty_loaded() {
     harness.publish(ScanSkills { session_id }).await;
 
     // Then SkillsLoaded has empty skills list.
-    let recorded = await_recorded(&recorder, 1, std::time::Duration::from_secs(2)).await;
-    assert!(!recorded.is_empty());
-    let loaded = &recorded[0];
+    let messages = await_recorded(&recorder, 1, std::time::Duration::from_secs(2)).await;
+    assert!(!messages.is_empty());
+    let loaded = &messages[0];
     assert!(loaded.skills.is_empty());
     assert!(loaded.error.is_none());
 }
@@ -388,8 +388,8 @@ async fn scan_skills_replacing_cwd_clears_previous_discovered_skills() {
             session_id: session_id.clone(),
         })
         .await;
-    let recorded = await_recorded(&recorder, 1, std::time::Duration::from_secs(2)).await;
-    assert!(!recorded.is_empty());
+    let messages = await_recorded(&recorder, 1, std::time::Duration::from_secs(2)).await;
+    assert!(!messages.is_empty());
 
     {
         let guard = state.read();
@@ -446,9 +446,9 @@ async fn scan_skills_nonexistent_dir_emits_empty_loaded() {
     harness.publish(ScanSkills { session_id }).await;
 
     // Then SkillsLoaded has empty skills list.
-    let recorded = await_recorded(&recorder, 1, std::time::Duration::from_secs(2)).await;
-    assert!(!recorded.is_empty());
-    let loaded = &recorded[0];
+    let messages = await_recorded(&recorder, 1, std::time::Duration::from_secs(2)).await;
+    assert!(!messages.is_empty());
+    let loaded = &messages[0];
     assert!(loaded.skills.is_empty());
     assert!(loaded.error.is_none());
 }
@@ -482,8 +482,8 @@ async fn scan_skills_project_overrides_global_same_name() {
 
     // Then exactly one `shared` skill exists and it is the PROJECT one.
     let recorder = harness.spawn_recorder::<SkillsLoaded>().await;
-    let recorded = await_recorded(&recorder, 1, std::time::Duration::from_secs(2)).await;
-    assert!(!recorded.is_empty());
+    let messages = await_recorded(&recorder, 1, std::time::Duration::from_secs(2)).await;
+    assert!(!messages.is_empty());
 
     let guard = state.read();
     let session = guard.session.get(&session_id).expect("session exists");
@@ -542,8 +542,8 @@ async fn scan_skills_discovers_ancestor_project_skill_from_nested_cwd() {
     // Then the ancestor skill (one level up from cwd, within the bounded
     // walk) is discovered.
     let recorder = harness.spawn_recorder::<SkillsLoaded>().await;
-    let recorded = await_recorded(&recorder, 1, std::time::Duration::from_secs(2)).await;
-    assert!(!recorded.is_empty());
+    let messages = await_recorded(&recorder, 1, std::time::Duration::from_secs(2)).await;
+    assert!(!messages.is_empty());
 
     let guard = state.read();
     let session = guard.session.get(&session_id).expect("session exists");
@@ -618,8 +618,8 @@ async fn scan_skills_routes_discovery_per_session_cwd() {
             .await;
     }
 
-    let recorded = await_recorded(&recorder, 1, std::time::Duration::from_secs(2)).await;
-    assert!(recorded.len() >= 2, "should have two SkillsLoaded events");
+    let messages = await_recorded(&recorder, 1, std::time::Duration::from_secs(2)).await;
+    assert!(messages.len() >= 2, "should have two SkillsLoaded events");
 
     // Then each session sees only its own skill.
     let guard = state.read();

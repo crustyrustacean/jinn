@@ -396,7 +396,7 @@ impl Message<ToolExecutionCompleted> for SessionPersistenceActor {
 impl Message<ToolBatchCompleted> for SessionPersistenceActor {
     type Reply = ();
     async fn handle(&mut self, msg: ToolBatchCompleted, _ctx: &mut Context<Self, Self::Reply>) {
-        self.on_tool_batch_completed(&msg);
+        self.on_tool_batch_completed(&msg).await;
     }
 }
 

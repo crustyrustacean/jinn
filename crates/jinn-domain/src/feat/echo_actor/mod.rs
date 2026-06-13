@@ -113,11 +113,11 @@ mod tests {
             .await;
 
         // Then the recorder received a PushChatEntry with 'HELLO WORLD'.
-        let recorded = await_recorded(&recorder, 1, Duration::from_secs(2)).await;
+        let messages = await_recorded(&recorder, 1, Duration::from_secs(2)).await;
 
-        assert_eq!(recorded.len(), 1, "expected exactly one PushChatEntry");
+        assert_eq!(messages.len(), 1, "expected exactly one PushChatEntry");
 
-        let entry = &recorded[0];
+        let entry = &messages[0];
         assert_eq!(entry.session_id, session_id);
         let ChatEntryKind::Actor { source, text } = &entry.entry.kind else {
             panic!("expected Actor entry kind");
@@ -146,9 +146,9 @@ mod tests {
             .await;
 
         // Then no PushChatEntry was published (echo ignores non-user entries).
-        let recorded = await_recorded(&recorder, 1, Duration::from_millis(500)).await;
+        let messages = await_recorded(&recorder, 1, Duration::from_millis(500)).await;
         assert!(
-            recorded.is_empty(),
+            messages.is_empty(),
             "expected no PushChatEntry for system entry"
         );
     }
