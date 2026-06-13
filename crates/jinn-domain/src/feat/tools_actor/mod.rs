@@ -222,7 +222,13 @@ impl Actor for ToolOrchestratorActor {
             .openrouter_web_search
             .clone();
 
-        let bash_config = args.deps.services.user_preferences_storage.read().bash.clone();
+        let bash_config = args
+            .deps
+            .services
+            .user_preferences_storage
+            .read()
+            .bash
+            .clone();
 
         let mut actor = Self {
             deps: args.deps,
@@ -340,7 +346,8 @@ impl Message<RegisterPluginTools> for ToolOrchestratorActor {
             &msg.target,
             &msg.definitions,
             msg.session_id,
-        ).await;
+        )
+        .await;
     }
 }
 
@@ -351,7 +358,6 @@ impl BusPublish for ToolOrchestratorActor {
 }
 
 impl ToolOrchestratorActor {
-
     /// Stores actor-provided tools and emits a [`ToolsRegistered`] event.
     async fn handle_register_tools(&mut self, provider: &str, definitions: &[ToolDefinition]) {
         for def in definitions {
@@ -369,7 +375,8 @@ impl ToolOrchestratorActor {
             provider: provider.to_owned(),
             definitions: definitions.to_vec(),
             session_id: None,
-        }).await;
+        })
+        .await;
     }
 
     /// Registers tool definitions from a Lua plugin.
@@ -397,7 +404,8 @@ impl ToolOrchestratorActor {
             provider: format!("plugin:{plugin_name}"),
             definitions: definitions.to_vec(),
             session_id,
-        }).await;
+        })
+        .await;
     }
 
     /// Dispatches each tool call and tracks the pending batch.
@@ -425,8 +433,9 @@ impl ToolOrchestratorActor {
         let remaining = tool_calls.len();
         let mut handles = Vec::new();
         for tc in tool_calls {
-            if let Some(handle) =
-                self.dispatch_tool_call(session_id.clone(), tc, dispatched_at).await
+            if let Some(handle) = self
+                .dispatch_tool_call(session_id.clone(), tc, dispatched_at)
+                .await
             {
                 handles.push(handle);
             }
@@ -461,11 +470,7 @@ impl ToolOrchestratorActor {
     }
 
     /// Builds a [`ToolContext`] for the given session by reading its CWD from shared state.
-    fn build_tool_context(
-        &self,
-        session_id: &SessionId,
-        dispatched_at: Timestamp,
-    ) -> ToolContext {
+    fn build_tool_context(&self, session_id: &SessionId, dispatched_at: Timestamp) -> ToolContext {
         let prefs = self.services.user_preferences_storage.read();
         let cwd = {
             let guard = self.state.read();
@@ -602,7 +607,8 @@ impl ToolOrchestratorActor {
                         self.publish(ToolExecutionCompleted {
                             session_id: session_id.clone(),
                             result,
-                        }).await;
+                        })
+                        .await;
                     }
                     return None;
                 }
@@ -648,10 +654,8 @@ impl ToolOrchestratorActor {
                             }
                         }
                     };
-                    bus.publish(ToolExecutionCompleted {
-                        session_id,
-                        result,
-                    }).await;
+                    bus.publish(ToolExecutionCompleted { session_id, result })
+                        .await;
                 });
                 Some(handle)
             }

@@ -31,21 +31,3 @@ impl std::fmt::Debug for Msg {
         }
     }
 }
-
-//FIXME: disabled during actor migration
-// #[cfg(test)]
-#[cfg(any())]
-mod tests {
-    #![allow(
-        clippy::expect_used,
-        clippy::indexing_slicing,
-        clippy::panic,
-        reason = "test code, panics are acceptable"
-    )]
-
-    use super::*;
-
-    //FIXME: disabled during actor migration — rewrite test for Msg::Bridge
-    // #[rstest::rstest]
-    // fn bridge_message_carries_closure() { ...
-}

@@ -56,8 +56,10 @@ impl Actor for ProviderActor {
     async fn on_start(args: Self::Args, actor_ref: ActorRef<Self>) -> Result<Self, Self::Error> {
         let bus = &args.deps.services.bus;
         bus.subscribe::<ProviderSwitch, _>(&actor_ref).await;
-        bus.subscribe::<LoadProviderPickerEntries, _>(&actor_ref).await;
-        bus.subscribe::<LoadCompactionModelPickerEntries, _>(&actor_ref).await;
+        bus.subscribe::<LoadProviderPickerEntries, _>(&actor_ref)
+            .await;
+        bus.subscribe::<LoadCompactionModelPickerEntries, _>(&actor_ref)
+            .await;
         bus.subscribe::<ModelsRefreshed, _>(&actor_ref).await;
         bus.subscribe::<ModelCacheLoaded, _>(&actor_ref).await;
 
@@ -128,7 +130,6 @@ impl BusPublish for ProviderActor {
         &self.deps.services.bus
     }
 }
-
 
 impl ProviderActor {
     // --- Command handlers ---

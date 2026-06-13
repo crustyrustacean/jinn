@@ -17,19 +17,17 @@ use std::sync::Arc;
 
 use error_stack::{Report, ResultExt};
 use jinn_domain::common::actor::protocol::dynamic_command::DynamicCommand;
-use jinn_domain::common::bus::BusMessage;
 use jinn_domain::common::bridge::Bridge;
+use jinn_domain::common::bus::BusMessage;
 use jinn_domain::common::services::ActorChannelService;
 use jinn_domain::feat::chat_input::protocol::command::{
     EnqueueUserMessage, PushChatEntry, SetChatInputText,
 };
-use jinn_domain::feat::plugin_dispatch::protocol::command::{
-    SetManagedSession, TogglePlugin,
-};
+use jinn_domain::feat::plugin_dispatch::protocol::command::{SetManagedSession, TogglePlugin};
+use jinn_domain::feat::plugin_system::PluginCommand;
 use jinn_domain::feat::session::chat_entry::ChatEntry;
 use jinn_domain::feat::session::protocol::ResetSessionHistory;
 use jinn_domain::protocol::SessionId;
-use jinn_domain::feat::plugin_system::PluginCommand;
 use wherror::Error;
 
 /// Plugin wiring error — failure to translate a `PluginCommand` into a typed
@@ -66,7 +64,10 @@ pub trait PluginVerb {
     /// The domain message type produced by this verb.
     type DomainMsg: BusMessage;
     /// Convert the raw JSON payload into a typed domain message.
-    fn from_lua(ctx: CmdCtx, data: serde_json::Value) -> Result<Self::DomainMsg, Report<PluginWiringError>>;
+    fn from_lua(
+        ctx: CmdCtx,
+        data: serde_json::Value,
+    ) -> Result<Self::DomainMsg, Report<PluginWiringError>>;
 }
 
 // ─── Lua-side payload types ────────────────────────────────────────
@@ -128,7 +129,10 @@ struct LuaSetManagedSession {
 impl PluginVerb for LuaPushChatEntry {
     const VERB: &'static str = "push_chat_entry";
     type DomainMsg = PushChatEntry;
-    fn from_lua(_ctx: CmdCtx, data: serde_json::Value) -> Result<PushChatEntry, Report<PluginWiringError>> {
+    fn from_lua(
+        _ctx: CmdCtx,
+        data: serde_json::Value,
+    ) -> Result<PushChatEntry, Report<PluginWiringError>> {
         let lua: Self = serde_json::from_value(data)
             .change_context(PluginWiringError)
             .attach("deserialize push_chat_entry payload")?;
@@ -147,7 +151,10 @@ impl PluginVerb for LuaPushChatEntry {
 impl PluginVerb for LuaEnqueueUserMessage {
     const VERB: &'static str = "enqueue_user_message";
     type DomainMsg = EnqueueUserMessage;
-    fn from_lua(_ctx: CmdCtx, data: serde_json::Value) -> Result<EnqueueUserMessage, Report<PluginWiringError>> {
+    fn from_lua(
+        _ctx: CmdCtx,
+        data: serde_json::Value,
+    ) -> Result<EnqueueUserMessage, Report<PluginWiringError>> {
         let lua: Self = serde_json::from_value(data)
             .change_context(PluginWiringError)
             .attach("deserialize enqueue_user_message payload")?;
@@ -161,7 +168,10 @@ impl PluginVerb for LuaEnqueueUserMessage {
 impl PluginVerb for LuaDisablePlugin {
     const VERB: &'static str = "disable_plugin";
     type DomainMsg = TogglePlugin;
-    fn from_lua(_ctx: CmdCtx, data: serde_json::Value) -> Result<TogglePlugin, Report<PluginWiringError>> {
+    fn from_lua(
+        _ctx: CmdCtx,
+        data: serde_json::Value,
+    ) -> Result<TogglePlugin, Report<PluginWiringError>> {
         let lua: Self = serde_json::from_value(data)
             .change_context(PluginWiringError)
             .attach("deserialize disable_plugin payload")?;
@@ -175,7 +185,10 @@ impl PluginVerb for LuaDisablePlugin {
 impl PluginVerb for LuaFireAsyncHook {
     const VERB: &'static str = "fire_async_hook";
     type DomainMsg = DynamicCommand;
-    fn from_lua(_ctx: CmdCtx, data: serde_json::Value) -> Result<DynamicCommand, Report<PluginWiringError>> {
+    fn from_lua(
+        _ctx: CmdCtx,
+        data: serde_json::Value,
+    ) -> Result<DynamicCommand, Report<PluginWiringError>> {
         let lua: Self = serde_json::from_value(data)
             .change_context(PluginWiringError)
             .attach("deserialize fire_async_hook payload")?;
@@ -194,7 +207,10 @@ impl PluginVerb for LuaFireAsyncHook {
 impl PluginVerb for LuaSetChatInput {
     const VERB: &'static str = "set_chat_input";
     type DomainMsg = SetChatInputText;
-    fn from_lua(_ctx: CmdCtx, data: serde_json::Value) -> Result<SetChatInputText, Report<PluginWiringError>> {
+    fn from_lua(
+        _ctx: CmdCtx,
+        data: serde_json::Value,
+    ) -> Result<SetChatInputText, Report<PluginWiringError>> {
         let lua: Self = serde_json::from_value(data)
             .change_context(PluginWiringError)
             .attach("deserialize set_chat_input payload")?;
@@ -208,7 +224,10 @@ impl PluginVerb for LuaSetChatInput {
 impl PluginVerb for LuaResetSession {
     const VERB: &'static str = "reset_session";
     type DomainMsg = ResetSessionHistory;
-    fn from_lua(_ctx: CmdCtx, data: serde_json::Value) -> Result<ResetSessionHistory, Report<PluginWiringError>> {
+    fn from_lua(
+        _ctx: CmdCtx,
+        data: serde_json::Value,
+    ) -> Result<ResetSessionHistory, Report<PluginWiringError>> {
         let lua: Self = serde_json::from_value(data)
             .change_context(PluginWiringError)
             .attach("deserialize reset_session payload")?;
@@ -221,7 +240,10 @@ impl PluginVerb for LuaResetSession {
 impl PluginVerb for LuaSetManagedSession {
     const VERB: &'static str = "set_managed_session";
     type DomainMsg = SetManagedSession;
-    fn from_lua(_ctx: CmdCtx, data: serde_json::Value) -> Result<SetManagedSession, Report<PluginWiringError>> {
+    fn from_lua(
+        _ctx: CmdCtx,
+        data: serde_json::Value,
+    ) -> Result<SetManagedSession, Report<PluginWiringError>> {
         let lua: Self = serde_json::from_value(data)
             .change_context(PluginWiringError)
             .attach("deserialize set_managed_session payload")?;
@@ -286,7 +308,9 @@ pub fn handle_plugin_command(cmd: PluginCommand, channel: &ActorChannelService) 
 }
 
 /// Dispatch a single verb by type.
-fn dispatch_verb<V: PluginVerb>(cmd: &PluginCommand) -> Result<V::DomainMsg, Report<PluginWiringError>> {
+fn dispatch_verb<V: PluginVerb>(
+    cmd: &PluginCommand,
+) -> Result<V::DomainMsg, Report<PluginWiringError>> {
     let ctx = CmdCtx {
         plugin_name: cmd.plugin_name.clone(),
         verb: cmd.name.clone(),
@@ -342,7 +366,9 @@ mod tests {
     use super::*;
 
     /// Helper: test a PluginVerb by deserializing a JSON payload.
-    fn test_verb<V: PluginVerb>(data: serde_json::Value) -> Result<V::DomainMsg, Report<PluginWiringError>> {
+    fn test_verb<V: PluginVerb>(
+        data: serde_json::Value,
+    ) -> Result<V::DomainMsg, Report<PluginWiringError>> {
         let ctx = CmdCtx {
             plugin_name: "test-plugin".to_owned(),
             verb: V::VERB.to_owned(),
@@ -355,7 +381,8 @@ mod tests {
         let msg = test_verb::<LuaPushChatEntry>(serde_json::json!({
             "session_id": "test-session",
             "kind": { "system": "Hello from plugin!" },
-        })).expect("should translate");
+        }))
+        .expect("should translate");
         assert_eq!(msg.session_id, SessionId::from("test-session".to_owned()));
         assert!(msg.entry.text().contains("Hello from plugin!"));
     }
@@ -365,7 +392,8 @@ mod tests {
         let msg = test_verb::<LuaEnqueueUserMessage>(serde_json::json!({
             "session_id": "test-session",
             "text": "retry the judgment",
-        })).expect("should translate");
+        }))
+        .expect("should translate");
         assert!(msg.entry.text().contains("retry the judgment"));
     }
 
@@ -386,7 +414,8 @@ mod tests {
         let msg = test_verb::<LuaPushChatEntry>(serde_json::json!({
             "session_id": "test-session",
             "kind": { "transient": "welcome" },
-        })).expect("should translate");
+        }))
+        .expect("should translate");
         assert_eq!(msg.entry.kind_str(), "transient");
     }
 
@@ -395,7 +424,8 @@ mod tests {
         let msg = test_verb::<LuaPushChatEntry>(serde_json::json!({
             "session_id": "test-session",
             "kind": { "error": "enrichment failed" },
-        })).expect("should translate");
+        }))
+        .expect("should translate");
         assert_eq!(msg.entry.kind_str(), "error");
     }
 
@@ -413,7 +443,8 @@ mod tests {
         let msg = test_verb::<LuaDisablePlugin>(serde_json::json!({
             "session_id": "test-session",
             "plugin_name": "judge_pass",
-        })).expect("should translate");
+        }))
+        .expect("should translate");
         assert_eq!(msg.plugin_name, "judge_pass");
     }
 
@@ -431,7 +462,8 @@ mod tests {
             "hook": "on_enrich",
             "session_id": "s-test-session",
             "text": "hello world",
-        })).expect("should translate");
+        }))
+        .expect("should translate");
         assert_eq!(msg.name, "plugin::fire_async");
         assert_eq!(msg.payload["hook"], "on_enrich");
         assert_eq!(msg.payload["session_id"], "s-test-session");
@@ -443,7 +475,8 @@ mod tests {
         let msg = test_verb::<LuaFireAsyncHook>(serde_json::json!({
             "hook": "on_toggle",
             "session_id": "s-test-session",
-        })).expect("should translate");
+        }))
+        .expect("should translate");
         assert_eq!(msg.name, "plugin::fire_async");
         assert_eq!(msg.payload["hook"], "on_toggle");
         assert!(msg.payload.get("text").is_none_or(|v| v.is_null()));
@@ -454,7 +487,8 @@ mod tests {
         let msg = test_verb::<LuaSetChatInput>(serde_json::json!({
             "session_id": "s-test-session",
             "text": "enriched prompt text",
-        })).expect("should translate");
+        }))
+        .expect("should translate");
         assert_eq!(msg.session_id.to_string(), "s-test-session");
         assert_eq!(msg.text, "enriched prompt text");
     }
@@ -463,8 +497,12 @@ mod tests {
     fn reset_session_dispatches_reset_session_history() {
         let msg = test_verb::<LuaResetSession>(serde_json::json!({
             "session_id": "s-judge-session",
-        })).expect("should translate");
-        assert_eq!(msg.session_id, SessionId::from("s-judge-session".to_owned()));
+        }))
+        .expect("should translate");
+        assert_eq!(
+            msg.session_id,
+            SessionId::from("s-judge-session".to_owned())
+        );
     }
 
     #[test]
@@ -473,9 +511,13 @@ mod tests {
             "session_id": "s-parent",
             "plugin_name": "judge_pass",
             "managed_session_id": "s-child",
-        })).expect("should translate");
+        }))
+        .expect("should translate");
         assert_eq!(msg.session_id, SessionId::from("s-parent".to_owned()));
         assert_eq!(msg.plugin_name, "judge_pass");
-        assert_eq!(msg.managed_session_id, SessionId::from("s-child".to_owned()));
+        assert_eq!(
+            msg.managed_session_id,
+            SessionId::from("s-child".to_owned())
+        );
     }
 }

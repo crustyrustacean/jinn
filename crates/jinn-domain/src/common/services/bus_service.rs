@@ -155,9 +155,9 @@ pub struct RecordedMessage {
     /// Short type name (e.g., `"PushChatEntry"`).
     pub name: String,
     /// `TypeId` of the message for typed downcasting.
-    type_id: TypeId,
+    pub type_id: TypeId,
     /// The message payload, type-erased.
-    payload: Box<dyn Any + Send>,
+    pub payload: Box<dyn Any + Send>,
 }
 
 impl RecordedMessage {
@@ -245,10 +245,9 @@ impl fmt::Debug for BusAudit {
     }
 }
 
-//FIXME: disabled during actor migration — tests reference deleted types
-// #[cfg(test)]
-#[cfg(any())]
+#[cfg(test)]
 mod tests {
+    #![allow(clippy::indexing_slicing, reason = "test code")]
     use super::*;
 
     #[derive(Debug, Clone, PartialEq, Eq)]

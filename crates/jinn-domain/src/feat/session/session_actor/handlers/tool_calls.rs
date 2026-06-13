@@ -196,7 +196,8 @@ impl SessionPersistenceActor {
             estimated_tokens,
             tool_definitions: assembled.tool_definitions,
             dispatched_at: jiff::Timestamp::now(),
-        }).await;
+        })
+        .await;
     }
 
     /// All tools in a batch have finished — route the continuation through

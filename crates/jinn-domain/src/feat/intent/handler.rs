@@ -53,7 +53,13 @@ use crate::IntentResult;
 fn dispatch_replacement_command(
     cmd_json: serde_json::Value,
     session_id: &crate::protocol::SessionId,
-) -> Option<Box<dyn FnOnce(&kameo::prelude::ActorRef<kameo_actors::message_bus::MessageBus>) + Send + 'static>> {
+) -> Option<
+    Box<
+        dyn FnOnce(&kameo::prelude::ActorRef<kameo_actors::message_bus::MessageBus>)
+            + Send
+            + 'static,
+    >,
+> {
     use crate::common::bridge::Bridge;
     use crate::common::bridge::BridgeClosure;
 
@@ -61,7 +67,10 @@ fn dispatch_replacement_command(
     // If it doesn't match this shape, try treating the whole thing as a verb payload.
     let (verb, payload) = if let Some(obj) = cmd_json.as_object() {
         if let Some(verb_val) = obj.get("verb").and_then(|v| v.as_str()) {
-            (verb_val.to_owned(), obj.get("payload").cloned().unwrap_or(cmd_json.clone()))
+            (
+                verb_val.to_owned(),
+                obj.get("payload").cloned().unwrap_or(cmd_json.clone()),
+            )
         } else {
             // No "verb" key — can't dispatch.
             tracing::warn!(?cmd_json, "plugin replacement command missing 'verb' key");
@@ -77,7 +86,11 @@ fn dispatch_replacement_command(
     match verb.as_str() {
         "push_chat_entry" => {
             let entry = crate::feat::session::chat_entry::ChatEntry::system(
-                payload.get("text").and_then(|v| v.as_str()).unwrap_or("").to_owned(),
+                payload
+                    .get("text")
+                    .and_then(|v| v.as_str())
+                    .unwrap_or("")
+                    .to_owned(),
             );
             let msg = crate::feat::chat_input::protocol::command::PushChatEntry {
                 session_id: session_id.clone(),
@@ -184,9 +197,7 @@ impl IntentHandler {
                     // The JSON shape uses the same verb/payload format as handle_plugin_command.
                     let new_messages: Vec<_> = commands
                         .into_iter()
-                        .filter_map(|cmd_json| {
-                            dispatch_replacement_command(cmd_json, session_id)
-                        })
+                        .filter_map(|cmd_json| dispatch_replacement_command(cmd_json, session_id))
                         .collect();
                     result.messages = new_messages;
                     result.message_names.clear();
@@ -672,12 +683,10 @@ fn handle_sidebar_toggle_plugin(state: &mut AppState) -> IntentResult {
         return IntentResult::empty();
     };
     match entry.kind {
-        SessionEntryKind::Plugin { .. } => {
-            IntentResult::empty().message(TogglePlugin {
-                session_id: entry.id.clone(),
-                plugin_name: entry.title.clone(),
-            })
-        }
+        SessionEntryKind::Plugin { .. } => IntentResult::empty().message(TogglePlugin {
+            session_id: entry.id.clone(),
+            plugin_name: entry.title.clone(),
+        }),
         SessionEntryKind::Session => IntentResult::empty(),
     }
 }

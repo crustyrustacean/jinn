@@ -221,9 +221,11 @@ mod tests {
         clippy::unnecessary_mut_passed,
         reason = "test code"
     )]
-    use crate::feat::session::session_actor::helpers::{test_actor, test_actor_recording, test_actor_with_store_recording};
     use crate::feat::provider::protocol::event::ModelsRefreshed;
     use crate::feat::session::protocol::load_session_picker_entries::LoadSessionPickerEntries;
+    use crate::feat::session::session_actor::helpers::{
+        test_actor, test_actor_recording, test_actor_with_store_recording,
+    };
     use crate::feat::ui::picker_states::PickerExt;
     use crate::protocol::{ChangeSource, ChatEntry, ChatEntryKind, SessionId};
     use jinn_provider::ModelInfo;

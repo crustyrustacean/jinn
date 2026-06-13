@@ -141,12 +141,14 @@ impl SessionPersistenceActor {
                     estimated_tokens,
                     tool_definitions: assembled.tool_definitions,
                     dispatched_at: jiff::Timestamp::now(),
-                }).await;
+                })
+                .await;
 
                 self.publish(ChatEntrySubmitted {
                     session_id: payload.session_id.clone(),
                     entry: payload.entry.clone(),
-                }).await;
+                })
+                .await;
 
                 self.save_active_session(&payload.session_id).await;
             }
@@ -275,7 +277,8 @@ impl SessionPersistenceActor {
             estimated_tokens,
             tool_definitions: assembled.tool_definitions,
             dispatched_at: jiff::Timestamp::now(),
-        }).await;
+        })
+        .await;
 
         self.save_active_session(&payload.session_id).await;
     }

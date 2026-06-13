@@ -569,7 +569,8 @@ mod tests {
         {
             let mut guard = state.write();
             guard
-                .context.global_tool_definitions
+                .context
+                .global_tool_definitions
                 .insert("bash".to_owned(), make_tool("bash"));
         }
 
@@ -654,7 +655,8 @@ mod tests {
         {
             let mut guard = state.write();
             guard
-                .context.global_tool_definitions
+                .context
+                .global_tool_definitions
                 .insert("global_tool".to_owned(), make_tool("global_tool"));
         }
 
@@ -750,7 +752,8 @@ mod tests {
                 .active_session_mut()
                 .set_discovered_skills(vec![make_skill("test-skill")]);
             guard
-                .context.global_tool_definitions
+                .context
+                .global_tool_definitions
                 .insert("bash".to_owned(), make_tool("bash"));
         }
 
@@ -777,13 +780,16 @@ mod tests {
         {
             let mut guard = state.write();
             guard
-                .context.global_tool_definitions
+                .context
+                .global_tool_definitions
                 .insert("bash".to_owned(), make_tool("bash"));
             guard
-                .context.global_tool_definitions
+                .context
+                .global_tool_definitions
                 .insert("read".to_owned(), make_tool("read"));
             guard
-                .context.global_tool_definitions
+                .context
+                .global_tool_definitions
                 .insert("write".to_owned(), make_tool("write"));
             // Disable bash and write.
             let mut disabled = std::collections::HashSet::new();
@@ -827,10 +833,12 @@ mod tests {
         {
             let mut guard = state.write();
             guard
-                .context.global_tool_definitions
+                .context
+                .global_tool_definitions
                 .insert("bash".to_owned(), make_tool("bash"));
             guard
-                .context.global_tool_definitions
+                .context
+                .global_tool_definitions
                 .insert("read".to_owned(), make_tool("read"));
             // Disable bash.
             let mut disabled = std::collections::HashSet::new();
@@ -912,7 +920,8 @@ mod tests {
         {
             let mut guard = state.write();
             guard
-                .context.global_tool_definitions
+                .context
+                .global_tool_definitions
                 .insert("bash".to_owned(), make_tool("bash"));
             // Disable bash.
             let mut disabled = std::collections::HashSet::new();
@@ -1167,7 +1176,10 @@ mod tests {
             parameters: serde_json::json!({"type": "object", "properties": {}}),
             server_tool_type: None,
         };
-        state.context.global_tool_definitions.insert("bash".to_owned(), global_tool);
+        state
+            .context
+            .global_tool_definitions
+            .insert("bash".to_owned(), global_tool);
 
         // Insert an attached tool for the judge session only.
         let attached_tool = ToolDefinition {
@@ -1189,9 +1201,19 @@ mod tests {
         let result = assemble_prompt(&state, &origin_id, &counter(), None);
 
         // Then the origin session sees bash but NOT judgment_passed.
-        let tool_names: Vec<&str> = result.tool_definitions.iter().map(|t| t.name.as_str()).collect();
-        assert!(tool_names.contains(&"bash"), "origin should see global tool 'bash'");
-        assert!(!tool_names.contains(&"judgment_passed"), "origin should NOT see attached tool 'judgment_passed'");
+        let tool_names: Vec<&str> = result
+            .tool_definitions
+            .iter()
+            .map(|t| t.name.as_str())
+            .collect();
+        assert!(
+            tool_names.contains(&"bash"),
+            "origin should see global tool 'bash'"
+        );
+        assert!(
+            !tool_names.contains(&"judgment_passed"),
+            "origin should NOT see attached tool 'judgment_passed'"
+        );
     }
 
     fn assemble_prompt_includes_own_sessions_attached_tools() {
@@ -1220,7 +1242,14 @@ mod tests {
         let result = assemble_prompt(&state, &judge_id, &counter(), None);
 
         // Then the judge session sees judgment_passed.
-        let tool_names: Vec<&str> = result.tool_definitions.iter().map(|t| t.name.as_str()).collect();
-        assert!(tool_names.contains(&"judgment_passed"), "judge session should see its attached tool");
+        let tool_names: Vec<&str> = result
+            .tool_definitions
+            .iter()
+            .map(|t| t.name.as_str())
+            .collect();
+        assert!(
+            tool_names.contains(&"judgment_passed"),
+            "judge session should see its attached tool"
+        );
     }
 }

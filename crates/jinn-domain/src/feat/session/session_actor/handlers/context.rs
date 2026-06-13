@@ -296,7 +296,10 @@ mod tests {
         // And NOT in the target session's map either (it was stored by session_id key).
         // Since the tool WAS stored in session_tool_definitions[other_session_id],
         // it should be there, not in global.
-        let session_tools = guard.context.session_tool_definitions.get(&other_session_id);
+        let session_tools = guard
+            .context
+            .session_tool_definitions
+            .get(&other_session_id);
         // The tool IS stored under the correct session key (that's the new behavior).
         assert!(
             session_tools.is_some_and(|m| m.contains_key("judgment_passed")),
@@ -336,7 +339,6 @@ mod tests {
         );
     }
 
-
     #[rstest::rstest]
     fn on_tools_registered_stores_global_tools_unconditionally() {
         // Given a session actor.
@@ -362,7 +364,10 @@ mod tests {
         // Then the global tool is stored.
         let guard = state.read();
         assert!(
-            guard.context.global_tool_definitions.contains_key("global_helper"),
+            guard
+                .context
+                .global_tool_definitions
+                .contains_key("global_helper"),
             "global tool should be stored unconditionally"
         );
     }

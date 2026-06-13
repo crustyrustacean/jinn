@@ -253,16 +253,14 @@ impl TuiApp {
                 "session_id": sid,
                 "text": text,
             });
-            let closure = jinn_domain::common::bridge::Bridge::publish_closure(
-                jinn_domain::DynamicCommand {
+            let closure =
+                jinn_domain::common::bridge::Bridge::publish_closure(jinn_domain::DynamicCommand {
                     name: "plugin::fire_async".into(),
                     payload,
-                },
-            );
+                });
             let _ = self.core.bridge.send(closure);
             return;
         }
-
 
         // Send bus closures via bridge.
         for closure in messages {

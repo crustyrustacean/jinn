@@ -69,7 +69,8 @@ impl OnRetry for PushEntryOnRetry {
             bus.publish(PushChatEntry {
                 session_id,
                 entry: ChatEntry::system(message),
-            }).await;
+            })
+            .await;
         });
     }
 }
@@ -87,7 +88,8 @@ async fn emit_stream_error(
     bus.publish(PushChatEntry {
         session_id: session_id.clone(),
         entry: ChatEntry::error(message),
-    }).await;
+    })
+    .await;
     bus.publish(StreamCompleted {
         model_used: None,
         session_id: session_id.clone(),
@@ -98,7 +100,8 @@ async fn emit_stream_error(
         provider_completion_tokens: None,
         thinking_content: None,
         dispatched_at,
-    }).await;
+    })
+    .await;
 }
 
 /// LLM streaming actor.
@@ -138,7 +141,10 @@ impl kameo::Actor for LlmActor {
     type Args = LlmActorDeps;
     type Error = std::convert::Infallible;
 
-    async fn on_start(args: Self::Args, actor_ref: kameo::actor::ActorRef<Self>) -> Result<Self, Self::Error> {
+    async fn on_start(
+        args: Self::Args,
+        actor_ref: kameo::actor::ActorRef<Self>,
+    ) -> Result<Self, Self::Error> {
         let bus = &args.deps.services.bus;
         bus.subscribe::<SendToLlmProvider, _>(&actor_ref).await;
         bus.subscribe::<CancelStream, _>(&actor_ref).await;
@@ -156,21 +162,33 @@ impl kameo::Actor for LlmActor {
 
 impl kameo::message::Message<SendToLlmProvider> for LlmActor {
     type Reply = ();
-    async fn handle(&mut self, msg: SendToLlmProvider, _ctx: &mut kameo::message::Context<Self, Self::Reply>) {
+    async fn handle(
+        &mut self,
+        msg: SendToLlmProvider,
+        _ctx: &mut kameo::message::Context<Self, Self::Reply>,
+    ) {
         self.start_stream(&msg);
     }
 }
 
 impl kameo::message::Message<CancelStream> for LlmActor {
     type Reply = ();
-    async fn handle(&mut self, msg: CancelStream, _ctx: &mut kameo::message::Context<Self, Self::Reply>) {
+    async fn handle(
+        &mut self,
+        msg: CancelStream,
+        _ctx: &mut kameo::message::Context<Self, Self::Reply>,
+    ) {
         self.cancel_stream(&msg.session_id);
     }
 }
 
 impl kameo::message::Message<StreamCompleted> for LlmActor {
     type Reply = ();
-    async fn handle(&mut self, msg: StreamCompleted, _ctx: &mut kameo::message::Context<Self, Self::Reply>) {
+    async fn handle(
+        &mut self,
+        msg: StreamCompleted,
+        _ctx: &mut kameo::message::Context<Self, Self::Reply>,
+    ) {
         self.handle_stream_completed(&msg);
     }
 }
@@ -222,7 +240,8 @@ async fn process_stream_events(
                             token: parsed.reasoning_text,
                             is_thinking: true,
                             dispatched_at,
-                        }).await;
+                        })
+                        .await;
                         token_index += 1;
                     }
                     if !parsed.normal_text.is_empty() {
@@ -232,7 +251,8 @@ async fn process_stream_events(
                             token: parsed.normal_text,
                             is_thinking: false,
                             dispatched_at,
-                        }).await;
+                        })
+                        .await;
                         token_index += 1;
                     }
                 }
@@ -250,7 +270,8 @@ async fn process_stream_events(
                         token,
                         is_thinking: true,
                         dispatched_at,
-                    }).await;
+                    })
+                    .await;
                     token_index += 1;
                 }
                 StreamEvent::ToolUseStart { index, id, name } => {
@@ -260,7 +281,8 @@ async fn process_stream_events(
                         id,
                         name,
                         dispatched_at,
-                    }).await;
+                    })
+                    .await;
                 }
                 StreamEvent::ToolUseInputDelta {
                     index,
@@ -270,7 +292,8 @@ async fn process_stream_events(
                         session_id: sid.clone(),
                         index,
                         partial_json,
-                    }).await;
+                    })
+                    .await;
                 }
                 StreamEvent::ToolUseComplete { tool_call, .. } => {
                     accumulated_tool_calls.push(tool_call.clone());
@@ -278,7 +301,8 @@ async fn process_stream_events(
                         session_id: sid.clone(),
                         tool_call,
                         dispatched_at,
-                    }).await;
+                    })
+                    .await;
                 }
                 StreamEvent::Done { stop_reason, usage } => {
                     stream_ended_normally = true;
@@ -302,7 +326,8 @@ async fn process_stream_events(
                             session_id: sid.clone(),
                             tool_calls: accumulated_tool_calls.clone(),
                             dispatched_at,
-                        }).await;
+                        })
+                        .await;
 
                         // Emit StreamCompleted with ToolUse reason so the session
                         // actor knows the stream ended due to tool calls.
@@ -316,7 +341,8 @@ async fn process_stream_events(
                             cost,
                             provider_completion_tokens,
                             dispatched_at,
-                        }).await;
+                        })
+                        .await;
                     } else {
                         // Normal end_turn - emit StreamCompleted.
                         bus.publish(StreamCompleted {
@@ -329,7 +355,8 @@ async fn process_stream_events(
                             cost,
                             provider_completion_tokens,
                             dispatched_at,
-                        }).await;
+                        })
+                        .await;
                     }
                     break;
                 }
@@ -563,7 +590,8 @@ impl LlmActor {
                 provider_completion_tokens: None,
                 thinking_content: None,
                 dispatched_at: dispatched_at.unwrap_or_else(Timestamp::now),
-            }).await;
+            })
+            .await;
         }
     }
 

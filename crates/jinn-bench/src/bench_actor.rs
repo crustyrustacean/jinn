@@ -417,7 +417,11 @@ impl BenchActor {
             },
         );
 
-        let first_message = task.messages[0];
+        let first_message = task
+            .messages
+            .first()
+            .expect("task has at least one message")
+            .clone();
         self.enqueue_message(&payload.session_id, first_message)
             .await;
         if let Some(tracked) = self.pending.get_mut(&payload.session_id) {

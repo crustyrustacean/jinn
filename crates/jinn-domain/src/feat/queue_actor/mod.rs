@@ -183,7 +183,8 @@ impl QueueActor {
             estimated_tokens,
             tool_definitions: assembled.tool_definitions,
             dispatched_at: jiff::Timestamp::now(),
-        }).await;
+        })
+        .await;
 
         self.publish(ChatEntrySubmitted {
             session_id: session_id.clone(),
@@ -249,7 +250,8 @@ impl QueueActor {
             estimated_tokens,
             tool_definitions: assembled.tool_definitions,
             dispatched_at: jiff::Timestamp::now(),
-        }).await;
+        })
+        .await;
     }
 }
 

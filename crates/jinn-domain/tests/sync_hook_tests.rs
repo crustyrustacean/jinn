@@ -12,7 +12,9 @@ use std::path::Path;
 use std::sync::{Arc, Mutex};
 
 use jinn_domain::feat::plugin_dispatch::HookContext;
-use jinn_domain::feat::plugin_system::{PluginCommand, PluginSystem, PluginSystemBuildResult, SyncPlugins};
+use jinn_domain::feat::plugin_system::{
+    PluginCommand, PluginSystem, PluginSystemBuildResult, SyncPlugins,
+};
 
 // ── Helpers ──────────────────────────────────────────────────────────────
 

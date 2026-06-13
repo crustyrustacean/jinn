@@ -4,9 +4,9 @@
 //! to satisfy the orphan rule. The trait `PluginFire` is defined in
 //! `jinn-domain`, which `jinn-plugin` depends on.
 
-use error_stack::Report;
 use crate::feat::plugin_dispatch::{PluginFire, PluginFireError};
 use crate::feat::plugin_system::SessionRegistryId;
+use error_stack::Report;
 use serde_json::Value;
 
 use super::async_handle::AsyncPluginHandle;

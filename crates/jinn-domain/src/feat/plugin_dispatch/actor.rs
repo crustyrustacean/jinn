@@ -107,7 +107,6 @@ pub struct PluginDispatchActorDeps {
     pub domain_ctx: Arc<DomainNodeContext>,
 }
 
-
 impl kameo::Actor for PluginDispatchActor {
     type Args = PluginDispatchActorDeps;
     type Error = PluginDispatchActorError;
@@ -259,7 +258,8 @@ impl PluginDispatchActor {
                         session_id,
                         &registry_id,
                         result.tool_metadata,
-                    ).await;
+                    )
+                    .await;
                 }
             }
             Err(e) => {
@@ -308,7 +308,8 @@ impl PluginDispatchActor {
                 target: None,
                 session_id: None,
                 definitions,
-            }).await;
+            })
+            .await;
         }
         // Register attached tools (scoped to this session).
         for (plugin_name, plugin_tools) in attached_by_plugin {
@@ -322,7 +323,8 @@ impl PluginDispatchActor {
                 target: Some(*registry_id),
                 session_id: Some(session_id.clone()),
                 definitions,
-            }).await;
+            })
+            .await;
         }
     }
 
@@ -630,8 +632,7 @@ mod tests {
         let mut app_state = AppState::default();
         let session = ChatSessionState::default();
         let session_id = session.session_id().clone();
-        app_state.session =
-            SessionMap::new(session, std::path::PathBuf::from("/tmp"));
+        app_state.session = SessionMap::new(session, std::path::PathBuf::from("/tmp"));
         let state = State::new(app_state);
         let (bus, audit) = BusService::new_recording();
         let services = Services::new_fake_with_bus(bus.clone()).await;
@@ -640,7 +641,9 @@ mod tests {
             State::new(AppState::default()),
         ));
         let actor = PluginDispatchActor {
-            deps: ActorDeps { services: services.clone() },
+            deps: ActorDeps {
+                services: services.clone(),
+            },
             services,
             state,
             registry: AttachedPluginRegistry::default(),

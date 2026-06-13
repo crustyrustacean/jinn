@@ -110,7 +110,13 @@ impl ActorSystemBuilder {
     }
 
     /// Spawn all actors via kameo, build the bus and bridge, and wait for readiness.
-    pub async fn build(self) -> (AppCore, Services, jinn_domain::feat::plugin_system::SyncPlugins) {
+    pub async fn build(
+        self,
+    ) -> (
+        AppCore,
+        Services,
+        jinn_domain::feat::plugin_system::SyncPlugins,
+    ) {
         let ActorSystemBuilderArgs {
             handle,
             llm_service,
@@ -167,34 +173,36 @@ impl ActorSystemBuilder {
         // Constructed early — handles go into Services and TuiApp.
 
         let plugin_command_channel = ActorChannelService::new(sender.clone());
-        let plugin_command_dispatcher: jinn_domain::feat::plugin_system::CommandDispatcher = std::sync::Arc::new({
-            let channel = plugin_command_channel.clone();
-            move |cmd: jinn_domain::feat::plugin_system::PluginCommand| {
-                crate::plugin_wiring::handle_plugin_command(cmd, &channel);
-            }
-        });
+        let plugin_command_dispatcher: jinn_domain::feat::plugin_system::CommandDispatcher =
+            std::sync::Arc::new({
+                let channel = plugin_command_channel.clone();
+                move |cmd: jinn_domain::feat::plugin_system::PluginCommand| {
+                    crate::plugin_wiring::handle_plugin_command(cmd, &channel);
+                }
+            });
         let handler_cell = domain_ctx_cell.clone();
-        let plugin_request_handler: jinn_domain::feat::plugin_system::RequestHandler = std::sync::Arc::new({
-            move |name: &str, data: &serde_json::Value| {
-                let cell = handler_cell.clone();
-                let name = name.to_string();
-                let data = data.clone();
-                std::boxed::Box::pin(async move {
-                    match cell.get() {
-                        Some(ctx) => {
-                            crate::plugin_wiring::handle_plugin_request(&name, &data, ctx).await
+        let plugin_request_handler: jinn_domain::feat::plugin_system::RequestHandler =
+            std::sync::Arc::new({
+                move |name: &str, data: &serde_json::Value| {
+                    let cell = handler_cell.clone();
+                    let name = name.to_string();
+                    let data = data.clone();
+                    std::boxed::Box::pin(async move {
+                        match cell.get() {
+                            Some(ctx) => {
+                                crate::plugin_wiring::handle_plugin_request(&name, &data, ctx).await
+                            }
+                            None => {
+                                tracing::warn!(
+                                    name,
+                                    "plugin request before domain_ctx ready; returning null"
+                                );
+                                serde_json::Value::Null
+                            }
                         }
-                        None => {
-                            tracing::warn!(
-                                name,
-                                "plugin request before domain_ctx ready; returning null"
-                            );
-                            serde_json::Value::Null
-                        }
-                    }
-                })
-            }
-        });
+                    })
+                }
+            });
 
         let plugin_build = jinn_domain::feat::plugin_system::PluginSystem::build(
             &paths.plugins_dir(),
@@ -211,8 +219,10 @@ impl ActorSystemBuilder {
 
         // Store discovered plugin metadata in state for the sidebar.
         {
-            let plugins =
-                jinn_domain::feat::plugin_system::discover_plugins(&paths.plugins_dir(), &paths.system_plugins_dir());
+            let plugins = jinn_domain::feat::plugin_system::discover_plugins(
+                &paths.plugins_dir(),
+                &paths.system_plugins_dir(),
+            );
             tracing::info!(count = plugins.len(), "discovered plugins");
             let plugins: Vec<jinn_domain::common::app_state::DiscoveredPlugin> = plugins
                 .into_iter()
@@ -396,9 +406,9 @@ impl ActorSystemBuilder {
         // Register global-scoped plugin tools with the tools actor.
         // Attached-scoped tools are registered per-session when a child session is created.
         {
+            use jinn_domain::ToolDefinition;
             use jinn_domain::feat::plugin_system::ToolScopeReexport;
             use jinn_domain::feat::tools_actor::protocol::command::RegisterPluginTools;
-            use jinn_domain::ToolDefinition;
 
             let global_scope_tools: Vec<_> = global_tool_metadata
                 .into_iter()

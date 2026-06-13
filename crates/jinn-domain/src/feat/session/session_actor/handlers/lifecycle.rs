@@ -1036,8 +1036,8 @@ impl SessionPersistenceActor {
     }
 }
 
-    #[cfg(test)]
-    mod tests {
+#[cfg(test)]
+mod tests {
     #![allow(
         clippy::expect_used,
         clippy::panic,
@@ -1046,7 +1046,9 @@ impl SessionPersistenceActor {
         clippy::similar_names,
         reason = "test code"
     )]
-    use super::super::super::helpers::{test_actor, test_actor_recording, test_actor_with_store_recording};
+    use super::super::super::helpers::{
+        test_actor, test_actor_recording, test_actor_with_store_recording,
+    };
     use super::{
         no_output_info, setup_complete_msg, setup_running_msg, strip_ansi, teardown_running_msg,
     };
@@ -1054,8 +1056,8 @@ impl SessionPersistenceActor {
     use crate::feat::chat_input::protocol::command::PushChatEntry;
     use crate::feat::session::chat_session::ChatSessionState;
     use crate::feat::session::protocol::close_session::CloseSession;
-    use crate::feat::session::protocol::session_closed::SessionClosed;
     use crate::feat::session::protocol::session_archived::SessionArchived;
+    use crate::feat::session::protocol::session_closed::SessionClosed;
     use crate::feat::session_lifecycle::protocol::command::{
         CancelLifecycleCommand, FinishSessionSetup, FinishSessionTeardown, RunSessionSetup,
         RunSessionTeardown, SetSessionCwd,
@@ -1302,9 +1304,9 @@ impl SessionPersistenceActor {
         };
         actor.handle_finish_session_teardown(&finish).await;
 
-        let has_error = audit.of_type::<PushChatEntry>().iter().any(|e| {
-            matches!(&e.entry.kind, ChatEntryKind::Error(msg) if msg.contains("exit code"))
-        });
+        let has_error = audit.of_type::<PushChatEntry>().iter().any(
+            |e| matches!(&e.entry.kind, ChatEntryKind::Error(msg) if msg.contains("exit code")),
+        );
         assert!(has_error, "expected PushChatEntry command with error entry");
     }
 
@@ -1346,9 +1348,10 @@ impl SessionPersistenceActor {
         };
         actor.handle_finish_session_teardown(&finish).await;
 
-        let found = audit.of_type::<SessionTeardownFinished>().iter().any(|e| {
-            e.session_id == session_id && e.error.is_some()
-        });
+        let found = audit
+            .of_type::<SessionTeardownFinished>()
+            .iter()
+            .any(|e| e.session_id == session_id && e.error.is_some());
         assert!(found, "expected SessionTeardownFinished with error");
     }
 
@@ -1364,16 +1367,21 @@ impl SessionPersistenceActor {
             state.session.insert(second);
         }
 
-        actor.handle_close_session(&CloseSession {
-            session_id: second_id.clone(),
-        }).await;
+        actor
+            .handle_close_session(&CloseSession {
+                session_id: second_id.clone(),
+            })
+            .await;
 
         let state = actor.state.read();
         assert!(!state.session.contains(&second_id));
         assert_eq!(state.session.session_count(), 1);
         drop(state);
 
-        let found = audit.of_type::<SessionClosed>().iter().any(|e| e.session_id == second_id);
+        let found = audit
+            .of_type::<SessionClosed>()
+            .iter()
+            .any(|e| e.session_id == second_id);
         assert!(found, "expected SessionClosed event");
     }
 
@@ -1382,9 +1390,11 @@ impl SessionPersistenceActor {
         let (mut actor, audit) = test_actor_recording().await;
         let only_id = actor.state.read().session.active_session_id().clone();
 
-        actor.handle_close_session(&CloseSession {
-            session_id: only_id.clone(),
-        }).await;
+        actor
+            .handle_close_session(&CloseSession {
+                session_id: only_id.clone(),
+            })
+            .await;
 
         let state = actor.state.read();
         assert!(!state.session.contains(&only_id));
@@ -1392,7 +1402,10 @@ impl SessionPersistenceActor {
         assert_ne!(*state.session.active_session_id(), only_id);
         drop(state);
 
-        let found = audit.of_type::<SessionClosed>().iter().any(|e| e.session_id == only_id);
+        let found = audit
+            .of_type::<SessionClosed>()
+            .iter()
+            .any(|e| e.session_id == only_id);
         assert!(found, "expected SessionClosed event");
     }
 
@@ -1407,9 +1420,11 @@ impl SessionPersistenceActor {
             state.session.set_active(second_id.clone());
         }
 
-        actor.handle_close_session(&CloseSession {
-            session_id: second_id.clone(),
-        }).await;
+        actor
+            .handle_close_session(&CloseSession {
+                session_id: second_id.clone(),
+            })
+            .await;
 
         let state = actor.state.read();
         assert_ne!(*state.session.active_session_id(), second_id);
@@ -1426,11 +1441,17 @@ impl SessionPersistenceActor {
             state.session.insert(second);
         }
 
-        actor.handle_close_session(&CloseSession {
-            session_id: second_id.clone(),
-        }).await;
+        actor
+            .handle_close_session(&CloseSession {
+                session_id: second_id.clone(),
+            })
+            .await;
 
-        let count = audit.of_type::<SessionClosed>().iter().filter(|e| e.session_id == second_id).count();
+        let count = audit
+            .of_type::<SessionClosed>()
+            .iter()
+            .filter(|e| e.session_id == second_id)
+            .count();
         assert_eq!(count, 1, "expected exactly one SessionClosed event");
     }
 
@@ -1440,14 +1461,22 @@ impl SessionPersistenceActor {
         let fake_id = SessionId::new();
         let original_len = actor.state.read().session.session_count();
 
-        actor.handle_close_session(&CloseSession {
-            session_id: fake_id.clone(),
-        }).await;
+        actor
+            .handle_close_session(&CloseSession {
+                session_id: fake_id.clone(),
+            })
+            .await;
 
         assert_eq!(actor.state.read().session.session_count(), original_len);
 
-        let found = audit.of_type::<SessionClosed>().iter().any(|e| e.session_id == fake_id);
-        assert!(!found, "did not expect SessionClosed for nonexistent session");
+        let found = audit
+            .of_type::<SessionClosed>()
+            .iter()
+            .any(|e| e.session_id == fake_id);
+        assert!(
+            !found,
+            "did not expect SessionClosed for nonexistent session"
+        );
     }
 
     // --- Teardown-only (t key) tests ---
@@ -1484,7 +1513,10 @@ impl SessionPersistenceActor {
             })
             .await;
 
-        let found = audit.of_type::<SessionClosed>().iter().any(|e| e.session_id == session_id);
+        let found = audit
+            .of_type::<SessionClosed>()
+            .iter()
+            .any(|e| e.session_id == session_id);
         assert!(!found, "did not expect SessionClosed for teardown-only");
     }
 
@@ -1527,9 +1559,10 @@ impl SessionPersistenceActor {
         };
         actor.handle_finish_session_teardown(&finish).await;
 
-        let found = audit.of_type::<SessionTeardownFinished>().iter().any(|e| {
-            e.session_id == session_id && e.error.is_none()
-        });
+        let found = audit
+            .of_type::<SessionTeardownFinished>()
+            .iter()
+            .any(|e| e.session_id == session_id && e.error.is_none());
         assert!(found, "expected SessionTeardownFinished event");
     }
 
@@ -1572,10 +1605,14 @@ impl SessionPersistenceActor {
         };
         actor.handle_finish_session_teardown(&finish).await;
 
-        let has_success = audit.of_type::<PushChatEntry>().iter().any(|e| {
-            matches!(&e.entry.kind, ChatEntryKind::System(t) if t.contains("Teardown"))
-        });
-        assert!(has_success, "expected PushChatEntry with teardown success entry");
+        let has_success = audit
+            .of_type::<PushChatEntry>()
+            .iter()
+            .any(|e| matches!(&e.entry.kind, ChatEntryKind::System(t) if t.contains("Teardown")));
+        assert!(
+            has_success,
+            "expected PushChatEntry with teardown success entry"
+        );
     }
 
     // --- SessionState / LifecycleScriptState close tests ---
@@ -1585,7 +1622,9 @@ impl SessionPersistenceActor {
         let (mut actor, audit) = test_actor_recording().await;
         let session_id = {
             let mut state = actor.state.write();
-            state.active_session_mut().push_entry(ChatEntry::user("hello"));
+            state
+                .active_session_mut()
+                .push_entry(ChatEntry::user("hello"));
             assert_eq!(
                 state.active_session().lifecycle_script_state(),
                 crate::feat::session::chat_session::LifecycleScriptState::NothingRan
@@ -1593,15 +1632,20 @@ impl SessionPersistenceActor {
             state.session.active_session_id().clone()
         };
 
-        actor.handle_close_session(&CloseSession {
-            session_id: session_id.clone(),
-        }).await;
+        actor
+            .handle_close_session(&CloseSession {
+                session_id: session_id.clone(),
+            })
+            .await;
 
         let state = actor.state.read();
         assert!(!state.session.contains(&session_id));
 
         let has_teardown = audit.of_type::<SessionTeardownFinished>().iter().count() > 0;
-        assert!(!has_teardown, "did not expect SessionTeardownFinished for NothingRan");
+        assert!(
+            !has_teardown,
+            "did not expect SessionTeardownFinished for NothingRan"
+        );
 
         let has_archived = audit.of_type::<SessionArchived>().iter().count() > 0;
         assert!(has_archived, "expected SessionArchived");
@@ -1614,7 +1658,9 @@ impl SessionPersistenceActor {
         let _second_id = second.session_id().clone();
         let target_id = {
             let mut state = actor.state.write();
-            state.active_session_mut().push_entry(ChatEntry::user("hello"));
+            state
+                .active_session_mut()
+                .push_entry(ChatEntry::user("hello"));
             state.session.insert(second);
             state.session.active_session_id().clone()
         };
@@ -1632,14 +1678,23 @@ impl SessionPersistenceActor {
         assert_eq!(state.session.session_count(), 1);
         drop(state);
 
-        let has_archived = audit.of_type::<SessionArchived>().iter().any(|e| e.session_id == target_id);
+        let has_archived = audit
+            .of_type::<SessionArchived>()
+            .iter()
+            .any(|e| e.session_id == target_id);
         assert!(has_archived, "expected SessionArchived");
 
-        let has_closed = audit.of_type::<SessionClosed>().iter().any(|e| e.session_id == target_id);
+        let has_closed = audit
+            .of_type::<SessionClosed>()
+            .iter()
+            .any(|e| e.session_id == target_id);
         assert!(has_closed, "expected SessionClosed");
 
         let has_teardown = audit.of_type::<SessionTeardownFinished>().iter().count() > 0;
-        assert!(!has_teardown, "did not expect SessionTeardownFinished for archive");
+        assert!(
+            !has_teardown,
+            "did not expect SessionTeardownFinished for archive"
+        );
     }
 
     #[tokio::test]
@@ -1666,7 +1721,10 @@ impl SessionPersistenceActor {
         let has_archived = audit.of_type::<SessionArchived>().iter().count() > 0;
         assert!(has_archived, "expected SessionArchived for empty session");
 
-        let has_closed = audit.of_type::<SessionClosed>().iter().any(|e| e.session_id == target_id);
+        let has_closed = audit
+            .of_type::<SessionClosed>()
+            .iter()
+            .any(|e| e.session_id == target_id);
         assert!(has_closed, "expected SessionClosed");
     }
 
@@ -1677,7 +1735,9 @@ impl SessionPersistenceActor {
         let _second_id = second.session_id().clone();
         let active_id = {
             let mut state = actor.state.write();
-            state.active_session_mut().push_entry(ChatEntry::user("msg"));
+            state
+                .active_session_mut()
+                .push_entry(ChatEntry::user("msg"));
             state.session.insert(second);
             state.session.active_session_id().clone()
         };
@@ -1700,7 +1760,9 @@ impl SessionPersistenceActor {
         let actor = test_actor().await;
         let only_id = {
             let mut state = actor.state.write();
-            state.active_session_mut().push_entry(ChatEntry::user("msg"));
+            state
+                .active_session_mut()
+                .push_entry(ChatEntry::user("msg"));
             state.session.active_session_id().clone()
         };
 
@@ -1745,9 +1807,11 @@ impl SessionPersistenceActor {
             state.session.active_session_id().clone()
         };
 
-        actor.handle_close_session(&CloseSession {
-            session_id: session_id.clone(),
-        }).await;
+        actor
+            .handle_close_session(&CloseSession {
+                session_id: session_id.clone(),
+            })
+            .await;
 
         let finish = FinishSessionTeardown {
             session_id: session_id.clone(),
@@ -1758,7 +1822,10 @@ impl SessionPersistenceActor {
 
         let state = actor.state.read();
         let session = state.session.get(&session_id).expect("session exists");
-        assert_eq!(session.lifecycle_script_state(), LifecycleScriptState::SetupRan);
+        assert_eq!(
+            session.lifecycle_script_state(),
+            LifecycleScriptState::SetupRan
+        );
         assert!(state.session.contains(&session_id));
     }
 
@@ -1786,9 +1853,11 @@ impl SessionPersistenceActor {
             state.session.active_session_id().clone()
         };
 
-        actor.handle_close_session(&CloseSession {
-            session_id: session_id.clone(),
-        }).await;
+        actor
+            .handle_close_session(&CloseSession {
+                session_id: session_id.clone(),
+            })
+            .await;
 
         let finish = FinishSessionTeardown {
             session_id: session_id.clone(),
@@ -1830,9 +1899,11 @@ impl SessionPersistenceActor {
             state.session.active_session_id().clone()
         };
 
-        actor.handle_close_session(&CloseSession {
-            session_id: session_id.clone(),
-        }).await;
+        actor
+            .handle_close_session(&CloseSession {
+                session_id: session_id.clone(),
+            })
+            .await;
 
         let finish = FinishSessionTeardown {
             session_id: session_id.clone(),
@@ -1843,9 +1914,10 @@ impl SessionPersistenceActor {
 
         assert!(!actor.state.read().session.contains(&session_id));
 
-        let found = audit.of_type::<SessionTeardownFinished>().iter().any(|e| {
-            e.session_id == session_id && e.error.is_none()
-        });
+        let found = audit
+            .of_type::<SessionTeardownFinished>()
+            .iter()
+            .any(|e| e.session_id == session_id && e.error.is_none());
         assert!(found, "expected SessionTeardownFinished with no error");
     }
 
@@ -1875,9 +1947,11 @@ impl SessionPersistenceActor {
         let (mut actor, store, _audit) = test_actor_with_store_recording(vec![]).await;
         let session_id = actor.state.read().session.active_session_id().clone();
 
-        actor.handle_close_session(&CloseSession {
-            session_id: session_id.clone(),
-        }).await;
+        actor
+            .handle_close_session(&CloseSession {
+                session_id: session_id.clone(),
+            })
+            .await;
 
         assert!(
             store.last_saved_session(&session_id).is_none(),
@@ -1928,7 +2002,10 @@ impl SessionPersistenceActor {
 
         let state = actor.state.read();
         let session = state.session.get(&session_id).expect("session exists");
-        assert_eq!(session.lifecycle_script_state(), LifecycleScriptState::TeardownRan);
+        assert_eq!(
+            session.lifecycle_script_state(),
+            LifecycleScriptState::TeardownRan
+        );
         assert!(state.session.contains(&session_id));
     }
 
@@ -1959,9 +2036,11 @@ impl SessionPersistenceActor {
             state.session.active_session_id().clone()
         };
 
-        actor.handle_close_session(&CloseSession {
-            session_id: session_id.clone(),
-        }).await;
+        actor
+            .handle_close_session(&CloseSession {
+                session_id: session_id.clone(),
+            })
+            .await;
 
         let finish = FinishSessionTeardown {
             session_id: session_id.clone(),
@@ -1973,7 +2052,10 @@ impl SessionPersistenceActor {
         let saved = store
             .last_saved_session(&session_id)
             .expect("session should have been saved");
-        assert_eq!(saved.lifecycle_script_state(), LifecycleScriptState::TeardownRan);
+        assert_eq!(
+            saved.lifecycle_script_state(),
+            LifecycleScriptState::TeardownRan
+        );
     }
 
     #[tokio::test]
@@ -1984,10 +2066,12 @@ impl SessionPersistenceActor {
         let session_id = actor.state.read().session.active_session_id().clone();
         let new_cwd = PathBuf::from("/tmp/new-project");
 
-        actor.handle_set_session_cwd(&SetSessionCwd {
-            session_id: session_id.clone(),
-            cwd: new_cwd.clone(),
-        }).await;
+        actor
+            .handle_set_session_cwd(&SetSessionCwd {
+                session_id: session_id.clone(),
+                cwd: new_cwd.clone(),
+            })
+            .await;
 
         let state = actor.state.read();
         let session = state.session.get(&session_id).expect("session exists");
@@ -2002,10 +2086,12 @@ impl SessionPersistenceActor {
         let session_id = actor.state.read().session.active_session_id().clone();
         let new_cwd = PathBuf::from("/tmp/other-project");
 
-        actor.handle_set_session_cwd(&SetSessionCwd {
-            session_id: session_id.clone(),
-            cwd: new_cwd.clone(),
-        }).await;
+        actor
+            .handle_set_session_cwd(&SetSessionCwd {
+                session_id: session_id.clone(),
+                cwd: new_cwd.clone(),
+            })
+            .await;
 
         let cwd_changed = audit.of_type::<SessionCwdChanged>();
         assert_eq!(cwd_changed.len(), 1);
@@ -2042,7 +2128,12 @@ impl SessionPersistenceActor {
 
         assert!(actor.lifecycle_child.is_some());
         assert_eq!(
-            actor.state.read().session.get(&session_id).map(ChatSessionState::busy_count),
+            actor
+                .state
+                .read()
+                .session
+                .get(&session_id)
+                .map(ChatSessionState::busy_count),
             Some(1)
         );
 
@@ -2052,7 +2143,12 @@ impl SessionPersistenceActor {
 
         assert!(actor.lifecycle_child.is_none());
         assert_eq!(
-            actor.state.read().session.get(&session_id).map(ChatSessionState::busy_count),
+            actor
+                .state
+                .read()
+                .session
+                .get(&session_id)
+                .map(ChatSessionState::busy_count),
             Some(1)
         );
 
@@ -2075,12 +2171,22 @@ impl SessionPersistenceActor {
         assert_eq!(push_count, 1);
 
         assert_eq!(
-            actor.state.read().session.get(&session_id).map(ChatSessionState::busy_count),
+            actor
+                .state
+                .read()
+                .session
+                .get(&session_id)
+                .map(ChatSessionState::busy_count),
             Some(0)
         );
 
         assert_eq!(
-            actor.state.read().session.get(&session_id).map(ChatSessionState::phase),
+            actor
+                .state
+                .read()
+                .session
+                .get(&session_id)
+                .map(ChatSessionState::phase),
             Some(crate::feat::session::phase_machine::PhaseKind::Idle)
         );
     }
@@ -2098,7 +2204,12 @@ impl SessionPersistenceActor {
         actor.handle_finish_session_setup(&finish).await;
 
         assert_eq!(
-            actor.state.read().session.get(&session_id).map(ChatSessionState::lifecycle_script_state),
+            actor
+                .state
+                .read()
+                .session
+                .get(&session_id)
+                .map(ChatSessionState::lifecycle_script_state),
             Some(crate::feat::session::chat_session::LifecycleScriptState::SetupRan)
         );
 
