@@ -50,8 +50,6 @@ pub struct DomainNodeContext {
     pending: PendingResult,
 }
 
-//FIXME: plugin migration
-#[cfg(any())]
 impl DomainNodeContext {
     /// Create a new domain context.
     pub fn new(services: Services, state: State) -> Self {

@@ -238,34 +238,31 @@ impl TuiApp {
             (result.messages, signals)
         };
 
-        //FIXME: disabled during actor migration — redesign plugin protocol for typed bus messages
-        // TriggerPlugin: TUI-only intent. Fire the plugin's named action on the async VM
-        // via the generic plugin::fire_async command path.
-        //
-        // if let Intent::TriggerPlugin {
-        //     action, session_id, ..
-        // } = intent.clone()
-        // {
-        //     let (sid, text) = {
-        //         let state = self.core.state.read();
-        //         let sid = session_id.unwrap_or_else(|| state.session.active_session_id().clone());
-        //         let text = state.active_chat_input().text().to_owned();
-        //         (sid, text)
-        //     };
-        //     let payload = serde_json::json!({
-        //         "hook": action,
-        //         "session_id": sid,
-        //         "text": text,
-        //     });
-        //     let closure = jinn_domain::common::bridge::Bridge::publish_closure(
-        //         jinn_domain::protocol::DynamicCommand {
-        //             name: "plugin::fire_async".into(),
-        //             payload,
-        //         },
-        //     );
-        //     let _ = self.core.bridge.send(closure);
-        //     return;
-        // }
+        if let jinn_domain::Intent::TriggerPlugin {
+            action, session_id, ..
+        } = intent.clone()
+        {
+            let (sid, text) = {
+                let state = self.core.state.read();
+                let sid = session_id.unwrap_or_else(|| state.session.active_session_id().clone());
+                let text = state.active_chat_input().text().to_owned();
+                (sid, text)
+            };
+            let payload = serde_json::json!({
+                "hook": action,
+                "session_id": sid,
+                "text": text,
+            });
+            let closure = jinn_domain::common::bridge::Bridge::publish_closure(
+                jinn_domain::DynamicCommand {
+                    name: "plugin::fire_async".into(),
+                    payload,
+                },
+            );
+            let _ = self.core.bridge.send(closure);
+            return;
+        }
+
 
         // Send bus closures via bridge.
         for closure in messages {

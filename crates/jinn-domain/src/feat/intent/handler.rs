@@ -74,7 +74,6 @@ fn dispatch_replacement_command(
 
     // Dispatch through the same verb table used by plugin_wiring.
     // For now, we handle the common cases inline.
-    // FIXME: plugin migration — this should use a shared verb registry with plugin_wiring
     match verb.as_str() {
         "push_chat_entry" => {
             let entry = crate::feat::session::chat_entry::ChatEntry::system(

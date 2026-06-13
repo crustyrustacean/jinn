@@ -166,11 +166,11 @@ impl ActorSystemBuilder {
         // ── Plugin system ────────────────────────────────────────────────────
         // Constructed early — handles go into Services and TuiApp.
 
-        //FIXME: disabled during actor migration — plugin command dispatch needs redesign for typed bus messages
+        let plugin_command_channel = ActorChannelService::new(sender.clone());
         let plugin_command_dispatcher: jinn_domain::feat::plugin_system::CommandDispatcher = std::sync::Arc::new({
-            let _sender = sender.clone();
-            move |_cmd: jinn_domain::feat::plugin_system::PluginCommand| {
-                // crate::plugin_wiring::handle_plugin_command(cmd, &sink);
+            let channel = plugin_command_channel.clone();
+            move |cmd: jinn_domain::feat::plugin_system::PluginCommand| {
+                crate::plugin_wiring::handle_plugin_command(cmd, &channel);
             }
         });
         let handler_cell = domain_ctx_cell.clone();
@@ -181,10 +181,8 @@ impl ActorSystemBuilder {
                 let data = data.clone();
                 std::boxed::Box::pin(async move {
                     match cell.get() {
-                        Some(_ctx) => {
-                            // FIXME: plugin migration — handle_plugin_request disabled
-                            // crate::plugin_wiring::handle_plugin_request(&name, &data, ctx).await
-                            serde_json::Value::Null
+                        Some(ctx) => {
+                            crate::plugin_wiring::handle_plugin_request(&name, &data, ctx).await
                         }
                         None => {
                             tracing::warn!(
@@ -272,36 +270,14 @@ impl ActorSystemBuilder {
             bridge,
         };
 
-        // FIXME: plugin migration — register global-scoped plugin tools with the tools actor
-        // This block used Command::RegisterPluginTools which no longer exists.
-        // Re-enable after plugin system is redesigned for typed bus messages.
-        // Register global-scoped plugin tools with the tools actor.
-        // Attached-scoped tools are skipped here — they are registered per-session
-        // when a child session is created.
-        // let global_scope_tools: Vec<_> = global_tool_metadata
-        //     .into_iter()
-        //     .filter(|meta| matches!(meta.scope, jinn_domain::feat::plugin_system::ToolScope::Global))
-        //     .collect();
-        //
-        // if !global_scope_tools.is_empty() {
-        //     let mut by_plugin: HashMap<String, Vec<ToolDefinition>> = HashMap::new();
-        //     for meta in global_scope_tools {
-        //         by_plugin.entry(meta.plugin_name.clone()).or_default().push(ToolDefinition { ... });
-        //     }
-        //     for (plugin_name, definitions) in by_plugin {
-        //         bus.publish(RegisterPluginTools { ... }).await;
-        //     }
-        // }
-
+        // Global-scoped plugin tools will be registered after the tools actor spawns.
         // Now that `services` + `state` exist, build the shared `DomainNodeContext`
-        // and publish it into the `OnceLock` so the plugin request handler can see it.
-        //FIXME: plugin migration — DomainNodeContext::new disabled
-        // let shared_domain_ctx =
-        //     std::sync::Arc::new(jinn_domain::feat::plugin_dispatch::DomainNodeContext::new(
-        //         services.clone(),
-        //         state.clone(),
-        //     ));
-        // let _ = domain_ctx_cell.set((*shared_domain_ctx).clone());
+        let shared_domain_ctx =
+            std::sync::Arc::new(jinn_domain::feat::plugin_dispatch::DomainNodeContext::new(
+                services.clone(),
+                state.clone(),
+            ));
+        let _ = domain_ctx_cell.set((*shared_domain_ctx).clone());
 
         let actor_deps = ActorDeps {
             services: services.clone(),
@@ -416,6 +392,48 @@ impl ActorSystemBuilder {
             },
         );
         _tools.wait_for_startup().await;
+
+        // Register global-scoped plugin tools with the tools actor.
+        // Attached-scoped tools are registered per-session when a child session is created.
+        {
+            use jinn_domain::feat::plugin_system::ToolScopeReexport;
+            use jinn_domain::feat::tools_actor::protocol::command::RegisterPluginTools;
+            use jinn_domain::ToolDefinition;
+
+            let global_scope_tools: Vec<_> = global_tool_metadata
+                .into_iter()
+                .filter(|meta| matches!(meta.scope, ToolScopeReexport::Global))
+                .collect();
+
+            let mut by_plugin: std::collections::HashMap<String, Vec<_>> =
+                std::collections::HashMap::new();
+            for meta in global_scope_tools {
+                by_plugin
+                    .entry(meta.plugin_name.clone())
+                    .or_default()
+                    .push(meta);
+            }
+            for (plugin_name, metas) in by_plugin {
+                let definitions: Vec<_> = metas
+                    .into_iter()
+                    .map(|meta| ToolDefinition {
+                        name: meta.name,
+                        description: meta.description,
+                        parameters: meta.parameters,
+                        prompt_snippet: None,
+                        prompt_guidelines: Vec::new(),
+                        server_tool_type: None,
+                    })
+                    .collect();
+                let msg = RegisterPluginTools {
+                    plugin_name,
+                    target: None,
+                    session_id: None,
+                    definitions,
+                };
+                let closure = jinn_domain::common::bridge::Bridge::publish_closure(msg);
+            }
+        }
 
         // Web fetch actor.
         let web_fetch_backend = user_preferences_storage.read().web_fetch.backend;
@@ -867,14 +885,13 @@ impl ActorSystemBuilder {
                 },
             );
 
-        //FIXME: plugin migration — PluginDispatchActor disabled
-        // let _plugin_dispatch = PluginDispatchActor::spawn(PluginDispatchActorDeps {
-        //     deps: actor_deps.clone(),
-        //     services: services.clone(),
-        //     state: state.clone(),
-        //     startup_session_id: state.read().session.active_session_id().to_string(),
-        //     domain_ctx: shared_domain_ctx.clone(),
-        // });
+        let _plugin_dispatch = PluginDispatchActor::spawn(PluginDispatchActorDeps {
+            deps: actor_deps.clone(),
+            services: services.clone(),
+            state: state.clone(),
+            startup_session_id: state.read().session.active_session_id().to_string(),
+            domain_ctx: shared_domain_ctx.clone(),
+        });
 
         // ── Bench actor (conditional) ─────────────────────────────────────────
         if let Some(b) = bench {

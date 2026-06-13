@@ -19,7 +19,7 @@ use unicode_segmentation::UnicodeSegmentation;
 
 use crate::common::app_state::{AppState, FocusScope};
 use crate::common::render_ctx::RenderCtx;
-//FIXME: plugin migration
+use crate::feat::plugin_dispatch::{PreviewDirective, call_hooks_typed};
 // use crate::feat::plugin_dispatch::{PreviewDirective, call_hooks_typed};
 use crate::feat::provider_infra::NO_PROVIDER_ID;
 use crate::feat::session::chat_session::ChatSessionState;
@@ -113,18 +113,16 @@ pub(crate) fn resolve_plugin_preview<'a>(
     entry: &crate::feat::ui::sidebar::sessions::state::SessionEntry,
     ctx: &'a RenderCtx<'a>,
 ) -> Option<&'a ChatSessionState> {
-//FIXME: plugin migration — disabled during migration
-    return None;
-    // let plugins = ctx.plugins?;
-    // let preview_ctx = serde_json::json!({
-    //     "session_id": entry.id.to_string(),
-    //     "plugin_name": entry.title,
-    // });
-    // let directives =
-    //     call_hooks_typed::<PreviewDirective>(plugins, "on_session_preview", &preview_ctx.into());
-    // let directive = directives.into_iter().next()?;
-    // let session_id = SessionId::from(directive.session_id);
-    // ctx.state.session.get(&session_id)
+    let plugins = ctx.plugins?;
+    let preview_ctx = serde_json::json!({
+        "session_id": entry.id.to_string(),
+        "plugin_name": entry.title,
+    });
+    let directives =
+        call_hooks_typed::<PreviewDirective>(plugins, "on_session_preview", &preview_ctx.into());
+    let directive = directives.into_iter().next()?;
+    let session_id = SessionId::from(directive.session_id);
+    ctx.state.session.get(&session_id)
 }
 
 /// Renders the session preview popup when the sidebar sessions section is focused.

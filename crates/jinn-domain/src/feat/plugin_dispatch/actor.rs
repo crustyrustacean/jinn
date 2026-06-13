@@ -107,91 +107,45 @@ pub struct PluginDispatchActorDeps {
     pub domain_ctx: Arc<DomainNodeContext>,
 }
 
-//FIXME: plugin migration — disabled during actor migration
-#[cfg(any())]
-impl Actor for PluginDispatchActor {
-    type Message = NoDirectMsg;
-    type Deps = PluginDispatchActorDeps;
 
-    fn activate(deps: Self::Deps, ctx: &mut ActorContext) -> Self {
-        ctx.subscribe_event::<AllActorsSpawned>();
-        ctx.subscribe_event::<SessionCreated>();
-        ctx.subscribe_event::<SessionPhaseChanged>();
+impl kameo::Actor for PluginDispatchActor {
+    type Args = PluginDispatchActorDeps;
+    type Error = PluginDispatchActorError;
 
-        ctx.subscribe_command::<AttachPlugin>();
-        ctx.subscribe_command::<DetachPlugin>();
-        ctx.subscribe_command::<TogglePlugin>();
-        ctx.subscribe_command::<SetManagedSession>();
+    async fn on_start(args: Self::Args, actor_ref: ActorRef<Self>) -> Result<Self, Self::Error> {
+        use crate::common::services::bus_service::BusService;
+        let bus = &args.deps.services.bus;
 
-        // Generic async-handoff: plugins emit this to route an arbitrary hook
-        // name to the plugin-async VM. Routed by runtime name via Command::Dynamic.
-        ctx.subscribe_command_by_name("plugin::fire_async");
+        bus.subscribe::<AllActorsSpawned, _>(&actor_ref).await;
+        bus.subscribe::<SessionCreated, _>(&actor_ref).await;
+        bus.subscribe::<SessionPhaseChanged, _>(&actor_ref).await;
+        bus.subscribe::<AttachPlugin, _>(&actor_ref).await;
+        bus.subscribe::<DetachPlugin, _>(&actor_ref).await;
+        bus.subscribe::<TogglePlugin, _>(&actor_ref).await;
+        bus.subscribe::<SetManagedSession, _>(&actor_ref).await;
+        bus.subscribe::<DynamicCommand, _>(&actor_ref).await;
 
-        ctx.set_description(
-            "Plugin dispatcher: attaches/detaches plugins per session and fires hooks on lifecycle events",
-        );
-
-        Self {
-            services: deps.services,
-            state: deps.state,
+        Ok(Self {
+            deps: args.deps,
+            services: args.services,
+            state: args.state,
             registry: AttachedPluginRegistry::default(),
-            startup_session_id: deps.startup_session_id,
-            domain_ctx: deps.domain_ctx,
-        }
-    }
-
-    async fn handle(&mut self, msg: ActorEnvelope<NoDirectMsg>, ctx: &ActorContext) {
-        match msg {
-            ActorEnvelope::Event(event) => self.handle_event(event),
-            ActorEnvelope::Command(command) => self.handle_command(command, ctx).await,
-            ActorEnvelope::System(_) => {}
-        }
+            startup_session_id: args.startup_session_id,
+            domain_ctx: args.domain_ctx,
+        })
     }
 }
 
-//FIXME: plugin migration
-#[cfg(any())]
+impl BusPublish for PluginDispatchActor {
+    fn bus(&self) -> &BusService {
+        &self.deps.services.bus
+    }
+}
+
 impl PluginDispatchActor {
-    // ─── Event dispatch ────────────────────────────────────────────────────
-
-    fn handle_event(&self, event: Event) {
-        match event {
-            Event::AllActorsSpawned(_) => self.fire_on_app_started(),
-            Event::SessionCreated(SessionCreated { session_id }) => {
-                self.fire_on_session_created(&session_id);
-            }
-            Event::SessionPhaseChanged(SessionPhaseChanged {
-                session_id,
-                new_phase,
-                ..
-            }) => {
-                let hook_session = session_id.clone();
-                self.fire_on_phase_changed(&hook_session, new_phase);
-            }
-            _ => {}
-        }
-    }
-
-    // ─── Command dispatch ──────────────────────────────────────────────────
-
-    async fn handle_command(&mut self, command: Command, ctx: &ActorContext) {
-        match command {
-            Command::AttachPlugin(cmd) => self.handle_attach(cmd, ctx).await,
-            Command::DetachPlugin(cmd) => self.handle_detach(cmd, ctx).await,
-            Command::TogglePlugin(cmd) => self.handle_toggle(cmd, ctx).await,
-            Command::SetManagedSession(cmd) => {
-                self.handle_set_managed_session(cmd, ctx);
-            }
-            Command::Dynamic(ref d) if d.name == "plugin::fire_async" => {
-                self.handle_fire_async_hook(&d.payload, ctx);
-            }
-            _ => {}
-        }
-    }
-
     // ─── Command handlers ──────────────────────────────────────────────────
 
-    async fn handle_attach(&mut self, cmd: AttachPlugin, ctx: &ActorContext) {
+    async fn handle_attach(&mut self, cmd: AttachPlugin) {
         let AttachPlugin {
             session_id,
             plugin_name,
@@ -349,13 +303,13 @@ impl PluginDispatchActor {
                 .map(|meta| meta.to_tool_definition())
                 .collect();
 
-            self.services.actor_channel.send_command(
-                crate::protocol::Command::RegisterPluginTools(RegisterPluginTools {
+            self.services.actor_channel.send_message(
+                RegisterPluginTools {
                     plugin_name,
                     target: None,
                     session_id: None,
                     definitions,
-                }),
+                },
             );
         }
 
@@ -366,13 +320,13 @@ impl PluginDispatchActor {
                 .map(|meta| meta.to_tool_definition())
                 .collect();
 
-            self.services.actor_channel.send_command(
-                crate::protocol::Command::RegisterPluginTools(RegisterPluginTools {
+            self.services.actor_channel.send_message(
+                RegisterPluginTools {
                     plugin_name,
                     target: Some(*registry_id),
                     session_id: Some(session_id.clone()),
                     definitions,
-                }),
+                },
             );
         }
     }
@@ -381,7 +335,7 @@ impl PluginDispatchActor {
         clippy::unused_async,
         reason = "trait contract requires async; the awaited event send is fire-and-forget"
     )]
-    async fn handle_toggle(&mut self, cmd: TogglePlugin, ctx: &ActorContext) {
+    async fn handle_toggle(&mut self, cmd: TogglePlugin) {
         let TogglePlugin {
             session_id,
             plugin_name,
@@ -417,13 +371,7 @@ impl PluginDispatchActor {
         .await;
     }
 
-    async fn handle_dynamic(&mut self, d: DynamicCommand) {
-        if d.name == "plugin::fire_async" {
-            self.handle_fire_async_hook(&d.payload);
-        }
-    }
-
-    fn handle_set_managed_session(&mut self, cmd: SetManagedSession, _ctx: &ActorContext) {
+    fn handle_set_managed_session(&mut self, cmd: SetManagedSession) {
         let SetManagedSession {
             session_id,
             plugin_name,
@@ -450,12 +398,7 @@ impl PluginDispatchActor {
 
     // ─── Lifecycle hook firings ────────────────────────────────────────────
 
-    // ─── Lifecycle hook firings ────────────────────────────────────────────
-
     fn fire_on_app_started(&self) {
-        // Spawn off the actor loop so a slow / blocking hook can't stall
-        // mailbox processing. The startup session id is unlikely to be in the
-        // registry, so `spawn_fire_for_session` falls back to the global fire.
         let session_id = SessionId::from(self.startup_session_id.clone());
         let ctx_json = serde_json::json!({
             "session_id": self.startup_session_id,
@@ -472,9 +415,6 @@ impl PluginDispatchActor {
 
     fn fire_on_phase_changed(&self, session_id: &SessionId, new_phase: PhaseKind) {
         // Plugin session completed: resolve any pending plugin LLM one-shot oneshot.
-        // Automated sessions are spawned by DomainNodeContext::send_llm_request_oneshot;
-        // it has is_automated=true and a pending sender in domain_ctx. Extract the last
-        // assistant entry text and resolve the awaiting coroutine.
         if new_phase == PhaseKind::Idle && self.domain_ctx.has_pending(session_id) {
             let response = self.resolve_response_for_session(session_id);
             self.domain_ctx.resolve_completed(session_id, response);
@@ -595,6 +535,66 @@ impl PluginDispatchActor {
         }
 
         self.spawn_fire_for_session(&payload.session_id, &payload.hook, &ctx_json, vec![]);
+    }
+}
+
+// ─── kameo Message handlers ────────────────────────────────────────────
+
+impl Message<AllActorsSpawned> for PluginDispatchActor {
+    type Reply = ();
+    async fn handle(&mut self, _msg: AllActorsSpawned, _ctx: &mut Context<Self, Self::Reply>) {
+        self.fire_on_app_started();
+    }
+}
+
+impl Message<SessionCreated> for PluginDispatchActor {
+    type Reply = ();
+    async fn handle(&mut self, msg: SessionCreated, _ctx: &mut Context<Self, Self::Reply>) {
+        self.fire_on_session_created(&msg.session_id);
+    }
+}
+
+impl Message<SessionPhaseChanged> for PluginDispatchActor {
+    type Reply = ();
+    async fn handle(&mut self, msg: SessionPhaseChanged, _ctx: &mut Context<Self, Self::Reply>) {
+        self.fire_on_phase_changed(&msg.session_id, msg.new_phase);
+    }
+}
+
+impl Message<AttachPlugin> for PluginDispatchActor {
+    type Reply = ();
+    async fn handle(&mut self, msg: AttachPlugin, _ctx: &mut Context<Self, Self::Reply>) {
+        self.handle_attach(msg).await;
+    }
+}
+
+impl Message<DetachPlugin> for PluginDispatchActor {
+    type Reply = ();
+    async fn handle(&mut self, msg: DetachPlugin, _ctx: &mut Context<Self, Self::Reply>) {
+        self.handle_detach(msg).await;
+    }
+}
+
+impl Message<TogglePlugin> for PluginDispatchActor {
+    type Reply = ();
+    async fn handle(&mut self, msg: TogglePlugin, _ctx: &mut Context<Self, Self::Reply>) {
+        self.handle_toggle(msg).await;
+    }
+}
+
+impl Message<SetManagedSession> for PluginDispatchActor {
+    type Reply = ();
+    async fn handle(&mut self, msg: SetManagedSession, _ctx: &mut Context<Self, Self::Reply>) {
+        self.handle_set_managed_session(msg);
+    }
+}
+
+impl Message<DynamicCommand> for PluginDispatchActor {
+    type Reply = ();
+    async fn handle(&mut self, msg: DynamicCommand, _ctx: &mut Context<Self, Self::Reply>) {
+        if msg.name == "plugin::fire_async" {
+            self.handle_fire_async_hook(&msg.payload);
+        }
     }
 }
 

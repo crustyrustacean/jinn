@@ -434,8 +434,6 @@ fn plugin_entry(title: &str, parent_id: SessionId) -> SessionEntry {
     }
 }
 
-//FIXME: plugin migration
-#[cfg(any())]
 #[rstest::rstest]
 fn plugin_preview_returns_session_when_hook_responds() {
     // Given a plugin entry and a child session in the state.
