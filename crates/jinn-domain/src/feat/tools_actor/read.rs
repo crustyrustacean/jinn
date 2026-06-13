@@ -246,7 +246,7 @@ fn apply_offset_limit(content: &str, offset: Option<usize>, limit: Option<usize>
 //FIXME: disabled during actor migration — tests reference deleted types
 //FIXME: disabled during actor migration
 // #[cfg(test)]
-#[cfg(any())]
+#[cfg(test)]
 mod tests {
     #![allow(
         clippy::expect_used,
@@ -347,7 +347,7 @@ mod tests {
             state: None,
             session_id: None,
             app_paths: crate::common::app_paths::AppPaths::default(),
-            sink: None,
+            bus: None,
             shell: "/bin/sh".to_owned(),
             max_output_lines: None,
             max_output_bytes: None,
@@ -442,7 +442,7 @@ mod tests {
             state: None,
             session_id: None,
             app_paths: crate::common::app_paths::AppPaths::default(),
-            sink: None,
+            bus: None,
             shell: "/bin/sh".to_owned(),
             max_output_lines: None,
             max_output_bytes: None,
@@ -525,7 +525,7 @@ mod tests {
             state: None,
             session_id: None,
             app_paths: crate::common::app_paths::AppPaths::default(),
-            sink: None,
+            bus: None,
             shell: "/bin/sh".to_owned(),
             max_output_lines: Some(3),
             max_output_bytes: Some(50 * 1024),
@@ -569,7 +569,7 @@ mod tests {
             state: None,
             session_id: None,
             app_paths: crate::common::app_paths::AppPaths::default(),
-            sink: None,
+            bus: None,
             shell: "/bin/sh".to_owned(),
             max_output_lines: Some(2),
             max_output_bytes: Some(50 * 1024),

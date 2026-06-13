@@ -126,7 +126,7 @@ fn parse_args(raw: &str) -> Result<(String, String), serde_json::Error> {
 //FIXME: disabled during actor migration — tests reference deleted types
 //FIXME: disabled during actor migration
 // #[cfg(test)]
-#[cfg(any())]
+#[cfg(test)]
 mod tests {
     #![allow(
         clippy::expect_used,
@@ -146,7 +146,7 @@ mod tests {
             state: None,
             session_id: None,
             app_paths: crate::common::app_paths::AppPaths::default(),
-            sink: None,
+            bus: None,
             shell: "/bin/sh".to_owned(),
             max_output_lines: None,
             max_output_bytes: None,
@@ -293,7 +293,7 @@ mod tests {
             state: None,
             session_id: None,
             app_paths: crate::common::app_paths::AppPaths::default(),
-            sink: None,
+            bus: None,
             shell: "/bin/sh".to_owned(),
             max_output_lines: None,
             max_output_bytes: None,
@@ -838,7 +838,7 @@ mod tests {
             state: None,
             session_id: None,
             app_paths: crate::common::app_paths::AppPaths::default(),
-            sink: None,
+            bus: None,
             shell: "/bin/sh".to_owned(),
             max_output_lines: None,
             max_output_bytes: None,
@@ -880,7 +880,7 @@ mod tests {
             state: None,
             session_id: None,
             app_paths: crate::common::app_paths::AppPaths::default(),
-            sink: None,
+            bus: None,
             shell: "/bin/sh".to_owned(),
             max_output_lines: None,
             max_output_bytes: None,

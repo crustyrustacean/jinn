@@ -339,7 +339,7 @@ fn close_session_and_switch(closing_id: &SessionId) -> IntentResult {
 }
 
 //FIXME: plugin migration
-#[cfg(any())]
+#[cfg(test)]
 mod tests {
     #![allow(
         clippy::expect_used,

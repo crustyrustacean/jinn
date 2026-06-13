@@ -605,7 +605,7 @@ impl LlmActor {
 
 //FIXME: disabled during actor migration — tests reference deleted types
 // #[cfg(test)]
-#[cfg(any())]
+#[cfg(test)]
 mod tests {
     #![allow(
         clippy::expect_used,
@@ -905,7 +905,7 @@ mod tests {
         };
 
         // Start first stream and save the handle.
-        actor.start_stream(payload.clone());
+        actor.start_stream(&payload.clone());
         let first_handle = actor.tasks.remove(&session_id);
         assert!(first_handle.is_some());
         // Re-insert for the second start_stream to find and abort.
@@ -914,7 +914,7 @@ mod tests {
             .insert(session_id.clone(), first_handle.unwrap());
 
         // When starting a second stream for the same session.
-        actor.start_stream(payload);
+        actor.start_stream(&payload);
 
         // Then a new task exists (the old one was aborted internally).
         assert!(
@@ -940,7 +940,7 @@ mod tests {
         };
 
         // When starting a stream.
-        actor.start_stream(payload);
+        actor.start_stream(&payload);
 
         // Then the session state is Streaming.
         let session_data = actor.sessions.get(&session_id);

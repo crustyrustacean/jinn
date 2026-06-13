@@ -1316,7 +1316,7 @@ where
 
 //FIXME: disabled during actor migration
 // #[cfg(test)]
-#[cfg(any())]
+#[cfg(test)]
 mod tests {
     #![allow(
         clippy::expect_used,
