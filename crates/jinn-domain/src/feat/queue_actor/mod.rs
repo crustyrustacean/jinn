@@ -255,7 +255,6 @@ impl QueueActor {
     }
 }
 
-
 #[cfg(test)]
 mod tests {
     #![allow(
@@ -266,11 +265,11 @@ mod tests {
         reason = "test code"
     )]
 
-    use super::{QueueActor, QueueActorDeps};
+    use super::QueueActor;
     use crate::common::actor_deps::ActorDeps;
     use crate::common::app_state::AppState;
-    use crate::common::services::bus_service::BusAudit;
     use crate::common::services::Services;
+    use crate::common::services::bus_service::BusAudit;
     use crate::common::state::State;
     use crate::feat::chat_input::protocol::event::ChatEntrySubmitted;
     use crate::feat::context::strategy::token_estimator::TiktokenCounter;

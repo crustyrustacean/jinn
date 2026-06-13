@@ -271,7 +271,7 @@ fn execute_plugin_tool(
     .attach("failed to build tool handler ctx")?;
 
     // Convert arguments JSON to a Lua table.
-    let args_value = bindings::json_to_lua_value(lua, &arguments)
+    let args_value = bindings::json_to_lua_value(lua, arguments)
         .map_err(|e| Report::new(PluginError).attach(e.to_string()))?;
     let args_table = match args_value {
         mlua::Value::Table(t) => t,

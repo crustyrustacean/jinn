@@ -61,7 +61,6 @@ fn dispatch_replacement_command(
     >,
 > {
     use crate::common::bridge::Bridge;
-    use crate::common::bridge::BridgeClosure;
 
     // The replacement JSON should have a "verb" key and a "payload" key.
     // If it doesn't match this shape, try treating the whole thing as a verb payload.
@@ -169,7 +168,6 @@ impl IntentHandler {
         mut result: IntentResult,
     ) -> IntentResult {
         use crate::feat::plugin_dispatch::{InterceptOutcome, call_hooks_typed};
-        use serde_json::json;
 
         let hook_ctx = crate::feat::plugin_dispatch::HookContext::from(serde_json::json!({
             "session_id": session_id.to_string(),

@@ -253,7 +253,6 @@ mod tests {
         clippy::indexing_slicing,
         reason = "test code"
     )]
-    use std::sync::Arc;
 
     use crate::common::app_paths::AppPaths;
     use crate::common::app_state::AppState;
@@ -261,7 +260,7 @@ mod tests {
     use crate::common::state::State;
     use crate::feat::provider::protocol::command::RescanPromptTemplates;
     use crate::feat::provider::protocol::event::PromptTemplatesLoaded;
-    use crate::feat::session::protocol::session_load_completed::SessionLoadCompleted;
+
     use crate::feat::session_lifecycle::protocol::event::{
         SessionCreated, SessionCwdChanged, SessionSetupCompleted,
     };
@@ -281,7 +280,7 @@ mod tests {
     }
 
     fn setup_actor(
-        harness: &TestHarness,
+        _harness: &TestHarness,
         cwd: &std::path::Path,
         home: &tempfile::TempDir,
     ) -> (State, SessionId) {

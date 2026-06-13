@@ -5,7 +5,6 @@
 //! point in its history.
 
 use crate::common::actor_deps::BusPublish;
-use crate::feat::session::model_selection::ModelSelection;
 use crate::feat::session::protocol::session_load_completed::SessionLoadCompleted;
 use crate::protocol::ChatEntry;
 use crate::protocol::system::ActiveSessionChanged;
@@ -210,7 +209,7 @@ mod tests {
         session.push_entry(ChatEntry::user("hello world"));
         session.push_entry(ChatEntry::assistant("hi there"));
 
-        let (mut actor, _audit) = super::super::super::helpers::test_actor_recording().await;
+        let (actor, _audit) = super::super::super::helpers::test_actor_recording().await;
 
         let payload = SessionLoadCompleted { session };
 
@@ -233,7 +232,7 @@ mod tests {
         session.push_entry(ChatEntry::user("hello"));
         let session_id = session.session_id().clone();
 
-        let (mut actor, _audit) = super::super::super::helpers::test_actor_recording().await;
+        let (actor, _audit) = super::super::super::helpers::test_actor_recording().await;
 
         let payload = SessionLoadCompleted { session };
 
@@ -259,7 +258,7 @@ mod tests {
         let mut session = ChatSessionState::new();
         session.push_entry(ChatEntry::user("hello"));
 
-        let (mut actor, _audit) = super::super::super::helpers::test_actor_recording().await;
+        let (actor, _audit) = super::super::super::helpers::test_actor_recording().await;
 
         let payload = SessionLoadCompleted { session };
 

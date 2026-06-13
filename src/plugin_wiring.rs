@@ -17,7 +17,6 @@ use std::sync::Arc;
 
 use error_stack::{Report, ResultExt};
 use jinn_domain::common::actor::protocol::dynamic_command::DynamicCommand;
-use jinn_domain::common::bridge::Bridge;
 use jinn_domain::common::bus::BusMessage;
 use jinn_domain::common::services::ActorChannelService;
 use jinn_domain::feat::chat_input::protocol::command::{
@@ -399,7 +398,7 @@ mod tests {
 
     #[test]
     fn unknown_verb_returns_error() {
-        let cmd = PluginCommand {
+        let _cmd = PluginCommand {
             plugin_name: "test".to_owned(),
             name: "nonexistent".to_owned(),
             data: serde_json::json!({}),

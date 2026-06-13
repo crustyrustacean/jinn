@@ -8,7 +8,6 @@ edition.workspace = true
 jinn-provider = { workspace = true }
 jinn-web-fetch = { workspace = true }
 jinn-selection-widget = { workspace = true }
-jinn-protocol-derive = { workspace = true }
 
 jinn-theme = { workspace = true }
 ratatui-markdown = { workspace = true }

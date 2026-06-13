@@ -234,7 +234,9 @@ mod tests {
         clippy::indexing_slicing,
         reason = "test code"
     )]
-    use super::super::super::helpers::{test_actor, test_actor_recording, test_actor_with_store_recording};
+    use super::super::super::helpers::{
+        test_actor, test_actor_recording, test_actor_with_store_recording,
+    };
     use crate::feat::provider::protocol::event::{
         StreamCompleted, StreamCompletedReason, StreamToken,
     };
@@ -1352,7 +1354,6 @@ mod tests {
             ledger[0].tokens_received
         );
     }
-
 
     #[tokio::test]
     async fn on_stream_completed_takes_max_when_provider_overcounts() {

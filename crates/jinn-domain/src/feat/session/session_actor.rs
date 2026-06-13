@@ -468,4 +468,3 @@ impl Message<PersonasLoaded> for SessionPersistenceActor {
         self.on_personas_loaded(&msg);
     }
 }
-

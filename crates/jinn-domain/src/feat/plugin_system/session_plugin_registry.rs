@@ -54,18 +54,13 @@ impl PluginToolMetadata {
 ///
 /// Set via the `scope` field in Lua tool definitions: `scope = "global"` or `scope = "attached"`.
 /// Defaults to `Attached` when omitted (least privilege).
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
 pub enum ToolScope {
     /// Available in all sessions.
     Global,
     /// Available only in the session the plugin is attached to.
+    #[default]
     Attached,
-}
-
-impl Default for ToolScope {
-    fn default() -> Self {
-        Self::Attached
-    }
 }
 
 /// Error raised by [`SessionPluginRegistry`] implementations.

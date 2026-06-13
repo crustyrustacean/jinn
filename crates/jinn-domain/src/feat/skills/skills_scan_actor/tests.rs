@@ -6,15 +6,12 @@
     reason = "test code"
 )]
 
-use std::sync::Arc;
-
 use kameo::prelude::Spawn;
 
 use crate::common::actor_deps::ActorDeps;
 use crate::common::app_paths::AppPaths;
 use crate::common::app_state::AppState;
-use crate::common::bus::test_harness::{Recorder, TestHarness, await_recorded};
-use crate::common::services::bus_service::BusService;
+use crate::common::bus::test_harness::{TestHarness, await_recorded};
 use crate::common::services::test_services::TestServices;
 use crate::common::state::State;
 use crate::feat::session_lifecycle::protocol::event::{

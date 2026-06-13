@@ -40,9 +40,6 @@ use jinn_domain::{AppCore, AppMsg, State};
 use kameo::actor::Spawn;
 
 /// The fixed (required) inputs to actor-system construction.
-///
-/// These are needed for every launch; the only opt-in beyond them is
-/// [`ActorSystemBuilder::with_bench_actor`].
 #[derive(Clone)]
 pub struct ActorSystemBuilderArgs {
     /// Tokio runtime handle actors are spawned onto.
@@ -65,50 +62,20 @@ pub struct ActorSystemBuilderArgs {
     pub paths: jinn_domain::AppPaths,
 }
 
-/// Opt-in bench inputs, set via [`ActorSystemBuilder::with_bench_actor`].
-pub struct BenchInputs {
-    /// Path to the bench CSV output.
-    pub csv_path: std::path::PathBuf,
-    /// The bench plan (model × task pairs).
-    pub plan: jinn_bench::orchestrator::BenchPlan,
-    /// Optional artifact directory.
-    pub artifact_dir: Option<std::path::PathBuf>,
-}
-
 /// Builds the actor system: spawns all actors via kameo.
 ///
-/// Construct with [`ActorSystemBuilder::new`], optionally add bench via
-/// [`ActorSystemBuilder::with_bench_actor`], then call
+/// Construct with [`ActorSystemBuilder::new`], then call
 /// [`ActorSystemBuilder::build`]. After spawning all actors, `build` blocks
 /// the calling thread until the actor system signals readiness (3s timeout).
 pub struct ActorSystemBuilder {
     args: ActorSystemBuilderArgs,
-    bench: Option<BenchInputs>,
 }
 
 impl ActorSystemBuilder {
-    /// Create a builder with the given fixed inputs. No bench actor.
     #[must_use]
     pub fn new(args: ActorSystemBuilderArgs) -> Self {
-        Self { args, bench: None }
+        Self { args }
     }
-
-    /// Opt-in: register the bench actor with the given plan.
-    #[must_use]
-    pub fn with_bench_actor(
-        mut self,
-        csv_path: std::path::PathBuf,
-        plan: jinn_bench::orchestrator::BenchPlan,
-        artifact_dir: Option<std::path::PathBuf>,
-    ) -> Self {
-        self.bench = Some(BenchInputs {
-            csv_path,
-            plan,
-            artifact_dir,
-        });
-        self
-    }
-
     /// Spawn all actors via kameo, build the bus and bridge, and wait for readiness.
     pub async fn build(
         self,
@@ -128,7 +95,6 @@ impl ActorSystemBuilder {
             app_state_storage,
             paths,
         } = self.args;
-        let bench = self.bench;
 
         // Create channel first — actors need the sender, but AppCore needs services
         // which needs the bus. Break the cycle by creating the channel independently.
@@ -377,15 +343,8 @@ impl ActorSystemBuilder {
                 deps: actor_deps.clone(),
                 state: state.clone(),
                 counter: token_counter,
-                builtin_registry: {
-                    let mut registry =
-                        jinn_domain::feat::session_lifecycle::builtin::BuiltinRegistry::new();
-                    jinn_bench::bench_tasks::register_bench_tasks(
-                        &mut registry,
-                        bench.as_ref().and_then(|b| b.artifact_dir.as_deref()),
-                    );
-                    registry
-                },
+                builtin_registry:
+                    jinn_domain::feat::session_lifecycle::builtin::BuiltinRegistry::new(),
                 shell: std::env::var("SHELL").unwrap_or_else(|_| "/bin/sh".to_owned()),
             },
         );
@@ -441,7 +400,7 @@ impl ActorSystemBuilder {
                     session_id: None,
                     definitions,
                 };
-                let closure = jinn_domain::common::bridge::Bridge::publish_closure(msg);
+                let _closure = jinn_domain::common::bridge::Bridge::publish_closure(msg);
             }
         }
 
@@ -902,18 +861,6 @@ impl ActorSystemBuilder {
             startup_session_id: state.read().session.active_session_id().to_string(),
             domain_ctx: shared_domain_ctx.clone(),
         });
-
-        // ── Bench actor (conditional) ─────────────────────────────────────────
-        if let Some(b) = bench {
-            let _bench = jinn_bench::bench_actor::BenchActor::spawn(
-                jinn_bench::bench_actor::BenchActorKameoDeps {
-                    deps: actor_deps.clone(),
-                    state: state.clone(),
-                    csv_path: Some(b.csv_path.clone()),
-                    plan: Some(b.plan),
-                },
-            );
-        }
 
         // Signal system readiness and trigger init chain.
         {

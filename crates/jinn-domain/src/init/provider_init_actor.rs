@@ -13,7 +13,6 @@ use crate::feat::chat_input::protocol::command::PushChatEntry;
 use crate::feat::provider::protocol::command::ProviderSwitch;
 use crate::feat::provider::protocol::event::ModelCacheLoaded;
 use crate::feat::provider_infra::{ModelCache, ProviderRegistry};
-use crate::feat::session::model_selection::ModelSelection;
 use crate::init::EnvironmentLoaded;
 use kameo::prelude::{Actor, ActorRef, Context, Message};
 
@@ -140,7 +139,6 @@ impl ProviderInitActor {
     }
 }
 
-
 #[cfg(test)]
 mod tests {
     #![allow(
@@ -151,25 +149,25 @@ mod tests {
         reason = "test code"
     )]
 
-    use super::{ProviderInitActor, ProviderInitActorDeps};
+    use super::ProviderInitActor;
     use crate::common::actor_deps::ActorDeps;
-    use crate::common::services::bus_service::BusAudit;
     use crate::common::services::Services;
+    use crate::common::services::bus_service::BusAudit;
     use crate::common::state::State;
     use crate::feat::chat_input::protocol::command::PushChatEntry;
     use crate::feat::provider::protocol::command::ProviderSwitch;
     use crate::feat::provider::protocol::event::ModelCacheLoaded;
     use crate::feat::provider_infra::ProviderEntry;
     use crate::feat::session::model_selection::ModelSelection;
-    use crate::init::EnvironmentLoaded;
-    use crate::protocol::SessionId;
 
     async fn create_actor() -> (ProviderInitActor, BusAudit, Services, State) {
         let (bus, audit) = crate::common::services::BusService::new_recording();
         let services = Services::new_fake_with_bus(bus).await;
         let state = State::new(crate::common::app_state::AppState::default());
         let actor = ProviderInitActor {
-            deps: ActorDeps { services: services.clone() },
+            deps: ActorDeps {
+                services: services.clone(),
+            },
             state: state.clone(),
         };
         (actor, audit, services, state)

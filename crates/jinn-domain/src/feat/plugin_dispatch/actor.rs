@@ -112,7 +112,6 @@ impl kameo::Actor for PluginDispatchActor {
     type Error = PluginDispatchActorError;
 
     async fn on_start(args: Self::Args, actor_ref: ActorRef<Self>) -> Result<Self, Self::Error> {
-        use crate::common::services::bus_service::BusService;
         let bus = &args.deps.services.bus;
 
         bus.subscribe::<AllActorsSpawned, _>(&actor_ref).await;
@@ -668,7 +667,7 @@ mod tests {
     #[tokio::test]
     async fn register_plugin_tools_global_has_no_target() {
         // Given a plugin dispatch actor.
-        let (mut actor, audit, session_id) = make_actor().await;
+        let (actor, audit, session_id) = make_actor().await;
         let registry_id = SessionRegistryId::new();
 
         // When registering global plugin tools.
@@ -687,7 +686,7 @@ mod tests {
     #[tokio::test]
     async fn register_plugin_tools_attached_has_target() {
         // Given a plugin dispatch actor.
-        let (mut actor, audit, session_id) = make_actor().await;
+        let (actor, audit, session_id) = make_actor().await;
         let registry_id = SessionRegistryId::new();
 
         // When registering attached plugin tools.

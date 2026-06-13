@@ -404,7 +404,11 @@ impl crate::feat::plugin_system::SessionPluginRegistry for AsyncPluginHandle {
                 .attach("create per-session plugin registry")?;
         Ok(crate::feat::plugin_system::CreateSessionRegistryResult {
             registry_id: result.registry_id,
-            tool_metadata: result.tool_metadata.into_iter().map(|m| m.into()).collect(),
+            tool_metadata: result
+                .tool_metadata
+                .into_iter()
+                .map(std::convert::Into::into)
+                .collect(),
         })
     }
 

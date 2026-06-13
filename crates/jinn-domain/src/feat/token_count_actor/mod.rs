@@ -462,10 +462,7 @@ mod tests {
     fn large_tool_call_arguments_counted_correctly() {
         // Given a tool call entry with large arguments (simulating write tool).
         let large_content = "fn main() { println!(\"hello\"); }\n".repeat(200);
-        let arguments = format!(
-            r#"{{\"path\":\"test.rs\",\"content\":\"{}\"}}"#,
-            large_content
-        );
+        let arguments = format!(r#"{{\"path\":\"test.rs\",\"content\":\"{large_content}\"}}"#);
         let counter = TiktokenCounter::o200k_base();
         let direct_count = counter.count(&arguments);
 
@@ -511,8 +508,7 @@ mod tests {
         );
         assert!(
             count as usize > 500,
-            "expected count > 500 for large tool call, got {}",
-            count
+            "expected count > 500 for large tool call, got {count}"
         );
     }
 }

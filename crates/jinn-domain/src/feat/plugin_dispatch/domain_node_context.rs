@@ -121,7 +121,7 @@ impl DomainNodeContext {
             .session_tool_definitions
             .entry(child_id.clone())
             .or_default()
-            .extend(tools.into_iter());
+            .extend(tools);
     }
 
     /// Returns `true` if there is a pending oneshot for the given session ID.

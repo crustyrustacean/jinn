@@ -104,7 +104,7 @@ impl App {
     pub fn dispatch(&mut self, cli: Cli) -> Result<(), Report<AppError>> {
         use jinn_cli::cli::Commands;
         #[cfg(debug_assertions)]
-        use jinn_cli::cli::{BenchCommands, HeadlessCommands};
+        use jinn_cli::cli::HeadlessCommands;
 
         // Load config from providers.toml (auto-creates on first run).
         let config_storage =
@@ -128,8 +128,7 @@ impl App {
         let llm_service = LlmServiceFactoryService::new(Arc::new(NoProvidersAvailableFactory));
 
         // Create the session store - uses --db-path if provided, otherwise
-        // the platform default. The --db-path flag lets users point the TUI
-        // at a bench database to inspect results after a bench run.
+        // the platform default.
         let session_store = {
             let store = match cli.db_path_opt() {
                 Some(path) => SqliteSessionStore::open_or_create(path),
@@ -200,7 +199,7 @@ impl App {
         };
 
         #[cfg(debug_assertions)]
-        let db_path = cli.db_path_opt().cloned();
+        let _db_path = cli.db_path_opt().cloned();
         match cli.command.unwrap_or(Commands::Tui) {
             Commands::Completions { shell } => {
                 use clap::CommandFactory;
@@ -283,109 +282,6 @@ impl App {
                         self.runtime
                             .block_on(async { fetch_models().await })
                             .change_context(AppError)?;
-                    }
-                }
-            }
-
-            #[cfg(debug_assertions)]
-            Commands::Bench { subcommand } => {
-                match &subcommand {
-                    BenchCommands::Run { .. } | BenchCommands::Tui {} => {
-                        if db_path.is_none() {
-                            return Err(Report::new(AppError)
-                                .attach("--db-path is required for bench commands"));
-                        }
-                    }
-                    BenchCommands::Show { .. } | BenchCommands::Compare { .. } => {}
-                }
-                match subcommand {
-                    BenchCommands::Run {
-                        model,
-                        task,
-                        csv,
-                        artifact_dir,
-                    } => {
-                        if let Some(ref dir) = artifact_dir {
-                            std::fs::create_dir_all(dir)
-                                .change_context(AppError)
-                                .attach("failed to create artifact directory")?;
-                        }
-
-                        // Build the bench plan from models × tasks.
-                        let plan = jinn_bench::orchestrator::build_plan(&model, &task)
-                            .change_context(AppError)
-                            .attach("invalid task glob pattern")?;
-                        tracing::info!(pairs = plan.pairs.len(), "built bench plan");
-
-                        // Safe: validated above that --db-path is present.
-                        let db_path = db_path.as_ref().unwrap();
-
-                        let session_store = SessionStoreService::new(Arc::new(
-                            SqliteSessionStore::open_or_create(db_path).change_context(AppError)?,
-                        ));
-                        let store_for_shutdown = session_store.clone();
-                        let (core, services, plugins) = self.runtime.block_on(async {
-                            actor_wiring::ActorSystemBuilder::new(
-                                actor_wiring::ActorSystemBuilderArgs {
-                                    handle: self.handle(),
-                                    llm_service,
-                                    provider_registry,
-                                    api_keys: resolved_api_keys,
-                                    config_storage,
-                                    session_store,
-                                    user_preferences_storage,
-                                    app_state_storage: app_state_storage.clone(),
-                                    paths: jinn_domain::AppPaths::default(),
-                                },
-                            )
-                            .with_bench_actor(csv, plan, artifact_dir)
-                            .build()
-                            .await
-                        });
-                        let app =
-                            jinn_tui::launch(core, services, plugins).change_context(AppError)?;
-                        let runner = Runner::Tui(Box::new(app));
-                        self.run_and_shutdown(runner, &store_for_shutdown)?;
-                    }
-                    BenchCommands::Show { csv } => {
-                        jinn_bench::show::show_results(&csv).map_err(|e| {
-                            error_stack::Report::new(AppError).attach(e.to_string())
-                        })?;
-                    }
-                    BenchCommands::Compare { csv_a, csv_b } => {
-                        jinn_bench::compare::compare_results(&csv_a, &csv_b).map_err(|e| {
-                            error_stack::Report::new(AppError).attach(e.to_string())
-                        })?;
-                    }
-                    BenchCommands::Tui {} => {
-                        // Safe: validated above that --db-path is present.
-                        let db_path = db_path.as_ref().unwrap();
-
-                        let session_store = SessionStoreService::new(Arc::new(
-                            SqliteSessionStore::open_or_create(db_path).change_context(AppError)?,
-                        ));
-                        let store_for_shutdown = session_store.clone();
-                        let (core, services, plugins) = self.runtime.block_on(async {
-                            actor_wiring::ActorSystemBuilder::new(
-                                actor_wiring::ActorSystemBuilderArgs {
-                                    handle: self.handle(),
-                                    llm_service: llm_service.clone(),
-                                    provider_registry: provider_registry.clone(),
-                                    api_keys: resolved_api_keys.clone(),
-                                    config_storage: config_storage.clone(),
-                                    session_store,
-                                    user_preferences_storage: user_preferences_storage.clone(),
-                                    app_state_storage: app_state_storage.clone(),
-                                    paths: jinn_domain::AppPaths::default(),
-                                },
-                            )
-                            .build()
-                            .await
-                        });
-                        let app =
-                            jinn_tui::launch(core, services, plugins).change_context(AppError)?;
-                        let runner = Runner::Tui(Box::new(app));
-                        self.run_and_shutdown(runner, &store_for_shutdown)?;
                     }
                 }
             }

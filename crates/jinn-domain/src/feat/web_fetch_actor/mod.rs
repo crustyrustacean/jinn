@@ -63,7 +63,7 @@ impl kameo::Actor for WebFetchActor {
             .await;
 
         // Register the web-fetch tool with the orchestrator.
-        let _ = args
+        let () = args
             .deps
             .services
             .bus
@@ -111,7 +111,7 @@ impl Message<ExecuteWebFetch> for WebFetchActor {
             content_len = result.content.len(),
             "web-fetch: fetch complete"
         );
-        let _ = self
+        let () = self
             .publish(ToolExecutionCompleted {
                 session_id: msg.session_id,
                 result,

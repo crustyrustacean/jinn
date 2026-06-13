@@ -260,11 +260,10 @@ mod tests {
         clippy::indexing_slicing,
         reason = "test code"
     )]
-    use std::sync::Arc;
 
     use crate::AppState;
     use crate::common::bus::test_harness::{TestHarness, await_recorded};
-    use crate::common::services::Services;
+
     use crate::common::state::State;
     use crate::feat::provider_infra::{ModelCache, ModelInfo, ProviderEntry, ProvidersConfig};
 

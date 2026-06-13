@@ -50,10 +50,10 @@ impl ContextAssemblyState {
                 self.global_tool_definitions.keys().cloned().collect();
             for (name, def) in session_tools {
                 if global_names.contains(name) {
-                    if let Some(pos) = tools.iter().position(|t| &t.name == name) {
-                        if let Some(slot) = tools.get_mut(pos) {
-                            *slot = def.clone();
-                        }
+                    if let Some(pos) = tools.iter().position(|t| &t.name == name)
+                        && let Some(slot) = tools.get_mut(pos)
+                    {
+                        *slot = def.clone();
                     }
                 } else {
                     tools.push(def.clone());

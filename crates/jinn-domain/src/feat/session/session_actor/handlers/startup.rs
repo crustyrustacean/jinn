@@ -4,8 +4,6 @@
 //! default session, loads unarchived sessions from SQLite, and emits commands
 //! to initialize the context and preferences pipelines.
 
-use crate::feat::session::model_selection::ModelSelection;
-
 use super::super::SessionPersistenceActor;
 use crate::common::actor_deps::BusPublish;
 use crate::feat::preferences_actor::protocol::app_state_command::{AppStateUpdate, UpdateAppState};
@@ -145,14 +143,12 @@ mod tests {
 
         // When handling EnvironmentLoaded.
         actor
-            .on_environment_loaded(
-                &crate::feat::provider_infra::ProvidersConfig {
-                    providers: vec![],
-                    aliases: vec![],
-                    default_provider: None,
-                    alloys: vec![],
-                },
-            )
+            .on_environment_loaded(&crate::feat::provider_infra::ProvidersConfig {
+                providers: vec![],
+                aliases: vec![],
+                default_provider: None,
+                alloys: vec![],
+            })
             .await;
 
         // Then the active session is still the default.
@@ -167,14 +163,12 @@ mod tests {
 
         // When handling EnvironmentLoaded.
         actor
-            .on_environment_loaded(
-                &crate::feat::provider_infra::ProvidersConfig {
-                    providers: vec![],
-                    aliases: vec![],
-                    default_provider: None,
-                    alloys: vec![],
-                },
-            )
+            .on_environment_loaded(&crate::feat::provider_infra::ProvidersConfig {
+                providers: vec![],
+                aliases: vec![],
+                default_provider: None,
+                alloys: vec![],
+            })
             .await;
 
         // Then no scan commands are emitted. The three scan actors
@@ -204,14 +198,12 @@ mod tests {
 
         // When handling EnvironmentLoaded.
         actor
-            .on_environment_loaded(
-                &crate::feat::provider_infra::ProvidersConfig {
-                    providers: vec![],
-                    aliases: vec![],
-                    default_provider: None,
-                    alloys: vec![],
-                },
-            )
+            .on_environment_loaded(&crate::feat::provider_infra::ProvidersConfig {
+                providers: vec![],
+                aliases: vec![],
+                default_provider: None,
+                alloys: vec![],
+            })
             .await;
 
         // Then the default session still exists in the map.
@@ -234,14 +226,12 @@ mod tests {
 
         // When handling EnvironmentLoaded.
         actor
-            .on_environment_loaded(
-                &crate::feat::provider_infra::ProvidersConfig {
-                    providers: vec![],
-                    aliases: vec![],
-                    default_provider: None,
-                    alloys: vec![],
-                },
-            )
+            .on_environment_loaded(&crate::feat::provider_infra::ProvidersConfig {
+                providers: vec![],
+                aliases: vec![],
+                default_provider: None,
+                alloys: vec![],
+            })
             .await;
 
         // Then both loaded sessions are in the session map.
@@ -275,14 +265,12 @@ mod tests {
 
         // When handling EnvironmentLoaded.
         actor
-            .on_environment_loaded(
-                &crate::feat::provider_infra::ProvidersConfig {
-                    providers: vec![],
-                    aliases: vec![],
-                    default_provider: None,
-                    alloys: vec![],
-                },
-            )
+            .on_environment_loaded(&crate::feat::provider_infra::ProvidersConfig {
+                providers: vec![],
+                aliases: vec![],
+                default_provider: None,
+                alloys: vec![],
+            })
             .await;
 
         // Then the active session's model was updated from the saved preference.
@@ -321,14 +309,12 @@ mod tests {
 
         // When handling EnvironmentLoaded.
         actor
-            .on_environment_loaded(
-                &crate::feat::provider_infra::ProvidersConfig {
-                    providers: vec![],
-                    aliases: vec![],
-                    default_provider: None,
-                    alloys: vec![],
-                },
-            )
+            .on_environment_loaded(&crate::feat::provider_infra::ProvidersConfig {
+                providers: vec![],
+                aliases: vec![],
+                default_provider: None,
+                alloys: vec![],
+            })
             .await;
 
         let state = actor.state.read();
@@ -349,14 +335,12 @@ mod tests {
 
         // When handling EnvironmentLoaded (startup).
         actor
-            .on_environment_loaded(
-                &crate::feat::provider_infra::ProvidersConfig {
-                    providers: vec![],
-                    aliases: vec![],
-                    default_provider: None,
-                    alloys: vec![],
-                },
-            )
+            .on_environment_loaded(&crate::feat::provider_infra::ProvidersConfig {
+                providers: vec![],
+                aliases: vec![],
+                default_provider: None,
+                alloys: vec![],
+            })
             .await;
 
         // Then the attached plugin was loaded with the session.
@@ -388,14 +372,12 @@ mod tests {
 
         // When handling EnvironmentLoaded (startup).
         actor
-            .on_environment_loaded(
-                &crate::feat::provider_infra::ProvidersConfig {
-                    providers: vec![],
-                    aliases: vec![],
-                    default_provider: None,
-                    alloys: vec![],
-                },
-            )
+            .on_environment_loaded(&crate::feat::provider_infra::ProvidersConfig {
+                providers: vec![],
+                aliases: vec![],
+                default_provider: None,
+                alloys: vec![],
+            })
             .await;
 
         // Then the plugin was reset from Running to Idle.

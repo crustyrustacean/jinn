@@ -168,7 +168,7 @@ fn format_relative_time(ts: &jiff::Timestamp) -> String {
         Err(_) => return "unknown".to_owned(),
     };
 
-    let total_hours = span.get_hours().unsigned_abs() as u32;
+    let total_hours = span.get_hours().unsigned_abs();
     let minutes = span.get_minutes().unsigned_abs() as u32;
 
     // Derive larger units from total hours (approximate).

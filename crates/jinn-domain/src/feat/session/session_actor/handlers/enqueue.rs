@@ -365,7 +365,7 @@ mod tests {
         clippy::uninlined_format_args,
         reason = "test code"
     )]
-    use super::super::super::helpers::test_actor_recording;
+
     use crate::common::services::BusAudit;
     use crate::feat::chat_input::protocol::command::{
         EnqueueResumeTurn, EnqueueUserMessage, PushChatEntry, SetChatInputText,
@@ -393,7 +393,7 @@ mod tests {
     #[tokio::test]
     async fn handle_enqueue_user_message_dispatches_when_idle() {
         // Given an idle session.
-        let (mut actor, state, audit) = create_actor().await;
+        let (actor, state, audit) = create_actor().await;
         let session_id = {
             let mut guard = state.write();
             let _session = guard.active_session_mut();
@@ -428,7 +428,7 @@ mod tests {
     #[tokio::test]
     async fn handle_enqueue_user_message_sets_title_from_first_message() {
         // Given a new session with no title.
-        let (mut actor, state, _audit) = create_actor().await;
+        let (actor, state, _audit) = create_actor().await;
         let session_id = {
             let mut guard = state.write();
             let _ = guard.active_session_mut();
@@ -452,7 +452,7 @@ mod tests {
     #[tokio::test]
     async fn handle_enqueue_user_message_queues_when_busy() {
         // Given a session in Streaming phase (busy).
-        let (mut actor, state, _audit) = create_actor().await;
+        let (actor, state, _audit) = create_actor().await;
         let session_id = {
             let mut guard = state.write();
             let session = guard.active_session_mut();
@@ -481,7 +481,7 @@ mod tests {
     #[tokio::test]
     async fn handle_enqueue_user_message_no_provider_sends_none_provider_id() {
         // Given a session with default model (NO_PROVIDER_ID).
-        let (mut actor, state, audit) = create_actor().await;
+        let (actor, state, audit) = create_actor().await;
         let session_id = {
             let mut guard = state.write();
             let _ = guard.active_session_mut();
@@ -508,7 +508,7 @@ mod tests {
     #[tokio::test]
     async fn handle_set_chat_input_text_updates_buffer() {
         // Given a session.
-        let (mut actor, state, _audit) = create_actor().await;
+        let (actor, state, _audit) = create_actor().await;
         let session_id = {
             let mut guard = state.write();
             let _ = guard.active_session_mut();
@@ -532,7 +532,7 @@ mod tests {
     #[tokio::test]
     async fn handle_push_chat_entry_pushes_and_emits() {
         // Given a session.
-        let (mut actor, state, audit) = create_actor().await;
+        let (actor, state, audit) = create_actor().await;
         let session_id = {
             let mut guard = state.write();
             let _ = guard.active_session_mut();
@@ -575,7 +575,7 @@ mod tests {
     #[tokio::test]
     async fn handle_send_message_emits_enqueue_user_message() {
         // Given a test context.
-        let (mut actor, _state, audit) = create_actor().await;
+        let (actor, _state, audit) = create_actor().await;
         let session_id = crate::protocol::SessionId::new();
 
         // When calling handle_send_message.
@@ -598,7 +598,7 @@ mod tests {
     #[tokio::test]
     async fn before_turn_no_attachments_dispatches_normally() {
         // Given an idle session with no attached plugins.
-        let (mut actor, state, _audit) = create_actor().await;
+        let (actor, state, _audit) = create_actor().await;
         let session_id = {
             let mut guard = state.write();
             let _session = guard.active_session_mut();
@@ -624,7 +624,7 @@ mod tests {
     #[tokio::test]
     async fn handle_enqueue_resume_turn_noop_when_streaming() {
         // Given a session already in Streaming phase.
-        let (mut actor, state, audit) = create_actor().await;
+        let (actor, state, audit) = create_actor().await;
         let session_id = {
             let mut guard = state.write();
             let session = guard.active_session_mut();
@@ -656,7 +656,7 @@ mod tests {
     #[tokio::test]
     async fn handle_enqueue_resume_turn_idle_dispatches_directly() {
         // Given an idle session.
-        let (mut actor, state, audit) = create_actor().await;
+        let (actor, state, audit) = create_actor().await;
         let session_id = {
             let mut guard = state.write();
             let _ = guard.active_session_mut();
@@ -703,7 +703,7 @@ mod tests {
     #[tokio::test]
     async fn handle_enqueue_resume_turn_drains_steering_buffer_before_assembly() {
         // Given an idle session with a non-empty steering buffer.
-        let (mut actor, state, audit) = create_actor().await;
+        let (actor, state, audit) = create_actor().await;
         let session_id = {
             let mut guard = state.write();
             let _ = guard.active_session_mut();
@@ -762,7 +762,7 @@ mod tests {
     #[tokio::test]
     async fn handle_enqueue_user_message_drains_steering_buffer_on_idle_dispatch() {
         // Given an idle session with a non-empty steering buffer.
-        let (mut actor, state, audit) = create_actor().await;
+        let (actor, state, audit) = create_actor().await;
         let session_id = {
             let mut guard = state.write();
             let session = guard.active_session_mut();

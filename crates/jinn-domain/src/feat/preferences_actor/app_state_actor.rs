@@ -10,7 +10,6 @@ use kameo::prelude::{Actor, ActorRef, Context, Message};
 use crate::common::actor_deps::{ActorDeps, BusPublish};
 use crate::feat::preferences_actor::protocol::app_state_command::UpdateAppState;
 use crate::feat::preferences_actor::protocol::app_state_event::AppStateUpdated;
-use crate::feat::session::model_selection::ModelSelection;
 
 /// Dependencies for spawning an [`AppStateActor`].
 pub struct AppStateActorDeps {
@@ -81,12 +80,14 @@ mod tests {
 
     use std::sync::Arc;
 
-    use super::{AppStateActor, AppStateActorDeps};
+    use super::AppStateActor;
     use crate::common::actor_deps::ActorDeps;
     use crate::common::services::Services;
     use crate::common::services::bus_service::BusAudit;
     use crate::feat::preferences_actor::app_state_storage::InMemoryAppStateStorage;
-    use crate::feat::preferences_actor::protocol::app_state_command::{AppStateUpdate, UpdateAppState};
+    use crate::feat::preferences_actor::protocol::app_state_command::{
+        AppStateUpdate, UpdateAppState,
+    };
     use crate::feat::preferences_actor::protocol::app_state_event::AppStateUpdated;
     use crate::feat::session::model_selection::ModelSelection;
     async fn create_actor() -> (AppStateActor, BusAudit, Services) {
@@ -101,7 +102,9 @@ mod tests {
         services.app_state_storage = svc;
 
         let actor = AppStateActor {
-            deps: ActorDeps { services: services.clone() },
+            deps: ActorDeps {
+                services: services.clone(),
+            },
         };
         (actor, audit, services)
     }

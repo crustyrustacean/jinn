@@ -73,14 +73,6 @@ pub enum Commands {
         shell: clap_complete::Shell,
     },
 
-    /// Run benchmark tasks and view results.
-    #[cfg(debug_assertions)]
-    Bench {
-        /// The bench subcommand to run.
-        #[command(subcommand)]
-        subcommand: BenchCommands,
-    },
-
     /// Fetch reference data from external sources.
     Fetch {
         /// The fetch subcommand to run.
@@ -129,49 +121,6 @@ pub enum ConfigCommands {
         #[arg(long)]
         force: bool,
     },
-}
-
-/// Bench subcommands.
-#[derive(Debug, Subcommand)]
-pub enum BenchCommands {
-    /// Run benchmark tasks through the actor pipeline.
-    Run {
-        /// Model(s) to benchmark (e.g., `openai/gpt-4o`). At least one required.
-        #[arg(long, required = true)]
-        model: Vec<String>,
-
-        /// Task(s) to run. Supports glob patterns (e.g., `edit-*`, `fix-*`).
-        /// If omitted, runs all tasks.
-        #[arg(long)]
-        task: Vec<String>,
-
-        /// CSV output path.
-        #[arg(long, default_value = "bench-results.csv")]
-        csv: PathBuf,
-
-        /// Directory for bench work artifacts (task working directories).
-        /// If set, task directories are created here instead of /tmp,
-        /// making them easy to inspect after a run.
-        #[arg(long)]
-        artifact_dir: Option<PathBuf>,
-    },
-
-    /// Display bench results in a terminal table.
-    Show {
-        /// CSV file to display.
-        csv: PathBuf,
-    },
-
-    /// Compare two bench result CSVs.
-    Compare {
-        /// First CSV file (baseline).
-        csv_a: PathBuf,
-        /// Second CSV file (comparison).
-        csv_b: PathBuf,
-    },
-
-    /// Launch the TUI pointed at a bench database for inspection.
-    Tui {},
 }
 
 #[cfg(test)]
@@ -283,25 +232,5 @@ mod tests {
             cli.db_path_opt().map(std::path::PathBuf::as_path),
             Some(std::path::Path::new("/tmp/test.db"))
         );
-    }
-
-    #[cfg(not(debug_assertions))]
-    #[test]
-    fn bench_run_no_db_path_fails_in_release() {
-        // Given no --db-path flag with bench run.
-        // When parsing.
-        let cli = Cli::parse_from(["jinn", "bench", "run", "--model", "gpt-4o"]);
-        // Then CLI parses but db_path_opt is None (runtime will reject).
-        assert!(cli.db_path_opt().is_none());
-    }
-
-    #[cfg(not(debug_assertions))]
-    #[test]
-    fn bench_tui_no_db_path_fails_in_release() {
-        // Given no --db-path flag with bench tui.
-        // When parsing.
-        let cli = Cli::parse_from(["jinn", "bench", "tui"]);
-        // Then CLI parses but db_path_opt is None (runtime will reject).
-        assert!(cli.db_path_opt().is_none());
     }
 }
