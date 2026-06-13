@@ -251,8 +251,7 @@ fn merge_context_lengths_from_models_dev(
     }
 }
 
-//FIXME: disabled during actor migration — tests reference deleted types
-//FIXME: plugin migration
+#[cfg(test)]
 mod tests {
     #![allow(
         clippy::expect_used,
