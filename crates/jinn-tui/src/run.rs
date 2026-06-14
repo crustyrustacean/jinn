@@ -304,35 +304,11 @@ fn handle_suspend_action(
         }
         SuspendResult::ChangeCwd(path) => {
             if let Some(path) = path {
-                // Validate: must exist and be a directory.
-                if path.is_dir() {
-                    let canonical = match std::fs::canonicalize(&path) {
-                        Ok(c) => c,
-                        Err(e) => {
-                            tracing::warn!(
-                                path = %path.display(),
-                                err = %e,
-                                "failed to canonicalize CWD selector result"
-                            );
-                            return Ok(());
-                        }
-                    };
-                    let session_id = app.core.state.read().active_session().session_id().clone();
-                    let _ = app.core.sender().send(jinn_domain::Bridge::publish_closure(
-                        jinn_domain::feat::session_lifecycle::protocol::command::SetSessionCwd {
-                            session_id,
-                            cwd: canonical,
-                        },
-                    ));
-
+                let session_id = app.core.state.read().active_session().session_id().clone();
+                if apply_selected_cwd(&app.core.bridge, session_id, &path) {
                     tracing::info!(
                         cwd = %app.core.state.read().active_session().cwd().display(),
                         "session CWD updated"
-                    );
-                } else {
-                    tracing::warn!(
-                        path = %path.display(),
-                        "CWD selector returned non-directory path, ignoring"
                     );
                 }
             }
@@ -357,6 +333,47 @@ fn shell_escape(s: &str) -> String {
     }
     result.push('\'');
     result
+}
+
+/// Validate, canonicalize, and publish [`SetSessionCwd`] for a selected path.
+///
+/// Used by the `<M-c>`/`<M-d>` suspend-and-`fzf` flow after the user picks a
+/// directory. Returns `true` if a `SetSessionCwd` command was published onto
+/// `bridge`; `false` if the path was rejected (non-directory or
+/// canonicalization failure).
+///
+/// Routing through the [`Bridge`] (not the legacy `AppMsg` channel) is what
+/// makes the selection actually reach the session actor.
+fn apply_selected_cwd(
+    bridge: &jinn_domain::common::bridge::Bridge,
+    session_id: jinn_domain::SessionId,
+    path: &std::path::Path,
+) -> bool {
+    if !path.is_dir() {
+        tracing::warn!(
+            path = %path.display(),
+            "CWD selector returned non-directory path, ignoring"
+        );
+        return false;
+    }
+    let canonical = match std::fs::canonicalize(path) {
+        Ok(c) => c,
+        Err(e) => {
+            tracing::warn!(
+                path = %path.display(),
+                err = %e,
+                "failed to canonicalize CWD selector result"
+            );
+            return false;
+        }
+    };
+    let _ = bridge.send(jinn_domain::Bridge::publish_closure(
+        jinn_domain::feat::session_lifecycle::protocol::command::SetSessionCwd {
+            session_id,
+            cwd: canonical,
+        },
+    ));
+    true
 }
 
 #[cfg(test)]
