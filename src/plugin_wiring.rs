@@ -13,12 +13,19 @@
 //! 1. Add a `PluginVerb` impl for the Lua payload type
 //! 2. Register it in `VERB_DISPATCH_TABLE`
 
+// FIXME: plugin routing — the command dispatch path (PluginVerb trait, verb
+// structs, dispatch_verb, LuaChatEntryKind) is stubbed out pending the new
+// plugin communication system. The definitions are retained as documentation
+// of the intended verb set; they are dead code until routing is restored.
+#![allow(dead_code, reason = "plugin routing stubbed — see FIXME above")]
+//! 1. Add a `PluginVerb` impl for the Lua payload type
+//! 2. Register it in `VERB_DISPATCH_TABLE`
+
 use std::sync::Arc;
 
 use error_stack::{Report, ResultExt};
 use jinn_domain::common::actor::protocol::dynamic_command::DynamicCommand;
 use jinn_domain::common::bus::BusMessage;
-use jinn_domain::common::services::ActorChannelService;
 use jinn_domain::feat::chat_input::protocol::command::{
     EnqueueUserMessage, PushChatEntry, SetChatInputText,
 };
@@ -258,52 +265,15 @@ impl PluginVerb for LuaSetManagedSession {
 
 /// Dispatch a plugin command to the appropriate domain action.
 ///
-/// Matches on `cmd.name`, deserializes via `PluginVerb`, and publishes
-/// the typed domain message through the actor channel.
-/// Unknown commands are logged and dropped.
-pub fn handle_plugin_command(cmd: PluginCommand, channel: &ActorChannelService) {
+/// FIXME: plugin routing — the old `ActorChannelService` path was removed
+/// during the dead-channel cleanup. A new plugin communication system is
+/// being built; until then, commands are logged and dropped.
+pub fn handle_plugin_command(cmd: PluginCommand) {
     tracing::debug!(
         plugin = cmd.plugin_name,
         verb = cmd.name,
-        "plugin command dispatched"
+        "plugin command received but routing is stubbed (FIXME: plugin routing)"
     );
-
-    macro_rules! dispatch {
-        ($($lua_type:ty),+ $(,)?) => {
-            match cmd.name.as_str() {
-                $(<$lua_type as PluginVerb>::VERB => {
-                    match dispatch_verb::<$lua_type>(&cmd) {
-                        Ok(msg) => channel.send_message(msg),
-                        Err(e) => {
-                            tracing::error!(
-                                plugin = cmd.plugin_name,
-                                verb = cmd.name,
-                                error = %e,
-                                "plugin command translation failed"
-                            );
-                        }
-                    }
-                })+
-                other => {
-                    tracing::warn!(
-                        plugin = cmd.plugin_name,
-                        verb = other,
-                        "unknown plugin verb"
-                    );
-                }
-            }
-        }
-    }
-
-    dispatch!(
-        LuaPushChatEntry,
-        LuaEnqueueUserMessage,
-        LuaDisablePlugin,
-        LuaFireAsyncHook,
-        LuaSetChatInput,
-        LuaResetSession,
-        LuaSetManagedSession,
-    )
 }
 
 /// Dispatch a single verb by type.
@@ -319,13 +289,11 @@ fn dispatch_verb<V: PluginVerb>(
 
 /// Build a command dispatcher closure for the plugin system.
 ///
-/// The returned closure captures an `ActorChannelService` and routes
-/// plugin commands through the bus via the kanal bridge.
-pub fn build_command_dispatcher(
-    channel: ActorChannelService,
-) -> Arc<dyn Fn(PluginCommand) + Send + Sync> {
-    Arc::new(move |cmd: PluginCommand| {
-        handle_plugin_command(cmd, &channel);
+/// FIXME: plugin routing — returns a no-op stub until the new plugin
+/// communication system lands.
+pub fn build_command_dispatcher() -> Arc<dyn Fn(PluginCommand) + Send + Sync> {
+    Arc::new(|cmd: PluginCommand| {
+        handle_plugin_command(cmd);
     })
 }
 
