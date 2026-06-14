@@ -579,16 +579,16 @@ impl TryFrom<&ChatSessionState> for NewSessionRow {
                     created_at,
                     history: _history, // persisted via entries + session_history tables below
                     profile: _profile, // persisted via metadata blob
-                    cwd: _cwd, // persisted via metadata blob
+                    cwd: _cwd,         // persisted via metadata blob
                     token_ledger: _ledger, // persisted via token_ledger table below
                     parent_session,
 
                     fork_ordinal: _fork_ordinal, // included in metadata blob via PersistableCore
 
-                    blobs: _blobs, // persisted via metadata blob
+                    blobs: _blobs,                   // persisted via metadata blob
                     lifecycle_name: _lifecycle_name, // persisted via metadata blob
                     lifecycle_args: _lifecycle_args, // persisted via metadata blob
-                    ephemeral: _ephemeral, // runtime-only state, not persisted
+                    ephemeral: _ephemeral,           // runtime-only state, not persisted
                     session_state,
                     lifecycle_script_state: _lifecycle_script_state, // persisted via metadata blob
                     is_automated,
@@ -1520,6 +1520,62 @@ mod tests {
             loaded.created_at(),
             &source_created,
             "fork should update created_at via fork_metadata"
+        );
+    }
+
+    #[tokio::test]
+    async fn fork_does_not_write_zombie_columns() {
+        // Given a migrated database with a saved session.
+        let (_dir, mut conn) = migrated_conn();
+        let session = make_session();
+        let source_id = session.session_id().clone();
+        save_blocking(&mut conn, &session).expect("save source");
+
+        // When forking the session.
+        let fork_id = fork_blocking(&mut conn, &source_id, 1).expect("fork");
+
+        // Then the forked row does not carry the redundant profile data in its
+        // zombie columns - they hold their SQL DEFAULTs, and only the metadata
+        // blob carries the real profile.
+        let fork_id_str = fork_id.to_string();
+
+        #[derive(QueryableByName)]
+        struct ColRow {
+            #[diesel(sql_type = diesel::sql_types::Text)]
+            value: String,
+        }
+        let col = |conn: &mut SqliteConnection, name: &str| -> String {
+            let rows: Vec<ColRow> =
+                sql_query(format!("SELECT {name} AS value FROM sessions WHERE id = ?"))
+                    .bind::<diesel::sql_types::Text, _>(&fork_id_str)
+                    .load(conn)
+                    .expect("select column");
+            rows.into_iter().next().expect("fork row exists").value
+        };
+
+        // The zombie columns hold their schema DEFAULTs.
+        assert_eq!(
+            col(&mut conn, "profile"),
+            "{}",
+            "profile column is the default"
+        );
+        assert_eq!(col(&mut conn, "blobs"), "{}", "blobs column is the default");
+        assert_eq!(col(&mut conn, "cwd"), ".", "cwd column is the default");
+        assert_eq!(
+            col(&mut conn, "lifecycle_args"),
+            "[]",
+            "lifecycle_args column is the default"
+        );
+        assert_eq!(
+            col(&mut conn, "lifecycle_script_state"),
+            "nothing_ran",
+            "lifecycle_script_state column is the default"
+        );
+
+        // And the metadata blob IS present and carries the forked profile.
+        assert!(
+            !col(&mut conn, "metadata").is_empty(),
+            "fork should carry a metadata blob"
         );
     }
 
