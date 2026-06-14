@@ -388,6 +388,38 @@ mod tests {
     }
 
     #[rstest::rstest]
+    fn scripted_lifecycle_setup_pre_seeds_inherited_cwd_in_memory() {
+        // Given a state whose active session has a distinct CWD, and a
+        // lifecycle with a setup_command (so the script path is taken).
+        let mut state = AppState::default();
+        let inherited_cwd = std::path::PathBuf::from("/tmp/inherited-project");
+        state.active_session_mut().set_cwd(inherited_cwd.clone());
+        state
+            .frontend
+            .preferences
+            .session_lifecycles
+            .push(SessionLifecycle {
+                name: "fossil branch".to_owned(),
+                description: None,
+                setup: Some(
+                    crate::feat::session_lifecycle::builtin::LifecycleCommand::Shell(
+                        "echo /tmp/workdir".to_owned(),
+                    ),
+                ),
+                teardown: None,
+            });
+
+        // When handling SessionLifecycleSetup with the scripted lifecycle.
+        let _result = handle_session_lifecycle_setup(&mut state, "fossil branch", &[]);
+
+        // Then the new session's in-memory CWD is the inherited value
+        // (pre-seeded before the actor runs the script). The actor may
+        // overwrite it with the script's stdout later, but at creation
+        // time the inherited CWD is present.
+        assert_eq!(state.active_session().cwd(), inherited_cwd);
+    }
+
+    #[rstest::rstest]
     fn session_lifecycle_setup_with_lifecycle_emits_command() {
         // Given a state with a lifecycle that has a setup_command.
         let mut state = AppState::default();
