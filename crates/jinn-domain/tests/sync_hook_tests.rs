@@ -232,3 +232,58 @@ fn attachable_plugin_sync_hook_is_loaded_and_callable() {
     assert_eq!(results.len(), 1);
     assert_eq!(results[0]["session_id"], "judge-123");
 }
+
+#[test]
+fn sync_hook_can_merge_plugin_data_observable_by_subsequent_read() {
+    // Given a plugin whose sync hook writes plugin_data, then a second hook
+    // call that reads it back. Verifies sync hooks have full plugin_data
+    // write access (not read-only).
+    let dir = tempfile::tempdir().expect("tempdir");
+    write_plugin(
+        dir.path(),
+        "writer",
+        r#"
+            local M = {}
+            function M.on_filter_input(ctx)
+                ctx.merge_plugin_data({ status = "enriching" })
+                return ctx.text
+            end
+            function M.on_filter_output(ctx)
+                local pd = ctx.plugin_data or {}
+                return pd.status or "missing"
+            end
+            return M
+        "#,
+    );
+
+    let (sync, _) = build_system_with_capture(dir.path());
+
+    // When the write hook runs (writes status=enriching to plugin_data).
+    let _ = sync
+        .sync_hooks("on_filter_input")
+        .map(|h| {
+            h.call::<String>(&HookContext::from(serde_json::json!({
+                "text": "hello",
+                "session_id": "s1",
+            })))
+            .expect("hook call")
+        })
+        .collect::<Vec<_>>();
+
+    // Then a subsequent read hook (same session) observes the written value.
+    let result: Vec<String> = sync
+        .sync_hooks("on_filter_output")
+        .map(|h| {
+            h.call::<String>(&HookContext::from(serde_json::json!({
+                "session_id": "s1",
+            })))
+            .expect("hook call")
+        })
+        .collect();
+
+    assert_eq!(
+        result,
+        vec!["enriching".to_owned()],
+        "sync hook merge_plugin_data must be observable by a subsequent read"
+    );
+}
