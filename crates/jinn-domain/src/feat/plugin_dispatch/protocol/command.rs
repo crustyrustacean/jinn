@@ -4,6 +4,7 @@
 //! the dispatcher loads them into a per-session Lua state and fires their
 //! hooks at lifecycle events.
 
+use error_stack::ResultExt;
 use serde::{Deserialize, Serialize};
 
 use crate::common::bus::BusMessage;
@@ -54,4 +55,56 @@ pub struct SetManagedSession {
 impl BusMessage for AttachPlugin {}
 impl BusMessage for DetachPlugin {}
 impl BusMessage for TogglePlugin {}
+
+impl crate::common::plugin_bridge::TryFromLua for TogglePlugin {
+    const VERB: &'static str = "disable_plugin";
+
+    fn try_from_lua(
+        ctx: crate::common::plugin_bridge::CmdCtx,
+        data: serde_json::Value,
+    ) -> Result<Self, error_stack::Report<crate::common::plugin_bridge::PluginBridgeError>> {
+        #[derive(Deserialize)]
+        struct LuaPayload {
+            session_id: SessionId,
+            plugin_name: String,
+        }
+
+        let lua: LuaPayload = serde_json::from_value(data)
+            .change_context(crate::common::plugin_bridge::PluginBridgeError)
+            .attach(ctx)
+            .attach("deserialize disable_plugin payload")?;
+
+        Ok(TogglePlugin {
+            session_id: lua.session_id,
+            plugin_name: lua.plugin_name,
+        })
+    }
+}
 impl BusMessage for SetManagedSession {}
+
+impl crate::common::plugin_bridge::TryFromLua for SetManagedSession {
+    const VERB: &'static str = "set_managed_session";
+
+    fn try_from_lua(
+        ctx: crate::common::plugin_bridge::CmdCtx,
+        data: serde_json::Value,
+    ) -> Result<Self, error_stack::Report<crate::common::plugin_bridge::PluginBridgeError>> {
+        #[derive(Deserialize)]
+        struct LuaPayload {
+            session_id: SessionId,
+            plugin_name: String,
+            managed_session_id: SessionId,
+        }
+
+        let lua: LuaPayload = serde_json::from_value(data)
+            .change_context(crate::common::plugin_bridge::PluginBridgeError)
+            .attach(ctx)
+            .attach("deserialize set_managed_session payload")?;
+
+        Ok(SetManagedSession {
+            session_id: lua.session_id,
+            plugin_name: lua.plugin_name,
+            managed_session_id: lua.managed_session_id,
+        })
+    }
+}
