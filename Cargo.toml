@@ -36,6 +36,7 @@ jinn-domain = { workspace = true }
 jinn-web-fetch = { workspace = true, features = ["headless-chrome"] }
 clap_complete = { workspace = true }
 tokio = { workspace = true }
+tokio-util = { workspace = true }
 kameo = { workspace = true }
 kameo_actors = { workspace = true }
 kanal = { workspace = true }

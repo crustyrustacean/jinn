@@ -109,6 +109,9 @@ pub struct SyncPlugins {
     plugin_data: PluginData,
     /// Channel for emitting commands from sync hooks.
     emit_tx: kanal::Sender<PluginCommand>,
+    /// Shared in-flight-request registry. Lets sync hooks cancel
+    /// async `ctx.request`s via `ctx.cancel(task)` (see Phase 2).
+    in_flight: super::InFlightRequests,
 }
 
 impl SyncPlugins {
@@ -121,12 +124,14 @@ impl SyncPlugins {
         hooks: HashMap<String, PluginHooks>,
         plugin_data: PluginData,
         emit_tx: kanal::Sender<PluginCommand>,
+        in_flight: super::InFlightRequests,
     ) -> Self {
         Self {
             lua,
             hooks,
             plugin_data,
             emit_tx,
+            in_flight,
         }
     }
 
@@ -139,7 +144,13 @@ impl SyncPlugins {
 impl Default for SyncPlugins {
     fn default() -> Self {
         let (emit_tx, _) = kanal::unbounded::<PluginCommand>();
-        Self::new(Lua::new(), HashMap::new(), PluginData::new(), emit_tx)
+        Self::new(
+            Lua::new(),
+            HashMap::new(),
+            PluginData::new(),
+            emit_tx,
+            super::InFlightRequests::new(),
+        )
     }
 }
 
@@ -289,6 +300,7 @@ impl SyncPlugins {
             hooks: HashMap::new(),
             plugin_data: PluginData::new(),
             emit_tx,
+            in_flight: super::InFlightRequests::new(),
         }
     }
 

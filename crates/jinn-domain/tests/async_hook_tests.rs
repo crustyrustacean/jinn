@@ -45,7 +45,7 @@ fn build_system(dir: &Path) -> TestSystem {
         Arc::new(move |cmd| {
             captured_clone.lock().push(cmd);
         }),
-        Arc::new(|name, data| {
+        Arc::new(|name, data, _cancel| {
             // Default request handler: echo back for "llm", null otherwise.
             let name = name.to_owned();
             let data = data.clone();

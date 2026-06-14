@@ -68,6 +68,7 @@ pub async fn handle_plugin_request(
     name: &str,
     data: &serde_json::Value,
     domain_ctx: &jinn_domain::feat::plugin_dispatch::DomainNodeContext,
+    cancel: Option<&tokio_util::sync::CancellationToken>,
 ) -> serde_json::Value {
     match name {
         "llm_oneshot" => {
@@ -103,6 +104,7 @@ pub async fn handle_plugin_request(
                         p.persist.unwrap_or(false),
                         p.disable_tool_loop.unwrap_or(false),
                         p.timeout_ms.unwrap_or(30_000),
+                        cancel,
                     )
                     .await
                 {
@@ -201,7 +203,7 @@ mod tests {
         // actor bus, so it needs the tokio runtime driving the test).
         let ctx_for_task = ctx.clone();
         let task = tokio::spawn(async move {
-            handle_plugin_request("llm_oneshot", &payload, &ctx_for_task).await
+            handle_plugin_request("llm_oneshot", &payload, &ctx_for_task, None).await
         });
 
         // The one-shot creates a NEW child session parented at the source, then
@@ -249,7 +251,7 @@ mod tests {
 
         // When calling handle_plugin_request and polling once.
         // (Source-missing errors synchronously, before the first await.)
-        let fut = handle_plugin_request("llm_oneshot", &payload, &ctx);
+        let fut = handle_plugin_request("llm_oneshot", &payload, &ctx, None);
         let mut fut = std::pin::pin!(fut);
         let waker = std::task::Waker::noop();
         let mut cx = std::task::Context::from_waker(&waker);
@@ -276,7 +278,7 @@ mod tests {
 
         // When calling handle_plugin_request with a payload missing `prompt`.
         let result =
-            handle_plugin_request("llm_oneshot", &json!({ "message": "wrong shape" }), &ctx).await;
+            handle_plugin_request("llm_oneshot", &json!({ "message": "wrong shape" }), &ctx, None).await;
 
         // Then the envelope is an error carrying the serde message.
         assert_eq!(result["ok"], json!(false), "must be an error envelope");

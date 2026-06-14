@@ -51,7 +51,7 @@ fn build_system(dir: &Path) -> TestSystem {
         Arc::new(move |cmd| {
             captured_clone.lock().push(cmd);
         }),
-        Arc::new(|name, _data| {
+        Arc::new(|name, _data, _cancel| {
             let name = name.to_owned();
             Box::pin(async move {
                 if name == "llm" {

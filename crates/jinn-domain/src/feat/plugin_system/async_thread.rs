@@ -20,6 +20,10 @@
 //! from the tokio-side request handler. This is why the thread runs inside
 //! a `LocalSet` — to allow async/await without `Send` bounds.
 
+use serde_json::json;
+use tokio::select;
+use tokio_util::sync::CancellationToken;
+
 use std::collections::HashMap;
 use std::path::PathBuf;
 
@@ -47,6 +51,7 @@ pub type RequestHandler = std::sync::Arc<
     dyn Fn(
             &str,
             &serde_json::Value,
+            Option<tokio_util::sync::CancellationToken>,
         ) -> std::pin::Pin<
             std::boxed::Box<dyn std::future::Future<Output = serde_json::Value> + Send>,
         > + Send
@@ -84,6 +89,8 @@ struct ThreadState {
     emit_tx: kanal::AsyncSender<PluginCommand>,
     /// Request handler.
     request_handler: RequestHandler,
+    /// Shared in-flight-request registry (for ctx.cancel / cancellable ctx.request).
+    in_flight: super::InFlightRequests,
 }
 
 /// Run the async plugin thread.
@@ -99,6 +106,7 @@ pub(crate) fn run_async_thread(
     plugin_data: PluginData,
     emit_tx: kanal::AsyncSender<PluginCommand>,
     request_handler: RequestHandler,
+    in_flight: super::InFlightRequests,
 ) {
     let rt = match Runtime::new() {
         Ok(r) => r,
@@ -125,6 +133,7 @@ pub(crate) fn run_async_thread(
         plugin_data,
         emit_tx,
         request_handler,
+        in_flight,
     };
 
     let local = tokio::task::LocalSet::new();
@@ -265,6 +274,7 @@ fn execute_plugin_tool(
         &state.plugin_data,
         &state.emit_tx,
         &state.request_handler,
+        &state.in_flight,
         Some(&data_scope_id),
     )
     .map_err(|e| Report::new(PluginError).attach(e.to_string()))
@@ -371,6 +381,7 @@ async fn run_hooks_fire(
             &state.plugin_data,
             &state.emit_tx,
             &state.request_handler,
+            &state.in_flight,
         )
         .await?;
     }
@@ -391,6 +402,7 @@ async fn run_hooks_fire(
                 &state.plugin_data,
                 &state.emit_tx,
                 &state.request_handler,
+                &state.in_flight,
             )
             .await?;
         }
@@ -418,6 +430,7 @@ async fn run_hooks_collect(
             &state.plugin_data,
             &state.emit_tx,
             &state.request_handler,
+            &state.in_flight,
         )
         .await
         {
@@ -449,6 +462,7 @@ async fn run_hooks_collect(
                 &state.plugin_data,
                 &state.emit_tx,
                 &state.request_handler,
+                &state.in_flight,
             )
             .await
             {
@@ -487,6 +501,7 @@ async fn run_single_hook(
     plugin_data: &PluginData,
     emit_tx: &kanal::AsyncSender<PluginCommand>,
     request_handler: &RequestHandler,
+    in_flight: &super::InFlightRequests,
 ) -> Result<Option<mlua::Value>, Report<PluginError>> {
     let table_opt: Option<mlua::Table> = lua
         .registry_value::<Option<mlua::Table>>(plugin_hooks.table())
@@ -523,6 +538,7 @@ async fn run_single_hook(
         plugin_data,
         emit_tx,
         request_handler,
+        in_flight,
         session_id.as_ref(),
     )
     .map_err(|e| Report::new(PluginError).attach(e.to_string()))
@@ -557,6 +573,7 @@ fn build_async_ctx(
     plugin_data: &PluginData,
     emit_tx: &kanal::AsyncSender<PluginCommand>,
     request_handler: &RequestHandler,
+    in_flight: &super::InFlightRequests,
     session_id: Option<&SessionId>,
 ) -> Result<mlua::Table, mlua::Error> {
     let ctx = lua.create_table()?;
@@ -590,18 +607,44 @@ fn build_async_ctx(
         ctx.set("emit", emit_fn)?;
     }
 
-    // ctx.request(name, data) → yields coroutine, awaits response.
+    // ctx.request(name, data, opts?) → yields coroutine, awaits response.
+    //
+    // `opts` is an optional table with key `task` (string). When present, the
+    // request is registered under that task name in the in-flight registry and
+    // the handler future races against a cancellation token. This lets
+    // `ctx.cancel(task)` abort the in-flight request from any hook (sync or
+    // async) and lets `ctx.gather` await multiple requests concurrently.
     {
         let handler = request_handler.clone();
-        let request_fn =
-            lua.create_async_function(move |lua, (name, data): (String, mlua::Value)| {
+        let in_flight = in_flight.clone();
+        let request_fn = lua.create_async_function(
+            move |lua, (name, data, opts): (String, mlua::Value, Option<mlua::Table>)| {
                 let handler = handler.clone();
+                let in_flight = in_flight.clone();
                 async move {
                     let json_data = bindings::value_to_json(&lua, &data).unwrap_or_default();
-                    let response = handler(&name, &json_data).await;
+                    let task: Option<String> = opts
+                        .as_ref()
+                        .and_then(|o| o.get::<String>("task").ok());
+                    let response = match task.as_deref() {
+                        Some(task) => {
+                            let token = in_flight.register(task);
+                            select! {
+                                r = handler(&name, &json_data, Some(token.clone())) => {
+                                    in_flight.remove(task);
+                                    r
+                                }
+                                _ = token.cancelled() => {
+                                    json!({"ok": false, "error": "cancelled"})
+                                }
+                            }
+                        }
+                        None => handler(&name, &json_data, None).await,
+                    };
                     bindings::json_to_lua_value(&lua, &response)
                 }
-            })?;
+            },
+        )?;
         ctx.set("request", request_fn)?;
     }
 
