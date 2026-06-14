@@ -57,21 +57,27 @@ pub(crate) fn promote_selected_to_top(entries: &mut Vec<PickerEntry>) {
     *entries = result;
 }
 
-/// Formats the footer line showing refresh keybind and last update time.
+/// Formats the footer line showing refresh keybind, last update time, and mode hint.
 ///
 /// Returns a styled [`Line`] with the pipe separator in muted text.
-/// Format: `CTRL+R to refresh | Updated <timestamp> (<humantime> ago)`
+/// The right-hand spans advertise the current picker mode (single vs alloy)
+/// and its toggle/confirm semantics.
 pub fn format_footer(
     model_cache: Option<&crate::feat::provider_infra::ModelCache>,
     width: usize,
     theme: &Theme,
     selected_count: usize,
+    alloy_mode: bool,
 ) -> ratatui::text::Line<'static> {
     use ratatui::style::Style;
     use ratatui::text::{Line, Span};
 
     let gray = Style::default().fg(theme.muted_text);
     let orange = Style::default().fg(theme.accent_action);
+
+    // Build the right-hand span list once: selection state + mode hint.
+    // Each mode advertises its own toggle target and ENTER semantics.
+    let right_spans = mode_hint_spans(alloy_mode, selected_count, &orange, &gray);
 
     let ts = model_cache.and_then(|c| c.last_updated_at);
     if let Some(ts) = ts {
@@ -87,34 +93,60 @@ pub fn format_footer(
         let pipe = "|";
         let mid = format!(" Updated {formatted_ts} (");
         let right = format!("{human} ago)");
-        let selected_text = format!(" {selected_count} selected");
 
-        let line = Line::from(vec![
-            Span::styled(left.to_owned(), orange),
-            Span::styled(pipe.to_owned(), gray),
-            Span::styled(mid, gray),
-            Span::styled(right, Style::default().fg(age_color)),
-            Span::styled(pipe.to_owned(), gray),
-            Span::styled(selected_text, orange),
-            Span::styled(" \u{00b7} TAB toggle".to_owned(), gray),
-        ]);
+        let line = Line::from(
+            std::iter::once(Span::styled(left.to_owned(), orange))
+                .chain(std::iter::once(Span::styled(pipe.to_owned(), gray)))
+                .chain(std::iter::once(Span::styled(mid, gray)))
+                .chain(std::iter::once(Span::styled(
+                    right,
+                    Style::default().fg(age_color),
+                )))
+                .chain(std::iter::once(Span::styled(pipe.to_owned(), gray)))
+                .chain(right_spans)
+                .collect::<Vec<_>>(),
+        );
         truncate_line(line, width)
     } else {
         let left = "CTRL+R to refresh ";
         let pipe = "|";
         let right = " Updated never";
 
-        let selected_text = format!(" {selected_count} selected");
-
-        let line = Line::from(vec![
-            Span::styled(left.to_owned(), orange),
-            Span::styled(pipe.to_owned(), gray),
-            Span::styled(right.to_owned(), gray),
-            Span::styled(pipe.to_owned(), gray),
-            Span::styled(selected_text, orange),
-            Span::styled(" \u{00b7} TAB toggle".to_owned(), gray),
-        ]);
+        let line = Line::from(
+            std::iter::once(Span::styled(left.to_owned(), orange))
+                .chain(std::iter::once(Span::styled(pipe.to_owned(), gray)))
+                .chain(std::iter::once(Span::styled(right.to_owned(), gray)))
+                .chain(std::iter::once(Span::styled(pipe.to_owned(), gray)))
+                .chain(right_spans)
+                .collect::<Vec<_>>(),
+        );
         truncate_line(line, width)
+    }
+}
+
+/// Builds the right-hand footer spans: selection count + mode hint.
+///
+/// - Single mode: `C-a alloy mode · Enter selects`
+/// - Alloy mode:  `N selected · TAB toggle · Enter adds+confirms`
+fn mode_hint_spans(
+    alloy_mode: bool,
+    selected_count: usize,
+    orange: &ratatui::style::Style,
+    gray: &ratatui::style::Style,
+) -> Vec<ratatui::text::Span<'static>> {
+    use ratatui::text::Span;
+    if alloy_mode {
+        vec![
+            Span::styled(format!(" {selected_count} selected"), *orange),
+            Span::styled(" \u{00b7} TAB toggle".to_owned(), *gray),
+            Span::styled(" \u{00b7} C-a single".to_owned(), *gray),
+            Span::styled(" \u{00b7} Enter adds+confirms".to_owned(), *gray),
+        ]
+    } else {
+        vec![
+            Span::styled(" C-a alloy mode".to_owned(), *orange),
+            Span::styled(" \u{00b7} Enter selects".to_owned(), *gray),
+        ]
     }
 }
 

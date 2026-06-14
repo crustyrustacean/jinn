@@ -709,7 +709,7 @@ fn sorted_entries_sorts_by_model_name_within_blocks() {
 fn format_footer_without_timestamp_shows_never() {
     // Given no model cache.
     // When formatting the footer.
-    let line = format_footer(None, 80, &default_theme(), 0);
+    let line = format_footer(None, 80, &default_theme(), 0, false);
 
     // Then the footer contains "Updated never".
     let text: String = line.spans.iter().map(|s| &*s.content).collect();
@@ -727,7 +727,7 @@ fn format_footer_with_timestamp_shows_age() {
     cache.last_updated_at = Some(ts);
 
     // When formatting the footer.
-    let line = format_footer(Some(&cache), 120, &default_theme(), 0);
+    let line = format_footer(Some(&cache), 120, &default_theme(), 0, false);
 
     // Then the footer contains "Updated" and "ago".
     let text: String = line.spans.iter().map(|s| &*s.content).collect();
@@ -740,7 +740,7 @@ fn format_footer_with_timestamp_shows_age() {
 fn format_footer_truncates_to_width() {
     // Given no timestamp and a very narrow width.
     // When formatting the footer with width 10.
-    let line = format_footer(None, 10, &default_theme(), 0);
+    let line = format_footer(None, 10, &default_theme(), 0, false);
 
     // Then the total character count fits within 10.
     let total_len: usize = line
@@ -753,14 +753,40 @@ fn format_footer_truncates_to_width() {
 
 #[rstest::rstest]
 fn format_footer_with_selected_count_shows_count() {
-    // Given no model cache but 3 selected entries.
+    // Given alloy mode with 3 selected entries.
     // When formatting the footer.
-    let line = format_footer(None, 120, &default_theme(), 3);
+    let line = format_footer(None, 120, &default_theme(), 3, true);
 
     // Then the footer contains the selected count and TAB hint.
     let text: String = line.spans.iter().map(|s| &*s.content).collect();
     assert!(text.contains("3 selected"));
     assert!(text.contains("TAB toggle"));
+}
+
+#[rstest::rstest]
+fn format_footer_single_mode_shows_alloy_toggle_hint() {
+    // Given single mode (alloy_mode = false).
+    // When formatting the footer.
+    let line = format_footer(None, 120, &default_theme(), 0, false);
+
+    // Then the footer shows the alloy-mode toggle hint, not the count.
+    let text: String = line.spans.iter().map(|s| &*s.content).collect();
+    assert!(text.contains("C-a alloy mode"), "single hint missing: {text}");
+    assert!(text.contains("Enter selects"), "enter hint missing: {text}");
+    assert!(!text.contains("selected"), "count should not show in single mode: {text}");
+}
+
+#[rstest::rstest]
+fn format_footer_alloy_mode_shows_single_toggle_hint() {
+    // Given alloy mode with 2 selected entries.
+    // When formatting the footer.
+    let line = format_footer(None, 120, &default_theme(), 2, true);
+
+    // Then the footer shows the single-mode toggle hint and enter-adds hint.
+    let text: String = line.spans.iter().map(|s| &*s.content).collect();
+    assert!(text.contains("C-a single"), "alloy hint missing: {text}");
+    assert!(text.contains("Enter adds+confirms"), "enter hint missing: {text}");
+    assert!(text.contains("2 selected"), "count missing: {text}");
 }
 
 #[rstest::rstest]
