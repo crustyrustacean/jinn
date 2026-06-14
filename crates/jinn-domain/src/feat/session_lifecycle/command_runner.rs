@@ -186,6 +186,10 @@ pub type SpawnTeardownResult = Result<
 
 /// Spawns a setup command and returns a cancel handle and a joinable reader task.
 ///
+/// The shell process is spawned with `cwd` as its working directory so the
+/// script's relative paths resolve against the session CWD, not jinn's process
+/// working directory.
+///
 /// The [`LifecycleCancelHandle`] can be used to cancel the command from outside
 /// this task (see its docs). The reader task awaits exit, reads stdout/stderr,
 /// and produces the canonicalized CWD path.
@@ -200,13 +204,14 @@ pub type SpawnTeardownResult = Result<
 /// - joining fails
 /// - the returned path cannot be canonicalized
 #[expect(clippy::expect_used, reason = "infallible")]
-pub fn spawn_setup_command(command: &str, shell: &str) -> SpawnSetupResult {
+pub fn spawn_setup_command(command: &str, shell: &str, cwd: &std::path::Path) -> SpawnSetupResult {
     use error_stack::ResultExt as _;
 
     let mut child = {
         let mut cmd = tokio::process::Command::new(shell);
         cmd.arg("-c")
             .arg(command)
+            .current_dir(cwd)
             .stdout(std::process::Stdio::piped())
             .stderr(std::process::Stdio::piped());
 
@@ -309,6 +314,10 @@ pub fn spawn_setup_command(command: &str, shell: &str) -> SpawnSetupResult {
 
 /// Spawns a teardown command and returns a shared child handle and a joinable task.
 ///
+/// The shell process is spawned with `cwd` as its working directory so the
+/// script's relative paths resolve against the session CWD, not jinn's process
+/// working directory.
+///
 /// Same pattern as [`spawn_setup_command`] but only checks the exit code.
 ///
 /// # Panics
@@ -319,13 +328,18 @@ pub fn spawn_setup_command(command: &str, shell: &str) -> SpawnSetupResult {
 ///
 /// Returns an error if the shell command fails to spawn or canonicalize the working directory.
 #[expect(clippy::expect_used, reason = "infallible")]
-pub fn spawn_teardown_command(command: &str, shell: &str) -> SpawnTeardownResult {
+pub fn spawn_teardown_command(
+    command: &str,
+    shell: &str,
+    cwd: &std::path::Path,
+) -> SpawnTeardownResult {
     use error_stack::ResultExt as _;
 
     let mut child = {
         let mut cmd = tokio::process::Command::new(shell);
         cmd.arg("-c")
             .arg(command)
+            .current_dir(cwd)
             .stdout(std::process::Stdio::piped())
             .stderr(std::process::Stdio::piped());
 
@@ -664,11 +678,86 @@ mod tests {
         assert!(result.is_ok());
     }
 
+    // --- CWD propagation regression tests ---
+    //
+    // These observe the *spawned process's actual working directory* —
+    // the gap that let the bug ship. They use spawn_setup_command /
+    // spawn_teardown_command directly (the functions with the cwd param),
+    // not the run_* convenience wrappers.
+
+    #[rstest::rstest]
+    #[tokio::test]
+    async fn setup_script_runs_in_session_cwd() {
+        // Given a tempdir used as the session CWD.
+        // We observe the spawned shell's *own* working dir via `$PWD` (printed
+        // by the script itself), so the assertion is independent of where the
+        // jinn test process or its reader task runs.
+        let dir = tempfile::tempdir().expect("temp dir");
+        let expected = std::fs::canonicalize(dir.path()).expect("canonicalize dir");
+
+        // When spawning a setup that echoes its own `$PWD`.
+        let (_handle, join_handle) =
+            spawn_setup_command("echo $PWD", "/bin/sh", dir.path()).expect("spawn");
+        let result = join_handle.await.expect("join").expect("setup ok");
+
+        // Then the resolved canonical path equals the session CWD, proving the
+        // spawned shell ran *in* it. If the bug regressed (no .current_dir),
+        // `$PWD` would be jinn's process dir and this would fail.
+        assert_eq!(result, Some(expected));
+    }
+
+    #[rstest::rstest]
+    #[tokio::test]
+    async fn setup_side_effect_script_writes_file_in_session_cwd() {
+        // Given a tempdir as the session CWD.
+        let dir = tempfile::tempdir().expect("temp dir");
+        let out_file = dir.path().join("out.txt");
+        assert!(!out_file.exists(), "out.txt should not exist before setup");
+
+        // When spawning a setup that writes a relative file and prints nothing
+        // (side-effect-only, no stdout CWD).
+        let (_handle, join_handle) =
+            spawn_setup_command("touch out.txt", "/bin/sh", dir.path()).expect("spawn");
+        let result = join_handle.await.expect("join").expect("setup ok");
+
+        // Then out.txt exists *in the session CWD* (not jinn's process dir), and
+        // the command returns Ok(None) since it printed no path.
+        assert!(
+            out_file.exists(),
+            "out.txt should be created in session CWD"
+        );
+        assert_eq!(result, None);
+    }
+
+    #[rstest::rstest]
+    #[tokio::test]
+    async fn teardown_script_runs_in_session_cwd() {
+        // Given a tempdir as the session CWD.
+        let dir = tempfile::tempdir().expect("temp dir");
+        let marker = dir.path().join("cleanup.log");
+        assert!(
+            !marker.exists(),
+            "cleanup.log should not exist before teardown"
+        );
+
+        // When spawning a teardown that writes a relative file.
+        let (_handle, join_handle) =
+            spawn_teardown_command("printf x > cleanup.log", "/bin/sh", dir.path()).expect("spawn");
+        let result = join_handle.await.expect("join");
+
+        // Then cleanup.log exists *in the session CWD*, and the teardown succeeded.
+        assert!(
+            marker.exists(),
+            "cleanup.log should be created in session CWD"
+        );
+        assert!(result.is_ok(), "teardown should succeed");
+    }
     #[rstest::rstest]
     #[tokio::test]
     async fn aborting_reader_task_yields_cancelled_or_failed_outcome() {
         // Given a setup command that sleeps indefinitely.
-        let (handle, join_handle) = spawn_setup_command("sleep 30", "/bin/sh").expect("spawn");
+        let (handle, join_handle) =
+            spawn_setup_command("sleep 30", "/bin/sh", std::path::Path::new(".")).expect("spawn");
 
         // When killing the process group then aborting the inner reader task.
         crate::common::process_kill::kill_process_group_by_pid(handle.pid);
@@ -702,7 +791,9 @@ mod tests {
         // panicked like the old code, the join below would surface it as a panic payload.
         let handle_cl = rt.handle().clone();
         rt.block_on(async move {
-            let (handle, _join_handle) = spawn_setup_command("sleep 30", "/bin/sh").expect("spawn");
+            let (handle, _join_handle) =
+                spawn_setup_command("sleep 30", "/bin/sh", std::path::Path::new("."))
+                    .expect("spawn");
 
             // Cancel from a runtime worker thread, exactly as the session actor
             // does. The whole point of this test is that this does NOT panic.
