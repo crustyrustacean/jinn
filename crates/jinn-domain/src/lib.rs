@@ -53,7 +53,6 @@ pub use common::services::test_services::TestServices;
 pub use common::core::{AppCore, SHUTDOWN_TIMEOUT, STARTUP_TIMEOUT, wait_for_system_ready};
 
 // Re-export intent types
-pub use common::services::ActorChannelService;
 pub use feat::intent::IntentHandler;
 
 // Re-export providers types
@@ -92,7 +91,6 @@ pub use feat::preferences_actor::{InitOutcome, init_default_config_to, preferenc
 pub use feat::persona::{Persona, PersonaEntry};
 
 // Re-export services submodules
-pub use common::services::actor_channel;
 
 // Re-export protocol types at crate root
 pub use common::actor::protocol::dynamic_command::DynamicCommand;
@@ -100,8 +98,8 @@ pub use common::actor::protocol::dynamic_event::DynamicEvent;
 pub use protocol::PickerEntry;
 pub use protocol::entries_to_messages;
 pub use protocol::{
-    AppMsg, ChatEntry, ChatEntryId, ChatEntryKind, Intent, IntentResult, Key, KeyEvent, Mode,
-    Modifiers, PickerKind, PinPosition, PromptTemplate,
+    ChatEntry, ChatEntryId, ChatEntryKind, Intent, IntentResult, Key, KeyEvent, Mode, Modifiers,
+    PickerKind, PinPosition, PromptTemplate,
 };
 
 // Re-export domain types from their canonical locations
