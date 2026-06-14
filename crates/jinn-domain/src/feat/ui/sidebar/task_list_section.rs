@@ -927,11 +927,12 @@ mod tests {
         );
         // And the expanded height exceeds the collapsed height (sanity: tasks shown).
         assert!(
-            height > compute_height(&list_before, &{
-                let mut a = AppState::default();
-                a.frontend.sidebar_width = 30;
-                a
-            }),
+            height
+                > compute_height(&list_before, &{
+                    let mut a = AppState::default();
+                    a.frontend.sidebar_width = 30;
+                    a
+                }),
             "expanded height should exceed collapsed height"
         );
     }
@@ -949,8 +950,12 @@ mod tests {
         let mut app = AppState::default();
         app.frontend.sidebar_width = 30;
         let session = app.session.active_session_mut();
-        session.task_list_mut().add_phase("initialize the loader tail");
-        session.task_list_mut().add_phase("validate the payload tail");
+        session
+            .task_list_mut()
+            .add_phase("initialize the loader tail");
+        session
+            .task_list_mut()
+            .add_phase("validate the payload tail");
         session
             .task_list_mut()
             .add_phase("register the handler tail");
