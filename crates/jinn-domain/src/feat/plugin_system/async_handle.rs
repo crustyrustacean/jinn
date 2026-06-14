@@ -327,6 +327,21 @@ impl AsyncPluginHandle {
     pub fn set_plugin_data(&self, plugin_name: &str, value: serde_json::Value) {
         self.plugin_data.set(plugin_name, value);
     }
+    /// Set a plugin's data scoped to a session (replaces the entire value).
+    ///
+    /// This is the write-side counterpart of the session-scoped read used by
+    /// sync hooks (e.g. the chat-input badge). Async hooks write via the
+    /// Lua `ctx.merge_plugin_data`/`ctx.set_plugin_data` bindings, which also
+    /// scope to the hook's session.
+    pub fn set_plugin_data_for_session(
+        &self,
+        session_id: &SessionId,
+        plugin_name: &str,
+        value: serde_json::Value,
+    ) {
+        self.plugin_data
+            .set_for_session(Some(session_id), plugin_name, value);
+    }
 
     /// Get a snapshot of a plugin's data (no session scope — for global plugins).
     #[must_use]
