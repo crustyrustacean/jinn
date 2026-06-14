@@ -3,8 +3,6 @@
 //! Provides a unified message type that merges crossterm terminal events,
 //! periodic tick messages, and commands into a single stream.
 
-use jinn_domain as npr;
-
 pub mod handler;
 pub mod sender;
 
@@ -15,52 +13,21 @@ pub use sender::MsgSender;
 /// Merges crossterm terminal events, periodic tick messages,
 /// and commands (from key handling or actors) into a single stream
 /// consumed by the main event loop.
-#[expect(
-    clippy::large_enum_variant,
-    reason = "Command variant is channel-sent only, never bulk-stored; boxing would add a heap allocation per message for no benefit"
-)]
-#[derive(Debug)]
 pub enum Msg {
     /// Periodic tick for render refresh.
     Tick,
     /// A crossterm terminal event (key press, resize, etc.).
     Input(crossterm::event::Event),
-    /// A command from key handling or an actor.
-    Command(npr::Command),
+    /// A bus closure from key handling or external injection.
+    Bridge(jinn_domain::BridgeClosure),
 }
 
-#[cfg(test)]
-mod tests {
-    #![allow(
-        clippy::expect_used,
-        clippy::indexing_slicing,
-        clippy::panic,
-        reason = "test code, panics are acceptable"
-    )]
-    use jinn_domain::PushChatEntry;
-
-    use super::*;
-
-    #[rstest::rstest]
-    fn command_message_carries_command() {
-        // Given a Command message with a PushChatEntry.
-        let msg = Msg::Command(npr::Command::PushChatEntry(PushChatEntry {
-            session_id: npr::SessionId::new(),
-            entry: npr::ChatEntry::user("hello"),
-        }));
-
-        // When matching on the message.
-        match msg {
-            Msg::Command(npr::Command::PushChatEntry(payload)) => {
-                assert_eq!(
-                    payload.entry.kind,
-                    npr::ChatEntryKind::User {
-                        display: "hello".to_owned(),
-                        expanded: "hello".to_owned()
-                    }
-                );
-            }
-            _ => panic!("expected Command"),
+impl std::fmt::Debug for Msg {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        match self {
+            Self::Tick => f.write_str("Tick"),
+            Self::Input(e) => f.debug_tuple("Input").field(e).finish(),
+            Self::Bridge(_) => f.write_str("Bridge(<closure>)"),
         }
     }
 }

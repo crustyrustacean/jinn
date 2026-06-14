@@ -87,12 +87,13 @@ mod tests {
     use ratatui::style::Color;
 
     /// Creates a minimal `TuiApp` for render testing.
-    fn render_test_app() -> crate::TuiApp {
-        crate::TuiApp::test_builder().build()
+    async fn render_test_app() -> crate::TuiApp {
+        crate::TuiApp::test_builder().build().await
     }
 
     #[rstest::rstest]
-    fn cell_outside_selection_is_unchanged() {
+    #[tokio::test]
+    async fn cell_outside_selection_is_unchanged() {
         // Given a buffer with distinctively colored cells and an active selection.
         let area = Rect::new(0, 0, 20, 10);
         let mut buf = ratatui::buffer::Buffer::empty(area);
@@ -104,7 +105,7 @@ mod tests {
         buf.cell_mut((15, 8)).unwrap().set_bg(Color::Green);
 
         // And an app with an Active selection covering (2,2) to (5,4).
-        let mut app = render_test_app();
+        let mut app = render_test_app().await;
         app.selection = SelectionState::Active {
             anchor: (2, 2),
             focus: (5, 4),
@@ -121,7 +122,8 @@ mod tests {
     }
 
     #[rstest::rstest]
-    fn cell_at_raw_anchor_not_highlighted() {
+    #[tokio::test]
+    async fn cell_at_raw_anchor_not_highlighted() {
         // Given a buffer covering a large area and a selection where the raw anchor
         // extends beyond the selection's constraining bounds.
         let full_area = Rect::new(0, 0, 30, 30);
@@ -138,7 +140,7 @@ mod tests {
         // anchor=(0,0) is outside bounds, focus=(8,8) is inside.
         // selection_rect() should clamp to (5,5)-(8,8).
         let bounds = Rect::new(5, 5, 10, 10);
-        let mut app = render_test_app();
+        let mut app = render_test_app().await;
         app.selection = SelectionState::Active {
             anchor: (0, 0),
             focus: (8, 8),
@@ -155,7 +157,8 @@ mod tests {
     }
 
     #[rstest::rstest]
-    fn highlight_does_nothing_when_idle() {
+    #[tokio::test]
+    async fn highlight_does_nothing_when_idle() {
         // Given a buffer with distinctly colored cells and an Idle selection.
         let area = Rect::new(0, 0, 20, 10);
         let mut buf = ratatui::buffer::Buffer::empty(area);
@@ -163,7 +166,7 @@ mod tests {
         buf.cell_mut((5, 5)).unwrap().set_bg(Color::Blue);
 
         // And an app with an Idle selection.
-        let mut app = render_test_app();
+        let mut app = render_test_app().await;
         app.selection = SelectionState::Idle;
 
         // When applying selection highlight.
@@ -176,7 +179,8 @@ mod tests {
     }
 
     #[rstest::rstest]
-    fn backward_selection_highlights_same_cells_as_forward() {
+    #[tokio::test]
+    async fn backward_selection_highlights_same_cells_as_forward() {
         // Given a buffer with colored cells on rows 1-3.
         let area = Rect::new(0, 0, 10, 5);
         let forward_buf = {
@@ -225,13 +229,13 @@ mod tests {
         };
 
         // And forward and backward selections covering the same endpoints.
-        let mut forward_app = render_test_app();
+        let mut forward_app = render_test_app().await;
         forward_app.selection = SelectionState::Active {
             anchor: (1, 1),
             focus: (3, 3),
             bounds: area,
         };
-        let mut backward_app = render_test_app();
+        let mut backward_app = render_test_app().await;
         backward_app.selection = SelectionState::Active {
             anchor: (3, 3),
             focus: (1, 1),

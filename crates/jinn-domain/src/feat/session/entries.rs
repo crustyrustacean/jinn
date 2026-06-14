@@ -231,7 +231,8 @@ mod tests {
     use super::*;
 
     #[rstest::rstest]
-    fn session_entry_display_label_returns_title() {
+    #[tokio::test]
+    async fn session_entry_display_label_returns_title() {
         // Given a SessionTreeEntry with a title.
         let entry = SessionTreeEntry::new(
             SessionId::new(),
@@ -248,7 +249,8 @@ mod tests {
     }
 
     #[rstest::rstest]
-    fn render_row_contains_title() {
+    #[tokio::test]
+    async fn render_row_contains_title() {
         // Given a session tree entry.
         let entry = SessionTreeEntry::new(
             SessionId::new(),
@@ -270,7 +272,7 @@ mod tests {
     #[tokio::test]
     async fn load_session_entries_returns_empty_on_error() {
         // Given a test Services (with fake session store that returns empty).
-        let services = crate::common::services::Services::new();
+        let services = crate::common::services::Services::new_fake().await;
 
         // When loading session entries.
         let entries = load_session_entries(&services, &default_theme()).await;

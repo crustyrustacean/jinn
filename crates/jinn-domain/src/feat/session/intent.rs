@@ -1,8 +1,9 @@
 //! Session management intent handlers - session creation, model refresh, and prompt template rescan.
 
+use crate::RefreshModels;
 use crate::RescanPromptTemplates;
 use crate::common::app_state::AppState;
-use crate::protocol::{ChatEntry, Command, IntentResult};
+use crate::protocol::{ChatEntry, IntentResult};
 
 use super::validator;
 
@@ -21,7 +22,7 @@ pub fn handle_refresh_models(state: &mut AppState) -> IntentResult {
         .active_session_mut()
         .push_entry(ChatEntry::transient("Refreshing models..."));
 
-    IntentResult::with_commands(vec![Command::RefreshModels])
+    IntentResult::with_message(RefreshModels)
 }
 
 /// Rescans prompt templates from disk.
@@ -34,9 +35,7 @@ pub fn handle_rescan_prompt_templates(state: &mut AppState) -> IntentResult {
 
     let session_id = state.active_session().session_id().clone();
 
-    IntentResult::with_commands(vec![Command::RescanPromptTemplates(
-        RescanPromptTemplates { session_id },
-    )])
+    IntentResult::with_message(RescanPromptTemplates { session_id })
 }
 
 #[cfg(test)]
@@ -49,7 +48,7 @@ mod tests {
         reason = "test code"
     )]
     use crate::common::app_state::AppState;
-    use crate::protocol::{ChatEntry, ChatEntryKind, Command, PickerKind};
+    use crate::protocol::{ChatEntry, ChatEntryKind, PickerKind};
 
     use crate::feat::session::model_selection::ModelSelection;
 
@@ -128,13 +127,8 @@ mod tests {
         // When handling RefreshModels.
         let result = handle_refresh_models(&mut state);
 
-        // And a RefreshModels command is returned.
-        assert!(
-            result
-                .commands
-                .iter()
-                .any(|c| matches!(c, Command::RefreshModels))
-        );
+        // Then a message is returned.
+        assert!(!result.messages.is_empty());
     }
 
     #[rstest::rstest]
@@ -146,7 +140,7 @@ mod tests {
         let result = handle_refresh_models(&mut state);
 
         // Then no commands.
-        assert!(result.commands.is_empty());
+        assert!(result.message_names.is_empty());
     }
 
     #[rstest::rstest]
@@ -171,12 +165,7 @@ mod tests {
         // When handling RescanPromptTemplates.
         let result = handle_rescan_prompt_templates(&mut state);
 
-        // And a RescanPromptTemplates command is returned.
-        assert!(
-            result
-                .commands
-                .iter()
-                .any(|c| matches!(c, Command::RescanPromptTemplates(..)))
-        );
+        // Then a message is returned.
+        assert!(!result.messages.is_empty());
     }
 }

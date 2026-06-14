@@ -19,6 +19,19 @@ pub enum Runner {
 }
 
 impl Runner {
+    /// Returns a handle to the root supervisor actor ref, for coordinated shutdown.
+    ///
+    /// Returns `None` in modes that don't have an actor system (e.g. headless without services).
+    pub fn root_supervisor(
+        &self,
+    ) -> Option<jinn_domain::common::root_supervisor::RootSupervisorRef> {
+        match self {
+            Runner::Tui(app) => Some(app.services.root_supervisor.clone()),
+            #[cfg(debug_assertions)]
+            Runner::Headless(app) => Some(app.root_supervisor()),
+        }
+    }
+
     /// Runs the selected mode to completion.
     ///
     /// For TUI mode, runs the terminal event loop.
@@ -33,7 +46,7 @@ impl Runner {
                 jinn_tui::run(*app).change_context(AppError)?;
             }
             #[cfg(debug_assertions)]
-            Runner::Headless(mut app) => {
+            Runner::Headless(app) => {
                 app.shutdown();
                 app.print_history();
             }

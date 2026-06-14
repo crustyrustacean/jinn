@@ -1,6 +1,8 @@
 //! Session teardown handler.
 
+use crate::IntentResult;
 use crate::common::app_state::AppState;
+use crate::feat::session_lifecycle::protocol::RunSessionTeardown;
 use crate::feat::ui::sidebar::sessions::close::validate_session_close;
 use crate::feat::ui::sidebar::sessions::state::sorted_open_sessions;
 
@@ -63,13 +65,9 @@ pub fn handle_session_teardown(state: &mut AppState) -> crate::protocol::IntentR
         crate::feat::session_lifecycle::builtin::LifecycleCommand::Builtin(id) => id.to_string(),
     };
 
-    crate::protocol::IntentResult::with_commands(vec![
-        crate::protocol::Command::RunSessionTeardown(
-            crate::feat::session_lifecycle::protocol::command::RunSessionTeardown {
-                session_id: target_id,
-                command: rendered,
-                args: lifecycle_args,
-            },
-        ),
-    ])
+    IntentResult::with_message(RunSessionTeardown {
+        session_id: target_id,
+        command: rendered,
+        args: lifecycle_args,
+    })
 }

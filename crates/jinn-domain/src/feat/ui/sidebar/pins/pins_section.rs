@@ -16,7 +16,7 @@ use crate::feat::ui::sidebar::section_trait::{
     EnterFrom, SectionNavResult, SidebarIntent, SidebarSection, SidebarSectionId,
 };
 use crate::protocol::{
-    ChatEntryId, ChatEntryKind, Command, IntentResult, PickerKind, PinPosition, SessionId,
+    ChatEntryId, ChatEntryKind, IntentResult, PickerKind, PinPosition, SessionId,
 };
 use ratatui::Frame;
 use ratatui::layout::Rect;
@@ -174,10 +174,10 @@ pub fn handle_pins_unpin(state: &mut AppState) -> IntentResult {
         return IntentResult::empty();
     }
     if let Some((session_id, entry_id)) = resolve_selected_entry_id(state) {
-        IntentResult::with_commands(vec![Command::UnpinChatEntry(UnpinChatEntry {
+        IntentResult::with_message(UnpinChatEntry {
             session_id,
             entry_id,
-        })])
+        })
     } else {
         IntentResult::empty()
     }
@@ -189,11 +189,11 @@ pub fn handle_pins_pin(state: &mut AppState, position: PinPosition) -> IntentRes
         return IntentResult::empty();
     }
     if let Some((session_id, entry_id)) = resolve_selected_entry_id(state) {
-        IntentResult::with_commands(vec![Command::PinChatEntry(PinChatEntry {
+        IntentResult::with_message(PinChatEntry {
             session_id,
             entry_id,
             position,
-        })])
+        })
     } else {
         IntentResult::empty()
     }
@@ -215,11 +215,11 @@ pub fn handle_pins_pin_cycle(state: &mut AppState) -> IntentResult {
     let next = cycle_position(current);
     let session_id = state.session.active_session_id().clone();
     let entry_id = entry.id.clone();
-    IntentResult::with_commands(vec![Command::PinChatEntry(PinChatEntry {
+    IntentResult::with_message(PinChatEntry {
         session_id,
         entry_id,
         position: next,
-    })])
+    })
 }
 
 // ---------------------------------------------------------------------------

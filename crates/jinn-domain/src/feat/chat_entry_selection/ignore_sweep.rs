@@ -9,7 +9,7 @@ use crate::common::app_state::AppState;
 use crate::feat::context::protocol::event::ContextOverrideChanged;
 use crate::feat::session::chat_entry::ChatEntry;
 use crate::feat::session_lifecycle::protocol::command::PersistSession;
-use crate::protocol::{ChatEntryId, Command, ContextOverride, Event, IntentResult, SessionId};
+use crate::protocol::{ChatEntryId, ContextOverride, IntentResult, SessionId};
 
 use super::intent::advance_selection_one;
 
@@ -36,7 +36,7 @@ pub(crate) fn run_sweep(state: &mut AppState, target: ContextOverride) -> Intent
                 if changed_ids.is_empty() {
                     return IntentResult::empty();
                 }
-                return finalize_sweep(state, session_id, changed_ids);
+                return finalize_sweep(state, &session_id, changed_ids);
             }
             continue;
         }
@@ -51,7 +51,7 @@ pub(crate) fn run_sweep(state: &mut AppState, target: ContextOverride) -> Intent
         if session.selected_entry().is_none() {
             if !advance_selection_one(session) {
                 session.set_ignore_sweep(target);
-                return finalize_sweep(state, session_id, changed_ids);
+                return finalize_sweep(state, &session_id, changed_ids);
             }
             // Landed on another obstacle — loop will skip it.
             continue;
@@ -59,7 +59,7 @@ pub(crate) fn run_sweep(state: &mut AppState, target: ContextOverride) -> Intent
 
         let Some(selected) = session.selected_entry() else {
             session.set_ignore_sweep(target);
-            return finalize_sweep(state, session_id, changed_ids);
+            return finalize_sweep(state, &session_id, changed_ids);
         };
         let entry_id = selected.id.clone();
 
@@ -76,9 +76,9 @@ pub(crate) fn run_sweep(state: &mut AppState, target: ContextOverride) -> Intent
         session.set_ignore_sweep(target);
 
         if at_bottom {
-            return finalize_sweep(state, session_id, changed_ids);
+            return finalize_sweep(state, &session_id, changed_ids);
         }
-        return finalize_sweep(state, session_id, changed_ids);
+        return finalize_sweep(state, &session_id, changed_ids);
     }
 }
 
@@ -86,20 +86,15 @@ pub(crate) fn run_sweep(state: &mut AppState, target: ContextOverride) -> Intent
 /// `ContextOverrideChanged` event per entry whose override actually changed.
 fn finalize_sweep(
     _state: &mut AppState,
-    session_id: SessionId,
+    session_id: &SessionId,
     changed_ids: Vec<ChatEntryId>,
 ) -> IntentResult {
-    let events: Vec<Event> = changed_ids
-        .into_iter()
-        .map(|id| {
-            Event::ContextOverrideChanged(ContextOverrideChanged {
-                session_id: session_id.clone(),
-                entry_id: id,
-            })
-        })
-        .collect();
-    IntentResult::with_commands_and_events(
-        vec![Command::PersistSession(PersistSession { session_id })],
-        events,
-    )
+    let events = changed_ids.into_iter().map(|id| ContextOverrideChanged {
+        session_id: session_id.clone(),
+        entry_id: id,
+    });
+    IntentResult::with_message(PersistSession {
+        session_id: session_id.clone(),
+    })
+    .with_messages(events)
 }

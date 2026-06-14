@@ -8,8 +8,7 @@
 //! Relocated from `PromptAssemblyActor` - these concerns are session-related
 //! mutations of `AppState`, not part of prompt assembly.
 
-use crate::common::actor::ActorContext;
-
+use crate::common::actor_deps::BusPublish;
 use crate::feat::context::protocol::command::{
     LoadPersonaPickerEntries, PinChatEntry, UnpinChatEntry,
 };
@@ -18,41 +17,40 @@ use crate::feat::persona::PersonaEntry;
 use crate::feat::provider::protocol::event::PromptTemplatesLoaded;
 use crate::feat::tools_actor::protocol::event::ToolsRegistered;
 use crate::feat::ui::picker_states::PickerExt;
-use crate::protocol::Event;
 
 use super::super::SessionPersistenceActor;
 
 impl SessionPersistenceActor {
     /// PinChatEntry: pin entry in session.
-    pub(in crate::feat::session::session_actor) fn handle_pin_chat_entry(
+    pub(in crate::feat::session::session_actor) async fn handle_pin_chat_entry(
         &self,
         payload: &PinChatEntry,
-        ctx: &ActorContext,
     ) {
         {
             let mut state = self.state.write();
             let session = state.session_mut_or_create(&payload.session_id);
             session.pin_entry(&payload.entry_id, payload.position);
         }
-        let _ = ctx.send_event(Event::ChatEntryPinChanged(ChatEntryPinChanged {
+        self.publish(ChatEntryPinChanged {
             session_id: payload.session_id.clone(),
-        }));
+        })
+        .await;
     }
 
     /// UnpinChatEntry: unpin entry in session.
-    pub(in crate::feat::session::session_actor) fn handle_unpin_chat_entry(
+    pub(in crate::feat::session::session_actor) async fn handle_unpin_chat_entry(
         &self,
         payload: &UnpinChatEntry,
-        ctx: &ActorContext,
     ) {
         {
             let mut state = self.state.write();
             let session = state.session_mut_or_create(&payload.session_id);
             session.unpin_entry(&payload.entry_id);
         }
-        let _ = ctx.send_event(Event::ChatEntryPinChanged(ChatEntryPinChanged {
+        self.publish(ChatEntryPinChanged {
             session_id: payload.session_id.clone(),
-        }));
+        })
+        .await;
     }
 
     pub(in crate::feat::session::session_actor) fn on_tools_registered(
@@ -182,7 +180,7 @@ impl SessionPersistenceActor {
             .collect();
         drop(state);
 
-        entries.sort_by(|a, b| a.name.to_lowercase().cmp(&b.name.to_lowercase()));
+        entries.sort_by_key(|e| e.name.to_lowercase());
 
         let mut state = self.state.write();
         state.frontend.persona_picker_mut().set_items(entries);
@@ -198,13 +196,10 @@ mod tests {
         clippy::indexing_slicing,
         reason = "test code"
     )]
-    use std::sync::Arc;
 
-    use super::super::super::SessionPersistenceActorDeps;
     use super::*;
-    use crate::common::actor::{Actor as _, ActorContext, MessageSink, RecordingSink};
     use crate::common::app_state::AppState;
-    use crate::common::services::test_services::TestServices;
+    use crate::common::services::BusAudit;
     use crate::common::state::State;
     use crate::feat::context::protocol::event::PersonasLoaded;
     use crate::feat::persona::Persona;
@@ -221,25 +216,25 @@ mod tests {
         }
     }
 
-    fn create_actor() -> (SessionPersistenceActor, State) {
-        let sink: Arc<dyn MessageSink> = Arc::new(RecordingSink::new());
-        let mut ctx = ActorContext::new("test", sink);
+    async fn create_actor() -> (
+        super::super::super::SessionPersistenceActor,
+        State,
+        BusAudit,
+    ) {
         let state = State::new(AppState::default());
-        let deps = SessionPersistenceActorDeps {
+        let (actor, audit) = super::super::super::helpers::test_actor_recording().await;
+        let actor = super::super::super::SessionPersistenceActor {
             state: state.clone(),
-            services: TestServices::builder().build(),
-            counter: crate::feat::context::strategy::token_estimator::TiktokenCounter::o200k_base(),
-            builtin_registry: crate::feat::session_lifecycle::builtin::BuiltinRegistry::new(),
-            shell: "/bin/sh".to_owned(),
+            ..actor
         };
-        let actor = SessionPersistenceActor::activate(deps, &mut ctx);
-        (actor, state)
+        (actor, state, audit)
     }
 
     #[rstest::rstest]
-    fn on_tools_registered_keeps_regular_tools_in_global_map() {
+    #[tokio::test]
+    async fn on_tools_registered_keeps_regular_tools_in_global_map() {
         // Given a session actor.
-        let (actor, state) = create_actor();
+        let (actor, state, _audit) = create_actor().await;
 
         // Build a ToolsRegistered with all builtin tools.
         let all_tools = crate::feat::tools_actor::registry::builtin_tools(
@@ -264,10 +259,10 @@ mod tests {
     }
 
     #[rstest::rstest]
-    fn on_tools_registered_ignores_attached_tools_for_different_session() {
+    #[tokio::test]
+    async fn on_tools_registered_ignores_attached_tools_for_different_session() {
         // Given a session actor.
-        let (actor, state) = create_actor();
-
+        let (actor, state, _audit) = create_actor().await;
         // Build a ToolsRegistered targeting a different session.
         let other_session_id = SessionId::new();
         let payload = ToolsRegistered {
@@ -298,7 +293,10 @@ mod tests {
         // And NOT in the target session's map either (it was stored by session_id key).
         // Since the tool WAS stored in session_tool_definitions[other_session_id],
         // it should be there, not in global.
-        let session_tools = guard.context.session_tool_definitions.get(&other_session_id);
+        let session_tools = guard
+            .context
+            .session_tool_definitions
+            .get(&other_session_id);
         // The tool IS stored under the correct session key (that's the new behavior).
         assert!(
             session_tools.is_some_and(|m| m.contains_key("judgment_passed")),
@@ -307,9 +305,10 @@ mod tests {
     }
 
     #[rstest::rstest]
-    fn on_tools_registered_stores_attached_tools_for_own_session() {
+    #[tokio::test]
+    async fn on_tools_registered_stores_attached_tools_for_own_session() {
         // Given a session actor.
-        let (actor, state) = create_actor();
+        let (actor, state, _audit) = create_actor().await;
         let session_id = state.read().session.active_session_id().clone();
 
         // Build a ToolsRegistered targeting this session.
@@ -338,11 +337,12 @@ mod tests {
         );
     }
 
-
     #[rstest::rstest]
-    fn on_tools_registered_stores_global_tools_unconditionally() {
+    #[tokio::test]
+    async fn on_tools_registered_stores_global_tools_unconditionally() {
         // Given a session actor.
-        let (actor, state) = create_actor();
+        let (actor, state, _audit) = create_actor().await;
+        // Given a session actor.
 
         // Build a global ToolsRegistered (session_id: None).
         let payload = ToolsRegistered {
@@ -364,15 +364,19 @@ mod tests {
         // Then the global tool is stored.
         let guard = state.read();
         assert!(
-            guard.context.global_tool_definitions.contains_key("global_helper"),
+            guard
+                .context
+                .global_tool_definitions
+                .contains_key("global_helper"),
             "global tool should be stored unconditionally"
         );
     }
 
     #[rstest::rstest]
-    fn on_personas_loaded_selects_coding_assistant_when_none_active() {
+    #[tokio::test]
+    async fn on_personas_loaded_selects_coding_assistant_when_none_active() {
         // Given a session actor with no active persona.
-        let (actor, state) = create_actor();
+        let (actor, state, _audit) = create_actor().await;
         let personas = vec![
             make_persona("learning-tutor"),
             make_persona("coding-assistant"),
@@ -398,9 +402,10 @@ mod tests {
     }
 
     #[rstest::rstest]
-    fn on_personas_loaded_keeps_existing_active_persona() {
+    #[tokio::test]
+    async fn on_personas_loaded_keeps_existing_active_persona() {
         // Given a session actor with active persona "learning-tutor".
-        let (actor, state) = create_actor();
+        let (actor, state, _audit) = create_actor().await;
         {
             let mut guard = state.write();
             guard.context.active_persona = Some(make_persona("learning-tutor"));
@@ -430,9 +435,10 @@ mod tests {
     }
 
     #[rstest::rstest]
-    fn on_personas_loaded_falls_back_when_active_missing() {
+    #[tokio::test]
+    async fn on_personas_loaded_falls_back_when_active_missing() {
         // Given a session actor where active persona "foo" was deleted from disk.
-        let (actor, state) = create_actor();
+        let (actor, state, _audit) = create_actor().await;
         {
             let mut guard = state.write();
             guard.context.active_persona = Some(make_persona("foo"));
@@ -459,9 +465,10 @@ mod tests {
     }
 
     #[rstest::rstest]
-    fn on_personas_loaded_uses_first_when_coding_assistant_missing() {
+    #[tokio::test]
+    async fn on_personas_loaded_uses_first_when_coding_assistant_missing() {
         // Given a session actor with no coding-assistant in the scanned list.
-        let (actor, state) = create_actor();
+        let (actor, state, _audit) = create_actor().await;
         let personas = vec![make_persona("learning-tutor")];
         let payload = PersonasLoaded {
             personas,
@@ -484,9 +491,10 @@ mod tests {
     }
 
     #[rstest::rstest]
-    fn on_personas_loaded_clears_active_when_list_empty() {
+    #[tokio::test]
+    async fn on_personas_loaded_clears_active_when_list_empty() {
         // Given a session actor with some active persona.
-        let (actor, state) = create_actor();
+        let (actor, state, _audit) = create_actor().await;
         {
             let mut guard = state.write();
             guard.context.active_persona = Some(make_persona("foo"));
@@ -507,14 +515,10 @@ mod tests {
     // --- handle_pin_chat_entry ---
 
     #[rstest::rstest]
-    fn handle_pin_chat_entry_pins_and_emits() {
+    #[tokio::test]
+    async fn handle_pin_chat_entry_pins_and_emits() {
         // Given a session with a user entry.
-        let (actor, state) = create_actor();
-        let (sink, ctx) = {
-            let sink = Arc::new(RecordingSink::new());
-            let ctx = ActorContext::new("test", sink.clone());
-            (sink, ctx)
-        };
+        let (actor, state, audit) = create_actor().await;
         let entry_id = {
             let mut guard = state.write();
             let session = guard.active_session_mut();
@@ -526,14 +530,13 @@ mod tests {
         let session_id = state.read().session.active_session_id().clone();
 
         // When pinning the entry.
-        actor.handle_pin_chat_entry(
-            &PinChatEntry {
+        actor
+            .handle_pin_chat_entry(&PinChatEntry {
                 session_id: session_id.clone(),
                 entry_id: entry_id.clone(),
                 position: PinPosition::Top,
-            },
-            &ctx,
-        );
+            })
+            .await;
 
         // Then the entry is pinned.
         let guard = state.read();
@@ -544,26 +547,22 @@ mod tests {
             .find(|e| e.id == entry_id)
             .expect("entry");
         assert!(entry.is_pinned(), "expected entry to be pinned");
+        drop(guard);
 
         // And ChatEntryPinChanged event was emitted.
-        let has_event = sink
-            .events()
-            .iter()
-            .any(|e| matches!(e, Event::ChatEntryPinChanged(e) if e.session_id == session_id));
-        assert!(has_event, "expected ChatEntryPinChanged event");
+        assert!(
+            audit.contains_name("ChatEntryPinChanged"),
+            "expected ChatEntryPinChanged event"
+        );
     }
 
     // --- handle_unpin_chat_entry ---
 
     #[rstest::rstest]
-    fn handle_unpin_chat_entry_unpins_and_emits() {
+    #[tokio::test]
+    async fn handle_unpin_chat_entry_unpins_and_emits() {
         // Given a session with a pinned entry.
-        let (actor, state) = create_actor();
-        let (sink, ctx) = {
-            let sink = Arc::new(RecordingSink::new());
-            let ctx = ActorContext::new("test", sink.clone());
-            (sink, ctx)
-        };
+        let (actor, state, audit) = create_actor().await;
         let entry_id = {
             let mut guard = state.write();
             let session = guard.active_session_mut();
@@ -576,13 +575,12 @@ mod tests {
         let session_id = state.read().session.active_session_id().clone();
 
         // When unpinning the entry.
-        actor.handle_unpin_chat_entry(
-            &UnpinChatEntry {
+        actor
+            .handle_unpin_chat_entry(&UnpinChatEntry {
                 session_id: session_id.clone(),
                 entry_id: entry_id.clone(),
-            },
-            &ctx,
-        );
+            })
+            .await;
 
         // Then the entry is no longer pinned.
         let guard = state.read();
@@ -593,13 +591,13 @@ mod tests {
             .find(|e| e.id == entry_id)
             .expect("entry");
         assert!(!entry.is_pinned(), "expected entry to be unpinned");
+        drop(guard);
 
         // And ChatEntryPinChanged event was emitted.
-        let has_event = sink
-            .events()
-            .iter()
-            .any(|e| matches!(e, Event::ChatEntryPinChanged(e) if e.session_id == session_id));
-        assert!(has_event, "expected ChatEntryPinChanged event");
+        assert!(
+            audit.contains_name("ChatEntryPinChanged"),
+            "expected ChatEntryPinChanged event"
+        );
     }
 
     // --- on_prompt_templates_loaded ---
@@ -607,9 +605,10 @@ mod tests {
     // --- handle_load_persona_picker_entries ---
 
     #[rstest::rstest]
-    fn handle_load_persona_picker_entries_populates_picker() {
+    #[tokio::test]
+    async fn handle_load_persona_picker_entries_populates_picker() {
         // Given a session actor with personas loaded.
-        let (actor, state) = create_actor();
+        let (actor, state, _audit) = create_actor().await;
         {
             let mut guard = state.write();
             guard.context.personas = vec![

@@ -645,7 +645,7 @@ mod tests {
         let session_id = SessionId::new();
 
         // When beginning a load.
-        map.begin_load(session_id.clone());
+        map.begin_load(session_id);
 
         // Then is_loading is true.
         assert!(map.is_loading());

@@ -9,12 +9,12 @@ use std::fmt::Write as _;
 use std::process::Stdio;
 use std::time::Duration;
 
-use crate::common::actor::message_sink::MessageSink;
 use crate::common::process_kill::kill_process_tree;
+use crate::common::services::bus_service::BusService;
 use crate::feat::preferences_actor::user_preferences::BashConfig;
 use crate::feat::tools_actor::protocol::event::{ToolExecutionOutput, ToolExecutionStarted};
 use crate::feat::tools_actor::tool_types::{ToolCall, ToolContext, ToolDefinition, ToolResult};
-use crate::protocol::{Event, SessionId};
+use crate::protocol::SessionId;
 
 use super::truncation::{DEFAULT_MAX_BYTES, DEFAULT_MAX_LINES, format_size, truncate_tail};
 
@@ -130,33 +130,32 @@ fn truncate_streaming_output(content: &str) -> String {
 }
 
 /// Emits buffered output as a single `ToolExecutionOutput` event.
-fn flush_buffer(
+async fn flush_buffer(
     buffer: &str,
-    sink: Option<&std::sync::Arc<dyn MessageSink>>,
+    bus: Option<&BusService>,
     session_id: Option<&SessionId>,
     tool_call_id: &str,
 ) {
     emit_stream_event(
-        sink,
+        bus,
         session_id,
-        Event::ToolExecutionOutput(ToolExecutionOutput {
+        ToolExecutionOutput {
             session_id: session_id.cloned().unwrap_or_default(),
             tool_call_id: tool_call_id.to_owned(),
             output: buffer.to_owned(),
-        }),
-    );
+        },
+    )
+    .await;
 }
 
-/// Emits a streaming tool event if both sink and session_id are available.
-fn emit_stream_event(
-    sink: Option<&std::sync::Arc<dyn MessageSink>>,
+/// Emits a streaming tool event if both bus and session_id are available.
+async fn emit_stream_event(
+    bus: Option<&BusService>,
     session_id: Option<&SessionId>,
-    event: Event,
+    event: impl crate::common::bus::BusMessage,
 ) {
-    if let (Some(sink), Some(_)) = (sink, session_id)
-        && let Err(e) = sink.send_event(event)
-    {
-        tracing::warn!(err = ?e, "bash: failed to emit streaming event");
+    if let (Some(bus), Some(_)) = (bus, session_id) {
+        bus.publish(event).await;
     }
 }
 
@@ -325,16 +324,16 @@ impl StreamingBatcher {
     /// Emits the buffered output as a streaming event and clears the buffer.
     ///
     /// No-op when the buffer is empty.
-    fn flush(
+    async fn flush(
         &mut self,
-        sink: Option<&std::sync::Arc<dyn MessageSink>>,
+        bus: Option<&BusService>,
         session_id: Option<&SessionId>,
         tool_call_id: &str,
     ) {
         if self.buffer.is_empty() {
             return;
         }
-        flush_buffer(&self.buffer, sink, session_id, tool_call_id);
+        flush_buffer(&self.buffer, bus, session_id, tool_call_id).await;
         self.buffer.clear();
     }
 }
@@ -348,7 +347,7 @@ async fn read_child_output_and_wait(
     stdout: tokio::process::ChildStdout,
     stderr: tokio::process::ChildStderr,
     accumulated: &mut String,
-    sink: Option<&std::sync::Arc<dyn MessageSink>>,
+    bus: Option<&BusService>,
     session_id: Option<&SessionId>,
     tool_call_id: &str,
 ) -> Result<std::process::ExitStatus, std::io::Error> {
@@ -368,18 +367,18 @@ async fn read_child_output_and_wait(
                 Some(line) => {
                     batcher.push_line(&line, accumulated);
                     if batcher.should_flush() {
-                        batcher.flush(sink, session_id, tool_call_id);
+                        batcher.flush(bus, session_id, tool_call_id).await;
                     }
                 }
                 None => break,
             },
             _ = timer.tick() => {
-                batcher.flush(sink, session_id, tool_call_id);
+                batcher.flush(bus, session_id, tool_call_id).await;
             }
         }
     }
 
-    batcher.flush(sink, session_id, tool_call_id);
+    batcher.flush(bus, session_id, tool_call_id).await;
 
     // Wait for both readers to finish.
     let _ = stdout_handle.await;
@@ -446,17 +445,18 @@ pub fn execute(call: ToolCall, ctx: ToolContext) -> BoxedToolFuture {
 
         let (shell, cwd) = (ctx.shell.clone(), ctx.cwd.clone());
 
-        // Emit ToolExecutionStarted if we have a sink and session_id.
+        // Emit ToolExecutionStarted if we have a bus and session_id.
         emit_stream_event(
-            ctx.sink.as_ref(),
+            ctx.bus.as_ref(),
             ctx.session_id.as_ref(),
-            Event::ToolExecutionStarted(ToolExecutionStarted {
+            ToolExecutionStarted {
                 session_id: ctx.session_id.clone().unwrap_or_default(),
                 tool_call_id: call.id.clone(),
                 name: call.name.clone(),
-                dispatched_at: ctx.dispatched_at,
-            }),
-        );
+                dispatched_at: jiff::Timestamp::now(),
+            },
+        )
+        .await;
 
         let spawn_result = spawn_shell_command(&shell, &command, &cwd);
 
@@ -498,7 +498,7 @@ pub fn execute(call: ToolCall, ctx: ToolContext) -> BoxedToolFuture {
             stdout,
             stderr,
             &mut accumulated,
-            ctx.sink.as_ref(),
+            ctx.bus.as_ref(),
             ctx.session_id.as_ref(),
             &call.id,
         );
@@ -551,7 +551,6 @@ mod tests {
         reason = "test code"
     )]
     use super::*;
-    use crate::common::actor::RecordingSink;
     use std::path::PathBuf;
 
     fn test_ctx() -> ToolContext {
@@ -562,7 +561,7 @@ mod tests {
             state: None,
             session_id: None,
             app_paths: crate::common::app_paths::AppPaths::default(),
-            sink: None,
+            bus: None,
             shell: "/bin/sh".to_owned(),
             max_output_lines: None,
             max_output_bytes: None,
@@ -647,7 +646,7 @@ mod tests {
             state: None,
             session_id: None,
             app_paths: crate::common::app_paths::AppPaths::default(),
-            sink: None,
+            bus: None,
             shell: "/bin/sh".to_owned(),
             max_output_lines: None,
             max_output_bytes: None,
@@ -938,48 +937,44 @@ mod tests {
         assert!(batcher.should_flush());
     }
 
-    #[rstest::rstest]
-    fn flush_is_noop_on_empty_buffer() {
-        // Given a fresh batcher and a recording sink.
+    #[tokio::test]
+    async fn flush_is_noop_on_empty_buffer() {
+        // Given a fresh batcher and a recording bus.
         let mut batcher = StreamingBatcher::new();
-        let recording = std::sync::Arc::new(RecordingSink::new());
-        let sink: std::sync::Arc<dyn MessageSink> = recording.clone();
+        let (bus, audit) = BusService::new_recording();
         let session_id = SessionId::default();
 
         // When flushing an empty buffer.
-        batcher.flush(Some(&sink), Some(&session_id), "test_call");
+        batcher
+            .flush(Some(&bus), Some(&session_id), "test_call")
+            .await;
 
-        // Then no events were sent.
-        assert!(recording.events().is_empty());
+        // Then no ToolExecutionOutput is emitted.
+        let outputs: Vec<ToolExecutionOutput> = audit.of_type::<ToolExecutionOutput>();
+        assert!(outputs.is_empty());
     }
 
-    #[rstest::rstest]
-    fn flush_emits_and_clears_buffer() {
-        // Given a batcher with pushed lines and a recording sink.
+    #[tokio::test]
+    async fn flush_emits_and_clears_buffer() {
+        // Given a batcher with two buffered lines and a recording bus.
         let mut batcher = StreamingBatcher::new();
         let mut accumulated = String::new();
-        let recording = std::sync::Arc::new(RecordingSink::new());
-        let sink: std::sync::Arc<dyn MessageSink> = recording.clone();
+        let (bus, audit) = BusService::new_recording();
         let session_id = SessionId::default();
-
         batcher.push_line("line one", &mut accumulated);
         batcher.push_line("line two", &mut accumulated);
 
-        // When flushing.
-        batcher.flush(Some(&sink), Some(&session_id), "test_call");
+        // When flushing the buffer.
+        batcher
+            .flush(Some(&bus), Some(&session_id), "test_call")
+            .await;
 
-        // Then a ToolExecutionOutput event was emitted.
-        let events = recording.events();
-        assert_eq!(events.len(), 1);
-
-        // And the event contains both lines.
-        let Event::ToolExecutionOutput(output) = &events[0] else {
-            panic!("expected ToolExecutionOutput event");
-        };
-        assert!(output.output.contains("line one"));
-        assert!(output.output.contains("line two"));
-
-        // And the buffer is now empty (should_flush returns false).
+        // Then exactly one ToolExecutionOutput is emitted containing both lines.
+        let outputs: Vec<ToolExecutionOutput> = audit.of_type::<ToolExecutionOutput>();
+        assert_eq!(outputs.len(), 1);
+        assert!(outputs[0].output.contains("line one"));
+        assert!(outputs[0].output.contains("line two"));
+        // And the buffer is cleared.
         assert!(!batcher.should_flush());
     }
 

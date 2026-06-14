@@ -14,17 +14,18 @@ use ratatui::layout::Rect;
 use ratatui::style::Color;
 
 /// Creates a minimal `TuiApp` for render testing.
-fn render_test_app() -> crate::TuiApp {
-    crate::TuiApp::test_builder().build()
+async fn render_test_app() -> crate::TuiApp {
+    crate::TuiApp::test_builder().build().await
 }
 
 // --- Element-driven selectable rect tests ---
 
 #[rstest::rstest]
-fn render_registers_content_rect_for_selectable_chat_log() {
+#[tokio::test]
+async fn render_registers_content_rect_for_selectable_chat_log() {
     // Given a TuiApp rendered in Chat tab with a 80x24 terminal.
 
-    let mut app = render_test_app();
+    let mut app = render_test_app().await;
     // Default tab is Chat.
 
     let (mut terminal, _area) = setup_term(80, 24);
@@ -57,10 +58,11 @@ fn render_registers_content_rect_for_selectable_chat_log() {
 }
 
 #[rstest::rstest]
-fn picker_popup_rect_is_selectable() {
+#[tokio::test]
+async fn picker_popup_rect_is_selectable() {
     // Given a TuiApp rendered with Mode::Picker.
 
-    let mut app = render_test_app();
+    let mut app = render_test_app().await;
     // Switch to Picker mode with an active provider picker.
     app.core
         .state
@@ -91,10 +93,11 @@ fn picker_popup_rect_is_selectable() {
 }
 
 #[rstest::rstest]
-fn content_area_rect_is_selectable() {
+#[tokio::test]
+async fn content_area_rect_is_selectable() {
     // Given a TuiApp rendered with Mode::Picker.
 
-    let mut app = render_test_app();
+    let mut app = render_test_app().await;
     // Switch to Picker mode with an active provider picker.
     app.core
         .state
@@ -148,9 +151,10 @@ fn arrow_cell_position(layout: &AppLayout) -> (u16, u16) {
 }
 
 #[rstest::rstest]
-fn minimap_arrow_is_yellow_when_normal_scope() {
+#[tokio::test]
+async fn minimap_arrow_is_yellow_when_normal_scope() {
     // Given a TuiApp rendered with Normal scope and one chat entry.
-    let mut app = render_test_app();
+    let mut app = render_test_app().await;
     app.core.state.write().frontend.scope_stack.clear_overlays();
     app.core
         .state
@@ -176,9 +180,10 @@ fn minimap_arrow_is_yellow_when_normal_scope() {
 }
 
 #[rstest::rstest]
-fn minimap_arrow_is_darkgray_when_input_scope() {
+#[tokio::test]
+async fn minimap_arrow_is_darkgray_when_input_scope() {
     // Given a TuiApp rendered with Input scope and one chat entry.
-    let mut app = render_test_app();
+    let mut app = render_test_app().await;
     app.core
         .state
         .write()
@@ -208,9 +213,10 @@ fn minimap_arrow_is_darkgray_when_input_scope() {
 }
 
 #[rstest::rstest]
-fn gutter_area_is_not_selectable() {
+#[tokio::test]
+async fn gutter_area_is_not_selectable() {
     // Given a TuiApp rendered in Chat tab with a 80x24 terminal.
-    let mut app = render_test_app();
+    let mut app = render_test_app().await;
     let (mut terminal, _area) = setup_term(80, 24);
 
     // When rendering.
@@ -230,9 +236,10 @@ fn gutter_area_is_not_selectable() {
 }
 
 #[rstest::rstest]
-fn cwd_input_popup_renders_and_is_selectable() {
+#[tokio::test]
+async fn cwd_input_popup_renders_and_is_selectable() {
     // Given a TuiApp rendered with CwdInput scope.
-    let mut app = render_test_app();
+    let mut app = render_test_app().await;
     app.core
         .state
         .write()

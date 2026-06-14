@@ -3,7 +3,6 @@
 use serde::{Deserialize, Serialize};
 
 use crate::feat::preferences_actor::UserPreferences;
-use crate::protocol::CommandMsg;
 
 /// A single atomic preference update.
 ///
@@ -31,8 +30,7 @@ impl PreferenceUpdate {
 /// Carries a batch of [`PreferenceUpdate`] diffs. The `PreferencesActor`
 /// loads current prefs, applies all diffs, saves, and emits
 /// [`PreferencesUpdated`](super::event::PreferencesUpdated) with the full result.
-#[derive(Debug, Clone, Serialize, Deserialize, CommandMsg)]
-#[cmd("preferences")]
+#[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct UpdatePreferences {
     /// The atomic diffs to apply.
     pub updates: Vec<PreferenceUpdate>,

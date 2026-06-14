@@ -1,22 +1,24 @@
 //! Web fetch actor - owns a WebFetcher backend and handles web-fetch tool calls.
 //!
 //! Subscribes to [`ExecuteWebFetch`] commands dispatched by the tool orchestrator.
-//! On activation, registers the `web-fetch` tool definition. On command, parses
+//! On startup, registers the `web-fetch` tool definition. On command, parses
 //! arguments, delegates to the [`WebFetcher`] backend, and emits
 //! [`ToolExecutionCompleted`].
 //!
 //! # Shutdown
 //!
-//! Calls [`WebFetcher::shutdown`] during [`Actor::on_shutdown`] to release
+//! Calls [`WebFetcher::shutdown`] during [`Actor::on_stop`] to release
 //! resources (e.g., kill a headless browser process).
 
 use std::sync::Arc;
 
-use crate::common::actor::{Actor, ActorContext, ActorEnvelope, NoDirectMsg};
+use kameo::actor::ActorRef;
+use kameo::prelude::{Context, Message};
+
+use crate::common::actor_deps::{ActorDeps, BusPublish};
 use crate::feat::tools_actor::protocol::command::{ExecuteWebFetch, RegisterTools};
 use crate::feat::tools_actor::protocol::event::ToolExecutionCompleted;
 use crate::feat::tools_actor::tool_types::{ToolCall, ToolDefinition, ToolResult};
-use crate::protocol::{Command, Event};
 use jinn_web_fetch::{FetchOptions, OutputFormat, WebFetcher};
 
 /// The web fetch actor.
@@ -24,11 +26,15 @@ use jinn_web_fetch::{FetchOptions, OutputFormat, WebFetcher};
 /// Owns the chosen [`WebFetcher`] backend and processes `ExecuteWebFetch`
 /// commands from the tool orchestrator.
 pub struct WebFetchActor {
+    deps: ActorDeps,
     web_fetcher: Arc<dyn WebFetcher>,
 }
 
 /// Dependencies for [`WebFetchActor`].
+#[derive(Clone)]
 pub struct WebFetchActorDeps {
+    /// Common actor dependencies (services + bus).
+    pub deps: ActorDeps,
     /// The web fetcher backend (e.g., HttpFetcher, HeadlessChromeFetcher).
     pub web_fetcher: Arc<dyn WebFetcher>,
 }
@@ -48,75 +54,74 @@ struct WebFetchOptionsArgs {
     format: Option<OutputFormat>,
 }
 
-impl Actor for WebFetchActor {
-    type Message = NoDirectMsg;
-    type Deps = WebFetchActorDeps;
+impl kameo::Actor for WebFetchActor {
+    type Args = WebFetchActorDeps;
+    type Error = kameo::error::Infallible;
 
-    fn activate(deps: Self::Deps, ctx: &mut ActorContext) -> Self {
-        ctx.subscribe_command::<ExecuteWebFetch>();
-        ctx.set_description("Fetches web pages via configured backend");
+    async fn on_start(args: Self::Args, actor_ref: ActorRef<Self>) -> Result<Self, Self::Error> {
+        args.deps
+            .subscribe(actor_ref.recipient::<ExecuteWebFetch>())
+            .await;
 
         // Register the web-fetch tool with the orchestrator.
-        if let Err(e) = ctx.send_command(Command::RegisterTools(RegisterTools {
-            provider: "web-fetch".to_owned(),
-            definitions: vec![web_fetch_tool_definition()],
-        })) {
-            tracing::warn!(err = ?e, "web-fetch actor failed to register tools");
-        }
+        let () = args
+            .deps
+            .services
+            .bus
+            .publish(RegisterTools {
+                provider: "web-fetch".to_owned(),
+                definitions: vec![web_fetch_tool_definition()],
+            })
+            .await;
 
-        Self {
-            web_fetcher: deps.web_fetcher,
-        }
+        Ok(Self {
+            deps: args.deps,
+            web_fetcher: args.web_fetcher,
+        })
     }
 
-    async fn handle(&mut self, msg: ActorEnvelope<Self::Message>, ctx: &ActorContext) {
-        match msg {
-            ActorEnvelope::Command(cmd) => self.handle_command(&cmd, ctx).await,
-            _ => {}
-        }
-    }
-
-    async fn on_shutdown(&mut self, _ctx: &ActorContext) {
+    async fn on_stop(
+        &mut self,
+        _actor_ref: kameo::actor::WeakActorRef<Self>,
+        _reason: kameo::error::ActorStopReason,
+    ) -> Result<(), Self::Error> {
         self.web_fetcher.shutdown().await;
+        Ok(())
     }
 }
 
-impl WebFetchActor {
-    /// Dispatches a command to the appropriate handler.
-    async fn handle_command(&mut self, cmd: &Command, ctx: &ActorContext) {
-        match cmd {
-            Command::ExecuteWebFetch(payload) => {
-                self.handle_execute_web_fetch(payload, ctx).await;
-            }
-            _ => {}
-        }
+impl BusPublish for WebFetchActor {
+    fn bus(&self) -> &crate::common::services::bus_service::BusService {
+        &self.deps.services.bus
     }
+}
 
-    /// Handles an `ExecuteWebFetch` command.
-    async fn handle_execute_web_fetch(&self, payload: &ExecuteWebFetch, ctx: &ActorContext) {
+impl Message<ExecuteWebFetch> for WebFetchActor {
+    type Reply = ();
+
+    async fn handle(&mut self, msg: ExecuteWebFetch, _ctx: &mut Context<Self, Self::Reply>) {
         tracing::trace!(
-            tool_call_id = %payload.tool_call.id,
-            url_args = %payload.tool_call.arguments,
+            tool_call_id = %msg.tool_call.id,
+            url_args = %msg.tool_call.arguments,
             "web-fetch: handling ExecuteWebFetch"
         );
-        let result = self.execute_fetch(&payload.tool_call).await;
+        let result = self.execute_fetch(&msg.tool_call).await;
         tracing::info!(
             tool_call_id = %result.tool_call_id,
             success = result.success,
             content_len = result.content.len(),
             "web-fetch: fetch complete"
         );
-        if let Err(e) = ctx.send_event(Event::ToolExecutionCompleted(ToolExecutionCompleted {
-            session_id: payload.session_id.clone(),
-            result,
-        })) {
-            tracing::warn!(
-                err = ?e,
-                "web-fetch actor failed to send ToolExecutionCompleted"
-            );
-        }
+        let () = self
+            .publish(ToolExecutionCompleted {
+                session_id: msg.session_id,
+                result,
+            })
+            .await;
     }
+}
 
+impl WebFetchActor {
     /// Parses arguments and executes the fetch.
     async fn execute_fetch(&self, tool_call: &ToolCall) -> ToolResult {
         tracing::debug!(arguments = %tool_call.arguments, "web-fetch: parsing arguments");
@@ -228,12 +233,15 @@ mod tests {
     use async_trait::async_trait;
     use jinn_web_fetch::{FetchOptions, FetchOutput, WebFetcher};
 
-    use crate::common::actor::{Actor, ActorContext, ActorEnvelope, RecordingSink};
+    use crate::common::bus::test_harness::{TestHarness, await_recorded};
     use crate::feat::tools_actor::protocol::command::ExecuteWebFetch;
+    use crate::feat::tools_actor::protocol::command::RegisterTools;
+    use crate::feat::tools_actor::protocol::event::ToolExecutionCompleted;
     use crate::feat::tools_actor::tool_types::ToolCall;
-    use crate::protocol::{Command, Event, SessionId};
+    use crate::protocol::SessionId;
 
     use super::{WebFetchActor, WebFetchActorDeps};
+    use kameo::actor::Spawn;
 
     /// A mock web fetcher that returns a fixed response.
     struct MockFetcher {
@@ -261,12 +269,6 @@ mod tests {
         }
     }
 
-    fn test_context() -> (Arc<RecordingSink>, ActorContext) {
-        let sink = Arc::new(RecordingSink::new());
-        let ctx = ActorContext::new("test-web-fetch", sink.clone());
-        (sink, ctx)
-    }
-
     fn mock_fetcher_with_success() -> Arc<dyn WebFetcher> {
         Arc::new(MockFetcher {
             content: "Hello, World!".to_owned(),
@@ -281,50 +283,34 @@ mod tests {
         })
     }
 
-    #[rstest::rstest]
     #[tokio::test]
-    async fn activate_registers_web_fetch_tool() {
-        // Given a WebFetchActor with a mock fetcher.
-        let (sink, mut ctx) = test_context();
-        let _actor = WebFetchActor::activate(
-            WebFetchActorDeps {
-                web_fetcher: mock_fetcher_with_success(),
-            },
-            &mut ctx,
-        );
+    async fn startup_registers_web_fetch_tool() {
+        // Given a WebFetchActor.
+        let harness = TestHarness::new().await;
+        let recorder = harness.spawn_recorder::<RegisterTools>().await;
+        let _actor = WebFetchActor::spawn(WebFetchActorDeps {
+            deps: harness.actor_deps().await,
+            web_fetcher: mock_fetcher_with_success(),
+        });
 
-        // Then a RegisterTools command was emitted.
-        let commands = sink.take_commands();
-        assert_eq!(
-            commands.len(),
-            1,
-            "should send exactly one RegisterTools command"
-        );
-        let cmd = &commands[0];
-        match cmd {
-            Command::RegisterTools(reg) => {
-                assert_eq!(reg.provider, "web-fetch");
-                assert_eq!(reg.definitions.len(), 1);
-                assert_eq!(reg.definitions[0].name, "web-fetch");
-            }
-            other => panic!("expected RegisterTools, got {other:?}"),
-        }
+        // Then a RegisterTools command was published.
+        let messages = await_recorded(&recorder, 1, std::time::Duration::from_secs(1)).await;
+        assert_eq!(messages.len(), 1, "should send exactly one RegisterTools");
+        assert_eq!(messages[0].provider, "web-fetch");
+        assert_eq!(messages[0].definitions.len(), 1);
+        assert_eq!(messages[0].definitions[0].name, "web-fetch");
     }
 
-    #[rstest::rstest]
     #[tokio::test]
     async fn execute_web_fetch_success() {
-        // Given an activated WebFetchActor.
-        let (sink, mut ctx) = test_context();
-        let mut actor = WebFetchActor::activate(
-            WebFetchActorDeps {
-                web_fetcher: mock_fetcher_with_success(),
-            },
-            &mut ctx,
-        );
-
-        // Clear the RegisterTools command from activation.
-        sink.take_commands();
+        // Given a WebFetchActor.
+        let harness = TestHarness::new().await;
+        let recorder = harness.spawn_recorder::<ToolExecutionCompleted>().await;
+        let actor = WebFetchActor::spawn(WebFetchActorDeps {
+            deps: harness.actor_deps().await,
+            web_fetcher: mock_fetcher_with_success(),
+        });
+        actor.wait_for_startup().await;
 
         // When sending an ExecuteWebFetch command.
         let session_id = SessionId::new();
@@ -333,44 +319,31 @@ mod tests {
             name: "web-fetch".to_owned(),
             arguments: r#"{"url": "https://example.com/"}"#.to_owned(),
         };
-        actor
-            .handle(
-                ActorEnvelope::Command(Command::ExecuteWebFetch(ExecuteWebFetch {
-                    session_id: session_id.clone(),
-                    tool_call,
-                })),
-                &ctx,
-            )
+        harness
+            .publish(ExecuteWebFetch {
+                session_id: session_id.clone(),
+                tool_call,
+            })
             .await;
 
         // Then a ToolExecutionCompleted event was emitted with success.
-        let events = sink.take_events();
-        let completed: Vec<_> = events
-            .iter()
-            .filter_map(|e| match e {
-                Event::ToolExecutionCompleted(c) => Some(c.clone()),
-                _ => None,
-            })
-            .collect();
-        assert_eq!(completed.len(), 1);
-        assert!(completed[0].result.success);
-        assert_eq!(completed[0].result.content, "Hello, World!");
-        assert_eq!(completed[0].session_id, session_id);
+        let messages = await_recorded(&recorder, 1, std::time::Duration::from_secs(2)).await;
+        assert_eq!(messages.len(), 1);
+        assert!(messages[0].result.success);
+        assert_eq!(messages[0].result.content, "Hello, World!");
+        assert_eq!(messages[0].session_id, session_id);
     }
 
-    #[rstest::rstest]
     #[tokio::test]
     async fn execute_web_fetch_invalid_args() {
-        // Given an activated WebFetchActor.
-        let (sink, mut ctx) = test_context();
-        let mut actor = WebFetchActor::activate(
-            WebFetchActorDeps {
-                web_fetcher: mock_fetcher_with_success(),
-            },
-            &mut ctx,
-        );
-
-        sink.take_commands();
+        // Given a WebFetchActor.
+        let harness = TestHarness::new().await;
+        let recorder = harness.spawn_recorder::<ToolExecutionCompleted>().await;
+        let actor = WebFetchActor::spawn(WebFetchActorDeps {
+            deps: harness.actor_deps().await,
+            web_fetcher: mock_fetcher_with_success(),
+        });
+        actor.wait_for_startup().await;
 
         // When sending an ExecuteWebFetch with invalid JSON.
         let session_id = SessionId::new();
@@ -379,43 +352,30 @@ mod tests {
             name: "web-fetch".to_owned(),
             arguments: "not json".to_owned(),
         };
-        actor
-            .handle(
-                ActorEnvelope::Command(Command::ExecuteWebFetch(ExecuteWebFetch {
-                    session_id: session_id.clone(),
-                    tool_call,
-                })),
-                &ctx,
-            )
+        harness
+            .publish(ExecuteWebFetch {
+                session_id: session_id.clone(),
+                tool_call,
+            })
             .await;
 
         // Then a ToolExecutionCompleted event was emitted with failure.
-        let events = sink.take_events();
-        let completed: Vec<_> = events
-            .iter()
-            .filter_map(|e| match e {
-                Event::ToolExecutionCompleted(c) => Some(c.clone()),
-                _ => None,
-            })
-            .collect();
-        assert_eq!(completed.len(), 1);
-        assert!(!completed[0].result.success);
-        assert!(completed[0].result.content.contains("invalid arguments"));
+        let messages = await_recorded(&recorder, 1, std::time::Duration::from_secs(2)).await;
+        assert_eq!(messages.len(), 1);
+        assert!(!messages[0].result.success);
+        assert!(messages[0].result.content.contains("invalid arguments"));
     }
 
-    #[rstest::rstest]
     #[tokio::test]
     async fn execute_web_fetch_fetch_error() {
-        // Given an activated WebFetchActor with an error-producing fetcher.
-        let (sink, mut ctx) = test_context();
-        let mut actor = WebFetchActor::activate(
-            WebFetchActorDeps {
-                web_fetcher: mock_fetcher_with_error(),
-            },
-            &mut ctx,
-        );
-
-        sink.take_commands();
+        // Given a WebFetchActor with an error-producing fetcher.
+        let harness = TestHarness::new().await;
+        let recorder = harness.spawn_recorder::<ToolExecutionCompleted>().await;
+        let actor = WebFetchActor::spawn(WebFetchActorDeps {
+            deps: harness.actor_deps().await,
+            web_fetcher: mock_fetcher_with_error(),
+        });
+        actor.wait_for_startup().await;
 
         // When sending a valid ExecuteWebFetch.
         let session_id = SessionId::new();
@@ -424,27 +384,17 @@ mod tests {
             name: "web-fetch".to_owned(),
             arguments: r#"{"url": "https://example.com/"}"#.to_owned(),
         };
-        actor
-            .handle(
-                ActorEnvelope::Command(Command::ExecuteWebFetch(ExecuteWebFetch {
-                    session_id: session_id.clone(),
-                    tool_call,
-                })),
-                &ctx,
-            )
+        harness
+            .publish(ExecuteWebFetch {
+                session_id: session_id.clone(),
+                tool_call,
+            })
             .await;
 
         // Then a ToolExecutionCompleted event was emitted with failure.
-        let events = sink.take_events();
-        let completed: Vec<_> = events
-            .iter()
-            .filter_map(|e| match e {
-                Event::ToolExecutionCompleted(c) => Some(c.clone()),
-                _ => None,
-            })
-            .collect();
-        assert_eq!(completed.len(), 1);
-        assert!(!completed[0].result.success);
-        assert!(completed[0].result.content.contains("fetch failed"));
+        let messages = await_recorded(&recorder, 1, std::time::Duration::from_secs(2)).await;
+        assert_eq!(messages.len(), 1);
+        assert!(!messages[0].result.success);
+        assert!(messages[0].result.content.contains("fetch failed"));
     }
 }

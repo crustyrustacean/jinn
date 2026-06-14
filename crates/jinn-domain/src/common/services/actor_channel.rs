@@ -1,9 +1,9 @@
-//! Actor channel service - sends commands and events into the actor system.
+//! Actor channel service - sends typed message closures into the actor system.
 //!
 //! Wraps a [`kanal::Sender<AppMsg>`] so any holder of [`Services`] can submit
-//! messages to the actor system without needing direct access to [`AppCore`].
+//! message closures to the actor system without needing direct access to [`AppCore`].
 
-use crate::protocol::{AppMsg, Command, Event};
+use crate::protocol::AppMsg;
 use derive_more::Debug;
 
 /// Service for sending messages into the actor system.
@@ -23,25 +23,15 @@ impl ActorChannelService {
         Self { sender }
     }
 
-    /// Sends a command into the actor system (no source actor).
-    pub fn send_command(&self, command: Command) {
-        let _ = self.sender.send(AppMsg::Command {
-            command,
-            source: None,
-        });
-    }
-
-    /// Sends an event into the actor system (no source actor).
-    pub fn send_event(&self, event: Event) {
-        let _ = self.sender.send(AppMsg::Event {
-            event,
-            source: None,
-        });
-    }
-
-    /// Sends a raw [`AppMsg`] into the actor system.
+    /// Sends a raw [`AppMsg`] (bridge closure) into the actor system.
     pub fn send(&self, msg: AppMsg) {
         let _ = self.sender.send(msg);
+    }
+
+    /// Sends a typed bus message as a closure into the actor system.
+    pub fn send_message<M: crate::common::bus::BusMessage>(&self, msg: M) {
+        let closure = crate::common::bridge::Bridge::publish_closure(msg);
+        self.send(closure);
     }
 
     /// Returns the service name for debugging.

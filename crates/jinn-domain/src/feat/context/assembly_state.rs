@@ -27,7 +27,8 @@ pub struct ContextAssemblyState {
 
     /// Per-session tool definitions for attached plugin tools.
     /// OWNER: tools-actor (populated on ToolsRegistered event with session_id).
-    pub session_tool_definitions: HashMap<crate::protocol::SessionId, HashMap<String, ToolDefinition>>,
+    pub session_tool_definitions:
+        HashMap<crate::protocol::SessionId, HashMap<String, ToolDefinition>>,
 
     /// Loaded compaction system prompt from `~/.config/jinn/prompts/_compaction.md`.
     /// OWNER: populated once at startup by the app init code.
@@ -49,8 +50,10 @@ impl ContextAssemblyState {
                 self.global_tool_definitions.keys().cloned().collect();
             for (name, def) in session_tools {
                 if global_names.contains(name) {
-                    if let Some(pos) = tools.iter().position(|t| &t.name == name) {
-                        tools[pos] = def.clone();
+                    if let Some(pos) = tools.iter().position(|t| &t.name == name)
+                        && let Some(slot) = tools.get_mut(pos)
+                    {
+                        *slot = def.clone();
                     }
                 } else {
                     tools.push(def.clone());

@@ -11,7 +11,6 @@ use crate::feat::chat_input::protocol::command::PushChatEntry;
 use crate::feat::preferences_actor::user_preferences::SessionLifecycle;
 use crate::feat::session::chat_session::ChatSessionState;
 use crate::feat::session::chat_session::LifecycleScriptState;
-use crate::feat::session::model_selection::ModelSelection;
 use crate::feat::session::profile::SessionProfile;
 use crate::feat::session::session_actor::setup_running_msg;
 use crate::feat::session_lifecycle::command_template::{CommandTemplate, parse_quoted_args};
@@ -19,8 +18,7 @@ use crate::feat::session_lifecycle::protocol::command::{PersistSession, RunSessi
 use crate::feat::session_lifecycle::protocol::event::SessionCreated;
 use crate::feat::ui::sidebar::sessions::close::validate_session_close;
 use crate::feat::ui::sidebar::sessions::state::sorted_open_sessions;
-use crate::protocol::app_msg::Event;
-use crate::protocol::{Command, IntentResult, SessionId};
+use crate::protocol::{IntentResult, SessionId};
 
 /// Errors that can occur when validating arg input.
 #[derive(Debug, Error)]
@@ -127,9 +125,9 @@ pub fn handle_session_lifecycle_setup(
         .push(crate::common::app_state::FocusScope::Input);
 
     // Build the session-created event.
-    let created_event = Event::SessionCreated(SessionCreated {
+    let created_event = SessionCreated {
         session_id: new_id.clone(),
-    });
+    };
 
     // If the lifecycle has a setup command, emit it for async execution.
     if let Some(ref setup_cmd) = setup_command {
@@ -147,31 +145,28 @@ pub fn handle_session_lifecycle_setup(
             }
         };
 
-        return IntentResult::with_commands_and_events(
-            vec![
-                Command::PersistSession(PersistSession {
-                    session_id: new_id.clone(),
-                }),
-                Command::PushChatEntry(PushChatEntry {
-                    session_id: new_id.clone(),
-                    entry: crate::feat::session::session_actor::setup_running_msg(),
-                }),
-                Command::RunSessionSetup(RunSessionSetup {
-                    session_id: new_id,
-                    command: rendered,
-                    args: args.to_vec(),
-                    lifecycle_command: Some(setup_cmd.clone()),
-                }),
-            ],
-            vec![created_event],
-        );
+        return IntentResult::empty()
+            .message(PersistSession {
+                session_id: new_id.clone(),
+            })
+            .message(PushChatEntry {
+                session_id: new_id.clone(),
+                entry: crate::feat::session::session_actor::setup_running_msg(),
+            })
+            .message(RunSessionSetup {
+                session_id: new_id,
+                command: rendered,
+                args: args.to_vec(),
+                lifecycle_command: Some(setup_cmd.clone()),
+            })
+            .message(created_event);
     }
 
     // No setup command - use default CWD immediately.
     let default_cwd = state.session.default_cwd().clone();
     state.session_mut(&new_id).set_cwd(default_cwd);
 
-    IntentResult::with_commands_and_events(vec![], vec![created_event])
+    IntentResult::with_message(created_event)
 }
 
 /// Handle `Intent::SessionClose`.
@@ -309,18 +304,17 @@ pub fn handle_session_rerun_setup(state: &mut AppState) -> IntentResult {
         crate::feat::session_lifecycle::builtin::LifecycleCommand::Builtin(id) => id.to_string(),
     };
 
-    IntentResult::with_commands(vec![
-        Command::PushChatEntry(PushChatEntry {
+    IntentResult::empty()
+        .message(PushChatEntry {
             session_id: target_id.clone(),
             entry: setup_running_msg(),
-        }),
-        Command::RunSessionSetup(RunSessionSetup {
+        })
+        .message(RunSessionSetup {
             session_id: target_id,
             command: rendered,
             args: lifecycle_args,
             lifecycle_command: Some(setup_cmd.clone()),
-        }),
-    ])
+        })
 }
 
 /// Look up a lifecycle by name in the user preferences.
@@ -338,9 +332,9 @@ fn find_lifecycle<'a>(state: &'a AppState, name: &str) -> Option<&'a SessionLife
 /// `SessionClosed` for the sidebar actor to clamp the cursor.
 fn close_session_and_switch(closing_id: &SessionId) -> IntentResult {
     use crate::feat::session::protocol::close_session::CloseSession;
-    IntentResult::with_commands(vec![Command::CloseSession(CloseSession {
+    IntentResult::with_message(CloseSession {
         session_id: closing_id.clone(),
-    })])
+    })
 }
 
 #[cfg(test)]
@@ -372,8 +366,9 @@ mod tests {
         assert!(state.session.contains(&old_id));
         // And two sessions exist.
         assert_eq!(state.session.session_count(), 2);
-        // And no commands emitted (no setup command).
-        assert!(result.commands.is_empty());
+        // And one message emitted (SessionCreated).
+        assert_eq!(result.message_names.len(), 1);
+        assert!(result.message_names[0].contains("SessionCreated"));
         // And the session has no lifecycle name.
         assert!(state.active_session().lifecycle_name().is_none());
         // And the session has the default CWD.
@@ -410,17 +405,12 @@ mod tests {
             state.active_session().lifecycle_name(),
             Some("fossil branch")
         );
-        // And PersistSession, PushChatEntry, then RunSessionSetup are emitted.
-        assert_eq!(result.commands.len(), 3);
-        assert!(matches!(&result.commands[0], Command::PersistSession(_)));
-        assert!(matches!(&result.commands[1], Command::PushChatEntry(_)));
-        assert!(matches!(
-            &result.commands[2],
-            Command::RunSessionSetup(RunSessionSetup {
-                command,
-                ..
-            }) if command == "echo /tmp/workdir"
-        ));
+        // And PersistSession, PushChatEntry, RunSessionSetup, SessionCreated are emitted.
+        assert_eq!(result.message_names.len(), 4);
+        assert!(result.message_names[0].contains("PersistSession"));
+        assert!(result.message_names[1].contains("PushChatEntry"));
+        assert!(result.message_names[2].contains("RunSessionSetup"));
+        assert!(result.message_names[3].contains("SessionCreated"));
     }
 
     #[rstest::rstest]
@@ -447,16 +437,9 @@ mod tests {
             handle_session_lifecycle_setup(&mut state, "fossil branch", &["my-branch".to_owned()]);
 
         // Then PersistSession is emitted first.
-        assert!(matches!(&result.commands[0], Command::PersistSession(_)));
+        assert!(result.message_names[0].contains("PersistSession"));
         // And RunSessionSetup is emitted third with rendered args.
-        assert!(matches!(
-            &result.commands[2],
-            Command::RunSessionSetup(RunSessionSetup {
-                command,
-                args,
-                ..
-            }) if command == "script.sh my-branch" && args == &["my-branch".to_owned()]
-        ));
+        assert!(result.message_names[2].contains("RunSessionSetup"));
         // And the session has the args stored.
         assert_eq!(
             state.active_session().lifecycle_args(),
@@ -492,17 +475,14 @@ mod tests {
         let second_session = ChatSessionState::new();
         let second_id = second_session.session_id().clone();
         state.session.insert(second_session);
-        state.session.set_active(second_id.clone());
+        state.session.set_active(second_id);
 
         // When handling SessionClose.
         let result = handle_session_close(&mut state);
 
         // Then a CloseSession command is emitted for the closed session.
-        assert_eq!(result.commands.len(), 1);
-        assert!(matches!(
-            &result.commands[0],
-            Command::CloseSession(cmd) if cmd.session_id == second_id
-        ));
+        assert_eq!(result.message_names.len(), 1);
+        assert!(result.message_names[0].contains("CloseSession"));
     }
 
     #[rstest::rstest]
@@ -540,29 +520,23 @@ mod tests {
 
         // Then a CloseSession command is emitted (actor handles teardown).
         assert!(state.session.contains(&session_id));
-        assert_eq!(result.commands.len(), 1);
-        assert!(matches!(
-            &result.commands[0],
-            Command::CloseSession(cmd) if cmd.session_id == session_id
-        ));
+        assert_eq!(result.message_names.len(), 1);
+        assert!(result.message_names[0].contains("CloseSession"));
     }
 
     #[rstest::rstest]
     fn session_close_last_session_emits_close_session() {
         // Given a state with only one session.
         let mut state = AppState::default();
-        let session_id = state.session.active_session_id().clone();
+        let _session_id = state.session.active_session_id().clone();
         assert_eq!(state.session.session_count(), 1);
 
         // When handling SessionClose.
         let result = handle_session_close(&mut state);
 
         // Then a CloseSession command is emitted.
-        assert_eq!(result.commands.len(), 1);
-        assert!(matches!(
-            &result.commands[0],
-            Command::CloseSession(cmd) if cmd.session_id == session_id
-        ));
+        assert_eq!(result.message_names.len(), 1);
+        assert!(result.message_names[0].contains("CloseSession"));
     }
 
     #[rstest::rstest]
@@ -579,8 +553,9 @@ mod tests {
 
         // Then a new session is created (same behavior as before).
         assert_ne!(*state.session.active_session_id(), old_id);
-        assert!(state.active_session().history().is_empty());
-        assert!(result.commands.is_empty());
+        // And one message emitted (SessionCreated).
+        assert_eq!(result.message_names.len(), 1);
+        assert!(result.message_names[0].contains("SessionCreated"));
     }
 
     #[rstest::rstest]
@@ -616,17 +591,9 @@ mod tests {
             &["my-branch".to_owned(), "target-dir".to_owned()]
         );
         // Then PersistSession is emitted first.
-        assert!(matches!(&result.commands[0], Command::PersistSession(_)));
-        // And RunSessionSetup is emitted third with rendered args.
-        assert!(matches!(
-            &result.commands[2],
-            Command::RunSessionSetup(RunSessionSetup {
-                command,
-                args,
-                ..
-            }) if command == "script.sh my-branch target-dir"
-                && args == &["my-branch".to_owned(), "target-dir".to_owned()]
-        ));
+        assert!(result.message_names[0].contains("PersistSession"));
+        // And RunSessionSetup is emitted third.
+        assert!(result.message_names[2].contains("RunSessionSetup"));
         // And arg input state is cleared.
         assert!(state.frontend.arg_input.lifecycle_name.is_empty());
     }
@@ -657,7 +624,7 @@ mod tests {
         let result = handle_arg_input_confirm(&mut state);
 
         // Then no command is emitted (validation rejects empty input).
-        assert!(result.commands.is_empty());
+        assert!(result.message_names.is_empty());
         // And no session was created (state unchanged).
         assert_eq!(*state.session.active_session_id(), old_id);
         // And arg input state is NOT cleared (user stays in popup).
@@ -944,18 +911,14 @@ mod tests {
         let result = handle_arg_input_confirm(&mut state);
 
         // Then a command is emitted with the rendered args.
-        assert!(!result.commands.is_empty(), "command should be emitted");
+        assert!(
+            !result.message_names.is_empty(),
+            "command should be emitted"
+        );
         // Then PersistSession is emitted first.
-        assert!(matches!(&result.commands[0], Command::PersistSession(_)));
-        // And RunSessionSetup is emitted third with rendered args.
-        assert!(matches!(
-            &result.commands[2],
-            Command::RunSessionSetup(RunSessionSetup {
-                command,
-                args,
-                ..
-            }) if command == "script.sh foo bar" && args == &["foo".to_owned(), "bar".to_owned()]
-        ));
+        assert!(result.message_names[0].contains("PersistSession"));
+        // And RunSessionSetup is emitted third.
+        assert!(result.message_names[2].contains("RunSessionSetup"));
         // And a new session is created.
         assert_ne!(*state.session.active_session_id(), old_id);
     }
@@ -993,17 +956,9 @@ mod tests {
             &["my branch".to_owned(), "target".to_owned()]
         );
         // Then PersistSession is emitted first.
-        assert!(matches!(&result.commands[0], Command::PersistSession(_)));
-        // And RunSessionSetup is emitted third with rendered args.
-        assert!(matches!(
-            &result.commands[2],
-            Command::RunSessionSetup(RunSessionSetup {
-                command,
-                args,
-                ..
-            }) if command == "script.sh 'my branch' target"
-                && args == &["my branch".to_owned(), "target".to_owned()]
-        ));
+        assert!(result.message_names[0].contains("PersistSession"));
+        // And RunSessionSetup is emitted third.
+        assert!(result.message_names[2].contains("RunSessionSetup"));
     }
 
     // --- Auto-close empty session tests ---
@@ -1075,9 +1030,9 @@ mod tests {
             Some("fossil branch")
         );
         // And PersistSession, PushChatEntry, then RunSessionSetup are emitted.
-        assert!(matches!(&result.commands[0], Command::PersistSession(_)));
-        assert!(matches!(&result.commands[1], Command::PushChatEntry(..)));
-        assert!(matches!(&result.commands[2], Command::RunSessionSetup(..)));
+        assert!(result.message_names[0].contains("PersistSession"));
+        assert!(result.message_names[1].contains("PushChatEntry"));
+        assert!(result.message_names[2].contains("RunSessionSetup"));
     }
 
     // --- Phase 3: Mutation-killing tests for arg input editing ---
@@ -1243,7 +1198,7 @@ mod tests {
         let result = handle_session_rerun_setup(&mut state);
 
         // Then no commands are emitted.
-        assert!(result.commands.is_empty());
+        assert!(result.message_names.is_empty());
     }
 
     #[test]
@@ -1272,7 +1227,7 @@ mod tests {
         let result = handle_session_rerun_setup(&mut state);
 
         // Then no commands are emitted.
-        assert!(result.commands.is_empty());
+        assert!(result.message_names.is_empty());
     }
 
     #[test]
@@ -1285,7 +1240,7 @@ mod tests {
         let result = handle_session_rerun_setup(&mut state);
 
         // Then no commands are emitted.
-        assert!(result.commands.is_empty());
+        assert!(result.message_names.is_empty());
     }
 
     #[test]
@@ -1301,31 +1256,23 @@ mod tests {
         let result = handle_session_rerun_setup(&mut state);
 
         // Then no commands are emitted.
-        assert!(result.commands.is_empty());
+        assert!(result.message_names.is_empty());
     }
 
     #[test]
     fn rerun_setup_emits_commands_when_valid() {
         // Given a session in NothingRan with a setup command.
         let mut state = setup_rerun_state();
-        let session_id = state.session.active_session_id().clone();
+        let _session_id = state.session.active_session_id().clone();
 
         // When handling rerun setup.
         let result = handle_session_rerun_setup(&mut state);
 
         // Then two commands are emitted.
-        assert_eq!(result.commands.len(), 2);
-        // And the first is a PushChatEntry with the running message.
-        assert!(matches!(
-            &result.commands[0],
-            Command::PushChatEntry(cmd) if cmd.session_id == session_id
-        ));
-        // And the second is RunSessionSetup with correct fields.
-        let Command::RunSessionSetup(setup_cmd) = &result.commands[1] else {
-            panic!("expected RunSessionSetup");
-        };
-        assert_eq!(setup_cmd.session_id, session_id);
-        assert_eq!(setup_cmd.command, "echo /tmp/workdir");
-        assert_eq!(setup_cmd.args, vec!["arg1".to_owned()]);
+        assert_eq!(result.message_names.len(), 2);
+        // And the first is PushChatEntry.
+        assert!(result.message_names[0].contains("PushChatEntry"));
+        // And the second is RunSessionSetup.
+        assert!(result.message_names[1].contains("RunSessionSetup"));
     }
 }

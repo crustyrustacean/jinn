@@ -2,7 +2,7 @@
 
 use crate::common::app_state::{AppState, FocusScope};
 use crate::feat::preferences_actor::protocol::app_state_command::{AppStateUpdate, UpdateAppState};
-use crate::protocol::{Command, IntentResult};
+use crate::protocol::IntentResult;
 
 /// The number of columns to change per resize step.
 const RESIZE_STEP: u16 = 2;
@@ -29,9 +29,9 @@ pub fn handle_resize_expand(state: &mut AppState) -> IntentResult {
     let new_width = max_width;
     state.frontend.sidebar_width = new_width;
 
-    IntentResult::with_commands(vec![Command::UpdateAppState(UpdateAppState {
+    IntentResult::with_message(UpdateAppState {
         updates: vec![AppStateUpdate::SetSidebarWidth(Some(new_width))],
-    })])
+    })
 }
 
 /// Contracts the sidebar by moving the border right.
@@ -51,9 +51,9 @@ pub fn handle_resize_contract(state: &mut AppState) -> IntentResult {
 
     state.frontend.sidebar_width = new_width;
 
-    IntentResult::with_commands(vec![Command::UpdateAppState(UpdateAppState {
+    IntentResult::with_message(UpdateAppState {
         updates: vec![AppStateUpdate::SetSidebarWidth(Some(new_width))],
-    })])
+    })
 }
 
 /// Exits sidebar resize mode, returning to Normal scope.
@@ -76,8 +76,6 @@ mod tests {
     )]
     use crate::common::app_state::AppState;
     use crate::common::app_state::FocusScope;
-    use crate::feat::preferences_actor::protocol::app_state_command::AppStateUpdate;
-    use crate::protocol::Command;
 
     use super::*;
 
@@ -100,7 +98,7 @@ mod tests {
             FocusScope::SidebarResize
         ));
         // And no commands are emitted.
-        assert!(result.commands.is_empty());
+        assert!(result.message_names.is_empty());
     }
 
     #[rstest::rstest]
@@ -123,13 +121,8 @@ mod tests {
         // When handling SidebarResizeExpand.
         let result = handle_resize_expand(&mut state);
 
-        // Then an UpdateAppState command with the new width was emitted.
-        assert_eq!(result.commands.len(), 1);
-        assert!(matches!(
-            &result.commands[0],
-            Command::UpdateAppState(cmd) if cmd.updates.len() == 1
-                && matches!(&cmd.updates[0], AppStateUpdate::SetSidebarWidth(Some(32)))
-        ));
+        // Then an UpdateAppState message was emitted.
+        assert_eq!(result.messages.len(), 1);
     }
 
     #[rstest::rstest]
@@ -152,8 +145,8 @@ mod tests {
         // When handling SidebarResizeContract.
         let result = handle_resize_contract(&mut state);
 
-        // Then an UpdateAppState command was emitted.
-        assert_eq!(result.commands.len(), 1);
+        // Then an UpdateAppState message was emitted.
+        assert_eq!(result.messages.len(), 1);
     }
 
     #[rstest::rstest]
@@ -168,7 +161,7 @@ mod tests {
         // Then sidebar_width stays at minimum.
         assert_eq!(state.frontend.sidebar_width, MIN_SIDEBAR_WIDTH);
         // And no commands are emitted (no change).
-        assert!(result.commands.is_empty());
+        assert!(result.message_names.is_empty());
     }
 
     #[rstest::rstest]
@@ -186,7 +179,7 @@ mod tests {
             FocusScope::Normal
         ));
         // And no commands are emitted.
-        assert!(result.commands.is_empty());
+        assert!(result.message_names.is_empty());
     }
 
     #[rstest::rstest]

@@ -113,7 +113,7 @@ fn deeply_nested_finds_root() {
 
     let mut child = ChatSessionState::new();
     child.set_session_id(child_id.clone());
-    child.set_parent_session(parent_id.clone());
+    child.set_parent_session(parent_id);
     sessions.insert(child_id.clone(), child);
 
     // When finding root from the child.
@@ -286,7 +286,7 @@ fn disconnected_sessions_excluded() {
     );
     sessions.insert(
         disconnected_id.clone(),
-        make_session_with_stats(disconnected_id.clone(), 999, 999, None, 99),
+        make_session_with_stats(disconnected_id, 999, 999, None, 99),
     );
 
     set_parent(&mut sessions, &child_id, &parent_id);
@@ -353,7 +353,7 @@ fn frozen_child_included_in_aggregate() {
     frozen_nodes.insert(
         child_id.clone(),
         FrozenTreeNode {
-            session_id: child_id.clone(),
+            session_id: child_id,
             parent_session_id: Some(root_id.clone()),
             total_sent: 200,
             total_received: 100,
@@ -393,7 +393,7 @@ fn child_of_frozen_included_in_aggregate() {
     frozen_nodes.insert(
         root_id.clone(),
         FrozenTreeNode {
-            session_id: root_id.clone(),
+            session_id: root_id,
             parent_session_id: None,
             total_sent: 200,
             total_received: 100,
@@ -438,8 +438,8 @@ fn deeply_nested_with_frozen_in_middle() {
     frozen_nodes.insert(
         parent_id.clone(),
         FrozenTreeNode {
-            session_id: parent_id.clone(),
-            parent_session_id: Some(gp_id.clone()),
+            session_id: parent_id,
+            parent_session_id: Some(gp_id),
             total_sent: 20,
             total_received: 10,
             total_cost: 0.0,
@@ -471,7 +471,7 @@ fn session_count_includes_frozen_nodes() {
     frozen_nodes.insert(
         child1_id.clone(),
         FrozenTreeNode {
-            session_id: child1_id.clone(),
+            session_id: child1_id,
             parent_session_id: Some(root_id.clone()),
             total_sent: 100,
             total_received: 50,
@@ -482,7 +482,7 @@ fn session_count_includes_frozen_nodes() {
     frozen_nodes.insert(
         child2_id.clone(),
         FrozenTreeNode {
-            session_id: child2_id.clone(),
+            session_id: child2_id,
             parent_session_id: Some(root_id.clone()),
             total_sent: 200,
             total_received: 100,
@@ -529,8 +529,8 @@ fn frozen_node_not_in_tree_is_excluded() {
     frozen_nodes.insert(
         frozen_id.clone(),
         FrozenTreeNode {
-            session_id: frozen_id.clone(),
-            parent_session_id: Some(frozen_root.clone()),
+            session_id: frozen_id,
+            parent_session_id: Some(frozen_root),
             total_sent: 888,
             total_received: 888,
             total_cost: 8.88,
@@ -571,7 +571,7 @@ fn all_frozen_tree_aggregates() {
     frozen_nodes.insert(
         child_id.clone(),
         FrozenTreeNode {
-            session_id: child_id.clone(),
+            session_id: child_id,
             parent_session_id: Some(root_id.clone()),
             total_sent: 200,
             total_received: 100,
@@ -602,7 +602,7 @@ fn empty_sessions_produce_zeros() {
     let mut child = ChatSessionState::new();
     child.set_session_id(child_id.clone());
     child.set_parent_session(parent_id.clone());
-    sessions.insert(child_id.clone(), child);
+    sessions.insert(child_id, child);
 
     // When aggregating.
     let stats = aggregate_tree_stats(&sessions, &HashMap::new(), &parent_id);
@@ -633,7 +633,7 @@ fn forked_session_excluded_from_tree_turn_count() {
     let mut child = make_session_with_stats(child_id.clone(), 0, 0, None, 2);
     child.set_parent_session(parent_id.clone());
     child.set_fork_ordinal(1); // inherited both entries (ordinal 0 and 1)
-    sessions.insert(child_id.clone(), child);
+    sessions.insert(child_id, child);
 
     // When aggregating from the parent.
     let stats = aggregate_tree_stats(&sessions, &HashMap::new(), &parent_id);
@@ -665,9 +665,9 @@ fn fork_from_fork_turns_counted_correctly() {
 
     // Fork B inherited entries 0..=2 from Fork A -> 0 turns.
     let mut fork_b = make_session_with_stats(fork_b_id.clone(), 0, 0, None, 3);
-    fork_b.set_parent_session(fork_a_id.clone());
+    fork_b.set_parent_session(fork_a_id);
     fork_b.set_fork_ordinal(2); // skip inherited entries 0..=2
-    sessions.insert(fork_b_id.clone(), fork_b);
+    sessions.insert(fork_b_id, fork_b);
 
     // When aggregating from root.
     let stats = aggregate_tree_stats(&sessions, &HashMap::new(), &root_id);

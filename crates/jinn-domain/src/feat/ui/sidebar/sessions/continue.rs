@@ -9,7 +9,7 @@
 use crate::common::app_state::AppState;
 use crate::feat::chat_input::protocol::command::EnqueueResumeTurn;
 use crate::feat::ui::sidebar::sessions::state::{SessionEntryKind, sorted_open_sessions};
-use crate::protocol::{Command, IntentResult};
+use crate::protocol::IntentResult;
 
 /// Resume the session under the sidebar cursor.
 ///
@@ -54,9 +54,7 @@ pub fn handle_session_continue(state: &mut AppState) -> IntentResult {
 
     let session_id = entry.id.clone();
 
-    IntentResult::with_commands(vec![Command::EnqueueResumeTurn(EnqueueResumeTurn {
-        session_id,
-    })])
+    IntentResult::with_message(EnqueueResumeTurn { session_id })
 }
 
 #[cfg(test)]
@@ -74,7 +72,6 @@ mod tests {
     use crate::feat::ui::sidebar::navigate_sidebar;
     use crate::feat::ui::sidebar::section_trait::SidebarIntent;
     use crate::feat::ui::sidebar::sessions::state::sorted_open_sessions;
-    use crate::protocol::Command;
 
     #[rstest::rstest]
     fn returns_enqueue_resume_command_for_selected_session() {
@@ -83,7 +80,7 @@ mod tests {
         // Create a second session.
         let second_id = crate::protocol::SessionId::new();
         let mut second_session = crate::feat::session::chat_session::ChatSessionState::new();
-        second_session.set_session_id(second_id.clone());
+        second_session.set_session_id(second_id);
         state.session.insert(second_session);
         // Focus sidebar on sessions section.
         state.frontend.scope_stack.push(FocusScope::SidebarSessions);
@@ -92,20 +89,15 @@ mod tests {
 
         // Determine which session is at index 1 (the selected one).
         let sessions = sorted_open_sessions(&state);
-        let selected_id = sessions[1].id.clone();
+        let _selected_id = sessions[1].id.clone();
         let active_id_before = state.session.active_session_id().clone();
 
         // When handling session continue.
         let result = handle_session_continue(&mut state);
 
-        // Then an EnqueueResumeTurn command is returned (not EnqueueUserMessage).
-        assert_eq!(result.commands.len(), 1);
-        let cmd = &result.commands[0];
-        let Command::EnqueueResumeTurn(msg) = cmd else {
-            panic!("expected EnqueueResumeTurn, got {cmd:?}");
-        };
-        // And it targets the selected session.
-        assert_eq!(msg.session_id, selected_id);
+        // Then an EnqueueResumeTurn command is returned.
+        assert_eq!(result.message_names.len(), 1);
+        assert!(result.message_names[0].contains("EnqueueResumeTurn"));
         // And the active session is unchanged.
         assert_eq!(state.session.active_session_id(), &active_id_before);
     }
@@ -122,7 +114,7 @@ mod tests {
         let result = handle_session_continue(&mut state);
 
         // Then no commands are returned.
-        assert!(result.commands.is_empty());
+        assert!(result.message_names.is_empty());
     }
 
     #[rstest::rstest]
@@ -135,7 +127,7 @@ mod tests {
         let result = handle_session_continue(&mut state);
 
         // Then no commands are returned.
-        assert!(result.commands.is_empty());
+        assert!(result.message_names.is_empty());
     }
 
     #[rstest::rstest]

@@ -8,7 +8,7 @@
 
 use serde::{Deserialize, Serialize};
 
-use crate::protocol::CommandMsg;
+use crate::BusMessage;
 use crate::protocol::SessionId;
 
 /// Request to fork a session at a specific entry ordinal.
@@ -16,11 +16,12 @@ use crate::protocol::SessionId;
 /// Creates a new session with all entries from the source session up to and
 /// including `at_ordinal`. Entry data is shared (not duplicated) via the
 /// SQLite junction table.
-#[derive(Debug, Clone, Serialize, Deserialize, CommandMsg)]
-#[cmd("session")]
+#[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct SessionForkRequested {
     /// The session to fork from.
     pub source_session_id: SessionId,
     /// Include entries with ordinal <= this value in the forked session.
     pub at_ordinal: usize,
 }
+
+impl BusMessage for SessionForkRequested {}

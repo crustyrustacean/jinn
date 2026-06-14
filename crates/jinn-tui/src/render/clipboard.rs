@@ -64,14 +64,15 @@ mod tests {
     use ratatui::layout::Rect;
 
     /// Creates a minimal `TuiApp` for render testing.
-    fn render_test_app() -> crate::TuiApp {
-        crate::TuiApp::test_builder().build()
+    async fn render_test_app() -> crate::TuiApp {
+        crate::TuiApp::test_builder().build().await
     }
 
     #[rstest::rstest]
-    fn clipboard_copy_clears_pending_flag_on_idle_selection() {
+    #[tokio::test]
+    async fn clipboard_copy_clears_pending_flag_on_idle_selection() {
         // Given an app with pending_clipboard set but Idle selection.
-        let mut app = render_test_app();
+        let mut app = render_test_app().await;
         app.selection = SelectionState::Idle;
         app.pending_clipboard = true;
 
@@ -86,12 +87,13 @@ mod tests {
     }
 
     #[rstest::rstest]
-    fn clipboard_copy_skips_empty_selection() {
+    #[tokio::test]
+    async fn clipboard_copy_skips_empty_selection() {
         // Given an app with pending_clipboard and an Active selection over empty cells.
         let area = Rect::new(0, 0, 20, 5);
         let buf = ratatui::buffer::Buffer::empty(area);
 
-        let mut app = render_test_app();
+        let mut app = render_test_app().await;
         app.selection = SelectionState::Active {
             anchor: (0, 0),
             focus: (3, 0),
@@ -109,7 +111,8 @@ mod tests {
     }
 
     #[rstest::rstest]
-    fn clipboard_clears_pending_flag_immediately() {
+    #[tokio::test]
+    async fn clipboard_clears_pending_flag_immediately() {
         // Given a buffer with known text and an active selection.
         let area = Rect::new(0, 0, 20, 5);
         let mut buf = ratatui::buffer::Buffer::empty(area);
@@ -120,7 +123,7 @@ mod tests {
                 .set_symbol(&ch.to_string());
         }
 
-        let mut app = render_test_app();
+        let mut app = render_test_app().await;
         app.selection = SelectionState::Active {
             anchor: (2, 2),
             focus: (6, 2),
@@ -139,7 +142,8 @@ mod tests {
 
     #[rstest::rstest]
     #[ignore = "requires clipboard access (run with --ignored)"]
-    fn clipboard_contains_selected_text() {
+    #[tokio::test]
+    async fn clipboard_contains_selected_text() {
         // Given a buffer with known text and an active selection.
         let area = Rect::new(0, 0, 20, 5);
         let mut buf = ratatui::buffer::Buffer::empty(area);
@@ -150,7 +154,7 @@ mod tests {
                 .set_symbol(&ch.to_string());
         }
 
-        let mut app = render_test_app();
+        let mut app = render_test_app().await;
         app.selection = SelectionState::Active {
             anchor: (2, 2),
             focus: (6, 2),

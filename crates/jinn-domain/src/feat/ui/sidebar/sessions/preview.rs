@@ -20,7 +20,7 @@ use unicode_segmentation::UnicodeSegmentation;
 use crate::common::app_state::{AppState, FocusScope};
 use crate::common::render_ctx::RenderCtx;
 use crate::feat::plugin_dispatch::{PreviewDirective, call_hooks_typed};
-use crate::feat::provider_infra::NO_PROVIDER_ID;
+// use crate::feat::plugin_dispatch::{PreviewDirective, call_hooks_typed};
 use crate::feat::session::chat_session::ChatSessionState;
 use crate::feat::theme::Theme;
 use crate::feat::ui::chat_log::entry_to_lines;

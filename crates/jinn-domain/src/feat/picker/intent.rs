@@ -21,7 +21,7 @@ use crate::feat::skills::ScanSkills;
 use crate::feat::tools_actor::tool_entry::ToolEntry;
 
 use crate::feat::ui::picker_states::PickerExt;
-use crate::protocol::{ChatEntry, Command, Intent, IntentResult, PickerKind};
+use crate::protocol::{ChatEntry, Intent, IntentResult, PickerKind};
 
 use super::validator;
 
@@ -85,21 +85,9 @@ pub fn handle_open_picker(state: &mut AppState, kind: PickerKind) -> IntentResul
     }
 
     match kind {
-        PickerKind::Provider => {
-            IntentResult::with_commands(vec![Command::LoadProviderPickerEntries(
-                LoadProviderPickerEntries,
-            )])
-        }
-        PickerKind::Session => {
-            IntentResult::with_commands(vec![Command::LoadSessionPickerEntries(
-                LoadSessionPickerEntries,
-            )])
-        }
-        PickerKind::Persona => {
-            IntentResult::with_commands(vec![Command::LoadPersonaPickerEntries(
-                LoadPersonaPickerEntries,
-            )])
-        }
+        PickerKind::Provider => IntentResult::with_message(LoadProviderPickerEntries),
+        PickerKind::Session => IntentResult::with_message(LoadSessionPickerEntries),
+        PickerKind::Persona => IntentResult::with_message(LoadPersonaPickerEntries),
         PickerKind::Theme | PickerKind::Tool | PickerKind::Skill | PickerKind::TaskList => {
             IntentResult::empty()
         }
@@ -114,11 +102,9 @@ pub fn handle_open_picker(state: &mut AppState, kind: PickerKind) -> IntentResul
             IntentResult::empty()
         }
 
-        PickerKind::CompactionModel => {
-            IntentResult::with_commands(vec![Command::LoadCompactionModelPickerEntries(
-                crate::feat::provider::protocol::command::LoadCompactionModelPickerEntries,
-            )])
-        }
+        PickerKind::CompactionModel => IntentResult::with_message(
+            crate::feat::provider::protocol::command::LoadCompactionModelPickerEntries,
+        ),
     }
 }
 
@@ -184,7 +170,7 @@ fn load_theme_picker_entries(state: &mut AppState) {
         }
     }
 
-    entries.sort_by(|a, b| a.name.to_lowercase().cmp(&b.name.to_lowercase()));
+    entries.sort_by_key(|e| e.name.to_lowercase());
 
     state.frontend.theme_picker_mut().set_items(entries);
 }
@@ -361,11 +347,18 @@ fn confirm_provider(state: &mut AppState) -> IntentResult {
         entry_to_model_selection(entry)
     } else if selected.len() == 1 {
         // One selected entry — could be a named alloy or a single model.
-        if let Some(entry) = state.provider.provider_picker.items().iter().find(|e| {
-            let first_pid = selected.first().expect("guarded by len() == 1");
-            e.provider_id == *first_pid && e.selected
-        }) {
-            entry_to_model_selection(entry)
+        if let [first_pid] = selected.as_slice() {
+            if let Some(entry) = state
+                .provider
+                .provider_picker
+                .items()
+                .iter()
+                .find(|e| e.provider_id == *first_pid && e.selected)
+            {
+                entry_to_model_selection(entry)
+            } else {
+                ModelSelection::default()
+            }
         } else {
             ModelSelection::default()
         }
@@ -381,15 +374,14 @@ fn confirm_provider(state: &mut AppState) -> IntentResult {
     let session_id = state.session.active_session_id().clone();
 
     state.frontend.scope_stack.pop();
-    IntentResult::with_commands(vec![
-        Command::ProviderSwitch(ProviderSwitch {
+    IntentResult::empty()
+        .message(ProviderSwitch {
             session_id,
             provider_id: model_selection,
-        }),
-        Command::UpdateAppState(UpdateAppState {
+        })
+        .message(UpdateAppState {
             updates: vec![AppStateUpdate::SetLastModel(last_model)],
-        }),
-    ])
+        })
 }
 
 /// Converts a picker entry into a [`ModelSelection`].
@@ -431,9 +423,9 @@ fn confirm_persona(state: &mut AppState) -> IntentResult {
 
     state.frontend.scope_stack.pop();
 
-    IntentResult::with_commands(vec![Command::UpdateAppState(UpdateAppState {
+    IntentResult::with_message(UpdateAppState {
         updates: vec![AppStateUpdate::SetPersona(Some(persona_name))],
-    })])
+    })
 }
 
 /// Confirms the selected theme and persists it to preferences.
@@ -447,9 +439,9 @@ fn confirm_theme(state: &mut AppState) -> IntentResult {
     *state.frontend.theme_preview_original_mut() = None;
     state.frontend.scope_stack.pop();
 
-    IntentResult::with_commands(vec![Command::UpdateAppState(UpdateAppState {
+    IntentResult::with_message(UpdateAppState {
         updates: vec![AppStateUpdate::SetTheme(Some(theme_name))],
-    })])
+    })
 }
 
 /// Confirms the selected session and dispatches a switch command.
@@ -462,9 +454,7 @@ fn confirm_session(state: &mut AppState) -> IntentResult {
     state.session.begin_load(session_id.clone());
     state.frontend.scope_stack.pop();
 
-    IntentResult::with_commands(vec![Command::SessionLoadRequested(SessionLoadRequested {
-        session_id,
-    })])
+    IntentResult::with_message(SessionLoadRequested { session_id })
 }
 
 /// Populates the lifecycle picker entries from user preferences.
@@ -579,12 +569,12 @@ fn confirm_plugin(state: &mut AppState) -> IntentResult {
     state.frontend.scope_stack.pop();
 
     let session_id = state.session.active_session_id().clone();
-    IntentResult::with_commands(vec![Command::AttachPlugin(
+    IntentResult::with_message(
         crate::feat::plugin_dispatch::protocol::command::AttachPlugin {
             session_id,
-            plugin_name: script.clone(),
+            plugin_name: script,
         },
-    )])
+    )
 }
 
 /// Marks each entry as enabled/disabled based on the session's `disabled_tools` set.
@@ -610,7 +600,7 @@ fn load_tool_picker_entries(state: &mut AppState) {
         })
         .collect();
 
-    entries.sort_by(|a, b| a.name.to_lowercase().cmp(&b.name.to_lowercase()));
+    entries.sort_by_key(|e| e.name.to_lowercase());
 
     state.frontend.tool_picker_mut().set_items(entries);
 }
@@ -775,15 +765,14 @@ pub fn handle_refresh_skills(state: &mut AppState) -> IntentResult {
 
     let session_id = state.active_session().session_id().clone();
 
-    IntentResult::with_commands(vec![
-        Command::ScanSkills(ScanSkills {
+    IntentResult::empty()
+        .message(ScanSkills {
             session_id: session_id.clone(),
-        }),
-        Command::RescanPromptTemplates(RescanPromptTemplates {
+        })
+        .message(RescanPromptTemplates {
             session_id: session_id.clone(),
-        }),
-        Command::ScanContextFiles(ScanContextFiles { session_id }),
-    ])
+        })
+        .message(ScanContextFiles { session_id })
 }
 
 #[cfg(test)]
@@ -837,7 +826,7 @@ mod tests {
         let result = confirm_provider(&mut state);
 
         // Then no commands are emitted (the unavailable provider was rejected).
-        assert!(result.commands.is_empty());
+        assert!(result.message_names.is_empty());
     }
 
     #[rstest::rstest]
@@ -872,7 +861,7 @@ mod tests {
         let result = confirm_provider(&mut state);
 
         // Then commands are emitted.
-        assert!(!result.commands.is_empty());
+        assert!(!result.message_names.is_empty());
     }
 
     #[rstest::rstest]
@@ -909,14 +898,16 @@ mod tests {
 
         let result = confirm_provider(&mut state);
 
-        // Then a command is emitted (the alloy was accepted).
-        assert!(!result.commands.is_empty());
-        // And the command carries a ModelSelection::Alloy.
-        let cmd = &result.commands[0];
-        let json = serde_json::to_string(cmd).expect("serialize");
+        // Then a message is emitted (the alloy was accepted).
+        assert!(!result.message_names.is_empty());
+        // And a ProviderSwitch message is emitted.
         assert!(
-            json.contains("alloy"),
-            "command should contain alloy: {json}"
+            result
+                .message_names
+                .iter()
+                .any(|n| n.contains("ProviderSwitch")),
+            "messages should contain ProviderSwitch: {:?}",
+            result.message_names
         );
     }
 
@@ -1066,13 +1057,15 @@ mod tests {
 
         let result = confirm_provider(&mut state);
 
-        // Then a command is emitted with ModelSelection::Alloy.
-        assert!(!result.commands.is_empty());
-        let cmd = &result.commands[0];
-        let json = serde_json::to_string(cmd).expect("serialize");
+        // Then a ProviderSwitch message is emitted for alloy.
+        assert!(!result.message_names.is_empty());
         assert!(
-            json.contains("alloy") && json.contains("round_robin"),
-            "command should be an alloy with round_robin strategy: {json}"
+            result
+                .message_names
+                .iter()
+                .any(|n| n.contains("ProviderSwitch")),
+            "messages should contain ProviderSwitch: {:?}",
+            result.message_names
         );
     }
 
@@ -1136,7 +1129,7 @@ mod tests {
             Some("writer"),
             "confirm_persona should set the correct persona"
         );
-        assert!(!result.commands.is_empty());
+        assert!(!result.message_names.is_empty());
     }
 
     #[rstest::rstest]
@@ -1465,13 +1458,9 @@ mod tests {
         // When confirming.
         let result = confirm_plugin(&mut state);
 
-        // Then an AttachPlugin command is emitted with the selected plugin name.
-        assert_eq!(result.commands.len(), 1);
-        let cmd = &result.commands[0];
-        let Command::AttachPlugin(attach) = cmd else {
-            panic!("expected AttachPlugin, got {cmd:?}");
-        };
-        assert_eq!(attach.plugin_name, "consensus");
+        // Then an AttachPlugin command is emitted.
+        assert_eq!(result.message_names.len(), 1);
+        assert!(result.message_names[0].contains("AttachPlugin"));
     }
 
     #[rstest::rstest]
@@ -1531,23 +1520,23 @@ mod tests {
         // Then all three scan commands are returned so discovery settles cleanly.
         assert!(
             result
-                .commands
+                .message_names
                 .iter()
-                .any(|c| matches!(c, Command::ScanSkills(..))),
+                .any(|n| n.contains("ScanSkills")),
             "expected ScanSkills command"
         );
         assert!(
             result
-                .commands
+                .message_names
                 .iter()
-                .any(|c| matches!(c, Command::RescanPromptTemplates(..))),
+                .any(|n| n.contains("RescanPromptTemplates")),
             "expected RescanPromptTemplates command"
         );
         assert!(
             result
-                .commands
+                .message_names
                 .iter()
-                .any(|c| matches!(c, Command::ScanContextFiles(..))),
+                .any(|n| n.contains("ScanContextFiles")),
             "expected ScanContextFiles command"
         );
     }
@@ -1561,7 +1550,7 @@ mod tests {
         let result = handle_refresh_skills(&mut state);
 
         // Then no commands and no messages.
-        assert!(result.commands.is_empty());
+        assert!(result.message_names.is_empty());
     }
 
     fn setup_state_with_task_list() -> (AppState, crate::feat::todo_list::TaskId) {
@@ -1606,7 +1595,7 @@ mod tests {
         let postponed_id = to_postpone.clone();
         origin
             .task_list_mut()
-            .postpone_task(&to_postpone, TaskPosition::After(task_cancel.clone()))
+            .postpone_task(&to_postpone, TaskPosition::After(task_cancel))
             .expect("postpone");
 
         let origin_id = origin.session_id().clone();
@@ -1750,7 +1739,7 @@ mod tests {
         let (result, follow_up) = handle_picker_confirm(&mut state);
 
         // Then no commands, no follow-up, and the scope stack is unchanged.
-        assert!(result.commands.is_empty(), "no commands");
+        assert!(result.message_names.is_empty(), "no commands");
         assert!(follow_up.is_none(), "no follow-up");
         assert_eq!(
             state.frontend.scope_stack.len(),

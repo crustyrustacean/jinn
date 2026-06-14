@@ -1,61 +1,155 @@
-//! Echo actor - reference actor for jinn.
+//! Echo actor — reference actor for jinn.
 //!
-//! Implements [`Actor`] for in-memory hosting. Echoes user messages as ALL CAPS
-//! actor entries after a 1-second delay. Lifecycle announcements
-//! (`ActorStarted`, `ActorShutdownCompleted`) are sent via the `ActorContext`
-//! helpers, which are automatically triggered by host-broadcast lifecycle events.
+//! Echoes user messages as ALL CAPS actor entries after a 1-second delay.
+//! Receives [`ChatEntrySubmitted`] events from the message bus and publishes
+//! [`PushChatEntry`] commands back to the bus.
 
 use std::time::Duration;
 
-use crate::common::actor::{Actor, ActorContext, ActorEnvelope, NoDirectMsg};
+use kameo::prelude::{Actor, ActorRef, Context, Message};
 
+use crate::common::actor_deps::{ActorDeps, BusPublish};
 use crate::feat::chat_input::protocol::command::PushChatEntry;
 use crate::feat::chat_input::protocol::event::ChatEntrySubmitted;
-use crate::protocol::{ChatEntry, ChatEntryKind, Command, Event};
+use crate::protocol::{ChatEntry, ChatEntryKind};
+
+/// Dependencies for spawning an [`EchoActor`].
+#[derive(Clone)]
+pub struct EchoActorDeps {
+    /// Universal actor dependencies (bus, services, etc.).
+    pub deps: ActorDeps,
+}
 
 /// Reference echo actor that echoes user messages back as actor entries.
-pub struct EchoActor;
+pub struct EchoActor {
+    deps: ActorDeps,
+}
 
 impl Actor for EchoActor {
-    type Message = NoDirectMsg;
-    type Deps = ();
+    type Args = EchoActorDeps;
+    type Error = kameo::error::Infallible;
 
-    fn activate(_deps: Self::Deps, ctx: &mut ActorContext) -> Self {
-        ctx.subscribe_event::<ChatEntrySubmitted>();
+    async fn on_start(args: Self::Args, actor_ref: ActorRef<Self>) -> Result<Self, Self::Error> {
+        // Register to receive ChatEntrySubmitted events from the bus.
+        args.deps
+            .subscribe(actor_ref.recipient::<ChatEntrySubmitted>())
+            .await;
 
-        Self
-    }
-
-    async fn handle(&mut self, msg: ActorEnvelope<NoDirectMsg>, ctx: &ActorContext) {
-        match msg {
-            ActorEnvelope::Event(event) => Self::process_event(&event, ctx).await,
-            ActorEnvelope::Command(_) | ActorEnvelope::System(_) => {}
-        }
+        Ok(Self { deps: args.deps })
     }
 }
 
-impl EchoActor {
-    /// Processes an incoming event, echoing user messages as ALL CAPS actor entries.
-    async fn process_event(event: &Event, ctx: &ActorContext) {
-        match event {
-            Event::ChatEntrySubmitted(ChatEntrySubmitted {
-                session_id,
-                entry:
-                    ChatEntry {
-                        kind: ChatEntryKind::User { display, .. },
-                        ..
-                    },
-                ..
-            }) => {
-                tokio::time::sleep(Duration::from_secs(1)).await;
-                if let Err(e) = ctx.send_command(Command::PushChatEntry(PushChatEntry {
-                    session_id: session_id.clone(),
-                    entry: ChatEntry::actor("echo", display.to_uppercase()),
-                })) {
-                    tracing::error!(err = ?e, "echo actor failed to send command");
-                }
-            }
-            _ => {}
-        }
+impl Message<ChatEntrySubmitted> for EchoActor {
+    type Reply = ();
+
+    async fn handle(
+        &mut self,
+        msg: ChatEntrySubmitted,
+        _ctx: &mut Context<Self, Self::Reply>,
+    ) -> Self::Reply {
+        let ChatEntrySubmitted {
+            session_id,
+            entry:
+                ChatEntry {
+                    kind: ChatEntryKind::User { display, .. },
+                    ..
+                },
+            ..
+        } = msg
+        else {
+            return;
+        };
+
+        tokio::time::sleep(Duration::from_secs(1)).await;
+
+        let push = PushChatEntry {
+            session_id,
+            entry: ChatEntry::actor("echo", display.to_uppercase()),
+        };
+        self.publish(push).await;
+    }
+}
+
+impl BusPublish for EchoActor {
+    fn bus(&self) -> &crate::common::services::bus_service::BusService {
+        self.deps.bus()
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    #![allow(
+        clippy::expect_used,
+        clippy::panic,
+        clippy::unreachable,
+        clippy::indexing_slicing,
+        reason = "test code"
+    )]
+
+    use std::time::Duration;
+
+    use super::*;
+    use crate::common::bus::test_harness::{TestHarness, await_recorded};
+    use crate::protocol::SessionId;
+
+    #[tokio::test]
+    async fn echo_actor_publishes_uppercase_push_chat_entry() {
+        // Given an echo actor and a recorder, both registered on the bus.
+        let harness = TestHarness::new().await;
+        let _echo = harness
+            .spawn_actor::<EchoActor>(EchoActorDeps {
+                deps: harness.actor_deps().await,
+            })
+            .await;
+        let recorder = harness.spawn_recorder::<PushChatEntry>().await;
+
+        // When publishing a ChatEntrySubmitted with a user message.
+        let session_id = SessionId::new();
+        harness
+            .publish(ChatEntrySubmitted {
+                session_id: session_id.clone(),
+                entry: ChatEntry::user("hello world"),
+            })
+            .await;
+
+        // Then the recorder received a PushChatEntry with 'HELLO WORLD'.
+        let messages = await_recorded(&recorder, 1, Duration::from_secs(2)).await;
+
+        assert_eq!(messages.len(), 1, "expected exactly one PushChatEntry");
+
+        let entry = &messages[0];
+        assert_eq!(entry.session_id, session_id);
+        let ChatEntryKind::Actor { source, text } = &entry.entry.kind else {
+            panic!("expected Actor entry kind");
+        };
+        assert_eq!(source, "echo");
+        assert_eq!(text, "HELLO WORLD");
+    }
+
+    #[tokio::test]
+    async fn echo_actor_ignores_non_user_entries() {
+        // Given an echo actor and a recorder, both registered on the bus.
+        let harness = TestHarness::new().await;
+        let _echo = harness
+            .spawn_actor::<EchoActor>(EchoActorDeps {
+                deps: harness.actor_deps().await,
+            })
+            .await;
+        let recorder = harness.spawn_recorder::<PushChatEntry>().await;
+
+        // When publishing a ChatEntrySubmitted with a system (non-user) entry.
+        harness
+            .publish(ChatEntrySubmitted {
+                session_id: SessionId::new(),
+                entry: ChatEntry::system("system message"),
+            })
+            .await;
+
+        // Then no PushChatEntry was published (echo ignores non-user entries).
+        let messages = await_recorded(&recorder, 1, Duration::from_millis(500)).await;
+        assert!(
+            messages.is_empty(),
+            "expected no PushChatEntry for system entry"
+        );
     }
 }

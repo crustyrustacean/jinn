@@ -1,11 +1,21 @@
-//! Plugin system types shared across crates.
+//! Plugin system for jinn.
 //!
-//! This module lives in `jinn-domain` so that both the domain layer and
-//! `jinn-plugin` can reference [`SessionRegistryId`] without a circular
-//! dependency.
+//! Two execution contexts, same scripts, four access patterns:
+//!
+//! | Who            | Return values? | Blocking?            | API                                                    |
+//! |----------------|----------------|----------------------|--------------------------------------------------------|
+//! | Render thread  | Yes            | No (direct Lua call) | `app.plugins.sync_hooks("name")` → lazy iterator      |
+//! | Actor          | No             | No (async)           | `services.plugins.fire_async("name", &ctx)`             |
+//! | Actor          | Yes            | No (async)           | `services.plugins.fire_async_collect("name", &ctx)`→Vec |
+//! | Actor          | Yes            | Yes (blocking)       | `services.plugin_sync.call_hooks("name", &ctx)` → Vec    |
+//!
+//! - **Sync** — render thread, hooks return immediately via [`SyncPlugins`]
+//! - **Async** — background thread, hooks can call `ctx.request()` via [`AsyncPluginHandle`]
 
 use serde::{Deserialize, Serialize};
 use uuid::Uuid;
+
+// ── SessionRegistryId (was in plugin_system before merge) ──────────
 
 /// Opaque identifier for a per-session plugin registry on the plugin thread.
 ///
@@ -30,13 +40,57 @@ impl Default for SessionRegistryId {
     }
 }
 
-pub mod session_plugin_registry;
+// ── Module declarations ────────────────────────────────────────────
 
+pub mod async_handle;
+pub mod async_thread;
+pub mod bindings;
+pub mod command;
+pub mod loader;
+pub mod plugin_data;
+pub mod plugin_fire_impl;
+pub mod plugin_sync_impl;
+pub mod session_plugin_registry;
+pub mod session_plugin_registry_service;
+pub mod session_registry;
+pub mod sync_handle;
+pub mod sync_state;
+pub mod system;
+pub mod tool_def;
+
+// ── Re-exports ─────────────────────────────────────────────────────
+
+pub use async_handle::AsyncPluginHandle;
+pub use async_thread::RequestHandler;
+pub use command::PluginCommand;
+pub use loader::{PluginKind, PluginMeta, discover_plugins};
+pub use plugin_data::PluginData;
 pub use session_plugin_registry::{
     CreateSessionRegistryResult, PluginToolMetadata, SessionPluginRegistry,
     SessionPluginRegistryError, ToolScope,
 };
-
-pub mod session_plugin_registry_service;
-
 pub use session_plugin_registry_service::SessionPluginRegistryService;
+pub use sync_handle::PluginSyncHandle;
+pub use sync_state::{PluginHooks, SyncPlugins};
+pub use system::{CommandDispatcher, PluginSystem, PluginSystemBuildResult};
+pub use tool_def::{PluginToolDef, PluginToolMetadata as ToolMeta, ToolScope as ToolScopeReexport};
+
+/// A no-op request handler for contexts where async requests aren't needed.
+#[must_use]
+pub fn noop_request_handler() -> RequestHandler {
+    std::sync::Arc::new(|name: &str, _data: &serde_json::Value| {
+        tracing::warn!(name, "no request handler configured, returning null");
+        std::boxed::Box::pin(async { serde_json::Value::Null })
+    })
+}
+
+/// A no-op command dispatcher for test contexts.
+#[must_use]
+pub fn noop_command_dispatcher() -> CommandDispatcher {
+    std::sync::Arc::new(|cmd: PluginCommand| {
+        tracing::warn!(
+            name = cmd.name,
+            "no command dispatcher configured, dropping"
+        );
+    })
+}

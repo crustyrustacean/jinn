@@ -4,12 +4,9 @@
 //! default session, loads unarchived sessions from SQLite, and emits commands
 //! to initialize the context and preferences pipelines.
 
-use crate::common::actor::ActorContext;
-use crate::feat::session::model_selection::ModelSelection;
-
-use crate::protocol::Command;
-
 use super::super::SessionPersistenceActor;
+use crate::common::actor_deps::BusPublish;
+use crate::feat::preferences_actor::protocol::app_state_command::{AppStateUpdate, UpdateAppState};
 
 impl SessionPersistenceActor {
     /// Applies config defaults to the default session profile on startup.
@@ -23,7 +20,6 @@ impl SessionPersistenceActor {
     pub(in crate::feat::session::session_actor) async fn on_environment_loaded(
         &self,
         _config: &crate::feat::provider_infra::ProvidersConfig,
-        ctx: &ActorContext,
     ) {
         let app_state = self.services.app_state_storage.read();
 
@@ -70,7 +66,7 @@ impl SessionPersistenceActor {
             if !summaries.is_empty() {
                 // Sort by updated_at descending to find the most recent.
                 let mut sorted = summaries;
-                sorted.sort_by(|a, b| b.updated_at.cmp(&a.updated_at));
+                sorted.sort_by_key(|s| std::cmp::Reverse(s.updated_at));
 
                 // Load full sessions outside the lock.
                 let mut loaded = Vec::new();
@@ -90,7 +86,7 @@ impl SessionPersistenceActor {
                         // Mark startup-loaded sessions as interacted - they came from disk.
                         session.mark_interacted();
                         let session_id = session.session_id().clone();
-                        self.load_and_insert(session, ctx);
+                        self.load_and_insert(session).await;
                         self.rehydrate_attached_plugins(&session_id);
                     }
 
@@ -112,13 +108,10 @@ impl SessionPersistenceActor {
 
         tracing::info!("DIAG on_environment_loaded sending UpdateAppState");
         // Send UpdateAppState command so the pipeline handles persistence + state sync.
-        if let Err(e) = ctx.send_command(Command::UpdateAppState(crate::feat::preferences_actor::protocol::app_state_command::UpdateAppState {
-                updates: vec![
-                    crate::feat::preferences_actor::protocol::app_state_command::AppStateUpdate::SetLastModel(app_state.last_model.clone()),
-                ],
-            })) {
-            tracing::warn!(err = ?e, "session-actor failed to send UpdateAppState on startup");
-        }
+        self.publish(UpdateAppState {
+            updates: vec![AppStateUpdate::SetLastModel(app_state.last_model.clone())],
+        })
+        .await;
         tracing::info!("DIAG on_environment_loaded DONE");
     }
 }
@@ -132,7 +125,7 @@ mod tests {
         clippy::indexing_slicing,
         reason = "test code"
     )]
-    use super::super::super::helpers::{test_actor_with_store, test_context};
+    use super::super::super::helpers::test_actor_with_store_recording;
     use crate::feat::session::chat_session::ChatSessionState;
     use crate::feat::session::model_selection::ModelSelection;
 
@@ -140,23 +133,19 @@ mod tests {
     async fn loading_unarchived_sessions_does_not_switch_active_session() {
         // Given an actor with a default welcome session and one session in the store.
         let store_session = ChatSessionState::new();
-        let (actor, _store) = test_actor_with_store(vec![store_session]);
-        let (_sink, ctx) = test_context();
+        let (actor, _store, _audit) = test_actor_with_store_recording(vec![store_session]).await;
 
         // Record the default session's ID before loading.
         let default_id = actor.state.read().session.active_session_id().clone();
 
         // When handling EnvironmentLoaded.
         actor
-            .on_environment_loaded(
-                &crate::feat::provider_infra::ProvidersConfig {
-                    providers: vec![],
-                    aliases: vec![],
-                    default_provider: None,
-                    alloys: vec![],
-                },
-                &ctx,
-            )
+            .on_environment_loaded(&crate::feat::provider_infra::ProvidersConfig {
+                providers: vec![],
+                aliases: vec![],
+                default_provider: None,
+                alloys: vec![],
+            })
             .await;
 
         // Then the active session is still the default.
@@ -167,40 +156,32 @@ mod tests {
     #[tokio::test]
     async fn on_environment_loaded_emits_no_scan_commands() {
         // Given an actor with a default welcome session.
-        let (actor, _store) = test_actor_with_store(vec![]);
-        let (sink, ctx) = test_context();
+        let (actor, _store, audit) = test_actor_with_store_recording(vec![]).await;
 
         // When handling EnvironmentLoaded.
         actor
-            .on_environment_loaded(
-                &crate::feat::provider_infra::ProvidersConfig {
-                    providers: vec![],
-                    aliases: vec![],
-                    default_provider: None,
-                    alloys: vec![],
-                },
-                &ctx,
-            )
+            .on_environment_loaded(&crate::feat::provider_infra::ProvidersConfig {
+                providers: vec![],
+                aliases: vec![],
+                default_provider: None,
+                alloys: vec![],
+            })
             .await;
 
         // Then no scan commands are emitted. The three scan actors
         // (skills, prompts, context-files) subscribe to this `EnvironmentLoaded`
         // event directly and self-trigger their per-session scans.
-        let scan_commands = sink
-            .commands()
-            .iter()
-            .filter(|c| {
-                matches!(
-                    c,
-                    crate::protocol::Command::ScanSkills(_)
-                        | crate::protocol::Command::RescanPromptTemplates(_)
-                        | crate::protocol::Command::ScanContextFiles(_)
-                )
-            })
-            .count();
-        assert_eq!(
-            scan_commands, 0,
-            "scan actors self-trigger off EnvironmentLoaded; startup should not emit scan commands"
+        assert!(
+            !audit.contains_name("ScanSkills"),
+            "should not emit ScanSkills"
+        );
+        assert!(
+            !audit.contains_name("RescanPromptTemplates"),
+            "should not emit RescanPromptTemplates"
+        );
+        assert!(
+            !audit.contains_name("ScanContextFiles"),
+            "should not emit ScanContextFiles"
         );
     }
 
@@ -208,22 +189,18 @@ mod tests {
     async fn loading_unarchived_sessions_does_not_remove_default_session() {
         // Given an actor with a default welcome session and one session in the store.
         let store_session = ChatSessionState::new();
-        let (actor, _store) = test_actor_with_store(vec![store_session]);
-        let (_sink, ctx) = test_context();
+        let (actor, _store, _audit) = test_actor_with_store_recording(vec![store_session]).await;
 
         let default_id = actor.state.read().session.active_session_id().clone();
 
         // When handling EnvironmentLoaded.
         actor
-            .on_environment_loaded(
-                &crate::feat::provider_infra::ProvidersConfig {
-                    providers: vec![],
-                    aliases: vec![],
-                    default_provider: None,
-                    alloys: vec![],
-                },
-                &ctx,
-            )
+            .on_environment_loaded(&crate::feat::provider_infra::ProvidersConfig {
+                providers: vec![],
+                aliases: vec![],
+                default_provider: None,
+                alloys: vec![],
+            })
             .await;
 
         // Then the default session still exists in the map.
@@ -241,20 +218,17 @@ mod tests {
         let store_id1 = store_session1.session_id().clone();
         let store_session2 = ChatSessionState::new();
         let store_id2 = store_session2.session_id().clone();
-        let (actor, _store) = test_actor_with_store(vec![store_session1, store_session2]);
-        let (_sink, ctx) = test_context();
+        let (actor, _audit, _store) =
+            test_actor_with_store_recording(vec![store_session1, store_session2]).await;
 
         // When handling EnvironmentLoaded.
         actor
-            .on_environment_loaded(
-                &crate::feat::provider_infra::ProvidersConfig {
-                    providers: vec![],
-                    aliases: vec![],
-                    default_provider: None,
-                    alloys: vec![],
-                },
-                &ctx,
-            )
+            .on_environment_loaded(&crate::feat::provider_infra::ProvidersConfig {
+                providers: vec![],
+                aliases: vec![],
+                default_provider: None,
+                alloys: vec![],
+            })
             .await;
 
         // Then both loaded sessions are in the session map.
@@ -273,8 +247,7 @@ mod tests {
     async fn saved_model_overwrites_no_provider_sentinel() {
         // Given an actor with a default session (NO_PROVIDER_ID model)
         // and saved preferences with a last_model.
-        let (actor, _store) = test_actor_with_store(vec![]);
-        let (_sink, ctx) = test_context();
+        let (actor, _store, _audit) = test_actor_with_store_recording(vec![]).await;
 
         // Save state with a last_model.
         let state_file = crate::feat::preferences_actor::app_state_file::AppStateFile {
@@ -289,15 +262,12 @@ mod tests {
 
         // When handling EnvironmentLoaded.
         actor
-            .on_environment_loaded(
-                &crate::feat::provider_infra::ProvidersConfig {
-                    providers: vec![],
-                    aliases: vec![],
-                    default_provider: None,
-                    alloys: vec![],
-                },
-                &ctx,
-            )
+            .on_environment_loaded(&crate::feat::provider_infra::ProvidersConfig {
+                providers: vec![],
+                aliases: vec![],
+                default_provider: None,
+                alloys: vec![],
+            })
             .await;
 
         // Then the active session's model was updated from the saved preference.
@@ -313,7 +283,7 @@ mod tests {
     async fn saved_model_does_not_overwrite_explicitly_set_model() {
         // Given an actor with a session that has an explicit model (not NO_PROVIDER_ID)
         // and saved preferences with a different last_model.
-        let (actor, _store) = test_actor_with_store(vec![]);
+        let (actor, _store, _audit) = test_actor_with_store_recording(vec![]).await;
 
         // Set an explicit model on the active session (simulating bench actor behavior).
         {
@@ -334,19 +304,14 @@ mod tests {
             .save(&state_file)
             .expect("save state");
 
-        let (_sink, ctx) = test_context();
-
         // When handling EnvironmentLoaded.
         actor
-            .on_environment_loaded(
-                &crate::feat::provider_infra::ProvidersConfig {
-                    providers: vec![],
-                    aliases: vec![],
-                    default_provider: None,
-                    alloys: vec![],
-                },
-                &ctx,
-            )
+            .on_environment_loaded(&crate::feat::provider_infra::ProvidersConfig {
+                providers: vec![],
+                aliases: vec![],
+                default_provider: None,
+                alloys: vec![],
+            })
             .await;
 
         let state = actor.state.read();
@@ -363,20 +328,16 @@ mod tests {
         let mut store_session = ChatSessionState::new();
         let ap = crate::feat::attached_plugin::AttachedPlugin::new("test");
         store_session.core.attached_plugins.push(ap);
-        let (actor, _store) = test_actor_with_store(vec![store_session]);
-        let (_sink, ctx) = test_context();
+        let (actor, _audit, _store) = test_actor_with_store_recording(vec![store_session]).await;
 
         // When handling EnvironmentLoaded (startup).
         actor
-            .on_environment_loaded(
-                &crate::feat::provider_infra::ProvidersConfig {
-                    providers: vec![],
-                    aliases: vec![],
-                    default_provider: None,
-                    alloys: vec![],
-                },
-                &ctx,
-            )
+            .on_environment_loaded(&crate::feat::provider_infra::ProvidersConfig {
+                providers: vec![],
+                aliases: vec![],
+                default_provider: None,
+                alloys: vec![],
+            })
             .await;
 
         // Then the attached plugin was loaded with the session.
@@ -404,21 +365,16 @@ mod tests {
                 ..ap
             });
         let session_id = store_session.session_id().clone();
-        let (actor, _store) = test_actor_with_store(vec![store_session]);
-
-        let (_sink, ctx) = test_context();
+        let (actor, _audit, _store) = test_actor_with_store_recording(vec![store_session]).await;
 
         // When handling EnvironmentLoaded (startup).
         actor
-            .on_environment_loaded(
-                &crate::feat::provider_infra::ProvidersConfig {
-                    providers: vec![],
-                    aliases: vec![],
-                    default_provider: None,
-                    alloys: vec![],
-                },
-                &ctx,
-            )
+            .on_environment_loaded(&crate::feat::provider_infra::ProvidersConfig {
+                providers: vec![],
+                aliases: vec![],
+                default_provider: None,
+                alloys: vec![],
+            })
             .await;
 
         // Then the plugin was reset from Running to Idle.

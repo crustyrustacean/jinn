@@ -1,24 +1,27 @@
-//! Token count actor - computes tiktoken-based counts for chat entries.
+//! Token count actor — computes tiktoken-based counts for chat entries.
 //!
 //! Subscribes to [`HistoryAppended`] and [`SessionLoadCompleted`] to
 //! asynchronously compute per-entry token counts and write them to the
-//! [`EntryTokenCache`] in `FrontendCaches`. Also subscribes to
-//! [`ContextOverrideChanged`] to recompute counts for entries that are
-//! re-inserted into context with stale (0 or missing) cached values.
-//! The minimap render pipeline reads the cache synchronously during rendering.
+//! [`EntryTokenCache`] in `FrontendCaches`. The minimap render pipeline
+//! reads the cache synchronously during rendering.
 
-use crate::common::actor::scan_actor::NoDirectMsg;
-use crate::common::actor::{Actor, ActorContext, ActorEnvelope};
+use kameo::actor::ActorRef;
+use kameo::prelude::{Context, Message};
+
+use crate::common::actor_deps::ActorDeps;
 use crate::common::state::State;
+use crate::feat::context::protocol::event::ContextOverrideChanged;
 use crate::feat::context::strategy::token_estimator::{
     TiktokenCounter, TokenCounter, TokenEstimator, estimate_entry_tokens,
 };
 use crate::feat::session::protocol::history_appended::HistoryAppended;
 use crate::feat::session::protocol::session_load_completed::SessionLoadCompleted;
-use crate::protocol::Event;
 
 /// Dependencies for [`TokenCountActor`].
+#[derive(Clone)]
 pub struct TokenCountActorDeps {
+    /// Common actor dependencies (services + bus).
+    pub deps: ActorDeps,
     /// Shared application state.
     pub state: State,
 }
@@ -49,38 +52,46 @@ impl TokenEstimator for TiktokenEstimator {
     }
 }
 
-impl Actor for TokenCountActor {
-    type Message = NoDirectMsg;
-    type Deps = TokenCountActorDeps;
+impl kameo::Actor for TokenCountActor {
+    type Args = TokenCountActorDeps;
+    type Error = kameo::error::Infallible;
 
-    fn activate(deps: Self::Deps, ctx: &mut ActorContext) -> Self {
-        ctx.set_description("Computes tiktoken-based token counts for chat entries");
-        ctx.subscribe_event::<HistoryAppended>();
-        ctx.subscribe_event::<SessionLoadCompleted>();
-        ctx.subscribe_event::<crate::feat::context::protocol::event::ContextOverrideChanged>();
+    async fn on_start(args: Self::Args, actor_ref: ActorRef<Self>) -> Result<Self, Self::Error> {
+        args.deps
+            .subscribe(actor_ref.clone().recipient::<HistoryAppended>())
+            .await;
+        args.deps
+            .subscribe(actor_ref.recipient::<SessionLoadCompleted>())
+            .await;
 
-        Self {
-            state: deps.state,
+        Ok(Self {
+            state: args.state,
             counter: TiktokenCounter::o200k_base(),
-        }
+        })
     }
+}
 
-    async fn handle(&mut self, msg: ActorEnvelope<Self::Message>, _ctx: &ActorContext) {
-        match msg {
-            ActorEnvelope::Event(Event::HistoryAppended(ref payload)) => {
-                self.handle_history_appended(&payload.session_id);
-            }
-            ActorEnvelope::Event(Event::SessionLoadCompleted(ref payload)) => {
-                self.handle_session_load_completed(&payload.session);
-            }
-            ActorEnvelope::Event(Event::ContextOverrideChanged(ref payload)) => {
-                self.handle_context_override_changed(&payload.session_id, &payload.entry_id);
-            }
-            ActorEnvelope::Command(_)
-            | ActorEnvelope::Event(_)
-            | ActorEnvelope::System(_)
-            | ActorEnvelope::Direct(_) => {}
-        }
+impl Message<HistoryAppended> for TokenCountActor {
+    type Reply = ();
+
+    async fn handle(&mut self, msg: HistoryAppended, _ctx: &mut Context<Self, Self::Reply>) {
+        self.handle_history_appended(&msg.session_id);
+    }
+}
+
+impl Message<SessionLoadCompleted> for TokenCountActor {
+    type Reply = ();
+
+    async fn handle(&mut self, msg: SessionLoadCompleted, _ctx: &mut Context<Self, Self::Reply>) {
+        self.handle_session_load_completed(&msg.session);
+    }
+}
+
+impl Message<ContextOverrideChanged> for TokenCountActor {
+    type Reply = ();
+
+    async fn handle(&mut self, msg: ContextOverrideChanged, _ctx: &mut Context<Self, Self::Reply>) {
+        self.handle_context_override_changed(&msg.session_id, &msg.entry_id);
     }
 }
 
@@ -455,10 +466,7 @@ mod tests {
     fn large_tool_call_arguments_counted_correctly() {
         // Given a tool call entry with large arguments (simulating write tool).
         let large_content = "fn main() { println!(\"hello\"); }\n".repeat(200);
-        let arguments = format!(
-            r#"{{\"path\":\"test.rs\",\"content\":\"{}\"}}"#,
-            large_content
-        );
+        let arguments = format!(r#"{{\"path\":\"test.rs\",\"content\":\"{large_content}\"}}"#);
         let counter = TiktokenCounter::o200k_base();
         let direct_count = counter.count(&arguments);
 
@@ -470,7 +478,6 @@ mod tests {
         // Verify the entry actually has the full arguments.
         let entry = &app_state.active_session().history()[0];
         if let ChatEntryKind::ToolCall {
-            name: _,
             arguments: ref args,
             ..
         } = entry.kind
@@ -504,8 +511,7 @@ mod tests {
         );
         assert!(
             count as usize > 500,
-            "expected count > 500 for large tool call, got {}",
-            count
+            "expected count > 500 for large tool call, got {count}"
         );
     }
 }

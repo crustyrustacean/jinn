@@ -7,11 +7,10 @@ use std::mem;
 
 use crossterm::event::{MouseButton, MouseEventKind};
 use derive_more::Debug;
-use jinn_domain::ActorHostService;
+use jinn_domain::AppCore;
 use jinn_domain::AppUiRegistry;
 use jinn_domain::IntentHandler;
 use jinn_domain::feat::ui::sidebar::Sidebar;
-use jinn_domain::{AppCore, AppMsg};
 use jinn_domain::{FocusScope, Intent, PickerKind};
 use ratatui::Frame;
 use ratatui_which_key::{CrosstermKeymapExt as _, WhichKeyState};
@@ -40,9 +39,7 @@ pub struct TuiApp {
     pub services: jinn_domain::Services,
     /// Plugin system for sync hook calls (render thread only, !Send).
     #[debug(skip)]
-    pub plugins: jinn_plugin::SyncPlugins,
-    /// Actor host for coordinated shutdown.
-    pub actor_host: ActorHostService,
+    pub plugins: jinn_domain::feat::plugin_system::SyncPlugins,
     /// UI element registry.
     pub ui_registry: AppUiRegistry,
     /// Message channel for the event loop.
@@ -93,17 +90,15 @@ impl TuiApp {
                     };
                     let mut state = self.core.state.write();
                     state.session.clear_load();
-                    let _ = self.core.sender().send(jinn_domain::AppMsg::Command {
-                        command: jinn_domain::Command::PushChatEntry(
-                            jinn_domain::feat::chat_input::protocol::command::PushChatEntry {
-                                session_id,
-                                entry: jinn_domain::ChatEntry::system(
-                                    "Failed to load session: timed out",
-                                ),
-                            },
-                        ),
-                        source: None,
-                    });
+                    let closure = jinn_domain::common::bridge::Bridge::publish_closure(
+                        jinn_domain::feat::chat_input::protocol::command::PushChatEntry {
+                            session_id,
+                            entry: jinn_domain::ChatEntry::system(
+                                "Failed to load session: timed out",
+                            ),
+                        },
+                    );
+                    let _ = self.core.bridge.send(closure);
                 }
             }
             Msg::Input(event) => {
@@ -168,11 +163,8 @@ impl TuiApp {
                     _ => {}
                 }
             }
-            Msg::Command(cmd) => {
-                let _ = self.core.sender().send(AppMsg::Command {
-                    command: cmd,
-                    source: None,
-                });
+            Msg::Bridge(closure) => {
+                let _ = self.core.sender().send(closure);
             }
         }
     }
@@ -225,13 +217,9 @@ impl TuiApp {
     /// 4. Sends commands to the core channel.
     /// 5. Handles TUI signals (which-key toggle, editor, pinned pane, etc.).
     /// 6. Updates the keymap scope based on the new mode.
-    #[expect(
-        clippy::needless_pass_by_value,
-        reason = "Intent is consumed by intent routing, ownership is semantic"
-    )]
     pub fn route_intent(&mut self, intent: Intent) {
-        // Step 1–3: Handle intent, collect results, release lock.
-        let (commands, events, signals) = {
+        // Step 1-3: Handle intent, collect results, release lock.
+        let (messages, signals) = {
             let mut state = self.core.state.write();
 
             let result = IntentHandler::handle(&intent, &mut state, Some(&self.plugins));
@@ -243,18 +231,12 @@ impl TuiApp {
 
             // Collect signals before releasing lock.
             let signals = signals::TuiSignalsSnapshot::from_state(&state);
-            let commands = result.commands;
-            let events = result.events;
-            (commands, events, signals)
+            (result.messages, signals)
         };
 
-        // TriggerPlugin: TUI-only intent. Fire the plugin's named action on the async VM
-        // via the generic plugin::fire_async command path. The action hook itself writes
-        // plugin_data (visible to both VMs); we just kick off the async fire here, passing
-        // the current draft so action hooks (e.g. on_enrich) can act on it.
-        if let Intent::TriggerPlugin {
+        if let jinn_domain::Intent::TriggerPlugin {
             action, session_id, ..
-        } = intent.clone()
+        } = intent
         {
             let (sid, text) = {
                 let state = self.core.state.read();
@@ -267,34 +249,18 @@ impl TuiApp {
                 "session_id": sid,
                 "text": text,
             });
-
-            let _ = self.core.sender().send(AppMsg::Command {
-                command: jinn_domain::protocol::Command::Dynamic(
-                    jinn_domain::protocol::DynamicCommand {
-                        name: "plugin::fire_async".into(),
-                        payload,
-                    },
-                ),
-                source: None,
-            });
+            let closure =
+                jinn_domain::common::bridge::Bridge::publish_closure(jinn_domain::DynamicCommand {
+                    name: "plugin::fire_async".into(),
+                    payload,
+                });
+            let _ = self.core.bridge.send(closure);
             return;
         }
 
-        // Step 4: Send commands to core channel.
-        for cmd in &commands {
-            let _ = self.core.sender().send(AppMsg::Command {
-                command: cmd.clone(),
-                source: None,
-            });
-        }
-
-        // Step 5: Send events to core channel.
-
-        for event in &events {
-            let _ = self.core.sender().send(AppMsg::Event {
-                event: event.clone(),
-                source: None,
-            });
+        // Send bus closures via bridge.
+        for closure in messages {
+            let _ = self.core.bridge.send(closure);
         }
 
         // Step 6: Handle TUI signals.

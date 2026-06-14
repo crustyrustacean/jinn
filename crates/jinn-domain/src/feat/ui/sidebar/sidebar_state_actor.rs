@@ -1,14 +1,16 @@
-//! Sidebar state actor - keeps sidebar cursor in sync after session close.
+//! Sidebar state actor — keeps sidebar cursor in sync after session close.
 //!
 //! Subscribes to [`SessionClosed`] events and clamps the sidebar's
 //! `selected_index` and `scroll_offset` so they never point past the end
 //! of the sessions list.
 
-use crate::common::actor::{Actor, ActorContext, ActorEnvelope, NoDirectMsg};
+use kameo::actor::ActorRef;
+use kameo::prelude::{Context, Message};
+
+use crate::common::actor_deps::ActorDeps;
 use crate::common::state::State;
 use crate::feat::session::protocol::session_closed::SessionClosed;
 use crate::feat::ui::sidebar::sessions;
-use crate::protocol::Event;
 
 /// Actor that adjusts sidebar cursor state in response to session close.
 pub struct SidebarStateActor {
@@ -16,26 +18,32 @@ pub struct SidebarStateActor {
 }
 
 /// Dependencies for [`SidebarStateActor`].
+#[derive(Clone)]
 pub struct SidebarStateActorDeps {
+    /// Common actor dependencies (services + bus).
+    pub deps: ActorDeps,
     /// Shared application state.
     pub state: State,
 }
 
-impl Actor for SidebarStateActor {
-    type Message = NoDirectMsg;
-    type Deps = SidebarStateActorDeps;
+impl kameo::Actor for SidebarStateActor {
+    type Args = SidebarStateActorDeps;
+    type Error = kameo::error::Infallible;
 
-    fn activate(deps: Self::Deps, ctx: &mut ActorContext) -> Self {
-        ctx.subscribe_event::<SessionClosed>();
-        ctx.set_description("Sidebar cursor state management");
+    async fn on_start(args: Self::Args, actor_ref: ActorRef<Self>) -> Result<Self, Self::Error> {
+        args.deps
+            .subscribe(actor_ref.recipient::<SessionClosed>())
+            .await;
 
-        Self { state: deps.state }
+        Ok(Self { state: args.state })
     }
+}
 
-    async fn handle(&mut self, msg: ActorEnvelope<Self::Message>, _ctx: &ActorContext) {
-        if let ActorEnvelope::Event(Event::SessionClosed(payload)) = &msg {
-            self.handle_session_closed(payload);
-        }
+impl Message<SessionClosed> for SidebarStateActor {
+    type Reply = ();
+
+    async fn handle(&mut self, msg: SessionClosed, _ctx: &mut Context<Self, Self::Reply>) {
+        self.handle_session_closed(&msg);
     }
 }
 
@@ -67,8 +75,8 @@ mod tests {
         }
     }
 
-    #[test]
-    fn clamps_selected_index_after_session_removed() {
+    #[tokio::test]
+    async fn clamps_selected_index_after_session_removed() {
         // Given a sidebar actor with three sessions and cursor at index 2.
         let actor = test_actor();
         let removed_id = {
@@ -106,8 +114,8 @@ mod tests {
         assert_eq!(state.frontend.sessions_section.selected_index, Some(1));
     }
 
-    #[test]
-    fn handles_removal_of_last_session_cursor_at_zero() {
+    #[tokio::test]
+    async fn handles_removal_of_last_session_cursor_at_zero() {
         // Given a sidebar actor with one session and cursor at 0.
         let actor = test_actor();
         let removed_id = {
@@ -136,8 +144,8 @@ mod tests {
         assert_eq!(state.frontend.sessions_section.selected_index, Some(0));
     }
 
-    #[test]
-    fn cursor_stays_when_index_still_valid() {
+    #[tokio::test]
+    async fn cursor_stays_when_index_still_valid() {
         // Given a sidebar actor with three sessions and cursor at index 0.
         let actor = test_actor();
         let removed_id = {

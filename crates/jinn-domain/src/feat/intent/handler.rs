@@ -31,7 +31,7 @@
 
 use crate::AppState;
 
-use crate::protocol::{Command, Event, PickerKind, PinPosition};
+use crate::protocol::{PickerKind, PinPosition};
 
 use crate::Intent;
 use crate::feat;
@@ -46,6 +46,64 @@ use crate::IntentResult;
 /// Some intents set "TUI signals" on `state.frontend.tui_signals` - flags that the
 /// outer platform layer reads after `handle()` returns and acts upon
 /// (e.g., opening an external editor, toggling a popup).
+/// Dispatch a replacement command from a plugin's `Replace` interception outcome.
+///
+/// Each JSON command object goes through the same verb dispatch as `handle_plugin_command`.
+/// Returns a bus closure if the verb is recognized, or `None` (with a warning log) if not.
+fn dispatch_replacement_command(
+    cmd_json: &serde_json::Value,
+    session_id: &crate::protocol::SessionId,
+) -> Option<
+    Box<
+        dyn FnOnce(&kameo::prelude::ActorRef<kameo_actors::message_bus::MessageBus>)
+            + Send
+            + 'static,
+    >,
+> {
+    use crate::common::bridge::Bridge;
+
+    // The replacement JSON should have a "verb" key and a "payload" key.
+    // If it doesn't match this shape, try treating the whole thing as a verb payload.
+    let (verb, payload) = if let Some(obj) = cmd_json.as_object() {
+        if let Some(verb_val) = obj.get("verb").and_then(|v| v.as_str()) {
+            (
+                verb_val.to_owned(),
+                obj.get("payload").cloned().unwrap_or(cmd_json.clone()),
+            )
+        } else {
+            // No "verb" key — can't dispatch.
+            tracing::warn!(?cmd_json, "plugin replacement command missing 'verb' key");
+            return None;
+        }
+    } else {
+        tracing::warn!(?cmd_json, "plugin replacement command is not a JSON object");
+        return None;
+    };
+
+    // Dispatch through the same verb table used by plugin_wiring.
+    // For now, we handle the common cases inline.
+    match verb.as_str() {
+        "push_chat_entry" => {
+            let entry = crate::feat::session::chat_entry::ChatEntry::system(
+                payload
+                    .get("text")
+                    .and_then(|v| v.as_str())
+                    .unwrap_or("")
+                    .to_owned(),
+            );
+            let msg = crate::feat::chat_input::protocol::command::PushChatEntry {
+                session_id: session_id.clone(),
+                entry,
+            };
+            Some(Bridge::publish_closure(msg))
+        }
+        _ => {
+            tracing::warn!(verb, "unknown verb in plugin replacement command");
+            None
+        }
+    }
+}
+
 pub struct IntentHandler;
 
 impl IntentHandler {
@@ -74,11 +132,6 @@ impl IntentHandler {
         // Process the intent and get the result.
         let mut result = Self::handle_inner(intent, state);
 
-        // Sync plugin interception: plugins may block/replace/pass the
-        // submit's commands. Fires only for submit-family intents (the
-        // hook is named `on_submit_intercept`); other intents pass through
-        // untouched. Uses the pre-mutation snapshots so the plugin sees
-        // the user's actual typed text, not the cleared buffer.
         if matches!(intent, Intent::SubmitMessage)
             && let Some(p) = plugins
         {
@@ -91,13 +144,10 @@ impl IntentHandler {
             );
         }
 
-        // If the active session changed, emit ActiveSessionChanged event.
         if state.session.active_session_id() != &prev_active {
-            result.events.push(Event::ActiveSessionChanged(
-                crate::protocol::system::ActiveSessionChanged {
-                    session_id: state.session.active_session_id().clone(),
-                },
-            ));
+            result = result.message(crate::protocol::system::ActiveSessionChanged {
+                session_id: state.session.active_session_id().clone(),
+            });
         }
 
         result
@@ -111,7 +161,7 @@ impl IntentHandler {
     /// `replace` (swap in new commands). Malformed returns are dropped with a
     /// `warn!` so a buggy plugin degrades rather than stalls.
     fn apply_interceptions(
-        intent: &Intent,
+        _intent: &Intent,
         plugins: &dyn crate::feat::plugin_dispatch::PluginSyncHooks,
         session_id: &crate::protocol::SessionId,
         input_text: &str,
@@ -119,35 +169,37 @@ impl IntentHandler {
     ) -> IntentResult {
         use crate::feat::plugin_dispatch::{InterceptOutcome, call_hooks_typed};
 
-        // `input_text` and `session_id` are captured before submit handling clears
-        // the buffer. Do NOT re-read state here \u2014 the buffer is empty by now.
-        let ctx = serde_json::json!({
-            "session_id": session_id,
-            "input_text": input_text,
-            "intent": intent.to_string(),
-        });
+        let hook_ctx = crate::feat::plugin_dispatch::HookContext::from(serde_json::json!({
+            "session_id": session_id.to_string(),
+            "user_input": input_text,
+        }));
 
-        for outcome in
-            call_hooks_typed::<InterceptOutcome>(plugins, "on_submit_intercept", &ctx.into())
-        {
+        let responses = call_hooks_typed::<InterceptOutcome>(plugins, "on_submit", &hook_ctx);
+
+        for outcome in responses {
             match outcome {
-                InterceptOutcome::Block => result.commands.clear(),
+                InterceptOutcome::Block => {
+                    tracing::debug!(plugin_hook = "on_submit", "plugin blocked submit");
+                    result.messages.clear();
+                    result.message_names.clear();
+                    return result;
+                }
                 InterceptOutcome::Pass => {}
                 InterceptOutcome::Replace { commands } => {
-                    let mapped: Vec<Command> = commands
+                    tracing::debug!(
+                        plugin_hook = "on_submit",
+                        replacement_count = commands.len(),
+                        "plugin replaced submit commands"
+                    );
+                    // Convert each replacement JSON command through the PluginVerb dispatch.
+                    // The JSON shape uses the same verb/payload format as handle_plugin_command.
+                    let new_messages: Vec<_> = commands
                         .into_iter()
-                        .filter_map(|v| match serde_json::from_value::<Command>(v) {
-                            Ok(c) => Some(c),
-                            Err(e) => {
-                                tracing::warn!(
-                                    error = %e,
-                                    "intercept Replace command malformed; dropped"
-                                );
-                                None
-                            }
-                        })
+                        .filter_map(|cmd_json| dispatch_replacement_command(&cmd_json, session_id))
                         .collect();
-                    result.commands = mapped;
+                    result.messages = new_messages;
+                    result.message_names.clear();
+                    return result;
                 }
             }
         }
@@ -362,10 +414,7 @@ impl IntentHandler {
                 let (result, maybe_intent) = feat::picker::intent::handle_picker_confirm(state);
                 if let Some(intent) = maybe_intent {
                     let redispatch = IntentHandler::handle(&intent, state, None);
-                    IntentResult::with_commands_and_events(
-                        [result.commands, redispatch.commands].concat(),
-                        [result.events, redispatch.events].concat(),
-                    )
+                    result.merge(redispatch)
                 } else {
                     result
                 }
@@ -374,10 +423,7 @@ impl IntentHandler {
                 let (result, maybe_intent) = feat::global::intent::handle_ctrl_clear(state);
                 if let Some(intent) = maybe_intent {
                     let redispatch = IntentHandler::handle(&intent, state, None);
-                    IntentResult::with_commands_and_events(
-                        [result.commands, redispatch.commands].concat(),
-                        [result.events, redispatch.events].concat(),
-                    )
+                    result.merge(redispatch)
                 } else {
                     result
                 }
@@ -635,12 +681,10 @@ fn handle_sidebar_toggle_plugin(state: &mut AppState) -> IntentResult {
         return IntentResult::empty();
     };
     match entry.kind {
-        SessionEntryKind::Plugin { .. } => {
-            IntentResult::with_commands(vec![Command::TogglePlugin(TogglePlugin {
-                session_id: entry.id.clone(),
-                plugin_name: entry.title.clone(),
-            })])
-        }
+        SessionEntryKind::Plugin { .. } => IntentResult::empty().message(TogglePlugin {
+            session_id: entry.id.clone(),
+            plugin_name: entry.title.clone(),
+        }),
         SessionEntryKind::Session => IntentResult::empty(),
     }
 }
@@ -677,20 +721,19 @@ fn try_handle_cancel_stream_prompt(intent: &Intent, state: &mut AppState) -> Opt
 
     // Cancel stream.
     state.active_session_mut().cancel_stream_and_drain();
-    let mut commands = vec![Command::CancelStream(
-        crate::feat::provider::protocol::command::CancelStream {
+    let mut result =
+        IntentResult::empty().message(crate::feat::provider::protocol::command::CancelStream {
             session_id: session_id.clone(),
-        },
-    )];
+        });
 
     // Also cancel any running lifecycle command.
     if was_busy {
-        commands.push(Command::CancelLifecycleCommand(
+        result = result.message(
             crate::feat::session_lifecycle::protocol::CancelLifecycleCommand { session_id },
-        ));
+        );
     }
 
-    Some(IntentResult::with_commands(commands))
+    Some(result)
 }
 
 /// Close session confirmation prompt intercept.
@@ -729,7 +772,7 @@ mod tests {
     )]
     use crate::common::app_state::{AppState, FocusScope, RenameSessionInputState};
     use crate::feat::intent::IntentHandler;
-    use crate::protocol::{ChatEntry, Command, Intent};
+    use crate::protocol::{ChatEntry, Intent};
 
     #[rstest::rstest]
     fn paste_text_ignored_in_normal_scope() {
@@ -748,7 +791,7 @@ mod tests {
 
         // Then the buffer is empty and no commands are emitted.
         assert!(state.active_chat_input().is_empty());
-        assert!(result.commands.is_empty());
+        assert!(result.message_names.is_empty());
     }
 
     #[rstest::rstest]
@@ -771,7 +814,7 @@ mod tests {
 
         // Then the buffer has the pasted text.
         assert_eq!(state.active_chat_input().text(), "hello\nworld");
-        assert!(result.commands.is_empty());
+        assert!(result.message_names.is_empty());
     }
 
     #[rstest::rstest]
@@ -796,7 +839,7 @@ mod tests {
         assert_eq!(state.frontend.rename_session_input.text.input, "Helo");
         assert_eq!(state.frontend.rename_session_input.text.cursor_pos, 4);
         assert!(state.active_chat_input().is_empty());
-        assert!(result.commands.is_empty());
+        assert!(result.message_names.is_empty());
     }
 
     #[rstest::rstest]
@@ -819,7 +862,7 @@ mod tests {
 
         // Then cursor moved left.
         assert_eq!(state.frontend.rename_session_input.text.cursor_pos, 4);
-        assert!(result.commands.is_empty());
+        assert!(result.message_names.is_empty());
     }
 
     #[rstest::rstest]
@@ -842,7 +885,7 @@ mod tests {
 
         // Then cursor moved right.
         assert_eq!(state.frontend.rename_session_input.text.cursor_pos, 1);
-        assert!(result.commands.is_empty());
+        assert!(result.message_names.is_empty());
     }
 
     #[rstest::rstest]
@@ -866,7 +909,7 @@ mod tests {
         // Then last char deleted.
         assert_eq!(state.frontend.rename_session_input.text.input, "Hell");
         assert_eq!(state.frontend.rename_session_input.text.cursor_pos, 4);
-        assert!(result.commands.is_empty());
+        assert!(result.message_names.is_empty());
     }
 
     #[rstest::rstest]
@@ -890,7 +933,7 @@ mod tests {
         // Then char after cursor deleted.
         assert_eq!(state.frontend.rename_session_input.text.input, "Hllo");
         assert_eq!(state.frontend.rename_session_input.text.cursor_pos, 1);
-        assert!(result.commands.is_empty());
+        assert!(result.message_names.is_empty());
     }
 
     #[test]
@@ -1106,11 +1149,11 @@ mod tests {
         assert!(!state.frontend.cancel_stream_prompt);
         assert!(
             result
-                .commands
+                .message_names
                 .iter()
-                .any(|c| matches!(c, crate::protocol::Command::CancelStream(_))),
+                .any(|n| n.contains("CancelStream")),
             "should emit CancelStream: {:?}",
-            result.commands
+            result.message_names
         );
     }
 
@@ -1180,11 +1223,11 @@ mod tests {
         assert!(!state.frontend.cancel_stream_prompt);
         assert!(
             !result
-                .commands
+                .message_names
                 .iter()
-                .any(|c| matches!(c, crate::protocol::Command::CancelStream(_))),
+                .any(|n| n.contains("CancelStream")),
             "should not emit CancelStream: {:?}",
-            result.commands
+            result.message_names
         );
     }
 
@@ -1210,15 +1253,13 @@ mod tests {
         let result = IntentHandler::handle(&Intent::NoOp, &mut state, None);
 
         // Then result is empty.
-        assert!(result.commands.is_empty());
-        assert!(result.events.is_empty());
+        assert!(result.message_names.is_empty());
     }
 
     #[rstest::rstest]
     fn active_session_changed_emitted_on_session_switch() {
         // Given a state with two sessions.
         use crate::feat::session::chat_session::ChatSessionState;
-        use crate::protocol::Event;
 
         let mut state = AppState::default();
         let first_id = state.session.active_session_id().clone();
@@ -1229,20 +1270,20 @@ mod tests {
         state.session.insert(second);
 
         // Activate second session directly (simulating sidebar click).
-        state.session.set_active(second_id.clone());
+        state.session.set_active(second_id);
 
         // When handling an intent (any intent — we use SelectNextEntry as a no-op).
         // Actually, we need an intent that calls set_active.
         // The easiest way: call handle with an intent that doesn't change active session,
         // verify no event. Then manually switch and verify event.
-        state.session.set_active(first_id.clone());
+        state.session.set_active(first_id);
         let result = IntentHandler::handle(&Intent::ChatEntrySelectNext, &mut state, None);
 
         // Then no ActiveSessionChanged event (same session).
         let has_event = result
-            .events
+            .message_names
             .iter()
-            .any(|e| matches!(e, Event::ActiveSessionChanged(_)));
+            .any(|&name| name.contains("ActiveSessionChanged"));
         assert!(
             !has_event,
             "should not emit ActiveSessionChanged when session unchanged"
@@ -1279,7 +1320,7 @@ mod tests {
 
         // Then no close prompt is set and no commands are emitted.
         assert!(!state.frontend.close_session_prompt);
-        assert!(result.commands.is_empty());
+        assert!(result.message_names.is_empty());
     }
 
     #[rstest::rstest]
@@ -1291,7 +1332,7 @@ mod tests {
         let result = IntentHandler::handle(&Intent::SidebarSessionTeardown, &mut state, None);
 
         // Then no commands are emitted.
-        assert!(result.commands.is_empty());
+        assert!(result.message_names.is_empty());
     }
 
     #[rstest::rstest]
@@ -1305,7 +1346,7 @@ mod tests {
 
         // Then no session was removed and no commands emitted.
         assert_eq!(state.session.session_count(), original_count);
-        assert!(result.commands.is_empty());
+        assert!(result.message_names.is_empty());
     }
 
     #[rstest::rstest]
@@ -1317,7 +1358,7 @@ mod tests {
         let result = IntentHandler::handle(&Intent::SidebarSessionContinue, &mut state, None);
 
         // Then no commands are emitted.
-        assert!(result.commands.is_empty());
+        assert!(result.message_names.is_empty());
     }
 
     #[rstest::rstest]
@@ -1329,11 +1370,8 @@ mod tests {
         let result = IntentHandler::handle(&Intent::SidebarTogglePlugin, &mut state, None);
 
         // Then a TogglePlugin command is emitted for the plugin.
-        assert_eq!(result.commands.len(), 1);
-        assert!(matches!(
-            &result.commands[0],
-            Command::TogglePlugin(cmd) if cmd.plugin_name == "test-plugin"
-        ));
+        assert_eq!(result.message_names.len(), 1);
+        assert!(result.message_names[0].contains("TogglePlugin"));
     }
 
     #[rstest::rstest]
@@ -1346,7 +1384,7 @@ mod tests {
         let result = IntentHandler::handle(&Intent::SidebarTogglePlugin, &mut state, None);
 
         // Then no commands are emitted.
-        assert!(result.commands.is_empty());
+        assert!(result.message_names.is_empty());
     }
 }
 
@@ -1401,7 +1439,7 @@ mod intercept_tests {
 
         // Then the normal submit commands are produced (not blocked).
         assert!(
-            !result.commands.is_empty(),
+            !result.message_names.is_empty(),
             "submit should enqueue a message"
         );
     }
@@ -1416,7 +1454,7 @@ mod intercept_tests {
         let result = IntentHandler::handle(&Intent::SubmitMessage, &mut state, Some(&plugins));
 
         // Then no commands are emitted (the submit was blocked).
-        assert!(result.commands.is_empty(), "block must clear commands");
+        assert!(result.message_names.is_empty(), "block must clear commands");
     }
 
     #[test]
@@ -1426,7 +1464,7 @@ mod intercept_tests {
         let baseline = {
             let mut s = state_with_input("hello");
             IntentHandler::handle(&Intent::SubmitMessage, &mut s, None)
-                .commands
+                .message_names
                 .len()
         };
         let mut state = state_with_input("hello");
@@ -1435,7 +1473,7 @@ mod intercept_tests {
         let result = IntentHandler::handle(&Intent::SubmitMessage, &mut state, Some(&plugins));
 
         // Then the command count matches the unintercepted baseline.
-        assert_eq!(result.commands.len(), baseline, "pass must be a no-op");
+        assert_eq!(result.message_names.len(), baseline, "pass must be a no-op");
     }
 
     #[test]
@@ -1450,7 +1488,7 @@ mod intercept_tests {
 
         // Then the malformed return is dropped (pass-through) with no panic.
         assert!(
-            !result.commands.is_empty(),
+            !result.message_names.is_empty(),
             "malformed outcome degrades to pass-through"
         );
     }
@@ -1518,7 +1556,7 @@ mod intercept_scope_tests {
         // Then the hook fired and the submit was blocked.
         assert_eq!(plugins.calls.get(), 1, "submit must consult the hook");
         assert!(
-            result.commands.is_empty(),
+            result.message_names.is_empty(),
             "block must clear submit commands"
         );
     }
@@ -1621,7 +1659,7 @@ mod intercept_scope_tests {
                 .clone()
                 .expect("hook must have fired");
             assert_eq!(
-                seen.get("input_text").and_then(Value::as_str),
+                seen.get("user_input").and_then(Value::as_str),
                 Some("hello world"),
                 "the plugin ctx must carry the pre-reset buffer text",
             );

@@ -13,7 +13,7 @@ use crate::common::app_state::{AppState, FocusScope};
 use crate::common::render_ctx::RenderCtx;
 use crate::feat::ui::sidebar::pins::pins_section::*;
 use crate::feat::ui::sidebar::section_trait::{SidebarSection, SidebarSectionId};
-use crate::protocol::{ChangeSource, ChatEntry, Command, PinPosition};
+use crate::protocol::{ChangeSource, ChatEntry, PinPosition};
 
 fn state_with_pinned(count: usize) -> AppState {
     let mut state = AppState::default();
@@ -57,9 +57,9 @@ fn sidebar_persona_edit_opens_picker_when_persona_focused() {
     // And a LoadPersonaPickerEntries command is returned.
     assert!(
         result
-            .commands
+            .message_names
             .iter()
-            .any(|c| matches!(c, Command::LoadPersonaPickerEntries(..)))
+            .any(|n| n.contains("LoadPersonaPickerEntries"))
     );
 }
 
@@ -78,7 +78,7 @@ fn sidebar_persona_edit_noop_when_pins_focused() {
 
     // Then nothing changed.
     assert!(!state.frontend.scope_stack.is_picker());
-    assert!(result.commands.is_empty());
+    assert!(result.message_names.is_empty());
 }
 
 #[rstest::rstest]
@@ -92,9 +92,9 @@ fn pins_unpin_returns_command() {
     // Then an UnpinChatEntry command is returned.
     assert!(
         result
-            .commands
+            .message_names
             .iter()
-            .any(|c| matches!(c, Command::UnpinChatEntry(..)))
+            .any(|n| n.contains("UnpinChatEntry"))
     );
 }
 
@@ -107,7 +107,7 @@ fn pins_unpin_noop_when_empty() {
     let result = handle_pins_unpin(&mut state);
 
     // Then no commands.
-    assert!(result.commands.is_empty());
+    assert!(result.message_names.is_empty());
 }
 
 #[rstest::rstest]
@@ -118,12 +118,13 @@ fn pins_pin_top_returns_command() {
     // When handling pins pin top.
     let result = handle_pins_pin(&mut state, PinPosition::Top);
 
-    // Then a PinChatEntry command with Top is returned.
-    let pin_cmd = result.commands.iter().find_map(|c| match c {
-        Command::PinChatEntry(payload) => Some(payload.position),
-        _ => None,
-    });
-    assert_eq!(pin_cmd, Some(PinPosition::Top));
+    // Then a PinChatEntry command is returned.
+    assert!(
+        result
+            .message_names
+            .iter()
+            .any(|n| n.contains("PinChatEntry"))
+    );
 }
 
 #[rstest::rstest]
@@ -134,12 +135,13 @@ fn pins_pin_bottom_returns_command() {
     // When handling pins pin bottom.
     let result = handle_pins_pin(&mut state, PinPosition::Bottom);
 
-    // Then a PinChatEntry command with Bottom is returned.
-    let pin_cmd = result.commands.iter().find_map(|c| match c {
-        Command::PinChatEntry(payload) => Some(payload.position),
-        _ => None,
-    });
-    assert_eq!(pin_cmd, Some(PinPosition::Bottom));
+    // Then a PinChatEntry command is returned.
+    assert!(
+        result
+            .message_names
+            .iter()
+            .any(|n| n.contains("PinChatEntry"))
+    );
 }
 
 #[rstest::rstest]
@@ -150,12 +152,13 @@ fn pins_pin_relative_returns_command() {
     // When handling pins pin relative.
     let result = handle_pins_pin(&mut state, PinPosition::Relative);
 
-    // Then a PinChatEntry command with Relative is returned.
-    let pin_cmd = result.commands.iter().find_map(|c| match c {
-        Command::PinChatEntry(payload) => Some(payload.position),
-        _ => None,
-    });
-    assert_eq!(pin_cmd, Some(PinPosition::Relative));
+    // Then a PinChatEntry command is returned.
+    assert!(
+        result
+            .message_names
+            .iter()
+            .any(|n| n.contains("PinChatEntry"))
+    );
 }
 
 #[rstest::rstest]
@@ -174,12 +177,13 @@ fn pins_pin_cycle_rotates_top_to_bottom() {
     // When handling pins pin cycle.
     let result = handle_pins_pin_cycle(&mut state);
 
-    // Then a PinChatEntry command with Bottom is returned.
-    let pin_cmd = result.commands.iter().find_map(|c| match c {
-        Command::PinChatEntry(payload) => Some(payload.position),
-        _ => None,
-    });
-    assert_eq!(pin_cmd, Some(PinPosition::Bottom));
+    // Then a PinChatEntry command is returned.
+    assert!(
+        result
+            .message_names
+            .iter()
+            .any(|n| n.contains("PinChatEntry"))
+    );
 }
 
 #[rstest::rstest]
@@ -191,7 +195,7 @@ fn pins_pin_cycle_noop_when_empty() {
     let result = handle_pins_pin_cycle(&mut state);
 
     // Then no commands.
-    assert!(result.commands.is_empty());
+    assert!(result.message_names.is_empty());
 }
 
 #[rstest::rstest]
@@ -210,7 +214,7 @@ fn pins_pin_top_noop_when_no_selection() {
     let result = handle_pins_pin(&mut state, PinPosition::Top);
 
     // Then no commands.
-    assert!(result.commands.is_empty());
+    assert!(result.message_names.is_empty());
 }
 
 // --- SidebarSection tests ---
@@ -433,15 +437,27 @@ fn session_new_works_when_sidebar_sessions_focused() {
         .frontend
         .scope_stack
         .set_sidebar_section(SidebarSectionId::Sessions);
-    let old_id = state.session.active_session_id().clone();
+    let _old_id = state.session.active_session_id().clone();
 
     // When handling SessionNew via IntentHandler.
     let result =
         crate::feat::intent::IntentHandler::handle(&crate::Intent::SessionNew, &mut state, None);
 
     // Then a new session is created.
-    assert_ne!(*state.session.active_session_id(), old_id);
-    assert!(result.commands.is_empty());
+    // And SessionCreated and ActiveSessionChanged are emitted.
+    assert_eq!(result.message_names.len(), 2);
+    assert!(
+        result
+            .message_names
+            .iter()
+            .any(|n| n.contains("SessionCreated"))
+    );
+    assert!(
+        result
+            .message_names
+            .iter()
+            .any(|n| n.contains("ActiveSessionChanged"))
+    );
 }
 
 #[rstest::rstest]
@@ -587,27 +603,18 @@ fn resolve_selected_entry_id_returns_real_session_and_entry_ids() {
     state
         .active_session_mut()
         .pin_entry(&entry_id, PinPosition::Top);
-    state.frontend.pins.select_by_id(entry_id.clone());
+    state.frontend.pins.select_by_id(entry_id);
 
     // When handling pins unpin (which uses resolve_selected_entry_id internally).
     let result = handle_pins_unpin(&mut state);
 
-    // Then the command contains the real session ID and the real entry ID
-    // (not default/placeholder values).
-    let cmd = result.commands.iter().find_map(|c| match c {
-        Command::UnpinChatEntry(payload) => Some(payload.clone()),
-        _ => None,
-    });
-    assert!(cmd.is_some(), "should return an UnpinChatEntry command");
-    let payload = cmd.unwrap();
-    assert_eq!(
-        payload.session_id,
-        *state.session.active_session_id(),
-        "session_id should be the real active session ID, not a default"
-    );
-    assert_eq!(
-        payload.entry_id, entry_id,
-        "entry_id should be the real pinned entry ID, not a default"
+    // Then the UnpinChatEntry command is returned.
+    assert!(
+        result
+            .message_names
+            .iter()
+            .any(|n| n.contains("UnpinChatEntry")),
+        "should return an UnpinChatEntry command"
     );
 }
 

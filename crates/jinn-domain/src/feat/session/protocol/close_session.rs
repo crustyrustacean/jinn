@@ -9,12 +9,13 @@
 
 use serde::{Deserialize, Serialize};
 
-use crate::protocol::{CommandMsg, SessionId};
+use crate::{BusMessage, protocol::SessionId};
 
 /// Close a session.
-#[derive(Debug, Clone, Serialize, Deserialize, CommandMsg)]
-#[cmd("session")]
+#[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct CloseSession {
     /// The session to close.
     pub session_id: SessionId,
 }
+
+impl BusMessage for CloseSession {}

@@ -440,20 +440,32 @@ fn rebuild_file_from_spans(
     file_lines: &[&str],
     spans: &[ResolvedSpan],
     has_terminal_newline: bool,
-) -> String {
+) -> Result<String, String> {
     let mut output_lines: Vec<String> = Vec::new();
     let mut cursor: usize = 1;
 
+    // Push the original file line at `cursor - 1`, returning an error if the
+    // cursor escaped the file bounds (malformed span from the LLM).
+    macro_rules! push_original_line {
+        () => {
+            output_lines.push(
+                file_lines
+                    .get(cursor.checked_sub(1).unwrap_or(0))
+                    .ok_or_else(|| {
+                        format!(
+                            "cursor {cursor} out of bounds for file with {} lines",
+                            file_lines.len()
+                        )
+                    })?
+                    .to_string(),
+            );
+        };
+    }
     for span in spans {
         match span.kind {
             "replace" => {
                 while cursor < span.start_line {
-                    output_lines.push(
-                        file_lines
-                            .get(cursor - 1)
-                            .expect("cursor bounded by len")
-                            .to_string(),
-                    );
+                    push_original_line!();
                     cursor += 1;
                 }
                 cursor = span.end_line + 1;
@@ -461,24 +473,14 @@ fn rebuild_file_from_spans(
             }
             "append" => {
                 while cursor <= span.start_line && cursor <= file_lines.len() {
-                    output_lines.push(
-                        file_lines
-                            .get(cursor - 1)
-                            .expect("cursor bounded by len")
-                            .to_string(),
-                    );
+                    push_original_line!();
                     cursor += 1;
                 }
                 output_lines.extend(span.replacement_lines.iter().cloned());
             }
             "prepend" => {
                 while cursor < span.start_line {
-                    output_lines.push(
-                        file_lines
-                            .get(cursor - 1)
-                            .expect("cursor bounded by len")
-                            .to_string(),
-                    );
+                    push_original_line!();
                     cursor += 1;
                 }
                 output_lines.extend(span.replacement_lines.iter().cloned());
@@ -488,12 +490,7 @@ fn rebuild_file_from_spans(
     }
 
     while cursor <= file_lines.len() {
-        output_lines.push(
-            file_lines
-                .get(cursor - 1)
-                .expect("cursor bounded by len")
-                .to_string(),
-        );
+        push_original_line!();
         cursor += 1;
     }
 
@@ -508,7 +505,7 @@ fn rebuild_file_from_spans(
         result.push('\n');
     }
 
-    result
+    Ok(result)
 }
 
 /// Applies validated hashline edits to the file content.
@@ -550,7 +547,7 @@ pub fn apply_hashline_edits(content: &str, edits: &[HashlineEdit]) -> Result<Edi
         has_terminal_newline,
     )?;
 
-    let result = rebuild_file_from_spans(&file_lines, &plan.spans, has_terminal_newline);
+    let result = rebuild_file_from_spans(&file_lines, &plan.spans, has_terminal_newline)?;
 
     let changed_range = compute_changed_line_range(content, &result);
 
@@ -1339,7 +1336,7 @@ mod tests {
         let tag2 = anchor(2, compute_line_hash(2, "b"));
         let edits = vec![
             HashlineEdit::Replace {
-                pos: tag1.clone(),
+                pos: tag1,
                 end: Some(tag2.clone()),
                 lines: vec!["X".to_owned()],
             },
@@ -1581,7 +1578,7 @@ mod tests {
         let tag3 = anchor(3, compute_line_hash(3, "c"));
         let edits = vec![
             HashlineEdit::Replace {
-                pos: tag1.clone(),
+                pos: tag1,
                 end: Some(tag2.clone()),
                 lines: vec!["X".to_owned()],
             },

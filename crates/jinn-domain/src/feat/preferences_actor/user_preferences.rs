@@ -2046,7 +2046,7 @@ teardown_command = "~/.config/jinn/scripts/fossil-cleanup.sh $1"
 
         assert_eq!(retry.max_retries, 3);
         assert_eq!(retry.base_delay, std::time::Duration::from_secs(5));
-        assert_eq!(retry.max_delay, std::time::Duration::from_secs(120));
+        assert_eq!(retry.max_delay, std::time::Duration::from_mins(2));
     }
 
     // --- WebFetchConfig tests ---

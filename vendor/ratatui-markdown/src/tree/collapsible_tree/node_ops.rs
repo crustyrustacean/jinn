@@ -131,15 +131,9 @@ impl CollapsibleTree {
                         depth,
                         is_last_stack: ctx.is_last_stack.clone(),
                         kind: if is_expanded {
-                            EntryKind::Expanded {
-                                label: label.clone(),
-                                count_str,
-                            }
+                            EntryKind::Expanded { label, count_str }
                         } else {
-                            EntryKind::Collapsed {
-                                label: label.clone(),
-                                count_str,
-                            }
+                            EntryKind::Collapsed { label, count_str }
                         },
                     });
                 }
@@ -182,15 +176,9 @@ impl CollapsibleTree {
                         depth,
                         is_last_stack: ctx.is_last_stack.clone(),
                         kind: if is_expanded {
-                            EntryKind::Expanded {
-                                label: label.clone(),
-                                count_str,
-                            }
+                            EntryKind::Expanded { label, count_str }
                         } else {
-                            EntryKind::Collapsed {
-                                label: label.clone(),
-                                count_str,
-                            }
+                            EntryKind::Collapsed { label, count_str }
                         },
                     });
                 }

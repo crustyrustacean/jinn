@@ -23,7 +23,7 @@
 
 use serde::{Deserialize, Serialize};
 
-use crate::protocol::{EventMsg, SessionId};
+use crate::protocol::SessionId;
 
 /// Emitted when a new entry is appended to the session history.
 ///
@@ -31,9 +31,10 @@ use crate::protocol::{EventMsg, SessionId};
 /// directly from session state, which uses the tiktoken-based count
 /// from the last prompt assembly. This ensures the threshold check
 /// and the status bar display use the same value.
-#[derive(Debug, Clone, Serialize, Deserialize, EventMsg)]
-#[event_msg("session")]
+#[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct HistoryAppended {
     /// The session whose history was appended to.
     pub session_id: SessionId,
 }
+
+impl crate::common::bus::BusMessage for HistoryAppended {}

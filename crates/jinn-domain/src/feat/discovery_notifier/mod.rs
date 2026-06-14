@@ -7,50 +7,59 @@
 //! One entry per settled event — it fires only on the coalesced signal, never
 //! on every scan or render tick.
 
-use crate::common::actor::{Actor, ActorContext, ActorEnvelope, NoDirectMsg};
+use std::convert::Infallible;
+
+use kameo::prelude::{Actor, ActorRef, Context, Message};
+
+use crate::common::actor_deps::{ActorDeps, BusPublish};
 use crate::feat::chat_input::protocol::command::PushChatEntry;
 use crate::feat::discovery_coordinator::SessionDiscoverySettled;
-use crate::protocol::{Command, Event};
+use crate::protocol::ChatEntry;
 
-/// Configuration for the discovery notifier. None today; reserved.
-pub struct DiscoveryNotifierActorDeps;
+/// Dependencies injected at startup.
+#[derive(Clone)]
+pub struct DiscoveryNotifierActorDeps {
+    /// Universal actor dependencies (bus, services, etc.).
+    pub deps: ActorDeps,
+}
 
 /// Posts a transient chat entry summarising a session's settled discovery.
-pub struct DiscoveryNotifierActor;
+pub struct DiscoveryNotifierActor {
+    deps: ActorDeps,
+}
 
 impl Actor for DiscoveryNotifierActor {
-    type Message = NoDirectMsg;
-    type Deps = DiscoveryNotifierActorDeps;
+    type Args = DiscoveryNotifierActorDeps;
+    type Error = Infallible;
 
-    fn activate(_deps: Self::Deps, ctx: &mut ActorContext) -> Self {
-        ctx.subscribe_event::<SessionDiscoverySettled>();
-        ctx.set_description("Posts a transient chat entry when a session's discovery settles");
-        Self
-    }
-
-    async fn handle(&mut self, msg: ActorEnvelope<Self::Message>, ctx: &ActorContext) {
-        match msg {
-            ActorEnvelope::Event(event) => {
-                if let Event::SessionDiscoverySettled(ref event) = event {
-                    Self::on_settled(event, ctx);
-                }
-            }
-            ActorEnvelope::Command(_) | ActorEnvelope::System(_) => {}
-        }
+    async fn on_start(args: Self::Args, actor_ref: ActorRef<Self>) -> Result<Self, Self::Error> {
+        args.deps
+            .subscribe(actor_ref.recipient::<SessionDiscoverySettled>())
+            .await;
+        Ok(Self { deps: args.deps })
     }
 }
 
-impl DiscoveryNotifierActor {
-    /// Render the settled snapshot to a transient `PushChatEntry` command.
-    fn on_settled(event: &SessionDiscoverySettled, ctx: &ActorContext) {
-        let summary = build_summary(event);
-        let push = Command::PushChatEntry(PushChatEntry {
-            session_id: event.session_id.clone(),
-            entry: crate::protocol::ChatEntry::transient(summary),
-        });
-        if let Err(e) = ctx.send_command(push) {
-            tracing::warn!(err = ?e, "discovery-notifier failed to emit PushChatEntry");
-        }
+impl Message<SessionDiscoverySettled> for DiscoveryNotifierActor {
+    type Reply = ();
+
+    async fn handle(
+        &mut self,
+        msg: SessionDiscoverySettled,
+        _ctx: &mut Context<Self, Self::Reply>,
+    ) {
+        let summary = build_summary(&msg);
+        let push = PushChatEntry {
+            session_id: msg.session_id.clone(),
+            entry: ChatEntry::transient(summary),
+        };
+        self.publish(push).await;
+    }
+}
+
+impl BusPublish for DiscoveryNotifierActor {
+    fn bus(&self) -> &crate::common::services::bus_service::BusService {
+        self.deps.bus()
     }
 }
 
@@ -115,38 +124,28 @@ mod tests {
         clippy::indexing_slicing,
         reason = "test code"
     )]
+
+    use std::time::Duration;
+
     use super::*;
-    use crate::common::actor::{ActorContext, MessageSink, RecordingSink};
+    use crate::common::bus::test_harness::{TestHarness, await_recorded};
     use crate::feat::discovery_coordinator::DiscoverySnapshot;
     use crate::protocol::{ChatEntryKind, SessionId};
-    use std::sync::Arc;
-
-    /// Builds the notifier via `activate` with a recording sink wired into the
-    /// context, returning the actor and its context.
-    fn build() -> (DiscoveryNotifierActor, ActorContext, Arc<RecordingSink>) {
-        let sink = Arc::new(RecordingSink::new());
-        let mut ctx = ActorContext::new(
-            "discovery-notifier-test",
-            sink.clone() as Arc<dyn MessageSink>,
-        );
-        let actor = DiscoveryNotifierActor::activate(DiscoveryNotifierActorDeps, &mut ctx);
-        (actor, ctx, sink)
-    }
-
-    async fn run_settled(actor: &mut DiscoveryNotifierActor, ctx: &ActorContext, event: Event) {
-        actor.handle(ActorEnvelope::Event(event), ctx).await;
-    }
 
     #[tokio::test]
     async fn settled_event_posts_one_transient_chat_entry() {
-        // Given a notifier actor.
-        let (mut actor, ctx, sink) = build();
+        // Given a notifier and a recorder wired to the bus.
+        let harness = TestHarness::new().await;
+        let _notifier = harness
+            .spawn_actor::<DiscoveryNotifierActor>(DiscoveryNotifierActorDeps {
+                deps: harness.actor_deps().await,
+            })
+            .await;
+        let recorder = harness.spawn_recorder::<PushChatEntry>().await;
 
-        // When a SessionDiscoverySettled event with discovered resources is handled.
-        run_settled(
-            &mut actor,
-            &ctx,
-            Event::SessionDiscoverySettled(SessionDiscoverySettled {
+        // When a SessionDiscoverySettled event with discovered resources is published.
+        harness
+            .publish(SessionDiscoverySettled {
                 session_id: SessionId::new(),
                 snapshot: DiscoverySnapshot {
                     skill_count: 2,
@@ -155,49 +154,44 @@ mod tests {
                     ..Default::default()
                 },
                 delayed: None,
-            }),
-        )
-        .await;
+            })
+            .await;
 
-        // Then exactly one PushChatEntry command was emitted.
-        let commands: Vec<_> = sink
-            .commands()
-            .into_iter()
-            .filter(|c| matches!(c, Command::PushChatEntry(_)))
-            .collect();
-        assert_eq!(commands.len(), 1, "expected exactly one PushChatEntry");
-        if let Command::PushChatEntry(PushChatEntry { entry, .. }) = &commands[0] {
-            assert!(
-                matches!(entry.kind, ChatEntryKind::Transient(_)),
-                "entry should be transient"
-            );
-        } else {
-            panic!("expected PushChatEntry");
-        }
+        // Then exactly one PushChatEntry was emitted with a transient entry.
+        let messages = await_recorded(&recorder, 1, Duration::from_millis(500)).await;
+        assert_eq!(messages.len(), 1, "expected exactly one PushChatEntry");
+
+        let entry = &messages[0];
+        assert!(
+            matches!(entry.entry.kind, ChatEntryKind::Transient(_)),
+            "entry should be transient"
+        );
     }
 
     #[tokio::test]
     async fn empty_discovery_says_no_resources() {
-        // Given a notifier.
-        let (mut actor, ctx, sink) = build();
+        // Given a notifier and a recorder.
+        let harness = TestHarness::new().await;
+        let _notifier = harness
+            .spawn_actor::<DiscoveryNotifierActor>(DiscoveryNotifierActorDeps {
+                deps: harness.actor_deps().await,
+            })
+            .await;
+        let recorder = harness.spawn_recorder::<PushChatEntry>().await;
 
-        // When a settled event with empty discovery is handled.
-        run_settled(
-            &mut actor,
-            &ctx,
-            Event::SessionDiscoverySettled(SessionDiscoverySettled {
+        // When a settled event with empty discovery is published.
+        harness
+            .publish(SessionDiscoverySettled {
                 session_id: SessionId::new(),
                 snapshot: DiscoverySnapshot::default(),
                 delayed: None,
-            }),
-        )
-        .await;
+            })
+            .await;
 
         // Then the message says no project resources found.
-        let Command::PushChatEntry(PushChatEntry { entry, .. }) = &sink.commands()[0] else {
-            panic!("expected PushChatEntry");
-        };
-        let ChatEntryKind::Transient(text) = &entry.kind else {
+        let messages = await_recorded(&recorder, 1, Duration::from_millis(500)).await;
+        let entry = &messages[0];
+        let ChatEntryKind::Transient(text) = &entry.entry.kind else {
             panic!("expected transient entry");
         };
         assert!(
@@ -208,29 +202,31 @@ mod tests {
 
     #[tokio::test]
     async fn delayed_reason_surfaces_in_message() {
-        // Given a notifier.
-        let (mut actor, ctx, sink) = build();
+        // Given a notifier and a recorder.
+        let harness = TestHarness::new().await;
+        let _notifier = harness
+            .spawn_actor::<DiscoveryNotifierActor>(DiscoveryNotifierActorDeps {
+                deps: harness.actor_deps().await,
+            })
+            .await;
+        let recorder = harness.spawn_recorder::<PushChatEntry>().await;
 
         // When a settled event carries a delayed reason.
-        run_settled(
-            &mut actor,
-            &ctx,
-            Event::SessionDiscoverySettled(SessionDiscoverySettled {
+        harness
+            .publish(SessionDiscoverySettled {
                 session_id: SessionId::new(),
                 snapshot: DiscoverySnapshot {
                     skill_count: 2,
                     ..Default::default()
                 },
                 delayed: Some("discovery delayed by context".to_owned()),
-            }),
-        )
-        .await;
+            })
+            .await;
 
         // Then the reason is surfaced in the message.
-        let Command::PushChatEntry(PushChatEntry { entry, .. }) = &sink.commands()[0] else {
-            panic!("expected PushChatEntry");
-        };
-        let ChatEntryKind::Transient(text) = &entry.kind else {
+        let messages = await_recorded(&recorder, 1, Duration::from_millis(500)).await;
+        let entry = &messages[0];
+        let ChatEntryKind::Transient(text) = &entry.entry.kind else {
             panic!("expected transient entry");
         };
         assert!(
@@ -241,14 +237,18 @@ mod tests {
 
     #[tokio::test]
     async fn failed_scan_notes_error_in_message() {
-        // Given a notifier.
-        let (mut actor, ctx, sink) = build();
+        // Given a notifier and a recorder.
+        let harness = TestHarness::new().await;
+        let _notifier = harness
+            .spawn_actor::<DiscoveryNotifierActor>(DiscoveryNotifierActorDeps {
+                deps: harness.actor_deps().await,
+            })
+            .await;
+        let recorder = harness.spawn_recorder::<PushChatEntry>().await;
 
         // When a settled event carries a skills scan error.
-        run_settled(
-            &mut actor,
-            &ctx,
-            Event::SessionDiscoverySettled(SessionDiscoverySettled {
+        harness
+            .publish(SessionDiscoverySettled {
                 session_id: SessionId::new(),
                 snapshot: DiscoverySnapshot {
                     skill_count: 0,
@@ -256,15 +256,13 @@ mod tests {
                     ..Default::default()
                 },
                 delayed: None,
-            }),
-        )
-        .await;
+            })
+            .await;
 
         // Then the message notes the failure.
-        let Command::PushChatEntry(PushChatEntry { entry, .. }) = &sink.commands()[0] else {
-            panic!("expected PushChatEntry");
-        };
-        let ChatEntryKind::Transient(text) = &entry.kind else {
+        let messages = await_recorded(&recorder, 1, Duration::from_millis(500)).await;
+        let entry = &messages[0];
+        let ChatEntryKind::Transient(text) = &entry.entry.kind else {
             panic!("expected transient entry");
         };
         assert!(

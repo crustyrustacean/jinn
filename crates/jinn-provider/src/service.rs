@@ -280,7 +280,7 @@ mod tests {
     #[rstest::rstest]
     fn parse_retry_after_header_seconds() {
         let result = parse_retry_after_header("120");
-        assert_eq!(result, Some(Duration::from_secs(120)));
+        assert_eq!(result, Some(Duration::from_mins(2)));
     }
 
     #[rstest::rstest]
