@@ -200,11 +200,6 @@ impl ActorSystemBuilder {
             state.write().discovered_plugins = plugins;
         }
 
-        let domain_ctx_cell: std::sync::Arc<
-            std::sync::OnceLock<jinn_domain::feat::plugin_dispatch::DomainNodeContext>,
-        > = std::sync::Arc::new(std::sync::OnceLock::new());
-        let _handler_cell = domain_ctx_cell.clone();
-
         // Create the kameo message bus and closure bridge first.
         let bus = {
             let bus_actor = kameo_actors::message_bus::MessageBus::new(
