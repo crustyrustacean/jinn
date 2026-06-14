@@ -116,6 +116,14 @@ const PHASE_INDENT: usize = 2;
 /// Indent for task descriptions (4 spaces + 1 indicator + 1 space = 6 columns).
 const TASK_INDENT: usize = 6;
 
+/// Display width of the phase collapse/expand indicator (`“▾ ”` / `“▸ ”` = 2 columns).
+///
+/// This is the **display-column** width of the indicator, deliberately not its byte
+/// length (`“▾ ”` is 4 UTF-8 bytes). `textwrap` measures by display columns, so
+/// this constant must be used everywhere the wrap width is computed for phase headers,
+/// keeping `build_render_lines` and `compute_height` in lockstep.
+const PHASE_INDICATOR_WIDTH: usize = 2;
+
 /// Word-wraps a description string to the given available width.
 ///
 /// Returns a single-element vec when `available_width` is too small to wrap.
@@ -174,7 +182,7 @@ fn build_render_lines(list: &TaskList, state: &AppState) -> Vec<Line<'static>> {
         } else {
             "\u{25B8} " // ▸ collapsed
         };
-        let phase_width = sidebar_width.saturating_sub(PHASE_INDENT + indicator.len());
+        let phase_width = sidebar_width.saturating_sub(PHASE_INDENT + PHASE_INDICATOR_WIDTH);
         let phase_color = if active_phase_id == Some(phase.id()) {
             theme.streaming
         } else if phase.has_pending_work() {
@@ -194,7 +202,7 @@ fn build_render_lines(list: &TaskList, state: &AppState) -> Vec<Line<'static>> {
             let prefix = if i == 0 {
                 format!("  {indicator}{segment}")
             } else {
-                format!("    {}{segment}", " ".repeat(indicator.len()))
+                format!("    {}{segment}", " ".repeat(PHASE_INDICATOR_WIDTH))
             };
             lines.push(Line::from(Span::styled(prefix, phase_style)));
         }
@@ -260,9 +268,8 @@ fn compute_height(list: &TaskList, state: &AppState) -> u16 {
         let is_expanded = expanded == Some(phase_idx);
 
         // Phase header - count wrapped lines.
-        // Account for indicator ("▾ " or "▸ " = 2 chars) + indent.
-        let indicator_len = 2; // "▾ " or "▸ "
-        let phase_width = sidebar_width.saturating_sub(PHASE_INDENT + indicator_len);
+        // Account for indicator ("▾ " or "▸ " = 2 columns) + indent.
+        let phase_width = sidebar_width.saturating_sub(PHASE_INDENT + PHASE_INDICATOR_WIDTH);
         height += wrap_description(phase.description(), phase_width).len();
 
         // Only count task lines for the expanded phase.
@@ -837,6 +844,130 @@ mod tests {
         assert!(
             expanded_height > collapsed_height,
             "expanded height ({expanded_height}) should be > collapsed height ({collapsed_height})"
+        );
+    }
+
+    // --- Render/height invariant tests ---
+
+    /// Regression: when phase descriptions wrap, the number of lines painted by
+    /// `build_render_lines` must equal the height reserved by `compute_height`.
+    /// Previously the render path used the indicator's byte length (4) while
+    /// `compute_height` used its display width (2), so wrapped phase headers
+    /// overran the reserved space and the last phase header was clipped.
+    #[test]
+    fn collapsed_render_line_count_matches_computed_height_when_wrapping() {
+        // Given a sidebar of default width (30). Phase descriptions are chosen so
+        // their word boundaries land between columns 24 and 26: at the render path's
+        // buggy width (30 - 2 - 4 = 24) each wraps to 2 lines, but at the correct
+        // width (30 - 2 - 2 = 26) each fits on 1 line. This is the exact divergence
+        // that previously clipped the last phase header.
+        let mut app = AppState::default();
+        app.frontend.sidebar_width = 30;
+        let session = app.session.active_session_mut();
+        session
+            .task_list_mut()
+            .add_phase("initialize the loader tail");
+        session
+            .task_list_mut()
+            .add_phase("validate the payload tail");
+        session
+            .task_list_mut()
+            .add_phase("register the handler tail");
+        let list = app.session.active_session().task_list().clone();
+
+        // When rendering collapsed (no focus) and computing its height.
+        let rendered = build_render_lines(&list, &app);
+        let height = compute_height(&list, &app);
+
+        // Then the painted line count equals the reserved height.
+        assert_eq!(
+            rendered.len(),
+            usize::from(height),
+            "collapsed: rendered lines ({}) must equal computed height ({height})",
+            rendered.len()
+        );
+    }
+
+    #[test]
+    fn expanded_render_line_count_matches_computed_height_when_wrapping() {
+        // Same property as the collapsed test, but with a phase expanded so its
+        // task lines also contribute to both the render output and the height.
+        let mut app = AppState::default();
+        app.frontend.sidebar_width = 30;
+        let session = app.session.active_session_mut();
+        let pid = session
+            .task_list_mut()
+            .add_phase("initialize the loader tail");
+        session
+            .task_list_mut()
+            .add_task(&pid, "Read the documentation carefully", TaskPosition::End)
+            .unwrap();
+        session
+            .task_list_mut()
+            .add_phase("validate the payload tail");
+        session
+            .task_list_mut()
+            .add_phase("register the handler tail");
+        let list_before = app.session.active_session().task_list().clone();
+
+        // Given the first phase is expanded.
+        setup_focused_on_phase(&mut app, 0);
+        let list = app.session.active_session().task_list().clone();
+
+        // When rendering expanded and computing its height.
+        let rendered = build_render_lines(&list, &app);
+        let height = compute_height(&list, &app);
+
+        // Then the painted line count equals the reserved height.
+        assert_eq!(
+            rendered.len(),
+            usize::from(height),
+            "expanded: rendered lines ({}) must equal computed height ({height})",
+            rendered.len()
+        );
+        // And the expanded height exceeds the collapsed height (sanity: tasks shown).
+        assert!(
+            height
+                > compute_height(&list_before, &{
+                    let mut a = AppState::default();
+                    a.frontend.sidebar_width = 30;
+                    a
+                }),
+            "expanded height should exceed collapsed height"
+        );
+    }
+
+    /// Regression: the last phase header must appear in the rendered output while
+    /// collapsed. Previously the byte-length-vs-display-width divergence made
+    /// `build_render_lines` emit more lines than `compute_height` reserved, and
+    /// ratatui's `Paragraph` clipped the overflow — dropping the last phase header
+    /// until focus shifted it out of the clipped region.
+    #[test]
+    fn collapsed_render_includes_last_phase_header() {
+        // Given a sidebar of default width (30) with three phases, the last one's
+        // description chosen to wrap at the buggy render width (24) but not the
+        // correct one (26).
+        let mut app = AppState::default();
+        app.frontend.sidebar_width = 30;
+        let session = app.session.active_session_mut();
+        session
+            .task_list_mut()
+            .add_phase("initialize the loader tail");
+        session
+            .task_list_mut()
+            .add_phase("validate the payload tail");
+        session
+            .task_list_mut()
+            .add_phase("register the handler tail");
+        let list = app.session.active_session().task_list().clone();
+
+        // When rendering collapsed (no focus).
+        let text = extract_text(&build_render_lines(&list, &app));
+
+        // Then the last phase header is present in the painted output.
+        assert!(
+            text.contains("handler"),
+            "last phase header must be rendered, got: {text}"
         );
     }
 
