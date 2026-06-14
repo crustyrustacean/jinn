@@ -8,8 +8,9 @@
     reason = "test code"
 )]
 
+use parking_lot::Mutex;
 use std::path::Path;
-use std::sync::{Arc, Mutex};
+use std::sync::Arc;
 
 use jinn_domain::feat::plugin_dispatch::HookContext;
 use jinn_domain::feat::plugin_system::{
@@ -34,7 +35,7 @@ fn build_system_with_capture(dir: &Path) -> (SyncPlugins, Arc<Mutex<Vec<PluginCo
         Path::new("/nonexistent"),
         rt.handle().clone(),
         Arc::new(move |cmd| {
-            captured_clone.lock().expect("lock").push(cmd);
+            captured_clone.lock().push(cmd);
         }),
         Arc::new(|_, _| Box::pin(async { serde_json::Value::Null })),
     );
@@ -190,7 +191,7 @@ fn sync_hook_emit_sends_command() {
     // Give the drainer task time to process.
     std::thread::sleep(std::time::Duration::from_millis(100));
 
-    let cmds = captured.lock().expect("lock");
+    let cmds = captured.lock();
     assert_eq!(cmds.len(), 1);
     assert_eq!(cmds[0].name, "push_chat_entry");
     assert_eq!(cmds[0].data["session_id"], "s1");
