@@ -374,18 +374,10 @@ struct NewSessionRow {
     title: Option<String>,
     updated_at: String,
     created_at: String,
-    profile: String,
-
-    blobs: String,
     parent_session: Option<String>,
-    cwd: String,
-    lifecycle_name: Option<String>,
-    lifecycle_args: String,
     archived: bool,
-    lifecycle_script_state: String,
     metadata: Option<String>,
     is_automated: bool,
-    persist: bool,
 }
 
 /// Reading model for the `entries` table.
@@ -586,21 +578,21 @@ impl TryFrom<&ChatSessionState> for NewSessionRow {
                     updated_at,
                     created_at,
                     history: _history, // persisted via entries + session_history tables below
-                    profile,
-                    cwd,
+                    profile: _profile, // persisted via metadata blob
+                    cwd: _cwd,         // persisted via metadata blob
                     token_ledger: _ledger, // persisted via token_ledger table below
                     parent_session,
 
                     fork_ordinal: _fork_ordinal, // included in metadata blob via PersistableCore
 
-                    blobs,
-                    lifecycle_name,
-                    lifecycle_args,
-                    ephemeral: _ephemeral, // runtime-only state, not persisted
+                    blobs: _blobs,                   // persisted via metadata blob
+                    lifecycle_name: _lifecycle_name, // persisted via metadata blob
+                    lifecycle_args: _lifecycle_args, // persisted via metadata blob
+                    ephemeral: _ephemeral,           // runtime-only state, not persisted
                     session_state,
-                    lifecycle_script_state,
+                    lifecycle_script_state: _lifecycle_script_state, // persisted via metadata blob
                     is_automated,
-                    persist,
+                    persist: _persist, // persisted via metadata blob
                     assembly_overrides: _assembly_overrides, // runtime-only, not persisted
                     has_interacted: _has_interacted, // deserialized from DB, restored by handle_session_load_completed
                     task_list: _task_list, // included in metadata blob via PersistableCore
@@ -614,31 +606,15 @@ impl TryFrom<&ChatSessionState> for NewSessionRow {
             title: title.clone(),
             updated_at: updated_at.to_string(),
             created_at: created_at.to_string(),
-            profile: serde_json::to_string(profile)
-                .change_context(SessionStoreError)
-                .attach("failed to serialize profile")?,
-
-            blobs: serde_json::to_string(blobs)
-                .change_context(SessionStoreError)
-                .attach("failed to serialize blobs")?,
             parent_session: parent_session
                 .as_ref()
                 .map(std::string::ToString::to_string),
-            cwd: cwd.to_string_lossy().to_string(),
-            lifecycle_name: lifecycle_name.clone(),
-            lifecycle_args: serde_json::to_string(lifecycle_args)
-                .change_context(SessionStoreError)
-                .attach("failed to serialize lifecycle_args")?,
             archived: *session_state == SessionState::Archived,
-            lifecycle_script_state: serde_json::to_string(&lifecycle_script_state)
-                .change_context(SessionStoreError)
-                .attach("failed to serialize lifecycle_script_state")?,
             metadata: serde_json::to_string(&PersistableCore::from(&session.core))
                 .change_context(SessionStoreError)
                 .attach("failed to serialize metadata")?
                 .into(),
             is_automated: *is_automated,
-            persist: *persist,
         })
     }
 }
@@ -784,16 +760,9 @@ fn save_blocking(
             .set((
                 sessions::title.eq(excluded(sessions::title)),
                 sessions::updated_at.eq(excluded(sessions::updated_at)),
-                sessions::profile.eq(excluded(sessions::profile)),
-                sessions::blobs.eq(excluded(sessions::blobs)),
-                sessions::cwd.eq(excluded(sessions::cwd)),
-                sessions::lifecycle_name.eq(excluded(sessions::lifecycle_name)),
-                sessions::lifecycle_args.eq(excluded(sessions::lifecycle_args)),
                 sessions::archived.eq(excluded(sessions::archived)),
-                sessions::lifecycle_script_state.eq(excluded(sessions::lifecycle_script_state)),
                 sessions::metadata.eq(excluded(sessions::metadata)),
                 sessions::is_automated.eq(excluded(sessions::is_automated)),
-                sessions::persist.eq(excluded(sessions::persist)),
             ))
             .execute(txn)?;
 
@@ -1150,15 +1119,8 @@ fn fork_blocking(
                 title: source_meta.title,
                 updated_at: now.clone(),
                 created_at: now, // fresh created_at - it's a new session
-                profile: source_meta.profile,
-
-                blobs: source_meta.blobs,
                 parent_session: Some(source_str.clone()),
-                cwd: source_meta.cwd,
-                lifecycle_name: source_meta.lifecycle_name,
-                lifecycle_args: source_meta.lifecycle_args,
                 archived: false,
-                lifecycle_script_state: source_meta.lifecycle_script_state,
                 metadata: fork_metadata(
                     source_meta.metadata.as_ref(),
                     &source_str,
@@ -1166,7 +1128,6 @@ fn fork_blocking(
                     at_ordinal,
                 ),
                 is_automated: source_meta.is_automated,
-                persist: source_meta.persist,
             })
             .execute(txn)?;
 
@@ -1559,6 +1520,62 @@ mod tests {
             loaded.created_at(),
             &source_created,
             "fork should update created_at via fork_metadata"
+        );
+    }
+
+    #[tokio::test]
+    async fn fork_does_not_write_zombie_columns() {
+        // Given a migrated database with a saved session.
+        let (_dir, mut conn) = migrated_conn();
+        let session = make_session();
+        let source_id = session.session_id().clone();
+        save_blocking(&mut conn, &session).expect("save source");
+
+        // When forking the session.
+        let fork_id = fork_blocking(&mut conn, &source_id, 1).expect("fork");
+
+        // Then the forked row does not carry the redundant profile data in its
+        // zombie columns - they hold their SQL DEFAULTs, and only the metadata
+        // blob carries the real profile.
+        let fork_id_str = fork_id.to_string();
+
+        #[derive(QueryableByName)]
+        struct ColRow {
+            #[diesel(sql_type = diesel::sql_types::Text)]
+            value: String,
+        }
+        let col = |conn: &mut SqliteConnection, name: &str| -> String {
+            let rows: Vec<ColRow> =
+                sql_query(format!("SELECT {name} AS value FROM sessions WHERE id = ?"))
+                    .bind::<diesel::sql_types::Text, _>(&fork_id_str)
+                    .load(conn)
+                    .expect("select column");
+            rows.into_iter().next().expect("fork row exists").value
+        };
+
+        // The zombie columns hold their schema DEFAULTs.
+        assert_eq!(
+            col(&mut conn, "profile"),
+            "{}",
+            "profile column is the default"
+        );
+        assert_eq!(col(&mut conn, "blobs"), "{}", "blobs column is the default");
+        assert_eq!(col(&mut conn, "cwd"), ".", "cwd column is the default");
+        assert_eq!(
+            col(&mut conn, "lifecycle_args"),
+            "[]",
+            "lifecycle_args column is the default"
+        );
+        assert_eq!(
+            col(&mut conn, "lifecycle_script_state"),
+            "nothing_ran",
+            "lifecycle_script_state column is the default"
+        );
+
+        // And the metadata blob IS present and carries the forked profile.
+        assert!(
+            !col(&mut conn, "metadata").is_empty(),
+            "fork should carry a metadata blob"
         );
     }
 
