@@ -6,21 +6,22 @@
 //! `TryFromLua` trait in `plugin_bridge`.
 //!
 //! This module is a thin caller: it builds a [`CmdCtx`], asks the domain to
-//! dispatch, and forwards the resulting closure to the actor channel.
+//! dispatch, and forwards the resulting [`BridgeClosure`] to the [`Bridge`]
+//! (the same live channel the rest of the app uses).
 
 use std::sync::Arc;
 
+use jinn_domain::common::bridge::Bridge;
 use jinn_domain::common::plugin_bridge::{CmdCtx, dispatch_verb};
-use jinn_domain::common::services::ActorChannelService;
 use jinn_domain::feat::plugin_system::PluginCommand;
 
 /// Dispatch a plugin command to the appropriate domain action.
 ///
 /// Delegates verb matching and Lua→message translation to [`dispatch_verb`].
 /// On success the returned closure is forwarded to the actor system via
-/// [`ActorChannelService::send`]. Unknown verbs and translation failures are
-/// logged and dropped.
-pub fn handle_plugin_command(cmd: PluginCommand, channel: &ActorChannelService) {
+/// [`Bridge::send`]. Unknown verbs and translation failures are logged and
+/// dropped.
+pub fn handle_plugin_command(cmd: PluginCommand, bridge: &Bridge) {
     tracing::debug!(
         plugin = cmd.plugin_name,
         verb = cmd.name,
@@ -33,7 +34,9 @@ pub fn handle_plugin_command(cmd: PluginCommand, channel: &ActorChannelService) 
     };
 
     match dispatch_verb(&cmd.name, ctx, cmd.data) {
-        Some(closure) => channel.send(closure),
+        Some(closure) => {
+            let _ = bridge.send(closure);
+        }
         None => tracing::warn!(
             plugin = cmd.plugin_name,
             verb = cmd.name,
@@ -44,13 +47,11 @@ pub fn handle_plugin_command(cmd: PluginCommand, channel: &ActorChannelService) 
 
 /// Build a command dispatcher closure for the plugin system.
 ///
-/// The returned closure captures an `ActorChannelService` and routes
-/// plugin commands through the bus via the kanal bridge.
-pub fn build_command_dispatcher(
-    channel: ActorChannelService,
-) -> Arc<dyn Fn(PluginCommand) + Send + Sync> {
+/// The returned closure captures the [`Bridge`] and routes plugin commands
+/// through it to the kameo bus.
+pub fn build_command_dispatcher(bridge: Bridge) -> Arc<dyn Fn(PluginCommand) + Send + Sync> {
     Arc::new(move |cmd: PluginCommand| {
-        handle_plugin_command(cmd, &channel);
+        handle_plugin_command(cmd, &bridge);
     })
 }
 

@@ -1,16 +1,12 @@
-//! Application core: state, message channel, and processing.
+//! Application core: shared state and the kanal bridge.
 //!
-//! [`AppCore`] owns the shared application state and a sender for the
-//! internal message channel. The kanal bridge task drains the channel
-//! and publishes closures to the kameo bus.
+//! [`AppCore`] owns the shared application state and the [`Bridge`] whose
+//! drain task publishes closures to the kameo bus.
 
 use std::time::Duration;
 
 use crate::State;
 use crate::common::bridge::Bridge;
-use kanal::Sender;
-
-use crate::AppMsg;
 
 /// Default timeout for coordinated shutdown.
 pub const SHUTDOWN_TIMEOUT: Duration = Duration::from_secs(10);
@@ -18,16 +14,13 @@ pub const SHUTDOWN_TIMEOUT: Duration = Duration::from_secs(10);
 /// Default timeout for actor system startup.
 pub const STARTUP_TIMEOUT: Duration = Duration::from_secs(3);
 
-/// Application core: state and message channel.
+/// Application core: shared state and the bridge to the actor system.
 ///
-/// Owns the shared state and a sender for the internal [`AppMsg`] channel.
-/// The kanal bridge task holds the receiver and publishes closures to the bus.
+/// Owns the shared state and the [`Bridge`] whose drain task publishes
+/// closures to the kameo bus.
 pub struct AppCore {
     /// Shared application state.
     pub state: State,
-    /// Sender half of the internal message channel.
-    /// The kanal bridge task holds the receiver and publishes closures to the bus.
-    pub sender: Sender<AppMsg>,
     /// Bridge for sending typed message closures to the kameo bus.
     pub bridge: Bridge,
 }
@@ -37,14 +30,6 @@ impl std::fmt::Debug for AppCore {
         f.debug_struct("AppCore")
             .field("state", &self.state)
             .finish_non_exhaustive()
-    }
-}
-
-impl AppCore {
-    /// Returns a sender for submitting messages to the core.
-    #[must_use]
-    pub fn sender(&self) -> Sender<AppMsg> {
-        self.sender.clone()
     }
 }
 
