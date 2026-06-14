@@ -256,7 +256,7 @@ impl TuiApp {
                     "hook": action,
                     "session_id": sid.to_string(),
                     "text": text,
-                    "plugin_name": plugin_name,
+                    "keybound_plugin": plugin_name,
                 });
                 call_hooks_typed::<KeybindTriggerResult>(
                     &self.plugins,
@@ -274,13 +274,12 @@ impl TuiApp {
                     "session_id": sid,
                     "text": text,
                 });
-                let closure =
-                    jinn_domain::common::bridge::Bridge::publish_closure(
-                        jinn_domain::DynamicCommand {
-                            name: "plugin::fire_async".into(),
-                            payload,
-                        },
-                    );
+                let closure = jinn_domain::common::bridge::Bridge::publish_closure(
+                    jinn_domain::DynamicCommand {
+                        name: "plugin::fire_async".into(),
+                        payload,
+                    },
+                );
                 let _ = self.core.bridge.send(closure);
             }
             return;

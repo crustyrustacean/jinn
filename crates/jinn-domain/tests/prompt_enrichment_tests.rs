@@ -23,6 +23,7 @@ use jinn_domain::feat::plugin_dispatch::{HookContext, PluginSyncHooks};
 use jinn_domain::feat::plugin_system::{
     PluginCommand, PluginSystem, PluginSystemBuildResult, SyncPlugins,
 };
+use jinn_domain::protocol::SessionId;
 use parking_lot::Mutex;
 use serde_json::{Value, json};
 use std::path::{Path, PathBuf};
@@ -209,9 +210,10 @@ async fn on_enrich_two_taps_both_succeed_last_wins() {
     //
     // The plugin thread serializes jobs (run_hooks_fire awaits to completion
     // before the next job dequeues), so two fires run strictly in order and
-    // each emits its own set_chat_input. There is no supersession guard —
-    // the observable contract is simply that both succeed and the last write
-    // wins by ordering.
+    // each emits its own set_chat_input. Cancel-on-retap is handled by the
+    // sync `on_keybind_trigger` hook (tested via the TUI integration tests),
+    // not by this async-path test. This test confirms the baseline:
+    // sequential, non-overlapping fires both succeed and last-wins by ordering.
     let captured: Captured = Arc::new(Mutex::new(Vec::new()));
     let captured_for_dispatch = captured.clone();
     let rt = Box::leak(Box::new(tokio::runtime::Runtime::new().expect("runtime")));
@@ -485,6 +487,62 @@ async fn badge_returns_idle_enrich_when_no_plugin_data() {
     assert_eq!(
         joined, "[Enrich]",
         "badge must show [Enrich] when no plugin_data"
+    );
+}
+
+// ── cancel-on-retap integration ───────────────────────────────
+
+#[tokio::test]
+async fn enrichment_first_tap_proceeds_when_idle() {
+    // Given the real enrichment plugin, idle (status unset).
+    let sys = build_system_with_oneshot(json!({ "ok": true, "value": { "text": "rewritten" } }));
+
+    // When the sync on_keybind_trigger fires for our keybind.
+    let results = sys.sync.call_hooks(
+        "on_keybind_trigger",
+        &HookContext::from(json!({
+            "hook": "on_enrich",
+            "session_id": "s1",
+            "text": "fix the bug",
+            "keybound_plugin": "prompt_enrichment",
+        })),
+    );
+
+    // Then exactly one result, fire=true (no veto).
+    assert_eq!(results.len(), 1, "exactly one plugin should answer");
+    let fire = results[0].get("fire").and_then(|v| v.as_bool());
+    assert_eq!(fire, Some(true), "idle state must not veto the fire");
+}
+
+#[tokio::test]
+async fn enrichment_retap_cancels_inflight_and_vetoes() {
+    // Given the real enrichment plugin with status=enriching (simulating an
+    // in-flight enrichment) and an on_enrich that would otherwise complete.
+    let sys = build_system_with_oneshot(json!({ "ok": true, "value": { "text": "rewritten" } }));
+    sys.async_handle.set_plugin_data_for_session(
+        &SessionId::from("s1".to_owned()),
+        "prompt_enrichment",
+        json!({ "status": "enriching" }),
+    );
+
+    // When the sync on_keybind_trigger fires for our keybind.
+    let results = sys.sync.call_hooks(
+        "on_keybind_trigger",
+        &HookContext::from(json!({
+            "hook": "on_enrich",
+            "session_id": "s1",
+            "text": "fix the bug",
+            "keybound_plugin": "prompt_enrichment",
+        })),
+    );
+
+    // Then the hook returns fire=false (cancel the in-flight, don't re-fire).
+    assert_eq!(results.len(), 1, "exactly one plugin should answer");
+    let fire = results[0].get("fire").and_then(|v| v.as_bool());
+    assert_eq!(
+        fire,
+        Some(false),
+        "enriching state must veto the fire and cancel the in-flight request"
     );
 }
 

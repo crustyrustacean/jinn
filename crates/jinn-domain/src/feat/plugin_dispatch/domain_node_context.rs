@@ -331,7 +331,14 @@ impl DomainNodeContext {
             }
         } else {
             let outcome = tokio::time::timeout(timeout_dur, rx).await;
-            map_oneshot_outcome(outcome, &self.pending, &self.services.bus, &session_id, timeout_ms).await
+            map_oneshot_outcome(
+                outcome,
+                &self.pending,
+                &self.services.bus,
+                &session_id,
+                timeout_ms,
+            )
+            .await
         }
     }
 }
@@ -339,7 +346,10 @@ impl DomainNodeContext {
 /// Resolve a one-shot's awaited outcome into the domain Result, handling the
 /// timeout-expiry cleanup (drop pending + publish CancelStream) when needed.
 async fn map_oneshot_outcome(
-    outcome: Result<Result<Result<String, String>, oneshot::error::RecvError>, tokio::time::error::Elapsed>,
+    outcome: Result<
+        Result<Result<String, String>, oneshot::error::RecvError>,
+        tokio::time::error::Elapsed,
+    >,
     pending: &PendingResult,
     bus: &crate::common::services::BusService,
     session_id: &SessionId,
@@ -348,9 +358,7 @@ async fn map_oneshot_outcome(
     match outcome {
         Ok(Ok(Ok(response))) => Ok(response),
         Ok(Ok(Err(message))) => Err(Report::new(DomainContextError).attach(message)),
-        Ok(Err(_)) => {
-            Err(Report::new(DomainContextError).attach("one-shot LLM request cancelled"))
-        }
+        Ok(Err(_)) => Err(Report::new(DomainContextError).attach("one-shot LLM request cancelled")),
         Err(_) => {
             cleanup_cancelled(pending, bus, session_id).await;
             Err(Report::new(DomainContextError).attach(format!(
@@ -368,7 +376,10 @@ async fn cleanup_cancelled(
     session_id: &SessionId,
 ) {
     pending.lock().remove(session_id);
-    bus.publish(CancelStream { session_id: session_id.clone() }).await;
+    bus.publish(CancelStream {
+        session_id: session_id.clone(),
+    })
+    .await;
 }
 
 #[cfg(test)]
@@ -555,8 +566,15 @@ mod tests {
         // No #[tokio::test] needed: the error returns before the first .await.
         let (ctx, _audit) = make_ctx_with_audit();
         let missing_id = SessionId::new();
-        let fut =
-            ctx.send_llm_request_oneshot(&missing_id, "x".to_owned(), None, false, true, 30_000, None);
+        let fut = ctx.send_llm_request_oneshot(
+            &missing_id,
+            "x".to_owned(),
+            None,
+            false,
+            true,
+            30_000,
+            None,
+        );
         // Pin and poll once to drive to the error before any await point.
         futures::pin_mut!(fut);
         let waker = futures::task::noop_waker();
@@ -819,7 +837,15 @@ mod tests {
         let source_id = seed_source_session(&ctx, "ollama/llama3");
 
         let result = ctx
-            .send_llm_request_oneshot(&source_id, "rewrite me".to_owned(), None, false, true, 1, None)
+            .send_llm_request_oneshot(
+                &source_id,
+                "rewrite me".to_owned(),
+                None,
+                false,
+                true,
+                1,
+                None,
+            )
             .await;
 
         // Then the future returns an error (timeout).
@@ -839,6 +865,50 @@ mod tests {
     }
 
     #[tokio::test]
+    async fn oneshot_token_cancel_publishs_cancel_stream() {
+        // Given a one-shot whose token is cancelled mid-flight.
+        let (ctx, audit) = make_ctx_with_audit();
+        let source_id = seed_source_session(&ctx, "ollama/llama3");
+
+        let token = tokio_util::sync::CancellationToken::new();
+        // Drive the one-shot; cancel the token after it has parked.
+        let ctx_clone = std::sync::Arc::new(ctx);
+        let t = token.clone();
+        let fut_ctx = ctx_clone.clone();
+        let task = tokio::spawn(async move {
+            fut_ctx
+                .send_llm_request_oneshot(
+                    &source_id,
+                    "rewrite me".to_owned(),
+                    None,
+                    false,
+                    true,
+                    30_000,
+                    Some(&t),
+                )
+                .await
+        });
+        // Give the one-shot time to park on the oneshot receiver.
+        tokio::time::sleep(std::time::Duration::from_millis(100)).await;
+        token.cancel();
+        let result = task.await.expect("task panicked");
+
+        // Then the future returns an error (cancelled).
+        assert!(result.is_err(), "cancel must surface as an error");
+        let msg = format!("{:?}", result.unwrap_err());
+        assert!(
+            msg.contains("cancelled"),
+            "error must mention cancellation, got: {msg}"
+        );
+
+        // And a CancelStream message was published for the one-shot session.
+        let cancel_msgs: Vec<CancelStream> = audit.of_type::<CancelStream>();
+        assert!(
+            !cancel_msgs.is_empty(),
+            "token cancel must hard-cancel the underlying session via CancelStream"
+        );
+    }
+    #[tokio::test]
     async fn oneshot_timeout_removes_pending() {
         // Given a one-shot with a tiny timeout and no resolver.
         let (ctx, _audit) = make_ctx_with_audit();
@@ -846,7 +916,15 @@ mod tests {
 
         // When the one-shot times out.
         let _ = ctx
-            .send_llm_request_oneshot(&source_id, "rewrite me".to_owned(), None, false, true, 1, None)
+            .send_llm_request_oneshot(
+                &source_id,
+                "rewrite me".to_owned(),
+                None,
+                false,
+                true,
+                1,
+                None,
+            )
             .await;
 
         // Then the pending entry is cleaned up (no leak).

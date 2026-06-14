@@ -162,7 +162,7 @@ impl PluginSystem {
             in_flight.clone(),
         );
 
-        let async_handle = AsyncPluginHandle::new(job_tx.clone(), plugin_data);
+        let async_handle = AsyncPluginHandle::new(job_tx.clone(), plugin_data, in_flight.clone());
 
         // clone_sync() preserves the async sender while creating a new sync
         // sender sharing the same channel internal.

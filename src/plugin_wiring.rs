@@ -277,8 +277,13 @@ mod tests {
         let ctx = DomainNodeContext::new(services, State::new(AppState::default()));
 
         // When calling handle_plugin_request with a payload missing `prompt`.
-        let result =
-            handle_plugin_request("llm_oneshot", &json!({ "message": "wrong shape" }), &ctx, None).await;
+        let result = handle_plugin_request(
+            "llm_oneshot",
+            &json!({ "message": "wrong shape" }),
+            &ctx,
+            None,
+        )
+        .await;
 
         // Then the envelope is an error carrying the serde message.
         assert_eq!(result["ok"], json!(false), "must be an error envelope");
