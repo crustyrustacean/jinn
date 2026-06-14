@@ -36,7 +36,6 @@ fn picker_state_with_ollama() -> (AppState, Services) {
         }],
         aliases: vec![],
         default_provider: None,
-        alloys: vec![],
     };
     let services = crate::common::services::test_services::TestServices::builder()
         .with_providers(config)

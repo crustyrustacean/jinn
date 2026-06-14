@@ -90,7 +90,6 @@ pub fn load_compaction_model_picker_items(services: &Services, state: &mut AppSt
         is_remote: false,
         is_active: sentinel_active,
         selected: false,
-        alloy_models: None,
         theme: state.frontend.theme.clone(),
     };
 
@@ -152,7 +151,6 @@ mod tests {
                 }],
                 aliases: vec![],
                 default_provider: None,
-                alloys: vec![],
             })
             .build();
 
@@ -187,7 +185,6 @@ mod tests {
                 }],
                 aliases: vec![],
                 default_provider: None,
-                alloys: vec![],
             })
             .build();
 
@@ -238,7 +235,6 @@ mod tests {
                 }],
                 aliases: vec![],
                 default_provider: None,
-                alloys: vec![],
             })
             .build();
 
@@ -296,7 +292,6 @@ mod tests {
                 }],
                 aliases: vec![],
                 default_provider: None,
-                alloys: vec![],
             })
             .build();
 

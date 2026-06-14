@@ -194,7 +194,6 @@ fn static_provider_entry(
         is_remote: false,
         is_active: false,
         selected: false,
-        alloy_models: None,
         theme: theme.clone(),
     }
 }
@@ -237,7 +236,6 @@ fn alias_entry(
         is_remote: false,
         is_active: false,
         selected: false,
-        alloy_models: None,
         theme: theme.clone(),
     }
 }
@@ -268,7 +266,6 @@ fn remote_entry(
         is_remote: true,
         is_active: false,
         selected: false,
-        alloy_models: None,
         theme: theme.clone(),
     }
 }
@@ -363,29 +360,6 @@ pub fn load_provider_entries(
     // `{provider_name}/{model}`, the remote version is skipped.
     if let Some(cache) = model_cache {
         merge_remote_entries(&mut entries, &static_ids, registry, api_keys, cache, theme);
-    }
-
-    // Phase 4: Load named alloys.
-    // Each alloy is a single picker entry that carries multiple model IDs.
-    // When confirmed, it sets ModelSelection::Alloy on the session.
-    for alloy in registry.alloys() {
-        let entry = PickerEntry {
-            provider_id: format!("alloy:{}", alloy.name),
-            name: alloy.name.clone(),
-            provider_name: String::new(),
-            backend: String::new(),
-            model: format!("{} models", alloy.models.len()),
-            search_text: format!("{} {}", alloy.name, alloy.models.join(" ")),
-            is_alias: false,
-            alias_target: None,
-            is_available: true,
-            is_remote: false,
-            is_active: false,
-            selected: false,
-            alloy_models: Some(alloy.models.clone()),
-            theme: theme.clone(),
-        };
-        entries.push(entry);
     }
 
     entries
