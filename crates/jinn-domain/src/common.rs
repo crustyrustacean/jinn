@@ -15,6 +15,7 @@ pub mod focus;
 pub mod frontmatter;
 pub mod line_input;
 pub mod path_display;
+pub mod plugin_bridge;
 pub mod process_kill;
 pub mod render_ctx;
 pub mod root_supervisor;
