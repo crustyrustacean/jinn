@@ -120,9 +120,9 @@ impl HistoryWorkerChatEntryTokenCache {
 // Actor: session-lifecycle eviction.
 // ---------------------------------------------------------------------------
 
-use crate::common::actor::{Actor, ActorContext, ActorEnvelope, NoDirectMsg};
+use crate::common::actor_deps::ActorDeps;
 use crate::feat::session::protocol::session_closed::SessionClosed;
-use crate::protocol::Event;
+use kameo::prelude::{Actor, ActorRef, Context, Message};
 
 /// Actor that owns session-lifecycle eviction of
 /// [`HistoryWorkerChatEntryTokenCache`].
@@ -135,44 +135,54 @@ pub struct HistoryWorkerChatEntryTokenCacheEvictionActor {
     cache: HistoryWorkerChatEntryTokenCache,
 }
 
-/// Dependencies for [`HistoryWorkerChatEntryTokenCacheEvictionActor`].
+/// Dependencies for spawning a [`HistoryWorkerChatEntryTokenCacheEvictionActor`].
+#[derive(Clone)]
 pub struct HistoryWorkerChatEntryTokenCacheEvictionActorDeps {
+    /// Universal actor dependencies (bus, services, etc.).
+    pub deps: ActorDeps,
     /// Clone of the shared cache.
     pub cache: HistoryWorkerChatEntryTokenCache,
 }
 
 impl Actor for HistoryWorkerChatEntryTokenCacheEvictionActor {
-    type Message = NoDirectMsg;
-    type Deps = HistoryWorkerChatEntryTokenCacheEvictionActorDeps;
+    type Args = HistoryWorkerChatEntryTokenCacheEvictionActorDeps;
+    type Error = kameo::error::Infallible;
 
-    fn activate(deps: Self::Deps, ctx: &mut ActorContext) -> Self {
-        ctx.set_description("Evicts HistoryWorkerChatEntryTokenCache entries on SessionClosed");
-        ctx.subscribe_event::<SessionClosed>();
-        Self { cache: deps.cache }
+    async fn on_start(args: Self::Args, actor_ref: ActorRef<Self>) -> Result<Self, Self::Error> {
+        args.deps
+            .subscribe(actor_ref.recipient::<SessionClosed>())
+            .await;
+        Ok(Self { cache: args.cache })
     }
+}
 
-    async fn handle(&mut self, msg: ActorEnvelope<Self::Message>, _ctx: &ActorContext) {
-        if let ActorEnvelope::Event(Event::SessionClosed(payload)) = &msg {
-            self.handle_session_closed(payload);
-        }
+impl Message<SessionClosed> for HistoryWorkerChatEntryTokenCacheEvictionActor {
+    type Reply = ();
+
+    async fn handle(
+        &mut self,
+        msg: SessionClosed,
+        _ctx: &mut Context<Self, Self::Reply>,
+    ) -> Self::Reply {
+        self.handle_session_closed(&msg.session_id);
     }
 }
 
 impl HistoryWorkerChatEntryTokenCacheEvictionActor {
-    /// Construct directly for unit testing. Production code uses
-    /// [`Actor::activate`](crate::common::actor::Actor::activate) via the
-    /// `spawn` infrastructure in `actor_wiring.rs`.
+    fn handle_session_closed(&self, session_id: &SessionId) {
+        tracing::debug!(
+            session_id = %session_id,
+            "HistoryWorkerChatEntryTokenCache: evicting session"
+        );
+        self.cache.remove_session(session_id);
+    }
+}
+
+impl HistoryWorkerChatEntryTokenCacheEvictionActor {
+    /// Construct directly for unit testing.
     #[cfg(test)]
     fn new(cache: HistoryWorkerChatEntryTokenCache) -> Self {
         Self { cache }
-    }
-
-    fn handle_session_closed(&self, payload: &SessionClosed) {
-        tracing::debug!(
-            session_id = %payload.session_id,
-            "HistoryWorkerChatEntryTokenCache: evicting session"
-        );
-        self.cache.remove_session(&payload.session_id);
     }
 }
 
@@ -194,8 +204,6 @@ mod tests {
     use std::sync::Arc;
     use std::sync::atomic::{AtomicUsize, Ordering};
     use std::time::Duration;
-
-    use crate::feat::session::protocol::session_closed::SessionClosed;
 
     use super::*;
 
@@ -450,10 +458,7 @@ mod tests {
         actor.cache.insert(s_a.clone(), e.clone(), 10);
         actor.cache.insert(s_b.clone(), e.clone(), 20);
 
-        actor.handle_session_closed(&SessionClosed {
-            session_id: s_a.clone(),
-        });
-
+        actor.handle_session_closed(&s_a);
         assert_eq!(actor.cache.get(&s_a, &e), None);
         assert_eq!(actor.cache.get(&s_b, &e), Some(20));
     }
@@ -468,10 +473,7 @@ mod tests {
         actor.cache.insert(s_known.clone(), e.clone(), 30);
 
         // Must not panic, must not disturb s_known.
-        actor.handle_session_closed(&SessionClosed {
-            session_id: s_unknown,
-        });
-
+        actor.handle_session_closed(&s_unknown);
         assert_eq!(actor.cache.get(&s_known, &e), Some(30));
     }
 }

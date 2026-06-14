@@ -6,12 +6,13 @@
 
 use serde::{Deserialize, Serialize};
 
-use crate::protocol::{CommandMsg, SessionId};
+use crate::protocol::SessionId;
 
 /// Reset a session's chat history.
-#[derive(Debug, Clone, Serialize, Deserialize, CommandMsg)]
-#[cmd("session")]
+#[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct ResetSessionHistory {
     /// The session whose history should be cleared.
     pub session_id: SessionId,
 }
+
+impl crate::common::bus::BusMessage for ResetSessionHistory {}

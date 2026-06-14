@@ -739,7 +739,7 @@ mod tests {
         assert!(included1.contains(&asst_id));
 
         // Apply the mutations to the history.
-        let mut history2 = history.clone();
+        let mut history2 = history;
         for m in &mutations1 {
             if let HistoryMutation::SetContextOverride {
                 entry_id,

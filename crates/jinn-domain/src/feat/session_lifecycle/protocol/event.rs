@@ -4,15 +4,14 @@ use std::path::PathBuf;
 
 use serde::{Deserialize, Serialize};
 
-use crate::protocol::{EventMsg, SessionId};
+use crate::protocol::SessionId;
 
 /// Setup command completed (success or failure).
 ///
 /// Emitted by the session-persistence actor after running a lifecycle setup command.
 /// On success, `cwd` is the directory reported by the command. On failure, `cwd`
 /// is the default CWD and `error` contains the failure details.
-#[derive(Debug, Clone, Serialize, Deserialize, EventMsg)]
-#[event_msg("session_lifecycle")]
+#[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct SessionSetupCompleted {
     /// The session that was being set up.
     pub session_id: SessionId,
@@ -22,13 +21,14 @@ pub struct SessionSetupCompleted {
     pub error: Option<String>,
 }
 
+impl crate::common::bus::BusMessage for SessionSetupCompleted {}
+
 /// A new chat session was created.
 ///
 /// Emitted by the intent handler when `handle_session_lifecycle_setup()` inserts
 /// a new session into the sessions map. Actor plugins subscribe to this event
 /// to run side effects (e.g., welcome messages).
-#[derive(Debug, Clone, Serialize, Deserialize, EventMsg)]
-#[event_msg("session_lifecycle")]
+#[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct SessionCreated {
     /// The newly created session's ID.
     pub session_id: SessionId,
@@ -39,8 +39,7 @@ pub struct SessionCreated {
 /// Emitted by the session-persistence actor when it applies a `SetSessionCwd`
 /// command. The discovery scan actors subscribe to this to re-scan skills,
 /// prompts, and context files for the session's new cwd.
-#[derive(Debug, Clone, Serialize, Deserialize, EventMsg)]
-#[event_msg("session_lifecycle")]
+#[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct SessionCwdChanged {
     /// The session whose cwd changed.
     pub session_id: SessionId,
@@ -48,16 +47,21 @@ pub struct SessionCwdChanged {
     pub cwd: PathBuf,
 }
 
+impl crate::common::bus::BusMessage for SessionCwdChanged {}
+
 /// Teardown command finished (success or failure).
 ///
 /// Emitted by the session-persistence actor after running a lifecycle teardown command.
 /// On success, the session has already been removed from the sessions map.
 /// On failure, the session is still open and `error` describes the problem.
-#[derive(Debug, Clone, Serialize, Deserialize, EventMsg)]
-#[event_msg("session_lifecycle")]
+#[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct SessionTeardownFinished {
     /// The session that was being torn down.
     pub session_id: SessionId,
     /// Error message if teardown failed.
     pub error: Option<String>,
 }
+
+impl crate::common::bus::BusMessage for SessionTeardownFinished {}
+
+impl crate::common::bus::BusMessage for SessionCreated {}

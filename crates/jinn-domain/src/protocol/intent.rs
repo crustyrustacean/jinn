@@ -1,5 +1,8 @@
 //! The [`Intent`] enum - one variant per user-initiated action.
-use crate::protocol::{Command, Event, PickerKind, SessionId};
+use crate::Bridge;
+use crate::common::bridge::BridgeClosure;
+use crate::common::bus::BusMessage;
+use crate::protocol::{PickerKind, SessionId};
 
 /// The search root for the directory picker.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -411,38 +414,68 @@ impl std::fmt::Display for Intent {
 
 /// What an intent handler returns after processing an intent.
 ///
-/// Carries commands and events to be dispatched to the actor system.
-#[derive(Debug)]
+/// Carries typed message closures to be dispatched to the actor system
+/// via the kameo message bus.
 pub struct IntentResult {
-    /// Commands to send to the actor system.
-    pub commands: Vec<Command>,
-    /// Events to broadcast to the actor system.
-    pub events: Vec<Event>,
+    /// Typed message closures to publish to the kameo bus.
+    pub messages: Vec<BridgeClosure>,
+    /// Type names of messages, for test inspection.
+    pub message_names: Vec<&'static str>,
 }
 
 impl IntentResult {
-    /// An empty result with no commands or events.
+    /// An empty result with no messages.
     #[must_use]
     pub fn empty() -> Self {
         Self {
-            commands: vec![],
-            events: vec![],
+            messages: vec![],
+            message_names: vec![],
         }
     }
 
-    /// A result with commands.
+    /// A result with a single typed message to publish to the bus.
+    ///
+    /// The message is wrapped in a closure that calls
+    /// `bus.tell(Publish(msg)).await` when the bridge drain task processes it.
     #[must_use]
-    pub fn with_commands(commands: Vec<Command>) -> Self {
+    pub fn with_message<M>(msg: M) -> Self
+    where
+        M: BusMessage,
+    {
         Self {
-            commands,
-            events: vec![],
+            messages: vec![crate::common::bridge::Bridge::publish_closure(msg)],
+            message_names: vec![std::any::type_name::<M>()],
         }
     }
 
-    /// A result with both commands and events.
+    /// Append multiple messages of one type at the same time.
     #[must_use]
-    pub fn with_commands_and_events(commands: Vec<Command>, events: Vec<Event>) -> Self {
-        Self { commands, events }
+    pub fn with_messages<I, M>(mut self, msgs: I) -> Self
+    where
+        M: BusMessage,
+        I: IntoIterator<Item = M>,
+    {
+        for msg in msgs {
+            self.messages.push(Bridge::publish_closure(msg));
+            self.message_names.push(std::any::type_name::<M>());
+        }
+        self
+    }
+
+    /// Append a typed message and return self for chaining.
+    #[must_use]
+    pub fn message<M: BusMessage>(mut self, msg: M) -> Self {
+        self.messages.push(Bridge::publish_closure(msg));
+        self.message_names.push(std::any::type_name::<M>());
+        self
+    }
+
+    /// Merge another IntentResult's messages into this one.
+    #[must_use]
+    pub fn merge(mut self, other: IntentResult) -> Self {
+        self.messages.extend(other.messages);
+        self.message_names.extend(other.message_names);
+        self
     }
 }
 

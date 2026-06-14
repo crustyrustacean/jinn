@@ -4,11 +4,11 @@
 //! On each event, replaces `state.frontend.preferences` with the full payload.
 //! This is the ONLY actor that writes to `frontend.preferences`.
 
-use crate::common::actor::{Actor, ActorContext, ActorEnvelope, NoDirectMsg};
-use crate::common::services::Services;
+use super::protocol::event::PreferencesUpdated;
+use crate::common::actor_deps::{ActorDeps, BusPublish};
+use crate::common::services::bus_service::BusService;
 use crate::common::state::State;
-use crate::protocol::Event;
-
+use kameo::prelude::{Actor, ActorRef, Context, Message};
 /// Keeps `AppState.frontend.preferences` in sync with the persisted preferences.
 ///
 /// Subscribes to `PreferencesUpdated` events and writes the full preferences
@@ -16,35 +16,45 @@ use crate::protocol::Event;
 pub struct PreferencesStateSyncActor {
     /// Shared application state.
     state: State,
+    deps: ActorDeps,
 }
 
 /// Dependencies for [`PreferencesStateSyncActor`].
+#[derive(Clone)]
 pub struct PreferencesStateSyncActorDeps {
     /// Shared application state.
     pub state: State,
-    /// Runtime services.
-    pub services: Services,
+    pub deps: ActorDeps,
 }
 
 impl Actor for PreferencesStateSyncActor {
-    type Message = NoDirectMsg;
-    type Deps = PreferencesStateSyncActorDeps;
+    type Args = PreferencesStateSyncActorDeps;
+    type Error = std::convert::Infallible;
 
-    fn activate(deps: Self::Deps, ctx: &mut ActorContext) -> Self {
-        ctx.subscribe_event::<super::protocol::event::PreferencesUpdated>();
-        ctx.set_description("Syncs AppState.frontend.preferences from PreferencesUpdated events");
+    async fn on_start(args: Self::Args, actor_ref: ActorRef<Self>) -> Result<Self, Self::Error> {
+        args.deps
+            .subscribe(actor_ref.recipient::<PreferencesUpdated>())
+            .await;
 
-        Self { state: deps.state }
+        Ok(Self {
+            state: args.state,
+            deps: args.deps,
+        })
     }
+}
 
-    async fn handle(&mut self, msg: ActorEnvelope<Self::Message>, _ctx: &ActorContext) {
-        match msg {
-            ActorEnvelope::Event(Event::PreferencesUpdated(ref payload)) => {
-                let mut state = self.state.write();
-                state.frontend.preferences = payload.preferences.clone();
-            }
-            _ => {}
-        }
+impl BusPublish for PreferencesStateSyncActor {
+    fn bus(&self) -> &BusService {
+        &self.deps.services.bus
+    }
+}
+
+impl Message<PreferencesUpdated> for PreferencesStateSyncActor {
+    type Reply = ();
+
+    async fn handle(&mut self, msg: PreferencesUpdated, _ctx: &mut Context<Self, Self::Reply>) {
+        let mut state = self.state.write();
+        state.frontend.preferences = msg.preferences;
     }
 }
 
@@ -60,63 +70,36 @@ mod tests {
         reason = "test code"
     )]
     use super::*;
-    use crate::common::actor::{ActorContext, RecordingSink};
-    use crate::common::services::Services;
-    use crate::feat::preferences_actor::protocol::event::PreferencesUpdated;
+    use crate::common::bus::test_harness::TestHarness;
     use crate::feat::preferences_actor::user_preferences::UserPreferences;
-    use std::sync::Arc;
 
-    fn create_actor() -> (PreferencesStateSyncActor, ActorContext) {
-        let state = State::new(crate::common::app_state::AppState::default());
-        let services = Services::new();
-        let sink = Arc::new(RecordingSink::new());
-        let mut ctx = ActorContext::new("prefs-state-sync", sink);
-        let actor = PreferencesStateSyncActor::activate(
-            PreferencesStateSyncActorDeps { state, services },
-            &mut ctx,
-        );
-        (actor, ctx)
+    async fn create_deps(harness: &TestHarness) -> PreferencesStateSyncActorDeps {
+        PreferencesStateSyncActorDeps {
+            state: State::new(crate::common::app_state::AppState::default()),
+            deps: harness.actor_deps().await,
+        }
     }
 
     #[tokio::test]
     async fn preferences_updated_syncs_to_frontend() {
-        // Given a sync actor and a PreferencesUpdated event with custom preferences.
-        let (mut actor, ctx) = create_actor();
-        let prefs = UserPreferences::default();
-        let event = PreferencesUpdated {
-            preferences: prefs.clone(),
-        };
+        // Given a sync actor.
+        let harness = TestHarness::new().await;
+        let deps = create_deps(&harness).await;
+        let state = deps.state.clone();
+        let _actor = harness.spawn_actor::<PreferencesStateSyncActor>(deps).await;
 
-        // When handling the PreferencesUpdated event.
-        actor
-            .handle(ActorEnvelope::Event(Event::PreferencesUpdated(event)), &ctx)
+        // When publishing a PreferencesUpdated event with custom preferences.
+        let prefs = UserPreferences::default();
+        harness
+            .publish(PreferencesUpdated {
+                preferences: prefs.clone(),
+            })
             .await;
 
         // Then the frontend preferences match.
-        let guard = actor.state.read();
+        // Give the bus time to deliver and the actor time to process.
+        tokio::time::sleep(std::time::Duration::from_millis(50)).await;
+        let guard = state.read();
         assert_eq!(guard.frontend.preferences, prefs);
-    }
-
-    #[tokio::test]
-    async fn ignores_unrelated_events() {
-        // Given a sync actor.
-        let (mut actor, ctx) = create_actor();
-
-        // When handling an unrelated event.
-        actor
-            .handle(
-                ActorEnvelope::Event(Event::AppStateUpdated(
-                    crate::feat::preferences_actor::protocol::app_state_event::AppStateUpdated {
-                        state:
-                            crate::feat::preferences_actor::app_state_file::AppStateFile::default(),
-                    },
-                )),
-                &ctx,
-            )
-            .await;
-
-        // Then the frontend preferences remain default.
-        let guard = actor.state.read();
-        assert_eq!(guard.frontend.preferences, UserPreferences::default());
     }
 }

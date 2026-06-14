@@ -125,8 +125,8 @@ mod tests {
 
     /// Build an app with one user entry that has one audit event, with the
     /// audit popup toggle ON.
-    fn app_with_audit_visible() -> crate::TuiApp {
-        let app = crate::TuiApp::test_builder().build();
+    async fn app_with_audit_visible() -> crate::TuiApp {
+        let app = crate::TuiApp::test_builder().build().await;
         let mut entry = ChatEntry::user("hello");
         entry.apply_context_override(ContextOverride::ForcedExclude, ChangeSource::User);
         app.core.state.write().frontend.audit_popup_visible = true;
@@ -162,10 +162,11 @@ mod tests {
     }
 
     #[rstest::rstest]
-    fn render_audit_popup_paints_header_and_body_at_computed_rect() {
+    #[tokio::test]
+    async fn render_audit_popup_paints_header_and_body_at_computed_rect() {
         // Given a state with audit visible and one excluded entry, with
         // pre-populated line ranges (simulating what render_chat_log does).
-        let app = app_with_audit_visible();
+        let app = app_with_audit_visible().await;
         let (mut terminal, _area) = setup_term(120, 24);
 
         // Pre-populate the line-range cache that render_chat_log normally fills.
@@ -271,8 +272,8 @@ mod tests {
     /// Mirrors the paint test's setup: one excluded entry, audit visible,
     /// pre-populated line ranges, popup rendered right-aligned in a 70-col
     /// chat-log area.
-    fn render_popup_buffer() -> (ratatui::buffer::Buffer, Rect) {
-        let app = app_with_audit_visible();
+    async fn render_popup_buffer() -> (ratatui::buffer::Buffer, Rect) {
+        let app = app_with_audit_visible().await;
         let (mut terminal, _area) = setup_term(100, 24);
 
         {
@@ -303,9 +304,9 @@ mod tests {
     }
 
     #[rstest::rstest]
-    fn render_audit_popup_paints_vertical_borders_on_every_content_row() {
-        // Given the audit popup rendered into a buffer.
-        let (buffer, popup) = render_popup_buffer();
+    #[tokio::test]
+    async fn render_audit_popup_paints_vertical_borders_on_every_content_row() {
+        let (buffer, popup) = render_popup_buffer().await;
 
         // Then every content row (strictly between the top and bottom border
         // rows) is bounded by the vertical border glyph on both edges.
@@ -327,9 +328,10 @@ mod tests {
     }
 
     #[rstest::rstest]
-    fn render_audit_popup_paints_four_rounded_corners() {
+    #[tokio::test]
+    async fn render_audit_popup_paints_four_rounded_corners() {
         // Given the audit popup rendered into a buffer.
-        let (buffer, popup) = render_popup_buffer();
+        let (buffer, popup) = render_popup_buffer().await;
 
         let top = popup.y;
         let bottom = popup.y + popup.height - 1;
@@ -360,9 +362,10 @@ mod tests {
     }
 
     #[rstest::rstest]
-    fn render_audit_popup_skips_when_visibility_off() {
+    #[tokio::test]
+    async fn render_audit_popup_skips_when_visibility_off() {
         // Given a state with audit popup visibility OFF.
-        let mut app = crate::TuiApp::test_builder().build();
+        let mut app = crate::TuiApp::test_builder().build().await;
         let mut entry = ChatEntry::user("hello");
         entry.apply_context_override(ContextOverride::ForcedExclude, ChangeSource::User);
         // audit_popup_visible stays at default (false)
@@ -403,9 +406,10 @@ mod tests {
     }
 
     #[rstest::rstest]
-    fn render_audit_popup_skips_when_picker_overlay_active() {
+    #[tokio::test]
+    async fn render_audit_popup_skips_when_picker_overlay_active() {
         // Given a state with audit visible BUT a Picker overlay on top.
-        let mut app = app_with_audit_visible();
+        let mut app = app_with_audit_visible().await;
         app.core
             .state
             .write()

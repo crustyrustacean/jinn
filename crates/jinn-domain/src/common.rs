@@ -1,12 +1,14 @@
 //! Shared infrastructure - actor framework, services, core coordination, state.
 
 pub mod actor;
-pub mod actor_host;
+pub mod actor_deps;
 pub mod app_info;
 pub mod app_paths;
 pub mod app_state;
 #[cfg(test)]
 mod app_state_tests;
+pub mod bridge;
+pub mod bus;
 pub mod core;
 pub mod default_config_check;
 pub mod focus;
@@ -15,6 +17,7 @@ pub mod line_input;
 pub mod path_display;
 pub mod process_kill;
 pub mod render_ctx;
+pub mod root_supervisor;
 pub mod services;
 pub mod session_map;
 pub mod state;

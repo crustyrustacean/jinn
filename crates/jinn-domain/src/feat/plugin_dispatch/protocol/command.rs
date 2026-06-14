@@ -6,7 +6,8 @@
 
 use serde::{Deserialize, Serialize};
 
-use crate::protocol::{CommandMsg, SessionId};
+use crate::common::bus::BusMessage;
+use crate::protocol::SessionId;
 
 /// Attach an attachable plugin to a session.
 ///
@@ -16,8 +17,7 @@ use crate::protocol::{CommandMsg, SessionId};
 ///    a per-session Lua state.
 /// 3. Push `AttachedPlugin { name, enabled: true, run_state: Idle }` onto
 ///    `session.core.attached_plugins`.
-#[derive(Debug, Clone, Serialize, Deserialize, CommandMsg)]
-#[cmd("plugin")]
+#[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct AttachPlugin {
     pub session_id: SessionId,
     pub plugin_name: String,
@@ -26,16 +26,14 @@ pub struct AttachPlugin {
 /// Detach a plugin from a session by name.
 ///
 /// Calls `destroy_session_registry` for the matching registry entry.
-#[derive(Debug, Clone, Serialize, Deserialize, CommandMsg)]
-#[cmd("plugin")]
+#[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct DetachPlugin {
     pub session_id: SessionId,
     pub plugin_name: String,
 }
 
 /// Toggle a plugin's `enabled` flag. No-op if not attached.
-#[derive(Debug, Clone, Serialize, Deserialize, CommandMsg)]
-#[cmd("plugin")]
+#[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct TogglePlugin {
     pub session_id: SessionId,
     pub plugin_name: String,
@@ -46,10 +44,14 @@ pub struct TogglePlugin {
 /// Called when a plugin creates a child session and wants the sidebar
 /// to be able to navigate to it. The activate path reads this field
 /// to determine which session to switch to.
-#[derive(Debug, Clone, Serialize, Deserialize, CommandMsg)]
-#[cmd("plugin")]
+#[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct SetManagedSession {
     pub session_id: SessionId,
     pub plugin_name: String,
     pub managed_session_id: SessionId,
 }
+
+impl BusMessage for AttachPlugin {}
+impl BusMessage for DetachPlugin {}
+impl BusMessage for TogglePlugin {}
+impl BusMessage for SetManagedSession {}

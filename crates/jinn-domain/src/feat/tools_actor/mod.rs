@@ -5,7 +5,7 @@
 //! all calls in a batch finish.
 //!
 //! Built-in tools (`get_time`, `read`, `write`) are registered at
-//! activation and executed via spawned tokio tasks. Actor-provided tools
+//! startup and executed via spawned tokio tasks. Actor-provided tools
 //! are routed via [`ExecuteTool`] commands on the bus.
 //!
 //! Each tool execution receives a [`ToolContext`] containing the session's CWD
@@ -31,8 +31,9 @@ use std::collections::HashMap;
 use std::future::Future;
 use std::pin::Pin;
 
-use crate::common::actor::{Actor, ActorContext, ActorEnvelope, MessageSink, NoDirectMsg};
+use crate::common::actor_deps::{ActorDeps, BusPublish};
 use crate::common::services::Services;
+use crate::common::services::bus_service::BusService;
 use crate::common::state::State;
 use crate::feat::plugin_system::SessionRegistryId;
 use crate::feat::preferences_actor::OpenrouterWebSearchConfig;
@@ -44,9 +45,10 @@ use crate::feat::tools_actor::protocol::event::{
     ToolBatchCompleted, ToolExecutionCompleted, ToolsRegistered,
 };
 use crate::feat::tools_actor::tool_types::{ToolCall, ToolContext, ToolDefinition, ToolResult};
-use crate::protocol::{Command, Event, SessionId};
+use crate::protocol::SessionId;
 use jiff::Timestamp;
 use jinn_provider::ServerToolType;
+use kameo::prelude::{Actor, ActorRef, Context, Message};
 
 /// A boxed future returned by built-in tool execute functions.
 pub type BoxedToolFuture = Pin<Box<dyn Future<Output = ToolResult> + Send>>;
@@ -129,6 +131,8 @@ pub(crate) struct PendingBatch {
 /// [`ToolExecutionCompleted`] events. Dispatches tool calls to the appropriate
 /// handler and aggregates results into batch completion events.
 pub struct ToolOrchestratorActor {
+    /// Universal actor dependencies.
+    deps: ActorDeps,
     /// Tool name → registration info.
     tools: HashMap<String, ToolRegistration>,
     /// Session ID → pending batch tracker.
@@ -142,10 +146,12 @@ pub struct ToolOrchestratorActor {
 }
 
 /// Dependencies for [`ToolOrchestratorActor`].
+#[derive(Clone)]
 pub struct ToolOrchestratorActorDeps {
+    /// Universal actor dependencies.
+    pub deps: ActorDeps,
     /// Shared application state.
     pub state: State,
-    /// Application paths for working directory.
     /// Runtime services.
     pub services: Services,
     /// Override which built-in tools to register. `None` means register all.
@@ -197,37 +203,44 @@ fn build_openrouter_web_search_definition(config: &OpenrouterWebSearchConfig) ->
 }
 
 impl Actor for ToolOrchestratorActor {
-    type Message = NoDirectMsg;
-    type Deps = ToolOrchestratorActorDeps;
+    type Args = ToolOrchestratorActorDeps;
+    type Error = std::convert::Infallible;
 
-    fn activate(deps: Self::Deps, ctx: &mut ActorContext) -> Self {
-        ctx.set_description("Dispatches and manages tool execution");
-        ctx.subscribe_command::<RegisterTools>();
-        ctx.subscribe_command::<RegisterPluginTools>();
-        ctx.subscribe_command::<ExecuteToolBatch>();
-        ctx.subscribe_command::<CancelToolBatch>();
-        ctx.subscribe_event::<ToolExecutionCompleted>();
+    async fn on_start(args: Self::Args, actor_ref: ActorRef<Self>) -> Result<Self, Self::Error> {
+        let bus = &args.deps.services.bus;
+        bus.subscribe::<RegisterTools, _>(&actor_ref).await;
+        bus.subscribe::<RegisterPluginTools, _>(&actor_ref).await;
+        bus.subscribe::<ExecuteToolBatch, _>(&actor_ref).await;
+        bus.subscribe::<CancelToolBatch, _>(&actor_ref).await;
+        bus.subscribe::<ToolExecutionCompleted, _>(&actor_ref).await;
 
         // Read web search config from preferences storage.
-
-        let web_search_config = deps
+        let web_search_config = args
+            .deps
             .services
             .user_preferences_storage
             .read()
             .openrouter_web_search
             .clone();
 
-        let bash_config = deps.services.user_preferences_storage.read().bash.clone();
+        let bash_config = args
+            .deps
+            .services
+            .user_preferences_storage
+            .read()
+            .bash
+            .clone();
 
         let mut actor = Self {
+            deps: args.deps,
             tools: HashMap::new(),
             pending: HashMap::new(),
-            services: deps.services,
-            state: deps.state,
-            shell: deps.shell,
+            state: args.state,
+            services: args.services,
+            shell: args.shell,
         };
         let all_builtins = registry::builtin_tools(&bash_config);
-        let builtins: Vec<_> = if let Some(ref filter) = deps.builtin_filter {
+        let builtins: Vec<_> = if let Some(ref filter) = args.builtin_filter {
             all_builtins
                 .into_iter()
                 .filter(|(def, _)| filter.contains(&def.name))
@@ -271,79 +284,83 @@ impl Actor for ToolOrchestratorActor {
         );
         builtin_definitions.push(web_search_def);
 
-        // Announce built-in tools so the LLM actor can cache them.
-        if let Err(e) = ctx.send_event(Event::ToolsRegistered(ToolsRegistered {
-            provider: "builtin".to_owned(),
-            definitions: builtin_definitions,
-            session_id: None,
-        })) {
-            tracing::warn!(err = ?e, "failed to emit ToolsRegistered for built-in tools");
-        }
-
+        // Announce built-in tools so downstream actors can cache them.
         actor
-    }
+            .publish(ToolsRegistered {
+                provider: "builtin".to_owned(),
+                definitions: builtin_definitions,
+                session_id: None,
+            })
+            .await;
 
-    async fn handle(&mut self, msg: ActorEnvelope<NoDirectMsg>, ctx: &ActorContext) {
-        match msg {
-            ActorEnvelope::Command(command) => self.handle_command(&command, ctx),
-            ActorEnvelope::Event(event) => self.handle_event(&event, ctx),
-            _ => {}
-        }
+        Ok(actor)
+    }
+}
+
+// ---------------------------------------------------------------------------
+// Bridge: impl Message<T> blocks that delegate to old handler methods
+// ---------------------------------------------------------------------------
+// Message handlers — direct handler calls (no bridge)
+// ---------------------------------------------------------------------------
+
+impl Message<RegisterTools> for ToolOrchestratorActor {
+    type Reply = ();
+
+    async fn handle(&mut self, msg: RegisterTools, _ctx: &mut Context<Self, Self::Reply>) {
+        self.handle_register_tools(&msg.provider, &msg.definitions)
+            .await;
+    }
+}
+
+impl Message<ExecuteToolBatch> for ToolOrchestratorActor {
+    type Reply = ();
+
+    async fn handle(&mut self, msg: ExecuteToolBatch, _ctx: &mut Context<Self, Self::Reply>) {
+        self.handle_execute_tool_batch(msg.session_id, msg.tool_calls, msg.dispatched_at)
+            .await;
+    }
+}
+
+impl Message<CancelToolBatch> for ToolOrchestratorActor {
+    type Reply = ();
+
+    async fn handle(&mut self, msg: CancelToolBatch, _ctx: &mut Context<Self, Self::Reply>) {
+        self.handle_cancel_tool_batch(&msg.session_id);
+    }
+}
+
+impl Message<ToolExecutionCompleted> for ToolOrchestratorActor {
+    type Reply = ();
+
+    async fn handle(&mut self, msg: ToolExecutionCompleted, _ctx: &mut Context<Self, Self::Reply>) {
+        self.handle_tool_execution_completed(msg.session_id, msg.result)
+            .await;
+    }
+}
+
+impl Message<RegisterPluginTools> for ToolOrchestratorActor {
+    type Reply = ();
+
+    async fn handle(&mut self, msg: RegisterPluginTools, _ctx: &mut Context<Self, Self::Reply>) {
+        self.handle_register_plugin_tools(
+            &msg.plugin_name,
+            msg.target.as_ref(),
+            &msg.definitions,
+            msg.session_id,
+        )
+        .await;
+    }
+}
+
+impl BusPublish for ToolOrchestratorActor {
+    fn bus(&self) -> &BusService {
+        &self.deps.services.bus
     }
 }
 
 impl ToolOrchestratorActor {
-    /// Dispatches incoming commands to the appropriate handler.
-    fn handle_command(&mut self, command: &Command, ctx: &ActorContext) {
-        match command {
-            Command::RegisterTools(payload) => {
-                self.handle_register_tools(&payload.provider, &payload.definitions, ctx);
-            }
-            Command::RegisterPluginTools(payload) => {
-                self.handle_register_plugin_tools(
-                    &payload.plugin_name,
-                    &payload.target,
-                    &payload.definitions,
-                    payload.session_id.clone(),
-                    ctx,
-                );
-            }
-            Command::ExecuteToolBatch(payload) => {
-                self.handle_execute_tool_batch(
-                    payload.session_id.clone(),
-                    payload.tool_calls.clone(),
-                    payload.dispatched_at,
-                    ctx,
-                );
-            }
-            Command::CancelToolBatch(payload) => {
-                self.handle_cancel_tool_batch(&payload.session_id);
-            }
-            _ => {}
-        }
-    }
-
-    /// Dispatches incoming events to the appropriate handler.
-    fn handle_event(&mut self, event: &Event, ctx: &ActorContext) {
-        match event {
-            Event::ToolExecutionCompleted(payload) => {
-                self.handle_tool_execution_completed(
-                    payload.session_id.clone(),
-                    payload.result.clone(),
-                    ctx,
-                );
-            }
-            _ => {}
-        }
-    }
-
     /// Stores actor-provided tools and emits a [`ToolsRegistered`] event.
-    fn handle_register_tools(
-        &mut self,
-        provider: &str,
-        definitions: &[ToolDefinition],
-        ctx: &ActorContext,
-    ) {
+    async fn handle_register_tools(&mut self, provider: &str, definitions: &[ToolDefinition]) {
         for def in definitions {
             let name = def.name.clone();
             self.tools.insert(
@@ -355,23 +372,21 @@ impl ToolOrchestratorActor {
             );
         }
 
-        if let Err(e) = ctx.send_event(Event::ToolsRegistered(ToolsRegistered {
+        self.publish(ToolsRegistered {
             provider: provider.to_owned(),
             definitions: definitions.to_vec(),
             session_id: None,
-        })) {
-            tracing::warn!(err = ?e, "failed to emit ToolsRegistered event");
-        }
+        })
+        .await;
     }
 
     /// Registers tool definitions from a Lua plugin.
-    fn handle_register_plugin_tools(
+    async fn handle_register_plugin_tools(
         &mut self,
         plugin_name: &str,
-        target: &Option<SessionRegistryId>,
+        target: Option<&SessionRegistryId>,
         definitions: &[ToolDefinition],
         session_id: Option<SessionId>,
-        ctx: &ActorContext,
     ) {
         for def in definitions {
             let name = def.name.clone();
@@ -379,29 +394,27 @@ impl ToolOrchestratorActor {
                 name,
                 ToolRegistration::Plugin {
                     definition: def.clone(),
-                    target: *target,
+                    target: target.copied(),
                     target_session_id: session_id.clone(),
                     plugin_name: plugin_name.to_owned(),
                 },
             );
         }
 
-        if let Err(e) = ctx.send_event(Event::ToolsRegistered(ToolsRegistered {
+        self.publish(ToolsRegistered {
             provider: format!("plugin:{plugin_name}"),
             definitions: definitions.to_vec(),
             session_id,
-        })) {
-            tracing::warn!(err = ?e, "failed to emit ToolsRegistered event for plugin");
-        }
+        })
+        .await;
     }
 
     /// Dispatches each tool call and tracks the pending batch.
-    fn handle_execute_tool_batch(
+    async fn handle_execute_tool_batch(
         &mut self,
         session_id: SessionId,
         tool_calls: Vec<ToolCall>,
         dispatched_at: Timestamp,
-        ctx: &ActorContext,
     ) {
         tracing::trace!(
             session_id = ?session_id,
@@ -410,20 +423,20 @@ impl ToolOrchestratorActor {
         );
 
         if tool_calls.is_empty() {
-            if let Err(e) = ctx.send_event(Event::ToolBatchCompleted(ToolBatchCompleted {
+            self.publish(ToolBatchCompleted {
                 session_id,
                 results: vec![],
-            })) {
-                tracing::warn!(err = ?e, "failed to emit empty ToolBatchCompleted");
-            }
+            })
+            .await;
             return;
         }
 
         let remaining = tool_calls.len();
         let mut handles = Vec::new();
         for tc in tool_calls {
-            if let Some(handle) =
-                self.dispatch_tool_call(session_id.clone(), tc, dispatched_at, ctx)
+            if let Some(handle) = self
+                .dispatch_tool_call(session_id.clone(), tc, dispatched_at)
+                .await
             {
                 handles.push(handle);
             }
@@ -458,12 +471,7 @@ impl ToolOrchestratorActor {
     }
 
     /// Builds a [`ToolContext`] for the given session by reading its CWD from shared state.
-    fn build_tool_context(
-        &self,
-        session_id: &SessionId,
-        sink: std::sync::Arc<dyn MessageSink>,
-        dispatched_at: Timestamp,
-    ) -> ToolContext {
+    fn build_tool_context(&self, session_id: &SessionId, dispatched_at: Timestamp) -> ToolContext {
         let prefs = self.services.user_preferences_storage.read();
         let cwd = {
             let guard = self.state.read();
@@ -485,7 +493,7 @@ impl ToolOrchestratorActor {
             state: Some(self.state.clone()),
             session_id: Some(session_id.clone()),
             app_paths: self.services.paths.clone(),
-            sink: Some(sink),
+            bus: Some(self.bus().clone()),
             shell: self.shell.clone(),
             max_output_lines,
             max_output_bytes,
@@ -498,12 +506,11 @@ impl ToolOrchestratorActor {
     /// Returns a `JoinHandle` for builtin tool spawns so callers can track
     /// and abort them on cancellation. Returns `None` for actor-routed and
     /// unknown tools (they have no local task to abort).
-    fn dispatch_tool_call(
-        &self,
+    async fn dispatch_tool_call(
+        &mut self,
         session_id: SessionId,
         tool_call: ToolCall,
         dispatched_at: Timestamp,
-        ctx: &ActorContext,
     ) -> Option<tokio::task::JoinHandle<()>> {
         tracing::trace!(
             session_id = ?session_id,
@@ -519,9 +526,9 @@ impl ToolOrchestratorActor {
 
         match self.tools.get(&tool_call.name) {
             Some(ToolRegistration::Builtin { execute, .. }) => {
-                let sink = ctx.sink();
+                let bus = self.bus().clone();
                 let execute_fn = *execute;
-                let tool_ctx = self.build_tool_context(&session_id, sink.clone(), dispatched_at);
+                let tool_ctx = self.build_tool_context(&session_id, dispatched_at);
                 let timeout = tool_ctx.timeout;
 
                 let handle = tokio::spawn(async move {
@@ -544,40 +551,26 @@ impl ToolOrchestratorActor {
                         }
                         None => execute_fn(tool_call, tool_ctx).await,
                     };
-                    if let Err(e) =
-                        sink.send_event(Event::ToolExecutionCompleted(ToolExecutionCompleted {
-                            session_id,
-                            result,
-                        }))
-                    {
-                        tracing::warn!(
-                            err = ?e,
-                            "builtin tool failed to send ToolExecutionCompleted"
-                        );
-                    }
+                    bus.publish(ToolExecutionCompleted { session_id, result })
+                        .await;
                 });
                 Some(handle)
             }
-            Some(ToolRegistration::Actor { provider, .. }) => {
-                let cmd = match tool_call.name.as_str() {
-                    "web-fetch" => Command::ExecuteWebFetch(ExecuteWebFetch {
-                        session_id,
-                        tool_call,
-                    }),
+            Some(ToolRegistration::Actor { .. }) => {
+                match tool_call.name.as_str() {
+                    "web-fetch" => {
+                        self.publish(ExecuteWebFetch {
+                            session_id,
+                            tool_call,
+                        })
+                        .await;
+                    }
                     other => {
                         tracing::warn!(
                             tool = %other,
-                            "unknown actor tool \u{2014} no command mapping"
+                            "unknown actor tool — no command mapping"
                         );
-                        return None;
                     }
-                };
-                if let Err(e) = ctx.send_command(cmd) {
-                    tracing::warn!(
-                        err = ?e,
-                        provider = %provider,
-                        "failed to send actor tool command"
-                    );
                 }
                 None
             }
@@ -598,7 +591,7 @@ impl ToolOrchestratorActor {
                     {
                         let target_display = target_session_id
                             .as_ref()
-                            .map(|s| s.to_string())
+                            .map(std::string::ToString::to_string)
                             .unwrap_or_default();
                         let result = ToolResult {
                             tool_call_id: tool_call.id.clone(),
@@ -612,18 +605,18 @@ impl ToolOrchestratorActor {
                             truncation: None,
                             pin_position: None,
                         };
-                        let _ =
-                            ctx.send_event(Event::ToolExecutionCompleted(ToolExecutionCompleted {
-                                session_id: session_id.clone(),
-                                result,
-                            }));
+                        self.publish(ToolExecutionCompleted {
+                            session_id: session_id.clone(),
+                            result,
+                        })
+                        .await;
                     }
                     return None;
                 }
 
-                let sink = ctx.sink();
+                let bus = self.bus().clone();
                 let plugin_fire = self.services.plugins.clone();
-                let target = target.clone();
+                let target = *target;
                 let sid = session_id.clone();
                 let plugin_name = plugin_name.clone();
                 let arguments: serde_json::Value =
@@ -662,14 +655,8 @@ impl ToolOrchestratorActor {
                             }
                         }
                     };
-                    if let Err(e) =
-                        sink.send_event(Event::ToolExecutionCompleted(ToolExecutionCompleted {
-                            session_id,
-                            result,
-                        }))
-                    {
-                        tracing::warn!(err = ?e, "plugin tool failed to send ToolExecutionCompleted");
-                    }
+                    bus.publish(ToolExecutionCompleted { session_id, result })
+                        .await;
                 });
                 Some(handle)
             }
@@ -686,17 +673,8 @@ impl ToolOrchestratorActor {
                     pin_position: None,
                 };
 
-                if let Err(e) =
-                    ctx.send_event(Event::ToolExecutionCompleted(ToolExecutionCompleted {
-                        session_id,
-                        result,
-                    }))
-                {
-                    tracing::warn!(
-                        err = ?e,
-                        "failed to send unknown-tool ToolExecutionCompleted"
-                    );
-                }
+                self.publish(ToolExecutionCompleted { session_id, result })
+                    .await;
                 None
             }
         }
@@ -705,22 +683,17 @@ impl ToolOrchestratorActor {
     /// Aggregates a tool result into the pending batch.
     ///
     /// When all calls in a batch have completed, emits [`ToolBatchCompleted`]
-    fn handle_tool_execution_completed(
-        &mut self,
-        session_id: SessionId,
-        result: ToolResult,
-        ctx: &ActorContext,
-    ) {
+    async fn handle_tool_execution_completed(&mut self, session_id: SessionId, result: ToolResult) {
         let Some(batch) = self.pending.get_mut(&session_id) else {
-            tracing::warn!(
+            tracing::trace!(
                 session_id = ?session_id,
-                "received ToolExecutionCompleted for unknown session"
+                "handle_tool_execution_completed — no pending batch, ignoring"
             );
             return;
         };
 
-        batch.results.push(result);
         batch.remaining -= 1;
+        batch.results.push(result);
 
         tracing::trace!(
             session_id = ?session_id,
@@ -729,7 +702,6 @@ impl ToolOrchestratorActor {
         );
 
         if batch.remaining == 0 {
-            // unwrap: we just checked the entry exists above.
             let results = self
                 .pending
                 .remove(&session_id)
@@ -742,21 +714,11 @@ impl ToolOrchestratorActor {
                 "emitting ToolBatchCompleted"
             );
 
-            if let Err(e) = ctx.send_event(Event::ToolBatchCompleted(ToolBatchCompleted {
+            self.publish(ToolBatchCompleted {
                 session_id,
                 results,
-            })) {
-                tracing::warn!(err = ?e, "failed to emit ToolBatchCompleted");
-            }
+            })
+            .await;
         }
     }
-
-    /// Returns a reference to the tool registration for the given name.
-    #[cfg(test)]
-    fn get_tool(&self, name: &str) -> Option<&ToolRegistration> {
-        self.tools.get(name)
-    }
 }
-
-#[cfg(test)]
-mod tools_actor_tests;

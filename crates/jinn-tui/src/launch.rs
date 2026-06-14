@@ -7,13 +7,12 @@
 //! divergence that previously left plugin keybinds unbound in production.
 
 use std::path::Path;
-use std::sync::Arc;
 
 use error_stack::{Report, ResultExt};
 use jinn_domain::common::system_resource::load_system_resource;
 use jinn_domain::feat::ui::sidebar::register_sections;
 use jinn_domain::feat::ui::sidebar::sidebar::Sidebar;
-use jinn_domain::{ActorHostService, AppCore, AppUiRegistry, State};
+use jinn_domain::{AppCore, AppUiRegistry, State};
 use wherror::Error;
 
 use crate::app::WhichKeyInstance;
@@ -52,8 +51,7 @@ pub struct LaunchError;
 pub fn launch(
     core: AppCore,
     services: jinn_domain::Services,
-    actor_host: ActorHostService,
-    plugins: jinn_plugin::SyncPlugins,
+    plugins: jinn_domain::feat::plugin_system::SyncPlugins,
 ) -> Result<TuiApp, Report<LaunchError>> {
     let paths = &services.paths;
     load_compaction_prompt(
@@ -79,7 +77,6 @@ pub fn launch(
     Ok(TuiApp {
         core,
         services,
-        actor_host,
         plugins,
         ui_registry,
         events: MsgHandler::new(),
@@ -149,9 +146,8 @@ pub fn load_theme(state: &State, user_dir: &Path, system_dir: &Path) {
 pub(crate) fn launch_for_test(
     core: AppCore,
     services: jinn_domain::Services,
-    plugins: jinn_plugin::SyncPlugins,
+    plugins: jinn_domain::feat::plugin_system::SyncPlugins,
 ) -> TuiApp {
-    let fake_host = ActorHostService::new(Arc::new(jinn_domain::FakeActorHost::new()));
     let mut ui_registry = AppUiRegistry::new();
     jinn_domain::register_all_ui_elements(&mut ui_registry);
 
@@ -165,7 +161,6 @@ pub(crate) fn launch_for_test(
         core,
         services,
         plugins,
-        actor_host: fake_host,
         ui_registry,
         events: MsgHandler::new(),
         which_key: WhichKeyInstance::new(keymap, initial_scope),

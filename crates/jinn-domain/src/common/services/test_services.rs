@@ -3,6 +3,7 @@ use std::sync::{Arc, LazyLock};
 
 use async_trait::async_trait;
 use error_stack::Report;
+use kameo::actor::Spawn;
 use tokio::runtime::{Handle, Runtime};
 
 use crate::common::services::{NoopPluginFire, NoopPluginSyncCall, NoopSessionPluginRegistry};
@@ -34,10 +35,8 @@ use super::actor_channel::ActorChannelService;
 /// The `Runtime` itself is intentionally leaked via `Box::leak` at
 /// static-init time; it lives for the lifetime of the test binary.
 /// The `Handle` is cheaply cloneable and shared by all tests.
-static TEST_RUNTIME: LazyLock<Handle> = LazyLock::new(|| {
-    let rt = Box::leak(Box::new(Runtime::new().expect("shared test runtime")));
-    rt.handle().clone()
-});
+static TEST_RUNTIME: LazyLock<&'static Runtime> =
+    LazyLock::new(|| Box::leak(Box::new(Runtime::new().expect("shared test runtime"))));
 
 /// Returns a clone of the shared test runtime handle.
 ///
@@ -46,7 +45,7 @@ static TEST_RUNTIME: LazyLock<Handle> = LazyLock::new(|| {
 /// Panics if the underlying tokio runtime fails to create (extremely
 /// unlikely in tests).
 pub(crate) fn shared_test_handle() -> Handle {
-    TEST_RUNTIME.clone()
+    TEST_RUNTIME.handle().clone()
 }
 
 /// A no-op session store for tests.
@@ -127,6 +126,7 @@ pub struct TestServices {
     session_store: Option<SessionStoreService>,
     /// Custom app paths (if provided).
     paths: Option<crate::common::app_paths::AppPaths>,
+    bus_override: Option<super::bus_service::BusService>,
 }
 
 impl Default for TestServices {
@@ -143,6 +143,7 @@ impl Default for TestServices {
             llm_service: None,
             session_store: None,
             paths: None,
+            bus_override: None,
         }
     }
 }
@@ -202,6 +203,13 @@ impl TestServices {
         self
     }
 
+    /// Use the provided bus service instead of spawning a new one.
+    #[must_use]
+    pub fn with_bus(mut self, bus: super::bus_service::BusService) -> Self {
+        self.bus_override = Some(bus);
+        self
+    }
+
     /// Build the [`Services`] instance.
     ///
     /// Uses the shared process-wide test runtime if no custom handle is provided.
@@ -230,6 +238,44 @@ impl TestServices {
             let rx = actor_rx.to_async();
             while rx.recv().await.is_ok() {}
         });
+        let bus = if let Some(override_bus) = self.bus_override {
+            override_bus
+        } else {
+            let bus_actor = kameo_actors::message_bus::MessageBus::new(
+                kameo_actors::DeliveryStrategy::BestEffort,
+            );
+            // MessageBus::spawn calls tokio::spawn internally.
+            // If we're already inside a tokio runtime, use it directly.
+            // Otherwise, enter the shared test runtime via block_on.
+            let bus_ref = if tokio::runtime::Handle::try_current().is_ok() {
+                kameo_actors::message_bus::MessageBus::spawn(bus_actor)
+            } else {
+                TEST_RUNTIME
+                    .block_on(async { kameo_actors::message_bus::MessageBus::spawn(bus_actor) })
+            };
+            super::bus_service::BusService::new(bus_ref)
+        };
+        let bridge = if bus.is_recording() {
+            // Recording mode — no real bus, no bridge needed.
+            crate::common::bridge::Bridge::new_dummy(&handle)
+        } else {
+            crate::common::bridge::Bridge::with_handle(bus.actor_ref().clone(), &handle)
+        };
+
+        // RootSupervisor::spawn calls tokio::spawn internally — same runtime
+        // detection as the bus spawn above.
+        let root_supervisor = if tokio::runtime::Handle::try_current().is_ok() {
+            crate::common::root_supervisor::RootSupervisor::spawn(
+                crate::common::root_supervisor::RootSupervisor,
+            )
+        } else {
+            TEST_RUNTIME.block_on(async {
+                crate::common::root_supervisor::RootSupervisor::spawn(
+                    crate::common::root_supervisor::RootSupervisor,
+                )
+            })
+        };
+
         Services {
             paths,
             handle,
@@ -268,6 +314,9 @@ impl TestServices {
             )
                 as Arc<dyn SessionPluginRegistry>),
             tempdir,
+            bus,
+            bridge,
+            root_supervisor,
         }
     }
 }

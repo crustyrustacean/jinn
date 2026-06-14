@@ -107,12 +107,13 @@ pub fn execute(call: ToolCall, ctx: ToolContext) -> BoxedToolFuture {
             rendered = list.render_text_with_blockers();
         }
 
-        if let Some(sink) = &ctx.sink {
-            let _ = sink.send_event(crate::protocol::Event::TaskListUpdated(
+        if let Some(bus) = &ctx.bus {
+            bus.publish(
                 crate::feat::session::protocol::task_list_updated::TaskListUpdated {
                     session_id: session_id.clone(),
                 },
-            ));
+            )
+            .await;
         }
 
         ToolResult {
@@ -154,7 +155,7 @@ mod tests {
             state,
             session_id,
             app_paths: crate::common::app_paths::AppPaths::default(),
-            sink: None,
+            bus: None,
             shell: "/bin/bash".to_owned(),
             max_output_lines: None,
             max_output_bytes: None,
@@ -288,7 +289,7 @@ mod tests {
             name: "todo_add_phase".to_owned(),
             arguments: r#"{"description": "Second"}"#.to_owned(),
         };
-        let ctx = make_context(Some(state.clone()), Some(session_id));
+        let ctx = make_context(Some(state), Some(session_id));
         let result = execute(call, ctx);
         let result = futures::executor::block_on(result);
         assert!(result.success);

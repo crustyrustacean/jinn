@@ -61,7 +61,6 @@ pub struct SessionEntry {
 /// (parent not in loaded sessions) are treated as roots.
 ///
 /// Only includes sessions with `SessionState::Loaded` - archived sessions
-
 /// Resolved parent-child tree for sidebar session entries.
 struct SessionTree {
     /// Entries indexed by session ID.
@@ -121,17 +120,17 @@ fn build_session_tree(
 
     // Sort roots descending by created_at (newest first).
     roots.sort_by(|a, b| {
-        let ea = entry_map.get(a).expect("root from entry_map keys");
-        let eb = entry_map.get(b).expect("root from entry_map keys");
-        eb.created_at.cmp(&ea.created_at)
+        let ea = entry_map.get(a).map(|e| e.created_at).unwrap_or_default();
+        let eb = entry_map.get(b).map(|e| e.created_at).unwrap_or_default();
+        eb.cmp(&ea)
     });
 
     // Sort each parent's children ascending by created_at (oldest first).
     for children in children_map.values_mut() {
         children.sort_by(|a, b| {
-            let ea = entry_map.get(a).expect("child from entry_map keys");
-            let eb = entry_map.get(b).expect("child from entry_map keys");
-            ea.created_at.cmp(&eb.created_at)
+            let ea = entry_map.get(a).map(|e| e.created_at).unwrap_or_default();
+            let eb = entry_map.get(b).map(|e| e.created_at).unwrap_or_default();
+            ea.cmp(&eb)
         });
     }
 
@@ -178,7 +177,6 @@ fn dfs_flatten(tree: &SessionTree) -> Vec<SessionEntry> {
 /// # Panics
 ///
 /// Panics if a session exists in the map but its parent does not.
-#[expect(clippy::expect_used, reason = "infallible")]
 pub fn sorted_open_sessions(state: &AppState) -> Vec<SessionEntry> {
     let active_id = state.session.active_session_id();
 

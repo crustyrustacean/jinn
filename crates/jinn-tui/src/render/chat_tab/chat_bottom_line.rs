@@ -47,9 +47,10 @@ mod tests {
     }
 
     #[rstest::rstest]
-    fn chat_bottom_line_is_yellow_when_normal_scope() {
+    #[tokio::test]
+    async fn chat_bottom_line_is_yellow_when_normal_scope() {
         // Given a TuiApp rendered with Normal scope.
-        let mut app = crate::TuiApp::test_builder().build();
+        let mut app = crate::TuiApp::test_builder().build().await;
         app.core.state.write().frontend.scope_stack.clear_overlays();
         let (mut terminal, _area) = setup_term(80, 24);
 
@@ -72,9 +73,10 @@ mod tests {
     }
 
     #[rstest::rstest]
-    fn chat_bottom_line_is_darkgray_when_input_scope() {
+    #[tokio::test]
+    async fn chat_bottom_line_is_darkgray_when_input_scope() {
         // Given a TuiApp rendered with Input scope.
-        let mut app = crate::TuiApp::test_builder().build();
+        let mut app = crate::TuiApp::test_builder().build().await;
         app.core
             .state
             .write()
@@ -101,9 +103,10 @@ mod tests {
     }
 
     #[rstest::rstest]
-    fn chat_bottom_line_is_darkgray_when_sidebar_scope() {
+    #[tokio::test]
+    async fn chat_bottom_line_is_darkgray_when_sidebar_scope() {
         // Given a TuiApp rendered with Sidebar scope.
-        let mut app = crate::TuiApp::test_builder().build();
+        let mut app = crate::TuiApp::test_builder().build().await;
         app.core
             .state
             .write()

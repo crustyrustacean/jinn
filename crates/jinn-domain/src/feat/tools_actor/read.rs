@@ -132,7 +132,7 @@ pub fn execute(call: ToolCall, ctx: ToolContext) -> BoxedToolFuture {
                     name: call.name,
                     content: output,
                     success: true,
-                    full_content: Some(content.clone()),
+                    full_content: Some(content),
                     truncation: Some(meta),
                     pin_position: None,
                 }
@@ -143,7 +143,7 @@ pub fn execute(call: ToolCall, ctx: ToolContext) -> BoxedToolFuture {
                     name: call.name,
                     content: truncation_result.content,
                     success: true,
-                    full_content: Some(content.clone()),
+                    full_content: Some(content),
                     truncation: None,
                     pin_position: None,
                 }
@@ -154,7 +154,7 @@ pub fn execute(call: ToolCall, ctx: ToolContext) -> BoxedToolFuture {
                 name: call.name,
                 content: annotated,
                 success: true,
-                full_content: Some(content.clone()),
+                full_content: Some(content),
                 truncation: None,
                 pin_position: None,
             }
@@ -243,6 +243,7 @@ fn apply_offset_limit(content: &str, offset: Option<usize>, limit: Option<usize>
     result
 }
 
+// #[cfg(test)]
 #[cfg(test)]
 mod tests {
     #![allow(
@@ -344,7 +345,7 @@ mod tests {
             state: None,
             session_id: None,
             app_paths: crate::common::app_paths::AppPaths::default(),
-            sink: None,
+            bus: None,
             shell: "/bin/sh".to_owned(),
             max_output_lines: None,
             max_output_bytes: None,
@@ -439,7 +440,7 @@ mod tests {
             state: None,
             session_id: None,
             app_paths: crate::common::app_paths::AppPaths::default(),
-            sink: None,
+            bus: None,
             shell: "/bin/sh".to_owned(),
             max_output_lines: None,
             max_output_bytes: None,
@@ -522,7 +523,7 @@ mod tests {
             state: None,
             session_id: None,
             app_paths: crate::common::app_paths::AppPaths::default(),
-            sink: None,
+            bus: None,
             shell: "/bin/sh".to_owned(),
             max_output_lines: Some(3),
             max_output_bytes: Some(50 * 1024),
@@ -566,7 +567,7 @@ mod tests {
             state: None,
             session_id: None,
             app_paths: crate::common::app_paths::AppPaths::default(),
-            sink: None,
+            bus: None,
             shell: "/bin/sh".to_owned(),
             max_output_lines: Some(2),
             max_output_bytes: Some(50 * 1024),

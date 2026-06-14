@@ -463,10 +463,6 @@ struct TokenLedgerRow {
     tokens_sent: i32,
     tokens_received: i32,
     cost: Option<f64>,
-    #[expect(
-        dead_code,
-        reason = "required by Diesel Queryable derive to match SELECT * columns"
-    )]
     model_used: Option<String>,
 }
 

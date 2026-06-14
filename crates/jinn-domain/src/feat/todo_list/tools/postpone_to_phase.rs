@@ -141,12 +141,13 @@ pub fn execute(call: ToolCall, ctx: ToolContext) -> BoxedToolFuture {
 
         match result {
             Ok(content) => {
-                if let Some(sink) = &ctx.sink {
-                    let _ = sink.send_event(crate::protocol::Event::TaskListUpdated(
+                if let Some(bus) = &ctx.bus {
+                    bus.publish(
                         crate::feat::session::protocol::task_list_updated::TaskListUpdated {
                             session_id: session_id.clone(),
                         },
-                    ));
+                    )
+                    .await;
                 }
                 ToolResult {
                     tool_call_id: call.id,
@@ -210,7 +211,7 @@ mod tests {
             state,
             session_id,
             app_paths: crate::common::app_paths::AppPaths::default(),
-            sink: None,
+            bus: None,
             shell: "/bin/bash".to_owned(),
             max_output_lines: None,
             max_output_bytes: None,
@@ -361,8 +362,7 @@ mod tests {
         let call1 = ToolCall {
             id: "call-1".to_owned(),
             name: "todo_postpone_to_phase".to_owned(),
-            arguments: serde_json::json!({"task_id": t1, "target_phase_id": p2.clone()})
-                .to_string(),
+            arguments: serde_json::json!({"task_id": t1, "target_phase_id": p2}).to_string(),
         };
         let ctx1 = make_context(Some(state.clone()), Some(session_id.clone()));
         let result1 = execute(call1, ctx1);

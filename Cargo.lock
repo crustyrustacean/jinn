@@ -420,17 +420,6 @@ dependencies = [
 ]
 
 [[package]]
-name = "comfy-table"
-version = "7.2.2"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "958c5d6ecf1f214b4c2bbbbf6ab9523a864bd136dcf71a7e8904799acfe1ad47"
-dependencies = [
- "crossterm",
- "unicode-segmentation",
- "unicode-width",
-]
-
-[[package]]
 name = "compact_str"
 version = "0.9.1"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -550,27 +539,6 @@ checksum = "eb2a7d3066da2de787b7f032c736763eb7ae5d355f81a68bab2675a96008b0bf"
 dependencies = [
  "lab",
  "phf 0.11.3",
-]
-
-[[package]]
-name = "csv"
-version = "1.4.0"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "52cd9d68cf7efc6ddfaaee42e7288d3a99d613d4b50f76ce9827ae0c6e14f938"
-dependencies = [
- "csv-core",
- "itoa",
- "ryu",
- "serde_core",
-]
-
-[[package]]
-name = "csv-core"
-version = "0.1.13"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "704a3c26996a80471189265814dbc2c257598b96b8a7feae2d31ace646bb9782"
-dependencies = [
- "memchr",
 ]
 
 [[package]]
@@ -808,6 +776,18 @@ name = "dotenvy"
 version = "0.15.7"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "1aaf95b3e5c8f23aa320147307562d361db0ae0d51242340f558153b4eb2439b"
+
+[[package]]
+name = "downcast-rs"
+version = "2.0.2"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "117240f60069e65410b3ae1bb213295bd828f707b5bec6596a1afc8793ce0cbc"
+
+[[package]]
+name = "dyn-clone"
+version = "1.0.20"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "d0881ea181b1df73ff77ffaaf9c7544ecc11e82fba9b5f27b262a3c73a332555"
 
 [[package]]
 name = "either"
@@ -1145,19 +1125,6 @@ name = "glob"
 version = "0.3.3"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "0cc23270f6e1808e30a928bdc84dea0b9b4136a8bc82338574f23baf47bbd280"
-
-[[package]]
-name = "globset"
-version = "0.4.18"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "52dfc19153a48bde0cbd630453615c8151bce3a5adfac7a0aebfbf0a1e1f57e3"
-dependencies = [
- "aho-corasick",
- "bstr",
- "log",
- "regex-automata",
- "regex-syntax",
-]
 
 [[package]]
 name = "h2"
@@ -1569,25 +1536,6 @@ dependencies = [
 ]
 
 [[package]]
-name = "include_dir"
-version = "0.7.4"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "923d117408f1e49d914f1a379a309cffe4f18c05cf4e3d12e613a15fc81bd0dd"
-dependencies = [
- "include_dir_macros",
-]
-
-[[package]]
-name = "include_dir_macros"
-version = "0.7.4"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "7cab85a7ed0bd5f0e76d93846e0147172bed2e2d3f859bcc33a8d9699cad1a75"
-dependencies = [
- "proc-macro2",
- "quote",
-]
-
-[[package]]
 name = "indexmap"
 version = "2.11.4"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -1710,12 +1658,12 @@ dependencies = [
  "dotenvy",
  "error-stack",
  "jiff",
- "jinn-bench",
  "jinn-cli",
  "jinn-domain",
- "jinn-plugin",
  "jinn-tui",
  "jinn-web-fetch",
+ "kameo",
+ "kameo_actors",
  "kanal",
  "mockito",
  "ratatui-spatial-splits",
@@ -1728,30 +1676,6 @@ dependencies = [
  "tokio",
  "tracing",
  "tracing-subscriber",
- "wherror",
-]
-
-[[package]]
-name = "jinn-bench"
-version = "0.65.0"
-dependencies = [
- "comfy-table",
- "csv",
- "error-stack",
- "globset",
- "humantime",
- "include_dir",
- "jiff",
- "jinn-domain",
- "jinn-provider",
- "rstest",
- "strip-ansi-escapes",
- "tempfile",
- "tokio",
- "tracing",
- "tree-sitter",
- "tree-sitter-python",
- "unicode-segmentation",
  "wherror",
 ]
 
@@ -1780,15 +1704,17 @@ dependencies = [
  "fuzzy-matcher",
  "humantime",
  "jiff",
- "jinn-protocol-derive",
  "jinn-provider",
  "jinn-selection-widget",
  "jinn-testutil",
  "jinn-theme",
  "jinn-web-fetch",
+ "kameo",
+ "kameo_actors",
  "kanal",
  "kill_tree",
  "libc",
+ "mlua",
  "parking_lot",
  "rand 0.9.4",
  "ratatui",
@@ -1814,37 +1740,6 @@ dependencies = [
  "unicode-width",
  "uuid",
  "wherror",
-]
-
-[[package]]
-name = "jinn-plugin"
-version = "0.65.0"
-dependencies = [
- "async-trait",
- "dashmap",
- "error-stack",
- "jinn-domain",
- "kanal",
- "mlua",
- "parking_lot",
- "rstest",
- "serde",
- "serde_json",
- "tempfile",
- "tokio",
- "tracing",
- "uuid",
- "wherror",
-]
-
-[[package]]
-name = "jinn-protocol-derive"
-version = "0.65.0"
-dependencies = [
- "proc-macro2",
- "quote",
- "rstest",
- "syn 2.0.117",
 ]
 
 [[package]]
@@ -1913,7 +1808,6 @@ dependencies = [
  "dirs",
  "error-stack",
  "jinn-domain",
- "jinn-plugin",
  "jinn-selection-widget",
  "jinn-testutil",
  "kanal",
@@ -1963,6 +1857,46 @@ dependencies = [
  "futures-util",
  "once_cell",
  "wasm-bindgen",
+]
+
+[[package]]
+name = "kameo"
+version = "0.20.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "b1dfd134d7a2c6ec05ee696dcbf3f7a034bdb97ecc623e981014652dcd124d77"
+dependencies = [
+ "downcast-rs",
+ "dyn-clone",
+ "futures",
+ "kameo_macros",
+ "serde",
+ "tokio",
+ "tracing",
+]
+
+[[package]]
+name = "kameo_actors"
+version = "0.5.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "220bdd75769f0a9b752a91123e58bf42f595e3c36ff4b13818d7a87d962076e6"
+dependencies = [
+ "futures",
+ "glob",
+ "kameo",
+ "thiserror 2.0.18",
+ "tokio",
+]
+
+[[package]]
+name = "kameo_macros"
+version = "0.20.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "16c9002c9ecd16e1636f566c0bf62db48e70d86ed0d0a91b398955e883217a23"
+dependencies = [
+ "heck",
+ "proc-macro2",
+ "quote",
+ "syn 2.0.117",
 ]
 
 [[package]]
@@ -3077,9 +3011,9 @@ dependencies = [
 
 [[package]]
 name = "ratatui-which-key"
-version = "0.12.0"
+version = "0.12.1"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "0b6456fd83c5b2a505492f9b54b2bedf2fd6de1dfa2469346be584d9ffeabff8"
+checksum = "ffc966bb24e6b28d6b554d936c82984629def1cb3c5631838d565fbb2e284e27"
 dependencies = [
  "crossterm",
  "ratatui",
@@ -3981,6 +3915,7 @@ dependencies = [
  "signal-hook-registry",
  "socket2 0.6.4",
  "tokio-macros",
+ "tracing",
  "windows-sys 0.61.2",
 ]
 

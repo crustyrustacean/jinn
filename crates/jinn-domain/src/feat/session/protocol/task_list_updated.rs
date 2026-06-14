@@ -20,15 +20,16 @@
 
 use serde::{Deserialize, Serialize};
 
-use crate::protocol::{EventMsg, SessionId};
+use crate::protocol::SessionId;
 
 /// A task list mutation was applied successfully.
 ///
 /// Broadcast after any todo list tool modifies the task list (add phase, add task,
 /// complete task, postpone task, postpone to phase, or set list).
-#[derive(Debug, Clone, Serialize, Deserialize, EventMsg)]
-#[event_msg("session")]
+#[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct TaskListUpdated {
     /// The session whose task list was updated.
     pub session_id: SessionId,
 }
+
+impl crate::common::bus::BusMessage for TaskListUpdated {}

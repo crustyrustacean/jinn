@@ -19,8 +19,10 @@
 use std::collections::HashMap;
 use std::time::{Duration, Instant};
 
+use kameo::prelude::{Actor, ActorRef, Context, Message};
+
 use crate::SessionId;
-use crate::common::actor::{Actor, ActorContext, ActorEnvelope, ActorRef};
+use crate::common::actor_deps::{ActorDeps, BusPublish};
 use crate::common::state::State;
 use crate::feat::context::protocol::event::ContextFilesLoaded;
 use crate::feat::discovery_coordinator::session_discovery_settled::{
@@ -28,11 +30,10 @@ use crate::feat::discovery_coordinator::session_discovery_settled::{
 };
 use crate::feat::provider::protocol::event::PromptTemplatesLoaded;
 use crate::feat::skills::skills_scan_actor::SkillsLoaded;
-use crate::protocol::Event;
 
 /// Safety-net window. If not all three resource events arrive within this duration,
 /// the coordinator settles anyway with a `delayed` reason.
-const SAFETY_NET: Duration = Duration::from_millis(3000);
+const SAFETY_NET: Duration = Duration::from_secs(3);
 
 /// Direct messages the coordinator sends to itself.
 ///
@@ -139,7 +140,10 @@ impl PendingSlot {
 }
 
 /// Dependencies for [`DiscoveryCoordinatorActor`].
+#[derive(Clone)]
 pub struct DiscoveryCoordinatorActorDeps {
+    /// Common actor dependencies.
+    pub deps: ActorDeps,
     /// Shared application state (currently unused but kept for parity with other
     /// scan actors and future enrichment from state).
     pub state: State,
@@ -152,115 +156,120 @@ pub struct DiscoveryCoordinatorActor {
     /// Pending per-session latches.
     pending: HashMap<SessionId, PendingSlot>,
     /// Self-ref for arming the safety-net timer and routing `Record` messages.
-    self_ref: ActorRef<DiscoveryDirectMsg>,
+    actor_ref: ActorRef<Self>,
+    /// Bus for message routing.
+    bus: crate::common::services::bus_service::BusService,
 }
 
 impl Actor for DiscoveryCoordinatorActor {
-    type Message = DiscoveryDirectMsg;
-    type Deps = DiscoveryCoordinatorActorDeps;
+    type Args = DiscoveryCoordinatorActorDeps;
+    type Error = std::convert::Infallible;
 
-    fn activate(deps: Self::Deps, ctx: &mut ActorContext) -> Self {
-        ctx.set_description("Coalesces discovery scans into SessionDiscoverySettled");
+    async fn on_start(args: Self::Args, actor_ref: ActorRef<Self>) -> Result<Self, Self::Error> {
+        // Register on bus for the three resource-loaded events.
+        args.deps
+            .subscribe(actor_ref.clone().recipient::<SkillsLoaded>())
+            .await;
+        args.deps
+            .subscribe(actor_ref.clone().recipient::<PromptTemplatesLoaded>())
+            .await;
+        let stored_ref = actor_ref.clone();
+        args.deps
+            .subscribe(actor_ref.recipient::<ContextFilesLoaded>())
+            .await;
 
-        ctx.subscribe_event::<SkillsLoaded>();
-        ctx.subscribe_event::<PromptTemplatesLoaded>();
-        ctx.subscribe_event::<ContextFilesLoaded>();
-
-        #[expect(
-            clippy::expect_used,
-            reason = "self-ref is injected by spawn before activate"
-        )]
-        let self_ref = ctx
-            .take_actor_ref::<DiscoveryDirectMsg>()
-            .expect("DiscoveryCoordinatorActor requires self-ref injection");
-
-        let _ = deps.state;
-        Self {
+        let _ = args.state;
+        Ok(Self {
             pending: HashMap::new(),
-            self_ref,
-        }
+            actor_ref: stored_ref,
+            bus: args.deps.services.bus.clone(),
+        })
     }
+}
 
-    async fn handle(&mut self, msg: ActorEnvelope<Self::Message>, ctx: &ActorContext) {
+impl BusPublish for DiscoveryCoordinatorActor {
+    fn bus(&self) -> &crate::common::services::bus_service::BusService {
+        &self.bus
+    }
+}
+
+// --- Message handlers ---
+
+impl Message<SkillsLoaded> for DiscoveryCoordinatorActor {
+    type Reply = ();
+
+    async fn handle(&mut self, msg: SkillsLoaded, _ctx: &mut Context<Self, Self::Reply>) {
+        let snapshot = ResourceSnapshot::Skills {
+            count: msg.skills.len(),
+            error: msg.error.clone(),
+        };
+        let _ = self
+            .actor_ref
+            .tell(DiscoveryDirectMsg::Record {
+                session_id: msg.session_id.clone(),
+                snapshot,
+            })
+            .await;
+    }
+}
+
+impl Message<PromptTemplatesLoaded> for DiscoveryCoordinatorActor {
+    type Reply = ();
+
+    async fn handle(&mut self, msg: PromptTemplatesLoaded, _ctx: &mut Context<Self, Self::Reply>) {
+        let snapshot = ResourceSnapshot::Prompts {
+            count: msg.templates.len(),
+            error: msg.error.clone(),
+        };
+        let _ = self
+            .actor_ref
+            .tell(DiscoveryDirectMsg::Record {
+                session_id: msg.session_id.clone(),
+                snapshot,
+            })
+            .await;
+    }
+}
+
+impl Message<ContextFilesLoaded> for DiscoveryCoordinatorActor {
+    type Reply = ();
+
+    async fn handle(&mut self, msg: ContextFilesLoaded, _ctx: &mut Context<Self, Self::Reply>) {
+        let snapshot = ResourceSnapshot::Context {
+            count: msg.files.len(),
+            error: msg.error.clone(),
+        };
+        let _ = self
+            .actor_ref
+            .tell(DiscoveryDirectMsg::Record {
+                session_id: msg.session_id.clone(),
+                snapshot,
+            })
+            .await;
+    }
+}
+
+impl Message<DiscoveryDirectMsg> for DiscoveryCoordinatorActor {
+    type Reply = ();
+
+    async fn handle(&mut self, msg: DiscoveryDirectMsg, _ctx: &mut Context<Self, Self::Reply>) {
         match msg {
-            ActorEnvelope::Event(event) => {
-                self.on_loaded_event(&event);
-            }
-            ActorEnvelope::Direct(DiscoveryDirectMsg::Record {
+            DiscoveryDirectMsg::Record {
                 session_id,
                 snapshot,
-            }) => {
-                self.on_record(session_id, snapshot, ctx);
-            }
-            ActorEnvelope::Direct(DiscoveryDirectMsg::CheckTimeout {
+            } => self.on_record(session_id, snapshot).await,
+            DiscoveryDirectMsg::CheckTimeout {
                 session_id,
                 started_at,
-            }) => {
-                self.on_check_timeout(session_id, started_at, ctx);
-            }
-            ActorEnvelope::Command(_) | ActorEnvelope::System(_) => {}
+            } => self.on_check_timeout(session_id, started_at).await,
         }
     }
-
-    async fn shutdown(self) {}
 }
 
 impl DiscoveryCoordinatorActor {
-    /// Extracts a resource contribution from a `*Loaded` event and routes it into
-    /// the mailbox as a `Record` so latch mutation is single-threaded.
-    fn on_loaded_event(&self, event: &Event) {
-        let Some((session_id, snapshot)) = Self::snapshot_for_event(event) else {
-            return;
-        };
-        let _ = self.self_ref.send(DiscoveryDirectMsg::Record {
-            session_id,
-            snapshot,
-        });
-    }
-
-    /// Maps a `*Loaded` event to `(session_id, ResourceSnapshot)`, if recognized.
-    fn snapshot_for_event(event: &Event) -> Option<(SessionId, ResourceSnapshot)> {
-        match event {
-            Event::SkillsLoaded(SkillsLoaded {
-                session_id,
-                skills,
-                error,
-            }) => Some((
-                session_id.clone(),
-                ResourceSnapshot::Skills {
-                    count: skills.len(),
-                    error: error.clone(),
-                },
-            )),
-            Event::PromptTemplatesLoaded(PromptTemplatesLoaded {
-                session_id,
-                templates,
-                error,
-            }) => Some((
-                session_id.clone(),
-                ResourceSnapshot::Prompts {
-                    count: templates.len(),
-                    error: error.clone(),
-                },
-            )),
-            Event::ContextFilesLoaded(ContextFilesLoaded {
-                session_id,
-                files,
-                error,
-            }) => Some((
-                session_id.clone(),
-                ResourceSnapshot::Context {
-                    count: files.len(),
-                    error: error.clone(),
-                },
-            )),
-            _ => None,
-        }
-    }
-
     /// Records one resource's arrival; emits settled when all three are present,
     /// or arms the safety-net timer on first arrival.
-    fn on_record(&mut self, session_id: SessionId, snapshot: ResourceSnapshot, ctx: &ActorContext) {
+    async fn on_record(&mut self, session_id: SessionId, snapshot: ResourceSnapshot) {
         let slot = self.pending.entry(session_id.clone()).or_default();
         match &snapshot {
             ResourceSnapshot::Skills { .. } => slot.skills = Some(snapshot),
@@ -272,7 +281,12 @@ impl DiscoveryCoordinatorActor {
             // All three arrived: settle immediately, no delay.
             let snapshot = slot.to_snapshot();
             self.pending.remove(&session_id);
-            Self::emit_settled(session_id, snapshot, None, ctx);
+            self.publish(SessionDiscoverySettled {
+                session_id,
+                snapshot,
+                delayed: None,
+            })
+            .await;
             return;
         }
 
@@ -285,7 +299,7 @@ impl DiscoveryCoordinatorActor {
     }
 
     /// Safety-net handler: settle if the slot is still pending and unchanged.
-    fn on_check_timeout(&mut self, session_id: SessionId, started_at: Instant, ctx: &ActorContext) {
+    async fn on_check_timeout(&mut self, session_id: SessionId, started_at: Instant) {
         let Some(slot) = self.pending.get(&session_id) else {
             return;
         };
@@ -296,32 +310,25 @@ impl DiscoveryCoordinatorActor {
         let snapshot = slot.to_snapshot();
         let reason = format!("discovery delayed by {}", missing.join(", "));
         self.pending.remove(&session_id);
-        Self::emit_settled(session_id, snapshot, Some(reason), ctx);
-    }
-
-    /// Emits the coalesced settled event for a session.
-    fn emit_settled(
-        session_id: SessionId,
-        snapshot: DiscoverySnapshot,
-        delayed: Option<String>,
-        ctx: &ActorContext,
-    ) {
-        let _ = ctx.send_event(Event::SessionDiscoverySettled(SessionDiscoverySettled {
+        self.publish(SessionDiscoverySettled {
             session_id,
             snapshot,
-            delayed,
-        }));
+            delayed: Some(reason),
+        })
+        .await;
     }
 
     /// Spawns the 3000ms safety-net task for a session.
     fn arm_timer(&self, session_id: SessionId, started_at: Instant) {
-        let self_ref = self.self_ref.clone();
+        let actor_ref = self.actor_ref.clone();
         tokio::spawn(async move {
             tokio::time::sleep(SAFETY_NET).await;
-            let _ = self_ref.send(DiscoveryDirectMsg::CheckTimeout {
-                session_id,
-                started_at,
-            });
+            let _ = actor_ref
+                .tell(DiscoveryDirectMsg::CheckTimeout {
+                    session_id,
+                    started_at,
+                })
+                .await;
         });
     }
 }
@@ -336,61 +343,20 @@ mod tests {
         reason = "test code"
     )]
     use std::path::PathBuf;
-    use std::sync::Arc;
 
     use crate::SessionId;
-    use crate::common::actor::{Actor, ActorContext, ActorEnvelope, MessageSink, RecordingSink};
     use crate::common::app_state::AppState;
+    use crate::common::bus::test_harness::{Recorder, TestHarness, await_recorded};
     use crate::common::state::State;
     use crate::feat::context::env_context::ContextFile;
     use crate::feat::context::protocol::event::ContextFilesLoaded;
     use crate::feat::context::protocol::prompt_template::PromptTemplate;
+    use crate::feat::discovery_coordinator::session_discovery_settled::SessionDiscoverySettled;
     use crate::feat::provider::protocol::event::PromptTemplatesLoaded;
     use crate::feat::skills::skills_scan_actor::SkillsLoaded;
     use crate::feat::skills::{Skill, SkillSource};
-    use crate::protocol::Event;
 
-    /// Constructs the coordinator via `activate`, giving it a self-ref wired to
-    /// a recording mailbox. Returns the actor, the sink (bus events), and a
-    /// channel to drive self-messages back into `handle`.
-    fn build() -> (
-        super::DiscoveryCoordinatorActor,
-        Arc<RecordingSink>,
-        kanal::Receiver<ActorEnvelope<super::DiscoveryDirectMsg>>,
-        ActorContext,
-    ) {
-        let sink = Arc::new(RecordingSink::new());
-        let (tx, rx) = kanal::unbounded::<ActorEnvelope<super::DiscoveryDirectMsg>>();
-        let self_ref = crate::common::actor::ActorRef::new(tx);
-        let mut ctx = ActorContext::new(
-            "discovery-coordinator-test",
-            sink.clone() as Arc<dyn MessageSink>,
-        );
-        ctx.set_actor_ref(self_ref);
-        let actor = super::DiscoveryCoordinatorActor::activate(
-            super::DiscoveryCoordinatorActorDeps {
-                state: State::new(AppState::default()),
-            },
-            &mut ctx,
-        );
-        (actor, sink, rx, ctx)
-    }
-
-    /// Pumps self-messages produced by `on_loaded_event` back through `handle`
-    /// until the mailbox drains, plus a few yields for async spawn tasks.
-    async fn drain(
-        actor: &mut super::DiscoveryCoordinatorActor,
-        rx: &kanal::Receiver<ActorEnvelope<super::DiscoveryDirectMsg>>,
-        ctx: &ActorContext,
-    ) {
-        loop {
-            tokio::task::yield_now().await;
-            match rx.try_recv() {
-                Ok(Some(msg)) => actor.handle(msg, ctx).await,
-                Ok(None) | Err(_) => break,
-            }
-        }
-    }
+    use super::{DiscoveryCoordinatorActor, DiscoveryCoordinatorActorDeps};
 
     fn skill_named(name: &str) -> Skill {
         Skill {
@@ -418,242 +384,300 @@ mod tests {
         }
     }
 
-    fn skills_loaded(id: &SessionId, n: usize) -> Event {
-        Event::SkillsLoaded(SkillsLoaded {
-            session_id: id.clone(),
-            skills: (0..n).map(|i| skill_named(&format!("skill-{i}"))).collect(),
-            error: None,
-        })
-    }
-
-    fn prompts_loaded(id: &SessionId, n: usize) -> Event {
-        Event::PromptTemplatesLoaded(PromptTemplatesLoaded {
-            session_id: id.clone(),
-            templates: (0..n)
-                .map(|i| prompt_named(&format!("prompt-{i}")))
-                .collect(),
-            error: None,
-        })
-    }
-
-    fn context_loaded(id: &SessionId, n: usize) -> Event {
-        Event::ContextFilesLoaded(ContextFilesLoaded {
-            session_id: id.clone(),
-            files: (0..n)
-                .map(|i| context_at(&format!("/p{i}/AGENTS.md")))
-                .collect(),
-            error: None,
-        })
-    }
-
-    fn settled_count(sink: &RecordingSink) -> usize {
-        sink.events()
-            .iter()
-            .filter(|e| matches!(e, Event::SessionDiscoverySettled(_)))
-            .count()
-    }
-
-    fn first_settled(
-        sink: &RecordingSink,
-    ) -> crate::feat::discovery_coordinator::SessionDiscoverySettled {
-        sink.events()
-            .into_iter()
-            .find_map(|e| match e {
-                Event::SessionDiscoverySettled(s) => Some(s),
-                _ => None,
+    async fn build_harness() -> (
+        TestHarness,
+        kameo::prelude::ActorRef<DiscoveryCoordinatorActor>,
+        kameo::prelude::ActorRef<Recorder<SessionDiscoverySettled>>,
+    ) {
+        let harness = TestHarness::new().await;
+        let actor = harness
+            .spawn_actor::<DiscoveryCoordinatorActor>(DiscoveryCoordinatorActorDeps {
+                deps: harness.actor_deps().await,
+                state: State::new(AppState::default()),
             })
-            .expect("at least one settled event")
+            .await;
+        let recorder = harness.spawn_recorder::<SessionDiscoverySettled>().await;
+        (harness, actor, recorder)
     }
 
     #[tokio::test]
     async fn one_resource_does_not_emit_settled() {
         // Given a coordinator.
-        let (mut actor, sink, rx, ctx) = build();
+        let (_harness, actor, recorder) = build_harness().await;
 
         // When only skills loaded arrives.
         let id = SessionId::new();
         actor
-            .handle(ActorEnvelope::Event(skills_loaded(&id, 2)), &ctx)
-            .await;
-        drain(&mut actor, &rx, &ctx).await;
+            .tell(SkillsLoaded {
+                session_id: id,
+                skills: vec![skill_named("s-0"), skill_named("s-1")],
+                error: None,
+            })
+            .await
+            .expect("tell");
 
         // Then no settled event yet.
-        assert_eq!(settled_count(&sink), 0, "one resource must not settle");
+        let messages = await_recorded(&recorder, 0, std::time::Duration::from_millis(100)).await;
+        assert_eq!(messages.len(), 0, "one resource must not settle");
     }
 
     #[tokio::test]
     async fn two_resources_do_not_emit_settled() {
         // Given a coordinator.
-        let (mut actor, sink, rx, ctx) = build();
+        let (_harness, actor, recorder) = build_harness().await;
 
         // When skills + prompts arrive.
         let id = SessionId::new();
         actor
-            .handle(ActorEnvelope::Event(skills_loaded(&id, 2)), &ctx)
-            .await;
-        drain(&mut actor, &rx, &ctx).await;
+            .tell(SkillsLoaded {
+                session_id: id.clone(),
+                skills: vec![skill_named("s-0"), skill_named("s-1")],
+                error: None,
+            })
+            .await
+            .expect("tell");
         actor
-            .handle(ActorEnvelope::Event(prompts_loaded(&id, 1)), &ctx)
-            .await;
-        drain(&mut actor, &rx, &ctx).await;
+            .tell(PromptTemplatesLoaded {
+                session_id: id,
+                templates: vec![prompt_named("p-0")],
+                error: None,
+            })
+            .await
+            .expect("tell");
 
         // Then no settled event yet.
-        assert_eq!(settled_count(&sink), 0, "two resources must not settle");
+        let messages = await_recorded(&recorder, 0, std::time::Duration::from_millis(100)).await;
+        assert_eq!(messages.len(), 0, "two resources must not settle");
     }
 
     #[tokio::test]
     async fn all_three_emit_one_settled_with_no_delay() {
         // Given a coordinator.
-        let (mut actor, sink, rx, ctx) = build();
+        let (_harness, actor, recorder) = build_harness().await;
 
-        // When all three arrive in any order.
+        // When all three arrive.
         let id = SessionId::new();
         actor
-            .handle(ActorEnvelope::Event(context_loaded(&id, 1)), &ctx)
-            .await;
-        drain(&mut actor, &rx, &ctx).await;
+            .tell(ContextFilesLoaded {
+                session_id: id.clone(),
+                files: vec![context_at("/p0/AGENTS.md")],
+                error: None,
+            })
+            .await
+            .expect("tell");
         actor
-            .handle(ActorEnvelope::Event(skills_loaded(&id, 3)), &ctx)
-            .await;
-        drain(&mut actor, &rx, &ctx).await;
+            .tell(SkillsLoaded {
+                session_id: id.clone(),
+                skills: vec![skill_named("s-0"), skill_named("s-1"), skill_named("s-2")],
+                error: None,
+            })
+            .await
+            .expect("tell");
         actor
-            .handle(ActorEnvelope::Event(prompts_loaded(&id, 2)), &ctx)
-            .await;
-        drain(&mut actor, &rx, &ctx).await;
+            .tell(PromptTemplatesLoaded {
+                session_id: id,
+                templates: vec![prompt_named("p-0"), prompt_named("p-1")],
+                error: None,
+            })
+            .await
+            .expect("tell");
 
         // Then exactly one settled event, with no delay.
-        assert_eq!(settled_count(&sink), 1);
-        let settled = first_settled(&sink);
-        assert!(settled.delayed.is_none());
-        assert_eq!(settled.snapshot.skill_count, 3);
-        assert_eq!(settled.snapshot.prompt_count, 2);
-        assert_eq!(settled.snapshot.context_file_count, 1);
+        let messages = await_recorded(&recorder, 1, std::time::Duration::from_secs(1)).await;
+        assert_eq!(messages.len(), 1);
+        assert!(messages[0].delayed.is_none());
+        assert_eq!(messages[0].snapshot.skill_count, 3);
+        assert_eq!(messages[0].snapshot.prompt_count, 2);
+        assert_eq!(messages[0].snapshot.context_file_count, 1);
     }
 
     #[tokio::test]
     async fn failed_scan_still_counts_as_settled() {
         // Given a coordinator.
-        let (mut actor, sink, rx, ctx) = build();
+        let (_harness, actor, recorder) = build_harness().await;
 
         // When the skills scan reports an error but the others succeed.
         let id = SessionId::new();
         actor
-            .handle(
-                ActorEnvelope::Event(Event::SkillsLoaded(SkillsLoaded {
-                    session_id: id.clone(),
-                    skills: vec![],
-                    error: Some("disk error".into()),
-                })),
-                &ctx,
-            )
-            .await;
-        drain(&mut actor, &rx, &ctx).await;
+            .tell(SkillsLoaded {
+                session_id: id.clone(),
+                skills: vec![],
+                error: Some("disk error".into()),
+            })
+            .await
+            .expect("tell");
         actor
-            .handle(ActorEnvelope::Event(prompts_loaded(&id, 0)), &ctx)
-            .await;
-        drain(&mut actor, &rx, &ctx).await;
+            .tell(PromptTemplatesLoaded {
+                session_id: id.clone(),
+                templates: vec![],
+                error: None,
+            })
+            .await
+            .expect("tell");
         actor
-            .handle(ActorEnvelope::Event(context_loaded(&id, 0)), &ctx)
-            .await;
-        drain(&mut actor, &rx, &ctx).await;
+            .tell(ContextFilesLoaded {
+                session_id: id,
+                files: vec![],
+                error: None,
+            })
+            .await
+            .expect("tell");
 
         // Then settled fires with the error flag set.
-        let settled = first_settled(&sink);
-        assert_eq!(settled.snapshot.skill_error.as_deref(), Some("disk error"));
+        let messages = await_recorded(&recorder, 1, std::time::Duration::from_secs(1)).await;
+        assert_eq!(messages.len(), 1);
+        assert_eq!(
+            messages[0].snapshot.skill_error.as_deref(),
+            Some("disk error")
+        );
     }
 
     #[tokio::test]
     async fn two_sessions_settle_independently() {
         // Given a coordinator.
-        let (mut actor, sink, rx, ctx) = build();
+        let (_harness, actor, recorder) = build_harness().await;
 
         // When two sessions each receive all three events.
-        for id in [SessionId::new(), SessionId::new()] {
+        for _ in [SessionId::new(), SessionId::new()] {
+            let id = SessionId::new();
             actor
-                .handle(ActorEnvelope::Event(skills_loaded(&id, 1)), &ctx)
-                .await;
-            drain(&mut actor, &rx, &ctx).await;
+                .tell(SkillsLoaded {
+                    session_id: id.clone(),
+                    skills: vec![skill_named("s")],
+                    error: None,
+                })
+                .await
+                .expect("tell");
             actor
-                .handle(ActorEnvelope::Event(prompts_loaded(&id, 1)), &ctx)
-                .await;
-            drain(&mut actor, &rx, &ctx).await;
+                .tell(PromptTemplatesLoaded {
+                    session_id: id.clone(),
+                    templates: vec![prompt_named("p")],
+                    error: None,
+                })
+                .await
+                .expect("tell");
             actor
-                .handle(ActorEnvelope::Event(context_loaded(&id, 1)), &ctx)
-                .await;
-            drain(&mut actor, &rx, &ctx).await;
+                .tell(ContextFilesLoaded {
+                    session_id: id,
+                    files: vec![context_at("/p/AGENTS.md")],
+                    error: None,
+                })
+                .await
+                .expect("tell");
         }
 
         // Then two settled events, one per session.
-        assert_eq!(settled_count(&sink), 2);
+        let messages = await_recorded(&recorder, 1, std::time::Duration::from_secs(1)).await;
+        assert_eq!(messages.len(), 2);
     }
 
     #[tokio::test]
     async fn second_trigger_resets_and_emits_again() {
-        // Given a coordinator with one settled trigger.
-        let (mut actor, sink, rx, ctx) = build();
-        let id = SessionId::new();
-        for ev in [
-            skills_loaded(&id, 1),
-            prompts_loaded(&id, 1),
-            context_loaded(&id, 1),
-        ] {
-            actor.handle(ActorEnvelope::Event(ev), &ctx).await;
-            drain(&mut actor, &rx, &ctx).await;
-        }
-        assert_eq!(settled_count(&sink), 1);
+        // Given a coordinator.
+        let (_harness, actor, recorder) = build_harness().await;
 
-        // When a second trigger fires all three again.
-        for ev in [
-            skills_loaded(&id, 4),
-            prompts_loaded(&id, 5),
-            context_loaded(&id, 6),
-        ] {
-            actor.handle(ActorEnvelope::Event(ev), &ctx).await;
-            drain(&mut actor, &rx, &ctx).await;
-        }
+        let id = SessionId::new();
+        // First trigger.
+        actor
+            .tell(SkillsLoaded {
+                session_id: id.clone(),
+                skills: vec![skill_named("s")],
+                error: None,
+            })
+            .await
+            .expect("tell");
+        actor
+            .tell(PromptTemplatesLoaded {
+                session_id: id.clone(),
+                templates: vec![prompt_named("p")],
+                error: None,
+            })
+            .await
+            .expect("tell");
+        actor
+            .tell(ContextFilesLoaded {
+                session_id: id.clone(),
+                files: vec![context_at("/p/AGENTS.md")],
+                error: None,
+            })
+            .await
+            .expect("tell");
+
+        let first = await_recorded(&recorder, 1, std::time::Duration::from_secs(1)).await;
+        assert_eq!(first.len(), 1);
+
+        // Second trigger with different counts.
+        actor
+            .tell(SkillsLoaded {
+                session_id: id.clone(),
+                skills: (0..4).map(|i| skill_named(&format!("s-{i}"))).collect(),
+                error: None,
+            })
+            .await
+            .expect("tell");
+        actor
+            .tell(PromptTemplatesLoaded {
+                session_id: id.clone(),
+                templates: (0..5).map(|i| prompt_named(&format!("p-{i}"))).collect(),
+                error: None,
+            })
+            .await
+            .expect("tell");
+        actor
+            .tell(ContextFilesLoaded {
+                session_id: id,
+                files: (0..6)
+                    .map(|i| context_at(&format!("/p{i}/AGENTS.md")))
+                    .collect(),
+                error: None,
+            })
+            .await
+            .expect("tell");
 
         // Then a second settled event reflects the new counts.
-        let settled = {
-            let events = sink.events();
-            events
-                .iter()
-                .rev()
-                .find_map(|e| match e {
-                    Event::SessionDiscoverySettled(s) => Some(s),
-                    _ => None,
-                })
-                .expect("settled")
-                .clone()
-        };
-        assert_eq!(settled.snapshot.skill_count, 4);
-        assert_eq!(settled.snapshot.prompt_count, 5);
-        assert_eq!(settled.snapshot.context_file_count, 6);
+        let second = await_recorded(&recorder, 1, std::time::Duration::from_secs(1)).await;
+        assert_eq!(second.len(), 1);
+        let last = &second[0];
+        assert_eq!(last.snapshot.skill_count, 4);
+        assert_eq!(last.snapshot.prompt_count, 5);
+        assert_eq!(last.snapshot.context_file_count, 6);
     }
 
     #[tokio::test(start_paused = true)]
     async fn safety_net_timer_fires_delayed_settled() {
         // Given a coordinator.
-        let (mut actor, sink, rx, ctx) = build();
+        let (_harness, actor, recorder) = build_harness().await;
 
         // When only skills + prompts arrive (context missing).
         let id = SessionId::new();
         actor
-            .handle(ActorEnvelope::Event(skills_loaded(&id, 1)), &ctx)
-            .await;
-        drain(&mut actor, &rx, &ctx).await;
+            .tell(SkillsLoaded {
+                session_id: id.clone(),
+                skills: vec![skill_named("s")],
+                error: None,
+            })
+            .await
+            .expect("tell");
         actor
-            .handle(ActorEnvelope::Event(prompts_loaded(&id, 1)), &ctx)
-            .await;
-        drain(&mut actor, &rx, &ctx).await;
-        assert_eq!(settled_count(&sink), 0);
+            .tell(PromptTemplatesLoaded {
+                session_id: id,
+                templates: vec![prompt_named("p")],
+                error: None,
+            })
+            .await
+            .expect("tell");
+
+        // Wait a bit for record processing.
+        tokio::time::sleep(std::time::Duration::from_millis(10)).await;
 
         // And the 3000ms safety-net timer elapses.
-        tokio::time::advance(std::time::Duration::from_millis(3000)).await;
-        drain(&mut actor, &rx, &ctx).await;
+        tokio::time::advance(std::time::Duration::from_secs(3)).await;
+        tokio::time::sleep(std::time::Duration::from_millis(10)).await;
 
         // Then settled fires with a delayed reason naming the missing context.
-        let settled = first_settled(&sink);
-        let reason = settled.delayed.as_ref().expect("delayed reason set");
+        let messages = await_recorded(&recorder, 1, std::time::Duration::from_secs(1)).await;
+        assert_eq!(messages.len(), 1);
+        let reason = messages[0].delayed.as_ref().expect("delayed reason set");
         assert!(
             reason.contains("context"),
             "reason should name the missing resource: {reason}"
@@ -663,37 +687,47 @@ mod tests {
     #[tokio::test(start_paused = true)]
     async fn all_three_just_under_timeout_settles_without_delay() {
         // Given a coordinator.
-        let (mut actor, sink, rx, ctx) = build();
+        let (_harness, actor, recorder) = build_harness().await;
 
         // When all three arrive just under the 3000ms safety-net window.
         let id = SessionId::new();
         actor
-            .handle(ActorEnvelope::Event(skills_loaded(&id, 1)), &ctx)
-            .await;
-        drain(&mut actor, &rx, &ctx).await;
+            .tell(SkillsLoaded {
+                session_id: id.clone(),
+                skills: vec![skill_named("s")],
+                error: None,
+            })
+            .await
+            .expect("tell");
         actor
-            .handle(ActorEnvelope::Event(prompts_loaded(&id, 1)), &ctx)
-            .await;
-        drain(&mut actor, &rx, &ctx).await;
+            .tell(PromptTemplatesLoaded {
+                session_id: id.clone(),
+                templates: vec![prompt_named("p")],
+                error: None,
+            })
+            .await
+            .expect("tell");
         actor
-            .handle(ActorEnvelope::Event(context_loaded(&id, 1)), &ctx)
-            .await;
-        drain(&mut actor, &rx, &ctx).await;
+            .tell(ContextFilesLoaded {
+                session_id: id,
+                files: vec![context_at("/p/AGENTS.md")],
+                error: None,
+            })
+            .await
+            .expect("tell");
 
         // Then settled fires exactly once with no delay.
-        assert_eq!(settled_count(&sink), 1);
+        let messages = await_recorded(&recorder, 1, std::time::Duration::from_secs(1)).await;
+        assert_eq!(messages.len(), 1);
         assert!(
-            first_settled(&sink).delayed.is_none(),
+            messages[0].delayed.is_none(),
             "settled under the window must not be delayed"
         );
 
         // And advancing past 3000ms does not double-fire (stale-guard no-ops).
         tokio::time::advance(std::time::Duration::from_millis(3100)).await;
-        drain(&mut actor, &rx, &ctx).await;
-        assert_eq!(
-            settled_count(&sink),
-            1,
-            "timer must not re-emit after settle"
-        );
+        tokio::time::sleep(std::time::Duration::from_millis(10)).await;
+        let recorded2 = await_recorded(&recorder, 0, std::time::Duration::from_millis(100)).await;
+        assert_eq!(recorded2.len(), 0, "timer must not re-emit after settle");
     }
 }

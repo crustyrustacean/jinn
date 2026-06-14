@@ -71,7 +71,7 @@ impl App {
     /// `wal_checkpoint(TRUNCATE)`) so that a clean exit leaves a
     /// self-contained, up-to-date database. It runs on the live runtime
     /// after the runner has returned, at which point the actor system has
-    /// already drained via `coordinated_shutdown`, so no competing writers
+    /// already drained via graceful shutdown, so no competing writers
     /// remain.
     ///
     /// # Errors
@@ -82,6 +82,10 @@ impl App {
         runner: crate::runner::Runner,
         store: &jinn_domain::SessionStoreService,
     ) -> Result<(), Report<AppError>> {
+        // Extract the root supervisor ref before the runner is consumed, so we
+        // can coordinate actor shutdown after the event loop exits.
+        let root = runner.root_supervisor();
+
         // Run the runner, but don't short-circuit shutdown on its error.
         // The WAL checkpoint is non-destructive and must run whenever the actor
         // system started, so that a clean quit leaves sessions.db self-contained
@@ -89,6 +93,27 @@ impl App {
         // final result; a shutdown error takes precedence (it indicates storage
         // trouble the caller should see).
         let run_result = runner.run().change_context(AppError);
+
+        // Coordinated actor shutdown: signal the root supervisor to stop, which
+        // cascades a graceful shutdown to every supervised child actor (kameo's
+        // lifecycle calls each child's `on_stop`). Race the barrier against a
+        // 20-second timeout; on timeout we proceed regardless so a wedged actor
+        // can't prevent process exit.
+        if let Some(root) = root {
+            self.runtime.block_on(async {
+                root.stop_gracefully().await.ok();
+                if tokio::time::timeout(
+                    std::time::Duration::from_secs(20),
+                    root.wait_for_shutdown(),
+                )
+                .await
+                .is_err()
+                {
+                    tracing::warn!("actor shutdown timed out after 20s; proceeding");
+                }
+            });
+        }
+
         self.runtime
             .block_on(store.shutdown())
             .change_context(AppError)
@@ -104,7 +129,7 @@ impl App {
     pub fn dispatch(&mut self, cli: Cli) -> Result<(), Report<AppError>> {
         use jinn_cli::cli::Commands;
         #[cfg(debug_assertions)]
-        use jinn_cli::cli::{BenchCommands, HeadlessCommands};
+        use jinn_cli::cli::HeadlessCommands;
 
         // Load config from providers.toml (auto-creates on first run).
         let config_storage =
@@ -128,8 +153,7 @@ impl App {
         let llm_service = LlmServiceFactoryService::new(Arc::new(NoProvidersAvailableFactory));
 
         // Create the session store - uses --db-path if provided, otherwise
-        // the platform default. The --db-path flag lets users point the TUI
-        // at a bench database to inspect results after a bench run.
+        // the platform default.
         let session_store = {
             let store = match cli.db_path_opt() {
                 Some(path) => SqliteSessionStore::open_or_create(path),
@@ -200,7 +224,7 @@ impl App {
         };
 
         #[cfg(debug_assertions)]
-        let db_path = cli.db_path_opt().cloned();
+        let _db_path = cli.db_path_opt().cloned();
         match cli.command.unwrap_or(Commands::Tui) {
             Commands::Completions { shell } => {
                 use clap::CommandFactory;
@@ -210,7 +234,7 @@ impl App {
                 return Ok(());
             }
             Commands::Tui => {
-                let (core, services, actor_host, _plugins) =
+                let (core, services, _plugins) = self.runtime.block_on(async {
                     actor_wiring::ActorSystemBuilder::new(actor_wiring::ActorSystemBuilderArgs {
                         handle: self.handle(),
                         llm_service: llm_service.clone(),
@@ -222,16 +246,17 @@ impl App {
                         app_state_storage: app_state_storage.clone(),
                         paths: jinn_domain::AppPaths::default(),
                     })
-                    .build();
-                let app = jinn_tui::launch(core, services, actor_host, _plugins)
-                    .change_context(AppError)?;
+                    .build()
+                    .await
+                });
+                let app = jinn_tui::launch(core, services, _plugins).change_context(AppError)?;
                 let runner = Runner::Tui(Box::new(app));
                 self.run_and_shutdown(runner, &session_store)?;
             }
             #[cfg(debug_assertions)]
             Commands::Headless { command, .. } => {
                 let store_for_shutdown = session_store.clone();
-                let (core, _services, actor_host, _plugins) =
+                let (core, _services, _plugins) = self.runtime.block_on(async {
                     actor_wiring::ActorSystemBuilder::new(actor_wiring::ActorSystemBuilderArgs {
                         handle: self.handle(),
                         llm_service: llm_service.clone(),
@@ -243,7 +268,9 @@ impl App {
                         app_state_storage: app_state_storage.clone(),
                         paths: jinn_domain::AppPaths::default(),
                     })
-                    .build();
+                    .build()
+                    .await
+                });
 
                 jinn_tui::load_compaction_prompt(
                     &core.state,
@@ -256,7 +283,7 @@ impl App {
                     &_services.paths.themes_dir(),
                     &_services.paths.system_themes_dir(),
                 );
-                let mut headless = HeadlessApp::new(core, actor_host, self.handle());
+                let mut headless = HeadlessApp::new(core, _services);
                 match command {
                     Some(HeadlessCommands::SendChat { message }) => {
                         headless.send_chat(&message).change_context(AppError)?;
@@ -280,105 +307,6 @@ impl App {
                         self.runtime
                             .block_on(async { fetch_models().await })
                             .change_context(AppError)?;
-                    }
-                }
-            }
-
-            #[cfg(debug_assertions)]
-            Commands::Bench { subcommand } => {
-                match &subcommand {
-                    BenchCommands::Run { .. } | BenchCommands::Tui {} => {
-                        if db_path.is_none() {
-                            return Err(Report::new(AppError)
-                                .attach("--db-path is required for bench commands"));
-                        }
-                    }
-                    BenchCommands::Show { .. } | BenchCommands::Compare { .. } => {}
-                }
-                match subcommand {
-                    BenchCommands::Run {
-                        model,
-                        task,
-                        csv,
-                        artifact_dir,
-                    } => {
-                        if let Some(ref dir) = artifact_dir {
-                            std::fs::create_dir_all(dir)
-                                .change_context(AppError)
-                                .attach("failed to create artifact directory")?;
-                        }
-
-                        // Build the bench plan from models × tasks.
-                        let plan = jinn_bench::orchestrator::build_plan(&model, &task)
-                            .change_context(AppError)
-                            .attach("invalid task glob pattern")?;
-                        tracing::info!(pairs = plan.pairs.len(), "built bench plan");
-
-                        // Safe: validated above that --db-path is present.
-                        let db_path = db_path.as_ref().unwrap();
-
-                        let session_store = SessionStoreService::new(Arc::new(
-                            SqliteSessionStore::open_or_create(db_path).change_context(AppError)?,
-                        ));
-                        let store_for_shutdown = session_store.clone();
-                        let (core, services, actor_host, plugins) =
-                            actor_wiring::ActorSystemBuilder::new(
-                                actor_wiring::ActorSystemBuilderArgs {
-                                    handle: self.handle(),
-                                    llm_service,
-                                    provider_registry,
-                                    api_keys: resolved_api_keys,
-                                    config_storage,
-                                    session_store,
-                                    user_preferences_storage,
-                                    app_state_storage: app_state_storage.clone(),
-                                    paths: jinn_domain::AppPaths::default(),
-                                },
-                            )
-                            .with_bench_actor(csv, plan, artifact_dir)
-                            .build();
-                        let app = jinn_tui::launch(core, services, actor_host, plugins)
-                            .change_context(AppError)?;
-                        let runner = Runner::Tui(Box::new(app));
-                        self.run_and_shutdown(runner, &store_for_shutdown)?;
-                    }
-                    BenchCommands::Show { csv } => {
-                        jinn_bench::show::show_results(&csv).map_err(|e| {
-                            error_stack::Report::new(AppError).attach(e.to_string())
-                        })?;
-                    }
-                    BenchCommands::Compare { csv_a, csv_b } => {
-                        jinn_bench::compare::compare_results(&csv_a, &csv_b).map_err(|e| {
-                            error_stack::Report::new(AppError).attach(e.to_string())
-                        })?;
-                    }
-                    BenchCommands::Tui {} => {
-                        // Safe: validated above that --db-path is present.
-                        let db_path = db_path.as_ref().unwrap();
-
-                        let session_store = SessionStoreService::new(Arc::new(
-                            SqliteSessionStore::open_or_create(db_path).change_context(AppError)?,
-                        ));
-                        let store_for_shutdown = session_store.clone();
-                        let (core, services, actor_host, plugins) =
-                            actor_wiring::ActorSystemBuilder::new(
-                                actor_wiring::ActorSystemBuilderArgs {
-                                    handle: self.handle(),
-                                    llm_service: llm_service.clone(),
-                                    provider_registry: provider_registry.clone(),
-                                    api_keys: resolved_api_keys.clone(),
-                                    config_storage: config_storage.clone(),
-                                    session_store,
-                                    user_preferences_storage: user_preferences_storage.clone(),
-                                    app_state_storage: app_state_storage.clone(),
-                                    paths: jinn_domain::AppPaths::default(),
-                                },
-                            )
-                            .build();
-                        let app = jinn_tui::launch(core, services, actor_host, plugins)
-                            .change_context(AppError)?;
-                        let runner = Runner::Tui(Box::new(app));
-                        self.run_and_shutdown(runner, &store_for_shutdown)?;
                     }
                 }
             }

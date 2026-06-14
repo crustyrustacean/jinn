@@ -22,42 +22,53 @@ mod helpers;
 
 pub use handlers::lifecycle::setup_running_msg;
 
-use crate::common::actor::{Actor, ActorContext, ActorEnvelope, NoDirectMsg};
-use crate::common::services::Services;
+use kameo::prelude::{Actor, ActorRef, Context, Message};
+
+use crate::common::actor_deps::{ActorDeps, BusPublish};
+use crate::common::services::bus_service::BusService;
 use crate::common::state::State;
 use crate::feat::chat_input::protocol::command::{
-    EnqueueResumeTurn, EnqueueUserMessage, PushChatEntry, SetChatInputText,
+    EnqueueResumeTurn, EnqueueUserMessage, PushChatEntry, SetChatInputText, SubmitSteeringMessage,
 };
+use crate::feat::context::protocol::command::{
+    LoadPersonaPickerEntries, PinChatEntry, UnpinChatEntry,
+};
+use crate::feat::context::protocol::event::{ChatEntryPinChanged, PersonasLoaded};
 use crate::feat::context::strategy::token_estimator::TiktokenCounter;
 use crate::feat::provider::protocol::command::SendMessage;
-use crate::feat::provider::protocol::event::{ModelsRefreshed, StreamCompleted, StreamToken};
+use crate::feat::provider::protocol::event::{
+    ModelsRefreshed, PromptTemplatesLoaded, StreamCompleted, StreamToken,
+};
+use crate::feat::session::protocol::archive_session::ArchiveSession;
 use crate::feat::session::protocol::close_session::CloseSession;
 use crate::feat::session::protocol::load_session_picker_entries::LoadSessionPickerEntries;
 use crate::feat::session::protocol::mark_session_interacted::MarkSessionInteracted;
 use crate::feat::session::protocol::reset_session_history::ResetSessionHistory;
+use crate::feat::session::protocol::session_fork_requested::SessionForkRequested;
+use crate::feat::session::protocol::session_load_requested::SessionLoadRequested;
+use crate::feat::session::protocol::submit_history_mutations::SubmitHistoryMutations;
+use crate::feat::session::protocol::task_list_updated::TaskListUpdated;
+use crate::feat::session_lifecycle::protocol::command::PersistSession;
 use crate::feat::session_lifecycle::protocol::command::{
-    PersistSession, RunSessionSetup, RunSessionTeardown,
+    CancelLifecycleCommand, FinishSessionSetup, FinishSessionTeardown, RunSessionSetup,
+    RunSessionTeardown, SetSessionCwd,
 };
-
+use crate::feat::skills::skills_scan_actor::SkillsLoaded;
 use crate::feat::tools_actor::protocol::event::{
     ToolBatchCompleted, ToolCallReceived, ToolCallStreaming, ToolExecutionCompleted,
-    ToolExecutionOutput, ToolExecutionStarted, ToolUseStarted,
+    ToolExecutionOutput, ToolExecutionStarted, ToolUseStarted, ToolsRegistered,
 };
 use crate::init::EnvironmentLoaded;
-use crate::protocol::{Command, Event};
-
-use crate::SessionForkRequested;
-use crate::SessionLoadRequested;
 
 /// Session lifecycle and persistence actor.
 ///
 /// Subscribes to session-related commands and events, mutates [`State`],
-/// and emits new commands and events via the [`ActorContext`] message sink.
+/// and emits new commands and events via the message bus.
 /// Also persists session snapshots to disk when session state changes.
 pub struct SessionPersistenceActor {
     state: State,
     /// Runtime services (user preferences storage for startup config loading).
-    services: Services,
+    services: crate::common::services::Services,
     /// Token counter for recording token usage in the session ledger.
     counter: TiktokenCounter,
     /// Registry of builtin lifecycle handlers.
@@ -71,408 +82,390 @@ pub struct SessionPersistenceActor {
     lifecycle_child: Option<crate::feat::session_lifecycle::command_runner::LifecycleCancelHandle>,
 }
 
+impl BusPublish for SessionPersistenceActor {
+    fn bus(&self) -> &BusService {
+        &self.services.bus
+    }
+}
+
+#[derive(Clone)]
 pub struct SessionPersistenceActorDeps {
-    /// Shared application state.
+    pub deps: ActorDeps,
     pub state: State,
-    /// Runtime services.
-    pub services: Services,
-    /// Token counter for usage tracking.
     pub counter: TiktokenCounter,
-    /// Registry of builtin lifecycle handlers.
     pub builtin_registry: crate::feat::session_lifecycle::builtin::BuiltinRegistry,
-    /// Shell captured at startup for running lifecycle commands.
     pub shell: String,
 }
 
 impl Actor for SessionPersistenceActor {
-    type Message = NoDirectMsg;
-    type Deps = SessionPersistenceActorDeps;
+    type Args = SessionPersistenceActorDeps;
+    type Error = std::convert::Infallible;
 
-    fn activate(deps: Self::Deps, ctx: &mut ActorContext) -> Self {
+    async fn on_start(args: Self::Args, actor_ref: ActorRef<Self>) -> Result<Self, Self::Error> {
+        let bus = &args.deps.services.bus;
+
         // Persistence subscriptions.
-        ctx.subscribe_command::<SessionLoadRequested>();
-        ctx.subscribe_command::<LoadSessionPickerEntries>();
-        ctx.subscribe_command::<SessionForkRequested>();
+        bus.subscribe::<SessionLoadRequested, _>(&actor_ref).await;
+        bus.subscribe::<LoadSessionPickerEntries, _>(&actor_ref)
+            .await;
+        bus.subscribe::<SessionForkRequested, _>(&actor_ref).await;
 
         // Session lifecycle subscriptions.
-        ctx.subscribe_command::<EnqueueUserMessage>();
-        ctx.subscribe_command::<crate::feat::chat_input::protocol::command::SubmitSteeringMessage>(
-        );
-        ctx.subscribe_command::<EnqueueResumeTurn>();
-        ctx.subscribe_command::<SetChatInputText>();
-        ctx.subscribe_command::<PushChatEntry>();
-        ctx.subscribe_command::<SendMessage>();
+        bus.subscribe::<EnqueueUserMessage, _>(&actor_ref).await;
+        bus.subscribe::<SubmitSteeringMessage, _>(&actor_ref).await;
+        bus.subscribe::<EnqueueResumeTurn, _>(&actor_ref).await;
+        bus.subscribe::<SetChatInputText, _>(&actor_ref).await;
+        bus.subscribe::<PushChatEntry, _>(&actor_ref).await;
+        bus.subscribe::<SendMessage, _>(&actor_ref).await;
 
         // Lifecycle command subscriptions.
-        ctx.subscribe_command::<RunSessionSetup>();
-        ctx.subscribe_command::<RunSessionTeardown>();
-        ctx.subscribe_command::<crate::feat::session_lifecycle::protocol::command::FinishSessionTeardown>();
-        ctx.subscribe_command::<crate::feat::session_lifecycle::protocol::command::FinishSessionSetup>();
-        ctx.subscribe_command::<crate::feat::session_lifecycle::protocol::command::CancelLifecycleCommand>();
-        ctx.subscribe_command::<crate::feat::session_lifecycle::protocol::command::SetSessionCwd>();
+        bus.subscribe::<RunSessionSetup, _>(&actor_ref).await;
+        bus.subscribe::<RunSessionTeardown, _>(&actor_ref).await;
+        bus.subscribe::<FinishSessionTeardown, _>(&actor_ref).await;
+        bus.subscribe::<FinishSessionSetup, _>(&actor_ref).await;
+        bus.subscribe::<CancelLifecycleCommand, _>(&actor_ref).await;
+        bus.subscribe::<SetSessionCwd, _>(&actor_ref).await;
 
-        ctx.subscribe_command::<PersistSession>();
-        ctx.subscribe_command::<CloseSession>();
-        ctx.subscribe_command::<crate::feat::session::protocol::archive_session::ArchiveSession>();
-        ctx.subscribe_command::<crate::feat::session::protocol::submit_history_mutations::SubmitHistoryMutations>();
-        ctx.subscribe_command::<MarkSessionInteracted>();
-        ctx.subscribe_command::<ResetSessionHistory>();
+        bus.subscribe::<PersistSession, _>(&actor_ref).await;
+        bus.subscribe::<CloseSession, _>(&actor_ref).await;
+        bus.subscribe::<ArchiveSession, _>(&actor_ref).await;
+        bus.subscribe::<SubmitHistoryMutations, _>(&actor_ref).await;
+        bus.subscribe::<MarkSessionInteracted, _>(&actor_ref).await;
+        bus.subscribe::<ResetSessionHistory, _>(&actor_ref).await;
 
-        // Context-related subscriptions (relocated from PromptAssemblyActor).
-        ctx.subscribe_command::<crate::feat::context::protocol::command::PinChatEntry>();
-        ctx.subscribe_command::<crate::feat::context::protocol::command::UnpinChatEntry>();
-        ctx.subscribe_command::<crate::feat::context::protocol::command::LoadPersonaPickerEntries>(
-        );
+        // Context-related subscriptions.
+        bus.subscribe::<PinChatEntry, _>(&actor_ref).await;
+        bus.subscribe::<UnpinChatEntry, _>(&actor_ref).await;
+        bus.subscribe::<LoadPersonaPickerEntries, _>(&actor_ref)
+            .await;
 
         // Event subscriptions.
-        ctx.subscribe_event::<StreamToken>();
-        ctx.subscribe_event::<StreamCompleted>();
-        ctx.subscribe_event::<ToolUseStarted>();
-        ctx.subscribe_event::<ToolCallReceived>();
-        ctx.subscribe_event::<ToolCallStreaming>();
-        ctx.subscribe_event::<ToolExecutionCompleted>();
-        ctx.subscribe_event::<ToolBatchCompleted>();
-        ctx.subscribe_event::<ToolExecutionStarted>();
-        ctx.subscribe_event::<ToolExecutionOutput>();
-        ctx.subscribe_event::<crate::feat::context::protocol::event::ChatEntryPinChanged>();
-        ctx.subscribe_event::<crate::feat::session::protocol::task_list_updated::TaskListUpdated>();
-        ctx.subscribe_event::<ModelsRefreshed>();
-        ctx.subscribe_event::<crate::feat::skills::skills_scan_actor::SkillsLoaded>();
-        ctx.subscribe_event::<EnvironmentLoaded>();
-        ctx.subscribe_event::<crate::feat::session::protocol::user_interacted::UserInteracted>();
+        bus.subscribe::<StreamToken, _>(&actor_ref).await;
+        bus.subscribe::<StreamCompleted, _>(&actor_ref).await;
+        bus.subscribe::<ToolUseStarted, _>(&actor_ref).await;
+        bus.subscribe::<ToolCallReceived, _>(&actor_ref).await;
+        bus.subscribe::<ToolCallStreaming, _>(&actor_ref).await;
+        bus.subscribe::<ToolExecutionCompleted, _>(&actor_ref).await;
+        bus.subscribe::<ToolBatchCompleted, _>(&actor_ref).await;
+        bus.subscribe::<ToolExecutionStarted, _>(&actor_ref).await;
+        bus.subscribe::<ToolExecutionOutput, _>(&actor_ref).await;
+        bus.subscribe::<ChatEntryPinChanged, _>(&actor_ref).await;
+        bus.subscribe::<TaskListUpdated, _>(&actor_ref).await;
+        bus.subscribe::<ModelsRefreshed, _>(&actor_ref).await;
+        bus.subscribe::<SkillsLoaded, _>(&actor_ref).await;
+        bus.subscribe::<EnvironmentLoaded, _>(&actor_ref).await;
+        bus.subscribe::<ToolsRegistered, _>(&actor_ref).await;
+        bus.subscribe::<PromptTemplatesLoaded, _>(&actor_ref).await;
+        bus.subscribe::<PersonasLoaded, _>(&actor_ref).await;
 
-        // Context-related subscriptions (relocated from PromptAssemblyActor).
-        ctx.subscribe_event::<crate::feat::tools_actor::protocol::event::ToolsRegistered>();
-        ctx.subscribe_event::<crate::feat::provider::protocol::event::PromptTemplatesLoaded>();
-        ctx.subscribe_event::<crate::feat::context::protocol::event::PersonasLoaded>();
-
-        ctx.set_description("Session lifecycle and persistence");
-
-        Self {
-            state: deps.state,
-            services: deps.services,
-            counter: deps.counter,
-            builtin_registry: deps.builtin_registry,
-            shell: deps.shell,
+        Ok(Self {
+            state: args.state,
+            services: args.deps.services,
+            counter: args.counter,
+            builtin_registry: args.builtin_registry,
+            shell: args.shell,
             lifecycle_child: None,
-        }
-    }
-
-    async fn handle(&mut self, msg: ActorEnvelope<Self::Message>, ctx: &ActorContext) {
-        match msg {
-            ActorEnvelope::Event(event) => self.handle_event(&event, ctx).await,
-            ActorEnvelope::Command(cmd) => {
-                tracing::debug!(cmd = %cmd, "session-persistence: received command");
-                self.handle_command(&cmd, ctx).await;
-            }
-            _ => {}
-        }
-    }
-
-    async fn on_shutdown(&mut self, _ctx: &ActorContext) {
-        // Run store shutdown - deletes empty unarchived sessions.
+        })
     }
 }
 
-impl SessionPersistenceActor {
-    /// Dispatches a bus event to the appropriate handler.
-    async fn handle_event(&mut self, event: &Event, ctx: &ActorContext) {
-        match event {
-            Event::StreamToken(payload) => self.on_stream_token(payload),
-            Event::StreamCompleted(payload) => self.on_stream_completed(payload, ctx).await,
-            Event::ToolUseStarted(payload) => self.on_tool_use_started(payload),
-            Event::ToolCallReceived(payload) => self.on_tool_call_received(payload),
-            Event::ToolCallStreaming(payload) => self.on_tool_call_streaming(payload),
-            Event::ToolExecutionCompleted(payload) => {
-                self.on_tool_execution_completed(payload, ctx).await;
-            }
-            Event::ToolBatchCompleted(payload) => {
-                self.on_tool_batch_completed(payload, ctx);
-            }
-            Event::ToolExecutionStarted(payload) => {
-                self.on_tool_execution_started(payload);
-            }
-            Event::ToolExecutionOutput(payload) => {
-                self.on_tool_execution_output(payload);
-            }
-            Event::ModelsRefreshed(payload) => {
-                self.on_models_refreshed(payload);
-            }
-            Event::SkillsLoaded(payload) => {
-                self.on_skills_loaded(payload);
-            }
-            Event::EnvironmentLoaded(payload) => {
-                self.on_environment_loaded(&payload.config, ctx).await;
-            }
-            Event::ChatEntryPinChanged(payload) => {
-                self.save_active_session(&payload.session_id).await;
-            }
-            Event::TaskListUpdated(payload) => {
-                self.save_active_session(&payload.session_id).await;
-            }
-            Event::SessionLoadCompleted(payload) => {
-                self.handle_session_load_completed(payload, ctx).await;
-            }
+// ---------------------------------------------------------------------------
+// Message handlers — direct handler calls
+// ---------------------------------------------------------------------------
 
-            // Context-related events (relocated from PromptAssemblyActor).
-            Event::ToolsRegistered(payload) => {
-                self.on_tools_registered(payload);
-            }
-            Event::PromptTemplatesLoaded(payload) => {
-                self.on_prompt_templates_loaded(payload);
-            }
-            Event::PersonasLoaded(payload) => {
-                self.on_personas_loaded(payload);
-            }
-
-            _ => {}
-        }
-    }
-
-    /// Dispatches a command to the appropriate handler.
-    async fn handle_command(&mut self, cmd: &Command, ctx: &ActorContext) {
-        match cmd {
-            Command::SessionLoadRequested(payload) => self.on_load_requested(payload, ctx).await,
-            Command::SessionForkRequested(payload) => {
-                self.on_session_fork_requested(payload, ctx).await;
-            }
-            Command::LoadSessionPickerEntries(payload) => {
-                self.handle_load_session_picker_entries(payload).await;
-            }
-            Command::EnqueueUserMessage(payload) => {
-                self.handle_enqueue_user_message(payload, ctx).await;
-            }
-            Command::EnqueueResumeTurn(payload) => {
-                self.handle_enqueue_resume_turn(payload, ctx).await;
-            }
-            Command::SubmitSteeringMessage(payload) => {
-                self.handle_submit_steering_message(payload);
-            }
-            Command::SetChatInputText(payload) => self.handle_set_chat_input_text(payload),
-            Command::PushChatEntry(payload) => {
-                self.handle_push_chat_entry(payload, ctx).await;
-            }
-            Command::SendMessage(payload) => Self::handle_send_message(payload, ctx),
-            Command::RunSessionSetup(payload) => {
-                self.handle_run_session_setup(payload, ctx).await;
-            }
-            Command::RunSessionTeardown(payload) => {
-                self.handle_run_session_teardown(payload, ctx).await;
-            }
-            Command::CloseSession(payload) => {
-                self.handle_close_session(payload, ctx).await;
-            }
-            Command::ArchiveSession(payload) => {
-                self.handle_archive_session(payload, ctx).await;
-            }
-            Command::PersistSession(payload) => {
-                self.handle_persist_session(payload).await;
-            }
-            // Context-related commands (relocated from PromptAssemblyActor).
-            Command::PinChatEntry(payload) => {
-                self.handle_pin_chat_entry(payload, ctx);
-            }
-            Command::UnpinChatEntry(payload) => {
-                self.handle_unpin_chat_entry(payload, ctx);
-            }
-            Command::LoadPersonaPickerEntries(payload) => {
-                self.handle_load_persona_picker_entries(payload);
-            }
-
-            Command::FinishSessionTeardown(payload) => {
-                self.handle_finish_session_teardown(payload, ctx).await;
-            }
-            Command::FinishSessionSetup(payload) => {
-                self.handle_finish_session_setup(payload, ctx).await;
-            }
-            Command::CancelLifecycleCommand(payload) => {
-                self.handle_cancel_lifecycle_command(payload, ctx);
-            }
-            Command::SetSessionCwd(payload) => {
-                self.handle_set_session_cwd(payload, ctx);
-            }
-
-            Command::MarkSessionInteracted(payload) => {
-                self.handle_mark_session_interacted(payload, ctx).await;
-            }
-            Command::SubmitHistoryMutations(payload) => {
-                self.handle_submit_history_mutations(payload, ctx);
-            }
-            Command::ResetSessionHistory(payload) => {
-                self.handle_reset_session_history(payload, ctx);
-            }
-            // Commands NOT subscribed to - these should not arrive.
-            Command::SendToLlmProvider(..)
-            | Command::ExecuteTool(..)
-            | Command::ProceedWithShutdown(..)
-            | Command::CancelStream(..)
-            | Command::RefreshModels
-            | Command::RescanPromptTemplates(..)
-            | Command::ExecuteToolBatch(..)
-            | Command::RegisterTools(..)
-            | Command::ProviderSwitch(..)
-            | Command::LoadProviderPickerEntries(..)
-            | Command::CancelToolBatch(..)
-            | Command::ScanSkills(..)
-            | Command::ScanContextFiles(..)
-            | Command::RescanPersonas(..)
-            | Command::UpdatePreferences(..)
-            | Command::UpdateAppState(..)
-            | Command::LoadCompactionModelPickerEntries(..)
-            | Command::TriggerCompaction(..)
-            | Command::Dynamic(..)
-            | Command::ExecuteWebFetch(..)
-            | Command::AttachPlugin(..)
-            | Command::DetachPlugin(..)
-            | Command::TogglePlugin(..)
-            | Command::RegisterPluginTools(..)
-            | Command::SetManagedSession(..) => {}
-        }
+impl Message<SessionLoadRequested> for SessionPersistenceActor {
+    type Reply = ();
+    async fn handle(&mut self, msg: SessionLoadRequested, _ctx: &mut Context<Self, Self::Reply>) {
+        self.on_load_requested(&msg).await;
     }
 }
 
-#[cfg(test)]
-mod dispatch_tests {
-    #![allow(
-        clippy::expect_used,
-        clippy::panic,
-        clippy::unreachable,
-        clippy::indexing_slicing,
-        reason = "test code"
-    )]
-    use super::*;
-    use crate::common::actor::ActorEnvelope;
-    use crate::feat::chat_input::protocol::command::EnqueueUserMessage;
-    use crate::feat::provider::protocol::event::StreamToken;
-    use crate::feat::tools_actor::protocol::event::ToolCallReceived;
-    use crate::protocol::{Command, Event};
-
-    fn test_actor() -> SessionPersistenceActor {
-        use crate::common::app_state::AppState;
-        use crate::common::state::State;
-        use crate::feat::context::strategy::token_estimator::TiktokenCounter;
-
-        SessionPersistenceActor {
-            state: State::new(AppState::default()),
-            services: crate::common::services::Services::new(),
-            counter: TiktokenCounter::o200k_base(),
-            builtin_registry: crate::feat::session_lifecycle::builtin::BuiltinRegistry::new(),
-            shell: "/bin/sh".to_owned(),
-            lifecycle_child: None,
-        }
-    }
-
-    fn test_context() -> (
-        std::sync::Arc<crate::common::actor::RecordingSink>,
-        crate::common::actor::ActorContext,
+impl Message<LoadSessionPickerEntries> for SessionPersistenceActor {
+    type Reply = ();
+    async fn handle(
+        &mut self,
+        msg: LoadSessionPickerEntries,
+        _ctx: &mut Context<Self, Self::Reply>,
     ) {
-        let sink = std::sync::Arc::new(crate::common::actor::RecordingSink::new());
-        let ctx = crate::common::actor::ActorContext::new("test-session-actor", sink.clone());
-        (sink, ctx)
+        self.handle_load_session_picker_entries(&msg).await;
     }
+}
 
-    #[tokio::test]
-    async fn handle_event_stream_token_dispatches_to_handler() {
-        // Given an actor with a session in streaming state.
-        let mut actor = test_actor();
-        let (_sink, ctx) = test_context();
-        let session_id = {
-            let mut state = actor.state.write();
-            let session = state.active_session_mut();
-            session.begin_streaming();
-            state.session.active_session_id().clone()
-        };
-
-        // When handling a StreamToken event via the dispatch path.
-        let event = Event::StreamToken(StreamToken {
-            session_id: session_id.clone(),
-            index: 0,
-            token: "hello".to_owned(),
-            is_thinking: false,
-            dispatched_at: jiff::Timestamp::now(),
-        });
-        actor.handle(ActorEnvelope::Event(event), &ctx).await;
-
-        // Then the handler was invoked (session still streaming = no crash).
-        let state = actor.state.read();
-        let session = state.session.get(&session_id).expect("session exists");
-        // Verify the token was appended (handler ran successfully).
-        assert!(!session.history().is_empty());
+impl Message<SessionForkRequested> for SessionPersistenceActor {
+    type Reply = ();
+    async fn handle(&mut self, msg: SessionForkRequested, _ctx: &mut Context<Self, Self::Reply>) {
+        self.on_session_fork_requested(&msg).await;
     }
+}
 
-    #[tokio::test]
-    async fn handle_event_tool_call_received_dispatches_to_handler() {
-        // Given an actor with an active session.
-        let mut actor = test_actor();
-        let (_sink, ctx) = test_context();
-        let session_id = actor.state.read().session.active_session_id().clone();
-
-        // When handling a ToolCallReceived event via the dispatch path.
-        let event = Event::ToolCallReceived(ToolCallReceived {
-            session_id: session_id.clone(),
-            tool_call: jinn_provider::ToolCall {
-                id: "tc_1".to_owned(),
-                name: "bash".to_owned(),
-                arguments: "{}".to_owned(),
-            },
-            dispatched_at: jiff::Timestamp::now(),
-        });
-        actor.handle(ActorEnvelope::Event(event), &ctx).await;
-
-        // Then the handler was invoked (no panic = dispatch worked).
+impl Message<EnqueueUserMessage> for SessionPersistenceActor {
+    type Reply = ();
+    async fn handle(&mut self, msg: EnqueueUserMessage, _ctx: &mut Context<Self, Self::Reply>) {
+        self.handle_enqueue_user_message(&msg).await;
     }
+}
 
-    #[tokio::test]
-    async fn handle_command_enqueue_user_message_dispatches_to_handler() {
-        // Given an actor with an active session.
-        let mut actor = test_actor();
-        let (_sink, ctx) = test_context();
-        let session_id = actor.state.read().session.active_session_id().clone();
-
-        // When handling an EnqueueUserMessage command via the dispatch path.
-        let cmd = Command::EnqueueUserMessage(EnqueueUserMessage {
-            session_id: session_id.clone(),
-            entry: crate::protocol::ChatEntry::user("hello world"),
-        });
-        actor.handle(ActorEnvelope::Command(cmd), &ctx).await;
-
-        // Then the handler was invoked (no panic = dispatch worked).
+impl Message<SubmitSteeringMessage> for SessionPersistenceActor {
+    type Reply = ();
+    async fn handle(&mut self, msg: SubmitSteeringMessage, _ctx: &mut Context<Self, Self::Reply>) {
+        self.handle_submit_steering_message(&msg);
     }
+}
 
-    #[tokio::test]
-    async fn handle_event_models_refreshed_dispatches_to_handler() {
-        // Given an actor.
-        let mut actor = test_actor();
-        let (_sink, ctx) = test_context();
-
-        // When handling a ModelsRefreshed event via the dispatch path.
-        let event = Event::ModelsRefreshed(ModelsRefreshed {
-            session_id: crate::protocol::SessionId::new(),
-            results: std::collections::HashMap::new(),
-            errors: std::collections::HashMap::new(),
-        });
-        actor.handle(ActorEnvelope::Event(event), &ctx).await;
-
-        // Then no panic (dispatch to on_models_refreshed worked).
+impl Message<EnqueueResumeTurn> for SessionPersistenceActor {
+    type Reply = ();
+    async fn handle(&mut self, msg: EnqueueResumeTurn, _ctx: &mut Context<Self, Self::Reply>) {
+        self.handle_enqueue_resume_turn(&msg).await;
     }
+}
 
-    #[tokio::test]
-    async fn handle_event_environment_loaded_dispatches_to_handler() {
-        // Given an actor.
-        let mut actor = test_actor();
-        let (_sink, ctx) = test_context();
+impl Message<SetChatInputText> for SessionPersistenceActor {
+    type Reply = ();
+    async fn handle(&mut self, msg: SetChatInputText, _ctx: &mut Context<Self, Self::Reply>) {
+        self.handle_set_chat_input_text(&msg);
+    }
+}
 
-        // When handling an EnvironmentLoaded event via the dispatch path.
-        let event = Event::EnvironmentLoaded(EnvironmentLoaded {
-            config: crate::feat::provider_infra::ProvidersConfig {
-                providers: vec![],
-                aliases: vec![],
-                default_provider: None,
-                alloys: vec![],
-            },
-        });
-        actor.handle(ActorEnvelope::Event(event), &ctx).await;
+impl Message<PushChatEntry> for SessionPersistenceActor {
+    type Reply = ();
+    async fn handle(&mut self, msg: PushChatEntry, _ctx: &mut Context<Self, Self::Reply>) {
+        self.handle_push_chat_entry(&msg).await;
+    }
+}
 
-        // Then no panic (dispatch to on_environment_loaded worked).
+impl Message<SendMessage> for SessionPersistenceActor {
+    type Reply = ();
+    async fn handle(&mut self, msg: SendMessage, _ctx: &mut Context<Self, Self::Reply>) {
+        self.handle_send_message(&msg).await;
+    }
+}
+
+impl Message<RunSessionSetup> for SessionPersistenceActor {
+    type Reply = ();
+    async fn handle(&mut self, msg: RunSessionSetup, _ctx: &mut Context<Self, Self::Reply>) {
+        self.handle_run_session_setup(&msg).await;
+    }
+}
+
+impl Message<RunSessionTeardown> for SessionPersistenceActor {
+    type Reply = ();
+    async fn handle(&mut self, msg: RunSessionTeardown, _ctx: &mut Context<Self, Self::Reply>) {
+        self.handle_run_session_teardown(&msg).await;
+    }
+}
+
+impl Message<FinishSessionTeardown> for SessionPersistenceActor {
+    type Reply = ();
+    async fn handle(&mut self, msg: FinishSessionTeardown, _ctx: &mut Context<Self, Self::Reply>) {
+        self.handle_finish_session_teardown(&msg).await;
+    }
+}
+
+impl Message<FinishSessionSetup> for SessionPersistenceActor {
+    type Reply = ();
+    async fn handle(&mut self, msg: FinishSessionSetup, _ctx: &mut Context<Self, Self::Reply>) {
+        self.handle_finish_session_setup(&msg).await;
+    }
+}
+
+impl Message<CancelLifecycleCommand> for SessionPersistenceActor {
+    type Reply = ();
+    async fn handle(&mut self, msg: CancelLifecycleCommand, _ctx: &mut Context<Self, Self::Reply>) {
+        self.handle_cancel_lifecycle_command(&msg);
+    }
+}
+
+impl Message<SetSessionCwd> for SessionPersistenceActor {
+    type Reply = ();
+    async fn handle(&mut self, msg: SetSessionCwd, _ctx: &mut Context<Self, Self::Reply>) {
+        self.handle_set_session_cwd(&msg).await;
+    }
+}
+
+impl Message<PersistSession> for SessionPersistenceActor {
+    type Reply = ();
+    async fn handle(&mut self, msg: PersistSession, _ctx: &mut Context<Self, Self::Reply>) {
+        self.handle_persist_session(&msg).await;
+    }
+}
+
+impl Message<CloseSession> for SessionPersistenceActor {
+    type Reply = ();
+    async fn handle(&mut self, msg: CloseSession, _ctx: &mut Context<Self, Self::Reply>) {
+        self.handle_close_session(&msg).await;
+    }
+}
+
+impl Message<ArchiveSession> for SessionPersistenceActor {
+    type Reply = ();
+    async fn handle(&mut self, msg: ArchiveSession, _ctx: &mut Context<Self, Self::Reply>) {
+        self.handle_archive_session(&msg).await;
+    }
+}
+
+impl Message<PinChatEntry> for SessionPersistenceActor {
+    type Reply = ();
+    async fn handle(&mut self, msg: PinChatEntry, _ctx: &mut Context<Self, Self::Reply>) {
+        self.handle_pin_chat_entry(&msg).await;
+    }
+}
+
+impl Message<UnpinChatEntry> for SessionPersistenceActor {
+    type Reply = ();
+    async fn handle(&mut self, msg: UnpinChatEntry, _ctx: &mut Context<Self, Self::Reply>) {
+        self.handle_unpin_chat_entry(&msg).await;
+    }
+}
+
+impl Message<LoadPersonaPickerEntries> for SessionPersistenceActor {
+    type Reply = ();
+    async fn handle(
+        &mut self,
+        msg: LoadPersonaPickerEntries,
+        _ctx: &mut Context<Self, Self::Reply>,
+    ) {
+        self.handle_load_persona_picker_entries(&msg);
+    }
+}
+
+impl Message<MarkSessionInteracted> for SessionPersistenceActor {
+    type Reply = ();
+    async fn handle(&mut self, msg: MarkSessionInteracted, _ctx: &mut Context<Self, Self::Reply>) {
+        self.handle_mark_session_interacted(&msg).await;
+    }
+}
+
+impl Message<SubmitHistoryMutations> for SessionPersistenceActor {
+    type Reply = ();
+    async fn handle(&mut self, msg: SubmitHistoryMutations, _ctx: &mut Context<Self, Self::Reply>) {
+        self.handle_submit_history_mutations(&msg).await;
+    }
+}
+
+impl Message<ResetSessionHistory> for SessionPersistenceActor {
+    type Reply = ();
+    async fn handle(&mut self, msg: ResetSessionHistory, _ctx: &mut Context<Self, Self::Reply>) {
+        self.handle_reset_session_history(&msg);
+    }
+}
+
+// Event handlers
+
+impl Message<StreamToken> for SessionPersistenceActor {
+    type Reply = ();
+    async fn handle(&mut self, msg: StreamToken, _ctx: &mut Context<Self, Self::Reply>) {
+        self.on_stream_token(&msg);
+    }
+}
+
+impl Message<StreamCompleted> for SessionPersistenceActor {
+    type Reply = ();
+    async fn handle(&mut self, msg: StreamCompleted, _ctx: &mut Context<Self, Self::Reply>) {
+        self.on_stream_completed(&msg).await;
+    }
+}
+
+impl Message<ToolUseStarted> for SessionPersistenceActor {
+    type Reply = ();
+    async fn handle(&mut self, msg: ToolUseStarted, _ctx: &mut Context<Self, Self::Reply>) {
+        self.on_tool_use_started(&msg);
+    }
+}
+
+impl Message<ToolCallReceived> for SessionPersistenceActor {
+    type Reply = ();
+    async fn handle(&mut self, msg: ToolCallReceived, _ctx: &mut Context<Self, Self::Reply>) {
+        self.on_tool_call_received(&msg);
+    }
+}
+
+impl Message<ToolCallStreaming> for SessionPersistenceActor {
+    type Reply = ();
+    async fn handle(&mut self, msg: ToolCallStreaming, _ctx: &mut Context<Self, Self::Reply>) {
+        self.on_tool_call_streaming(&msg);
+    }
+}
+
+impl Message<ToolExecutionCompleted> for SessionPersistenceActor {
+    type Reply = ();
+    async fn handle(&mut self, msg: ToolExecutionCompleted, _ctx: &mut Context<Self, Self::Reply>) {
+        self.on_tool_execution_completed(&msg).await;
+    }
+}
+
+impl Message<ToolBatchCompleted> for SessionPersistenceActor {
+    type Reply = ();
+    async fn handle(&mut self, msg: ToolBatchCompleted, _ctx: &mut Context<Self, Self::Reply>) {
+        self.on_tool_batch_completed(&msg).await;
+    }
+}
+
+impl Message<ToolExecutionStarted> for SessionPersistenceActor {
+    type Reply = ();
+    async fn handle(&mut self, msg: ToolExecutionStarted, _ctx: &mut Context<Self, Self::Reply>) {
+        self.on_tool_execution_started(&msg);
+    }
+}
+
+impl Message<ToolExecutionOutput> for SessionPersistenceActor {
+    type Reply = ();
+    async fn handle(&mut self, msg: ToolExecutionOutput, _ctx: &mut Context<Self, Self::Reply>) {
+        self.on_tool_execution_output(&msg);
+    }
+}
+
+impl Message<ModelsRefreshed> for SessionPersistenceActor {
+    type Reply = ();
+    async fn handle(&mut self, msg: ModelsRefreshed, _ctx: &mut Context<Self, Self::Reply>) {
+        self.on_models_refreshed(&msg);
+    }
+}
+
+impl Message<SkillsLoaded> for SessionPersistenceActor {
+    type Reply = ();
+    async fn handle(&mut self, msg: SkillsLoaded, _ctx: &mut Context<Self, Self::Reply>) {
+        self.on_skills_loaded(&msg);
+    }
+}
+
+impl Message<EnvironmentLoaded> for SessionPersistenceActor {
+    type Reply = ();
+    async fn handle(&mut self, msg: EnvironmentLoaded, _ctx: &mut Context<Self, Self::Reply>) {
+        self.on_environment_loaded(&msg.config).await;
+    }
+}
+
+impl Message<ChatEntryPinChanged> for SessionPersistenceActor {
+    type Reply = ();
+    async fn handle(&mut self, msg: ChatEntryPinChanged, _ctx: &mut Context<Self, Self::Reply>) {
+        self.save_active_session(&msg.session_id).await;
+    }
+}
+
+impl Message<TaskListUpdated> for SessionPersistenceActor {
+    type Reply = ();
+    async fn handle(&mut self, msg: TaskListUpdated, _ctx: &mut Context<Self, Self::Reply>) {
+        self.save_active_session(&msg.session_id).await;
+    }
+}
+
+impl Message<ToolsRegistered> for SessionPersistenceActor {
+    type Reply = ();
+    async fn handle(&mut self, msg: ToolsRegistered, _ctx: &mut Context<Self, Self::Reply>) {
+        self.on_tools_registered(&msg);
+    }
+}
+
+impl Message<PromptTemplatesLoaded> for SessionPersistenceActor {
+    type Reply = ();
+    async fn handle(&mut self, msg: PromptTemplatesLoaded, _ctx: &mut Context<Self, Self::Reply>) {
+        self.on_prompt_templates_loaded(&msg);
+    }
+}
+
+impl Message<PersonasLoaded> for SessionPersistenceActor {
+    type Reply = ();
+    async fn handle(&mut self, msg: PersonasLoaded, _ctx: &mut Context<Self, Self::Reply>) {
+        self.on_personas_loaded(&msg);
     }
 }

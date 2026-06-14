@@ -4,11 +4,10 @@
 //! follow-up commands for strategy restoration) and forking a session at a specific
 //! point in its history.
 
-use crate::common::actor::ActorContext;
-
-use crate::feat::session::model_selection::ModelSelection;
+use crate::common::actor_deps::BusPublish;
 use crate::feat::session::protocol::session_load_completed::SessionLoadCompleted;
-use crate::protocol::{ChatEntry, Event};
+use crate::protocol::ChatEntry;
+use crate::protocol::system::ActiveSessionChanged;
 
 use super::super::SessionPersistenceActor;
 use crate::SessionForkRequested;
@@ -22,7 +21,6 @@ impl SessionPersistenceActor {
     pub(in crate::feat::session::session_actor) async fn handle_session_load_completed(
         &self,
         payload: &SessionLoadCompleted,
-        ctx: &ActorContext,
     ) {
         let session_id = payload.session.session_id().clone();
         let original_cwd;
@@ -90,13 +88,10 @@ impl SessionPersistenceActor {
         }
 
         // Notify other actors that the active session changed.
-        {
-            let _ = ctx.send_event(Event::ActiveSessionChanged(
-                crate::protocol::system::ActiveSessionChanged {
-                    session_id: session_id.clone(),
-                },
-            ));
-        }
+        self.publish(ActiveSessionChanged {
+            session_id: session_id.clone(),
+        })
+        .await;
 
         // Note: no scan commands are emitted here. The three scan actors
         // (skills, prompts, context-files) subscribe to the `SessionLoadCompleted`
@@ -141,7 +136,6 @@ impl SessionPersistenceActor {
     pub(in crate::feat::session::session_actor) async fn on_session_fork_requested(
         &self,
         payload: &SessionForkRequested,
-        ctx: &ActorContext,
     ) {
         let store = &self.services.session_store;
 
@@ -164,7 +158,7 @@ impl SessionPersistenceActor {
         match store.load_session(&new_id).await {
             Ok(Some(session)) => {
                 // Insert session and emit SessionLoadCompleted for external subscribers.
-                self.load_and_insert(session, ctx);
+                self.load_and_insert(session).await;
 
                 // Run the user-facing restore flow.
                 // Re-read from state since load_and_insert consumed the session.
@@ -176,7 +170,7 @@ impl SessionPersistenceActor {
                     .expect("just inserted")
                     .clone();
                 let payload = SessionLoadCompleted { session };
-                self.handle_session_load_completed(&payload, ctx).await;
+                self.handle_session_load_completed(&payload).await;
             }
             Ok(None) => {
                 tracing::warn!("forked session not found after creation");
@@ -206,17 +200,6 @@ mod tests {
     use crate::feat::session::chat_session::ChatSessionState;
     use crate::protocol::ChatEntry;
 
-    fn test_actor() -> SessionPersistenceActor {
-        super::super::super::helpers::test_actor()
-    }
-
-    fn test_context() -> (
-        std::sync::Arc<crate::common::actor::RecordingSink>,
-        crate::common::actor::ActorContext,
-    ) {
-        super::super::super::helpers::test_context()
-    }
-
     #[tokio::test]
     async fn session_load_does_not_set_context_size() {
         // Given a session with chat history.
@@ -224,13 +207,12 @@ mod tests {
         session.push_entry(ChatEntry::user("hello world"));
         session.push_entry(ChatEntry::assistant("hi there"));
 
-        let actor = test_actor();
-        let (_sink, ctx) = test_context();
+        let (actor, _audit) = super::super::super::helpers::test_actor_recording().await;
 
         let payload = SessionLoadCompleted { session };
 
         // When handling SessionLoadCompleted.
-        actor.handle_session_load_completed(&payload, &ctx).await;
+        actor.handle_session_load_completed(&payload).await;
 
         // Then context_size is NOT set by the session actor (ContextSizeActor handles this).
         let state = actor.state.read();
@@ -240,6 +222,7 @@ mod tests {
             "context_size should NOT be set by session actor (ContextSizeActor owns this)"
         );
     }
+
     #[tokio::test]
     async fn handle_session_load_completed_marks_session_as_interacted() {
         // Given a session loaded from disk.
@@ -247,13 +230,12 @@ mod tests {
         session.push_entry(ChatEntry::user("hello"));
         let session_id = session.session_id().clone();
 
-        let actor = test_actor();
-        let (_sink, ctx) = test_context();
+        let (actor, _audit) = super::super::super::helpers::test_actor_recording().await;
 
         let payload = SessionLoadCompleted { session };
 
         // When handling SessionLoadCompleted.
-        actor.handle_session_load_completed(&payload, &ctx).await;
+        actor.handle_session_load_completed(&payload).await;
 
         // Then the session has been marked as interacted (it came from disk).
         let state = actor.state.read();
@@ -274,32 +256,27 @@ mod tests {
         let mut session = ChatSessionState::new();
         session.push_entry(ChatEntry::user("hello"));
 
-        let actor = test_actor();
-        let (sink, ctx) = test_context();
+        let (actor, audit) = super::super::super::helpers::test_actor_recording().await;
 
         let payload = SessionLoadCompleted { session };
 
         // When handling SessionLoadCompleted.
-        actor.handle_session_load_completed(&payload, &ctx).await;
+        actor.handle_session_load_completed(&payload).await;
 
         // Then no scan commands are emitted. The three scan actors
         // (skills, prompts, context-files) subscribe to `SessionLoadCompleted`
         // themselves and self-trigger their per-session scans.
-        let scan_commands = sink
-            .commands()
-            .iter()
-            .filter(|c| {
-                matches!(
-                    c,
-                    crate::protocol::Command::ScanSkills(_)
-                        | crate::protocol::Command::RescanPromptTemplates(_)
-                        | crate::protocol::Command::ScanContextFiles(_)
-                )
-            })
-            .count();
-        assert_eq!(
-            scan_commands, 0,
-            "scan actors self-trigger off SessionLoadCompleted; load handler should not emit scan commands"
+        assert!(
+            !audit.contains_name("ScanSkills"),
+            "should not emit ScanSkills"
+        );
+        assert!(
+            !audit.contains_name("RescanPromptTemplates"),
+            "should not emit RescanPromptTemplates"
+        );
+        assert!(
+            !audit.contains_name("ScanContextFiles"),
+            "should not emit ScanContextFiles"
         );
     }
 }

@@ -1,69 +1,76 @@
-//! Generic `HistoryWorkerActor` - wraps any [`HistoryWorker`] as a bus actor.
+//! Generic `HistoryWorkerActor` - wraps any [`HistoryWorker`] as a kameo actor.
 //!
 //! Subscribes to [`HistorySnapshotReady`] events. On each event:
 //! 2. Receives shared `Arc<[ChatEntry]>` (O(1) clone)
 //! 3. Spawns a tokio task for `worker.evaluate(history_snapshot).await`
-//! 4. If mutations are produced, emits [`SubmitHistoryMutations`]
+//! 4. If mutations are produced, publishes [`SubmitHistoryMutations`]
 use std::collections::HashSet;
 use std::sync::Arc;
 
-use crate::common::actor::{Actor, ActorContext, ActorEnvelope, NoDirectMsg};
+use crate::common::actor_deps::{ActorDeps, BusPublish};
+use crate::common::services::bus_service::BusService;
 use crate::feat::history_worker::worker_trait::HistoryWorker;
 use crate::feat::session::chat_entry::ChatEntry;
 use crate::feat::session::protocol::history_snapshot_ready::HistorySnapshotReady;
 use crate::feat::session::protocol::submit_history_mutations::SubmitHistoryMutations;
-use crate::protocol::{Command, Event, SessionId};
+use crate::protocol::SessionId;
+use kameo::prelude::{Actor, ActorRef, Context, Message};
 
 /// A generic actor that wraps a [`HistoryWorker`] implementation.
 ///
 /// Each worker instance runs as its own actor with its own tokio task.
 /// Workers receive [`HistorySnapshotReady`] events, evaluate their heuristic,
-/// and submit mutations via the command bus.
+/// and submit mutations by publishing to the message bus.
 pub struct HistoryWorkerActor<H: HistoryWorker> {
+    deps: ActorDeps,
     worker: H,
     /// Sessions currently being evaluated - prevents concurrent compaction.
     in_flight: HashSet<SessionId>,
 }
 
-/// Dependencies for [`HistoryWorkerActor`].
-pub struct HistoryWorkerActorDeps<H: HistoryWorker> {
+#[derive(Clone)]
+pub struct HistoryWorkerActorDeps<H: HistoryWorker + Clone> {
+    /// Universal actor dependencies (bus, services, etc.).
+    pub deps: ActorDeps,
     /// The worker heuristic implementation.
     pub worker: H,
 }
 
-impl<H: HistoryWorker + Clone> Actor for HistoryWorkerActor<H> {
-    type Message = NoDirectMsg;
-    type Deps = HistoryWorkerActorDeps<H>;
+impl<H: HistoryWorker + Clone + Send + 'static> Actor for HistoryWorkerActor<H> {
+    type Args = HistoryWorkerActorDeps<H>;
+    type Error = kameo::error::Infallible;
 
-    fn activate(deps: Self::Deps, ctx: &mut ActorContext) -> Self {
-        ctx.set_description(deps.worker.name());
-        ctx.subscribe_event::<HistorySnapshotReady>();
+    async fn on_start(args: Self::Args, actor_ref: ActorRef<Self>) -> Result<Self, Self::Error> {
+        args.deps
+            .subscribe(actor_ref.recipient::<HistorySnapshotReady>())
+            .await;
 
-        Self {
-            worker: deps.worker,
+        Ok(Self {
+            deps: args.deps,
+            worker: args.worker,
             in_flight: HashSet::new(),
-        }
+        })
     }
+}
 
-    async fn handle(&mut self, msg: ActorEnvelope<Self::Message>, ctx: &ActorContext) {
-        match msg {
-            ActorEnvelope::Event(Event::HistorySnapshotReady(ref payload)) => {
-                self.handle_snapshot_ready(payload, ctx).await;
-            }
-            ActorEnvelope::Command(_)
-            | ActorEnvelope::Event(_)
-            | ActorEnvelope::System(_)
-            | ActorEnvelope::Direct(_) => {}
-        }
+impl<H: HistoryWorker + Clone + Send + 'static> Message<HistorySnapshotReady>
+    for HistoryWorkerActor<H>
+{
+    type Reply = ();
+
+    async fn handle(&mut self, msg: HistorySnapshotReady, _ctx: &mut Context<Self, Self::Reply>) {
+        self.handle_snapshot_ready(&msg).await;
+    }
+}
+
+impl<H: HistoryWorker + Clone> BusPublish for HistoryWorkerActor<H> {
+    fn bus(&self) -> &BusService {
+        &self.deps.services.bus
     }
 }
 
 impl<H: HistoryWorker + Clone> HistoryWorkerActor<H> {
-    pub(crate) async fn handle_snapshot_ready(
-        &mut self,
-        event: &HistorySnapshotReady,
-        ctx: &ActorContext,
-    ) {
+    pub(crate) async fn handle_snapshot_ready(&mut self, event: &HistorySnapshotReady) {
         tracing::info!(
             worker = self.worker.name(),
             session_id = %event.session_id,
@@ -105,17 +112,11 @@ impl<H: HistoryWorker + Clone> HistoryWorkerActor<H> {
             "history worker produced mutations"
         );
 
-        // Submit mutations via command bus.
-        let cmd = Command::SubmitHistoryMutations(SubmitHistoryMutations {
+        // Submit mutations via bus.
+        self.publish(SubmitHistoryMutations {
             session_id: event.session_id.clone(),
             mutations,
-        });
-        if let Err(e) = ctx.send_command(cmd) {
-            tracing::warn!(
-                worker = self.worker.name(),
-                err = ?e,
-                "failed to submit history mutations"
-            );
-        }
+        })
+        .await;
     }
 }

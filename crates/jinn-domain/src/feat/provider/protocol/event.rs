@@ -4,7 +4,6 @@ use serde::{Deserialize, Serialize};
 
 use crate::feat::context::protocol::prompt_template::PromptTemplate;
 use crate::feat::tools_actor::tool_types::ToolCall;
-use crate::protocol::EventMsg;
 use crate::protocol::SessionId;
 
 use jiff::Timestamp;
@@ -24,8 +23,7 @@ pub enum StreamCompletedReason {
 }
 
 /// Streaming response completed for a session.
-#[derive(Debug, Clone, Serialize, Deserialize, EventMsg)]
-#[event_msg("provider")]
+#[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct StreamCompleted {
     /// The session whose stream completed.
     pub session_id: SessionId,
@@ -63,12 +61,13 @@ pub struct StreamCompleted {
     pub dispatched_at: Timestamp,
 }
 
+impl crate::common::bus::BusMessage for StreamCompleted {}
+
 /// A single token from a streaming LLM response.
 ///
 /// Emitted by the LLM actor during streaming. Handlers append
 /// the token to the active session's assistant entry.
-#[derive(Debug, Clone, Serialize, Deserialize, EventMsg)]
-#[event_msg("provider")]
+#[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct StreamToken {
     /// The session this token belongs to.
     pub session_id: SessionId,
@@ -86,11 +85,12 @@ pub struct StreamToken {
     pub dispatched_at: Timestamp,
 }
 
+impl crate::common::bus::BusMessage for StreamToken {}
+
 /// The active provider was switched.
 ///
 /// Emitted after a successful [`ProviderSwitch`](super::ProviderSwitch) command.
-#[derive(Debug, Clone, Serialize, Deserialize, EventMsg)]
-#[event_msg("provider")]
+#[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct ProviderSwitched {
     /// The session that switched provider.
     pub session_id: SessionId,
@@ -98,9 +98,10 @@ pub struct ProviderSwitched {
     pub provider_name: String,
 }
 
+impl crate::common::bus::BusMessage for ProviderSwitched {}
+
 /// Models refresh completed with results and errors.
-#[derive(Debug, Clone, Serialize, Deserialize, EventMsg)]
-#[event_msg("provider")]
+#[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct ModelsRefreshed {
     /// The session that triggered the refresh (for routing the result back).
     pub session_id: SessionId,
@@ -110,25 +111,27 @@ pub struct ModelsRefreshed {
     pub errors: std::collections::HashMap<String, String>,
 }
 
+impl crate::common::bus::BusMessage for ModelsRefreshed {}
+
 /// Model cache loaded from disk at startup.
 ///
 /// Emitted by `ProviderInitActor` after loading the cache from disk.
 /// `ProviderActor` handles this by writing the cache into AppState and
 /// reloading picker entries.
-#[derive(Debug, Clone, Serialize, Deserialize, EventMsg)]
-#[event_msg("provider")]
+#[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct ModelCacheLoaded {
     /// The loaded model cache.
     pub cache: crate::feat::provider_infra::ModelCache,
 }
+
+impl crate::common::bus::BusMessage for ModelCacheLoaded {}
 
 /// Prompt templates loaded after a rescan.
 ///
 /// Emitted by the prompt scan actor after scanning the prompts directory.
 /// On success, `templates` contains the loaded templates and `error` is `None`.
 /// On failure, `templates` is empty and `error` contains a description.
-#[derive(Debug, Clone, Serialize, Deserialize, EventMsg)]
-#[event_msg("provider")]
+#[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct PromptTemplatesLoaded {
     /// The session whose cwd drove the scan.
     pub session_id: crate::SessionId,
@@ -138,3 +141,5 @@ pub struct PromptTemplatesLoaded {
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub error: Option<String>,
 }
+
+impl crate::common::bus::BusMessage for PromptTemplatesLoaded {}

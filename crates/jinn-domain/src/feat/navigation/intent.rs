@@ -182,7 +182,7 @@ mod tests {
         let result = handle_scroll_up(&mut state);
 
         // Then no commands are emitted.
-        assert!(result.commands.is_empty());
+        assert!(result.message_names.is_empty());
     }
 
     #[rstest::rstest]
@@ -199,7 +199,7 @@ mod tests {
         let result = handle_scroll_down(&mut state);
 
         // Then scroll offset is non-zero (was at bottom, now scrolled up from bottom).
-        assert!(result.commands.is_empty());
+        assert!(result.message_names.is_empty());
     }
 
     #[rstest::rstest]
@@ -216,7 +216,7 @@ mod tests {
         // When handling MouseScrollUp.
         let result = handle_mouse_scroll_up(&mut state);
 
-        assert!(result.commands.is_empty());
+        assert!(result.message_names.is_empty());
     }
 
     #[rstest::rstest]
@@ -232,7 +232,7 @@ mod tests {
         // When handling MouseScrollDown.
         let result = handle_mouse_scroll_down(&mut state);
 
-        assert!(result.commands.is_empty());
+        assert!(result.message_names.is_empty());
     }
 
     #[rstest::rstest]
@@ -268,7 +268,7 @@ mod tests {
         let result = handle_scroll_to_top(&mut state);
 
         // Then no commands are emitted.
-        assert!(result.commands.is_empty());
+        assert!(result.message_names.is_empty());
     }
 
     #[rstest::rstest]
@@ -304,7 +304,7 @@ mod tests {
         let result = handle_scroll_to_bottom(&mut state);
 
         // Then no commands are emitted.
-        assert!(result.commands.is_empty());
+        assert!(result.message_names.is_empty());
     }
 
     #[rstest::rstest]
@@ -328,7 +328,7 @@ mod tests {
         let result = handle_edit_input(&mut state);
 
         // Then no commands are emitted.
-        assert!(result.commands.is_empty());
+        assert!(result.message_names.is_empty());
     }
 
     #[rstest::rstest]
@@ -523,7 +523,7 @@ mod tests {
             Some(crate::protocol::CwdRoot::Session)
         );
         // And no commands are emitted.
-        assert!(result.commands.is_empty());
+        assert!(result.message_names.is_empty());
     }
 
     #[rstest::rstest]
@@ -540,6 +540,6 @@ mod tests {
             Some(crate::protocol::CwdRoot::Home)
         );
         // And no commands are emitted.
-        assert!(result.commands.is_empty());
+        assert!(result.message_names.is_empty());
     }
 }

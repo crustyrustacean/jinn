@@ -123,7 +123,6 @@ pub fn handle_session_close(state: &mut AppState) -> crate::protocol::IntentResu
 /// Panics if `sessions_section.selected_index` is `None`.
 pub fn handle_session_close_with_lifecycle(state: &mut AppState) -> crate::protocol::IntentResult {
     use crate::feat::session::protocol::close_session::CloseSession;
-    use crate::protocol::Command;
 
     // Validate.
     if validate_session_close(state).is_err() {
@@ -138,7 +137,7 @@ pub fn handle_session_close_with_lifecycle(state: &mut AppState) -> crate::proto
     let closing_id = closing.id.clone();
 
     // Emit CloseSession - the actor handles teardown, archive, and removal.
-    crate::protocol::IntentResult::with_commands(vec![Command::CloseSession(CloseSession {
+    crate::protocol::IntentResult::with_message(CloseSession {
         session_id: closing_id,
-    })])
+    })
 }

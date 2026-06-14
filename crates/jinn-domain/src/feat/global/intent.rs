@@ -3,7 +3,7 @@
 use crate::common::app_state::AppState;
 use crate::feat::provider::protocol::command::CancelStream;
 use crate::protocol::SessionId;
-use crate::protocol::{Command, Intent, IntentResult};
+use crate::protocol::{Intent, IntentResult};
 
 use super::validator;
 
@@ -45,9 +45,9 @@ pub fn handle_interrupt(state: &mut AppState, target: Option<&SessionId>) -> Int
         state
             .session_mut(id)
             .cancel_streaming(jiff::Timestamp::now());
-        return IntentResult::with_commands(vec![Command::CancelStream(CancelStream {
+        return IntentResult::with_message(CancelStream {
             session_id: id.clone(),
-        })]);
+        });
     }
 
     // None path: just clear the input buffer.
@@ -149,7 +149,7 @@ mod tests {
 
         // Then should_quit is true.
         assert!(state.frontend.should_quit);
-        assert!(result.commands.is_empty());
+        assert!(result.message_names.is_empty());
     }
 
     #[rstest::rstest]
@@ -162,7 +162,7 @@ mod tests {
 
         // Then the toggle_whichkey signal is set.
         assert!(state.frontend.tui_signals.toggle_whichkey);
-        assert!(result.commands.is_empty());
+        assert!(result.message_names.is_empty());
     }
     #[rstest::rstest]
     fn toggle_audit_popup_off_to_on_sets_visibility_flag() {
@@ -175,7 +175,7 @@ mod tests {
 
         // Then the flag flips to true.
         assert!(state.frontend.audit_popup_visible);
-        assert!(result.commands.is_empty());
+        assert!(result.message_names.is_empty());
     }
 
     #[rstest::rstest]
@@ -190,7 +190,7 @@ mod tests {
 
         // Then the flag flips back to false.
         assert!(!state.frontend.audit_popup_visible);
-        assert!(result.commands.is_empty());
+        assert!(result.message_names.is_empty());
     }
 
     #[rstest::rstest]
@@ -251,7 +251,7 @@ mod tests {
 
         // Then the buffer is cleared.
         assert!(state.active_chat_input().is_empty());
-        assert!(result.commands.is_empty());
+        assert!(result.message_names.is_empty());
     }
 
     #[rstest::rstest]
@@ -264,7 +264,7 @@ mod tests {
 
         // Then no commands and buffer is still empty.
         assert!(state.active_chat_input().is_empty());
-        assert!(result.commands.is_empty());
+        assert!(result.message_names.is_empty());
     }
 
     #[rstest::rstest]
@@ -277,7 +277,7 @@ mod tests {
         let result = handle_interrupt(&mut state);
 
         // Then no CancelStream command is emitted.
-        assert!(result.commands.is_empty());
+        assert!(result.message_names.is_empty());
         // And the session is still streaming.
         assert!(matches!(
             state.active_session().phase(),
@@ -313,11 +313,8 @@ mod tests {
             state.session.get_unchecked(&second_id).phase(),
             PhaseKind::Idle
         ));
-        // And a CancelStream command is returned for that session.
-        assert_eq!(result.commands.len(), 1);
-        assert!(
-            matches!(&result.commands[0], Command::CancelStream (payload) if payload.session_id == second_id)
-        );
+        // And a CancelStream message is returned for that session.
+        assert_eq!(result.messages.len(), 1);
     }
 
     // ============================================================
@@ -341,7 +338,7 @@ mod tests {
 
         // Then the buffer is cleared and no redispatch is requested.
         assert!(state.active_chat_input().is_empty());
-        assert!(result.commands.is_empty());
+        assert!(result.message_names.is_empty());
         assert!(maybe_intent.is_none());
     }
 
@@ -356,7 +353,7 @@ mod tests {
 
         // Then no commands, no redispatch, scope unchanged.
         assert!(state.active_chat_input().is_empty());
-        assert!(result.commands.is_empty());
+        assert!(result.message_names.is_empty());
         assert!(maybe_intent.is_none());
         assert_eq!(state.frontend.scope_stack.current(), &FocusScope::Input);
     }
@@ -382,7 +379,7 @@ mod tests {
         // Then the filter is cleared and no redispatch is requested.
         let picker = state.active_picker_ops().expect("picker still active");
         assert!(picker.is_filter_empty());
-        assert!(result.commands.is_empty());
+        assert!(result.message_names.is_empty());
         assert!(maybe_intent.is_none());
         assert!(state.frontend.scope_stack.is_picker());
     }
@@ -403,7 +400,7 @@ mod tests {
         // Then scope is back to Normal (picker closed).
         assert!(!state.frontend.scope_stack.is_picker());
         assert_eq!(state.frontend.scope_stack.current(), &FocusScope::Normal);
-        assert!(result.commands.is_empty());
+        assert!(result.message_names.is_empty());
     }
 
     #[rstest::rstest]
@@ -428,7 +425,7 @@ mod tests {
         assert!(state.frontend.arg_input.text.input.is_empty());
         assert_eq!(state.frontend.arg_input.text.cursor_pos, 0);
         assert_eq!(state.frontend.scope_stack.current(), &FocusScope::ArgInput);
-        assert!(result.commands.is_empty());
+        assert!(result.message_names.is_empty());
         assert!(maybe_intent.is_none());
     }
 
@@ -443,7 +440,7 @@ mod tests {
                 input: String::new(),
                 cursor_pos: 0,
             },
-            lifecycle_name: lifecycle.clone(),
+            lifecycle_name: lifecycle,
             template_display: String::new(),
         };
         state.frontend.scope_stack.push(FocusScope::ArgInput);
@@ -455,7 +452,7 @@ mod tests {
         assert_eq!(state.frontend.scope_stack.current(), &FocusScope::Input);
         // Default ArgInputState has empty lifecycle_name.
         assert_eq!(state.frontend.arg_input.lifecycle_name, "");
-        assert!(result.commands.is_empty());
+        assert!(result.message_names.is_empty());
         assert!(maybe_intent.is_none());
     }
 
@@ -485,7 +482,7 @@ mod tests {
             state.frontend.scope_stack.current(),
             &FocusScope::RenameSessionInput
         );
-        assert!(result.commands.is_empty());
+        assert!(result.message_names.is_empty());
         assert!(maybe_intent.is_none());
     }
 
@@ -507,7 +504,7 @@ mod tests {
         // Then scope is popped back to Normal and rename_session_input is reset.
         assert_eq!(state.frontend.scope_stack.current(), &FocusScope::Input);
         assert!(state.frontend.rename_session_input.text.input.is_empty());
-        assert!(result.commands.is_empty());
+        assert!(result.message_names.is_empty());
     }
 
     #[rstest::rstest]
@@ -536,13 +533,13 @@ mod tests {
                 .expect("picker still active")
                 .is_filter_empty()
         );
-        assert!(result1.commands.is_empty());
+        assert!(result1.messages.is_empty());
 
         // Second press: filter is now empty, so picker should close.
         let result2 = IntentHandler::handle(&Intent::CtrlClear, &mut state, None);
         assert!(!state.frontend.scope_stack.is_picker());
         assert_eq!(state.frontend.scope_stack.current(), &FocusScope::Normal);
-        assert!(result2.commands.is_empty());
+        assert!(result2.messages.is_empty());
     }
 
     #[rstest::rstest]
@@ -573,7 +570,7 @@ mod tests {
             state.frontend.scope_stack.current(),
             &FocusScope::RenameSessionInput
         );
-        assert!(result.commands.is_empty());
+        assert!(result.message_names.is_empty());
         assert!(maybe_intent.is_none());
     }
 }

@@ -403,7 +403,7 @@ pub fn init() -> Keymap<KeyEvent, Scope, Intent, KeyCategory> {
 /// `SyncPlugins::declared_keybinds`).
 pub fn bind_plugin_keybinds(
     keymap: &mut Keymap<KeyEvent, Scope, Intent, KeyCategory>,
-    plugins: &jinn_plugin::SyncPlugins,
+    plugins: &jinn_domain::feat::plugin_system::SyncPlugins,
 ) {
     for kb in plugins.declared_keybinds() {
         let Ok(scope) = Scope::from_str(&kb.scope) else {
@@ -434,11 +434,38 @@ mod tests {
     #![allow(clippy::expect_used, clippy::panic, reason = "test code")]
     use super::*;
 
+    /// Regression test for ratatui-which-key v0.12.1: when a key is bound as a
+    /// leaf in one scope (Normal) and used as a describe_group prefix in
+    /// another scope (SidebarSessions), the leaf must survive the
+    /// Leaf→Branch promotion. Before the fix, the library dropped the
+    /// existing binding and the catch-all fired instead.
+    #[test]
+    fn p_prefix_group_in_sidebar_does_not_drop_normal_pin_binding() {
+        use crate::app::WhichKeyInstance;
+        use jinn_domain::{Key, Modifiers};
+
+        // Given a fresh keymap with no plugin bindings.
+        let keymap = init();
+        let mut wk = WhichKeyInstance::new(keymap, Scope::Normal);
+
+        // When pressing 'p' alone.
+        let intent = wk.handle_key(jinn_domain::KeyEvent {
+            key: Key::Char('p'),
+            modifiers: Modifiers::none(),
+        });
+
+        // Then it fires ChatEntryPinSelected (not a chord prefix).
+        assert!(
+            matches!(intent, Some(jinn_domain::Intent::ChatEntryPinSelected)),
+            "'p' in Normal scope should fire ChatEntryPinSelected; got {intent:?}",
+        );
+    }
+
     #[test]
     fn bind_plugin_keybinds_no_plugins_is_noop() {
         // No plugins loaded => no keybinds to bind; function must be a no-op.
         let mut keymap = init();
-        let plugins = jinn_plugin::SyncPlugins::empty();
+        let plugins = jinn_domain::feat::plugin_system::SyncPlugins::empty();
         bind_plugin_keybinds(&mut keymap, &plugins);
         // No panic, no bindings added => success.
     }
@@ -453,7 +480,7 @@ mod tests {
     ///       requires the PascalCase `"Input"` (matching `Scope::Display`).
     #[test]
     fn bind_plugin_keybinds_loads_prompt_enrichment_binding() {
-        use jinn_plugin::{PluginSystem, PluginSystemBuildResult};
+        use jinn_domain::feat::plugin_system::{PluginSystem, PluginSystemBuildResult};
         use std::path::Path;
 
         // Locate the dev plugin tree (crate-relative).
@@ -499,7 +526,7 @@ mod tests {
                 )
             })
             .unwrap_or_else(|| {
-                panic!("<M-e> (Alt+e) not bound in Input scope. bindings = {input_bindings:?}",)
+                panic!("<M-e> (Alt+e) not bound in Input scope. bindings = {input_bindings:?}")
             });
 
         assert_eq!(
@@ -521,8 +548,8 @@ mod tests {
     #[test]
     fn handle_key_alt_e_in_input_scope_fires_trigger_plugin() {
         use crate::app::WhichKeyInstance;
+        use jinn_domain::feat::plugin_system::{PluginSystem, PluginSystemBuildResult};
         use jinn_domain::{Key, KeyEvent, Modifiers};
-        use jinn_plugin::{PluginSystem, PluginSystemBuildResult};
         use std::path::Path;
 
         let manifest_dir = Path::new(env!("CARGO_MANIFEST_DIR"));
@@ -534,10 +561,7 @@ mod tests {
 
         let rt = tokio::runtime::Runtime::new().expect("runtime");
         let PluginSystemBuildResult {
-            sync: sync_plugins,
-            async_handle: _async_handle,
-            sync_handle: _sync_handle,
-            global_tool_metadata: _,
+            sync: sync_plugins, ..
         } = PluginSystem::build(
             &res_plugins,
             Path::new("/nonexistent"),

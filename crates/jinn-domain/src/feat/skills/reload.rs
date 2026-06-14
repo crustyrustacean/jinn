@@ -33,7 +33,7 @@ pub fn reload_skill_picker_entries(state: &mut AppState) {
         })
         .collect();
 
-    entries.sort_by(|a, b| a.name.to_lowercase().cmp(&b.name.to_lowercase()));
+    entries.sort_by_key(|e| e.name.to_lowercase());
 
     state.frontend.skill_picker_mut().set_items(entries);
 }

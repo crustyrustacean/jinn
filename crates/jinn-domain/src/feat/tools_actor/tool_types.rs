@@ -6,10 +6,9 @@
 
 use std::fmt;
 use std::path::PathBuf;
-use std::sync::Arc;
 use std::time::Duration;
 
-use crate::common::actor::message_sink::MessageSink;
+use crate::common::services::bus_service::BusService;
 use crate::common::state::State;
 use crate::protocol::SessionId;
 
@@ -39,12 +38,12 @@ pub struct ToolContext {
     pub session_id: Option<SessionId>,
     /// Application filesystem paths (for tools that need filesystem access).
     pub app_paths: crate::common::app_paths::AppPaths,
-    /// Message sink for emitting streaming events.
+    /// Bus service for emitting streaming events.
     ///
     /// Only set for tools that need to emit incremental output events
     /// (e.g., bash streaming). When `None`, the tool runs silently
     /// and returns a single `ToolResult`.
-    pub sink: Option<Arc<dyn MessageSink>>,
+    pub bus: Option<BusService>,
     /// Shell binary path (captured at startup from $SHELL).
     pub shell: String,
     /// Maximum lines for tool output truncation. `None` uses built-in default.
@@ -92,7 +91,7 @@ mod tests {
             state: None,
             session_id: Some(crate::protocol::SessionId::new()),
             app_paths: crate::common::app_paths::AppPaths::default(),
-            sink: None,
+            bus: None,
             shell: "/bin/sh".to_owned(),
             max_output_lines: None,
             max_output_bytes: None,

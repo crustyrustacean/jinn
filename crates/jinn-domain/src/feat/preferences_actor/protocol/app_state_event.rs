@@ -3,15 +3,15 @@
 use serde::{Deserialize, Serialize};
 
 use crate::feat::preferences_actor::app_state_file::AppStateFile;
-use crate::protocol::EventMsg;
 
 /// Emitted after app-state has been persisted to disk.
 ///
 /// Carries the full [`AppStateFile`] — the source of truth after save.
 /// Listeners replace their cached copy wholesale.
-#[derive(Debug, Clone, Serialize, Deserialize, EventMsg)]
-#[event_msg("app_state")]
+#[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct AppStateUpdated {
     /// The full app-state as persisted to disk.
     pub state: AppStateFile,
 }
+
+impl crate::common::bus::BusMessage for AppStateUpdated {}

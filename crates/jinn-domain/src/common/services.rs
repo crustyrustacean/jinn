@@ -3,10 +3,19 @@
 //! This crate defines the [`Services`] container, which holds long-lived
 //! runtime infrastructure that subsystems need access to. It is created
 //! once during startup and shared throughout the application.
+#![cfg_attr(
+    test,
+    allow(
+        clippy::expect_used,
+        clippy::missing_panics_doc,
+        reason = "test utilities"
+    )
+)]
 
 use std::sync::Arc;
 
 use derive_more::Debug;
+use kameo::actor::Spawn;
 
 use crate::feat::plugin_dispatch::{
     PluginFire, PluginFireError, PluginSyncCall, PluginSyncCallError,
@@ -29,12 +38,15 @@ use tokio::runtime::Handle;
 
 pub mod actor_channel;
 
-#[cfg(test)]
-mod actor_channel_tests;
+pub mod bus_service;
 
 pub mod test_services;
 
 pub use actor_channel::ActorChannelService;
+pub use bus_service::BusService;
+
+#[cfg(test)]
+pub use bus_service::{BusAudit, RecordedMessage};
 
 /// Runtime services shared across the application.
 ///
@@ -73,7 +85,6 @@ pub struct Services {
     pub plugin_sync: crate::feat::plugin_dispatch::PluginSyncCallService,
     /// Per-session plugin registry (manages isolated Lua states for attached plugins).
     pub session_plugin_registry: crate::feat::plugin_system::SessionPluginRegistryService,
-
     /// Test-only owned temp directory. `None` in production.
     ///
     /// Held here so the dir outlives the [`AppPaths`] that points at it
@@ -82,12 +93,21 @@ pub struct Services {
     /// real user dirs.
     #[debug(skip)]
     pub tempdir: Option<Arc<tempfile::TempDir>>,
-}
 
-impl Default for Services {
-    fn default() -> Self {
-        Self::new()
-    }
+    /// Kameo message bus for type-based pub/sub routing.
+    #[debug(skip)]
+    pub bus: bus_service::BusService,
+
+    /// Kanal closure bridge from sync TUI to async bus.
+    pub bridge: crate::common::bridge::Bridge,
+
+    /// Root supervision-tree actor.
+    ///
+    /// `Some` in production (spawned in `actor_wiring::build`) so the TUI
+    /// can gracefully shut down the actor system on exit. `None` in tests
+    /// that don't exercise the full shutdown path.
+    #[debug(skip)]
+    pub root_supervisor: crate::common::root_supervisor::RootSupervisorRef,
 }
 
 impl Services {
@@ -105,7 +125,7 @@ impl Services {
         clippy::expect_used,
         reason = "test-only defaults, panics are acceptable"
     )]
-    pub fn new() -> Self {
+    pub async fn new_fake() -> Self {
         let handle = test_services::shared_test_handle();
 
         let tempdir = Arc::new(tempfile::TempDir::new().expect("test temp dir"));
@@ -117,6 +137,16 @@ impl Services {
             let rx = actor_rx.to_async();
             while rx.recv().await.is_ok() {}
         });
+        let bus = {
+            let bus_actor = kameo_actors::message_bus::MessageBus::new(
+                kameo_actors::DeliveryStrategy::BestEffort,
+            );
+            let bus_ref = kameo_actors::message_bus::MessageBus::spawn(bus_actor);
+            bus_service::BusService::new(bus_ref)
+        };
+        let bridge = crate::common::bridge::Bridge::new(bus.actor_ref().clone());
+        let root_supervisor = crate::common::root_supervisor::RootSupervisor::spawn_root().await;
+
         Self {
             paths: crate::common::app_paths::AppPaths::new_in(tempdir.path()),
             handle,
@@ -160,6 +190,73 @@ impl Services {
                     as std::sync::Arc<dyn crate::feat::plugin_system::SessionPluginRegistry>,
             ),
             tempdir: Some(tempdir),
+            bus,
+            bridge,
+            root_supervisor,
+        }
+    }
+
+    /// Construct a fake Services with a pre-built bus (e.g. BusService::new_recording()).
+    #[cfg(test)]
+    pub async fn new_fake_with_bus(bus: bus_service::BusService) -> Self {
+        let handle = test_services::shared_test_handle();
+        let tempdir = Arc::new(tempfile::TempDir::new().expect("test temp dir"));
+
+        // Keep a live drainer so the sender doesn't return ReceiveClosed.
+        let (actor_tx, actor_rx) = kanal::unbounded::<AppMsg>();
+        handle.spawn(async move {
+            let rx = actor_rx.to_async();
+            while rx.recv().await.is_ok() {}
+        });
+        let bridge = crate::common::bridge::Bridge::new_for_test();
+        let root_supervisor = crate::common::root_supervisor::RootSupervisor::spawn_root().await;
+
+        Self {
+            paths: crate::common::app_paths::AppPaths::new_in(tempdir.path()),
+            handle,
+            actor_channel: ActorChannelService::new(actor_tx),
+            llm_service: LlmServiceFactoryService::new(Arc::new(
+                crate::feat::provider_infra::FakeLlmServiceFactory::new(vec![]),
+            )),
+            provider_registry: ProviderRegistryService::new(
+                ProviderRegistry::from_config(ProvidersConfig {
+                    providers: vec![],
+                    aliases: vec![],
+                    default_provider: None,
+                    alloys: vec![],
+                })
+                .expect("empty config is valid"),
+            ),
+            api_keys: ApiKeysService::new(ApiKeys::new()),
+            config_storage: ConfigStorageService::new(Arc::new(InMemoryConfigStorage::new())),
+            session_store: SessionStoreService::new(Arc::new(test_services::FakeSessionStore)),
+            user_preferences_storage: {
+                let svc = UserPreferencesStorageService::new(Arc::new(
+                    InMemoryUserPreferencesStorage::new(),
+                ));
+                svc.reload().expect("test prefs storage initial reload");
+                svc
+            },
+            app_state_storage: {
+                let svc = AppStateStorageService::new(Arc::new(InMemoryAppStateStorage::new()));
+                svc.reload().expect("test app state storage initial reload");
+                svc
+            },
+            plugins: crate::feat::plugin_dispatch::PluginFireService::new(std::sync::Arc::new(
+                NoopPluginFire,
+            )
+                as std::sync::Arc<dyn PluginFire>),
+            plugin_sync: crate::feat::plugin_dispatch::PluginSyncCallService::new(
+                std::sync::Arc::new(NoopPluginSyncCall) as std::sync::Arc<dyn PluginSyncCall>,
+            ),
+            session_plugin_registry: crate::feat::plugin_system::SessionPluginRegistryService::new(
+                std::sync::Arc::new(NoopSessionPluginRegistry)
+                    as std::sync::Arc<dyn crate::feat::plugin_system::SessionPluginRegistry>,
+            ),
+            tempdir: Some(tempdir),
+            bus,
+            bridge,
+            root_supervisor,
         }
     }
 }

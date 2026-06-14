@@ -9,11 +9,10 @@
 use serde::{Deserialize, Serialize};
 
 use crate::feat::session::phase_machine::PhaseKind;
-use crate::protocol::{EventMsg, SessionId};
+use crate::protocol::SessionId;
 
 /// Session phase transitioned to a new state.
-#[derive(Debug, Clone, Serialize, Deserialize, EventMsg)]
-#[event_msg("session")]
+#[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct SessionPhaseChanged {
     /// The session whose phase changed.
     pub session_id: SessionId,
@@ -22,3 +21,5 @@ pub struct SessionPhaseChanged {
     /// The new phase after the transition.
     pub new_phase: PhaseKind,
 }
+
+impl crate::common::bus::BusMessage for SessionPhaseChanged {}

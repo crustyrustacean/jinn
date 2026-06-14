@@ -25,7 +25,7 @@ use crate::feat::context::prompt_template::PromptTemplateStore;
 use crate::feat::session::phase_machine::PhaseKind;
 use crate::feat::session::protocol::mark_session_interacted::MarkSessionInteracted;
 use crate::feat::ui::picker_states::PickerExt;
-use crate::protocol::{ChatEntry, Command, IntentResult, SessionId};
+use crate::protocol::{ChatEntry, IntentResult, SessionId};
 use unicode_segmentation::UnicodeSegmentation as _;
 
 use super::validator;
@@ -271,8 +271,8 @@ pub fn handle_submit_message(state: &mut AppState) -> IntentResult {
     );
     state.active_chat_input_mut().reset();
 
-    let command = route_to_enqueue_or_steer(state, &session_id, input_text, expanded);
-    with_mark_interacted(session_id, IntentResult::with_commands(vec![command]))
+    let result = route_to_enqueue_or_steer(state, &session_id, input_text, expanded);
+    with_mark_interacted(session_id, result)
 }
 
 /// Handles Enter when autocomplete is active - completes the selection and submits.
@@ -327,8 +327,8 @@ fn handle_submit_message_with_autocomplete(state: &mut AppState) -> IntentResult
     };
     state.active_chat_input_mut().reset();
 
-    let command = route_to_enqueue_or_steer(state, &session_id, display, expanded);
-    with_mark_interacted(session_id, IntentResult::with_commands(vec![command]))
+    let result = route_to_enqueue_or_steer(state, &session_id, display, expanded);
+    with_mark_interacted(session_id, result)
 }
 
 /// Routes a submitted (display, expanded) message based on input mode × session phase.
@@ -344,7 +344,7 @@ fn route_to_enqueue_or_steer(
     session_id: &SessionId,
     display: String,
     expanded: String,
-) -> Command {
+) -> IntentResult {
     let mode = state.active_chat_input().input_mode();
     let phase = state.active_session().phase();
     match (mode, phase) {
@@ -355,7 +355,7 @@ fn route_to_enqueue_or_steer(
                 phase = ?phase,
                 "submit routed to enqueue"
             );
-            Command::EnqueueUserMessage(EnqueueUserMessage {
+            IntentResult::empty().message(EnqueueUserMessage {
                 session_id: session_id.clone(),
                 entry: ChatEntry::user_expanded(display, expanded),
             })
@@ -367,7 +367,7 @@ fn route_to_enqueue_or_steer(
                 phase = ?phase,
                 "submit routed to steering buffer"
             );
-            Command::SubmitSteeringMessage(SubmitSteeringMessage {
+            IntentResult::empty().message(SubmitSteeringMessage {
                 session_id: session_id.clone(),
                 text: display,
             })
@@ -375,12 +375,15 @@ fn route_to_enqueue_or_steer(
     }
 }
 
-/// Prepends a `MarkSessionInteracted` command to the result.
+/// Prepends a `MarkSessionInteracted` message to the result.
 fn with_mark_interacted(session_id: SessionId, mut result: IntentResult) -> IntentResult {
-    result.commands.insert(
+    result.messages.insert(
         0,
-        Command::MarkSessionInteracted(MarkSessionInteracted { session_id }),
+        crate::common::bridge::Bridge::publish_closure(MarkSessionInteracted { session_id }),
     );
+    result
+        .message_names
+        .insert(0, std::any::type_name::<MarkSessionInteracted>());
     result
 }
 
@@ -394,12 +397,12 @@ fn execute_slash_command(
         SlashCommand::Compact | SlashCommand::CompactAll => {
             let compact_all = matches!(command, SlashCommand::CompactAll);
             let session_id = state.session.active_session_id().clone();
-            IntentResult::with_commands(vec![Command::TriggerCompaction(
+            IntentResult::with_message(
                 crate::feat::session::protocol::trigger_compaction::TriggerCompaction {
                     session_id,
                     compact_all,
                 },
-            )])
+            )
         }
         SlashCommand::New => crate::feat::session::intent::handle_session_new(state),
     }
@@ -645,7 +648,7 @@ fn compute_token_end(input: &ChatInputBoxState, token_start: usize) -> usize {
     let mut end = token_start + 1;
     while end < len {
         let g = graphemes.get(end);
-        if g.is_none() || g.is_some_and(|c| c.trim().is_empty() || *c == "#") {
+        if g.is_none_or(|c| c.trim().is_empty() || *c == "#") {
             break;
         }
         end += 1;
@@ -731,7 +734,7 @@ fn find_hash_token_at_cursor(input: &ChatInputBoxState) -> Option<(usize, String
             let mut token_end = i + 1;
             while token_end < len {
                 let g = graphemes.get(token_end);
-                if g.is_none() || g.is_some_and(|c| c.trim().is_empty() || *c == "#") {
+                if g.is_none_or(|c| c.trim().is_empty() || *c == "#") {
                     break;
                 }
                 token_end += 1;
@@ -778,7 +781,7 @@ fn find_slash_token_at_cursor(input: &ChatInputBoxState) -> Option<(usize, Strin
     let mut token_end = 1;
     while token_end < len {
         let g = graphemes.get(token_end);
-        if g.is_none() || g.is_some_and(|c| c.trim().is_empty()) {
+        if g.is_none_or(|c| c.trim().is_empty()) {
             break;
         }
         token_end += 1;

@@ -85,13 +85,20 @@ pub fn run(mut app: TuiApp) -> Result<(), Report<TuiRunError>> {
         guard.stop();
     }
 
-    // Shut down actor host - coordinated shutdown.
-    jinn_domain::coordinated_shutdown(
-        app.actor_host.backend(),
-        &app.core.state,
-        &app.services.handle,
-        jinn_domain::SHUTDOWN_TIMEOUT,
-    );
+    // Coordinated actor shutdown: signal the root supervisor, then race the
+    // shutdown barrier against a 20-second timeout. Kameo cascades the stop
+    // signal to every supervised child (spawn.rs:216-227), running their
+    // `on_stop` hooks to flush buffers and finalize writes.
+    {
+        let root = app.services.root_supervisor.clone();
+        let result = app.services.handle.block_on(async {
+            let _ = root.stop_gracefully().await;
+            tokio::time::timeout(Duration::from_secs(20), root.wait_for_shutdown()).await
+        });
+        if result.is_err() {
+            tracing::warn!("actor shutdown timed out after 20s; proceeding");
+        }
+    }
 
     // Restore terminal.
     if let Err(e) = execute!(terminal.backend_mut(), PopKeyboardEnhancementFlags) {
@@ -310,12 +317,8 @@ fn handle_suspend_action(
                             return Ok(());
                         }
                     };
-                    // Submit a single SetSessionCwd command so the session
-                    // actor applies the cwd and broadcasts SessionCwdChanged;
-                    // the event-driven scan actors then re-discover
-                    // skills/prompts/context-files for the new cwd.
                     let session_id = app.core.state.read().active_session().session_id().clone();
-                    app.core.submit_command(jinn_domain::Command::SetSessionCwd(
+                    let _ = app.core.sender().send(jinn_domain::Bridge::publish_closure(
                         jinn_domain::feat::session_lifecycle::protocol::command::SetSessionCwd {
                             session_id,
                             cwd: canonical,

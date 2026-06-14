@@ -13,7 +13,6 @@ use crate::feat::ui::sidebar::sessions::state::sorted_open_sessions;
 /// Panics if `sessions_section.selected_index` is `None`.
 pub fn handle_session_archive(state: &mut AppState) -> crate::protocol::IntentResult {
     use crate::feat::session::protocol::archive_session::ArchiveSession;
-    use crate::protocol::Command;
 
     // Validate - same preconditions as session close.
     if validate_session_close(state).is_err() {
@@ -28,7 +27,7 @@ pub fn handle_session_archive(state: &mut AppState) -> crate::protocol::IntentRe
     let target_id = target.id.clone();
 
     // Emit ArchiveSession - the actor handles archival without teardown.
-    crate::protocol::IntentResult::with_commands(vec![Command::ArchiveSession(ArchiveSession {
+    crate::protocol::IntentResult::with_message(ArchiveSession {
         session_id: target_id,
-    })])
+    })
 }
