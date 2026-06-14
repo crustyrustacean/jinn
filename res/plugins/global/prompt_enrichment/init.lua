@@ -49,14 +49,22 @@ function M.on_enrich(ctx)
             persist = false,       -- one-shot enrichment is transient; never write to the store
             disable_tool_loop = true, -- enrichment is a pure text rewrite; never run tool loops
             timeout_ms = 30000,    -- bound a genuinely stuck model; hard-cancels the one-shot session
+        }, {
+            -- Named task so on_keybind_trigger can cancel this in-flight
+            -- request on a retap. Scoped per-session via string concat (the
+            -- enrichment plugin is global but operates per-session).
+            task = "enrich:" .. ctx.session_id,
         })
 
         if not result.ok then
-            -- Surface the error so the user knows enrichment failed.
-            ctx.emit("push_chat_entry", {
-                session_id = ctx.session_id,
-                kind = { error = result.error },
-            })
+            -- A cancel is intentional (retap); suppress the error entry.
+            -- Other errors surface so the user knows enrichment failed.
+            if result.error ~= "cancelled" then
+                ctx.emit("push_chat_entry", {
+                    session_id = ctx.session_id,
+                    kind = { error = result.error },
+                })
+            end
         elseif result.value.text ~= "" then
             ctx.emit("set_chat_input", {
                 session_id = ctx.session_id,
@@ -75,6 +83,27 @@ function M.on_enrich(ctx)
             kind = { error = "enrichment failed" },
         })
     end
+end
+
+
+--- Sync hook fired by Intent::TriggerPlugin before the async on_enrich fire.
+--- Lets the plugin veto the fire and cancel an in-flight enrichment instead.
+---
+--- Self-selects on ctx.plugin_name: only this plugin's keybind is answered.
+--- Returns {fire=false} when enriching (cancels the in-flight request);
+--- {fire=true} otherwise (proceed to fire on_enrich).
+---
+---@param ctx OnKeybindTriggerCtx
+---@return table? result `{ fire = bool }` or nil
+function M.on_keybind_trigger(ctx)
+    -- Only answer for our own keybind.
+    if ctx.plugin_name ~= "prompt_enrichment" then return end
+
+    if (ctx.plugin_data or {}).status == "enriching" then
+        ctx.cancel("enrich:" .. ctx.session_id)
+        return { fire = false }
+    end
+    return { fire = true }
 end
 
 --- Sync hook fired by the chat-input renderer. Returns a single badge
