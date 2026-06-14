@@ -110,7 +110,6 @@ async fn empty_diffs_does_not_change_storage() {
         .await;
     let messages = await_recorded(&recorder, 1, Duration::from_secs(2)).await;
     assert!(!messages.is_empty(), "expected first PreferencesUpdated");
-    let _first_prefs = &messages[0].preferences;
 
     // When sending UpdatePreferences with empty diffs.
     harness.publish(UpdatePreferences { updates: vec![] }).await;
