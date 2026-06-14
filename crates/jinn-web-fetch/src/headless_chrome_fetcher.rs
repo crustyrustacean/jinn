@@ -17,7 +17,9 @@
 //! - **Shutdown**: [`WebFetcher::shutdown`] drops the browser (kills process).
 
 use std::collections::HashMap;
-use std::sync::{Arc, Mutex};
+use std::sync::Arc;
+
+use parking_lot::Mutex;
 
 use async_trait::async_trait;
 use headless_chrome::{Browser, LaunchOptions};
@@ -55,10 +57,7 @@ impl HeadlessChromeFetcher {
 
     /// Ensures a browser is running, launching one if necessary.
     fn ensure_browser(&self) -> Result<Browser, FetchError> {
-        let mut guard = self
-            .browser
-            .lock()
-            .map_err(|_lock_err| FetchError::BrowserCrash)?;
+        let mut guard = self.browser.lock();
         if let Some(ref browser) = *guard {
             tracing::trace!("HeadlessChromeFetcher: reusing existing browser");
             return Ok(browser.clone());
@@ -79,7 +78,7 @@ impl HeadlessChromeFetcher {
 
     /// Clears the stored browser (for crash recovery).
     fn take_browser(&self) -> Option<Browser> {
-        let mut guard = self.browser.lock().ok()?;
+        let mut guard = self.browser.lock();
         guard.take()
     }
 }
