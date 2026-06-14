@@ -38,6 +38,52 @@ use crate::feat;
 
 use crate::IntentResult;
 
+/// Dispatch a replacement command from a plugin's `Replace` interception outcome.
+///
+/// Each JSON command object goes through the same verb dispatch as
+/// `handle_plugin_command` (via [`plugin_bridge::dispatch_verb`]). The active
+/// `session_id` is injected into the payload if the plugin didn't supply one,
+/// so plugins don't have to echo it back. Returns a bus closure if the verb is
+/// recognized, or `None` (with a warning log) if not.
+fn dispatch_replacement_command(
+    cmd_json: &serde_json::Value,
+    session_id: &crate::protocol::SessionId,
+) -> Option<crate::common::bridge::BridgeClosure> {
+    use crate::common::plugin_bridge::{CmdCtx, dispatch_verb};
+
+    // Extract verb and payload. The shape is `{ "verb": "...", "payload": {...} }`
+    // or a bare object (treated as the payload with the whole object as verb source).
+    let Some(obj) = cmd_json.as_object() else {
+        tracing::warn!(?cmd_json, "plugin replacement command is not a JSON object");
+        return None;
+    };
+    let Some(verb) = obj.get("verb").and_then(|v| v.as_str()) else {
+        tracing::warn!(?cmd_json, "plugin replacement command missing 'verb' key");
+        return None;
+    };
+    let mut payload = obj
+        .get("payload")
+        .cloned()
+        .unwrap_or_else(|| cmd_json.clone());
+
+    // Inject the active session_id so plugins don't have to echo it back.
+    // If the plugin supplied one, the plugin's value wins.
+    if let Some(p) = payload.as_object_mut()
+        && !p.contains_key("session_id")
+    {
+        p.insert(
+            "session_id".to_owned(),
+            serde_json::json!(session_id.to_string()),
+        );
+    }
+
+    let ctx = CmdCtx {
+        plugin_name: "<interception>".to_owned(),
+        verb: verb.to_owned(),
+    };
+    dispatch_verb(verb, ctx, payload)
+}
+
 /// Processes user intents - the single decision point for all user input.
 ///
 /// For each [`Intent`] variant: call the validator, then act.
@@ -46,64 +92,6 @@ use crate::IntentResult;
 /// Some intents set "TUI signals" on `state.frontend.tui_signals` - flags that the
 /// outer platform layer reads after `handle()` returns and acts upon
 /// (e.g., opening an external editor, toggling a popup).
-/// Dispatch a replacement command from a plugin's `Replace` interception outcome.
-///
-/// Each JSON command object goes through the same verb dispatch as `handle_plugin_command`.
-/// Returns a bus closure if the verb is recognized, or `None` (with a warning log) if not.
-fn dispatch_replacement_command(
-    cmd_json: &serde_json::Value,
-    session_id: &crate::protocol::SessionId,
-) -> Option<
-    Box<
-        dyn FnOnce(&kameo::prelude::ActorRef<kameo_actors::message_bus::MessageBus>)
-            + Send
-            + 'static,
-    >,
-> {
-    use crate::common::bridge::Bridge;
-
-    // The replacement JSON should have a "verb" key and a "payload" key.
-    // If it doesn't match this shape, try treating the whole thing as a verb payload.
-    let (verb, payload) = if let Some(obj) = cmd_json.as_object() {
-        if let Some(verb_val) = obj.get("verb").and_then(|v| v.as_str()) {
-            (
-                verb_val.to_owned(),
-                obj.get("payload").cloned().unwrap_or(cmd_json.clone()),
-            )
-        } else {
-            // No "verb" key — can't dispatch.
-            tracing::warn!(?cmd_json, "plugin replacement command missing 'verb' key");
-            return None;
-        }
-    } else {
-        tracing::warn!(?cmd_json, "plugin replacement command is not a JSON object");
-        return None;
-    };
-
-    // Dispatch through the same verb table used by plugin_wiring.
-    // For now, we handle the common cases inline.
-    match verb.as_str() {
-        "push_chat_entry" => {
-            let entry = crate::feat::session::chat_entry::ChatEntry::system(
-                payload
-                    .get("text")
-                    .and_then(|v| v.as_str())
-                    .unwrap_or("")
-                    .to_owned(),
-            );
-            let msg = crate::feat::chat_input::protocol::command::PushChatEntry {
-                session_id: session_id.clone(),
-                entry,
-            };
-            Some(Bridge::publish_closure(msg))
-        }
-        _ => {
-            tracing::warn!(verb, "unknown verb in plugin replacement command");
-            None
-        }
-    }
-}
-
 pub struct IntentHandler;
 
 impl IntentHandler {
@@ -191,7 +179,7 @@ impl IntentHandler {
                         replacement_count = commands.len(),
                         "plugin replaced submit commands"
                     );
-                    // Convert each replacement JSON command through the PluginVerb dispatch.
+                    // Convert each replacement JSON command through the dispatch_verb bridge.
                     // The JSON shape uses the same verb/payload format as handle_plugin_command.
                     let new_messages: Vec<_> = commands
                         .into_iter()
