@@ -42,7 +42,6 @@ pub fn handle_plugin_command(cmd: PluginCommand, channel: &ActorChannelService) 
     }
 }
 
-
 /// Build a command dispatcher closure for the plugin system.
 ///
 /// The returned closure captures an `ActorChannelService` and routes
@@ -74,4 +73,3 @@ pub async fn handle_plugin_request(
 fn request_err(error: impl std::fmt::Display) -> serde_json::Value {
     serde_json::json!({ "ok": false, "error": error.to_string() })
 }
-

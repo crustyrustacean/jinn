@@ -108,3 +108,62 @@ impl crate::common::plugin_bridge::TryFromLua for SetManagedSession {
         })
     }
 }
+#[cfg(test)]
+mod tests {
+    #![allow(clippy::expect_used, clippy::panic, reason = "test code")]
+
+    use super::*;
+    use crate::common::plugin_bridge::{CmdCtx, TryFromLua};
+
+    fn ctx(verb: &str) -> CmdCtx {
+        CmdCtx {
+            plugin_name: "test-plugin".to_owned(),
+            verb: verb.to_owned(),
+        }
+    }
+
+    #[test]
+    fn disable_plugin_verb_translates_to_toggle_plugin() {
+        // Given a disable_plugin payload.
+        let payload = serde_json::json!({
+            "session_id": "test-session",
+            "plugin_name": "judge_pass",
+        });
+
+        // When translating the "disable_plugin" verb.
+        let msg =
+            TogglePlugin::try_from_lua(ctx(TogglePlugin::VERB), payload).expect("should translate");
+
+        // Then a TogglePlugin message is produced with the plugin name.
+        assert_eq!(msg.plugin_name, "judge_pass");
+    }
+
+    #[test]
+    fn disable_plugin_verb_const_is_disable_plugin() {
+        // Then the verb constant preserves the legacy "disable_plugin" name
+        // (intentional: verb name does not match the message name).
+        assert_eq!(TogglePlugin::VERB, "disable_plugin");
+    }
+
+    #[test]
+    fn set_managed_session_translates() {
+        // Given a set_managed_session payload.
+        let payload = serde_json::json!({
+            "session_id": "s-parent",
+            "plugin_name": "judge_pass",
+            "managed_session_id": "s-child",
+        });
+
+        // When translating.
+        let msg = SetManagedSession::try_from_lua(ctx(SetManagedSession::VERB), payload)
+            .expect("should translate");
+
+        // Then all three fields are preserved.
+        assert_eq!(msg.session_id, SessionId::from("s-parent".to_owned()));
+        assert_eq!(msg.plugin_name, "judge_pass");
+        assert_eq!(
+            msg.managed_session_id,
+            SessionId::from("s-child".to_owned())
+        );
+    }
+}
