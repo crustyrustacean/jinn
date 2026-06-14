@@ -11,6 +11,7 @@ use crate::common::app_state::FocusScope;
 use crate::feat::context::protocol::command::{LoadPersonaPickerEntries, ScanContextFiles};
 use crate::feat::preferences_actor::protocol::app_state_command::{AppStateUpdate, UpdateAppState};
 use crate::feat::provider::picker_entry::PickerEntry;
+use crate::feat::provider::ProviderState;
 use crate::feat::provider::protocol::command::{
     LoadProviderPickerEntries, ProviderSwitch, RescanPromptTemplates,
 };
@@ -332,50 +333,23 @@ pub fn handle_move_cursor_right(state: &mut AppState) -> IntentResult {
 // --- Private confirm handlers ---
 
 /// Confirms the selected provider and dispatches a switch command.
+///
+/// In single mode, ENTER commits the highlighted entry as a single model.
+/// In alloy mode, ENTER force-includes the highlighted entry (deduped against the
+/// checked set) and commits: one model -> `Single`, two or more -> anonymous
+/// `Alloy`. The highlighted entry must be available or nothing is committed.
 fn confirm_provider(state: &mut AppState) -> IntentResult {
-    let selected: Vec<String> = state
-        .provider
-        .provider_picker
-        .items()
-        .iter()
-        .filter(|entry| entry.selected && entry.is_available)
-        .map(|entry| entry.provider_id.clone())
-        .collect();
-
-    // Check if the single selected/highlighted entry is a named alloy.
-    let model_selection = if selected.is_empty() {
-        // Fallback to the highlighted entry if nothing is explicitly selected.
-        let Some(entry) = state.provider.provider_picker.selected_item() else {
-            return IntentResult::empty();
-        };
-        if !entry.is_available {
-            return IntentResult::empty();
-        }
-        entry_to_model_selection(entry)
-    } else if selected.len() == 1 {
-        // One selected entry — could be a named alloy or a single model.
-        if let [first_pid] = selected.as_slice() {
-            if let Some(entry) = state
-                .provider
-                .provider_picker
-                .items()
-                .iter()
-                .find(|e| e.provider_id == *first_pid && e.selected)
-            {
-                entry_to_model_selection(entry)
-            } else {
-                ModelSelection::default()
-            }
-        } else {
-            ModelSelection::default()
-        }
-    } else {
-        // Multiple selected entries — build an anonymous alloy.
-        ModelSelection::Alloy {
-            models: selected,
-            strategy: AlloyStrategy::RoundRobin { index: 0 },
-        }
+    // Resolve the highlighted entry. It is the foundation of both modes, and
+    // its availability gates the entire confirm.
+    let Some(highlight) = state.provider.provider_picker.selected_item() else {
+        return IntentResult::empty();
     };
+    if !highlight.is_available {
+        return IntentResult::empty();
+    }
+    let highlight_id = highlight.provider_id.clone();
+
+    let model_selection = resolve_provider_selection(&state.provider, highlight_id);
 
     let last_model = Some(model_selection.clone());
     let session_id = state.session.active_session_id().clone();
@@ -389,6 +363,38 @@ fn confirm_provider(state: &mut AppState) -> IntentResult {
         .message(UpdateAppState {
             updates: vec![AppStateUpdate::SetLastModel(last_model)],
         })
+}
+
+/// Resolves the provider confirmation decision for the given highlighted entry.
+///
+/// Single mode: the highlighted entry becomes `ModelSelection::Single`.
+/// Alloy mode: the checked set union the highlight (deduped); one model -> `Single`,
+/// two or more -> `Alloy`.
+fn resolve_provider_selection(provider: &ProviderState, highlighted: String) -> ModelSelection {
+    if !provider.alloy_mode {
+        return ModelSelection::Single(highlighted);
+    }
+    let mut models: Vec<String> = provider
+        .provider_picker
+        .items()
+        .iter()
+        .filter(|e| e.selected && e.is_available)
+        .map(|e| e.provider_id.clone())
+        .collect();
+
+    // Force-include the highlighted entry (ENTER adds it before committing).
+    if !models.contains(&highlighted) {
+        models.push(highlighted);
+    }
+
+    if models.len() <= 1 {
+        ModelSelection::Single(models.into_iter().next().unwrap_or_default())
+    } else {
+        ModelSelection::Alloy {
+            models,
+            strategy: AlloyStrategy::RoundRobin { index: 0 },
+        }
+    }
 }
 
 /// Converts a picker entry into a [`ModelSelection`].
@@ -733,6 +739,10 @@ pub fn handle_skill_toggle(state: &mut AppState) -> IntentResult {
 /// Used for multi-select alloy building. When toggled on, the entry gets a
 /// checkmark and is sorted to the top of the list. The cursor moves down after toggle.
 pub fn handle_model_toggle(state: &mut AppState) -> IntentResult {
+    // No-op outside alloy mode: single mode never builds checkmarks.
+    if !state.provider.alloy_mode {
+        return IntentResult::empty();
+    }
     state.provider.provider_picker.with_selected_mut(|entry| {
         entry.selected = !entry.selected;
     });
@@ -995,6 +1005,15 @@ mod tests {
             },
         ];
         state.provider.provider_picker.set_items(entries);
+        state.provider.alloy_mode = true;
+        state.provider.provider_picker.move_down(1); // Highlight first entry.
+
+        // When toggling model selection.
+        handle_model_toggle(&mut state);
+
+        // Then the first entry is now selected.
+        let first = state.provider.provider_picker.items()[0].selected;
+        assert!(first, "first entry should be selected after toggle");
         state.provider.provider_picker.move_down(1); // Highlight first entry.
 
         // When toggling model selection.
@@ -1035,6 +1054,7 @@ mod tests {
             theme: crate::feat::theme::default_theme(),
         }];
         state.provider.provider_picker.set_items(entries);
+        state.provider.alloy_mode = true;
         state.provider.provider_picker.move_down(1);
 
         // When toggling model selection again.
@@ -1375,6 +1395,7 @@ mod tests {
             },
         ];
         state.provider.provider_picker.set_items(entries);
+        state.provider.alloy_mode = true;
 
         let result = confirm_provider(&mut state);
 
@@ -2215,5 +2236,159 @@ mod tests {
             .find(|e| e.name == "judgment_failed")
             .expect("entry");
         assert!(failed.enabled, "judgment_failed should still be enabled");
+    }
+
+    // --- Phase 2: mode-aware confirm + selection semantics ---
+
+    /// Builds a state with the provider picker open (Provider scope), `n` available
+    /// single-model entries `model-0..model-n`, and the first entry highlighted.
+    fn state_with_provider_picker(n: usize) -> AppState {
+        let mut state = AppState::default();
+        let origin = ChatSessionState::new();
+        state.session.insert(origin);
+        state
+            .session
+            .set_active(state.session.active_session_id().clone());
+        state.frontend.scope_stack.push(FocusScope::Picker {
+            kind: PickerKind::Provider,
+        });
+        let entries: Vec<crate::protocol::PickerEntry> = (0..n)
+            .map(|i| crate::protocol::PickerEntry {
+                provider_id: format!("prov/model-{i}"),
+                name: "prov".to_owned(),
+                provider_name: "prov".to_owned(),
+                backend: "openrouter".to_owned(),
+                model: format!("model-{i}"),
+                search_text: format!("model-{i}"),
+                is_alias: false,
+                alias_target: None,
+                is_available: true,
+                is_remote: false,
+                is_active: false,
+                selected: false,
+                alloy_models: None,
+                theme: crate::feat::theme::default_theme(),
+            })
+            .collect();
+        state.provider.provider_picker.set_items(entries);
+        state.provider.provider_picker.move_down(1); // highlight first entry
+        state
+    }
+
+    #[rstest::rstest]
+    fn single_mode_resolve_returns_highlight_ignoring_checks() {
+        // Given single mode with a stale check on model-0 and model-1 highlighted.
+        let mut state = state_with_provider_picker(2);
+        state.provider.alloy_mode = false;
+        // Stale check on model-0 that single mode must ignore.
+        state.provider.provider_picker.with_selected_mut(|e| {
+            e.selected = true;
+        });
+        state.provider.provider_picker.move_down(1); // highlight model-1
+
+        // When resolving the selection for the highlighted entry.
+        let selection = resolve_provider_selection(&state.provider, "prov/model-1".to_owned());
+
+        // Then it is Single of the highlighted entry, not the checked one.
+        assert_eq!(selection, ModelSelection::Single("prov/model-1".to_owned()));
+    }
+
+    #[rstest::rstest]
+    fn single_mode_confirm_rejects_unavailable_highlight() {
+        // Given single mode where the highlighted entry is unavailable.
+        let mut state = state_with_provider_picker(1);
+        state.provider.alloy_mode = false;
+        state.provider.provider_picker.with_selected_mut(|e| {
+            e.is_available = false;
+        });
+
+        // When confirming.
+        let result = confirm_provider(&mut state);
+
+        // Then no ProviderSwitch is emitted.
+        assert!(
+            !result.message_names.iter().any(|n| n.contains("ProviderSwitch")),
+            "unavailable highlight should be rejected"
+        );
+    }
+
+    #[rstest::rstest]
+    fn single_mode_tab_is_noop() {
+        // Given single mode.
+        let mut state = state_with_provider_picker(2);
+        state.provider.alloy_mode = false;
+
+        // When toggling a model.
+        handle_model_toggle(&mut state);
+
+        // Then no entry became selected.
+        let any_selected = state
+            .provider
+            .provider_picker
+            .items()
+            .iter()
+            .any(|e| e.selected);
+        assert!(!any_selected, "single-mode TAB must not check anything");
+    }
+
+    #[rstest::rstest]
+    fn alloy_mode_resolve_includes_highlight_and_checks() {
+        // Given alloy mode with model-0 checked and model-2 highlighted.
+        let mut state = state_with_provider_picker(3);
+        state.provider.alloy_mode = true;
+        // Check model-0.
+        state.provider.provider_picker.move_up(PICKER_MAX_VISIBLE);
+        state.provider.provider_picker.with_selected_mut(|e| {
+            e.selected = true;
+        });
+        // Move to model-2 (down twice from model-0).
+        state.provider.provider_picker.move_down(PICKER_MAX_VISIBLE);
+        state.provider.provider_picker.move_down(PICKER_MAX_VISIBLE);
+
+        // When resolving the selection for the highlighted entry.
+        let selection = resolve_provider_selection(&state.provider, "prov/model-2".to_owned());
+
+        // Then it is an Alloy containing both model-0 and model-2.
+        match selection {
+            ModelSelection::Alloy { models, .. } => {
+                assert_eq!(models.len(), 2);
+                assert!(models.contains(&"prov/model-0".to_owned()));
+                assert!(models.contains(&"prov/model-2".to_owned()));
+            }
+            other => panic!("expected Alloy, got {other:?}"),
+        }
+    }
+
+    #[rstest::rstest]
+    fn alloy_mode_resolve_dedups_already_checked_highlight() {
+        // Given alloy mode with the highlighted entry (model-1) already checked.
+        let mut state = state_with_provider_picker(2);
+        state.provider.alloy_mode = true;
+        state.provider.provider_picker.with_selected_mut(|e| {
+            e.selected = true;
+        });
+
+        // When resolving (highlight is already checked).
+        let selection = resolve_provider_selection(&state.provider, "prov/model-1".to_owned());
+
+        // Then it collapses to Single (one model, no duplication).
+        assert_eq!(
+            selection,
+            ModelSelection::Single("prov/model-1".to_owned()),
+            "already-checked highlight must not duplicate; 1-model set collapses to Single"
+        );
+    }
+
+    #[rstest::rstest]
+    fn alloy_mode_resolve_one_model_collapses_to_single() {
+        // Given alloy mode with nothing checked and the highlighted entry (model-1).
+        let mut state = state_with_provider_picker(2);
+        state.provider.alloy_mode = true;
+
+        // When resolving the selection for the highlighted entry.
+        let selection = resolve_provider_selection(&state.provider, "prov/model-1".to_owned());
+
+        // Then a Single selection is returned (1-model alloy collapses).
+        assert_eq!(selection, ModelSelection::Single("prov/model-1".to_owned()));
     }
 }
