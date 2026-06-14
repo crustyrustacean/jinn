@@ -19,7 +19,7 @@ use crate::feat::session::chat_entry::{
 #[derive(Debug, Clone, Serialize, Deserialize)]
 #[allow(
     clippy::large_enum_variant,
-    reason = "InsertEntry owns a full ChatEntry by design"
+    reason = "InsertEntry owns a full ChatEntry by design; variants are produced in Vec batches and matched by value"
 )]
 pub enum HistoryMutation {
     /// Set the context override on an entry (include/exclude from LLM context).
