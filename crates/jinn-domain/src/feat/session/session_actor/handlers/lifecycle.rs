@@ -283,11 +283,10 @@ impl SessionPersistenceActor {
                     let state = self.state.read();
                     // Preserve the session's inherited CWD; do not overwrite with
                     // the app launch dir.
-                    state
-                        .session
-                        .get(&payload.session_id)
-                        .map(|s| s.cwd().to_path_buf())
-                        .unwrap_or_else(|| state.session.default_cwd().clone())
+                    state.session.get(&payload.session_id).map_or_else(
+                        || state.session.default_cwd().clone(),
+                        |s| s.cwd().to_path_buf(),
+                    )
                 };
 
                 let entry = ChatEntry::error(error_msg);
@@ -315,11 +314,10 @@ impl SessionPersistenceActor {
                     if let Some(session) = state.session.get_mut(&payload.session_id) {
                         session.advance_lifecycle_after_setup();
                     }
-                    state
-                        .session
-                        .get(&payload.session_id)
-                        .map(|s| s.cwd().to_path_buf())
-                        .unwrap_or_else(|| state.session.default_cwd().clone())
+                    state.session.get(&payload.session_id).map_or_else(
+                        || state.session.default_cwd().clone(),
+                        |s| s.cwd().to_path_buf(),
+                    )
                 };
                 self.publish(PushChatEntry {
                     session_id: payload.session_id.clone(),
@@ -351,11 +349,10 @@ impl SessionPersistenceActor {
                 let state = self.state.read();
                 // Preserve the session's inherited CWD; do not overwrite with
                 // the app launch dir.
-                state
-                    .session
-                    .get(session_id)
-                    .map(|s| s.cwd().to_path_buf())
-                    .unwrap_or_else(|| state.session.default_cwd().clone())
+                state.session.get(session_id).map_or_else(
+                    || state.session.default_cwd().clone(),
+                    |s| s.cwd().to_path_buf(),
+                )
             };
 
             self.publish(PushChatEntry {
@@ -402,11 +399,10 @@ impl SessionPersistenceActor {
                     let state = self.state.read();
                     // Preserve the session's inherited CWD; do not overwrite with
                     // the app launch dir.
-                    state
-                        .session
-                        .get(session_id)
-                        .map(|s| s.cwd().to_path_buf())
-                        .unwrap_or_else(|| state.session.default_cwd().clone())
+                    state.session.get(session_id).map_or_else(
+                        || state.session.default_cwd().clone(),
+                        |s| s.cwd().to_path_buf(),
+                    )
                 };
 
                 self.publish(PushChatEntry {
@@ -2227,5 +2223,116 @@ mod tests {
 
         let push_count = audit.of_type::<PushChatEntry>().len();
         assert_eq!(push_count, 1);
+    }
+
+    #[tokio::test]
+    async fn no_output_fallback_preserves_inherited_session_cwd() {
+        // Given an actor whose active session has a distinct (inherited) CWD
+        // that differs from default_cwd().
+        let (mut actor, _audit) = test_actor_recording().await;
+        let session_id = actor.state.read().session.active_session_id().clone();
+        let inherited_cwd = std::path::PathBuf::from("/tmp/inherited-project");
+        {
+            let mut state = actor.state.write();
+            state
+                .session
+                .get_mut(&session_id)
+                .unwrap()
+                .set_cwd(inherited_cwd.clone());
+        }
+        assert_ne!(*actor.state.read().session.default_cwd(), inherited_cwd);
+
+        // When the setup command finishes with no output (the (None, None)
+        // fallback arm in handle_finish_session_setup).
+        let finish = FinishSessionSetup {
+            session_id: session_id.clone(),
+            cwd: None,
+            error: None,
+        };
+        actor.handle_finish_session_setup(&finish).await;
+
+        // Then the session's CWD is the inherited value, not the app launch
+        // dir (default_cwd).
+        let cwd_after = actor
+            .state
+            .read()
+            .session
+            .get(&session_id)
+            .map(|s| s.cwd().to_path_buf())
+            .unwrap();
+        assert_eq!(cwd_after, inherited_cwd);
+    }
+
+    #[tokio::test]
+    async fn setup_success_overwrites_inherited_cwd_with_script_output() {
+        // Given an actor whose active session has an inherited CWD.
+        let (mut actor, _audit) = test_actor_recording().await;
+        let session_id = actor.state.read().session.active_session_id().clone();
+        let inherited_cwd = std::path::PathBuf::from("/tmp/inherited-project");
+        {
+            let mut state = actor.state.write();
+            state
+                .session
+                .get_mut(&session_id)
+                .unwrap()
+                .set_cwd(inherited_cwd.clone());
+        }
+
+        // When the setup command finishes and echoes a different CWD
+        // (the (Some(cwd), None) success arm in handle_finish_session_setup).
+        let script_cwd = std::path::PathBuf::from("/tmp/script-output-dir");
+        let finish = FinishSessionSetup {
+            session_id: session_id.clone(),
+            cwd: Some(script_cwd.clone()),
+            error: None,
+        };
+        actor.handle_finish_session_setup(&finish).await;
+
+        // Then the session's CWD is the script's output, not the inherited
+        // value — the script-stdout-wins contract is preserved (AC3).
+        let cwd_after = actor
+            .state
+            .read()
+            .session
+            .get(&session_id)
+            .map(|s| s.cwd().to_path_buf())
+            .unwrap();
+        assert_eq!(cwd_after, script_cwd);
+    }
+
+    #[tokio::test]
+    async fn setup_error_preserves_inherited_session_cwd() {
+        // Given an actor whose active session has an inherited CWD.
+        let (mut actor, _audit) = test_actor_recording().await;
+        let session_id = actor.state.read().session.active_session_id().clone();
+        let inherited_cwd = std::path::PathBuf::from("/tmp/inherited-project");
+        {
+            let mut state = actor.state.write();
+            state
+                .session
+                .get_mut(&session_id)
+                .unwrap()
+                .set_cwd(inherited_cwd.clone());
+        }
+
+        // When the setup command finishes with an error (the
+        // (_, Some(error_msg)) fallback arm in handle_finish_session_setup).
+        let finish = FinishSessionSetup {
+            session_id: session_id.clone(),
+            cwd: None,
+            error: Some("command failed: exit 1".to_owned()),
+        };
+        actor.handle_finish_session_setup(&finish).await;
+
+        // Then the session's CWD is the inherited value, not the app launch
+        // dir (default_cwd) — AC4.
+        let cwd_after = actor
+            .state
+            .read()
+            .session
+            .get(&session_id)
+            .map(|s| s.cwd().to_path_buf())
+            .unwrap();
+        assert_eq!(cwd_after, inherited_cwd);
     }
 }
