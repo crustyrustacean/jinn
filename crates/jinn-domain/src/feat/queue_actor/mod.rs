@@ -134,13 +134,14 @@ impl QueueActor {
     }
 
     /// Dispatch a user message: push to history, set title, begin sending,
-    /// assemble prompt, emit SendToLlmProvider, emit ChatEntrySubmitted, emit PersistSession.
+    /// emit SessionPhaseChanged (if the phase actually changed), assemble
+    /// prompt, emit SendToLlmProvider, emit ChatEntrySubmitted, emit PersistSession.
     async fn dispatch_user_message(
         &self,
         session_id: &SessionId,
         entry: &crate::protocol::ChatEntry,
     ) {
-        {
+        let (old_phase, new_phase) = {
             let mut state = self.state.write();
             let session = state.session_mut_or_create(session_id);
             if session.title().is_none() {
@@ -163,7 +164,18 @@ impl QueueActor {
                     "drained steering entry into history at queue_actor::dispatch_user_message"
                 );
             }
+            let old_phase = session.phase();
             session.begin_sending();
+            (old_phase, session.phase())
+        };
+
+        if old_phase != new_phase {
+            self.publish(SessionPhaseChanged {
+                session_id: session_id.clone(),
+                old_phase,
+                new_phase,
+            })
+            .await;
         }
 
         let assembled = {
