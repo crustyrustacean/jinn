@@ -168,3 +168,128 @@ impl crate::common::plugin_bridge::TryFromLua for SetChatInputText {
         })
     }
 }
+
+#[cfg(test)]
+mod tests {
+    #![allow(clippy::expect_used, clippy::panic, reason = "test code")]
+
+    use super::*;
+    use crate::common::plugin_bridge::{CmdCtx, TryFromLua};
+
+    fn ctx(verb: &str) -> CmdCtx {
+        CmdCtx {
+            plugin_name: "test-plugin".to_owned(),
+            verb: verb.to_owned(),
+        }
+    }
+
+    #[test]
+    fn push_chat_entry_system_kind_translates() {
+        // Given a push_chat_entry payload with a system kind.
+        let payload = serde_json::json!({
+            "session_id": "test-session",
+            "kind": { "system": "Hello from plugin!" },
+        });
+
+        // When translating.
+        let msg = PushChatEntry::try_from_lua(ctx(PushChatEntry::VERB), payload)
+            .expect("should translate");
+
+        // Then the entry is a system entry containing the text.
+        assert_eq!(msg.entry.kind_str(), "system");
+        assert!(msg.entry.text().contains("Hello from plugin!"));
+    }
+
+    #[test]
+    fn push_chat_entry_transient_kind_translates() {
+        // Given a push_chat_entry payload with a transient kind.
+        let payload = serde_json::json!({
+            "session_id": "test-session",
+            "kind": { "transient": "welcome" },
+        });
+
+        // When translating.
+        let msg = PushChatEntry::try_from_lua(ctx(PushChatEntry::VERB), payload)
+            .expect("should translate");
+
+        // Then the entry is a transient entry.
+        assert_eq!(msg.entry.kind_str(), "transient");
+    }
+
+    #[test]
+    fn push_chat_entry_error_kind_translates() {
+        // Given a push_chat_entry payload with an error kind.
+        let payload = serde_json::json!({
+            "session_id": "test-session",
+            "kind": { "error": "enrichment failed" },
+        });
+
+        // When translating.
+        let msg = PushChatEntry::try_from_lua(ctx(PushChatEntry::VERB), payload)
+            .expect("should translate");
+
+        // Then the entry is an error entry.
+        assert_eq!(msg.entry.kind_str(), "error");
+    }
+
+    #[test]
+    fn push_chat_entry_unknown_kind_is_rejected() {
+        // Given a push_chat_entry payload with a kind we don't support.
+        let payload = serde_json::json!({
+            "session_id": "test-session",
+            "kind": { "user": "hi" },
+        });
+
+        // When translating.
+        let result = PushChatEntry::try_from_lua(ctx(PushChatEntry::VERB), payload);
+
+        // Then translation fails.
+        assert!(result.is_err());
+    }
+
+    #[test]
+    fn push_chat_entry_missing_fields_is_rejected() {
+        // Given a payload missing the required session_id/kind fields.
+        let payload = serde_json::json!({ "message": "hello" });
+
+        // When translating.
+        let result = PushChatEntry::try_from_lua(ctx(PushChatEntry::VERB), payload);
+
+        // Then translation fails.
+        assert!(result.is_err());
+    }
+
+    #[test]
+    fn enqueue_user_message_wraps_text_as_user_entry() {
+        // Given an enqueue_user_message payload.
+        let payload = serde_json::json!({
+            "session_id": "test-session",
+            "text": "retry the judgment",
+        });
+
+        // When translating.
+        let msg = EnqueueUserMessage::try_from_lua(ctx(EnqueueUserMessage::VERB), payload)
+            .expect("should translate");
+
+        // Then the entry is a user entry wrapping the text.
+        assert_eq!(msg.entry.kind_str(), "user");
+        assert!(msg.entry.text().contains("retry the judgment"));
+    }
+
+    #[test]
+    fn set_chat_input_text_translates() {
+        // Given a set_chat_input payload.
+        let payload = serde_json::json!({
+            "session_id": "s-test-session",
+            "text": "enriched prompt text",
+        });
+
+        // When translating.
+        let msg = SetChatInputText::try_from_lua(ctx(SetChatInputText::VERB), payload)
+            .expect("should translate");
+
+        // Then the session_id and text are preserved.
+        assert_eq!(msg.session_id.to_string(), "s-test-session");
+        assert_eq!(msg.text, "enriched prompt text");
+    }
+}

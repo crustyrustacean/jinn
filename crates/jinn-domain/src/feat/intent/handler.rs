@@ -61,14 +61,20 @@ fn dispatch_replacement_command(
         tracing::warn!(?cmd_json, "plugin replacement command missing 'verb' key");
         return None;
     };
-    let mut payload = obj.get("payload").cloned().unwrap_or_else(|| cmd_json.clone());
+    let mut payload = obj
+        .get("payload")
+        .cloned()
+        .unwrap_or_else(|| cmd_json.clone());
 
     // Inject the active session_id so plugins don't have to echo it back.
     // If the plugin supplied one, the plugin's value wins.
     if let Some(p) = payload.as_object_mut()
         && !p.contains_key("session_id")
     {
-        p.insert("session_id".to_owned(), serde_json::json!(session_id.to_string()));
+        p.insert(
+            "session_id".to_owned(),
+            serde_json::json!(session_id.to_string()),
+        );
     }
 
     let ctx = CmdCtx {
