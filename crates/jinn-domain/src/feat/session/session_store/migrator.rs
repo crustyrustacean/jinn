@@ -165,6 +165,10 @@ fn run_pending_migrations(conn: &mut SqliteConnection) -> Result<(), Report<Sess
         migrate_v18(conn)?;
         record_version(conn, 18, "rename_entries_timestamp_to_timing")?;
     }
+    if current < 19 {
+        migrate_v19(conn)?;
+        record_version(conn, 19, "rewrite_metadata_blob_profile_model")?;
+    }
     Ok(())
 }
 
@@ -509,6 +513,46 @@ fn rewrite_profile_model(raw: &str) -> String {
     serde_json::to_string(&serde_json::Value::Object(map)).unwrap_or_else(|_| raw.to_owned())
 }
 
+/// Rewrites a bare-string `profile.model` inside a `metadata` JSON blob.
+
+/// v19's analog of [`rewrite_profile_model`], operating one level deeper:
+/// the metadata blob embeds a `profile` sub-object, whose `model` field
+/// needs the same bare-string -> `{"single": ...}` transformation. This
+/// extracts the profile sub-object, hands it to [`rewrite_profile_model`],
+/// and re-inserts the result. Idempotent and non-destructive: returns the
+/// input unchanged on any parse failure, missing `profile` key,
+/// non-object `profile`, or when `model` is already an object/missing.
+fn rewrite_metadata_blob_model(raw_metadata: &str) -> String {
+    let mut root: serde_json::Map<String, serde_json::Value> =
+        match serde_json::from_str(raw_metadata) {
+            Ok(serde_json::Value::Object(m)) => m,
+            _ => return raw_metadata.to_owned(),
+        };
+
+    let Some(profile_value) = root.get("profile") else {
+        return raw_metadata.to_owned();
+    };
+    let serde_json::Value::Object(_) = profile_value else {
+        // `profile` present but not an object - malformed; leave it alone.
+        return raw_metadata.to_owned();
+    };
+
+    // Serialize the profile sub-object, run the model rewriter, parse back.
+    let profile_str = match serde_json::to_string(profile_value) {
+        Ok(s) => s,
+        Err(_) => return raw_metadata.to_owned(),
+    };
+    let new_profile_str = rewrite_profile_model(&profile_str);
+    let new_profile: serde_json::Value = match serde_json::from_str(&new_profile_str) {
+        Ok(v) => v,
+        Err(_) => return raw_metadata.to_owned(),
+    };
+    root.insert("profile".to_owned(), new_profile);
+
+    serde_json::to_string(&serde_json::Value::Object(root))
+        .unwrap_or_else(|_| raw_metadata.to_owned())
+}
+
 /// v11: Add `is_workflow` column to sessions.
 ///
 /// Marks sessions created by workflow LLM nodes. Enables filtering
@@ -725,6 +769,51 @@ fn migrate_v18(conn: &mut SqliteConnection) -> Result<(), Report<SessionStoreErr
         .attach("v18: rename entries.timestamp to timing")?;
     Ok(())
 }
+
+/// v19: Rewrite a bare-string `profile.model` inside the `metadata` blob.
+
+/// Migration v17 rewrote the `profile` column from bare-string model to
+/// `{"single": ...}`, but sessions written at v8+ carry their profile
+/// embedded in the `metadata` blob (`PersistableCore`). The load path
+/// treats the blob as authoritative - so a 0.65 blob (bare-string model)
+/// fails to deserialize into `ModelSelection` and the session silently
+/// drops out of the sidebar. This migration reaches into each blob's
+/// embedded `profile` sub-object and applies the same rewrite v17 applied
+/// to the column. Rows with `NULL` metadata (pre-v8 sessions) are skipped;
+/// their column data was already fixed by v17.
+fn migrate_v19(conn: &mut SqliteConnection) -> Result<(), Report<SessionStoreError>> {
+    #[derive(QueryableByName)]
+    struct SessionRow {
+        #[diesel(sql_type = diesel::sql_types::Integer)]
+        rowid: i32,
+        #[diesel(sql_type = diesel::sql_types::Text)]
+        metadata: String,
+    }
+
+    let rows: Vec<SessionRow> =
+        sql_query("SELECT rowid, metadata FROM sessions WHERE metadata IS NOT NULL")
+            .load(conn)
+            .change_context(SessionStoreError)
+            .attach("v19: query session metadata")?;
+
+    for row in rows {
+        let new_metadata = rewrite_metadata_blob_model(&row.metadata);
+
+        // Only UPDATE rows where the blob actually changed.
+        if new_metadata == row.metadata {
+            continue;
+        }
+
+        sql_query("UPDATE sessions SET metadata = ? WHERE rowid = ?")
+            .bind::<diesel::sql_types::Text, _>(&new_metadata)
+            .bind::<diesel::sql_types::Integer, _>(&row.rowid)
+            .execute(conn)
+            .change_context(SessionStoreError)
+            .attach("v19: update session metadata blob")?;
+    }
+
+    Ok(())
+}
 fn migrate_v12(conn: &mut SqliteConnection) -> Result<(), Report<SessionStoreError>> {
     sql_query(
         "ALTER TABLE session_history ADD COLUMN context_override TEXT NOT NULL DEFAULT 'default'",
@@ -785,7 +874,7 @@ mod tests {
                 .load(&mut conn)
                 .expect("query migrations");
 
-        assert_eq!(rows.len(), 19);
+        assert_eq!(rows.len(), 20);
         assert_eq!(rows[0].version, 0);
         assert_eq!(rows[0].name, "create_initial_schema");
         assert_eq!(rows[1].version, 1);
@@ -816,6 +905,8 @@ mod tests {
         assert_eq!(rows[13].name, "add_judge_meta_column");
         assert_eq!(rows[14].version, 14);
         assert_eq!(rows[14].name, "add_context_history");
+        assert_eq!(rows[19].version, 19);
+        assert_eq!(rows[19].name, "rewrite_metadata_blob_profile_model");
     }
 
     #[test]
@@ -839,7 +930,7 @@ mod tests {
             .load(&mut conn)
             .expect("query count");
 
-        assert_eq!(rows[0].count, 19);
+        assert_eq!(rows[0].count, 20);
     }
 
     /// Applies migrations up to (and including) `target` version.
@@ -964,13 +1055,13 @@ mod tests {
                 panic!("re-run at target_version={target_version} should succeed: {e:?}")
             });
 
-            // Verify no duplicate rows: exactly 18 migration rows total.
+            // Verify no duplicate rows: exactly 20 migration rows total.
             let rows: Vec<CountRow> = sql_query("SELECT COUNT(*) AS count FROM _migrations")
                 .load(&mut conn)
                 .expect("query count");
             assert_eq!(
-                rows[0].count, 19,
-                "at target_version={target_version}: expected 19 migration rows, no duplicates"
+                rows[0].count, 20,
+                "at target_version={target_version}: expected 20 migration rows, no duplicates"
             );
         }
     }
