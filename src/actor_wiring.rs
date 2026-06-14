@@ -612,17 +612,6 @@ impl ActorSystemBuilder {
             .spawn()
             .await;
 
-        // Echo actor.
-        let _echo = jinn_domain::feat::echo_actor::EchoActor::supervise(
-            &root,
-            jinn_domain::feat::echo_actor::EchoActorDeps {
-                deps: actor_deps.clone(),
-            },
-        )
-        .restart_policy(kameo::supervision::RestartPolicy::Never)
-        .spawn()
-        .await;
-
         // ── History mutation workers ───────────────────��──────────────────────
         //
         // To add a new history mutation worker:
