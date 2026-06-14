@@ -81,12 +81,15 @@ pub(crate) async fn test_actor_recording() -> (
 // --- Shared test store helpers ---
 
 #[cfg(test)]
+use parking_lot::Mutex;
+
+#[cfg(test)]
 /// A fake session store that returns pre-loaded sessions for testing.
 pub(crate) struct PopulatedFakeStore {
     summaries: Vec<crate::feat::session::session_summary::SessionSummary>,
     sessions: Vec<crate::feat::session::chat_session::ChatSessionState>,
-    archived: std::sync::Mutex<Vec<crate::protocol::SessionId>>,
-    saved: std::sync::Mutex<Vec<crate::feat::session::chat_session::ChatSessionState>>,
+    archived: parking_lot::Mutex<Vec<crate::protocol::SessionId>>,
+    saved: parking_lot::Mutex<Vec<crate::feat::session::chat_session::ChatSessionState>>,
 }
 
 #[cfg(test)]
@@ -106,8 +109,8 @@ impl PopulatedFakeStore {
         Self {
             summaries,
             sessions,
-            archived: std::sync::Mutex::new(Vec::new()),
-            saved: std::sync::Mutex::new(Vec::new()),
+            archived: Mutex::new(Vec::new()),
+            saved: Mutex::new(Vec::new()),
         }
     }
 
@@ -115,10 +118,8 @@ impl PopulatedFakeStore {
         &self,
         id: &crate::protocol::SessionId,
     ) -> Option<crate::feat::session::chat_session::ChatSessionState> {
-        #[expect(clippy::expect_used, reason = "test code")]
         self.saved
             .lock()
-            .expect("lock")
             .iter()
             .rev()
             .find(|s| s.session_id() == id)
@@ -138,8 +139,7 @@ impl crate::feat::session::session_store::SessionStore for PopulatedFakeStore {
         session: &crate::feat::session::chat_session::ChatSessionState,
     ) -> Result<(), error_stack::Report<crate::feat::session::session_store::SessionStoreError>>
     {
-        #[expect(clippy::expect_used, reason = "test code")]
-        self.saved.lock().expect("lock").push(session.clone());
+        self.saved.lock().push(session.clone());
         Ok(())
     }
 
@@ -192,8 +192,7 @@ impl crate::feat::session::session_store::SessionStore for PopulatedFakeStore {
     ) -> Result<(), error_stack::Report<crate::feat::session::session_store::SessionStoreError>>
     {
         if archived {
-            #[expect(clippy::expect_used, reason = "test code")]
-            self.archived.lock().expect("lock").push(session_id.clone());
+            self.archived.lock().push(session_id.clone());
         }
         Ok(())
     }

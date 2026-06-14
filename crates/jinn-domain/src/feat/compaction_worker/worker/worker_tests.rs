@@ -1277,7 +1277,7 @@ fn gate_skips_after_compaction_reduces_context_size() {
 
 fn set_compaction_in_flight(worker: &CompactionWorker, entry_id: ChatEntryId) {
     worker.compaction_in_progress.store(true, Ordering::SeqCst);
-    *worker.pending_compaction_id.lock().expect("lock") = Some(entry_id);
+    *worker.pending_compaction_id.lock() = Some(entry_id);
 }
 
 fn worker_in_flight(worker: &CompactionWorker) -> bool {
@@ -1285,7 +1285,7 @@ fn worker_in_flight(worker: &CompactionWorker) -> bool {
 }
 
 fn worker_pending_id(worker: &CompactionWorker) -> Option<ChatEntryId> {
-    worker.pending_compaction_id.lock().expect("lock").clone()
+    worker.pending_compaction_id.lock().clone()
 }
 
 #[test]

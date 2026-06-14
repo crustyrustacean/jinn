@@ -4,8 +4,10 @@
 //! exclude old entries and insert a compaction summary. Runs asynchronously
 //! (LLM call for summarization).
 
+use std::sync::Arc;
 use std::sync::atomic::{AtomicBool, Ordering};
-use std::sync::{Arc, Mutex};
+
+use parking_lot::Mutex;
 
 use error_stack::ResultExt as _;
 use futures::{StreamExt, pin_mut};
@@ -98,9 +100,8 @@ impl CompactionWorker {
     ///
     /// If found, clears the in-progress flag and pending ID. Returns true
     /// if the flag was cleared (compaction applied), false if still in flight.
-    #[expect(clippy::expect_used, reason = "infallible")]
     fn check_compaction_applied(&self, history: &[ChatEntry]) -> bool {
-        let guard = self.pending_compaction_id.lock().expect("lock");
+        let guard = self.pending_compaction_id.lock();
         let Some(pending_id) = guard.as_ref() else {
             return false;
         };
@@ -116,10 +117,9 @@ impl CompactionWorker {
     }
 
     /// Clear the compaction in-progress state (flag and pending ID).
-    #[expect(clippy::expect_used, reason = "infallible")]
     fn clear_compaction_state(&self) {
         self.compaction_in_progress.store(false, Ordering::SeqCst);
-        *self.pending_compaction_id.lock().expect("lock") = None;
+        *self.pending_compaction_id.lock() = None;
     }
 }
 
@@ -204,7 +204,6 @@ impl CompactionWorker {
     /// Compacts only when the session's tiktoken-based `context_size()` (the same
     /// value shown in the status bar) exceeds `config.threshold` of the model's
     /// `context_length`.
-    #[expect(clippy::expect_used, reason = "infallible")]
     async fn evaluate_history(
         &self,
         session_id: &SessionId,
@@ -293,7 +292,7 @@ impl CompactionWorker {
         // Pre-generate the compaction entry ID and mark as in-flight.
         let compaction_entry_id = ChatEntryId::new();
         self.compaction_in_progress.store(true, Ordering::SeqCst);
-        *self.pending_compaction_id.lock().expect("lock") = Some(compaction_entry_id.clone());
+        *self.pending_compaction_id.lock() = Some(compaction_entry_id.clone());
 
         let result = self
             .evaluate_with_config(

@@ -8,8 +8,9 @@
     reason = "test code"
 )]
 
+use parking_lot::Mutex;
 use std::path::Path;
-use std::sync::{Arc, Mutex};
+use std::sync::Arc;
 
 use jinn_domain::feat::plugin_system::{PluginCommand, PluginSystemBuildResult};
 use serde::Serialize;
@@ -38,7 +39,7 @@ fn build_system(
         Path::new("/nonexistent"),
         rt.handle().clone(),
         Arc::new(move |cmd| {
-            captured_clone.lock().expect("lock").push(cmd);
+            captured_clone.lock().push(cmd);
         }),
         Arc::new(|_, _| Box::pin(async { serde_json::Value::Null })),
     );
