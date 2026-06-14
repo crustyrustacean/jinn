@@ -23,9 +23,9 @@ use jinn_domain::feat::plugin_dispatch::{HookContext, PluginSyncHooks};
 use jinn_domain::feat::plugin_system::{
     PluginCommand, PluginSystem, PluginSystemBuildResult, SyncPlugins,
 };
+use parking_lot::Mutex;
 use serde_json::{Value, json};
 use std::path::{Path, PathBuf};
-use parking_lot::Mutex;
 use std::sync::Arc;
 
 // ── Helpers ──────────────────────────────────────────────────────────────
@@ -187,12 +187,7 @@ async fn on_enrich_writes_enriched_text_to_input() {
     assert_eq!(oneshot_calls, 1, "expected exactly one llm_oneshot call");
 
     let emits = set_chat_input_emits(&sys.captured);
-    let all_names: Vec<String> = sys
-        .captured
-        .lock()
-        .iter()
-        .map(|c| c.name.clone())
-        .collect();
+    let all_names: Vec<String> = sys.captured.lock().iter().map(|c| c.name.clone()).collect();
     // plugin_data is read only for the diagnostic message; the plugin no longer
     // writes any (status was its only field and had no reader), so tolerate absent.
     let pd = sys

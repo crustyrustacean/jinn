@@ -263,9 +263,7 @@ mod tests {
             wait: Duration,
             _error: &Report<LlmServiceError>,
         ) {
-            self.calls
-                .lock()
-                .push((attempt, max_retries, wait));
+            self.calls.lock().push((attempt, max_retries, wait));
         }
     }
 

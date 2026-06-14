@@ -8,8 +8,8 @@
     reason = "test code"
 )]
 
-use std::path::Path;
 use parking_lot::Mutex;
+use std::path::Path;
 use std::sync::Arc;
 
 use jinn_domain::feat::plugin_system::{

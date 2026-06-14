@@ -10,8 +10,8 @@
 
 use jinn_domain::SessionId;
 use jinn_domain::feat::plugin_system::SessionPluginRegistry;
-use std::path::Path;
 use parking_lot::Mutex;
+use std::path::Path;
 use std::sync::Arc;
 
 use jinn_domain::feat::plugin_system::{PluginCommand, PluginSystem, PluginSystemBuildResult};
