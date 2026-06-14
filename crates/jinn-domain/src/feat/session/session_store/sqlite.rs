@@ -374,18 +374,10 @@ struct NewSessionRow {
     title: Option<String>,
     updated_at: String,
     created_at: String,
-    profile: String,
-
-    blobs: String,
     parent_session: Option<String>,
-    cwd: String,
-    lifecycle_name: Option<String>,
-    lifecycle_args: String,
     archived: bool,
-    lifecycle_script_state: String,
     metadata: Option<String>,
     is_automated: bool,
-    persist: bool,
 }
 
 /// Reading model for the `entries` table.
@@ -586,21 +578,21 @@ impl TryFrom<&ChatSessionState> for NewSessionRow {
                     updated_at,
                     created_at,
                     history: _history, // persisted via entries + session_history tables below
-                    profile,
-                    cwd,
+                    profile: _profile, // persisted via metadata blob
+                    cwd: _cwd, // persisted via metadata blob
                     token_ledger: _ledger, // persisted via token_ledger table below
                     parent_session,
 
                     fork_ordinal: _fork_ordinal, // included in metadata blob via PersistableCore
 
-                    blobs,
-                    lifecycle_name,
-                    lifecycle_args,
+                    blobs: _blobs, // persisted via metadata blob
+                    lifecycle_name: _lifecycle_name, // persisted via metadata blob
+                    lifecycle_args: _lifecycle_args, // persisted via metadata blob
                     ephemeral: _ephemeral, // runtime-only state, not persisted
                     session_state,
-                    lifecycle_script_state,
+                    lifecycle_script_state: _lifecycle_script_state, // persisted via metadata blob
                     is_automated,
-                    persist,
+                    persist: _persist, // persisted via metadata blob
                     assembly_overrides: _assembly_overrides, // runtime-only, not persisted
                     has_interacted: _has_interacted, // deserialized from DB, restored by handle_session_load_completed
                     task_list: _task_list, // included in metadata blob via PersistableCore
@@ -614,31 +606,15 @@ impl TryFrom<&ChatSessionState> for NewSessionRow {
             title: title.clone(),
             updated_at: updated_at.to_string(),
             created_at: created_at.to_string(),
-            profile: serde_json::to_string(profile)
-                .change_context(SessionStoreError)
-                .attach("failed to serialize profile")?,
-
-            blobs: serde_json::to_string(blobs)
-                .change_context(SessionStoreError)
-                .attach("failed to serialize blobs")?,
             parent_session: parent_session
                 .as_ref()
                 .map(std::string::ToString::to_string),
-            cwd: cwd.to_string_lossy().to_string(),
-            lifecycle_name: lifecycle_name.clone(),
-            lifecycle_args: serde_json::to_string(lifecycle_args)
-                .change_context(SessionStoreError)
-                .attach("failed to serialize lifecycle_args")?,
             archived: *session_state == SessionState::Archived,
-            lifecycle_script_state: serde_json::to_string(&lifecycle_script_state)
-                .change_context(SessionStoreError)
-                .attach("failed to serialize lifecycle_script_state")?,
             metadata: serde_json::to_string(&PersistableCore::from(&session.core))
                 .change_context(SessionStoreError)
                 .attach("failed to serialize metadata")?
                 .into(),
             is_automated: *is_automated,
-            persist: *persist,
         })
     }
 }
@@ -784,16 +760,9 @@ fn save_blocking(
             .set((
                 sessions::title.eq(excluded(sessions::title)),
                 sessions::updated_at.eq(excluded(sessions::updated_at)),
-                sessions::profile.eq(excluded(sessions::profile)),
-                sessions::blobs.eq(excluded(sessions::blobs)),
-                sessions::cwd.eq(excluded(sessions::cwd)),
-                sessions::lifecycle_name.eq(excluded(sessions::lifecycle_name)),
-                sessions::lifecycle_args.eq(excluded(sessions::lifecycle_args)),
                 sessions::archived.eq(excluded(sessions::archived)),
-                sessions::lifecycle_script_state.eq(excluded(sessions::lifecycle_script_state)),
                 sessions::metadata.eq(excluded(sessions::metadata)),
                 sessions::is_automated.eq(excluded(sessions::is_automated)),
-                sessions::persist.eq(excluded(sessions::persist)),
             ))
             .execute(txn)?;
 
@@ -1150,15 +1119,8 @@ fn fork_blocking(
                 title: source_meta.title,
                 updated_at: now.clone(),
                 created_at: now, // fresh created_at - it's a new session
-                profile: source_meta.profile,
-
-                blobs: source_meta.blobs,
                 parent_session: Some(source_str.clone()),
-                cwd: source_meta.cwd,
-                lifecycle_name: source_meta.lifecycle_name,
-                lifecycle_args: source_meta.lifecycle_args,
                 archived: false,
-                lifecycle_script_state: source_meta.lifecycle_script_state,
                 metadata: fork_metadata(
                     source_meta.metadata.as_ref(),
                     &source_str,
@@ -1166,7 +1128,6 @@ fn fork_blocking(
                     at_ordinal,
                 ),
                 is_automated: source_meta.is_automated,
-                persist: source_meta.persist,
             })
             .execute(txn)?;
 
