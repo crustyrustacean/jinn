@@ -10,7 +10,6 @@ pub mod cwd_input;
 pub mod discovery;
 pub mod discovery_coordinator;
 pub mod discovery_notifier;
-pub mod echo_actor;
 pub mod global;
 pub mod history_worker;
 pub mod intent;
