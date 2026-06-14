@@ -6,7 +6,9 @@
 
 use std::any::{Any, TypeId};
 use std::fmt;
-use std::sync::{Arc, Mutex};
+use std::sync::Arc;
+
+use parking_lot::Mutex;
 
 use kameo::actor::ActorRef;
 use kameo_actors::message_bus::{MessageBus, Publish, Register};
@@ -115,9 +117,6 @@ impl BusService {
     ///
     /// In recording mode, captures the message for later assertion.
     ///
-    /// # Panics
-    ///
-    /// Panics if the recording Mutex is poisoned (only possible after a prior panic).
     pub async fn publish<M: BusMessage>(&self, msg: M) {
         match &self.inner {
             BusInner::Real(bus) => {
@@ -132,7 +131,7 @@ impl BusService {
                     .unwrap_or(std::any::type_name::<M>())
                     .to_owned();
                 let type_id = TypeId::of::<M>();
-                recorded.lock().unwrap().push(RecordedMessage {
+                recorded.lock().push(RecordedMessage {
                     name,
                     type_id,
                     payload: Box::new(msg) as Box<dyn Any + Send>,
@@ -192,11 +191,6 @@ pub struct BusAudit {
     messages: Arc<Mutex<Vec<RecordedMessage>>>,
 }
 
-#[expect(
-    clippy::unwrap_used,
-    clippy::missing_panics_doc,
-    reason = "Mutex::lock fails only on poison from prior panic; BusAudit is a test handle"
-)]
 impl BusAudit {
     /// Returns the ordered list of short type names for all captured messages.
     ///
@@ -207,7 +201,6 @@ impl BusAudit {
     pub fn names(&self) -> Vec<String> {
         self.messages
             .lock()
-            .unwrap()
             .iter()
             .map(|m| m.name.clone())
             .collect()
@@ -222,7 +215,6 @@ impl BusAudit {
     pub fn of_type<M: BusMessage>(&self) -> Vec<M> {
         self.messages
             .lock()
-            .unwrap()
             .iter()
             .filter_map(|m| m.downcast::<M>().cloned())
             .collect()
@@ -230,22 +222,22 @@ impl BusAudit {
 
     /// Returns the total number of captured messages.
     pub fn len(&self) -> usize {
-        self.messages.lock().unwrap().len()
+        self.messages.lock().len()
     }
 
     /// Returns `true` if no messages have been captured.
     pub fn is_empty(&self) -> bool {
-        self.messages.lock().unwrap().is_empty()
+        self.messages.lock().is_empty()
     }
 
     /// Clears all captured messages.
     pub fn clear(&self) {
-        self.messages.lock().unwrap().clear();
+        self.messages.lock().clear();
     }
 
     /// Returns `true` if a message with the given type name was captured.
     pub fn contains_name(&self, name: &str) -> bool {
-        self.messages.lock().unwrap().iter().any(|m| m.name == name)
+        self.messages.lock().iter().any(|m| m.name == name)
     }
 }
 
