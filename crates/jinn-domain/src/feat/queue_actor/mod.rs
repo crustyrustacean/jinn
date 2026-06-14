@@ -104,12 +104,21 @@ impl QueueActor {
         }
     }
 
-    /// Handle Idle transition - pop and dispatch the next queued item.
+    /// Handle Idle transition - pop and dispatch the next queued item,
+    /// falling back to the steering buffer when the queue is empty.
     async fn handle_idle_transition(&self, session_id: &SessionId) {
         let item = {
             let mut state = self.state.write();
             let session = state.session_mut_or_create(session_id);
-            session.dequeue()
+            // Queue takes priority. Fall back to the steering buffer so a fragment
+            // submitted mid-turn dispatches itself when the turn completes with an
+            // empty queue — same semantics as a queued user message.
+            session.dequeue().or_else(|| {
+                session
+                    .steering_buffer_mut()
+                    .drain_into_entry()
+                    .map(|entry| QueueItem::UserMessage(Box::new(entry)))
+            })
         };
 
         let Some(item) = item else { return };
@@ -125,13 +134,14 @@ impl QueueActor {
     }
 
     /// Dispatch a user message: push to history, set title, begin sending,
-    /// assemble prompt, emit SendToLlmProvider, emit ChatEntrySubmitted, emit PersistSession.
+    /// emit SessionPhaseChanged (if the phase actually changed), assemble
+    /// prompt, emit SendToLlmProvider, emit ChatEntrySubmitted, emit PersistSession.
     async fn dispatch_user_message(
         &self,
         session_id: &SessionId,
         entry: &crate::protocol::ChatEntry,
     ) {
-        {
+        let (old_phase, new_phase) = {
             let mut state = self.state.write();
             let session = state.session_mut_or_create(session_id);
             if session.title().is_none() {
@@ -154,7 +164,18 @@ impl QueueActor {
                     "drained steering entry into history at queue_actor::dispatch_user_message"
                 );
             }
+            let old_phase = session.phase();
             session.begin_sending();
+            (old_phase, session.phase())
+        };
+
+        if old_phase != new_phase {
+            self.publish(SessionPhaseChanged {
+                session_id: session_id.clone(),
+                old_phase,
+                new_phase,
+            })
+            .await;
         }
 
         let assembled = {
@@ -609,5 +630,231 @@ mod tests {
         let state = actor.state.read();
         let session = state.session(&sid);
         assert!(!session.history().is_empty());
+    }
+
+    // --- Steering-on-Idle dispatch (empty queue fallback) ---
+
+    #[tokio::test]
+    async fn idle_with_empty_queue_and_steering_dispatches_steering() {
+        // Given a session with a steering fragment and an empty queue.
+        let (actor, audit) = create_actor().await;
+        let sid = session_id();
+        {
+            let mut state = actor.state.write();
+            let session = state.session_mut_or_create(&sid);
+            session.steering_buffer_mut().push_fragment("stay focused");
+        }
+
+        // When receiving SessionPhaseChanged -> Idle.
+        let msg = SessionPhaseChanged {
+            session_id: sid.clone(),
+            old_phase: PhaseKind::Streaming,
+            new_phase: PhaseKind::Idle,
+        };
+        actor.handle_session_phase_changed(&msg).await;
+
+        // Then SendToLlmProvider was published.
+        let sends: Vec<SendToLlmProvider> = audit.of_type::<SendToLlmProvider>();
+        assert_eq!(sends.len(), 1);
+        // And the drained steering entry is in history.
+        let state = actor.state.read();
+        let session = state.session(&sid);
+        let has_steering = session.history().iter().any(|e| {
+            matches!(
+                &e.kind,
+                crate::protocol::ChatEntryKind::User { expanded, .. } if expanded == "stay focused"
+            )
+        });
+        assert!(
+            has_steering,
+            "drained steering entry must appear in history; history = {:?}",
+            session.history()
+        );
+    }
+
+    #[tokio::test]
+    async fn idle_with_empty_queue_and_steering_clears_buffer() {
+        // Given a session with a steering fragment and an empty queue.
+        let (actor, _audit) = create_actor().await;
+        let sid = session_id();
+        {
+            let mut state = actor.state.write();
+            let session = state.session_mut_or_create(&sid);
+            session.steering_buffer_mut().push_fragment("stay focused");
+        }
+
+        // When receiving SessionPhaseChanged -> Idle.
+        let msg = SessionPhaseChanged {
+            session_id: sid.clone(),
+            old_phase: PhaseKind::Streaming,
+            new_phase: PhaseKind::Idle,
+        };
+        actor.handle_session_phase_changed(&msg).await;
+
+        // Then the steering buffer was drained (now empty).
+        let state = actor.state.read();
+        let session = state.session(&sid);
+        assert!(
+            session.steering_buffer().is_empty(),
+            "steering buffer must be empty after Idle dispatch"
+        );
+    }
+
+    #[tokio::test]
+    async fn idle_with_empty_queue_and_steering_emits_chat_entry_submitted() {
+        // Given a session with a steering fragment and an empty queue.
+        let (actor, audit) = create_actor().await;
+        let sid = session_id();
+        {
+            let mut state = actor.state.write();
+            let session = state.session_mut_or_create(&sid);
+            session.steering_buffer_mut().push_fragment("stay focused");
+        }
+
+        // When receiving SessionPhaseChanged -> Idle.
+        let msg = SessionPhaseChanged {
+            session_id: sid.clone(),
+            old_phase: PhaseKind::Streaming,
+            new_phase: PhaseKind::Idle,
+        };
+        actor.handle_session_phase_changed(&msg).await;
+
+        // Then ChatEntrySubmitted was published (same as a queued user message).
+        let submitted: Vec<ChatEntrySubmitted> = audit.of_type::<ChatEntrySubmitted>();
+        assert_eq!(submitted.len(), 1,);
+    }
+
+    #[tokio::test]
+    async fn idle_with_empty_queue_and_steering_emits_persist_session() {
+        // Given a session with a steering fragment and an empty queue.
+        let (actor, audit) = create_actor().await;
+        let sid = session_id();
+        {
+            let mut state = actor.state.write();
+            let session = state.session_mut_or_create(&sid);
+            session.steering_buffer_mut().push_fragment("stay focused");
+        }
+
+        // When receiving SessionPhaseChanged -> Idle.
+        let msg = SessionPhaseChanged {
+            session_id: sid.clone(),
+            old_phase: PhaseKind::Streaming,
+            new_phase: PhaseKind::Idle,
+        };
+        actor.handle_session_phase_changed(&msg).await;
+
+        // Then PersistSession was published (same as a queued user message).
+        let persists: Vec<PersistSession> = audit.of_type::<PersistSession>();
+        assert_eq!(
+            persists.len(),
+            1,
+            "steering dispatch must emit PersistSession"
+        );
+    }
+
+    #[tokio::test]
+    async fn idle_with_empty_queue_and_empty_steering_does_nothing() {
+        // Given a session with nothing queued and no steering fragment.
+        let (actor, audit) = create_actor().await;
+        let sid = session_id();
+
+        // When receiving SessionPhaseChanged -> Idle.
+        let msg = SessionPhaseChanged {
+            session_id: sid.clone(),
+            old_phase: PhaseKind::Streaming,
+            new_phase: PhaseKind::Idle,
+        };
+        actor.handle_session_phase_changed(&msg).await;
+
+        // Then nothing was published.
+        assert!(
+            audit.of_type::<SendToLlmProvider>().is_empty(),
+            "empty queue and steering must not dispatch"
+        );
+        assert!(
+            audit.of_type::<ChatEntrySubmitted>().is_empty(),
+            "empty queue and steering must not emit ChatEntrySubmitted"
+        );
+    }
+
+    #[tokio::test]
+    async fn idle_with_queued_item_and_steering_dispatches_queue_item_first() {
+        // Given a session with BOTH a queued user message and a steering fragment.
+        let (actor, audit) = create_actor().await;
+        let sid = session_id();
+        {
+            let mut state = actor.state.write();
+            let session = state.session_mut_or_create(&sid);
+            session.enqueue(QueueItem::UserMessage(Box::new(ChatEntry::user(
+                "queued msg",
+            ))));
+            session.steering_buffer_mut().push_fragment("stay focused");
+        }
+
+        // When receiving SessionPhaseChanged -> Idle.
+        let msg = SessionPhaseChanged {
+            session_id: sid.clone(),
+            old_phase: PhaseKind::Streaming,
+            new_phase: PhaseKind::Idle,
+        };
+        actor.handle_session_phase_changed(&msg).await;
+
+        // Then the queue item won dispatch (SendToLlmProvider x1).
+        let sends: Vec<SendToLlmProvider> = audit.of_type::<SendToLlmProvider>();
+        assert_eq!(sends.len(), 1, "queue item must win dispatch");
+
+        // And the queue is now empty.
+        let state = actor.state.read();
+        let session = state.session(&sid);
+        assert!(
+            session.queue().is_empty(),
+            "queue must be drained after dispatch"
+        );
+        // And the steering fragment was co-injected (buffer empty).
+        assert!(
+            session.steering_buffer().is_empty(),
+            "steering must be co-injected, not orphaned"
+        );
+        // And the steering text appears in history (co-injected into the same turn).
+        let history_text: String = session
+            .history()
+            .iter()
+            .map(ChatEntry::text)
+            .collect::<Vec<_>>()
+            .join("|");
+        assert!(
+            history_text.contains("stay focused"),
+            "steering fragment must appear in history, got: {history_text}"
+        );
+    }
+
+    #[tokio::test]
+    async fn dispatch_user_message_emits_phase_changed_idle_to_sending() {
+        // Given a session in Idle with a queued user message.
+        let (actor, audit) = create_actor().await;
+        let sid = session_id();
+        {
+            let mut state = actor.state.write();
+            let session = state.session_mut_or_create(&sid);
+            session.enqueue(QueueItem::UserMessage(Box::new(ChatEntry::user("hello"))));
+        }
+
+        // When receiving SessionPhaseChanged -> Idle.
+        let msg = SessionPhaseChanged {
+            session_id: sid.clone(),
+            old_phase: PhaseKind::Streaming,
+            new_phase: PhaseKind::Idle,
+        };
+        actor.handle_session_phase_changed(&msg).await;
+
+        // Then the Idle -> Sending transition was published (not just mutated silently).
+        let phases: Vec<SessionPhaseChanged> = audit.of_type::<SessionPhaseChanged>();
+        let sending = phases
+            .iter()
+            .find(|p| p.old_phase == PhaseKind::Idle && p.new_phase == PhaseKind::Sending);
+        assert!(
+            sending.is_some(),
+            "Idle -> Sending transition must be published, got: {phases:?}"
+        );
     }
 }

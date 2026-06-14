@@ -304,35 +304,11 @@ fn handle_suspend_action(
         }
         SuspendResult::ChangeCwd(path) => {
             if let Some(path) = path {
-                // Validate: must exist and be a directory.
-                if path.is_dir() {
-                    let canonical = match std::fs::canonicalize(&path) {
-                        Ok(c) => c,
-                        Err(e) => {
-                            tracing::warn!(
-                                path = %path.display(),
-                                err = %e,
-                                "failed to canonicalize CWD selector result"
-                            );
-                            return Ok(());
-                        }
-                    };
-                    let session_id = app.core.state.read().active_session().session_id().clone();
-                    let _ = app.core.sender().send(jinn_domain::Bridge::publish_closure(
-                        jinn_domain::feat::session_lifecycle::protocol::command::SetSessionCwd {
-                            session_id,
-                            cwd: canonical,
-                        },
-                    ));
-
+                let session_id = app.core.state.read().active_session().session_id().clone();
+                if apply_selected_cwd(&app.core.bridge, session_id, &path) {
                     tracing::info!(
                         cwd = %app.core.state.read().active_session().cwd().display(),
                         "session CWD updated"
-                    );
-                } else {
-                    tracing::warn!(
-                        path = %path.display(),
-                        "CWD selector returned non-directory path, ignoring"
                     );
                 }
             }
@@ -359,9 +335,104 @@ fn shell_escape(s: &str) -> String {
     result
 }
 
+/// Validate, canonicalize, and publish [`SetSessionCwd`] for a selected path.
+///
+/// Used by the `<M-c>`/`<M-d>` suspend-and-`fzf` flow after the user picks a
+/// directory. Returns `true` if a `SetSessionCwd` command was published onto
+/// `bridge`; `false` if the path was rejected (non-directory or
+/// canonicalization failure).
+///
+/// Routing through the [`Bridge`] (not the legacy `AppMsg` channel) is what
+/// makes the selection actually reach the session actor.
+fn apply_selected_cwd(
+    bridge: &jinn_domain::common::bridge::Bridge,
+    session_id: jinn_domain::SessionId,
+    path: &std::path::Path,
+) -> bool {
+    if !path.is_dir() {
+        tracing::warn!(
+            path = %path.display(),
+            "CWD selector returned non-directory path, ignoring"
+        );
+        return false;
+    }
+    let canonical = match std::fs::canonicalize(path) {
+        Ok(c) => c,
+        Err(e) => {
+            tracing::warn!(
+                path = %path.display(),
+                err = %e,
+                "failed to canonicalize CWD selector result"
+            );
+            return false;
+        }
+    };
+    let _ = bridge.send(jinn_domain::Bridge::publish_closure(
+        jinn_domain::feat::session_lifecycle::protocol::command::SetSessionCwd {
+            session_id,
+            cwd: canonical,
+        },
+    ));
+    true
+}
+
 #[cfg(test)]
 mod tests {
+    #![allow(
+        clippy::expect_used,
+        clippy::panic,
+        clippy::indexing_slicing,
+        reason = "test code"
+    )]
     use super::*;
+    use jinn_domain::common::bridge::Bridge;
+    use jinn_domain::feat::session_lifecycle::protocol::command::SetSessionCwd;
+    use kameo::prelude::*;
+    use kameo_actors::DeliveryStrategy;
+    use kameo_actors::message_bus::{MessageBus, Register};
+    use std::sync::{Arc, Mutex};
+
+    /// Records messages of type `T` delivered to it via the message bus.
+    ///
+    /// Mirrors the recorder in `jinn-domain::common::bridge` tests so that
+    /// bridge-driven publishes are observable in a unit test.
+    #[derive(Actor)]
+    struct RecorderActor<T: Send + 'static> {
+        received: Arc<Mutex<Vec<T>>>,
+    }
+
+    impl<T: Send + 'static> RecorderActor<T> {
+        fn new(buffer: Arc<Mutex<Vec<T>>>) -> Self {
+            Self { received: buffer }
+        }
+    }
+
+    impl<T: Clone + Send + 'static> Message<T> for RecorderActor<T> {
+        type Reply = ();
+
+        async fn handle(&mut self, msg: T, _ctx: &mut Context<Self, Self::Reply>) {
+            self.received.lock().unwrap().push(msg);
+        }
+    }
+
+    /// A single-threaded tokio runtime for driving async bridge delivery.
+    fn test_runtime() -> tokio::runtime::Runtime {
+        tokio::runtime::Builder::new_current_thread()
+            .enable_all()
+            .build()
+            .unwrap()
+    }
+
+    fn spawn_bus() -> ActorRef<MessageBus> {
+        MessageBus::spawn(MessageBus::new(DeliveryStrategy::BestEffort))
+    }
+
+    fn spawn_recorder<T: Clone + Send + 'static>()
+    -> (ActorRef<RecorderActor<T>>, Arc<Mutex<Vec<T>>>) {
+        let buffer = Arc::new(Mutex::new(Vec::new()));
+        let actor = RecorderActor::spawn(RecorderActor::new(buffer.clone()));
+        (actor, buffer)
+    }
 
     #[rstest::rstest]
     fn shell_escape_simple_path() {
@@ -387,5 +458,91 @@ mod tests {
     #[rstest::rstest]
     fn shell_escape_empty_string() {
         assert_eq!(shell_escape(""), "''");
+    }
+
+    #[test]
+    fn apply_selected_cwd_publishes_set_session_cwd_for_valid_dir() {
+        let rt = test_runtime();
+        rt.block_on(async {
+            // Given a bus with a registered SetSessionCwd recorder, and a
+            // bridge draining to that bus.
+            let bus = spawn_bus();
+            let (recorder, buffer) = spawn_recorder::<SetSessionCwd>();
+            bus.tell(Register(recorder.recipient::<SetSessionCwd>()))
+                .await
+                .unwrap();
+            let bridge = Bridge::new(bus.clone());
+
+            let dir = tempfile::tempdir().expect("temp dir");
+            let expected = std::fs::canonicalize(dir.path()).expect("canonicalize");
+
+            // When applying a real directory path.
+            let session_id = jinn_domain::SessionId::new();
+            let published = apply_selected_cwd(&bridge, session_id.clone(), dir.path());
+
+            // Then exactly one SetSessionCwd is published with the canonical cwd.
+            assert!(published, "valid dir should publish");
+            tokio::time::sleep(std::time::Duration::from_millis(100)).await;
+            let received = buffer.lock().unwrap();
+            assert_eq!(received.len(), 1, "exactly one SetSessionCwd expected");
+            assert_eq!(received[0].session_id, session_id);
+            assert_eq!(received[0].cwd, expected);
+        });
+    }
+
+    #[test]
+    fn apply_selected_cwd_rejects_non_directory_path() {
+        let rt = test_runtime();
+        rt.block_on(async {
+            // Given a bus with a registered SetSessionCwd recorder and a
+            // bridge draining to it.
+            let bus = spawn_bus();
+            let (recorder, buffer) = spawn_recorder::<SetSessionCwd>();
+            bus.tell(Register(recorder.recipient::<SetSessionCwd>()))
+                .await
+                .unwrap();
+            let bridge = Bridge::new(bus.clone());
+
+            // And a real file (not a directory) inside a temp dir.
+            let dir = tempfile::tempdir().expect("temp dir");
+            let file_path = dir.path().join("not_a_dir.txt");
+            std::fs::write(&file_path, b"contents").expect("write file");
+
+            // When applying a file path.
+            let published = apply_selected_cwd(&bridge, jinn_domain::SessionId::new(), &file_path);
+
+            // Then nothing is published and the helper returns false.
+            assert!(!published, "file path should not publish");
+            tokio::time::sleep(std::time::Duration::from_millis(100)).await;
+            assert!(buffer.lock().unwrap().is_empty(), "no message expected");
+        });
+    }
+
+    #[test]
+    fn apply_selected_cwd_rejects_nonexistent_path() {
+        let rt = test_runtime();
+        rt.block_on(async {
+            // Given a bus with a registered SetSessionCwd recorder and a
+            // bridge draining to it.
+            let bus = spawn_bus();
+            let (recorder, buffer) = spawn_recorder::<SetSessionCwd>();
+            bus.tell(Register(recorder.recipient::<SetSessionCwd>()))
+                .await
+                .unwrap();
+            let bridge = Bridge::new(bus.clone());
+
+            // And a path that does not exist on disk.
+            let missing_path = std::env::temp_dir()
+                .join(format!("jinn-cwd-does-not-exist-{}", std::process::id()));
+
+            // When applying a nonexistent path.
+            let published =
+                apply_selected_cwd(&bridge, jinn_domain::SessionId::new(), &missing_path);
+
+            // Then nothing is published and the helper returns false.
+            assert!(!published, "nonexistent path should not publish");
+            tokio::time::sleep(std::time::Duration::from_millis(100)).await;
+            assert!(buffer.lock().unwrap().is_empty(), "no message expected");
+        });
     }
 }
