@@ -179,7 +179,7 @@ impl IntentHandler {
                         replacement_count = commands.len(),
                         "plugin replaced submit commands"
                     );
-                    // Convert each replacement JSON command through the PluginVerb dispatch.
+                    // Convert each replacement JSON command through the dispatch_verb bridge.
                     // The JSON shape uses the same verb/payload format as handle_plugin_command.
                     let new_messages: Vec<_> = commands
                         .into_iter()
