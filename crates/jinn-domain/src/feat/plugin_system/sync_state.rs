@@ -17,6 +17,7 @@ use super::bindings;
 use super::command::PluginCommand;
 use super::plugin_data::PluginData;
 use crate::feat::plugin_dispatch::{HookContext, PluginHookSite, ProvidesSessionId};
+use crate::SessionId;
 
 /// Stored hook data for a loaded plugin.
 pub struct PluginHooks {
@@ -417,11 +418,11 @@ pub(crate) fn build_sync_ctx(
 
     // ctx.emit(cmd, data) — fire-and-forget via channel.
     let emit_tx = emit_tx.clone();
-    let plugin_name = plugin_name.to_owned();
+    let emit_pname = plugin_name.to_owned();
     let emit_fn = lua.create_function(move |lua, (name, data): (String, Value)| {
         let json = bindings::value_to_json(lua, &data).unwrap_or_default();
         let _ = emit_tx.send(PluginCommand {
-            plugin_name: plugin_name.clone(),
+            plugin_name: emit_pname.clone(),
             name,
             data: json,
         });
@@ -442,7 +443,59 @@ pub(crate) fn build_sync_ctx(
         })?;
         ctx.set("cancel", cancel_fn)?;
     }
+    // ctx.set_plugin_data(value) — writes to shared DashMap.
+    //
+    // Sync-safe: PluginData is an Arc<DashMap>, writable from any thread.
+    // Sync hooks get the same write capabilities as async hooks; this unlocks
+    // plugins that need to manage state from a sync hook (e.g. cancel decisions
+    // in on_keybind_trigger). The session_id for scoping is extracted from ctx_json.
+    {
+        let pd = plugin_data.clone();
+        let pname = plugin_name.to_owned();
+        let sid = extract_sync_session_id(ctx_json);
+        let set_data_fn = lua.create_function(move |lua, value: mlua::Value| {
+            let json = bindings::value_to_json(lua, &value).unwrap_or_default();
+            pd.set_for_session(sid.as_ref(), &pname, json);
+            Ok(())
+        })?;
+        ctx.set("set_plugin_data", set_data_fn)?;
+    }
 
-    let _ = plugin_data;
+    // ctx.merge_plugin_data(value) — shallow-merge into shared DashMap.
+    {
+        let pd = plugin_data.clone();
+        let pname = plugin_name.to_owned();
+        let sid = extract_sync_session_id(ctx_json);
+        let merge_data_fn = lua.create_function(move |lua, value: mlua::Value| {
+            let json = bindings::value_to_json(lua, &value).unwrap_or_default();
+            pd.merge_for_session(sid.as_ref(), &pname, json);
+            Ok(())
+        })?;
+        ctx.set("merge_plugin_data", merge_data_fn)?;
+    }
+
+    // ctx.get_plugin_data() — reads the live shared DashMap.
+    {
+        let pd = plugin_data.clone();
+        let pname = plugin_name.to_owned();
+        let sid = extract_sync_session_id(ctx_json);
+        let get_data_fn = lua.create_function(move |lua, (): ()| {
+            let json = pd
+                .get_for_session(sid.as_ref(), &pname)
+                .unwrap_or_else(|| serde_json::json!({}));
+            bindings::json_to_lua_value(lua, &json)
+        })?;
+        ctx.set("get_plugin_data", get_data_fn)?;
+    }
+
     Ok(ctx)
+}
+
+/// Extract a SessionId from a sync hook's ctx JSON (the session_id field).
+/// Returns None for global plugin hooks that don't carry a session ID.
+fn extract_sync_session_id(ctx_json: &serde_json::Value) -> Option<SessionId> {
+    ctx_json
+        .get("session_id")
+        .and_then(|v| v.as_str())
+        .map(|s| SessionId::from(s.to_owned()))
 }
