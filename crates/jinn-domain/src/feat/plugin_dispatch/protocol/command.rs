@@ -4,6 +4,7 @@
 //! the dispatcher loads them into a per-session Lua state and fires their
 //! hooks at lifecycle events.
 
+use error_stack::ResultExt;
 use serde::{Deserialize, Serialize};
 
 use crate::common::bus::BusMessage;
@@ -54,4 +55,115 @@ pub struct SetManagedSession {
 impl BusMessage for AttachPlugin {}
 impl BusMessage for DetachPlugin {}
 impl BusMessage for TogglePlugin {}
+
+impl crate::common::plugin_bridge::TryFromLua for TogglePlugin {
+    const VERB: &'static str = "disable_plugin";
+
+    fn try_from_lua(
+        ctx: crate::common::plugin_bridge::CmdCtx,
+        data: serde_json::Value,
+    ) -> Result<Self, error_stack::Report<crate::common::plugin_bridge::PluginBridgeError>> {
+        #[derive(Deserialize)]
+        struct LuaPayload {
+            session_id: SessionId,
+            plugin_name: String,
+        }
+
+        let lua: LuaPayload = serde_json::from_value(data)
+            .change_context(crate::common::plugin_bridge::PluginBridgeError)
+            .attach(ctx)
+            .attach("deserialize disable_plugin payload")?;
+
+        Ok(TogglePlugin {
+            session_id: lua.session_id,
+            plugin_name: lua.plugin_name,
+        })
+    }
+}
 impl BusMessage for SetManagedSession {}
+
+impl crate::common::plugin_bridge::TryFromLua for SetManagedSession {
+    const VERB: &'static str = "set_managed_session";
+
+    fn try_from_lua(
+        ctx: crate::common::plugin_bridge::CmdCtx,
+        data: serde_json::Value,
+    ) -> Result<Self, error_stack::Report<crate::common::plugin_bridge::PluginBridgeError>> {
+        #[derive(Deserialize)]
+        struct LuaPayload {
+            session_id: SessionId,
+            plugin_name: String,
+            managed_session_id: SessionId,
+        }
+
+        let lua: LuaPayload = serde_json::from_value(data)
+            .change_context(crate::common::plugin_bridge::PluginBridgeError)
+            .attach(ctx)
+            .attach("deserialize set_managed_session payload")?;
+
+        Ok(SetManagedSession {
+            session_id: lua.session_id,
+            plugin_name: lua.plugin_name,
+            managed_session_id: lua.managed_session_id,
+        })
+    }
+}
+#[cfg(test)]
+mod tests {
+    #![allow(clippy::expect_used, clippy::panic, reason = "test code")]
+
+    use super::*;
+    use crate::common::plugin_bridge::{CmdCtx, TryFromLua};
+
+    fn ctx(verb: &str) -> CmdCtx {
+        CmdCtx {
+            plugin_name: "test-plugin".to_owned(),
+            verb: verb.to_owned(),
+        }
+    }
+
+    #[test]
+    fn disable_plugin_verb_translates_to_toggle_plugin() {
+        // Given a disable_plugin payload.
+        let payload = serde_json::json!({
+            "session_id": "test-session",
+            "plugin_name": "judge_pass",
+        });
+
+        // When translating the "disable_plugin" verb.
+        let msg =
+            TogglePlugin::try_from_lua(ctx(TogglePlugin::VERB), payload).expect("should translate");
+
+        // Then a TogglePlugin message is produced with the plugin name.
+        assert_eq!(msg.plugin_name, "judge_pass");
+    }
+
+    #[test]
+    fn disable_plugin_verb_const_is_disable_plugin() {
+        // Then the verb constant preserves the legacy "disable_plugin" name
+        // (intentional: verb name does not match the message name).
+        assert_eq!(TogglePlugin::VERB, "disable_plugin");
+    }
+
+    #[test]
+    fn set_managed_session_translates() {
+        // Given a set_managed_session payload.
+        let payload = serde_json::json!({
+            "session_id": "s-parent",
+            "plugin_name": "judge_pass",
+            "managed_session_id": "s-child",
+        });
+
+        // When translating.
+        let msg = SetManagedSession::try_from_lua(ctx(SetManagedSession::VERB), payload)
+            .expect("should translate");
+
+        // Then all three fields are preserved.
+        assert_eq!(msg.session_id, SessionId::from("s-parent".to_owned()));
+        assert_eq!(msg.plugin_name, "judge_pass");
+        assert_eq!(
+            msg.managed_session_id,
+            SessionId::from("s-child".to_owned())
+        );
+    }
+}

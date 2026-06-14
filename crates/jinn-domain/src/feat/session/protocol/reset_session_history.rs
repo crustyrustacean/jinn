@@ -16,3 +16,55 @@ pub struct ResetSessionHistory {
 }
 
 impl crate::common::bus::BusMessage for ResetSessionHistory {}
+
+impl crate::common::plugin_bridge::TryFromLua for ResetSessionHistory {
+    const VERB: &'static str = "reset_session";
+
+    fn try_from_lua(
+        ctx: crate::common::plugin_bridge::CmdCtx,
+        data: serde_json::Value,
+    ) -> Result<Self, error_stack::Report<crate::common::plugin_bridge::PluginBridgeError>> {
+        use error_stack::ResultExt;
+
+        #[derive(Deserialize)]
+        struct LuaPayload {
+            session_id: SessionId,
+        }
+
+        let lua: LuaPayload = serde_json::from_value(data)
+            .change_context(crate::common::plugin_bridge::PluginBridgeError)
+            .attach(ctx)
+            .attach("deserialize reset_session payload")?;
+
+        Ok(ResetSessionHistory {
+            session_id: lua.session_id,
+        })
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    #![allow(clippy::expect_used, clippy::panic, reason = "test code")]
+
+    use super::*;
+    use crate::common::plugin_bridge::{CmdCtx, TryFromLua};
+
+    #[test]
+    fn reset_session_translates() {
+        // Given a reset_session payload.
+        let payload = serde_json::json!({ "session_id": "s-judge-session" });
+
+        // When translating.
+        let ctx = CmdCtx {
+            plugin_name: "test-plugin".to_owned(),
+            verb: ResetSessionHistory::VERB.to_owned(),
+        };
+        let msg = ResetSessionHistory::try_from_lua(ctx, payload).expect("should translate");
+
+        // Then the session_id is preserved.
+        assert_eq!(
+            msg.session_id,
+            SessionId::from("s-judge-session".to_owned())
+        );
+    }
+}
