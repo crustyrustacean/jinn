@@ -1,299 +1,57 @@
 //! Plugin wiring — command dispatcher.
 //!
-//! This file maps plugin command names (strings) to typed domain messages.
-//! Plugins call `ctx.emit("command_name", { ... })` and the dispatcher
-//! matches on the name.
+//! Maps plugin command names (strings) to typed domain messages by delegating
+//! to [`jinn_domain::common::plugin_bridge::dispatch_verb`]. Each verb's
+//! Lua→domain translation lives on the domain message itself via the
+//! `TryFromLua` trait in `plugin_bridge`.
 //!
-//! Each verb has a [`PluginVerb`] implementation that:
-//! - Declares its verb name (`const VERB`)
-//! - Declares the domain message type (`type DomainMsg`)
-//! - Converts the Lua payload to the domain message (`from_lua`)
-//!
-//! To add a new plugin command:
-//! 1. Add a `PluginVerb` impl for the Lua payload type
-//! 2. Register it in `VERB_DISPATCH_TABLE`
-
-// FIXME: plugin routing — the command dispatch path (PluginVerb trait, verb
-// structs, dispatch_verb, LuaChatEntryKind) is stubbed out pending the new
-// plugin communication system. The definitions are retained as documentation
-// of the intended verb set; they are dead code until routing is restored.
-#![allow(dead_code, reason = "plugin routing stubbed — see FIXME above")]
-//! 1. Add a `PluginVerb` impl for the Lua payload type
-//! 2. Register it in `VERB_DISPATCH_TABLE`
+//! This module is a thin caller: it builds a [`CmdCtx`], asks the domain to
+//! dispatch, and forwards the resulting [`BridgeClosure`] to the [`Bridge`]
+//! (the same live channel the rest of the app uses).
 
 use std::sync::Arc;
 
-use error_stack::{Report, ResultExt};
-use jinn_domain::common::actor::protocol::dynamic_command::DynamicCommand;
-use jinn_domain::common::bus::BusMessage;
-use jinn_domain::feat::chat_input::protocol::command::{
-    EnqueueUserMessage, PushChatEntry, SetChatInputText,
-};
-use jinn_domain::feat::plugin_dispatch::protocol::command::{SetManagedSession, TogglePlugin};
+use jinn_domain::common::bridge::Bridge;
+use jinn_domain::common::plugin_bridge::{CmdCtx, dispatch_verb};
 use jinn_domain::feat::plugin_system::PluginCommand;
-use jinn_domain::feat::session::chat_entry::ChatEntry;
-use jinn_domain::feat::session::protocol::ResetSessionHistory;
-use jinn_domain::protocol::SessionId;
-use wherror::Error;
-
-/// Plugin wiring error — failure to translate a `PluginCommand` into a typed
-/// domain message.
-#[derive(Debug, Error)]
-#[error(debug)]
-pub struct PluginWiringError;
-
-/// Context attached to every plugin command translation for error attribution.
-#[derive(Debug, Clone)]
-pub struct CmdCtx {
-    /// Name of the plugin that emitted the command.
-    pub plugin_name: String,
-    /// Verb name (e.g. `"push_chat_entry"`).
-    pub verb: String,
-}
-
-impl std::fmt::Display for CmdCtx {
-    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        write!(f, "plugin {:?} verb {:?}", self.plugin_name, self.verb)
-    }
-}
-
-// ─── PluginVerb trait ──────────────────────────────────────────────
-
-/// Trait for converting a Lua plugin payload into a typed domain message.
-///
-/// Each Lua payload type implements this trait. The dispatcher uses the
-/// verb name to find the right impl and calls `from_lua` to produce the
-/// domain message.
-pub trait PluginVerb {
-    /// The verb name that this handler responds to (e.g. "push_chat_entry").
-    const VERB: &'static str;
-    /// The domain message type produced by this verb.
-    type DomainMsg: BusMessage;
-    /// Convert the raw JSON payload into a typed domain message.
-    fn from_lua(
-        ctx: CmdCtx,
-        data: serde_json::Value,
-    ) -> Result<Self::DomainMsg, Report<PluginWiringError>>;
-}
-
-// ─── Lua-side payload types ────────────────────────────────────────
-
-#[derive(serde::Deserialize)]
-#[serde(rename_all = "snake_case")]
-enum LuaChatEntryKind {
-    System(String),
-    Transient(String),
-    Error(String),
-}
-
-#[derive(serde::Deserialize)]
-struct LuaPushChatEntry {
-    session_id: SessionId,
-    kind: LuaChatEntryKind,
-}
-
-#[derive(serde::Deserialize)]
-struct LuaEnqueueUserMessage {
-    session_id: SessionId,
-    text: String,
-}
-
-#[derive(serde::Deserialize)]
-struct LuaDisablePlugin {
-    session_id: SessionId,
-    plugin_name: String,
-}
-
-#[derive(serde::Deserialize)]
-struct LuaFireAsyncHook {
-    hook: String,
-    session_id: SessionId,
-    #[serde(default)]
-    text: Option<String>,
-}
-
-#[derive(serde::Deserialize)]
-struct LuaSetChatInput {
-    session_id: SessionId,
-    text: String,
-}
-
-#[derive(serde::Deserialize)]
-struct LuaResetSession {
-    session_id: SessionId,
-}
-
-#[derive(serde::Deserialize)]
-struct LuaSetManagedSession {
-    session_id: SessionId,
-    plugin_name: String,
-    managed_session_id: SessionId,
-}
-
-// ─── PluginVerb implementations ────────────────────────────────────
-
-impl PluginVerb for LuaPushChatEntry {
-    const VERB: &'static str = "push_chat_entry";
-    type DomainMsg = PushChatEntry;
-    fn from_lua(
-        _ctx: CmdCtx,
-        data: serde_json::Value,
-    ) -> Result<PushChatEntry, Report<PluginWiringError>> {
-        let lua: Self = serde_json::from_value(data)
-            .change_context(PluginWiringError)
-            .attach("deserialize push_chat_entry payload")?;
-        let entry = match lua.kind {
-            LuaChatEntryKind::System(text) => ChatEntry::system(text),
-            LuaChatEntryKind::Transient(text) => ChatEntry::transient(text),
-            LuaChatEntryKind::Error(text) => ChatEntry::error(text),
-        };
-        Ok(PushChatEntry {
-            session_id: lua.session_id,
-            entry,
-        })
-    }
-}
-
-impl PluginVerb for LuaEnqueueUserMessage {
-    const VERB: &'static str = "enqueue_user_message";
-    type DomainMsg = EnqueueUserMessage;
-    fn from_lua(
-        _ctx: CmdCtx,
-        data: serde_json::Value,
-    ) -> Result<EnqueueUserMessage, Report<PluginWiringError>> {
-        let lua: Self = serde_json::from_value(data)
-            .change_context(PluginWiringError)
-            .attach("deserialize enqueue_user_message payload")?;
-        Ok(EnqueueUserMessage {
-            session_id: lua.session_id,
-            entry: ChatEntry::user(lua.text),
-        })
-    }
-}
-
-impl PluginVerb for LuaDisablePlugin {
-    const VERB: &'static str = "disable_plugin";
-    type DomainMsg = TogglePlugin;
-    fn from_lua(
-        _ctx: CmdCtx,
-        data: serde_json::Value,
-    ) -> Result<TogglePlugin, Report<PluginWiringError>> {
-        let lua: Self = serde_json::from_value(data)
-            .change_context(PluginWiringError)
-            .attach("deserialize disable_plugin payload")?;
-        Ok(TogglePlugin {
-            session_id: lua.session_id,
-            plugin_name: lua.plugin_name,
-        })
-    }
-}
-
-impl PluginVerb for LuaFireAsyncHook {
-    const VERB: &'static str = "fire_async_hook";
-    type DomainMsg = DynamicCommand;
-    fn from_lua(
-        _ctx: CmdCtx,
-        data: serde_json::Value,
-    ) -> Result<DynamicCommand, Report<PluginWiringError>> {
-        let lua: Self = serde_json::from_value(data)
-            .change_context(PluginWiringError)
-            .attach("deserialize fire_async_hook payload")?;
-        let payload = serde_json::json!({
-            "hook": lua.hook,
-            "session_id": lua.session_id.to_string(),
-            "text": lua.text,
-        });
-        Ok(DynamicCommand {
-            name: "plugin::fire_async".to_owned(),
-            payload,
-        })
-    }
-}
-
-impl PluginVerb for LuaSetChatInput {
-    const VERB: &'static str = "set_chat_input";
-    type DomainMsg = SetChatInputText;
-    fn from_lua(
-        _ctx: CmdCtx,
-        data: serde_json::Value,
-    ) -> Result<SetChatInputText, Report<PluginWiringError>> {
-        let lua: Self = serde_json::from_value(data)
-            .change_context(PluginWiringError)
-            .attach("deserialize set_chat_input payload")?;
-        Ok(SetChatInputText {
-            session_id: lua.session_id,
-            text: lua.text,
-        })
-    }
-}
-
-impl PluginVerb for LuaResetSession {
-    const VERB: &'static str = "reset_session";
-    type DomainMsg = ResetSessionHistory;
-    fn from_lua(
-        _ctx: CmdCtx,
-        data: serde_json::Value,
-    ) -> Result<ResetSessionHistory, Report<PluginWiringError>> {
-        let lua: Self = serde_json::from_value(data)
-            .change_context(PluginWiringError)
-            .attach("deserialize reset_session payload")?;
-        Ok(ResetSessionHistory {
-            session_id: lua.session_id,
-        })
-    }
-}
-
-impl PluginVerb for LuaSetManagedSession {
-    const VERB: &'static str = "set_managed_session";
-    type DomainMsg = SetManagedSession;
-    fn from_lua(
-        _ctx: CmdCtx,
-        data: serde_json::Value,
-    ) -> Result<SetManagedSession, Report<PluginWiringError>> {
-        let lua: Self = serde_json::from_value(data)
-            .change_context(PluginWiringError)
-            .attach("deserialize set_managed_session payload")?;
-        Ok(SetManagedSession {
-            session_id: lua.session_id,
-            plugin_name: lua.plugin_name,
-            managed_session_id: lua.managed_session_id,
-        })
-    }
-}
-
-// ─── Dispatcher ────────────────────────────────────────────────────
 
 /// Dispatch a plugin command to the appropriate domain action.
 ///
-/// FIXME: plugin routing — the old `ActorChannelService` path was removed
-/// during the dead-channel cleanup. A new plugin communication system is
-/// being built; until then, commands are logged and dropped.
-pub fn handle_plugin_command(cmd: PluginCommand) {
+/// Delegates verb matching and Lua→message translation to [`dispatch_verb`].
+/// On success the returned closure is forwarded to the actor system via
+/// [`Bridge::send`]. Unknown verbs and translation failures are logged and
+/// dropped.
+pub fn handle_plugin_command(cmd: PluginCommand, bridge: &Bridge) {
     tracing::debug!(
         plugin = cmd.plugin_name,
         verb = cmd.name,
-        "plugin command received but routing is stubbed (FIXME: plugin routing)"
+        "plugin command dispatched"
     );
-}
 
-/// Dispatch a single verb by type.
-fn dispatch_verb<V: PluginVerb>(
-    cmd: &PluginCommand,
-) -> Result<V::DomainMsg, Report<PluginWiringError>> {
     let ctx = CmdCtx {
         plugin_name: cmd.plugin_name.clone(),
         verb: cmd.name.clone(),
     };
-    V::from_lua(ctx, cmd.data.clone())
+
+    match dispatch_verb(&cmd.name, ctx, cmd.data) {
+        Some(closure) => {
+            let _ = bridge.send(closure);
+        }
+        None => tracing::warn!(
+            plugin = cmd.plugin_name,
+            verb = cmd.name,
+            "unknown plugin verb"
+        ),
+    }
 }
 
 /// Build a command dispatcher closure for the plugin system.
 ///
-/// FIXME: plugin routing — returns a no-op stub until the new plugin
-/// communication system lands.
-pub fn build_command_dispatcher() -> Arc<dyn Fn(PluginCommand) + Send + Sync> {
-    Arc::new(|cmd: PluginCommand| {
-        handle_plugin_command(cmd);
+/// The returned closure captures the [`Bridge`] and routes plugin commands
+/// through it to the kameo bus.
+pub fn build_command_dispatcher(bridge: Bridge) -> Arc<dyn Fn(PluginCommand) + Send + Sync> {
+    Arc::new(move |cmd: PluginCommand| {
+        handle_plugin_command(cmd, &bridge);
     })
 }
 
@@ -315,172 +73,4 @@ pub async fn handle_plugin_request(
 
 fn request_err(error: impl std::fmt::Display) -> serde_json::Value {
     serde_json::json!({ "ok": false, "error": error.to_string() })
-}
-
-#[cfg(test)]
-mod tests {
-    #![allow(
-        clippy::expect_used,
-        clippy::indexing_slicing,
-        clippy::panic,
-        reason = "test code"
-    )]
-
-    use super::*;
-
-    /// Helper: test a PluginVerb by deserializing a JSON payload.
-    fn test_verb<V: PluginVerb>(
-        data: serde_json::Value,
-    ) -> Result<V::DomainMsg, Report<PluginWiringError>> {
-        let ctx = CmdCtx {
-            plugin_name: "test-plugin".to_owned(),
-            verb: V::VERB.to_owned(),
-        };
-        V::from_lua(ctx, data)
-    }
-
-    #[test]
-    fn push_chat_entry_dispatches_system_entry() {
-        let msg = test_verb::<LuaPushChatEntry>(serde_json::json!({
-            "session_id": "test-session",
-            "kind": { "system": "Hello from plugin!" },
-        }))
-        .expect("should translate");
-        assert_eq!(msg.session_id, SessionId::from("test-session".to_owned()));
-        assert!(msg.entry.text().contains("Hello from plugin!"));
-    }
-
-    #[test]
-    fn enqueue_user_message_dispatches() {
-        let msg = test_verb::<LuaEnqueueUserMessage>(serde_json::json!({
-            "session_id": "test-session",
-            "text": "retry the judgment",
-        }))
-        .expect("should translate");
-        assert!(msg.entry.text().contains("retry the judgment"));
-    }
-
-    #[test]
-    fn unknown_verb_returns_error() {
-        let _cmd = PluginCommand {
-            plugin_name: "test".to_owned(),
-            name: "nonexistent".to_owned(),
-            data: serde_json::json!({}),
-        };
-        // No matching verb — handle_plugin_command just logs, so we test
-        // that no verb matches by checking the verb name isn't in the dispatch table.
-        assert_ne!("nonexistent", LuaPushChatEntry::VERB);
-    }
-
-    #[test]
-    fn push_chat_entry_transient_kind_translates() {
-        let msg = test_verb::<LuaPushChatEntry>(serde_json::json!({
-            "session_id": "test-session",
-            "kind": { "transient": "welcome" },
-        }))
-        .expect("should translate");
-        assert_eq!(msg.entry.kind_str(), "transient");
-    }
-
-    #[test]
-    fn push_chat_entry_error_kind_translates() {
-        let msg = test_verb::<LuaPushChatEntry>(serde_json::json!({
-            "session_id": "test-session",
-            "kind": { "error": "enrichment failed" },
-        }))
-        .expect("should translate");
-        assert_eq!(msg.entry.kind_str(), "error");
-    }
-
-    #[test]
-    fn push_chat_entry_unknown_kind_returns_error() {
-        let result = test_verb::<LuaPushChatEntry>(serde_json::json!({
-            "session_id": "test-session",
-            "kind": { "user": "hi" },
-        }));
-        assert!(result.is_err());
-    }
-
-    #[test]
-    fn disable_plugin_translates_to_toggle() {
-        let msg = test_verb::<LuaDisablePlugin>(serde_json::json!({
-            "session_id": "test-session",
-            "plugin_name": "judge_pass",
-        }))
-        .expect("should translate");
-        assert_eq!(msg.plugin_name, "judge_pass");
-    }
-
-    #[test]
-    fn malformed_payload_returns_serde_error() {
-        let result = test_verb::<LuaPushChatEntry>(serde_json::json!({
-            "message": "hello"
-        }));
-        assert!(result.is_err());
-    }
-
-    #[test]
-    fn fire_async_hook_translates_to_dynamic_command() {
-        let msg = test_verb::<LuaFireAsyncHook>(serde_json::json!({
-            "hook": "on_enrich",
-            "session_id": "s-test-session",
-            "text": "hello world",
-        }))
-        .expect("should translate");
-        assert_eq!(msg.name, "plugin::fire_async");
-        assert_eq!(msg.payload["hook"], "on_enrich");
-        assert_eq!(msg.payload["session_id"], "s-test-session");
-        assert_eq!(msg.payload["text"], "hello world");
-    }
-
-    #[test]
-    fn fire_async_hook_works_without_text() {
-        let msg = test_verb::<LuaFireAsyncHook>(serde_json::json!({
-            "hook": "on_toggle",
-            "session_id": "s-test-session",
-        }))
-        .expect("should translate");
-        assert_eq!(msg.name, "plugin::fire_async");
-        assert_eq!(msg.payload["hook"], "on_toggle");
-        assert!(msg.payload.get("text").is_none_or(|v| v.is_null()));
-    }
-
-    #[test]
-    fn set_chat_input_translates_to_set_chat_input_text() {
-        let msg = test_verb::<LuaSetChatInput>(serde_json::json!({
-            "session_id": "s-test-session",
-            "text": "enriched prompt text",
-        }))
-        .expect("should translate");
-        assert_eq!(msg.session_id.to_string(), "s-test-session");
-        assert_eq!(msg.text, "enriched prompt text");
-    }
-
-    #[test]
-    fn reset_session_dispatches_reset_session_history() {
-        let msg = test_verb::<LuaResetSession>(serde_json::json!({
-            "session_id": "s-judge-session",
-        }))
-        .expect("should translate");
-        assert_eq!(
-            msg.session_id,
-            SessionId::from("s-judge-session".to_owned())
-        );
-    }
-
-    #[test]
-    fn set_managed_session_translates() {
-        let msg = test_verb::<LuaSetManagedSession>(serde_json::json!({
-            "session_id": "s-parent",
-            "plugin_name": "judge_pass",
-            "managed_session_id": "s-child",
-        }))
-        .expect("should translate");
-        assert_eq!(msg.session_id, SessionId::from("s-parent".to_owned()));
-        assert_eq!(msg.plugin_name, "judge_pass");
-        assert_eq!(
-            msg.managed_session_id,
-            SessionId::from("s-child".to_owned())
-        );
-    }
 }

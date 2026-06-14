@@ -129,11 +129,22 @@ impl ActorSystemBuilder {
             guard.active_session_mut().set_cwd(cwd);
         }
 
-        // ── Plugin system ────────────────────────────────────────────────────
+        // Create the kameo message bus and closure bridge first — the plugin
+        // command dispatcher needs a Bridge to route commands onto the bus.
+        let bus = {
+            let bus_actor = kameo_actors::message_bus::MessageBus::new(
+                kameo_actors::DeliveryStrategy::BestEffort,
+            );
+            let bus_ref = kameo_actors::message_bus::MessageBus::spawn(bus_actor);
+            jinn_domain::common::services::bus_service::BusService::new(bus_ref)
+        };
+        let bridge = jinn_domain::common::bridge::Bridge::new(bus.actor_ref().clone());
+
+        // ── Plugin system ─��──────────────────────────────────────────────────
         // Constructed early — handles go into Services and TuiApp.
 
         let plugin_command_dispatcher: jinn_domain::feat::plugin_system::CommandDispatcher =
-            crate::plugin_wiring::build_command_dispatcher();
+            crate::plugin_wiring::build_command_dispatcher(bridge.clone());
         let handler_cell = domain_ctx_cell.clone();
         let plugin_request_handler: jinn_domain::feat::plugin_system::RequestHandler =
             std::sync::Arc::new({
@@ -192,16 +203,6 @@ impl ActorSystemBuilder {
             std::sync::OnceLock<jinn_domain::feat::plugin_dispatch::DomainNodeContext>,
         > = std::sync::Arc::new(std::sync::OnceLock::new());
         let _handler_cell = domain_ctx_cell.clone();
-
-        // Create the kameo message bus and closure bridge first.
-        let bus = {
-            let bus_actor = kameo_actors::message_bus::MessageBus::new(
-                kameo_actors::DeliveryStrategy::BestEffort,
-            );
-            let bus_ref = kameo_actors::message_bus::MessageBus::spawn(bus_actor);
-            jinn_domain::common::services::bus_service::BusService::new(bus_ref)
-        };
-        let bridge = jinn_domain::common::bridge::Bridge::new(bus.actor_ref().clone());
 
         // Root supervision tree: every spawned actor becomes a supervised
         // child so that stopping the root cascades a graceful shutdown.
@@ -598,17 +599,6 @@ impl ActorSystemBuilder {
             .restart_policy(kameo::supervision::RestartPolicy::Never)
             .spawn()
             .await;
-
-        // Echo actor.
-        let _echo = jinn_domain::feat::echo_actor::EchoActor::supervise(
-            &root,
-            jinn_domain::feat::echo_actor::EchoActorDeps {
-                deps: actor_deps.clone(),
-            },
-        )
-        .restart_policy(kameo::supervision::RestartPolicy::Never)
-        .spawn()
-        .await;
 
         // ── History mutation workers ───────────────────��──────────────────────
         //
