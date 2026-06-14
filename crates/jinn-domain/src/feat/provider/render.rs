@@ -27,6 +27,7 @@ pub fn render_provider_picker(frame: &mut Frame<'_>, area: Rect, ctx: &RenderCtx
         area.width as usize,
         &state.frontend.theme,
         selected_count,
+        state.provider.alloy_mode,
     );
     let widget = SelectionWidget::new(&state.provider.provider_picker)
         .title(ratatui::text::Line::from(" Model "))
