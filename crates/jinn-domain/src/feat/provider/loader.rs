@@ -193,7 +193,6 @@ mod tests {
             .active_session_mut()
             .set_model(ModelSelection::Single("ollama/llama3".to_owned()));
 
-
         state.provider.alloy_mode = true;
         // When loading provider picker items.
         load_provider_picker_items(&services, &mut state);
@@ -243,7 +242,6 @@ mod tests {
             models: vec!["ollama/llama3".to_owned(), "ollama/mistral".to_owned()],
             strategy: AlloyStrategy::RoundRobin { index: 0 },
         });
-
 
         state.provider.alloy_mode = true;
         // When loading provider picker items.
@@ -300,7 +298,6 @@ mod tests {
             models: vec!["ollama/llama3".to_owned(), "ollama/mistral".to_owned()],
             strategy: AlloyStrategy::RoundRobin { index: 0 },
         });
-
 
         state.provider.alloy_mode = true;
         // When loading picker items.

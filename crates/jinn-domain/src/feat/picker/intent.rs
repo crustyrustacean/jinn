@@ -10,8 +10,8 @@ use crate::common::app_state::AppState;
 use crate::common::app_state::FocusScope;
 use crate::feat::context::protocol::command::{LoadPersonaPickerEntries, ScanContextFiles};
 use crate::feat::preferences_actor::protocol::app_state_command::{AppStateUpdate, UpdateAppState};
-use crate::feat::provider::picker_entry::PickerEntry;
 use crate::feat::provider::ProviderState;
+use crate::feat::provider::picker_entry::PickerEntry;
 use crate::feat::provider::protocol::command::{
     LoadProviderPickerEntries, ProviderSwitch, RescanPromptTemplates,
 };
@@ -894,7 +894,6 @@ mod tests {
         assert!(!result.message_names.is_empty());
     }
 
-
     #[rstest::rstest]
     fn handle_model_toggle_flips_selected() {
         // Given a picker with two available entries.
@@ -1150,7 +1149,10 @@ mod tests {
             .iter()
             .find(|e| e.provider_id == "ollama/llama3")
             .expect("llama entry");
-        assert!(llama.selected, "current model should be pre-checked on entering alloy mode");
+        assert!(
+            llama.selected,
+            "current model should be pre-checked on entering alloy mode"
+        );
     }
 
     #[rstest::rstest]
@@ -1276,7 +1278,10 @@ mod tests {
             .items()
             .iter()
             .any(|e| e.selected);
-        assert!(!any_checked, "all checks should be cleared on leaving alloy mode");
+        assert!(
+            !any_checked,
+            "all checks should be cleared on leaving alloy mode"
+        );
     }
 
     #[rstest::rstest]
@@ -2233,7 +2238,10 @@ mod tests {
 
         // Then no ProviderSwitch is emitted.
         assert!(
-            !result.message_names.iter().any(|n| n.contains("ProviderSwitch")),
+            !result
+                .message_names
+                .iter()
+                .any(|n| n.contains("ProviderSwitch")),
             "unavailable highlight should be rejected"
         );
     }
