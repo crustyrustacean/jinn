@@ -85,7 +85,7 @@ fn build_system_with_oneshot(stub_result: Value) -> TestSystem {
         }),
         Arc::new({
             let log = request_log.clone();
-            move |_name, _data| {
+            move |_name, _data, _cancel| {
                 *log.oneshot_calls.lock() += 1;
                 // `stub_result` is the full `ctx.request` response — the same shape
                 // `handle_plugin_request` now produces: a result envelope
@@ -132,7 +132,7 @@ async fn on_enrich_noops_on_empty_text() {
         Arc::new(move |cmd| {
             captured_for_dispatch.lock().push(cmd);
         }),
-        Arc::new(move |name, _data| {
+        Arc::new(move |name, _data, _cancel| {
             let counter = counter.clone();
             let name = name.to_owned();
             Box::pin(async move {
@@ -225,7 +225,7 @@ async fn on_enrich_two_taps_both_succeed_last_wins() {
         Arc::new(move |cmd| {
             captured_for_dispatch.lock().push(cmd);
         }),
-        Arc::new(move |name, _data| {
+        Arc::new(move |name, _data, _cancel| {
             // Resolve the name decision to an owned value BEFORE the async block,
             // since `name: &str` cannot be captured by the returned future.
             let is_oneshot = name == "llm_oneshot";

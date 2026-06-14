@@ -46,6 +46,7 @@ pub mod async_handle;
 pub mod async_thread;
 pub mod bindings;
 pub mod command;
+pub mod in_flight_requests;
 pub mod loader;
 pub mod plugin_data;
 pub mod plugin_fire_impl;
@@ -63,6 +64,7 @@ pub mod tool_def;
 pub use async_handle::AsyncPluginHandle;
 pub use async_thread::RequestHandler;
 pub use command::PluginCommand;
+pub use in_flight_requests::InFlightRequests;
 pub use loader::{PluginKind, PluginMeta, discover_plugins};
 pub use plugin_data::PluginData;
 pub use session_plugin_registry::{
@@ -78,7 +80,7 @@ pub use tool_def::{PluginToolDef, PluginToolMetadata as ToolMeta, ToolScope as T
 /// A no-op request handler for contexts where async requests aren't needed.
 #[must_use]
 pub fn noop_request_handler() -> RequestHandler {
-    std::sync::Arc::new(|name: &str, _data: &serde_json::Value| {
+    std::sync::Arc::new(|name: &str, _data: &serde_json::Value, _cancel: Option<tokio_util::sync::CancellationToken>| {
         tracing::warn!(name, "no request handler configured, returning null");
         std::boxed::Box::pin(async { serde_json::Value::Null })
     })

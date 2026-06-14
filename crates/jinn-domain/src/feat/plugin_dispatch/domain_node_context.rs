@@ -249,6 +249,7 @@ impl DomainNodeContext {
         persist: bool,
         disable_tool_loop: bool,
         timeout_ms: u64,
+        cancel: Option<&tokio_util::sync::CancellationToken>,
     ) -> Result<String, Report<DomainContextError>> {
         // 1. Read source session ONLY for provider+model (no history clone).
         let provider_model = {
@@ -301,7 +302,7 @@ impl DomainNodeContext {
         }
 
         // 6. Create oneshot, enqueue, await.
-        let (tx, rx) = oneshot::channel();
+        let (tx, mut rx) = oneshot::channel();
         self.pending.lock().insert(session_id.clone(), tx);
 
         let entry = ChatEntry::user(&user_prompt);
@@ -313,29 +314,61 @@ impl DomainNodeContext {
             })
             .await;
 
-        // 7. Await with a bounded timeout. On expiry: hard-cancel the underlying
-        //    session (no zombie stream burning provider tokens) and drop the pending
-        //    entry so a later Idle transition can't resolve a dead receiver.
-        match tokio::time::timeout(std::time::Duration::from_millis(timeout_ms), rx).await {
-            Ok(Ok(Ok(response))) => Ok(response),
-            Ok(Ok(Err(message))) => Err(Report::new(DomainContextError).attach(message)),
-            Ok(Err(_)) => {
-                Err(Report::new(DomainContextError).attach("one-shot LLM request cancelled"))
+        // 7. Await with a bounded timeout AND optional external cancellation.
+        //    On expiry or cancel: hard-cancel the underlying session (no zombie
+        //    stream burning provider tokens) and drop the pending entry so a later
+        //    Idle transition can't resolve a dead receiver.
+        let timeout_dur = std::time::Duration::from_millis(timeout_ms);
+        if let Some(token) = cancel {
+            tokio::select! {
+                outcome = tokio::time::timeout(timeout_dur, &mut rx) => {
+                    map_oneshot_outcome(outcome, &self.pending, &self.services.bus, &session_id, timeout_ms).await
+                }
+                _ = token.cancelled() => {
+                    cleanup_cancelled(&self.pending, &self.services.bus, &session_id).await;
+                    Err(Report::new(DomainContextError).attach("one-shot LLM request cancelled"))
+                }
             }
-            Err(_) => {
-                self.pending.lock().remove(&session_id);
-                self.services
-                    .bus
-                    .publish(CancelStream {
-                        session_id: session_id.clone(),
-                    })
-                    .await;
-                Err(Report::new(DomainContextError).attach(format!(
-                    "one-shot LLM request timed out after {timeout_ms}ms"
-                )))
-            }
+        } else {
+            let outcome = tokio::time::timeout(timeout_dur, rx).await;
+            map_oneshot_outcome(outcome, &self.pending, &self.services.bus, &session_id, timeout_ms).await
         }
     }
+}
+
+/// Resolve a one-shot's awaited outcome into the domain Result, handling the
+/// timeout-expiry cleanup (drop pending + publish CancelStream) when needed.
+async fn map_oneshot_outcome(
+    outcome: Result<Result<Result<String, String>, oneshot::error::RecvError>, tokio::time::error::Elapsed>,
+    pending: &PendingResult,
+    bus: &crate::common::services::BusService,
+    session_id: &SessionId,
+    timeout_ms: u64,
+) -> Result<String, Report<DomainContextError>> {
+    match outcome {
+        Ok(Ok(Ok(response))) => Ok(response),
+        Ok(Ok(Err(message))) => Err(Report::new(DomainContextError).attach(message)),
+        Ok(Err(_)) => {
+            Err(Report::new(DomainContextError).attach("one-shot LLM request cancelled"))
+        }
+        Err(_) => {
+            cleanup_cancelled(pending, bus, session_id).await;
+            Err(Report::new(DomainContextError).attach(format!(
+                "one-shot LLM request timed out after {timeout_ms}ms"
+            )))
+        }
+    }
+}
+
+/// Drop the pending oneshot entry and publish CancelStream for the session.
+/// Used by both the timeout and the external-cancel paths.
+async fn cleanup_cancelled(
+    pending: &PendingResult,
+    bus: &crate::common::services::BusService,
+    session_id: &SessionId,
+) {
+    pending.lock().remove(session_id);
+    bus.publish(CancelStream { session_id: session_id.clone() }).await;
 }
 
 #[cfg(test)]
@@ -452,6 +485,7 @@ mod tests {
             false,
             true,
             30_000,
+            None,
         );
         futures::pin_mut!(fut);
         let waker = futures::task::noop_waker();
@@ -522,7 +556,7 @@ mod tests {
         let (ctx, _audit) = make_ctx_with_audit();
         let missing_id = SessionId::new();
         let fut =
-            ctx.send_llm_request_oneshot(&missing_id, "x".to_owned(), None, false, true, 30_000);
+            ctx.send_llm_request_oneshot(&missing_id, "x".to_owned(), None, false, true, 30_000, None);
         // Pin and poll once to drive to the error before any await point.
         futures::pin_mut!(fut);
         let waker = futures::task::noop_waker();
@@ -555,6 +589,7 @@ mod tests {
             false,
             true,
             30_000,
+            None,
         );
         futures::pin_mut!(fut);
         let waker = futures::task::noop_waker();
@@ -596,6 +631,7 @@ mod tests {
             false,
             true,
             30_000,
+            None,
         );
         futures::pin_mut!(fut);
         let waker = futures::task::noop_waker();
@@ -627,6 +663,7 @@ mod tests {
             false,
             true,
             30_000,
+            None,
         );
         futures::pin_mut!(fut);
         let waker = futures::task::noop_waker();
@@ -660,6 +697,7 @@ mod tests {
             true,
             true,
             30_000,
+            None,
         );
         futures::pin_mut!(fut);
         let waker = futures::task::noop_waker();
@@ -695,6 +733,7 @@ mod tests {
             false,
             true,
             30_000,
+            None,
         );
         futures::pin_mut!(fut);
         let waker = futures::task::noop_waker();
@@ -737,6 +776,7 @@ mod tests {
             false,
             false,
             30_000,
+            None,
         );
         futures::pin_mut!(fut);
         let waker = futures::task::noop_waker();
@@ -779,7 +819,7 @@ mod tests {
         let source_id = seed_source_session(&ctx, "ollama/llama3");
 
         let result = ctx
-            .send_llm_request_oneshot(&source_id, "rewrite me".to_owned(), None, false, true, 1)
+            .send_llm_request_oneshot(&source_id, "rewrite me".to_owned(), None, false, true, 1, None)
             .await;
 
         // Then the future returns an error (timeout).
@@ -806,7 +846,7 @@ mod tests {
 
         // When the one-shot times out.
         let _ = ctx
-            .send_llm_request_oneshot(&source_id, "rewrite me".to_owned(), None, false, true, 1)
+            .send_llm_request_oneshot(&source_id, "rewrite me".to_owned(), None, false, true, 1, None)
             .await;
 
         // Then the pending entry is cleaned up (no leak).
