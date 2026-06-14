@@ -4,8 +4,8 @@
 //! exclude old entries and insert a compaction summary. Runs asynchronously
 //! (LLM call for summarization).
 
-use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::Arc;
+use std::sync::atomic::{AtomicBool, Ordering};
 
 use parking_lot::Mutex;
 
