@@ -115,7 +115,9 @@ mod tests {
     use kameo::prelude::*;
     use kameo_actors::DeliveryStrategy;
     use kameo_actors::message_bus::{Publish, Register};
-    use std::sync::{Arc, Mutex};
+    use std::sync::Arc;
+
+    use parking_lot::Mutex;
 
     #[derive(Actor)]
     struct RecorderActor<T: Send + 'static> {
@@ -132,7 +134,7 @@ mod tests {
         type Reply = ();
 
         async fn handle(&mut self, msg: T, _ctx: &mut Context<Self, Self::Reply>) {
-            self.received.lock().unwrap().push(msg);
+            self.received.lock().push(msg);
         }
     }
 
@@ -178,7 +180,7 @@ mod tests {
 
             // Then the registered actor receives it.
             tokio::time::sleep(std::time::Duration::from_millis(50)).await;
-            let received = buffer.lock().unwrap();
+            let received = buffer.lock();
             assert_eq!(received.len(), 1);
             assert_eq!(received[0].value, 42);
         });
@@ -203,7 +205,7 @@ mod tests {
 
             // Then the actor eventually receives the message.
             tokio::time::sleep(std::time::Duration::from_millis(100)).await;
-            let received = buffer.lock().unwrap();
+            let received = buffer.lock();
             assert_eq!(received.len(), 1);
             assert_eq!(received[0].value, 99);
         });

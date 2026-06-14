@@ -13,8 +13,9 @@
     reason = "test code"
 )]
 
+use parking_lot::Mutex;
 use std::path::Path;
-use std::sync::{Arc, Mutex};
+use std::sync::Arc;
 
 use jinn_domain::feat::plugin_dispatch::HookContext;
 use jinn_domain::feat::plugin_system::{PluginCommand, PluginSystem, PluginSystemBuildResult};
@@ -48,7 +49,7 @@ fn build_system(dir: &Path) -> TestSystem {
         Path::new("/nonexistent"),
         rt.handle().clone(),
         Arc::new(move |cmd| {
-            captured_clone.lock().expect("lock").push(cmd);
+            captured_clone.lock().push(cmd);
         }),
         Arc::new(|name, _data| {
             let name = name.to_owned();
