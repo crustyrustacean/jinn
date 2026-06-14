@@ -133,7 +133,6 @@ impl Default for TestServices {
                 providers: vec![],
                 aliases: vec![],
                 default_provider: None,
-                alloys: vec![],
             },
             handle: None,
             llm_service: None,

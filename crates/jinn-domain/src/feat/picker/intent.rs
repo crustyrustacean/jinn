@@ -397,20 +397,6 @@ fn resolve_provider_selection(provider: &ProviderState, highlighted: String) -> 
     }
 }
 
-/// Converts a picker entry into a [`ModelSelection`].
-/// Named alloys (entries with `alloy_models`) become `ModelSelection::Alloy`;
-/// regular entries become `ModelSelection::Single`.
-fn entry_to_model_selection(entry: &PickerEntry) -> ModelSelection {
-    if let Some(models) = &entry.alloy_models {
-        ModelSelection::Alloy {
-            models: models.clone(),
-            strategy: AlloyStrategy::RoundRobin { index: 0 },
-        }
-    } else {
-        ModelSelection::Single(entry.provider_id.clone())
-    }
-}
-
 /// Confirms the selected persona and sets it as active.
 fn confirm_persona(state: &mut AppState) -> IntentResult {
     let Some(entry) = state.frontend.persona_picker().selected_item() else {
@@ -863,7 +849,6 @@ mod tests {
             is_remote: false,
             is_active: false,
             selected: false,
-            alloy_models: None,
             theme: crate::feat::theme::default_theme(),
         };
         state.provider.provider_picker.set_items(vec![entry]);
@@ -898,7 +883,6 @@ mod tests {
             is_remote: false,
             is_active: false,
             selected: false,
-            alloy_models: None,
             theme: crate::feat::theme::default_theme(),
         };
         state.provider.provider_picker.set_items(vec![entry]);
@@ -910,52 +894,6 @@ mod tests {
         assert!(!result.message_names.is_empty());
     }
 
-    #[rstest::rstest]
-    fn confirm_provider_with_alloy_entry_creates_alloy_selection() {
-        // Given a picker with an alloy entry selected.
-        let mut state = AppState::default();
-        let origin = ChatSessionState::new();
-        state.session.insert(origin);
-        state
-            .session
-            .set_active(state.session.active_session_id().clone());
-
-        let entry = crate::protocol::PickerEntry {
-            provider_id: "alloy:round-robin".to_owned(),
-            name: "round-robin".to_owned(),
-            provider_name: String::new(),
-            backend: String::new(),
-            model: "2 models".to_owned(),
-            search_text: "round-robin".to_owned(),
-            is_alias: false,
-            alias_target: None,
-            is_available: true,
-            is_remote: false,
-            is_active: false,
-            selected: false,
-            alloy_models: Some(vec![
-                "ollama/llama3".to_owned(),
-                "openrouter/gpt-4".to_owned(),
-            ]),
-            theme: crate::feat::theme::default_theme(),
-        };
-        state.provider.provider_picker.set_items(vec![entry]);
-        state.provider.provider_picker.move_down(1);
-
-        let result = confirm_provider(&mut state);
-
-        // Then a message is emitted (the alloy was accepted).
-        assert!(!result.message_names.is_empty());
-        // And a ProviderSwitch message is emitted.
-        assert!(
-            result
-                .message_names
-                .iter()
-                .any(|n| n.contains("ProviderSwitch")),
-            "messages should contain ProviderSwitch: {:?}",
-            result.message_names
-        );
-    }
 
     #[rstest::rstest]
     fn handle_model_toggle_flips_selected() {
@@ -984,7 +922,6 @@ mod tests {
                 is_remote: false,
                 is_active: false,
                 selected: false,
-                alloy_models: None,
                 theme: crate::feat::theme::default_theme(),
             },
             crate::protocol::PickerEntry {
@@ -1000,7 +937,6 @@ mod tests {
                 is_remote: false,
                 is_active: false,
                 selected: false,
-                alloy_models: None,
                 theme: crate::feat::theme::default_theme(),
             },
         ];
@@ -1050,7 +986,6 @@ mod tests {
             is_remote: false,
             is_active: false,
             selected: true, // Already selected
-            alloy_models: None,
             theme: crate::feat::theme::default_theme(),
         }];
         state.provider.provider_picker.set_items(entries);
@@ -1183,7 +1118,6 @@ mod tests {
                 is_remote: false,
                 is_active: false,
                 selected: false,
-                alloy_models: None,
                 theme: crate::feat::theme::default_theme(),
             },
             crate::protocol::PickerEntry {
@@ -1199,7 +1133,6 @@ mod tests {
                 is_remote: false,
                 is_active: false,
                 selected: false,
-                alloy_models: None,
                 theme: crate::feat::theme::default_theme(),
             },
         ];
@@ -1250,7 +1183,6 @@ mod tests {
                 is_remote: false,
                 is_active: false,
                 selected: false,
-                alloy_models: None,
                 theme: crate::feat::theme::default_theme(),
             },
             crate::protocol::PickerEntry {
@@ -1266,7 +1198,6 @@ mod tests {
                 is_remote: false,
                 is_active: false,
                 selected: false,
-                alloy_models: None,
                 theme: crate::feat::theme::default_theme(),
             },
         ];
@@ -1314,7 +1245,6 @@ mod tests {
                 is_remote: false,
                 is_active: false,
                 selected: true,
-                alloy_models: None,
                 theme: crate::feat::theme::default_theme(),
             },
             crate::protocol::PickerEntry {
@@ -1330,7 +1260,6 @@ mod tests {
                 is_remote: false,
                 is_active: false,
                 selected: true,
-                alloy_models: None,
                 theme: crate::feat::theme::default_theme(),
             },
         ];
@@ -1374,7 +1303,6 @@ mod tests {
                 is_remote: false,
                 is_active: false,
                 selected: true, // Selected!
-                alloy_models: None,
                 theme: crate::feat::theme::default_theme(),
             },
             crate::protocol::PickerEntry {
@@ -1390,7 +1318,6 @@ mod tests {
                 is_remote: false,
                 is_active: false,
                 selected: true, // Selected!
-                alloy_models: None,
                 theme: crate::feat::theme::default_theme(),
             },
         ];
@@ -2266,7 +2193,6 @@ mod tests {
                 is_remote: false,
                 is_active: false,
                 selected: false,
-                alloy_models: None,
                 theme: crate::feat::theme::default_theme(),
             })
             .collect();
