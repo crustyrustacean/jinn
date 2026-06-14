@@ -104,12 +104,21 @@ impl QueueActor {
         }
     }
 
-    /// Handle Idle transition - pop and dispatch the next queued item.
+    /// Handle Idle transition - pop and dispatch the next queued item,
+    /// falling back to the steering buffer when the queue is empty.
     async fn handle_idle_transition(&self, session_id: &SessionId) {
         let item = {
             let mut state = self.state.write();
             let session = state.session_mut_or_create(session_id);
-            session.dequeue()
+            // Queue takes priority. Fall back to the steering buffer so a fragment
+            // submitted mid-turn dispatches itself when the turn completes with an
+            // empty queue — same semantics as a queued user message.
+            session.dequeue().or_else(|| {
+                session
+                    .steering_buffer_mut()
+                    .drain_into_entry()
+                    .map(|entry| QueueItem::UserMessage(Box::new(entry)))
+            })
         };
 
         let Some(item) = item else { return };
