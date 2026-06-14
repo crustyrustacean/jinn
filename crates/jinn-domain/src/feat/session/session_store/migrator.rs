@@ -165,6 +165,10 @@ fn run_pending_migrations(conn: &mut SqliteConnection) -> Result<(), Report<Sess
         migrate_v18(conn)?;
         record_version(conn, 18, "rename_entries_timestamp_to_timing")?;
     }
+    if current < 19 {
+        migrate_v19(conn)?;
+        record_version(conn, 19, "rewrite_metadata_blob_profile_model")?;
+    }
     Ok(())
 }
 
@@ -509,6 +513,45 @@ fn rewrite_profile_model(raw: &str) -> String {
     serde_json::to_string(&serde_json::Value::Object(map)).unwrap_or_else(|_| raw.to_owned())
 }
 
+/// Rewrites a bare-string `profile.model` inside a `metadata` JSON blob.
+///
+/// v19's analog of [`rewrite_profile_model`], operating one level deeper:
+/// the metadata blob embeds a `profile` sub-object, whose `model` field
+/// needs the same bare-string -> `{"single": ...}` transformation. This
+/// extracts the profile sub-object, hands it to [`rewrite_profile_model`],
+/// and re-inserts the result. Idempotent and non-destructive: returns the
+/// input unchanged on any parse failure, missing `profile` key,
+/// non-object `profile`, or when `model` is already an object/missing.
+fn rewrite_metadata_blob_model(raw_metadata: &str) -> String {
+    let mut root: serde_json::Map<String, serde_json::Value> =
+        match serde_json::from_str(raw_metadata) {
+            Ok(serde_json::Value::Object(m)) => m,
+            _ => return raw_metadata.to_owned(),
+        };
+
+    let Some(profile_value) = root.get("profile") else {
+        return raw_metadata.to_owned();
+    };
+    let serde_json::Value::Object(_) = profile_value else {
+        // `profile` present but not an object - malformed; leave it alone.
+        return raw_metadata.to_owned();
+    };
+
+    // Serialize the profile sub-object, run the model rewriter, parse back.
+    let Ok(profile_str) = serde_json::to_string(profile_value) else {
+        return raw_metadata.to_owned();
+    };
+    let new_profile_str = rewrite_profile_model(&profile_str);
+    let new_profile: serde_json::Value = match serde_json::from_str(&new_profile_str) {
+        Ok(v) => v,
+        Err(_) => return raw_metadata.to_owned(),
+    };
+    root.insert("profile".to_owned(), new_profile);
+
+    serde_json::to_string(&serde_json::Value::Object(root))
+        .unwrap_or_else(|_| raw_metadata.to_owned())
+}
+
 /// v11: Add `is_workflow` column to sessions.
 ///
 /// Marks sessions created by workflow LLM nodes. Enables filtering
@@ -725,6 +768,51 @@ fn migrate_v18(conn: &mut SqliteConnection) -> Result<(), Report<SessionStoreErr
         .attach("v18: rename entries.timestamp to timing")?;
     Ok(())
 }
+
+/// v19: Rewrite a bare-string `profile.model` inside the `metadata` blob.
+///
+/// Migration v17 rewrote the `profile` column from bare-string model to
+/// `{"single": ...}`, but sessions written at v8+ carry their profile
+/// embedded in the `metadata` blob (`PersistableCore`). The load path
+/// treats the blob as authoritative - so a 0.65 blob (bare-string model)
+/// fails to deserialize into `ModelSelection` and the session silently
+/// drops out of the sidebar. This migration reaches into each blob's
+/// embedded `profile` sub-object and applies the same rewrite v17 applied
+/// to the column. Rows with `NULL` metadata (pre-v8 sessions) are skipped;
+/// their column data was already fixed by v17.
+fn migrate_v19(conn: &mut SqliteConnection) -> Result<(), Report<SessionStoreError>> {
+    #[derive(QueryableByName)]
+    struct SessionRow {
+        #[diesel(sql_type = diesel::sql_types::Integer)]
+        rowid: i32,
+        #[diesel(sql_type = diesel::sql_types::Text)]
+        metadata: String,
+    }
+
+    let rows: Vec<SessionRow> =
+        sql_query("SELECT rowid, metadata FROM sessions WHERE metadata IS NOT NULL")
+            .load(conn)
+            .change_context(SessionStoreError)
+            .attach("v19: query session metadata")?;
+
+    for row in rows {
+        let new_metadata = rewrite_metadata_blob_model(&row.metadata);
+
+        // Only UPDATE rows where the blob actually changed.
+        if new_metadata == row.metadata {
+            continue;
+        }
+
+        sql_query("UPDATE sessions SET metadata = ? WHERE rowid = ?")
+            .bind::<diesel::sql_types::Text, _>(&new_metadata)
+            .bind::<diesel::sql_types::Integer, _>(&row.rowid)
+            .execute(conn)
+            .change_context(SessionStoreError)
+            .attach("v19: update session metadata blob")?;
+    }
+
+    Ok(())
+}
 fn migrate_v12(conn: &mut SqliteConnection) -> Result<(), Report<SessionStoreError>> {
     sql_query(
         "ALTER TABLE session_history ADD COLUMN context_override TEXT NOT NULL DEFAULT 'default'",
@@ -785,7 +873,7 @@ mod tests {
                 .load(&mut conn)
                 .expect("query migrations");
 
-        assert_eq!(rows.len(), 19);
+        assert_eq!(rows.len(), 20);
         assert_eq!(rows[0].version, 0);
         assert_eq!(rows[0].name, "create_initial_schema");
         assert_eq!(rows[1].version, 1);
@@ -816,6 +904,8 @@ mod tests {
         assert_eq!(rows[13].name, "add_judge_meta_column");
         assert_eq!(rows[14].version, 14);
         assert_eq!(rows[14].name, "add_context_history");
+        assert_eq!(rows[19].version, 19);
+        assert_eq!(rows[19].name, "rewrite_metadata_blob_profile_model");
     }
 
     #[test]
@@ -839,7 +929,7 @@ mod tests {
             .load(&mut conn)
             .expect("query count");
 
-        assert_eq!(rows[0].count, 19);
+        assert_eq!(rows[0].count, 20);
     }
 
     /// Applies migrations up to (and including) `target` version.
@@ -964,13 +1054,13 @@ mod tests {
                 panic!("re-run at target_version={target_version} should succeed: {e:?}")
             });
 
-            // Verify no duplicate rows: exactly 18 migration rows total.
+            // Verify no duplicate rows: exactly 20 migration rows total.
             let rows: Vec<CountRow> = sql_query("SELECT COUNT(*) AS count FROM _migrations")
                 .load(&mut conn)
                 .expect("query count");
             assert_eq!(
-                rows[0].count, 19,
-                "at target_version={target_version}: expected 19 migration rows, no duplicates"
+                rows[0].count, 20,
+                "at target_version={target_version}: expected 20 migration rows, no duplicates"
             );
         }
     }
@@ -1460,5 +1550,221 @@ mod tests {
             .expect("read timing");
         assert_eq!(rows.len(), 1, "entry should exist");
         assert_eq!(rows[0].timing, legacy_ts, "value preserved through rename");
+    }
+
+    // ── v19: rewrite embedded profile.model in metadata blob ─────────
+    //
+    // A realistic 0.65 metadata blob looks like a PersistableCore JSON with
+    // profile.model as a bare string. The helper constructs one.
+
+    /// Builds a metadata blob (PersistableCore shape) whose profile.model is the
+    /// given JSON value, so tests can inject bare-string, object, or other shapes.
+    fn make_metadata_blob(model: &serde_json::Value) -> String {
+        let blob = serde_json::json!({
+            "session_id": "s1",
+            "title": "T",
+            "updated_at": "2024-01-01T00:00:00Z",
+            "created_at": "2024-01-01T00:00:00Z",
+            "profile": {
+                "model": model.clone(),
+                "persona_name": "coding-assistant"
+            },
+            "cwd": ".",
+            "blobs": {},
+            "lifecycle_args": [],
+            "lifecycle_script_state": "NothingRan"
+        });
+        serde_json::to_string(&blob).expect("serialize blob")
+    }
+
+    /// Inserts a session row with the given id and metadata blob at v18 schema.
+    /// Used by v19 tests to avoid repeating the INSERT SQL.
+    fn insert_v19_session(conn: &mut SqliteConnection, id: &str, metadata: &str) {
+        sql_query("INSERT INTO sessions (id, title, updated_at, created_at, cwd, profile, blobs, lifecycle_script_state, is_automated, persist, metadata) VALUES (?, 'T', '2024-01-01T00:00:00Z', '2024-01-01T00:00:00Z', '.', '{}', '{}', 'nothing_ran', 0, 0, ?)")
+            .bind::<diesel::sql_types::Text, _>(id)
+            .bind::<diesel::sql_types::Text, _>(metadata)
+            .execute(conn)
+            .expect("insert v19 test session");
+    }
+
+    #[test]
+    fn migrate_v19_rewrites_bare_string_model_in_blob() {
+        #[derive(QueryableByName)]
+        struct MetaRow {
+            #[diesel(sql_type = diesel::sql_types::Text)]
+            metadata: String,
+        }
+
+        // Given a database at v18 with a 0.65-shape metadata blob (bare-string model).
+        let (_dir, mut conn) = make_conn();
+        apply_migrations_up_to(&mut conn, 17);
+        migrate_v18(&mut conn).expect("v18");
+        record_version(&mut conn, 18, "rename_entries_timestamp_to_timing").expect("record v18");
+
+        let blob = make_metadata_blob(&serde_json::json!("ollama/llama3"));
+        insert_v19_session(&mut conn, "s1", &blob);
+
+        // When running migration v19.
+        migrate_v19(&mut conn).expect("migrate v19");
+
+        // Then the blob's embedded profile.model is rewritten to {"single":...}.
+        let rows: Vec<MetaRow> = sql_query("SELECT metadata FROM sessions WHERE id = 's1'")
+            .load(&mut conn)
+            .expect("query");
+
+        assert_eq!(rows.len(), 1);
+        let meta: serde_json::Map<String, serde_json::Value> =
+            serde_json::from_str(&rows[0].metadata).expect("parse metadata");
+        let profile = meta["profile"].as_object().expect("profile is object");
+        assert_eq!(
+            profile["model"],
+            serde_json::json!({"single": "ollama/llama3"})
+        );
+        // And other profile fields are preserved.
+        assert_eq!(profile["persona_name"], "coding-assistant");
+    }
+
+    #[test]
+    fn migrate_v19_leaves_already_object_model_unchanged() {
+        #[derive(QueryableByName)]
+        struct MetaRow {
+            #[diesel(sql_type = diesel::sql_types::Text)]
+            metadata: String,
+        }
+
+        // Given a database at v18 with a 0.66-shape blob (model already an object).
+        let (_dir, mut conn) = make_conn();
+        apply_migrations_up_to(&mut conn, 17);
+        migrate_v18(&mut conn).expect("v18");
+        record_version(&mut conn, 18, "rename_entries_timestamp_to_timing").expect("record v18");
+
+        let blob = make_metadata_blob(&serde_json::json!({"single": "ollama/llama3"}));
+        insert_v19_session(&mut conn, "s1", &blob);
+
+        // When running migration v19 twice (idempotency check).
+        migrate_v19(&mut conn).expect("first v19");
+        migrate_v19(&mut conn).expect("second v19");
+
+        // Then the blob is unchanged - model is still {"single":...}, not double-wrapped.
+        let rows: Vec<MetaRow> = sql_query("SELECT metadata FROM sessions WHERE id = 's1'")
+            .load(&mut conn)
+            .expect("query");
+
+        assert_eq!(rows.len(), 1);
+        let meta: serde_json::Map<String, serde_json::Value> =
+            serde_json::from_str(&rows[0].metadata).expect("parse metadata");
+        let profile = meta["profile"].as_object().expect("profile is object");
+        assert_eq!(
+            profile["model"],
+            serde_json::json!({"single": "ollama/llama3"})
+        );
+    }
+
+    #[test]
+    fn migrate_v19_leaves_blob_without_model_field_unchanged() {
+        #[derive(QueryableByName)]
+        struct MetaRow {
+            #[diesel(sql_type = diesel::sql_types::Text)]
+            metadata: String,
+        }
+
+        // Given a blob whose profile has no model field at all.
+        let (_dir, mut conn) = make_conn();
+        apply_migrations_up_to(&mut conn, 17);
+        migrate_v18(&mut conn).expect("v18");
+        record_version(&mut conn, 18, "rename_entries_timestamp_to_timing").expect("record v18");
+
+        // Profile with persona_name only, no model field.
+        let blob = "{\"session_id\":\"s1\",\"profile\":{\"persona_name\":\"x\"}}";
+        insert_v19_session(&mut conn, "s1", blob);
+
+        // When running migration v19.
+        migrate_v19(&mut conn).expect("migrate v19");
+
+        // Then the blob is semantically unchanged (no model added, no fields lost).
+        let rows: Vec<MetaRow> = sql_query("SELECT metadata FROM sessions WHERE id = 's1'")
+            .load(&mut conn)
+            .expect("query");
+
+        assert_eq!(rows.len(), 1);
+        let after: serde_json::Value =
+            serde_json::from_str(&rows[0].metadata).expect("parse after");
+        let before: serde_json::Value = serde_json::from_str(blob).expect("parse before");
+        assert_eq!(
+            after, before,
+            "blob without model field must be semantically untouched"
+        );
+    }
+
+    #[test]
+    fn migrate_v19_skips_null_metadata_rows() {
+        #[derive(QueryableByName)]
+        struct CountRow {
+            #[diesel(sql_type = diesel::sql_types::BigInt)]
+            count: i64,
+        }
+
+        // Given a database at v18 with a row that has no metadata blob (pre-v8 style).
+        let (_dir, mut conn) = make_conn();
+        apply_migrations_up_to(&mut conn, 17);
+        migrate_v18(&mut conn).expect("v18");
+        record_version(&mut conn, 18, "rename_entries_timestamp_to_timing").expect("record v18");
+
+        sql_query(
+            "INSERT INTO sessions (id, title, updated_at, created_at, cwd, profile, blobs, \
+             lifecycle_script_state, is_automated, persist) \
+             VALUES ('legacy', 'Legacy', '2024-01-01T00:00:00Z', '2024-01-01T00:00:00Z', '.', \
+             '{\"model\":\"ollama/llama3\"}', '{}', 'nothing_ran', 0, 0)",
+        )
+        .execute(&mut conn)
+        .expect("insert null-metadata row");
+
+        // When running migration v19.
+        migrate_v19(&mut conn).expect("migrate v19");
+
+        // Then metadata is still NULL (the row was skipped, not touched).
+        let rows: Vec<CountRow> = sql_query(
+            "SELECT COUNT(*) AS count FROM sessions WHERE id = 'legacy' AND metadata IS NULL",
+        )
+        .load(&mut conn)
+        .expect("query");
+        assert_eq!(rows[0].count, 1, "pre-v8 row must keep NULL metadata");
+    }
+
+    #[test]
+    fn migrate_v19_preserves_alloy_model() {
+        #[derive(QueryableByName)]
+        struct MetaRow {
+            #[diesel(sql_type = diesel::sql_types::Text)]
+            metadata: String,
+        }
+
+        // Given a blob with an Alloy model (object form, must not be re-wrapped as Single).
+        let (_dir, mut conn) = make_conn();
+        apply_migrations_up_to(&mut conn, 17);
+        migrate_v18(&mut conn).expect("v18");
+        record_version(&mut conn, 18, "rename_entries_timestamp_to_timing").expect("record v18");
+
+        let blob = make_metadata_blob(&serde_json::json!({
+            "Alloy": {"models": ["a", "b"], "strategy": "RoundRobin"}
+        }));
+        insert_v19_session(&mut conn, "s1", &blob);
+
+        // When running migration v19.
+        migrate_v19(&mut conn).expect("migrate v19");
+
+        // Then the Alloy model is preserved exactly, not wrapped as Single.
+        let rows: Vec<MetaRow> = sql_query("SELECT metadata FROM sessions WHERE id = 's1'")
+            .load(&mut conn)
+            .expect("query");
+
+        assert_eq!(rows.len(), 1);
+        let meta: serde_json::Value = serde_json::from_str(&rows[0].metadata).expect("parse");
+        let model = &meta["profile"]["model"];
+        assert_eq!(
+            model,
+            &serde_json::json!({"Alloy": {"models": ["a", "b"], "strategy": "RoundRobin"}}),
+            "Alloy model must be preserved, not wrapped as Single"
+        );
     }
 }

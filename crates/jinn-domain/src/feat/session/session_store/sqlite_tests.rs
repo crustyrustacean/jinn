@@ -950,3 +950,221 @@ async fn fork_blocking_sets_fork_ordinal() {
         .expect("should exist");
     assert_eq!(root.fork_ordinal(), None);
 }
+
+use crate::feat::session::model_selection::ModelSelection;
+use crate::feat::session::session_store::migrator::run_migrations;
+use diesel::Connection;
+use diesel::RunQueryDsl;
+use diesel::SqliteConnection;
+
+// --- Legacy blob loading (0.65 -> 0.66 compat) ---
+
+/// A metadata blob in the 0.65 shape: `profile.model` is a bare string.
+///
+/// Constructed by hand (not via `PersistableCore`) so it carries the legacy
+/// serialization that v19 must repair.
+const LEGACY_065_BLOB: &str = "{\"session_id\":\"legacy-065\",\"title\":\"Legacy 065\",\"profile\":{\"strategy\":\"sliding_window\",\"model\":\"ollama/llama3\",\"persona_name\":\"coding-assistant\",\"token_budget\":150000,\"sliding_window_size\":5},\"cwd\":\".\",\"parent_session\":null,\"blobs\":{},\"lifecycle_name\":null,\"lifecycle_args\":[],\"lifecycle_script_state\":\"nothing_ran\",\"session_state\":\"Loaded\",\"created_at\":\"2024-01-01T00:00:00Z\",\"updated_at\":\"2024-01-01T00:00:00Z\",\"is_automated\":false,\"persist\":true}";
+
+#[rstest::rstest]
+#[tokio::test]
+async fn legacy_065_blob_loads_after_v19() {
+    // Given a 0.65 database (recorded at v18) with a legacy-shape metadata blob.
+    // v19 has not yet run, so profile.model is still a bare string.
+    let dir = TempDir::new().expect("temp dir");
+    let db_path = dir.path().join("sessions.db");
+    let url = db_path.to_string_lossy().to_string();
+    {
+        let mut conn = SqliteConnection::establish(&url).expect("connect");
+        run_migrations(&mut conn).expect("migrations");
+        // Roll the recorded version back to 18 so the store's open re-runs v19,
+        // faithfully simulating a 0.65 DB (at v18) being opened by 0.66.
+        diesel::sql_query("DELETE FROM _migrations WHERE version >= 19")
+            .execute(&mut conn)
+            .expect("downgrade to v18");
+        diesel::sql_query(
+            "INSERT INTO sessions (id, title, updated_at, created_at, cwd, profile, blobs, \
+             lifecycle_script_state, is_automated, persist, metadata) \
+             VALUES ('legacy-065', 'Legacy 065', '2024-01-01T00:00:00Z', '2024-01-01T00:00:00Z', '.', \
+             '{\"model\":\"ollama/llama3\"}', '{}', 'nothing_ran', 0, 0, ?)",
+        )
+        .bind::<diesel::sql_types::Text, _>(LEGACY_065_BLOB)
+        .execute(&mut conn)
+        .expect("insert legacy blob");
+    }
+
+    // When loading the session through the store.
+    // (The store re-runs migrations on open; v19 repairs the blob.)
+    let store = SqliteSessionStore::new_in(dir.path()).expect("store");
+    let loaded = store
+        .load_session(&SessionId::from("legacy-065".to_owned()))
+        .await
+        .expect("load_session")
+        .expect("session should exist");
+
+    // Then the profile model is restored as Single(...) - not dropped or errored.
+    assert_eq!(
+        loaded.model_selection(),
+        &ModelSelection::Single("ollama/llama3".to_owned()),
+        "0.65 bare-string model must load as Single after v19"
+    );
+
+    // And other profile fields round-trip correctly.
+    assert_eq!(loaded.persona_name(), "coding-assistant");
+}
+
+/// A metadata blob in the 0.66 shape: `profile.model` is already `{"single": ...}`.
+const CURRENT_066_BLOB: &str = "{\"session_id\":\"current-066\",\"title\":\"Current 066\",\"profile\":{\"strategy\":\"sliding_window\",\"model\":{\"single\":\"ollama/llama3\"},\"persona_name\":\"coding-assistant\",\"token_budget\":150000,\"sliding_window_size\":5},\"cwd\":\".\",\"parent_session\":null,\"blobs\":{},\"lifecycle_name\":null,\"lifecycle_args\":[],\"lifecycle_script_state\":\"nothing_ran\",\"session_state\":\"Loaded\",\"created_at\":\"2024-01-01T00:00:00Z\",\"updated_at\":\"2024-01-01T00:00:00Z\",\"is_automated\":false,\"persist\":true}";
+
+#[rstest::rstest]
+#[tokio::test]
+async fn current_066_blob_loads_unchanged() {
+    // Given a fresh database with a 0.66-shape blob inserted directly.
+    let dir = TempDir::new().expect("temp dir");
+    let db_path = dir.path().join("sessions.db");
+    let url = db_path.to_string_lossy().to_string();
+    {
+        let mut conn = SqliteConnection::establish(&url).expect("connect");
+        run_migrations(&mut conn).expect("migrations");
+        diesel::sql_query(
+            "INSERT INTO sessions (id, title, updated_at, created_at, cwd, profile, blobs, \
+             lifecycle_script_state, is_automated, persist, metadata) \
+             VALUES ('current-066', 'Current 066', '2024-01-01T00:00:00Z', '2024-01-01T00:00:00Z', '.', \
+             '{\"model\":{\"single\":\"ollama/llama3\"}}', '{}', 'nothing_ran', 0, 0, ?)",
+        )
+        .bind::<diesel::sql_types::Text, _>(CURRENT_066_BLOB)
+        .execute(&mut conn)
+        .expect("insert current blob");
+    }
+
+    // When loading the session through the store.
+    let store = SqliteSessionStore::new_in(dir.path()).expect("store");
+    let loaded = store
+        .load_session(&SessionId::from("current-066".to_owned()))
+        .await
+        .expect("load_session")
+        .expect("session should exist");
+
+    // Then the profile model loads correctly - no regression on current sessions.
+    assert_eq!(
+        loaded.model_selection(),
+        &ModelSelection::Single("ollama/llama3".to_owned())
+    );
+    assert_eq!(loaded.persona_name(), "coding-assistant");
+}
+
+/// A pre-v8 session (no metadata blob) must still load via the legacy
+/// column path. After v17, the profile column holds the new
+/// `{"single": ...}` form, so the legacy path reconstructs correctly.
+#[rstest::rstest]
+#[tokio::test]
+async fn legacy_pre_v8_row_loads_via_columns() {
+    // Given a fresh database with a session row whose metadata is NULL
+    // (pre-v8 shape). The profile column carries the post-v17 form.
+    let dir = TempDir::new().expect("temp dir");
+    let db_path = dir.path().join("sessions.db");
+    let url = db_path.to_string_lossy().to_string();
+    {
+        let mut conn = SqliteConnection::establish(&url).expect("connect");
+        run_migrations(&mut conn).expect("migrations");
+        diesel::sql_query(
+            "INSERT INTO sessions (id, title, updated_at, created_at, cwd, profile, blobs, \
+             lifecycle_script_state, is_automated, persist) \
+             VALUES ('legacy-pre-v8', 'Legacy Pre-V8', '2024-01-01T00:00:00Z', '2024-01-01T00:00:00Z', '.', \
+             '{\"model\":{\"single\":\"ollama/llama3\"},\"persona_name\":\"coding-assistant\"}', '{}', 'nothing_ran', 0, 0)",
+        )
+        .execute(&mut conn)
+        .expect("insert null-metadata row");
+    }
+
+    // When loading the session through the store.
+    let store = SqliteSessionStore::new_in(dir.path()).expect("store");
+    let loaded = store
+        .load_session(&SessionId::from("legacy-pre-v8".to_owned()))
+        .await
+        .expect("load_session")
+        .expect("session should exist");
+
+    // Then the legacy column path reconstructs the profile (model + persona).
+    assert_eq!(
+        loaded.model_selection(),
+        &ModelSelection::Single("ollama/llama3".to_owned()),
+        "pre-v8 row must load its model from the profile column"
+    );
+    assert_eq!(
+        loaded.persona_name(),
+        "coding-assistant",
+        "pre-v8 row must load persona from the profile column"
+    );
+}
+/// After the dual-write collapse, the zombie columns must hold their SQL
+/// DEFAULTs while `metadata` carries the real data.
+#[rstest::rstest]
+#[tokio::test]
+async fn save_writes_blob_not_zombie_columns() {
+    use diesel::Connection;
+    use diesel::QueryableByName;
+    use diesel::RunQueryDsl;
+    use diesel::SqliteConnection;
+
+    #[derive(QueryableByName)]
+    struct TextRow {
+        #[diesel(sql_type = diesel::sql_types::Text)]
+        v: String,
+    }
+
+    fn col(conn: &mut SqliteConnection, expr: &str) -> String {
+        let rows: Vec<TextRow> = diesel::sql_query(&format!("SELECT {expr} AS v FROM sessions"))
+            .load(conn)
+            .expect("select column");
+        rows.into_iter().next().expect("one row").v
+    }
+    // Given a saved session with a real model and persona.
+    let (_dir, store) = make_store();
+    let session_id = SessionId::new();
+    let mut session = make_session(&session_id, "With Model");
+    session.set_model(ModelSelection::Single("anthropic/claude-opus-4".to_owned()));
+    store.save(&session).await.expect("save");
+
+    // When inspecting the raw row directly.
+    let path = _dir.path().join("sessions.db");
+    let mut conn = SqliteConnection::establish(path.to_str().expect("path")).expect("connect");
+
+    // Then the zombie columns hold their SQL DEFAULTs (no longer written).
+    assert_eq!(
+        col(&mut conn, "profile"),
+        "{}",
+        "profile column should be the default"
+    );
+    assert_eq!(
+        col(&mut conn, "blobs"),
+        "{}",
+        "blobs column should be the default"
+    );
+    assert_eq!(
+        col(&mut conn, "cwd"),
+        ".",
+        "cwd column should be the default"
+    );
+    assert_eq!(
+        col(&mut conn, "lifecycle_script_state"),
+        "nothing_ran",
+        "lifecycle_script_state column should be the default"
+    );
+    assert_eq!(
+        col(&mut conn, "lifecycle_args"),
+        "[]",
+        "lifecycle_args column should be the default"
+    );
+    assert_eq!(
+        col(&mut conn, "persist"),
+        "1",
+        "persist column holds its SQL DEFAULT (TRUE), no longer written from the session"
+    );
+
+    // And metadata carries the real profile with the model.
+    let metadata = col(&mut conn, "metadata");
+    assert!(
+        metadata.contains("\"anthropic/claude-opus-4\""),
+        "metadata blob should contain the real model: {metadata}"
+    );
+}
