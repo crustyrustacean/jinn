@@ -21,10 +21,9 @@ use crate::feat::provider_infra::{
 };
 use crate::feat::session::chat_session::ChatSessionState;
 use crate::feat::session::{SessionStore, SessionStoreError, SessionStoreService, SessionSummary};
-use crate::protocol::{AppMsg, SessionId};
+use crate::protocol::SessionId;
 
 use super::Services;
-use super::actor_channel::ActorChannelService;
 /// Single shared tokio runtime for the entire test binary.
 ///
 /// Initializes exactly once via `LazyLock`. Without this, every
@@ -118,8 +117,6 @@ pub struct TestServices {
     providers: ProvidersConfig,
     /// Custom tokio runtime handle (if provided).
     handle: Option<Handle>,
-    /// Custom actor channel sender (if provided).
-    actor_channel_sender: Option<kanal::Sender<AppMsg>>,
     /// Custom LLM service factory (if provided).
     llm_service: Option<LlmServiceFactoryService>,
     /// Custom session store (if provided).
@@ -139,7 +136,6 @@ impl Default for TestServices {
                 alloys: vec![],
             },
             handle: None,
-            actor_channel_sender: None,
             llm_service: None,
             session_store: None,
             paths: None,
@@ -172,13 +168,6 @@ impl TestServices {
     #[must_use]
     pub fn handle(mut self, handle: Handle) -> Self {
         self.handle = Some(handle);
-        self
-    }
-
-    /// Set a custom actor channel sender.
-    #[must_use]
-    pub fn actor_channel_sender(mut self, sender: kanal::Sender<AppMsg>) -> Self {
-        self.actor_channel_sender = Some(sender);
         self
     }
 
@@ -232,12 +221,6 @@ impl TestServices {
             )
         };
 
-        // Keep a live drainer so the sender doesn't return ReceiveClosed.
-        let (actor_tx, actor_rx) = kanal::unbounded::<AppMsg>();
-        handle.spawn(async move {
-            let rx = actor_rx.to_async();
-            while rx.recv().await.is_ok() {}
-        });
         let bus = if let Some(override_bus) = self.bus_override {
             override_bus
         } else {
@@ -279,7 +262,6 @@ impl TestServices {
         Services {
             paths,
             handle,
-            actor_channel: ActorChannelService::new(self.actor_channel_sender.unwrap_or(actor_tx)),
             llm_service: self.llm_service.unwrap_or_else(|| {
                 LlmServiceFactoryService::new(Arc::new(FakeLlmServiceFactory::new(vec![])))
             }),

@@ -22,7 +22,6 @@ use jinn_domain::Services;
 use jinn_domain::SessionStoreService;
 use jinn_domain::UserPreferencesStorageService;
 
-use jinn_domain::actor_channel::ActorChannelService;
 use jinn_domain::common::actor_deps::ActorDeps;
 use jinn_domain::feat::context::strategy::token_estimator::TiktokenCounter;
 
@@ -35,7 +34,7 @@ use jinn_domain::feat::preferences_actor::user_preferences::WebFetchBackend;
 use jinn_domain::feat::web_fetch_actor::{WebFetchActor, WebFetchActorDeps};
 use jinn_web_fetch::{HttpFetcher, MarkdownExtractor, OutputFormat};
 
-use jinn_domain::{AppCore, AppMsg, State};
+use jinn_domain::{AppCore, State};
 
 use kameo::actor::Spawn;
 
@@ -96,11 +95,6 @@ impl ActorSystemBuilder {
             paths,
         } = self.args;
 
-        // Create channel first — actors need the sender, but AppCore needs services
-        // which needs the bus. Break the cycle by creating the channel independently.
-        let (sender, receiver) = kanal::unbounded::<AppMsg>();
-        let _async_receiver = receiver.to_async();
-
         // `DomainNodeContext` is needed by the plugin request handler (for `llm_oneshot`)
         // but it can't be constructed until `services` is assembled.
         // Bridge with a `OnceLock` filled in once `services` exists.
@@ -135,17 +129,22 @@ impl ActorSystemBuilder {
             guard.active_session_mut().set_cwd(cwd);
         }
 
-        // ── Plugin system ────────────────────────────────────────────────────
+        // Create the kameo message bus and closure bridge first — the plugin
+        // command dispatcher needs a Bridge to route commands onto the bus.
+        let bus = {
+            let bus_actor = kameo_actors::message_bus::MessageBus::new(
+                kameo_actors::DeliveryStrategy::BestEffort,
+            );
+            let bus_ref = kameo_actors::message_bus::MessageBus::spawn(bus_actor);
+            jinn_domain::common::services::bus_service::BusService::new(bus_ref)
+        };
+        let bridge = jinn_domain::common::bridge::Bridge::new(bus.actor_ref().clone());
+
+        // ── Plugin system ─��──────────────────────────────────────────────────
         // Constructed early — handles go into Services and TuiApp.
 
-        let plugin_command_channel = ActorChannelService::new(sender.clone());
         let plugin_command_dispatcher: jinn_domain::feat::plugin_system::CommandDispatcher =
-            std::sync::Arc::new({
-                let channel = plugin_command_channel.clone();
-                move |cmd: jinn_domain::feat::plugin_system::PluginCommand| {
-                    crate::plugin_wiring::handle_plugin_command(cmd, &channel);
-                }
-            });
+            crate::plugin_wiring::build_command_dispatcher(bridge.clone());
         let handler_cell = domain_ctx_cell.clone();
         let plugin_request_handler: jinn_domain::feat::plugin_system::RequestHandler =
             std::sync::Arc::new({
@@ -205,16 +204,6 @@ impl ActorSystemBuilder {
         > = std::sync::Arc::new(std::sync::OnceLock::new());
         let _handler_cell = domain_ctx_cell.clone();
 
-        // Create the kameo message bus and closure bridge first.
-        let bus = {
-            let bus_actor = kameo_actors::message_bus::MessageBus::new(
-                kameo_actors::DeliveryStrategy::BestEffort,
-            );
-            let bus_ref = kameo_actors::message_bus::MessageBus::spawn(bus_actor);
-            jinn_domain::common::services::bus_service::BusService::new(bus_ref)
-        };
-        let bridge = jinn_domain::common::bridge::Bridge::new(bus.actor_ref().clone());
-
         // Root supervision tree: every spawned actor becomes a supervised
         // child so that stopping the root cascades a graceful shutdown.
         let root = jinn_domain::common::root_supervisor::RootSupervisor::spawn_root().await;
@@ -222,7 +211,6 @@ impl ActorSystemBuilder {
         let services = Services {
             paths: paths.clone(),
             handle: handle.clone(),
-            actor_channel: ActorChannelService::new(sender.clone()),
             llm_service: llm_service.clone(),
             provider_registry: provider_registry.clone(),
             api_keys: api_keys.clone(),
@@ -1045,10 +1033,9 @@ impl ActorSystemBuilder {
         // Wait for SystemReadyActor to confirm readiness.
         let _ = ready_rx.to_async().recv().await;
 
-        // Build AppCore with shared state and sender.
+        // Build AppCore with shared state and the bridge.
         let core = AppCore {
             state: state.clone(),
-            sender: sender.clone(),
             bridge: services.bridge.clone(),
         };
 

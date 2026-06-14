@@ -51,7 +51,7 @@ impl HeadlessApp {
             state.session.active_session_id().clone()
         };
         self.core
-            .sender()
+            .bridge
             .send(Bridge::publish_closure(EnqueueUserMessage {
                 session_id,
                 entry: ChatEntry::user(message.to_string()),

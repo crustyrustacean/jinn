@@ -18,8 +18,6 @@ pub enum Msg {
     Tick,
     /// A crossterm terminal event (key press, resize, etc.).
     Input(crossterm::event::Event),
-    /// A bus closure from key handling or external injection.
-    Bridge(jinn_domain::BridgeClosure),
 }
 
 impl std::fmt::Debug for Msg {
@@ -27,7 +25,6 @@ impl std::fmt::Debug for Msg {
         match self {
             Self::Tick => f.write_str("Tick"),
             Self::Input(e) => f.debug_tuple("Input").field(e).finish(),
-            Self::Bridge(_) => f.write_str("Bridge(<closure>)"),
         }
     }
 }
