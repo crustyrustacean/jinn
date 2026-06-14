@@ -43,7 +43,7 @@ pub fn load_provider_picker_items(services: &Services, state: &mut AppState) {
 /// Sets `selected = true` on entries matching the current model selection.
 ///
 /// For `Single`, checks the one matching entry. For `Alloy`, checks all member entries.
-fn pre_check_active_models(
+pub(crate) fn pre_check_active_models(
     entries: &mut [crate::protocol::PickerEntry],
     selection: &ModelSelection,
 ) {

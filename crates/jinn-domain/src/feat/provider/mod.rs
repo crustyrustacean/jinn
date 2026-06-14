@@ -45,6 +45,14 @@ pub struct ProviderState {
     /// OWNER: provider-actor (loads entries via LoadProviderPickerEntries),
     ///        IntentHandler (navigates picker, reads selected item).
     pub provider_picker: jinn_selection_widget::SelectionState<PickerEntry>,
+
+    /// Whether the provider picker is in alloy-selection mode.
+    /// OWNER: IntentHandler (set on open, flipped by ToggleAlloyMode, read on confirm).
+    ///
+    /// When `false`, ENTER selects the highlighted model as a single model. When
+    /// `true`, TAB toggles models into the alloy set and ENTER force-includes the
+    /// highlight then commits (1 model -> Single, 2+ -> Alloy).
+    pub alloy_mode: bool,
 }
 
 impl Default for ProviderState {
@@ -52,6 +60,7 @@ impl Default for ProviderState {
         Self {
             model_cache: None,
             provider_picker: jinn_selection_widget::SelectionState::new(),
+            alloy_mode: false,
         }
     }
 }
