@@ -168,7 +168,19 @@ impl SessionPersistenceActor {
     async fn spawn_shell_setup(&mut self, payload: &RunSessionSetup) {
         use crate::feat::session_lifecycle::command_runner::spawn_setup_command;
 
-        let (cancel_handle, handle) = match spawn_setup_command(&payload.command, &self.shell) {
+        // Read the session's CWD before spawning so the script runs in the
+        // inherited session dir, not jinn's process dir. Falls back to the
+        // default (launch) dir if the session is somehow missing from state.
+        let cwd = {
+            let state = self.state.read();
+            state.session.get(&payload.session_id).map_or_else(
+                || state.session.default_cwd().clone(),
+                |s| s.cwd().to_path_buf(),
+            )
+        };
+
+        let (cancel_handle, handle) = match spawn_setup_command(&payload.command, &self.shell, &cwd)
+        {
             Ok(pair) => pair,
             Err(e) => {
                 // Failed to even start the command.
@@ -489,9 +501,18 @@ impl SessionPersistenceActor {
                 let session_id = payload.session_id.clone();
                 let shell = self.shell.clone();
 
+                // Read the session's CWD so the teardown script runs in the
+                // inherited session dir, not jinn's process dir.
+                let cwd = {
+                    let state = self.state.read();
+                    state.session.get(&payload.session_id).map_or_else(
+                        || state.session.default_cwd().clone(),
+                        |s| s.cwd().to_path_buf(),
+                    )
+                };
                 let spawn_result =
                     crate::feat::session_lifecycle::command_runner::spawn_teardown_command(
-                        &rendered, &shell,
+                        &rendered, &shell, &cwd,
                     );
 
                 match spawn_result {
@@ -682,9 +703,19 @@ impl SessionPersistenceActor {
                         let session_id = payload.session_id.clone();
                         let shell = self.shell.clone();
 
+                        // Read the session's CWD so the close-teardown script runs
+                        // in the inherited session dir, not jinn's process dir.
+                        let cwd = {
+                            let state = self.state.read();
+                            state.session.get(&payload.session_id).map_or_else(
+                                || state.session.default_cwd().clone(),
+                                |s| s.cwd().to_path_buf(),
+                            )
+                        };
+
                         let spawn_result =
                             crate::feat::session_lifecycle::command_runner::spawn_teardown_command(
-                                &rendered, &shell,
+                                &rendered, &shell, &cwd,
                             );
 
                         match spawn_result {
