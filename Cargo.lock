@@ -1834,6 +1834,7 @@ dependencies = [
  "headless_chrome",
  "htmd",
  "mockito",
+ "parking_lot",
  "reqwest",
  "rstest",
  "serde",

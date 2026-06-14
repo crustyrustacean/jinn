@@ -183,7 +183,7 @@ impl LlmService for RetryingLlmService {
 mod tests {
     #![allow(clippy::expect_used, clippy::indexing_slicing, reason = "test code")]
     use super::*;
-    use std::sync::Mutex;
+    use parking_lot::Mutex;
 
     /// A service that fails N times then succeeds.
     struct FlakyService {
@@ -210,7 +210,7 @@ mod tests {
             &self,
             _messages: Vec<LlmMessage>,
         ) -> Result<ChatStream, Report<LlmServiceError>> {
-            let mut count = self.fail_count.lock().expect("lock");
+            let mut count = self.fail_count.lock();
             if *count > 0 {
                 *count -= 1;
                 return Err(Report::new(self.fail_with.clone()));
@@ -263,10 +263,7 @@ mod tests {
             wait: Duration,
             _error: &Report<LlmServiceError>,
         ) {
-            self.calls
-                .lock()
-                .expect("lock")
-                .push((attempt, max_retries, wait));
+            self.calls.lock().push((attempt, max_retries, wait));
         }
     }
 
@@ -291,7 +288,7 @@ mod tests {
 
         // Then it succeeds after one retry.
         assert!(result.is_ok());
-        let calls = calls.lock().expect("lock");
+        let calls = calls.lock();
         assert_eq!(calls.len(), 1);
         assert_eq!(calls[0].0, 1); // attempt 1
     }
@@ -317,7 +314,7 @@ mod tests {
 
         // Then it fails after max retries.
         assert!(result.is_err());
-        let calls = calls.lock().expect("lock");
+        let calls = calls.lock();
         assert_eq!(calls.len(), 3);
     }
 
@@ -342,7 +339,7 @@ mod tests {
 
         // Then it fails immediately without retry.
         assert!(result.is_err());
-        let calls = calls.lock().expect("lock");
+        let calls = calls.lock();
         assert!(calls.is_empty());
     }
 
@@ -372,7 +369,7 @@ mod tests {
 
         // Then it succeeds.
         assert!(result.is_ok());
-        let calls = calls.lock().expect("lock");
+        let calls = calls.lock();
         assert_eq!(calls.len(), 1);
         // The wait duration should be the provider hint, not exponential backoff.
         assert_eq!(calls[0].2, Duration::from_millis(50));
@@ -404,7 +401,7 @@ mod tests {
 
         // Then it succeeds and the wait is 200ms (provider hint overrides max_delay).
         assert!(result.is_ok());
-        let calls = calls.lock().expect("lock");
+        let calls = calls.lock();
         assert_eq!(calls[0].2, Duration::from_millis(200));
     }
 
@@ -429,7 +426,7 @@ mod tests {
 
         // Then it fails immediately.
         assert!(result.is_err());
-        let calls = calls.lock().expect("lock");
+        let calls = calls.lock();
         assert!(calls.is_empty());
     }
 
