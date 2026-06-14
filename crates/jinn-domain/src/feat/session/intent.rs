@@ -168,4 +168,20 @@ mod tests {
         // Then a message is returned.
         assert!(!result.messages.is_empty());
     }
+
+    #[rstest::rstest]
+    fn session_new_inherits_active_session_cwd() {
+        // Given a state whose active session has a distinct CWD (not the app
+        // launch dir).
+        let mut state = AppState::default();
+        let inherited_cwd = std::path::PathBuf::from("/tmp/inherited-project");
+        state.active_session_mut().set_cwd(inherited_cwd.clone());
+        assert_ne!(state.active_session().cwd(), state.session.default_cwd());
+
+        // When handling SessionNew.
+        let _result = handle_session_new(&mut state);
+
+        // Then the new session inherited the active session's CWD.
+        assert_eq!(state.active_session().cwd(), inherited_cwd);
+    }
 }
