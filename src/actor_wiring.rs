@@ -138,14 +138,8 @@ impl ActorSystemBuilder {
         // ── Plugin system ────────────────────────────────────────────────────
         // Constructed early — handles go into Services and TuiApp.
 
-        let plugin_command_channel = ActorChannelService::new(sender.clone());
         let plugin_command_dispatcher: jinn_domain::feat::plugin_system::CommandDispatcher =
-            std::sync::Arc::new({
-                let channel = plugin_command_channel.clone();
-                move |cmd: jinn_domain::feat::plugin_system::PluginCommand| {
-                    crate::plugin_wiring::handle_plugin_command(cmd, &channel);
-                }
-            });
+            crate::plugin_wiring::build_command_dispatcher();
         let handler_cell = domain_ctx_cell.clone();
         let plugin_request_handler: jinn_domain::feat::plugin_system::RequestHandler =
             std::sync::Arc::new({
