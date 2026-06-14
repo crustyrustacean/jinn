@@ -14,6 +14,8 @@ use crate::feat::theme::default_theme;
 use crate::feat::ui::sidebar::sessions::preview::{
     SessionPreviewCache, render_session_preview, session_preview_popup_rect,
 };
+use crate::feat::todo_list::TaskPosition;
+use ratatui::style::Color;
 use crate::protocol::ChatEntry;
 use jinn_testutil::{buffer_row, setup_term};
 use ratatui::layout::Rect;
@@ -304,6 +306,96 @@ fn cwd_shows_with_no_model_selected() {
     assert!(
         row.contains("no model selected"),
         "model line should contain 'no model selected', got: {row}"
+    );
+}
+
+// ---------------------------------------------------------------------------
+// Completion badge tests
+// ---------------------------------------------------------------------------
+
+/// Builds a session whose task list has `total` tasks, `completed` of which
+/// are marked [`TaskStatus::Completed`].
+fn session_with_tasks(completed: usize, total: usize) -> ChatSessionState {
+    let mut session = ChatSessionState::new();
+    let pid = session.task_list_mut().add_phase("Build");
+    for _ in 0..completed {
+        let tid = session
+            .task_list_mut()
+            .add_task(&pid, "done", TaskPosition::End)
+            .unwrap();
+        session.task_list_mut().complete_task(&tid).unwrap();
+    }
+    for _ in completed..total {
+        session
+            .task_list_mut()
+            .add_task(&pid, "todo", TaskPosition::End)
+            .unwrap();
+    }
+    session
+}
+
+#[rstest::rstest]
+fn badge_renders_counts_and_percentage_in_top_border() {
+    // Given a session with 3 tasks, 1 completed (1*100/3 = 33%).
+    let session = session_with_tasks(1, 3);
+
+    // When rendering the preview.
+    let (buffer, popup_area) = render_preview(&session, 80, 40);
+
+    // Then the top border row contains the badge "1/3 · 33%".
+    let top_row = buffer_row(&buffer, popup_area.y, popup_area.x + popup_area.width);
+    assert!(
+        top_row.contains("1/3"),
+        "top border should contain '1/3' badge, got: {top_row}"
+    );
+    assert!(
+        top_row.contains("33%"),
+        "top border should contain '33%' (truncated), got: {top_row}"
+    );
+    assert!(
+        top_row.contains('\u{00B7}'),
+        "top border should contain '·' separator, got: {top_row}"
+    );
+}
+
+#[rstest::rstest]
+fn badge_hidden_when_task_list_empty() {
+    // Given a session with no tasks.
+    let mut session = ChatSessionState::new();
+    session.set_title("No Tasks".to_owned());
+
+    // When rendering the preview.
+    let (buffer, popup_area) = render_preview(&session, 80, 40);
+
+    // Then the top border row has no '%' badge but still shows the title.
+    let top_row = buffer_row(&buffer, popup_area.y, popup_area.x + popup_area.width);
+    assert!(
+        !top_row.contains('%'),
+        "top border should not contain a percentage badge when empty, got: {top_row}"
+    );
+    assert!(
+        top_row.contains("No Tasks"),
+        "top border should still show the session title, got: {top_row}"
+    );
+}
+
+#[rstest::rstest]
+fn badge_uses_streaming_color() {
+    // Given a session with tasks.
+    let streaming = default_theme().streaming;
+    let session = session_with_tasks(1, 3);
+
+    // When rendering the preview.
+    let (buffer, popup_area) = render_preview(&session, 80, 40);
+
+    // Then at least one cell in the top border row uses the streaming color.
+    let top_border_y = popup_area.y;
+    let has_streaming = (popup_area.x..popup_area.x + popup_area.width)
+        .filter_map(|x| buffer.cell((x, top_border_y)))
+        .any(|cell| cell.fg == streaming);
+    assert!(
+        has_streaming,
+        "some top border cell should use the streaming color {streaming:?}"
     );
 }
 

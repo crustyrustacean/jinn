@@ -979,6 +979,119 @@ fn active_phase_skips_phase_with_only_postponed_cancelled_completed() {
 }
 
 // ---------------------------------------------------------------------------
+// completion_counts
+// ---------------------------------------------------------------------------
+
+#[test]
+fn completion_counts_empty_list_is_zero_zero() {
+    // Given an empty task list.
+    let list = TaskList::new();
+
+    // When counting completion.
+    let (completed, total) = list.completion_counts();
+
+    // Then there are no completed tasks and no tasks at all.
+    assert_eq!((completed, total), (0, 0));
+}
+
+#[test]
+fn completion_counts_all_pending() {
+    // Given a phase with three pending tasks.
+    let mut list = TaskList::new();
+    let pid = list.add_phase("Research");
+    list.add_task(&pid, "Read docs", TaskPosition::End).unwrap();
+    list.add_task(&pid, "Call API", TaskPosition::End).unwrap();
+    list.add_task(&pid, "Write notes", TaskPosition::End).unwrap();
+
+    // When counting completion.
+    let (completed, total) = list.completion_counts();
+
+    // Then nothing is completed but all three are counted.
+    assert_eq!((completed, total), (0, 3));
+}
+
+#[test]
+fn completion_counts_all_completed() {
+    // Given a phase where every task is completed.
+    let mut list = TaskList::new();
+    let pid = list.add_phase("Research");
+    let t1 = list.add_task(&pid, "Read docs", TaskPosition::End).unwrap();
+    let t2 = list.add_task(&pid, "Call API", TaskPosition::End).unwrap();
+    let t3 = list.add_task(&pid, "Write notes", TaskPosition::End).unwrap();
+    list.complete_task(&t1).unwrap();
+    list.complete_task(&t2).unwrap();
+    list.complete_task(&t3).unwrap();
+
+    // When counting completion.
+    let (completed, total) = list.completion_counts();
+
+    // Then all three are completed.
+    assert_eq!((completed, total), (3, 3));
+}
+
+#[test]
+fn completion_counts_counts_only_completed() {
+    // Given a phase with two completed, one pending, one postponed, one cancelled.
+    let mut list = TaskList::new();
+    let p1 = list.add_phase("Research");
+    let tc1 = list.add_task(&p1, "Done 1", TaskPosition::End).unwrap();
+    let tc2 = list.add_task(&p1, "Done 2", TaskPosition::End).unwrap();
+    list.add_task(&p1, "Pending", TaskPosition::End).unwrap();
+    let tpost = list.add_task(&p1, "Postponed", TaskPosition::End).unwrap();
+    let tcan = list.add_task(&p1, "Cancelled", TaskPosition::End).unwrap();
+    let p2 = list.add_phase("Build");
+    let t_anchor = list.add_task(&p2, "Anchor", TaskPosition::End).unwrap();
+    list.complete_task(&tc1).unwrap();
+    list.complete_task(&tc2).unwrap();
+    list.postpone_task(&tpost, TaskPosition::After(t_anchor)).unwrap();
+    list.cancel_task(&tcan).unwrap();
+
+    // When counting completion.
+    let (completed, total) = list.completion_counts();
+
+    // Then only the two completed count; total is all seven tasks
+    // (5 original in p1 + 1 anchor in p2 + 1 postponed copy in p2).
+    assert_eq!((completed, total), (2, 7));
+}
+
+#[test]
+fn completion_counts_aggregates_across_phases() {
+    // Given tasks split across two phases.
+    let mut list = TaskList::new();
+    let p1 = list.add_phase("Research");
+    let t1 = list.add_task(&p1, "Read docs", TaskPosition::End).unwrap();
+    list.add_task(&p1, "Call API", TaskPosition::End).unwrap();
+    let p2 = list.add_phase("Build");
+    let t3 = list.add_task(&p2, "Write code", TaskPosition::End).unwrap();
+    list.complete_task(&t1).unwrap();
+    list.complete_task(&t3).unwrap();
+
+    // When counting completion across all phases.
+    let (completed, total) = list.completion_counts();
+
+    // Then counts combine across phase boundaries: 2 completed of 3 total.
+    assert_eq!((completed, total), (2, 3));
+}
+
+#[test]
+fn completion_counts_treats_empty_phases_as_zero() {
+    // Given two phases, one empty and one with two completed tasks.
+    let mut list = TaskList::new();
+    list.add_phase("Empty");
+    let p2 = list.add_phase("Build");
+    let t1 = list.add_task(&p2, "Write code", TaskPosition::End).unwrap();
+    let t2 = list.add_task(&p2, "Write tests", TaskPosition::End).unwrap();
+    list.complete_task(&t1).unwrap();
+    list.complete_task(&t2).unwrap();
+
+    // When counting completion.
+    let (completed, total) = list.completion_counts();
+
+    // Then the empty phase contributes nothing: 2 completed of 2 total.
+    assert_eq!((completed, total), (2, 2));
+}
+
+// ---------------------------------------------------------------------------
 // render_text_with_blockers
 // ---------------------------------------------------------------------------
 
