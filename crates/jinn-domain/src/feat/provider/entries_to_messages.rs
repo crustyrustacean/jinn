@@ -25,7 +25,6 @@ use crate::protocol::{ChatEntry, ChatEntryKind, ContextOverride};
 /// | Transient | `LlmMessage::User` with `[Transient]` prefix | Only when in context |
 /// | Skill | `LlmMessage::System` with skill XML | Always in context by default |
 /// | Compaction | `LlmMessage::User` with summary | Always in context by default |
-
 /// Attaches a tool call to the most recent assistant message,
 /// or creates an empty assistant message if none exists (orphan tool call).
 fn push_tool_call_message(messages: &mut Vec<LlmMessage>, tool_call: ToolCall) {

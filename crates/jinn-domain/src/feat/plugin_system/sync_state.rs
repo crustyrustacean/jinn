@@ -337,7 +337,7 @@ impl SyncPlugins {
         };
         let mut out = Vec::new();
         // Deserialize via mlua's serde support (`serialize` feature).
-        for entry_result in arr.clone().sequence_values::<Value>() {
+        for entry_result in arr.sequence_values::<Value>() {
             let entry = match entry_result {
                 Ok(v) => v,
                 Err(e) => {

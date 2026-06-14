@@ -2171,7 +2171,7 @@ fn finalize_tool_result_updates_existing_with_truncation() {
         "truncated output",
         true,
         Some("full output...".to_owned()),
-        Some(meta.clone()),
+        Some(meta),
         None,
     );
 
@@ -2935,7 +2935,7 @@ fn select_next_walks_visual_items_with_collapsed_block() {
         PROXIMITY_COUNT,
         DEFAULT_MIN_COLLAPSE_COUNT,
     );
-    session.set_visual_items(items.clone());
+    session.set_visual_items(items);
 
     // Select first entry (visual-item index 0).
     session.set_selected_entry_index(0);
@@ -4507,7 +4507,7 @@ fn new_with_profile_preserves_profile() {
     };
 
     // When creating a session with that profile.
-    let session = ChatSessionState::new_with_profile(profile.clone());
+    let session = ChatSessionState::new_with_profile(profile);
 
     // Then the session carries the profile.
     assert_eq!(
@@ -4545,7 +4545,7 @@ fn restore_token_ledger_sets_records() {
         tokens_received: 50,
         cost: Some(0.01),
     }];
-    session.restore_token_ledger(records.clone());
+    session.restore_token_ledger(records);
 
     // Then the ledger contains the records.
     assert_eq!(session.token_ledger().len(), 1);

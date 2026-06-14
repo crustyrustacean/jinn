@@ -526,7 +526,7 @@ mod tests {
                 )
             })
             .unwrap_or_else(|| {
-                panic!("<M-e> (Alt+e) not bound in Input scope. bindings = {input_bindings:?}",)
+                panic!("<M-e> (Alt+e) not bound in Input scope. bindings = {input_bindings:?}")
             });
 
         assert_eq!(
@@ -561,10 +561,7 @@ mod tests {
 
         let rt = tokio::runtime::Runtime::new().expect("runtime");
         let PluginSystemBuildResult {
-            sync: sync_plugins,
-            async_handle: _async_handle,
-            sync_handle: _sync_handle,
-            global_tool_metadata: _,
+            sync: sync_plugins, ..
         } = PluginSystem::build(
             &res_plugins,
             Path::new("/nonexistent"),

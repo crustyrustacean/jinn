@@ -46,7 +46,7 @@ impl Runner {
                 jinn_tui::run(*app).change_context(AppError)?;
             }
             #[cfg(debug_assertions)]
-            Runner::Headless(mut app) => {
+            Runner::Headless(app) => {
                 app.shutdown();
                 app.print_history();
             }

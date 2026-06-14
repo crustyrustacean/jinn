@@ -48,7 +48,7 @@ impl PluginData {
         session_id: Option<&SessionId>,
         plugin_name: &str,
     ) -> Option<serde_json::Value> {
-        let key = self.make_key(session_id, plugin_name);
+        let key = Self::make_key(session_id, plugin_name);
         self.0.get(&key).map(|v| v.clone())
     }
 
@@ -59,7 +59,7 @@ impl PluginData {
         plugin_name: &str,
         value: serde_json::Value,
     ) {
-        let key = self.make_key(session_id, plugin_name);
+        let key = Self::make_key(session_id, plugin_name);
         self.0.insert(key, value);
     }
 
@@ -79,7 +79,7 @@ impl PluginData {
     ) {
         use serde_json::Value;
 
-        let key = self.make_key(session_id, plugin_name);
+        let key = Self::make_key(session_id, plugin_name);
         let merged = self
             .0
             .get(&key)
@@ -104,8 +104,8 @@ impl PluginData {
     }
 
     /// Set a global plugin's data. Replaces any previous value.
-    pub fn set(&self, plugin_name: String, value: serde_json::Value) {
-        self.set_for_session(None, &plugin_name, value);
+    pub fn set(&self, plugin_name: &str, value: serde_json::Value) {
+        self.set_for_session(None, plugin_name, value);
     }
 
     /// Shallow-merge into a global plugin's data.
@@ -114,7 +114,7 @@ impl PluginData {
     }
 
     /// Build the composite key. Uses [`GLOBAL_SESSION_ID`] when no session is provided.
-    fn make_key(&self, session_id: Option<&SessionId>, plugin_name: &str) -> (SessionId, String) {
+    fn make_key(session_id: Option<&SessionId>, plugin_name: &str) -> (SessionId, String) {
         let sid = session_id
             .cloned()
             .unwrap_or_else(|| SessionId::from(GLOBAL_SESSION_ID.to_owned()));
@@ -152,7 +152,7 @@ mod tests {
     #[test]
     fn set_then_get_roundtrips() {
         let data = PluginData::new();
-        data.set("alpha".to_owned(), serde_json::json!({ "verdict": "pass" }));
+        data.set("alpha", serde_json::json!({ "verdict": "pass" }));
         let result = data.get("alpha").expect("should exist");
         assert_eq!(result["verdict"], "pass");
     }
@@ -160,16 +160,16 @@ mod tests {
     #[test]
     fn set_overwrites_previous_value() {
         let data = PluginData::new();
-        data.set("beta".to_owned(), serde_json::json!("first"));
-        data.set("beta".to_owned(), serde_json::json!("second"));
+        data.set("beta", serde_json::json!("first"));
+        data.set("beta", serde_json::json!("second"));
         assert_eq!(data.get("beta"), Some(serde_json::json!("second")));
     }
 
     #[test]
     fn plugins_have_isolated_data() {
         let data = PluginData::new();
-        data.set("alpha".to_owned(), serde_json::json!(1));
-        data.set("beta".to_owned(), serde_json::json!(2));
+        data.set("alpha", serde_json::json!(1));
+        data.set("beta", serde_json::json!(2));
         assert_eq!(data.get("alpha"), Some(serde_json::json!(1)));
         assert_eq!(data.get("beta"), Some(serde_json::json!(2)));
     }
@@ -178,7 +178,7 @@ mod tests {
     fn clone_shares_underlying_storage() {
         let data = PluginData::new();
         let cloned = data.clone();
-        data.set("shared".to_owned(), serde_json::json!("hello"));
+        data.set("shared", serde_json::json!("hello"));
         assert_eq!(cloned.get("shared"), Some(serde_json::json!("hello")));
     }
 
@@ -186,10 +186,7 @@ mod tests {
     fn merge_overwrites_top_level_keys_and_keeps_others() {
         // Given a plugin with two fields stored.
         let data = PluginData::new();
-        data.set(
-            "alpha".to_owned(),
-            serde_json::json!({"status": "idle", "count": 3}),
-        );
+        data.set("alpha", serde_json::json!({"status": "idle", "count": 3}));
 
         // When shallow-merging one top-level key.
         data.merge("alpha", serde_json::json!({"status": "enriching"}));
@@ -227,7 +224,7 @@ mod tests {
         let s1 = session("session-1");
 
         // Global write (no session).
-        data.set("judge".to_owned(), serde_json::json!({ "global": true }));
+        data.set("judge", serde_json::json!({ "global": true }));
         // Session-scoped write.
         data.set_for_session(Some(&s1), "judge", serde_json::json!({ "global": false }));
 

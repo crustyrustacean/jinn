@@ -283,7 +283,7 @@ impl App {
                     &_services.paths.themes_dir(),
                     &_services.paths.system_themes_dir(),
                 );
-                let mut headless = HeadlessApp::new(core, _services.clone());
+                let mut headless = HeadlessApp::new(core, _services);
                 match command {
                     Some(HeadlessCommands::SendChat { message }) => {
                         headless.send_chat(&message).change_context(AppError)?;

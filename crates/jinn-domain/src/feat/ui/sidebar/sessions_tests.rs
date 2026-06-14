@@ -1271,7 +1271,7 @@ fn state_with_tree() -> AppState {
     // Create grandchild_a1a under child_a1.
     let mut grandchild = ChatSessionState::new();
     grandchild.set_title("grandchild a1a".to_owned());
-    grandchild.set_parent_session(child_a1_id.clone());
+    grandchild.set_parent_session(child_a1_id);
     let _grandchild_id = grandchild.session_id().clone();
     state.session.insert(grandchild);
 
@@ -1849,7 +1849,7 @@ fn update_visual_parents_on_removal_reparents_only_children_of_removed_session()
 
     let mut unrelated_child = ChatSessionState::new();
     unrelated_child.set_title("unrelated child".to_owned());
-    unrelated_child.set_parent_session(unrelated_parent_id.clone());
+    unrelated_child.set_parent_session(unrelated_parent_id);
     let unrelated_child_id = unrelated_child.session_id().clone();
     state.session.insert(unrelated_child);
 

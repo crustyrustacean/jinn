@@ -145,21 +145,6 @@ impl ProviderActor {
         }
     }
 
-    /// LoadProviderPickerEntries: load provider picker entries.
-    fn handle_load_provider_picker_entries(&self, _payload: &LoadProviderPickerEntries) {
-        let mut state = self.state.write();
-        load_provider_picker_items(&self.deps.services, &mut state);
-    }
-
-    /// LoadCompactionModelPickerEntries: load compaction model picker entries.
-    fn handle_load_compaction_model_picker_entries(
-        &self,
-        _payload: &LoadCompactionModelPickerEntries,
-    ) {
-        let mut state = self.state.write();
-        load_compaction_model_picker_items(&self.deps.services, &mut state);
-    }
-
     // --- Event handlers ---
 
     /// ModelsRefreshed: update model cache and reload provider picker entries.

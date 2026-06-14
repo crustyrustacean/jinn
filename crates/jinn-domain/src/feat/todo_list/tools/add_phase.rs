@@ -289,7 +289,7 @@ mod tests {
             name: "todo_add_phase".to_owned(),
             arguments: r#"{"description": "Second"}"#.to_owned(),
         };
-        let ctx = make_context(Some(state.clone()), Some(session_id));
+        let ctx = make_context(Some(state), Some(session_id));
         let result = execute(call, ctx);
         let result = futures::executor::block_on(result);
         assert!(result.success);

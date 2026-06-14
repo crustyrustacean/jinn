@@ -217,10 +217,6 @@ impl TuiApp {
     /// 4. Sends commands to the core channel.
     /// 5. Handles TUI signals (which-key toggle, editor, pinned pane, etc.).
     /// 6. Updates the keymap scope based on the new mode.
-    #[expect(
-        clippy::needless_pass_by_value,
-        reason = "Intent is consumed by intent routing, ownership is semantic"
-    )]
     pub fn route_intent(&mut self, intent: Intent) {
         // Step 1-3: Handle intent, collect results, release lock.
         let (messages, signals) = {
@@ -240,7 +236,7 @@ impl TuiApp {
 
         if let jinn_domain::Intent::TriggerPlugin {
             action, session_id, ..
-        } = intent.clone()
+        } = intent
         {
             let (sid, text) = {
                 let state = self.core.state.read();

@@ -26,14 +26,14 @@ impl Bridge {
     /// Spawns a background tokio task that loops on `receiver.to_async().recv()`
     /// and calls each closure with the bus actor ref.
     pub fn new(bus: ActorRef<MessageBus>) -> Self {
-        Self::with_handle(bus, tokio::runtime::Handle::current())
+        Self::with_handle(bus, &tokio::runtime::Handle::current())
     }
 
     /// Creates a new bridge using a specific runtime handle.
     ///
     /// Use this when constructing from outside a tokio async context
     /// (e.g., from sync test code using a shared test runtime).
-    pub fn with_handle(bus: ActorRef<MessageBus>, handle: tokio::runtime::Handle) -> Self {
+    pub fn with_handle(bus: ActorRef<MessageBus>, handle: &tokio::runtime::Handle) -> Self {
         let (sender, receiver) = kanal::unbounded::<BridgeClosure>();
         let async_rx = receiver.to_async();
 
@@ -50,7 +50,7 @@ impl Bridge {
     ///
     /// Used in tests with a recording BusService where no real bus exists.
     #[must_use]
-    pub fn new_dummy(handle: tokio::runtime::Handle) -> Self {
+    pub fn new_dummy(handle: &tokio::runtime::Handle) -> Self {
         let (sender, receiver) = kanal::unbounded::<BridgeClosure>();
         let async_rx = receiver.to_async();
         // Spawn a drain task that silently discards all closures.
@@ -68,14 +68,17 @@ impl Bridge {
         let bus_ref = kameo::prelude::Spawn::spawn(bus_actor);
         Self::with_handle(
             bus_ref,
-            crate::common::services::test_services::shared_test_handle(),
+            &crate::common::services::test_services::shared_test_handle(),
         )
     }
 
     /// Sends a closure through the bridge (synchronous, non-blocking).
     ///
-    /// The closure will be called by the async drain task with a reference
-    /// to the message bus.
+    /// # Errors
+    ///
+    /// Returns the inner channel's [`SendError`] if the drain task has exited
+    /// and the channel is closed. The closure will be called by the async drain task
+    /// with a reference to the message bus.
     pub fn send(&self, msg: BridgeClosure) -> Result<(), kanal::SendError> {
         self.sender.send(msg)
     }

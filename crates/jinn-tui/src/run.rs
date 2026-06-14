@@ -318,12 +318,12 @@ fn handle_suspend_action(
                         }
                     };
                     let session_id = app.core.state.read().active_session().session_id().clone();
-                    app.core.sender().send(jinn_domain::Bridge::publish_closure(
+                    let _ = app.core.sender().send(jinn_domain::Bridge::publish_closure(
                         jinn_domain::feat::session_lifecycle::protocol::command::SetSessionCwd {
                             session_id,
                             cwd: canonical,
                         },
-                    )).ok();
+                    ));
 
                     tracing::info!(
                         cwd = %app.core.state.read().active_session().cwd().display(),

@@ -440,7 +440,7 @@ mod tests {
                 input: String::new(),
                 cursor_pos: 0,
             },
-            lifecycle_name: lifecycle.clone(),
+            lifecycle_name: lifecycle,
             template_display: String::new(),
         };
         state.frontend.scope_stack.push(FocusScope::ArgInput);

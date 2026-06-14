@@ -99,7 +99,7 @@ fn build_system_with_oneshot(stub_result: Value) -> TestSystem {
         captured,
         sync,
         async_handle,
-        oneshot_calls: request_log.oneshot_calls.clone(),
+        oneshot_calls: request_log.oneshot_calls,
     }
 }
 
@@ -412,10 +412,8 @@ async fn badge_always_returns_enrich_directive() {
 async fn badge_returns_working_when_enriching() {
     // Given a system where the enrich plugin is actively enriching.
     let sys = build_system_with_oneshot(json!(null));
-    sys.async_handle.set_plugin_data(
-        "prompt_enrichment".to_owned(),
-        json!({ "status": "enriching" }),
-    );
+    sys.async_handle
+        .set_plugin_data("prompt_enrichment", json!({ "status": "enriching" }));
 
     // When the renderer fires the badge hook.
     let directives = sys.sync.call_hooks(
@@ -437,10 +435,8 @@ async fn badge_returns_working_when_enriching() {
 async fn working_badge_uses_streaming_style() {
     // Given a system where the enrich plugin is actively enriching.
     let sys = build_system_with_oneshot(json!(null));
-    sys.async_handle.set_plugin_data(
-        "prompt_enrichment".to_owned(),
-        json!({ "status": "enriching" }),
-    );
+    sys.async_handle
+        .set_plugin_data("prompt_enrichment", json!({ "status": "enriching" }));
 
     // When the renderer fires the badge hook.
     let directives = sys.sync.call_hooks(

@@ -344,7 +344,7 @@ impl Message<RegisterPluginTools> for ToolOrchestratorActor {
     async fn handle(&mut self, msg: RegisterPluginTools, _ctx: &mut Context<Self, Self::Reply>) {
         self.handle_register_plugin_tools(
             &msg.plugin_name,
-            &msg.target,
+            msg.target.as_ref(),
             &msg.definitions,
             msg.session_id,
         )
@@ -384,7 +384,7 @@ impl ToolOrchestratorActor {
     async fn handle_register_plugin_tools(
         &mut self,
         plugin_name: &str,
-        target: &Option<SessionRegistryId>,
+        target: Option<&SessionRegistryId>,
         definitions: &[ToolDefinition],
         session_id: Option<SessionId>,
     ) {
@@ -394,7 +394,7 @@ impl ToolOrchestratorActor {
                 name,
                 ToolRegistration::Plugin {
                     definition: def.clone(),
-                    target: *target,
+                    target: target.copied(),
                     target_session_id: session_id.clone(),
                     plugin_name: plugin_name.to_owned(),
                 },
@@ -556,7 +556,7 @@ impl ToolOrchestratorActor {
                 });
                 Some(handle)
             }
-            Some(ToolRegistration::Actor { provider: _, .. }) => {
+            Some(ToolRegistration::Actor { .. }) => {
                 match tool_call.name.as_str() {
                     "web-fetch" => {
                         self.publish(ExecuteWebFetch {
@@ -720,11 +720,5 @@ impl ToolOrchestratorActor {
             })
             .await;
         }
-    }
-
-    /// Returns a reference to the tool registration for the given name.
-    #[cfg(test)]
-    fn get_tool(&self, name: &str) -> Option<&ToolRegistration> {
-        self.tools.get(name)
     }
 }

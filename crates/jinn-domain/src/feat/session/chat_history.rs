@@ -120,7 +120,7 @@ mod tests {
         let entries = vec![ChatEntry::user("hello"), ChatEntry::assistant("hi")];
 
         // When converting to ChatHistory via From.
-        let history = ChatHistory::from(entries.clone());
+        let history = ChatHistory::from(entries);
 
         // Then the history contains the same entries.
         assert_eq!(history.len(), 2);

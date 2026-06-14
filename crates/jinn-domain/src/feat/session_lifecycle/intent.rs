@@ -475,7 +475,7 @@ mod tests {
         let second_session = ChatSessionState::new();
         let second_id = second_session.session_id().clone();
         state.session.insert(second_session);
-        state.session.set_active(second_id.clone());
+        state.session.set_active(second_id);
 
         // When handling SessionClose.
         let result = handle_session_close(&mut state);

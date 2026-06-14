@@ -88,19 +88,19 @@ impl EntryTiming {
     #[must_use]
     pub fn ttft(&self) -> Option<jiff::SignedDuration> {
         match self {
-            Self::Instant { .. } => None,
+            Self::Instant { .. }
+            | Self::Streamed {
+                first_token_at: None,
+                ..
+            } => None,
             Self::Streamed {
                 dispatched_at,
                 first_token_at: Some(ft),
                 ..
             } => {
-                let span = ft.since(*dispatched_at).expect("timestamps are ordered");
+                let span = ft.since(*dispatched_at).ok()?;
                 Some(jiff::SignedDuration::from_secs(span.get_seconds()))
             }
-            Self::Streamed {
-                first_token_at: None,
-                ..
-            } => None,
         }
     }
 
@@ -110,28 +110,35 @@ impl EntryTiming {
     /// elapsed time between dispatch and completion.
     /// Returns `None` for `Instant` entries or when `finished_at` has not
     /// been recorded yet.
+    /// Returns `None` if timestamps are not monotonic (should not happen).
     #[must_use]
     pub fn total_duration(&self) -> Option<jiff::SignedDuration> {
         match self {
-            Self::Instant { .. } => None,
+            Self::Instant { .. }
+            | Self::Streamed {
+                finished_at: None, ..
+            } => None,
             Self::Streamed {
                 dispatched_at,
                 finished_at: Some(fin),
                 ..
             } => {
-                let span = fin.since(*dispatched_at).expect("timestamps are ordered");
+                let span = fin.since(*dispatched_at).ok()?;
                 Some(jiff::SignedDuration::from_secs(span.get_seconds()))
             }
-            Self::Streamed {
-                finished_at: None, ..
-            } => None,
         }
     }
 }
 
 #[cfg(test)]
 mod tests {
-    #![allow(clippy::expect_used, clippy::indexing_slicing, reason = "test code")]
+    #![allow(
+        clippy::expect_used,
+        clippy::indexing_slicing,
+        clippy::match_wildcard_for_single_variants,
+        clippy::panic,
+        reason = "test code"
+    )]
     use super::*;
 
     #[test]

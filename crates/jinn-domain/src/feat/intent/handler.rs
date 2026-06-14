@@ -51,7 +51,7 @@ use crate::IntentResult;
 /// Each JSON command object goes through the same verb dispatch as `handle_plugin_command`.
 /// Returns a bus closure if the verb is recognized, or `None` (with a warning log) if not.
 fn dispatch_replacement_command(
-    cmd_json: serde_json::Value,
+    cmd_json: &serde_json::Value,
     session_id: &crate::protocol::SessionId,
 ) -> Option<
     Box<
@@ -195,7 +195,7 @@ impl IntentHandler {
                     // The JSON shape uses the same verb/payload format as handle_plugin_command.
                     let new_messages: Vec<_> = commands
                         .into_iter()
-                        .filter_map(|cmd_json| dispatch_replacement_command(cmd_json, session_id))
+                        .filter_map(|cmd_json| dispatch_replacement_command(&cmd_json, session_id))
                         .collect();
                     result.messages = new_messages;
                     result.message_names.clear();
@@ -1270,13 +1270,13 @@ mod tests {
         state.session.insert(second);
 
         // Activate second session directly (simulating sidebar click).
-        state.session.set_active(second_id.clone());
+        state.session.set_active(second_id);
 
         // When handling an intent (any intent — we use SelectNextEntry as a no-op).
         // Actually, we need an intent that calls set_active.
         // The easiest way: call handle with an intent that doesn't change active session,
         // verify no event. Then manually switch and verify event.
-        state.session.set_active(first_id.clone());
+        state.session.set_active(first_id);
         let result = IntentHandler::handle(&Intent::ChatEntrySelectNext, &mut state, None);
 
         // Then no ActiveSessionChanged event (same session).

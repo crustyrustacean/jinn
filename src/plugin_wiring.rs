@@ -345,10 +345,6 @@ pub async fn handle_plugin_request(
     request_err(format_args!("not yet re-enabled: {name}"))
 }
 
-fn request_ok(value: serde_json::Value) -> serde_json::Value {
-    serde_json::json!({ "ok": true, "value": value })
-}
-
 fn request_err(error: impl std::fmt::Display) -> serde_json::Value {
     serde_json::json!({ "ok": false, "error": error.to_string() })
 }

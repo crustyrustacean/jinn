@@ -126,7 +126,6 @@ impl QueueActor {
 
     /// Dispatch a user message: push to history, set title, begin sending,
     /// assemble prompt, emit SendToLlmProvider, emit ChatEntrySubmitted, emit PersistSession.
-    #[expect(clippy::unused_async, reason = "trait contract requires async")]
     async fn dispatch_user_message(
         &self,
         session_id: &SessionId,
@@ -208,7 +207,6 @@ impl QueueActor {
 
     /// Shared dispatch body for tool-continuation and manual-resume paths:
     /// re-assemble prompt from current history and emit `SendToLlmProvider`.
-    #[expect(clippy::unused_async, reason = "trait contract requires async")]
     async fn dispatch_resume(&self, session_id: &SessionId, label: &str) {
         // Drain any pending steering fragments into history before assembly.
         {

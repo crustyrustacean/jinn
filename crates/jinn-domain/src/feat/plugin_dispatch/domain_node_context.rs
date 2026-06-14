@@ -64,7 +64,7 @@ impl DomainNodeContext {
     /// Returns the new session's ID.
     pub fn create_child_session(
         &self,
-        parent_session_id: SessionId,
+        parent_session_id: &SessionId,
         automated: bool,
         persist: bool,
     ) -> SessionId {
@@ -78,7 +78,7 @@ impl DomainNodeContext {
             .state
             .read()
             .session
-            .get(&parent_session_id)
+            .get(parent_session_id)
             .map(|s| s.model().to_owned())
         {
             session.set_model(model);
@@ -90,7 +90,7 @@ impl DomainNodeContext {
         // Inherit attached-scoped plugin tools from the parent session.
         // When a plugin (like the judge) creates a child session, the child
         // needs the plugin's attached tools (e.g. judgment_passed/judgment_failed).
-        self.register_inherited_tools(&parent_session_id, &session_id);
+        self.register_inherited_tools(parent_session_id, &session_id);
 
         session_id
     }
@@ -828,7 +828,7 @@ mod tests {
         let parent_id = SessionId::new();
 
         // When creating a child session.
-        let child_id = ctx.create_child_session(parent_id.clone(), true, true);
+        let child_id = ctx.create_child_session(&parent_id, true, true);
 
         // Then the child ID differs from the parent.
         assert_ne!(child_id, parent_id);
@@ -841,7 +841,7 @@ mod tests {
         let parent_id = SessionId::new();
 
         // When creating a child session with automated=true, persist=true.
-        let child_id = ctx.create_child_session(parent_id.clone(), true, true);
+        let child_id = ctx.create_child_session(&parent_id, true, true);
 
         // Then the child session has the correct flags.
         let state = ctx.state.read();
@@ -858,7 +858,7 @@ mod tests {
         let parent_id = SessionId::new();
 
         // When creating a child session.
-        let child_id = ctx.create_child_session(parent_id, false, false);
+        let child_id = ctx.create_child_session(&parent_id, false, false);
 
         // Then the session map contains the child.
         let state = ctx.state.read();
@@ -876,7 +876,7 @@ mod tests {
         ctx.state.write().session.insert(parent);
 
         // When creating a child session.
-        let child_id = ctx.create_child_session(parent_id.clone(), true, true);
+        let child_id = ctx.create_child_session(&parent_id, true, true);
 
         // Then the child inherits the parent's model.
         let state = ctx.state.read();
@@ -894,7 +894,7 @@ mod tests {
         let orphan_parent = SessionId::new();
 
         // When creating a child session.
-        let child_id = ctx.create_child_session(orphan_parent, true, true);
+        let child_id = ctx.create_child_session(&orphan_parent, true, true);
 
         // Then the child keeps the default model.
         let state = ctx.state.read();
@@ -928,7 +928,7 @@ mod tests {
             .insert("judgment_passed".to_owned(), tool_def);
 
         // When creating a child session.
-        let child_id = ctx.create_child_session(parent_id.clone(), true, true);
+        let child_id = ctx.create_child_session(&parent_id, true, true);
 
         // Then the child session has the parent's attached tools registered.
         let state = ctx.state.read();

@@ -132,7 +132,6 @@ use kameo::prelude::{Actor, ActorRef, Context, Message};
 /// receive a clone of the cache; this actor receives a clone too and is
 /// the sole writer of eviction events.
 pub struct HistoryWorkerChatEntryTokenCacheEvictionActor {
-    deps: ActorDeps,
     cache: HistoryWorkerChatEntryTokenCache,
 }
 
@@ -153,10 +152,7 @@ impl Actor for HistoryWorkerChatEntryTokenCacheEvictionActor {
         args.deps
             .subscribe(actor_ref.recipient::<SessionClosed>())
             .await;
-        Ok(Self {
-            deps: args.deps,
-            cache: args.cache,
-        })
+        Ok(Self { cache: args.cache })
     }
 }
 
@@ -186,12 +182,7 @@ impl HistoryWorkerChatEntryTokenCacheEvictionActor {
     /// Construct directly for unit testing.
     #[cfg(test)]
     fn new(cache: HistoryWorkerChatEntryTokenCache) -> Self {
-        use crate::common::services::test_services::TestServices;
-        let services = TestServices::builder().build();
-        Self {
-            deps: ActorDeps { services },
-            cache,
-        }
+        Self { cache }
     }
 }
 

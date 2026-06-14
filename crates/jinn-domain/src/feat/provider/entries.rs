@@ -27,8 +27,8 @@ pub fn sorted_entries(
         .collect();
 
     // Sort each block alphabetically by model name (case-insensitive).
-    available.sort_by(|a, b| a.model.to_lowercase().cmp(&b.model.to_lowercase()));
-    unavailable.sort_by(|a, b| a.model.to_lowercase().cmp(&b.model.to_lowercase()));
+    available.sort_by_key(|e| e.model.to_lowercase());
+    unavailable.sort_by_key(|e| e.model.to_lowercase());
 
     // Promote selected entries to top (for multi-select alloy building).
     promote_selected_to_top(&mut available);

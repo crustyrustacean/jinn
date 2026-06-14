@@ -7,7 +7,7 @@
 use kameo::actor::ActorRef;
 use kameo::prelude::{Context, Message};
 
-use crate::common::actor_deps::{ActorDeps, BusPublish};
+use crate::common::actor_deps::ActorDeps;
 use crate::common::state::State;
 use crate::feat::session::protocol::session_closed::SessionClosed;
 use crate::feat::ui::sidebar::sessions;
@@ -36,12 +36,6 @@ impl kameo::Actor for SidebarStateActor {
             .await;
 
         Ok(Self { state: args.state })
-    }
-}
-
-impl BusPublish for SidebarStateActor {
-    fn bus(&self) -> &crate::common::services::bus_service::BusService {
-        unreachable!("SidebarStateActor does not publish")
     }
 }
 

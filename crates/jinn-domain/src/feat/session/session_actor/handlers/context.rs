@@ -157,7 +157,7 @@ impl SessionPersistenceActor {
     }
 
     /// Loads persona picker entries into `AppState`.
-    pub(in crate::feat::session::session_actor) async fn handle_load_persona_picker_entries(
+    pub(in crate::feat::session::session_actor) fn handle_load_persona_picker_entries(
         &self,
         _payload: &LoadPersonaPickerEntries,
     ) {
@@ -180,7 +180,7 @@ impl SessionPersistenceActor {
             .collect();
         drop(state);
 
-        entries.sort_by(|a, b| a.name.to_lowercase().cmp(&b.name.to_lowercase()));
+        entries.sort_by_key(|e| e.name.to_lowercase());
 
         let mut state = self.state.write();
         state.frontend.persona_picker_mut().set_items(entries);
@@ -619,9 +619,7 @@ mod tests {
         }
 
         // When loading persona picker entries.
-        actor
-            .handle_load_persona_picker_entries(&LoadPersonaPickerEntries)
-            .await;
+        actor.handle_load_persona_picker_entries(&LoadPersonaPickerEntries);
 
         // Then the picker has entries with correct active state.
         let guard = state.read();
