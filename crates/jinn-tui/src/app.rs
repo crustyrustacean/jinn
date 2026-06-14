@@ -232,7 +232,10 @@ impl TuiApp {
         };
 
         if let jinn_domain::Intent::TriggerPlugin {
-            action, session_id, ..
+            plugin_name,
+            action,
+            session_id,
+            ..
         } = intent
         {
             let (sid, text) = {
@@ -241,20 +244,47 @@ impl TuiApp {
                 let text = state.active_chat_input().text().to_owned();
                 (sid, text)
             };
-            let payload = serde_json::json!({
-                "hook": action,
-                "session_id": sid,
-                "text": text,
-            });
-            let closure =
-                jinn_domain::common::bridge::Bridge::publish_closure(jinn_domain::DynamicCommand {
-                    name: "plugin::fire_async".into(),
-                    payload,
+            // Sync pre-fire hook: plugins may veto the async fire (e.g. cancel
+            // an in-flight request instead of starting a new one). Default: fire.
+            let fire = {
+                use jinn_domain::call_hooks_typed;
+                #[derive(serde::Deserialize)]
+                struct KeybindTriggerResult {
+                    fire: bool,
+                }
+                let ctx_json = serde_json::json!({
+                    "hook": action,
+                    "session_id": sid.to_string(),
+                    "text": text,
+                    "plugin_name": plugin_name,
                 });
-            let _ = self.core.bridge.send(closure);
+                call_hooks_typed::<KeybindTriggerResult>(
+                    &self.plugins,
+                    "on_keybind_trigger",
+                    &ctx_json.into(),
+                )
+                .into_iter()
+                .last()
+                .map(|r| r.fire)
+                .unwrap_or(true)
+            };
+            if fire {
+                let payload = serde_json::json!({
+                    "hook": action,
+                    "session_id": sid,
+                    "text": text,
+                });
+                let closure =
+                    jinn_domain::common::bridge::Bridge::publish_closure(
+                        jinn_domain::DynamicCommand {
+                            name: "plugin::fire_async".into(),
+                            payload,
+                        },
+                    );
+                let _ = self.core.bridge.send(closure);
+            }
             return;
         }
-
         // Send bus closures via bridge.
         for closure in messages {
             let _ = self.core.bridge.send(closure);
