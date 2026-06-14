@@ -54,6 +54,12 @@ impl ProvidesSessionId for HookContext {
 
 #[cfg(test)]
 mod tests {
+    #![allow(
+        clippy::expect_used,
+        clippy::indexing_slicing,
+        clippy::panic,
+        reason = "test code"
+    )]
     use super::*;
 
     #[test]
