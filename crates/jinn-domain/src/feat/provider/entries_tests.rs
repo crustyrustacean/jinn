@@ -771,9 +771,15 @@ fn format_footer_single_mode_shows_alloy_toggle_hint() {
 
     // Then the footer shows the alloy-mode toggle hint, not the count.
     let text: String = line.spans.iter().map(|s| &*s.content).collect();
-    assert!(text.contains("C-a alloy mode"), "single hint missing: {text}");
+    assert!(
+        text.contains("C-a alloy mode"),
+        "single hint missing: {text}"
+    );
     assert!(text.contains("Enter selects"), "enter hint missing: {text}");
-    assert!(!text.contains("selected"), "count should not show in single mode: {text}");
+    assert!(
+        !text.contains("selected"),
+        "count should not show in single mode: {text}"
+    );
 }
 
 #[rstest::rstest]
@@ -785,7 +791,10 @@ fn format_footer_alloy_mode_shows_single_toggle_hint() {
     // Then the footer shows the single-mode toggle hint and enter-adds hint.
     let text: String = line.spans.iter().map(|s| &*s.content).collect();
     assert!(text.contains("C-a single"), "alloy hint missing: {text}");
-    assert!(text.contains("Enter adds+confirms"), "enter hint missing: {text}");
+    assert!(
+        text.contains("Enter adds+confirms"),
+        "enter hint missing: {text}"
+    );
     assert!(text.contains("2 selected"), "count missing: {text}");
 }
 
@@ -1065,4 +1074,3 @@ fn provider_name_match_appears_in_highlighted_row() {
         "highlighted row should contain 'o' from provider name"
     );
 }
-

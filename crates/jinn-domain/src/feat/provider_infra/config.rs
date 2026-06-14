@@ -88,7 +88,6 @@ pub struct AliasEntry {
     pub target: String,
 }
 
-
 /// Alloy rotation strategy.
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq, Default)]
 #[serde(rename_all = "snake_case")]
