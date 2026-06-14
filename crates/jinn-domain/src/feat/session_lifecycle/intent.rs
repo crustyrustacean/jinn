@@ -116,6 +116,15 @@ pub fn handle_session_lifecycle_setup(
     });
     new_session.set_lifecycle_args(args.to_vec());
 
+    // Inherit the CWD from the active session BEFORE insert/set_active —
+    // once set_active(new_id) runs below, active_session() points at this new
+    // session. CWD is sticky in practice (one project for many sessions), so
+    // inheriting it matches real workflow and avoids sourcing from the app
+    // launch dir. A scripted lifecycle's stdout output still wins as the final
+    // CWD via the session actor; this only sets the starting value.
+    let inherited_cwd = state.active_session().cwd().to_path_buf();
+    new_session.set_cwd(inherited_cwd);
+
     state.session.insert(new_session);
     state.session.set_active(new_id.clone());
     state.frontend.scope_stack.clear_overlays();
@@ -162,10 +171,8 @@ pub fn handle_session_lifecycle_setup(
             .message(created_event);
     }
 
-    // No setup command - use default CWD immediately.
-    let default_cwd = state.session.default_cwd().clone();
-    state.session_mut(&new_id).set_cwd(default_cwd);
-
+    // No setup command — the inherited CWD was already set on the new session
+    // before insert (above), so there's nothing more to do here.
     IntentResult::with_message(created_event)
 }
 
@@ -355,6 +362,10 @@ mod tests {
     fn session_lifecycle_setup_with_blank_creates_session() {
         // Given default state (no lifecycles configured).
         let mut state = AppState::default();
+        // Set the active session's cwd to a distinct value so inheritance is
+        // distinguishable from default_cwd() (the app launch dir).
+        let inherited_cwd = std::path::PathBuf::from("/tmp/inherited-project");
+        state.active_session_mut().set_cwd(inherited_cwd.clone());
         let old_id = state.session.active_session_id().clone();
 
         // When handling SessionLifecycleSetup with blank lifecycle.
@@ -371,8 +382,9 @@ mod tests {
         assert!(result.message_names[0].contains("SessionCreated"));
         // And the session has no lifecycle name.
         assert!(state.active_session().lifecycle_name().is_none());
-        // And the session has the default CWD.
-        assert_eq!(state.active_session().cwd(), state.session.default_cwd());
+        // And the new session inherited the active session's CWD, not the app
+        // launch dir.
+        assert_eq!(state.active_session().cwd(), inherited_cwd);
     }
 
     #[rstest::rstest]

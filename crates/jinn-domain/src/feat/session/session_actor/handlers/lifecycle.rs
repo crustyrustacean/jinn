@@ -175,12 +175,17 @@ impl SessionPersistenceActor {
                 let error_msg = format!("Failed to start setup command: {e}");
                 {
                     let mut state = self.state.write();
-                    let default = state.session.default_cwd().clone();
                     if let Some(session) = state.session.get_mut(&payload.session_id) {
-                        session.set_cwd(default);
                         session.complete_busy();
                     }
                 }
+                let existing_cwd = self
+                    .state
+                    .read()
+                    .session
+                    .get(&payload.session_id)
+                    .map(|s| s.cwd().to_path_buf())
+                    .unwrap_or_default();
                 self.publish(PushChatEntry {
                     session_id: payload.session_id.clone(),
                     entry: ChatEntry::error(&error_msg),
@@ -188,7 +193,7 @@ impl SessionPersistenceActor {
                 .await;
                 self.publish(SessionSetupCompleted {
                     session_id: payload.session_id.clone(),
-                    cwd: std::path::PathBuf::new(),
+                    cwd: existing_cwd,
                     error: Some(error_msg),
                 })
                 .await;
@@ -274,13 +279,15 @@ impl SessionPersistenceActor {
             }
             (_, Some(error_msg)) => {
                 // Error.
-                let default_cwd = {
-                    let mut state = self.state.write();
-                    let default = state.session.default_cwd().clone();
-                    if let Some(session) = state.session.get_mut(&payload.session_id) {
-                        session.set_cwd(default.clone());
-                    }
-                    default
+                let existing_cwd = {
+                    let state = self.state.read();
+                    // Preserve the session's inherited CWD; do not overwrite with
+                    // the app launch dir.
+                    state
+                        .session
+                        .get(&payload.session_id)
+                        .map(|s| s.cwd().to_path_buf())
+                        .unwrap_or_else(|| state.session.default_cwd().clone())
                 };
 
                 let entry = ChatEntry::error(error_msg);
@@ -293,32 +300,35 @@ impl SessionPersistenceActor {
 
                 self.publish(SessionSetupCompleted {
                     session_id: payload.session_id.clone(),
-                    cwd: default_cwd,
+                    cwd: existing_cwd,
                     error: Some(error_msg.clone()),
                 })
                 .await;
             }
             (None, None) => {
                 // Success without a CWD - side-effect-only setup (no stdout output).
-                // Keep the default CWD, advance lifecycle so teardown-on-close fires,
-                // and surface an informational note so the user knows no path was returned.
-                let default_cwd = {
+                // Keep the inherited CWD, advance lifecycle so teardown-on-close
+                // fires, and surface an informational note so the user knows no
+                // path was returned.
+                let existing_cwd = {
                     let mut state = self.state.write();
-                    let default = state.session.default_cwd().clone();
                     if let Some(session) = state.session.get_mut(&payload.session_id) {
-                        session.set_cwd(default.clone());
                         session.advance_lifecycle_after_setup();
                     }
-                    default
+                    state
+                        .session
+                        .get(&payload.session_id)
+                        .map(|s| s.cwd().to_path_buf())
+                        .unwrap_or_else(|| state.session.default_cwd().clone())
                 };
                 self.publish(PushChatEntry {
                     session_id: payload.session_id.clone(),
-                    entry: no_output_info(&default_cwd),
+                    entry: no_output_info(&existing_cwd),
                 })
                 .await;
                 self.publish(SessionSetupCompleted {
                     session_id: payload.session_id.clone(),
-                    cwd: default_cwd,
+                    cwd: existing_cwd,
                     error: None,
                 })
                 .await;
@@ -337,13 +347,15 @@ impl SessionPersistenceActor {
             let error_msg = format!("unknown builtin lifecycle: {id}");
             tracing::error!(%id, "builtin handler not found in registry");
 
-            let default_cwd = {
-                let mut state = self.state.write();
-                let default = state.session.default_cwd().clone();
-                if let Some(session) = state.session.get_mut(session_id) {
-                    session.set_cwd(default.clone());
-                }
-                default
+            let existing_cwd = {
+                let state = self.state.read();
+                // Preserve the session's inherited CWD; do not overwrite with
+                // the app launch dir.
+                state
+                    .session
+                    .get(session_id)
+                    .map(|s| s.cwd().to_path_buf())
+                    .unwrap_or_else(|| state.session.default_cwd().clone())
             };
 
             self.publish(PushChatEntry {
@@ -354,7 +366,7 @@ impl SessionPersistenceActor {
 
             self.publish(SessionSetupCompleted {
                 session_id: session_id.clone(),
-                cwd: default_cwd,
+                cwd: existing_cwd,
                 error: Some(error_msg),
             })
             .await;
@@ -386,13 +398,15 @@ impl SessionPersistenceActor {
             }
             Err(report) => {
                 let error_msg = format!("builtin setup failed: {report:#?}");
-                let default_cwd = {
-                    let mut state = self.state.write();
-                    let default = state.session.default_cwd().clone();
-                    if let Some(session) = state.session.get_mut(session_id) {
-                        session.set_cwd(default.clone());
-                    }
-                    default
+                let existing_cwd = {
+                    let state = self.state.read();
+                    // Preserve the session's inherited CWD; do not overwrite with
+                    // the app launch dir.
+                    state
+                        .session
+                        .get(session_id)
+                        .map(|s| s.cwd().to_path_buf())
+                        .unwrap_or_else(|| state.session.default_cwd().clone())
                 };
 
                 self.publish(PushChatEntry {
@@ -403,7 +417,7 @@ impl SessionPersistenceActor {
 
                 self.publish(SessionSetupCompleted {
                     session_id: session_id.clone(),
-                    cwd: default_cwd,
+                    cwd: existing_cwd,
                     error: Some(error_msg),
                 })
                 .await;
