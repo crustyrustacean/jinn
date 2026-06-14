@@ -116,6 +116,14 @@ const PHASE_INDENT: usize = 2;
 /// Indent for task descriptions (4 spaces + 1 indicator + 1 space = 6 columns).
 const TASK_INDENT: usize = 6;
 
+/// Display width of the phase collapse/expand indicator (`“▾ ”` / `“▸ ”` = 2 columns).
+///
+/// This is the **display-column** width of the indicator, deliberately not its byte
+/// length (`“▾ ”` is 4 UTF-8 bytes). `textwrap` measures by display columns, so
+/// this constant must be used everywhere the wrap width is computed for phase headers,
+/// keeping `build_render_lines` and `compute_height` in lockstep.
+const PHASE_INDICATOR_WIDTH: usize = 2;
+
 /// Word-wraps a description string to the given available width.
 ///
 /// Returns a single-element vec when `available_width` is too small to wrap.
@@ -174,7 +182,7 @@ fn build_render_lines(list: &TaskList, state: &AppState) -> Vec<Line<'static>> {
         } else {
             "\u{25B8} " // ▸ collapsed
         };
-        let phase_width = sidebar_width.saturating_sub(PHASE_INDENT + indicator.len());
+        let phase_width = sidebar_width.saturating_sub(PHASE_INDENT + PHASE_INDICATOR_WIDTH);
         let phase_color = if active_phase_id == Some(phase.id()) {
             theme.streaming
         } else if phase.has_pending_work() {
@@ -194,7 +202,7 @@ fn build_render_lines(list: &TaskList, state: &AppState) -> Vec<Line<'static>> {
             let prefix = if i == 0 {
                 format!("  {indicator}{segment}")
             } else {
-                format!("    {}{segment}", " ".repeat(indicator.len()))
+                format!("    {}{segment}", " ".repeat(PHASE_INDICATOR_WIDTH))
             };
             lines.push(Line::from(Span::styled(prefix, phase_style)));
         }
@@ -260,9 +268,8 @@ fn compute_height(list: &TaskList, state: &AppState) -> u16 {
         let is_expanded = expanded == Some(phase_idx);
 
         // Phase header - count wrapped lines.
-        // Account for indicator ("▾ " or "▸ " = 2 chars) + indent.
-        let indicator_len = 2; // "▾ " or "▸ "
-        let phase_width = sidebar_width.saturating_sub(PHASE_INDENT + indicator_len);
+        // Account for indicator ("▾ " or "▸ " = 2 columns) + indent.
+        let phase_width = sidebar_width.saturating_sub(PHASE_INDENT + PHASE_INDICATOR_WIDTH);
         height += wrap_description(phase.description(), phase_width).len();
 
         // Only count task lines for the expanded phase.
