@@ -54,7 +54,7 @@ impl Message<PreferencesUpdated> for PreferencesStateSyncActor {
 
     async fn handle(&mut self, msg: PreferencesUpdated, _ctx: &mut Context<Self, Self::Reply>) {
         let mut state = self.state.write();
-        state.frontend.preferences = msg.preferences.clone();
+        state.frontend.preferences = msg.preferences;
     }
 }
 

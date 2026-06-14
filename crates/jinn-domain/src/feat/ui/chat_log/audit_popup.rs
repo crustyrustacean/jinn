@@ -163,9 +163,8 @@ fn format_relative_time(ts: &jiff::Timestamp) -> String {
     let now = jiff::Timestamp::now();
     // Timestamp::since only supports up to Unit::Hour (days require calendar context).
     // So we get hours/minutes/seconds and derive days/months/years from total hours.
-    let span = match now.since((jiff::Unit::Hour, *ts)) {
-        Ok(s) => s,
-        Err(_) => return "unknown".to_owned(),
+    let Ok(span) = now.since((jiff::Unit::Hour, *ts)) else {
+        return "unknown".to_owned();
     };
 
     let total_hours = span.get_hours().unsigned_abs();

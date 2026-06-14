@@ -212,7 +212,7 @@ mod tests {
         let temp = tempfile::tempdir().expect("tempdir");
         let target = std::fs::canonicalize(temp.path()).expect("canonicalize");
         let mut state = AppState::default();
-        state.active_session_mut().set_cwd(target.clone());
+        state.active_session_mut().set_cwd(target);
         handle_cwd_input_enter(&mut state); // seeds the box with the cwd
 
         // When confirming the unchanged seed.

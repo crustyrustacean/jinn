@@ -36,7 +36,7 @@ fn skill_dir() -> tempfile::TempDir {
 }
 
 /// Writes a skill `name` into a directory's `skills/<name>/SKILL.md`.
-async fn write_skill(base: &std::path::Path, name: &str, body: &str) {
+fn write_skill(base: &std::path::Path, name: &str, body: &str) {
     let dir = base.join("skills").join(name);
     std::fs::create_dir_all(&dir).expect("create skill dir");
     std::fs::write(
@@ -50,10 +50,8 @@ async fn create_harness_with_paths(paths: AppPaths) -> (TestHarness, State, Acto
     let harness = TestHarness::new().await;
     let state = State::new(AppState::default());
     let mut services = TestServices::builder().paths(paths).build();
-    services.bus = harness.bus().clone();
-    let deps = ActorDeps {
-        services: services.clone(),
-    };
+    services.bus = harness.bus();
+    let deps = ActorDeps { services };
     (harness, state, deps)
 }
 
@@ -375,7 +373,7 @@ async fn scan_skills_replacing_cwd_clears_previous_discovered_skills() {
     let mut paths = AppPaths::new_in(paths_root.path());
     paths.set_home_dir_for_test(home.path().to_path_buf());
     let mut services = TestServices::builder().paths(paths).build();
-    services.bus = harness.bus().clone();
+    services.bus = harness.bus();
     let deps = ActorDeps {
         services: services.clone(),
     };
@@ -526,7 +524,7 @@ async fn scan_skills_discovers_ancestor_project_skill_from_nested_cwd() {
     let mut paths = AppPaths::new_in(dir.path());
     paths.set_home_dir_for_test(home.path().to_path_buf());
     let mut services = TestServices::builder().paths(paths).build();
-    services.bus = harness.bus().clone();
+    services.bus = harness.bus();
     let deps = ActorDeps {
         services: services.clone(),
     };
@@ -602,7 +600,7 @@ async fn scan_skills_routes_discovery_per_session_cwd() {
     let mut paths = AppPaths::new_in(paths_root.path());
     paths.set_home_dir_for_test(home.path().to_path_buf());
     let mut services = TestServices::builder().paths(paths).build();
-    services.bus = harness.bus().clone();
+    services.bus = harness.bus();
     let deps = ActorDeps {
         services: services.clone(),
     };

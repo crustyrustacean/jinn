@@ -51,13 +51,9 @@ pub fn definition() -> ToolDefinition {
 ///
 /// Returns a `ToolResult` with `success = false` if the session is not found
 /// or the arguments are invalid.
-#[expect(
-    clippy::needless_pass_by_value,
-    reason = "all tool execute functions take ctx by value"
-)]
 pub fn execute(call: ToolCall, ctx: ToolContext) -> BoxedToolFuture {
     let args_str = call.arguments.clone();
-    let state = ctx.state.clone();
+    let state = ctx.state;
     let tool_call_id = call.id;
     let tool_name = call.name;
 

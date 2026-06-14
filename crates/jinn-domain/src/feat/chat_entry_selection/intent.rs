@@ -1547,7 +1547,7 @@ mod tests {
             .active_session_mut()
             .ui
             .shown_ignored_blocks
-            .insert(block_start_id.clone());
+            .insert(block_start_id);
 
         // Build visual items (now expanded - individual entries).
         let items = build_visual_items(

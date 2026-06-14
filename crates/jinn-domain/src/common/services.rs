@@ -3,6 +3,14 @@
 //! This crate defines the [`Services`] container, which holds long-lived
 //! runtime infrastructure that subsystems need access to. It is created
 //! once during startup and shared throughout the application.
+#![cfg_attr(
+    test,
+    allow(
+        clippy::expect_used,
+        clippy::missing_panics_doc,
+        reason = "test utilities"
+    )
+)]
 
 use std::sync::Arc;
 

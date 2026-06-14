@@ -123,8 +123,8 @@ impl PluginSystem {
         // Pass *all* plugins to the async thread: globals are preloaded into
         // the shared Lua state, attachable metas are kept for on-demand
         // per-session loading via `PluginJob::LoadSession`.
-        let async_plugins = plugins.clone();
-        let async_global_plugins = global_plugins.clone();
+        let async_plugins = plugins;
+        let async_global_plugins = global_plugins;
         let async_plugin_data = plugin_data.clone();
         let async_emit_tx = emit_tx.clone_async();
         let async_request_handler = request_handler.clone();

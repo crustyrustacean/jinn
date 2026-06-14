@@ -51,7 +51,7 @@ impl Default for RetryConfig {
         Self {
             max_retries: 5,
             base_delay: Duration::from_secs(2),
-            max_delay: Duration::from_secs(60),
+            max_delay: Duration::from_mins(1),
         }
     }
 }
@@ -441,7 +441,7 @@ mod tests {
             RetryConfig {
                 max_retries: 5,
                 base_delay: Duration::from_secs(2),
-                max_delay: Duration::from_secs(60),
+                max_delay: Duration::from_mins(1),
             },
             Box::new(NoOpOnRetry),
         );
@@ -540,7 +540,7 @@ mod tests {
             RetryConfig {
                 max_retries: 5,
                 base_delay: Duration::from_secs(2),
-                max_delay: Duration::from_secs(60),
+                max_delay: Duration::from_mins(1),
             },
             Box::new(NoOpOnRetry),
         );
@@ -573,7 +573,7 @@ mod tests {
             RetryConfig {
                 max_retries: 5,
                 base_delay: Duration::from_secs(2),
-                max_delay: Duration::from_secs(60),
+                max_delay: Duration::from_mins(1),
             },
             Box::new(NoOpOnRetry),
         );
@@ -608,7 +608,7 @@ mod tests {
             RetryConfig {
                 max_retries: 5,
                 base_delay: Duration::from_secs(2),
-                max_delay: Duration::from_secs(60),
+                max_delay: Duration::from_mins(1),
             },
             Box::new(NoOpOnRetry),
         );

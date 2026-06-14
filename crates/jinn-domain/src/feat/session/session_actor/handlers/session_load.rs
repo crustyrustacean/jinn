@@ -256,7 +256,7 @@ mod tests {
         let mut session = ChatSessionState::new();
         session.push_entry(ChatEntry::user("hello"));
 
-        let (actor, _audit) = super::super::super::helpers::test_actor_recording().await;
+        let (actor, audit) = super::super::super::helpers::test_actor_recording().await;
 
         let payload = SessionLoadCompleted { session };
 
@@ -267,15 +267,15 @@ mod tests {
         // (skills, prompts, context-files) subscribe to `SessionLoadCompleted`
         // themselves and self-trigger their per-session scans.
         assert!(
-            !_audit.contains_name("ScanSkills"),
+            !audit.contains_name("ScanSkills"),
             "should not emit ScanSkills"
         );
         assert!(
-            !_audit.contains_name("RescanPromptTemplates"),
+            !audit.contains_name("RescanPromptTemplates"),
             "should not emit RescanPromptTemplates"
         );
         assert!(
-            !_audit.contains_name("ScanContextFiles"),
+            !audit.contains_name("ScanContextFiles"),
             "should not emit ScanContextFiles"
         );
     }

@@ -936,7 +936,7 @@ mod tests {
                 description: String::new(),
             },
         ];
-        state.activate_autocomplete(0, AutocompleteTrigger::Hash, matches.clone());
+        state.activate_autocomplete(0, AutocompleteTrigger::Hash, matches);
         // Default selection is last (index 2).
 
         // Move up to index 1.

@@ -27,7 +27,7 @@ fn build_system(
 ) {
     let rt = tokio::runtime::Runtime::new().expect("runtime");
     let captured: Arc<Mutex<Vec<PluginCommand>>> = Arc::new(Mutex::new(Vec::new()));
-    let captured_clone = captured.clone();
+    let captured_clone = captured;
 
     let PluginSystemBuildResult {
         sync,

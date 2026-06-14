@@ -154,6 +154,10 @@ pub(crate) mod last_model_compat {
 
     use super::ModelSelection;
 
+    #[expect(
+        clippy::ref_option,
+        reason = "signature dictated by serde with attribute"
+    )]
     pub fn serialize<S: Serializer>(
         value: &Option<ModelSelection>,
         serializer: S,

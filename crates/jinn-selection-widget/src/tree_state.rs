@@ -398,6 +398,7 @@ where
         needed: &mut HashSet<usize>,
     ) {
         let mut current = start_idx;
+        #[expect(clippy::while_let_loop, reason = "two independent break conditions")]
         loop {
             let Some(item) = items.get(current) else {
                 break;

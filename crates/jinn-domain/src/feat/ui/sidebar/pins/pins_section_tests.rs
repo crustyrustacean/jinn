@@ -603,7 +603,7 @@ fn resolve_selected_entry_id_returns_real_session_and_entry_ids() {
     state
         .active_session_mut()
         .pin_entry(&entry_id, PinPosition::Top);
-    state.frontend.pins.select_by_id(entry_id.clone());
+    state.frontend.pins.select_by_id(entry_id);
 
     // When handling pins unpin (which uses resolve_selected_entry_id internally).
     let result = handle_pins_unpin(&mut state);

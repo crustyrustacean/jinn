@@ -165,12 +165,6 @@ mod tests {
 
     use super::{PersonaScanActor, PersonaScanActorDeps};
 
-    async fn create_harness_with_dir(dir: &tempfile::TempDir) -> TestHarness {
-        let harness = TestHarness::new().await;
-        let _ = dir; // just ensuring the dir exists
-        harness
-    }
-
     #[rstest::rstest]
     #[tokio::test]
     async fn scan_personas_command_publishes_personas_loaded() {

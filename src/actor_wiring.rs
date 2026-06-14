@@ -693,7 +693,7 @@ impl ActorSystemBuilder {
                 HistoryWorkerActor, HistoryWorkerActorDeps,
             };
 
-            let config = user_preferences_storage.read().auto_prune.read_edit.clone();
+            let config = user_preferences_storage.read().auto_prune.read_edit;
 
             if config.enabled {
                 let _worker = HistoryWorkerActor::<ReadEditAutoPruneWorker>::supervise(
@@ -716,7 +716,7 @@ impl ActorSystemBuilder {
                 HistoryWorkerActor, HistoryWorkerActorDeps,
             };
 
-            let config = user_preferences_storage.read().auto_prune.edit_read.clone();
+            let config = user_preferences_storage.read().auto_prune.edit_read;
 
             if config.enabled {
                 let _worker = HistoryWorkerActor::<EditReadAutoPruneWorker>::supervise(
@@ -774,7 +774,7 @@ impl ActorSystemBuilder {
                 HistoryWorkerActor, HistoryWorkerActorDeps,
             };
 
-            let config = user_preferences_storage.read().auto_prune.todo.clone();
+            let config = user_preferences_storage.read().auto_prune.todo;
 
             if config.enabled {
                 let _worker = HistoryWorkerActor::<TodoAutoPruneWorker>::supervise(
@@ -797,11 +797,7 @@ impl ActorSystemBuilder {
                 HistoryWorkerActor, HistoryWorkerActorDeps,
             };
 
-            let config = user_preferences_storage
-                .read()
-                .auto_prune
-                .broken_edit
-                .clone();
+            let config = user_preferences_storage.read().auto_prune.broken_edit;
 
             if config.enabled {
                 let _worker = HistoryWorkerActor::<BrokenEditAutoPruneWorker>::supervise(
@@ -824,11 +820,7 @@ impl ActorSystemBuilder {
                 HistoryWorkerActor, HistoryWorkerActorDeps,
             };
 
-            let config = user_preferences_storage
-                .read()
-                .auto_prune
-                .double_edit
-                .clone();
+            let config = user_preferences_storage.read().auto_prune.double_edit;
 
             if config.enabled {
                 let _worker = HistoryWorkerActor::<DoubleEditAutoPruneWorker>::supervise(
@@ -851,11 +843,7 @@ impl ActorSystemBuilder {
                 HistoryWorkerActor, HistoryWorkerActorDeps,
             };
 
-            let config = user_preferences_storage
-                .read()
-                .auto_prune
-                .consecutive_reads
-                .clone();
+            let config = user_preferences_storage.read().auto_prune.consecutive_reads;
 
             if config.enabled {
                 let _worker = HistoryWorkerActor::<ConsecutiveReadsAutoPruneWorker>::supervise(
@@ -899,11 +887,7 @@ impl ActorSystemBuilder {
                 HistoryWorkerActor, HistoryWorkerActorDeps,
             };
 
-            let config = user_preferences_storage
-                .read()
-                .auto_prune
-                .tool_age_window
-                .clone();
+            let config = user_preferences_storage.read().auto_prune.tool_age_window;
 
             if config.enabled {
                 let _worker = HistoryWorkerActor::<ToolAgeWindowAutoPruneWorker>::supervise(
@@ -927,11 +911,7 @@ impl ActorSystemBuilder {
                 HistoryWorkerActor, HistoryWorkerActorDeps,
             };
 
-            let config = user_preferences_storage
-                .read()
-                .auto_prune
-                .trivial_assistant
-                .clone();
+            let config = user_preferences_storage.read().auto_prune.trivial_assistant;
 
             if config.enabled {
                 let _worker = HistoryWorkerActor::<TrivialAssistantAutoPruneWorker>::supervise(
@@ -960,7 +940,7 @@ impl ActorSystemBuilder {
 
             let shield_config = {
                 let prefs = user_preferences_storage.read();
-                prefs.auto_prune.anchor_shield.clone()
+                prefs.auto_prune.anchor_shield
             };
 
             if shield_config.enabled {

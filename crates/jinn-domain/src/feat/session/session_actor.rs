@@ -324,7 +324,7 @@ impl Message<LoadPersonaPickerEntries> for SessionPersistenceActor {
         msg: LoadPersonaPickerEntries,
         _ctx: &mut Context<Self, Self::Reply>,
     ) {
-        self.handle_load_persona_picker_entries(&msg).await;
+        self.handle_load_persona_picker_entries(&msg);
     }
 }
 

@@ -204,6 +204,7 @@ impl TestServices {
     }
 
     /// Use the provided bus service instead of spawning a new one.
+    #[must_use]
     pub fn with_bus(mut self, bus: super::bus_service::BusService) -> Self {
         self.bus_override = Some(bus);
         self
@@ -256,9 +257,9 @@ impl TestServices {
         };
         let bridge = if bus.is_recording() {
             // Recording mode — no real bus, no bridge needed.
-            crate::common::bridge::Bridge::new_dummy(handle.clone())
+            crate::common::bridge::Bridge::new_dummy(&handle)
         } else {
-            crate::common::bridge::Bridge::with_handle(bus.actor_ref().clone(), handle.clone())
+            crate::common::bridge::Bridge::with_handle(bus.actor_ref().clone(), &handle)
         };
 
         // RootSupervisor::spawn calls tokio::spawn internally — same runtime

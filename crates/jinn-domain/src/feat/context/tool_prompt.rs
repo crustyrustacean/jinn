@@ -76,11 +76,8 @@ mod tests {
             name: name.to_owned(),
             description: format!("{name} tool"),
             parameters: serde_json::json!({"type": "object"}),
-            prompt_snippet: snippet.map(std::string::ToString::to_string),
-            prompt_guidelines: guidelines
-                .into_iter()
-                .map(std::string::ToString::to_string)
-                .collect(),
+            prompt_snippet: snippet.map(str::to_owned),
+            prompt_guidelines: guidelines.into_iter().map(str::to_owned).collect(),
             server_tool_type: None,
         }
     }

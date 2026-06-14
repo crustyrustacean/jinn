@@ -321,19 +321,19 @@ mod tests {
     #[tokio::test]
     async fn tool_batch_completed_via_bus_emits_continuation() {
         // Given a spawned session actor with a tool-call entry in its history.
+        use crate::common::app_state::AppState;
         use crate::common::bus::test_harness::{TestHarness, await_recorded};
         use crate::common::state::State;
-        use crate::common::app_state::AppState;
-        use crate::feat::session_lifecycle::builtin::BuiltinRegistry;
         use crate::feat::context::strategy::token_estimator::TiktokenCounter;
-        use crate::feat::session::session_actor::{SessionPersistenceActor, SessionPersistenceActorDeps};
         use crate::feat::provider::protocol::command::SendToLlmProvider;
+        use crate::feat::session::session_actor::{
+            SessionPersistenceActor, SessionPersistenceActorDeps,
+        };
+        use crate::feat::session_lifecycle::builtin::BuiltinRegistry;
         use std::time::Duration;
 
         let harness = TestHarness::new().await;
-        let recorder = harness
-            .spawn_recorder::<SendToLlmProvider>()
-            .await;
+        let recorder = harness.spawn_recorder::<SendToLlmProvider>().await;
         let state = State::new(AppState::default());
         {
             let mut s = state.write();

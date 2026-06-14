@@ -430,9 +430,7 @@ fn postpone_task_marks_source_and_creates_copy() {
     let p2 = list.add_phase("Build");
     let t2 = list.add_task(&p2, "Write code", TaskPosition::End).unwrap();
 
-    let new_tid = list
-        .postpone_task(&t1, TaskPosition::After(t2.clone()))
-        .unwrap();
+    let new_tid = list.postpone_task(&t1, TaskPosition::After(t2)).unwrap();
 
     // Source task should be deferred.
     let source = list.get_task(&t1).unwrap();
@@ -456,9 +454,7 @@ fn postpone_task_same_phase() {
     let t1 = list.add_task(&p1, "Read docs", TaskPosition::End).unwrap();
     let t2 = list.add_task(&p1, "Call API", TaskPosition::End).unwrap();
 
-    let new_tid = list
-        .postpone_task(&t1, TaskPosition::Before(t2.clone()))
-        .unwrap();
+    let new_tid = list.postpone_task(&t1, TaskPosition::Before(t2)).unwrap();
 
     // Source postponed.
     let source = list.get_task(&t1).unwrap();
@@ -531,9 +527,7 @@ fn render_text_excludes_postponed() {
     let p2 = list.add_phase("Build");
     let t2 = list.add_task(&p2, "Write code", TaskPosition::End).unwrap();
 
-    let new_tid = list
-        .postpone_task(&t1, TaskPosition::After(t2.clone()))
-        .unwrap();
+    let new_tid = list.postpone_task(&t1, TaskPosition::After(t2)).unwrap();
 
     let rendered = list.render_text();
 
@@ -914,7 +908,7 @@ fn has_pending_work_false_when_only_completed_cancelled_postponed() {
 
     list.complete_task(&t1).unwrap();
     list.cancel_task(&t2).unwrap();
-    list.postpone_task(&t3, TaskPosition::After(t_other.clone()))
+    list.postpone_task(&t3, TaskPosition::After(t_other))
         .unwrap();
 
     let phase = list.get_phase(&pid).unwrap();

@@ -357,11 +357,7 @@ async fn process_stream_events(
                     }
                     break;
                 }
-                StreamEvent::Error {
-                    error_type: _,
-                    message,
-                    ..
-                } => {
+                StreamEvent::Error { message, .. } => {
                     stream_ended_normally = true;
                     tracing::error!(
                         session_id = ?sid,
@@ -380,7 +376,8 @@ async fn process_stream_events(
             },
             Err(e) => {
                 stream_ended_normally = true;
-                emit_stream_error(bus, sid, format!("LLM stream error: {e:?}"), dispatched_at).await;
+                emit_stream_error(bus, sid, format!("LLM stream error: {e:?}"), dispatched_at)
+                    .await;
                 break;
             }
         }
@@ -604,13 +601,6 @@ impl LlmActor {
             .await;
         }
     }
-
-    /// Cancels all active streams across all sessions.
-    fn cancel_all(&self) {
-        for handle in self.tasks.values() {
-            handle.abort();
-        }
-    }
 }
 
 #[cfg(test)]
@@ -652,7 +642,7 @@ mod test_fakes {
         fn create(&self) -> Result<Box<dyn LlmService>, Report<LlmServiceError>> {
             Ok(Box::new(HangingLlmService))
         }
-        fn name(&self) -> &str {
+        fn name(&self) -> &'static str {
             "HangingLlm"
         }
     }
@@ -666,7 +656,7 @@ mod test_fakes {
         fn create(&self) -> Result<Box<dyn LlmService>, Report<LlmServiceError>> {
             Ok(Box::new(ErroringLlmService))
         }
-        fn name(&self) -> &str {
+        fn name(&self) -> &'static str {
             "ErroringLlm"
         }
     }
@@ -677,7 +667,9 @@ mod test_fakes {
 
     #[async_trait::async_trait]
     impl LlmService for ErroringLlmService {
-        fn name(&self) -> &'static str { "ErroringLlm" }
+        fn name(&self) -> &'static str {
+            "ErroringLlm"
+        }
         async fn chat_stream(
             &self,
             _messages: Vec<jinn_provider::LlmMessage>,
@@ -736,7 +728,7 @@ mod tests {
         // When handling StreamCompleted with Error reason.
         let payload = StreamCompleted {
             model_used: None,
-            session_id: session_id.clone(),
+            session_id,
             reason: StreamCompletedReason::Error,
             assistant_content: None,
             tool_calls: None,
@@ -763,7 +755,7 @@ mod tests {
         // When handling StreamCompleted with Finished reason.
         let payload = StreamCompleted {
             model_used: None,
-            session_id: session_id.clone(),
+            session_id,
             reason: StreamCompletedReason::Finished,
             assistant_content: Some("hello".to_owned()),
             tool_calls: None,
@@ -820,7 +812,7 @@ mod tests {
         // When handling StreamCompleted for an unknown session.
         let payload = StreamCompleted {
             model_used: None,
-            session_id: session_id.clone(),
+            session_id,
             reason: StreamCompletedReason::Error,
             assistant_content: None,
             tool_calls: None,
@@ -882,48 +874,6 @@ mod tests {
             messages.is_empty(),
             "should not emit StreamCompleted for non-existent session"
         );
-    }
-
-    #[tokio::test]
-    async fn cancel_all_aborts_all_tasks() {
-        // Given an LLM actor with multiple spawned tasks.
-        let mut actor = test_llm_actor().await;
-        let sid1 = SessionId::new();
-        let sid2 = SessionId::new();
-        let h1 = tokio::spawn(async { std::future::pending::<()>().await });
-        let h2 = tokio::spawn(async { std::future::pending::<()>().await });
-        actor.tasks.insert(sid1, h1);
-        actor.tasks.insert(sid2, h2);
-
-        // When calling cancel_all.
-        actor.cancel_all();
-
-        // Then the tasks are aborted (JoinHandle.is_finished).
-        // Yield to let abort propagate.
-        tokio::task::yield_now().await;
-        for handle in actor.tasks.values() {
-            assert!(
-                handle.is_finished(),
-                "task should be aborted after cancel_all"
-            );
-        }
-    }
-
-    #[tokio::test]
-    async fn on_stop_cancels_all_tasks() {
-        let mut actor = test_llm_actor().await;
-        let sid = SessionId::new();
-        let handle = tokio::spawn(async { std::future::pending::<()>().await });
-        actor.tasks.insert(sid, handle);
-
-        // When on_stop is called.
-        actor.cancel_all();
-
-        // Then the task is aborted.
-        tokio::task::yield_now().await;
-        for handle in actor.tasks.values() {
-            assert!(handle.is_finished(), "task should be aborted after on_stop");
-        }
     }
 
     #[tokio::test]
@@ -1187,30 +1137,18 @@ mod tests {
             .await;
 
         // Then an error PushChatEntry is emitted (from emit_stream_error).
-        let entries = await_recorded(
-            &entry_recorder,
-            1,
-            std::time::Duration::from_secs(5),
-        )
-        .await;
+        let entries = await_recorded(&entry_recorder, 1, std::time::Duration::from_secs(5)).await;
         assert!(
             !entries.is_empty(),
             "stream error should publish an error chat entry"
         );
 
         // And a StreamCompleted(Error) is emitted, so the session isn't stuck streaming.
-        let completed = await_recorded(
-            &completed_recorder,
-            1,
-            std::time::Duration::from_secs(5),
-        )
-        .await;
+        let completed =
+            await_recorded(&completed_recorder, 1, std::time::Duration::from_secs(5)).await;
         let found = completed
             .iter()
             .any(|sc| sc.reason == StreamCompletedReason::Error);
-        assert!(
-            found,
-            "stream error should emit StreamCompleted(Error)"
-        );
+        assert!(found, "stream error should emit StreamCompleted(Error)");
     }
 }

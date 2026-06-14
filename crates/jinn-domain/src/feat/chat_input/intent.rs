@@ -648,7 +648,7 @@ fn compute_token_end(input: &ChatInputBoxState, token_start: usize) -> usize {
     let mut end = token_start + 1;
     while end < len {
         let g = graphemes.get(end);
-        if g.is_none() || g.is_some_and(|c| c.trim().is_empty() || *c == "#") {
+        if g.is_none_or(|c| c.trim().is_empty() || *c == "#") {
             break;
         }
         end += 1;
@@ -734,7 +734,7 @@ fn find_hash_token_at_cursor(input: &ChatInputBoxState) -> Option<(usize, String
             let mut token_end = i + 1;
             while token_end < len {
                 let g = graphemes.get(token_end);
-                if g.is_none() || g.is_some_and(|c| c.trim().is_empty() || *c == "#") {
+                if g.is_none_or(|c| c.trim().is_empty() || *c == "#") {
                     break;
                 }
                 token_end += 1;
@@ -781,7 +781,7 @@ fn find_slash_token_at_cursor(input: &ChatInputBoxState) -> Option<(usize, Strin
     let mut token_end = 1;
     while token_end < len {
         let g = graphemes.get(token_end);
-        if g.is_none() || g.is_some_and(|c| c.trim().is_empty()) {
+        if g.is_none_or(|c| c.trim().is_empty()) {
             break;
         }
         token_end += 1;

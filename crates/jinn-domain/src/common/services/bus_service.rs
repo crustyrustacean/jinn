@@ -32,6 +32,7 @@ pub struct BusService {
 #[derive(Clone)]
 enum BusInner {
     Real(ActorRef<MessageBus>),
+    #[cfg_attr(not(test), expect(dead_code, reason = "test-only recording mode"))]
     Recording(Arc<Mutex<Vec<RecordedMessage>>>),
 }
 
@@ -52,8 +53,10 @@ impl BusService {
     #[cfg(test)]
     pub fn new_recording() -> (Self, BusAudit) {
         let messages = Arc::new(Mutex::new(Vec::new()));
-        let service = Self { inner: BusInner::Recording(recorded.clone()) };
-        let audit = BusAudit { messages: recorded };
+        let service = Self {
+            inner: BusInner::Recording(messages.clone()),
+        };
+        let audit = BusAudit { messages };
         (service, audit)
     }
 
@@ -62,6 +65,10 @@ impl BusService {
     /// # Panics
     ///
     /// Panics if called on a recording-mode bus (tests should not need this).
+    #[expect(
+        clippy::panic,
+        reason = "invariant: recording variant is test-only; calling actor_ref on it is programmer misuse"
+    )]
     #[must_use]
     pub fn actor_ref(&self) -> &ActorRef<MessageBus> {
         match &self.inner {
@@ -82,9 +89,9 @@ impl BusService {
     pub async fn register<M: Clone + Send + 'static>(&self, recipient: kameo::actor::Recipient<M>) {
         match &self.inner {
             BusInner::Real(bus) => {
-                bus.ask(Register(recipient))
-                    .await
-                    .expect("bus register should succeed");
+                if let Err(e) = bus.ask(Register(recipient)).await {
+                    tracing::warn!(error = ?e, "failed to register on bus; likely during shutdown");
+                }
             }
             BusInner::Recording(_) => {
                 // No-op in recording mode
@@ -97,18 +104,20 @@ impl BusService {
     ///
     /// Convenience wrapper that creates the recipient from the actor ref.
     /// No-op in recording mode.
-    pub async fn subscribe<M: Clone + Send + 'static, A: kameo::Actor>(
+    pub async fn subscribe<M: Clone + Send + 'static, A: kameo::message::Message<M>>(
         &self,
         actor_ref: &ActorRef<A>,
-    ) where
-        A: kameo::message::Message<M>,
-    {
+    ) {
         self.register(actor_ref.clone().recipient::<M>()).await;
     }
 
     /// Publishes a typed message to all registered recipients on the bus.
     ///
     /// In recording mode, captures the message for later assertion.
+    ///
+    /// # Panics
+    ///
+    /// Panics if the recording Mutex is poisoned (only possible after a prior panic).
     pub async fn publish<M: BusMessage>(&self, msg: M) {
         match &self.inner {
             BusInner::Real(bus) => {
@@ -183,6 +192,11 @@ pub struct BusAudit {
     messages: Arc<Mutex<Vec<RecordedMessage>>>,
 }
 
+#[expect(
+    clippy::unwrap_used,
+    clippy::missing_panics_doc,
+    reason = "Mutex::lock fails only on poison from prior panic; BusAudit is a test handle"
+)]
 impl BusAudit {
     /// Returns the ordered list of short type names for all captured messages.
     ///

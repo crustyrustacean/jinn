@@ -33,7 +33,7 @@ use crate::feat::skills::skills_scan_actor::SkillsLoaded;
 
 /// Safety-net window. If not all three resource events arrive within this duration,
 /// the coordinator settles anyway with a `delayed` reason.
-const SAFETY_NET: Duration = Duration::from_millis(3000);
+const SAFETY_NET: Duration = Duration::from_secs(3);
 
 /// Direct messages the coordinator sends to itself.
 ///
@@ -671,7 +671,7 @@ mod tests {
         tokio::time::sleep(std::time::Duration::from_millis(10)).await;
 
         // And the 3000ms safety-net timer elapses.
-        tokio::time::advance(std::time::Duration::from_millis(3000)).await;
+        tokio::time::advance(std::time::Duration::from_secs(3)).await;
         tokio::time::sleep(std::time::Duration::from_millis(10)).await;
 
         // Then settled fires with a delayed reason naming the missing context.

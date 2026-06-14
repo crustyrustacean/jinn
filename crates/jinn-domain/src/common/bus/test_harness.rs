@@ -3,6 +3,11 @@
 //! Provides a [`TestHarness`] that spawns a `MessageBus` and offers convenience
 //! methods for spawning actors, recorders, and publishing messages — eliminating
 //! boilerplate from individual test functions.
+#![allow(
+    clippy::expect_used,
+    clippy::missing_panics_doc,
+    reason = "test harness"
+)]
 
 use std::marker::PhantomData;
 use std::time::Duration;
@@ -26,6 +31,10 @@ pub struct TestHarness {
 
 impl TestHarness {
     /// Create a new harness with a fresh `MessageBus`.
+    #[expect(
+        clippy::unused_async,
+        reason = "API symmetry with other harness methods; spawn requires runtime context"
+    )]
     pub async fn new() -> Self {
         let bus =
             kameo_actors::message_bus::MessageBus::new(kameo_actors::DeliveryStrategy::Guaranteed);

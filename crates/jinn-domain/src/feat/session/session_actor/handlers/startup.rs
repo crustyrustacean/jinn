@@ -66,7 +66,7 @@ impl SessionPersistenceActor {
             if !summaries.is_empty() {
                 // Sort by updated_at descending to find the most recent.
                 let mut sorted = summaries;
-                sorted.sort_by(|a, b| b.updated_at.cmp(&a.updated_at));
+                sorted.sort_by_key(|s| std::cmp::Reverse(s.updated_at));
 
                 // Load full sessions outside the lock.
                 let mut loaded = Vec::new();

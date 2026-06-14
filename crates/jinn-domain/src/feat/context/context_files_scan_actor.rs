@@ -254,7 +254,7 @@ mod tests {
 
     fn create_actor_state(
         dir: &tempfile::TempDir,
-        state: State,
+        state: &State,
     ) -> (crate::SessionId, crate::Services) {
         {
             let mut guard = state.write();
@@ -288,11 +288,11 @@ mod tests {
         std::fs::write(dir.path().join("AGENTS.md"), "# Project rules").expect("write");
 
         let state = State::new(AppState::default());
-        let (session_id, services) = create_actor_state(&dir, state.clone());
+        let (session_id, services) = create_actor_state(&dir, &state);
 
         let harness = TestHarness::new().await;
         let mut services = services;
-        services.bus = harness.bus().clone();
+        services.bus = harness.bus();
 
         let actor = ContextFilesScanActor::spawn(ContextFilesScanActorDeps {
             deps: ActorDeps { services },
@@ -327,11 +327,11 @@ mod tests {
         std::fs::write(dir.path().join("AGENTS.md"), "# Body").expect("write");
 
         let state = State::new(AppState::default());
-        let (session_id, services) = create_actor_state(&dir, state.clone());
+        let (session_id, services) = create_actor_state(&dir, &state);
 
         let harness = TestHarness::new().await;
         let mut services = services;
-        services.bus = harness.bus().clone();
+        services.bus = harness.bus();
 
         let actor = ContextFilesScanActor::spawn(ContextFilesScanActorDeps {
             deps: ActorDeps { services },
@@ -356,11 +356,11 @@ mod tests {
         // Given an actor whose session cwd has no context files.
         let dir = tempfile::tempdir().expect("create temp dir");
         let state = State::new(AppState::default());
-        let (session_id, services) = create_actor_state(&dir, state.clone());
+        let (session_id, services) = create_actor_state(&dir, &state);
 
         let harness = TestHarness::new().await;
         let mut services = services;
-        services.bus = harness.bus().clone();
+        services.bus = harness.bus();
 
         let actor = ContextFilesScanActor::spawn(ContextFilesScanActorDeps {
             deps: ActorDeps { services },
@@ -404,7 +404,7 @@ mod tests {
 
         let harness = TestHarness::new().await;
         let mut services = services;
-        services.bus = harness.bus().clone();
+        services.bus = harness.bus();
 
         let actor = ContextFilesScanActor::spawn(ContextFilesScanActorDeps {
             deps: ActorDeps { services },
@@ -447,7 +447,7 @@ mod tests {
 
         let harness = TestHarness::new().await;
         let mut services = services;
-        services.bus = harness.bus().clone();
+        services.bus = harness.bus();
 
         let actor = ContextFilesScanActor::spawn(ContextFilesScanActorDeps {
             deps: ActorDeps { services },
@@ -473,11 +473,11 @@ mod tests {
         let dir = tempfile::tempdir().expect("create temp dir");
         std::fs::write(dir.path().join("AGENTS.md"), "# Project rules").expect("write");
         let state = State::new(AppState::default());
-        let (session_id, services) = create_actor_state(&dir, state.clone());
+        let (session_id, services) = create_actor_state(&dir, &state);
 
         let harness = TestHarness::new().await;
         let mut services = services;
-        services.bus = harness.bus().clone();
+        services.bus = harness.bus();
 
         let actor = ContextFilesScanActor::spawn(ContextFilesScanActorDeps {
             deps: ActorDeps { services },
@@ -516,7 +516,7 @@ mod tests {
 
         let harness = TestHarness::new().await;
         let mut services = services;
-        services.bus = harness.bus().clone();
+        services.bus = harness.bus();
 
         let actor = ContextFilesScanActor::spawn(ContextFilesScanActorDeps {
             deps: ActorDeps { services },
@@ -547,11 +547,11 @@ mod tests {
         let dir = tempfile::tempdir().expect("create temp dir");
         std::fs::write(dir.path().join("AGENTS.md"), "# Project rules").expect("write");
         let state = State::new(AppState::default());
-        let (session_id, services) = create_actor_state(&dir, state.clone());
+        let (session_id, services) = create_actor_state(&dir, &state);
 
         let harness = TestHarness::new().await;
         let mut services = services;
-        services.bus = harness.bus().clone();
+        services.bus = harness.bus();
 
         let actor = ContextFilesScanActor::spawn(ContextFilesScanActorDeps {
             deps: ActorDeps { services },
@@ -581,11 +581,11 @@ mod tests {
         let dir = tempfile::tempdir().expect("create temp dir");
         std::fs::write(dir.path().join("AGENTS.md"), "# Project rules").expect("write");
         let state = State::new(AppState::default());
-        let (session_id, services) = create_actor_state(&dir, state.clone());
+        let (session_id, services) = create_actor_state(&dir, &state);
 
         let harness = TestHarness::new().await;
         let mut services = services;
-        services.bus = harness.bus().clone();
+        services.bus = harness.bus();
 
         let actor = ContextFilesScanActor::spawn(ContextFilesScanActorDeps {
             deps: ActorDeps { services },
@@ -614,11 +614,11 @@ mod tests {
         let dir = tempfile::tempdir().expect("create temp dir");
         std::fs::write(dir.path().join("AGENTS.md"), "# Project rules").expect("write");
         let state = State::new(AppState::default());
-        let (session_id, services) = create_actor_state(&dir, state.clone());
+        let (session_id, services) = create_actor_state(&dir, &state);
 
         let harness = TestHarness::new().await;
         let mut services = services;
-        services.bus = harness.bus().clone();
+        services.bus = harness.bus();
 
         let actor = ContextFilesScanActor::spawn(ContextFilesScanActorDeps {
             deps: ActorDeps { services },

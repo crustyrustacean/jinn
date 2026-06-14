@@ -414,7 +414,7 @@ mod tests {
         let mut pinned = ChatEntry::assistant("pinned assistant");
         pinned.pin_position = Some(PinPosition::Bottom);
 
-        let (state, session_id) = state_with_history(vec![user.clone(), pinned]);
+        let (state, session_id) = state_with_history(vec![user, pinned]);
 
         // When assembling the prompt.
         let guard = state.read();
@@ -1156,100 +1156,6 @@ mod tests {
         assert_eq!(
             user_msg_count, 1,
             "top pinned user should appear exactly once, appeared {user_msg_count}"
-        );
-    }
-
-    fn assemble_prompt_excludes_other_sessions_attached_tools() {
-        use crate::protocol::SessionId;
-
-        // Given a session with global tools.
-        let mut state = AppState::default();
-        let origin_id = SessionId::new();
-        let judge_id = SessionId::new();
-
-        // Insert a global tool.
-        let global_tool = ToolDefinition {
-            name: "bash".to_owned(),
-            description: "Run commands".to_owned(),
-            prompt_snippet: None,
-            prompt_guidelines: vec![],
-            parameters: serde_json::json!({"type": "object", "properties": {}}),
-            server_tool_type: None,
-        };
-        state
-            .context
-            .global_tool_definitions
-            .insert("bash".to_owned(), global_tool);
-
-        // Insert an attached tool for the judge session only.
-        let attached_tool = ToolDefinition {
-            name: "judgment_passed".to_owned(),
-            description: "Call when passed".to_owned(),
-            prompt_snippet: None,
-            prompt_guidelines: vec![],
-            parameters: serde_json::json!({"type": "object", "properties": {}}),
-            server_tool_type: None,
-        };
-        state
-            .context
-            .session_tool_definitions
-            .entry(judge_id.clone())
-            .or_default()
-            .insert("judgment_passed".to_owned(), attached_tool);
-
-        // When assembling prompt for the origin session.
-        let result = assemble_prompt(&state, &origin_id, &counter(), None);
-
-        // Then the origin session sees bash but NOT judgment_passed.
-        let tool_names: Vec<&str> = result
-            .tool_definitions
-            .iter()
-            .map(|t| t.name.as_str())
-            .collect();
-        assert!(
-            tool_names.contains(&"bash"),
-            "origin should see global tool 'bash'"
-        );
-        assert!(
-            !tool_names.contains(&"judgment_passed"),
-            "origin should NOT see attached tool 'judgment_passed'"
-        );
-    }
-
-    fn assemble_prompt_includes_own_sessions_attached_tools() {
-        use crate::protocol::SessionId;
-
-        // Given a session with global tools and session-specific tools.
-        let mut state = AppState::default();
-        let judge_id = SessionId::new();
-
-        let attached_tool = ToolDefinition {
-            name: "judgment_passed".to_owned(),
-            description: "Call when passed".to_owned(),
-            prompt_snippet: None,
-            prompt_guidelines: vec![],
-            parameters: serde_json::json!({"type": "object", "properties": {}}),
-            server_tool_type: None,
-        };
-        state
-            .context
-            .session_tool_definitions
-            .entry(judge_id.clone())
-            .or_default()
-            .insert("judgment_passed".to_owned(), attached_tool);
-
-        // When assembling prompt for the judge session.
-        let result = assemble_prompt(&state, &judge_id, &counter(), None);
-
-        // Then the judge session sees judgment_passed.
-        let tool_names: Vec<&str> = result
-            .tool_definitions
-            .iter()
-            .map(|t| t.name.as_str())
-            .collect();
-        assert!(
-            tool_names.contains(&"judgment_passed"),
-            "judge session should see its attached tool"
         );
     }
 }

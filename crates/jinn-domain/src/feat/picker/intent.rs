@@ -170,7 +170,7 @@ fn load_theme_picker_entries(state: &mut AppState) {
         }
     }
 
-    entries.sort_by(|a, b| a.name.to_lowercase().cmp(&b.name.to_lowercase()));
+    entries.sort_by_key(|e| e.name.to_lowercase());
 
     state.frontend.theme_picker_mut().set_items(entries);
 }
@@ -347,11 +347,18 @@ fn confirm_provider(state: &mut AppState) -> IntentResult {
         entry_to_model_selection(entry)
     } else if selected.len() == 1 {
         // One selected entry — could be a named alloy or a single model.
-        if let Some(entry) = state.provider.provider_picker.items().iter().find(|e| {
-            let first_pid = selected.first().expect("guarded by len() == 1");
-            e.provider_id == *first_pid && e.selected
-        }) {
-            entry_to_model_selection(entry)
+        if let [first_pid] = selected.as_slice() {
+            if let Some(entry) = state
+                .provider
+                .provider_picker
+                .items()
+                .iter()
+                .find(|e| e.provider_id == *first_pid && e.selected)
+            {
+                entry_to_model_selection(entry)
+            } else {
+                ModelSelection::default()
+            }
         } else {
             ModelSelection::default()
         }
@@ -565,7 +572,7 @@ fn confirm_plugin(state: &mut AppState) -> IntentResult {
     IntentResult::with_message(
         crate::feat::plugin_dispatch::protocol::command::AttachPlugin {
             session_id,
-            plugin_name: script.clone(),
+            plugin_name: script,
         },
     )
 }
@@ -593,7 +600,7 @@ fn load_tool_picker_entries(state: &mut AppState) {
         })
         .collect();
 
-    entries.sort_by(|a, b| a.name.to_lowercase().cmp(&b.name.to_lowercase()));
+    entries.sort_by_key(|e| e.name.to_lowercase());
 
     state.frontend.tool_picker_mut().set_items(entries);
 }
@@ -1588,7 +1595,7 @@ mod tests {
         let postponed_id = to_postpone.clone();
         origin
             .task_list_mut()
-            .postpone_task(&to_postpone, TaskPosition::After(task_cancel.clone()))
+            .postpone_task(&to_postpone, TaskPosition::After(task_cancel))
             .expect("postpone");
 
         let origin_id = origin.session_id().clone();

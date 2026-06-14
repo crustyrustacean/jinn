@@ -362,8 +362,7 @@ mod tests {
         let call1 = ToolCall {
             id: "call-1".to_owned(),
             name: "todo_postpone_to_phase".to_owned(),
-            arguments: serde_json::json!({"task_id": t1, "target_phase_id": p2.clone()})
-                .to_string(),
+            arguments: serde_json::json!({"task_id": t1, "target_phase_id": p2}).to_string(),
         };
         let ctx1 = make_context(Some(state.clone()), Some(session_id.clone()));
         let result1 = execute(call1, ctx1);

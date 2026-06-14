@@ -88,10 +88,7 @@ impl KeyRegistry {
     where
         P: IntoIterator<Item = &'static str>,
     {
-        let path: Vec<String> = path
-            .into_iter()
-            .map(std::string::ToString::to_string)
-            .collect();
+        let path: Vec<String> = path.into_iter().map(str::to_owned).collect();
         self.keys.insert(path, key_field);
     }
 

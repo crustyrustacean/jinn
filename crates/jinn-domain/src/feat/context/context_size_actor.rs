@@ -177,7 +177,7 @@ mod tests {
         ContextSizeActor {
             state: State::new(AppState::default()),
             counter: TiktokenCounter::o200k_base(),
-            bus: harness.bus().clone(),
+            bus: harness.bus(),
         }
     }
 

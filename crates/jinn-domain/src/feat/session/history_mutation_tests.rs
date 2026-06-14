@@ -520,7 +520,7 @@ fn pin_entry_top_sets_position() {
 
     // When applying a PinEntry mutation with Top position.
     session.apply_mutations(vec![HistoryMutation::PinEntry {
-        entry_id: entry_id.clone(),
+        entry_id,
         position: PinPosition::Top,
     }]);
 
@@ -537,7 +537,7 @@ fn pin_entry_bottom_sets_position() {
 
     // When applying a PinEntry mutation with Bottom position.
     session.apply_mutations(vec![HistoryMutation::PinEntry {
-        entry_id: entry_id.clone(),
+        entry_id,
         position: PinPosition::Bottom,
     }]);
 
@@ -554,7 +554,7 @@ fn pin_entry_relative_sets_position() {
 
     // When applying a PinEntry mutation with Relative position.
     session.apply_mutations(vec![HistoryMutation::PinEntry {
-        entry_id: entry_id.clone(),
+        entry_id,
         position: PinPosition::Relative,
     }]);
 
@@ -579,7 +579,7 @@ fn pin_entry_can_change_position() {
 
     // When changing to Bottom.
     session.apply_mutations(vec![HistoryMutation::PinEntry {
-        entry_id: entry_id.clone(),
+        entry_id,
         position: PinPosition::Bottom,
     }]);
 
@@ -598,7 +598,7 @@ fn set_context_override_forced_include() {
 
     // When applying SetContextOverride with ForcedInclude.
     session.apply_mutations(vec![HistoryMutation::SetContextOverride {
-        entry_id: entry_id.clone(),
+        entry_id,
         value: ContextOverride::ForcedInclude,
         source: ChangeSource::Internal {
             label: "test".to_owned(),
@@ -632,7 +632,7 @@ fn set_context_override_default_resets_to_default() {
 
     // When resetting to Default.
     session.apply_mutations(vec![HistoryMutation::SetContextOverride {
-        entry_id: entry_id.clone(),
+        entry_id,
         value: ContextOverride::Default,
         source: ChangeSource::Internal {
             label: "test".to_owned(),
@@ -668,7 +668,7 @@ fn forced_include_is_not_overwritten_by_forced_exclude() {
 
     // When an auto-pruner tries to exclude it.
     session.apply_mutations(vec![HistoryMutation::SetContextOverride {
-        entry_id: entry_id.clone(),
+        entry_id,
         value: ContextOverride::ForcedExclude,
         source: ChangeSource::Internal {
             label: "test".to_owned(),
@@ -703,7 +703,7 @@ fn forced_include_can_be_changed_to_default() {
 
     // When the user resets it to Default.
     session.apply_mutations(vec![HistoryMutation::SetContextOverride {
-        entry_id: entry_id.clone(),
+        entry_id,
         value: ContextOverride::Default,
         source: ChangeSource::Internal {
             label: "test".to_owned(),
@@ -731,9 +731,7 @@ fn unpin_entry_removes_pin_from_pinned_entry() {
     assert!(session.history()[0].pin_position.is_some());
 
     // When applying UnpinEntry.
-    session.apply_mutations(vec![HistoryMutation::UnpinEntry {
-        entry_id: entry_id.clone(),
-    }]);
+    session.apply_mutations(vec![HistoryMutation::UnpinEntry { entry_id }]);
 
     // Then the pin is removed.
     assert!(session.history()[0].pin_position.is_none());
@@ -748,9 +746,7 @@ fn unpin_entry_on_unpinned_entry_is_noop() {
     assert!(session.history()[0].pin_position.is_none());
 
     // When applying UnpinEntry on an already-unpinned entry.
-    session.apply_mutations(vec![HistoryMutation::UnpinEntry {
-        entry_id: entry_id.clone(),
-    }]);
+    session.apply_mutations(vec![HistoryMutation::UnpinEntry { entry_id }]);
 
     // Then no panic, still None.
     assert!(session.history()[0].pin_position.is_none());

@@ -80,6 +80,7 @@ pub(crate) async fn test_actor_recording() -> (
 }
 // --- Shared test store helpers ---
 
+#[cfg(test)]
 /// A fake session store that returns pre-loaded sessions for testing.
 pub(crate) struct PopulatedFakeStore {
     summaries: Vec<crate::feat::session::session_summary::SessionSummary>,
@@ -205,34 +206,6 @@ impl crate::feat::session::session_store::SessionStore for PopulatedFakeStore {
     > {
         Ok(self.summaries.clone())
     }
-}
-
-/// Builds a test actor with services and a populated store.
-/// Returns (actor, store) so tests can inspect store state.
-#[cfg(test)]
-pub(crate) async fn test_actor_with_store(
-    sessions: Vec<crate::feat::session::chat_session::ChatSessionState>,
-) -> (
-    super::SessionPersistenceActor,
-    std::sync::Arc<PopulatedFakeStore>,
-) {
-    let store = std::sync::Arc::new(PopulatedFakeStore::new(sessions));
-    let services = crate::TestServices::builder()
-        .session_store(crate::feat::session::SessionStoreService::new(
-            store.clone(),
-        ))
-        .build();
-    (
-        super::SessionPersistenceActor {
-            state: crate::common::state::State::new(crate::common::app_state::AppState::default()),
-            services,
-            counter: crate::feat::context::strategy::token_estimator::TiktokenCounter::o200k_base(),
-            builtin_registry: crate::feat::session_lifecycle::builtin::BuiltinRegistry::new(),
-            shell: "/bin/sh".to_owned(),
-            lifecycle_child: None,
-        },
-        store,
-    )
 }
 
 #[cfg(test)]

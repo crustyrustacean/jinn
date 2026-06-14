@@ -129,7 +129,6 @@ impl SessionPersistenceActor {
     ///
     /// On success, sets the session's CWD to the command's output.
     /// On failure, sets the default CWD and pushes an error entry.
-    #[expect(clippy::unused_async, reason = "trait contract requires async")]
     pub(in crate::feat::session::session_actor) async fn handle_run_session_setup(
         &mut self,
         payload: &RunSessionSetup,
@@ -234,7 +233,6 @@ impl SessionPersistenceActor {
     /// Called by the spawned tokio task after the setup shell command finishes.
     /// Clears the lifecycle child, completes busy, sets CWD,
     /// advances lifecycle state, and emits events.
-    #[expect(clippy::unused_async, reason = "trait contract requires async")]
     pub(in crate::feat::session::session_actor) async fn handle_finish_session_setup(
         &mut self,
         payload: &crate::feat::session_lifecycle::protocol::command::FinishSessionSetup,
@@ -991,7 +989,7 @@ impl SessionPersistenceActor {
 
         let app_state = self.services.app_state_storage.read();
         let fresh_session = {
-            let model = app_state.last_model.clone().unwrap_or_default();
+            let model = app_state.last_model.unwrap_or_default();
 
             ChatSessionState::new_with_profile(
                 crate::feat::session::profile::SessionProfile::from_model_selection(model),
@@ -1641,13 +1639,13 @@ mod tests {
         let state = actor.state.read();
         assert!(!state.session.contains(&session_id));
 
-        let has_teardown = audit.of_type::<SessionTeardownFinished>().len() > 0;
+        let has_teardown = !audit.of_type::<SessionTeardownFinished>().is_empty();
         assert!(
             !has_teardown,
             "did not expect SessionTeardownFinished for NothingRan"
         );
 
-        let has_archived = audit.of_type::<SessionArchived>().len() > 0;
+        let has_archived = !audit.of_type::<SessionArchived>().is_empty();
         assert!(has_archived, "expected SessionArchived");
     }
 
@@ -1690,7 +1688,7 @@ mod tests {
             .any(|e| e.session_id == target_id);
         assert!(has_closed, "expected SessionClosed");
 
-        let has_teardown = audit.of_type::<SessionTeardownFinished>().len() > 0;
+        let has_teardown = !audit.of_type::<SessionTeardownFinished>().is_empty();
         assert!(
             !has_teardown,
             "did not expect SessionTeardownFinished for archive"
@@ -1718,7 +1716,7 @@ mod tests {
 
         assert!(!actor.state.read().session.contains(&target_id));
 
-        let has_archived = audit.of_type::<SessionArchived>().len() > 0;
+        let has_archived = !audit.of_type::<SessionArchived>().is_empty();
         assert!(has_archived, "expected SessionArchived for empty session");
 
         let has_closed = audit

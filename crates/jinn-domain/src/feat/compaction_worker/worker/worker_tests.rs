@@ -1322,7 +1322,7 @@ fn snapshot_clears_flag_when_compaction_entry_found() {
 
     // And a snapshot that CONTAINS the pending compaction entry.
     let mut snapshot = vec![compaction_entry("old summary")];
-    snapshot[0].id = pending_id.clone();
+    snapshot[0].id = pending_id;
     let snapshot: Arc<[ChatEntry]> = Arc::from(snapshot);
 
     // When evaluating.
@@ -1463,7 +1463,7 @@ fn manual_compaction_does_not_set_flag() {
     // Given a worker.
     let (worker, session_id) = test_worker_with_session("summary", alternating_history(20));
     let trigger = CompactionTrigger {
-        session_id: session_id.clone(),
+        session_id,
         compact_all: true,
     };
 

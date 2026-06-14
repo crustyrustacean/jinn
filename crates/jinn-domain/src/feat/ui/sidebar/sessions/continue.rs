@@ -80,7 +80,7 @@ mod tests {
         // Create a second session.
         let second_id = crate::protocol::SessionId::new();
         let mut second_session = crate::feat::session::chat_session::ChatSessionState::new();
-        second_session.set_session_id(second_id.clone());
+        second_session.set_session_id(second_id);
         state.session.insert(second_session);
         // Focus sidebar on sessions section.
         state.frontend.scope_stack.push(FocusScope::SidebarSessions);

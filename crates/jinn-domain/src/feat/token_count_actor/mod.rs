@@ -8,8 +8,9 @@
 use kameo::actor::ActorRef;
 use kameo::prelude::{Context, Message};
 
-use crate::common::actor_deps::{ActorDeps, BusPublish};
+use crate::common::actor_deps::ActorDeps;
 use crate::common::state::State;
+use crate::feat::context::protocol::event::ContextOverrideChanged;
 use crate::feat::context::strategy::token_estimator::{
     TiktokenCounter, TokenCounter, TokenEstimator, estimate_entry_tokens,
 };
@@ -70,12 +71,6 @@ impl kameo::Actor for TokenCountActor {
     }
 }
 
-impl BusPublish for TokenCountActor {
-    fn bus(&self) -> &crate::common::services::bus_service::BusService {
-        unreachable!("TokenCountActor does not publish")
-    }
-}
-
 impl Message<HistoryAppended> for TokenCountActor {
     type Reply = ();
 
@@ -89,6 +84,14 @@ impl Message<SessionLoadCompleted> for TokenCountActor {
 
     async fn handle(&mut self, msg: SessionLoadCompleted, _ctx: &mut Context<Self, Self::Reply>) {
         self.handle_session_load_completed(&msg.session);
+    }
+}
+
+impl Message<ContextOverrideChanged> for TokenCountActor {
+    type Reply = ();
+
+    async fn handle(&mut self, msg: ContextOverrideChanged, _ctx: &mut Context<Self, Self::Reply>) {
+        self.handle_context_override_changed(&msg.session_id, &msg.entry_id);
     }
 }
 
@@ -475,7 +478,6 @@ mod tests {
         // Verify the entry actually has the full arguments.
         let entry = &app_state.active_session().history()[0];
         if let ChatEntryKind::ToolCall {
-            name: _,
             arguments: ref args,
             ..
         } = entry.kind

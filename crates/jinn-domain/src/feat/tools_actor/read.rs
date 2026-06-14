@@ -132,7 +132,7 @@ pub fn execute(call: ToolCall, ctx: ToolContext) -> BoxedToolFuture {
                     name: call.name,
                     content: output,
                     success: true,
-                    full_content: Some(content.clone()),
+                    full_content: Some(content),
                     truncation: Some(meta),
                     pin_position: None,
                 }
@@ -143,7 +143,7 @@ pub fn execute(call: ToolCall, ctx: ToolContext) -> BoxedToolFuture {
                     name: call.name,
                     content: truncation_result.content,
                     success: true,
-                    full_content: Some(content.clone()),
+                    full_content: Some(content),
                     truncation: None,
                     pin_position: None,
                 }
@@ -154,7 +154,7 @@ pub fn execute(call: ToolCall, ctx: ToolContext) -> BoxedToolFuture {
                 name: call.name,
                 content: annotated,
                 success: true,
-                full_content: Some(content.clone()),
+                full_content: Some(content),
                 truncation: None,
                 pin_position: None,
             }

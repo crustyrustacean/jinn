@@ -81,7 +81,7 @@ pub fn discover_plugins(user_dir: &Path, system_dir: &Path) -> Vec<PluginMeta> {
     }
 
     let mut plugins: Vec<PluginMeta> = seen.into_values().collect();
-    plugins.sort_by(|a, b| a.name.to_lowercase().cmp(&b.name.to_lowercase()));
+    plugins.sort_by_key(|p| p.name.to_lowercase());
     plugins
 }
 
@@ -166,6 +166,15 @@ pub struct LoadResult {
 /// are invisible to another. The returned table is stored in the Lua registry.
 ///
 /// Returns a [`LoadResult`] containing both hooks and tool definitions.
+///
+/// # Panics
+///
+/// Panics if `load_plugin` returns a key that fails to resolve in the Lua
+/// registry (impossible in practice — the key was just stored).
+#[expect(
+    clippy::expect_used,
+    reason = "invariant: table_key just returned by load_plugin"
+)]
 pub fn load_all(lua: &Lua, plugins: &[PluginMeta]) -> LoadResult {
     let mut hooks = HashMap::new();
     let mut tools = Vec::new();
@@ -184,7 +193,7 @@ pub fn load_all(lua: &Lua, plugins: &[PluginMeta]) -> LoadResult {
             Ok(table_key) => {
                 let table: mlua::Table = lua
                     .registry_value(&table_key)
-                    .expect("just-stored key must resolve");
+                    .expect("registry_value resolves for key returned by load_plugin");
                 let plugin_tools = super::tool_def::extract_tools(lua, &table, &meta.name);
                 tracing::debug!(
                     plugin = meta.name,
