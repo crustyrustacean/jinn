@@ -130,7 +130,6 @@ impl PluginSystem {
         let async_request_handler = request_handler.clone();
         let in_flight = super::InFlightRequests::new();
         let async_in_flight = in_flight.clone();
-        let async_in_flight = in_flight.clone();
 
         #[expect(
             clippy::expect_used,

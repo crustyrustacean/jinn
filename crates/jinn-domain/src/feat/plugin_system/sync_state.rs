@@ -164,8 +164,9 @@ pub struct SyncHook<'a> {
     func: mlua::Function,
     /// Shared plugin data store.
     plugin_data: &'a PluginData,
-    /// Channel for ctx.emit().
     emit_tx: kanal::Sender<PluginCommand>,
+    /// Shared in-flight-request registry for ctx.cancel().
+    in_flight: &'a super::InFlightRequests,
 }
 
 impl<'a> SyncHook<'a> {
@@ -176,6 +177,7 @@ impl<'a> SyncHook<'a> {
         func: mlua::Function,
         plugin_data: &'a PluginData,
         emit_tx: kanal::Sender<PluginCommand>,
+        in_flight: &'a super::InFlightRequests,
     ) -> Self {
         Self {
             lua,
@@ -183,6 +185,7 @@ impl<'a> SyncHook<'a> {
             func,
             plugin_data,
             emit_tx,
+            in_flight,
         }
     }
 }
@@ -237,6 +240,7 @@ impl SyncHook<'_> {
             &self.plugin_name,
             self.plugin_data,
             &self.emit_tx,
+            &self.in_flight,
         )
         .map_err(|e| Report::new(PluginSyncStateError).attach(e.to_string()))
         .attach("build ctx")?;
@@ -278,6 +282,7 @@ impl SyncPlugins {
                     f,
                     &self.plugin_data,
                     self.emit_tx.clone(),
+                    &self.in_flight,
                 )),
                 _ => None,
             }
@@ -396,6 +401,7 @@ pub(crate) fn build_sync_ctx(
     plugin_name: &str,
     plugin_data: &PluginData,
     emit_tx: &kanal::Sender<PluginCommand>,
+    in_flight: &super::InFlightRequests,
 ) -> Result<mlua::Table, mlua::Error> {
     let ctx = lua.create_table()?;
 
@@ -423,9 +429,19 @@ pub(crate) fn build_sync_ctx(
     })?;
     ctx.set("emit", emit_fn)?;
 
-    // NO ctx.request() — sync hooks can't do async I/O.
-    // NO ctx.set_plugin_data() — sync hooks don't write persistent data.
-    // (If needed, these can be added to the async ctx only.)
+    // ctx.cancel(task) — fire an in-flight async request's token.
+    //
+    // Sync-safe: just fires the token (no .await). The cancelled request's
+    // spawned future observes the cancellation via its `select!` arm and
+    // runs cleanup (e.g. `CancelStream`) there.
+    {
+        let in_flight = in_flight.clone();
+        let cancel_fn = lua.create_function(move |_, task: String| {
+            in_flight.cancel(&task);
+            Ok(())
+        })?;
+        ctx.set("cancel", cancel_fn)?;
+    }
 
     let _ = plugin_data;
     Ok(ctx)

@@ -22,7 +22,6 @@
 
 use serde_json::json;
 use tokio::select;
-use tokio_util::sync::CancellationToken;
 
 use std::collections::HashMap;
 use std::path::PathBuf;
@@ -563,6 +562,35 @@ async fn run_single_hook(
     }
 }
 
+/// Run a single request: register token (if task given), race handler future
+/// against the token via `select!`, run cleanup on cancel. Returns the result
+/// envelope (`{ok, value}` or `{ok:false, error}`).
+///
+/// Used by both `ctx.request` (inline await) and `ctx.gather` (spawned + joined).
+async fn run_request(
+    handler: &RequestHandler,
+    in_flight: &super::InFlightRequests,
+    name: &str,
+    data: serde_json::Value,
+    task: Option<String>,
+) -> serde_json::Value {
+    match task.as_deref() {
+        Some(task) => {
+            let token = in_flight.register(task);
+            select! {
+                r = handler(name, &data, Some(token.clone())) => {
+                    in_flight.remove(task);
+                    r
+                }
+                _ = token.cancelled() => {
+                    json!({"ok": false, "error": "cancelled"})
+                }
+            }
+        }
+        None => handler(name, &data, None).await,
+    }
+}
+
 /// Build the ctx table for an async hook call.
 ///
 /// `ctx.request()`, `ctx.set_plugin_data()`, and `ctx.merge_plugin_data()`.
@@ -626,26 +654,76 @@ fn build_async_ctx(
                     let task: Option<String> = opts
                         .as_ref()
                         .and_then(|o| o.get::<String>("task").ok());
-                    let response = match task.as_deref() {
-                        Some(task) => {
-                            let token = in_flight.register(task);
-                            select! {
-                                r = handler(&name, &json_data, Some(token.clone())) => {
-                                    in_flight.remove(task);
-                                    r
-                                }
-                                _ = token.cancelled() => {
-                                    json!({"ok": false, "error": "cancelled"})
-                                }
-                            }
-                        }
-                        None => handler(&name, &json_data, None).await,
-                    };
+                    let response = run_request(&handler, &in_flight, &name, json_data, task).await;
                     bindings::json_to_lua_value(&lua, &response)
                 }
             },
         )?;
         ctx.set("request", request_fn)?;
+    }
+
+    // ctx.gather(specs) → run N requests concurrently, await all, return array.
+    //
+    // `specs` is a Lua array of tables: `{ name=.., data=.., opts={task=..} }`.
+    // Each request runs as an independent spawned task racing its own token;
+    // cancelling one task (via `ctx.cancel`) aborts only that request.
+    // Returns a Lua array of results (same envelope shape as `ctx.request`),
+    // in input order.
+    {
+        let handler = request_handler.clone();
+        let in_flight = in_flight.clone();
+        let gather_fn = lua.create_async_function(
+            move |lua, specs: mlua::Table| {
+                let handler = handler.clone();
+                let in_flight = in_flight.clone();
+                async move {
+                    // Collect request specs into owned values before spawning.
+                    let mut specs_owned: Vec<(String, serde_json::Value, Option<String>)> = Vec::new();
+                    for pair in specs.sequence_values::<mlua::Table>() {
+                        let t = pair.map_err(|e| mlua::Error::external(format!("gather spec: {e}")))?;
+                        let name: String = t.get("name")?;
+                        let data_val: mlua::Value = t.get("data").unwrap_or(mlua::Value::Nil);
+                        let data = bindings::value_to_json(&lua, &data_val).unwrap_or_default();
+                        let opts: Option<mlua::Table> = t.get("opts").ok();
+                        let task = opts.as_ref().and_then(|o| o.get::<String>("task").ok());
+                        specs_owned.push((name, data, task));
+                    }
+
+                    // Spawn each request concurrently and collect handles.
+                    let mut handles = Vec::new();
+                    for (name, data, task) in specs_owned {
+                        let handler = handler.clone();
+                        let in_flight = in_flight.clone();
+                        handles.push(tokio::spawn(async move {
+                            run_request(&handler, &in_flight, &name, data, task).await
+                        }));
+                    }
+
+                    // Await all and build the result array.
+                    let results: Vec<serde_json::Value> = futures::future::join_all(handles)
+                        .await
+                        .into_iter()
+                        .map(|r| r.unwrap_or_else(|_| serde_json::json!({"ok": false, "error": "task panicked"})))
+                        .collect();
+                    bindings::json_to_lua_value(&lua, &serde_json::Value::Array(results))
+                }
+            },
+        )?;
+        ctx.set("gather", gather_fn)?;
+    }
+
+    // ctx.cancel(task) → fire the in-flight request's token, remove its entry.
+    //
+    // Sync-safe: just fires the token (no .await). The cancelled request's
+    // spawned future (in `ctx.request`/`ctx.gather`) observes the cancellation
+    // via its `select!` arm and publishes `CancelStream` there.
+    {
+        let in_flight = in_flight.clone();
+        let cancel_fn = lua.create_function(move |_, task: String| {
+            in_flight.cancel(&task);
+            Ok(())
+        })?;
+        ctx.set("cancel", cancel_fn)?;
     }
 
     // ctx.set_plugin_data(value) — writes to shared DashMap.
