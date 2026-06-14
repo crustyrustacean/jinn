@@ -163,9 +163,6 @@ impl TuiApp {
                     _ => {}
                 }
             }
-            Msg::Bridge(closure) => {
-                let _ = self.core.sender().send(closure);
-            }
         }
     }
 
