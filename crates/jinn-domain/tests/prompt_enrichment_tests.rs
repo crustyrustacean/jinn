@@ -25,7 +25,8 @@ use jinn_domain::feat::plugin_system::{
 };
 use serde_json::{Value, json};
 use std::path::{Path, PathBuf};
-use std::sync::{Arc, Mutex};
+use parking_lot::Mutex;
+use std::sync::Arc;
 
 // ── Helpers ──────────────────────────────────────────────────────────────
 
@@ -80,12 +81,12 @@ fn build_system_with_oneshot(stub_result: Value) -> TestSystem {
         Path::new("/nonexistent"),
         rt.handle().clone(),
         Arc::new(move |cmd| {
-            captured_for_dispatch.lock().expect("lock").push(cmd);
+            captured_for_dispatch.lock().push(cmd);
         }),
         Arc::new({
             let log = request_log.clone();
             move |_name, _data| {
-                *log.oneshot_calls.lock().expect("lock") += 1;
+                *log.oneshot_calls.lock() += 1;
                 // `stub_result` is the full `ctx.request` response — the same shape
                 // `handle_plugin_request` now produces: a result envelope
                 // `{ ok: true, value }` or `{ ok: false, error }`. Returned as-is.
@@ -107,7 +108,6 @@ fn build_system_with_oneshot(stub_result: Value) -> TestSystem {
 fn set_chat_input_emits(captured: &Captured) -> Vec<Value> {
     captured
         .lock()
-        .expect("lock")
         .iter()
         .filter(|c| c.name == "set_chat_input")
         .map(|c| c.data.clone())
@@ -130,14 +130,14 @@ async fn on_enrich_noops_on_empty_text() {
         Path::new("/nonexistent"),
         rt.handle().clone(),
         Arc::new(move |cmd| {
-            captured_for_dispatch.lock().expect("lock").push(cmd);
+            captured_for_dispatch.lock().push(cmd);
         }),
         Arc::new(move |name, _data| {
             let counter = counter.clone();
             let name = name.to_owned();
             Box::pin(async move {
                 if name == "llm_oneshot" {
-                    *counter.lock().expect("lock") += 1;
+                    *counter.lock() += 1;
                 }
                 json!(null)
             })
@@ -154,7 +154,7 @@ async fn on_enrich_noops_on_empty_text() {
 
     // Then no llm_oneshot request was issued.
     assert_eq!(
-        *oneshot_calls.lock().expect("lock"),
+        *oneshot_calls.lock(),
         0,
         "empty draft must not trigger an LLM call"
     );
@@ -183,14 +183,13 @@ async fn on_enrich_writes_enriched_text_to_input() {
 
     // Then exactly one llm_oneshot ran and exactly one set_chat_input was
     // emitted carrying the enriched text.
-    let oneshot_calls = *sys.oneshot_calls.lock().expect("lock");
+    let oneshot_calls = *sys.oneshot_calls.lock();
     assert_eq!(oneshot_calls, 1, "expected exactly one llm_oneshot call");
 
     let emits = set_chat_input_emits(&sys.captured);
     let all_names: Vec<String> = sys
         .captured
         .lock()
-        .expect("lock")
         .iter()
         .map(|c| c.name.clone())
         .collect();
@@ -229,7 +228,7 @@ async fn on_enrich_two_taps_both_succeed_last_wins() {
         Path::new("/nonexistent"),
         rt.handle().clone(),
         Arc::new(move |cmd| {
-            captured_for_dispatch.lock().expect("lock").push(cmd);
+            captured_for_dispatch.lock().push(cmd);
         }),
         Arc::new(move |name, _data| {
             // Resolve the name decision to an owned value BEFORE the async block,
@@ -242,7 +241,7 @@ async fn on_enrich_two_taps_both_succeed_last_wins() {
                 }
 
                 let n = {
-                    let mut g = counter.lock().expect("lock");
+                    let mut g = counter.lock();
                     *g += 1;
                     *g
                 };
@@ -308,7 +307,7 @@ async fn on_enrich_surfaces_request_error_as_chat_entry() {
     tokio::time::sleep(std::time::Duration::from_millis(150)).await;
 
     // Then exactly one llm_oneshot ran.
-    let oneshot_calls = *sys.oneshot_calls.lock().expect("lock");
+    let oneshot_calls = *sys.oneshot_calls.lock();
     assert_eq!(oneshot_calls, 1, "expected exactly one llm_oneshot call");
 
     // And no set_chat_input fired (the draft is left untouched).
@@ -320,7 +319,7 @@ async fn on_enrich_surfaces_request_error_as_chat_entry() {
 
     // And exactly one push_chat_entry surfaced the error message.
     let errors: Vec<String> = {
-        let cmds = sys.captured.lock().expect("lock");
+        let cmds = sys.captured.lock();
         cmds.iter()
             .filter(|c| c.name == "push_chat_entry")
             .map(|c| {

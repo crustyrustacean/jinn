@@ -265,7 +265,6 @@ mod tests {
         ) {
             self.calls
                 .lock()
-                .expect("lock")
                 .push((attempt, max_retries, wait));
         }
     }

@@ -11,7 +11,8 @@
 use jinn_domain::SessionId;
 use jinn_domain::feat::plugin_system::SessionPluginRegistry;
 use std::path::Path;
-use std::sync::{Arc, Mutex};
+use parking_lot::Mutex;
+use std::sync::Arc;
 
 use jinn_domain::feat::plugin_system::{PluginCommand, PluginSystem, PluginSystemBuildResult};
 use serde::Serialize;
@@ -42,7 +43,7 @@ fn build_system(dir: &Path) -> TestSystem {
         Path::new("/nonexistent"),
         rt.handle().clone(),
         Arc::new(move |cmd| {
-            captured_clone.lock().expect("lock").push(cmd);
+            captured_clone.lock().push(cmd);
         }),
         Arc::new(|name, data| {
             // Default request handler: echo back for "llm", null otherwise.
@@ -107,7 +108,7 @@ async fn async_hook_fires_and_completes() {
 
     // Give the drainer time to process.
     tokio::time::sleep(std::time::Duration::from_millis(100)).await;
-    let cmds = sys.captured.lock().expect("lock");
+    let cmds = sys.captured.lock();
     assert_eq!(cmds.len(), 1);
     assert_eq!(cmds[0].name, "push_chat_entry");
     assert_eq!(cmds[0].data["message"], "done");
@@ -186,7 +187,7 @@ async fn async_hook_with_emit_dispatches_command() {
         .expect("fire");
 
     tokio::time::sleep(std::time::Duration::from_millis(100)).await;
-    let cmds = sys.captured.lock().expect("lock");
+    let cmds = sys.captured.lock();
     assert_eq!(cmds.len(), 1);
     assert_eq!(cmds[0].name, "enqueue_user_message");
     assert_eq!(cmds[0].data["text"], "follow up");
@@ -251,7 +252,7 @@ async fn global_plugins_loaded_at_startup_into_shared_state() {
         .expect("fire");
 
     tokio::time::sleep(std::time::Duration::from_millis(100)).await;
-    let cmds = sys.captured.lock().expect("lock");
+    let cmds = sys.captured.lock();
     assert_eq!(cmds.len(), 1, "only global plugins should fire");
     assert_eq!(cmds[0].data["message"], "global welcome");
 }
@@ -287,7 +288,7 @@ async fn attachable_plugins_not_loaded_into_shared_state() {
         .expect("fire");
 
     tokio::time::sleep(std::time::Duration::from_millis(100)).await;
-    let cmds = sys.captured.lock().expect("lock");
+    let cmds = sys.captured.lock();
     assert!(
         cmds.is_empty(),
         "attachable plugin should not fire globally"
@@ -334,7 +335,7 @@ async fn load_session_registry_creates_isolated_state() {
         .expect("fire for session");
 
     tokio::time::sleep(std::time::Duration::from_millis(100)).await;
-    let cmds = sys.captured.lock().expect("lock");
+    let cmds = sys.captured.lock();
     assert_eq!(cmds.len(), 1);
     assert_eq!(cmds[0].data["message"], "session-only fire");
 }
@@ -387,7 +388,7 @@ async fn fire_for_session_excludes_other_sessions_plugins() {
         .expect("fire for B");
 
     tokio::time::sleep(std::time::Duration::from_millis(100)).await;
-    let cmds = sys.captured.lock().expect("lock");
+    let cmds = sys.captured.lock();
     assert!(
         cmds.is_empty(),
         "session A plugins must not fire for session B"
@@ -452,7 +453,7 @@ async fn fire_for_session_merges_global_and_session_plugins() {
         .expect("fire");
 
     tokio::time::sleep(std::time::Duration::from_millis(100)).await;
-    let cmds = sys.captured.lock().expect("lock");
+    let cmds = sys.captured.lock();
     let messages: Vec<&str> = cmds
         .iter()
         .map(|c| c.data["message"].as_str().expect("message"))
@@ -508,7 +509,7 @@ async fn disabled_plugin_is_skipped() {
         .expect("fire");
 
     tokio::time::sleep(std::time::Duration::from_millis(100)).await;
-    let cmds = sys.captured.lock().expect("lock");
+    let cmds = sys.captured.lock();
     let messages: Vec<&str> = cmds
         .iter()
         .map(|c| c.data["message"].as_str().expect("message"))
@@ -562,7 +563,7 @@ async fn enabled_plugin_fires() {
         .expect("fire");
 
     tokio::time::sleep(std::time::Duration::from_millis(100)).await;
-    let cmds = sys.captured.lock().expect("lock");
+    let cmds = sys.captured.lock();
     let messages: Vec<&str> = cmds
         .iter()
         .map(|c| c.data["message"].as_str().expect("message"))
