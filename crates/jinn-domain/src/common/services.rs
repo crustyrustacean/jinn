@@ -32,17 +32,12 @@ use crate::feat::provider_infra::{
     ProviderRegistry, ProviderRegistryService, ProvidersConfig,
 };
 use crate::feat::session::SessionStoreService;
-use crate::protocol::AppMsg;
 use error_stack::Report;
 use tokio::runtime::Handle;
 
-pub mod actor_channel;
-
-pub mod bus_service;
-
 pub mod test_services;
 
-pub use actor_channel::ActorChannelService;
+pub mod bus_service;
 pub use bus_service::BusService;
 
 #[cfg(test)]
@@ -63,8 +58,6 @@ pub struct Services {
     pub paths: crate::common::app_paths::AppPaths,
     /// Async runtime handle for spawning background tasks.
     pub handle: Handle,
-    /// Channel for sending commands/events into the actor system.
-    pub actor_channel: ActorChannelService,
     /// LLM service factory for creating streaming chat instances.
     pub llm_service: LlmServiceFactoryService,
     /// Provider registry for looking up and validating provider configs.
@@ -130,13 +123,6 @@ impl Services {
 
         let tempdir = Arc::new(tempfile::TempDir::new().expect("test temp dir"));
 
-        // Keep a live drainer so the sender doesn't return ReceiveClosed.
-        // Without this, send_command silently fails in tests.
-        let (actor_tx, actor_rx) = kanal::unbounded::<AppMsg>();
-        handle.spawn(async move {
-            let rx = actor_rx.to_async();
-            while rx.recv().await.is_ok() {}
-        });
         let bus = {
             let bus_actor = kameo_actors::message_bus::MessageBus::new(
                 kameo_actors::DeliveryStrategy::BestEffort,
@@ -150,7 +136,6 @@ impl Services {
         Self {
             paths: crate::common::app_paths::AppPaths::new_in(tempdir.path()),
             handle,
-            actor_channel: ActorChannelService::new(actor_tx),
             llm_service: LlmServiceFactoryService::new(Arc::new(
                 crate::feat::provider_infra::FakeLlmServiceFactory::new(vec![]),
             )),
@@ -202,19 +187,12 @@ impl Services {
         let handle = test_services::shared_test_handle();
         let tempdir = Arc::new(tempfile::TempDir::new().expect("test temp dir"));
 
-        // Keep a live drainer so the sender doesn't return ReceiveClosed.
-        let (actor_tx, actor_rx) = kanal::unbounded::<AppMsg>();
-        handle.spawn(async move {
-            let rx = actor_rx.to_async();
-            while rx.recv().await.is_ok() {}
-        });
         let bridge = crate::common::bridge::Bridge::new_for_test();
         let root_supervisor = crate::common::root_supervisor::RootSupervisor::spawn_root().await;
 
         Self {
             paths: crate::common::app_paths::AppPaths::new_in(tempdir.path()),
             handle,
-            actor_channel: ActorChannelService::new(actor_tx),
             llm_service: LlmServiceFactoryService::new(Arc::new(
                 crate::feat::provider_infra::FakeLlmServiceFactory::new(vec![]),
             )),

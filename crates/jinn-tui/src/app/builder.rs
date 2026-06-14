@@ -54,10 +54,8 @@ impl TuiAppBuilder {
         };
         let state = self.state.unwrap_or_default();
 
-        let (sender, _receiver) = kanal::unbounded();
         let core = AppCore {
             state: jinn_domain::State::new(state),
-            sender,
             bridge: services.bridge.clone(),
         };
         let plugins = self

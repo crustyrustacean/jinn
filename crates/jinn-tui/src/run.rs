@@ -378,9 +378,15 @@ fn apply_selected_cwd(
 
 #[cfg(test)]
 mod tests {
+    #![allow(
+        clippy::expect_used,
+        clippy::panic,
+        clippy::indexing_slicing,
+        reason = "test code"
+    )]
     use super::*;
-    use jinn_domain::feat::session_lifecycle::protocol::command::SetSessionCwd;
     use jinn_domain::common::bridge::Bridge;
+    use jinn_domain::feat::session_lifecycle::protocol::command::SetSessionCwd;
     use kameo::prelude::*;
     use kameo_actors::DeliveryStrategy;
     use kameo_actors::message_bus::{MessageBus, Register};
@@ -422,8 +428,7 @@ mod tests {
     }
 
     fn spawn_recorder<T: Clone + Send + 'static>()
-        -> (ActorRef<RecorderActor<T>>, Arc<Mutex<Vec<T>>>)
-    {
+    -> (ActorRef<RecorderActor<T>>, Arc<Mutex<Vec<T>>>) {
         let buffer = Arc::new(Mutex::new(Vec::new()));
         let actor = RecorderActor::spawn(RecorderActor::new(buffer.clone()));
         (actor, buffer)
@@ -473,8 +478,7 @@ mod tests {
 
             // When applying a real directory path.
             let session_id = jinn_domain::SessionId::new();
-            let published =
-                apply_selected_cwd(&bridge, session_id.clone(), dir.path());
+            let published = apply_selected_cwd(&bridge, session_id.clone(), dir.path());
 
             // Then exactly one SetSessionCwd is published with the canonical cwd.
             assert!(published, "valid dir should publish");
@@ -505,8 +509,7 @@ mod tests {
             std::fs::write(&file_path, b"contents").expect("write file");
 
             // When applying a file path.
-            let published =
-                apply_selected_cwd(&bridge, jinn_domain::SessionId::new(), &file_path);
+            let published = apply_selected_cwd(&bridge, jinn_domain::SessionId::new(), &file_path);
 
             // Then nothing is published and the helper returns false.
             assert!(!published, "file path should not publish");
