@@ -651,9 +651,8 @@ fn build_async_ctx(
                 let in_flight = in_flight.clone();
                 async move {
                     let json_data = bindings::value_to_json(&lua, &data).unwrap_or_default();
-                    let task: Option<String> = opts
-                        .as_ref()
-                        .and_then(|o| o.get::<String>("task").ok());
+                    let task: Option<String> =
+                        opts.as_ref().and_then(|o| o.get::<String>("task").ok());
                     let response = run_request(&handler, &in_flight, &name, json_data, task).await;
                     bindings::json_to_lua_value(&lua, &response)
                 }
@@ -672,43 +671,45 @@ fn build_async_ctx(
     {
         let handler = request_handler.clone();
         let in_flight = in_flight.clone();
-        let gather_fn = lua.create_async_function(
-            move |lua, specs: mlua::Table| {
-                let handler = handler.clone();
-                let in_flight = in_flight.clone();
-                async move {
-                    // Collect request specs into owned values before spawning.
-                    let mut specs_owned: Vec<(String, serde_json::Value, Option<String>)> = Vec::new();
-                    for pair in specs.sequence_values::<mlua::Table>() {
-                        let t = pair.map_err(|e| mlua::Error::external(format!("gather spec: {e}")))?;
-                        let name: String = t.get("name")?;
-                        let data_val: mlua::Value = t.get("data").unwrap_or(mlua::Value::Nil);
-                        let data = bindings::value_to_json(&lua, &data_val).unwrap_or_default();
-                        let opts: Option<mlua::Table> = t.get("opts").ok();
-                        let task = opts.as_ref().and_then(|o| o.get::<String>("task").ok());
-                        specs_owned.push((name, data, task));
-                    }
-
-                    // Spawn each request concurrently and collect handles.
-                    let mut handles = Vec::new();
-                    for (name, data, task) in specs_owned {
-                        let handler = handler.clone();
-                        let in_flight = in_flight.clone();
-                        handles.push(tokio::spawn(async move {
-                            run_request(&handler, &in_flight, &name, data, task).await
-                        }));
-                    }
-
-                    // Await all and build the result array.
-                    let results: Vec<serde_json::Value> = futures::future::join_all(handles)
-                        .await
-                        .into_iter()
-                        .map(|r| r.unwrap_or_else(|_| serde_json::json!({"ok": false, "error": "task panicked"})))
-                        .collect();
-                    bindings::json_to_lua_value(&lua, &serde_json::Value::Array(results))
+        let gather_fn = lua.create_async_function(move |lua, specs: mlua::Table| {
+            let handler = handler.clone();
+            let in_flight = in_flight.clone();
+            async move {
+                // Collect request specs into owned values before spawning.
+                let mut specs_owned: Vec<(String, serde_json::Value, Option<String>)> = Vec::new();
+                for pair in specs.sequence_values::<mlua::Table>() {
+                    let t = pair.map_err(|e| mlua::Error::external(format!("gather spec: {e}")))?;
+                    let name: String = t.get("name")?;
+                    let data_val: mlua::Value = t.get("data").unwrap_or(mlua::Value::Nil);
+                    let data = bindings::value_to_json(&lua, &data_val).unwrap_or_default();
+                    let opts: Option<mlua::Table> = t.get("opts").ok();
+                    let task = opts.as_ref().and_then(|o| o.get::<String>("task").ok());
+                    specs_owned.push((name, data, task));
                 }
-            },
-        )?;
+
+                // Spawn each request concurrently and collect handles.
+                let mut handles = Vec::new();
+                for (name, data, task) in specs_owned {
+                    let handler = handler.clone();
+                    let in_flight = in_flight.clone();
+                    handles.push(tokio::spawn(async move {
+                        run_request(&handler, &in_flight, &name, data, task).await
+                    }));
+                }
+
+                // Await all and build the result array.
+                let results: Vec<serde_json::Value> = futures::future::join_all(handles)
+                    .await
+                    .into_iter()
+                    .map(|r| {
+                        r.unwrap_or_else(
+                            |_| serde_json::json!({"ok": false, "error": "task panicked"}),
+                        )
+                    })
+                    .collect();
+                bindings::json_to_lua_value(&lua, &serde_json::Value::Array(results))
+            }
+        })?;
         ctx.set("gather", gather_fn)?;
     }
 

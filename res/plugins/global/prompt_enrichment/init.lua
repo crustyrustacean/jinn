@@ -89,7 +89,7 @@ end
 --- Sync hook fired by Intent::TriggerPlugin before the async on_enrich fire.
 --- Lets the plugin veto the fire and cancel an in-flight enrichment instead.
 ---
---- Self-selects on ctx.plugin_name: only this plugin's keybind is answered.
+--- Self-selects on ctx.keybound_plugin: only this plugin's keybind is answered.
 --- Returns {fire=false} when enriching (cancels the in-flight request);
 --- {fire=true} otherwise (proceed to fire on_enrich).
 ---
@@ -97,7 +97,7 @@ end
 ---@return table? result `{ fire = bool }` or nil
 function M.on_keybind_trigger(ctx)
     -- Only answer for our own keybind.
-    if ctx.plugin_name ~= "prompt_enrichment" then return end
+    if ctx.keybound_plugin ~= "prompt_enrichment" then return end
 
     if (ctx.plugin_data or {}).status == "enriching" then
         ctx.cancel("enrich:" .. ctx.session_id)

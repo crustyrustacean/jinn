@@ -575,3 +575,241 @@ async fn enabled_plugin_fires() {
         "enabled plugin must fire: {messages:?}"
     );
 }
+
+#[tokio::test]
+async fn ctx_cancel_aborts_inflight_request() {
+    // Given a plugin whose on_turn_end calls ctx.request with a task name,
+    // and a request handler that parks until cancelled.
+    let dir = tempfile::tempdir().expect("tempdir");
+    write_plugin(
+        dir.path(),
+        "canceler",
+        r#"
+            local M = {}
+            function M.on_turn_end(ctx)
+                local result = ctx.request("llm", { prompt = "x" }, { task = "enrich:s1" })
+                ctx.set_plugin_data({ status = result.ok and "ok" or result.error })
+            end
+            return M
+        "#,
+    );
+
+    let captured: Arc<Mutex<Vec<PluginCommand>>> = Arc::new(Mutex::new(Vec::new()));
+    let captured_clone = captured.clone();
+    let rt = Box::leak(Box::new(tokio::runtime::Runtime::new().expect("runtime")));
+
+    let PluginSystemBuildResult { async_handle, .. } = PluginSystem::build(
+        dir.path(),
+        Path::new("/nonexistent"),
+        rt.handle().clone(),
+        Arc::new(move |cmd| {
+            captured_clone.lock().push(cmd);
+        }),
+        Arc::new(
+            |_name, _data, _cancel: Option<tokio_util::sync::CancellationToken>| {
+                // Park forever — the only way out is the registry token firing,
+                // which makes the select!'s cancel arm win and resume the coroutine.
+                Box::pin(async move {
+                    std::future::pending::<()>().await;
+                    serde_json::json!(null)
+                })
+            },
+        ),
+    );
+
+    // When firing the hook (starts the request, parks).
+    let fire = tokio::spawn({
+        let h = async_handle.clone();
+        async move {
+            h.fire_async(
+                "on_turn_end",
+                &TurnEndCtx {
+                    session_id: "s1".to_owned(),
+                    last_assistant_message: "m".to_owned(),
+                },
+            )
+            .await
+        }
+    });
+    tokio::time::sleep(std::time::Duration::from_millis(100)).await;
+
+    // Then cancel the in-flight request.
+    async_handle.cancel_request("enrich:s1");
+    fire.await.expect("fire").expect("fire ok");
+
+    // Give the coroutine time to resume and write plugin_data.
+    tokio::time::sleep(std::time::Duration::from_millis(150)).await;
+
+    // The plugin_data should reflect the cancel envelope (session-scoped).
+    let pd = async_handle
+        .get_plugin_data_for_session(&SessionId::from("s1".to_owned()), "canceler")
+        .unwrap_or_default();
+    assert_eq!(
+        pd["status"],
+        serde_json::json!("cancelled"),
+        "coroutine must resume with the cancel envelope: {pd:?}"
+    );
+}
+
+#[tokio::test]
+async fn gather_runs_requests_concurrently() {
+    // Given a plugin that gathers 3 requests, each handler sleeping 100ms.
+    // If run sequentially, total would be ~300ms; concurrently, ~100ms.
+    let dir = tempfile::tempdir().expect("tempdir");
+    write_plugin(
+        dir.path(),
+        "gatherer",
+        r#"
+            local M = {}
+            function M.on_turn_end(ctx)
+                local results = ctx.gather({
+                    { name = "llm", data = { id = "a" }, opts = { task = "a" } },
+                    { name = "llm", data = { id = "b" }, opts = { task = "b" } },
+                    { name = "llm", data = { id = "c" }, opts = { task = "c" } },
+                })
+                ctx.set_plugin_data({ count = #results })
+            end
+            return M
+        "#,
+    );
+
+    let captured: Arc<Mutex<Vec<PluginCommand>>> = Arc::new(Mutex::new(Vec::new()));
+    let captured_clone = captured.clone();
+    let rt = Box::leak(Box::new(tokio::runtime::Runtime::new().expect("runtime")));
+
+    let PluginSystemBuildResult { async_handle, .. } = PluginSystem::build(
+        dir.path(),
+        Path::new("/nonexistent"),
+        rt.handle().clone(),
+        Arc::new(move |cmd| {
+            captured_clone.lock().push(cmd);
+        }),
+        Arc::new(|_name, _data, _cancel| {
+            Box::pin(async move {
+                tokio::time::sleep(std::time::Duration::from_millis(100)).await;
+                serde_json::json!({"ok": true, "value": "done"})
+            })
+        }),
+    );
+
+    // When firing the hook and timing the gather.
+    let start = std::time::Instant::now();
+    async_handle
+        .fire_async(
+            "on_turn_end",
+            &TurnEndCtx {
+                session_id: "s1".to_owned(),
+                last_assistant_message: "m".to_owned(),
+            },
+        )
+        .await
+        .expect("fire");
+    let elapsed = start.elapsed();
+
+    // Then the gather completed in roughly the time of ONE request (not three).
+    assert!(
+        elapsed < std::time::Duration::from_millis(250),
+        "gather must run concurrently; elapsed {:?} suggests sequential",
+        elapsed
+    );
+    tokio::time::sleep(std::time::Duration::from_millis(50)).await;
+    let pd = async_handle
+        .get_plugin_data_for_session(&SessionId::from("s1".to_owned()), "gatherer")
+        .unwrap_or_default();
+    assert_eq!(
+        pd["count"],
+        serde_json::json!(3),
+        "gather must return 3 results"
+    );
+}
+
+#[tokio::test]
+async fn cancel_one_of_two_distinct_tasks() {
+    // Given a plugin that gathers two requests under distinct task names,
+    // then cancels only "a". The "a" request must abort; "b" must complete.
+    let dir = tempfile::tempdir().expect("tempdir");
+    write_plugin(
+        dir.path(),
+        "picker",
+        r#"
+            local M = {}
+            function M.on_turn_end(ctx)
+                local results = ctx.gather({
+                    { name = "llm", data = { id = "a" }, opts = { task = "a" } },
+                    { name = "llm", data = { id = "b" }, opts = { task = "b" } },
+                })
+                ctx.set_plugin_data({ results = results })
+            end
+            return M
+        "#,
+    );
+
+    let captured: Arc<Mutex<Vec<PluginCommand>>> = Arc::new(Mutex::new(Vec::new()));
+    let captured_clone = captured.clone();
+    let rt = Box::leak(Box::new(tokio::runtime::Runtime::new().expect("runtime")));
+
+    let PluginSystemBuildResult { async_handle, .. } = PluginSystem::build(
+        dir.path(),
+        Path::new("/nonexistent"),
+        rt.handle().clone(),
+        Arc::new(move |cmd| {
+            captured_clone.lock().push(cmd);
+        }),
+        Arc::new(
+            |_name, data, cancel: Option<tokio_util::sync::CancellationToken>| {
+                let id = data["id"].as_str().unwrap_or("?").to_owned();
+                Box::pin(async move {
+                    if let Some(t) = cancel {
+                        // Race sleep against cancellation.
+                        tokio::select! {
+                            _ = tokio::time::sleep(std::time::Duration::from_millis(150)) => {
+                                serde_json::json!({"ok": true, "value": id})
+                            }
+                            _ = t.cancelled() => {
+                                serde_json::json!({"ok": false, "error": "cancelled"})
+                            }
+                        }
+                    } else {
+                        serde_json::json!({"ok": true, "value": id})
+                    }
+                })
+            },
+        ),
+    );
+
+    let fire = tokio::spawn({
+        let h = async_handle.clone();
+        async move {
+            h.fire_async(
+                "on_turn_end",
+                &TurnEndCtx {
+                    session_id: "s1".to_owned(),
+                    last_assistant_message: "m".to_owned(),
+                },
+            )
+            .await
+        }
+    });
+    tokio::time::sleep(std::time::Duration::from_millis(50)).await;
+
+    // Cancel only task "a"; "b" should complete normally.
+    async_handle.cancel_request("a");
+    fire.await.expect("fire").expect("fire ok");
+    tokio::time::sleep(std::time::Duration::from_millis(200)).await;
+
+    let pd = async_handle
+        .get_plugin_data_for_session(&SessionId::from("s1".to_owned()), "picker")
+        .unwrap_or_default();
+    let results = pd["results"].as_array().expect("results array");
+    assert_eq!(results.len(), 2, "gather must return both results");
+    // Find which result is which by error/value.
+    let a = results.iter().find(|r| r.get("error").is_some());
+    let b = results
+        .iter()
+        .find(|r| r.get("value").and_then(|v| v.as_str()) == Some("b"));
+    assert!(
+        a.is_some(),
+        "task 'a' must have been cancelled: {results:?}"
+    );
+    assert!(b.is_some(), "task 'b' must have completed: {results:?}");
+}

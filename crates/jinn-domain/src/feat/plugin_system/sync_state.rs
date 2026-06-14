@@ -16,8 +16,8 @@ use wherror::Error;
 use super::bindings;
 use super::command::PluginCommand;
 use super::plugin_data::PluginData;
-use crate::feat::plugin_dispatch::{HookContext, PluginHookSite, ProvidesSessionId};
 use crate::SessionId;
+use crate::feat::plugin_dispatch::{HookContext, PluginHookSite, ProvidesSessionId};
 
 /// Stored hook data for a loaded plugin.
 pub struct PluginHooks {

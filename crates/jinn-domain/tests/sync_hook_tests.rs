@@ -287,3 +287,126 @@ fn sync_hook_can_merge_plugin_data_observable_by_subsequent_read() {
         "sync hook merge_plugin_data must be observable by a subsequent read"
     );
 }
+
+// ── on_keybind_trigger ─────────────────────────────────────────────
+
+/// Deserialize helper matching the TUI's `KeybindTriggerResult { fire: bool }`.
+#[derive(Debug, serde::Deserialize, PartialEq)]
+struct KeybindTriggerResult {
+    fire: bool,
+}
+
+#[test]
+fn on_keybind_trigger_returns_fire_true_when_idle() {
+    // Given a plugin whose on_keybind_trigger returns {fire=true} when not enriching.
+    let dir = tempfile::tempdir().expect("tempdir");
+    write_plugin(
+        dir.path(),
+        "gatekeeper",
+        r#"
+            local M = {}
+            function M.on_keybind_trigger(ctx)
+                if ctx.keybound_plugin ~= "gatekeeper" then return end
+                return { fire = true }
+            end
+            return M
+        "#,
+    );
+
+    let (sync, _) = build_system_with_capture(dir.path());
+
+    // When the hook fires for this plugin.
+    let results: Vec<KeybindTriggerResult> = sync
+        .sync_hooks("on_keybind_trigger")
+        .map(|h| {
+            h.call::<KeybindTriggerResult>(&HookContext::from(serde_json::json!({
+                "hook": "on_enrich",
+                "session_id": "s1",
+                "text": "draft",
+                "keybound_plugin": "gatekeeper",
+            })))
+            .expect("hook call")
+        })
+        .collect();
+
+    // Then exactly one result, fire=true.
+    assert_eq!(results, vec![KeybindTriggerResult { fire: true }]);
+}
+
+#[test]
+fn on_keybind_trigger_returns_fire_false_to_veto() {
+    // Given a plugin whose on_keybind_trigger returns {fire=false} to veto.
+    let dir = tempfile::tempdir().expect("tempdir");
+    write_plugin(
+        dir.path(),
+        "gatekeeper",
+        r#"
+            local M = {}
+            function M.on_keybind_trigger(ctx)
+                if ctx.keybound_plugin ~= "gatekeeper" then return end
+                return { fire = false }
+            end
+            return M
+        "#,
+    );
+
+    let (sync, _) = build_system_with_capture(dir.path());
+
+    // When the hook fires for this plugin.
+    let results: Vec<KeybindTriggerResult> = sync
+        .sync_hooks("on_keybind_trigger")
+        .map(|h| {
+            h.call::<KeybindTriggerResult>(&HookContext::from(serde_json::json!({
+                "hook": "on_enrich",
+                "session_id": "s1",
+                "text": "draft",
+                "keybound_plugin": "gatekeeper",
+            })))
+            .expect("hook call")
+        })
+        .collect();
+
+    // Then the hook returns fire=false — the TUI must skip the async fire.
+    assert_eq!(results, vec![KeybindTriggerResult { fire: false }]);
+}
+
+#[test]
+fn on_keybind_trigger_returns_nil_for_other_plugins() {
+    // Given a plugin that self-selects: returns {fire} only for its own keybind.
+    let dir = tempfile::tempdir().expect("tempdir");
+    write_plugin(
+        dir.path(),
+        "gatekeeper",
+        r#"
+            local M = {}
+            function M.on_keybind_trigger(ctx)
+                if ctx.keybound_plugin ~= "gatekeeper" then return end
+                return { fire = true }
+            end
+            return M
+        "#,
+    );
+
+    let (sync, _) = build_system_with_capture(dir.path());
+
+    // When the hook fires for a DIFFERENT plugin's keybind.
+    let results: Vec<serde_json::Value> = sync
+        .sync_hooks("on_keybind_trigger")
+        .map(|h| {
+            h.call::<serde_json::Value>(&HookContext::from(serde_json::json!({
+                "hook": "on_foo",
+                "session_id": "s1",
+                "text": "",
+                "keybound_plugin": "some_other_plugin",
+            })))
+            .expect("hook call")
+        })
+        .collect();
+
+    // Then gatekeeper returns nothing (nil) for other plugins' keybinds —
+    // call_hooks_typed filters it out, so the default (fire=true) applies.
+    assert!(
+        results.iter().all(|r| r.is_null()),
+        "plugin must return nil for other plugins' keybinds; got {results:?}"
+    );
+}

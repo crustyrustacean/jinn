@@ -80,10 +80,14 @@ pub use tool_def::{PluginToolDef, PluginToolMetadata as ToolMeta, ToolScope as T
 /// A no-op request handler for contexts where async requests aren't needed.
 #[must_use]
 pub fn noop_request_handler() -> RequestHandler {
-    std::sync::Arc::new(|name: &str, _data: &serde_json::Value, _cancel: Option<tokio_util::sync::CancellationToken>| {
-        tracing::warn!(name, "no request handler configured, returning null");
-        std::boxed::Box::pin(async { serde_json::Value::Null })
-    })
+    std::sync::Arc::new(
+        |name: &str,
+         _data: &serde_json::Value,
+         _cancel: Option<tokio_util::sync::CancellationToken>| {
+            tracing::warn!(name, "no request handler configured, returning null");
+            std::boxed::Box::pin(async { serde_json::Value::Null })
+        },
+    )
 }
 
 /// A no-op command dispatcher for test contexts.

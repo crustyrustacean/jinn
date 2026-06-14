@@ -148,14 +148,22 @@ impl ActorSystemBuilder {
         let handler_cell = domain_ctx_cell.clone();
         let plugin_request_handler: jinn_domain::feat::plugin_system::RequestHandler =
             std::sync::Arc::new({
-                move |name: &str, data: &serde_json::Value, cancel: Option<tokio_util::sync::CancellationToken>| {
+                move |name: &str,
+                      data: &serde_json::Value,
+                      cancel: Option<tokio_util::sync::CancellationToken>| {
                     let cell = handler_cell.clone();
                     let name = name.to_string();
                     let data = data.clone();
                     std::boxed::Box::pin(async move {
                         match cell.get() {
                             Some(ctx) => {
-                                crate::plugin_wiring::handle_plugin_request(&name, &data, ctx, cancel.as_ref()).await
+                                crate::plugin_wiring::handle_plugin_request(
+                                    &name,
+                                    &data,
+                                    ctx,
+                                    cancel.as_ref(),
+                                )
+                                .await
                             }
                             None => {
                                 tracing::warn!(
