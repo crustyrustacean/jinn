@@ -17,7 +17,10 @@ use crate::feat::session::chat_entry::{
 /// resolves `ChatEntryId` → current position at application time.
 /// Mutations targeting nonexistent entries are silently skipped.
 #[derive(Debug, Clone, Serialize, Deserialize)]
-#[allow(clippy::large_enum_variant)]
+#[allow(
+    clippy::large_enum_variant,
+    reason = "mutation variants legitimately carry entry payloads"
+)]
 pub enum HistoryMutation {
     /// Set the context override on an entry (include/exclude from LLM context).
     SetContextOverride {

@@ -22,7 +22,6 @@ use jinn_domain::Services;
 use jinn_domain::SessionStoreService;
 use jinn_domain::UserPreferencesStorageService;
 
-use jinn_domain::actor_channel::ActorChannelService;
 use jinn_domain::common::actor_deps::ActorDeps;
 use jinn_domain::feat::context::strategy::token_estimator::TiktokenCounter;
 
@@ -35,7 +34,7 @@ use jinn_domain::feat::preferences_actor::user_preferences::WebFetchBackend;
 use jinn_domain::feat::web_fetch_actor::{WebFetchActor, WebFetchActorDeps};
 use jinn_web_fetch::{HttpFetcher, MarkdownExtractor, OutputFormat};
 
-use jinn_domain::{AppCore, AppMsg, State};
+use jinn_domain::{AppCore, State};
 
 use kameo::actor::Spawn;
 
@@ -95,11 +94,6 @@ impl ActorSystemBuilder {
             app_state_storage,
             paths,
         } = self.args;
-
-        // Create channel first — actors need the sender, but AppCore needs services
-        // which needs the bus. Break the cycle by creating the channel independently.
-        let (sender, receiver) = kanal::unbounded::<AppMsg>();
-        let _async_receiver = receiver.to_async();
 
         // `DomainNodeContext` is needed by the plugin request handler (for `llm_oneshot`)
         // but it can't be constructed until `services` is assembled.
@@ -216,7 +210,6 @@ impl ActorSystemBuilder {
         let services = Services {
             paths: paths.clone(),
             handle: handle.clone(),
-            actor_channel: ActorChannelService::new(sender.clone()),
             llm_service: llm_service.clone(),
             provider_registry: provider_registry.clone(),
             api_keys: api_keys.clone(),
@@ -1050,10 +1043,9 @@ impl ActorSystemBuilder {
         // Wait for SystemReadyActor to confirm readiness.
         let _ = ready_rx.to_async().recv().await;
 
-        // Build AppCore with shared state and sender.
+        // Build AppCore with shared state and the bridge.
         let core = AppCore {
             state: state.clone(),
-            sender: sender.clone(),
             bridge: services.bridge.clone(),
         };
 
