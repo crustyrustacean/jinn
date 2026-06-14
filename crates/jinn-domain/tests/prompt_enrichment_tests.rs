@@ -404,15 +404,23 @@ async fn badge_always_returns_enrich_directive() {
 
 #[tokio::test]
 async fn badge_returns_working_when_enriching() {
-    // Given a system where the enrich plugin is actively enriching.
+    // Given a system where the enrich plugin is actively enriching for a
+    // specific session. The status is written to the SESSION-SCOPED bucket
+    // (mirroring what `on_enrich`'s `ctx.merge_plugin_data({status="enriching"})`
+    // does), and the badge ctx carries the canonical `session_id` key the host
+    // emits in production, so the sync hook reads from the matching bucket.
     let sys = build_system_with_oneshot(json!(null));
-    sys.async_handle
-        .set_plugin_data("prompt_enrichment", json!({ "status": "enriching" }));
+    let sid = jinn_domain::SessionId::from("s1".to_owned());
+    sys.async_handle.set_plugin_data_for_session(
+        &sid,
+        "prompt_enrichment",
+        json!({ "status": "enriching" }),
+    );
 
-    // When the renderer fires the badge hook.
+    // When the renderer fires the badge hook with a session_id-bearing ctx.
     let directives = sys.sync.call_hooks(
         "on_chat_input_badges_render",
-        &HookContext::from(json!({ "active_session_id": "s1", "mode": "input" })),
+        &HookContext::from(json!({ "session_id": "s1", "mode": "input" })),
     );
 
     // Then the badge text is [Working].
@@ -427,15 +435,20 @@ async fn badge_returns_working_when_enriching() {
 
 #[tokio::test]
 async fn working_badge_uses_streaming_style() {
-    // Given a system where the enrich plugin is actively enriching.
+    // Given a system where the enrich plugin is actively enriching for a
+    // specific session (session-scoped data + canonical session_id ctx, as above).
     let sys = build_system_with_oneshot(json!(null));
-    sys.async_handle
-        .set_plugin_data("prompt_enrichment", json!({ "status": "enriching" }));
+    let sid = jinn_domain::SessionId::from("s1".to_owned());
+    sys.async_handle.set_plugin_data_for_session(
+        &sid,
+        "prompt_enrichment",
+        json!({ "status": "enriching" }),
+    );
 
-    // When the renderer fires the badge hook.
+    // When the renderer fires the badge hook with a session_id-bearing ctx.
     let directives = sys.sync.call_hooks(
         "on_chat_input_badges_render",
-        &HookContext::from(json!({ "active_session_id": "s1", "mode": "input" })),
+        &HookContext::from(json!({ "session_id": "s1", "mode": "input" })),
     );
 
     // Then the Working segment is styled streaming.
@@ -458,10 +471,11 @@ async fn badge_returns_idle_enrich_when_no_plugin_data() {
     // Given a system with no plugin_data set (fresh state).
     let sys = build_system_with_oneshot(json!(null));
 
-    // When the renderer fires the badge hook.
+    // When the renderer fires the badge hook with a session_id-bearing ctx
+    // (the host always emits one in production).
     let directives = sys.sync.call_hooks(
         "on_chat_input_badges_render",
-        &HookContext::from(json!({ "active_session_id": "s1", "mode": "input" })),
+        &HookContext::from(json!({ "session_id": "s1", "mode": "input" })),
     );
 
     // Then the badge text is [Enrich] (the idle state).
