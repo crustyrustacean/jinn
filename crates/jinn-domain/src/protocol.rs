@@ -3,7 +3,6 @@
 //! This module defines cross-cutting types that are used across feature boundaries:
 //!
 //!
-//! - **[`app_msg`]** - `AppMsg` (bridge closure for the processing loop)
 //! - **[`intent`]** - `Intent` (user-initiated action) and `IntentResult`
 //! - **[`key`]** - `Key`, `KeyEvent`, `Modifiers` (keyboard input types)
 //! - **[`mode`]** - `Mode` (application interaction mode)
@@ -12,7 +11,6 @@
 //! Domain-specific types (session, provider, context, tools, chat input, etc.) live
 //! in their feature modules under `feat/` and are re-exported here for convenience.
 
-pub mod app_msg;
 pub mod intent;
 pub mod key;
 #[cfg(test)]
@@ -22,7 +20,6 @@ pub mod system;
 
 // Re-export primary types
 pub use crate::common::bus::BusMessage;
-pub use app_msg::AppMsg;
 pub use intent::CwdRoot;
 pub use intent::Intent;
 pub use intent::IntentResult;
