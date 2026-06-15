@@ -249,7 +249,6 @@ async fn environment_loaded_event_scans_active_session_skills() {
                 providers: vec![],
                 aliases: vec![],
                 default_provider: None,
-                alloys: vec![],
             },
         })
         .await;

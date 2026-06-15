@@ -198,12 +198,6 @@ impl ProviderRegistry {
         &self.config.aliases
     }
 
-    /// Returns the named alloy definitions from config.
-    #[must_use]
-    pub fn alloys(&self) -> &[crate::feat::provider_infra::config::AlloyEntry] {
-        &self.config.alloys
-    }
-
     /// Looks up a resolved provider by ID.
     #[must_use]
     pub fn get(&self, id: &ProviderId) -> Option<&ResolvedProvider> {

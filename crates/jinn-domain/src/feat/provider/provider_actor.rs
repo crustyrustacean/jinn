@@ -291,7 +291,6 @@ mod tests {
             }],
             aliases: vec![],
             default_provider: None,
-            alloys: vec![],
         }
     }
 
@@ -393,7 +392,6 @@ mod tests {
             }],
             aliases: vec![],
             default_provider: None,
-            alloys: vec![],
         };
         let (harness, state) = create_harness().await;
         let deps = harness.actor_deps().await;
@@ -460,7 +458,6 @@ mod tests {
             }],
             aliases: vec![],
             default_provider: None,
-            alloys: vec![],
         };
         let (harness, state) = create_harness().await;
         let services = harness.actor_deps().await.services;
@@ -584,7 +581,6 @@ mod tests {
             }],
             aliases: vec![],
             default_provider: None,
-            alloys: vec![],
         };
         let (harness, state) = create_harness().await;
         let deps = harness.actor_deps().await;
@@ -652,7 +648,6 @@ mod tests {
             }],
             aliases: vec![],
             default_provider: None,
-            alloys: vec![],
         };
         let (harness, state) = create_harness().await;
         let services = harness.actor_deps().await.services;

@@ -144,7 +144,6 @@ impl Services {
                     providers: vec![],
                     aliases: vec![],
                     default_provider: None,
-                    alloys: vec![],
                 })
                 .expect("empty config is valid"),
             ),
@@ -201,7 +200,6 @@ impl Services {
                     providers: vec![],
                     aliases: vec![],
                     default_provider: None,
-                    alloys: vec![],
                 })
                 .expect("empty config is valid"),
             ),

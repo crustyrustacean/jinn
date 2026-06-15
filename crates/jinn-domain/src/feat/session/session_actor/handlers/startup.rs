@@ -144,7 +144,6 @@ mod tests {
                 providers: vec![],
                 aliases: vec![],
                 default_provider: None,
-                alloys: vec![],
             })
             .await;
 
@@ -164,7 +163,6 @@ mod tests {
                 providers: vec![],
                 aliases: vec![],
                 default_provider: None,
-                alloys: vec![],
             })
             .await;
 
@@ -199,7 +197,6 @@ mod tests {
                 providers: vec![],
                 aliases: vec![],
                 default_provider: None,
-                alloys: vec![],
             })
             .await;
 
@@ -227,7 +224,6 @@ mod tests {
                 providers: vec![],
                 aliases: vec![],
                 default_provider: None,
-                alloys: vec![],
             })
             .await;
 
@@ -266,7 +262,6 @@ mod tests {
                 providers: vec![],
                 aliases: vec![],
                 default_provider: None,
-                alloys: vec![],
             })
             .await;
 
@@ -310,7 +305,6 @@ mod tests {
                 providers: vec![],
                 aliases: vec![],
                 default_provider: None,
-                alloys: vec![],
             })
             .await;
 
@@ -336,7 +330,6 @@ mod tests {
                 providers: vec![],
                 aliases: vec![],
                 default_provider: None,
-                alloys: vec![],
             })
             .await;
 
@@ -373,7 +366,6 @@ mod tests {
                 providers: vec![],
                 aliases: vec![],
                 default_provider: None,
-                alloys: vec![],
             })
             .await;
 
