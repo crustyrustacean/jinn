@@ -55,9 +55,13 @@ pub(super) fn render_badges(frame: &mut Frame<'_>, input_area: Rect, ctx: &Rende
 
 /// Builds the JSON ctx handed to `on_chat_input_badges_render`.
 ///
-/// `active_session_id` is what the user is currently looking at; `mode` lets a
-/// plugin gate its presentation on the current scope (e.g. dim a hotkey legend
-/// outside Input mode). The host provides the data; the plugin decides styling.
+/// The `session_id` (canonical) and `active_session_id` (legacy alias) both
+/// carry what the user is currently looking at; `mode` lets a plugin gate its
+/// presentation on the current scope (e.g. dim a hotkey legend outside Input
+/// mode). The `session_id` key is what [`ProvidesSessionId`] reads to scope
+/// `plugin_data` lookups, so the sync badge hook sees the same session-scoped
+/// bucket that async hooks (e.g. `on_enrich`) write to. The host provides the
+/// data; the plugin decides styling.
 fn build_badge_ctx(ctx: &RenderCtx) -> serde_json::Value {
     let sid = ctx.state.session.active_session_id().clone();
     let mode = ctx.state.frontend.scope_stack.current().mode();
@@ -72,6 +76,7 @@ fn build_badge_ctx(ctx: &RenderCtx) -> serde_json::Value {
         .collect();
 
     serde_json::json!({
+        "session_id": sid.to_string(),
         "active_session_id": sid.to_string(),
         "mode": mode.to_string(),
         "theme_styles": serde_json::Value::Object(theme_styles),
@@ -305,6 +310,26 @@ mod tests {
         let v = build_badge_ctx(&ctx);
         // Then mode is the lowercase scope-mode string.
         assert_eq!(v["mode"], serde_json::json!("input"));
+    }
+
+    #[test]
+    fn badge_ctx_carries_canonical_session_id_key() {
+        // Given a default state (one session, that session active).
+        let state = AppState::default();
+        let ctx = RenderCtx::new(&state);
+        // When building the badge ctx.
+        let v = build_badge_ctx(&ctx);
+        // Then the canonical `session_id` key is present and matches the
+        // active session. This key is what `ProvidesSessionId::session_id()`
+        // reads to scope `plugin_data` lookups — without it the badge reads
+        // the global bucket and never sees session-scoped writes (e.g. the
+        // enriching status from `on_enrich`).
+        let active = ctx.state.session.active_session_id().to_string();
+        assert_eq!(
+            v["session_id"].as_str(),
+            Some(active.as_str()),
+            "badge ctx must carry the canonical session_id key"
+        );
     }
 
     #[test]

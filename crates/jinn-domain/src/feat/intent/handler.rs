@@ -328,6 +328,10 @@ impl IntentHandler {
             }
 
             // --- Chat Input ---
+            // Editing intents are no-ops when the active session's input box is disabled.
+            _ if is_chat_input_editing(intent) && state.active_chat_input().disabled() => {
+                IntentResult::empty()
+            }
             Intent::InsertChar { ch } => feat::chat_input::intent::handle_insert_char(*ch, state),
             Intent::DeleteGrapheme => feat::chat_input::intent::handle_delete_grapheme(state),
             Intent::DeleteGraphemeForward => {
@@ -641,6 +645,32 @@ impl IntentHandler {
     }
 }
 
+/// Returns `true` for intents that edit the chat input box (typing, deletion,
+/// cursor movement, paste, submit, mode toggle). Used by the disabled-input guard.
+///
+/// Navigation and other Normal-scope intents are NOT editing intents — they must
+/// still route (e.g. `<M-e>` enrichment cancel) when the input box is disabled.
+fn is_chat_input_editing(intent: &Intent) -> bool {
+    matches!(
+        intent,
+        Intent::InsertChar { .. }
+            | Intent::DeleteGrapheme
+            | Intent::DeleteGraphemeForward
+            | Intent::SubmitMessage
+            | Intent::ToggleInputMode
+            | Intent::AutocompleteConfirm
+            | Intent::MoveCursorLeft
+            | Intent::MoveCursorRight
+            | Intent::MoveCursorToStart
+            | Intent::MoveCursorToEnd
+            | Intent::MoveCursorWordLeft
+            | Intent::MoveCursorWordRight
+            | Intent::MoveCursorUp
+            | Intent::MoveCursorDown
+            | Intent::PasteText { .. }
+    )
+}
+
 /// Returns `true` when the cursor in the sessions sidebar section is on a plugin entry.
 ///
 /// Used by session-management intents to no-op when a plugin is selected,
@@ -803,6 +833,62 @@ mod tests {
 
         // Then the buffer has the pasted text.
         assert_eq!(state.active_chat_input().text(), "hello\nworld");
+        assert!(result.message_names.is_empty());
+    }
+
+    #[rstest::rstest]
+    fn disabled_input_box_rejects_insert_char() {
+        // Given an AppState in Input scope with the input box disabled.
+        let mut state = AppState::default();
+        state
+            .frontend
+            .scope_stack
+            .push(crate::common::app_state::FocusScope::Input);
+        state.active_chat_input_mut().set_enabled(false);
+
+        // When handling InsertChar.
+        let result = IntentHandler::handle(&Intent::InsertChar { ch: 'x' }, &mut state, None);
+
+        // Then the buffer is empty (edit rejected) and no commands are emitted.
+        assert!(state.active_chat_input().is_empty());
+        assert!(result.message_names.is_empty());
+    }
+
+    #[rstest::rstest]
+    fn enabled_input_box_accepts_insert_char() {
+        // Given an AppState in Input scope with the input box enabled.
+        let mut state = AppState::default();
+        state
+            .frontend
+            .scope_stack
+            .push(crate::common::app_state::FocusScope::Input);
+        state.active_chat_input_mut().set_enabled(false);
+        state.active_chat_input_mut().set_enabled(true);
+
+        // When handling InsertChar.
+        let result = IntentHandler::handle(&Intent::InsertChar { ch: 'x' }, &mut state, None);
+
+        // Then the buffer has the inserted char.
+        assert_eq!(state.active_chat_input().text(), "x");
+    }
+
+    #[rstest::rstest]
+    fn disabled_input_box_does_not_block_normal_scope() {
+        // Given an AppState in Normal scope with the input box disabled.
+        let mut state = AppState::default();
+        state.active_chat_input_mut().set_enabled(false);
+
+        // When handling EnterNormalMode (a non-editing intent).
+        let result = IntentHandler::handle(&Intent::EnterNormalMode, &mut state, None);
+
+        // Then the intent still routes — the gate is editing-only.
+        assert!(
+            matches!(
+                state.frontend.scope_stack.current(),
+                crate::common::app_state::FocusScope::Normal
+            ),
+            "Normal intent should still route when input box is disabled"
+        );
         assert!(result.message_names.is_empty());
     }
 

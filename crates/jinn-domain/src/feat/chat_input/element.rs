@@ -35,7 +35,11 @@ impl UiElement for ChatInputBoxElement {
         let input_mode = state.frontend.scope_stack.current().mode() == Mode::Input;
         let theme = &state.frontend.theme;
 
-        let prompt_style = if input_mode {
+        let disabled = state.active_chat_input().disabled();
+
+        let prompt_style = if disabled {
+            Style::default().fg(theme.muted_text)
+        } else if input_mode {
             Style::default()
                 .fg(theme.focus_accent)
                 .add_modifier(Modifier::BOLD)
@@ -43,13 +47,19 @@ impl UiElement for ChatInputBoxElement {
             Style::default().add_modifier(Modifier::BOLD)
         };
 
-        let border_style = if input_mode {
+        let text_style = if disabled {
+            Style::default().fg(theme.muted_text)
+        } else {
+            Style::default()
+        };
+
+        let border_style = if disabled {
+            Style::default().fg(theme.muted_text)
+        } else if input_mode {
             Style::default().fg(theme.focus_accent)
         } else {
             Style::default().fg(theme.border_unfocused)
         };
-
-        let text_style = Style::default();
 
         let badge_line = {
             use crate::feat::chat_input::state::chat_input_box::InputMode;

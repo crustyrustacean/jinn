@@ -20,6 +20,9 @@
 //! from the tokio-side request handler. This is why the thread runs inside
 //! a `LocalSet` — to allow async/await without `Send` bounds.
 
+use serde_json::json;
+use tokio::select;
+
 use std::collections::HashMap;
 use std::path::PathBuf;
 
@@ -47,6 +50,7 @@ pub type RequestHandler = std::sync::Arc<
     dyn Fn(
             &str,
             &serde_json::Value,
+            Option<tokio_util::sync::CancellationToken>,
         ) -> std::pin::Pin<
             std::boxed::Box<dyn std::future::Future<Output = serde_json::Value> + Send>,
         > + Send
@@ -84,6 +88,8 @@ struct ThreadState {
     emit_tx: kanal::AsyncSender<PluginCommand>,
     /// Request handler.
     request_handler: RequestHandler,
+    /// Shared in-flight-request registry (for ctx.cancel / cancellable ctx.request).
+    in_flight: super::InFlightRequests,
 }
 
 /// Run the async plugin thread.
@@ -99,6 +105,7 @@ pub(crate) fn run_async_thread(
     plugin_data: PluginData,
     emit_tx: kanal::AsyncSender<PluginCommand>,
     request_handler: RequestHandler,
+    in_flight: super::InFlightRequests,
 ) {
     let rt = match Runtime::new() {
         Ok(r) => r,
@@ -125,6 +132,7 @@ pub(crate) fn run_async_thread(
         plugin_data,
         emit_tx,
         request_handler,
+        in_flight,
     };
 
     let local = tokio::task::LocalSet::new();
@@ -139,7 +147,11 @@ pub(crate) fn run_async_thread(
 async fn async_thread_loop(rx: kanal::AsyncReceiver<PluginJob>, mut state: ThreadState) {
     loop {
         match rx.recv().await {
-            Ok(job) => execute_plugin_job(&mut state, job).await,
+            Ok(job) => {
+                tracing::debug!("async loop: job dequeued");
+                execute_plugin_job(&mut state, job).await;
+                tracing::debug!("async loop: job completed");
+            }
             Err(_) => {
                 tracing::debug!("plugin thread shutting down (channel closed)");
                 break;
@@ -265,6 +277,7 @@ fn execute_plugin_tool(
         &state.plugin_data,
         &state.emit_tx,
         &state.request_handler,
+        &state.in_flight,
         Some(&data_scope_id),
     )
     .map_err(|e| Report::new(PluginError).attach(e.to_string()))
@@ -371,6 +384,7 @@ async fn run_hooks_fire(
             &state.plugin_data,
             &state.emit_tx,
             &state.request_handler,
+            &state.in_flight,
         )
         .await?;
     }
@@ -391,6 +405,7 @@ async fn run_hooks_fire(
                 &state.plugin_data,
                 &state.emit_tx,
                 &state.request_handler,
+                &state.in_flight,
             )
             .await?;
         }
@@ -418,6 +433,7 @@ async fn run_hooks_collect(
             &state.plugin_data,
             &state.emit_tx,
             &state.request_handler,
+            &state.in_flight,
         )
         .await
         {
@@ -449,6 +465,7 @@ async fn run_hooks_collect(
                 &state.plugin_data,
                 &state.emit_tx,
                 &state.request_handler,
+                &state.in_flight,
             )
             .await
             {
@@ -487,6 +504,7 @@ async fn run_single_hook(
     plugin_data: &PluginData,
     emit_tx: &kanal::AsyncSender<PluginCommand>,
     request_handler: &RequestHandler,
+    in_flight: &super::InFlightRequests,
 ) -> Result<Option<mlua::Value>, Report<PluginError>> {
     let table_opt: Option<mlua::Table> = lua
         .registry_value::<Option<mlua::Table>>(plugin_hooks.table())
@@ -523,6 +541,7 @@ async fn run_single_hook(
         plugin_data,
         emit_tx,
         request_handler,
+        in_flight,
         session_id.as_ref(),
     )
     .map_err(|e| Report::new(PluginError).attach(e.to_string()))
@@ -547,6 +566,38 @@ async fn run_single_hook(
     }
 }
 
+/// Run a single request: register token (if task given), race handler future
+/// against the token via `select!`, run cleanup on cancel. Returns the result
+/// envelope (`{ok, value}` or `{ok:false, error}`).
+///
+/// Used by both `ctx.request` (inline await) and `ctx.gather` (spawned + joined).
+async fn run_request(
+    handler: &RequestHandler,
+    in_flight: &super::InFlightRequests,
+    name: &str,
+    data: serde_json::Value,
+    task: Option<String>,
+) -> serde_json::Value {
+    match task.as_deref() {
+        Some(task) => {
+            tracing::debug!(task, request = name, "run_request: registering");
+            let token = in_flight.register(task);
+            select! {
+                r = handler(name, &data, Some(token.clone())) => {
+                    tracing::debug!(task, "run_request: handler returned; removing");
+                    in_flight.remove(task);
+                    r
+                }
+                _ = token.cancelled() => {
+                    tracing::debug!(task, "run_request: cancel token fired — handler future dropped");
+                    json!({"ok": false, "error": "cancelled"})
+                }
+            }
+        }
+        None => handler(name, &data, None).await,
+    }
+}
+
 /// Build the ctx table for an async hook call.
 ///
 /// `ctx.request()`, `ctx.set_plugin_data()`, and `ctx.merge_plugin_data()`.
@@ -557,6 +608,7 @@ fn build_async_ctx(
     plugin_data: &PluginData,
     emit_tx: &kanal::AsyncSender<PluginCommand>,
     request_handler: &RequestHandler,
+    in_flight: &super::InFlightRequests,
     session_id: Option<&SessionId>,
 ) -> Result<mlua::Table, mlua::Error> {
     let ctx = lua.create_table()?;
@@ -590,19 +642,96 @@ fn build_async_ctx(
         ctx.set("emit", emit_fn)?;
     }
 
-    // ctx.request(name, data) → yields coroutine, awaits response.
+    // ctx.request(name, data, opts?) → yields coroutine, awaits response.
+    //
+    // `opts` is an optional table with key `task` (string). When present, the
+    // request is registered under that task name in the in-flight registry and
+    // the handler future races against a cancellation token. This lets
+    // `ctx.cancel(task)` abort the in-flight request from any hook (sync or
+    // async) and lets `ctx.gather` await multiple requests concurrently.
     {
         let handler = request_handler.clone();
-        let request_fn =
-            lua.create_async_function(move |lua, (name, data): (String, mlua::Value)| {
+        let in_flight = in_flight.clone();
+        let request_fn = lua.create_async_function(
+            move |lua, (name, data, opts): (String, mlua::Value, Option<mlua::Table>)| {
                 let handler = handler.clone();
+                let in_flight = in_flight.clone();
                 async move {
                     let json_data = bindings::value_to_json(&lua, &data).unwrap_or_default();
-                    let response = handler(&name, &json_data).await;
+                    let task: Option<String> =
+                        opts.as_ref().and_then(|o| o.get::<String>("task").ok());
+                    let response = run_request(&handler, &in_flight, &name, json_data, task).await;
                     bindings::json_to_lua_value(&lua, &response)
                 }
-            })?;
+            },
+        )?;
         ctx.set("request", request_fn)?;
+    }
+
+    // ctx.gather(specs) → run N requests concurrently, await all, return array.
+    //
+    // `specs` is a Lua array of tables: `{ name=.., data=.., opts={task=..} }`.
+    // Each request runs as an independent spawned task racing its own token;
+    // cancelling one task (via `ctx.cancel`) aborts only that request.
+    // Returns a Lua array of results (same envelope shape as `ctx.request`),
+    // in input order.
+    {
+        let handler = request_handler.clone();
+        let in_flight = in_flight.clone();
+        let gather_fn = lua.create_async_function(move |lua, specs: mlua::Table| {
+            let handler = handler.clone();
+            let in_flight = in_flight.clone();
+            async move {
+                // Collect request specs into owned values before spawning.
+                let mut specs_owned: Vec<(String, serde_json::Value, Option<String>)> = Vec::new();
+                for pair in specs.sequence_values::<mlua::Table>() {
+                    let t = pair.map_err(|e| mlua::Error::external(format!("gather spec: {e}")))?;
+                    let name: String = t.get("name")?;
+                    let data_val: mlua::Value = t.get("data").unwrap_or(mlua::Value::Nil);
+                    let data = bindings::value_to_json(&lua, &data_val).unwrap_or_default();
+                    let opts: Option<mlua::Table> = t.get("opts").ok();
+                    let task = opts.as_ref().and_then(|o| o.get::<String>("task").ok());
+                    specs_owned.push((name, data, task));
+                }
+
+                // Spawn each request concurrently and collect handles.
+                let mut handles = Vec::new();
+                for (name, data, task) in specs_owned {
+                    let handler = handler.clone();
+                    let in_flight = in_flight.clone();
+                    handles.push(tokio::spawn(async move {
+                        run_request(&handler, &in_flight, &name, data, task).await
+                    }));
+                }
+
+                // Await all and build the result array.
+                let results: Vec<serde_json::Value> = futures::future::join_all(handles)
+                    .await
+                    .into_iter()
+                    .map(|r| {
+                        r.unwrap_or_else(
+                            |_| serde_json::json!({"ok": false, "error": "task panicked"}),
+                        )
+                    })
+                    .collect();
+                bindings::json_to_lua_value(&lua, &serde_json::Value::Array(results))
+            }
+        })?;
+        ctx.set("gather", gather_fn)?;
+    }
+
+    // ctx.cancel(task) → fire the in-flight request's token, remove its entry.
+    //
+    // Sync-safe: just fires the token (no .await). The cancelled request's
+    // spawned future (in `ctx.request`/`ctx.gather`) observes the cancellation
+    // via its `select!` arm and publishes `CancelStream` there.
+    {
+        let in_flight = in_flight.clone();
+        let cancel_fn = lua.create_function(move |_, task: String| {
+            in_flight.cancel(&task);
+            Ok(())
+        })?;
+        ctx.set("cancel", cancel_fn)?;
     }
 
     // ctx.set_plugin_data(value) — writes to shared DashMap.

@@ -509,7 +509,7 @@ mod tests {
             // command_dispatcher — unused by keybind binding.
             std::sync::Arc::new(|_cmd| {}),
             // request_handler — unused by keybind binding.
-            std::sync::Arc::new(|_n, _d| Box::pin(async { serde_json::Value::Null })),
+            std::sync::Arc::new(|_n, _d, _cancel| Box::pin(async { serde_json::Value::Null })),
         );
         std::mem::forget(rt);
 
@@ -568,7 +568,7 @@ mod tests {
             Path::new("/nonexistent"),
             rt.handle().clone(),
             std::sync::Arc::new(|_cmd| {}),
-            std::sync::Arc::new(|_n, _d| Box::pin(async { serde_json::Value::Null })),
+            std::sync::Arc::new(|_n, _d, _cancel| Box::pin(async { serde_json::Value::Null })),
         );
         std::mem::forget(rt);
 

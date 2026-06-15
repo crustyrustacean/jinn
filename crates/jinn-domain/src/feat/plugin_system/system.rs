@@ -128,6 +128,8 @@ impl PluginSystem {
         let async_plugin_data = plugin_data.clone();
         let async_emit_tx = emit_tx.clone_async();
         let async_request_handler = request_handler.clone();
+        let in_flight = super::InFlightRequests::new();
+        let async_in_flight = in_flight.clone();
 
         #[expect(
             clippy::expect_used,
@@ -147,13 +149,20 @@ impl PluginSystem {
                     async_plugin_data,
                     async_emit_tx,
                     async_request_handler,
+                    async_in_flight,
                 );
             })
             .expect("spawn plugin-async thread");
 
-        let sync = SyncPlugins::new(sync_lua, sync_result.hooks, plugin_data.clone(), emit_tx);
+        let sync = SyncPlugins::new(
+            sync_lua,
+            sync_result.hooks,
+            plugin_data.clone(),
+            emit_tx,
+            in_flight.clone(),
+        );
 
-        let async_handle = AsyncPluginHandle::new(job_tx.clone(), plugin_data);
+        let async_handle = AsyncPluginHandle::new(job_tx.clone(), plugin_data, in_flight.clone());
 
         // clone_sync() preserves the async sender while creating a new sync
         // sender sharing the same channel internal.

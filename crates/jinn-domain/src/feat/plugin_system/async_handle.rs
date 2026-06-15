@@ -11,6 +11,7 @@ use serde::de::DeserializeOwned;
 use tokio::sync::oneshot;
 use wherror::Error;
 
+use super::in_flight_requests::InFlightRequests;
 use super::plugin_data::PluginData;
 
 /// Result of creating a per-session plugin registry.
@@ -126,6 +127,8 @@ pub struct AsyncPluginHandle {
     tx: kanal::AsyncSender<PluginJob>,
     /// Shared plugin data store.
     plugin_data: PluginData,
+    /// Shared in-flight-request registry (for cancel from outside the plugin thread).
+    in_flight: InFlightRequests,
 }
 
 impl AsyncPluginHandle {
@@ -133,8 +136,16 @@ impl AsyncPluginHandle {
     ///
     /// Called by [`crate::PluginSystem::build`] to wire the async
     /// background-thread sender and shared plugin-data store.
-    pub(crate) fn new(tx: kanal::AsyncSender<PluginJob>, plugin_data: PluginData) -> Self {
-        Self { tx, plugin_data }
+    pub(crate) fn new(
+        tx: kanal::AsyncSender<PluginJob>,
+        plugin_data: PluginData,
+        in_flight: InFlightRequests,
+    ) -> Self {
+        Self {
+            tx,
+            plugin_data,
+            in_flight,
+        }
     }
 }
 
@@ -327,6 +338,21 @@ impl AsyncPluginHandle {
     pub fn set_plugin_data(&self, plugin_name: &str, value: serde_json::Value) {
         self.plugin_data.set(plugin_name, value);
     }
+    /// Set a plugin's data scoped to a session (replaces the entire value).
+    ///
+    /// This is the write-side counterpart of the session-scoped read used by
+    /// sync hooks (e.g. the chat-input badge). Async hooks write via the
+    /// Lua `ctx.merge_plugin_data`/`ctx.set_plugin_data` bindings, which also
+    /// scope to the hook's session.
+    pub fn set_plugin_data_for_session(
+        &self,
+        session_id: &SessionId,
+        plugin_name: &str,
+        value: serde_json::Value,
+    ) {
+        self.plugin_data
+            .set_for_session(Some(session_id), plugin_name, value);
+    }
 
     /// Get a snapshot of a plugin's data (no session scope — for global plugins).
     #[must_use]
@@ -343,6 +369,15 @@ impl AsyncPluginHandle {
     ) -> Option<serde_json::Value> {
         self.plugin_data
             .get_for_session(Some(session_id), plugin_name)
+    }
+
+    /// Cancel an in-flight request by its task name.
+    ///
+    /// Fires the request's cancellation token and removes it from the registry.
+    /// The cancelled request's future observes the cancellation via its
+    /// `select!` arm and resolves to the cancel envelope.
+    pub fn cancel_request(&self, task: &str) {
+        self.in_flight.cancel(task);
     }
     /// Execute a plugin-defined tool handler on the background thread.
     ///
