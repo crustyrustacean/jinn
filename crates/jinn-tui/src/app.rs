@@ -245,14 +245,13 @@ impl TuiApp {
                 (sid, text)
             };
             tracing::debug!(plugin = %plugin_name, action = %action, "route_intent: TriggerPlugin");
-            // Sync pre-fire hook: plugins may veto the async fire (e.g. cancel
-            // an in-flight request instead of starting a new one). Default: fire.
-            // an in-flight request instead of starting a new one). Default: fire.
-            let fire = {
+            // Sync pre-check: plugins may veto the async action (e.g. cancel
+            // an in-flight request instead of starting a new one). Default: run.
+            let run_action = {
                 use jinn_domain::call_hooks_typed;
                 #[derive(serde::Deserialize)]
                 struct KeybindTriggerResult {
-                    fire: bool,
+                    run_action: bool,
                 }
                 let ctx_json = serde_json::json!({
                     "hook": action,
@@ -267,10 +266,10 @@ impl TuiApp {
                 )
                 .into_iter()
                 .last()
-                .map(|r| r.fire)
+                .map(|r| r.run_action)
                 .unwrap_or(true)
             };
-            if fire {
+            if run_action {
                 let payload = serde_json::json!({
                     "hook": action,
                     "session_id": sid,
@@ -284,7 +283,7 @@ impl TuiApp {
                 );
                 let _ = self.core.bridge.send(closure);
             }
-            tracing::info!(fire, action = %action, "route_intent: TriggerPlugin decision");
+            tracing::info!(run_action, action = %action, "route_intent: TriggerPlugin decision");
             return;
         }
         // Send bus closures via bridge.
