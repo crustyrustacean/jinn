@@ -1713,6 +1713,7 @@ dependencies = [
  "jiff",
  "jinn-provider",
  "jinn-selection-widget",
+ "jinn-session-schema",
  "jinn-testutil",
  "jinn-theme",
  "jinn-web-fetch",

@@ -38,6 +38,28 @@ ci: lint test
 cucumber:
     cargo test --test e2e -p jinn-e2e
 
+# Rebuild the dao compile-time validation database. Run this if `#[query]`
+# validation acts stale after editing migrations in jinn-session-schema —
+# it forces jinn-domain's build.rs to recreate the DB on the next check.
+dao-db-rebuild:
+    cargo clean -p jinn-domain
+
+# Delete jinn's runtime sessions database (sessions.db + WAL/SHM sidecars).
+# Use when the dev DB lands in a weird state during development. All sessions
+# are lost. Override the directory with JINN_DATA_DIR (defaults to
+# XDG_DATA_HOME/jinn or ~/.local/share/jinn).
+db-reset:
+    #!/usr/bin/env bash
+    set -euo pipefail
+    dir="${JINN_DATA_DIR:-${XDG_DATA_HOME:-$HOME/.local/share}/jinn}"
+    for f in sessions.db sessions.db-wal sessions.db-shm; do
+        if [[ -f "$dir/$f" ]]; then
+            rm -f "$dir/$f"
+            echo "removed $dir/$f"
+        fi
+    done
+    echo "dev sessions database reset"
+
 # Build and open documentation
 docs:
     cargo doc --workspace --no-deps --open

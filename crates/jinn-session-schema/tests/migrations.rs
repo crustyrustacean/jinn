@@ -21,8 +21,14 @@ fn fresh_database_has_all_tables_and_v20() {
         .map(|r| r.expect("row"))
         .collect();
 
-    assert!(tables.contains(&"sessions".to_owned()), "sessions table missing: {tables:?}");
-    assert!(tables.contains(&"entries".to_owned()), "entries table missing: {tables:?}");
+    assert!(
+        tables.contains(&"sessions".to_owned()),
+        "sessions table missing: {tables:?}"
+    );
+    assert!(
+        tables.contains(&"entries".to_owned()),
+        "entries table missing: {tables:?}"
+    );
     assert!(
         tables.contains(&"session_history".to_owned()),
         "session_history table missing: {tables:?}",
@@ -31,7 +37,10 @@ fn fresh_database_has_all_tables_and_v20() {
         tables.contains(&"token_ledger".to_owned()),
         "token_ledger table missing: {tables:?}",
     );
-    assert!(tables.contains(&"_migrations".to_owned()), "_migrations table missing: {tables:?}");
+    assert!(
+        tables.contains(&"_migrations".to_owned()),
+        "_migrations table missing: {tables:?}"
+    );
 
     // And the highest recorded migration version is 20.
     let version: i64 = conn
@@ -79,8 +88,15 @@ fn sessions_has_nine_authoritative_columns() {
     assert_eq!(
         columns,
         vec![
-            "id", "title", "updated_at", "created_at", "parent_session", "archived", "metadata",
-            "is_automated", "persist",
+            "id",
+            "title",
+            "updated_at",
+            "created_at",
+            "parent_session",
+            "archived",
+            "metadata",
+            "is_automated",
+            "persist",
         ],
         "sessions columns after v20",
     );
