@@ -703,22 +703,28 @@ fn sorted_entries_sorts_by_model_name_within_blocks() {
     assert_eq!(result[1].provider_id, "a/zebra");
 }
 
-// --- format_footer / age_color / truncate_line tests ---
+// --- format_footers / age_color / truncate_line tests ---
 
-#[rstest::rstest]
-fn format_footer_without_timestamp_shows_never() {
-    // Given no model cache.
-    // When formatting the footer.
-    let line = format_footer(None, 80, &default_theme(), 0, false);
-
-    // Then the footer contains "Updated never".
-    let text: String = line.spans.iter().map(|s| &*s.content).collect();
-    assert!(text.contains("Updated never"));
-    assert!(text.contains("CTRL+R to refresh"));
+/// Flattens a line's spans into a single owned string for assertion.
+fn line_text(line: &ratatui::text::Line<'_>) -> String {
+    line.spans.iter().map(|s| &*s.content).collect()
 }
 
 #[rstest::rstest]
-fn format_footer_with_timestamp_shows_age() {
+fn format_footers_without_timestamp_shows_never() {
+    // Given no model cache.
+    // When formatting the footers.
+    let lines = format_footers(None, 80, &default_theme(), 0, false);
+
+    // Then line 1 contains the refresh info.
+    assert_eq!(lines.len(), 2, "footer must have exactly two lines");
+    let refresh = line_text(&lines[0]);
+    assert!(refresh.contains("Updated never"));
+    assert!(refresh.contains("CTRL+R to refresh"));
+}
+
+#[rstest::rstest]
+fn format_footers_with_timestamp_shows_age() {
     // Given a model cache with a recent timestamp (1 second ago).
     let ts = jiff::Timestamp::now()
         .checked_sub(jiff::Span::new().try_seconds(1).unwrap())
@@ -726,76 +732,70 @@ fn format_footer_with_timestamp_shows_age() {
     let mut cache = crate::feat::provider_infra::ModelCache::new();
     cache.last_updated_at = Some(ts);
 
-    // When formatting the footer.
-    let line = format_footer(Some(&cache), 120, &default_theme(), 0, false);
+    // When formatting the footers.
+    let lines = format_footers(Some(&cache), 120, &default_theme(), 0, false);
 
-    // Then the footer contains "Updated" and "ago".
-    let text: String = line.spans.iter().map(|s| &*s.content).collect();
-    assert!(text.contains("Updated"));
-    assert!(text.contains("ago"));
-    assert!(text.contains("CTRL+R to refresh"));
+    // Then line 1 contains the refresh info.
+    let refresh = line_text(&lines[0]);
+    assert!(refresh.contains("Updated"));
+    assert!(refresh.contains("ago"));
+    assert!(refresh.contains("CTRL+R to refresh"));
 }
 
 #[rstest::rstest]
-fn format_footer_truncates_to_width() {
+fn format_footers_truncates_each_line_to_width() {
     // Given no timestamp and a very narrow width.
-    // When formatting the footer with width 10.
-    let line = format_footer(None, 10, &default_theme(), 0, false);
+    // When formatting the footers with width 10.
+    let lines = format_footers(None, 10, &default_theme(), 0, false);
 
-    // Then the total character count fits within 10.
-    let total_len: usize = line
-        .spans
-        .iter()
-        .map(|s| s.content.graphemes(true).count())
-        .sum();
-    assert!(total_len <= 10);
+    // Then each line fits within 10 columns.
+    for (i, line) in lines.iter().enumerate() {
+        let total_len: usize = line
+            .spans
+            .iter()
+            .map(|s| s.content.graphemes(true).count())
+            .sum();
+        assert!(total_len <= 10, "line {i} too long: {total_len}");
+    }
 }
 
 #[rstest::rstest]
-fn format_footer_with_selected_count_shows_count() {
-    // Given alloy mode with 3 selected entries.
-    // When formatting the footer.
-    let line = format_footer(None, 120, &default_theme(), 3, true);
-
-    // Then the footer contains the selected count and TAB hint.
-    let text: String = line.spans.iter().map(|s| &*s.content).collect();
-    assert!(text.contains("3 selected"));
-    assert!(text.contains("TAB toggle"));
-}
-
-#[rstest::rstest]
-fn format_footer_single_mode_shows_alloy_toggle_hint() {
+fn format_footers_single_mode_line2_has_toggle_hint_and_enter() {
     // Given single mode (alloy_mode = false).
-    // When formatting the footer.
-    let line = format_footer(None, 120, &default_theme(), 0, false);
+    // When formatting the footers.
+    let lines = format_footers(None, 120, &default_theme(), 0, false);
 
-    // Then the footer shows the alloy-mode toggle hint, not the count.
-    let text: String = line.spans.iter().map(|s| &*s.content).collect();
+    // Then line 2 always shows the toggle hint and the single-mode enter hint.
+    let mode = line_text(&lines[1]);
     assert!(
-        text.contains("C-a alloy mode"),
-        "single hint missing: {text}"
+        mode.contains("CTRL+A (toggle alloy)"),
+        "toggle hint missing: {mode}"
     );
-    assert!(text.contains("Enter selects"), "enter hint missing: {text}");
+    assert!(mode.contains("Enter selects"), "enter hint missing: {mode}");
     assert!(
-        !text.contains("selected"),
-        "count should not show in single mode: {text}"
+        !mode.contains("selected"),
+        "count should not show in single mode: {mode}"
     );
 }
 
 #[rstest::rstest]
-fn format_footer_alloy_mode_shows_single_toggle_hint() {
-    // Given alloy mode with 2 selected entries.
-    // When formatting the footer.
-    let line = format_footer(None, 120, &default_theme(), 2, true);
+fn format_footers_alloy_mode_line2_has_toggle_hint_count_and_tab() {
+    // Given alloy mode with 3 selected entries.
+    // When formatting the footers.
+    let lines = format_footers(None, 120, &default_theme(), 3, true);
 
-    // Then the footer shows the single-mode toggle hint and enter-adds hint.
-    let text: String = line.spans.iter().map(|s| &*s.content).collect();
-    assert!(text.contains("C-a single"), "alloy hint missing: {text}");
+    // Then line 2 shows the toggle hint, the count, and the TAB hint.
+    let mode = line_text(&lines[1]);
     assert!(
-        text.contains("Enter adds+confirms"),
-        "enter hint missing: {text}"
+        mode.contains("CTRL+A (toggle alloy)"),
+        "toggle hint missing: {mode}"
     );
-    assert!(text.contains("2 selected"), "count missing: {text}");
+    assert!(mode.contains("3 selected"), "count missing: {mode}");
+    assert!(mode.contains("TAB toggle"), "tab hint missing: {mode}");
+    assert!(
+        mode.contains("Enter adds+confirms"),
+        "enter hint missing: {mode}"
+    );
 }
 
 #[rstest::rstest]

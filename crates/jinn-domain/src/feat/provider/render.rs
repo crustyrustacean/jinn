@@ -22,7 +22,7 @@ pub fn render_provider_picker(frame: &mut Frame<'_>, area: Rect, ctx: &RenderCtx
         .iter()
         .filter(|e| e.selected)
         .count();
-    let footer = entries::format_footer(
+    let footers = entries::format_footers(
         state.provider.model_cache.as_ref(),
         area.width as usize,
         &state.frontend.theme,
@@ -32,7 +32,7 @@ pub fn render_provider_picker(frame: &mut Frame<'_>, area: Rect, ctx: &RenderCtx
     let widget = SelectionWidget::new(&state.provider.provider_picker)
         .title(ratatui::text::Line::from(" Model "))
         .title_style(Style::default().fg(state.frontend.theme.popup_title))
-        .footer(footer);
+        .footers(footers);
     widget.render(frame, area);
 }
 

@@ -57,14 +57,70 @@ pub(crate) fn promote_selected_to_top(entries: &mut Vec<PickerEntry>) {
     *entries = result;
 }
 
-/// Formats the footer line showing refresh keybind, last update time, and mode hint.
+/// Formats the two footer lines for the provider picker.
 ///
-/// Returns a styled [`Line`] with the pipe separator in muted text.
-/// The right-hand spans advertise the current picker mode (single vs alloy)
-/// and its toggle/confirm semantics.
-pub fn format_footer(
+/// - Line 1: refresh info (`CTRL+R to refresh | Updated ...`).
+/// - Line 2: mode info (`CTRL+A (toggle alloy) ...`) — always starts with the
+///   toggle hint, then appends mode-specific ENTER/selection semantics.
+/// Each line is independently truncated to `width`.
+pub fn format_footers(
     model_cache: Option<&crate::feat::provider_infra::ModelCache>,
     width: usize,
+    theme: &Theme,
+    selected_count: usize,
+    alloy_mode: bool,
+) -> Vec<ratatui::text::Line<'static>> {
+    vec![
+        truncate_line(refresh_line(model_cache, theme), width),
+        truncate_line(mode_line(theme, selected_count, alloy_mode), width),
+    ]
+}
+
+/// Line 1 of the provider footer: refresh keybind + last-updated time.
+fn refresh_line(
+    model_cache: Option<&crate::feat::provider_infra::ModelCache>,
+    theme: &Theme,
+) -> ratatui::text::Line<'static> {
+    use ratatui::style::Style;
+    use ratatui::text::{Line, Span};
+
+    let gray = Style::default().fg(theme.muted_text);
+    let orange = Style::default().fg(theme.accent_action);
+    let pipe = Span::styled("|".to_owned(), gray);
+
+    let left = Span::styled("CTRL+R to refresh ".to_owned(), orange);
+
+    let ts = model_cache.and_then(|c| c.last_updated_at);
+    let right = match ts {
+        Some(ts) => {
+            let elapsed = jiff::Timestamp::now() - ts;
+            let secs = elapsed.total(jiff::Unit::Second).unwrap_or(0.0).round() as u64;
+            let duration = std::time::Duration::from_secs(secs);
+            let human = humantime::format_duration(duration);
+            let age_color = age_color(secs, theme);
+            let formatted_ts = format!("{ts:.0}");
+            let mid = format!(" Updated {formatted_ts} (");
+            let ago = format!("{human} ago)");
+            vec![
+                Span::styled(mid, gray),
+                Span::styled(ago, Style::default().fg(age_color)),
+            ]
+        }
+        None => {
+            vec![Span::styled(" Updated never".to_owned(), gray)]
+        }
+    };
+
+    let mut spans = vec![left, pipe.clone()];
+    spans.extend(right);
+    Line::from(spans)
+}
+
+/// Line 2 of the provider footer: mode info.
+///
+/// Always leads with `CTRL+A (toggle alloy)`. Single mode then shows
+/// `Enter selects`; alloy mode shows `N selected · TAB toggle · Enter adds+confirms`.
+fn mode_line(
     theme: &Theme,
     selected_count: usize,
     alloy_mode: bool,
@@ -75,79 +131,21 @@ pub fn format_footer(
     let gray = Style::default().fg(theme.muted_text);
     let orange = Style::default().fg(theme.accent_action);
 
-    // Build the right-hand span list once: selection state + mode hint.
-    // Each mode advertises its own toggle target and ENTER semantics.
-    let right_spans = mode_hint_spans(alloy_mode, selected_count, &orange, &gray);
+    let toggle = Span::styled("CTRL+A (toggle alloy)".to_owned(), orange);
 
-    let ts = model_cache.and_then(|c| c.last_updated_at);
-    if let Some(ts) = ts {
-        let elapsed = jiff::Timestamp::now() - ts;
-        let secs = elapsed.total(jiff::Unit::Second).unwrap_or(0.0).round() as u64;
-        let duration = std::time::Duration::from_secs(secs);
-        let human = humantime::format_duration(duration);
-        let age_color = age_color(secs, theme);
-
-        let formatted_ts = format!("{ts:.0}");
-
-        let left = "CTRL+R to refresh ";
-        let pipe = "|";
-        let mid = format!(" Updated {formatted_ts} (");
-        let right = format!("{human} ago)");
-
-        let line = Line::from(
-            std::iter::once(Span::styled(left.to_owned(), orange))
-                .chain(std::iter::once(Span::styled(pipe.to_owned(), gray)))
-                .chain(std::iter::once(Span::styled(mid, gray)))
-                .chain(std::iter::once(Span::styled(
-                    right,
-                    Style::default().fg(age_color),
-                )))
-                .chain(std::iter::once(Span::styled(pipe.to_owned(), gray)))
-                .chain(right_spans)
-                .collect::<Vec<_>>(),
-        );
-        truncate_line(line, width)
-    } else {
-        let left = "CTRL+R to refresh ";
-        let pipe = "|";
-        let right = " Updated never";
-
-        let line = Line::from(
-            std::iter::once(Span::styled(left.to_owned(), orange))
-                .chain(std::iter::once(Span::styled(pipe.to_owned(), gray)))
-                .chain(std::iter::once(Span::styled(right.to_owned(), gray)))
-                .chain(std::iter::once(Span::styled(pipe.to_owned(), gray)))
-                .chain(right_spans)
-                .collect::<Vec<_>>(),
-        );
-        truncate_line(line, width)
-    }
-}
-
-/// Builds the right-hand footer spans: selection count + mode hint.
-///
-/// - Single mode: `C-a alloy mode · Enter selects`
-/// - Alloy mode:  `N selected · TAB toggle · Enter adds+confirms`
-fn mode_hint_spans(
-    alloy_mode: bool,
-    selected_count: usize,
-    orange: &ratatui::style::Style,
-    gray: &ratatui::style::Style,
-) -> Vec<ratatui::text::Span<'static>> {
-    use ratatui::text::Span;
-    if alloy_mode {
+    let rest: Vec<Span<'static>> = if alloy_mode {
         vec![
-            Span::styled(format!(" {selected_count} selected"), *orange),
-            Span::styled(" \u{00b7} TAB toggle".to_owned(), *gray),
-            Span::styled(" \u{00b7} C-a single".to_owned(), *gray),
-            Span::styled(" \u{00b7} Enter adds+confirms".to_owned(), *gray),
+            Span::styled(format!(" · {selected_count} selected"), orange),
+            Span::styled(" · TAB toggle".to_owned(), gray),
+            Span::styled(" · Enter adds+confirms".to_owned(), gray),
         ]
     } else {
-        vec![
-            Span::styled(" C-a alloy mode".to_owned(), *orange),
-            Span::styled(" \u{00b7} Enter selects".to_owned(), *gray),
-        ]
-    }
+        vec![Span::styled(" · Enter selects".to_owned(), gray)]
+    };
+
+    let mut spans = vec![toggle];
+    spans.extend(rest);
+    Line::from(spans)
 }
 
 /// Returns the age-based color for the "time ago" text.
