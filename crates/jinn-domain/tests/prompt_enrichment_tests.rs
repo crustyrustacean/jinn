@@ -23,6 +23,7 @@ use jinn_domain::feat::plugin_dispatch::{HookContext, PluginSyncHooks};
 use jinn_domain::feat::plugin_system::{
     PluginCommand, PluginSystem, PluginSystemBuildResult, SyncPlugins,
 };
+use jinn_domain::protocol::SessionId;
 use parking_lot::Mutex;
 use serde_json::{Value, json};
 use std::path::{Path, PathBuf};
@@ -85,7 +86,7 @@ fn build_system_with_oneshot(stub_result: Value) -> TestSystem {
         }),
         Arc::new({
             let log = request_log.clone();
-            move |_name, _data| {
+            move |_name, _data, _cancel| {
                 *log.oneshot_calls.lock() += 1;
                 // `stub_result` is the full `ctx.request` response — the same shape
                 // `handle_plugin_request` now produces: a result envelope
@@ -132,7 +133,7 @@ async fn on_enrich_noops_on_empty_text() {
         Arc::new(move |cmd| {
             captured_for_dispatch.lock().push(cmd);
         }),
-        Arc::new(move |name, _data| {
+        Arc::new(move |name, _data, _cancel| {
             let counter = counter.clone();
             let name = name.to_owned();
             Box::pin(async move {
@@ -209,9 +210,10 @@ async fn on_enrich_two_taps_both_succeed_last_wins() {
     //
     // The plugin thread serializes jobs (run_hooks_fire awaits to completion
     // before the next job dequeues), so two fires run strictly in order and
-    // each emits its own set_chat_input. There is no supersession guard —
-    // the observable contract is simply that both succeed and the last write
-    // wins by ordering.
+    // each emits its own set_chat_input. Cancel-on-retap is handled by the
+    // sync `on_keybind_trigger` hook (tested via the TUI integration tests),
+    // not by this async-path test. This test confirms the baseline:
+    // sequential, non-overlapping fires both succeed and last-wins by ordering.
     let captured: Captured = Arc::new(Mutex::new(Vec::new()));
     let captured_for_dispatch = captured.clone();
     let rt = Box::leak(Box::new(tokio::runtime::Runtime::new().expect("runtime")));
@@ -225,7 +227,7 @@ async fn on_enrich_two_taps_both_succeed_last_wins() {
         Arc::new(move |cmd| {
             captured_for_dispatch.lock().push(cmd);
         }),
-        Arc::new(move |name, _data| {
+        Arc::new(move |name, _data, _cancel| {
             // Resolve the name decision to an owned value BEFORE the async block,
             // since `name: &str` cannot be captured by the returned future.
             let is_oneshot = name == "llm_oneshot";
@@ -404,15 +406,23 @@ async fn badge_always_returns_enrich_directive() {
 
 #[tokio::test]
 async fn badge_returns_working_when_enriching() {
-    // Given a system where the enrich plugin is actively enriching.
+    // Given a system where the enrich plugin is actively enriching for a
+    // specific session. The status is written to the SESSION-SCOPED bucket
+    // (mirroring what `on_enrich`'s `ctx.merge_plugin_data({status="enriching"})`
+    // does), and the badge ctx carries the canonical `session_id` key the host
+    // emits in production, so the sync hook reads from the matching bucket.
     let sys = build_system_with_oneshot(json!(null));
-    sys.async_handle
-        .set_plugin_data("prompt_enrichment", json!({ "status": "enriching" }));
+    let sid = jinn_domain::SessionId::from("s1".to_owned());
+    sys.async_handle.set_plugin_data_for_session(
+        &sid,
+        "prompt_enrichment",
+        json!({ "status": "enriching" }),
+    );
 
-    // When the renderer fires the badge hook.
+    // When the renderer fires the badge hook with a session_id-bearing ctx.
     let directives = sys.sync.call_hooks(
         "on_chat_input_badges_render",
-        &HookContext::from(json!({ "active_session_id": "s1", "mode": "input" })),
+        &HookContext::from(json!({ "session_id": "s1", "mode": "input" })),
     );
 
     // Then the badge text is [Working].
@@ -427,15 +437,20 @@ async fn badge_returns_working_when_enriching() {
 
 #[tokio::test]
 async fn working_badge_uses_streaming_style() {
-    // Given a system where the enrich plugin is actively enriching.
+    // Given a system where the enrich plugin is actively enriching for a
+    // specific session (session-scoped data + canonical session_id ctx, as above).
     let sys = build_system_with_oneshot(json!(null));
-    sys.async_handle
-        .set_plugin_data("prompt_enrichment", json!({ "status": "enriching" }));
+    let sid = jinn_domain::SessionId::from("s1".to_owned());
+    sys.async_handle.set_plugin_data_for_session(
+        &sid,
+        "prompt_enrichment",
+        json!({ "status": "enriching" }),
+    );
 
-    // When the renderer fires the badge hook.
+    // When the renderer fires the badge hook with a session_id-bearing ctx.
     let directives = sys.sync.call_hooks(
         "on_chat_input_badges_render",
-        &HookContext::from(json!({ "active_session_id": "s1", "mode": "input" })),
+        &HookContext::from(json!({ "session_id": "s1", "mode": "input" })),
     );
 
     // Then the Working segment is styled streaming.
@@ -458,10 +473,11 @@ async fn badge_returns_idle_enrich_when_no_plugin_data() {
     // Given a system with no plugin_data set (fresh state).
     let sys = build_system_with_oneshot(json!(null));
 
-    // When the renderer fires the badge hook.
+    // When the renderer fires the badge hook with a session_id-bearing ctx
+    // (the host always emits one in production).
     let directives = sys.sync.call_hooks(
         "on_chat_input_badges_render",
-        &HookContext::from(json!({ "active_session_id": "s1", "mode": "input" })),
+        &HookContext::from(json!({ "session_id": "s1", "mode": "input" })),
     );
 
     // Then the badge text is [Enrich] (the idle state).
@@ -471,6 +487,66 @@ async fn badge_returns_idle_enrich_when_no_plugin_data() {
     assert_eq!(
         joined, "[Enrich]",
         "badge must show [Enrich] when no plugin_data"
+    );
+}
+
+// ── cancel-on-retap integration ───────────────────────────────
+
+#[tokio::test]
+async fn enrichment_first_tap_proceeds_when_idle() {
+    // Given the real enrichment plugin, idle (status unset).
+    let sys = build_system_with_oneshot(json!({ "ok": true, "value": { "text": "rewritten" } }));
+
+    // When the sync on_keybind_trigger fires for our keybind.
+    let results = sys.sync.call_hooks(
+        "on_keybind_trigger",
+        &HookContext::from(json!({
+            "hook": "on_enrich",
+            "session_id": "s1",
+            "text": "fix the bug",
+            "keybound_plugin": "prompt_enrichment",
+        })),
+    );
+
+    // Then exactly one result, run_action=true (no veto).
+    assert_eq!(results.len(), 1, "exactly one plugin should answer");
+    let run_action = results[0].get("run_action").and_then(|v| v.as_bool());
+    assert_eq!(
+        run_action,
+        Some(true),
+        "idle state must not veto the action"
+    );
+}
+
+#[tokio::test]
+async fn enrichment_retap_cancels_inflight_and_vetoes() {
+    // Given the real enrichment plugin with status=enriching (simulating an
+    // in-flight enrichment) and an on_enrich that would otherwise complete.
+    let sys = build_system_with_oneshot(json!({ "ok": true, "value": { "text": "rewritten" } }));
+    sys.async_handle.set_plugin_data_for_session(
+        &SessionId::from("s1".to_owned()),
+        "prompt_enrichment",
+        json!({ "status": "enriching" }),
+    );
+
+    // When the sync on_keybind_trigger fires for our keybind.
+    let results = sys.sync.call_hooks(
+        "on_keybind_trigger",
+        &HookContext::from(json!({
+            "hook": "on_enrich",
+            "session_id": "s1",
+            "text": "fix the bug",
+            "keybound_plugin": "prompt_enrichment",
+        })),
+    );
+
+    // Then the hook returns run_action=false (cancel the in-flight, don't re-run).
+    assert_eq!(results.len(), 1, "exactly one plugin should answer");
+    let run_action = results[0].get("run_action").and_then(|v| v.as_bool());
+    assert_eq!(
+        run_action,
+        Some(false),
+        "enriching state must veto the action and cancel the in-flight request"
     );
 }
 

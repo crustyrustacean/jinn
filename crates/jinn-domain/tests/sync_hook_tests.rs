@@ -37,7 +37,7 @@ fn build_system_with_capture(dir: &Path) -> (SyncPlugins, Arc<Mutex<Vec<PluginCo
         Arc::new(move |cmd| {
             captured_clone.lock().push(cmd);
         }),
-        Arc::new(|_, _| Box::pin(async { serde_json::Value::Null })),
+        Arc::new(|_, _, _| Box::pin(async { serde_json::Value::Null })),
     );
     std::mem::forget(rt);
     (sync, captured)
@@ -231,4 +231,182 @@ fn attachable_plugin_sync_hook_is_loaded_and_callable() {
     // Then the attachable plugin's hook responds with the expected value.
     assert_eq!(results.len(), 1);
     assert_eq!(results[0]["session_id"], "judge-123");
+}
+
+#[test]
+fn sync_hook_can_merge_plugin_data_observable_by_subsequent_read() {
+    // Given a plugin whose sync hook writes plugin_data, then a second hook
+    // call that reads it back. Verifies sync hooks have full plugin_data
+    // write access (not read-only).
+    let dir = tempfile::tempdir().expect("tempdir");
+    write_plugin(
+        dir.path(),
+        "writer",
+        r#"
+            local M = {}
+            function M.on_filter_input(ctx)
+                ctx.merge_plugin_data({ status = "enriching" })
+                return ctx.text
+            end
+            function M.on_filter_output(ctx)
+                local pd = ctx.plugin_data or {}
+                return pd.status or "missing"
+            end
+            return M
+        "#,
+    );
+
+    let (sync, _) = build_system_with_capture(dir.path());
+
+    // When the write hook runs (writes status=enriching to plugin_data).
+    let _ = sync
+        .sync_hooks("on_filter_input")
+        .map(|h| {
+            h.call::<String>(&HookContext::from(serde_json::json!({
+                "text": "hello",
+                "session_id": "s1",
+            })))
+            .expect("hook call")
+        })
+        .collect::<Vec<_>>();
+
+    // Then a subsequent read hook (same session) observes the written value.
+    let result: Vec<String> = sync
+        .sync_hooks("on_filter_output")
+        .map(|h| {
+            h.call::<String>(&HookContext::from(serde_json::json!({
+                "session_id": "s1",
+            })))
+            .expect("hook call")
+        })
+        .collect();
+
+    assert_eq!(
+        result,
+        vec!["enriching".to_owned()],
+        "sync hook merge_plugin_data must be observable by a subsequent read"
+    );
+}
+
+// ── on_keybind_trigger ─────────────────────────────────────────────
+
+/// Deserialize helper matching the TUI's `KeybindTriggerResult { run_action: bool }`.
+#[derive(Debug, serde::Deserialize, PartialEq)]
+struct KeybindTriggerResult {
+    run_action: bool,
+}
+
+#[test]
+fn on_keybind_trigger_returns_run_action_true_when_idle() {
+    // Given a plugin whose on_keybind_trigger returns {run_action=true} when not enriching.
+    let dir = tempfile::tempdir().expect("tempdir");
+    write_plugin(
+        dir.path(),
+        "gatekeeper",
+        r#"
+            local M = {}
+            function M.on_keybind_trigger(ctx)
+                if ctx.keybound_plugin ~= "gatekeeper" then return end
+                return { run_action = true }
+            end
+            return M
+        "#,
+    );
+
+    let (sync, _) = build_system_with_capture(dir.path());
+
+    // When the hook fires for this plugin.
+    let results: Vec<KeybindTriggerResult> = sync
+        .sync_hooks("on_keybind_trigger")
+        .map(|h| {
+            h.call::<KeybindTriggerResult>(&HookContext::from(serde_json::json!({
+                "hook": "on_enrich",
+                "session_id": "s1",
+                "text": "draft",
+                "keybound_plugin": "gatekeeper",
+            })))
+            .expect("hook call")
+        })
+        .collect();
+
+    // Then exactly one result, run_action=true.
+    assert_eq!(results, vec![KeybindTriggerResult { run_action: true }]);
+}
+
+#[test]
+fn on_keybind_trigger_returns_run_action_false_to_veto() {
+    // Given a plugin whose on_keybind_trigger returns {run_action=false} to veto.
+    let dir = tempfile::tempdir().expect("tempdir");
+    write_plugin(
+        dir.path(),
+        "gatekeeper",
+        r#"
+            local M = {}
+            function M.on_keybind_trigger(ctx)
+                if ctx.keybound_plugin ~= "gatekeeper" then return end
+                return { run_action = false }
+            end
+            return M
+        "#,
+    );
+
+    let (sync, _) = build_system_with_capture(dir.path());
+
+    // When the hook fires for this plugin.
+    let results: Vec<KeybindTriggerResult> = sync
+        .sync_hooks("on_keybind_trigger")
+        .map(|h| {
+            h.call::<KeybindTriggerResult>(&HookContext::from(serde_json::json!({
+                "hook": "on_enrich",
+                "session_id": "s1",
+                "text": "draft",
+                "keybound_plugin": "gatekeeper",
+            })))
+            .expect("hook call")
+        })
+        .collect();
+
+    // Then the hook returns run_action=false — the TUI must skip the async action.
+    assert_eq!(results, vec![KeybindTriggerResult { run_action: false }]);
+}
+
+#[test]
+fn on_keybind_trigger_returns_nil_for_other_plugins() {
+    // Given a plugin that self-selects: returns {run_action} only for its own keybind.
+    let dir = tempfile::tempdir().expect("tempdir");
+    write_plugin(
+        dir.path(),
+        "gatekeeper",
+        r#"
+            local M = {}
+            function M.on_keybind_trigger(ctx)
+                if ctx.keybound_plugin ~= "gatekeeper" then return end
+                return { run_action = true }
+            end
+            return M
+        "#,
+    );
+
+    let (sync, _) = build_system_with_capture(dir.path());
+
+    // When the hook fires for a DIFFERENT plugin's keybind.
+    let results: Vec<serde_json::Value> = sync
+        .sync_hooks("on_keybind_trigger")
+        .map(|h| {
+            h.call::<serde_json::Value>(&HookContext::from(serde_json::json!({
+                "hook": "on_foo",
+                "session_id": "s1",
+                "text": "",
+                "keybound_plugin": "some_other_plugin",
+            })))
+            .expect("hook call")
+        })
+        .collect();
+
+    // Then gatekeeper returns nothing (nil) for other plugins' keybinds —
+    // call_hooks_typed filters it out, so the default (run_action=true) applies.
+    assert!(
+        results.iter().all(|r| r.is_null()),
+        "plugin must return nil for other plugins' keybinds; got {results:?}"
+    );
 }

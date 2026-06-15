@@ -148,14 +148,22 @@ impl ActorSystemBuilder {
         let handler_cell = domain_ctx_cell.clone();
         let plugin_request_handler: jinn_domain::feat::plugin_system::RequestHandler =
             std::sync::Arc::new({
-                move |name: &str, data: &serde_json::Value| {
+                move |name: &str,
+                      data: &serde_json::Value,
+                      cancel: Option<tokio_util::sync::CancellationToken>| {
                     let cell = handler_cell.clone();
                     let name = name.to_string();
                     let data = data.clone();
                     std::boxed::Box::pin(async move {
                         match cell.get() {
                             Some(ctx) => {
-                                crate::plugin_wiring::handle_plugin_request(&name, &data, ctx).await
+                                crate::plugin_wiring::handle_plugin_request(
+                                    &name,
+                                    &data,
+                                    ctx,
+                                    cancel.as_ref(),
+                                )
+                                .await
                             }
                             None => {
                                 tracing::warn!(
@@ -198,11 +206,6 @@ impl ActorSystemBuilder {
                 .collect();
             state.write().discovered_plugins = plugins;
         }
-
-        let domain_ctx_cell: std::sync::Arc<
-            std::sync::OnceLock<jinn_domain::feat::plugin_dispatch::DomainNodeContext>,
-        > = std::sync::Arc::new(std::sync::OnceLock::new());
-        let _handler_cell = domain_ctx_cell.clone();
 
         // Root supervision tree: every spawned actor becomes a supervised
         // child so that stopping the root cascades a graceful shutdown.

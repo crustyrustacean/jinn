@@ -16,6 +16,7 @@ use wherror::Error;
 use super::bindings;
 use super::command::PluginCommand;
 use super::plugin_data::PluginData;
+use crate::SessionId;
 use crate::feat::plugin_dispatch::{HookContext, PluginHookSite, ProvidesSessionId};
 
 /// Stored hook data for a loaded plugin.
@@ -109,6 +110,9 @@ pub struct SyncPlugins {
     plugin_data: PluginData,
     /// Channel for emitting commands from sync hooks.
     emit_tx: kanal::Sender<PluginCommand>,
+    /// Shared in-flight-request registry. Lets sync hooks cancel
+    /// async `ctx.request`s via `ctx.cancel(task)` (see Phase 2).
+    in_flight: super::InFlightRequests,
 }
 
 impl SyncPlugins {
@@ -121,12 +125,14 @@ impl SyncPlugins {
         hooks: HashMap<String, PluginHooks>,
         plugin_data: PluginData,
         emit_tx: kanal::Sender<PluginCommand>,
+        in_flight: super::InFlightRequests,
     ) -> Self {
         Self {
             lua,
             hooks,
             plugin_data,
             emit_tx,
+            in_flight,
         }
     }
 
@@ -139,7 +145,13 @@ impl SyncPlugins {
 impl Default for SyncPlugins {
     fn default() -> Self {
         let (emit_tx, _) = kanal::unbounded::<PluginCommand>();
-        Self::new(Lua::new(), HashMap::new(), PluginData::new(), emit_tx)
+        Self::new(
+            Lua::new(),
+            HashMap::new(),
+            PluginData::new(),
+            emit_tx,
+            super::InFlightRequests::new(),
+        )
     }
 }
 
@@ -153,8 +165,9 @@ pub struct SyncHook<'a> {
     func: mlua::Function,
     /// Shared plugin data store.
     plugin_data: &'a PluginData,
-    /// Channel for ctx.emit().
     emit_tx: kanal::Sender<PluginCommand>,
+    /// Shared in-flight-request registry for ctx.cancel().
+    in_flight: &'a super::InFlightRequests,
 }
 
 impl<'a> SyncHook<'a> {
@@ -165,6 +178,7 @@ impl<'a> SyncHook<'a> {
         func: mlua::Function,
         plugin_data: &'a PluginData,
         emit_tx: kanal::Sender<PluginCommand>,
+        in_flight: &'a super::InFlightRequests,
     ) -> Self {
         Self {
             lua,
@@ -172,6 +186,7 @@ impl<'a> SyncHook<'a> {
             func,
             plugin_data,
             emit_tx,
+            in_flight,
         }
     }
 }
@@ -226,6 +241,7 @@ impl SyncHook<'_> {
             &self.plugin_name,
             self.plugin_data,
             &self.emit_tx,
+            &self.in_flight,
         )
         .map_err(|e| Report::new(PluginSyncStateError).attach(e.to_string()))
         .attach("build ctx")?;
@@ -267,6 +283,7 @@ impl SyncPlugins {
                     f,
                     &self.plugin_data,
                     self.emit_tx.clone(),
+                    &self.in_flight,
                 )),
                 _ => None,
             }
@@ -289,6 +306,7 @@ impl SyncPlugins {
             hooks: HashMap::new(),
             plugin_data: PluginData::new(),
             emit_tx,
+            in_flight: super::InFlightRequests::new(),
         }
     }
 
@@ -384,6 +402,7 @@ pub(crate) fn build_sync_ctx(
     plugin_name: &str,
     plugin_data: &PluginData,
     emit_tx: &kanal::Sender<PluginCommand>,
+    in_flight: &super::InFlightRequests,
 ) -> Result<mlua::Table, mlua::Error> {
     let ctx = lua.create_table()?;
 
@@ -399,11 +418,11 @@ pub(crate) fn build_sync_ctx(
 
     // ctx.emit(cmd, data) — fire-and-forget via channel.
     let emit_tx = emit_tx.clone();
-    let plugin_name = plugin_name.to_owned();
+    let emit_pname = plugin_name.to_owned();
     let emit_fn = lua.create_function(move |lua, (name, data): (String, Value)| {
         let json = bindings::value_to_json(lua, &data).unwrap_or_default();
         let _ = emit_tx.send(PluginCommand {
-            plugin_name: plugin_name.clone(),
+            plugin_name: emit_pname.clone(),
             name,
             data: json,
         });
@@ -411,10 +430,73 @@ pub(crate) fn build_sync_ctx(
     })?;
     ctx.set("emit", emit_fn)?;
 
-    // NO ctx.request() — sync hooks can't do async I/O.
-    // NO ctx.set_plugin_data() — sync hooks don't write persistent data.
-    // (If needed, these can be added to the async ctx only.)
+    // ctx.cancel(task) — fire an in-flight async request's token.
+    //
+    // Sync-safe: just fires the token (no .await). The cancelled request's
+    // spawned future observes the cancellation via its `select!` arm and
+    // runs cleanup (e.g. `CancelStream`) there.
+    {
+        let in_flight = in_flight.clone();
+        let cancel_fn = lua.create_function(move |_, task: String| {
+            tracing::debug!(task = %task, "sync ctx.cancel: firing token");
+            in_flight.cancel(&task);
+            Ok(())
+        })?;
+        ctx.set("cancel", cancel_fn)?;
+    }
+    // ctx.set_plugin_data(value) — writes to shared DashMap.
+    //
+    // Sync-safe: PluginData is an Arc<DashMap>, writable from any thread.
+    // Sync hooks get the same write capabilities as async hooks; this unlocks
+    // plugins that need to manage state from a sync hook (e.g. cancel decisions
+    // in on_keybind_trigger). The session_id for scoping is extracted from ctx_json.
+    {
+        let pd = plugin_data.clone();
+        let pname = plugin_name.to_owned();
+        let sid = extract_sync_session_id(ctx_json);
+        let set_data_fn = lua.create_function(move |lua, value: mlua::Value| {
+            let json = bindings::value_to_json(lua, &value).unwrap_or_default();
+            pd.set_for_session(sid.as_ref(), &pname, json);
+            Ok(())
+        })?;
+        ctx.set("set_plugin_data", set_data_fn)?;
+    }
 
-    let _ = plugin_data;
+    // ctx.merge_plugin_data(value) — shallow-merge into shared DashMap.
+    {
+        let pd = plugin_data.clone();
+        let pname = plugin_name.to_owned();
+        let sid = extract_sync_session_id(ctx_json);
+        let merge_data_fn = lua.create_function(move |lua, value: mlua::Value| {
+            let json = bindings::value_to_json(lua, &value).unwrap_or_default();
+            pd.merge_for_session(sid.as_ref(), &pname, json);
+            Ok(())
+        })?;
+        ctx.set("merge_plugin_data", merge_data_fn)?;
+    }
+
+    // ctx.get_plugin_data() — reads the live shared DashMap.
+    {
+        let pd = plugin_data.clone();
+        let pname = plugin_name.to_owned();
+        let sid = extract_sync_session_id(ctx_json);
+        let get_data_fn = lua.create_function(move |lua, (): ()| {
+            let json = pd
+                .get_for_session(sid.as_ref(), &pname)
+                .unwrap_or_else(|| serde_json::json!({}));
+            bindings::json_to_lua_value(lua, &json)
+        })?;
+        ctx.set("get_plugin_data", get_data_fn)?;
+    }
+
     Ok(ctx)
+}
+
+/// Extract a SessionId from a sync hook's ctx JSON (the session_id field).
+/// Returns None for global plugin hooks that don't carry a session ID.
+fn extract_sync_session_id(ctx_json: &serde_json::Value) -> Option<SessionId> {
+    ctx_json
+        .get("session_id")
+        .and_then(|v| v.as_str())
+        .map(|s| SessionId::from(s.to_owned()))
 }

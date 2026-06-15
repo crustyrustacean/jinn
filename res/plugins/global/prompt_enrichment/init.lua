@@ -40,6 +40,7 @@ function M.on_enrich(ctx)
             return
         end
 
+        ctx.emit("set_chat_input_enabled", { session_id = ctx.session_id, enabled = false })
         ctx.merge_plugin_data({ status = "enriching" })
 
         local result = ctx.request("llm_oneshot", {
@@ -49,14 +50,22 @@ function M.on_enrich(ctx)
             persist = false,       -- one-shot enrichment is transient; never write to the store
             disable_tool_loop = true, -- enrichment is a pure text rewrite; never run tool loops
             timeout_ms = 30000,    -- bound a genuinely stuck model; hard-cancels the one-shot session
+        }, {
+            -- Named task so on_keybind_trigger can cancel this in-flight
+            -- request on a retap. Scoped per-session via string concat (the
+            -- enrichment plugin is global but operates per-session).
+            task = "enrich:" .. ctx.session_id,
         })
 
         if not result.ok then
-            -- Surface the error so the user knows enrichment failed.
-            ctx.emit("push_chat_entry", {
-                session_id = ctx.session_id,
-                kind = { error = result.error },
-            })
+            -- A cancel is intentional (retap); suppress the error entry.
+            -- Other errors surface so the user knows enrichment failed.
+            if result.error ~= "cancelled" then
+                ctx.emit("push_chat_entry", {
+                    session_id = ctx.session_id,
+                    kind = { error = result.error },
+                })
+            end
         elseif result.value.text ~= "" then
             ctx.emit("set_chat_input", {
                 session_id = ctx.session_id,
@@ -64,17 +73,40 @@ function M.on_enrich(ctx)
             })
         end
 
+        ctx.emit("set_chat_input_enabled", { session_id = ctx.session_id, enabled = true })
         ctx.merge_plugin_data({ status = "idle" })
     end)
 
     if not ok then
         -- Restore idle and surface the failure without crashing the fire.
+        ctx.emit("set_chat_input_enabled", { session_id = ctx.session_id, enabled = true })
         ctx.merge_plugin_data({ status = "idle" })
         ctx.emit("push_chat_entry", {
             session_id = ctx.session_id,
             kind = { error = "enrichment failed" },
         })
     end
+end
+
+
+--- Sync hook fired by Intent::TriggerPlugin before the async on_enrich fire.
+--- Lets the plugin veto the action and cancel an in-flight enrichment instead.
+---
+--- Self-selects on ctx.keybound_plugin: only this plugin's keybind is answered.
+--- Returns {run_action=false} when enriching (cancels the in-flight request);
+--- {run_action=true} otherwise (proceed to run on_enrich).
+---
+---@param ctx OnKeybindTriggerCtx
+---@return table? result `{ run_action = bool }` or nil
+function M.on_keybind_trigger(ctx)
+    -- Only answer for our own keybind.
+    if ctx.keybound_plugin ~= "prompt_enrichment" then return end
+
+    if (ctx.plugin_data or {}).status == "enriching" then
+        ctx.cancel("enrich:" .. ctx.session_id)
+        return { run_action = false }
+    end
+    return { run_action = true }
 end
 
 --- Sync hook fired by the chat-input renderer. Returns a single badge
