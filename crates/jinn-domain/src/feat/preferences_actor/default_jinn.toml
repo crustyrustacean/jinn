@@ -110,6 +110,12 @@ max_tokens = 2000
 # Each rule removes specific messages from the conversation history. Disable
 # any rule by setting `enabled = false`.
 
+[auto_prune]
+# Token threshold for accumulating pruner context-override mutations before applying them.
+# Mutations are held until their deduplicated token total reaches this value, reducing
+# server-side KV-cache rebuilds from frequent small prunes. Default: 10000.
+accumulation_threshold_tokens = 10000
+
 # ---------------------------------------------------------------------------
 # Prunes "edit" and "write" tool calls+results for a file if it is subsequently
 # read.

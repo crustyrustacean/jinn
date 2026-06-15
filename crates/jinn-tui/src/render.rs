@@ -115,6 +115,21 @@ pub fn render(app: &mut TuiApp, frame: &mut Frame<'_>) {
             .push(jinn_domain::feat::rename_session_input::render::rename_session_popup_rect(area));
     }
 
+    // Pruner accumulation threshold input popup overlay (+ selectable rect).
+    if matches!(
+        state.frontend.scope_stack.current(),
+        FocusScope::PrunerAccumulationInput
+    ) {
+        jinn_domain::feat::pruner_accumulation_input::render::render_pruner_accumulation_input(
+            frame, area, &ctx,
+        );
+        rects.push(
+            jinn_domain::feat::pruner_accumulation_input::render::pruner_accumulation_popup_rect(
+                area,
+            ),
+        );
+    }
+
     // CWD input popup overlay (+ selectable rect).
     if matches!(state.frontend.scope_stack.current(), FocusScope::CwdInput) {
         jinn_domain::feat::cwd_input::render::render_cwd_input(frame, area, &ctx);

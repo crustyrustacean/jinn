@@ -221,6 +221,8 @@ pub enum Intent {
     YankSelectedEntry,
     /// Toggle the `ignored` flag on the currently selected chat entry.
     ChatEntryIgnoreSelected,
+    /// Reset the currently selected chat entry's context override to `Default`.
+    ChatEntryResetSelected,
 
     // --- Session Lifecycle ---
     /// Run a lifecycle setup command to create a new session.
@@ -265,6 +267,27 @@ pub enum Intent {
     RenameDeleteGrapheme,
     /// Delete the grapheme after the cursor in rename input.
     RenameDeleteForward,
+
+    // --- Pruner Accumulation Input (set threshold) ---
+    /// Open the pruner accumulation threshold input popup.
+    OpenPrunerAccumulationInput,
+    /// Confirm the pruner accumulation input and persist.
+    PrunerAccumulationConfirm,
+    /// Cancel the pruner accumulation input popup.
+    PrunerAccumulationLeave,
+    /// Insert a character into the pruner accumulation input.
+    PrunerAccumulationInsertChar {
+        /// The character to insert.
+        ch: char,
+    },
+    /// Move cursor left in the pruner accumulation input.
+    PrunerAccumulationCursorLeft,
+    /// Move cursor right in the pruner accumulation input.
+    PrunerAccumulationCursorRight,
+    /// Delete the grapheme before the cursor in pruner accumulation input.
+    PrunerAccumulationDeleteGrapheme,
+    /// Delete the grapheme after the cursor in pruner accumulation input.
+    PrunerAccumulationDeleteForward,
 
     // --- CWD Input (type a path) ---
     /// Open the cwd input popup (type a directory path).
@@ -389,6 +412,7 @@ impl std::fmt::Display for Intent {
             Intent::ForkFromEntry => write!(f, "fork from entry"),
             Intent::YankSelectedEntry => write!(f, "yank entry"),
             Intent::ChatEntryIgnoreSelected => write!(f, "toggle entry in/out of context"),
+            Intent::ChatEntryResetSelected => write!(f, "reset entry to default context"),
 
             Intent::SessionLifecycleSetup { lifecycle_name, .. } => {
                 write!(f, "session lifecycle setup: {lifecycle_name}")
@@ -407,6 +431,18 @@ impl std::fmt::Display for Intent {
             Intent::RenameCursorRight => write!(f, "rename cursor right"),
             Intent::RenameDeleteGrapheme => write!(f, "rename delete"),
             Intent::RenameDeleteForward => write!(f, "rename forward delete"),
+            Intent::OpenPrunerAccumulationInput => write!(f, "set pruner accumulation threshold"),
+            Intent::PrunerAccumulationConfirm => write!(f, "pruner accumulation confirm"),
+            Intent::PrunerAccumulationLeave => write!(f, "pruner accumulation leave"),
+            Intent::PrunerAccumulationInsertChar { ch } => {
+                write!(f, "pruner accumulation insert '{ch}'")
+            }
+            Intent::PrunerAccumulationCursorLeft => write!(f, "pruner accumulation cursor left"),
+            Intent::PrunerAccumulationCursorRight => write!(f, "pruner accumulation cursor right"),
+            Intent::PrunerAccumulationDeleteGrapheme => write!(f, "pruner accumulation delete"),
+            Intent::PrunerAccumulationDeleteForward => {
+                write!(f, "pruner accumulation forward delete")
+            }
             Intent::OpenCwdInput => write!(f, "change cwd"),
             Intent::CwdInputConfirm => write!(f, "cwd input confirm"),
             Intent::CwdInputLeave => write!(f, "cwd input leave"),

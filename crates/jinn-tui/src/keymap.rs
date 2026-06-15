@@ -142,6 +142,7 @@ pub fn init() -> Keymap<KeyEvent, Scope, Intent, KeyCategory> {
             .bind("G", Intent::ScrollToBottom, KeyCategory::Navigation)
             .bind("gmr", Intent::RefreshModels, KeyCategory::Model)
             .bind("gcr", Intent::RescanPromptTemplates, KeyCategory::Context)
+            .bind("gcp", Intent::OpenPrunerAccumulationInput, KeyCategory::Context)
             .bind("<c-l>", Intent::SidebarFocus, KeyCategory::Navigation)
             .bind("<M-s>", Intent::SidebarFocusSessions, KeyCategory::Navigation)
             // Sidebar resize
@@ -149,8 +150,9 @@ pub fn init() -> Keymap<KeyEvent, Scope, Intent, KeyCategory> {
             // Minimap navigation
             // Pin selected entry
             .bind("p", Intent::ChatEntryPinSelected, KeyCategory::ChatHistory)
-            // Ignore/un-ignore selected entry
             .bind("x", Intent::ChatEntryIgnoreSelected, KeyCategory::ChatHistory)
+            // Reset selected entry to default context
+            .bind("r", Intent::ChatEntryResetSelected, KeyCategory::ChatHistory)
             // Expand/collapse tool entry
             .bind("e", Intent::ExpandToolEntry, KeyCategory::ChatHistory)
             // Toggle audit popup for the selected entry
@@ -360,6 +362,25 @@ pub fn init() -> Keymap<KeyEvent, Scope, Intent, KeyCategory> {
         .catch_all(|key: KeyEvent| {
             if let Key::Char(c) = key.key {
                 Some(Intent::RenameInsertChar { ch: c })
+            } else {
+                None
+            }
+        });
+    });
+
+    // PrunerAccumulationInput scope — numeric-only threshold input.
+    keymap.scope(Scope::PrunerAccumulationInput, |b| {
+        b
+        .bind("<esc>", Intent::PrunerAccumulationLeave, KeyCategory::General)
+        .bind("<enter>", Intent::PrunerAccumulationConfirm, KeyCategory::Input)
+        .bind("<left>", Intent::PrunerAccumulationCursorLeft, KeyCategory::Input)
+        .bind("<right>", Intent::PrunerAccumulationCursorRight, KeyCategory::Input)
+        .bind("<backspace>", Intent::PrunerAccumulationDeleteGrapheme, KeyCategory::Input)
+        .bind("<delete>", Intent::PrunerAccumulationDeleteForward, KeyCategory::Input)
+        .bind("<c-c>", Intent::CtrlClear, KeyCategory::General)
+        .catch_all(|key: KeyEvent| {
+            if let Key::Char(c) = key.key {
+                Some(Intent::PrunerAccumulationInsertChar { ch: c })
             } else {
                 None
             }
