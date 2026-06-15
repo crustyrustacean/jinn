@@ -434,12 +434,8 @@ async fn read_child_output_and_wait(
 /// Places the child in its own process group so that the
 /// kill-on-drop guard can terminate the entire group
 /// (child + all descendants) on cancel.
-fn spawn_shell_command(
-    shell: &str,
-    command: &str,
-    cwd: &std::path::Path,
-) -> std::io::Result<KillOnDrop> {
-    let mut cmd = tokio::process::Command::new(shell);
+fn spawn_shell_command(command: &str, cwd: &std::path::Path) -> std::io::Result<KillOnDrop> {
+    let mut cmd = tokio::process::Command::new("bash");
     cmd.arg("-c")
         .arg(command)
         .current_dir(cwd)
@@ -476,7 +472,7 @@ pub fn execute(call: ToolCall, ctx: ToolContext) -> BoxedToolFuture {
             return error_tool_result(call.id, call.name, "command is empty".to_owned());
         }
 
-        let (shell, cwd) = (ctx.shell.clone(), ctx.cwd.clone());
+        let cwd = ctx.cwd.clone();
 
         // Emit ToolExecutionStarted if we have a bus and session_id.
         emit_stream_event(
@@ -491,7 +487,7 @@ pub fn execute(call: ToolCall, ctx: ToolContext) -> BoxedToolFuture {
         )
         .await;
 
-        let spawn_result = spawn_shell_command(&shell, &command, &cwd);
+        let spawn_result = spawn_shell_command(&command, &cwd);
 
         let mut child = match spawn_result {
             Ok(child) => child,
@@ -595,7 +591,6 @@ mod tests {
             session_id: None,
             app_paths: crate::common::app_paths::AppPaths::default(),
             bus: None,
-            shell: "/bin/sh".to_owned(),
             max_output_lines: None,
             max_output_bytes: None,
 
@@ -623,6 +618,28 @@ mod tests {
         assert_eq!(result.tool_call_id, "call_1");
         assert!(result.success);
         assert!(result.content.contains("hello world"));
+    }
+
+    #[rstest::rstest]
+    #[tokio::test]
+    async fn execute_runs_through_bash_not_fish_or_dash() {
+        // Given a bash tool call using brace expansion (rejected by fish and dash).
+        let call = ToolCall {
+            id: "call_bash".to_owned(),
+            name: "bash".to_owned(),
+            arguments: serde_json::json!({
+                "command": "echo {1..3}"
+            })
+            .to_string(),
+        };
+
+        // When executing the bash tool.
+        let result = execute(call, test_ctx()).await;
+
+        // Then the output shows bash's brace expansion (1 2 3),
+        // proving the executor is bash, not fish or dash.
+        assert!(result.success);
+        assert!(result.content.contains("1 2 3"));
     }
 
     #[rstest::rstest]
@@ -680,7 +697,6 @@ mod tests {
             session_id: None,
             app_paths: crate::common::app_paths::AppPaths::default(),
             bus: None,
-            shell: "/bin/sh".to_owned(),
             max_output_lines: None,
             max_output_bytes: None,
 

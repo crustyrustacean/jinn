@@ -182,8 +182,6 @@ pub struct ToolOrchestratorActor {
     state: State,
     /// Runtime services.
     services: Services,
-    /// Shell binary path (captured at startup from `$SHELL`).
-    shell: String,
 }
 
 /// Dependencies for [`ToolOrchestratorActor`].
@@ -198,8 +196,6 @@ pub struct ToolOrchestratorActorDeps {
     /// Override which built-in tools to register. `None` means register all.
     /// Each entry is a tool name (e.g., `"bash"`, `"read"`, `"write"`).
     pub builtin_filter: Option<Vec<String>>,
-    /// Shell binary path (captured at startup from `$SHELL`).
-    pub shell: String,
 }
 
 /// Builds the `openrouter:web_search` tool definition from config.
@@ -278,7 +274,6 @@ impl Actor for ToolOrchestratorActor {
             pending: HashMap::new(),
             state: args.state,
             services: args.services,
-            shell: args.shell,
         };
         let all_builtins = registry::builtin_tools(&bash_config);
         let builtins: Vec<_> = if let Some(ref filter) = args.builtin_filter {
@@ -543,7 +538,6 @@ impl ToolOrchestratorActor {
             session_id: Some(session_id.clone()),
             app_paths: self.services.paths.clone(),
             bus: Some(self.bus().clone()),
-            shell: self.shell.clone(),
             max_output_lines,
             max_output_bytes,
             dispatched_at,
