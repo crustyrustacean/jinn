@@ -238,7 +238,7 @@ impl ActorSystemBuilder {
                 ),
             tempdir: None,
             bus,
-            bridge,
+            bridge: bridge.clone(),
             root_supervisor: root.clone(),
         };
 
@@ -445,7 +445,10 @@ impl ActorSystemBuilder {
                     definitions,
                     execution_only: false,
                 };
-                let _closure = jinn_domain::common::bridge::Bridge::publish_closure(msg);
+                let closure = jinn_domain::common::bridge::Bridge::publish_closure(msg);
+                if let Err(e) = bridge.clone().send(closure) {
+                    tracing::warn!(error = %e, "failed to send global plugin tool registration");
+                }
             }
         }
 
@@ -509,7 +512,10 @@ impl ActorSystemBuilder {
                     definitions,
                     execution_only: true,
                 };
-                let _closure = jinn_domain::common::bridge::Bridge::publish_closure(msg);
+                let closure = jinn_domain::common::bridge::Bridge::publish_closure(msg);
+                if let Err(e) = bridge.clone().send(closure) {
+                    tracing::warn!(error = %e, "failed to send attached plugin tool registration");
+                }
             }
         }
 

@@ -41,6 +41,13 @@ pub struct SessionEntry {
     pub is_idle: bool,
     pub last_entry_is_error: bool,
 
+    /// For plugin entries, the managed session this plugin controls
+    /// (e.g. a judge's child LLM session). Used by the sidebar preview
+    /// renderer to resolve which session to show when the cursor is on
+    /// a plugin entry. `None` for regular session entries and plugins
+    /// with no managed session.
+    pub managed_session_id: Option<SessionId>,
+
     /// Parent session ID - `None` for root sessions.
     pub parent_id: Option<SessionId>,
     /// Depth in the session tree. 0 for roots, 1 for their children, etc.
@@ -199,6 +206,7 @@ pub fn sorted_open_sessions(state: &AppState) -> Vec<SessionEntry> {
                 .history()
                 .last()
                 .is_some_and(|e| matches!(&e.kind, crate::protocol::ChatEntryKind::Error(..))),
+            managed_session_id: None,
             parent_id: session.parent_session().clone(),
             depth: 0,
             ancestor_continuations: vec![],
@@ -300,14 +308,16 @@ fn insert_plugin_entries(state: &AppState, entries: &mut Vec<SessionEntry>) {
         let plugin_count = plugins.len();
         for (j, ap) in plugins.into_iter().enumerate() {
             let is_last = j == plugin_count - 1;
-            // A plugin entry is busy when its managed session is busy
-            // (e.g. the judge's child LLM running). No managed session,
-            // or a missing one, renders as idle (the ⚡ bolt).
+            // A plugin entry is busy when its managed session is in an
+            // active phase (Sending/Streaming) or has a nonzero busy_count
+            // (e.g. the judge's child LLM running). Mirrors how regular
+            // session entries derive `is_idle`. No managed session, or a
+            // missing one, renders as idle (the ⚡ bolt).
             let is_idle = ap
                 .managed_session_id
                 .as_ref()
                 .and_then(|mid| state.session.get(mid))
-                .is_none_or(|s| !s.is_busy());
+                .is_none_or(|s| matches!(s.phase(), PhaseKind::Idle) && !s.is_busy());
             let plugin_entry = SessionEntry {
                 kind: SessionEntryKind::Plugin {
                     enabled: ap.enabled,
@@ -318,6 +328,7 @@ fn insert_plugin_entries(state: &AppState, entries: &mut Vec<SessionEntry>) {
                 created_at: parent_created_at,
                 is_idle,
                 last_entry_is_error: false,
+                managed_session_id: ap.managed_session_id.clone(),
                 parent_id: Some(parent_id.clone()),
                 depth: plugin_depth,
                 ancestor_continuations: plugin_continuations.clone(),
