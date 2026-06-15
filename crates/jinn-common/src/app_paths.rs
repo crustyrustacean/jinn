@@ -9,7 +9,7 @@
 
 use std::path::{Path, PathBuf};
 
-use super::app_info::APP_NAME;
+use crate::app_info::APP_NAME;
 
 /// Application filesystem paths.
 ///
@@ -72,7 +72,7 @@ impl AppPaths {
     }
 
     /// Sets the home directory for tests (bounds the project walk).
-    #[cfg(test)]
+    #[cfg(feature = "testing")]
     pub fn set_home_dir_for_test(&mut self, home: PathBuf) {
         self.home_dir = home;
     }
@@ -148,7 +148,7 @@ impl AppPaths {
     pub fn preferences_path(&self) -> PathBuf {
         self.config_dir
             .join(APP_NAME)
-            .join(super::app_info::PREFS_FILE_NAME)
+            .join(crate::app_info::PREFS_FILE_NAME)
     }
 
     // -- System data directories (XDG fallback) -----------------------------

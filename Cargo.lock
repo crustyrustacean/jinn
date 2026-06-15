@@ -1687,6 +1687,17 @@ dependencies = [
 ]
 
 [[package]]
+name = "jinn-common"
+version = "0.68.0"
+dependencies = [
+ "dirs",
+ "error-stack",
+ "toml",
+ "toml_edit 0.22.27",
+ "wherror",
+]
+
+[[package]]
 name = "jinn-domain"
 version = "0.68.0"
 dependencies = [
@@ -1702,6 +1713,7 @@ dependencies = [
  "fuzzy-matcher",
  "humantime",
  "jiff",
+ "jinn-common",
  "jinn-provider",
  "jinn-selection-widget",
  "jinn-testutil",

@@ -360,3 +360,18 @@ fn alt_s_in_normal_scope_focuses_sidebar_sessions() {
         Some("focus session list")
     );
 }
+
+#[test]
+fn r_in_normal_scope_resets_entry_to_default_context() {
+    // Given the keymap rooted at Normal scope.
+    let mut wk = keymap_at(Scope::Normal);
+
+    // When pressing `r`.
+    let intent = wk.handle_key(key("r"));
+
+    // Then it resolves to ChatEntryResetSelected.
+    assert_eq!(
+        intent.map(|i| i.to_string()).as_deref(),
+        Some("reset entry to default context")
+    );
+}

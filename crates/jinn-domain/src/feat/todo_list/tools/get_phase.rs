@@ -138,7 +138,6 @@ mod tests {
             session_id,
             app_paths: crate::common::app_paths::AppPaths::default(),
             bus: None,
-            shell: "/bin/bash".to_owned(),
             max_output_lines: None,
             max_output_bytes: None,
 

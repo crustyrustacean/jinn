@@ -1,9 +1,11 @@
 //! Shared infrastructure - actor framework, services, core coordination, state.
 
+// Re-export shared infra that now lives in the `jinn-common` leaf crate.
+pub use jinn_common::{app_info, app_paths, toml_patch};
+
 pub mod actor;
+
 pub mod actor_deps;
-pub mod app_info;
-pub mod app_paths;
 pub mod app_state;
 #[cfg(test)]
 mod app_state_tests;
@@ -23,7 +25,6 @@ pub mod services;
 pub mod session_map;
 pub mod state;
 pub mod system_resource;
-pub mod toml_patch;
 pub mod tui_signals;
 pub mod ui_element;
 pub mod ui_element_fake;

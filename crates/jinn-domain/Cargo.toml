@@ -6,6 +6,7 @@ edition.workspace = true
 [dependencies]
 # Internal deps
 jinn-provider = { workspace = true }
+jinn-common = { workspace = true }
 jinn-web-fetch = { workspace = true }
 jinn-selection-widget = { workspace = true }
 
@@ -60,6 +61,7 @@ kameo_actors = { workspace = true }
 rstest = { workspace = true }
 jinn-testutil = { workspace = true }
 tokio = { workspace = true, features = ["test-util"] }
+jinn-common = { workspace = true, features = ["testing"] }
 
 [target.'cfg(windows)'.dependencies]
 # kill_tree provides Toolhelp32-based process-tree termination on Windows.

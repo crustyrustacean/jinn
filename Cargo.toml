@@ -67,6 +67,7 @@ tokio = { workspace = true, features = ["full"] }
 
 # Internal
 jinn-domain = { path = "crates/jinn-domain" }
+jinn-common = { path = "crates/jinn-common" }
 
 ratatui-markdown = { path = "vendor/ratatui-markdown", features = ["markdown", "highlight", "highlight-lang-all", "highlight-pest", "mermaid"] }
 jinn-provider = { path = "crates/jinn-provider" }

@@ -14,6 +14,7 @@ pub use crate::common::focus::{FocusScope, ScopeStack};
 pub use crate::common::session_map::SessionLoadGuard;
 pub use crate::feat::context::assembly_state::ContextAssemblyState;
 pub use crate::feat::provider::ProviderState;
+pub use crate::feat::pruner_accumulation_input::state::PrunerAccumulationInputState;
 pub use crate::feat::rename_session_input::state::RenameSessionInputState;
 
 pub use crate::feat::session_lifecycle::arg_input_state::ArgInputState;
