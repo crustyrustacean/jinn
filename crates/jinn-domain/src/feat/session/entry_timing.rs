@@ -99,7 +99,8 @@ impl EntryTiming {
                 ..
             } => {
                 let span = ft.since(*dispatched_at).ok()?;
-                Some(jiff::SignedDuration::from_secs(span.get_seconds()))
+                let millis = span.total(jiff::Unit::Millisecond).ok()?;
+                Some(jiff::SignedDuration::from_millis(millis.round() as i64))
             }
         }
     }
@@ -124,7 +125,8 @@ impl EntryTiming {
                 ..
             } => {
                 let span = fin.since(*dispatched_at).ok()?;
-                Some(jiff::SignedDuration::from_secs(span.get_seconds()))
+                let millis = span.total(jiff::Unit::Millisecond).ok()?;
+                Some(jiff::SignedDuration::from_millis(millis.round() as i64))
             }
         }
     }
@@ -373,5 +375,50 @@ mod tests {
 
         // Then the duration is 15 seconds.
         assert_eq!(dur.as_secs(), 15);
+    }
+
+    #[test]
+    fn ttft_preserves_subsecond_precision() {
+        // Given a streamed timing with a 450ms gap between dispatch and first token.
+        let dispatched = "2024-01-15T10:30:00Z".parse::<Timestamp>().expect("valid");
+        let first_token = dispatched
+            .checked_add(jiff::SignedDuration::from_millis(450))
+            .expect("450ms later");
+        let timing = EntryTiming::Streamed {
+            dispatched_at: dispatched,
+            first_token_at: Some(first_token),
+            finished_at: None,
+        };
+
+        // When querying ttft.
+        let ttft = timing.ttft().expect("ttft should be present");
+
+        // Then the duration retains the sub-second part (450ms, not truncated to 0).
+        assert_eq!(ttft.as_secs(), 0);
+        assert_eq!(ttft.subsec_millis(), 450);
+    }
+
+    #[test]
+    fn total_duration_preserves_subsecond_precision() {
+        // Given a streamed timing with a 2.45s total duration.
+        let dispatched = "2024-01-15T10:30:00Z".parse::<Timestamp>().expect("valid");
+        let first_token = dispatched
+            .checked_add(jiff::SignedDuration::from_millis(200))
+            .expect("200ms later");
+        let finished = dispatched
+            .checked_add(jiff::SignedDuration::from_millis(2_450))
+            .expect("2.45s later");
+        let timing = EntryTiming::Streamed {
+            dispatched_at: dispatched,
+            first_token_at: Some(first_token),
+            finished_at: Some(finished),
+        };
+
+        // When querying total_duration.
+        let dur = timing.total_duration().expect("duration should be present");
+
+        // Then the duration is 2.45s, not truncated to 2s.
+        assert_eq!(dur.as_secs(), 2);
+        assert_eq!(dur.subsec_millis(), 450);
     }
 }
