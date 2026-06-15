@@ -38,25 +38,6 @@ ci: lint test
 cucumber:
     cargo test --test e2e -p jinn-e2e
 
-# Create a new diesel migration
-diesel-create NAME:
-    diesel migration generate {{NAME}} --migration-dir crates/jinn-domain/migrations
-
-# Run pending diesel migrations and regenerate schema.rs
-diesel-run:
-    DATABASE_URL="crates/jinn-domain/migrations/db.sqlite" diesel migration run --migration-dir crates/jinn-domain/migrations
-    rm -f crates/jinn-domain/migrations/db.sqlite
-
-# Rollback the last diesel migration and regenerate schema.rs
-diesel-rollback:
-    DATABASE_URL="crates/jinn-domain/migrations/db.sqlite" diesel migration rollback --migration-dir crates/jinn-domain/migrations
-    rm -f crates/jinn-domain/migrations/db.sqlite
-
-# Redo (rollback + re-run) the last diesel migration
-diesel-redo:
-    DATABASE_URL="crates/jinn-domain/migrations/db.sqlite" diesel migration redo --migration-dir crates/jinn-domain/migrations
-    rm -f crates/jinn-domain/migrations/db.sqlite
-
 # Build and open documentation
 docs:
     cargo doc --workspace --no-deps --open
