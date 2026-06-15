@@ -107,6 +107,8 @@ pub(crate) fn run_async_thread(
     request_handler: RequestHandler,
     in_flight: super::InFlightRequests,
 ) {
+
+    let mut global_tools = global_tools;
     let rt = match Runtime::new() {
         Ok(r) => r,
         Err(e) => {
@@ -117,11 +119,18 @@ pub(crate) fn run_async_thread(
 
     // Partition discovered plugins into global (already loaded) and attachable.
     // Global plugins were loaded into `lua` by PluginSystem::build; the remaining
-    // attachable plugins are kept here for on-demand per-session loading.
+    // attachable plugins are kept here for on-demand per-session hook loading.
     let attachable_plugins: Vec<PluginMeta> = all_plugins
         .into_iter()
         .filter(|m| m.kind == super::loader::PluginKind::Attachable)
         .collect();
+
+    // Attachable plugin tool *handlers* are stateless and run globally (like
+    // builtins), so their handler closures are loaded into the global Lua state
+    // at startup. Their *hooks* fire per-session and are loaded into a separate
+    // per-session Lua state on attach — we discard the hooks returned here.
+    let attachable_tools = load_all(&lua, &attachable_plugins).tools;
+    global_tools.extend(attachable_tools);
 
     let state = ThreadState {
         global_lua: lua,
