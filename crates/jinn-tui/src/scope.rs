@@ -51,6 +51,8 @@ pub enum Scope {
     RenameSessionInput,
     /// CWD input mode - typing a directory path.
     CwdInput,
+    /// Pruner accumulation threshold input mode - numeric input for the KV-cache gate.
+    PrunerAccumulationInput,
 
     /// Sidebar resize mode - adjusting sidebar width.
     SidebarResize,
@@ -81,6 +83,7 @@ impl std::fmt::Display for Scope {
             Self::SidebarResize => write!(f, "SidebarResize"),
             Self::RenameSessionInput => write!(f, "RenameSessionInput"),
             Self::CwdInput => write!(f, "CwdInput"),
+            Self::PrunerAccumulationInput => write!(f, "PrunerAccumulationInput"),
         }
     }
 }
@@ -111,6 +114,7 @@ impl std::str::FromStr for Scope {
             "TokenBudgetInput" => Ok(Self::TokenBudgetInput),
             "RenameSessionInput" => Ok(Self::RenameSessionInput),
             "CwdInput" => Ok(Self::CwdInput),
+            "PrunerAccumulationInput" => Ok(Self::PrunerAccumulationInput),
             "SidebarResize" => Ok(Self::SidebarResize),
 
             _ => Err(()),

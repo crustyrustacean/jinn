@@ -288,6 +288,30 @@ impl ChatEntry {
         }
     }
 
+    /// Returns the primary text this entry contributes to the assembled prompt,
+    /// mirroring the per-kind extraction in the token estimator.
+    ///
+    /// Used as a fallback for the accumulation gate's token-cost resolver when
+    /// an entry isn't in the worker token cache (rare — workers cache before
+    /// producing mutations). Returns `None` for kinds with no single primary
+    /// slice. Note this does not apply estimator prefixes; it's an approximation
+    /// for the rare cache miss.
+    #[must_use]
+    pub fn prompt_text(&self) -> Option<&str> {
+        match &self.kind {
+            ChatEntryKind::User { expanded, .. } => Some(expanded.as_str()),
+            ChatEntryKind::Assistant(t)
+            | ChatEntryKind::System(t)
+            | ChatEntryKind::Error(t)
+            | ChatEntryKind::Thinking(t)
+            | ChatEntryKind::Transient(t)
+            | ChatEntryKind::Compaction { summary: t, .. } => Some(t.as_str()),
+            ChatEntryKind::Actor { text, .. } => Some(text.as_str()),
+            ChatEntryKind::ToolCall { arguments, .. } => Some(arguments.as_str()),
+            ChatEntryKind::ToolResult { content, .. } => Some(content.as_str()),
+        }
+    }
+
     /// Create a user entry with separate display and expanded text.
     ///
     /// Use when prompt token expansion produces a different expanded text

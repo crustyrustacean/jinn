@@ -42,12 +42,14 @@ pub(in crate::feat::session::session_actor) async fn emit_history_appended(
 pub(crate) async fn test_actor() -> super::SessionPersistenceActor {
     use crate::common::app_state::AppState;
     use crate::common::state::State;
+    use crate::feat::auto_prune_worker::entry_token_cache::HistoryWorkerChatEntryTokenCache;
     use crate::feat::context::strategy::token_estimator::TiktokenCounter;
 
     super::SessionPersistenceActor {
         state: State::new(AppState::default()),
         services: crate::common::services::Services::new_fake().await,
         counter: TiktokenCounter::o200k_base(),
+        token_cache: HistoryWorkerChatEntryTokenCache::default(),
         builtin_registry: crate::feat::session_lifecycle::builtin::BuiltinRegistry::new(),
         shell: "/bin/sh".to_owned(),
         lifecycle_child: None,
@@ -61,6 +63,7 @@ pub(crate) async fn test_actor_recording() -> (
 ) {
     use crate::common::app_state::AppState;
     use crate::common::state::State;
+    use crate::feat::auto_prune_worker::entry_token_cache::HistoryWorkerChatEntryTokenCache;
     use crate::feat::context::strategy::token_estimator::TiktokenCounter;
 
     let (bus, audit) = crate::common::services::BusService::new_recording();
@@ -71,6 +74,7 @@ pub(crate) async fn test_actor_recording() -> (
             state: State::new(AppState::default()),
             services,
             counter: TiktokenCounter::o200k_base(),
+            token_cache: HistoryWorkerChatEntryTokenCache::default(),
             builtin_registry: crate::feat::session_lifecycle::builtin::BuiltinRegistry::new(),
             shell: "/bin/sh".to_owned(),
             lifecycle_child: None,
@@ -228,6 +232,7 @@ pub(crate) async fn test_actor_with_store_recording(
             state: crate::common::state::State::new(crate::common::app_state::AppState::default()),
             services,
             counter: crate::feat::context::strategy::token_estimator::TiktokenCounter::o200k_base(),
+            token_cache: crate::feat::auto_prune_worker::entry_token_cache::HistoryWorkerChatEntryTokenCache::default(),
             builtin_registry: crate::feat::session_lifecycle::builtin::BuiltinRegistry::new(),
             shell: "/bin/sh".to_owned(),
             lifecycle_child: None,
