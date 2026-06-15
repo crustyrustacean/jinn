@@ -72,6 +72,12 @@ pub struct ChatInputBoxState {
     wrap_width: usize,
     /// Scroll offset: the first visual line index that is visible.
     scroll_offset: usize,
+    /// When `true`, the input box rejects all editing intents (typing,
+    /// deletion, cursor movement, paste, submit). Set by the generic
+    /// `SetChatInputEnabled` command — any plugin or the host may disable
+    /// input for a session (e.g. while a background request runs).
+    /// Normal-scope intents (navigation, `<M-e>`, etc.) are unaffected.
+    disabled: bool,
 }
 
 impl ChatInputBoxState {
@@ -86,6 +92,7 @@ impl ChatInputBoxState {
             autocomplete: None,
             wrap_width: usize::MAX,
             scroll_offset: 0,
+            disabled: false,
         }
     }
 
@@ -122,6 +129,18 @@ impl ChatInputBoxState {
     #[must_use]
     pub fn grapheme_count(&self) -> usize {
         self.input_buffer.graphemes(true).count()
+    }
+
+    /// Returns whether editing is currently disabled for this input box.
+    #[must_use]
+    pub fn disabled(&self) -> bool {
+        self.disabled
+    }
+
+    /// Enable or disable editing. When disabled, the IntentHandler rejects all
+    /// editing intents as no-ops; the renderer dims the text.
+    pub fn set_enabled(&mut self, enabled: bool) {
+        self.disabled = !enabled;
     }
 
     /// Replaces a range of graphemes (start..end) with new text.

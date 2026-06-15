@@ -86,6 +86,7 @@ pub fn dispatch_verb(verb: &str, ctx: CmdCtx, payload: Value) -> Option<BridgeCl
         crate::feat::chat_input::protocol::command::PushChatEntry,
         crate::feat::chat_input::protocol::command::EnqueueUserMessage,
         crate::feat::chat_input::protocol::command::SetChatInputText,
+        crate::feat::chat_input::protocol::command::SetChatInputEnabled,
         crate::feat::plugin_dispatch::protocol::command::TogglePlugin,
         crate::feat::plugin_dispatch::protocol::command::SetManagedSession,
         crate::feat::session::protocol::ResetSessionHistory,
@@ -118,6 +119,10 @@ mod tests {
     #[case::set_chat_input(
         "set_chat_input",
         json!({"session_id":"s","text":"hi"})
+    )]
+    #[case::set_chat_input_enabled(
+        "set_chat_input_enabled",
+        json!({"session_id":"s","enabled":true})
     )]
     #[case::disable_plugin(
         "disable_plugin",

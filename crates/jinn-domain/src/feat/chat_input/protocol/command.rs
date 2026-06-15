@@ -169,6 +169,46 @@ impl crate::common::plugin_bridge::TryFromLua for SetChatInputText {
     }
 }
 
+/// Enable or disable the chat input box for a session.
+///
+/// When disabled, editing intents (typing, deletion, cursor movement, paste,
+/// submit) are no-ops and the renderer dims the text. Navigation and other
+/// Normal-scope intents are unaffected. Any plugin or the host may emit this.
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct SetChatInputEnabled {
+    /// The session whose input box to enable/disable.
+    pub session_id: SessionId,
+    /// `true` to re-enable editing, `false` to disable.
+    pub enabled: bool,
+}
+
+impl BusMessage for SetChatInputEnabled {}
+
+impl crate::common::plugin_bridge::TryFromLua for SetChatInputEnabled {
+    const VERB: &'static str = "set_chat_input_enabled";
+
+    fn try_from_lua(
+        ctx: crate::common::plugin_bridge::CmdCtx,
+        data: serde_json::Value,
+    ) -> Result<Self, error_stack::Report<crate::common::plugin_bridge::PluginBridgeError>> {
+        #[derive(Deserialize)]
+        struct LuaPayload {
+            session_id: SessionId,
+            enabled: bool,
+        }
+
+        let lua: LuaPayload = serde_json::from_value(data)
+            .change_context(crate::common::plugin_bridge::PluginBridgeError)
+            .attach(ctx)
+            .attach("deserialize set_chat_input_enabled payload")?;
+
+        Ok(SetChatInputEnabled {
+            session_id: lua.session_id,
+            enabled: lua.enabled,
+        })
+    }
+}
+
 #[cfg(test)]
 mod tests {
     #![allow(clippy::expect_used, clippy::panic, reason = "test code")]
