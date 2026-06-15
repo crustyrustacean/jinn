@@ -6,6 +6,63 @@
 //! as bus commands. When the LLM requests tool use, emits [`ExecuteToolBatch`]
 //! - the session actor handles the continuation via context assembly.
 
+use serde::{Deserialize, Serialize};
+
+/// Default retry configuration values.
+const DEFAULT_RETRY_MAX_RETRIES: u32 = 5;
+const DEFAULT_RETRY_BASE_DELAY_SECS: u64 = 2;
+const DEFAULT_RETRY_MAX_DELAY_SECS: u64 = 60;
+
+/// Retry configuration for LLM provider requests.
+///
+/// Serialized as `[request_retry]` in `jinn.toml`.
+/// Controls exponential backoff behavior for transient errors.
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+pub struct RequestRetryConfig {
+    /// Maximum number of retry attempts. Default: 5.
+    #[serde(default = "default_retry_max_retries")]
+    pub max_retries: u32,
+    /// Base delay in seconds for exponential backoff. Default: 2.
+    #[serde(default = "default_retry_base_delay_secs")]
+    pub base_delay_secs: u64,
+    /// Maximum delay cap in seconds. Default: 60.
+    /// Overridden by provider-supplied Retry-After / error body hints.
+    #[serde(default = "default_retry_max_delay_secs")]
+    pub max_delay_secs: u64,
+}
+
+fn default_retry_max_retries() -> u32 {
+    DEFAULT_RETRY_MAX_RETRIES
+}
+fn default_retry_base_delay_secs() -> u64 {
+    DEFAULT_RETRY_BASE_DELAY_SECS
+}
+fn default_retry_max_delay_secs() -> u64 {
+    DEFAULT_RETRY_MAX_DELAY_SECS
+}
+
+impl Default for RequestRetryConfig {
+    fn default() -> Self {
+        Self {
+            max_retries: DEFAULT_RETRY_MAX_RETRIES,
+            base_delay_secs: DEFAULT_RETRY_BASE_DELAY_SECS,
+            max_delay_secs: DEFAULT_RETRY_MAX_DELAY_SECS,
+        }
+    }
+}
+
+impl RequestRetryConfig {
+    /// Convert to the provider-crate [`jinn_provider::RetryConfig`].
+    #[must_use]
+    pub fn to_retry_config(&self) -> jinn_provider::RetryConfig {
+        jinn_provider::RetryConfig {
+            max_retries: self.max_retries,
+            base_delay: std::time::Duration::from_secs(self.base_delay_secs),
+            max_delay: std::time::Duration::from_secs(self.max_delay_secs),
+        }
+    }
+}
+
 mod session;
 
 use std::collections::HashMap;
@@ -1150,5 +1207,22 @@ mod tests {
             .iter()
             .any(|sc| sc.reason == StreamCompletedReason::Error);
         assert!(found, "stream error should emit StreamCompleted(Error)");
+    }
+
+    #[rstest::rstest]
+    fn to_retry_config_uses_actual_values_not_defaults() {
+        // Kills: replace to_retry_config with Default::default().
+        // If to_retry_config returned Default::default(), all durations would be zero.
+        let config = RequestRetryConfig {
+            max_retries: 3,
+            base_delay_secs: 5,
+            max_delay_secs: 120,
+        };
+
+        let retry = config.to_retry_config();
+
+        assert_eq!(retry.max_retries, 3);
+        assert_eq!(retry.base_delay, std::time::Duration::from_secs(5));
+        assert_eq!(retry.max_delay, std::time::Duration::from_mins(2));
     }
 }

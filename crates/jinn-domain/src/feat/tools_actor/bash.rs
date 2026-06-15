@@ -5,13 +5,46 @@
 //! and flushed every 500ms (or when the buffer exceeds 4KB) to reduce
 //! event volume and prevent dropped keystrokes from terminal overload.
 
+use serde::{Deserialize, Serialize};
+
+/// Default bash tool timeout in seconds (3 minutes).
+const DEFAULT_BASH_DEFAULT_TIMEOUT_SECS: u64 = 180;
+
+// serde default fns must return the field type (Option<u64>) even when always Some.
+#[expect(
+    clippy::unnecessary_wraps,
+    reason = "trait contract requires Result return"
+)]
+fn default_bash_default_timeout_secs() -> Option<u64> {
+    Some(DEFAULT_BASH_DEFAULT_TIMEOUT_SECS)
+}
+
+/// Bash tool configuration.
+///
+/// Serialized as `[bash]` in `jinn.toml`.
+/// Controls the default execution timeout for the `bash` builtin tool.
+/// The model can override per-call via the `timeout` JSON argument.
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+pub struct BashConfig {
+    /// Default timeout in seconds for bash commands. Default: 180 (3 minutes).
+    /// Set to `None` to disable the default timeout.
+    #[serde(default = "default_bash_default_timeout_secs")]
+    pub default_timeout_secs: Option<u64>,
+}
+
+impl Default for BashConfig {
+    fn default() -> Self {
+        Self {
+            default_timeout_secs: Some(DEFAULT_BASH_DEFAULT_TIMEOUT_SECS),
+        }
+    }
+}
 use std::fmt::Write as _;
 use std::process::Stdio;
 use std::time::Duration;
 
 use crate::common::process_kill::kill_process_tree;
 use crate::common::services::bus_service::BusService;
-use crate::feat::preferences_actor::user_preferences::BashConfig;
 use crate::feat::tools_actor::protocol::event::{ToolExecutionOutput, ToolExecutionStarted};
 use crate::feat::tools_actor::tool_types::{ToolCall, ToolContext, ToolDefinition, ToolResult};
 use crate::protocol::SessionId;
@@ -1247,4 +1280,54 @@ mod tests {
             "timeout description must not be empty"
         );
     }
+}
+
+#[test]
+fn bash_config_default_is_180_secs() {
+    // Given the default BashConfig.
+    let cfg = BashConfig::default();
+
+    // Then the default timeout is 180 seconds.
+    assert_eq!(
+        cfg.default_timeout_secs,
+        Some(180),
+        "BashConfig::default() must produce a 3-minute default timeout",
+    );
+}
+
+#[test]
+fn bash_config_toml_roundtrip_explicit_value() {
+    // Given a TOML fragment with an explicit override.
+    let toml_str = "
+            default_timeout_secs = 60
+        ";
+
+    // When parsed.
+    let cfg: BashConfig = toml::from_str(toml_str).expect("parse");
+
+    // Then the override round-trips.
+    assert_eq!(cfg.default_timeout_secs, Some(60));
+
+    // And serializing back preserves the value.
+    let reserialized = toml::to_string(&cfg).expect("serialize");
+    assert!(
+        reserialized.contains("default_timeout_secs = 60"),
+        "reserialized TOML must preserve the value; got: {reserialized}",
+    );
+}
+
+#[test]
+fn bash_config_toml_empty_table_falls_back_to_default() {
+    // Given an empty [bash] table in TOML.
+    let toml_str = "";
+
+    // When parsed.
+    let cfg: BashConfig = toml::from_str(toml_str).expect("parse");
+
+    // Then the serde default fn fires and produces 180.
+    assert_eq!(
+        cfg.default_timeout_secs,
+        Some(180),
+        "missing field should resolve via serde default fn",
+    );
 }
