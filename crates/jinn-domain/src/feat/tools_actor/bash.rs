@@ -622,6 +622,28 @@ mod tests {
 
     #[rstest::rstest]
     #[tokio::test]
+    async fn execute_runs_through_bash_not_fish_or_dash() {
+        // Given a bash tool call using brace expansion (rejected by fish and dash).
+        let call = ToolCall {
+            id: "call_bash".to_owned(),
+            name: "bash".to_owned(),
+            arguments: serde_json::json!({
+                "command": "echo {1..3}"
+            })
+            .to_string(),
+        };
+
+        // When executing the bash tool.
+        let result = execute(call, test_ctx()).await;
+
+        // Then the output shows bash's brace expansion (1 2 3),
+        // proving the executor is bash, not fish or dash.
+        assert!(result.success);
+        assert!(result.content.contains("1 2 3"));
+    }
+
+    #[rstest::rstest]
+    #[tokio::test]
     async fn execute_captures_stderr() {
         // Given a bash tool call that writes to stderr.
         let call = ToolCall {
