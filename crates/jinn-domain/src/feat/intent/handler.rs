@@ -558,6 +558,9 @@ impl IntentHandler {
             Intent::ChatEntryIgnoreSelected => {
                 feat::chat_entry_selection::intent::handle_ignore_selected(state)
             }
+            Intent::ChatEntryResetSelected => {
+                feat::chat_entry_selection::intent::handle_reset_selected(state)
+            }
 
             // --- Session Lifecycle ---
             Intent::SessionLifecycleSetup {
@@ -630,6 +633,32 @@ impl IntentHandler {
             }
             Intent::RenameDeleteForward => {
                 feat::rename_session_input::intent::handle_delete_forward(state)
+            }
+
+            // --- Pruner Accumulation Input (set threshold) ---
+            Intent::OpenPrunerAccumulationInput => {
+                feat::pruner_accumulation_input::intent::handle_enter(state)
+            }
+            Intent::PrunerAccumulationConfirm => {
+                feat::pruner_accumulation_input::intent::handle_confirm(state)
+            }
+            Intent::PrunerAccumulationLeave => {
+                feat::pruner_accumulation_input::intent::handle_leave(state)
+            }
+            Intent::PrunerAccumulationInsertChar { ch } => {
+                feat::pruner_accumulation_input::intent::handle_insert_char(state, *ch)
+            }
+            Intent::PrunerAccumulationCursorLeft => {
+                feat::pruner_accumulation_input::intent::handle_cursor_left(state)
+            }
+            Intent::PrunerAccumulationCursorRight => {
+                feat::pruner_accumulation_input::intent::handle_cursor_right(state)
+            }
+            Intent::PrunerAccumulationDeleteGrapheme => {
+                feat::pruner_accumulation_input::intent::handle_delete(state)
+            }
+            Intent::PrunerAccumulationDeleteForward => {
+                feat::pruner_accumulation_input::intent::handle_delete_forward(state)
             }
 
             // --- CWD Input (type a path) ---
