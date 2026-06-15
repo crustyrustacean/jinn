@@ -358,7 +358,6 @@ pub fn handle_reset_selected(state: &mut AppState) -> IntentResult {
         })
 }
 
-
 #[cfg(test)]
 mod tests {
     #![allow(
@@ -1282,21 +1281,27 @@ mod tests {
         let result = handle_reset_selected(&mut state);
 
         // Then persist and override events are emitted.
-        assert!(result
-            .message_names
-            .iter()
-            .any(|n| n.contains("PersistSession")));
-        assert!(result
-            .message_names
-            .iter()
-            .any(|n| n.contains("ContextOverrideChanged")));
+        assert!(
+            result
+                .message_names
+                .iter()
+                .any(|n| n.contains("PersistSession"))
+        );
+        assert!(
+            result
+                .message_names
+                .iter()
+                .any(|n| n.contains("ContextOverrideChanged"))
+        );
     }
 
     #[rstest::rstest]
     fn handle_reset_is_noop_on_already_default_entry() {
         // Given a selected entry that is already Default.
         let mut state = AppState::default();
-        state.active_session_mut().push_entry(ChatEntry::user("hello"));
+        state
+            .active_session_mut()
+            .push_entry(ChatEntry::user("hello"));
         state.active_session_mut().select_next_entry();
 
         // When handling reset selected.
@@ -1328,9 +1333,9 @@ mod tests {
     fn handle_reset_is_noop_on_pinned_entry() {
         // Given a selected pinned entry.
         let mut state = AppState::default();
-        state.active_session_mut().push_entry(
-            ChatEntry::user("hello").with_pin(PinPosition::Top),
-        );
+        state
+            .active_session_mut()
+            .push_entry(ChatEntry::user("hello").with_pin(PinPosition::Top));
         state.active_session_mut().select_next_entry();
 
         // When handling reset selected.
