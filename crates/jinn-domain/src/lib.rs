@@ -1,16 +1,18 @@
-//! The domain layer - protocol types, actors, intents, and UI elements.
+//! The domain layer - actors, intents, protocol types, and UI elements.
 //!
-//! This crate consolidates all domain types and logic into a single crate:
+//! This crate consolidates the application's domain logic:
 //!
-//! - **Protocol types** (`protocol/`) - re-exports from `jinn-protocol`:
-//!   Command/Event mega-enums, foundational value types (ChatEntry, SessionId,
-//!   Key, Mode, etc.)
-//! - **Component UI** (`component_ui/`) - UiElement trait and registry
-//! - **Domain slices** - actors, intents, UI elements, and state for each
-//!   domain (provider, session, context, tools, etc.)
+//! - **Protocol types** (`protocol/`) - cross-cutting value types shared across
+//!   feature boundaries: `Intent`, `Key`, `Mode`, and system events. Each
+//!   feature also defines its own per-type messages in a `protocol/` directory
+//!   under its feature module; the actor bus routes by `TypeId` via the marker
+//!   trait `BusMessage` (in `common/bus.rs`) rather than a central enum.
+//! - **Domain slices** (`feat/`) - vertical slices where each feature colocates
+//!   its actors, intents, UI elements, state, and messages together.
+//! - **Common** (`common/`) - shared infrastructure (bus, services, app paths,
+//!   TOML patching), most of which is re-exported from the `jinn-common` crate.
 //!
-//! Protocol types are re-exported at the crate root for convenience.
-//! `jinn_domain::Command` is the same type as `crate::protocol::Command`.
+//! Foundational types are re-exported at the crate root for convenience.
 
 pub mod common;
 pub mod feat;
