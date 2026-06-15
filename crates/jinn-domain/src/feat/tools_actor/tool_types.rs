@@ -90,7 +90,6 @@ mod tests {
             session_id: Some(crate::protocol::SessionId::new()),
             app_paths: crate::common::app_paths::AppPaths::default(),
             bus: None,
-            shell: "/bin/sh".to_owned(),
             max_output_lines: None,
             max_output_bytes: None,
             dispatched_at: jiff::Timestamp::now(),
