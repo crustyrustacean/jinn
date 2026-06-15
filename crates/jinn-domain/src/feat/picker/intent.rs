@@ -723,7 +723,8 @@ pub fn handle_skill_toggle(state: &mut AppState) -> IntentResult {
 /// Toggles the selected model's `selected` state in the provider picker.
 ///
 /// Used for multi-select alloy building. When toggled on, the entry gets a
-/// checkmark and is sorted to the top of the list. The cursor moves down after toggle.
+/// checkmark and is sorted to the top of the list. The cursor stays put so the
+/// user can toggle several adjacent entries without losing their place.
 pub fn handle_model_toggle(state: &mut AppState) -> IntentResult {
     // No-op outside alloy mode: single mode never builds checkmarks.
     if !state.provider.alloy_mode {
@@ -732,7 +733,6 @@ pub fn handle_model_toggle(state: &mut AppState) -> IntentResult {
     state.provider.provider_picker.with_selected_mut(|entry| {
         entry.selected = !entry.selected;
     });
-    state.provider.provider_picker.move_down(PICKER_MAX_VISIBLE);
 
     // Re-sort: selected entries to top, then alphabetical.
     resort_provider_picker(&mut state.provider.provider_picker);
@@ -941,7 +941,7 @@ mod tests {
         ];
         state.provider.provider_picker.set_items(entries);
         state.provider.alloy_mode = true;
-        state.provider.provider_picker.move_down(1); // Highlight first entry.
+        // Cursor starts on the first entry (selection 0) after reset.
 
         // When toggling model selection.
         handle_model_toggle(&mut state);
@@ -949,14 +949,66 @@ mod tests {
         // Then the first entry is now selected.
         let first = state.provider.provider_picker.items()[0].selected;
         assert!(first, "first entry should be selected after toggle");
-        state.provider.provider_picker.move_down(1); // Highlight first entry.
+    }
 
+    #[rstest::rstest]
+    fn handle_model_toggle_keeps_cursor_in_place() {
+        // Given a picker with two entries, cursor on the first, in alloy mode.
+        let mut state = AppState::default();
+        let origin = ChatSessionState::new();
+        state.session.insert(origin);
+        state
+            .session
+            .set_active(state.session.active_session_id().clone());
+        state.frontend.scope_stack.push(FocusScope::Picker {
+            kind: PickerKind::Provider,
+        });
+
+        let entries = vec![
+            crate::protocol::PickerEntry {
+                provider_id: "ollama/llama3".to_owned(),
+                name: "ollama".to_owned(),
+                provider_name: "ollama".to_owned(),
+                backend: "ollama".to_owned(),
+                model: "llama3".to_owned(),
+                search_text: "llama3".to_owned(),
+                is_alias: false,
+                alias_target: None,
+                is_available: true,
+                is_remote: false,
+                is_active: false,
+                selected: false,
+                theme: crate::feat::theme::default_theme(),
+            },
+            crate::protocol::PickerEntry {
+                provider_id: "openrouter/gpt-4".to_owned(),
+                name: "openrouter".to_owned(),
+                provider_name: "openrouter".to_owned(),
+                backend: "openrouter".to_owned(),
+                model: "gpt-4".to_owned(),
+                search_text: "gpt-4".to_owned(),
+                is_alias: false,
+                alias_target: None,
+                is_available: true,
+                is_remote: false,
+                is_active: false,
+                selected: false,
+                theme: crate::feat::theme::default_theme(),
+            },
+        ];
+        state.provider.provider_picker.set_items(entries);
+        state.provider.alloy_mode = true;
+        // Cursor starts on the first entry (selection 0) after reset.
+        assert_eq!(state.provider.provider_picker.selection(), 0);
         // When toggling model selection.
         handle_model_toggle(&mut state);
 
-        // Then the first entry is now selected.
-        let first = state.provider.provider_picker.items()[0].selected;
-        assert!(first, "first entry should be selected after toggle");
+        // Then the cursor stays on the first entry.
+        assert_eq!(
+            state.provider.provider_picker.selection(),
+            0,
+            "cursor should not advance after toggle"
+        );
     }
 
     #[rstest::rstest]
