@@ -368,6 +368,10 @@ impl ActorSystemBuilder {
         // Session persistence actor — must spawn before ToolOrchestratorActor so
         // ToolsRegistered subscription is ready when tools register builtins in on_start.
         let token_counter = TiktokenCounter::o200k_base();
+        // Shared entry-token cache for history workers — created here so the
+        // session actor's accumulation gate can read it too.
+        let entry_token_cache =
+            jinn_domain::feat::auto_prune_worker::HistoryWorkerChatEntryTokenCache::new();
         let _session =
             jinn_domain::feat::session::session_actor::SessionPersistenceActor::supervise(
                 &root,
@@ -375,6 +379,7 @@ impl ActorSystemBuilder {
                     deps: actor_deps.clone(),
                     state: state.clone(),
                     counter: token_counter,
+                    token_cache: entry_token_cache.clone(),
                     builtin_registry:
                         jinn_domain::feat::session_lifecycle::builtin::BuiltinRegistry::new(),
                     shell: std::env::var("SHELL").unwrap_or_else(|_| "/bin/sh".to_owned()),
@@ -393,7 +398,6 @@ impl ActorSystemBuilder {
                 state: state.clone(),
                 services: services.clone(),
                 builtin_filter: None,
-                shell: std::env::var("SHELL").unwrap_or_else(|_| "/bin/sh".to_owned()),
             },
         )
         .restart_policy(kameo::supervision::RestartPolicy::Never)
@@ -839,9 +843,7 @@ impl ActorSystemBuilder {
             }
         }
 
-        // Shared entry-token cache for history workers.
-        let entry_token_cache =
-            jinn_domain::feat::auto_prune_worker::HistoryWorkerChatEntryTokenCache::new();
+        // HistoryWorkerChatEntryTokenCache eviction actor.
 
         // HistoryWorkerChatEntryTokenCache eviction actor.
         {

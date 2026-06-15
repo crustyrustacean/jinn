@@ -346,7 +346,6 @@ mod tests {
             session_id: None,
             app_paths: crate::common::app_paths::AppPaths::default(),
             bus: None,
-            shell: "/bin/sh".to_owned(),
             max_output_lines: None,
             max_output_bytes: None,
 
@@ -441,7 +440,6 @@ mod tests {
             session_id: None,
             app_paths: crate::common::app_paths::AppPaths::default(),
             bus: None,
-            shell: "/bin/sh".to_owned(),
             max_output_lines: None,
             max_output_bytes: None,
 
@@ -524,7 +522,6 @@ mod tests {
             session_id: None,
             app_paths: crate::common::app_paths::AppPaths::default(),
             bus: None,
-            shell: "/bin/sh".to_owned(),
             max_output_lines: Some(3),
             max_output_bytes: Some(50 * 1024),
 
@@ -568,7 +565,6 @@ mod tests {
             session_id: None,
             app_paths: crate::common::app_paths::AppPaths::default(),
             bus: None,
-            shell: "/bin/sh".to_owned(),
             max_output_lines: Some(2),
             max_output_bytes: Some(50 * 1024),
 

@@ -1,0 +1,21 @@
+[package]
+name = "jinn-common"
+version.workspace = true
+edition.workspace = true
+
+[dependencies]
+toml = { workspace = true }
+toml_edit = { workspace = true }
+wherror = { workspace = true }
+error-stack = { workspace = true }
+dirs = { workspace = true }
+
+[features]
+default = []
+# Exposes test-only helpers (e.g. `AppPaths::set_home_dir_for_test`) so that downstream
+# crates can use them from their own test suites. `#[cfg(test)]` does not propagate
+# across crate boundaries, so this feature is the boundary instead.
+testing = []
+
+[lints]
+workspace = true

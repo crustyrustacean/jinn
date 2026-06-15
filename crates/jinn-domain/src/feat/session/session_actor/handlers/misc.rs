@@ -102,15 +102,83 @@ impl SessionPersistenceActor {
         if payload.mutations.is_empty() {
             return;
         }
+
+        // Resolve token costs for all incoming context-override mutations in a
+        // single read-guard pass, before taking the write lock. The cost map is
+        // then consumed by the accumulator inside the write lock without any
+        // self-borrow (which would deadlock against the held write guard).
+        let threshold = {
+            let state = self.state.read();
+            state
+                .frontend
+                .preferences
+                .auto_prune
+                .accumulation_threshold_tokens
+        };
+        let token_costs: std::collections::HashMap<crate::protocol::ChatEntryId, u32> = {
+            use crate::feat::context::strategy::token_estimator::TokenCounter;
+            let state = self.state.read();
+            let session = state.session.get(&payload.session_id);
+            payload
+                .mutations
+                .iter()
+                .filter_map(|m| match m {
+                    crate::feat::session::history_mutation::HistoryMutation::SetContextOverride { entry_id, source, .. } => {
+                        // Compaction overrides bypass the accumulator entirely,
+                        // so their cost is irrelevant — skip to avoid needless work.
+                        if is_compaction_source(source) {
+                            None
+                        } else {
+                            Some(entry_id)
+                        }
+                    }
+                    _ => None,
+                })
+                .map(|entry_id| {
+                    let cost = self
+                        .token_cache
+                        .get(&payload.session_id, entry_id)
+                        .or_else(|| {
+                            session
+                                .and_then(|s| s.history().iter().find(|e| &e.id == entry_id))
+                                .and_then(|e| e.prompt_text())
+                                .map(|t| self.counter.count(t) as u32)
+                        })
+                        .unwrap_or(0);
+                    (entry_id.clone(), cost)
+                })
+                .collect()
+        };
+
         // Capture what changed (if anything) so events can be emitted after releasing the write lock.
         let (session_id, changed) = {
             let mut state = self.state.write();
             let session = state.session_mut_or_create(&payload.session_id);
-            session.queue_mutations(payload.mutations.clone());
+
+            for mutation in payload.mutations.clone() {
+                if is_compaction_override(&mutation) || !is_context_override(&mutation) {
+                    // Compaction overrides and all non-context mutations apply
+                    // immediately (compaction is itself a context reduction).
+                    session.queue_mutations(vec![mutation]);
+                } else {
+                    // Pruner SetContextOverride: route into the accumulation buffer.
+                    if let crate::feat::session::history_mutation::HistoryMutation::SetContextOverride { entry_id, value, source } = &mutation {
+                        let cost = token_costs.get(entry_id).copied().unwrap_or(0);
+                        session.core.ephemeral.accumulated_overrides
+                            .push(entry_id.clone(), *value, source.clone(), cost);
+                    }
+                }
+            }
+
+            // Flush the accumulator if its deduplicated token total crossed the threshold.
+            session.flush_accumulated_overrides_if_needed(threshold);
+
             tracing::debug!(
                 session_id = %payload.session_id,
                 queue_len = session.core.ephemeral.pending_mutations.len(),
-                "queued history mutations from worker"
+                accumulated = session.accumulated_overrides_total(),
+                threshold,
+                "routed history mutations from worker"
             );
 
             // If the session is idle (no active stream), drain immediately.
@@ -156,6 +224,36 @@ impl SessionPersistenceActor {
     }
 }
 
+/// Whether a mutation is a `SetContextOverride` from the compaction worker.
+///
+/// Compaction overrides bypass the accumulation gate (Decision-B): holding back
+/// the gathered entries while their summary is already inserted would leave both
+/// in context and confuse the model.
+fn is_compaction_override(
+    mutation: &crate::feat::session::history_mutation::HistoryMutation,
+) -> bool {
+    use crate::feat::session::history_mutation::HistoryMutation;
+    matches!(
+        mutation,
+        HistoryMutation::SetContextOverride { source, .. } if is_compaction_source(source)
+    )
+}
+
+/// Whether a mutation is any `SetContextOverride` (the variants subject to the gate).
+fn is_context_override(mutation: &crate::feat::session::history_mutation::HistoryMutation) -> bool {
+    use crate::feat::session::history_mutation::HistoryMutation;
+    matches!(mutation, HistoryMutation::SetContextOverride { .. })
+}
+
+/// Whether a `ChangeSource` is the compaction worker.
+///
+/// Compaction overrides are exempt from the accumulation gate: compaction is
+/// itself a context reduction that must apply promptly, and holding back its
+/// excludes would leave the gathered entries and the new summary both in
+/// context simultaneously.
+fn is_compaction_source(source: &crate::feat::session::chat_entry::ChangeSource) -> bool {
+    matches!(source, crate::feat::session::chat_entry::ChangeSource::Worker { name } if name == "compaction")
+}
 /// Builds a markdown table string from the models refresh event.
 ///
 /// Format:
@@ -348,7 +446,8 @@ mod tests {
     }
 
     #[tokio::test]
-    async fn handle_submit_history_mutations_applies_immediately_when_idle() {
+    async fn handle_submit_history_mutations_buffers_subthreshold_override_when_idle() {
+        // Given a default (10_000) accumulation threshold and one user entry.
         let (actor, _audit) = test_actor_recording().await;
         let session_id = {
             let mut state = actor.state.write();
@@ -363,6 +462,7 @@ mod tests {
                 .clone()
         };
 
+        // When submitting a single sub-threshold ForcedExclude override.
         actor
             .handle_submit_history_mutations(
                 &crate::feat::session::protocol::submit_history_mutations::SubmitHistoryMutations {
@@ -378,13 +478,18 @@ mod tests {
             )
             .await;
 
+        // Then the override is buffered (not applied) and no pending batch exists.
         let state = actor.state.read();
         let session = state.session.get(&session_id).unwrap();
         assert_eq!(
             session.history()[0].context_override(),
-            crate::feat::session::chat_entry::ContextOverride::ForcedExclude
+            crate::feat::session::chat_entry::ContextOverride::Default
         );
         assert!(session.core.ephemeral.pending_mutations.is_empty());
+        assert!(
+            !session.core.ephemeral.accumulated_overrides.is_empty(),
+            "sub-threshold override should be buffered in the accumulator"
+        );
     }
 
     #[tokio::test]
@@ -435,7 +540,8 @@ mod tests {
     }
 
     #[tokio::test]
-    async fn handle_submit_history_mutations_multiple_submissions_each_applied_immediately() {
+    async fn handle_submit_history_mutations_buffers_multiple_subthreshold_submissions() {
+        // Given a default (10_000) accumulation threshold and two user entries.
         let (actor, _audit) = test_actor_recording().await;
         let session_id = {
             let mut state = actor.state.write();
@@ -457,6 +563,7 @@ mod tests {
                 .clone()
         };
 
+        // When submitting two sub-threshold overrides for distinct entries.
         actor
             .handle_submit_history_mutations(
                 &crate::feat::session::protocol::submit_history_mutations::SubmitHistoryMutations {
@@ -486,16 +593,22 @@ mod tests {
             )
             .await;
 
+        // Then both overrides are buffered (not applied); neither entry changed.
         let state = actor.state.read();
         let session = state.session.get(&session_id).unwrap();
         assert_eq!(session.core.ephemeral.pending_mutations.len(), 0);
         assert_eq!(
             session.history()[0].context_override(),
-            crate::feat::session::chat_entry::ContextOverride::ForcedExclude
+            crate::feat::session::chat_entry::ContextOverride::Default
         );
         assert_eq!(
             session.history()[1].context_override(),
-            crate::feat::session::chat_entry::ContextOverride::ForcedInclude
+            crate::feat::session::chat_entry::ContextOverride::Default
+        );
+        assert_eq!(
+            session.core.ephemeral.accumulated_overrides.len(),
+            2,
+            "both sub-threshold overrides should be buffered"
         );
     }
 
@@ -523,7 +636,7 @@ mod tests {
                     crate::feat::session::history_mutation::HistoryMutation::SetContextOverride {
                         entry_id: entry_id.clone(),
                         value: crate::feat::session::chat_entry::ContextOverride::ForcedExclude,
-                        source: ChangeSource::Worker { name: "test_worker".to_owned() },
+                        source: ChangeSource::Worker { name: "compaction".to_owned() },
                     },
                 ],
                 },
