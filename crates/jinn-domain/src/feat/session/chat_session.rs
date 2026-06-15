@@ -538,10 +538,16 @@ impl ChatSessionState {
         }
     }
 
-    /// Toggle the context override on the currently selected entry.
+    /// Toggle the context override on the currently selected entry, always
+    /// flipping the entry's *effective* in-context state.
     ///
-    /// If the entry uses the default, override to the opposite of the kind default.
-    /// If the entry is already overridden, revert to the default.
+    /// `Forced*` states flip between include and exclude. `Default` resolves to
+    /// the opposite of the current effective state ([`is_in_context`]), so the
+    /// toggle always lands on an explicit `Forced*` value — it never produces
+    /// `Default`. Resetting to `Default` is the job of the `r` reset intent.
+    ///
+    /// [`is_in_context`]: crate::feat::session::chat_entry::ChatEntry::is_in_context
+    ///
     /// Returns `Some(entry_id)` if the override was changed, `None` if no-op
     /// (entry was already in the toggled state) or no entry is selected.
     pub fn toggle_entry_ignored(&mut self) -> Option<crate::protocol::ChatEntryId> {
@@ -557,15 +563,14 @@ impl ChatSessionState {
             };
             if let Some(entry) = self.core.history.get_mut(hist_idx) {
                 let new_value = match entry.context_override() {
+                    ContextOverride::ForcedInclude => ContextOverride::ForcedExclude,
+                    ContextOverride::ForcedExclude => ContextOverride::ForcedInclude,
                     ContextOverride::Default => {
-                        if entry.kind.is_included_by_default() {
+                        if entry.is_in_context() {
                             ContextOverride::ForcedExclude
                         } else {
                             ContextOverride::ForcedInclude
                         }
-                    }
-                    ContextOverride::ForcedExclude | ContextOverride::ForcedInclude => {
-                        ContextOverride::Default
                     }
                 };
                 if entry.apply_context_override(new_value, ChangeSource::User) {
