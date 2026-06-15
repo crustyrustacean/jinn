@@ -26,8 +26,7 @@ fn clone_sees_same_providers() {
         aliases: vec![],
         default_provider: None,
     };
-    let registry = crate::registry::ProviderRegistry::from_config(config)
-        .expect("registry");
+    let registry = crate::registry::ProviderRegistry::from_config(config).expect("registry");
     let service = ProviderRegistryService::new(registry);
     let clone = service.clone();
 
@@ -73,8 +72,7 @@ fn service_with_providers() -> ProviderRegistryService {
         }],
         default_provider: None,
     };
-    let registry = crate::registry::ProviderRegistry::from_config(config)
-        .expect("registry");
+    let registry = crate::registry::ProviderRegistry::from_config(config).expect("registry");
     ProviderRegistryService::new(registry)
 }
 
@@ -196,8 +194,7 @@ fn default_provider_id_delegates_to_registry() {
         aliases: vec![],
         default_provider: Some("ollama/llama3".to_owned()),
     };
-    let registry = crate::registry::ProviderRegistry::from_config(config)
-        .expect("registry");
+    let registry = crate::registry::ProviderRegistry::from_config(config).expect("registry");
     let service = ProviderRegistryService::new(registry);
 
     // When asking for the default provider.
@@ -206,8 +203,7 @@ fn default_provider_id_delegates_to_registry() {
     // Then the configured default is returned.
     assert!(id.is_some());
     assert_eq!(
-        id.as_ref()
-            .map(crate::provider_id::ProviderId::as_str),
+        id.as_ref().map(crate::provider_id::ProviderId::as_str),
         Some("ollama/llama3")
     );
 }
@@ -229,8 +225,7 @@ fn create_factory_delegates_to_registry() {
         aliases: vec![],
         default_provider: None,
     };
-    let registry = crate::registry::ProviderRegistry::from_config(config)
-        .expect("registry");
+    let registry = crate::registry::ProviderRegistry::from_config(config).expect("registry");
     let service = ProviderRegistryService::new(registry);
     let api_keys = crate::api_keys::ApiKeys::new();
 
@@ -255,8 +250,7 @@ fn set_default_provider_updates_via_service() {
     let id = service.default_provider_id();
     assert!(id.is_some());
     assert_eq!(
-        id.as_ref()
-            .map(crate::provider_id::ProviderId::as_str),
+        id.as_ref().map(crate::provider_id::ProviderId::as_str),
         Some("ollama/llama3")
     );
 }
@@ -281,8 +275,7 @@ fn is_available_returns_false_for_key_required_without_key() {
     // If is_available always returned true, the key-required provider would appear available.
     let service = service_with_providers();
     let api_keys = crate::api_keys::ApiKeys::new();
-    let id =
-        crate::provider_id::ProviderId::new("openrouter/gpt-4".to_owned());
+    let id = crate::provider_id::ProviderId::new("openrouter/gpt-4".to_owned());
 
     assert!(!service.is_available(&id, &api_keys));
 }
@@ -309,8 +302,7 @@ fn merge_cache_actually_adds_entries_to_registry() {
     service.merge_cache(&cache);
 
     // Then the merged model should be in the registry.
-    let merged_id =
-        crate::provider_id::ProviderId::new("ollama/mistral".to_owned());
+    let merged_id = crate::provider_id::ProviderId::new("ollama/mistral".to_owned());
     let entry = service.get(&merged_id);
     assert!(entry.is_some(), "merge_cache should add the remote model");
     assert!(entry.unwrap().is_remote);

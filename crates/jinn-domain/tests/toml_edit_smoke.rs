@@ -5,6 +5,13 @@
 //! `jinn-provider-config` crate (the comment-preserving fixture moved there
 //! when provider config was extracted).
 
+#![allow(
+    clippy::expect_used,
+    clippy::indexing_slicing,
+    clippy::items_after_statements,
+    reason = "test code"
+)]
+
 use jinn_domain::feat::preferences_actor::user_preferences::RegexAutoPruneConfig;
 use serde::Deserialize;
 
