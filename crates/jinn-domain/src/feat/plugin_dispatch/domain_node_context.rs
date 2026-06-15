@@ -22,11 +22,22 @@ use crate::feat::session::chat_session::ChatSessionState;
 use crate::feat::session::chat_session::SessionCoreEphemeral;
 use crate::feat::session::model_selection::ModelSelection;
 use crate::protocol::SessionId;
+use jinn_provider::ToolDefinition;
 
 /// Error for domain context operations.
 #[derive(Debug, Error)]
 #[error(debug)]
 pub struct DomainContextError;
+
+/// Controls which attached-scoped tool definitions a child session inherits
+/// from its parent.
+#[derive(Debug, Clone)]
+pub enum InheritToolsPolicy {
+    /// Inherit all of the parent's attached tool definitions (default).
+    All,
+    /// Inherit only the named definitions.
+    Named(Vec<String>),
+}
 
 /// RAII guard that cancels a one-shot LLM stream when the handler future is
 /// dropped before it completes.
@@ -112,6 +123,7 @@ impl DomainNodeContext {
         parent_session_id: &SessionId,
         automated: bool,
         persist: bool,
+        inherit_tools: &InheritToolsPolicy,
     ) -> SessionId {
         let mut session = ChatSessionState::default();
         session.core.parent_session = Some(parent_session_id.clone());
@@ -132,17 +144,22 @@ impl DomainNodeContext {
         let session_id = session.session_id().clone();
         self.state.write().session.insert(session);
 
-        // Inherit attached-scoped plugin tools from the parent session.
-        // When a plugin (like the judge) creates a child session, the child
-        // needs the plugin's attached tools (e.g. judgment_passed/judgment_failed).
-        self.register_inherited_tools(parent_session_id, &session_id);
+        // Inherit attached-scoped plugin tools from the parent session,
+        // filtered by the caller's policy. The judge relies on the default
+        // (`All`) to receive judgment_passed/judgment_failed.
+        self.register_inherited_tools(parent_session_id, &session_id, inherit_tools);
 
         session_id
     }
 
     /// Look up attached-scoped tools registered for the parent session and
-    /// re-register them for the child session.
-    fn register_inherited_tools(&self, parent_id: &SessionId, child_id: &SessionId) {
+    /// re-register them for the child session, filtered by `inherit_tools`.
+    fn register_inherited_tools(
+        &self,
+        parent_id: &SessionId,
+        child_id: &SessionId,
+        inherit_tools: &InheritToolsPolicy,
+    ) {
         let parent_tools = self
             .state
             .read()
@@ -154,7 +171,17 @@ impl DomainNodeContext {
         let Some(tools) = parent_tools else {
             return;
         };
-        if tools.is_empty() {
+
+        // Apply the caller's policy: `All` copies everything (the judge's
+        // default), `Named` keeps only the listed definitions.
+        let filtered: HashMap<String, ToolDefinition> = match inherit_tools {
+            InheritToolsPolicy::All => tools,
+            InheritToolsPolicy::Named(names) => tools
+                .into_iter()
+                .filter(|(name, _)| names.iter().any(|n| n == name))
+                .collect(),
+        };
+        if filtered.is_empty() {
             return;
         }
 
@@ -166,7 +193,7 @@ impl DomainNodeContext {
             .session_tool_definitions
             .entry(child_id.clone())
             .or_default()
-            .extend(tools);
+            .extend(filtered);
     }
 
     /// Returns `true` if there is a pending oneshot for the given session ID.
@@ -1076,7 +1103,7 @@ mod tests {
         let parent_id = SessionId::new();
 
         // When creating a child session.
-        let child_id = ctx.create_child_session(&parent_id, true, true);
+        let child_id = ctx.create_child_session(&parent_id, true, true, &InheritToolsPolicy::All);
 
         // Then the child ID differs from the parent.
         assert_ne!(child_id, parent_id);
@@ -1089,7 +1116,7 @@ mod tests {
         let parent_id = SessionId::new();
 
         // When creating a child session with automated=true, persist=true.
-        let child_id = ctx.create_child_session(&parent_id, true, true);
+        let child_id = ctx.create_child_session(&parent_id, true, true, &InheritToolsPolicy::All);
 
         // Then the child session has the correct flags.
         let state = ctx.state.read();
@@ -1106,7 +1133,7 @@ mod tests {
         let parent_id = SessionId::new();
 
         // When creating a child session.
-        let child_id = ctx.create_child_session(&parent_id, false, false);
+        let child_id = ctx.create_child_session(&parent_id, false, false, &InheritToolsPolicy::All);
 
         // Then the session map contains the child.
         let state = ctx.state.read();
@@ -1124,7 +1151,7 @@ mod tests {
         ctx.state.write().session.insert(parent);
 
         // When creating a child session.
-        let child_id = ctx.create_child_session(&parent_id, true, true);
+        let child_id = ctx.create_child_session(&parent_id, true, true, &InheritToolsPolicy::All);
 
         // Then the child inherits the parent's model.
         let state = ctx.state.read();
@@ -1142,7 +1169,8 @@ mod tests {
         let orphan_parent = SessionId::new();
 
         // When creating a child session.
-        let child_id = ctx.create_child_session(&orphan_parent, true, true);
+        let child_id =
+            ctx.create_child_session(&orphan_parent, true, true, &InheritToolsPolicy::All);
 
         // Then the child keeps the default model.
         let state = ctx.state.read();
@@ -1176,7 +1204,7 @@ mod tests {
             .insert("judgment_passed".to_owned(), tool_def);
 
         // When creating a child session.
-        let child_id = ctx.create_child_session(&parent_id, true, true);
+        let child_id = ctx.create_child_session(&parent_id, true, true, &InheritToolsPolicy::All);
 
         // Then the child session has the parent's attached tools registered.
         let state = ctx.state.read();
@@ -1188,6 +1216,59 @@ mod tests {
         assert!(
             child_tools.unwrap().contains_key("judgment_passed"),
             "child should have inherited the judgment_passed tool"
+        );
+    }
+
+    #[test]
+    fn create_child_session_named_subset_inherits_only_listed_tools() {
+        // Given a parent session with multiple attached-scoped tools.
+        use jinn_provider::ToolDefinition;
+
+        let ctx = make_ctx();
+        let parent_id = SessionId::new();
+
+        let make_def = |name: &str| ToolDefinition {
+            name: name.to_owned(),
+            description: "test".to_owned(),
+            parameters: serde_json::json!({"type": "object", "properties": {}}),
+            prompt_snippet: None,
+            prompt_guidelines: vec![],
+            server_tool_type: None,
+        };
+        {
+            let mut state = ctx.state.write();
+            let parent_tools = state
+                .context
+                .session_tool_definitions
+                .entry(parent_id.clone())
+                .or_default();
+            parent_tools.insert("alpha".to_owned(), make_def("alpha"));
+            parent_tools.insert("beta".to_owned(), make_def("beta"));
+            parent_tools.insert("gamma".to_owned(), make_def("gamma"));
+        }
+        // When creating a child with a named-subset inheritance policy.
+        let child_id = ctx.create_child_session(
+            &parent_id,
+            true,
+            true,
+            &InheritToolsPolicy::Named(vec!["beta".to_owned()]),
+        );
+
+        // Then the child inherits only the named tool.
+        let state = ctx.state.read();
+        let child_tools = state.context.session_tool_definitions.get(&child_id);
+        let child_tools = child_tools.expect("child should have a tool-definition map");
+        assert!(
+            child_tools.contains_key("beta"),
+            "child should inherit the named tool"
+        );
+        assert!(
+            !child_tools.contains_key("alpha"),
+            "child should not inherit unlisted tools"
+        );
+        assert!(
+            !child_tools.contains_key("gamma"),
+            "child should not inherit unlisted tools"
         );
     }
 }

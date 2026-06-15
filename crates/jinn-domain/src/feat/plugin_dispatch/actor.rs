@@ -255,11 +255,8 @@ impl PluginDispatchActor {
                 //    Execution is global (registered at startup); here we only
                 //    drive per-session Registry 1 visibility.
                 if !result.tool_metadata.is_empty() {
-                    self.register_plugin_tools_with_actor(
-                        session_id,
-                        result.tool_metadata,
-                    )
-                    .await;
+                    self.register_plugin_tools_with_actor(session_id, result.tool_metadata)
+                        .await;
                 }
             }
             Err(e) => {

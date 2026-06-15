@@ -30,7 +30,7 @@ pub mod plugin_sync_hooks;
 pub mod protocol;
 
 pub use actor::{PluginDispatchActor, PluginDispatchActorDeps};
-pub use domain_node_context::DomainNodeContext;
+pub use domain_node_context::{DomainNodeContext, InheritToolsPolicy};
 pub use hook_context::{HookContext, ProvidesSessionId};
 pub use picker_entry::PluginPickerEntry;
 pub use plugin_fire::{PluginFire, PluginFireError, PluginFireService};
