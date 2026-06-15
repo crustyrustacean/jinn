@@ -292,6 +292,7 @@ impl PluginFire for NoopPluginFire {
         &self,
         _target: Option<SessionRegistryId>,
         _session_id: &crate::protocol::SessionId,
+        _parent_session_id: Option<&crate::protocol::SessionId>,
         _plugin_name: &str,
         _tool_name: &str,
         _arguments: &serde_json::Value,

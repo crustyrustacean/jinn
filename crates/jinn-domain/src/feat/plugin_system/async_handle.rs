@@ -103,6 +103,9 @@ pub(crate) enum PluginJob {
         target: Option<super::session_registry::SessionRegistryId>,
         /// Domain session ID for plugin_data scoping.
         session_id: SessionId,
+        /// Parent session of the calling session, if any. Exposed to the
+        /// tool handler as `ctx.parent_session_id`.
+        parent_session_id: Option<SessionId>,
         /// Plugin that defined this tool.
         plugin_name: String,
         /// Tool name to execute.
@@ -393,6 +396,7 @@ impl AsyncPluginHandle {
         &self,
         target: Option<super::session_registry::SessionRegistryId>,
         session_id: SessionId,
+        parent_session_id: Option<SessionId>,
         plugin_name: &str,
         tool_name: &str,
         arguments: &serde_json::Value,
@@ -402,6 +406,7 @@ impl AsyncPluginHandle {
             .send(PluginJob::ExecuteTool {
                 target,
                 session_id,
+                parent_session_id,
                 plugin_name: plugin_name.to_owned(),
                 tool_name: tool_name.to_owned(),
                 arguments: arguments.clone(),

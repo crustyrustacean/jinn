@@ -83,6 +83,7 @@ pub trait PluginFire: Send + Sync {
         &self,
         target: Option<SessionRegistryId>,
         session_id: &crate::protocol::SessionId,
+        parent_session_id: Option<&crate::protocol::SessionId>,
         plugin_name: &str,
         tool_name: &str,
         arguments: &Value,
@@ -180,12 +181,20 @@ impl PluginFireService {
         &self,
         target: Option<SessionRegistryId>,
         session_id: &crate::protocol::SessionId,
+        parent_session_id: Option<&crate::protocol::SessionId>,
         plugin_name: &str,
         tool_name: &str,
         arguments: &Value,
     ) -> Result<String, Report<PluginFireError>> {
         self.backend
-            .execute_plugin_tool(target, session_id, plugin_name, tool_name, arguments)
+            .execute_plugin_tool(
+                target,
+                session_id,
+                parent_session_id,
+                plugin_name,
+                tool_name,
+                arguments,
+            )
             .await
     }
 

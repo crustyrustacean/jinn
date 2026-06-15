@@ -223,6 +223,7 @@ async fn execute_plugin_job(state: &mut ThreadState, job: PluginJob) {
         PluginJob::ExecuteTool {
             target,
             session_id,
+            parent_session_id,
             plugin_name,
             tool_name,
             arguments,
@@ -232,6 +233,7 @@ async fn execute_plugin_job(state: &mut ThreadState, job: PluginJob) {
                 state,
                 target,
                 &session_id,
+                parent_session_id.as_ref(),
                 &plugin_name,
                 &tool_name,
                 &arguments,
@@ -250,6 +252,7 @@ fn execute_plugin_tool(
     state: &mut ThreadState,
     target: Option<SessionRegistryId>,
     session_id: &SessionId,
+    parent_session_id: Option<&SessionId>,
     plugin_name: &str,
     tool_name: &str,
     arguments: &serde_json::Value,
@@ -278,9 +281,13 @@ fn execute_plugin_tool(
         })?;
 
     // Build the ctx table for the handler.
+    let ctx_json = match parent_session_id {
+        Some(p) => serde_json::json!({ "parent_session_id": p.to_string() }),
+        None => serde_json::json!({}),
+    };
     let ctx = build_async_ctx(
         lua,
-        &serde_json::json!({}),
+        &ctx_json,
         plugin_name,
         &state.plugin_data,
         &state.emit_tx,

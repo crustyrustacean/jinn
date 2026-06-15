@@ -813,3 +813,71 @@ async fn cancel_one_of_two_distinct_tasks() {
     );
     assert!(b.is_some(), "task 'b' must have completed: {results:?}");
 }
+
+#[tokio::test]
+async fn attachable_tool_executes_globally_for_descendant_session() {
+    // Given an attachable plugin whose tool handler is loaded into the global
+    // Lua state at startup. The tool emits a command routing back to the
+    // parent session via ctx.parent_session_id.
+    let dir = tempfile::tempdir().expect("tempdir");
+    write_plugin_kind(
+        dir.path(),
+        "attachable",
+        "judge_tool",
+        r#"
+            local M = {}
+            M.tools = {
+                {
+                    name = "judgment_passed",
+                    description = "Call when the response passes.",
+                    scope = "attached",
+                    parameters = {},
+                    handler = function(ctx)
+                        ctx.emit("push_chat_entry", {
+                            session_id = ctx.parent_session_id,
+                            message = "judged-from-global",
+                        })
+                    end,
+                },
+            }
+            return M
+        "#,
+    );
+
+    let sys = build_system(dir.path());
+
+    // When executing the tool via the GLOBAL path (target: None) for a child
+    // session whose id differs from the parent. This is the post-reform
+    // dispatch shape — no session scope guard, no per-session registration.
+    let child = SessionId::from("child-session".to_owned());
+    let parent = SessionId::from("origin-session".to_owned());
+    let result = sys
+        .async_handle
+        .execute_tool(
+            None,
+            child,
+            Some(parent),
+            "judge_tool",
+            "judgment_passed",
+            &json!({}),
+        )
+        .await;
+
+    // Then the handler ran without rejection (no scope guard).
+    assert!(
+        result.is_ok(),
+        "global tool execution must succeed for any calling session: {result:?}"
+    );
+
+    // And the handler emitted a command routing to the parent session id.
+    tokio::time::sleep(std::time::Duration::from_millis(100)).await;
+    let cmds = sys.captured.lock();
+    let routed: Vec<&str> = cmds
+        .iter()
+        .filter_map(|c| c.data["session_id"].as_str())
+        .collect();
+    assert!(
+        routed.contains(&"origin-session"),
+        "handler must route via ctx.parent_session_id to origin-session: {routed:?}"
+    );
+}
