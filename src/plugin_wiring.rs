@@ -122,8 +122,10 @@ pub async fn handle_plugin_request(
         }
         "create_session" => {
             // Create an automated child session parented at the given origin.
-            //   { parent_session_id, automated?: bool, persist?: bool }
-            // Defaults match the plugin_ctx.lua contract: automated=false, persist=true.
+            //   { parent_session_id, automated?: bool, persist?: bool,
+            //     inherit_tools?: bool, tools?: string[] }
+            // Defaults match the plugin_ctx.lua contract: automated=false,
+            // persist=true, inherit_tools=false.
             // create_child_session is synchronous and tolerant of a missing parent
             // (it skips model inheritance but still creates the session).
             #[derive(serde::Deserialize)]
@@ -133,27 +135,22 @@ pub async fn handle_plugin_request(
                 automated: Option<bool>,
                 #[serde(default)]
                 persist: Option<bool>,
+                /// If true, copy the parent session's session-scoped tools. Default false.
                 #[serde(default)]
-                inherit_tools: Option<Vec<String>>,
+                inherit_tools: Option<bool>,
+                /// Names of attachable tools to resolve from the catalog.
+                #[serde(default)]
+                tools: Option<Vec<String>>,
             }
             match serde_json::from_value::<CreateSessionPayload>(data.clone()) {
                 Ok(p) => {
-                    // Default policy: inherit all of the parent's attached
-                    // tool definitions (the judge relies on this). An explicit
-                    // `inherit_tools` list narrows the set.
-                    let policy = match &p.inherit_tools {
-                        Some(names) => {
-                            jinn_domain::feat::plugin_dispatch::InheritToolsPolicy::Named(
-                                names.clone(),
-                            )
-                        }
-                        None => jinn_domain::feat::plugin_dispatch::InheritToolsPolicy::All,
-                    };
+                    let tools = p.tools.unwrap_or_default();
                     let session_id = domain_ctx.create_child_session(
                         &p.parent_session_id,
                         p.automated.unwrap_or(false),
                         p.persist.unwrap_or(true),
-                        &policy,
+                        p.inherit_tools.unwrap_or(false),
+                        &tools,
                     );
                     request_ok(serde_json::json!({ "session_id": session_id }))
                 }
@@ -418,6 +415,53 @@ mod tests {
         assert!(
             result["value"]["session_id"].as_str().is_some(),
             "session_id must be present"
+        );
+    }
+
+    #[tokio::test]
+    async fn create_session_tools_resolves_named_tools_into_child() {
+        // Given a seeded attachable catalog with two tools.
+        use jinn_domain::ToolDefinition;
+        let (ctx, parent_id, state) = make_ctx_with_source_session("ollama/llama3");
+        {
+            let make_def = |name: &str| ToolDefinition {
+                name: name.to_owned(),
+                description: "test".to_owned(),
+                parameters: serde_json::json!({"type": "object", "properties": {}}),
+                prompt_snippet: None,
+                prompt_guidelines: vec![],
+                server_tool_type: None,
+            };
+            let mut s = state.write();
+            s.context.attachable_tool_catalog.insert("judgment_passed".to_owned(), make_def("judgment_passed"));
+            s.context.attachable_tool_catalog.insert("judgment_failed".to_owned(), make_def("judgment_failed"));
+            s.context.attachable_tool_catalog.insert("other".to_owned(), make_def("other"));
+        }
+        let payload = json!({
+            "parent_session_id": parent_id,
+            "automated": true,
+            "persist": false,
+            "inherit_tools": false,
+            "tools": ["judgment_passed", "judgment_failed"],
+        });
+
+        // When handling the create_session request.
+        let value = handle_plugin_request("create_session", &payload, &ctx, None).await;
+
+        // Then the child sees exactly the two requested tools (from catalog).
+        assert_eq!(value["ok"], json!(true));
+        let child_id = SessionId::from(value["value"]["session_id"].as_str().expect("session_id").to_owned());
+        let guard = state.read();
+        let child_tools = guard
+            .context
+            .session_tool_definitions
+            .get(&child_id)
+            .expect("child has a tool-definition map");
+        assert!(child_tools.contains_key("judgment_passed"));
+        assert!(child_tools.contains_key("judgment_failed"));
+        assert!(
+            !child_tools.contains_key("other"),
+            "unrequested catalog tools must not leak into the child"
         );
     }
 }
