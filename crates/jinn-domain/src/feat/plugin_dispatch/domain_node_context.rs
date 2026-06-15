@@ -168,18 +168,16 @@ impl DomainNodeContext {
         tools: &[String],
     ) {
         let mut child_map: HashMap<String, ToolDefinition> = HashMap::new();
-
         // Source 1: optionally copy the parent's session-scoped tools.
-        if inherit_tools {
-            if let Some(parent_tools) = self
+        if inherit_tools
+            && let Some(parent_tools) = self
                 .state
                 .read()
                 .context
                 .session_tool_definitions
                 .get(parent_id)
-            {
-                child_map.extend(parent_tools.iter().map(|(k, v)| (k.clone(), v.clone())));
-            }
+        {
+            child_map.extend(parent_tools.iter().map(|(k, v)| (k.clone(), v.clone())));
         }
 
         // Source 2: resolve named tools from the attachable catalog.
@@ -1188,8 +1186,7 @@ mod tests {
         let orphan_parent = SessionId::new();
 
         // When creating a child session.
-        let child_id =
-            ctx.create_child_session(&orphan_parent, true, true, true, &[]);
+        let child_id = ctx.create_child_session(&orphan_parent, true, true, true, &[]);
 
         // Then the child keeps the default model.
         let state = ctx.state.read();
@@ -1262,13 +1259,8 @@ mod tests {
             catalog.insert("gamma".to_owned(), make_def("gamma"));
         }
         // When creating a child with a named-subset inheritance policy.
-        let child_id = ctx.create_child_session(
-            &parent_id,
-            true,
-            true,
-            false,
-            &["beta".to_owned()],
-        );
+        let child_id =
+            ctx.create_child_session(&parent_id, true, true, false, &["beta".to_owned()]);
 
         // Then the child inherits only the named tool.
         let state = ctx.state.read();

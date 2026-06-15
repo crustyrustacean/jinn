@@ -496,7 +496,8 @@ impl ActorSystemBuilder {
                 {
                     let mut s = state.write();
                     for def in &definitions {
-                        s.context.attachable_tool_catalog
+                        s.context
+                            .attachable_tool_catalog
                             .insert(def.name.clone(), def.clone());
                     }
                 }
