@@ -308,18 +308,25 @@ fn handle_fresh_toggle(state: &mut AppState) -> IntentResult {
 /// `ContextOverride::Default`, advance the cursor. Each press resets one entry,
 /// so holding `r` sweeps resets via cursor advance with no dedicated state.
 ///
-/// Pinned entries and already-`Default` entries are silent no-ops.
+/// Pinned entries and collapsed blocks are skipped (cursor advances past
+/// them), mirroring the `x`-sweep so `r` sweeps transparently across obstacles.
+/// Already-`Default` entries are silent no-ops.
 ///
 /// Returns gracefully if the selected entry cannot be resolved after
 /// validation (e.g. collapsed ignored block).
 pub fn handle_reset_selected(state: &mut AppState) -> IntentResult {
     use crate::feat::context::protocol::event::ContextOverrideChanged;
+    use crate::feat::session::chat_entry::ChatEntry;
     use crate::feat::session_lifecycle::protocol::command::PersistSession;
     use crate::protocol::ContextOverride;
 
-    // If cursor is on a collapsed block, skip past it before validation.
-    // Validation calls selected_entry() which returns None for collapsed blocks.
-    if state.active_session().is_selected_collapsed_block() {
+    // Skip past obstacles before validation, mirroring the x-sweep
+    // (ignore_sweep.rs): pinned entries and collapsed blocks are passed
+    // over transparently so a held `r` continues sweeping entries beyond them.
+    let session = state.active_session();
+    let on_obstacle = session.is_selected_collapsed_block()
+        || session.selected_entry().is_some_and(ChatEntry::is_pinned);
+    if on_obstacle {
         advance_selection_one(state.active_session_mut());
         return IntentResult::empty();
     }
@@ -1342,6 +1349,41 @@ mod tests {
         let result = handle_reset_selected(&mut state);
 
         // Then no events are emitted.
+        assert!(result.message_names.is_empty());
+    }
+    #[rstest::rstest]
+    fn handle_reset_sweep_skips_pinned_entry() {
+        // Given [user(ForcedExclude), user_pinned, user(ForcedExclude)],
+        // entry 0 selected.
+        let mut state = AppState::default();
+        state
+            .active_session_mut()
+            .push_entry(ChatEntry::user("a").with_context_override(ContextOverride::ForcedExclude));
+        state
+            .active_session_mut()
+            .push_entry(ChatEntry::user("pinned").with_pin(PinPosition::Top));
+        state
+            .active_session_mut()
+            .push_entry(ChatEntry::user("b").with_context_override(ContextOverride::ForcedExclude));
+        state.active_session_mut().select_prev_entry();
+        state.active_session_mut().select_prev_entry();
+        assert_eq!(state.active_session().selected_entry_index(), Some(0));
+
+        // When pressing `r` three times (reset 0, skip pinned, reset 2).
+        handle_reset_selected(&mut state); // entry 0 -> Default, cursor -> 1
+        let result = handle_reset_selected(&mut state); // pinned: skip, cursor -> 2
+        handle_reset_selected(&mut state); // entry 2 -> Default, cursor -> bottom
+
+        // Then entries 0 and 2 are reset to Default.
+        assert_eq!(
+            state.active_session().history()[0].context_override(),
+            ContextOverride::Default
+        );
+        assert_eq!(
+            state.active_session().history()[2].context_override(),
+            ContextOverride::Default
+        );
+        // And the middle press (the skip) emits no events.
         assert!(result.message_names.is_empty());
     }
 
