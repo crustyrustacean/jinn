@@ -1783,6 +1783,18 @@ dependencies = [
 ]
 
 [[package]]
+name = "jinn-session-schema"
+version = "0.1.0"
+dependencies = [
+ "error-stack",
+ "jiff",
+ "rusqlite",
+ "serde",
+ "serde_json",
+ "wherror",
+]
+
+[[package]]
 name = "jinn-testutil"
 version = "0.68.0"
 dependencies = [
