@@ -12,7 +12,6 @@
 //! (for resolving relative paths) and an optional timeout. The orchestrator
 //! reads CWD from shared [`State`] at dispatch time.
 
-
 use serde::{Deserialize, Serialize};
 
 /// OpenRouter web search server tool configuration.
@@ -780,7 +779,7 @@ mod openrouter_web_search_config_tests {
     use super::OpenrouterWebSearchConfig;
     use crate::common::app_info::PREFS_FILE_NAME;
     use crate::feat::preferences_actor::user_preferences::{
-        load_preferences_from, save_preferences_to, UserPreferences,
+        UserPreferences, load_preferences_from, save_preferences_to,
     };
 
     #[rstest::rstest]

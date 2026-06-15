@@ -5,7 +5,6 @@
 //! and flushed every 500ms (or when the buffer exceeds 4KB) to reduce
 //! event volume and prevent dropped keystrokes from terminal overload.
 
-
 use serde::{Deserialize, Serialize};
 
 /// Default bash tool timeout in seconds (3 minutes).
@@ -1283,52 +1282,52 @@ mod tests {
     }
 }
 
-    #[test]
-    fn bash_config_default_is_180_secs() {
-        // Given the default BashConfig.
-        let cfg = BashConfig::default();
+#[test]
+fn bash_config_default_is_180_secs() {
+    // Given the default BashConfig.
+    let cfg = BashConfig::default();
 
-        // Then the default timeout is 180 seconds.
-        assert_eq!(
-            cfg.default_timeout_secs,
-            Some(180),
-            "BashConfig::default() must produce a 3-minute default timeout",
-        );
-    }
+    // Then the default timeout is 180 seconds.
+    assert_eq!(
+        cfg.default_timeout_secs,
+        Some(180),
+        "BashConfig::default() must produce a 3-minute default timeout",
+    );
+}
 
-    #[test]
-    fn bash_config_toml_roundtrip_explicit_value() {
-        // Given a TOML fragment with an explicit override.
-        let toml_str = "
+#[test]
+fn bash_config_toml_roundtrip_explicit_value() {
+    // Given a TOML fragment with an explicit override.
+    let toml_str = "
             default_timeout_secs = 60
         ";
 
-        // When parsed.
-        let cfg: BashConfig = toml::from_str(toml_str).expect("parse");
+    // When parsed.
+    let cfg: BashConfig = toml::from_str(toml_str).expect("parse");
 
-        // Then the override round-trips.
-        assert_eq!(cfg.default_timeout_secs, Some(60));
+    // Then the override round-trips.
+    assert_eq!(cfg.default_timeout_secs, Some(60));
 
-        // And serializing back preserves the value.
-        let reserialized = toml::to_string(&cfg).expect("serialize");
-        assert!(
-            reserialized.contains("default_timeout_secs = 60"),
-            "reserialized TOML must preserve the value; got: {reserialized}",
-        );
-    }
+    // And serializing back preserves the value.
+    let reserialized = toml::to_string(&cfg).expect("serialize");
+    assert!(
+        reserialized.contains("default_timeout_secs = 60"),
+        "reserialized TOML must preserve the value; got: {reserialized}",
+    );
+}
 
-    #[test]
-    fn bash_config_toml_empty_table_falls_back_to_default() {
-        // Given an empty [bash] table in TOML.
-        let toml_str = "";
+#[test]
+fn bash_config_toml_empty_table_falls_back_to_default() {
+    // Given an empty [bash] table in TOML.
+    let toml_str = "";
 
-        // When parsed.
-        let cfg: BashConfig = toml::from_str(toml_str).expect("parse");
+    // When parsed.
+    let cfg: BashConfig = toml::from_str(toml_str).expect("parse");
 
-        // Then the serde default fn fires and produces 180.
-        assert_eq!(
-            cfg.default_timeout_secs,
-            Some(180),
-            "missing field should resolve via serde default fn",
-        );
-    }
+    // Then the serde default fn fires and produces 180.
+    assert_eq!(
+        cfg.default_timeout_secs,
+        Some(180),
+        "missing field should resolve via serde default fn",
+    );
+}

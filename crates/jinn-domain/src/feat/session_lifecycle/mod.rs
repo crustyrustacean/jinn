@@ -57,7 +57,7 @@ mod tests {
     use super::SessionLifecycle;
     use crate::common::app_info::PREFS_FILE_NAME;
     use crate::feat::preferences_actor::user_preferences::{
-        load_preferences_from, save_preferences_to, UserPreferences,
+        UserPreferences, load_preferences_from, save_preferences_to,
     };
 
     #[rstest::rstest]

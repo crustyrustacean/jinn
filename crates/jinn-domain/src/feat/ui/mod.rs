@@ -45,7 +45,7 @@ mod tests {
     use super::MinimapConfig;
     use crate::common::app_info::PREFS_FILE_NAME;
     use crate::feat::preferences_actor::user_preferences::{
-        load_preferences_from, save_preferences_to, UserPreferences,
+        UserPreferences, load_preferences_from, save_preferences_to,
     };
 
     #[rstest::rstest]
@@ -89,8 +89,12 @@ mod tests {
         // Given a TOML file without a minimap section.
         let dir = TempDir::new().expect("temp dir");
         let path = dir.path().join(PREFS_FILE_NAME);
-        std::fs::write(&path, r#"last_model = "ollama/llama3"
-"#).expect("write");
+        std::fs::write(
+            &path,
+            r#"last_model = "ollama/llama3"
+"#,
+        )
+        .expect("write");
         // When loading.
         let prefs = load_preferences_from(&path).expect("load");
         // Then minimap uses defaults.
