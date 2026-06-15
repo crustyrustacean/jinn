@@ -4,12 +4,12 @@
 -- reviews the origin session's last assistant response and calls either
 -- `judgment_passed()` or `judgment_failed(message)` to route results back.
 --
--- The child session is reset before each evaluation (clean slate every turn).
--- The plugin stores `judge_session_id` in plugin_data so the on_turn_end hook
--- and the sync preview hook can find the judge session. Tool handlers derive
--- the origin from `ctx.parent_session_id` (the child→origin parent edge).
+-- A FRESH child session is created every turn (persist=false, no history
+-- reuse). Tool handlers derive the origin from `ctx.parent_session_id`
+-- (the child→origin parent edge).
 
 local M = {}
+
 
 -- ─── Plugin-defined tools ──────────────────────────────────────────
 
@@ -58,39 +58,31 @@ function M.on_turn_end(ctx)
 		kind = { transient = "⚖ Judge evaluating..." },
 	})
 
-	pd = ctx.get_plugin_data() or {}
-	local judge_id = pd.judge_session_id
-
-	if not judge_id then
-		-- First time: create the child session.
-		local result = ctx.request("create_session", {
-			parent_session_id = ctx.session_id,
-			automated = true,
-			persist = true,
-		})
-		if not result.ok then
-			ctx.emit("push_chat_entry", {
-				session_id = ctx.session_id,
-				kind = { error = "judge: failed to create session: " .. tostring(result.error) },
-			})
-			return
-		end
-		judge_id = result.value.session_id
-		ctx.merge_plugin_data({
-			judge_session_id = judge_id,
-		})
-		-- Tell the domain layer about the managed session so the sidebar can navigate to it.
-		ctx.emit("set_managed_session", {
+	-- Every turn: create a fresh transient child session. No reuse, no reset —
+	-- the judge starts from a clean slate so it cannot reference prior judgments.
+	local result = ctx.request("create_session", {
+		parent_session_id = ctx.session_id,
+		automated = true,
+		persist = false,
+		inherit_tools = false,
+		tools = { "judgment_passed", "judgment_failed", "session_query" },
+	})
+	if not result.ok then
+		ctx.emit("push_chat_entry", {
 			session_id = ctx.session_id,
-			plugin_name = ctx.plugin_name,
-			managed_session_id = judge_id,
+			kind = { error = "judge: failed to create session: " .. tostring(result.error) },
 		})
-	else
-		-- Subsequent turns: reset the existing session.
-		ctx.emit("reset_session", {
-			session_id = judge_id,
-		})
+		return
 	end
+	local judge_id = result.value.session_id
+
+	-- Tell the domain layer about the managed session so the sidebar can
+	-- navigate to it (and reflect its busy state).
+	ctx.emit("set_managed_session", {
+		session_id = ctx.session_id,
+		plugin_name = ctx.plugin_name,
+		managed_session_id = judge_id,
+	})
 
 	-- Ask the judge to evaluate the latest response.
 	ctx.emit("enqueue_user_message", {
@@ -112,16 +104,6 @@ Be thorough. Check for accuracy, completeness, and relevance. After issuing a ju
 
 	-- Return immediately. The child LLM will run, call a judgment tool,
 	-- and the tool handler will push results back to the origin session.
-end
-
---- Sync hook: returns the judge session ID for sidebar preview.
---- Reads from plugin_data (written by the async on_turn_end hook).
-function M.on_session_preview(ctx)
-	local pd = ctx.plugin_data or {}
-	if pd.judge_session_id then
-		return { session_id = pd.judge_session_id }
-	end
-	return nil
 end
 
 return M

@@ -433,9 +433,15 @@ mod tests {
                 server_tool_type: None,
             };
             let mut s = state.write();
-            s.context.attachable_tool_catalog.insert("judgment_passed".to_owned(), make_def("judgment_passed"));
-            s.context.attachable_tool_catalog.insert("judgment_failed".to_owned(), make_def("judgment_failed"));
-            s.context.attachable_tool_catalog.insert("other".to_owned(), make_def("other"));
+            s.context
+                .attachable_tool_catalog
+                .insert("judgment_passed".to_owned(), make_def("judgment_passed"));
+            s.context
+                .attachable_tool_catalog
+                .insert("judgment_failed".to_owned(), make_def("judgment_failed"));
+            s.context
+                .attachable_tool_catalog
+                .insert("other".to_owned(), make_def("other"));
         }
         let payload = json!({
             "parent_session_id": parent_id,
@@ -450,7 +456,12 @@ mod tests {
 
         // Then the child sees exactly the two requested tools (from catalog).
         assert_eq!(value["ok"], json!(true));
-        let child_id = SessionId::from(value["value"]["session_id"].as_str().expect("session_id").to_owned());
+        let child_id = SessionId::from(
+            value["value"]["session_id"]
+                .as_str()
+                .expect("session_id")
+                .to_owned(),
+        );
         let guard = state.read();
         let child_tools = guard
             .context
