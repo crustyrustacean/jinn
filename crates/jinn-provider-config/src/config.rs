@@ -7,7 +7,7 @@
 
 use std::path::{Path, PathBuf};
 
-use crate::common::app_info::APP_NAME;
+use jinn_common::app_info::APP_NAME;
 use error_stack::{Report, ResultExt as _};
 use serde::{Deserialize, Serialize};
 use wherror::Error;
@@ -216,7 +216,7 @@ where
                     .attach(err.to_string())
             })?;
 
-        let mut patcher = crate::common::toml_patch::DocumentPatcher::new();
+        let mut patcher = jinn_common::toml_patch::DocumentPatcher::new();
         patcher.register_array_key(["providers"], "name");
         patcher.register_array_key(["aliases"], "name");
 

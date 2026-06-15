@@ -6,14 +6,14 @@
     reason = "test code"
 )]
 
-use crate::feat::provider_infra::config::ProvidersConfig;
-use crate::feat::provider_infra::registry_service::ProviderRegistryService;
+use crate::config::ProvidersConfig;
+use crate::registry_service::ProviderRegistryService;
 
 #[rstest::rstest]
 fn clone_sees_same_providers() {
     // Given a service with one provider.
     let config = ProvidersConfig {
-        providers: vec![crate::feat::provider_infra::config::ProviderEntry {
+        providers: vec![crate::config::ProviderEntry {
             name: "ollama".to_owned(),
             backend: "ollama".to_owned(),
             models: vec!["llama3".to_owned()],
@@ -26,7 +26,7 @@ fn clone_sees_same_providers() {
         aliases: vec![],
         default_provider: None,
     };
-    let registry = crate::feat::provider_infra::registry::ProviderRegistry::from_config(config)
+    let registry = crate::registry::ProviderRegistry::from_config(config)
         .expect("registry");
     let service = ProviderRegistryService::new(registry);
     let clone = service.clone();
@@ -46,7 +46,7 @@ fn clone_sees_same_providers() {
 fn service_with_providers() -> ProviderRegistryService {
     let config = ProvidersConfig {
         providers: vec![
-            crate::feat::provider_infra::config::ProviderEntry {
+            crate::config::ProviderEntry {
                 name: "ollama".to_owned(),
                 backend: "ollama".to_owned(),
                 models: vec!["llama3".to_owned()],
@@ -56,7 +56,7 @@ fn service_with_providers() -> ProviderRegistryService {
                 extra_body: None,
                 context_length: None,
             },
-            crate::feat::provider_infra::config::ProviderEntry {
+            crate::config::ProviderEntry {
                 name: "openrouter".to_owned(),
                 backend: "openrouter".to_owned(),
                 models: vec!["gpt-4".to_owned()],
@@ -67,13 +67,13 @@ fn service_with_providers() -> ProviderRegistryService {
                 context_length: None,
             },
         ],
-        aliases: vec![crate::feat::provider_infra::config::AliasEntry {
+        aliases: vec![crate::config::AliasEntry {
             name: "fast".to_owned(),
             target: "ollama/llama3".to_owned(),
         }],
         default_provider: None,
     };
-    let registry = crate::feat::provider_infra::registry::ProviderRegistry::from_config(config)
+    let registry = crate::registry::ProviderRegistry::from_config(config)
         .expect("registry");
     ProviderRegistryService::new(registry)
 }
@@ -126,7 +126,7 @@ fn get_returns_entry_for_known_provider() {
     let service = service_with_providers();
 
     // When looking up a known provider by full expanded ID.
-    let entry = service.get(&crate::feat::provider_infra::provider_id::ProviderId::new(
+    let entry = service.get(&crate::provider_id::ProviderId::new(
         "ollama/llama3".to_owned(),
     ));
 
@@ -143,7 +143,7 @@ fn get_returns_none_for_unknown() {
     let service = service_with_providers();
 
     // When looking up an unknown provider.
-    let entry = service.get(&crate::feat::provider_infra::provider_id::ProviderId::new(
+    let entry = service.get(&crate::provider_id::ProviderId::new(
         "nonexistent/model".to_owned(),
     ));
 
@@ -155,10 +155,10 @@ fn get_returns_none_for_unknown() {
 fn is_available_delegates_to_registry() {
     // Given a service with a keyless provider.
     let service = service_with_providers();
-    let api_keys = crate::feat::provider_infra::api_keys::ApiKeys::new();
+    let api_keys = crate::api_keys::ApiKeys::new();
 
     // When checking availability of the keyless provider.
-    let id = crate::feat::provider_infra::provider_id::ProviderId::new("ollama/llama3".to_owned());
+    let id = crate::provider_id::ProviderId::new("ollama/llama3".to_owned());
 
     // Then it is available.
     assert!(service.is_available(&id, &api_keys));
@@ -183,7 +183,7 @@ fn resolve_alias_delegates_to_registry() {
 fn default_provider_id_delegates_to_registry() {
     // Given a service with a configured default provider.
     let config = ProvidersConfig {
-        providers: vec![crate::feat::provider_infra::config::ProviderEntry {
+        providers: vec![crate::config::ProviderEntry {
             name: "ollama".to_owned(),
             backend: "ollama".to_owned(),
             models: vec!["llama3".to_owned()],
@@ -196,7 +196,7 @@ fn default_provider_id_delegates_to_registry() {
         aliases: vec![],
         default_provider: Some("ollama/llama3".to_owned()),
     };
-    let registry = crate::feat::provider_infra::registry::ProviderRegistry::from_config(config)
+    let registry = crate::registry::ProviderRegistry::from_config(config)
         .expect("registry");
     let service = ProviderRegistryService::new(registry);
 
@@ -207,7 +207,7 @@ fn default_provider_id_delegates_to_registry() {
     assert!(id.is_some());
     assert_eq!(
         id.as_ref()
-            .map(crate::feat::provider_infra::provider_id::ProviderId::as_str),
+            .map(crate::provider_id::ProviderId::as_str),
         Some("ollama/llama3")
     );
 }
@@ -216,7 +216,7 @@ fn default_provider_id_delegates_to_registry() {
 fn create_factory_delegates_to_registry() {
     // Given a service with a sample provider.
     let config = ProvidersConfig {
-        providers: vec![crate::feat::provider_infra::config::ProviderEntry {
+        providers: vec![crate::config::ProviderEntry {
             name: "sample".to_owned(),
             backend: "sample".to_owned(),
             models: vec!["sample".to_owned()],
@@ -229,13 +229,13 @@ fn create_factory_delegates_to_registry() {
         aliases: vec![],
         default_provider: None,
     };
-    let registry = crate::feat::provider_infra::registry::ProviderRegistry::from_config(config)
+    let registry = crate::registry::ProviderRegistry::from_config(config)
         .expect("registry");
     let service = ProviderRegistryService::new(registry);
-    let api_keys = crate::feat::provider_infra::api_keys::ApiKeys::new();
+    let api_keys = crate::api_keys::ApiKeys::new();
 
     // When creating a factory via the service.
-    let id = crate::feat::provider_infra::provider_id::ProviderId::new("sample/sample".to_owned());
+    let id = crate::provider_id::ProviderId::new("sample/sample".to_owned());
     let factory = service.create_factory(&id, &api_keys);
 
     // Then it succeeds and returns a factory named "Sample".
@@ -256,7 +256,7 @@ fn set_default_provider_updates_via_service() {
     assert!(id.is_some());
     assert_eq!(
         id.as_ref()
-            .map(crate::feat::provider_infra::provider_id::ProviderId::as_str),
+            .map(crate::provider_id::ProviderId::as_str),
         Some("ollama/llama3")
     );
 }
@@ -280,9 +280,9 @@ fn is_available_returns_false_for_key_required_without_key() {
     // Kills: replace is_available with true.
     // If is_available always returned true, the key-required provider would appear available.
     let service = service_with_providers();
-    let api_keys = crate::feat::provider_infra::api_keys::ApiKeys::new();
+    let api_keys = crate::api_keys::ApiKeys::new();
     let id =
-        crate::feat::provider_infra::provider_id::ProviderId::new("openrouter/gpt-4".to_owned());
+        crate::provider_id::ProviderId::new("openrouter/gpt-4".to_owned());
 
     assert!(!service.is_available(&id, &api_keys));
 }
@@ -296,12 +296,12 @@ fn merge_cache_actually_adds_entries_to_registry() {
     let mut cache_entries = std::collections::HashMap::new();
     cache_entries.insert(
         "ollama".to_owned(),
-        vec![crate::feat::provider_infra::ModelInfo {
+        vec![crate::ModelInfo {
             id: "mistral".to_owned(),
             context_length: None,
         }],
     );
-    let cache = crate::feat::provider_infra::ModelCache {
+    let cache = crate::ModelCache {
         entries: cache_entries,
         last_updated_at: None,
     };
@@ -310,7 +310,7 @@ fn merge_cache_actually_adds_entries_to_registry() {
 
     // Then the merged model should be in the registry.
     let merged_id =
-        crate::feat::provider_infra::provider_id::ProviderId::new("ollama/mistral".to_owned());
+        crate::provider_id::ProviderId::new("ollama/mistral".to_owned());
     let entry = service.get(&merged_id);
     assert!(entry.is_some(), "merge_cache should add the remote model");
     assert!(entry.unwrap().is_remote);

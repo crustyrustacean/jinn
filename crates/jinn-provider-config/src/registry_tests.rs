@@ -7,9 +7,9 @@
 )]
 
 use super::registry::*;
-use crate::feat::provider_infra::api_keys::ApiKeys;
-use crate::feat::provider_infra::config::{AliasEntry, ProviderEntry, ProvidersConfig};
-use crate::feat::provider_infra::provider_id::ProviderId;
+use crate::api_keys::ApiKeys;
+use crate::config::{AliasEntry, ProviderEntry, ProvidersConfig};
+use crate::provider_id::ProviderId;
 
 fn make_config(
     providers: Vec<ProviderEntry>,
@@ -456,12 +456,12 @@ fn create_factory_for_model_succeeds_for_known_provider() {
     let mut cache_entries = std::collections::HashMap::new();
     cache_entries.insert(
         "ollama".to_owned(),
-        vec![crate::feat::provider_infra::ModelInfo {
+        vec![crate::ModelInfo {
             id: "mistral".to_owned(),
             context_length: None,
         }],
     );
-    let cache = crate::feat::provider_infra::ModelCache {
+    let cache = crate::ModelCache {
         entries: cache_entries,
         last_updated_at: None,
     };
@@ -513,12 +513,12 @@ fn create_factory_succeeds_for_merged_remote_model() {
     let mut cache_entries = std::collections::HashMap::new();
     cache_entries.insert(
         "lmstudio".to_owned(),
-        vec![crate::feat::provider_infra::ModelInfo {
+        vec![crate::ModelInfo {
             id: "my-real-model".to_owned(),
             context_length: None,
         }],
     );
-    let cache = crate::feat::provider_infra::ModelCache {
+    let cache = crate::ModelCache {
         entries: cache_entries,
         last_updated_at: None,
     };
@@ -575,12 +575,12 @@ fn create_factory_succeeds_for_merged_model_with_slashes() {
     let mut cache_entries = std::collections::HashMap::new();
     cache_entries.insert(
         "openrouter".to_owned(),
-        vec![crate::feat::provider_infra::ModelInfo {
+        vec![crate::ModelInfo {
             id: "anthropic/claude-sonnet-4".to_owned(),
             context_length: None,
         }],
     );
-    let cache = crate::feat::provider_infra::ModelCache {
+    let cache = crate::ModelCache {
         entries: cache_entries,
         last_updated_at: None,
     };
@@ -653,12 +653,12 @@ fn merge_cache_adds_remote_entries() {
     let mut cache_entries = std::collections::HashMap::new();
     cache_entries.insert(
         "ollama".to_owned(),
-        vec![crate::feat::provider_infra::ModelInfo {
+        vec![crate::ModelInfo {
             id: "mistral".to_owned(),
             context_length: None,
         }],
     );
-    let cache = crate::feat::provider_infra::ModelCache {
+    let cache = crate::ModelCache {
         entries: cache_entries,
         last_updated_at: None,
     };
@@ -684,12 +684,12 @@ fn merge_cache_static_wins_on_collision() {
     let mut cache_entries = std::collections::HashMap::new();
     cache_entries.insert(
         "ollama".to_owned(),
-        vec![crate::feat::provider_infra::ModelInfo {
+        vec![crate::ModelInfo {
             id: "llama3".to_owned(),
             context_length: None,
         }],
     );
-    let cache = crate::feat::provider_infra::ModelCache {
+    let cache = crate::ModelCache {
         entries: cache_entries,
         last_updated_at: None,
     };
@@ -714,12 +714,12 @@ fn merge_cache_sets_is_remote_true() {
     let mut cache_entries = std::collections::HashMap::new();
     cache_entries.insert(
         "ollama".to_owned(),
-        vec![crate::feat::provider_infra::ModelInfo {
+        vec![crate::ModelInfo {
             id: "deepseek-v3".to_owned(),
             context_length: None,
         }],
     );
-    let cache = crate::feat::provider_infra::ModelCache {
+    let cache = crate::ModelCache {
         entries: cache_entries,
         last_updated_at: None,
     };
@@ -748,12 +748,12 @@ fn merge_cache_ignores_unknown_provider() {
     let mut cache_entries = std::collections::HashMap::new();
     cache_entries.insert(
         "unknown-provider".to_owned(),
-        vec![crate::feat::provider_infra::ModelInfo {
+        vec![crate::ModelInfo {
             id: "model".to_owned(),
             context_length: None,
         }],
     );
-    let cache = crate::feat::provider_infra::ModelCache {
+    let cache = crate::ModelCache {
         entries: cache_entries,
         last_updated_at: None,
     };

@@ -20,7 +20,7 @@ pub mod persona;
 pub mod picker;
 pub mod preferences_actor;
 pub mod provider;
-pub mod provider_infra;
+pub use jinn_provider_config as provider_infra;
 pub mod pruner_accumulation_input;
 pub mod queue_actor;
 pub mod rename_session_input;

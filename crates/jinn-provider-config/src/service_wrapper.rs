@@ -73,7 +73,7 @@ mod tests {
     )]
     use std::sync::Arc;
 
-    use crate::feat::provider_infra::service_wrapper::LlmServiceFactoryService;
+    use crate::service_wrapper::LlmServiceFactoryService;
     use jinn_provider::FakeLlmServiceFactory;
 
     #[rstest::rstest]
@@ -123,7 +123,7 @@ mod tests {
         assert_eq!(service.name(), "FakeLlm");
 
         // When swapping the factory on one clone.
-        let factory_b = crate::feat::provider_infra::sample::SampleLlmServiceFactory;
+        let factory_b = crate::sample::SampleLlmServiceFactory;
         clone.swap(Arc::new(factory_b));
 
         // Then both clones see the new factory.
