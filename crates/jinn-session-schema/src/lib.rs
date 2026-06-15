@@ -20,6 +20,9 @@ mod migrate;
 
 pub use legacy::PersistableCoreV20;
 
+#[cfg(feature = "testing")]
+pub use migrate::testing;
+
 use error_stack::{Report, ResultExt as _};
 use wherror::Error;
 
@@ -68,7 +71,9 @@ pub fn run_migrations(conn: &mut rusqlite::Connection) -> Result<(), Report<Sche
 ///
 /// `PRAGMA foreign_key_check` returns one row per violation (empty = clean).
 /// Columns: `table`, `rowid`, `parent`, `fkid` — only `table` is bound.
-fn fk_violations(conn: &mut rusqlite::Connection) -> Result<Vec<String>, Report<SchemaMigrationError>> {
+fn fk_violations(
+    conn: &mut rusqlite::Connection,
+) -> Result<Vec<String>, Report<SchemaMigrationError>> {
     let mut stmt = conn
         .prepare("PRAGMA foreign_key_check")
         .change_context(SchemaMigrationError)

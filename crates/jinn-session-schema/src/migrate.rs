@@ -27,7 +27,9 @@ use crate::SchemaMigrationError;
 /// # Errors
 ///
 /// Returns an error if any migration or version recording fails.
-pub(crate) fn run_pending(conn: &mut rusqlite::Connection) -> Result<(), Report<SchemaMigrationError>> {
+pub(crate) fn run_pending(
+    conn: &mut rusqlite::Connection,
+) -> Result<(), Report<SchemaMigrationError>> {
     bootstrap_tracking_table(conn)?;
     let current = current_version(conn)?;
 
@@ -133,7 +135,9 @@ pub(crate) fn run_pending(conn: &mut rusqlite::Connection) -> Result<(), Report<
 /// This is the only place `IF NOT EXISTS` is used - the tracking table must
 /// bootstrap itself before version checking can begin. All other migrations
 /// use strict DDL so failures are loud.
-fn bootstrap_tracking_table(conn: &mut rusqlite::Connection) -> Result<(), Report<SchemaMigrationError>> {
+pub fn bootstrap_tracking_table(
+    conn: &mut rusqlite::Connection,
+) -> Result<(), Report<SchemaMigrationError>> {
     conn.execute_batch(
         "CREATE TABLE IF NOT EXISTS _migrations (\
          version INTEGER NOT NULL,\
@@ -161,7 +165,7 @@ fn current_version(conn: &mut rusqlite::Connection) -> Result<i32, Report<Schema
 }
 
 /// Records a completed migration in the tracking table.
-fn record_version(
+pub fn record_version(
     conn: &mut rusqlite::Connection,
     version: i32,
     name: &str,
@@ -178,7 +182,7 @@ fn record_version(
 // ── Migrations ───────────────────────────────────────────────────────────
 
 /// v0: Initial schema - sessions, entries, session_entries, token_ledger.
-fn migrate_v0(conn: &mut rusqlite::Connection) -> Result<(), Report<SchemaMigrationError>> {
+pub fn migrate_v0(conn: &mut rusqlite::Connection) -> Result<(), Report<SchemaMigrationError>> {
     conn.execute_batch(
         "CREATE TABLE sessions (\
          id TEXT PRIMARY KEY,\
@@ -237,7 +241,7 @@ fn migrate_v0(conn: &mut rusqlite::Connection) -> Result<(), Report<SchemaMigrat
 }
 
 /// v1: Add `cwd` column to sessions.
-fn migrate_v1(conn: &mut rusqlite::Connection) -> Result<(), Report<SchemaMigrationError>> {
+pub fn migrate_v1(conn: &mut rusqlite::Connection) -> Result<(), Report<SchemaMigrationError>> {
     conn.execute_batch("ALTER TABLE sessions ADD COLUMN cwd TEXT NOT NULL DEFAULT '.'")
         .change_context(SchemaMigrationError)
         .attach("v1: add cwd column to sessions")?;
@@ -245,7 +249,7 @@ fn migrate_v1(conn: &mut rusqlite::Connection) -> Result<(), Report<SchemaMigrat
 }
 
 /// v2: Add `created_at` column to sessions.
-fn migrate_v2(conn: &mut rusqlite::Connection) -> Result<(), Report<SchemaMigrationError>> {
+pub fn migrate_v2(conn: &mut rusqlite::Connection) -> Result<(), Report<SchemaMigrationError>> {
     conn.execute_batch("ALTER TABLE sessions ADD COLUMN created_at TEXT NOT NULL DEFAULT ''")
         .change_context(SchemaMigrationError)
         .attach("v2: add created_at column to sessions")?;
@@ -256,7 +260,7 @@ fn migrate_v2(conn: &mut rusqlite::Connection) -> Result<(), Report<SchemaMigrat
 ///
 /// Compaction marks entries as ignored when they've been summarized.
 /// Default is `false` (entry is active and visible during prompt assembly).
-fn migrate_v3(conn: &mut rusqlite::Connection) -> Result<(), Report<SchemaMigrationError>> {
+pub fn migrate_v3(conn: &mut rusqlite::Connection) -> Result<(), Report<SchemaMigrationError>> {
     conn.execute_batch(
         "ALTER TABLE session_entries ADD COLUMN ignored BOOLEAN NOT NULL DEFAULT FALSE",
     )
@@ -268,7 +272,7 @@ fn migrate_v3(conn: &mut rusqlite::Connection) -> Result<(), Report<SchemaMigrat
 /// v4: Add `cost` column to token_ledger.
 ///
 /// Tracks per-request cost in USD as reported by the provider (e.g. OpenRouter).
-fn migrate_v4(conn: &mut rusqlite::Connection) -> Result<(), Report<SchemaMigrationError>> {
+pub fn migrate_v4(conn: &mut rusqlite::Connection) -> Result<(), Report<SchemaMigrationError>> {
     conn.execute_batch("ALTER TABLE token_ledger ADD COLUMN cost DOUBLE")
         .change_context(SchemaMigrationError)
         .attach("v4: add cost column to token_ledger")?;
@@ -279,7 +283,7 @@ fn migrate_v4(conn: &mut rusqlite::Connection) -> Result<(), Report<SchemaMigrat
 ///
 /// `lifecycle_name` is NULL for sessions created without a lifecycle.
 /// `lifecycle_args` is a JSON array of strings, defaulting to empty.
-fn migrate_v5(conn: &mut rusqlite::Connection) -> Result<(), Report<SchemaMigrationError>> {
+pub fn migrate_v5(conn: &mut rusqlite::Connection) -> Result<(), Report<SchemaMigrationError>> {
     conn.execute_batch("ALTER TABLE sessions ADD COLUMN lifecycle_name TEXT DEFAULT NULL")
         .change_context(SchemaMigrationError)
         .attach("v5: add lifecycle_name column to sessions")?;
@@ -294,7 +298,7 @@ fn migrate_v5(conn: &mut rusqlite::Connection) -> Result<(), Report<SchemaMigrat
 /// Sessions default to unarchived. Closing a session sets `archived = TRUE`.
 /// On startup, only unarchived sessions are loaded into memory.
 #[expect(clippy::expect_used, reason = "infallible")]
-fn migrate_v6(conn: &mut rusqlite::Connection) {
+pub fn migrate_v6(conn: &mut rusqlite::Connection) {
     conn.execute_batch("ALTER TABLE sessions ADD COLUMN archived BOOLEAN NOT NULL DEFAULT FALSE")
         .expect("v6: add archived column to sessions");
 }
@@ -304,7 +308,7 @@ fn migrate_v6(conn: &mut rusqlite::Connection) {
 /// Persists the `LifecycleScriptState` enum so teardown runs correctly
 /// after app restart for sessions that had setup run.
 /// Default is `'nothing_ran'` - matching the enum's default.
-fn migrate_v7(conn: &mut rusqlite::Connection) -> Result<(), Report<SchemaMigrationError>> {
+pub fn migrate_v7(conn: &mut rusqlite::Connection) -> Result<(), Report<SchemaMigrationError>> {
     conn.execute_batch(
         "ALTER TABLE sessions ADD COLUMN lifecycle_script_state TEXT NOT NULL DEFAULT 'nothing_ran'",
     )
@@ -318,7 +322,7 @@ fn migrate_v7(conn: &mut rusqlite::Connection) -> Result<(), Report<SchemaMigrat
 /// Stores a JSON blob of all session metadata. This eliminates the need
 /// for individual columns per field - new fields on `SessionCore` are
 /// automatically persisted via serde.
-fn migrate_v8(conn: &mut rusqlite::Connection) -> Result<(), Report<SchemaMigrationError>> {
+pub fn migrate_v8(conn: &mut rusqlite::Connection) -> Result<(), Report<SchemaMigrationError>> {
     conn.execute_batch("ALTER TABLE sessions ADD COLUMN metadata TEXT")
         .change_context(SchemaMigrationError)
         .attach("v8: add metadata column to sessions")?;
@@ -329,7 +333,7 @@ fn migrate_v8(conn: &mut rusqlite::Connection) -> Result<(), Report<SchemaMigrat
 ///
 /// The old name was ambiguous - it sounded like a table of sessions.
 /// The new name makes it clear this is the chat history junction table.
-fn migrate_v9(conn: &mut rusqlite::Connection) -> Result<(), Report<SchemaMigrationError>> {
+pub fn migrate_v9(conn: &mut rusqlite::Connection) -> Result<(), Report<SchemaMigrationError>> {
     conn.execute_batch("ALTER TABLE session_entries RENAME TO session_history")
         .change_context(SchemaMigrationError)
         .attach("v9: rename session_entries to session_history")?;
@@ -342,7 +346,7 @@ fn migrate_v9(conn: &mut rusqlite::Connection) -> Result<(), Report<SchemaMigrat
 /// and sets `profile.strategy` to `"compaction"` for all sessions.
 /// This prepares the database for the removal of other strategy types
 /// from the Rust codebase.
-fn migrate_v10(conn: &mut rusqlite::Connection) -> Result<(), Report<SchemaMigrationError>> {
+pub fn migrate_v10(conn: &mut rusqlite::Connection) -> Result<(), Report<SchemaMigrationError>> {
     let rows = query_map_rows(
         conn,
         "SELECT rowid, strategy_state, profile FROM sessions",
@@ -481,7 +485,7 @@ fn rewrite_metadata_blob_model(raw_metadata: &str) -> String {
 /// Marks sessions created by workflow LLM nodes. Enables filtering
 /// workflow sessions in the sidebar and elsewhere.
 /// Default is `false` - regular chat sessions are not workflow sessions.
-fn migrate_v11(conn: &mut rusqlite::Connection) -> Result<(), Report<SchemaMigrationError>> {
+pub fn migrate_v11(conn: &mut rusqlite::Connection) -> Result<(), Report<SchemaMigrationError>> {
     conn.execute_batch(
         "ALTER TABLE sessions ADD COLUMN is_workflow BOOLEAN NOT NULL DEFAULT FALSE",
     )
@@ -496,7 +500,7 @@ fn migrate_v11(conn: &mut rusqlite::Connection) -> Result<(), Report<SchemaMigra
 /// `'default'`, `'forced_include'`, `'forced_exclude'`. The old `ignored`
 /// column is kept for backward compatibility - the new column takes precedence.
 /// Rows with `ignored = 1` are migrated to `'forced_exclude'`.
-fn migrate_v12(conn: &mut rusqlite::Connection) -> Result<(), Report<SchemaMigrationError>> {
+pub fn migrate_v12(conn: &mut rusqlite::Connection) -> Result<(), Report<SchemaMigrationError>> {
     conn.execute_batch(
         "ALTER TABLE session_history ADD COLUMN context_override TEXT NOT NULL DEFAULT 'default'",
     )
@@ -514,7 +518,7 @@ fn migrate_v12(conn: &mut rusqlite::Connection) -> Result<(), Report<SchemaMigra
 ///
 /// Stores judge metadata as a nullable JSON text blob.
 /// When NULL, the session is not a judge session.
-fn migrate_v13(conn: &mut rusqlite::Connection) -> Result<(), Report<SchemaMigrationError>> {
+pub fn migrate_v13(conn: &mut rusqlite::Connection) -> Result<(), Report<SchemaMigrationError>> {
     conn.execute_batch("ALTER TABLE sessions ADD COLUMN judge_meta TEXT")
         .change_context(SchemaMigrationError)
         .attach("v13: add judge_meta column to sessions")?;
@@ -525,7 +529,7 @@ fn migrate_v13(conn: &mut rusqlite::Connection) -> Result<(), Report<SchemaMigra
 ///
 /// Stores the audit trail of context inclusion/exclusion changes as a JSON array
 /// of `ContextChangeEvent`. Defaults to `'[]'` (empty audit) for existing rows.
-fn migrate_v14(conn: &mut rusqlite::Connection) -> Result<(), Report<SchemaMigrationError>> {
+pub fn migrate_v14(conn: &mut rusqlite::Connection) -> Result<(), Report<SchemaMigrationError>> {
     conn.execute_batch("ALTER TABLE entries ADD COLUMN context_history TEXT NOT NULL DEFAULT '[]'")
         .change_context(SchemaMigrationError)
         .attach("v14: add context_history column to entries")?;
@@ -540,7 +544,7 @@ fn migrate_v14(conn: &mut rusqlite::Connection) -> Result<(), Report<SchemaMigra
 /// Implemented via the SQLite-recommended 12-step table rebuild rather than
 /// `ALTER TABLE ... DROP COLUMN`, because the latter requires SQLite >= 3.35 and
 /// the linked (system) SQLite version is not pinned. The rebuild works on any version.
-fn migrate_v15(conn: &mut rusqlite::Connection) -> Result<(), Report<SchemaMigrationError>> {
+pub fn migrate_v15(conn: &mut rusqlite::Connection) -> Result<(), Report<SchemaMigrationError>> {
     conn.execute_batch(
         "CREATE TABLE sessions_new (\
          id TEXT PRIMARY KEY,\
@@ -586,7 +590,7 @@ fn migrate_v15(conn: &mut rusqlite::Connection) -> Result<(), Report<SchemaMigra
     Ok(())
 }
 
-fn migrate_v16(conn: &mut rusqlite::Connection) -> Result<(), Report<SchemaMigrationError>> {
+pub fn migrate_v16(conn: &mut rusqlite::Connection) -> Result<(), Report<SchemaMigrationError>> {
     conn.execute_batch(
         "CREATE TABLE sessions_new (\
          id TEXT PRIMARY KEY,\
@@ -641,7 +645,7 @@ fn migrate_v16(conn: &mut rusqlite::Connection) -> Result<(), Report<SchemaMigra
 ///
 /// This enables the `ModelSelection` enum to deserialize correctly.
 /// Unparseable JSON is left unchanged.
-fn migrate_v17(conn: &mut rusqlite::Connection) -> Result<(), Report<SchemaMigrationError>> {
+pub fn migrate_v17(conn: &mut rusqlite::Connection) -> Result<(), Report<SchemaMigrationError>> {
     let rows = query_map_rows(
         conn,
         "SELECT rowid, profile FROM sessions",
@@ -680,7 +684,7 @@ fn migrate_v17(conn: &mut rusqlite::Connection) -> Result<(), Report<SchemaMigra
 /// The column now stores `EntryTiming` JSON (instant or streamed timing data)
 /// rather than a plain timestamp string. The rename aligns the column name
 /// with the Rust field it maps to.
-fn migrate_v18(conn: &mut rusqlite::Connection) -> Result<(), Report<SchemaMigrationError>> {
+pub fn migrate_v18(conn: &mut rusqlite::Connection) -> Result<(), Report<SchemaMigrationError>> {
     conn.execute_batch("ALTER TABLE entries RENAME COLUMN timestamp TO timing")
         .change_context(SchemaMigrationError)
         .attach("v18: rename entries.timestamp to timing")?;
@@ -698,7 +702,7 @@ fn migrate_v18(conn: &mut rusqlite::Connection) -> Result<(), Report<SchemaMigra
 /// embedded `profile` sub-object and applies the same rewrite v17 applied
 /// to the column. Rows with `NULL` metadata (pre-v8 sessions) are skipped;
 /// their column data was already fixed by v17.
-fn migrate_v19(conn: &mut rusqlite::Connection) -> Result<(), Report<SchemaMigrationError>> {
+pub fn migrate_v19(conn: &mut rusqlite::Connection) -> Result<(), Report<SchemaMigrationError>> {
     let rows = query_map_rows(
         conn,
         "SELECT rowid, metadata FROM sessions WHERE metadata IS NOT NULL",
@@ -737,7 +741,7 @@ fn migrate_v19(conn: &mut rusqlite::Connection) -> Result<(), Report<SchemaMigra
 ///
 /// `judge_meta` (vestigial — referenced only by an orphaned doc comment) is
 /// dropped in the same rebuild.
-fn migrate_v20(conn: &mut rusqlite::Connection) -> Result<(), Report<SchemaMigrationError>> {
+pub fn migrate_v20(conn: &mut rusqlite::Connection) -> Result<(), Report<SchemaMigrationError>> {
     backfill_missing_metadata(conn)?;
     rebuild_sessions_without_zombies(conn)?;
     Ok(())
@@ -749,7 +753,9 @@ fn migrate_v20(conn: &mut rusqlite::Connection) -> Result<(), Report<SchemaMigra
 /// `profile`/`blobs`/`lifecycle_args`/`lifecycle_script_state`
 /// from their column JSON, parse `updated_at`/`created_at`/`parent_session`,
 /// and serialize a full [`crate::PersistableCoreV20`].
-fn backfill_missing_metadata(conn: &mut rusqlite::Connection) -> Result<(), Report<SchemaMigrationError>> {
+fn backfill_missing_metadata(
+    conn: &mut rusqlite::Connection,
+) -> Result<(), Report<SchemaMigrationError>> {
     let rows = query_map_rows(
         conn,
         "SELECT rowid, id, title, updated_at, created_at, parent_session, \
@@ -1003,7 +1009,21 @@ pub fn apply_migrations_inner(conn: &mut rusqlite::Connection, target: i32) {
 /// (the public [`crate::run_migrations`] toggles it; direct test callers
 /// toggle it themselves).
 #[cfg(feature = "testing")]
+#[allow(dead_code)]
 pub fn apply_up_to_no_fk(conn: &mut rusqlite::Connection, target: i32) {
     bootstrap_tracking_table(conn).expect("bootstrap");
     apply_migrations_inner(conn, target);
+}
+
+/// Test-only re-exports of individual migrations and helpers.
+///
+/// Downstream test suites (e.g. jinn-domain's migrator tests) need to stand a
+/// DB up at a specific version and assert against a single migration's
+#[cfg(feature = "testing")]
+#[allow(unused_imports)]
+pub mod testing {
+    pub use super::{
+        apply_migrations_inner, bootstrap_tracking_table, migrate_v10, migrate_v15, migrate_v16,
+        migrate_v17, migrate_v18, migrate_v19, record_version,
+    };
 }

@@ -11,7 +11,7 @@
 //! native rusqlite `transaction(|tx| …)` on one held connection.
 
 use std::collections::HashMap;
-use std::path::{Path, PathBuf};
+use std::path::Path;
 
 use async_trait::async_trait;
 use dao::{Entity, FromRow, Pool, Row, dao};
@@ -406,7 +406,7 @@ struct TokenLedgerRow {
 
 /// Session-level queries that run directly on the pool. These use `#[query]` /
 /// `#[execute]` so the `dao` macro validates the SQL against the post-v20 schema
-/// at compile time (see `dao_schema.sql` + `build.rs`). Transactional multi-statement
+/// at compile time (see `jinn-session-schema` + `build.rs`). Transactional multi-statement
 /// bodies (`save`, `delete`, `fork`) still use `pool.with_conn` with raw rusqlite
 /// because they need dynamic `IN (?, ?, …)` placeholder strings that cannot be
 /// statically validated.
@@ -493,88 +493,6 @@ impl From<&SessionCore> for PersistableCore {
             attached_plugins: core.attached_plugins.clone(),
             persist: core.persist,
         }
-    }
-}
-
-/// Legacy column data for a pre-v8 `sessions` row with `metadata IS NULL`, used
-/// by migration v20 to backfill the `PersistableCore` blob.
-pub(crate) struct LegacySessionColumns {
-    pub(crate) session_id: String,
-    pub(crate) title: Option<String>,
-    pub(crate) updated_at: String,
-    pub(crate) created_at: String,
-    pub(crate) parent_session: Option<String>,
-    pub(crate) profile: String,
-    pub(crate) blobs: String,
-    pub(crate) cwd: String,
-    pub(crate) lifecycle_name: Option<String>,
-    pub(crate) lifecycle_args: String,
-    pub(crate) lifecycle_script_state: String,
-}
-
-impl PersistableCore {
-    /// Reconstructs a [`PersistableCore`] from the legacy (pre-v8) columns of
-    /// a `sessions` row whose `metadata` is `NULL`.
-    ///
-    /// This mirrors the pre-v20 legacy load branch: each JSON column is
-    /// deserialized independently and re-serialized as the authoritative blob.
-    /// `fork_ordinal`, `task_list`, and `attached_plugins` default (legacy
-    /// sessions never carried them).
-    ///
-    /// # Errors
-    ///
-    /// Returns an error if any column JSON fails to deserialize, a timestamp
-    /// fails to parse, or the reconstructed blob cannot be serialized.
-    pub(crate) fn blob_from_legacy_columns(
-        legacy: &LegacySessionColumns,
-    ) -> Result<String, Report<SessionStoreError>> {
-        // The legacy `profile` column may hold `{}` (DEFAULT) or pre-v17 shapes
-        // that fail to deserialize into `SessionProfile`. A migration must never
-        // block on data the old system could have produced, so fall back to
-        // default rather than erroring.
-        let profile: SessionProfile = serde_json::from_str(&legacy.profile).unwrap_or_default();
-        let blobs: HashMap<String, JsonValue> = serde_json::from_str(&legacy.blobs)
-            .change_context(SessionStoreError)
-            .attach("v20: failed to deserialize legacy blobs column")?;
-        // Legacy columns hold bare variant names (e.g. `nothing_ran`) and bare
-        // array literals, not valid JSON. The original legacy load branch used
-        // `.unwrap_or_default()`; preserve that fault tolerance.
-        let lifecycle_args: Vec<String> =
-            serde_json::from_str(&legacy.lifecycle_args).unwrap_or_default();
-        let lifecycle_script_state: LifecycleScriptState =
-            serde_json::from_str(&legacy.lifecycle_script_state).unwrap_or_default();
-        let updated_at: jiff::Timestamp = legacy
-            .updated_at
-            .parse()
-            .change_context(SessionStoreError)
-            .attach("v20: failed to parse legacy updated_at")?;
-        let created_at: jiff::Timestamp = legacy
-            .created_at
-            .parse()
-            .change_context(SessionStoreError)
-            .attach("v20: failed to parse legacy created_at")?;
-
-        let persistable = Self {
-            session_id: SessionId::from(legacy.session_id.clone()),
-            title: legacy.title.clone(),
-            updated_at,
-            created_at,
-            profile,
-            cwd: PathBuf::from(&legacy.cwd),
-            parent_session: legacy.parent_session.clone().map(SessionId::from),
-            fork_ordinal: None,
-            blobs,
-            lifecycle_name: legacy.lifecycle_name.clone(),
-            lifecycle_args,
-            lifecycle_script_state,
-            task_list: crate::feat::todo_list::TaskList::default(),
-            attached_plugins: Vec::default(),
-            persist: true,
-        };
-
-        serde_json::to_string(&persistable)
-            .change_context(SessionStoreError)
-            .attach("v20: failed to serialize backfilled metadata blob")
     }
 }
 

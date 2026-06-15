@@ -115,8 +115,7 @@ impl PersistableCoreV20 {
     ) -> Result<String, Report<SchemaMigrationError>> {
         // profile: the column was already normalized to {"model": {"single": ...}}
         // by migration v17. Default on parse failure.
-        let profile: serde_json::Value =
-            serde_json::from_str(&legacy.profile).unwrap_or_default();
+        let profile: serde_json::Value = serde_json::from_str(&legacy.profile).unwrap_or_default();
 
         let blobs: HashMap<String, serde_json::Value> = serde_json::from_str(&legacy.blobs)
             .change_context(SchemaMigrationError)
@@ -128,8 +127,16 @@ impl PersistableCoreV20 {
             serde_json::from_str(&legacy.lifecycle_args).unwrap_or_default();
 
         // Validate timestamps parse (they're written RFC 3339). Don't coerce.
-        let _updated: Timestamp = legacy.updated_at.parse().change_context(SchemaMigrationError).attach("v20: failed to parse legacy updated_at")?;
-        let _created: Timestamp = legacy.created_at.parse().change_context(SchemaMigrationError).attach("v20: failed to parse legacy created_at")?;
+        let _updated: Timestamp = legacy
+            .updated_at
+            .parse()
+            .change_context(SchemaMigrationError)
+            .attach("v20: failed to parse legacy updated_at")?;
+        let _created: Timestamp = legacy
+            .created_at
+            .parse()
+            .change_context(SchemaMigrationError)
+            .attach("v20: failed to parse legacy created_at")?;
 
         let persistable = Self {
             session_id: legacy.session_id.clone(),
@@ -144,7 +151,7 @@ impl PersistableCoreV20 {
             lifecycle_name: legacy.lifecycle_name.clone(),
             lifecycle_args,
             lifecycle_script_state: legacy.lifecycle_script_state.clone(),
-            task_list: serde_json::Value::Null,
+            task_list: serde_json::json!({"phases": []}),
             attached_plugins: Vec::new(),
             persist: true,
         };
