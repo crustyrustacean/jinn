@@ -36,7 +36,6 @@ impl TuiWorld {
             providers: vec![],
             aliases: vec![],
             default_provider: None,
-            alloys: vec![],
         };
         let (actor_tx, _actor_rx) = kanal::unbounded::<jinn_domain::AppMsg>();
 

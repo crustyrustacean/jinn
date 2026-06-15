@@ -237,6 +237,55 @@ fn render_shows_footer_when_provided() {
 }
 
 #[rstest::rstest]
+fn render_multiple_footers_each_on_own_row() {
+    // Given a widget with two footer lines.
+    let state = SelectionState::with_items(make_items(&["test"]));
+    let (mut terminal, _) = setup_term(80, 24);
+
+    // When rendering with two footers.
+    terminal
+        .draw(|frame| {
+            let widget = SelectionWidget::new(&state)
+                .footers(vec![Line::from("TOP FOOTER"), Line::from("BOTTOM FOOTER")]);
+            widget.render(frame, frame.area());
+        })
+        .unwrap();
+
+    // Then each footer occupies its own row, stacked bottom-up in declaration order.
+    let buffer = terminal.backend().buffer().clone();
+    let popup = compute_popup_rect(Rect::new(0, 0, 80, 24));
+    let inner = {
+        let b = Block::default().borders(Borders::ALL);
+        b.inner(popup)
+    };
+    let bottom_y = inner.y + inner.height - 1;
+    let top_footer_y = bottom_y - 1;
+
+    let row_contains = |y: u16, needle: &str| -> bool {
+        (inner.x..inner.x + inner.width)
+            .any(|col| buffer.cell((col, y)).map(|c| c.symbol()).as_deref() == Some(needle))
+    };
+
+    // Find the first letter of each marker on its expected row.
+    let bottom_has_marker = (inner.x..inner.x + inner.width)
+        .any(|col| buffer.cell((col, bottom_y)).map(|c| c.symbol()).as_deref() == Some("B"));
+    let top_has_marker = (inner.x..inner.x + inner.width).any(|col| {
+        buffer
+            .cell((col, top_footer_y))
+            .map(|c| c.symbol())
+            .as_deref()
+            == Some("T")
+    });
+
+    assert!(
+        bottom_has_marker,
+        "expected BOTTOM FOOTER on the lowest row"
+    );
+    assert!(top_has_marker, "expected TOP FOOTER on the row above");
+    let _ = row_contains;
+}
+
+#[rstest::rstest]
 fn render_no_footer_shows_empty_row() {
     // Given a widget without a footer.
     let state = SelectionState::with_items(make_items(&["test"]));

@@ -188,7 +188,6 @@ mod tests {
             }],
             aliases: vec![],
             default_provider: None,
-            alloys: vec![],
         }
     }
 

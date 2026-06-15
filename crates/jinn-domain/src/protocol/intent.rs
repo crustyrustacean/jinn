@@ -138,6 +138,10 @@ pub enum Intent {
     SkillToggleSelected,
     /// Toggle the selected model's selected state for multi-select alloy building.
     ModelToggleSelected,
+    /// Toggle the provider picker between single-model and alloy-selection modes.
+    ///
+    /// No-op unless the provider picker is active.
+    ToggleAlloyMode,
     /// Scroll the preview pane up one page.
     PreviewScrollUp,
     /// Scroll the preview pane down one page.
@@ -346,6 +350,7 @@ impl std::fmt::Display for Intent {
             Intent::ToolToggleSelected => write!(f, "toggle tool"),
             Intent::SkillToggleSelected => write!(f, "toggle skill"),
             Intent::ModelToggleSelected => write!(f, "toggle model"),
+            Intent::ToggleAlloyMode => write!(f, "toggle alloy mode"),
             Intent::PreviewScrollUp => write!(f, "preview scroll up"),
             Intent::PreviewScrollDown => write!(f, "preview scroll down"),
             Intent::SessionNew => write!(f, "new session"),
