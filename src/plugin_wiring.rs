@@ -120,6 +120,35 @@ pub async fn handle_plugin_request(
                 }
             }
         }
+        "create_session" => {
+            // Create an automated child session parented at the given origin.
+            //   { parent_session_id, automated?: bool, persist?: bool }
+            // Defaults match the plugin_ctx.lua contract: automated=false, persist=true.
+            // create_child_session is synchronous and tolerant of a missing parent
+            // (it skips model inheritance but still creates the session).
+            #[derive(serde::Deserialize)]
+            struct CreateSessionPayload {
+                parent_session_id: jinn_domain::protocol::SessionId,
+                #[serde(default)]
+                automated: Option<bool>,
+                #[serde(default)]
+                persist: Option<bool>,
+            }
+            match serde_json::from_value::<CreateSessionPayload>(data.clone()) {
+                Ok(p) => {
+                    let session_id = domain_ctx.create_child_session(
+                        &p.parent_session_id,
+                        p.automated.unwrap_or(false),
+                        p.persist.unwrap_or(true),
+                    );
+                    request_ok(serde_json::json!({ "session_id": session_id }))
+                }
+                Err(e) => {
+                    tracing::warn!(error = %e, "create_session malformed payload");
+                    request_err(e)
+                }
+            }
+        }
         "llm" => {
             // Full-context LLM (future use): not wired in this phase.
             tracing::warn!(name, "full-context llm request handler not yet wired");
@@ -290,6 +319,95 @@ mod tests {
         assert!(
             result["error"].as_str().is_some(),
             "error field must be a string"
+        );
+    }
+
+    // ─── create_session ────────────────────���───────────────────────────
+
+    #[tokio::test]
+    async fn create_session_returns_ok_value_envelope() {
+        // Given a DomainNodeContext with a seeded parent session.
+        let (ctx, parent_id, state) = make_ctx_with_source_session("ollama/llama3");
+        let payload = json!({
+            "parent_session_id": parent_id,
+            "automated": true,
+            "persist": true,
+        });
+
+        // When handling the create_session request.
+        let value = handle_plugin_request("create_session", &payload, &ctx, None).await;
+
+        // Then the envelope carries a session_id.
+        assert_eq!(value["ok"], json!(true), "must be a success envelope");
+        let session_id = value["value"]["session_id"]
+            .as_str()
+            .expect("session_id string")
+            .to_owned();
+
+        // And a child session parented at the parent exists and is automated.
+        let child_id = SessionId::from(session_id);
+        let guard = state.read();
+        let child = guard
+            .session
+            .get(&child_id)
+            .expect("child session must be inserted");
+        assert_eq!(
+            child.core.parent_session.as_ref(),
+            Some(&parent_id),
+            "child must be parented at the request's parent_session_id"
+        );
+        assert!(
+            child.is_automated(),
+            "child must be marked automated when requested"
+        );
+    }
+
+    #[tokio::test]
+    async fn create_session_malformed_payload_returns_ok_false() {
+        // Given a DomainNodeContext (contents irrelevant; serde fails first).
+        let services = TestServices::builder().build();
+        let ctx = DomainNodeContext::new(services, State::new(AppState::default()));
+
+        // When calling handle_plugin_request with a payload missing parent_session_id.
+        let result = handle_plugin_request(
+            "create_session",
+            &json!({ "automated": true }),
+            &ctx,
+            None,
+        )
+        .await;
+
+        // Then the envelope is an error carrying the serde message.
+        assert_eq!(result["ok"], json!(false), "must be an error envelope");
+        assert!(
+            result["error"].as_str().is_some(),
+            "error field must be a string"
+        );
+    }
+
+    #[tokio::test]
+    async fn create_session_missing_parent_still_creates_session() {
+        // Given a DomainNodeContext with NO seeded parent session.
+        let services = TestServices::builder().build();
+        let state = State::new(AppState::default());
+        let ctx = DomainNodeContext::new(services, state.clone());
+
+        // When calling handle_plugin_request with an unknown parent_session_id.
+        // (create_child_session is tolerant: it skips model inheritance but
+        // still creates the session.)
+        let result = handle_plugin_request(
+            "create_session",
+            &json!({ "parent_session_id": SessionId::new(), "automated": true }),
+            &ctx,
+            None,
+        )
+        .await;
+
+        // Then the envelope still reports success with a session_id.
+        assert_eq!(result["ok"], json!(true), "session is still created");
+        assert!(
+            result["value"]["session_id"].as_str().is_some(),
+            "session_id must be present"
         );
     }
 }
