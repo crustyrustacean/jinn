@@ -1692,6 +1692,8 @@ version = "0.68.0"
 dependencies = [
  "dirs",
  "error-stack",
+ "rstest",
+ "tempfile",
  "toml",
  "toml_edit 0.22.27",
  "wherror",

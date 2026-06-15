@@ -17,5 +17,9 @@ default = []
 # across crate boundaries, so this feature is the boundary instead.
 testing = []
 
+[dev-dependencies]
+tempfile = { workspace = true }
+rstest = { workspace = true }
+
 [lints]
 workspace = true

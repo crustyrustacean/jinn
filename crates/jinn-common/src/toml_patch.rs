@@ -238,7 +238,6 @@ fn apply_array(
     }
 }
 
-#[expect(clippy::expect_used, reason = "infallible")]
 fn apply_array_of_tables_by_key(
     new: &[toml::Value],
     target: &mut Item,

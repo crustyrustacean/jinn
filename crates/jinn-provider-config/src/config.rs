@@ -7,8 +7,8 @@
 
 use std::path::{Path, PathBuf};
 
-use jinn_common::app_info::APP_NAME;
 use error_stack::{Report, ResultExt as _};
+use jinn_common::app_info::APP_NAME;
 use serde::{Deserialize, Serialize};
 use wherror::Error;
 
