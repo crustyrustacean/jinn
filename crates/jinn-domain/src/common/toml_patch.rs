@@ -52,6 +52,8 @@ use std::collections::hash_map::Entry;
 use toml_edit::{ArrayOfTables, Item, Table, Value};
 use wherror::Error;
 
+use crate::feat::plugin_dispatch::PluginFireService;
+
 /// Errors that can occur during document patching.
 ///
 /// Opaque by design — callers add context via `error_stack::Report::attach`
@@ -294,9 +296,9 @@ fn apply_array_of_tables_by_key(
         let actual_key: Option<String> = entry.get(key_field).and_then(item_to_string_key);
         match actual_key {
             Some(k) if new_by_key.contains_key(&k) => {
-                *matched.get_mut(idx).expect("idx from enumerate") = true;
+                *matched.get_mut(idx).ok_or(PatchError::Generic)? = true;
             }
-            None => *matched.get_mut(idx).expect("idx from enumerate") = true, // missing key field — preserve
+            None => *matched.get_mut(idx).ok_or(PatchError::Generic)? = true, // missing key field — preserve
             _ => {}
         }
     }
@@ -378,12 +380,14 @@ fn entry_exists_with_key(array: &ArrayOfTables, key_field: &str, key_value: &str
     false
 }
 
-#[expect(clippy::expect_used, reason = "infallible")]
 fn apply_scalar(new: &toml::Value, target: &mut Item) {
     let new_value = value_to_value_edit(new);
     if target.is_value() {
         // Preserve decor of the existing scalar where possible.
-        let preserved_decor = match target.as_value().expect("just checked") {
+        let Some(preserved_decor) = target.as_value() else {
+            return;
+        };
+        let preserved_decor = match preserved_decor {
             Value::String(s) => Some(s.decor().clone()),
             Value::Integer(i) => Some(i.decor().clone()),
             Value::Float(f) => Some(f.decor().clone()),

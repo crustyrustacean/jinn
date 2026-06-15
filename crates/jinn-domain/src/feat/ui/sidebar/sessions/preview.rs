@@ -11,7 +11,7 @@
 use std::collections::HashMap;
 
 use ratatui::Frame;
-use ratatui::layout::Rect;
+use ratatui::layout::{Alignment, Rect};
 use ratatui::style::{Modifier, Style};
 use ratatui::text::{Line, Span};
 use ratatui::widgets::{Block, Borders, Clear, Paragraph, Wrap};
@@ -242,13 +242,31 @@ pub fn render_session_preview(
     frame.render_widget(Clear, popup_area);
 
     // Render the bordered block with session title.
-    let block = Block::default()
-        .title(Span::styled(
-            format!(" {title} "),
-            Style::default().fg(theme.popup_title),
-        ))
-        .borders(Borders::ALL)
-        .border_style(Style::default().fg(theme.border_unfocused));
+    let block = {
+        // Completion badge: `{completed}/{total} · {pct}%`, right-aligned in the
+        // top border. Suppressed when the task list has no tasks.
+        let badge = {
+            let (completed, total) = session.task_list().completion_counts();
+            (total > 0).then(|| {
+                let pct = completed * 100 / total;
+                format!(" {completed}/{total} \u{00B7} {pct}% ")
+            })
+        };
+        let mut block = Block::default()
+            .title(Span::styled(
+                format!(" {title} "),
+                Style::default().fg(theme.popup_title),
+            ))
+            .borders(Borders::ALL)
+            .border_style(Style::default().fg(theme.border_unfocused));
+        if let Some(badge) = badge {
+            block = block.title(
+                Line::from(Span::styled(badge, Style::default().fg(theme.streaming)))
+                    .alignment(Alignment::Right),
+            );
+        }
+        block
+    };
     frame.render_widget(block, popup_area);
 
     // Inner area (inside borders).
