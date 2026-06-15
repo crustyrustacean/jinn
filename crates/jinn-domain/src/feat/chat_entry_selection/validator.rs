@@ -211,7 +211,6 @@ pub fn validate_chat_entry_reset_selected(
     Ok(())
 }
 
-
 #[cfg(test)]
 mod fork_from_entry_tests {
     #![allow(
@@ -808,10 +807,6 @@ mod ignore_selected_tests {
         let result = validate_chat_entry_reset_selected(&state);
 
         // Then validation fails with IsPinned.
-        assert!(matches!(
-            result,
-            Err(ChatEntryResetSelectedError::IsPinned)
-        ));
+        assert!(matches!(result, Err(ChatEntryResetSelectedError::IsPinned)));
     }
 }
-

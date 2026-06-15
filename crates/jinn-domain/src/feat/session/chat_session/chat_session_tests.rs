@@ -3149,7 +3149,6 @@ fn toggle_forced_include_goes_to_forced_exclude() {
     let idx = session.push_entry(entry);
     session.set_selected_entry_index(0);
 
-
     // When toggling ignored.
     session.toggle_entry_ignored();
 
@@ -3168,7 +3167,6 @@ fn toggle_forced_exclude_goes_to_forced_include() {
     entry.apply_context_override(ContextOverride::ForcedExclude, ChangeSource::User);
     let idx = session.push_entry(entry);
     session.set_selected_entry_index(0);
-
 
     // When toggling ignored.
     session.toggle_entry_ignored();

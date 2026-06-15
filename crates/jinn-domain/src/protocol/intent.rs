@@ -224,7 +224,6 @@ pub enum Intent {
     /// Reset the currently selected chat entry's context override to `Default`.
     ChatEntryResetSelected,
 
-
     // --- Session Lifecycle ---
     /// Run a lifecycle setup command to create a new session.
     SessionLifecycleSetup {
