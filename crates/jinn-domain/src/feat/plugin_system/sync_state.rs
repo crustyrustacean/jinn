@@ -438,6 +438,7 @@ pub(crate) fn build_sync_ctx(
     {
         let in_flight = in_flight.clone();
         let cancel_fn = lua.create_function(move |_, task: String| {
+            tracing::debug!(task = %task, "sync ctx.cancel: firing token");
             in_flight.cancel(&task);
             Ok(())
         })?;

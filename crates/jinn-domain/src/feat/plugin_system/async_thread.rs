@@ -147,7 +147,11 @@ pub(crate) fn run_async_thread(
 async fn async_thread_loop(rx: kanal::AsyncReceiver<PluginJob>, mut state: ThreadState) {
     loop {
         match rx.recv().await {
-            Ok(job) => execute_plugin_job(&mut state, job).await,
+            Ok(job) => {
+                tracing::debug!("async loop: job dequeued");
+                execute_plugin_job(&mut state, job).await;
+                tracing::debug!("async loop: job completed");
+            }
             Err(_) => {
                 tracing::debug!("plugin thread shutting down (channel closed)");
                 break;
@@ -576,13 +580,16 @@ async fn run_request(
 ) -> serde_json::Value {
     match task.as_deref() {
         Some(task) => {
+            tracing::debug!(task, request = name, "run_request: registering");
             let token = in_flight.register(task);
             select! {
                 r = handler(name, &data, Some(token.clone())) => {
+                    tracing::debug!(task, "run_request: handler returned; removing");
                     in_flight.remove(task);
                     r
                 }
                 _ = token.cancelled() => {
+                    tracing::debug!(task, "run_request: cancel token fired — handler future dropped");
                     json!({"ok": false, "error": "cancelled"})
                 }
             }

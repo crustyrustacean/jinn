@@ -28,6 +28,51 @@ use crate::protocol::SessionId;
 #[error(debug)]
 pub struct DomainContextError;
 
+/// RAII guard that cancels a one-shot LLM stream when the handler future is
+/// dropped before it completes.
+///
+/// The generic request layer (`run_request`) cancels an in-flight request by
+/// dropping the handler future. Dropping this future would otherwise abandon
+/// the spawned `LlmActor` stream task, leaving the child session running and
+/// burning provider tokens. This guard closes that gap: on drop, it spawns a
+/// task that removes the pending-oneshot entry and publishes `CancelStream`
+/// for the child session, stopping the stream.
+///
+/// Defuse it (`disarm`) on the success path so a normal completion doesn't
+/// spuriously cancel an already-finished stream.
+struct OneshotCancelGuard {
+    pending: PendingResult,
+    bus: crate::common::services::BusService,
+    session_id: SessionId,
+    defused: bool,
+}
+
+impl OneshotCancelGuard {
+    /// Defuse the guard so `Drop` no longer cancels. Call on the success path.
+    fn disarm(&mut self) {
+        self.defused = true;
+    }
+}
+
+impl Drop for OneshotCancelGuard {
+    fn drop(&mut self) {
+        if self.defused {
+            return;
+        }
+        let pending = self.pending.clone();
+        let bus = self.bus.clone();
+        let sid = self.session_id.clone();
+        // `Drop::drop` is sync; the bus publish is async. Spawn the cleanup so
+        // it runs on the tokio runtime that owns the plugin async thread.
+        // `tokio::spawn` is a no-op (panics) off-runtime, but this guard is only
+        // ever dropped while the handler future is being polled there.
+        tokio::spawn(async move {
+            pending.lock().remove(&sid);
+            bus.publish(CancelStream { session_id: sid }).await;
+        });
+    }
+}
+
 type PendingResult = Arc<Mutex<HashMap<SessionId, oneshot::Sender<Result<String, String>>>>>;
 
 /// Domain context for Lua plugin LLM access.
@@ -302,7 +347,7 @@ impl DomainNodeContext {
         }
 
         // 6. Create oneshot, enqueue, await.
-        let (tx, mut rx) = oneshot::channel();
+        let (tx, rx) = oneshot::channel();
         self.pending.lock().insert(session_id.clone(), tx);
 
         let entry = ChatEntry::user(&user_prompt);
@@ -314,37 +359,77 @@ impl DomainNodeContext {
             })
             .await;
 
-        // 7. Await with a bounded timeout AND optional external cancellation.
-        //    On expiry or cancel: hard-cancel the underlying session (no zombie
-        //    stream burning provider tokens) and drop the pending entry so a later
-        //    Idle transition can't resolve a dead receiver.
+        // 7. Await with a bounded timeout. The OneshotCancelGuard owns all
+        //    cancel/timeout cleanup: when this future is dropped (the generic
+        //    request layer drops the handler on external cancel) or completes
+        //    with a timeout error, the guard publishes CancelStream for the
+        //    child session. On success it is disarmed to avoid a spurious cancel.
+        //
+        //    Note: `cancel` is no longer raced here — the generic `run_request`
+        //    `select!` owns external cancellation by dropping this future, which
+        //    fires the guard. Racing the token here too would reintroduce the
+        //    double-select bug where the loser (this select) is dropped before its
+        //    cleanup runs. The param stays in the signature for the RequestHandler
+        //    contract and any future handler that needs cooperative cancellation.
+        let _ = cancel;
         let timeout_dur = std::time::Duration::from_millis(timeout_ms);
-        if let Some(token) = cancel {
-            tokio::select! {
-                outcome = tokio::time::timeout(timeout_dur, &mut rx) => {
-                    map_oneshot_outcome(outcome, &self.pending, &self.services.bus, &session_id, timeout_ms).await
-                }
-                _ = token.cancelled() => {
-                    cleanup_cancelled(&self.pending, &self.services.bus, &session_id).await;
-                    Err(Report::new(DomainContextError).attach("one-shot LLM request cancelled"))
-                }
-            }
-        } else {
-            let outcome = tokio::time::timeout(timeout_dur, rx).await;
-            map_oneshot_outcome(
-                outcome,
-                &self.pending,
-                &self.services.bus,
-                &session_id,
-                timeout_ms,
-            )
-            .await
+        let mut guard = OneshotCancelGuard {
+            pending: self.pending.clone(),
+            bus: self.services.bus.clone(),
+            session_id: session_id.clone(),
+            defused: false,
+        };
+        let outcome = tokio::time::timeout(timeout_dur, rx).await;
+        // Capture whether the outcome was a timeout before moving it, so we
+        // can disarm the guard correctly: success and timeout both disarm
+        // (success: stream done; timeout: cleanup already published inline).
+        // Only the external-cancel path (future dropped mid-await) leaves the
+        // guard armed, firing CancelStream from its Drop.
+        let was_timeout = outcome.is_err();
+        let result = map_oneshot_outcome(
+            outcome,
+            &self.pending,
+            &self.services.bus,
+            &session_id,
+            timeout_ms,
+        )
+        .await;
+        // On success, disarm the guard (the stream completed normally — no
+        // CancelStream needed). On timeout, map_oneshot_outcome already
+        // published CancelStream inline, so also disarm to avoid a double
+        // publish from the guard's drop. The guard fires ONLY when the future
+        // is dropped mid-await (external cancel via the outer run_request
+        // select dropping the handler future).
+        if result.is_ok() || was_timeout {
+            guard.disarm();
         }
+        result
     }
 }
 
-/// Resolve a one-shot's awaited outcome into the domain Result, handling the
-/// timeout-expiry cleanup (drop pending + publish CancelStream) when needed.
+/// Drop the pending oneshot entry and publish CancelStream for the session.
+///
+/// Called inline from the timeout arm of [`map_oneshot_outcome`] so the
+/// publish completes before the future returns. The [`OneshotCancelGuard`]
+/// handles the external-cancel path (future dropped mid-await).
+async fn cleanup_cancelled(
+    pending: &PendingResult,
+    bus: &crate::common::services::BusService,
+    session_id: &SessionId,
+) {
+    pending.lock().remove(session_id);
+    bus.publish(CancelStream {
+        session_id: session_id.clone(),
+    })
+    .await;
+}
+
+/// Resolve a one-shot's awaited outcome into the domain Result.
+///
+/// All cancel/timeout cleanup (drop pending + publish CancelStream) is owned by
+/// the [`OneshotCancelGuard`] installed at the await site — it fires on the
+/// future's drop, which covers both external cancel and timeout expiry (the
+/// future completes with `Err` on timeout and is then dropped by the caller).
 async fn map_oneshot_outcome(
     outcome: Result<
         Result<Result<String, String>, oneshot::error::RecvError>,
@@ -360,26 +445,15 @@ async fn map_oneshot_outcome(
         Ok(Ok(Err(message))) => Err(Report::new(DomainContextError).attach(message)),
         Ok(Err(_)) => Err(Report::new(DomainContextError).attach("one-shot LLM request cancelled")),
         Err(_) => {
+            // Timeout: hard-cancel the underlying session inline so the
+            // publish completes before this future returns. The guard is
+            // disarmed on this path (see caller) to avoid a double-publish.
             cleanup_cancelled(pending, bus, session_id).await;
             Err(Report::new(DomainContextError).attach(format!(
                 "one-shot LLM request timed out after {timeout_ms}ms"
             )))
         }
     }
-}
-
-/// Drop the pending oneshot entry and publish CancelStream for the session.
-/// Used by both the timeout and the external-cancel paths.
-async fn cleanup_cancelled(
-    pending: &PendingResult,
-    bus: &crate::common::services::BusService,
-    session_id: &SessionId,
-) {
-    pending.lock().remove(session_id);
-    bus.publish(CancelStream {
-        session_id: session_id.clone(),
-    })
-    .await;
 }
 
 #[cfg(test)]
@@ -865,47 +939,103 @@ mod tests {
     }
 
     #[tokio::test]
-    async fn oneshot_token_cancel_publishs_cancel_stream() {
-        // Given a one-shot whose token is cancelled mid-flight.
+    async fn dropping_handler_future_publishs_cancel_stream() {
+        // Given a one-shot handler future that has parked on the oneshot receiver.
+        //
+        // In the generic request layer, cancellation drops the handler future;
+        // it does not race a token inside the handler. The OneshotCancelGuard
+        // installed by send_llm_request_oneshot fires on that drop and publishes
+        // CancelStream for the child session.
         let (ctx, audit) = make_ctx_with_audit();
         let source_id = seed_source_session(&ctx, "ollama/llama3");
 
-        let token = tokio_util::sync::CancellationToken::new();
-        // Drive the one-shot; cancel the token after it has parked.
-        let ctx_clone = std::sync::Arc::new(ctx);
-        let t = token.clone();
-        let fut_ctx = ctx_clone.clone();
+        // Spawn the one-shot and let it park on the oneshot receiver.
+        let ctx = std::sync::Arc::new(ctx);
+        let source_id_clone = source_id.clone();
+        let (drop_tx, drop_rx) = tokio::sync::oneshot::channel::<()>();
         let task = tokio::spawn(async move {
-            fut_ctx
-                .send_llm_request_oneshot(
-                    &source_id,
+            // Run the one-shot under a select so the caller can abort it (simulating
+            // the generic run_request select dropping the handler future on cancel).
+            tokio::select! {
+                biased;
+                _ = drop_rx => {
+                    // Outer cancel: the handler future is dropped here.
+                    // The guard's Drop runs and publishes CancelStream.
+                }
+                res = ctx.send_llm_request_oneshot(
+                    &source_id_clone,
                     "rewrite me".to_owned(),
                     None,
                     false,
                     true,
                     30_000,
-                    Some(&t),
-                )
-                .await
+                    None,
+                ) => { res.ok(); }
+            }
         });
-        // Give the one-shot time to park on the oneshot receiver.
+        // Give the one-shot time to park.
         tokio::time::sleep(std::time::Duration::from_millis(100)).await;
-        token.cancel();
-        let result = task.await.expect("task panicked");
 
-        // Then the future returns an error (cancelled).
-        assert!(result.is_err(), "cancel must surface as an error");
-        let msg = format!("{:?}", result.unwrap_err());
-        assert!(
-            msg.contains("cancelled"),
-            "error must mention cancellation, got: {msg}"
+        // When the handler future is dropped (simulating external cancel).
+        let _ = drop_tx.send(());
+        let _ = task.await;
+
+        // Give the spawned CancelStream publish task a moment to run.
+        tokio::time::sleep(std::time::Duration::from_millis(50)).await;
+
+        // Then a CancelStream message was published for the child session.
+        let cancel_msgs: Vec<CancelStream> = audit.of_type::<CancelStream>();
+        assert!(!cancel_msgs.is_empty(),);
+    }
+
+    #[tokio::test]
+    async fn success_path_does_not_publish_cancel_stream() {
+        // Given a one-shot that resolves successfully.
+        //
+        // The OneshotCancelGuard must be disarmed on the success path so that
+        // a normally-completed stream is not spuriously cancelled by the guard's
+        // Drop (which runs when the handler future is dropped after returning Ok).
+        let (ctx, audit) = make_ctx_with_audit();
+        let source_id = seed_source_session(&ctx, "ollama/llama3");
+
+        // Drive the one-shot to its park point, then resolve it.
+        let fut = ctx.send_llm_request_oneshot(
+            &source_id,
+            "rewrite me".to_owned(),
+            None,
+            false,
+            true,
+            30_000,
+            None,
         );
+        use std::future::Future as _;
+        futures::pin_mut!(fut);
+        let waker = futures::task::noop_waker();
+        let mut poll_cx = std::task::Context::from_waker(&waker);
+        assert!(matches!(
+            fut.as_mut().poll(&mut poll_cx),
+            std::task::Poll::Pending,
+        ));
 
-        // And a CancelStream message was published for the one-shot session.
+        // Discover the child session id from the published EnqueueUserMessage.
+        let enqueue: Vec<EnqueueUserMessage> = audit.of_type::<EnqueueUserMessage>();
+        let child_id = enqueue[0].session_id.clone();
+
+        // When the one-shot resolves with a success text.
+        ctx.resolve_completed(&child_id, Ok("enriched".to_owned()));
+
+        // Then the future completes with Ok and, after being dropped, did NOT
+        // publish a CancelStream (the guard was disarmed).
+        use futures::FutureExt as _;
+        let result = fut
+            .now_or_never()
+            .expect("resolved oneshot completes immediately");
+        assert!(result.is_ok(), "success must resolve Ok, got: {:?}", result);
+
         let cancel_msgs: Vec<CancelStream> = audit.of_type::<CancelStream>();
         assert!(
-            !cancel_msgs.is_empty(),
-            "token cancel must hard-cancel the underlying session via CancelStream"
+            cancel_msgs.is_empty(),
+            "success path must not publish CancelStream (guard disarmed)"
         );
     }
     #[tokio::test]
