@@ -4,11 +4,16 @@
 //! reasoning/thinking tokens), and finalizing the stream with token accounting
 //! and queue draining on `StreamCompleted`.
 
+use std::collections::VecDeque;
+
 use crate::common::actor_deps::BusPublish;
 use crate::feat::context::protocol::event::ContextOverrideChanged;
-use crate::feat::context::strategy::token_estimator::TokenCounter;
+use crate::feat::context::strategy::token_estimator::{TiktokenCounter, TokenCounter};
 use crate::feat::provider::protocol::event::{StreamCompleted, StreamCompletedReason, StreamToken};
-use crate::protocol::ChatEntry;
+use crate::feat::session::chat_session::ChatSessionState;
+use crate::feat::session::queue_item::QueueItem;
+use crate::feat::tools_actor::tool_types::ToolCall;
+use crate::protocol::{ChatEntry, ChatEntryId, ChatEntryKind, SessionId};
 
 use super::super::SessionPersistenceActor;
 use crate::feat::session::phase_machine::PhaseKind;
@@ -48,171 +53,41 @@ impl SessionPersistenceActor {
         }
     }
 
-    /// Marks the session's stream as finished, records output tokens, and
-    /// drains any queued messages into a new turn.
+    /// Marks the session's stream as finished, records output tokens, and drains
+    /// any queued messages into a new turn.
     ///
-    /// For `Finished` reason, drains the message queue. If messages were queued,
-    /// pushes each as a separate user entry and triggers re-assembly.
-    ///
-    /// For `ToolUse` reason, transitions to sending state instead of fully idle,
-    /// so the streaming indicator remains visible while the followup response
-    /// is awaited. The queue is NOT drained - the turn hasn't ended.
-    #[expect(clippy::too_many_lines, reason = "1 line over limit")]
-    #[expect(
-        clippy::else_if_without_else,
-        reason = "no-op on fallthrough is intentional"
-    )]
+    /// This is orchestration only: token counting, locked-state mutation, and
+    /// override-change emission are each delegated to a dedicated helper so the
+    /// handler reads as a step-by-step recipe. See [`Self::apply_stream_completion`]
+    /// for the under-lock state transitions and [`resolve_output_tokens`] for the
+    /// token-accounting policy.
     pub(in crate::feat::session::session_actor) async fn on_stream_completed(
         &self,
         event: &StreamCompleted,
     ) {
-        let should_save = event.reason == StreamCompletedReason::Finished
-            || event.reason == StreamCompletedReason::Error
-            || event.reason == StreamCompletedReason::Canceled;
+        let should_save = matches!(
+            event.reason,
+            StreamCompletedReason::Finished
+                | StreamCompletedReason::Error
+                | StreamCompletedReason::Canceled,
+        );
 
-        // Count output tokens: always count locally, then take max with provider-reported.
-        // This handles providers that undercount (e.g., excluding tool call arguments).
-        let local_count_handle: Option<tokio::task::JoinHandle<u32>> = if event.reason
-            != StreamCompletedReason::Canceled
-            && event.reason != StreamCompletedReason::Error
-        {
-            event.assistant_content.as_ref().map(|content| {
-                let content = content.clone();
-                let tool_calls = event.tool_calls.clone();
-                let thinking = event.thinking_content.clone().unwrap_or_default();
-                let counter = self.counter;
-                tokio::task::spawn_blocking(move || {
-                    let mut tokens = counter.count(&content) as u32;
-                    tokens += counter.count(&thinking) as u32;
-                    if let Some(tool_calls) = tool_calls {
-                        for tc in &tool_calls {
-                            tokens += counter.count(&tc.arguments) as u32;
-                            tokens += counter.count(&tc.name) as u32;
-                        }
-                    }
-                    tokens
-                })
-            })
-        } else {
-            None
-        };
+        // Count output tokens outside the lock (may spawn_blocking).
+        let output_tokens = resolve_output_tokens(self.counter, event).await;
 
-        let provider_tokens: Option<u32> = event.provider_completion_tokens.map(|t| t as u32);
+        // Mutate session state under the write lock, capturing what changed.
+        let state_change = self.apply_stream_completion(event, output_tokens);
 
-        // Await local counting outside the lock, then take max with provider.
-        let output_tokens: Option<u32> = match local_count_handle {
-            Some(handle) => {
-                let local = handle.await.unwrap_or_else(|e| {
-                    tracing::warn!(
-                        err = ?e,
-                        "spawn_blocking panicked during output token counting"
-                    );
-                    0
-                });
-                Some(local.max(provider_tokens.unwrap_or(0)))
-            }
-            None => provider_tokens,
-        };
-
-        let mut all_changed: Vec<crate::protocol::ChatEntryId> = Vec::new();
-        let (old_phase, new_phase);
-        {
-            let mut state = self.state.write();
-            let session = state.session_mut_or_create(&event.session_id);
-            old_phase = session.phase();
-            if event.reason == StreamCompletedReason::Canceled {
-                session.push_entry(ChatEntry::error("Cancelled"));
-            } else if event.reason == StreamCompletedReason::Error {
-                // Error entry is pushed by the LLM actor via PushChatEntry before
-                // emitting StreamCompleted(Error). Nothing to push here.
-            } else if let Some(output_tokens) = output_tokens {
-                // Finalize the last record if one exists (i.e., prompt assembled first).
-                // If no record exists (e.g., session restored mid-stream), skip silently.
-                if !session.token_ledger().is_empty()
-                    && let Err(e) = session.finalize_last_token_record(
-                        output_tokens,
-                        event.cost,
-                        event.model_used.clone(),
-                    )
-                {
-                    tracing::error!(err = ?e, "failed to finalize token record");
-                }
-            }
-            let preserve_assistant = event.reason == StreamCompletedReason::Finished
-                || event.reason == StreamCompletedReason::ToolUse;
-            session.finish_streaming(preserve_assistant, event.dispatched_at);
-
-            // Hard cancel: force-exclude dangling tool calls left by the interrupted stream.
-            if event.reason == StreamCompletedReason::Canceled {
-                all_changed.extend(session.force_exclude_dangling_tool_calls());
-            }
-
-            // Apply pending history mutations for non-ToolUse completions.
-            // ToolUse defers to on_tool_batch_completed.
-            if event.reason != StreamCompletedReason::ToolUse {
-                let (count, changed) = session.drain_and_apply_pending_mutations();
-                all_changed.extend(changed);
-                if count > 0 {
-                    tracing::debug!(
-                        session_id = %event.session_id,
-                        count,
-                        reason = ?event.reason,
-                        "applied pending history mutations at stream completion"
-                    );
-                }
-            }
-
-            // Tool use means the conversation continues - always transition to sending
-            // so the tool loop runs.
-            if event.reason == StreamCompletedReason::ToolUse {
-                session.begin_sending();
-            }
-
-            // When returning to Idle with no retry, drain queued messages
-            // back to the input buffer so the user can review and retry.
-            if matches!(
-                event.reason,
-                StreamCompletedReason::Error | StreamCompletedReason::Canceled
-            ) {
-                let drained = session.drain_queue();
-                let display_texts: Vec<&str> = drained
-                    .iter()
-                    .filter_map(|item| match item {
-                        crate::feat::session::queue_item::QueueItem::UserMessage(entry) => {
-                            match &entry.kind {
-                                crate::protocol::ChatEntryKind::User { display, .. } => {
-                                    Some(display.as_str())
-                                }
-                                _ => None,
-                            }
-                        }
-                        crate::feat::session::queue_item::QueueItem::ToolContinuation => None,
-                    })
-                    .collect();
-                let drained_text = display_texts.join("\n");
-                if !drained_text.is_empty() {
-                    session.chat_input_mut().replace_all(drained_text);
-                }
-            }
-
-            new_phase = session.phase();
-        }
-
-        // Emit ContextOverrideChanged events for any entry whose override actually changed
-        // (from dangling-tool-call sweep or pending worker mutations). Outside the write lock.
-        for entry_id in all_changed {
-            self.publish(ContextOverrideChanged {
-                session_id: event.session_id.clone(),
-                entry_id,
-            })
+        // Emit ContextOverrideChanged for entries swept by dangling-tool-call
+        // exclusion or pending worker mutations. Outside the write lock.
+        self.emit_override_changes(&event.session_id, state_change.changed_overrides)
             .await;
-        }
 
         super::super::helpers::emit_phase_changed(
             self.bus(),
             &event.session_id,
-            old_phase,
-            new_phase,
+            state_change.old_phase,
+            state_change.new_phase,
         )
         .await;
         super::super::helpers::emit_history_appended(self.bus(), &event.session_id).await;
@@ -220,6 +95,215 @@ impl SessionPersistenceActor {
         // Persist session after stream finishes.
         if should_save {
             self.save_active_session(&event.session_id).await;
+        }
+    }
+
+    /// Applies all stream-completion state mutations under the write lock.
+    ///
+    /// Pushes reason-specific entries, finalizes token accounting, finishes
+    /// streaming, sweeps dangling tool calls on hard cancel, applies pending
+    /// history mutations, transitions the phase, and - on error/cancel - drains
+    /// queued messages back into the input buffer for the user to retry.
+    ///
+    /// Returns the before/after phase and the entry IDs whose context overrides
+    /// changed, so the caller can emit events outside the lock.
+    fn apply_stream_completion(
+        &self,
+        event: &StreamCompleted,
+        output_tokens: Option<u32>,
+    ) -> StreamCompletionStateChange {
+        let mut changed_overrides: Vec<ChatEntryId> = Vec::new();
+        let mut state = self.state.write();
+        let session = state.session_mut_or_create(&event.session_id);
+        let old_phase = session.phase();
+
+        apply_completion_entries(session, event, output_tokens);
+
+        let preserve_assistant = matches!(
+            event.reason,
+            StreamCompletedReason::Finished | StreamCompletedReason::ToolUse,
+        );
+        session.finish_streaming(preserve_assistant, event.dispatched_at);
+
+        // Hard cancel: force-exclude dangling tool calls left by the interrupted stream.
+        if event.reason == StreamCompletedReason::Canceled {
+            changed_overrides.extend(session.force_exclude_dangling_tool_calls());
+        }
+
+        // Apply pending history mutations for non-ToolUse completions.
+        // ToolUse defers to on_tool_batch_completed.
+        if event.reason != StreamCompletedReason::ToolUse {
+            let (count, changed) = session.drain_and_apply_pending_mutations();
+            changed_overrides.extend(changed);
+            if count > 0 {
+                tracing::debug!(
+                    session_id = %event.session_id,
+                    count,
+                    reason = ?event.reason,
+                    "applied pending history mutations at stream completion"
+                );
+            }
+        }
+
+        // Tool use means the conversation continues - always transition to sending
+        // so the tool loop runs.
+        if event.reason == StreamCompletedReason::ToolUse {
+            session.begin_sending();
+        }
+
+        // When returning to Idle on error/cancel, drain queued messages back to
+        // the input buffer so the user can review and retry.
+        if matches!(
+            event.reason,
+            StreamCompletedReason::Error | StreamCompletedReason::Canceled
+        ) {
+            let drained = session.drain_queue();
+            if let Some(text) = drained_queue_to_text(&drained) {
+                session.chat_input_mut().replace_all(text);
+            }
+        }
+
+        StreamCompletionStateChange {
+            old_phase,
+            new_phase: session.phase(),
+            changed_overrides,
+        }
+    }
+
+    /// Broadcasts [`ContextOverrideChanged`] for each entry whose override changed
+    /// during stream completion. Called outside the write lock.
+    async fn emit_override_changes(&self, session_id: &SessionId, entry_ids: Vec<ChatEntryId>) {
+        for entry_id in entry_ids {
+            self.publish(ContextOverrideChanged {
+                session_id: session_id.clone(),
+                entry_id,
+            })
+            .await;
+        }
+    }
+}
+
+/// Before/after phase and changed-entry IDs captured while mutating session state
+/// under the write lock during stream completion. Consumed by the caller to emit
+/// events outside the lock.
+struct StreamCompletionStateChange {
+    old_phase: PhaseKind,
+    new_phase: PhaseKind,
+    changed_overrides: Vec<ChatEntryId>,
+}
+
+/// Counts output tokens locally by summing assistant content, thinking content,
+/// and tool-call arguments/names.
+///
+/// Pure and side-effect-free so it can be unit-tested in isolation. Used as the
+/// baseline when the provider undercounts (e.g., excludes tool-call arguments).
+fn count_tokens_locally(
+    counter: &dyn TokenCounter,
+    content: &str,
+    thinking: &str,
+    tool_calls: Option<&[ToolCall]>,
+) -> u32 {
+    let base = counter.count(content) + counter.count(thinking);
+    let tool_tokens = tool_calls.map_or(0, |calls| {
+        calls
+            .iter()
+            .map(|tc| counter.count(&tc.arguments) + counter.count(&tc.name))
+            .sum::<usize>()
+    });
+    (base + tool_tokens) as u32
+}
+
+/// Resolves the final output token count for a completed stream.
+///
+/// Counts locally via `spawn_blocking` (the tokenizer is CPU-bound) unless the
+/// stream was canceled/errored, then takes the max of the local and
+/// provider-reported counts. Providers that undercount are corrected by the
+/// local count.
+async fn resolve_output_tokens(counter: TiktokenCounter, event: &StreamCompleted) -> Option<u32> {
+    let provider_tokens = event.provider_completion_tokens.map(|t| t as u32);
+
+    let local_handle = if event.reason != StreamCompletedReason::Canceled
+        && event.reason != StreamCompletedReason::Error
+    {
+        event.assistant_content.as_ref().map(|content| {
+            let content = content.clone();
+            let tool_calls = event.tool_calls.clone();
+            let thinking = event.thinking_content.clone().unwrap_or_default();
+            tokio::task::spawn_blocking(move || {
+                count_tokens_locally(&counter, &content, &thinking, tool_calls.as_deref())
+            })
+        })
+    } else {
+        None
+    };
+
+    match local_handle {
+        Some(handle) => {
+            let local = handle.await.unwrap_or_else(|e| {
+                tracing::warn!(
+                    err = ?e,
+                    "spawn_blocking panicked during output token counting"
+                );
+                0
+            });
+            Some(local.max(provider_tokens.unwrap_or(0)))
+        }
+        None => provider_tokens,
+    }
+}
+
+/// Joins the display text of queued user messages into a single
+/// newline-separated string.
+///
+/// Returns `None` when there are no user messages to drain. Tool continuations
+/// contribute no text and are dropped.
+fn drained_queue_to_text(items: &VecDeque<QueueItem>) -> Option<String> {
+    let texts: Vec<&str> = items
+        .iter()
+        .filter_map(|item| match item {
+            QueueItem::UserMessage(entry) => match &entry.kind {
+                ChatEntryKind::User { display, .. } => Some(display.as_str()),
+                _ => None,
+            },
+            QueueItem::ToolContinuation => None,
+        })
+        .collect();
+    if texts.is_empty() {
+        None
+    } else {
+        Some(texts.join("\n"))
+    }
+}
+
+/// Pushes reason-specific entries and finalizes token accounting under the lock.
+///
+/// - `Canceled`: pushes a "Cancelled" error entry.
+/// - `Error`: nothing - the error entry is pushed earlier by the LLM actor via
+///   `PushChatEntry` before `StreamCompleted(Error)` is emitted.
+/// - `Finished`/`ToolUse`: finalizes the last token record with output tokens,
+///   cost, and model, if a record exists (i.e., a prompt was assembled first).
+#[expect(clippy::else_if_without_else, reason = "no-op arms are intentional")]
+fn apply_completion_entries(
+    session: &mut ChatSessionState,
+    event: &StreamCompleted,
+    output_tokens: Option<u32>,
+) {
+    if event.reason == StreamCompletedReason::Canceled {
+        session.push_entry(ChatEntry::error("Cancelled"));
+    } else if event.reason == StreamCompletedReason::Error {
+        // Error entry is pushed by the LLM actor via PushChatEntry before
+        // emitting StreamCompleted(Error). Nothing to push here.
+    } else if let Some(output_tokens) = output_tokens {
+        // Finalize the last record if one exists (i.e., prompt assembled first).
+        // If no record exists (e.g., session restored mid-stream), skip silently.
+        if !session.token_ledger().is_empty()
+            && let Err(e) = session.finalize_last_token_record(
+                output_tokens,
+                event.cost,
+                event.model_used.clone(),
+            )
+        {
+            tracing::error!(err = ?e, "failed to finalize token record");
         }
     }
 }
@@ -1620,5 +1704,133 @@ mod tests {
             }
             other => panic!("expected Streamed, got {other:?}"),
         }
+    }
+
+    // --- Pure helper tests (no actor, lock, or async needed) ---
+
+    /// Deterministic counter for unit testing - counts characters.
+    struct CharCounter;
+    impl crate::feat::context::strategy::token_estimator::TokenCounter for CharCounter {
+        fn count(&self, text: &str) -> usize {
+            text.chars().count()
+        }
+        fn name(&self) -> &'static str {
+            "char"
+        }
+    }
+
+    #[test]
+    fn count_tokens_locally_counts_assistant_content() {
+        // Given a char-counting counter and assistant content only.
+        let counter = CharCounter;
+
+        // When counting locally.
+        let total = super::count_tokens_locally(&counter, "hello", "", None);
+
+        // Then the total equals the assistant content length.
+        assert_eq!(total, 5);
+    }
+
+    #[test]
+    fn count_tokens_locally_adds_thinking_content() {
+        // Given a char-counting counter with content and thinking text.
+        let counter = CharCounter;
+
+        // When counting locally.
+        let total = super::count_tokens_locally(&counter, "abc", "de", None);
+
+        // Then the total is the sum of content and thinking.
+        assert_eq!(total, 5);
+    }
+
+    #[test]
+    fn count_tokens_locally_includes_tool_call_arguments_and_names() {
+        // Given a char-counting counter, content, and one tool call.
+        let counter = CharCounter;
+        let tool_calls = vec![crate::feat::tools_actor::tool_types::ToolCall {
+            id: "tc-1".to_owned(),
+            name: "bash".to_owned(),
+            arguments: "ls".to_owned(),
+        }];
+
+        // When counting locally (content "ab"=2 + name "bash"=4 + args "ls"=2).
+        let total = super::count_tokens_locally(&counter, "ab", "", Some(&tool_calls));
+
+        // Then tool call arguments and names are included.
+        assert_eq!(total, 8);
+    }
+
+    #[test]
+    fn drained_queue_to_text_returns_none_for_empty() {
+        // Given an empty drained queue.
+        let queue = std::collections::VecDeque::new();
+
+        // When converting to text.
+        let text = super::drained_queue_to_text(&queue);
+
+        // Then no text is produced.
+        assert_eq!(text, None);
+    }
+
+    #[test]
+    fn drained_queue_to_text_returns_none_when_only_tool_continuation() {
+        // Given a queue with only a tool continuation.
+        let mut queue = std::collections::VecDeque::new();
+        queue.push_back(crate::feat::session::queue_item::QueueItem::ToolContinuation);
+
+        // When converting to text.
+        let text = super::drained_queue_to_text(&queue);
+
+        // Then no text is produced.
+        assert_eq!(text, None);
+    }
+
+    #[test]
+    fn drained_queue_to_text_returns_text_for_single_user_message() {
+        // Given a queue with one user message.
+        let mut queue = std::collections::VecDeque::new();
+        queue.push_back(crate::feat::session::queue_item::QueueItem::UserMessage(
+            Box::new(ChatEntry::user("hello world")),
+        ));
+
+        // When converting to text.
+        let text = super::drained_queue_to_text(&queue);
+
+        // Then the user message text is produced.
+        assert_eq!(text.as_deref(), Some("hello world"));
+    }
+
+    #[test]
+    fn drained_queue_to_text_joins_multiple_user_messages_with_newline() {
+        // Given a queue with two user messages.
+        let mut queue = std::collections::VecDeque::new();
+        queue.push_back(crate::feat::session::queue_item::QueueItem::UserMessage(
+            Box::new(ChatEntry::user("first")),
+        ));
+        queue.push_back(crate::feat::session::queue_item::QueueItem::UserMessage(
+            Box::new(ChatEntry::user("second")),
+        ));
+
+        // When converting to text.
+        let text = super::drained_queue_to_text(&queue);
+
+        // Then the messages are joined with a newline.
+        assert_eq!(text.as_deref(), Some("first\nsecond"));
+    }
+
+    #[test]
+    fn drained_queue_to_text_skips_tool_continuation_when_mixed() {
+        // Given a queue with a user message and a tool continuation.
+        let mut queue = std::collections::VecDeque::new();
+        queue.push_back(crate::feat::session::queue_item::QueueItem::UserMessage(
+            Box::new(ChatEntry::user("only user")),
+        ));
+        queue.push_back(crate::feat::session::queue_item::QueueItem::ToolContinuation);
+
+        // When converting to text.
+        let text = super::drained_queue_to_text(&queue);
+
+        // Then only the user message text is produced.
+        assert_eq!(text.as_deref(), Some("only user"));
     }
 }
