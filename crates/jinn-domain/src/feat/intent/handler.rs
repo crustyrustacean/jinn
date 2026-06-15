@@ -895,7 +895,7 @@ mod tests {
         state.active_chat_input_mut().set_enabled(true);
 
         // When handling InsertChar.
-        let result = IntentHandler::handle(&Intent::InsertChar { ch: 'x' }, &mut state, None);
+        let _result = IntentHandler::handle(&Intent::InsertChar { ch: 'x' }, &mut state, None);
 
         // Then the buffer has the inserted char.
         assert_eq!(state.active_chat_input().text(), "x");

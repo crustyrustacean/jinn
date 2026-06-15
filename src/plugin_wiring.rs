@@ -133,13 +133,27 @@ pub async fn handle_plugin_request(
                 automated: Option<bool>,
                 #[serde(default)]
                 persist: Option<bool>,
+                #[serde(default)]
+                inherit_tools: Option<Vec<String>>,
             }
             match serde_json::from_value::<CreateSessionPayload>(data.clone()) {
                 Ok(p) => {
+                    // Default policy: inherit all of the parent's attached
+                    // tool definitions (the judge relies on this). An explicit
+                    // `inherit_tools` list narrows the set.
+                    let policy = match &p.inherit_tools {
+                        Some(names) => {
+                            jinn_domain::feat::plugin_dispatch::InheritToolsPolicy::Named(
+                                names.clone(),
+                            )
+                        }
+                        None => jinn_domain::feat::plugin_dispatch::InheritToolsPolicy::All,
+                    };
                     let session_id = domain_ctx.create_child_session(
                         &p.parent_session_id,
                         p.automated.unwrap_or(false),
                         p.persist.unwrap_or(true),
+                        &policy,
                     );
                     request_ok(serde_json::json!({ "session_id": session_id }))
                 }
@@ -369,13 +383,9 @@ mod tests {
         let ctx = DomainNodeContext::new(services, State::new(AppState::default()));
 
         // When calling handle_plugin_request with a payload missing parent_session_id.
-        let result = handle_plugin_request(
-            "create_session",
-            &json!({ "automated": true }),
-            &ctx,
-            None,
-        )
-        .await;
+        let result =
+            handle_plugin_request("create_session", &json!({ "automated": true }), &ctx, None)
+                .await;
 
         // Then the envelope is an error carrying the serde message.
         assert_eq!(result["ok"], json!(false), "must be an error envelope");

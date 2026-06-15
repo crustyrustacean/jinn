@@ -107,7 +107,6 @@ pub(crate) fn run_async_thread(
     request_handler: RequestHandler,
     in_flight: super::InFlightRequests,
 ) {
-
     let mut global_tools = global_tools;
     let rt = match Runtime::new() {
         Ok(r) => r,
