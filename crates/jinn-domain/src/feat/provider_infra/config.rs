@@ -37,9 +37,6 @@ pub struct ProvidersConfig {
     /// User-defined aliases (short names → provider entries).
     #[serde(default)]
     pub aliases: Vec<AliasEntry>,
-    /// Named alloy definitions (round-robin or random model rotation).
-    #[serde(default)]
-    pub alloys: Vec<AlloyEntry>,
     /// The last-selected default provider (persisted across sessions).
     #[serde(default)]
     pub default_provider: Option<String>,
@@ -91,19 +88,6 @@ pub struct AliasEntry {
     pub target: String,
 }
 
-/// A named alloy — a group of models rotated per LLM call.
-#[derive(Debug, Clone, Serialize, Deserialize)]
-pub struct AlloyEntry {
-    /// Alloy name, shown in the picker and used as a reference.
-    pub name: String,
-    /// Provider IDs to rotate through. E.g. `["openrouter/anthropic/claude-sonnet-4-20250514", "ollama/llama3"]`.
-    pub models: Vec<String>,
-    /// Rotation strategy: `"round_robin"` or `"random"`.
-    /// Defaults to `"round_robin"` if omitted.
-    #[serde(default = "default_strategy_round_robin")]
-    pub strategy: AlloyStrategy,
-}
-
 /// Alloy rotation strategy.
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq, Default)]
 #[serde(rename_all = "snake_case")]
@@ -113,11 +97,6 @@ pub enum AlloyStrategy {
     RoundRobin,
     /// Pick a random model on each LLM call.
     Random,
-}
-
-/// Default strategy for serde default attribute.
-fn default_strategy_round_robin() -> AlloyStrategy {
-    AlloyStrategy::RoundRobin
 }
 
 /// Default value for boolean fields that default to `true`.
@@ -240,7 +219,6 @@ where
         let mut patcher = crate::common::toml_patch::DocumentPatcher::new();
         patcher.register_array_key(["providers"], "name");
         patcher.register_array_key(["aliases"], "name");
-        patcher.register_array_key(["alloys"], "name");
 
         let new_value = toml::Value::try_from(config).map_err(|_e| {
             Report::new(ConfigError::Parse).attach("failed to serialize ProvidersConfig")
@@ -379,7 +357,6 @@ target = "ollama/llama3"
             }],
             aliases: vec![],
             default_provider: Some("test/gpt-4".to_owned()),
-            alloys: vec![],
         };
 
         let dir = TempDir::new().expect("temp dir");
@@ -448,7 +425,6 @@ tool_stream = true
             }],
             aliases: vec![],
             default_provider: None,
-            alloys: vec![],
         };
 
         let dir = TempDir::new().expect("temp dir");
@@ -510,7 +486,6 @@ tool_stream = true
             }],
             aliases: vec![],
             default_provider: None,
-            alloys: vec![],
         };
         save_config_to(&config, &path).expect("save");
 
@@ -557,7 +532,6 @@ tool_stream = true
             ],
             aliases: vec![],
             default_provider: None,
-            alloys: vec![],
         };
         save_config_to(&config, &path).expect("save");
 
@@ -621,7 +595,6 @@ tool_stream = true
             }],
             aliases: vec![],
             default_provider: Some("test-save/llama3".to_owned()),
-            alloys: vec![],
         };
 
         save_config_to(&config, &path).expect("save");
@@ -861,118 +834,26 @@ tool_stream = true
         assert!(written.contains("\"smart\""), "smart alias preserved");
     }
 
-    // --- Alloy config tests ---
+    // --- Alloy block forward-compat test ---
 
     #[rstest::rstest]
-    fn parse_toml_with_alloys_section() {
-        // Given a TOML config with an alloys section.
-        let dir = TempDir::new().expect("temp dir");
-        let path = dir.path().join("providers.toml");
-        let toml = r#"
+    fn save_config_preserves_unknown_alloy_block() {
+        // Given a providers.toml containing a legacy [[alloys]] block.
+        // AlloyEntry is removed, but the block must survive round-trips
+        // so user config (and comments) is never silently erased.
+        let original = r#"# my setup
 [[providers]]
 name = "ollama"
 backend = "ollama"
 models = ["llama3"]
 requires_key = false
 
+# balanced alloy for varied responses
 [[alloys]]
 name = "balanced"
 models = ["ollama/llama3", "openrouter/anthropic/claude-sonnet-4"]
 strategy = "round_robin"
-
-[[alloys]]
-name = "wild"
-models = ["ollama/llama3", "openrouter/google/gemini-2.5-flash", "openrouter/openai/gpt-4o"]
-strategy = "random"
 "#;
-        std::fs::write(&path, toml).expect("write");
-
-        // When loading.
-        let config = load_config_from(&path).expect("load");
-
-        // Then alloys are parsed correctly.
-        assert_eq!(config.alloys.len(), 2);
-        assert_eq!(config.alloys[0].name, "balanced");
-        assert_eq!(
-            config.alloys[0].models,
-            vec!["ollama/llama3", "openrouter/anthropic/claude-sonnet-4"]
-        );
-        assert!(matches!(
-            config.alloys[0].strategy,
-            AlloyStrategy::RoundRobin
-        ));
-        assert_eq!(config.alloys[1].name, "wild");
-        assert_eq!(config.alloys[1].models.len(), 3);
-        assert!(matches!(config.alloys[1].strategy, AlloyStrategy::Random));
-    }
-
-    #[rstest::rstest]
-    fn parse_toml_without_alloys_is_backward_compat() {
-        // Given a TOML config without alloys (existing config).
-        let dir = TempDir::new().expect("temp dir");
-        let path = dir.path().join("providers.toml");
-        let toml = r#"
-[[providers]]
-name = "ollama"
-backend = "ollama"
-models = ["llama3"]
-requires_key = false
-"#;
-        std::fs::write(&path, toml).expect("write");
-
-        // When loading.
-        let config = load_config_from(&path).expect("load");
-
-        // Then alloys defaults to empty.
-        assert!(config.alloys.is_empty());
-    }
-
-    #[rstest::rstest]
-    fn alloy_round_trip_through_toml() {
-        // Given a config with alloys.
-        let config = ProvidersConfig {
-            providers: vec![ProviderEntry {
-                name: "ollama".to_owned(),
-                backend: "ollama".to_owned(),
-                models: vec!["llama3".to_owned()],
-                base_url: None,
-                api_key_env: None,
-                requires_key: false,
-                extra_body: None,
-                context_length: None,
-            }],
-            aliases: vec![],
-            default_provider: None,
-            alloys: vec![AlloyEntry {
-                name: "balanced".to_owned(),
-                models: vec![
-                    "ollama/llama3".to_owned(),
-                    "openrouter/anthropic/claude-sonnet-4".to_owned(),
-                ],
-                strategy: AlloyStrategy::RoundRobin,
-            }],
-        };
-        let dir = TempDir::new().expect("temp dir");
-        let path = dir.path().join("providers.toml");
-
-        // When saving and reloading.
-        save_config_to(&config, &path).expect("save");
-        let reloaded = load_config_from(&path).expect("reload");
-
-        // Then the alloy round-trips correctly.
-        assert_eq!(reloaded.alloys.len(), 1);
-        assert_eq!(reloaded.alloys[0].name, "balanced");
-        assert_eq!(reloaded.alloys[0].models.len(), 2);
-        assert!(matches!(
-            reloaded.alloys[0].strategy,
-            AlloyStrategy::RoundRobin
-        ));
-    }
-
-    #[rstest::rstest]
-    fn save_config_preserves_alloy_comments() {
-        // Given a providers.toml with commented alloy blocks.
-        let original = "# my setup\n[[providers]]\nname = \"ollama\"\nbackend = \"ollama\"\nmodels = [\"llama3\"]\nrequires_key = false\n\n# balanced alloy for varied responses\n[[alloys]]\nname = \"balanced\"\nmodels = [\"ollama/llama3\", \"openrouter/anthropic/claude-sonnet-4\"]\nstrategy = \"round_robin\"\n";
         let dir = TempDir::new().expect("temp dir");
         let path = dir.path().join("providers.toml");
         std::fs::write(&path, original).expect("write");
@@ -982,7 +863,7 @@ requires_key = false
         save_config_to(&config, &path).expect("save");
         let written = std::fs::read_to_string(&path).expect("read");
 
-        // Then the alloy comment is preserved.
+        // Then the unknown [[alloys]] block is preserved as-is, comment and all.
         assert!(
             written.contains("# balanced alloy for varied responses"),
             "alloy comment lost: {written}"

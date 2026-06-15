@@ -144,7 +144,6 @@ impl App {
                 providers: vec![],
                 aliases: vec![],
                 default_provider: None,
-                alloys: vec![],
             })
             .change_context(AppError)?,
         );

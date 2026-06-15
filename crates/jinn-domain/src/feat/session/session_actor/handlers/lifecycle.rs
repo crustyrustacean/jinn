@@ -168,7 +168,19 @@ impl SessionPersistenceActor {
     async fn spawn_shell_setup(&mut self, payload: &RunSessionSetup) {
         use crate::feat::session_lifecycle::command_runner::spawn_setup_command;
 
-        let (cancel_handle, handle) = match spawn_setup_command(&payload.command, &self.shell) {
+        // Read the session's CWD before spawning so the script runs in the
+        // inherited session dir, not jinn's process dir. Falls back to the
+        // default (launch) dir if the session is somehow missing from state.
+        let cwd = {
+            let state = self.state.read();
+            state.session.get(&payload.session_id).map_or_else(
+                || state.session.default_cwd().clone(),
+                |s| s.cwd().to_path_buf(),
+            )
+        };
+
+        let (cancel_handle, handle) = match spawn_setup_command(&payload.command, &self.shell, &cwd)
+        {
             Ok(pair) => pair,
             Err(e) => {
                 // Failed to even start the command.
@@ -489,9 +501,18 @@ impl SessionPersistenceActor {
                 let session_id = payload.session_id.clone();
                 let shell = self.shell.clone();
 
+                // Read the session's CWD so the teardown script runs in the
+                // inherited session dir, not jinn's process dir.
+                let cwd = {
+                    let state = self.state.read();
+                    state.session.get(&payload.session_id).map_or_else(
+                        || state.session.default_cwd().clone(),
+                        |s| s.cwd().to_path_buf(),
+                    )
+                };
                 let spawn_result =
                     crate::feat::session_lifecycle::command_runner::spawn_teardown_command(
-                        &rendered, &shell,
+                        &rendered, &shell, &cwd,
                     );
 
                 match spawn_result {
@@ -682,9 +703,19 @@ impl SessionPersistenceActor {
                         let session_id = payload.session_id.clone();
                         let shell = self.shell.clone();
 
+                        // Read the session's CWD so the close-teardown script runs
+                        // in the inherited session dir, not jinn's process dir.
+                        let cwd = {
+                            let state = self.state.read();
+                            state.session.get(&payload.session_id).map_or_else(
+                                || state.session.default_cwd().clone(),
+                                |s| s.cwd().to_path_buf(),
+                            )
+                        };
+
                         let spawn_result =
                             crate::feat::session_lifecycle::command_runner::spawn_teardown_command(
-                                &rendered, &shell,
+                                &rendered, &shell, &cwd,
                             );
 
                         match spawn_result {
@@ -2334,5 +2365,116 @@ mod tests {
             .map(|s| s.cwd().to_path_buf())
             .unwrap();
         assert_eq!(cwd_after, inherited_cwd);
+    }
+
+    #[tokio::test]
+    async fn setup_spawn_falls_back_to_default_cwd_for_missing_session() {
+        // Given an actor with no session matching the payload's session_id
+        // (the defensive case: the spawn site must fall back to
+        // default_cwd() and never panic / never pass a nonexistent path
+        // to .current_dir()).
+        let (mut actor, audit) = test_actor_recording().await;
+        let missing_id = SessionId::new();
+
+        // Sanity: the session really is absent from state.
+        assert!(!actor.state.read().session.contains(&missing_id));
+
+        // When firing RunSessionSetup for the missing session.
+        actor
+            .handle_run_session_setup(&RunSessionSetup {
+                session_id: missing_id.clone(),
+                command: "echo $PWD".to_owned(),
+                args: vec![],
+                lifecycle_command: None,
+            })
+            .await;
+
+        // Then the spawn did not panic: the spawned task published
+        // FinishSessionSetup with no error, proving the fallback CWD
+        // (default_cwd) was a real, spawnable path rather than a
+        // nonexistent one that would make .current_dir() fail.
+        let finish = tokio::time::timeout(std::time::Duration::from_secs(5), async {
+            loop {
+                let finishes = audit.of_type::<FinishSessionSetup>();
+                if let Some(f) = finishes.into_iter().next() {
+                    return f;
+                }
+                tokio::time::sleep(std::time::Duration::from_millis(10)).await;
+            }
+        })
+        .await
+        .expect("FinishSessionSetup must be emitted even for a missing session");
+
+        assert_eq!(finish.session_id, missing_id);
+        assert!(
+            finish.error.is_none(),
+            "expected no spawn error for the default-cwd fallback, got {:?}",
+            finish.error
+        );
+    }
+
+    #[tokio::test]
+    async fn teardown_spawn_runs_shell_script_in_session_cwd() {
+        // Given an actor whose active session has an inherited CWD and a
+        // teardown shell command that writes a marker file via a relative path.
+        let dir = tempfile::tempdir().expect("tempdir");
+        let (mut actor, audit) = test_actor_recording().await;
+        let session_id = {
+            use crate::feat::preferences_actor::user_preferences::SessionLifecycle;
+            let mut state = actor.state.write();
+            let session_id = state.session.active_session_id().clone();
+            // Configure the session (CWD + lifecycle state + name) before touching
+            // the preferences, so the two `state` borrows don't overlap.
+            {
+                let session = state.active_session_mut();
+                session.set_cwd(dir.path().to_path_buf());
+                // Teardown path only fires when the session is in SetupRan.
+                session.advance_lifecycle_after_setup();
+                session.set_lifecycle_name(Some("cwd-probe".to_owned()));
+            }
+            state.frontend.preferences.session_lifecycles = vec![SessionLifecycle {
+                name: "cwd-probe".to_owned(),
+                description: None,
+                setup: None,
+                teardown: Some(
+                    crate::feat::session_lifecycle::builtin::LifecycleCommand::Shell(
+                        "printf x > teardown-marker.log".to_owned(),
+                    ),
+                ),
+            }];
+            session_id
+        };
+
+        // When firing RunSessionTeardown (the `t` teardown-only path).
+        actor
+            .handle_run_session_teardown(&RunSessionTeardown {
+                session_id: session_id.clone(),
+                command: "printf x > teardown-marker.log".to_owned(),
+                args: vec![],
+            })
+            .await;
+
+        // And waiting for the spawned task to report completion.
+        let _finish = tokio::time::timeout(std::time::Duration::from_secs(5), async {
+            loop {
+                let finishes = audit.of_type::<FinishSessionTeardown>();
+                if let Some(f) = finishes.into_iter().next() {
+                    return f;
+                }
+                tokio::time::sleep(std::time::Duration::from_millis(10)).await;
+            }
+        })
+        .await
+        .expect("FinishSessionTeardown must be emitted after teardown spawn");
+
+        // Then the marker file landed inside the session's CWD (the tempdir),
+        // proving the teardown shell process ran in the inherited session dir,
+        // not jinn's process working directory.
+        let marker = dir.path().join("teardown-marker.log");
+        assert!(
+            marker.exists(),
+            "teardown marker file not found at {}",
+            marker.display()
+        );
     }
 }

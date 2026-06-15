@@ -39,9 +39,6 @@ pub struct PickerEntry {
     pub is_active: bool,
     /// Whether this entry has been selected (checked) for multi-select alloy building.
     pub selected: bool,
-    /// If present, this entry represents a named alloy carrying multiple model IDs.
-    /// When confirmed, sets the session model to `ModelSelection::Alloy`.
-    pub alloy_models: Option<Vec<String>>,
     /// Theme for rendering.
     pub theme: Theme,
 }

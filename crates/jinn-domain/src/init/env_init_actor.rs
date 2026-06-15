@@ -186,7 +186,6 @@ mod tests {
                 providers: vec![],
                 aliases: vec![],
                 default_provider: None,
-                alloys: vec![],
             },
         })
         .await;

@@ -33,9 +33,12 @@ pub fn load_provider_picker_items(services: &Services, state: &mut AppState) {
     let active_model = model_selection.display_str().to_owned();
     let mut entries = sorted_entries(&all, "", &active_model);
 
-    // Pre-check entries matching the current model selection.
-    pre_check_active_models(&mut entries, &model_selection);
-    promote_selected_to_top(&mut entries);
+    // Pre-check entries matching the current model selection, but only when
+    // the picker is in alloy mode. Single mode never builds checkmarks.
+    if state.provider.alloy_mode {
+        pre_check_active_models(&mut entries, &model_selection);
+        promote_selected_to_top(&mut entries);
+    }
 
     state.provider.provider_picker.set_items(entries);
 }
@@ -43,7 +46,7 @@ pub fn load_provider_picker_items(services: &Services, state: &mut AppState) {
 /// Sets `selected = true` on entries matching the current model selection.
 ///
 /// For `Single`, checks the one matching entry. For `Alloy`, checks all member entries.
-fn pre_check_active_models(
+pub(crate) fn pre_check_active_models(
     entries: &mut [crate::protocol::PickerEntry],
     selection: &ModelSelection,
 ) {
@@ -87,7 +90,6 @@ pub fn load_compaction_model_picker_items(services: &Services, state: &mut AppSt
         is_remote: false,
         is_active: sentinel_active,
         selected: false,
-        alloy_models: None,
         theme: state.frontend.theme.clone(),
     };
 
@@ -149,7 +151,6 @@ mod tests {
                 }],
                 aliases: vec![],
                 default_provider: None,
-                alloys: vec![],
             })
             .build();
 
@@ -184,7 +185,6 @@ mod tests {
                 }],
                 aliases: vec![],
                 default_provider: None,
-                alloys: vec![],
             })
             .build();
 
@@ -193,6 +193,7 @@ mod tests {
             .active_session_mut()
             .set_model(ModelSelection::Single("ollama/llama3".to_owned()));
 
+        state.provider.alloy_mode = true;
         // When loading provider picker items.
         load_provider_picker_items(&services, &mut state);
 
@@ -233,7 +234,6 @@ mod tests {
                 }],
                 aliases: vec![],
                 default_provider: None,
-                alloys: vec![],
             })
             .build();
 
@@ -243,6 +243,7 @@ mod tests {
             strategy: AlloyStrategy::RoundRobin { index: 0 },
         });
 
+        state.provider.alloy_mode = true;
         // When loading provider picker items.
         load_provider_picker_items(&services, &mut state);
 
@@ -289,7 +290,6 @@ mod tests {
                 }],
                 aliases: vec![],
                 default_provider: None,
-                alloys: vec![],
             })
             .build();
 
@@ -299,6 +299,7 @@ mod tests {
             strategy: AlloyStrategy::RoundRobin { index: 0 },
         });
 
+        state.provider.alloy_mode = true;
         // When loading picker items.
         load_provider_picker_items(&services, &mut state);
 
