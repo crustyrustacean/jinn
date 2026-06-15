@@ -3069,7 +3069,7 @@ fn toggle_entry_ignored_flips_false_to_true() {
 }
 
 #[rstest::rstest]
-fn toggle_entry_ignored_flips_true_to_false() {
+fn toggle_entry_ignored_flips_forced_exclude_to_forced_include() {
     // Given a session with a selected ignored entry.
     let mut session = ChatSessionState::new();
     let idx = session.push_entry(ChatEntry::user("hello").with_ignored(true));
@@ -3090,11 +3090,112 @@ fn toggle_entry_ignored_flips_true_to_false() {
     // When toggling ignored.
     session.toggle_entry_ignored();
 
-    // Then the entry is un-ignored.
-    assert!(
-        !session.history()[idx].ignored(),
-        "entry should be un-ignored after toggle"
+    // Then the entry is ForcedInclude (brought into context).
+    assert_eq!(
+        session.history()[idx].context_override(),
+        ContextOverride::ForcedInclude
     );
+}
+
+#[rstest::rstest]
+fn toggle_default_user_entry_goes_to_forced_exclude() {
+    // Given a session with a selected Default User entry (in context).
+    let mut session = ChatSessionState::new();
+    let idx = session.push_entry(ChatEntry::user("hello"));
+    session.set_selected_entry_index(0);
+    assert_eq!(
+        session.history()[idx].context_override(),
+        ContextOverride::Default
+    );
+
+    // When toggling ignored.
+    session.toggle_entry_ignored();
+
+    // Then the entry becomes ForcedExclude (taken out of context).
+    assert_eq!(
+        session.history()[idx].context_override(),
+        ContextOverride::ForcedExclude
+    );
+}
+
+#[rstest::rstest]
+fn toggle_default_system_entry_goes_to_forced_include() {
+    // Given a session with a selected Default System entry (out of context by kind).
+    let mut session = ChatSessionState::new();
+    let idx = session.push_entry(ChatEntry::system("note"));
+    session.set_selected_entry_index(0);
+    assert_eq!(
+        session.history()[idx].context_override(),
+        ContextOverride::Default
+    );
+    assert!(!session.history()[idx].is_in_context());
+
+    // When toggling ignored.
+    session.toggle_entry_ignored();
+
+    // Then the entry becomes ForcedInclude (brought into context).
+    assert_eq!(
+        session.history()[idx].context_override(),
+        ContextOverride::ForcedInclude
+    );
+}
+
+#[rstest::rstest]
+fn toggle_forced_include_goes_to_forced_exclude() {
+    // Given a session with a selected ForcedInclude User entry.
+    let mut session = ChatSessionState::new();
+    let mut entry = ChatEntry::user("hello");
+    entry.apply_context_override(ContextOverride::ForcedInclude, ChangeSource::User);
+    let idx = session.push_entry(entry);
+    session.set_selected_entry_index(0);
+
+    // When toggling ignored.
+    session.toggle_entry_ignored();
+
+    // Then the entry becomes ForcedExclude.
+    assert_eq!(
+        session.history()[idx].context_override(),
+        ContextOverride::ForcedExclude
+    );
+}
+
+#[rstest::rstest]
+fn toggle_forced_exclude_goes_to_forced_include() {
+    // Given a session with a selected ForcedExclude User entry.
+    let mut session = ChatSessionState::new();
+    let mut entry = ChatEntry::user("hello");
+    entry.apply_context_override(ContextOverride::ForcedExclude, ChangeSource::User);
+    let idx = session.push_entry(entry);
+    session.set_selected_entry_index(0);
+
+    // When toggling ignored.
+    session.toggle_entry_ignored();
+
+    // Then the entry becomes ForcedInclude.
+    assert_eq!(
+        session.history()[idx].context_override(),
+        ContextOverride::ForcedInclude
+    );
+}
+
+#[rstest::rstest]
+fn toggle_twice_on_default_user_ends_forced_include() {
+    // Given a session with a selected Default User entry (in context).
+    let mut session = ChatSessionState::new();
+    let idx = session.push_entry(ChatEntry::user("hello"));
+    session.set_selected_entry_index(0);
+
+    // When toggling ignored twice.
+    session.toggle_entry_ignored();
+    session.set_selected_entry_index(0);
+    session.toggle_entry_ignored();
+
+    // Then the entry is back in context but marked ForcedInclude (not Default).
+    assert_eq!(
+        session.history()[idx].context_override(),
+        ContextOverride::ForcedInclude
+    );
+    assert!(session.history()[idx].is_in_context());
 }
 
 // --- is_persistable tests ---

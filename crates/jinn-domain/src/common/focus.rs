@@ -29,6 +29,8 @@ pub enum FocusScope {
     RenameSessionInput,
     /// Cwd input popup - typing a directory path to change session cwd.
     CwdInput,
+    /// Pruner accumulation threshold popup - numeric input for the KV-cache gate.
+    PrunerAccumulationInput,
 
     /// Sidebar resize mode - adjusting sidebar width with h/l keys.
     SidebarResize,
@@ -45,7 +47,11 @@ impl FocusScope {
             | Self::SidebarSessions
             | Self::SidebarTaskList
             | Self::SidebarResize => Mode::Normal,
-            Self::Input | Self::ArgInput | Self::RenameSessionInput | Self::CwdInput => Mode::Input,
+            Self::Input
+            | Self::ArgInput
+            | Self::RenameSessionInput
+            | Self::CwdInput
+            | Self::PrunerAccumulationInput => Mode::Input,
             Self::Picker { .. } => Mode::Picker,
         }
     }
@@ -64,6 +70,7 @@ impl std::fmt::Display for FocusScope {
             Self::ArgInput => write!(f, "ArgInput"),
             Self::RenameSessionInput => write!(f, "RenameSessionInput"),
             Self::CwdInput => write!(f, "CwdInput"),
+            Self::PrunerAccumulationInput => write!(f, "PrunerAccumulationInput"),
             Self::SidebarResize => write!(f, "SidebarResize"),
         }
     }
