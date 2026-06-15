@@ -205,7 +205,8 @@
 ---@field parent_session_id string The parent session ID.
 ---@field automated boolean|nil If true, the session is marked automated.
 ---@field persist boolean|nil If true (default), the session is persisted to storage.
----@field inherit_tools string[]|nil List of attached tool names the child inherits from the parent. Omit (or nil) to inherit all (default).
+---@field inherit_tools boolean|nil If true, copy the parent session's session-scoped tools into the child. Default false.
+---@field tools string[]|nil Names of attachable tools to resolve from the catalog into the child. Orthogonal to `inherit_tools` (union).
 ---
 ---@class CreateSessionResponse
 ---@field session_id string The ID of the newly created session.
