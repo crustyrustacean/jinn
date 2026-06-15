@@ -11,7 +11,7 @@
 use std::collections::HashMap;
 use std::path::{Path, PathBuf};
 
-use crate::common::app_info::APP_NAME;
+use jinn_common::app_info::APP_NAME;
 use error_stack::{Report, ResultExt as _};
 use jiff::Timestamp;
 use jinn_provider::ModelInfo;

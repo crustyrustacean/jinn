@@ -1715,6 +1715,7 @@ dependencies = [
  "jiff",
  "jinn-common",
  "jinn-provider",
+ "jinn-provider-config",
  "jinn-selection-widget",
  "jinn-testutil",
  "jinn-theme",
@@ -1769,6 +1770,26 @@ dependencies = [
  "serde",
  "serde_json",
  "tokio",
+ "tracing",
+ "wherror",
+]
+
+[[package]]
+name = "jinn-provider-config"
+version = "0.68.0"
+dependencies = [
+ "dirs",
+ "error-stack",
+ "jiff",
+ "jinn-common",
+ "jinn-provider",
+ "parking_lot",
+ "rstest",
+ "serde",
+ "serde_json",
+ "tempfile",
+ "toml",
+ "toml_edit 0.22.27",
  "tracing",
  "wherror",
 ]
