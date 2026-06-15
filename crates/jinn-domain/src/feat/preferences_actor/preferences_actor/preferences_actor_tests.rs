@@ -9,12 +9,9 @@
 use std::time::Duration;
 
 use super::*;
-use crate::common::bus::BusMessage;
 use crate::common::bus::test_harness::{TestHarness, await_recorded};
 use crate::feat::preferences_actor::protocol::command::{PreferenceUpdate, UpdatePreferences};
 use crate::feat::preferences_actor::protocol::event::PreferencesUpdated;
-
-impl BusMessage for UpdatePreferences {}
 
 #[tokio::test]
 async fn set_compaction_model_overwrites_previous() {

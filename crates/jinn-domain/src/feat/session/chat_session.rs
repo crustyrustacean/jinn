@@ -124,6 +124,15 @@ pub struct SessionCoreEphemeral {
     #[serde(skip)]
     pub busy_count: usize,
 
+    /// Accumulated context-override mutations held back until their deduplicated
+    /// token total crosses the accumulation threshold.
+    ///
+    /// Only non-compaction `SetContextOverride` mutations from auto-pruners are
+    /// buffered here; pins/inserts and compaction overrides take the immediate
+    /// `pending_mutations` path. OWNER: session-actor. Not persisted.
+    #[serde(skip)]
+    pub accumulated_overrides: crate::feat::session::mutation_accumulator::MutationAccumulator,
+
     /// Pending history mutation batches from background workers.
     /// Drained and applied at safe application points (tool batch completion,
     /// stream completion). Not persisted across restarts.
@@ -2864,6 +2873,44 @@ impl ChatSessionState {
             changed.append(&mut batch_changed);
         }
         (count, changed)
+    }
+
+    /// Current deduplicated token total held in the accumulation buffer.
+    ///
+    /// Drives the threshold flush decision in `handle_submit_history_mutations`.
+    #[must_use]
+    pub fn accumulated_overrides_total(&self) -> u64 {
+        self.core.ephemeral.accumulated_overrides.total_tokens()
+    }
+
+    /// Pushes a `SetContextOverride` mutation into the accumulation buffer with
+    /// its pre-resolved token cost. The buffer dedups by entry and respects
+    /// shield dominance; the override is held back until the threshold flush.
+    pub fn route_override(
+        &mut self,
+        entry_id: ChatEntryId,
+        value: crate::feat::session::chat_entry::ContextOverride,
+        source: crate::feat::session::chat_entry::ChangeSource,
+        token_cost: u32,
+    ) {
+        self.core
+            .ephemeral
+            .accumulated_overrides
+            .push(entry_id, value, source, token_cost);
+    }
+
+    /// Drains the accumulation buffer into `pending_mutations` as a single batch
+    /// if its token total has crossed the threshold.
+    ///
+    /// Returns `true` if a flush occurred.
+    pub fn flush_accumulated_overrides_if_needed(&mut self, threshold: u32) -> bool {
+        if self.accumulated_overrides_total() >= u64::from(threshold) {
+            let batch = self.core.ephemeral.accumulated_overrides.drain();
+            self.queue_mutations(batch);
+            true
+        } else {
+            false
+        }
     }
 }
 

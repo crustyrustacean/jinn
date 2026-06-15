@@ -53,7 +53,6 @@ pub use trivial_assistant::TrivialAssistantAutoPruneWorker;
 // A top-level scalar (`accumulation_threshold_tokens`) is also carried here:
 // it's a global gate, not per-worker, so it lives on the aggregate.
 
-
 /// Default accumulation threshold (in tokens) at which buffered pruner
 /// context-override mutations flush.
 const DEFAULT_ACCUMULATION_THRESHOLD_TOKENS: u32 = 10_000;
@@ -123,7 +122,6 @@ pub struct AutoPruneConfig {
     #[serde(default = "default_accumulation_threshold_tokens")]
     pub accumulation_threshold_tokens: u32,
 }
-
 
 impl Default for AutoPruneConfig {
     fn default() -> Self {

@@ -628,6 +628,32 @@ impl IntentHandler {
                 feat::rename_session_input::intent::handle_delete_forward(state)
             }
 
+            // --- Pruner Accumulation Input (set threshold) ---
+            Intent::OpenPrunerAccumulationInput => {
+                feat::pruner_accumulation_input::intent::handle_enter(state)
+            }
+            Intent::PrunerAccumulationConfirm => {
+                feat::pruner_accumulation_input::intent::handle_confirm(state)
+            }
+            Intent::PrunerAccumulationLeave => {
+                feat::pruner_accumulation_input::intent::handle_leave(state)
+            }
+            Intent::PrunerAccumulationInsertChar { ch } => {
+                feat::pruner_accumulation_input::intent::handle_insert_char(state, *ch)
+            }
+            Intent::PrunerAccumulationCursorLeft => {
+                feat::pruner_accumulation_input::intent::handle_cursor_left(state)
+            }
+            Intent::PrunerAccumulationCursorRight => {
+                feat::pruner_accumulation_input::intent::handle_cursor_right(state)
+            }
+            Intent::PrunerAccumulationDeleteGrapheme => {
+                feat::pruner_accumulation_input::intent::handle_delete(state)
+            }
+            Intent::PrunerAccumulationDeleteForward => {
+                feat::pruner_accumulation_input::intent::handle_delete_forward(state)
+            }
+
             // --- CWD Input (type a path) ---
             Intent::OpenCwdInput => feat::cwd_input::intent::handle_cwd_input_enter(state),
             Intent::CwdInputConfirm => feat::cwd_input::intent::handle_cwd_input_confirm(state),
