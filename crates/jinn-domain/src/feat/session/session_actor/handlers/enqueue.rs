@@ -6,7 +6,8 @@
 
 use crate::common::actor_deps::BusPublish;
 use crate::feat::chat_input::protocol::command::{
-    EnqueueResumeTurn, EnqueueUserMessage, PushChatEntry, SetChatInputText, SubmitSteeringMessage,
+    EnqueueResumeTurn, EnqueueUserMessage, PushChatEntry, SetChatInputEnabled, SetChatInputText,
+    SubmitSteeringMessage,
 };
 use crate::feat::chat_input::protocol::event::ChatEntrySubmitted;
 use crate::feat::context::assemble::assemble_prompt;
@@ -291,6 +292,16 @@ impl SessionPersistenceActor {
         let mut state = self.state.write();
         let session = state.session_mut_or_create(&payload.session_id);
         session.chat_input_mut().replace_all(payload.text.clone());
+    }
+
+    /// SetChatInputEnabled: enable or disable editing for the session's input box.
+    pub(in crate::feat::session::session_actor) fn handle_set_chat_input_enabled(
+        &self,
+        payload: &SetChatInputEnabled,
+    ) {
+        let mut state = self.state.write();
+        let session = state.session_mut_or_create(&payload.session_id);
+        session.chat_input_mut().set_enabled(payload.enabled);
     }
 
     /// SubmitSteeringMessage: append a fragment to the session's steering buffer.

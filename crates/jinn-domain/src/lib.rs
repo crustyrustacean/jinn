@@ -108,7 +108,7 @@ pub use common::actor::protocol::event::{
     ActorShutdownCompleted, ActorStarted, ActorStarting, AllActorsSpawned,
 };
 pub use feat::chat_input::protocol::command::{
-    EnqueueUserMessage, PushChatEntry, SetChatInputText,
+    EnqueueUserMessage, PushChatEntry, SetChatInputEnabled, SetChatInputText,
 };
 pub use feat::chat_input::protocol::event::ChatEntrySubmitted;
 pub use feat::context::assemble::AssembledPrompt;

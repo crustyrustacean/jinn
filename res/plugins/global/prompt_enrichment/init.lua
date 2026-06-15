@@ -40,6 +40,7 @@ function M.on_enrich(ctx)
             return
         end
 
+        ctx.emit("set_chat_input_enabled", { session_id = ctx.session_id, enabled = false })
         ctx.merge_plugin_data({ status = "enriching" })
 
         local result = ctx.request("llm_oneshot", {
@@ -72,11 +73,13 @@ function M.on_enrich(ctx)
             })
         end
 
+        ctx.emit("set_chat_input_enabled", { session_id = ctx.session_id, enabled = true })
         ctx.merge_plugin_data({ status = "idle" })
     end)
 
     if not ok then
         -- Restore idle and surface the failure without crashing the fire.
+        ctx.emit("set_chat_input_enabled", { session_id = ctx.session_id, enabled = true })
         ctx.merge_plugin_data({ status = "idle" })
         ctx.emit("push_chat_entry", {
             session_id = ctx.session_id,
