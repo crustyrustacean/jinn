@@ -14,6 +14,8 @@ pub enum PreferenceUpdate {
     /// Set the compaction model (provider/model for summarization).
     /// `None` means fall back to the session model.
     SetCompactionModel(Option<String>),
+    /// Set the pruner-accumulation token threshold.
+    SetAccumulationThreshold(u32),
 }
 
 impl PreferenceUpdate {
@@ -21,6 +23,9 @@ impl PreferenceUpdate {
     pub fn apply(&self, prefs: &mut UserPreferences) {
         match self {
             Self::SetCompactionModel(v) => prefs.compaction.model.clone_from(v),
+            Self::SetAccumulationThreshold(v) => {
+                prefs.auto_prune.accumulation_threshold_tokens = *v;
+            }
         }
     }
 }
@@ -75,5 +80,17 @@ mod tests {
 
         // Then the compaction model is cleared.
         assert!(prefs.compaction.model.is_none());
+    }
+
+    #[rstest::rstest]
+    fn set_accumulation_threshold_applies_to_preferences() {
+        // Given default preferences (threshold defaults to 10_000).
+        let mut prefs = UserPreferences::default();
+
+        // When applying SetAccumulationThreshold.
+        PreferenceUpdate::SetAccumulationThreshold(2500).apply(&mut prefs);
+
+        // Then the threshold is updated.
+        assert_eq!(prefs.auto_prune.accumulation_threshold_tokens, 2500);
     }
 }
