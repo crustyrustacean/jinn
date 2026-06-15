@@ -13,6 +13,19 @@ use error_stack::{Report, ResultExt as _};
 use serde::{Deserialize, Serialize};
 use wherror::Error;
 
+// ── Re-exports: configs co-located with their consuming features ───────
+// The structs below have been moved out of this file to their natural feature
+// homes. They are re-exported here so existing consumer import paths
+// (`crate::feat::preferences_actor::user_preferences::*`) keep resolving.
+pub use crate::feat::session_lifecycle::SessionLifecycle;
+pub use crate::feat::cwd_input::CwdSelectorConfig;
+pub use crate::feat::ui::MinimapConfig;
+pub use crate::feat::compaction_worker::CompactionConfig;
+pub use crate::feat::llm_actor::RequestRetryConfig;
+pub use crate::feat::web_fetch_actor::{WebFetchBackend, WebFetchConfig};
+pub use crate::feat::tools_actor::OpenrouterWebSearchConfig;
+pub use crate::feat::tools_actor::bash::BashConfig;
+
 /// Canonical default `jinn.toml` embedded at compile time.
 ///
 /// Used both to auto-create the file on first run and to back the
@@ -33,89 +46,8 @@ pub enum UserPreferencesError {
     Parse,
 }
 
-/// A named session lifecycle recipe - paired setup and teardown commands.
-///
-/// Defined in `jinn.toml` under `[[session_lifecycle]]`. The setup command
-/// runs when creating a new session; the teardown command runs when closing it.
-/// Commands may contain positional parameters (`$1`, `$2`) that are collected
-/// from the user before execution.
-#[derive(Debug, Clone, Default, PartialEq, Serialize, Deserialize)]
-pub struct SessionLifecycle {
-    /// Human-readable name shown in the lifecycle picker.
-    pub name: String,
-    /// Optional description shown below the name in the picker.
-    #[serde(default)]
-    pub description: Option<String>,
-    /// Command to run when creating a session. Last line of stdout becomes the CWD.
-    /// May contain `$1`, `$2` positional args. `None` means no setup (blank lifecycle).
-    ///
-    /// Supports both shell commands and builtin handlers.
-    /// See [`LifecycleCommand`] for details.
-    #[serde(rename = "setup_command", default)]
-    pub setup: Option<crate::feat::session_lifecycle::builtin::LifecycleCommand>,
-    /// Command to run when closing a session. Receives the same args as setup.
-    /// `None` means no teardown needed.
-    ///
-    /// Supports both shell commands and builtin handlers.
-    /// See [`LifecycleCommand`] for details.
-    #[serde(rename = "teardown_command", default)]
-    pub teardown: Option<crate::feat::session_lifecycle::builtin::LifecycleCommand>,
-}
 
-/// CWD selector configuration.
-///
-/// Serialized as `[cwd_selector]` in `jinn.toml`.
-/// Controls the shell command used to select a new working directory.
-#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
-pub struct CwdSelectorConfig {
-    /// Shell command template. `{path}` is replaced with the search root.
-    /// Default: `find -L {path} -type d 2>/dev/null | fzf --no-multi`
-    #[serde(default = "CwdSelectorConfig::default_command")]
-    pub command: String,
-}
 
-impl CwdSelectorConfig {
-    /// Returns the default picker command.
-    fn default_command() -> String {
-        "find -L {path} -type d 2>/dev/null | fzf --no-multi".to_owned()
-    }
-}
-
-impl Default for CwdSelectorConfig {
-    fn default() -> Self {
-        Self {
-            command: Self::default_command(),
-        }
-    }
-}
-
-/// Default maximum token count for minimap color banding.
-const DEFAULT_MINIMAP_MAX_TOKENS: u32 = 2000;
-
-/// Minimap configuration.
-///
-/// Serialized as `[minimap]` in `jinn.toml`.
-/// Controls the token-count range used for the vertical minimap color gradient.
-#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
-pub struct MinimapConfig {
-    /// Maximum token count for the top band of the minimap gradient.
-    /// Entries with more tokens than this get the last band color.
-    /// Default: 2000.
-    #[serde(default = "default_minimap_max_tokens")]
-    pub max_tokens: u32,
-}
-
-fn default_minimap_max_tokens() -> u32 {
-    DEFAULT_MINIMAP_MAX_TOKENS
-}
-
-impl Default for MinimapConfig {
-    fn default() -> Self {
-        Self {
-            max_tokens: DEFAULT_MINIMAP_MAX_TOKENS,
-        }
-    }
-}
 
 /// Default enabled state for edit-read auto-prune.
 const DEFAULT_EDIT_READ_ENABLED: bool = true;
@@ -796,230 +728,6 @@ pub struct AutoPruneConfig {
     pub anchor_shield: AnchorShieldConfig,
 }
 
-/// Default token threshold for auto-compaction.
-const DEFAULT_COMPACTION_THRESHOLD: f64 = 0.7;
-
-/// Default number of recent tokens to reserve from compaction.
-const DEFAULT_RESERVE_TOKENS: usize = 20_000;
-
-/// Default fallback context window when the provider doesn't report one.
-const DEFAULT_FALLBACK_CONTEXT_WINDOW: usize = 150_000;
-
-/// Compaction configuration.
-///
-/// Serialized as `[compaction]` in `jinn.toml`.
-/// Controls when and how context compaction summarizes conversation history.
-#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
-pub struct CompactionConfig {
-    /// Provider/model for compaction summarization (e.g., "anthropic/claude-sonnet-4-20250514").
-    /// Falls back to the session model if not set or if provider construction fails.
-    #[serde(default)]
-    pub model: Option<String>,
-    /// Fraction of context window at which auto-compaction triggers (0.0–1.0).
-    /// Default: 0.7 (70% of budget).
-    #[serde(default = "default_compaction_threshold")]
-    pub threshold: f64,
-    /// Number of recent tokens to reserve from compaction.
-    /// Default: 20,000.
-    #[serde(default = "default_reserve_tokens")]
-    pub reserve_tokens: usize,
-    /// Fallback context window size when the provider doesn't report `context_length`.
-    /// Used for auto-compaction threshold calculation with local models (Ollama, LM Studio).
-    /// Default: 150,000.
-    #[serde(default = "default_fallback_context_window")]
-    pub fallback_context_window: usize,
-}
-
-fn default_compaction_threshold() -> f64 {
-    DEFAULT_COMPACTION_THRESHOLD
-}
-
-fn default_reserve_tokens() -> usize {
-    DEFAULT_RESERVE_TOKENS
-}
-
-fn default_fallback_context_window() -> usize {
-    DEFAULT_FALLBACK_CONTEXT_WINDOW
-}
-
-impl Default for CompactionConfig {
-    fn default() -> Self {
-        Self {
-            model: None,
-            threshold: DEFAULT_COMPACTION_THRESHOLD,
-            reserve_tokens: DEFAULT_RESERVE_TOKENS,
-            fallback_context_window: DEFAULT_FALLBACK_CONTEXT_WINDOW,
-        }
-    }
-}
-
-/// Web fetch backend selection.
-///
-/// Determines which fetching strategy is used for the `web-fetch` tool.
-/// Selected once at startup from `jinn.toml` and never changes at runtime.
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize, Default)]
-#[serde(rename_all = "kebab-case")]
-pub enum WebFetchBackend {
-    /// Plain HTTP requests via `reqwest`. No JavaScript rendering.
-    #[default]
-    Http,
-    /// Headless Chrome browser via `headless_chrome` crate. Renders JavaScript.
-    HeadlessChrome,
-}
-
-/// Web fetch tool configuration.
-///
-/// Serialized as `[web_fetch]` in `jinn.toml`.
-/// Controls which backend the `web-fetch` tool uses.
-#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
-pub struct WebFetchConfig {
-    /// The backend to use for web fetching. Default: `"headless-chrome"`.
-    #[serde(default)]
-    pub backend: WebFetchBackend,
-}
-
-impl Default for WebFetchConfig {
-    fn default() -> Self {
-        Self {
-            backend: WebFetchBackend::HeadlessChrome,
-        }
-    }
-}
-
-/// Default bash tool timeout in seconds (3 minutes).
-const DEFAULT_BASH_DEFAULT_TIMEOUT_SECS: u64 = 180;
-
-// serde default fns must return the field type (Option<u64>) even when always Some.
-#[expect(
-    clippy::unnecessary_wraps,
-    reason = "trait contract requires Result return"
-)]
-fn default_bash_default_timeout_secs() -> Option<u64> {
-    Some(DEFAULT_BASH_DEFAULT_TIMEOUT_SECS)
-}
-
-/// Bash tool configuration.
-///
-/// Serialized as `[bash]` in `jinn.toml`.
-/// Controls the default execution timeout for the `bash` builtin tool.
-/// The model can override per-call via the `timeout` JSON argument.
-#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
-pub struct BashConfig {
-    /// Default timeout in seconds for bash commands. Default: 180 (3 minutes).
-    /// Set to `None` to disable the default timeout.
-    #[serde(default = "default_bash_default_timeout_secs")]
-    pub default_timeout_secs: Option<u64>,
-}
-
-impl Default for BashConfig {
-    fn default() -> Self {
-        Self {
-            default_timeout_secs: Some(DEFAULT_BASH_DEFAULT_TIMEOUT_SECS),
-        }
-    }
-}
-/// OpenRouter web search server tool configuration.
-///
-/// Serialized as `[openrouter_web_search]` in `jinn.toml`.
-/// Controls parameters sent to the `openrouter:web_search` server tool.
-/// All fields are optional - when `None`, the parameter is omitted from
-/// the request and OpenRouter uses its default.
-#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
-pub struct OpenrouterWebSearchConfig {
-    /// Search engine: "auto", "native", "exa", "firecrawl", or "parallel".
-    /// Default: "exa".
-    #[serde(default)]
-    pub engine: Option<String>,
-
-    /// Maximum results per search call (1–25). `None` = OpenRouter default (5).
-    #[serde(default)]
-    pub max_results: Option<u32>,
-
-    /// Maximum total results across all searches in one request.
-    #[serde(default)]
-    pub max_total_results: Option<u32>,
-
-    /// How much context to retrieve: "low", "medium", or "high".
-    /// `None` = OpenRouter picks adaptively.
-    #[serde(default)]
-    pub search_context_size: Option<String>,
-
-    /// Only return results from these domains.
-    #[serde(default)]
-    pub allowed_domains: Option<Vec<String>>,
-
-    /// Exclude results from these domains.
-    #[serde(default)]
-    pub excluded_domains: Option<Vec<String>>,
-}
-
-impl Default for OpenrouterWebSearchConfig {
-    fn default() -> Self {
-        Self {
-            engine: Some("exa".to_owned()),
-            max_results: None,
-            max_total_results: None,
-            search_context_size: None,
-            allowed_domains: None,
-            excluded_domains: None,
-        }
-    }
-}
-
-/// Default retry configuration values.
-const DEFAULT_RETRY_MAX_RETRIES: u32 = 5;
-const DEFAULT_RETRY_BASE_DELAY_SECS: u64 = 2;
-const DEFAULT_RETRY_MAX_DELAY_SECS: u64 = 60;
-
-/// Retry configuration for LLM provider requests.
-///
-/// Serialized as `[request_retry]` in `jinn.toml`.
-/// Controls exponential backoff behavior for transient errors.
-#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
-pub struct RequestRetryConfig {
-    /// Maximum number of retry attempts. Default: 5.
-    #[serde(default = "default_retry_max_retries")]
-    pub max_retries: u32,
-    /// Base delay in seconds for exponential backoff. Default: 2.
-    #[serde(default = "default_retry_base_delay_secs")]
-    pub base_delay_secs: u64,
-    /// Maximum delay cap in seconds. Default: 60.
-    /// Overridden by provider-supplied Retry-After / error body hints.
-    #[serde(default = "default_retry_max_delay_secs")]
-    pub max_delay_secs: u64,
-}
-
-fn default_retry_max_retries() -> u32 {
-    DEFAULT_RETRY_MAX_RETRIES
-}
-fn default_retry_base_delay_secs() -> u64 {
-    DEFAULT_RETRY_BASE_DELAY_SECS
-}
-fn default_retry_max_delay_secs() -> u64 {
-    DEFAULT_RETRY_MAX_DELAY_SECS
-}
-
-impl Default for RequestRetryConfig {
-    fn default() -> Self {
-        Self {
-            max_retries: DEFAULT_RETRY_MAX_RETRIES,
-            base_delay_secs: DEFAULT_RETRY_BASE_DELAY_SECS,
-            max_delay_secs: DEFAULT_RETRY_MAX_DELAY_SECS,
-        }
-    }
-}
-
-impl RequestRetryConfig {
-    /// Convert to the provider-crate [`jinn_provider::RetryConfig`].
-    #[must_use]
-    pub fn to_retry_config(&self) -> jinn_provider::RetryConfig {
-        jinn_provider::RetryConfig {
-            max_retries: self.max_retries,
-            base_delay: std::time::Duration::from_secs(self.base_delay_secs),
-            max_delay: std::time::Duration::from_secs(self.max_delay_secs),
-        }
-    }
-}
 
 /// User preferences persisted in `jinn.toml`.
 ///
@@ -1569,52 +1277,6 @@ mod tests {
         assert_eq!(reloaded.tool_entry_max_lines, Some(10));
     }
 
-    #[rstest::rstest]
-    fn save_then_load_round_trips_session_lifecycles() {
-        // Given preferences with a session lifecycle.
-        let dir = TempDir::new().expect("temp dir");
-        let path = dir.path().join(PREFS_FILE_NAME);
-        let prefs = UserPreferences {
-            tool_entry_max_lines: None,
-            min_collapse_count: None,
-            session_lifecycles: vec![SessionLifecycle {
-                name: "fossil branch".to_owned(),
-                description: Some("Open a fossil branch in a new workdir".to_owned()),
-                setup: Some(
-                    crate::feat::session_lifecycle::builtin::LifecycleCommand::Shell(
-                        "~/.config/jinn/scripts/fossil-branch.sh $1".to_owned(),
-                    ),
-                ),
-                teardown: Some(
-                    crate::feat::session_lifecycle::builtin::LifecycleCommand::Shell(
-                        "~/.config/jinn/scripts/fossil-cleanup.sh $1".to_owned(),
-                    ),
-                ),
-            }],
-            max_tool_output_lines: None,
-            max_tool_output_bytes: None,
-            compaction: CompactionConfig::default(),
-            request_retry: RequestRetryConfig::default(),
-            web_fetch: WebFetchConfig::default(),
-            openrouter_web_search: OpenrouterWebSearchConfig::default(),
-            cwd_selector: CwdSelectorConfig::default(),
-            minimap: MinimapConfig::default(),
-            auto_prune: AutoPruneConfig::default(),
-            bash: BashConfig::default(),
-        };
-
-        // When saving and reloading.
-        save_preferences_to(&prefs, &path).expect("save");
-        let reloaded = load_preferences_from(&path).expect("load");
-
-        // Then the lifecycle is preserved.
-        assert_eq!(reloaded.session_lifecycles.len(), 1);
-        assert_eq!(reloaded.session_lifecycles[0].name, "fossil branch");
-        assert!(matches!(
-            reloaded.session_lifecycles[0].setup,
-            Some(crate::feat::session_lifecycle::builtin::LifecycleCommand::Shell(ref s)) if s == "~/.config/jinn/scripts/fossil-branch.sh $1"
-        ));
-    }
 
     #[rstest::rstest]
     fn default_preferences_has_git_worktree_lifecycle() {
@@ -1636,35 +1298,6 @@ mod tests {
         assert!(path.to_string_lossy().ends_with("jinn/jinn.toml"));
     }
 
-    #[rstest::rstest]
-    fn load_parses_table_array_session_lifecycle() {
-        // Given a TOML file using [[session_lifecycle]] table array syntax.
-        let dir = TempDir::new().expect("temp dir");
-        let path = dir.path().join(PREFS_FILE_NAME);
-        std::fs::write(
-            &path,
-            r#"last_model = "ollama/llama3"
-
-[[session_lifecycle]]
-name = "fossil branch"
-description = "Open a fossil branch in a new workdir"
-setup_command = "~/.config/jinn/scripts/fossil-branch.sh $1"
-teardown_command = "~/.config/jinn/scripts/fossil-cleanup.sh $1"
-"#,
-        )
-        .expect("write");
-
-        // When loading.
-        let prefs = load_preferences_from(&path).expect("load");
-
-        // Then session_lifecycles is populated.
-        assert_eq!(prefs.session_lifecycles.len(), 1);
-        assert_eq!(prefs.session_lifecycles[0].name, "fossil branch");
-        assert!(matches!(
-            prefs.session_lifecycles[0].setup,
-            Some(crate::feat::session_lifecycle::builtin::LifecycleCommand::Shell(ref s)) if s == "~/.config/jinn/scripts/fossil-branch.sh $1"
-        ));
-    }
 
     #[rstest::rstest]
     fn save_then_load_round_trips_min_collapse_count() {
@@ -1706,68 +1339,8 @@ teardown_command = "~/.config/jinn/scripts/fossil-cleanup.sh $1"
         assert!(!written.contains("tool_entry_max_lines = 10"));
     }
 
-    #[rstest::rstest]
-    fn save_preferences_preserves_session_lifecycle_block_and_comments() {
-        // Given a jinn.toml with a session_lifecycle block.
-        let original = "# my custom lifecycle\n[[session_lifecycle]]\nname = \"fossil-branch\"\ndescription = \"open a branch\"\n";
-        let dir = TempDir::new().expect("temp dir");
-        let path = dir.path().join(PREFS_FILE_NAME);
-        std::fs::write(&path, original).expect("write");
 
-        // When loading and re-saving without changes.
-        let prefs = load_preferences_from(&path).expect("load");
-        save_preferences_to(&prefs, &path).expect("save");
 
-        // Then the comment and entry are preserved.
-        let written = std::fs::read_to_string(&path).expect("read");
-        assert!(written.contains("# my custom lifecycle"));
-        assert!(written.contains("name = \"fossil-branch\""));
-    }
-
-    #[rstest::rstest]
-    fn save_preferences_deletes_session_lifecycle_block_on_struct_removal() {
-        // Given a jinn.toml with two lifecycle blocks.
-        let original = "# keep\n[[session_lifecycle]]\nname = \"alpha\"\n\n# delete\n[[session_lifecycle]]\nname = \"beta\"\n";
-        let dir = TempDir::new().expect("temp dir");
-        let path = dir.path().join(PREFS_FILE_NAME);
-        std::fs::write(&path, original).expect("write");
-
-        // When loading and saving with only alpha kept.
-        let mut prefs = load_preferences_from(&path).expect("load");
-        prefs.session_lifecycles.retain(|l| l.name == "alpha");
-        save_preferences_to(&prefs, &path).expect("save");
-
-        // Then beta's block (and its comment) is removed.
-        let written = std::fs::read_to_string(&path).expect("read");
-        assert!(written.contains("# keep"));
-        assert!(written.contains("name = \"alpha\""));
-        assert!(!written.contains("beta"));
-        assert!(!written.contains("# delete"));
-    }
-
-    #[rstest::rstest]
-    fn save_preferences_appends_new_session_lifecycle_at_end() {
-        // Given a jinn.toml with one lifecycle block.
-        let original = "# existing\n[[session_lifecycle]]\nname = \"alpha\"\n";
-        let dir = TempDir::new().expect("temp dir");
-        let path = dir.path().join(PREFS_FILE_NAME);
-        std::fs::write(&path, original).expect("write");
-
-        // When loading and adding a new lifecycle.
-        let mut prefs = load_preferences_from(&path).expect("load");
-        prefs.session_lifecycles.push(SessionLifecycle {
-            name: "beta".to_owned(),
-            ..Default::default()
-        });
-        save_preferences_to(&prefs, &path).expect("save");
-
-        // Then beta appears after alpha.
-        let written = std::fs::read_to_string(&path).expect("read");
-        let alpha_pos = written.find("name = \"alpha\"").expect("alpha");
-        let beta_pos = written.find("name = \"beta\"").expect("beta");
-        assert!(alpha_pos < beta_pos);
-        assert!(written.contains("# existing"));
-    }
     #[rstest::rstest]
     fn first_save_of_jinn_toml_emits_no_comments() {
         // Given: no jinn.toml exists yet.
@@ -2032,30 +1605,6 @@ teardown_command = "~/.config/jinn/scripts/fossil-cleanup.sh $1"
         assert!(written.contains("min_collapse_count = 42"));
     }
 
-    #[rstest::rstest]
-    fn to_retry_config_uses_actual_values_not_defaults() {
-        // Kills: replace to_retry_config with Default::default().
-        // If to_retry_config returned Default::default(), all durations would be zero.
-        let config = RequestRetryConfig {
-            max_retries: 3,
-            base_delay_secs: 5,
-            max_delay_secs: 120,
-        };
-
-        let retry = config.to_retry_config();
-
-        assert_eq!(retry.max_retries, 3);
-        assert_eq!(retry.base_delay, std::time::Duration::from_secs(5));
-        assert_eq!(retry.max_delay, std::time::Duration::from_mins(2));
-    }
-
-    // --- WebFetchConfig tests ---
-
-    #[rstest::rstest]
-    fn default_web_fetch_config_uses_headless_chrome_backend() {
-        let config = WebFetchConfig::default();
-        assert_eq!(config.backend, WebFetchBackend::HeadlessChrome);
-    }
 
     #[rstest::rstest]
     fn default_preferences_has_headless_chrome_web_fetch() {
@@ -2063,53 +1612,7 @@ teardown_command = "~/.config/jinn/scripts/fossil-cleanup.sh $1"
         assert_eq!(prefs.web_fetch.backend, WebFetchBackend::HeadlessChrome);
     }
 
-    #[rstest::rstest]
-    fn load_parses_web_fetch_headless_chrome() {
-        let dir = TempDir::new().expect("temp dir");
-        let path = dir.path().join(PREFS_FILE_NAME);
-        std::fs::write(
-            &path,
-            r#"[web_fetch]
-backend = "headless-chrome"
-"#,
-        )
-        .expect("write");
 
-        let prefs = load_preferences_from(&path).expect("load");
-        assert_eq!(prefs.web_fetch.backend, WebFetchBackend::HeadlessChrome);
-    }
-
-    #[rstest::rstest]
-    fn load_rejects_invalid_web_fetch_backend() {
-        let dir = TempDir::new().expect("temp dir");
-        let path = dir.path().join(PREFS_FILE_NAME);
-        std::fs::write(
-            &path,
-            r#"[web_fetch]
-backend = "socks"
-"#,
-        )
-        .expect("write");
-
-        let result = load_preferences_from(&path);
-        assert!(result.is_err());
-    }
-
-    #[rstest::rstest]
-    fn save_then_load_round_trips_web_fetch_config() {
-        let dir = TempDir::new().expect("temp dir");
-        let path = dir.path().join(PREFS_FILE_NAME);
-        let prefs = UserPreferences {
-            web_fetch: WebFetchConfig {
-                backend: WebFetchBackend::HeadlessChrome,
-            },
-            ..UserPreferences::default()
-        };
-
-        save_preferences_to(&prefs, &path).expect("save");
-        let reloaded = load_preferences_from(&path).expect("load");
-        assert_eq!(reloaded.web_fetch.backend, WebFetchBackend::HeadlessChrome);
-    }
 
     // --- OpenRouterWebSearchConfig tests ---
 
@@ -2123,136 +1626,6 @@ backend = "socks"
         assert!(prefs.openrouter_web_search.allowed_domains.is_none());
         assert!(prefs.openrouter_web_search.excluded_domains.is_none());
     }
-
-    #[rstest::rstest]
-    fn save_then_load_round_trips_openrouter_web_search_config() {
-        let dir = TempDir::new().expect("temp dir");
-        let path = dir.path().join(PREFS_FILE_NAME);
-        let prefs = UserPreferences {
-            openrouter_web_search: OpenrouterWebSearchConfig {
-                engine: Some("exa".to_owned()),
-                max_results: Some(10),
-                max_total_results: Some(50),
-                search_context_size: Some("high".to_owned()),
-                allowed_domains: Some(vec!["arxiv.org".to_owned()]),
-                excluded_domains: Some(vec!["reddit.com".to_owned()]),
-            },
-            ..UserPreferences::default()
-        };
-
-        save_preferences_to(&prefs, &path).expect("save");
-        let reloaded = load_preferences_from(&path).expect("load");
-
-        assert_eq!(
-            reloaded.openrouter_web_search.engine.as_deref(),
-            Some("exa")
-        );
-        assert_eq!(reloaded.openrouter_web_search.max_results, Some(10));
-        assert_eq!(reloaded.openrouter_web_search.max_total_results, Some(50));
-        assert_eq!(
-            reloaded
-                .openrouter_web_search
-                .search_context_size
-                .as_deref(),
-            Some("high")
-        );
-        assert_eq!(
-            reloaded.openrouter_web_search.allowed_domains,
-            Some(vec!["arxiv.org".to_owned()])
-        );
-        assert_eq!(
-            reloaded.openrouter_web_search.excluded_domains,
-            Some(vec!["reddit.com".to_owned()])
-        );
-    }
-
-    #[rstest::rstest]
-    fn load_parses_openrouter_web_search_config() {
-        let dir = TempDir::new().expect("temp dir");
-        let path = dir.path().join(PREFS_FILE_NAME);
-        std::fs::write(
-            &path,
-            r#"[openrouter_web_search]
-engine = "parallel"
-max_results = 5
-max_total_results = 20
-search_context_size = "medium"
-allowed_domains = ["nature.com", "arxiv.org"]
-excluded_domains = ["spam.com"]
-"#,
-        )
-        .expect("write");
-
-        let prefs = load_preferences_from(&path).expect("load");
-
-        assert_eq!(
-            prefs.openrouter_web_search.engine.as_deref(),
-            Some("parallel")
-        );
-        assert_eq!(prefs.openrouter_web_search.max_results, Some(5));
-        assert_eq!(prefs.openrouter_web_search.max_total_results, Some(20));
-        assert_eq!(
-            prefs.openrouter_web_search.search_context_size.as_deref(),
-            Some("medium")
-        );
-        assert_eq!(
-            prefs.openrouter_web_search.allowed_domains,
-            Some(vec!["nature.com".to_owned(), "arxiv.org".to_owned()])
-        );
-        assert_eq!(
-            prefs.openrouter_web_search.excluded_domains,
-            Some(vec!["spam.com".to_owned()])
-        );
-    }
-
-    #[rstest::rstest]
-    fn load_without_openrouter_web_search_section_uses_defaults() {
-        let dir = TempDir::new().expect("temp dir");
-        let path = dir.path().join(PREFS_FILE_NAME);
-        std::fs::write(
-            &path,
-            r#"last_model = "ollama/llama3"
-"#,
-        )
-        .expect("write");
-
-        let prefs = load_preferences_from(&path).expect("load");
-
-        let defaults = OpenrouterWebSearchConfig::default();
-        assert_eq!(prefs.openrouter_web_search.engine, defaults.engine);
-        assert_eq!(
-            prefs.openrouter_web_search.max_results,
-            defaults.max_results
-        );
-        assert_eq!(
-            prefs.openrouter_web_search.max_total_results,
-            defaults.max_total_results
-        );
-        assert_eq!(
-            prefs.openrouter_web_search.search_context_size,
-            defaults.search_context_size
-        );
-        assert_eq!(
-            prefs.openrouter_web_search.allowed_domains,
-            defaults.allowed_domains
-        );
-        assert_eq!(
-            prefs.openrouter_web_search.excluded_domains,
-            defaults.excluded_domains
-        );
-    }
-
-    // --- MinimapConfig tests ---
-
-    #[rstest::rstest]
-    fn default_minimap_config_has_max_tokens_2000() {
-        // Given default minimap config.
-        let config = MinimapConfig::default();
-
-        // Then max_tokens is 2000.
-        assert_eq!(config.max_tokens, 2000);
-    }
-
     #[rstest::rstest]
     fn default_preferences_has_default_minimap_config() {
         // Given default preferences.
@@ -2262,62 +1635,6 @@ excluded_domains = ["spam.com"]
         assert_eq!(prefs.minimap.max_tokens, 2000);
     }
 
-    #[rstest::rstest]
-    fn load_parses_minimap_config() {
-        // Given a TOML file with a minimap section.
-        let dir = TempDir::new().expect("temp dir");
-        let path = dir.path().join(PREFS_FILE_NAME);
-        std::fs::write(
-            &path,
-            "[minimap]
-max_tokens = 5000
-",
-        )
-        .expect("write");
-
-        // When loading.
-        let prefs = load_preferences_from(&path).expect("load");
-
-        // Then minimap config is parsed.
-        assert_eq!(prefs.minimap.max_tokens, 5000);
-    }
-
-    #[rstest::rstest]
-    fn save_then_load_round_trips_minimap_config() {
-        // Given preferences with a custom minimap config.
-        let dir = TempDir::new().expect("temp dir");
-        let path = dir.path().join(PREFS_FILE_NAME);
-        let prefs = UserPreferences {
-            minimap: MinimapConfig { max_tokens: 5000 },
-            ..UserPreferences::default()
-        };
-
-        // When saving and reloading.
-        save_preferences_to(&prefs, &path).expect("save");
-        let reloaded = load_preferences_from(&path).expect("load");
-
-        // Then the round-tripped value matches.
-        assert_eq!(reloaded.minimap.max_tokens, 5000);
-    }
-
-    #[rstest::rstest]
-    fn load_without_minimap_section_uses_defaults() {
-        // Given a TOML file without a minimap section.
-        let dir = TempDir::new().expect("temp dir");
-        let path = dir.path().join(PREFS_FILE_NAME);
-        std::fs::write(
-            &path,
-            r#"last_model = "ollama/llama3"
-"#,
-        )
-        .expect("write");
-
-        // When loading.
-        let prefs = load_preferences_from(&path).expect("load");
-
-        // Then minimap uses defaults.
-        assert_eq!(prefs.minimap.max_tokens, 2000);
-    }
 
     // --- AutoPruneConfig tests ---
 
@@ -2839,55 +2156,5 @@ keep_last = 1
         assert_eq!(reloaded.auto_prune.regex.rules.len(), 2);
         assert_eq!(reloaded.auto_prune.regex.rules[0].pattern, "ls");
         assert_eq!(reloaded.auto_prune.regex.rules[1].pattern, "cargo check");
-    }
-
-    #[test]
-    fn bash_config_default_is_180_secs() {
-        // Given the default BashConfig.
-        let cfg = BashConfig::default();
-
-        // Then the default timeout is 180 seconds.
-        assert_eq!(
-            cfg.default_timeout_secs,
-            Some(180),
-            "BashConfig::default() must produce a 3-minute default timeout",
-        );
-    }
-
-    #[test]
-    fn bash_config_toml_roundtrip_explicit_value() {
-        // Given a TOML fragment with an explicit override.
-        let toml_str = "
-            default_timeout_secs = 60
-        ";
-
-        // When parsed.
-        let cfg: BashConfig = toml::from_str(toml_str).expect("parse");
-
-        // Then the override round-trips.
-        assert_eq!(cfg.default_timeout_secs, Some(60));
-
-        // And serializing back preserves the value.
-        let reserialized = toml::to_string(&cfg).expect("serialize");
-        assert!(
-            reserialized.contains("default_timeout_secs = 60"),
-            "reserialized TOML must preserve the value; got: {reserialized}",
-        );
-    }
-
-    #[test]
-    fn bash_config_toml_empty_table_falls_back_to_default() {
-        // Given an empty [bash] table in TOML.
-        let toml_str = "";
-
-        // When parsed.
-        let cfg: BashConfig = toml::from_str(toml_str).expect("parse");
-
-        // Then the serde default fn fires and produces 180.
-        assert_eq!(
-            cfg.default_timeout_secs,
-            Some(180),
-            "missing field should resolve via serde default fn",
-        );
     }
 }

@@ -10,6 +10,41 @@
 //! Calls [`WebFetcher::shutdown`] during [`Actor::on_stop`] to release
 //! resources (e.g., kill a headless browser process).
 
+use serde::{Deserialize, Serialize};
+
+/// Web fetch backend selection.
+///
+/// Determines which fetching strategy is used for the `web-fetch` tool.
+/// Selected once at startup from `jinn.toml` and never changes at runtime.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize, Default)]
+#[serde(rename_all = "kebab-case")]
+pub enum WebFetchBackend {
+    /// Plain HTTP requests via `reqwest`. No JavaScript rendering.
+    #[default]
+    Http,
+    /// Headless Chrome browser via `headless_chrome` crate. Renders JavaScript.
+    HeadlessChrome,
+}
+
+/// Web fetch tool configuration.
+///
+/// Serialized as `[web_fetch]` in `jinn.toml`.
+/// Controls which backend the `web-fetch` tool uses.
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+pub struct WebFetchConfig {
+    /// The backend to use for web fetching. Default: `"headless-chrome"`.
+    #[serde(default)]
+    pub backend: WebFetchBackend,
+}
+
+impl Default for WebFetchConfig {
+    fn default() -> Self {
+        Self {
+            backend: WebFetchBackend::HeadlessChrome,
+        }
+    }
+}
+
 use std::sync::Arc;
 
 use kameo::actor::ActorRef;
@@ -396,5 +431,71 @@ mod tests {
         assert_eq!(messages.len(), 1);
         assert!(!messages[0].result.success);
         assert!(messages[0].result.content.contains("fetch failed"));
+    }
+}
+
+#[cfg(test)]
+mod config_tests {
+    #![allow(clippy::expect_used, clippy::indexing_slicing, reason = "test code")]
+    use tempfile::TempDir;
+
+    use super::{WebFetchBackend, WebFetchConfig};
+    use crate::common::app_info::PREFS_FILE_NAME;
+    use crate::feat::preferences_actor::user_preferences::{
+        load_preferences_from, save_preferences_to, UserPreferences,
+    };
+
+    #[rstest::rstest]
+    fn default_web_fetch_config_uses_headless_chrome_backend() {
+        let config = WebFetchConfig::default();
+        assert_eq!(config.backend, WebFetchBackend::HeadlessChrome);
+    }
+
+    #[rstest::rstest]
+    fn load_parses_web_fetch_headless_chrome() {
+        let dir = TempDir::new().expect("temp dir");
+        let path = dir.path().join(PREFS_FILE_NAME);
+        std::fs::write(
+            &path,
+            r#"[web_fetch]
+backend = "headless-chrome"
+"#,
+        )
+        .expect("write");
+
+        let prefs = load_preferences_from(&path).expect("load");
+        assert_eq!(prefs.web_fetch.backend, WebFetchBackend::HeadlessChrome);
+    }
+
+    #[rstest::rstest]
+    fn load_rejects_invalid_web_fetch_backend() {
+        let dir = TempDir::new().expect("temp dir");
+        let path = dir.path().join(PREFS_FILE_NAME);
+        std::fs::write(
+            &path,
+            r#"[web_fetch]
+backend = "socks"
+"#,
+        )
+        .expect("write");
+
+        let result = load_preferences_from(&path);
+        assert!(result.is_err());
+    }
+
+    #[rstest::rstest]
+    fn save_then_load_round_trips_web_fetch_config() {
+        let dir = TempDir::new().expect("temp dir");
+        let path = dir.path().join(PREFS_FILE_NAME);
+        let prefs = UserPreferences {
+            web_fetch: WebFetchConfig {
+                backend: WebFetchBackend::HeadlessChrome,
+            },
+            ..UserPreferences::default()
+        };
+
+        save_preferences_to(&prefs, &path).expect("save");
+        let reloaded = load_preferences_from(&path).expect("load");
+        assert_eq!(reloaded.web_fetch.backend, WebFetchBackend::HeadlessChrome);
     }
 }
