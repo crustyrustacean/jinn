@@ -936,3 +936,85 @@ fn exclude_cannot_displace_buffered_include() {
         other => panic!("expected ForcedInclude, got {other:?}"),
     }
 }
+
+/// Routing a sub-threshold exclude and then running the full apply path must
+/// leave the entry unchanged: nothing is queued, so nothing applies.
+#[test]
+fn entry_stays_default_while_accumulator_below_threshold() {
+    // Given an idle session with one entry and a high threshold.
+    let mut session = ChatSessionState::new();
+    session.push_entry(ChatEntry::user("hello"));
+    let entry_id = session.history()[0].id.clone();
+
+    // When routing a single small exclude (cost 300, threshold 10_000)
+    // and running the full apply path.
+    session.route_override(
+        entry_id,
+        ContextOverride::ForcedExclude,
+        worker("todo_prune"),
+        300,
+    );
+    let (count, changed) = session.drain_and_apply_pending_mutations();
+
+    // Then no mutations were applied...
+    assert_eq!(count, 0);
+    assert!(changed.is_empty());
+    // And the entry's override is still the default (unchanged).
+    assert_eq!(
+        session.history()[0].context_override(),
+        ContextOverride::Default
+    );
+}
+
+/// An accumulated exclude only changes the entry's override after the threshold
+/// is crossed and the apply path runs: held at Default below, then ForcedExclude above.
+#[test]
+fn accumulated_exclude_applies_to_entry_only_after_threshold() {
+    // Given a session with one entry buffered at 4_000.
+    let mut session = ChatSessionState::new();
+    session.push_entry(ChatEntry::user("first"));
+    let id0 = session.history()[0].id.clone();
+    session.route_override(
+        id0,
+        ContextOverride::ForcedExclude,
+        worker("todo_prune"),
+        4_000,
+    );
+
+    // When running the apply path below the threshold (4_000 < 10_000)...
+    session.flush_accumulated_overrides_if_needed(10_000);
+    let (count, changed) = session.drain_and_apply_pending_mutations();
+
+    // Then nothing flushed and the entry is still the default.
+    assert_eq!(count, 0);
+    assert!(changed.is_empty());
+    assert_eq!(
+        session.history()[0].context_override(),
+        ContextOverride::Default
+    );
+
+    // When a second exclude pushes the total to 10_000 and the apply path runs.
+    session.push_entry(ChatEntry::user("second"));
+    let id1 = session.history()[1].id.clone();
+    session.route_override(
+        id1,
+        ContextOverride::ForcedExclude,
+        worker("todo_prune"),
+        6_000,
+    );
+    session.flush_accumulated_overrides_if_needed(10_000);
+    let (count, changed) = session.drain_and_apply_pending_mutations();
+
+    // Then one batch of two overrides applied...
+    assert_eq!(count, 1);
+    assert_eq!(changed.len(), 2);
+    // And both entries are now excluded (held back, then applied together).
+    assert_eq!(
+        session.history()[0].context_override(),
+        ContextOverride::ForcedExclude
+    );
+    assert_eq!(
+        session.history()[1].context_override(),
+        ContextOverride::ForcedExclude
+    );
+}
