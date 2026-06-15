@@ -150,8 +150,9 @@ pub fn init() -> Keymap<KeyEvent, Scope, Intent, KeyCategory> {
             // Minimap navigation
             // Pin selected entry
             .bind("p", Intent::ChatEntryPinSelected, KeyCategory::ChatHistory)
-            // Ignore/un-ignore selected entry
             .bind("x", Intent::ChatEntryIgnoreSelected, KeyCategory::ChatHistory)
+            // Reset selected entry to default context
+            .bind("r", Intent::ChatEntryResetSelected, KeyCategory::ChatHistory)
             // Expand/collapse tool entry
             .bind("e", Intent::ExpandToolEntry, KeyCategory::ChatHistory)
             // Toggle audit popup for the selected entry

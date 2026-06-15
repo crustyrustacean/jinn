@@ -221,6 +221,8 @@ pub enum Intent {
     YankSelectedEntry,
     /// Toggle the `ignored` flag on the currently selected chat entry.
     ChatEntryIgnoreSelected,
+    /// Reset the currently selected chat entry's context override to `Default`.
+    ChatEntryResetSelected,
 
     // --- Session Lifecycle ---
     /// Run a lifecycle setup command to create a new session.
@@ -410,6 +412,7 @@ impl std::fmt::Display for Intent {
             Intent::ForkFromEntry => write!(f, "fork from entry"),
             Intent::YankSelectedEntry => write!(f, "yank entry"),
             Intent::ChatEntryIgnoreSelected => write!(f, "toggle entry in/out of context"),
+            Intent::ChatEntryResetSelected => write!(f, "reset entry to default context"),
 
             Intent::SessionLifecycleSetup { lifecycle_name, .. } => {
                 write!(f, "session lifecycle setup: {lifecycle_name}")
