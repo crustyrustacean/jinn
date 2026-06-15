@@ -41,6 +41,8 @@ pub struct UpdatePreferences {
     pub updates: Vec<PreferenceUpdate>,
 }
 
+impl crate::common::bus::BusMessage for UpdatePreferences {}
+
 #[cfg(test)]
 mod tests {
     #![allow(

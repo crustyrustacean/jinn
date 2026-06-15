@@ -7,6 +7,7 @@ use crate::common::tui_signals::TuiSignals;
 use crate::feat::cwd_input::state::CwdInputState;
 use crate::feat::preferences_actor::UserPreferences;
 use crate::feat::preferences_actor::app_state_file::AppStateFile;
+use crate::feat::pruner_accumulation_input::state::PrunerAccumulationInputState;
 use crate::feat::rename_session_input::state::RenameSessionInputState;
 
 use crate::feat::session_lifecycle::arg_input_state::ArgInputState;
@@ -141,6 +142,11 @@ pub struct FrontendState {
     /// OWNER: IntentHandler (rename input editing, confirmation).
     pub rename_session_input: RenameSessionInputState,
 
+    /// Pruner accumulation threshold input popup state - active when
+    /// `FocusScope::PrunerAccumulationInput` is on the scope stack.
+    /// OWNER: IntentHandler (threshold input editing, confirmation).
+    pub pruner_accumulation_input: PrunerAccumulationInputState,
+
     /// Cwd input popup state - active when `FocusScope::CwdInput` is on the scope stack.
     /// OWNER: IntentHandler (cwd input editing, confirmation).
     pub cwd_input: CwdInputState,
@@ -173,6 +179,7 @@ impl Default for FrontendState {
             system_themes_dir: std::path::PathBuf::new(),
             arg_input: ArgInputState::default(),
             rename_session_input: RenameSessionInputState::default(),
+            pruner_accumulation_input: PrunerAccumulationInputState::default(),
             cwd_input: CwdInputState::default(),
 
             sidebar_width: 30,

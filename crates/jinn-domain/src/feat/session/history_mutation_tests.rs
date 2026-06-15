@@ -751,3 +751,188 @@ fn unpin_entry_on_unpinned_entry_is_noop() {
     // Then no panic, still None.
     assert!(session.history()[0].pin_position.is_none());
 }
+
+// --- accumulation gate ---
+
+/// Worker source used by the auto-prune workers in these tests.
+fn worker(name: &str) -> ChangeSource {
+    ChangeSource::Worker {
+        name: name.to_owned(),
+    }
+}
+
+#[test]
+fn subthreshold_override_is_buffered_not_applied() {
+    // Given an idle session with one entry and a high threshold.
+    let mut session = ChatSessionState::new();
+    session.push_entry(ChatEntry::user("hello"));
+    let entry_id = session.history()[0].id.clone();
+
+    // When routing a single small exclude (cost 300, threshold 10_000).
+    session.route_override(
+        entry_id.clone(),
+        ContextOverride::ForcedExclude,
+        worker("todo_prune"),
+        300,
+    );
+
+    // Then nothing is queued for application...
+    assert!(session.drain_pending_mutations().is_empty());
+    // And the entry's override is still the default (unchanged).
+    assert_eq!(
+        session.history()[0].context_override(),
+        ContextOverride::Default
+    );
+    // And the accumulator holds 300 tokens.
+    assert_eq!(session.accumulated_overrides_total(), 300);
+}
+
+#[test]
+fn threshold_crossing_flushes_accumulated_overrides() {
+    // Given a session with one entry buffered at 9_000.
+    let mut session = ChatSessionState::new();
+    session.push_entry(ChatEntry::user("first"));
+    let id0 = session.history()[0].id.clone();
+    session.route_override(
+        id0,
+        ContextOverride::ForcedExclude,
+        worker("todo_prune"),
+        9_000,
+    );
+
+    // When a second entry pushes the total to 10_000 (>= threshold).
+    session.push_entry(ChatEntry::user("second"));
+    let id1 = session.history()[1].id.clone();
+    session.route_override(
+        id1,
+        ContextOverride::ForcedExclude,
+        worker("todo_prune"),
+        1_000,
+    );
+    let flushed = session.flush_accumulated_overrides_if_needed(10_000);
+
+    // Then a flush occurred...
+    assert!(flushed);
+    // And one batch of two overrides is pending application.
+    let batches = session.drain_pending_mutations();
+    assert_eq!(batches.len(), 1);
+    assert_eq!(batches[0].len(), 2);
+    // And the accumulator total reset to zero.
+    assert_eq!(session.accumulated_overrides_total(), 0);
+}
+
+#[test]
+fn repeated_override_for_same_entry_does_not_inflate_total() {
+    // Given a session.
+    let mut session = ChatSessionState::new();
+    session.push_entry(ChatEntry::user("hello"));
+    let entry_id = session.history()[0].id.clone();
+
+    // When routing the same exclude for the same entry twice.
+    session.route_override(
+        entry_id.clone(),
+        ContextOverride::ForcedExclude,
+        worker("todo_prune"),
+        300,
+    );
+    session.route_override(
+        entry_id,
+        ContextOverride::ForcedExclude,
+        worker("todo_prune"),
+        300,
+    );
+
+    // Then the total reflects one entry, not two (dedup by entry id).
+    assert_eq!(session.accumulated_overrides_total(), 300);
+}
+
+#[test]
+fn distinct_entries_sum_their_token_costs() {
+    // Given a session with two entries.
+    let mut session = ChatSessionState::new();
+    session.push_entry(ChatEntry::user("first"));
+    session.push_entry(ChatEntry::user("second"));
+    let id0 = session.history()[0].id.clone();
+    let id1 = session.history()[1].id.clone();
+
+    // When routing two distinct excludes.
+    session.route_override(
+        id0,
+        ContextOverride::ForcedExclude,
+        worker("todo_prune"),
+        400,
+    );
+    session.route_override(
+        id1,
+        ContextOverride::ForcedExclude,
+        worker("todo_prune"),
+        600,
+    );
+
+    // Then the total is the sum.
+    assert_eq!(session.accumulated_overrides_total(), 1_000);
+}
+
+#[test]
+fn shield_include_displaces_buffered_exclude() {
+    // Given a session with a buffered exclude for one entry.
+    let mut session = ChatSessionState::new();
+    session.push_entry(ChatEntry::user("hello"));
+    let entry_id = session.history()[0].id.clone();
+    session.route_override(
+        entry_id.clone(),
+        ContextOverride::ForcedExclude,
+        worker("todo_prune"),
+        300,
+    );
+
+    // When a shield ForcedInclude arrives for the same entry.
+    session.route_override(
+        entry_id,
+        ContextOverride::ForcedInclude,
+        worker("anchor_shield"),
+        300,
+    );
+
+    // Then draining yields a ForcedInclude (the shield wins).
+    let batch = session.core.ephemeral.accumulated_overrides.drain();
+    assert_eq!(batch.len(), 1);
+    match &batch[0] {
+        HistoryMutation::SetContextOverride { value, .. } => {
+            assert_eq!(*value, ContextOverride::ForcedInclude);
+        }
+        other => panic!("expected ForcedInclude, got {other:?}"),
+    }
+}
+
+#[test]
+fn exclude_cannot_displace_buffered_include() {
+    // Given a session with a buffered shield include for one entry.
+    let mut session = ChatSessionState::new();
+    session.push_entry(ChatEntry::user("hello"));
+    let entry_id = session.history()[0].id.clone();
+    session.route_override(
+        entry_id.clone(),
+        ContextOverride::ForcedInclude,
+        worker("anchor_shield"),
+        300,
+    );
+
+    // When a pruner ForcedExclude arrives for the same entry.
+    session.route_override(
+        entry_id,
+        ContextOverride::ForcedExclude,
+        worker("todo_prune"),
+        300,
+    );
+
+    // Then draining still yields a ForcedInclude (sticky shield).
+    let batch = session.core.ephemeral.accumulated_overrides.drain();
+    assert_eq!(batch.len(), 1);
+    match &batch[0] {
+        HistoryMutation::SetContextOverride { value, .. } => {
+            assert_eq!(*value, ContextOverride::ForcedInclude);
+        }
+        other => panic!("expected ForcedInclude, got {other:?}"),
+    }
+}
