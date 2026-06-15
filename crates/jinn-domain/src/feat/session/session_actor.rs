@@ -72,6 +72,9 @@ pub struct SessionPersistenceActor {
     services: crate::common::services::Services,
     /// Token counter for recording token usage in the session ledger.
     counter: TiktokenCounter,
+    /// Auto-pruner entry token cache, shared with the prune workers. Used by the
+    /// accumulation gate's token-cost resolver (cache hit is the common path).
+    token_cache: crate::feat::auto_prune_worker::HistoryWorkerChatEntryTokenCache,
     /// Registry of builtin lifecycle handlers.
     builtin_registry: crate::feat::session_lifecycle::builtin::BuiltinRegistry,
     /// Shell captured at startup for running lifecycle commands.
@@ -94,6 +97,8 @@ pub struct SessionPersistenceActorDeps {
     pub deps: ActorDeps,
     pub state: State,
     pub counter: TiktokenCounter,
+    /// Auto-pruner entry token cache for the accumulation gate.
+    pub token_cache: crate::feat::auto_prune_worker::HistoryWorkerChatEntryTokenCache,
     pub builtin_registry: crate::feat::session_lifecycle::builtin::BuiltinRegistry,
     pub shell: String,
 }
@@ -164,6 +169,7 @@ impl Actor for SessionPersistenceActor {
             state: args.state,
             services: args.deps.services,
             counter: args.counter,
+            token_cache: args.token_cache,
             builtin_registry: args.builtin_registry,
             shell: args.shell,
             lifecycle_child: None,
