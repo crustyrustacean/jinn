@@ -558,6 +558,9 @@ impl IntentHandler {
             Intent::ChatEntryIgnoreSelected => {
                 feat::chat_entry_selection::intent::handle_ignore_selected(state)
             }
+            Intent::ChatEntryResetSelected => {
+                feat::chat_entry_selection::intent::handle_reset_selected(state)
+            }
 
             // --- Session Lifecycle ---
             Intent::SessionLifecycleSetup {
