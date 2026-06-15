@@ -244,7 +244,9 @@ impl TuiApp {
                 let text = state.active_chat_input().text().to_owned();
                 (sid, text)
             };
+            tracing::debug!(plugin = %plugin_name, action = %action, "route_intent: TriggerPlugin");
             // Sync pre-fire hook: plugins may veto the async fire (e.g. cancel
+            // an in-flight request instead of starting a new one). Default: fire.
             // an in-flight request instead of starting a new one). Default: fire.
             let fire = {
                 use jinn_domain::call_hooks_typed;
@@ -282,6 +284,7 @@ impl TuiApp {
                 );
                 let _ = self.core.bridge.send(closure);
             }
+            tracing::info!(fire, action = %action, "route_intent: TriggerPlugin decision");
             return;
         }
         // Send bus closures via bridge.
