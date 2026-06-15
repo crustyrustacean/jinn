@@ -1405,7 +1405,7 @@ mod tests {
     }
 
     #[rstest::rstest]
-    fn sweep_started_on_toggle_to_default() {
+    fn sweep_continues_with_forced_include_target() {
         // Given a session with 2 user entries, entry 0 already ForcedExclude.
         let mut state = AppState::default();
         state
@@ -1415,19 +1415,19 @@ mod tests {
         state.active_session_mut().select_prev_entry();
         assert_eq!(state.active_session().selected_entry_index(), Some(0));
 
-        // When handling ignore selected (toggle from ForcedExclude → Default).
+        // When handling ignore selected (toggle from ForcedExclude → ForcedInclude).
         let _result = handle_ignore_selected(&mut state);
 
-        // Then entry 0 is now Default (un-ignored).
+        // Then entry 0 is now ForcedInclude (brought into context).
         assert_eq!(
             state.active_session().history()[0].context_override(),
-            ContextOverride::Default
+            ContextOverride::ForcedInclude
         );
         // And cursor has advanced.
         assert_eq!(state.active_session().selected_entry_index(), Some(1));
-        // And sweep state IS stored (Default is a valid sweep target for un-ignore).
+        // And sweep state IS stored with ForcedInclude target (the toggle never yields Default).
         let sweep = state.active_session_mut().take_ignore_sweep();
-        assert_eq!(sweep, Some(ContextOverride::Default));
+        assert_eq!(sweep, Some(ContextOverride::ForcedInclude));
     }
 
     #[rstest::rstest]
@@ -1570,22 +1570,21 @@ mod tests {
             .expect("entry at history index 1");
         state.active_session_mut().set_selected_entry_index(vi_idx);
 
-        // First press - toggles entry 1 from ForcedExclude → Default.
+        // First press - toggles entry 1 from ForcedExclude → ForcedInclude.
         let _result = handle_ignore_selected(&mut state);
         assert_eq!(
             state.active_session().history()[1].context_override(),
-            ContextOverride::Default
+            ContextOverride::ForcedInclude
         );
-        // Sweep state is Default (un-ignore sweep).
+        // Sweep state is ForcedInclude (un-ignore sweep target).
         assert_eq!(
             state.active_session_mut().take_ignore_sweep(),
-            Some(ContextOverride::Default)
+            Some(ContextOverride::ForcedInclude)
         );
         // Restore sweep since we consumed it.
         state
             .active_session_mut()
-            .set_ignore_sweep(ContextOverride::Default);
-
+            .set_ignore_sweep(ContextOverride::ForcedInclude);
         // Propagation should have shown the forward sub-block.
         // Entry 2 is the start of the forward excluded sub-block.
         let forward_block_id = state.active_session().history()[2].id.clone();

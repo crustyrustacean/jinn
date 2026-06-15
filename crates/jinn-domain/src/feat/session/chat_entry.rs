@@ -84,8 +84,10 @@ impl From<jinn_provider::tool_types::ToolResultPinPosition> for PinPosition {
 /// User-controlled override for whether an entry is included in LLM context.
 ///
 /// Tri-state that replaces the old `ignored: bool` field, supporting both
-/// inclusion and exclusion overrides. The `x` key toggles between `Default`
-/// and the opposite of the kind's default behavior.
+/// inclusion and exclusion overrides. The `x` key always flips the entry's
+/// *effective* in-context state ([`ChatEntry::is_in_context`]), landing on an
+/// explicit `Forced*` value — it never produces `Default`. The `r` key resets
+/// an entry back to `Default`.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Serialize, Deserialize, Default)]
 #[serde(rename_all = "snake_case")]
 pub enum ContextOverride {
@@ -161,7 +163,8 @@ pub struct ChatEntry {
     /// it is still included in prompt assembly.
     ///
     /// OWNER: compaction-actor (sets `ForcedExclude` during compaction),
-    ///        user (via `x` key toggle in `toggle_entry_ignored`).
+    ///        user (via `x` key toggle in `toggle_entry_ignored`, or the `r`
+    ///        key reset).
     #[serde(default)]
     pub context_override: ContextOverride,
 
