@@ -237,6 +237,11 @@ pub fn spawn_setup_command(command: &str, shell: &str, cwd: &std::path::Path) ->
     let stdout_pipe = child.stdout.take();
     let stderr_pipe = child.stderr.take();
 
+    // Clone the cwd for the reader task so it can resolve relative paths
+    // emitted by the script. The script's process CWD is gone by the time
+    // we canonicalize, so without this a relative `./foo` resolves against
+    // jinn's process dir instead of the session dir.
+    let cwd = cwd.to_path_buf();
     let handle = tokio::spawn(async move {
         use tokio::io::AsyncReadExt;
 
@@ -287,10 +292,20 @@ pub fn spawn_setup_command(command: &str, shell: &str, cwd: &std::path::Path) ->
             Some(last_line) => {
                 let raw_path = PathBuf::from(last_line);
 
-                let canonical = tokio::fs::canonicalize(&raw_path)
+                // The script ran with `cwd` as its working directory, but by
+                // the time we canonicalize that process is gone. Resolve
+                // relative paths against `cwd` so `./foo` doesn't silently
+                // resolve against jinn's process dir. Absolute paths pass through.
+                let resolved_path = if raw_path.is_absolute() {
+                    raw_path.clone()
+                } else {
+                    cwd.join(&raw_path)
+                };
+
+                let canonical = tokio::fs::canonicalize(&resolved_path)
                     .await
                     .change_context(LifecycleCommandError::InvalidPath {
-                        path: raw_path.clone(),
+                        path: resolved_path.clone(),
                     })
                     .attach("setup command output is not a valid path")?;
 
@@ -727,6 +742,33 @@ mod tests {
             "out.txt should be created in session CWD"
         );
         assert_eq!(result, None);
+    }
+
+    #[rstest::rstest]
+    #[tokio::test]
+    async fn setup_canonicalizes_relative_output_against_session_cwd() {
+        // Given a tempdir (NOT in the process cwd) with a child subdir.
+        // Using tempdir() rather than tempdir_in(".") guarantees the session
+        // cwd differs from jinn's process cwd, so a relative echo can only
+        // resolve if canonicalize uses the session cwd as the base.
+        let dir = tempfile::tempdir().expect("temp dir");
+        let subdir = dir.path().join("workspace");
+        std::fs::create_dir_all(&subdir).expect("create subdir");
+        let expected = std::fs::canonicalize(&subdir).expect("canonicalize subdir");
+
+        // When the setup script echoes a RELATIVE path and the spawn cwd is
+        // the session cwd.
+        let (_handle, join_handle) =
+            spawn_setup_command("echo ./workspace", "/bin/sh", dir.path()).expect("spawn");
+        let result = join_handle.await.expect("join").expect("setup ok");
+
+        // Then the resolved canonical path is the session cwd's child, not a
+        // path resolved against jinn's process cwd.
+        assert_eq!(
+            result,
+            Some(expected),
+            "relative output must canonicalize against the session cwd"
+        );
     }
 
     #[rstest::rstest]
