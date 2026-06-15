@@ -300,6 +300,14 @@ fn insert_plugin_entries(state: &AppState, entries: &mut Vec<SessionEntry>) {
         let plugin_count = plugins.len();
         for (j, ap) in plugins.into_iter().enumerate() {
             let is_last = j == plugin_count - 1;
+            // A plugin entry is busy when its managed session is busy
+            // (e.g. the judge's child LLM running). No managed session,
+            // or a missing one, renders as idle (the ⚡ bolt).
+            let is_idle = ap
+                .managed_session_id
+                .as_ref()
+                .and_then(|mid| state.session.get(mid))
+                .is_none_or(|s| !s.is_busy());
             let plugin_entry = SessionEntry {
                 kind: SessionEntryKind::Plugin {
                     enabled: ap.enabled,
@@ -308,7 +316,7 @@ fn insert_plugin_entries(state: &AppState, entries: &mut Vec<SessionEntry>) {
                 title: ap.label_or_name().to_owned(),
                 is_active: false,
                 created_at: parent_created_at,
-                is_idle: true,
+                is_idle,
                 last_entry_is_error: false,
                 parent_id: Some(parent_id.clone()),
                 depth: plugin_depth,
