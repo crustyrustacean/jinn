@@ -402,13 +402,14 @@ impl ActorSystemBuilder {
         _tools.wait_for_startup().await;
 
         // Register global-scoped plugin tools with the tools actor.
-        // Attached-scoped tools are registered per-session when a child session is created.
+        // Global-scope plugin tools: registered globally (execution + visibility).
         {
             use jinn_domain::ToolDefinition;
             use jinn_domain::feat::plugin_system::ToolScopeReexport;
             use jinn_domain::feat::tools_actor::protocol::command::RegisterPluginTools;
 
             let global_scope_tools: Vec<_> = global_tool_metadata
+                .clone()
                 .into_iter()
                 .filter(|meta| matches!(meta.scope, ToolScopeReexport::Global))
                 .collect();
@@ -438,6 +439,52 @@ impl ActorSystemBuilder {
                     target: None,
                     session_id: None,
                     definitions,
+                    execution_only: false,
+                };
+                let _closure = jinn_domain::common::bridge::Bridge::publish_closure(msg);
+            }
+        }
+
+        // Attached-scope plugin tools: handlers are loaded globally at startup,
+        // but their VISIBILITY must stay per-session (registered on attach
+        // via the dispatch actor). Register execution-only here (no
+        // ToolsRegistered event, so nothing lands in global_tool_definitions).
+        {
+            use jinn_domain::ToolDefinition;
+            use jinn_domain::feat::plugin_system::ToolScopeReexport;
+            use jinn_domain::feat::tools_actor::protocol::command::RegisterPluginTools;
+
+            let attached_scope_tools: Vec<_> = global_tool_metadata
+                .into_iter()
+                .filter(|meta| matches!(meta.scope, ToolScopeReexport::Attached))
+                .collect();
+
+            let mut by_plugin: std::collections::HashMap<String, Vec<_>> =
+                std::collections::HashMap::new();
+            for meta in attached_scope_tools {
+                by_plugin
+                    .entry(meta.plugin_name.clone())
+                    .or_default()
+                    .push(meta);
+            }
+            for (plugin_name, metas) in by_plugin {
+                let definitions: Vec<_> = metas
+                    .into_iter()
+                    .map(|meta| ToolDefinition {
+                        name: meta.name,
+                        description: meta.description,
+                        parameters: meta.parameters,
+                        prompt_snippet: None,
+                        prompt_guidelines: Vec::new(),
+                        server_tool_type: None,
+                    })
+                    .collect();
+                let msg = RegisterPluginTools {
+                    plugin_name,
+                    target: None,
+                    session_id: None,
+                    definitions,
+                    execution_only: true,
                 };
                 let _closure = jinn_domain::common::bridge::Bridge::publish_closure(msg);
             }

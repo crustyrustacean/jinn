@@ -42,7 +42,7 @@ use crate::feat::plugin_dispatch::protocol::command::{
 use crate::feat::plugin_dispatch::protocol::event::{
     PluginAttached, PluginDetached, PluginToggled,
 };
-use crate::feat::plugin_system::SessionRegistryId;
+use crate::feat::plugin_system::{SessionRegistryId, ToolScope};
 use crate::feat::session::chat_entry::ChatEntryKind;
 use crate::feat::session::protocol::session_phase_changed::SessionPhaseChanged;
 use crate::feat::session_lifecycle::protocol::event::SessionCreated;
@@ -251,12 +251,12 @@ impl PluginDispatchActor {
             Ok(result) => {
                 self.registry.insert(session_id.clone(), result.registry_id);
 
-                // 3. Register plugin tools with the tools actor.
+                // 3. Register plugin tool visibility for this session.
+                //    Execution is global (registered at startup); here we only
+                //    drive per-session Registry 1 visibility.
                 if !result.tool_metadata.is_empty() {
-                    let registry_id = result.registry_id;
                     self.register_plugin_tools_with_actor(
                         session_id,
-                        &registry_id,
                         result.tool_metadata,
                     )
                     .await;
@@ -272,46 +272,33 @@ impl PluginDispatchActor {
     async fn register_plugin_tools_with_actor(
         &self,
         session_id: &SessionId,
-        registry_id: &crate::feat::plugin_system::SessionRegistryId,
         tools: Vec<crate::feat::plugin_system::PluginToolMetadata>,
     ) {
-        use crate::feat::plugin_system::ToolScope;
         use crate::feat::tools_actor::protocol::command::RegisterPluginTools;
 
-        // Partition tools by scope: global vs attached.
-        let mut global_by_plugin: std::collections::HashMap<
-            String,
-            Vec<crate::feat::plugin_system::PluginToolMetadata>,
-        > = std::collections::HashMap::new();
+        // Execution is global: attachable plugin tool handlers are loaded into
+        // the global Lua state at startup and registered in Registry 2 with
+        // `execution_only: true` (see `actor_wiring.rs`). On attach we only need
+        // to drive VISIBILITY — publishing with `session_id: Some(origin)`
+        // projects these definitions into `session_tool_definitions[origin]`
+        // (Registry 1) so only this session's LLM sees them. Execution is a
+        // harmless idempotent re-insert of the same global handler.
         let mut attached_by_plugin: std::collections::HashMap<
             String,
             Vec<crate::feat::plugin_system::PluginToolMetadata>,
         > = std::collections::HashMap::new();
 
         for tool in tools {
-            let map = match tool.scope {
-                ToolScope::Global => &mut global_by_plugin,
-                ToolScope::Attached => &mut attached_by_plugin,
-            };
-            map.entry(tool.plugin_name.clone()).or_default().push(tool);
+            // Global-scope tools defined inside an attached plugin are already
+            // registered globally at startup; ignore them here.
+            if tool.scope == ToolScope::Attached {
+                attached_by_plugin
+                    .entry(tool.plugin_name.clone())
+                    .or_default()
+                    .push(tool);
+            }
         }
 
-        // Register global tools (broadcast, no session target).
-        for (plugin_name, plugin_tools) in global_by_plugin {
-            let definitions: Vec<jinn_provider::ToolDefinition> = plugin_tools
-                .into_iter()
-                .map(|meta| meta.to_tool_definition())
-                .collect();
-
-            self.publish(RegisterPluginTools {
-                plugin_name,
-                target: None,
-                session_id: None,
-                definitions,
-            })
-            .await;
-        }
-        // Register attached tools (scoped to this session).
         for (plugin_name, plugin_tools) in attached_by_plugin {
             let definitions: Vec<jinn_provider::ToolDefinition> = plugin_tools
                 .into_iter()
@@ -320,9 +307,10 @@ impl PluginDispatchActor {
 
             self.publish(RegisterPluginTools {
                 plugin_name,
-                target: Some(*registry_id),
+                target: None,
                 session_id: Some(session_id.clone()),
                 definitions,
+                execution_only: false,
             })
             .await;
         }
@@ -662,41 +650,40 @@ mod tests {
     // ─── Register plugin tools ────────────────────────────────────────────
 
     #[tokio::test]
-    async fn register_plugin_tools_global_has_no_target() {
+    async fn register_plugin_tools_global_inside_attached_is_ignored() {
         // Given a plugin dispatch actor.
         let (actor, audit, session_id) = make_actor().await;
-        let registry_id = SessionRegistryId::new();
 
-        // When registering global plugin tools.
+        // When registering a global-scope tool defined inside an attached plugin.
         let tools = vec![test_tool_metadata("web_search", ToolScope::Global)];
         actor
-            .register_plugin_tools_with_actor(&session_id, &registry_id, tools)
+            .register_plugin_tools_with_actor(&session_id, tools)
             .await;
 
-        // Then a RegisterPluginTools message is published.
+        // Then no RegisterPluginTools message is published — global tools are
+        // registered globally at startup, not on attach.
         let msgs: Vec<RegisterPluginTools> = audit.of_type::<RegisterPluginTools>();
-        assert_eq!(msgs.len(), 1);
-        // And the global tool has no target.
-        assert!(msgs[0].target.is_none());
+        assert!(msgs.is_empty());
     }
 
     #[tokio::test]
-    async fn register_plugin_tools_attached_has_target() {
+    async fn register_plugin_tools_attached_publishes_visibility_only() {
         // Given a plugin dispatch actor.
         let (actor, audit, session_id) = make_actor().await;
-        let registry_id = SessionRegistryId::new();
 
         // When registering attached plugin tools.
         let tools = vec![test_tool_metadata("judge", ToolScope::Attached)];
         actor
-            .register_plugin_tools_with_actor(&session_id, &registry_id, tools)
+            .register_plugin_tools_with_actor(&session_id, tools)
             .await;
 
-        // Then a RegisterPluginTools message is published.
+        // Then a RegisterPluginTools message is published for visibility.
         let msgs: Vec<RegisterPluginTools> = audit.of_type::<RegisterPluginTools>();
         assert_eq!(msgs.len(), 1);
-        // And the attached tool targets this registry.
-        assert_eq!(msgs[0].target, Some(registry_id));
+        // And execution is global: no per-session registry target.
+        assert!(msgs[0].target.is_none());
+        // And visibility is scoped to this session.
+        assert_eq!(msgs[0].session_id, Some(session_id.clone()));
     }
 
     // ─── Attach / Detach / Toggle ──────────────────────────────────────────

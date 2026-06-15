@@ -140,11 +140,33 @@ impl PluginSystem {
             .spawn(move || {
                 let async_lua = mlua::Lua::new();
                 let async_result = load_all(&async_lua, &async_global_plugins);
+
+                // Attachable plugin TOOL HANDLERS load into the global Lua state here
+                // so `execute_plugin_tool`'s global path (`target: None`) can find
+                // them for any calling session. The attachable plugins' HOOKS are
+                // discarded — attachable hooks still fire per-session via
+                // `load_session_plugins` when a session attaches the plugin.
+                // This makes plugin tool execution global + stateless like builtins.
+                let attachable_metas: Vec<PluginMeta> = async_plugins
+                    .iter()
+                    .filter(|m| m.kind == super::loader::PluginKind::Attachable)
+                    .cloned()
+                    .collect();
+                let mut global_tools = async_result.tools;
+                if !attachable_metas.is_empty() {
+                    let attachable_result = load_all(&async_lua, &attachable_metas);
+                    let attachable_tool_count = attachable_result.tools.len();
+                    global_tools.extend(attachable_result.tools);
+                    tracing::info!(
+                        attachable_tools = attachable_tool_count,
+                        "loaded attachable plugin tool handlers into global Lua state"
+                    );
+                }
                 run_async_thread(
                     job_rx,
                     async_lua,
                     async_result.hooks,
-                    async_result.tools,
+                    global_tools,
                     async_plugins,
                     async_plugin_data,
                     async_emit_tx,
