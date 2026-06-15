@@ -60,6 +60,7 @@ impl PluginFire for AsyncPluginHandle {
         &self,
         target: Option<SessionRegistryId>,
         session_id: &crate::SessionId,
+        parent_session_id: Option<&crate::SessionId>,
         plugin_name: &str,
         tool_name: &str,
         arguments: &Value,
@@ -67,6 +68,7 @@ impl PluginFire for AsyncPluginHandle {
         self.execute_tool(
             target,
             session_id.clone(),
+            parent_session_id.cloned(),
             plugin_name,
             tool_name,
             arguments,

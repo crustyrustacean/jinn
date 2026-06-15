@@ -17,6 +17,7 @@
 
 ---@class PluginCtx
 ---@field session_id string The current session ID.
+---@field parent_session_id string? The parent session ID, if this session was created as a child. Nil for top-level sessions.
 ---@field plugin_name string Name of this plugin (for self-targeting actions like `disable_plugin`).
 ---@field plugin_data any This plugin's persistent state.
 ---@field emit fun(verb: PluginVerb, data: table) Fire-and-forget emit a domain command.

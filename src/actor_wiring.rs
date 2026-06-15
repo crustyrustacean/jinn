@@ -451,6 +451,13 @@ impl ActorSystemBuilder {
         }
 
         // Attached-scope plugin tools: handlers are loaded globally at startup,
+        // and their definitions are cataloged for spawn-time resolution.
+        // Register execution-only here (no ToolsRegistered event, so nothing
+        // lands in global_tool_definitions), and mirror the same definitions
+        // into `attachable_tool_catalog` so `create_child_session` can resolve
+        // named tools for a spawned child. The origin session never sees these
+        // tools (visibility is granted only to the child by copying from the
+        // catalog into `session_tool_definitions[child]`).
         // but their VISIBILITY must stay per-session (registered on attach
         // via the dispatch actor). Register execution-only here (no
         // ToolsRegistered event, so nothing lands in global_tool_definitions).
@@ -484,6 +491,17 @@ impl ActorSystemBuilder {
                         server_tool_type: None,
                     })
                     .collect();
+
+                // Mirror definitions into the attachable catalog so spawned
+                // child sessions can resolve named tools via `create_child_session`.
+                {
+                    let mut s = state.write();
+                    for def in &definitions {
+                        s.context.attachable_tool_catalog
+                            .insert(def.name.clone(), def.clone());
+                    }
+                }
+
                 let msg = RegisterPluginTools {
                     plugin_name,
                     target: None,

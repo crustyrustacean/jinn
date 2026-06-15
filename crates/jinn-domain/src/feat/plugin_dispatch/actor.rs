@@ -42,7 +42,7 @@ use crate::feat::plugin_dispatch::protocol::command::{
 use crate::feat::plugin_dispatch::protocol::event::{
     PluginAttached, PluginDetached, PluginToggled,
 };
-use crate::feat::plugin_system::{SessionRegistryId, ToolScope};
+use crate::feat::plugin_system::SessionRegistryId;
 use crate::feat::session::chat_entry::ChatEntryKind;
 use crate::feat::session::protocol::session_phase_changed::SessionPhaseChanged;
 use crate::feat::session_lifecycle::protocol::event::SessionCreated;
@@ -251,9 +251,10 @@ impl PluginDispatchActor {
             Ok(result) => {
                 self.registry.insert(session_id.clone(), result.registry_id);
 
-                // 3. Register plugin tool visibility for this session.
-                //    Execution is global (registered at startup); here we only
-                //    drive per-session Registry 1 visibility.
+                // 3. Plugin tool visibility is driven at spawn time
+                //    (`create_session` resolves from `attachable_tool_catalog`),
+                //    not on attach. The call below is now a no-op, retained
+                //    as a hook-in point on the attach path.
                 if !result.tool_metadata.is_empty() {
                     self.register_plugin_tools_with_actor(session_id, result.tool_metadata)
                         .await;
@@ -271,46 +272,17 @@ impl PluginDispatchActor {
         session_id: &SessionId,
         tools: Vec<crate::feat::plugin_system::PluginToolMetadata>,
     ) {
-        use crate::feat::tools_actor::protocol::command::RegisterPluginTools;
-
-        // Execution is global: attachable plugin tool handlers are loaded into
-        // the global Lua state at startup and registered in Registry 2 with
-        // `execution_only: true` (see `actor_wiring.rs`). On attach we only need
-        // to drive VISIBILITY — publishing with `session_id: Some(origin)`
-        // projects these definitions into `session_tool_definitions[origin]`
-        // (Registry 1) so only this session's LLM sees them. Execution is a
-        // harmless idempotent re-insert of the same global handler.
-        let mut attached_by_plugin: std::collections::HashMap<
-            String,
-            Vec<crate::feat::plugin_system::PluginToolMetadata>,
-        > = std::collections::HashMap::new();
-
-        for tool in tools {
-            // Global-scope tools defined inside an attached plugin are already
-            // registered globally at startup; ignore them here.
-            if tool.scope == ToolScope::Attached {
-                attached_by_plugin
-                    .entry(tool.plugin_name.clone())
-                    .or_default()
-                    .push(tool);
-            }
-        }
-
-        for (plugin_name, plugin_tools) in attached_by_plugin {
-            let definitions: Vec<jinn_provider::ToolDefinition> = plugin_tools
-                .into_iter()
-                .map(|meta| meta.to_tool_definition())
-                .collect();
-
-            self.publish(RegisterPluginTools {
-                plugin_name,
-                target: None,
-                session_id: Some(session_id.clone()),
-                definitions,
-                execution_only: false,
-            })
-            .await;
-        }
+        // No-op: attached-scoped plugin tools are no longer published to the
+        // origin session on attach. Their execution handlers are registered
+        // globally at startup (`execution_only: true` in `actor_wiring.rs`),
+        // and their definitions live in `attachable_tool_catalog`
+        // (`ContextAssemblyState`). Visibility is driven at spawn time:
+        // `create_session` resolves named tools from the catalog into the child
+        // session's `session_tool_definitions`. The origin never sees them.
+        //
+        // This method is retained as a call-site on the attach path for
+        // future hook-in and to keep existing regression tests valid.
+        let _ = (session_id, tools);
     }
 
     async fn handle_toggle(&mut self, cmd: TogglePlugin) {
@@ -438,7 +410,23 @@ impl PluginDispatchActor {
         let plugins = self.services.plugins.clone();
         let registry_id = self.registry.get(session_id).copied();
         let hook = hook.to_owned();
-        let ctx_json = ctx_json.clone();
+        // Inject the parent session edge (if any) so hooks like the judge's
+        // on_turn_end can reach the child's origin via ctx.parent_session_id.
+        let mut ctx_json = ctx_json.clone();
+        {
+            let state = self.state.read();
+            if let Some(parent) = state
+                .session
+                .get(session_id)
+                .and_then(|s| s.core.parent_session.clone())
+                && let Some(obj) = ctx_json.as_object_mut()
+            {
+                obj.insert(
+                    "parent_session_id".to_owned(),
+                    serde_json::Value::String(parent.to_string()),
+                );
+            }
+        }
         tokio::spawn(async move {
             let result = match registry_id {
                 Some(rid) => {
@@ -664,7 +652,7 @@ mod tests {
     }
 
     #[tokio::test]
-    async fn register_plugin_tools_attached_publishes_visibility_only() {
+    async fn register_plugin_tools_attached_publishes_nothing() {
         // Given a plugin dispatch actor.
         let (actor, audit, session_id) = make_actor().await;
 
@@ -674,15 +662,14 @@ mod tests {
             .register_plugin_tools_with_actor(&session_id, tools)
             .await;
 
-        // Then a RegisterPluginTools message is published for visibility.
+        // Then NO RegisterPluginTools message is published. Attached tools
+        // are registered execution-only at startup and cataloged in
+        // `ContextAssemblyState.attachable_tool_catalog`; the origin session
+        // never receives them. Child sessions resolve them by name at
+        // spawn time via `create_child_session`.
         let msgs: Vec<RegisterPluginTools> = audit.of_type::<RegisterPluginTools>();
-        assert_eq!(msgs.len(), 1);
-        // And execution is global: no per-session registry target.
-        assert!(msgs[0].target.is_none());
-        // And visibility is scoped to this session.
-        assert_eq!(msgs[0].session_id, Some(session_id.clone()));
+        assert!(msgs.is_empty());
     }
-
     // ─── Attach / Detach / Toggle ──────────────────────────────────────────
 
     #[tokio::test]

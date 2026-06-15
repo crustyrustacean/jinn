@@ -635,12 +635,21 @@ impl ToolOrchestratorActor {
                 let plugin_name = plugin_name.clone();
                 let arguments: serde_json::Value =
                     serde_json::from_str(&tool_call.arguments).unwrap_or_default();
+                // Resolve the calling session's parent edge so plugin tool handlers
+                // can recover their origin via ctx.parent_session_id.
+                let parent_session_id = {
+                    let s = self.state.read();
+                    s.session
+                        .get(&sid)
+                        .and_then(|sess| sess.core.parent_session.clone())
+                };
 
                 let handle = tokio::spawn(async move {
                     let result = match plugin_fire
                         .execute_plugin_tool(
                             target,
                             &sid,
+                            parent_session_id.as_ref(),
                             &plugin_name,
                             &tool_call.name,
                             &arguments,
