@@ -1648,7 +1648,7 @@ dependencies = [
 
 [[package]]
 name = "jinn"
-version = "0.66.0"
+version = "0.67.0"
 dependencies = [
  "async-trait",
  "clap",
@@ -1681,7 +1681,7 @@ dependencies = [
 
 [[package]]
 name = "jinn-cli"
-version = "0.66.0"
+version = "0.67.0"
 dependencies = [
  "clap",
  "clap-verbosity-flag",
@@ -1690,7 +1690,7 @@ dependencies = [
 
 [[package]]
 name = "jinn-domain"
-version = "0.66.0"
+version = "0.67.0"
 dependencies = [
  "anstyle",
  "anstyle-lossy",
@@ -1744,7 +1744,7 @@ dependencies = [
 
 [[package]]
 name = "jinn-provider"
-version = "0.66.0"
+version = "0.67.0"
 dependencies = [
  "async-trait",
  "error-stack",
@@ -1765,7 +1765,7 @@ dependencies = [
 
 [[package]]
 name = "jinn-selection-widget"
-version = "0.66.0"
+version = "0.67.0"
 dependencies = [
  "fuzzy-matcher",
  "jinn-testutil",
@@ -1776,14 +1776,14 @@ dependencies = [
 
 [[package]]
 name = "jinn-testutil"
-version = "0.66.0"
+version = "0.67.0"
 dependencies = [
  "ratatui",
 ]
 
 [[package]]
 name = "jinn-theme"
-version = "0.66.0"
+version = "0.67.0"
 dependencies = [
  "anstyle",
  "anstyle-lossy",
@@ -1799,7 +1799,7 @@ dependencies = [
 
 [[package]]
 name = "jinn-tui"
-version = "0.66.0"
+version = "0.67.0"
 dependencies = [
  "arboard",
  "crossterm",
@@ -1828,7 +1828,7 @@ dependencies = [
 
 [[package]]
 name = "jinn-web-fetch"
-version = "0.66.0"
+version = "0.67.0"
 dependencies = [
  "async-trait",
  "headless_chrome",
