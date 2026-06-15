@@ -43,12 +43,24 @@ pub use todo_prune::TodoAutoPruneWorker;
 pub use tool_age_window::ToolAgeWindowAutoPruneWorker;
 pub use trivial_assistant::TrivialAssistantAutoPruneWorker;
 
-// ── Aggregate config ─────────────────────────────��─────────────────────
+// ── Aggregate config ────────────────────────────────────────────────────
 //
 // `AutoPruneConfig` groups every worker-specific config into one struct so
 // `UserPreferences` can carry a single `[auto_prune]` table. The child configs
 // live in their respective worker files (co-located with the workers that
 // consume them); this aggregate just re-assembles them for serialization.
+//
+// A top-level scalar (`accumulation_threshold_tokens`) is also carried here:
+// it's a global gate, not per-worker, so it lives on the aggregate.
+
+/// Default accumulation threshold (in tokens) at which buffered pruner
+/// context-override mutations flush.
+const DEFAULT_ACCUMULATION_THRESHOLD_TOKENS: u32 = 10_000;
+
+/// Serde default for [`AutoPruneConfig::accumulation_threshold_tokens`].
+fn default_accumulation_threshold_tokens() -> u32 {
+    DEFAULT_ACCUMULATION_THRESHOLD_TOKENS
+}
 
 use serde::{Deserialize, Serialize};
 
@@ -67,7 +79,7 @@ use crate::feat::auto_prune_worker::{
 ///
 /// Serialized as `[auto_prune]` in `jinn.toml`.
 /// Groups all auto-prune strategy configurations.
-#[derive(Default, Debug, Clone, PartialEq, Serialize, Deserialize)]
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 pub struct AutoPruneConfig {
     /// Edit-read auto-prune strategy configuration.
     #[serde(default)]
@@ -102,6 +114,32 @@ pub struct AutoPruneConfig {
     /// Anchor-shield auto-prune strategy configuration.
     #[serde(default)]
     pub anchor_shield: AnchorShieldConfig,
+    /// Token threshold at which accumulated pruner context-override mutations flush.
+    ///
+    /// Pruner `SetContextOverride` mutations are held in a per-session buffer until
+    /// their deduplicated token total reaches this value, reducing server-side
+    /// KV-cache rebuilds from frequent small prunes. Default: 10 000.
+    #[serde(default = "default_accumulation_threshold_tokens")]
+    pub accumulation_threshold_tokens: u32,
+}
+
+impl Default for AutoPruneConfig {
+    fn default() -> Self {
+        Self {
+            edit_read: EditReadAutoPruneConfig::default(),
+            read_edit: ReadEditAutoPruneConfig::default(),
+            regex: RegexAutoPruneConfig::default(),
+            broken_edit: BrokenEditAutoPruneConfig::default(),
+            todo: TodoAutoPruneConfig::default(),
+            double_edit: DoubleEditAutoPruneConfig::default(),
+            consecutive_reads: ConsecutiveReadsAutoPruneConfig::default(),
+            tool_age_window: ToolAgeWindowAutoPruneConfig::default(),
+            trivial_assistant: TrivialAssistantAutoPruneConfig::default(),
+            anchored_assistant: AnchoredAssistantAutoPruneConfig::default(),
+            anchor_shield: AnchorShieldConfig::default(),
+            accumulation_threshold_tokens: DEFAULT_ACCUMULATION_THRESHOLD_TOKENS,
+        }
+    }
 }
 
 #[cfg(test)]
@@ -146,6 +184,7 @@ mod tests {
         assert!(config.trivial_assistant.enabled);
         assert_eq!(config.trivial_assistant.min_age, 100);
         assert_eq!(config.trivial_assistant.max_tokens, 80);
+        assert_eq!(config.accumulation_threshold_tokens, 10_000);
     }
 
     #[rstest::rstest]
@@ -272,6 +311,7 @@ mod tests {
                     enabled: true,
                     radius: 20,
                 },
+                accumulation_threshold_tokens: 9999,
             },
             ..UserPreferences::default()
         };
@@ -296,6 +336,7 @@ mod tests {
         assert_eq!(reloaded.auto_prune.anchored_assistant.radius, 42);
         assert!(reloaded.auto_prune.anchor_shield.enabled);
         assert_eq!(reloaded.auto_prune.anchor_shield.radius, 20);
+        assert_eq!(reloaded.auto_prune.accumulation_threshold_tokens, 9999);
     }
 
     #[rstest::rstest]
@@ -317,6 +358,7 @@ mod tests {
         assert_eq!(prefs.auto_prune.anchored_assistant.radius, 100);
         assert!(prefs.auto_prune.anchor_shield.enabled);
         assert_eq!(prefs.auto_prune.anchor_shield.radius, 20);
+        assert_eq!(prefs.auto_prune.accumulation_threshold_tokens, 10_000);
     }
 
     #[rstest::rstest]
@@ -389,5 +431,30 @@ mod tests {
         // the new `min_age` field.
         assert_eq!(prefs.auto_prune.trivial_assistant.min_age, 100);
         assert_eq!(prefs.auto_prune.broken_edit.min_age, 10);
+    }
+
+    #[rstest::rstest]
+    fn load_accumulation_threshold_from_toml() {
+        let dir = TempDir::new().expect("temp dir");
+        let path = dir.path().join(PREFS_FILE_NAME);
+        std::fs::write(
+            &path,
+            "[auto_prune]\naccumulation_threshold_tokens = 5000\n",
+        )
+        .expect("write");
+
+        let prefs = load_preferences_from(&path).expect("load");
+        assert_eq!(prefs.auto_prune.accumulation_threshold_tokens, 5000);
+    }
+
+    #[rstest::rstest]
+    fn accumulation_threshold_defaults_when_section_absent() {
+        let dir = TempDir::new().expect("temp dir");
+        let path = dir.path().join(PREFS_FILE_NAME);
+        // A sub-table exists but the top-level scalar is omitted.
+        std::fs::write(&path, "[auto_prune.read_edit]\nenabled = true\n").expect("write");
+
+        let prefs = load_preferences_from(&path).expect("load");
+        assert_eq!(prefs.auto_prune.accumulation_threshold_tokens, 10_000);
     }
 }

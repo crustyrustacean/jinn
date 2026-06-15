@@ -350,6 +350,8 @@ mod tests {
                 deps: harness.actor_deps().await,
                 state,
                 counter: TiktokenCounter::o200k_base(),
+                token_cache:
+                    crate::feat::auto_prune_worker::HistoryWorkerChatEntryTokenCache::default(),
                 builtin_registry: BuiltinRegistry::new(),
                 shell: "/bin/sh".to_owned(),
             })

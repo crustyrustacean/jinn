@@ -24,6 +24,7 @@ pub mod history_mutation;
 mod history_mutation_tests;
 pub mod intent;
 pub mod model_selection;
+pub mod mutation_accumulator;
 pub mod phase_machine;
 pub mod picker_entry;
 pub mod profile;

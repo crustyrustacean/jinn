@@ -304,6 +304,66 @@ fn handle_fresh_toggle(state: &mut AppState) -> IntentResult {
 
     result
 }
+/// Press of `r`: validate, reset the selected entry's override to
+/// `ContextOverride::Default`, advance the cursor. Each press resets one entry,
+/// so holding `r` sweeps resets via cursor advance with no dedicated state.
+///
+/// Pinned entries and collapsed blocks are skipped (cursor advances past
+/// them), mirroring the `x`-sweep so `r` sweeps transparently across obstacles.
+/// Already-`Default` entries are silent no-ops.
+///
+/// Returns gracefully if the selected entry cannot be resolved after
+/// validation (e.g. collapsed ignored block).
+pub fn handle_reset_selected(state: &mut AppState) -> IntentResult {
+    use crate::feat::context::protocol::event::ContextOverrideChanged;
+    use crate::feat::session::chat_entry::ChatEntry;
+    use crate::feat::session_lifecycle::protocol::command::PersistSession;
+    use crate::protocol::ContextOverride;
+
+    // Skip past obstacles before validation, mirroring the x-sweep
+    // (ignore_sweep.rs): pinned entries and collapsed blocks are passed
+    // over transparently so a held `r` continues sweeping entries beyond them.
+    let session = state.active_session();
+    let on_obstacle = session.is_selected_collapsed_block()
+        || session.selected_entry().is_some_and(ChatEntry::is_pinned);
+    if on_obstacle {
+        advance_selection_one(state.active_session_mut());
+        return IntentResult::empty();
+    }
+
+    if validator::validate_chat_entry_reset_selected(state).is_err() {
+        return IntentResult::empty();
+    }
+
+    // Reset the entry's override to Default.
+    let maybe_entry_id = state
+        .active_session_mut()
+        .set_entry_context_override(ContextOverride::Default);
+
+    // Propagate shown blocks if this reset brought an entry into context
+    // (ForcedExclude -> Default) and split a previously shown excluded block.
+    if let Some(id) = &maybe_entry_id {
+        state.active_session_mut().propagate_shown_on_unignore(id);
+    }
+
+    // Advance cursor (enables free hold-to-sweep via cursor advance).
+    advance_selection_one(state.active_session_mut());
+
+    // No change means no persistence or override events.
+    let Some(id) = maybe_entry_id else {
+        return IntentResult::empty();
+    };
+
+    let session_id = state.active_session().session_id().clone();
+    IntentResult::empty()
+        .message(PersistSession {
+            session_id: session_id.clone(),
+        })
+        .message(ContextOverrideChanged {
+            session_id,
+            entry_id: id,
+        })
+}
 
 #[cfg(test)]
 mod tests {
@@ -1179,6 +1239,177 @@ mod tests {
         assert_eq!(selected.context_override(), ContextOverride::ForcedExclude);
     }
 
+    // --- Reset (`r`) handler tests ---
+
+    #[rstest::rstest]
+    fn handle_reset_sets_forced_exclude_back_to_default() {
+        // Given a selected entry that is ForcedExclude.
+        let mut state = AppState::default();
+        state.active_session_mut().push_entry(
+            ChatEntry::user("hello").with_context_override(ContextOverride::ForcedExclude),
+        );
+        state.active_session_mut().select_next_entry();
+
+        // When handling reset selected.
+        let _result = handle_reset_selected(&mut state);
+
+        // Then the entry's override is Default.
+        let selected = state.active_session().selected_entry().expect("entry");
+        assert_eq!(selected.context_override(), ContextOverride::Default);
+    }
+
+    #[rstest::rstest]
+    fn handle_reset_sets_forced_include_back_to_default() {
+        // Given a selected entry that is ForcedInclude.
+        let mut state = AppState::default();
+        state.active_session_mut().push_entry(
+            ChatEntry::system("sys").with_context_override(ContextOverride::ForcedInclude),
+        );
+        state.active_session_mut().select_next_entry();
+
+        // When handling reset selected.
+        let _result = handle_reset_selected(&mut state);
+
+        // Then the entry's override is Default.
+        let selected = state.active_session().selected_entry().expect("entry");
+        assert_eq!(selected.context_override(), ContextOverride::Default);
+    }
+
+    #[rstest::rstest]
+    fn handle_reset_emits_events_when_override_changes() {
+        // Given a selected entry that is ForcedExclude.
+        let mut state = AppState::default();
+        state.active_session_mut().push_entry(
+            ChatEntry::user("hello").with_context_override(ContextOverride::ForcedExclude),
+        );
+        state.active_session_mut().select_next_entry();
+
+        // When handling reset selected.
+        let result = handle_reset_selected(&mut state);
+
+        // Then persist and override events are emitted.
+        assert!(
+            result
+                .message_names
+                .iter()
+                .any(|n| n.contains("PersistSession"))
+        );
+        assert!(
+            result
+                .message_names
+                .iter()
+                .any(|n| n.contains("ContextOverrideChanged"))
+        );
+    }
+
+    #[rstest::rstest]
+    fn handle_reset_is_noop_on_already_default_entry() {
+        // Given a selected entry that is already Default.
+        let mut state = AppState::default();
+        state
+            .active_session_mut()
+            .push_entry(ChatEntry::user("hello"));
+        state.active_session_mut().select_next_entry();
+
+        // When handling reset selected.
+        let result = handle_reset_selected(&mut state);
+
+        // Then no events are emitted.
+        assert!(result.message_names.is_empty());
+    }
+
+    #[rstest::rstest]
+    fn handle_reset_advances_cursor() {
+        // Given two entries with the first selected.
+        let mut state = AppState::default();
+        state
+            .active_session_mut()
+            .push_entry(ChatEntry::user("a").with_context_override(ContextOverride::ForcedExclude));
+        state.active_session_mut().push_entry(ChatEntry::user("b"));
+        state.active_session_mut().select_prev_entry();
+        assert_eq!(state.active_session().selected_entry_index(), Some(0));
+
+        // When handling reset selected.
+        let _result = handle_reset_selected(&mut state);
+
+        // Then the cursor has advanced to entry 1.
+        assert_eq!(state.active_session().selected_entry_index(), Some(1));
+    }
+
+    #[rstest::rstest]
+    fn handle_reset_is_noop_on_pinned_entry() {
+        // Given a selected pinned entry.
+        let mut state = AppState::default();
+        state
+            .active_session_mut()
+            .push_entry(ChatEntry::user("hello").with_pin(PinPosition::Top));
+        state.active_session_mut().select_next_entry();
+
+        // When handling reset selected.
+        let result = handle_reset_selected(&mut state);
+
+        // Then no events are emitted.
+        assert!(result.message_names.is_empty());
+    }
+    #[rstest::rstest]
+    fn handle_reset_sweep_skips_pinned_entry() {
+        // Given [user(ForcedExclude), user_pinned, user(ForcedExclude)],
+        // entry 0 selected.
+        let mut state = AppState::default();
+        state
+            .active_session_mut()
+            .push_entry(ChatEntry::user("a").with_context_override(ContextOverride::ForcedExclude));
+        state
+            .active_session_mut()
+            .push_entry(ChatEntry::user("pinned").with_pin(PinPosition::Top));
+        state
+            .active_session_mut()
+            .push_entry(ChatEntry::user("b").with_context_override(ContextOverride::ForcedExclude));
+        state.active_session_mut().select_prev_entry();
+        state.active_session_mut().select_prev_entry();
+        assert_eq!(state.active_session().selected_entry_index(), Some(0));
+
+        // When pressing `r` three times (reset 0, skip pinned, reset 2).
+        handle_reset_selected(&mut state); // entry 0 -> Default, cursor -> 1
+        let result = handle_reset_selected(&mut state); // pinned: skip, cursor -> 2
+        handle_reset_selected(&mut state); // entry 2 -> Default, cursor -> bottom
+
+        // Then entries 0 and 2 are reset to Default.
+        assert_eq!(
+            state.active_session().history()[0].context_override(),
+            ContextOverride::Default
+        );
+        assert_eq!(
+            state.active_session().history()[2].context_override(),
+            ContextOverride::Default
+        );
+        // And the middle press (the skip) emits no events.
+        assert!(result.message_names.is_empty());
+    }
+
+    #[rstest::rstest]
+    fn handle_reset_sweep_resets_each_entry_via_cursor_advance() {
+        // Given two ForcedExclude entries with the first selected.
+        let mut state = AppState::default();
+        state
+            .active_session_mut()
+            .push_entry(ChatEntry::user("a").with_context_override(ContextOverride::ForcedExclude));
+        state
+            .active_session_mut()
+            .push_entry(ChatEntry::user("b").with_context_override(ContextOverride::ForcedExclude));
+        state.active_session_mut().select_prev_entry();
+        assert_eq!(state.active_session().selected_entry_index(), Some(0));
+
+        // When handling reset twice (simulating hold-to-sweep).
+        handle_reset_selected(&mut state);
+        handle_reset_selected(&mut state);
+
+        // Then both entries are now Default.
+        let history = state.active_session().history();
+        assert_eq!(history[0].context_override(), ContextOverride::Default);
+        assert_eq!(history[1].context_override(), ContextOverride::Default);
+    }
+
     // --- Sweep tests ---
 
     #[rstest::rstest]
@@ -1405,7 +1636,7 @@ mod tests {
     }
 
     #[rstest::rstest]
-    fn sweep_started_on_toggle_to_default() {
+    fn sweep_continues_with_forced_include_target() {
         // Given a session with 2 user entries, entry 0 already ForcedExclude.
         let mut state = AppState::default();
         state
@@ -1415,19 +1646,19 @@ mod tests {
         state.active_session_mut().select_prev_entry();
         assert_eq!(state.active_session().selected_entry_index(), Some(0));
 
-        // When handling ignore selected (toggle from ForcedExclude → Default).
+        // When handling ignore selected (toggle from ForcedExclude → ForcedInclude).
         let _result = handle_ignore_selected(&mut state);
 
-        // Then entry 0 is now Default (un-ignored).
+        // Then entry 0 is now ForcedInclude (brought into context).
         assert_eq!(
             state.active_session().history()[0].context_override(),
-            ContextOverride::Default
+            ContextOverride::ForcedInclude
         );
         // And cursor has advanced.
         assert_eq!(state.active_session().selected_entry_index(), Some(1));
-        // And sweep state IS stored (Default is a valid sweep target for un-ignore).
+        // And sweep state IS stored with ForcedInclude target (the toggle never yields Default).
         let sweep = state.active_session_mut().take_ignore_sweep();
-        assert_eq!(sweep, Some(ContextOverride::Default));
+        assert_eq!(sweep, Some(ContextOverride::ForcedInclude));
     }
 
     #[rstest::rstest]
@@ -1570,22 +1801,21 @@ mod tests {
             .expect("entry at history index 1");
         state.active_session_mut().set_selected_entry_index(vi_idx);
 
-        // First press - toggles entry 1 from ForcedExclude → Default.
+        // First press - toggles entry 1 from ForcedExclude → ForcedInclude.
         let _result = handle_ignore_selected(&mut state);
         assert_eq!(
             state.active_session().history()[1].context_override(),
-            ContextOverride::Default
+            ContextOverride::ForcedInclude
         );
-        // Sweep state is Default (un-ignore sweep).
+        // Sweep state is ForcedInclude (un-ignore sweep target).
         assert_eq!(
             state.active_session_mut().take_ignore_sweep(),
-            Some(ContextOverride::Default)
+            Some(ContextOverride::ForcedInclude)
         );
         // Restore sweep since we consumed it.
         state
             .active_session_mut()
-            .set_ignore_sweep(ContextOverride::Default);
-
+            .set_ignore_sweep(ContextOverride::ForcedInclude);
         // Propagation should have shown the forward sub-block.
         // Entry 2 is the start of the forward excluded sub-block.
         let forward_block_id = state.active_session().history()[2].id.clone();

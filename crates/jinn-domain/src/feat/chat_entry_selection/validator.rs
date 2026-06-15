@@ -173,6 +173,44 @@ pub fn validate_chat_entry_ignore_selected(
     Ok(())
 }
 
+/// Errors from validating a ChatEntryResetSelected intent.
+#[derive(Debug, Error)]
+#[error(debug)]
+pub enum ChatEntryResetSelectedError {
+    /// No chat entry is currently selected.
+    NoSelection,
+    /// The chat history is empty.
+    EmptyHistory,
+    /// The selected entry is pinned (unpin first).
+    IsPinned,
+}
+
+/// Validates the ChatEntryResetSelected intent.
+///
+/// Mirrors the `x` toggle rules: the history must be non-empty, an entry must
+/// be selected, and pinned entries are rejected (resetting a pinned entry to
+/// `Default` has no visible effect since pin dominates the override).
+///
+/// # Errors
+///
+/// Returns an error if the history is empty, no entry is selected,
+/// or the entry is pinned.
+pub fn validate_chat_entry_reset_selected(
+    state: &AppState,
+) -> Result<(), ChatEntryResetSelectedError> {
+    if state.active_session().history().is_empty() {
+        return Err(ChatEntryResetSelectedError::EmptyHistory);
+    }
+    let selected = state
+        .active_session()
+        .selected_entry()
+        .ok_or(ChatEntryResetSelectedError::NoSelection)?;
+    if selected.is_pinned() {
+        return Err(ChatEntryResetSelectedError::IsPinned);
+    }
+    Ok(())
+}
+
 #[cfg(test)]
 mod fork_from_entry_tests {
     #![allow(
@@ -720,5 +758,55 @@ mod ignore_selected_tests {
 
         // Then validation succeeds.
         assert!(result.is_ok());
+    }
+
+    #[rstest::rstest]
+    fn reset_selected_rejects_empty_history() {
+        // Given an empty session.
+        let state = AppState::default();
+
+        // When validating reset selected.
+        let result = validate_chat_entry_reset_selected(&state);
+
+        // Then validation fails with EmptyHistory.
+        assert!(matches!(
+            result,
+            Err(ChatEntryResetSelectedError::EmptyHistory)
+        ));
+    }
+
+    #[rstest::rstest]
+    fn reset_selected_rejects_no_selection() {
+        // Given a state with entries but no selection.
+        let mut state = AppState::default();
+        state
+            .active_session_mut()
+            .push_entry(ChatEntry::user("hello"));
+        state.active_session_mut().clear_selection();
+
+        // When validating reset selected.
+        let result = validate_chat_entry_reset_selected(&state);
+
+        // Then validation fails with NoSelection.
+        assert!(matches!(
+            result,
+            Err(ChatEntryResetSelectedError::NoSelection)
+        ));
+    }
+
+    #[rstest::rstest]
+    fn reset_selected_rejects_pinned_entry() {
+        // Given a state with a selected pinned entry.
+        let mut state = AppState::default();
+        state
+            .active_session_mut()
+            .push_entry(ChatEntry::user("hello").with_pin(PinPosition::Top));
+        state.active_session_mut().select_next_entry();
+
+        // When validating reset selected.
+        let result = validate_chat_entry_reset_selected(&state);
+
+        // Then validation fails with IsPinned.
+        assert!(matches!(result, Err(ChatEntryResetSelectedError::IsPinned)));
     }
 }
