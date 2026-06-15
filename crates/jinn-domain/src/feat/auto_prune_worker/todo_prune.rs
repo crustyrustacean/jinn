@@ -29,11 +29,57 @@
 
 use crate::feat::auto_prune_worker::is_within_min_age;
 use crate::feat::history_worker::worker_trait::HistoryWorker;
-use crate::feat::preferences_actor::user_preferences::TodoAutoPruneConfig;
 use crate::feat::session::chat_entry::{ChangeSource, ChatEntry, ChatEntryKind, ContextOverride};
 use crate::feat::session::history_mutation::HistoryMutation;
 use crate::protocol::SessionId;
+use serde::{Deserialize, Serialize};
 use std::collections::HashMap;
+
+/// Default enabled state for todo auto-prune.
+const DEFAULT_TODO_ENABLED: bool = true;
+
+/// Default `min_age` for todo auto-prune.
+///
+/// Number of entries from the end of history that must
+/// appear after a todo tool call before pruning may exclude the
+/// call+result pair.
+const DEFAULT_TODO_MIN_AGE: usize = 50;
+
+/// Todo auto-prune configuration.
+///
+/// Serialized as `[auto_prune.todo]` in `jinn.toml`.
+/// Pairs, keeping only the most recent one for each tool name.
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+pub struct TodoAutoPruneConfig {
+    /// Whether the todo auto-prune worker is active.
+    /// Default: `true`.
+    #[serde(default = "default_todo_enabled")]
+    pub enabled: bool,
+    /// Minimum number of entries from the end of history that must
+    /// appear after a todo tool call before pruning may exclude the
+    /// call+result pair. Counts every entry, regardless of in-context
+    /// status. Set to 0 to disable protection.
+    /// Default: 50.
+    #[serde(default = "default_todo_min_age")]
+    pub min_age: usize,
+}
+
+fn default_todo_enabled() -> bool {
+    DEFAULT_TODO_ENABLED
+}
+
+fn default_todo_min_age() -> usize {
+    DEFAULT_TODO_MIN_AGE
+}
+
+impl Default for TodoAutoPruneConfig {
+    fn default() -> Self {
+        Self {
+            enabled: DEFAULT_TODO_ENABLED,
+            min_age: DEFAULT_TODO_MIN_AGE,
+        }
+    }
+}
 use std::sync::Arc;
 
 /// Returns true if a tool name belongs to the todo tool group.
@@ -197,7 +243,6 @@ mod tests {
     )]
 
     use super::*;
-    use crate::feat::preferences_actor::user_preferences::TodoAutoPruneConfig;
     use crate::feat::session::chat_entry::ChatEntry;
     use crate::feat::session::tool_result_status::ToolResultStatus;
     use crate::protocol::SessionId;

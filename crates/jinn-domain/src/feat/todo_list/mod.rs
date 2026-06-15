@@ -734,6 +734,25 @@ impl TaskList {
         &self.phases
     }
 
+    /// Returns `(completed, total)` task counts across all phases.
+    ///
+    /// Phase boundaries are ignored. `completed` counts only [`TaskStatus::Completed`];
+    /// `total` counts every task regardless of status. Returns `(0, 0)` when there are
+    /// no tasks.
+    ///
+    /// Used by the session preview badge to render `{completed}/{total} · {pct}%`.
+    #[must_use]
+    pub fn completion_counts(&self) -> (usize, usize) {
+        let total = self.phases.iter().map(|p| p.tasks.len()).sum();
+        let completed = self
+            .phases
+            .iter()
+            .flat_map(|p| &p.tasks)
+            .filter(|t| t.status == TaskStatus::Completed)
+            .count();
+        (completed, total)
+    }
+
     /// Returns the earliest phase that still has pending work.
     ///
     /// A phase has pending work if it contains at least one task in the
