@@ -1001,7 +1001,8 @@ fn completion_counts_all_pending() {
     let pid = list.add_phase("Research");
     list.add_task(&pid, "Read docs", TaskPosition::End).unwrap();
     list.add_task(&pid, "Call API", TaskPosition::End).unwrap();
-    list.add_task(&pid, "Write notes", TaskPosition::End).unwrap();
+    list.add_task(&pid, "Write notes", TaskPosition::End)
+        .unwrap();
 
     // When counting completion.
     let (completed, total) = list.completion_counts();
@@ -1017,7 +1018,9 @@ fn completion_counts_all_completed() {
     let pid = list.add_phase("Research");
     let t1 = list.add_task(&pid, "Read docs", TaskPosition::End).unwrap();
     let t2 = list.add_task(&pid, "Call API", TaskPosition::End).unwrap();
-    let t3 = list.add_task(&pid, "Write notes", TaskPosition::End).unwrap();
+    let t3 = list
+        .add_task(&pid, "Write notes", TaskPosition::End)
+        .unwrap();
     list.complete_task(&t1).unwrap();
     list.complete_task(&t2).unwrap();
     list.complete_task(&t3).unwrap();
@@ -1043,7 +1046,8 @@ fn completion_counts_counts_only_completed() {
     let t_anchor = list.add_task(&p2, "Anchor", TaskPosition::End).unwrap();
     list.complete_task(&tc1).unwrap();
     list.complete_task(&tc2).unwrap();
-    list.postpone_task(&tpost, TaskPosition::After(t_anchor)).unwrap();
+    list.postpone_task(&tpost, TaskPosition::After(t_anchor))
+        .unwrap();
     list.cancel_task(&tcan).unwrap();
 
     // When counting completion.
@@ -1080,7 +1084,9 @@ fn completion_counts_treats_empty_phases_as_zero() {
     list.add_phase("Empty");
     let p2 = list.add_phase("Build");
     let t1 = list.add_task(&p2, "Write code", TaskPosition::End).unwrap();
-    let t2 = list.add_task(&p2, "Write tests", TaskPosition::End).unwrap();
+    let t2 = list
+        .add_task(&p2, "Write tests", TaskPosition::End)
+        .unwrap();
     list.complete_task(&t1).unwrap();
     list.complete_task(&t2).unwrap();
 

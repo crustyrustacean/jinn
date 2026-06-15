@@ -11,11 +11,10 @@
 use crate::feat::session::chat_session::ChatSessionState;
 use crate::feat::session::model_selection::ModelSelection;
 use crate::feat::theme::default_theme;
+use crate::feat::todo_list::TaskPosition;
 use crate::feat::ui::sidebar::sessions::preview::{
     SessionPreviewCache, render_session_preview, session_preview_popup_rect,
 };
-use crate::feat::todo_list::TaskPosition;
-use ratatui::style::Color;
 use crate::protocol::ChatEntry;
 use jinn_testutil::{buffer_row, setup_term};
 use ratatui::layout::Rect;
