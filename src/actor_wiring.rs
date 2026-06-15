@@ -398,7 +398,6 @@ impl ActorSystemBuilder {
                 state: state.clone(),
                 services: services.clone(),
                 builtin_filter: None,
-                shell: std::env::var("SHELL").unwrap_or_else(|_| "/bin/sh".to_owned()),
             },
         )
         .restart_policy(kameo::supervision::RestartPolicy::Never)
