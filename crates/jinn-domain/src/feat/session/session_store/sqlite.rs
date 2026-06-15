@@ -5,26 +5,19 @@
 //! across sessions. The junction table enables fork support by copying only
 //! small junction rows, not entry data.
 //!
-//! Uses Diesel's type-safe query DSL for compile-time column verification
-//! against the generated schema. All queries are checked at compile time -
-//! if a column is added to a migration but missing from an INSERT or SELECT,
-//! the code will not compile.
+//! Backed by the `dao` crate: an async `Pool`/`Transaction` over `rusqlite`.
+//! Single statements use `pool.execute`/`pool.query_*`; multi-statement
+//! transactional bodies (save, delete, fork) use `pool.with_conn` to drive a
+//! native rusqlite `transaction(|tx| …)` on one held connection.
 
 use std::collections::HashMap;
-use std::path::Path;
+use std::path::{Path, PathBuf};
 
 use async_trait::async_trait;
-use diesel::insert_into;
-use diesel::prelude::*;
-use diesel::r2d2::{self as diesel_r2d2, CustomizeConnection, Pool};
-use diesel::sql_query;
-use diesel::upsert::excluded;
+use dao::{Entity, FromRow, Pool, Row, dao};
 use error_stack::{Report, ResultExt as _};
 use serde::{Deserialize, Serialize};
 use serde_json::Value as JsonValue;
-use tokio::task::spawn_blocking;
-
-use crate::common::app_info::APP_NAME;
 
 use crate::feat::session::SessionUi;
 use crate::feat::session::chat_entry::{ChatEntry, ChatEntryKind};
@@ -44,9 +37,10 @@ use super::{SessionStore, SessionStoreError};
 ///
 /// Controls pool sizing. Use [`PoolConfig::default()`] for sensible defaults
 /// or construct with a specific max size.
+#[derive(Debug, Clone, Copy)]
 pub struct PoolConfig {
     /// Maximum number of connections in the pool.
-    pub max_size: u32,
+    max_size: usize,
 }
 
 impl Default for PoolConfig {
@@ -55,148 +49,120 @@ impl Default for PoolConfig {
     }
 }
 
-pub struct SqliteSessionStore {
-    /// Connection pool for `sessions.db`.
-    pool: Pool<diesel_r2d2::ConnectionManager<SqliteConnection>>,
+impl PoolConfig {
+    /// Creates a new configuration with the given max pool size.
+    #[must_use]
+    pub const fn with_max_size(max_size: usize) -> Self {
+        Self { max_size }
+    }
+
+    /// Returns the configured max pool size.
+    #[must_use]
+    pub const fn max_size(&self) -> usize {
+        self.max_size
+    }
 }
 
-/// SQLite database file name.
-const FILE_NAME: &str = "sessions.db";
+/// SQLite-backed implementation of [`SessionStore`].
+///
+/// Holds a `dao` connection pool (`foreign_keys=ON`, `journal_mode=WAL`,
+/// `busy_timeout=5000` applied automatically by the pool builder). Migrations
+/// run on the pool before any store method is used.
+pub struct SqliteSessionStore {
+    pool: Pool,
+}
 
 impl SqliteSessionStore {
-    /// Creates a store at the platform data directory.
-    ///
-    /// Uses `dirs::data_dir()` → `jinn/sessions.db` on Linux.
-    /// The database file is created on first access. Migrations are run
-    /// once during pool initialization.
+    /// Creates a new store using the platform-default sessions directory.
     ///
     /// # Errors
     ///
-    /// Returns an error if the platform data directory cannot be determined,
-    /// directory creation fails, or pool creation fails.
-    pub fn new() -> Result<Self, Report<SessionStoreError>> {
-        let dir = dirs::data_dir()
-            .ok_or_else(|| {
-                Report::new(SessionStoreError).attach("platform data directory not available")
-            })?
-            .join(APP_NAME);
-        Self::build_pool(&dir, &PoolConfig::default())
+    /// Returns an error if the sessions directory cannot be determined, the
+    /// pool cannot be built, or migrations fail.
+    pub async fn new() -> Result<Self, Report<SessionStoreError>> {
+        let dir = app_sessions_dir();
+        Self::new_with_config(&dir, PoolConfig::default()).await
     }
 
-    /// Creates a store at an explicit directory (for testing).
+    /// Creates a new store in the given directory, creating it if needed.
     ///
     /// # Errors
     ///
-    /// Returns an error if the directory cannot be created or the database pool cannot be built.
-    pub fn new_in(dir: &Path) -> Result<Self, Report<SessionStoreError>> {
-        Self::build_pool(dir, &PoolConfig::default())
+    /// Returns an error if the directory cannot be created, the pool cannot be
+    /// built, or migrations fail.
+    pub async fn new_in(dir: &Path) -> Result<Self, Report<SessionStoreError>> {
+        Self::new_with_config(dir, PoolConfig::default()).await
     }
 
-    /// Creates a store at an explicit directory with custom pool configuration.
+    /// Creates a new store in the given directory with a specific pool size.
     ///
     /// # Errors
     ///
-    /// Returns an error if the directory cannot be created or the database pool cannot be built.
-    pub fn new_with_config(
+    /// Returns an error if the directory cannot be created, the pool cannot be
+    /// built, or migrations fail.
+    pub async fn new_with_config(
         dir: &Path,
-        config: &PoolConfig,
+        config: PoolConfig,
     ) -> Result<Self, Report<SessionStoreError>> {
-        Self::build_pool(dir, config)
+        std::fs::create_dir_all(dir)
+            .change_context(SessionStoreError)
+            .attach("failed to create sessions directory")?;
+        let db_path = dir.join("sessions.db");
+        Self::connect_at(&db_path, config).await
     }
 
-    /// Opens or creates a database at the exact file path.
-    ///
-    /// Creates parent directories if they don't exist. The database file
-    /// is created by SQLite on first write (during migration).
+    /// Opens or creates a store at an explicit database file path, creating
+    /// any missing parent directories.
     ///
     /// # Errors
     ///
-    /// Returns an error if the parent directory cannot be created or the database pool cannot be built.
-    pub fn open_or_create(file_path: &Path) -> Result<Self, Report<SessionStoreError>> {
-        if let Some(parent) = file_path.parent()
-            && !parent.as_os_str().is_empty()
-            && !parent.exists()
-        {
+    /// Returns an error if the parent directories cannot be created, the pool
+    /// cannot be built, or migrations fail.
+    pub async fn open_or_create(file_path: &Path) -> Result<Self, Report<SessionStoreError>> {
+        if let Some(parent) = file_path.parent() {
             std::fs::create_dir_all(parent)
                 .change_context(SessionStoreError)
-                .attach("failed to create database directory")?;
+                .attach("failed to create parent directory for database file")?;
         }
-        Self::connect_at(file_path, &PoolConfig::default())
+        Self::connect_at(file_path, PoolConfig::default()).await
     }
 
-    /// Builds the connection pool at a directory (appends `sessions.db`).
-    fn build_pool(dir: &Path, config: &PoolConfig) -> Result<Self, Report<SessionStoreError>> {
-        if !dir.exists() {
-            std::fs::create_dir_all(dir)
-                .change_context(SessionStoreError)
-                .attach("failed to create session directory")?;
-        }
-        Self::connect_at(&dir.join(FILE_NAME), config)
-    }
-
-    /// Connects to the database at an exact file path and builds the pool.
-    fn connect_at(
-        file_path: &Path,
-        config: &PoolConfig,
+    /// Builds the pool at `db_path`, then runs migrations on it.
+    ///
+    /// The `dao` `Pool::builder` applies `foreign_keys=ON`, `journal_mode=WAL`,
+    /// and `busy_timeout=5000` to every freshly-opened connection, so the
+    /// per-connection pragma customizer is no longer needed.
+    async fn connect_at(
+        db_path: &Path,
+        config: PoolConfig,
     ) -> Result<Self, Report<SessionStoreError>> {
-        let database_url = file_path.to_string_lossy().to_string();
-
-        // Run migrations once on a bootstrap connection before building the pool.
-        // This ensures the schema is ready before any pooled connections are created.
-        {
-            let mut conn = SqliteConnection::establish(&database_url)
-                .change_context(SessionStoreError)
-                .attach("failed to open database for migration")?;
-            diesel::sql_query("PRAGMA journal_mode=WAL")
-                .execute(&mut conn)
-                .change_context(SessionStoreError)
-                .attach("failed to set WAL pragma")?;
-            diesel::sql_query("PRAGMA foreign_keys=ON")
-                .execute(&mut conn)
-                .change_context(SessionStoreError)
-                .attach("failed to set foreign_keys pragma")?;
-            diesel::sql_query("PRAGMA busy_timeout=5000")
-                .execute(&mut conn)
-                .change_context(SessionStoreError)
-                .attach("failed to set busy_timeout pragma")?;
-            migrator::run_migrations(&mut conn)?;
+        let url = db_path.to_string_lossy().to_string();
+        let pool = {
+            let mut builder = Pool::builder().path(url).max_size(config.max_size);
+            // The sessions store runs pragmas via the pool. Override journal_mode
+            // to WAL explicitly so it is recorded even if dao's defaults change.
+            builder = builder.pragma("journal_mode", "WAL");
+            builder = builder.pragma("foreign_keys", "ON");
+            builder = builder.pragma("busy_timeout", "5000");
+            builder.build()
         }
+        .change_context(SessionStoreError)
+        .attach("failed to create connection pool")?;
 
-        let manager = diesel_r2d2::ConnectionManager::<SqliteConnection>::new(&database_url);
-        let pool = Pool::builder()
-            .max_size(config.max_size)
-            .connection_customizer(Box::new(SqliteConnectionCustomizer))
-            .build(manager)
+        migrator::run_migrations(&pool)
+            .await
             .change_context(SessionStoreError)
-            .attach("failed to create connection pool")?;
+            .attach("failed to run database migrations")?;
 
         Ok(Self { pool })
     }
 }
+
 impl std::fmt::Debug for SqliteSessionStore {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         f.debug_struct("SqliteSessionStore")
-            .field("pool_state", &self.pool.state())
+            .field("backend", &"dao::Pool<sqlite>")
             .finish()
-    }
-}
-
-/// Sets WAL and foreign key pragmas on each pooled connection.
-#[derive(Debug, Copy, Clone)]
-struct SqliteConnectionCustomizer;
-
-impl CustomizeConnection<SqliteConnection, diesel_r2d2::Error> for SqliteConnectionCustomizer {
-    fn on_acquire(&self, conn: &mut SqliteConnection) -> Result<(), diesel_r2d2::Error> {
-        diesel::sql_query("PRAGMA journal_mode=WAL")
-            .execute(conn)
-            .map_err(diesel_r2d2::Error::QueryError)?;
-        diesel::sql_query("PRAGMA foreign_keys=ON")
-            .execute(conn)
-            .map_err(diesel_r2d2::Error::QueryError)?;
-        diesel::sql_query("PRAGMA busy_timeout=5000")
-            .execute(conn)
-            .map_err(diesel_r2d2::Error::QueryError)?;
-        Ok(())
     }
 }
 
@@ -207,65 +173,95 @@ impl SessionStore for SqliteSessionStore {
     }
 
     async fn save(&self, session: &ChatSessionState) -> Result<(), Report<SessionStoreError>> {
-        let pool = self.pool.clone();
-        let session = session.clone();
-        spawn_blocking(move || {
-            let mut conn = pool
-                .get()
-                .change_context(SessionStoreError)
-                .attach("failed to acquire connection from pool")?;
-            save_blocking(&mut conn, &session)
-        })
-        .await
-        .change_context(SessionStoreError)
-        .attach("spawn_blocking panicked during save")?
+        // Non-persistent sessions (e.g. plugin one-shots) never touch the store.
+        if !session.core.persist {
+            return Ok(());
+        }
+        let row = NewSessionRow::try_from(session)?;
+        save_in_transaction(&self.pool, session, &row).await
     }
 
     async fn load_summaries(&self) -> Result<Vec<SessionSummary>, Report<SessionStoreError>> {
-        let pool = self.pool.clone();
-        spawn_blocking(move || {
-            let mut conn = pool
-                .get()
-                .change_context(SessionStoreError)
-                .attach("failed to acquire connection from pool")?;
-            load_summaries_blocking(&mut conn)
-        })
-        .await
-        .change_context(SessionStoreError)
-        .attach("spawn_blocking panicked during load_summaries")?
+        let dao = SessionDao::new(self.pool.clone());
+        let rows: Vec<SessionRow> = dao
+            .all_sessions()
+            .await
+            .change_context(SessionStoreError)
+            .attach("failed to query summaries")?;
+        Ok(rows.into_iter().map(summary_from_row).collect())
     }
 
     async fn load_session(
         &self,
         session_id: &SessionId,
     ) -> Result<Option<ChatSessionState>, Report<SessionStoreError>> {
-        let pool = self.pool.clone();
-        let session_id = session_id.clone();
-        spawn_blocking(move || {
-            let mut conn = pool
-                .get()
-                .change_context(SessionStoreError)
-                .attach("failed to acquire connection from pool")?;
-            load_session_blocking(&mut conn, &session_id)
-        })
-        .await
-        .change_context(SessionStoreError)
-        .attach("spawn_blocking panicked during load_session")?
+        let session_id_str = session_id.to_string();
+
+        // Load session metadata.
+        let dao = SessionDao::new(self.pool.clone());
+        let meta: Option<SessionRow> = dao
+            .session_by_id(session_id_str.clone())
+            .await
+            .change_context(SessionStoreError)
+            .attach("failed to query session metadata")?;
+
+        let Some(meta) = meta else {
+            return Ok(None);
+        };
+
+        // Load entries via junction table, ordered by ordinal.
+        let joined: Vec<JoinedEntry> = self
+            .pool
+            .query_all(
+                "SELECT entries.id AS entry_id, entries.timing AS timing, entries.kind AS kind, \
+                 entries.context_history AS context_history, \
+                 session_history.pin_position AS pin_position, \
+                 session_history.ignored AS ignored, \
+                 session_history.context_override AS context_override \
+                 FROM entries \
+                 INNER JOIN session_history ON entries.id = session_history.entry_id \
+                 WHERE session_history.session_id = ? \
+                 ORDER BY session_history.ordinal ASC",
+                vec![Box::new(session_id_str.clone())],
+            )
+            .await
+            .change_context(SessionStoreError)
+            .attach("failed to query entries")?;
+
+        let entries: Vec<ChatEntry> = joined.into_iter().map(entry_from_joined).collect();
+
+        // Load token ledger.
+        let ledger_rows: Vec<TokenLedgerRow> = self
+            .pool
+            .query_all(
+                "SELECT id, session_id, timestamp, tokens_sent, tokens_received, cost, model_used \
+                 FROM token_ledger WHERE session_id = ?",
+                vec![Box::new(session_id_str.clone())],
+            )
+            .await
+            .change_context(SessionStoreError)
+            .attach("failed to query token ledger")?;
+
+        let ledger: Vec<TokenRecord> = ledger_rows.into_iter().map(record_from_row).collect();
+
+        // Reconstruct ChatSessionState via exhaustive destructuring.
+        let session = ChatSessionState::try_from(SessionLoadContext {
+            row: meta,
+            entries,
+            ledger,
+        })?;
+
+        Ok(Some(session))
     }
 
     async fn delete(&self, session_id: &SessionId) -> Result<(), Report<SessionStoreError>> {
-        let pool = self.pool.clone();
-        let session_id = session_id.clone();
-        spawn_blocking(move || {
-            let mut conn = pool
-                .get()
-                .change_context(SessionStoreError)
-                .attach("failed to acquire connection from pool")?;
-            delete_blocking(&mut conn, &session_id)
-        })
-        .await
-        .change_context(SessionStoreError)
-        .attach("spawn_blocking panicked during delete")?
+        let session_id_str = session_id.to_string();
+        self.pool
+            .with_conn(move |conn| delete_with_scoped_reaping(conn, &session_id_str))
+            .await
+            .change_context(SessionStoreError)
+            .attach("failed to delete session")?;
+        Ok(())
     }
 
     async fn fork(
@@ -273,18 +269,17 @@ impl SessionStore for SqliteSessionStore {
         source_session_id: &SessionId,
         at_ordinal: usize,
     ) -> Result<SessionId, Report<SessionStoreError>> {
-        let pool = self.pool.clone();
-        let source_session_id = source_session_id.clone();
-        spawn_blocking(move || {
-            let mut conn = pool
-                .get()
-                .change_context(SessionStoreError)
-                .attach("failed to acquire connection from pool")?;
-            fork_blocking(&mut conn, &source_session_id, at_ordinal)
-        })
-        .await
-        .change_context(SessionStoreError)
-        .attach("spawn_blocking panicked during fork")?
+        let source_str = source_session_id.to_string();
+        let new_id = SessionId::new();
+        let new_id_str = new_id.to_string();
+
+        self.pool
+            .with_conn(move |conn| fork_in_transaction(conn, &source_str, &new_id_str, at_ordinal))
+            .await
+            .change_context(SessionStoreError)
+            .attach("failed to fork session")?;
+
+        Ok(new_id)
     }
 
     async fn set_archived(
@@ -292,83 +287,69 @@ impl SessionStore for SqliteSessionStore {
         session_id: &SessionId,
         archived: bool,
     ) -> Result<(), Report<SessionStoreError>> {
-        let pool = self.pool.clone();
-        let session_id = session_id.clone();
-        spawn_blocking(move || {
-            let mut conn = pool
-                .get()
-                .change_context(SessionStoreError)
-                .attach("failed to acquire connection from pool")?;
-            set_archived_blocking(&mut conn, &session_id, archived)
-        })
-        .await
-        .change_context(SessionStoreError)
-        .attach("spawn_blocking panicked during set_archived")?
+        let session_id_str = session_id.to_string();
+        let dao = SessionDao::new(self.pool.clone());
+        dao.set_archived(archived, session_id_str)
+            .await
+            .change_context(SessionStoreError)
+            .attach("failed to set archived flag")?;
+        Ok(())
     }
 
     async fn load_unarchived_summaries(
         &self,
     ) -> Result<Vec<SessionSummary>, Report<SessionStoreError>> {
-        let pool = self.pool.clone();
-        spawn_blocking(move || {
-            let mut conn = pool
-                .get()
-                .change_context(SessionStoreError)
-                .attach("failed to acquire connection from pool")?;
-            load_unarchived_summaries_blocking(&mut conn)
-        })
-        .await
-        .change_context(SessionStoreError)
-        .attach("spawn_blocking panicked during load_unarchived_summaries")?
+        let dao = SessionDao::new(self.pool.clone());
+        let rows: Vec<SessionRow> = dao
+            .unarchived_sessions()
+            .await
+            .change_context(SessionStoreError)
+            .attach("failed to query unarchived summaries")?;
+        Ok(rows.into_iter().map(summary_from_row).collect())
     }
 
     async fn shutdown(&self) -> Result<(), Report<SessionStoreError>> {
-        let pool = self.pool.clone();
-        spawn_blocking(move || {
-            let mut conn = pool
-                .get()
-                .change_context(SessionStoreError)
-                .attach("failed to acquire connection from pool")?;
-            shutdown_blocking(&mut conn)?;
-            Ok(())
-        })
-        .await
-        .change_context(SessionStoreError)
-        .attach("spawn_blocking panicked during shutdown")?
+        let result: Option<CheckpointResult> = self
+            .pool
+            .query_one("PRAGMA wal_checkpoint(TRUNCATE)", vec![])
+            .await
+            .change_context(SessionStoreError)
+            .attach("failed to run wal_checkpoint(TRUNCATE) during shutdown")?;
+        if let Some(result) = result {
+            classify_checkpoint_result(&result);
+        }
+        Ok(())
     }
 }
 
-// ── Diesel model structs ─────────────────────────────────────────────────
+// ── Row models ───────────────────────────────────────────────────────────
 
-/// Reading model for the `sessions` table.
+/// Reading model for the `sessions` table (post-v20: 9 authoritative columns).
 ///
-/// Uses `QueryableByName` to map columns by name rather than position.
-/// This bypasses Diesel's tuple-size limit (10 fields) which would
-/// otherwise prevent compiling with 11 columns.
-#[derive(QueryableByName)]
-#[diesel(table_name = crate::schema::sessions)]
+/// All columns are now authoritative — the six "zombie" columns
+/// (`profile`, `blobs`, `cwd`, `lifecycle_name`, `lifecycle_args`,
+/// `lifecycle_script_state`) were dropped by migration v20 after the metadata
+/// blob was backfilled for every row. The metadata JSON blob is the single
+/// source of truth for session core fields.
+#[derive(Debug, Clone, Entity)]
+#[dao(table = "sessions")]
 struct SessionRow {
-    id: Option<String>,
+    #[dao(pk)]
+    id: String,
     title: Option<String>,
     updated_at: String,
-    profile: String,
-
-    blobs: String,
-    parent_session: Option<String>,
-    cwd: String,
     created_at: String,
-    lifecycle_name: Option<String>,
-    lifecycle_args: String,
+    parent_session: Option<String>,
     archived: bool,
-    lifecycle_script_state: String,
     metadata: Option<String>,
     is_automated: bool,
     persist: bool,
 }
 
-/// Insert model for the `sessions` table.
-#[derive(Insertable)]
-#[diesel(table_name = crate::schema::sessions)]
+/// Insert model for the `sessions` table. Built from a `ChatSessionState` then
+/// upserted via hand-written SQL (full-column upsert is behavior-preserving:
+/// immutable columns like `created_at` are re-written with their unchanged
+/// values).
 struct NewSessionRow {
     id: String,
     title: Option<String>,
@@ -380,76 +361,39 @@ struct NewSessionRow {
     is_automated: bool,
 }
 
-/// Reading model for the `entries` table.
-#[derive(Queryable)]
-#[diesel(table_name = crate::schema::entries)]
-struct EntryRow {
-    id: Option<String>,
+/// A joined `entries` + `session_history` row for loading a session's entries.
+///
+/// Read by a manual `FromRow` that maps the aliased columns of the JOIN query.
+struct JoinedEntry {
+    entry_id: String,
     timing: String,
     kind: String,
     context_history: String,
-}
-
-/// Insert model for the `entries` table.
-#[derive(Insertable)]
-#[diesel(table_name = crate::schema::entries)]
-struct NewEntryRow {
-    id: String,
-    timing: String,
-    kind: String,
-    context_history: String,
-}
-
-/// Reading model for the `session_history` table.
-#[derive(Queryable)]
-#[diesel(table_name = crate::schema::session_history)]
-struct SessionEntryRow {
-    /// Diesel `Queryable` requires this field to match the `session_history.session_id`
-    /// column returned by `SELECT *`. The Rust code already knows the session ID from
-    /// the query filter, so this field is never read directly.
-    #[expect(
-        dead_code,
-        reason = "required by Diesel Queryable derive to match SELECT * columns"
-    )]
-    session_id: String,
-    entry_id: String,
-    ordinal: i32,
-    pin_position: Option<String>,
-    /// Legacy column kept for backward compatibility. New code uses `context_override`.
-    ignored: bool,
-    context_override: String,
-}
-
-/// Insert model for the `session_history` table.
-#[derive(Insertable)]
-#[diesel(table_name = crate::schema::session_history)]
-struct NewSessionEntryRow {
-    session_id: String,
-    entry_id: String,
-    ordinal: i32,
     pin_position: Option<String>,
     ignored: bool,
     context_override: String,
+}
+
+impl FromRow for JoinedEntry {
+    fn from_row(row: &Row) -> dao::Result<Self> {
+        Ok(Self {
+            entry_id: row.get("entry_id")?,
+            timing: row.get("timing")?,
+            kind: row.get("kind")?,
+            context_history: row.get("context_history")?,
+            pin_position: row.get("pin_position")?,
+            ignored: row.get("ignored")?,
+            context_override: row.get("context_override")?,
+        })
+    }
 }
 
 /// Reading model for the `token_ledger` table.
-#[derive(Queryable)]
-#[diesel(table_name = crate::schema::token_ledger)]
+#[derive(Debug, Clone, Entity)]
+#[dao(table = "token_ledger")]
 struct TokenLedgerRow {
-    /// Diesel `Queryable` requires this field to match the `token_ledger.id`
-    /// column returned by `SELECT *`. The auto-increment PK is not used in Rust code.
-    #[expect(
-        dead_code,
-        reason = "required by Diesel Queryable derive to match SELECT * columns"
-    )]
-    id: Option<i32>,
-    /// Diesel `Queryable` requires this field to match the `token_ledger.session_id`
-    /// column returned by `SELECT *`. The Rust code already knows the session ID from
-    /// the query filter, so this field is never read directly.
-    #[expect(
-        dead_code,
-        reason = "required by Diesel Queryable derive to match SELECT * columns"
-    )]
+    #[dao(pk)]
+    id: i64,
     session_id: String,
     timestamp: String,
     tokens_sent: i32,
@@ -458,16 +402,34 @@ struct TokenLedgerRow {
     model_used: Option<String>,
 }
 
-/// Insert model for the `token_ledger` table.
-#[derive(Insertable)]
-#[diesel(table_name = crate::schema::token_ledger)]
-struct NewTokenLedgerRow {
-    session_id: String,
-    timestamp: String,
-    tokens_sent: i32,
-    tokens_received: i32,
-    cost: Option<f64>,
-    model_used: Option<String>,
+// ── Typed DAO traits (compile-time SQL validation via DAO_DATABASE_URL) ───
+
+/// Session-level queries that run directly on the pool. These use `#[query]` /
+/// `#[execute]` so the `dao` macro validates the SQL against the post-v20 schema
+/// at compile time (see `dao_schema.sql` + `build.rs`). Transactional multi-statement
+/// bodies (`save`, `delete`, `fork`) still use `pool.with_conn` with raw rusqlite
+/// because they need dynamic `IN (?, ?, …)` placeholder strings that cannot be
+/// statically validated.
+#[dao]
+#[async_trait]
+trait SessionDao {
+    #[query(
+        "SELECT id, title, updated_at, created_at, parent_session, archived, metadata, is_automated, persist FROM sessions"
+    )]
+    async fn all_sessions(&self) -> dao::Result<Vec<SessionRow>>;
+
+    #[query(
+        "SELECT id, title, updated_at, created_at, parent_session, archived, metadata, is_automated, persist FROM sessions WHERE id = ?"
+    )]
+    async fn session_by_id(&self, id: String) -> dao::Result<Option<SessionRow>>;
+
+    #[query(
+        "SELECT id, title, updated_at, created_at, parent_session, archived, metadata, is_automated, persist FROM sessions WHERE archived = FALSE"
+    )]
+    async fn unarchived_sessions(&self) -> dao::Result<Vec<SessionRow>>;
+
+    #[execute("UPDATE sessions SET archived = ? WHERE id = ?")]
+    async fn set_archived(&self, archived: bool, id: String) -> dao::Result<dao::ExecuteResult>;
 }
 
 // ── Conversions ──────────────────────────────────────────────────────────
@@ -481,7 +443,7 @@ struct NewTokenLedgerRow {
 /// can be deserialized back into a full `SessionCore` with defaults for the
 /// excluded fields.
 #[derive(Serialize, Deserialize)]
-struct PersistableCore {
+pub(crate) struct PersistableCore {
     session_id: SessionId,
     title: Option<String>,
     updated_at: jiff::Timestamp,
@@ -531,6 +493,88 @@ impl From<&SessionCore> for PersistableCore {
             attached_plugins: core.attached_plugins.clone(),
             persist: core.persist,
         }
+    }
+}
+
+/// Legacy column data for a pre-v8 `sessions` row with `metadata IS NULL`, used
+/// by migration v20 to backfill the `PersistableCore` blob.
+pub(crate) struct LegacySessionColumns {
+    pub(crate) session_id: String,
+    pub(crate) title: Option<String>,
+    pub(crate) updated_at: String,
+    pub(crate) created_at: String,
+    pub(crate) parent_session: Option<String>,
+    pub(crate) profile: String,
+    pub(crate) blobs: String,
+    pub(crate) cwd: String,
+    pub(crate) lifecycle_name: Option<String>,
+    pub(crate) lifecycle_args: String,
+    pub(crate) lifecycle_script_state: String,
+}
+
+impl PersistableCore {
+    /// Reconstructs a [`PersistableCore`] from the legacy (pre-v8) columns of
+    /// a `sessions` row whose `metadata` is `NULL`.
+    ///
+    /// This mirrors the pre-v20 legacy load branch: each JSON column is
+    /// deserialized independently and re-serialized as the authoritative blob.
+    /// `fork_ordinal`, `task_list`, and `attached_plugins` default (legacy
+    /// sessions never carried them).
+    ///
+    /// # Errors
+    ///
+    /// Returns an error if any column JSON fails to deserialize, a timestamp
+    /// fails to parse, or the reconstructed blob cannot be serialized.
+    pub(crate) fn blob_from_legacy_columns(
+        legacy: &LegacySessionColumns,
+    ) -> Result<String, Report<SessionStoreError>> {
+        // The legacy `profile` column may hold `{}` (DEFAULT) or pre-v17 shapes
+        // that fail to deserialize into `SessionProfile`. A migration must never
+        // block on data the old system could have produced, so fall back to
+        // default rather than erroring.
+        let profile: SessionProfile = serde_json::from_str(&legacy.profile).unwrap_or_default();
+        let blobs: HashMap<String, JsonValue> = serde_json::from_str(&legacy.blobs)
+            .change_context(SessionStoreError)
+            .attach("v20: failed to deserialize legacy blobs column")?;
+        // Legacy columns hold bare variant names (e.g. `nothing_ran`) and bare
+        // array literals, not valid JSON. The original legacy load branch used
+        // `.unwrap_or_default()`; preserve that fault tolerance.
+        let lifecycle_args: Vec<String> =
+            serde_json::from_str(&legacy.lifecycle_args).unwrap_or_default();
+        let lifecycle_script_state: LifecycleScriptState =
+            serde_json::from_str(&legacy.lifecycle_script_state).unwrap_or_default();
+        let updated_at: jiff::Timestamp = legacy
+            .updated_at
+            .parse()
+            .change_context(SessionStoreError)
+            .attach("v20: failed to parse legacy updated_at")?;
+        let created_at: jiff::Timestamp = legacy
+            .created_at
+            .parse()
+            .change_context(SessionStoreError)
+            .attach("v20: failed to parse legacy created_at")?;
+
+        let persistable = Self {
+            session_id: SessionId::from(legacy.session_id.clone()),
+            title: legacy.title.clone(),
+            updated_at,
+            created_at,
+            profile,
+            cwd: PathBuf::from(&legacy.cwd),
+            parent_session: legacy.parent_session.clone().map(SessionId::from),
+            fork_ordinal: None,
+            blobs,
+            lifecycle_name: legacy.lifecycle_name.clone(),
+            lifecycle_args,
+            lifecycle_script_state,
+            task_list: crate::feat::todo_list::TaskList::default(),
+            attached_plugins: Vec::default(),
+            persist: true,
+        };
+
+        serde_json::to_string(&persistable)
+            .change_context(SessionStoreError)
+            .attach("v20: failed to serialize backfilled metadata blob")
     }
 }
 
@@ -610,10 +654,11 @@ impl TryFrom<&ChatSessionState> for NewSessionRow {
                 .as_ref()
                 .map(std::string::ToString::to_string),
             archived: *session_state == SessionState::Archived,
-            metadata: serde_json::to_string(&PersistableCore::from(&session.core))
-                .change_context(SessionStoreError)
-                .attach("failed to serialize metadata")?
-                .into(),
+            metadata: Some(
+                serde_json::to_string(&PersistableCore::from(&session.core))
+                    .change_context(SessionStoreError)
+                    .attach("failed to serialize metadata")?,
+            ),
             is_automated: *is_automated,
         })
     }
@@ -634,80 +679,31 @@ impl TryFrom<SessionLoadContext> for ChatSessionState {
         // Exhaustive destructuring of SessionRow - adding a column to the
         // sessions table without updating this pattern is a compile error.
         let SessionRow {
-            id,
-            title,
-            updated_at,
-            created_at,
-            profile,
-
-            blobs,
-            parent_session,
-            cwd,
-            lifecycle_name,
-            lifecycle_args,
+            id: _,
+            title: _,
+            updated_at: _,
+            created_at: _,
+            parent_session: _,
             archived,
-            lifecycle_script_state,
             metadata,
             is_automated,
             persist: _persist, // column value used by PersistableCore round-trip
         } = ctx.row;
 
-        // When a metadata JSON blob exists (v8+), deserialize it as the
-        // authoritative source of truth for SessionCore fields, then overlay
-        // the normalized-table data (entries, token_ledger).
-        let mut core = if let Some(ref json) = metadata {
-            let persistable: PersistableCore = serde_json::from_str(json)
-                .change_context(SessionStoreError)
-                .attach("failed to deserialize session metadata blob")?;
-            SessionCore::from(persistable)
-        } else {
-            // Legacy path - reconstruct from individual columns (pre-v8 data).
-            let profile = serde_json::from_str(&profile)
-                .change_context(SessionStoreError)
-                .attach("failed to deserialize profile")?;
-
-            let blobs = serde_json::from_str(&blobs)
-                .change_context(SessionStoreError)
-                .attach("failed to deserialize blobs")?;
-            let updated_at = updated_at
-                .parse()
-                .change_context(SessionStoreError)
-                .attach("failed to parse updated_at")?;
-            let created_at = created_at
-                .parse()
-                .change_context(SessionStoreError)
-                .attach("failed to parse created_at")?;
-
-            SessionCore {
-                session_id: SessionId::from(id.unwrap_or_default()),
-                title,
-                updated_at,
-                created_at,
-                history: ChatHistory::new(),
-                profile,
-                cwd: std::path::PathBuf::from(cwd),
-                token_ledger: vec![],
-                parent_session: parent_session.map(SessionId::from),
-                fork_ordinal: None, // legacy sessions without metadata blob have no fork ordinal
-                blobs,
-                lifecycle_name,
-                lifecycle_args: serde_json::from_str(&lifecycle_args).unwrap_or_default(),
-                ephemeral: SessionCoreEphemeral::default(),
-                session_state: SessionState::Loaded,
-                lifecycle_script_state: serde_json::from_str(&lifecycle_script_state)
-                    .unwrap_or_default(),
-                is_automated: false,
-                persist: true, // default; PersistableCore overlay sets the real value
-
-                assembly_overrides: None, // runtime-only, set later if needed
-                has_interacted: false, // restored sessions get mark_interacted() in handle_session_load_completed
-                task_list: crate::feat::todo_list::TaskList::default(), // no metadata blob available for legacy sessions
-                attached_plugins: Vec::default(),
-            }
-        };
+        // Post-v20 every row has a metadata blob (v20 backfilled any NULL rows
+        // from the dropped zombie columns). Deserialize it as the authoritative
+        // source of truth for SessionCore fields, then overlay the
+        // normalized-table data (entries, token_ledger).
+        let metadata_json = metadata.ok_or_else(|| {
+            Report::new(SessionStoreError)
+                .attach("session row has NULL metadata after v20 (data corruption)")
+        })?;
+        let persistable: PersistableCore = serde_json::from_str(&metadata_json)
+            .change_context(SessionStoreError)
+            .attach("failed to deserialize session metadata blob")?;
+        let mut core = SessionCore::from(persistable);
 
         // Single source of truth: is_automated column → core.is_automated
-        // (field renamed to is_automated in Phase 2).
         core.is_automated = is_automated;
 
         // Single source of truth: archived column → session_state.
@@ -729,283 +725,254 @@ impl TryFrom<SessionLoadContext> for ChatSessionState {
     }
 }
 
-// ── Blocking implementations ─────────────────────────────────────────────
+// ── Transactions ─────────────────────────────────────────────────────────
 
 /// Saves a complete session in a single transaction.
 ///
 /// Upserts session metadata, replaces all junction rows and token ledger rows,
 /// and inserts any new entries. Orphaned-entry reaping is intentionally not done
-/// here — it belongs in `delete_blocking`/`fork_blocking`, where the removing
-/// session is known. A global cleanup in the save hot-path could wipe every
-/// entry if `session_history` is transiently empty (e.g. mid-migration).
-fn save_blocking(
-    conn: &mut SqliteConnection,
-    session: &ChatSessionState,
-) -> Result<(), Report<SessionStoreError>> {
-    // Non-persistent sessions (e.g. plugin one-shots) never touch the store.
-    if !session.core.persist {
-        return Ok(());
-    }
-    let row = NewSessionRow::try_from(session)?;
-    let session_id_str = row.id.clone();
+/// here — it belongs in `delete`/`fork`, where the removing session is known. A
+/// global cleanup in the save hot-path could wipe every entry if
+/// `session_history` is transiently empty (e.g. mid-migration).
+fn save_in_transaction<'a>(
+    pool: &'a Pool,
+    session: &'a ChatSessionState,
+    row: &'a NewSessionRow,
+) -> impl std::future::Future<Output = Result<(), Report<SessionStoreError>>> + Send + 'a {
+    // Clone the per-entry data up front so the closure is `'static`-able across
+    // the spawn_blocking boundary. The history + ledger are needed inside the tx.
+    let entries = persistable_entries(session);
+    let ledger = persistable_ledger(session);
+    let row_id = row.id.clone();
+    let row_title = row.title.clone();
+    let row_updated_at = row.updated_at.clone();
+    let row_created_at = row.created_at.clone();
+    let row_parent = row.parent_session.clone();
+    let row_archived = row.archived;
+    let row_metadata = row.metadata.clone();
+    let row_is_automated = row.is_automated;
 
-    conn.transaction::<_, diesel::result::Error, _>(|txn| {
-        use crate::schema::{entries, session_history, sessions, token_ledger};
+    async move {
+        pool.with_conn(move |conn| -> dao::Result<()> {
+            // rusqlite 0.40: `transaction()` returns a `Transaction<'_>` that
+            // derefs to `Connection` and must be committed explicitly.
+            let tx = conn.transaction()?;
+            upsert_session_row(
+                &tx,
+                &row_id,
+                &row_title,
+                &row_updated_at,
+                &row_created_at,
+                &row_parent,
+                row_archived,
+                &row_metadata,
+                row_is_automated,
+            )?;
 
-        // Upsert session metadata.
-        insert_into(sessions::table)
-            .values(&row)
-            .on_conflict(sessions::dsl::id)
-            .do_update()
-            .set((
-                sessions::title.eq(excluded(sessions::title)),
-                sessions::updated_at.eq(excluded(sessions::updated_at)),
-                sessions::archived.eq(excluded(sessions::archived)),
-                sessions::metadata.eq(excluded(sessions::metadata)),
-                sessions::is_automated.eq(excluded(sessions::is_automated)),
-            ))
-            .execute(txn)?;
+            // Delete existing junction rows and token ledger for this session.
+            tx.execute(
+                "DELETE FROM session_history WHERE session_id = ?",
+                rusqlite::params![&row_id],
+            )?;
+            tx.execute(
+                "DELETE FROM token_ledger WHERE session_id = ?",
+                rusqlite::params![&row_id],
+            )?;
 
-        // Delete existing junction rows and token ledger for this session.
-        diesel::delete(
-            session_history::table.filter(session_history::session_id.eq(&session_id_str)),
-        )
-        .execute(txn)?;
-
-        diesel::delete(token_ledger::table.filter(token_ledger::session_id.eq(&session_id_str)))
-            .execute(txn)?;
-
-        // Insert entries and junction rows.
-        // Transient entries are runtime-only UI hints - skip them during persistence.
-        for (ordinal, entry) in session
-            .history()
-            .iter()
-            .enumerate()
-            .filter(|(_, e)| !matches!(e.kind, crate::protocol::ChatEntryKind::Transient(_)))
-        {
-            let entry_id_str = entry.id.to_string();
-            let timing_str = serde_json::to_string(&entry.timing)
-                .map_err(|e| diesel::result::Error::SerializationError(Box::new(e)))?;
-            let kind_json = serde_json::to_string(&entry.kind)
-                .map_err(|e| diesel::result::Error::SerializationError(Box::new(e)))?;
-            let pin_str = entry.pin_position.map(|p| p.to_string());
-
-            // Serialize audit trail (empty array if no events recorded).
-            let context_history_json = serde_json::to_string(&entry.context_history)
-                .map_err(|e| diesel::result::Error::SerializationError(Box::new(e)))?;
-
-            // Insert entry. On conflict (entry shared across sessions), update
-            // context_history since it mutates after first insertion via
-            // `apply_context_override`.
-            let context_history_value = context_history_json.clone();
-            insert_into(entries::table)
-                .values(&NewEntryRow {
-                    id: entry_id_str.clone(),
-                    timing: timing_str,
-                    kind: kind_json,
-                    context_history: context_history_json,
-                })
-                .on_conflict(entries::dsl::id)
-                .do_update()
-                .set(entries::dsl::context_history.eq(context_history_value))
-                .execute(txn)?;
-
-            // Insert junction row.
-            insert_into(session_history::table)
-                .values(&NewSessionEntryRow {
-                    session_id: session_id_str.clone(),
-                    entry_id: entry_id_str,
-                    ordinal: ordinal as i32,
-                    pin_position: pin_str,
-                    ignored: entry.ignored(),
-                    context_override: serde_json::to_string(&entry.context_override())
-                        .unwrap_or_else(|_| "\"default\"".to_owned()),
-                })
-                .execute(txn)?;
-        }
-
-        // Insert token ledger rows.
-        for record in session.token_ledger() {
-            insert_into(token_ledger::table)
-                .values(&NewTokenLedgerRow {
-                    session_id: session_id_str.clone(),
-                    timestamp: record.timestamp.to_string(),
-                    tokens_sent: record.tokens_sent as i32,
-                    tokens_received: record.tokens_received as i32,
-                    cost: record.cost,
-                    model_used: record.model_used.clone(),
-                })
-                .execute(txn)?;
-        }
-
+            for entry in &entries {
+                insert_entry_and_junction(&tx, &row_id, entry)?;
+            }
+            for record in &ledger {
+                insert_token_ledger_row(&tx, &row_id, record)?;
+            }
+            tx.commit()?;
+            Ok(())
+        })
+        .await
+        .change_context(SessionStoreError)
+        .attach("failed to save session")?;
         Ok(())
-    })
-    .change_context(SessionStoreError)
-    .attach("failed to save session")?;
+    }
+}
 
+/// Builds the list of persistable entries (skipping transient UI hints).
+fn persistable_entries(session: &ChatSessionState) -> Vec<PersistableEntry> {
+    session
+        .history()
+        .iter()
+        .enumerate()
+        .filter(|(_, e)| !matches!(e.kind, ChatEntryKind::Transient(_)))
+        .map(|(ordinal, entry)| PersistableEntry::build(entry, ordinal))
+        .collect()
+}
+
+/// Builds the list of persistable token ledger records.
+fn persistable_ledger(session: &ChatSessionState) -> Vec<PersistableTokenRecord> {
+    session
+        .token_ledger()
+        .iter()
+        .map(PersistableTokenRecord::build)
+        .collect()
+}
+
+/// A pre-serialized entry ready for INSERT (all SQL params computed once).
+struct PersistableEntry {
+    entry_id: String,
+    timing: String,
+    kind: String,
+    context_history: String,
+    ordinal: i32,
+    pin_position: Option<String>,
+    ignored: bool,
+    context_override: String,
+}
+
+impl PersistableEntry {
+    /// Serializes an entry's fields into the SQL-ready form.
+    fn build(entry: &ChatEntry, ordinal: usize) -> Self {
+        let timing = serde_json::to_string(&entry.timing).unwrap_or_else(|_| "{}".to_owned());
+        let kind = serde_json::to_string(&entry.kind).unwrap_or_else(|_| "{}".to_owned());
+        let context_history =
+            serde_json::to_string(&entry.context_history).unwrap_or_else(|_| "[]".to_owned());
+        let pin_position = entry.pin_position.map(|p| p.to_string());
+        let context_override = serde_json::to_string(&entry.context_override())
+            .unwrap_or_else(|_| "\"default\"".to_owned());
+        Self {
+            entry_id: entry.id.to_string(),
+            timing,
+            kind,
+            context_history,
+            ordinal: ordinal as i32,
+            pin_position,
+            ignored: entry.ignored(),
+            context_override,
+        }
+    }
+}
+
+/// A pre-serialized token ledger row.
+struct PersistableTokenRecord {
+    timestamp: String,
+    tokens_sent: i32,
+    tokens_received: i32,
+    cost: Option<f64>,
+    model_used: Option<String>,
+}
+
+impl PersistableTokenRecord {
+    /// Serializes a `TokenRecord` into the SQL-ready form.
+    fn build(record: &TokenRecord) -> Self {
+        Self {
+            timestamp: record.timestamp.to_string(),
+            tokens_sent: record.tokens_sent as i32,
+            tokens_received: record.tokens_received as i32,
+            cost: record.cost,
+            model_used: record.model_used.clone(),
+        }
+    }
+}
+
+/// Upserts a session row (full-column; immutable columns are no-ops on re-write).
+fn upsert_session_row(
+    conn: &rusqlite::Connection,
+    id: &str,
+    title: &Option<String>,
+    updated_at: &str,
+    created_at: &str,
+    parent_session: &Option<String>,
+    archived: bool,
+    metadata: &Option<String>,
+    is_automated: bool,
+) -> rusqlite::Result<()> {
+    conn.execute(
+        "INSERT INTO sessions (id, title, updated_at, created_at, parent_session, archived, \
+         metadata, is_automated, persist) \
+         VALUES (?, ?, ?, ?, ?, ?, ?, ?, TRUE) \
+         ON CONFLICT(id) DO UPDATE SET \
+         title = excluded.title, \
+         updated_at = excluded.updated_at, \
+         created_at = excluded.created_at, \
+         parent_session = excluded.parent_session, \
+         archived = excluded.archived, \
+         metadata = excluded.metadata, \
+         is_automated = excluded.is_automated, \
+         persist = excluded.persist",
+        rusqlite::params![
+            id,
+            title,
+            updated_at,
+            created_at,
+            parent_session,
+            archived,
+            metadata,
+            is_automated
+        ],
+    )?;
     Ok(())
 }
 
-/// Loads all session summaries.
-fn load_summaries_blocking(
-    conn: &mut SqliteConnection,
-) -> Result<Vec<SessionSummary>, Report<SessionStoreError>> {
-    let rows: Vec<SessionRow> = sql_query("SELECT * FROM sessions")
-        .load(conn)
-        .change_context(SessionStoreError)
-        .attach("failed to query summaries")?;
+/// Inserts an entry row (upserting `context_history`) and its junction row.
+fn insert_entry_and_junction(
+    conn: &rusqlite::Connection,
+    session_id: &str,
+    entry: &PersistableEntry,
+) -> rusqlite::Result<()> {
+    // Insert entry. On conflict (entry shared across sessions), update
+    // context_history since it mutates after first insertion via
+    // `apply_context_override`.
+    conn.execute(
+        "INSERT INTO entries (id, timing, kind, context_history) \
+         VALUES (?, ?, ?, ?) \
+         ON CONFLICT(id) DO UPDATE SET context_history = excluded.context_history",
+        rusqlite::params![
+            entry.entry_id,
+            entry.timing,
+            entry.kind,
+            entry.context_history
+        ],
+    )?;
 
-    let summaries = rows
-        .into_iter()
-        .map(|row| SessionSummary {
-            session_id: SessionId::from(row.id.unwrap_or_default()),
-            title: row.title.unwrap_or_else(|| "Untitled".to_owned()),
-            updated_at: row
-                .updated_at
-                .parse()
-                .unwrap_or_else(|_| jiff::Timestamp::now()),
-            created_at: row
-                .created_at
-                .parse()
-                .unwrap_or_else(|_| jiff::Timestamp::now()),
-            session_state: if row.archived {
-                SessionState::Archived
-            } else {
-                SessionState::Loaded
-            },
-            parent_session: row.parent_session.map(SessionId::from),
-        })
-        .collect();
-
-    Ok(summaries)
+    // Insert junction row.
+    conn.execute(
+        "INSERT INTO session_history \
+         (session_id, entry_id, ordinal, pin_position, ignored, context_override) \
+         VALUES (?, ?, ?, ?, ?, ?)",
+        rusqlite::params![
+            session_id,
+            entry.entry_id,
+            entry.ordinal,
+            entry.pin_position,
+            entry.ignored,
+            entry.context_override,
+        ],
+    )?;
+    Ok(())
 }
 
-/// Loads a full session by ID.
-fn load_session_blocking(
-    conn: &mut SqliteConnection,
-    session_id: &SessionId,
-) -> Result<Option<ChatSessionState>, Report<SessionStoreError>> {
-    use crate::schema::{entries, session_history, token_ledger};
-
-    let session_id_str = session_id.to_string();
-
-    // Load session metadata.
-    let meta: Option<SessionRow> = sql_query("SELECT * FROM sessions WHERE id = ?")
-        .bind::<diesel::sql_types::Text, _>(&session_id_str)
-        .get_result(conn)
-        .ok();
-
-    let Some(meta) = meta else {
-        return Ok(None);
-    };
-
-    // Load entries via junction table, ordered by ordinal.
-    let joined: Vec<(EntryRow, SessionEntryRow)> = entries::table
-        .inner_join(session_history::table)
-        .filter(session_history::session_id.eq(&session_id_str))
-        .order(session_history::ordinal.asc())
-        .load::<(EntryRow, SessionEntryRow)>(conn)
-        .change_context(SessionStoreError)
-        .attach("failed to query entries")?;
-
-    let entries: Vec<ChatEntry> = joined
-        .into_iter()
-        .map(|(entry, junction)| {
-            let kind: ChatEntryKind = serde_json::from_str(&entry.kind).unwrap_or_else(|e| {
-                tracing::warn!(entry_id = %entry.id.as_deref().unwrap_or("?"), error = %e, "failed to deserialize entry kind");
-                ChatEntryKind::Error(format!("corrupt entry: {e}"))
-            });
-            let pin_position = junction.pin_position.as_deref().and_then(|s| match s {
-                "TOP" => Some(crate::protocol::PinPosition::Top),
-                "BOTTOM" => Some(crate::protocol::PinPosition::Bottom),
-                "RELATIVE" => Some(crate::protocol::PinPosition::Relative),
-                _ => None,
-            });
-
-            let row_id = entry.id.clone().unwrap_or_default();
-            let row_timing = entry.timing.clone();
-            let timing: crate::protocol::EntryTiming =
-                serde_json::from_str(&row_timing).unwrap_or_else(|_| {
-                    // Fallback: parse raw timestamp string as Instant (legacy data).
-                    row_timing
-                        .parse::<jiff::Timestamp>()
-                        .map_or_else(
-                            |_| crate::protocol::EntryTiming::instant_now(),
-                            |at| crate::protocol::EntryTiming::Instant { at },
-                        )
-                });
-            let mut chat_entry = ChatEntry::new_with_kind(
-                ChatEntryId::from(row_id),
-                timing,
-                kind,
-                pin_position,
-            );
-            // Restored from DB - no audit event recorded.
-            let override_value: ContextOverride = serde_json::from_str(&junction.context_override)
-                .unwrap_or_else(|e| {
-                    tracing::warn!(
-                        entry_id = %chat_entry.id.as_uuid(),
-                        raw = %junction.context_override,
-                        error = %e,
-                        "failed to deserialize context_override, falling back to Default"
-                    );
-                    // Fallback: use legacy ignored column if context_override is corrupt
-                    if junction.ignored {
-                        ContextOverride::ForcedExclude
-                    } else {
-                        ContextOverride::Default
-                    }
-                });
-            chat_entry.restore_context_override(override_value);
-
-            // Restore audit trail. Empty array (default) loads as Vec::new().
-            // Corrupt JSON falls back to empty with a warning.
-            chat_entry.context_history = serde_json::from_str(&entry.context_history)
-                .unwrap_or_else(|e| {
-                    tracing::warn!(
-                        entry_id = %chat_entry.id.as_uuid(),
-                        raw = %entry.context_history,
-                        error = %e,
-                        "failed to deserialize context_history, falling back to empty"
-                    );
-                    Vec::new()
-                });
-            chat_entry
-        })
-        .collect();
-
-    // Load token ledger.
-    let ledger_rows: Vec<TokenLedgerRow> = token_ledger::table
-        .filter(token_ledger::session_id.eq(&session_id_str))
-        .load::<TokenLedgerRow>(conn)
-        .change_context(SessionStoreError)
-        .attach("failed to query token ledger")?;
-
-    let ledger: Vec<TokenRecord> = ledger_rows
-        .into_iter()
-        .map(|row| TokenRecord {
-            model_used: row.model_used,
-            timestamp: row
-                .timestamp
-                .parse()
-                .unwrap_or_else(|_| jiff::Timestamp::now()),
-            tokens_sent: row.tokens_sent as u32,
-            tokens_received: row.tokens_received as u32,
-            cost: row.cost,
-        })
-        .collect();
-
-    // Reconstruct ChatSessionState via exhaustive destructuring.
-    let session = ChatSessionState::try_from(SessionLoadContext {
-        row: meta,
-        entries,
-        ledger,
-    })?;
-
-    Ok(Some(session))
+/// Inserts a token ledger row.
+fn insert_token_ledger_row(
+    conn: &rusqlite::Connection,
+    session_id: &str,
+    record: &PersistableTokenRecord,
+) -> rusqlite::Result<()> {
+    conn.execute(
+        "INSERT INTO token_ledger \
+         (session_id, timestamp, tokens_sent, tokens_received, cost, model_used) \
+         VALUES (?, ?, ?, ?, ?, ?)",
+        rusqlite::params![
+            session_id,
+            record.timestamp,
+            record.tokens_sent,
+            record.tokens_received,
+            record.cost,
+            record.model_used,
+        ],
+    )?;
+    Ok(())
 }
 
-/// Deletes a session and all its associated data.
+// ── Scoped orphan reaping (delete) ───────────────────────────────────────
+
 /// Deletes a session and reaps entries that became orphaned by this delete.
 ///
 /// Cleanup is **scoped to this session's own former entries**: the session's
@@ -1013,60 +980,150 @@ fn load_session_blocking(
 /// then only those candidates that no remaining session references are deleted.
 /// A global orphan sweep is deliberately avoided — a transiently-empty global
 /// `session_history` state can never cause mass reaping of other sessions' data.
-fn delete_blocking(
-    conn: &mut SqliteConnection,
-    session_id: &SessionId,
-) -> Result<(), Report<SessionStoreError>> {
-    let session_id_str = session_id.to_string();
+fn delete_with_scoped_reaping(
+    conn: &mut rusqlite::Connection,
+    session_id_str: &str,
+) -> dao::Result<()> {
+    let tx = conn.transaction()?;
+    // Capture this session's entry references before the FK cascade
+    // removes them. These are the only candidates for reaping.
+    let candidates: Vec<String> = tx
+        .prepare("SELECT DISTINCT entry_id FROM session_history WHERE session_id = ?")?
+        .query_map([session_id_str], |row| row.get::<_, String>(0))?
+        .collect::<rusqlite::Result<Vec<_>>>()?;
 
-    conn.transaction::<_, diesel::result::Error, _>(|txn| {
-        use crate::schema::{entries, session_history, sessions};
+    // Delete the session. With FK=ON this cascades to remove this session's
+    // session_history and token_ledger rows.
+    tx.execute(
+        "DELETE FROM sessions WHERE id = ?",
+        rusqlite::params![session_id_str],
+    )?;
 
-        // Capture this session's entry references before the FK cascade
-        // removes them. These are the only candidates for reaping.
-        let candidates: Vec<String> = session_history::table
-            .filter(session_history::session_id.eq(&session_id_str))
-            .select(session_history::entry_id)
-            .distinct()
-            .load(txn)?;
-
-        // Delete the session. With FK=ON this cascades to remove this session's
-        // session_history and token_ledger rows.
-        diesel::delete(sessions::table.filter(sessions::id.eq(&session_id_str))).execute(txn)?;
-
-        if candidates.is_empty() {
-            return Ok(());
-        }
-
+    if !candidates.is_empty() {
         // After the cascade, session_history holds only OTHER sessions'
         // references. Reap a candidate only if no remaining session claims it.
-        let still_referenced: Vec<String> = session_history::table
-            .filter(session_history::entry_id.eq_any(&candidates))
-            .select(session_history::entry_id)
-            .distinct()
-            .load(txn)?;
-        let orphaned: Vec<String> = candidates
-            .iter()
-            .filter(|id| !still_referenced.contains(id))
-            .cloned()
-            .collect();
-
+        let orphaned = unreferenced_entries(&tx, &candidates)?;
         if !orphaned.is_empty() {
-            diesel::delete(entries::table.filter(entries::id.eq_any(&orphaned))).execute(txn)?;
+            delete_entries(&tx, &orphaned)?;
         }
-
-        Ok(())
-    })
-    .change_context(SessionStoreError)
-    .attach("failed to delete session")?;
-
+    }
+    tx.commit()?;
     Ok(())
 }
+
+/// Returns the subset of `candidates` that no remaining `session_history` row references.
+fn unreferenced_entries(
+    conn: &rusqlite::Connection,
+    candidates: &[String],
+) -> rusqlite::Result<Vec<String>> {
+    if candidates.is_empty() {
+        return Ok(Vec::new());
+    }
+    let placeholders = repeat_placeholders(candidates.len());
+    let sql = format!("SELECT entry_id FROM session_history WHERE entry_id IN ({placeholders})");
+    let referenced: Vec<String> = {
+        let mut stmt = conn.prepare(&sql)?;
+        let params = candidates
+            .iter()
+            .map(|c| c as &dyn rusqlite::ToSql)
+            .collect::<Vec<_>>();
+        stmt.query_map(params.as_slice(), |row| row.get::<_, String>(0))?
+            .collect::<rusqlite::Result<Vec<_>>>()?
+    };
+    let orphaned = candidates
+        .iter()
+        .filter(|id| !referenced.iter().any(|r| r == *id))
+        .cloned()
+        .collect();
+    Ok(orphaned)
+}
+
+/// Deletes the given entry rows by id.
+fn delete_entries(conn: &rusqlite::Connection, ids: &[String]) -> rusqlite::Result<()> {
+    let placeholders = repeat_placeholders(ids.len());
+    let sql = format!("DELETE FROM entries WHERE id IN ({placeholders})");
+    let params = ids
+        .iter()
+        .map(|id| id as &dyn rusqlite::ToSql)
+        .collect::<Vec<_>>();
+    conn.execute(&sql, params.as_slice())?;
+    Ok(())
+}
+
+/// Builds a `?, ?, …` placeholder string of `n` elements.
+fn repeat_placeholders(n: usize) -> String {
+    std::iter::repeat("?")
+        .take(n)
+        .collect::<Vec<_>>()
+        .join(", ")
+}
+
+// ── Fork ─────────────────────────────────────────────────────────────────
 
 /// Forks a session from a specific entry ordinal.
 ///
 /// Creates a new session with `parent_session` = source, copies junction rows
 /// up to and including `at_ordinal`. Entry data is shared (not duplicated).
+fn fork_in_transaction(
+    conn: &mut rusqlite::Connection,
+    source_str: &str,
+    new_id_str: &str,
+    at_ordinal: usize,
+) -> dao::Result<()> {
+    let tx = conn.transaction()?;
+    // Load source session metadata.
+    let source_meta: Option<(Option<String>, Option<String>, bool)> = tx
+        .query_row(
+            "SELECT title, metadata, is_automated FROM sessions WHERE id = ?",
+            rusqlite::params![source_str],
+            |row| {
+                Ok((
+                    row.get::<_, Option<String>>(0)?,
+                    row.get::<_, Option<String>>(1)?,
+                    row.get::<_, bool>(2)?,
+                ))
+            },
+        )
+        .ok();
+
+    let Some((title, metadata, is_automated)) = source_meta else {
+        return Err(dao::Error::Custom(
+            "source session not found for fork".to_string(),
+        ));
+    };
+
+    let now = jiff::Timestamp::now().to_string();
+    let forked_metadata = fork_metadata(metadata.as_ref(), source_str, new_id_str, at_ordinal);
+
+    // Create new session row.
+    tx.execute(
+        "INSERT INTO sessions (id, title, updated_at, created_at, parent_session, archived, \
+         metadata, is_automated, persist) \
+         VALUES (?, ?, ?, ?, ?, FALSE, ?, ?, TRUE)",
+        rusqlite::params![
+            new_id_str,
+            title,
+            now.clone(),
+            now, // fresh created_at - it's a new session
+            source_str,
+            forked_metadata,
+            is_automated,
+        ],
+    )?;
+
+    // Copy junction rows up to and including at_ordinal.
+    tx.execute(
+        "INSERT INTO session_history \
+         (session_id, entry_id, ordinal, pin_position, ignored, context_override) \
+         SELECT ?, entry_id, ordinal, pin_position, ignored, context_override \
+         FROM session_history \
+         WHERE session_id = ? AND ordinal <= ?",
+        rusqlite::params![new_id_str, source_str, at_ordinal as i32],
+    )?;
+    tx.commit()?;
+    Ok(())
+}
+
 /// Patches a metadata JSON blob for a forked session.
 ///
 /// Overrides `parent_session`, `session_id`, `created_at`, and `updated_at`
@@ -1088,184 +1145,138 @@ fn fork_metadata(
     serde_json::to_string(&core).ok()
 }
 
-fn fork_blocking(
-    conn: &mut SqliteConnection,
-    source_session_id: &SessionId,
-    at_ordinal: usize,
-) -> Result<SessionId, Report<SessionStoreError>> {
-    use crate::schema::{session_history, sessions};
+// ── Row → domain conversions ─────────────────────────────────────────────
 
-    let source_str = source_session_id.to_string();
-    let new_id = SessionId::new();
-    let new_id_str = new_id.to_string();
-
-    conn.transaction::<_, diesel::result::Error, _>(|txn| {
-        // Load source session metadata.
-        let source_meta: Option<SessionRow> = sql_query("SELECT * FROM sessions WHERE id = ?")
-            .bind::<diesel::sql_types::Text, _>(&source_str)
-            .get_result(txn)
-            .ok();
-
-        let Some(source_meta) = source_meta else {
-            return Err(diesel::result::Error::NotFound);
-        };
-
-        let now = jiff::Timestamp::now().to_string();
-
-        // Create new session row.
-        insert_into(sessions::table)
-            .values(&NewSessionRow {
-                id: new_id_str.clone(),
-                title: source_meta.title,
-                updated_at: now.clone(),
-                created_at: now, // fresh created_at - it's a new session
-                parent_session: Some(source_str.clone()),
-                archived: false,
-                metadata: fork_metadata(
-                    source_meta.metadata.as_ref(),
-                    &source_str,
-                    &new_id_str,
-                    at_ordinal,
-                ),
-                is_automated: source_meta.is_automated,
-            })
-            .execute(txn)?;
-
-        // Copy junction rows up to and including at_ordinal.
-        let junction_rows: Vec<SessionEntryRow> = session_history::table
-            .filter(session_history::session_id.eq(&source_str))
-            .filter(session_history::ordinal.le(at_ordinal as i32))
-            .load::<SessionEntryRow>(txn)?;
-
-        for row in junction_rows {
-            insert_into(session_history::table)
-                .values(&NewSessionEntryRow {
-                    session_id: new_id_str.clone(),
-                    entry_id: row.entry_id,
-                    ordinal: row.ordinal,
-                    pin_position: row.pin_position,
-                    ignored: row.ignored,
-                    context_override: row.context_override,
-                })
-                .execute(txn)?;
-        }
-
-        Ok(())
-    })
-    .change_context(SessionStoreError)
-    .attach("failed to fork session")?;
-
-    Ok(new_id)
+/// Builds a `SessionSummary` from a loaded `SessionRow`.
+fn summary_from_row(row: SessionRow) -> SessionSummary {
+    SessionSummary {
+        session_id: SessionId::from(row.id),
+        title: row.title.unwrap_or_else(|| "Untitled".to_owned()),
+        updated_at: row
+            .updated_at
+            .parse()
+            .unwrap_or_else(|_| jiff::Timestamp::now()),
+        created_at: row
+            .created_at
+            .parse()
+            .unwrap_or_else(|_| jiff::Timestamp::now()),
+        session_state: if row.archived {
+            SessionState::Archived
+        } else {
+            SessionState::Loaded
+        },
+        parent_session: row.parent_session.map(SessionId::from),
+    }
 }
 
-/// Sets the `archived` flag for a session.
-fn set_archived_blocking(
-    conn: &mut SqliteConnection,
-    session_id: &SessionId,
-    archived: bool,
-) -> Result<(), Report<SessionStoreError>> {
-    let session_id_str = session_id.to_string();
-    sql_query("UPDATE sessions SET archived = ? WHERE id = ?")
-        .bind::<diesel::sql_types::Bool, _>(archived)
-        .bind::<diesel::sql_types::Text, _>(&session_id_str)
-        .execute(conn)
-        .change_context(SessionStoreError)
-        .attach("failed to set archived flag")?;
+/// Reconstructs a `ChatEntry` from a joined entry/junction row.
+fn entry_from_joined(joined: JoinedEntry) -> ChatEntry {
+    let kind: ChatEntryKind = serde_json::from_str(&joined.kind).unwrap_or_else(|e| {
+        tracing::warn!(entry_id = %joined.entry_id, error = %e, "failed to deserialize entry kind");
+        ChatEntryKind::Error(format!("corrupt entry: {e}"))
+    });
+    let pin_position = joined.pin_position.as_deref().and_then(|s| match s {
+        "TOP" => Some(crate::protocol::PinPosition::Top),
+        "BOTTOM" => Some(crate::protocol::PinPosition::Bottom),
+        "RELATIVE" => Some(crate::protocol::PinPosition::Relative),
+        _ => None,
+    });
 
-    Ok(())
-}
-
-/// Loads summaries for all unarchived sessions.
-fn load_unarchived_summaries_blocking(
-    conn: &mut SqliteConnection,
-) -> Result<Vec<SessionSummary>, Report<SessionStoreError>> {
-    let rows: Vec<SessionRow> = sql_query("SELECT * FROM sessions WHERE archived = FALSE")
-        .load(conn)
-        .change_context(SessionStoreError)
-        .attach("failed to query unarchived summaries")?;
-
-    let summaries = rows
-        .into_iter()
-        .map(|row| SessionSummary {
-            session_id: SessionId::from(row.id.unwrap_or_default()),
-            title: row.title.unwrap_or_else(|| "Untitled".to_owned()),
-            updated_at: row
-                .updated_at
-                .parse()
-                .unwrap_or_else(|_| jiff::Timestamp::now()),
-            created_at: row
-                .created_at
-                .parse()
-                .unwrap_or_else(|_| jiff::Timestamp::now()),
-            session_state: if row.archived {
-                SessionState::Archived
+    let timing: crate::protocol::EntryTiming =
+        serde_json::from_str(&joined.timing).unwrap_or_else(|_| {
+            // Fallback: parse raw timestamp string as Instant (legacy data).
+            joined.timing.parse::<jiff::Timestamp>().map_or_else(
+                |_| crate::protocol::EntryTiming::instant_now(),
+                |at| crate::protocol::EntryTiming::Instant { at },
+            )
+        });
+    let mut chat_entry = ChatEntry::new_with_kind(
+        ChatEntryId::from(joined.entry_id),
+        timing,
+        kind,
+        pin_position,
+    );
+    // Restored from DB - no audit event recorded.
+    let override_value: ContextOverride = serde_json::from_str(&joined.context_override)
+        .unwrap_or_else(|e| {
+            tracing::warn!(
+                entry_id = %chat_entry.id.as_uuid(),
+                raw = %joined.context_override,
+                error = %e,
+                "failed to deserialize context_override, falling back to Default"
+            );
+            // Fallback: use legacy ignored column if context_override is corrupt
+            if joined.ignored {
+                ContextOverride::ForcedExclude
             } else {
-                SessionState::Loaded
-            },
-            parent_session: row.parent_session.map(SessionId::from),
-        })
-        .collect();
+                ContextOverride::Default
+            }
+        });
+    chat_entry.restore_context_override(override_value);
 
-    Ok(summaries)
+    // Restore audit trail. Empty array (default) loads as Vec::new().
+    // Corrupt JSON falls back to empty with a warning.
+    chat_entry.context_history =
+        serde_json::from_str(&joined.context_history).unwrap_or_else(|e| {
+            tracing::warn!(
+                entry_id = %chat_entry.id.as_uuid(),
+                raw = %joined.context_history,
+                error = %e,
+                "failed to deserialize context_history, falling back to empty"
+            );
+            Vec::new()
+        });
+    chat_entry
 }
+
+/// Reconstructs a `TokenRecord` from a `TokenLedgerRow`.
+fn record_from_row(row: TokenLedgerRow) -> TokenRecord {
+    TokenRecord {
+        model_used: row.model_used,
+        timestamp: row
+            .timestamp
+            .parse()
+            .unwrap_or_else(|_| jiff::Timestamp::now()),
+        tokens_sent: row.tokens_sent as u32,
+        tokens_received: row.tokens_received as u32,
+        cost: row.cost,
+    }
+}
+
+// ── Shutdown checkpoint ────────────────────���─────────────────────────────
 
 /// Result row of `PRAGMA wal_checkpoint(TRUNCATE)`.
 ///
 /// Columns: `busy` (1 if the checkpoint could not complete because a reader
 /// held a snapshot), `log` (frames in the WAL), `checkpointed` (frames folded
-/// into the main db). Mapped by name via `QueryableByName`.
-#[derive(QueryableByName)]
+/// into the main db). Read by name via a manual `FromRow`.
 struct CheckpointResult {
-    #[diesel(sql_type = diesel::sql_types::Integer)]
-    busy: i32,
-    #[diesel(sql_type = diesel::sql_types::Integer)]
-    log: i32,
-    #[diesel(sql_type = diesel::sql_types::Integer)]
-    checkpointed: i32,
+    busy: i64,
+    log: i64,
+    checkpointed: i64,
 }
 
-/// Non-destructive flush called during shutdown.
-///
-/// Folds committed WAL frames into `sessions.db` via
-/// `PRAGMA wal_checkpoint(TRUNCATE)`, then truncates the `-wal` file to
-/// zero bytes. This leaves `sessions.db` self-contained on a clean quit, so a
-/// user (or sync tool) copying only `sessions.db` gets a complete, current
-/// database instead of one missing whatever the auto-checkpoint had not yet
-/// folded in.
-///
-/// This is operational hygiene only — WAL already guarantees committed data
-/// survives a crash (the next launch replays any un-folded frames). It does
-/// **not** prune sessions or entries. The earlier destructive heuristic that
-/// reaped "empty" unarchived sessions here was a data-destruction hazard and
-/// was removed; orphan reaping now lives only in `delete`/`fork` where the
-/// removed session is known.
-///
-/// # Errors
-///
-/// Returns [`SessionStoreError`] if the checkpoint query fails. A `busy=1`
-/// result (a reader held a snapshot mid-checkpoint) is **not** an error: the
-/// call logs a warning and returns `Ok`, leaving some frames un-folded.
-fn shutdown_blocking(conn: &mut SqliteConnection) -> Result<(), Report<SessionStoreError>> {
-    let result: CheckpointResult = sql_query("PRAGMA wal_checkpoint(TRUNCATE)")
-        .get_result(conn)
-        .change_context(SessionStoreError)
-        .attach("failed to run wal_checkpoint(TRUNCATE) during shutdown")?;
-
-    classify_checkpoint_result(&result);
-    Ok(())
+impl FromRow for CheckpointResult {
+    fn from_row(row: &Row) -> dao::Result<Self> {
+        Ok(Self {
+            busy: row.get("busy")?,
+            log: row.get("log")?,
+            checkpointed: row.get("checkpointed")?,
+        })
+    }
 }
 
 /// Classifies a `wal_checkpoint` result row as fatal or non-fatal.
 ///
-/// Extracted from [`shutdown_blocking`] as a pure function so the `busy=1`
+/// Extracted from `shutdown` as a pure function so the `busy=1`
 /// graceful-degradation path is unit-testable without a database. A busy
 /// result (a reader held a snapshot mid-checkpoint) logs a warning and returns
 /// `Ok` — the un-folded frames survive in the WAL and fold on the next open.
 /// A clean result logs at info level.
 ///
 /// This function never fails: the only fallible step in shutdown is the
-/// checkpoint query itself, which stays in [`shutdown_blocking`]. This pure
-/// classifier just chooses the log level based on the result row.
+/// checkpoint query itself, which stays in `shutdown`. This pure classifier
+/// just chooses the log level based on the result row.
 fn classify_checkpoint_result(result: &CheckpointResult) {
     if result.busy == 1 {
         tracing::warn!(
@@ -1282,695 +1293,11 @@ fn classify_checkpoint_result(result: &CheckpointResult) {
     }
 }
 
-#[cfg(test)]
-mod tests {
-    #![allow(
-        clippy::expect_used,
-        clippy::indexing_slicing,
-        clippy::panic,
-        clippy::unreachable,
-        clippy::string_slice,
-        clippy::uninlined_format_args,
-        reason = "test code"
-    )]
-    use super::*;
-
-    #[tokio::test]
-    async fn open_or_create_creates_parent_dirs_and_database() {
-        // Given a nested nonexistent path.
-        let dir = tempfile::tempdir().expect("temp dir");
-        let db_path = dir.path().join("a").join("b").join("c").join("test.db");
-
-        // When opening the database.
-        let store = SqliteSessionStore::open_or_create(&db_path).expect("open_or_create");
-
-        // Then the parent directories were created.
-        assert!(db_path.parent().unwrap().exists());
-        // And the database is usable.
-        let summaries = store.load_summaries().await;
-        assert!(summaries.is_ok());
-    }
-
-    #[tokio::test]
-    async fn open_or_create_opens_existing_database() {
-        // Given a database created with new_in.
-        let dir = tempfile::tempdir().expect("temp dir");
-        let store = SqliteSessionStore::new_in(dir.path()).expect("new_in");
-        // Verify it's usable.
-        assert!(store.load_summaries().await.is_ok());
-
-        // When opening the exact file path with open_or_create.
-        let db_file = dir.path().join("sessions.db");
-        let store2 = SqliteSessionStore::open_or_create(&db_file).expect("open_or_create");
-
-        // Then the database is usable.
-        assert!(store2.load_summaries().await.is_ok());
-    }
-
-    #[tokio::test]
-    async fn open_or_create_works_with_bare_filename() {
-        // Given a bare filename (no directory component).
-        let dir = tempfile::tempdir().expect("temp dir");
-        let db_path = dir.path().join("test.db");
-
-        // When opening the database.
-        let store = SqliteSessionStore::open_or_create(&db_path).expect("open_or_create");
-
-        // Then the database is usable.
-        assert!(store.load_summaries().await.is_ok());
-    }
-
-    // ── Round-trip persistence tests ───────────────────────────────────
-
-    /// Helper: create a fresh in-memory store for testing.
-    fn fresh_store() -> SqliteSessionStore {
-        let dir = tempfile::tempdir().expect("temp dir");
-        SqliteSessionStore::new_in(dir.path()).expect("new_in")
-    }
-
-    /// Helper: create a minimal session with one user entry.
-    fn make_session() -> ChatSessionState {
-        let mut session = ChatSessionState::new();
-        session.push_entry(ChatEntry::user("hello world"));
-        session
-    }
-
-    #[tokio::test]
-    async fn save_then_load_summaries_returns_saved_session() {
-        // Given a store with a saved session.
-        let store = fresh_store();
-        let session = make_session();
-        let id = session.session_id().clone();
-        store.save(&session).await.expect("save");
-
-        // When loading summaries.
-        let summaries = store.load_summaries().await.expect("load_summaries");
-
-        // Then the saved session appears in the list.
-        assert_eq!(summaries.len(), 1, "should have exactly 1 summary");
-        assert_eq!(summaries[0].session_id, id);
-    }
-
-    #[tokio::test]
-    async fn delete_removes_session() {
-        // Given a store with a saved session.
-        let store = fresh_store();
-        let session = make_session();
-        let id = session.session_id().clone();
-        store.save(&session).await.expect("save");
-
-        // When deleting the session.
-        store.delete(&id).await.expect("delete");
-
-        // Then the session is gone from summaries.
-        let summaries = store.load_summaries().await.expect("load_summaries");
-        assert!(summaries.is_empty(), "session should be deleted");
-    }
-
-    #[tokio::test]
-    async fn fork_creates_new_session_with_entries() {
-        // Given a store with a saved session.
-        let store = fresh_store();
-        let session = make_session();
-        let source_id = session.session_id().clone();
-        store.save(&session).await.expect("save");
-
-        // When forking the session.
-        let fork_id = store.fork(&source_id, 1).await.expect("fork");
-
-        // Then the fork has a different ID.
-        assert_ne!(fork_id, source_id, "forked session should have a new ID");
-
-        // And the forked session can be loaded.
-        let loaded = store
-            .load_session(&fork_id)
-            .await
-            .expect("load")
-            .expect("forked session should exist");
-        assert_eq!(loaded.history().len(), 1, "fork should copy entries");
-    }
-
-    #[tokio::test]
-    async fn set_archived_removes_from_unarchived_summaries() {
-        // Given a store with a saved session.
-        let store = fresh_store();
-        let session = make_session();
-        let id = session.session_id().clone();
-        store.save(&session).await.expect("save");
-
-        // Verify the session appears in unarchived summaries BEFORE archiving.
-        let unarchived_before = store
-            .load_unarchived_summaries()
-            .await
-            .expect("load_unarchived");
-        assert_eq!(
-            unarchived_before.len(),
-            1,
-            "session should appear in unarchived before archiving"
-        );
-
-        // When archiving the session.
-        store.set_archived(&id, true).await.expect("set_archived");
-
-        // Then it disappears from unarchived summaries.
-        let unarchived_after = store
-            .load_unarchived_summaries()
-            .await
-            .expect("load_unarchived");
-        assert!(
-            unarchived_after.is_empty(),
-            "archived session should not appear"
-        );
-
-        // And it still appears in all summaries.
-        let all = store.load_summaries().await.expect("load_summaries");
-        assert_eq!(
-            all.len(),
-            1,
-            "archived session should still be in all summaries"
-        );
-    }
-
-    #[tokio::test]
-    async fn archived_flag_persists_across_save_and_load() {
-        // Given a store.
-        let store = fresh_store();
-
-        // When saving an archived session.
-        let mut session = make_session();
-        session.set_session_state(SessionState::Archived);
-        let id = session.session_id().clone();
-        store.save(&session).await.expect("save");
-
-        // Then loading it back shows it as archived.
-        let loaded = store
-            .load_session(&id)
-            .await
-            .expect("load")
-            .expect("session should exist");
-        assert_eq!(
-            loaded.session_state(),
-            SessionState::Archived,
-            "loaded session should be archived"
-        );
-
-        // And saving an active session loads as active.
-        let mut session2 = make_session();
-        session2.set_session_state(SessionState::Loaded);
-        let id2 = session2.session_id().clone();
-        store.save(&session2).await.expect("save");
-        let loaded2 = store
-            .load_session(&id2)
-            .await
-            .expect("load")
-            .expect("session should exist");
-        assert_eq!(
-            loaded2.session_state(),
-            SessionState::Loaded,
-            "loaded session should be active"
-        );
-    }
-
-    #[tokio::test]
-    async fn fork_preserves_parent_metadata() {
-        // Given a store with a saved session.
-        let store = fresh_store();
-        let session = make_session();
-        let source_id = session.session_id().clone();
-        let source_created = *session.created_at();
-        store.save(&session).await.expect("save");
-
-        // When forking.
-        let fork_id = store.fork(&source_id, 1).await.expect("fork");
-
-        // Then the forked session's parent points to the source.
-        let loaded = store
-            .load_session(&fork_id)
-            .await
-            .expect("load")
-            .expect("forked session should exist");
-        assert_eq!(
-            loaded.parent_session().as_ref(),
-            Some(&source_id),
-            "fork should have parent_session set"
-        );
-
-        // And the forked session has a different created_at (fork_metadata patches timestamps).
-        assert_ne!(
-            loaded.created_at(),
-            &source_created,
-            "fork should update created_at via fork_metadata"
-        );
-    }
-
-    #[tokio::test]
-    async fn fork_does_not_write_zombie_columns() {
-        // Given a migrated database with a saved session.
-        let (_dir, mut conn) = migrated_conn();
-        let session = make_session();
-        let source_id = session.session_id().clone();
-        save_blocking(&mut conn, &session).expect("save source");
-
-        // When forking the session.
-        let fork_id = fork_blocking(&mut conn, &source_id, 1).expect("fork");
-
-        // Then the forked row does not carry the redundant profile data in its
-        // zombie columns - they hold their SQL DEFAULTs, and only the metadata
-        // blob carries the real profile.
-        let fork_id_str = fork_id.to_string();
-
-        #[derive(QueryableByName)]
-        struct ColRow {
-            #[diesel(sql_type = diesel::sql_types::Text)]
-            value: String,
-        }
-        let col = |conn: &mut SqliteConnection, name: &str| -> String {
-            let rows: Vec<ColRow> =
-                sql_query(format!("SELECT {name} AS value FROM sessions WHERE id = ?"))
-                    .bind::<diesel::sql_types::Text, _>(&fork_id_str)
-                    .load(conn)
-                    .expect("select column");
-            rows.into_iter().next().expect("fork row exists").value
-        };
-
-        // The zombie columns hold their schema DEFAULTs.
-        assert_eq!(
-            col(&mut conn, "profile"),
-            "{}",
-            "profile column is the default"
-        );
-        assert_eq!(col(&mut conn, "blobs"), "{}", "blobs column is the default");
-        assert_eq!(col(&mut conn, "cwd"), ".", "cwd column is the default");
-        assert_eq!(
-            col(&mut conn, "lifecycle_args"),
-            "[]",
-            "lifecycle_args column is the default"
-        );
-        assert_eq!(
-            col(&mut conn, "lifecycle_script_state"),
-            "nothing_ran",
-            "lifecycle_script_state column is the default"
-        );
-
-        // And the metadata blob IS present and carries the forked profile.
-        assert!(
-            !col(&mut conn, "metadata").is_empty(),
-            "fork should carry a metadata blob"
-        );
-    }
-
-    #[tokio::test]
-    async fn shutdown_preserves_all_sessions() {
-        // Given a store with an empty session (no history entries) and a full one.
-        let store = fresh_store();
-        let empty_session = ChatSessionState::new();
-        let empty_id = empty_session.session_id().clone();
-        store.save(&empty_session).await.expect("save empty");
-
-        let full_session = make_session();
-        let full_id = full_session.session_id().clone();
-        store.save(&full_session).await.expect("save full");
-
-        // When shutting down.
-        store.shutdown().await.expect("shutdown");
-
-        // Then both sessions survive — shutdown is a non-destructive no-op.
-        let after = store
-            .load_summaries()
-            .await
-            .expect("load_summaries after shutdown");
-        let ids: Vec<_> = after.iter().map(|s| &s.session_id).collect();
-        assert!(
-            ids.contains(&&full_id),
-            "non-empty session should survive shutdown"
-        );
-        assert!(
-            ids.contains(&&empty_id),
-            "empty session should survive shutdown (no destructive cleanup)"
-        );
-    }
-
-    #[tokio::test]
-    async fn shutdown_truncates_wal_file() {
-        // Given a store that has written a session whose frames sit in the WAL
-        // (a small write stays well under the ~4MB autocheckpoint threshold).
-        let dir = tempfile::tempdir().expect("temp dir");
-        let wal_path = dir.path().join("sessions.db-wal");
-        let store = SqliteSessionStore::new_in(dir.path()).expect("new_in");
-        store.save(&make_session()).await.expect("save");
-
-        // The WAL sidecar exists and holds the uncheckpointed frames.
-        assert!(
-            wal_path.exists() && wal_path.metadata().unwrap().len() > 0,
-            "WAL should hold frames before shutdown"
-        );
-
-        // When shutting down the store with its pool still alive.
-        store.shutdown().await.expect("shutdown");
-
-        // Then the WAL has been truncated to zero bytes. With the pool still
-        // open this can only happen via an explicit TRUNCATE checkpoint.
-        assert_eq!(
-            wal_path.metadata().unwrap().len(),
-            0,
-            "WAL should be truncated to 0 bytes after shutdown checkpoint"
-        );
-    }
-
-    #[tokio::test]
-    async fn shutdown_makes_db_self_contained_for_backup() {
-        // Given a store that has saved a session and then shut down.
-        let dir = tempfile::tempdir().expect("temp dir");
-        let store = SqliteSessionStore::new_in(dir.path()).expect("new_in");
-        let session = make_session();
-        let id = session.session_id().clone();
-        store.save(&session).await.expect("save");
-        store.shutdown().await.expect("shutdown");
-        // Drop the store, closing every pooled connection.
-        drop(store);
-
-        // When the WAL sidecars are removed, simulating a backup that copied
-        // only sessions.db.
-        let _ = std::fs::remove_file(dir.path().join("sessions.db-wal"));
-        let _ = std::fs::remove_file(dir.path().join("sessions.db-shm"));
-
-        // Then sessions.db alone opens cleanly and contains the saved session.
-        let reopened = SqliteSessionStore::new_in(dir.path()).expect("reopen");
-        let summaries = reopened.load_summaries().await.expect("load");
-        assert!(
-            summaries.iter().any(|s| s.session_id == id),
-            "sessions.db alone must contain all data after shutdown checkpoint"
-        );
-    }
-
-    #[test]
-    fn busy_checkpoint_result_does_not_panic() {
-        // Given a checkpoint result that reports busy (a reader held a snapshot).
-        let busy = CheckpointResult {
-            busy: 1,
-            log: 7,
-            checkpointed: 3,
-        };
-
-        // When classifying it.
-        //
-        // Then it completes without panicking — un-folded frames survive
-        // in the WAL and fold on the next open, so this is graceful
-        // degradation, not data loss.
-        classify_checkpoint_result(&busy);
-    }
-
-    #[test]
-    fn clean_checkpoint_result_does_not_panic() {
-        // Given a checkpoint result that fully folded the WAL.
-        let clean = CheckpointResult {
-            busy: 0,
-            log: 7,
-            checkpointed: 7,
-        };
-
-        // When classifying it.
-        //
-        // Then it completes without panicking.
-        classify_checkpoint_result(&clean);
-    }
-
-    #[tokio::test]
-    async fn steering_buffer_is_not_persisted_across_save_and_load() {
-        // Given a session with two steering fragments in its buffer.
-        let store = fresh_store();
-        let mut session = make_session();
-        session
-            .steering_buffer_mut()
-            .push_fragment("first".to_owned());
-        session
-            .steering_buffer_mut()
-            .push_fragment("second".to_owned());
-        assert_eq!(
-            session.steering_buffer().len(),
-            2,
-            "pre-save buffer should hold both fragments"
-        );
-
-        // When saving the session.
-        let id = session.session_id().clone();
-        store.save(&session).await.expect("save");
-
-        // And loading it back.
-        let loaded = store
-            .load_session(&id)
-            .await
-            .expect("load")
-            .expect("session should exist after save");
-
-        // Then the steering buffer is dropped on reload.
-        assert!(
-            loaded.steering_buffer().is_empty(),
-            "steering buffer must not be persisted; should be empty after load"
-        );
-        assert_eq!(
-            loaded.steering_buffer().len(),
-            0,
-            "loaded buffer len should be zero"
-        );
-    }
-
-    // ── context_history persistence ─────────────────────────────────
-
-    #[tokio::test]
-    async fn context_history_survives_persistence_round_trip() {
-        // Given an entry pre-populated with two audit events.
-        use crate::feat::session::chat_entry::ChangeSource;
-
-        let store = fresh_store();
-        let mut entry = ChatEntry::user("hello world");
-        entry.apply_context_override(ContextOverride::ForcedExclude, ChangeSource::User);
-        entry.apply_context_override(
-            ContextOverride::ForcedInclude,
-            ChangeSource::Worker {
-                name: "compactor".to_owned(),
-            },
-        );
-        let entry_id = entry.id.clone();
-        let mut session = ChatSessionState::new();
-        session.push_entry(entry);
-        store.save(&session).await.expect("save");
-
-        // When reloading the session.
-        let loaded = store
-            .load_session(session.session_id())
-            .await
-            .expect("load")
-            .expect("session should exist");
-
-        // Then the audit trail is preserved with both events in order.
-        let loaded_entry = loaded
-            .history()
-            .iter()
-            .find(|e| e.id == entry_id)
-            .expect("entry should exist");
-        assert_eq!(
-            loaded_entry.context_history.len(),
-            2,
-            "both audit events should survive the round trip"
-        );
-
-        // And the first event records Default -> ForcedExclude by the user.
-        assert_eq!(
-            loaded_entry.context_history[0].from,
-            ContextOverride::Default
-        );
-        assert_eq!(
-            loaded_entry.context_history[0].to,
-            ContextOverride::ForcedExclude
-        );
-        assert!(matches!(
-            &loaded_entry.context_history[0].source,
-            ChangeSource::User
-        ));
-
-        // And the second event records ForcedExclude -> ForcedInclude by the compactor.
-        assert_eq!(
-            loaded_entry.context_history[1].from,
-            ContextOverride::ForcedExclude
-        );
-        assert_eq!(
-            loaded_entry.context_history[1].to,
-            ContextOverride::ForcedInclude
-        );
-        assert!(matches!(
-            &loaded_entry.context_history[1].source,
-            ChangeSource::Worker { name } if name == "compactor"
-        ));
-    }
-
-    #[tokio::test]
-    async fn context_history_loads_as_empty_for_entries_with_default_value() {
-        // Given a freshly-saved session with no audit events.
-        let store = fresh_store();
-        let session = make_session();
-        let id = session.session_id().clone();
-        store.save(&session).await.expect("save");
-
-        // When reloading.
-        let loaded = store
-            .load_session(&id)
-            .await
-            .expect("load")
-            .expect("session should exist");
-
-        // Then the entry has an empty context_history (not an error).
-        assert!(
-            loaded.history()[0].context_history.is_empty(),
-            "fresh entry should have no audit events"
-        );
-    }
-
-    // ── Save-path isolation: no global orphan cleanup ───────────────────
-
-    /// Regression for the Phase 2 fix: `save_blocking` previously ended every
-    /// transaction with a global `DELETE FROM entries WHERE id NOT IN
-    /// (SELECT entry_id FROM session_history)`. When `session_history` was
-    /// transiently empty (as after migrate_v15's cascade), the next save wiped
-    /// every entry in the database. This test proves saving one session can no
-    /// longer delete an entry that belongs to no `session_history` row.
-    #[test]
-    fn save_blocking_does_not_delete_orphaned_entries_when_history_is_empty() {
-        use crate::schema::entries;
-
-        // Given a migrated database with FK=ON holding one orphan entry that no
-        // `session_history` row references.
-        let dir = tempfile::tempdir().expect("temp dir");
-        let db_path = dir.path().join("sessions.db");
-        let database_url = db_path.to_string_lossy().to_string();
-        let mut conn = SqliteConnection::establish(&database_url).expect("establish");
-        sql_query("PRAGMA foreign_keys=ON")
-            .execute(&mut conn)
-            .expect("fk on");
-        migrator::run_migrations(&mut conn).expect("migrations");
-        sql_query(
-            "INSERT INTO entries (id, timing, kind) \
-             VALUES ('orphan-1', '2024-01-01T00:00:00Z', '\"User\"')",
-        )
-        .execute(&mut conn)
-        .expect("seed orphan entry");
-
-        // And an empty session_history (the post-cascade state).
-        // When saving a fresh session with no entries.
-        let fresh = ChatSessionState::new();
-        save_blocking(&mut conn, &fresh).expect("save");
-
-        // Then the orphan entry survives: `session_history` being empty for
-        // this session did not trigger a global cleanup.
-        let survivor: i64 = entries::table
-            .filter(entries::id.eq("orphan-1"))
-            .count()
-            .get_result(&mut conn)
-            .expect("count");
-        assert_eq!(
-            survivor, 1,
-            "orphan entry must survive a save on another session"
-        );
-    }
-
-    /// Standalone connection with migrations applied and FK on, for raw
-    /// seeding and assertion in the orphan-scoping tests.
-    fn migrated_conn() -> (tempfile::TempDir, SqliteConnection) {
-        let dir = tempfile::tempdir().expect("temp dir");
-        let db_path = dir.path().join("sessions.db");
-        let url = db_path.to_string_lossy().to_string();
-        let mut conn = SqliteConnection::establish(&url).expect("establish");
-        sql_query("PRAGMA foreign_keys=ON")
-            .execute(&mut conn)
-            .expect("fk on");
-        migrator::run_migrations(&mut conn).expect("migrations");
-        (dir, conn)
-    }
-
-    #[tokio::test]
-    async fn delete_reaps_entries_unique_to_deleted_session() {
-        use crate::schema::entries;
-
-        // Given a session with an entry that no other session references.
-        let (_dir, mut conn) = migrated_conn();
-        let session = make_session();
-        let id = session.session_id().clone();
-        save_blocking(&mut conn, &session).expect("save");
-
-        // When deleting the session.
-        delete_blocking(&mut conn, &id).expect("delete");
-
-        // Then the unique entry is reaped (cleanup still works, not regressed
-        // to never-reap).
-        let surviving: i64 = entries::table.count().get_result(&mut conn).expect("count");
-        assert_eq!(surviving, 0, "unique entry should be reaped on delete");
-    }
-
-    #[tokio::test]
-    async fn delete_preserves_entries_shared_with_other_session() {
-        use crate::schema::{entries, session_history};
-
-        // Given a source session, forked so two sessions share the same entry
-        // via their session_history junction rows.
-        let (_dir, mut conn) = migrated_conn();
-        let session = make_session();
-        let source_id = session.session_id().clone();
-        save_blocking(&mut conn, &session).expect("save source");
-        let fork_id = fork_blocking(&mut conn, &source_id, 0).expect("fork");
-
-        // The shared entry id is the one both sessions reference.
-        let shared_entry: String = session_history::table
-            .filter(session_history::session_id.eq(fork_id.to_string()))
-            .select(session_history::entry_id)
-            .first::<String>(&mut conn)
-            .expect("load shared entry id");
-
-        // When deleting the fork.
-        delete_blocking(&mut conn, &fork_id).expect("delete fork");
-
-        // Then the shared entry survives because the source session still
-        // references it (the scoping filter held it back).
-        let survivor: i64 = entries::table
-            .filter(entries::id.eq(&shared_entry))
-            .count()
-            .get_result(&mut conn)
-            .expect("count");
-        assert_eq!(
-            survivor, 1,
-            "shared entry must survive deletion of one referencing session"
-        );
-    }
-
-    #[tokio::test]
-    async fn delete_does_not_reap_unrelated_orphan_entries() {
-        use crate::schema::entries;
-
-        // Given a store with one normal session and a pre-existing orphan entry
-        // (no session_history row references it) belonging to no session.
-        let (_dir, mut conn) = migrated_conn();
-        let session = make_session();
-        let id = session.session_id().clone();
-        save_blocking(&mut conn, &session).expect("save");
-        sql_query(
-            "INSERT INTO entries (id, timing, kind) \
-             VALUES ('orphan-x', '2024-01-01T00:00:00Z', '\"User\"')",
-        )
-        .execute(&mut conn)
-        .expect("seed orphan");
-
-        // When deleting the unrelated session.
-        delete_blocking(&mut conn, &id).expect("delete");
-
-        // Then the unrelated orphan entry survives — a delete of session A
-        // never reaps entries that were never A's.
-        let survivor: i64 = entries::table
-            .filter(entries::id.eq("orphan-x"))
-            .count()
-            .get_result(&mut conn)
-            .expect("count");
-        assert_eq!(
-            survivor, 1,
-            "unrelated orphan entry must survive deletion of a different session"
-        );
-    }
+// ── Paths ────────────────────────────────────────────────────────────────
+
+/// Resolves the platform-default sessions directory.
+fn app_sessions_dir() -> std::path::PathBuf {
+    let mut p = crate::common::app_paths::AppPaths::default().sessions_dir();
+    p.push("sessions");
+    p
 }
