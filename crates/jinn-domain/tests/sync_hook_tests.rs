@@ -290,15 +290,15 @@ fn sync_hook_can_merge_plugin_data_observable_by_subsequent_read() {
 
 // ── on_keybind_trigger ─────────────────────────────────────────────
 
-/// Deserialize helper matching the TUI's `KeybindTriggerResult { fire: bool }`.
+/// Deserialize helper matching the TUI's `KeybindTriggerResult { run_action: bool }`.
 #[derive(Debug, serde::Deserialize, PartialEq)]
 struct KeybindTriggerResult {
-    fire: bool,
+    run_action: bool,
 }
 
 #[test]
-fn on_keybind_trigger_returns_fire_true_when_idle() {
-    // Given a plugin whose on_keybind_trigger returns {fire=true} when not enriching.
+fn on_keybind_trigger_returns_run_action_true_when_idle() {
+    // Given a plugin whose on_keybind_trigger returns {run_action=true} when not enriching.
     let dir = tempfile::tempdir().expect("tempdir");
     write_plugin(
         dir.path(),
@@ -307,7 +307,7 @@ fn on_keybind_trigger_returns_fire_true_when_idle() {
             local M = {}
             function M.on_keybind_trigger(ctx)
                 if ctx.keybound_plugin ~= "gatekeeper" then return end
-                return { fire = true }
+                return { run_action = true }
             end
             return M
         "#,
@@ -329,13 +329,13 @@ fn on_keybind_trigger_returns_fire_true_when_idle() {
         })
         .collect();
 
-    // Then exactly one result, fire=true.
-    assert_eq!(results, vec![KeybindTriggerResult { fire: true }]);
+    // Then exactly one result, run_action=true.
+    assert_eq!(results, vec![KeybindTriggerResult { run_action: true }]);
 }
 
 #[test]
-fn on_keybind_trigger_returns_fire_false_to_veto() {
-    // Given a plugin whose on_keybind_trigger returns {fire=false} to veto.
+fn on_keybind_trigger_returns_run_action_false_to_veto() {
+    // Given a plugin whose on_keybind_trigger returns {run_action=false} to veto.
     let dir = tempfile::tempdir().expect("tempdir");
     write_plugin(
         dir.path(),
@@ -344,7 +344,7 @@ fn on_keybind_trigger_returns_fire_false_to_veto() {
             local M = {}
             function M.on_keybind_trigger(ctx)
                 if ctx.keybound_plugin ~= "gatekeeper" then return end
-                return { fire = false }
+                return { run_action = false }
             end
             return M
         "#,
@@ -366,13 +366,13 @@ fn on_keybind_trigger_returns_fire_false_to_veto() {
         })
         .collect();
 
-    // Then the hook returns fire=false — the TUI must skip the async fire.
-    assert_eq!(results, vec![KeybindTriggerResult { fire: false }]);
+    // Then the hook returns run_action=false — the TUI must skip the async action.
+    assert_eq!(results, vec![KeybindTriggerResult { run_action: false }]);
 }
 
 #[test]
 fn on_keybind_trigger_returns_nil_for_other_plugins() {
-    // Given a plugin that self-selects: returns {fire} only for its own keybind.
+    // Given a plugin that self-selects: returns {run_action} only for its own keybind.
     let dir = tempfile::tempdir().expect("tempdir");
     write_plugin(
         dir.path(),
@@ -381,7 +381,7 @@ fn on_keybind_trigger_returns_nil_for_other_plugins() {
             local M = {}
             function M.on_keybind_trigger(ctx)
                 if ctx.keybound_plugin ~= "gatekeeper" then return end
-                return { fire = true }
+                return { run_action = true }
             end
             return M
         "#,
@@ -404,7 +404,7 @@ fn on_keybind_trigger_returns_nil_for_other_plugins() {
         .collect();
 
     // Then gatekeeper returns nothing (nil) for other plugins' keybinds —
-    // call_hooks_typed filters it out, so the default (fire=true) applies.
+    // call_hooks_typed filters it out, so the default (run_action=true) applies.
     assert!(
         results.iter().all(|r| r.is_null()),
         "plugin must return nil for other plugins' keybinds; got {results:?}"

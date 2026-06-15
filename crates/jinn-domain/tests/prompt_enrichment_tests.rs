@@ -508,10 +508,14 @@ async fn enrichment_first_tap_proceeds_when_idle() {
         })),
     );
 
-    // Then exactly one result, fire=true (no veto).
+    // Then exactly one result, run_action=true (no veto).
     assert_eq!(results.len(), 1, "exactly one plugin should answer");
-    let fire = results[0].get("fire").and_then(|v| v.as_bool());
-    assert_eq!(fire, Some(true), "idle state must not veto the fire");
+    let run_action = results[0].get("run_action").and_then(|v| v.as_bool());
+    assert_eq!(
+        run_action,
+        Some(true),
+        "idle state must not veto the action"
+    );
 }
 
 #[tokio::test]
@@ -536,13 +540,13 @@ async fn enrichment_retap_cancels_inflight_and_vetoes() {
         })),
     );
 
-    // Then the hook returns fire=false (cancel the in-flight, don't re-fire).
+    // Then the hook returns run_action=false (cancel the in-flight, don't re-run).
     assert_eq!(results.len(), 1, "exactly one plugin should answer");
-    let fire = results[0].get("fire").and_then(|v| v.as_bool());
+    let run_action = results[0].get("run_action").and_then(|v| v.as_bool());
     assert_eq!(
-        fire,
+        run_action,
         Some(false),
-        "enriching state must veto the fire and cancel the in-flight request"
+        "enriching state must veto the action and cancel the in-flight request"
     );
 }
 
