@@ -4,7 +4,11 @@
 //! (not a toggle) to the next eligible entry, skipping pinned entries and collapsed
 //! ignored blocks. The sweep loop runs within a single keypress invocation so that
 //! obstacles are transparent — the user never sees a "skip" as a separate step.
-
+//!
+//! Under the pure-toggle model, the captured target is always `ForcedInclude` or
+//! `ForcedExclude` — never `Default`. The sweep therefore drives every entry in one
+//! direction: into or out of context. Resetting to `Default` is `r`'s job, which does
+//! not use this sweep (it advances the cursor directly).
 use crate::common::app_state::AppState;
 use crate::feat::context::protocol::event::ContextOverrideChanged;
 use crate::feat::session::chat_entry::ChatEntry;
@@ -64,10 +68,11 @@ pub(crate) fn run_sweep(state: &mut AppState, target: ContextOverride) -> Intent
         let entry_id = selected.id.clone();
 
         // Propagate shown state to new sub-blocks when un-ignoring.
-        if matches!(
-            target,
-            ContextOverride::Default | ContextOverride::ForcedInclude
-        ) {
+        // Under the pure-toggle model, `x` only ever captures ForcedInclude
+        // (into context) or ForcedExclude (out of context). ForcedExclude takes
+        // the entry out of context, so only ForcedInclude can split a shown
+        // excluded block and needs propagation.
+        if matches!(target, ContextOverride::ForcedInclude) {
             session.propagate_shown_on_unignore(&entry_id);
         }
 
