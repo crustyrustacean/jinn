@@ -124,8 +124,10 @@ where
     title: Line<'a>,
     /// The selection state to render.
     state: &'a SelectionState<T>,
-    /// Optional footer line (e.g., "CTRL+R to refresh | Updated ...").
-    footer: Option<Line<'a>>,
+    /// Optional footer lines rendered at the bottom of the popup, top to
+    /// bottom. Use [`SelectionWidget::footer`] for a single line or
+    /// [`SelectionWidget::footers`] for several.
+    footers: Vec<Line<'a>>,
     /// Theme-dependent colors for border, text, separator, etc.
     colors: SelectionColors,
     /// Optional style override for the border title.
@@ -141,7 +143,7 @@ where
         Self {
             title: Line::from(""),
             state,
-            footer: None,
+            footers: Vec::new(),
             colors: SelectionColors::default(),
             title_style: None,
         }
@@ -154,10 +156,22 @@ where
         self
     }
 
-    /// Sets an optional footer line rendered at the bottom of the popup.
+    /// Sets a single footer line rendered at the bottom of the popup.
+    /// Replaces any previously set footers. For multiple footer lines use
+    /// [`SelectionWidget::footers`].
     #[must_use]
     pub fn footer(mut self, footer: Line<'a>) -> Self {
-        self.footer = Some(footer);
+        self.footers = vec![footer];
+        self
+    }
+
+    /// Sets multiple footer lines rendered at the bottom of the popup, top
+    /// to bottom. Each line occupies one terminal row; the popup allocates
+    /// one row per footer line bottom-up (more footers -> fewer result rows).
+    /// Replaces any previously set footers.
+    #[must_use]
+    pub fn footers(mut self, footers: Vec<Line<'a>>) -> Self {
+        self.footers = footers;
         self
     }
 
@@ -202,18 +216,22 @@ where
         };
         frame.render_widget(block, popup_area);
 
-        // Layout: input line -> separator -> results -> footer.
+        // Layout: input line -> separator -> results -> N footer lines.
         let inner = {
             let b = Block::default().borders(Borders::ALL);
             b.inner(popup_area)
         };
-        let [input_area, separator_area, results_area, footer_area] = Layout::vertical([
+        let footer_rows = self.footers.len() as u16;
+        // Split off the footer block (bottom N rows) first, then carve the
+        // top region into input / separator / results.
+        let [top_area, footer_block] =
+            Layout::vertical([Constraint::Min(0), Constraint::Length(footer_rows)]).areas(inner);
+        let [input_area, separator_area, results_area] = Layout::vertical([
             Constraint::Length(1),
             Constraint::Length(1),
             Constraint::Min(0),
-            Constraint::Length(1),
         ])
-        .areas(inner);
+        .areas(top_area);
 
         // Filter input with real cursor.
         let filter_text = format!("{}{}", PROMPT, self.state.filter());
@@ -249,13 +267,28 @@ where
         }
         frame.render_widget(Paragraph::new(result_lines), results_area);
 
-        // Footer: right-aligned in theme color, or empty row.
-        let footer_paragraph = match &self.footer {
-            Some(line) => Paragraph::new(line.clone())
-                .style(Style::default().fg(self.colors.footer))
-                .right_aligned(),
-            None => Paragraph::new(""),
-        };
-        frame.render_widget(footer_paragraph, footer_area);
+        // Footers: each line right-aligned in its own row, top to bottom.
+        render_footers(frame, footer_block, &self.footers, self.colors.footer);
+    }
+}
+
+/// Renders each footer line in its own row, top to bottom, right-aligned.
+///
+/// `footer_block` is the area reserved for all footer rows; it is split
+/// vertically into one row per line.
+fn render_footers(frame: &mut Frame<'_>, footer_block: Rect, footers: &[Line<'_>], color: Color) {
+    use ratatui::style::Style;
+    use ratatui::widgets::Paragraph;
+
+    if footers.is_empty() {
+        return;
+    }
+
+    let rows = Layout::vertical(vec![Constraint::Length(1); footers.len()]).split(footer_block);
+    for (line, area) in footers.iter().zip(rows.iter()) {
+        let paragraph = Paragraph::new(line.clone())
+            .style(Style::default().fg(color))
+            .right_aligned();
+        frame.render_widget(paragraph, *area);
     }
 }

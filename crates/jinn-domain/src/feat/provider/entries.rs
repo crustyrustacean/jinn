@@ -57,15 +57,73 @@ pub(crate) fn promote_selected_to_top(entries: &mut Vec<PickerEntry>) {
     *entries = result;
 }
 
-/// Formats the footer line showing refresh keybind and last update time.
+/// Formats the two footer lines for the provider picker.
 ///
-/// Returns a styled [`Line`] with the pipe separator in muted text.
-/// Format: `CTRL+R to refresh | Updated <timestamp> (<humantime> ago)`
-pub fn format_footer(
+/// - Line 1: refresh info (`CTRL+R to refresh | Updated ...`).
+/// - Line 2: mode info (`CTRL+A (toggle alloy) ...`) — always starts with the
+///   toggle hint, then appends mode-specific ENTER/selection semantics.
+/// Each line is independently truncated to `width`.
+pub fn format_footers(
     model_cache: Option<&crate::feat::provider_infra::ModelCache>,
     width: usize,
     theme: &Theme,
     selected_count: usize,
+    alloy_mode: bool,
+) -> Vec<ratatui::text::Line<'static>> {
+    vec![
+        truncate_line(refresh_line(model_cache, theme), width),
+        truncate_line(mode_line(theme, selected_count, alloy_mode), width),
+    ]
+}
+
+/// Line 1 of the provider footer: refresh keybind + last-updated time.
+fn refresh_line(
+    model_cache: Option<&crate::feat::provider_infra::ModelCache>,
+    theme: &Theme,
+) -> ratatui::text::Line<'static> {
+    use ratatui::style::Style;
+    use ratatui::text::{Line, Span};
+
+    let gray = Style::default().fg(theme.muted_text);
+    let orange = Style::default().fg(theme.accent_action);
+    let pipe = Span::styled("|".to_owned(), gray);
+
+    let left = Span::styled("CTRL+R to refresh ".to_owned(), orange);
+
+    let ts = model_cache.and_then(|c| c.last_updated_at);
+    let right = match ts {
+        Some(ts) => {
+            let elapsed = jiff::Timestamp::now() - ts;
+            let secs = elapsed.total(jiff::Unit::Second).unwrap_or(0.0).round() as u64;
+            let duration = std::time::Duration::from_secs(secs);
+            let human = humantime::format_duration(duration);
+            let age_color = age_color(secs, theme);
+            let formatted_ts = format!("{ts:.0}");
+            let mid = format!(" Updated {formatted_ts} (");
+            let ago = format!("{human} ago)");
+            vec![
+                Span::styled(mid, gray),
+                Span::styled(ago, Style::default().fg(age_color)),
+            ]
+        }
+        None => {
+            vec![Span::styled(" Updated never".to_owned(), gray)]
+        }
+    };
+
+    let mut spans = vec![left, pipe.clone()];
+    spans.extend(right);
+    Line::from(spans)
+}
+
+/// Line 2 of the provider footer: mode info.
+///
+/// Always leads with `CTRL+A (toggle alloy)`. Single mode then shows
+/// `Enter selects`; alloy mode shows `N selected · TAB toggle · Enter adds+confirms`.
+fn mode_line(
+    theme: &Theme,
+    selected_count: usize,
+    alloy_mode: bool,
 ) -> ratatui::text::Line<'static> {
     use ratatui::style::Style;
     use ratatui::text::{Line, Span};
@@ -73,49 +131,21 @@ pub fn format_footer(
     let gray = Style::default().fg(theme.muted_text);
     let orange = Style::default().fg(theme.accent_action);
 
-    let ts = model_cache.and_then(|c| c.last_updated_at);
-    if let Some(ts) = ts {
-        let elapsed = jiff::Timestamp::now() - ts;
-        let secs = elapsed.total(jiff::Unit::Second).unwrap_or(0.0).round() as u64;
-        let duration = std::time::Duration::from_secs(secs);
-        let human = humantime::format_duration(duration);
-        let age_color = age_color(secs, theme);
+    let toggle = Span::styled("CTRL+A (toggle alloy)".to_owned(), orange);
 
-        let formatted_ts = format!("{ts:.0}");
-
-        let left = "CTRL+R to refresh ";
-        let pipe = "|";
-        let mid = format!(" Updated {formatted_ts} (");
-        let right = format!("{human} ago)");
-        let selected_text = format!(" {selected_count} selected");
-
-        let line = Line::from(vec![
-            Span::styled(left.to_owned(), orange),
-            Span::styled(pipe.to_owned(), gray),
-            Span::styled(mid, gray),
-            Span::styled(right, Style::default().fg(age_color)),
-            Span::styled(pipe.to_owned(), gray),
-            Span::styled(selected_text, orange),
-            Span::styled(" \u{00b7} TAB toggle".to_owned(), gray),
-        ]);
-        truncate_line(line, width)
+    let rest: Vec<Span<'static>> = if alloy_mode {
+        vec![
+            Span::styled(format!(" · {selected_count} selected"), orange),
+            Span::styled(" · TAB toggle".to_owned(), gray),
+            Span::styled(" · Enter adds+confirms".to_owned(), gray),
+        ]
     } else {
-        let left = "CTRL+R to refresh ";
-        let pipe = "|";
-        let right = " Updated never";
+        vec![Span::styled(" · Enter selects".to_owned(), gray)]
+    };
 
-        let selected_text = format!(" {selected_count} selected");
-
-        let line = Line::from(vec![
-            Span::styled(left.to_owned(), orange),
-            Span::styled(pipe.to_owned(), gray),
-            Span::styled(right.to_owned(), gray),
-            Span::styled(pipe.to_owned(), gray),
-            Span::styled(selected_text, orange),
-            Span::styled(" \u{00b7} TAB toggle".to_owned(), gray),
-        ]);
-        truncate_line(line, width)
-    }
+    let mut spans = vec![toggle];
+    spans.extend(rest);
+    Line::from(spans)
 }
 
 /// Returns the age-based color for the "time ago" text.
@@ -194,7 +224,6 @@ fn static_provider_entry(
         is_remote: false,
         is_active: false,
         selected: false,
-        alloy_models: None,
         theme: theme.clone(),
     }
 }
@@ -237,7 +266,6 @@ fn alias_entry(
         is_remote: false,
         is_active: false,
         selected: false,
-        alloy_models: None,
         theme: theme.clone(),
     }
 }
@@ -268,7 +296,6 @@ fn remote_entry(
         is_remote: true,
         is_active: false,
         selected: false,
-        alloy_models: None,
         theme: theme.clone(),
     }
 }
@@ -363,29 +390,6 @@ pub fn load_provider_entries(
     // `{provider_name}/{model}`, the remote version is skipped.
     if let Some(cache) = model_cache {
         merge_remote_entries(&mut entries, &static_ids, registry, api_keys, cache, theme);
-    }
-
-    // Phase 4: Load named alloys.
-    // Each alloy is a single picker entry that carries multiple model IDs.
-    // When confirmed, it sets ModelSelection::Alloy on the session.
-    for alloy in registry.alloys() {
-        let entry = PickerEntry {
-            provider_id: format!("alloy:{}", alloy.name),
-            name: alloy.name.clone(),
-            provider_name: String::new(),
-            backend: String::new(),
-            model: format!("{} models", alloy.models.len()),
-            search_text: format!("{} {}", alloy.name, alloy.models.join(" ")),
-            is_alias: false,
-            alias_target: None,
-            is_available: true,
-            is_remote: false,
-            is_active: false,
-            selected: false,
-            alloy_models: Some(alloy.models.clone()),
-            theme: theme.clone(),
-        };
-        entries.push(entry);
     }
 
     entries
