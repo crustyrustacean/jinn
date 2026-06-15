@@ -74,7 +74,6 @@ impl StreamResponseParser {
     /// The `Done` event is deferred: it is stored internally and emitted
     /// when [`handle_done`] is called. This allows usage data from later
     /// SSE chunks to be attached.
-    #[allow(clippy::manual_let_else, clippy::collapsible_if)]
     pub fn parse_data(&mut self, json: &str) -> Vec<StreamEvent> {
         let mut results = Vec::new();
 
@@ -83,97 +82,58 @@ impl StreamResponseParser {
             Err(_) => return results,
         };
 
-        // Check for top-level error object (e.g., OpenRouter context_length_exceeded).
-        if let Some(error_obj) = chunk.get("error") {
-            let error_type = error_obj
-                .get("type")
-                .and_then(|t| t.as_str())
-                .unwrap_or("unknown_error")
-                .to_owned();
-            let message = error_obj
-                .get("message")
-                .and_then(|m| m.as_str())
-                .unwrap_or("Unknown error")
-                .to_owned();
-            results.push(StreamEvent::Error {
-                error_type,
-                message,
-            });
+        // Top-level error object (e.g. OpenRouter context_length_exceeded).
+        if let Some(error) = extract_error(&chunk) {
+            results.push(error);
             return results;
         }
 
-        let choices = if let Some(c) = chunk.get("choices").and_then(|c| c.as_array()) {
-            c
-        } else {
+        let Some(choices) = chunk.get("choices").and_then(|c| c.as_array()) else {
             // No choices - but we can still enrich pending_done with usage.
             self.try_enrich_pending_usage(&chunk);
             return results;
         };
 
         for choice in choices {
-            let delta = match choice.get("delta") {
-                Some(d) => d,
-                None => continue,
-            };
-
-            // Text content delta.
-            if let Some(content) = delta.get("content").and_then(|c| c.as_str()) {
-                if !content.is_empty() {
-                    results.push(StreamEvent::Text(content.to_owned()));
-                }
-            }
-
-            // Reasoning/thinking content delta.
-            // Check both field names: DeepSeek R1/V3 uses `reasoning_content`,
-            // DeepSeek V4 uses `thinking_content`, OpenRouter uses `reasoning`.
-            let mut found_reasoning = false;
-            for field in ["reasoning_content", "thinking_content", "reasoning"] {
-                if let Some(reasoning) = delta.get(field).and_then(|c| c.as_str()) {
-                    if !reasoning.is_empty() {
-                        tracing::debug!(
-                            field,
-                            len = reasoning.len(),
-                            preview = %&reasoning[..reasoning.len().min(30)],
-                            "response parser: reasoning field matched"
-                        );
-                        results.push(StreamEvent::Reasoning(reasoning.to_owned()));
-                        found_reasoning = true;
-                    }
-                    break;
-                }
-            }
-            if !found_reasoning {
-                // Log what fields the delta actually has for debugging.
-                let delta_keys: Vec<&str> = delta
-                    .as_object()
-                    .map(|o| o.keys().map(std::string::String::as_str).collect())
-                    .unwrap_or_default();
-                tracing::trace!(
-                    delta_keys = ?delta_keys,
-                    "response parser: no reasoning field found in delta"
-                );
-            }
-
-            // Tool call deltas.
-            if let Some(tool_calls) = delta.get("tool_calls").and_then(|t| t.as_array()) {
-                for tc in tool_calls {
-                    self.handle_tool_call_delta(tc, &mut results);
-                }
-            }
-
-            // Finish reason - only handle the first one.
-            if let Some(finish_reason) = choice.get("finish_reason").and_then(|f| f.as_str()) {
-                if !finish_reason.is_empty() && self.pending_done.is_none() && !self.done_finalized
-                {
-                    self.handle_finish_reason(finish_reason, &mut results);
-                }
-            }
+            self.process_choice(choice, &mut results);
         }
 
-        // Try to enrich the pending Done with usage data from this chunk.
+        // Enrich the pending Done with usage data from this chunk.
         self.try_enrich_pending_usage(&chunk);
 
         results
+    }
+
+    /// Process a single choice's delta into stream events.
+    ///
+    /// Each delta can carry text content, reasoning content, tool call deltas,
+    /// and a finish reason. Tool calls and finish handling are stateful.
+    fn process_choice(&mut self, choice: &serde_json::Value, results: &mut Vec<StreamEvent>) {
+        let Some(delta) = choice.get("delta") else {
+            return;
+        };
+
+        if let Some(event) = extract_text(delta) {
+            results.push(event);
+        }
+        if let Some(event) = extract_reasoning(delta) {
+            results.push(event);
+        }
+
+        // Tool call deltas.
+        if let Some(tool_calls) = delta.get("tool_calls").and_then(|t| t.as_array()) {
+            for tc in tool_calls {
+                self.handle_tool_call_delta(tc, results);
+            }
+        }
+
+        // Finish reason - only handle the first one we see.
+        let Some(finish_reason) = choice.get("finish_reason").and_then(|f| f.as_str()) else {
+            return;
+        };
+        if !finish_reason.is_empty() && self.pending_done.is_none() && !self.done_finalized {
+            self.handle_finish_reason(finish_reason, results);
+        }
     }
 
     /// Try to attach usage data from a chunk to the pending Done event.
@@ -319,6 +279,74 @@ impl StreamResponseParser {
     }
 }
 
+/// Extract a top-level error object (e.g. OpenRouter `context_length_exceeded`)
+/// into a `StreamEvent::Error`. Returns `None` when the chunk has no `error` field.
+///
+/// Missing `type`/`message` fields fall back to documented defaults.
+fn extract_error(chunk: &serde_json::Value) -> Option<StreamEvent> {
+    let error_obj = chunk.get("error")?;
+    let error_type = error_obj
+        .get("type")
+        .and_then(|t| t.as_str())
+        .unwrap_or("unknown_error")
+        .to_owned();
+    let message = error_obj
+        .get("message")
+        .and_then(|m| m.as_str())
+        .unwrap_or("Unknown error")
+        .to_owned();
+    Some(StreamEvent::Error {
+        error_type,
+        message,
+    })
+}
+
+/// Extract a non-empty `delta.content` into a `Text` event.
+///
+/// Returns `None` when the field is absent or empty.
+fn extract_text(delta: &serde_json::Value) -> Option<StreamEvent> {
+    let content = delta.get("content")?.as_str()?;
+    (!content.is_empty()).then(|| StreamEvent::Text(content.to_owned()))
+}
+
+/// Extract reasoning/thinking content from a delta.
+///
+/// Different providers use different field names:
+/// - DeepSeek R1/V3: `reasoning_content`
+/// - DeepSeek V4: `thinking_content`
+/// - OpenRouter: `reasoning`
+///
+/// Only the first matching field is considered. An empty value suppresses
+/// emission and stops the search, matching provider behavior.
+fn extract_reasoning(delta: &serde_json::Value) -> Option<StreamEvent> {
+    let mut emitted = None;
+    for field in ["reasoning_content", "thinking_content", "reasoning"] {
+        if let Some(reasoning) = delta.get(field).and_then(|c| c.as_str()) {
+            if !reasoning.is_empty() {
+                tracing::debug!(
+                    field,
+                    len = reasoning.len(),
+                    preview = %&reasoning[..reasoning.len().min(30)],
+                    "response parser: reasoning field matched"
+                );
+                emitted = Some(StreamEvent::Reasoning(reasoning.to_owned()));
+            }
+            break;
+        }
+    }
+    if emitted.is_none() {
+        let delta_keys: Vec<&str> = delta
+            .as_object()
+            .map(|o| o.keys().map(std::string::String::as_str).collect())
+            .unwrap_or_default();
+        tracing::trace!(
+            delta_keys = ?delta_keys,
+            "response parser: no reasoning field found in delta"
+        );
+    }
+    emitted
+}
+
 #[cfg(test)]
 mod tests {
     #![allow(clippy::expect_used, clippy::indexing_slicing, reason = "test code")]
@@ -373,6 +401,28 @@ mod tests {
 
         assert_eq!(events.len(), 1);
         assert_eq!(events[0], StreamEvent::Reasoning("thinking...".to_owned()));
+    }
+
+    #[rstest::rstest]
+    fn reasoning_content_takes_precedence_over_reasoning_field() {
+        // Given a delta that carries both `reasoning_content` and `reasoning`.
+        let json = r#"{"id":"x","choices":[{"index":0,"delta":{"reasoning_content":"primary","reasoning":"secondary"},"finish_reason":null}]}"#;
+        let events = parse_single(json);
+
+        // Then the first-listed field (`reasoning_content`) wins.
+        assert_eq!(events.len(), 1);
+        assert_eq!(events[0], StreamEvent::Reasoning("primary".to_owned()));
+    }
+
+    #[rstest::rstest]
+    fn empty_reasoning_field_suppresses_search() {
+        // Given a delta where the first-listed reasoning field is empty,
+        // even though a later-listed field carries content. The search
+        // stops at the first match, so no event is emitted.
+        let json = r#"{"id":"x","choices":[{"index":0,"delta":{"reasoning_content":"","reasoning":"ignored"},"finish_reason":null}]}"#;
+        let events = parse_single(json);
+
+        assert!(events.is_empty());
     }
 
     #[rstest::rstest]
