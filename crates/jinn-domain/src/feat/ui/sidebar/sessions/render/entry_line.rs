@@ -116,9 +116,14 @@ pub(crate) fn assemble_entry_line(
         SessionEntryKind::Session => {
             assemble_session_line(entry, is_selected, max_title_len, throbber_state, theme)
         }
-        SessionEntryKind::Plugin { enabled } => {
-            assemble_plugin_line(enabled, entry, is_selected, max_title_len, theme)
-        }
+        SessionEntryKind::Plugin { enabled } => assemble_plugin_line(
+            enabled,
+            entry,
+            is_selected,
+            max_title_len,
+            throbber_state,
+            theme,
+        ),
     }
 }
 
@@ -159,10 +164,17 @@ fn assemble_plugin_line(
     entry: &SessionEntry,
     is_selected: bool,
     max_title_len: usize,
+    throbber_state: &ThrobberState,
     theme: &Theme,
 ) -> Line<'static> {
-    // Lightning bolt icon replaces the throbber indicator.
-    let icon = Span::styled("\u{26A1}", Style::default().fg(theme.muted_text));
+    // Idle plugins show the lightning bolt; busy ones (their managed
+    // session is running, e.g. a judge LLM turn) show the animated braille
+    // spinner — symmetric with session-row behavior.
+    let icon = if entry.is_idle {
+        Span::styled("\u{26A1}", Style::default().fg(theme.muted_text))
+    } else {
+        indicator_span(entry.is_idle, throbber_state)
+    };
     // No arrow for plugins — they are never active.
     let no_arrow = Span::raw(" ");
     let tree = tree_prefix(entry);
