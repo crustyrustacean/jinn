@@ -8,13 +8,14 @@ use std::borrow::Cow;
 
 use crate::common::app_state::AppState;
 use crate::common::render_ctx::RenderCtx;
-use crate::feat::todo_list::{Phase, TaskList, TaskStatus};
+use crate::feat::theme::Theme;
+use crate::feat::todo_list::{Phase, PhaseId, Task, TaskList, TaskStatus};
 use crate::feat::ui::sidebar::section_trait::{
     EnterFrom, SectionNavResult, SidebarIntent, SidebarSection, SidebarSectionId,
 };
 use ratatui::Frame;
 use ratatui::layout::Rect;
-use ratatui::style::{Modifier, Style};
+use ratatui::style::{Color, Modifier, Style};
 use ratatui::text::{Line, Span};
 use ratatui::widgets::Paragraph;
 use textwrap::Options;
@@ -110,7 +111,6 @@ impl SidebarSection for TaskListSection {
     }
 }
 
-/// Indent for phase descriptions (2 spaces).
 const PHASE_INDENT: usize = 2;
 
 /// Indent for task descriptions (4 spaces + 1 indicator + 1 space = 6 columns).
@@ -146,143 +146,219 @@ fn expanded_phase_index(state: &AppState) -> Option<usize> {
     }
 }
 
+/// Shared visual capabilities for rendering the task list.
+///
+/// Bundles the theme, available sidebar width, and the focused phase index so that
+/// every visual part derives its wrap widths from one place. Centralizing the width
+/// math here keeps `build_render_lines` and `compute_height` in lockstep — the two
+/// previously diverged on the indicator's display vs byte width (see
+/// `collapsed_render_line_count_matches_computed_height_when_wrapping`).
+struct TaskListView<'a> {
+    theme: &'a Theme,
+    sidebar_width: usize,
+    expanded: Option<usize>,
+}
+
+impl<'a> TaskListView<'a> {
+    /// Builds the view from application state.
+    fn from_state(state: &'a AppState) -> Self {
+        Self {
+            theme: &state.frontend.theme,
+            sidebar_width: state.frontend.sidebar_width.into(),
+            expanded: expanded_phase_index(state),
+        }
+    }
+
+    /// Available text width for a phase header's wrapped description.
+    ///
+    /// Accounts for the phase indent and the collapse/expand indicator's display width.
+    fn phase_text_width(&self) -> usize {
+        self.sidebar_width
+            .saturating_sub(PHASE_INDENT + PHASE_INDICATOR_WIDTH)
+    }
+
+    /// Available text width for a task line's wrapped description.
+    ///
+    /// Accounts for the full task indent (indent + indicator + space).
+    fn task_text_width(&self) -> usize {
+        self.sidebar_width.saturating_sub(TASK_INDENT)
+    }
+
+    /// True when the phase at `index` is the focused, expanded one.
+    fn is_expanded(&self, index: usize) -> bool {
+        self.expanded == Some(index)
+    }
+
+    /// Phase header foreground color: streaming for the active phase, muted when no
+    /// work remains, otherwise the primary text color.
+    fn phase_header_color(&self, phase: &Phase, active_phase_id: Option<&PhaseId>) -> Color {
+        if active_phase_id == Some(phase.id()) {
+            self.theme.streaming
+        } else if phase.has_pending_work() {
+            self.theme.primary_text
+        } else {
+            self.theme.muted_text
+        }
+    }
+
+    /// Style for a phase header line, with reversed colors when the phase is selected.
+    fn phase_header_style(&self, phase: &Phase, index: usize, active_phase_id: Option<&PhaseId>) -> Style {
+        let mut style = Style::default()
+            .fg(self.phase_header_color(phase, active_phase_id))
+            .add_modifier(Modifier::BOLD);
+        if self.is_expanded(index) {
+            style = style.add_modifier(Modifier::REVERSED);
+        }
+        style
+    }
+
+    /// Style for a task line based on its status.
+    fn task_style(&self, status: TaskStatus) -> Style {
+        match status {
+            TaskStatus::Pending => Style::default().fg(self.theme.primary_text),
+            TaskStatus::Completed | TaskStatus::Postponed => {
+                Style::default().fg(self.theme.muted_text)
+            }
+            // Cancelled tasks are shown with strikethrough.
+            TaskStatus::Cancelled => Style::default()
+                .fg(self.theme.muted_text)
+                .add_modifier(Modifier::CROSSED_OUT),
+        }
+    }
+
+    /// The title line at the top of the section.
+    fn header_line(&self, phase_count: usize) -> Line<'static> {
+        Line::from(vec![Span::styled(
+            format!(
+                " Task List \u{2014} {} phase{}",
+                phase_count,
+                if phase_count == 1 { "" } else { "s" }
+            ),
+            Style::default()
+                .fg(self.theme.primary_text)
+                .add_modifier(Modifier::BOLD),
+        )])
+    }
+
+    /// Phase header lines: the collapse/expand indicator on the first wrapped segment,
+    /// continuation lines indented beneath the description.
+    fn phase_header_lines(&self, phase: &Phase, index: usize, active_phase_id: Option<&PhaseId>) -> Vec<Line<'static>> {
+        let indicator = if self.is_expanded(index) {
+            "\u{25BE} " // ▾ expanded
+        } else {
+            "\u{25B8} " // ▸ collapsed
+        };
+        let style = self.phase_header_style(phase, index, active_phase_id);
+        let wrapped = wrap_description(phase.description(), self.phase_text_width());
+        wrapped
+            .iter()
+            .enumerate()
+            .map(|(i, segment)| {
+                let prefix = if i == 0 {
+                    format!("  {indicator}{segment}")
+                } else {
+                    format!("    {}{segment}", " ".repeat(PHASE_INDICATOR_WIDTH))
+                };
+                Line::from(Span::styled(prefix, style))
+            })
+            .collect()
+    }
+
+    /// Lines for the tasks of an expanded phase, or the `(no tasks)` placeholder.
+    fn phase_task_lines(&self, phase: &Phase) -> Vec<Line<'static>> {
+        if phase.is_empty() {
+            return vec![Line::from(Span::styled(
+                "    (no tasks)",
+                Style::default().fg(self.theme.muted_text),
+            ))];
+        }
+        phase
+            .tasks()
+            .iter()
+            .flat_map(|task| self.task_lines(task))
+            .collect()
+    }
+
+    /// Lines for a single task: its status indicator on the first wrapped segment,
+    /// continuation lines indented beneath the description.
+    fn task_lines(&self, task: &Task) -> Vec<Line<'static>> {
+        let indicator = task.status().indicator();
+        let style = self.task_style(task.status());
+        let wrapped = wrap_description(task.description(), self.task_text_width());
+        wrapped
+            .iter()
+            .enumerate()
+            .map(|(i, segment)| {
+                if i == 0 {
+                    Line::from(Span::styled(format!("    {indicator} {segment}"), style))
+                } else {
+                    Line::from(Span::styled(format!("      {segment}"), style))
+                }
+            })
+            .collect()
+    }
+
+    /// Number of rows a phase contributes at `index`: its wrapped header plus
+    /// the task rows when it is the expanded phase. Used by `compute_height` to
+    /// stay in lockstep with `build_render_lines`.
+    fn phase_height(&self, phase: &Phase, index: usize) -> usize {
+        let header = wrap_description(phase.description(), self.phase_text_width()).len();
+        if !self.is_expanded(index) {
+            return header;
+        }
+        let tasks = if phase.is_empty() {
+            1 // "(no tasks)"
+        } else {
+            let task_width = self.task_text_width();
+            phase
+                .tasks()
+                .iter()
+                .map(|task| wrap_description(task.description(), task_width).len())
+                .sum()
+        };
+        header + tasks
+    }
+}
+
 /// Builds the render lines for a task list.
 ///
 /// When unfocused (no expanded phase), renders only phase headers with `▸` indicators.
 /// When focused, expands the selected phase showing its tasks with a `▾` indicator.
 fn build_render_lines(list: &TaskList, state: &AppState) -> Vec<Line<'static>> {
-    let theme = &state.frontend.theme;
-    let sidebar_width = state.frontend.sidebar_width as usize;
-    let expanded = expanded_phase_index(state);
-    let mut lines = Vec::new();
-
-    // Header.
-    let phase_count = list.phases().len();
-    lines.push(Line::from(vec![Span::styled(
-        format!(
-            " Task List \u{2014} {} phase{}",
-            phase_count,
-            if phase_count == 1 { "" } else { "s" }
-        ),
-        Style::default()
-            .fg(theme.primary_text)
-            .add_modifier(Modifier::BOLD),
-    )]));
-    lines.push(Line::from(""));
-
+    let view = TaskListView::from_state(state);
     let active_phase_id = list.active_phase().map(Phase::id);
 
+    let mut lines = Vec::new();
+
+    // Header + blank separator.
+    lines.push(view.header_line(list.phases().len()));
+    lines.push(Line::from(""));
+
+    // One phase per iteration: the header, and the tasks when expanded.
     for (phase_idx, phase) in list.phases().iter().enumerate() {
-        let is_expanded = expanded == Some(phase_idx);
-        let is_selected = expanded == Some(phase_idx);
-
-        // Phase header with collapse indicator.
-        let indicator = if is_expanded {
-            "\u{25BE} " // ▾ expanded
-        } else {
-            "\u{25B8} " // ▸ collapsed
-        };
-        let phase_width = sidebar_width.saturating_sub(PHASE_INDENT + PHASE_INDICATOR_WIDTH);
-        let phase_color = if active_phase_id == Some(phase.id()) {
-            theme.streaming
-        } else if phase.has_pending_work() {
-            theme.primary_text
-        } else {
-            theme.muted_text
-        };
-        let mut phase_style = Style::default()
-            .fg(phase_color)
-            .add_modifier(Modifier::BOLD);
-        // Highlight the selected phase header with reversed colors.
-        if is_selected {
-            phase_style = phase_style.add_modifier(Modifier::REVERSED);
-        }
-        let wrapped = wrap_description(phase.description(), phase_width);
-        for (i, segment) in wrapped.iter().enumerate() {
-            let prefix = if i == 0 {
-                format!("  {indicator}{segment}")
-            } else {
-                format!("    {}{segment}", " ".repeat(PHASE_INDICATOR_WIDTH))
-            };
-            lines.push(Line::from(Span::styled(prefix, phase_style)));
-        }
-
-        // Only render tasks for the expanded phase.
-        if is_expanded {
-            if phase.is_empty() {
-                lines.push(Line::from(Span::styled(
-                    "    (no tasks)",
-                    Style::default().fg(theme.muted_text),
-                )));
-            } else {
-                let task_width = sidebar_width.saturating_sub(TASK_INDENT);
-                for task in phase.tasks() {
-                    let (indicator, style) = match task.status() {
-                        TaskStatus::Pending => {
-                            ("\u{25CB} ", Style::default().fg(theme.primary_text)) // ○
-                        }
-                        TaskStatus::Completed => {
-                            ("\u{2713} ", Style::default().fg(theme.muted_text)) // ✓
-                        }
-                        TaskStatus::Postponed => {
-                            ("\u{25BC} ", Style::default().fg(theme.muted_text)) // ▼
-                        }
-                        TaskStatus::Cancelled => {
-                            // Cancelled tasks are shown with strikethrough.
-                            (
-                                "\u{2717} ", // ✗
-                                Style::default()
-                                    .fg(theme.muted_text)
-                                    .add_modifier(Modifier::CROSSED_OUT),
-                            )
-                        }
-                    };
-                    let wrapped = wrap_description(task.description(), task_width);
-                    for (i, segment) in wrapped.iter().enumerate() {
-                        if i == 0 {
-                            lines.push(Line::from(Span::styled(
-                                format!("    {indicator}{segment}"),
-                                style,
-                            )));
-                        } else {
-                            lines.push(Line::from(Span::styled(format!("      {segment}"), style)));
-                        }
-                    }
-                }
-            }
+        lines.extend(view.phase_header_lines(phase, phase_idx, active_phase_id));
+        if view.is_expanded(phase_idx) {
+            lines.extend(view.phase_task_lines(phase));
         }
     }
 
     lines
 }
-/// Computes the content height for a non-empty task list.
-fn compute_height(list: &TaskList, state: &AppState) -> u16 {
-    let sidebar_width = state.frontend.sidebar_width as usize;
-    let expanded = expanded_phase_index(state);
-    let mut height: usize = 0;
 
-    // Header + blank.
-    height += 2;
+/// Computes the content height for a non-empty task list.
+///
+/// Mirrors [`build_render_lines`]: the same header rows, the same per-phase wrap
+/// width, and the same expansion rule. Keeping the two in lockstep via
+/// [`TaskListView`] prevents the render/height divergence that previously clipped
+/// phase headers (see `collapsed_render_line_count_matches_computed_height_when_wrapping`).
+fn compute_height(list: &TaskList, state: &AppState) -> u16 {
+    let view = TaskListView::from_state(state);
+
+    // Header + blank separator.
+    let mut height: usize = 2;
 
     for (phase_idx, phase) in list.phases().iter().enumerate() {
-        let is_expanded = expanded == Some(phase_idx);
-
-        // Phase header - count wrapped lines.
-        // Account for indicator ("▾ " or "▸ " = 2 columns) + indent.
-        let phase_width = sidebar_width.saturating_sub(PHASE_INDENT + PHASE_INDICATOR_WIDTH);
-        height += wrap_description(phase.description(), phase_width).len();
-
-        // Only count task lines for the expanded phase.
-        if is_expanded {
-            if phase.is_empty() {
-                height += 1; // "(no tasks)"
-            } else {
-                let task_width = sidebar_width.saturating_sub(TASK_INDENT);
-                for task in phase.tasks() {
-                    height += wrap_description(task.description(), task_width).len();
-                }
-            }
-        }
+        height += view.phase_height(phase, phase_idx);
     }
 
     height as u16
