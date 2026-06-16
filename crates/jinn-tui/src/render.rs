@@ -138,7 +138,11 @@ pub fn render(app: &mut TuiApp, frame: &mut Frame<'_>) {
         ));
     }
 
-    // Release the state read lock before post-render steps.
+    // Quake bar overlay (last, so it covers everything below it).
+    if matches!(state.frontend.scope_stack.current(), FocusScope::QuakeBar) {
+        jinn_domain::feat::quake_bar::render::render_quake_bar(frame, area, &ctx);
+    }
+
     drop(state);
 
     app.selectable_rects.rebuild(rects);

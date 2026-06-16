@@ -327,6 +327,75 @@ impl IntentHandler {
                 feat::cwd_input::intent::handle_cwd_input_leave(state)
             }
 
+            // --- Quake Bar text-edit guards ---
+            // The quake bar captures ALL keystrokes while open; these guards
+            // route editing intents to the quake bar instead of chat input.
+            Intent::InsertChar { ch }
+                if matches!(
+                    state.frontend.scope_stack.current(),
+                    crate::common::app_state::FocusScope::QuakeBar
+                ) =>
+            {
+                feat::quake_bar::intent::handle_insert_char(state, *ch)
+            }
+            Intent::DeleteGrapheme
+                if matches!(
+                    state.frontend.scope_stack.current(),
+                    crate::common::app_state::FocusScope::QuakeBar
+                ) =>
+            {
+                feat::quake_bar::intent::handle_delete(state)
+            }
+            Intent::DeleteGraphemeForward
+                if matches!(
+                    state.frontend.scope_stack.current(),
+                    crate::common::app_state::FocusScope::QuakeBar
+                ) =>
+            {
+                feat::quake_bar::intent::handle_delete_forward(state)
+            }
+            Intent::MoveCursorLeft
+                if matches!(
+                    state.frontend.scope_stack.current(),
+                    crate::common::app_state::FocusScope::QuakeBar
+                ) =>
+            {
+                feat::quake_bar::intent::handle_cursor_left(state)
+            }
+            Intent::MoveCursorRight
+                if matches!(
+                    state.frontend.scope_stack.current(),
+                    crate::common::app_state::FocusScope::QuakeBar
+                ) =>
+            {
+                feat::quake_bar::intent::handle_cursor_right(state)
+            }
+            Intent::MoveCursorToStart
+                if matches!(
+                    state.frontend.scope_stack.current(),
+                    crate::common::app_state::FocusScope::QuakeBar
+                ) =>
+            {
+                feat::quake_bar::intent::handle_cursor_to_start(state)
+            }
+            Intent::MoveCursorToEnd
+                if matches!(
+                    state.frontend.scope_stack.current(),
+                    crate::common::app_state::FocusScope::QuakeBar
+                ) =>
+            {
+                feat::quake_bar::intent::handle_cursor_to_end(state)
+            }
+            Intent::EnterNormalMode
+                if matches!(
+                    state.frontend.scope_stack.current(),
+                    crate::common::app_state::FocusScope::QuakeBar
+                ) =>
+            {
+                // ESC closes the quake bar overlay.
+                feat::quake_bar::intent::handle_close(state)
+            }
+
             // --- Chat Input ---
             // Editing intents are no-ops when the active session's input box is disabled.
             _ if is_chat_input_editing(intent) && state.active_chat_input().disabled() => {
@@ -665,6 +734,13 @@ impl IntentHandler {
             Intent::OpenCwdInput => feat::cwd_input::intent::handle_cwd_input_enter(state),
             Intent::CwdInputConfirm => feat::cwd_input::intent::handle_cwd_input_confirm(state),
             Intent::CwdInputLeave => feat::cwd_input::intent::handle_cwd_input_leave(state),
+
+            // --- Quake Bar ---
+            Intent::OpenQuakeBar => feat::quake_bar::intent::handle_open(state),
+            Intent::CloseQuakeBar => feat::quake_bar::intent::handle_close(state),
+            Intent::SubmitQuakeBar => feat::quake_bar::intent::handle_submit(state),
+            Intent::QuakeBarScrollUp => feat::quake_bar::intent::handle_scroll_up(state),
+            Intent::QuakeBarScrollDown => feat::quake_bar::intent::handle_scroll_down(state),
 
             // --- CWD Selection ---
             Intent::ChangeCwd { root } => {
