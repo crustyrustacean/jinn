@@ -21,10 +21,6 @@ use crate::feat::session::phase_machine::PhaseKind;
 impl SessionPersistenceActor {
     /// Appends a streaming token to the session's assistant entry,
     /// or to the thinking entry if the token is flagged as reasoning.
-    #[expect(
-        clippy::else_if_without_else,
-        reason = "no-op on fallthrough is intentional"
-    )]
     pub(in crate::feat::session::session_actor) fn on_stream_token(&self, event: &StreamToken) {
         let mut state = self.state.write();
         let session = state.session_mut_or_create(&event.session_id);
@@ -48,8 +44,15 @@ impl SessionPersistenceActor {
             if let Err(e) = session.append_thinking_token(&event.token) {
                 tracing::error!(err = ?e, "failed to append thinking token");
             }
-        } else if let Err(e) = session.append_stream_token(&event.token, event.dispatched_at) {
-            tracing::error!(err = ?e, "failed to append stream token");
+        } else {
+            // First non-thinking (content) token ends the reasoning phase:
+            // finalize the thinking entry's duration before the content begins.
+            if let Some(idx) = session.streaming_thinking_entry_index() {
+                session.finish_thinking_entry(idx);
+            }
+            if let Err(e) = session.append_stream_token(&event.token, event.dispatched_at) {
+                tracing::error!(err = ?e, "failed to append stream token");
+            }
         }
     }
 
@@ -1651,6 +1654,231 @@ mod tests {
                 );
             }
             other => panic!("expected Streamed, got {other:?}"),
+        }
+    }
+
+    #[tokio::test]
+    async fn content_token_after_thinking_finalizes_thinking_entry_finished_at() {
+        // Given a session actor streaming with a thinking entry already begun.
+        let actor = test_actor().await;
+        let dispatched = jiff::Timestamp::now();
+        let session_id = {
+            let mut state = actor.state.write();
+            let session = state.active_session_mut();
+            session.begin_streaming();
+            state.session.active_session_id().clone()
+        };
+        actor.on_stream_token(&StreamToken {
+            session_id: session_id.clone(),
+            index: 0,
+            token: "reasoning".to_owned(),
+            is_thinking: true,
+            dispatched_at: dispatched,
+        });
+
+        // When the first non-thinking (content) token arrives.
+        actor.on_stream_token(&StreamToken {
+            session_id: session_id.clone(),
+            index: 1,
+            token: "answer".to_owned(),
+            is_thinking: false,
+            dispatched_at: dispatched,
+        });
+
+        // Then the thinking entry's finished_at is set (duration resolved).
+        let state = actor.state.read();
+        let session = state.session.get(&session_id).expect("session exists");
+        let thinking = session
+            .history()
+            .iter()
+            .find(|e| matches!(e.kind, crate::protocol::ChatEntryKind::Thinking(_)))
+            .expect("thinking entry");
+        match &thinking.timing {
+            crate::protocol::EntryTiming::Streamed { finished_at, .. } => {
+                assert!(
+                    finished_at.is_some(),
+                    "thinking finished_at should be set after content token arrives"
+                );
+            }
+            other => panic!("expected Streamed, got {other:?}"),
+        }
+    }
+
+    #[tokio::test]
+    async fn second_content_token_does_not_move_thinking_finished_at() {
+        // Given a session actor streaming with thinking finalized by a content token.
+        let actor = test_actor().await;
+        let dispatched = jiff::Timestamp::now();
+        let session_id = {
+            let mut state = actor.state.write();
+            let session = state.active_session_mut();
+            session.begin_streaming();
+            state.session.active_session_id().clone()
+        };
+        actor.on_stream_token(&StreamToken {
+            session_id: session_id.clone(),
+            index: 0,
+            token: "reasoning".to_owned(),
+            is_thinking: true,
+            dispatched_at: dispatched,
+        });
+        actor.on_stream_token(&StreamToken {
+            session_id: session_id.clone(),
+            index: 1,
+            token: "answer".to_owned(),
+            is_thinking: false,
+            dispatched_at: dispatched,
+        });
+        let finished_at_first = {
+            let state = actor.state.read();
+            let session = state.session.get(&session_id).expect("session exists");
+            let thinking = session
+                .history()
+                .iter()
+                .find(|e| matches!(e.kind, crate::protocol::ChatEntryKind::Thinking(_)))
+                .expect("thinking entry");
+            match &thinking.timing {
+                crate::protocol::EntryTiming::Streamed { finished_at, .. } => *finished_at,
+                other => panic!("expected Streamed, got {other:?}"),
+            }
+        };
+
+        // When a second content token arrives.
+        actor.on_stream_token(&StreamToken {
+            session_id: session_id.clone(),
+            index: 2,
+            token: " more".to_owned(),
+            is_thinking: false,
+            dispatched_at: dispatched,
+        });
+
+        // Then the thinking entry's finished_at is unchanged (idempotent).
+        let state = actor.state.read();
+        let session = state.session.get(&session_id).expect("session exists");
+        let thinking = session
+            .history()
+            .iter()
+            .find(|e| matches!(e.kind, crate::protocol::ChatEntryKind::Thinking(_)))
+            .expect("thinking entry");
+        match &thinking.timing {
+            crate::protocol::EntryTiming::Streamed { finished_at, .. } => {
+                assert_eq!(
+                    *finished_at, finished_at_first,
+                    "thinking finished_at must not change on subsequent content tokens"
+                );
+            }
+            other => panic!("expected Streamed, got {other:?}"),
+        }
+    }
+
+    #[tokio::test]
+    async fn pure_reasoning_stream_finalizes_thinking_on_stream_completion() {
+        // Given a session actor streaming with ONLY thinking tokens (no content).
+        let actor = test_actor().await;
+        let dispatched = jiff::Timestamp::now();
+        let session_id = {
+            let mut state = actor.state.write();
+            let session = state.active_session_mut();
+            session.begin_streaming();
+            state.session.active_session_id().clone()
+        };
+        actor.on_stream_token(&StreamToken {
+            session_id: session_id.clone(),
+            index: 0,
+            token: "only reasoning".to_owned(),
+            is_thinking: true,
+            dispatched_at: dispatched,
+        });
+
+        // When the stream completes without producing a content token.
+        let event = StreamCompleted {
+            session_id: session_id.clone(),
+            reason: StreamCompletedReason::Finished,
+            assistant_content: None,
+            tool_calls: None,
+            cost: None,
+            provider_completion_tokens: Some(10),
+            thinking_content: Some("only reasoning".to_owned()),
+            dispatched_at: dispatched,
+            model_used: None,
+        };
+        actor.on_stream_completed(&event).await;
+
+        // Then the thinking entry's finished_at is set via the safety net.
+        let state = actor.state.read();
+        let session = state.session.get(&session_id).expect("session exists");
+        let thinking = session
+            .history()
+            .iter()
+            .find(|e| matches!(e.kind, crate::protocol::ChatEntryKind::Thinking(_)))
+            .expect("thinking entry");
+        match &thinking.timing {
+            crate::protocol::EntryTiming::Streamed { finished_at, .. } => {
+                assert!(
+                    finished_at.is_some(),
+                    "thinking finished_at should be set by safety net on pure-reasoning completion"
+                );
+            }
+            other => panic!("expected Streamed, got {other:?}"),
+        }
+    }
+
+    #[tokio::test]
+    async fn cancel_during_reasoning_finalizes_thinking_and_preserves_text() {
+        // Given a session actor streaming with a thinking entry.
+        let actor = test_actor().await;
+        let dispatched = jiff::Timestamp::now();
+        let session_id = {
+            let mut state = actor.state.write();
+            let session = state.active_session_mut();
+            session.begin_streaming();
+            state.session.active_session_id().clone()
+        };
+        actor.on_stream_token(&StreamToken {
+            session_id: session_id.clone(),
+            index: 0,
+            token: "partial reasoning".to_owned(),
+            is_thinking: true,
+            dispatched_at: dispatched,
+        });
+
+        // When the stream is canceled before any content token.
+        let event = StreamCompleted {
+            session_id: session_id.clone(),
+            reason: StreamCompletedReason::Canceled,
+            assistant_content: None,
+            tool_calls: None,
+            cost: None,
+            provider_completion_tokens: None,
+            thinking_content: None,
+            dispatched_at: dispatched,
+            model_used: None,
+        };
+        actor.on_stream_completed(&event).await;
+
+        // Then the thinking entry's finished_at is set AND its text is preserved.
+        let state = actor.state.read();
+        let session = state.session.get(&session_id).expect("session exists");
+        let thinking = session
+            .history()
+            .iter()
+            .find(|e| matches!(e.kind, crate::protocol::ChatEntryKind::Thinking(_)))
+            .expect("thinking entry");
+        match (&thinking.kind, &thinking.timing) {
+            (
+                crate::protocol::ChatEntryKind::Thinking(text),
+                crate::protocol::EntryTiming::Streamed { finished_at, .. },
+            ) => {
+                assert_eq!(
+                    text, "partial reasoning",
+                    "partial reasoning text preserved"
+                );
+                assert!(
+                    finished_at.is_some(),
+                    "thinking finished_at should be set on cancel during reasoning"
+                );
+            }
+            other => panic!("expected Thinking + Streamed, got {other:?}"),
         }
     }
 

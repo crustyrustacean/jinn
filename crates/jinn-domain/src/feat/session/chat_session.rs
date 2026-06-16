@@ -834,6 +834,21 @@ impl ChatSessionState {
         self.core.history[idx].timing.finish();
     }
 
+    /// Finalize the streaming thinking entry's timing, if it hasn't already been.
+    ///
+    /// Guarded to be a no-op if `finished_at` is already set, so safety-net
+    /// calls from `finish_streaming`/`cancel_streaming` don't move an
+    /// already-recorded timestamp.
+    #[expect(
+        clippy::indexing_slicing,
+        reason = "index comes from streaming_thinking_entry_index which is always valid"
+    )]
+    pub fn finish_thinking_entry(&mut self, idx: usize) {
+        if self.core.history[idx].timing.finished_at().is_none() {
+            self.core.history[idx].timing.finish();
+        }
+    }
+
     /// Begin a new streaming response.
     //
     // Phase 1 wiring: delegates to machine.on_first_token() and syncs the
@@ -1009,6 +1024,12 @@ impl ChatSessionState {
             self.finish_streaming_entry(idx);
         }
 
+        // Safety net: finalize any still-pending thinking entry (pure-reasoning
+        // streams that never produced a content token). Must run before the
+        // StreamingPhase drop clears the index.
+        if let Some(idx) = self.core.ephemeral.machine.streaming_thinking_entry_index() {
+            self.finish_thinking_entry(idx);
+        }
         if let Err(e) = self.core.ephemeral.machine.on_stream_completed_finished() {
             tracing::warn!(
                 current_phase = ?self.core.ephemeral.machine.kind(),
@@ -1028,6 +1049,13 @@ impl ChatSessionState {
         // Set finished_at on the assistant entry.
         if let Some(idx) = self.core.ephemeral.machine.streaming_entry_index() {
             self.finish_streaming_entry(idx);
+        }
+
+        // Safety net: finalize any still-pending thinking entry so its duration
+        // resolves even if reasoning was interrupted. Must run before cancel()
+        // drops the StreamingPhase and clears streaming_thinking_entry_index().
+        if let Some(idx) = self.core.ephemeral.machine.streaming_thinking_entry_index() {
+            self.finish_thinking_entry(idx);
         }
         if let Err(e) = self.core.ephemeral.machine.cancel() {
             tracing::warn!(
