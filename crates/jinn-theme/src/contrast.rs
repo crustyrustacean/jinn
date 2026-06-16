@@ -186,6 +186,26 @@ pub fn darken(color: Color, factor: f32) -> Color {
     )
 }
 
+/// Lightens a color by pushing each RGB channel toward white.
+///
+/// A `factor` of `1.0` returns the color unchanged (or its RGB equivalent).
+/// Larger factors move each channel proportionally closer to 255. Named
+/// and indexed colors are converted to RGB first via [`to_rgb`].
+pub fn lighten(color: Color, factor: f32) -> Color {
+    let (r, g, b) = to_rgb(color);
+    Color::Rgb(
+        (255.0 - (255.0 - f32::from(r)) / factor)
+            .round()
+            .clamp(0.0, 255.0) as u8,
+        (255.0 - (255.0 - f32::from(g)) / factor)
+            .round()
+            .clamp(0.0, 255.0) as u8,
+        (255.0 - (255.0 - f32::from(b)) / factor)
+            .round()
+            .clamp(0.0, 255.0) as u8,
+    )
+}
+
 #[cfg(test)]
 mod tests {
     #![allow(clippy::expect_used, clippy::indexing_slicing, reason = "test code")]
@@ -346,5 +366,43 @@ mod tests {
         let result = darken(Color::Green, 0.5);
         // Then green channel is halved.
         assert_eq!(result, Color::Rgb(0, 103, 0)); // 205 * 0.5 = 102.5 → rounds to 103
+    }
+
+    // --- lighten ---
+
+    #[rstest::rstest]
+    fn lighten_brightens_dark_rusty_color() {
+        // Given a dark rusty color (the quake bar background).
+        // When lightening by 1.5.
+        let result = lighten(Color::Rgb(42, 28, 24), 1.5);
+        let Color::Rgb(r, g, b) = result else {
+            panic!("expected Rgb, got {result:?}");
+        };
+
+        // Then every channel is brighter than the input.
+        assert!(r > 42 && g > 28 && b > 24, "expected brighter result, got {result:?}");
+    }
+
+    #[rstest::rstest]
+    fn lighten_by_one_is_passthrough() {
+        // Given Cyan (0, 205, 205).
+        // When lightening by 1.0 (no change).
+        let result = lighten(Color::Cyan, 1.0);
+        // Then the color is unchanged.
+        assert_eq!(result, Color::Rgb(0, 205, 205));
+    }
+
+    #[rstest::rstest]
+    fn lighten_large_factor_does_not_overflow() {
+        // Given White (229, 229, 229 in this palette) and a large factor.
+        // When lightening by 100.0.
+        let result = lighten(Color::White, 100.0);
+        let Color::Rgb(r, g, b) = result else {
+            panic!("expected Rgb, got {result:?}");
+        };
+
+        // Then channels approach 255 but never overflow u8.
+        assert!(r <= 255 && g <= 255 && b <= 255, "channels overflowed: {result:?}");
+        assert!(r > 229, "expected brightening toward 255, got {result:?}");
     }
 }
