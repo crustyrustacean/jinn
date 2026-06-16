@@ -46,20 +46,34 @@ anstyle-lossy = { workspace = true }
 anstyle = { workspace = true }
 reasoning-parser = "1.2"
 regex = { workspace = true }
-diesel = { workspace = true }
+dao = { workspace = true }
 tempfile = { workspace = true }
 twox-hash = { workspace = true }
 dashmap = { workspace = true }
 mlua = { workspace = true }
 
+# Schema + migrations — the single source of truth for the SQLite schema.
+# Consumed by build.rs (compile-time validation DB) and by the runtime migrator.
+# See the dao crate README for the schema-crate pattern.
+jinn-session-schema = { workspace = true, features = ["testing"] }
+
 # Actor framework
 kameo = { workspace = true }
 kameo_actors = { workspace = true }
 
+# SQLite driver — dao wraps rusqlite but the migrator and tests use the raw
+# `rusqlite::Connection` (via `pool.with_conn`) for FK toggles and row-by-row
+# JSON surgery that dao's typed DAO layer doesn't cover.
+rusqlite = { workspace = true }
 [dev-dependencies]
 rstest = { workspace = true }
 jinn-testutil = { workspace = true }
 tokio = { workspace = true, features = ["test-util"] }
+
+
+[build-dependencies]
+rusqlite = { workspace = true }
+jinn-session-schema = { workspace = true }
 
 [target.'cfg(windows)'.dependencies]
 # kill_tree provides Toolhelp32-based process-tree termination on Windows.
