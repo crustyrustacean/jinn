@@ -76,6 +76,7 @@ mod tests {
             ("infopopup_title", theme.infopopup_title),
             ("infopopup_border", theme.infopopup_border),
             ("infopopup_fg", theme.infopopup_fg),
+            ("quake_bar_bg", theme.quake_bar_bg),
         ];
 
         for (name, color) in &fields {
