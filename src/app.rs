@@ -154,10 +154,12 @@ impl App {
         // Create the session store - uses --db-path if provided, otherwise
         // the platform default.
         let session_store = {
-            let store = match cli.db_path_opt() {
-                Some(path) => SqliteSessionStore::open_or_create(path),
-                None => SqliteSessionStore::new(),
-            };
+            let store = self.runtime.block_on(async {
+                match cli.db_path_opt() {
+                    Some(path) => SqliteSessionStore::open_or_create(path).await,
+                    None => SqliteSessionStore::new().await,
+                }
+            });
             SessionStoreService::new(Arc::new(store.change_context(AppError)?))
         };
 
