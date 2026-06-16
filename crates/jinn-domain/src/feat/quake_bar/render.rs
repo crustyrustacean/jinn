@@ -8,7 +8,7 @@
 //! Layout, top to bottom:
 //! - header: centered "Session" (left half) `|` "Global" (right half),
 //!   `=` separators in muted text
-//! - session data row: live prune-context-pending token count
+//! - session data row: count of entries queued for prune
 //! - bright divider
 //! - command log (0..20 rows)
 //! - muted divider
@@ -76,10 +76,10 @@ pub fn render_quake_bar(frame: &mut Frame<'_>, area: Rect, ctx: &RenderCtx) {
         theme.muted_text,
     );
 
-    // Session data row: live prune-context-pending tokens.
-    let pending = state.active_session().accumulated_overrides_total();
+    // Session data row: count of distinct entries pending prune (shield/compaction never reach the buffer).
+    let pending = state.active_session().accumulated_prune_count();
     let data = Line::from(Span::styled(
-        format!("Prune ctx pending: {pending} tok"),
+        format!("Prune candidates queued: {pending}"),
         Style::default().fg(theme.primary_text).bg(bg),
     ));
     frame.render_widget(
@@ -330,7 +330,7 @@ mod tests {
     }
 
     #[test]
-    fn session_row_shows_pending_token_count() {
+    fn session_row_shows_prune_candidate_count() {
         // Given a quake-bar state.
         let state = quake_state_with_log(&[]);
         let (mut terminal, area) = setup_term(80, 24);
@@ -343,15 +343,15 @@ mod tests {
             })
             .unwrap();
 
-        // Then the data row contains the "Prune ctx pending" label.
+        // Then the data row contains the "Prune candidates queued" label.
         let buffer = terminal.backend().buffer().clone();
         let data_y = area.y + 1;
         let symbols: String = (area.x..area.x + area.width)
             .filter_map(|x| buffer.cell((x, data_y)).map(|c| c.symbol().to_owned()))
             .collect();
         assert!(
-            symbols.contains("Prune ctx pending"),
-            "session data row should show the pending token label"
+            symbols.contains("Prune candidates queued"),
+            "session data row should show the prune-candidate count label"
         );
     }
 

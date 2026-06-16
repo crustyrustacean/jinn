@@ -412,6 +412,7 @@ pub fn init() -> Keymap<KeyEvent, Scope, Intent, KeyCategory> {
     // the Input scope, whose catch-all would otherwise swallow it as a backtick.
     keymap.scope(Scope::QuakeBar, |b| {
         b.bind("<esc>", Intent::CloseQuakeBar, KeyCategory::General)
+            .bind("<M-`>", Intent::CloseQuakeBar, KeyCategory::General)
             .bind("<enter>", Intent::SubmitQuakeBar, KeyCategory::Input)
             .bind("<pgup>", Intent::QuakeBarScrollUp, KeyCategory::Navigation)
             .bind("<pgdn>", Intent::QuakeBarScrollDown, KeyCategory::Navigation)
@@ -697,6 +698,35 @@ mod tests {
         assert!(
             matches!(intent, Intent::CloseQuakeBar),
             "ESC must resolve to CloseQuakeBar; got {intent:?}",
+        );
+    }
+
+    #[test]
+    fn quake_bar_scope_meta_backtick_fires_close_quake_bar() {
+        // Given a keymap queried in QuakeBar scope.
+        use crate::app::WhichKeyInstance;
+        use jinn_domain::{Key, KeyEvent, Modifiers};
+
+        let keymap = init();
+        let mut wk = WhichKeyInstance::new(keymap, Scope::QuakeBar);
+
+        // When pressing <M-`> (the scoped close binding, overriding the global opener).
+        let meta_backtick = KeyEvent {
+            key: Key::Char('`'),
+            modifiers: Modifiers {
+                ctrl: false,
+                alt: true,
+                shift: false,
+            },
+        };
+        let intent = wk.handle_key(meta_backtick);
+
+        // Then it resolves to CloseQuakeBar, making <M-`> a toggle (specific-scope-wins
+        // over the global OpenQuakeBar).
+        let intent = intent.expect("<M-`> in QuakeBar scope must fire an intent");
+        assert!(
+            matches!(intent, Intent::CloseQuakeBar),
+            "<M-`> in QuakeBar scope must resolve to CloseQuakeBar (toggle); got {intent:?}",
         );
     }
 
