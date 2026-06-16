@@ -338,6 +338,14 @@ impl ActorSystemBuilder {
                 },
             ).restart_policy(kameo::supervision::RestartPolicy::Never).spawn().await;
 
+        // Quake bar: owns the command log; sole subscriber of SubmitQuakeBarCommand.
+        let _quake_bar = jinn_domain::feat::quake_bar::quake_bar_actor::QuakeBarActor::supervise(&root,
+            jinn_domain::feat::quake_bar::quake_bar_actor::QuakeBarActorDeps {
+                deps: actor_deps.clone(),
+                state: state.clone(),
+            },
+        ).restart_policy(kameo::supervision::RestartPolicy::Never).spawn().await;
+
         // ── Domain actors ──────────────────────────────────────────────────
 
         // LLM streaming actor.
