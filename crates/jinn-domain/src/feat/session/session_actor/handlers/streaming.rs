@@ -1605,7 +1605,6 @@ mod tests {
         }
     }
 
-
     #[tokio::test]
     async fn stream_completed_sets_finished_at_on_assistant_entry() {
         // Given a session actor with a session in streaming state and a token.
