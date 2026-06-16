@@ -23,7 +23,7 @@ pub use anthropic::AnthropicFactory;
 pub use google::GoogleFactory;
 
 pub use backend::{Backend, BackendError};
-pub use fake::{FakeLlmServiceFactory, TOOL_LOOP_TRIGGER};
+pub use fake::{FakeLlmServiceFactory, ScriptedResponse, TOOL_LOOP_TRIGGER};
 pub use llm_message::LlmMessage;
 pub use no_providers::{NO_PROVIDER_ID, NoProvidersAvailableFactory};
 pub use openai_compat::{OpenAiCompatibleFactory, OpenAiCompatibleService, ProviderConfig};

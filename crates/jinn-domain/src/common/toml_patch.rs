@@ -52,8 +52,6 @@ use std::collections::hash_map::Entry;
 use toml_edit::{ArrayOfTables, Item, Table, Value};
 use wherror::Error;
 
-use crate::feat::plugin_dispatch::PluginFireService;
-
 /// Errors that can occur during document patching.
 ///
 /// Opaque by design — callers add context via `error_stack::Report::attach`
