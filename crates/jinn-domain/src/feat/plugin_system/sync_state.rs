@@ -17,7 +17,7 @@ use super::bindings;
 use super::command::PluginCommand;
 use super::plugin_data::PluginData;
 use crate::SessionId;
-use crate::feat::plugin_dispatch::{HookContext, PluginHookSite, ProvidesSessionId};
+use crate::feat::plugin_dispatch::{HookContext, PluginHookSite};
 
 /// Stored hook data for a loaded plugin.
 pub struct PluginHooks {
@@ -221,12 +221,11 @@ impl SyncHook<'_> {
         let mut ctx_json = ctx.value().clone();
 
         // 2. Inject plugin_data from DashMap (snapshot at call time).
-        //    Scoped by session_id when available.
-        let session_id = ctx.session_id();
-        if let Some(data) = self
-            .plugin_data
-            .get_for_session(session_id.as_ref(), &self.plugin_name)
-        {
+        //    Global plugins are scoped by name; attached plugins do not have
+        //    sync hooks today (on_session_preview was removed from the judge),
+        //    so the global read is sufficient here. Instance-scoped data is
+        //    read via the async path (run_single_hook / build_async_ctx).
+        if let Some(data) = self.plugin_data.get(&self.plugin_name) {
             let obj = ctx_json.as_object_mut().ok_or_else(|| {
                 Report::new(PluginSyncStateError)
                     .attach("ctx_data did not serialize to a JSON object")
@@ -239,6 +238,7 @@ impl SyncHook<'_> {
             self.lua,
             &ctx_json,
             &self.plugin_name,
+            None,
             self.plugin_data,
             &self.emit_tx,
             &self.in_flight,
@@ -400,6 +400,7 @@ pub(crate) fn build_sync_ctx(
     lua: &Lua,
     ctx_json: &serde_json::Value,
     plugin_name: &str,
+    instance_id: Option<&str>,
     plugin_data: &PluginData,
     emit_tx: &kanal::Sender<PluginCommand>,
     in_flight: &super::InFlightRequests,
@@ -414,6 +415,14 @@ pub(crate) fn build_sync_ctx(
     }
 
     // ctx.plugin_name — let Lua refer to itself by name.
+    ctx.set("plugin_name", plugin_name)?;
+
+    // ctx.instance_id — stable unique identity of this attachment
+    // (nil for global plugins). Set alongside plugin_name so hooks and
+    // tool handlers know which instance they are running for.
+    if let Some(id) = instance_id {
+        ctx.set("instance_id", id)?;
+    }
     ctx.set("plugin_name", plugin_name)?;
 
     // ctx.emit(cmd, data) — fire-and-forget via channel.
@@ -453,37 +462,30 @@ pub(crate) fn build_sync_ctx(
     {
         let pd = plugin_data.clone();
         let pname = plugin_name.to_owned();
-        let sid = extract_sync_session_id(ctx_json);
         let set_data_fn = lua.create_function(move |lua, value: mlua::Value| {
             let json = bindings::value_to_json(lua, &value).unwrap_or_default();
-            pd.set_for_session(sid.as_ref(), &pname, json);
+            pd.set(&pname, json);
             Ok(())
         })?;
         ctx.set("set_plugin_data", set_data_fn)?;
     }
 
-    // ctx.merge_plugin_data(value) — shallow-merge into shared DashMap.
     {
         let pd = plugin_data.clone();
         let pname = plugin_name.to_owned();
-        let sid = extract_sync_session_id(ctx_json);
         let merge_data_fn = lua.create_function(move |lua, value: mlua::Value| {
             let json = bindings::value_to_json(lua, &value).unwrap_or_default();
-            pd.merge_for_session(sid.as_ref(), &pname, json);
+            pd.merge(&pname, json);
             Ok(())
         })?;
         ctx.set("merge_plugin_data", merge_data_fn)?;
     }
 
-    // ctx.get_plugin_data() — reads the live shared DashMap.
     {
         let pd = plugin_data.clone();
         let pname = plugin_name.to_owned();
-        let sid = extract_sync_session_id(ctx_json);
         let get_data_fn = lua.create_function(move |lua, (): ()| {
-            let json = pd
-                .get_for_session(sid.as_ref(), &pname)
-                .unwrap_or_else(|| serde_json::json!({}));
+            let json = pd.get(&pname).unwrap_or_else(|| serde_json::json!({}));
             bindings::json_to_lua_value(lua, &json)
         })?;
         ctx.set("get_plugin_data", get_data_fn)?;

@@ -68,6 +68,17 @@ impl EntryTiming {
         }
     }
 
+    /// Return the recorded finish time, if any.
+    ///
+    /// `None` for `Instant` or when the stream has not yet finished.
+    #[must_use]
+    pub fn finished_at(&self) -> Option<Timestamp> {
+        match self {
+            Self::Streamed { finished_at, .. } => *finished_at,
+            _ => None,
+        }
+    }
+
     /// Return the primary timestamp for this entry.
     ///
     /// For `Instant`, this is `at`. For `Streamed`, this is `dispatched_at`.
@@ -99,32 +110,45 @@ impl EntryTiming {
                 ..
             } => {
                 let span = ft.since(*dispatched_at).ok()?;
-                Some(jiff::SignedDuration::from_secs(span.get_seconds()))
+                let millis = span.total(jiff::Unit::Millisecond).ok()?;
+                Some(jiff::SignedDuration::from_millis(millis.round() as i64))
             }
         }
     }
 
-    /// Return the total generation duration, if available.
+    /// Return the active stream duration, if available.
     ///
-    /// For `Streamed` entries with a recorded `finished_at`, this is the
-    /// elapsed time between dispatch and completion.
-    /// Returns `None` for `Instant` entries or when `finished_at` has not
-    /// been recorded yet.
-    /// Returns `None` if timestamps are not monotonic (should not happen).
+    /// For `Streamed` entries with both `first_token_at` and `finished_at`
+    /// recorded, this is the elapsed time between the first token and
+    /// completion — i.e. how long this entry actively streamed content,
+    /// excluding the pre-first-token wait (TTFT).
+    ///
+    /// This definition works for both burst and streaming providers: a burst
+    /// response (everything arriving at once) yields a near-zero duration, while
+    /// a streaming response yields the real generation span.
+    ///
+    /// Returns `None` for `Instant` entries, when `first_token_at` or
+    /// `finished_at` have not been recorded, or if timestamps are not
+    /// monotonic (should not happen).
     #[must_use]
     pub fn total_duration(&self) -> Option<jiff::SignedDuration> {
         match self {
             Self::Instant { .. }
             | Self::Streamed {
+                first_token_at: None,
+                ..
+            }
+            | Self::Streamed {
                 finished_at: None, ..
             } => None,
             Self::Streamed {
-                dispatched_at,
+                first_token_at: Some(first),
                 finished_at: Some(fin),
                 ..
             } => {
-                let span = fin.since(*dispatched_at).ok()?;
-                Some(jiff::SignedDuration::from_secs(span.get_seconds()))
+                let span = fin.since(*first).ok()?;
+                let millis = span.total(jiff::Unit::Millisecond).ok()?;
+                Some(jiff::SignedDuration::from_millis(millis.round() as i64))
             }
         }
     }
@@ -350,10 +374,27 @@ mod tests {
         // Then it returns None.
         assert!(timing.total_duration().is_none());
     }
+    #[test]
+    fn total_duration_returns_none_when_first_token_not_recorded() {
+        // Given a streamed timing with finished_at set but no first_token_at.
+        let dispatched = Timestamp::now();
+        let finished = dispatched
+            .checked_add(jiff::SignedDuration::from_secs(5))
+            .expect("5s later");
+        let timing = EntryTiming::Streamed {
+            dispatched_at: dispatched,
+            first_token_at: None,
+            finished_at: Some(finished),
+        };
+
+        // When querying total_duration.
+        // Then it returns None (active span requires both timestamps).
+        assert!(timing.total_duration().is_none());
+    }
 
     #[test]
     fn total_duration_returns_duration_when_finished_recorded() {
-        // Given a streamed timing with a 15-second total duration.
+        // Given a streamed timing with first_token at 2s and finished at 15s
         let dispatched = Timestamp::now();
         let finished = dispatched
             .checked_add(jiff::SignedDuration::from_secs(15))
@@ -371,7 +412,52 @@ mod tests {
         // When querying total_duration.
         let dur = timing.total_duration().expect("duration should be present");
 
-        // Then the duration is 15 seconds.
-        assert_eq!(dur.as_secs(), 15);
+        // Then the active stream duration is 15 - 2 = 13 seconds (excludes TTFT).
+        assert_eq!(dur.as_secs(), 13);
+    }
+
+    #[test]
+    fn ttft_preserves_subsecond_precision() {
+        // Given a streamed timing with a 450ms gap between dispatch and first token.
+        let dispatched = "2024-01-15T10:30:00Z".parse::<Timestamp>().expect("valid");
+        let first_token = dispatched
+            .checked_add(jiff::SignedDuration::from_millis(450))
+            .expect("450ms later");
+        let timing = EntryTiming::Streamed {
+            dispatched_at: dispatched,
+            first_token_at: Some(first_token),
+            finished_at: None,
+        };
+
+        // When querying ttft.
+        let ttft = timing.ttft().expect("ttft should be present");
+
+        // Then the duration retains the sub-second part (450ms, not truncated to 0).
+        assert_eq!(ttft.as_secs(), 0);
+        assert_eq!(ttft.subsec_millis(), 450);
+    }
+
+    #[test]
+    fn total_duration_preserves_subsecond_precision() {
+        // Given a streamed timing with first_token at 200ms and finished at 2.45s.
+        let dispatched = "2024-01-15T10:30:00Z".parse::<Timestamp>().expect("valid");
+        let first_token = dispatched
+            .checked_add(jiff::SignedDuration::from_millis(200))
+            .expect("200ms later");
+        let finished = dispatched
+            .checked_add(jiff::SignedDuration::from_millis(2_450))
+            .expect("2.45s later");
+        let timing = EntryTiming::Streamed {
+            dispatched_at: dispatched,
+            first_token_at: Some(first_token),
+            finished_at: Some(finished),
+        };
+
+        // When querying total_duration.
+        let dur = timing.total_duration().expect("duration should be present");
+
+        // Then the active stream duration is 2.45s - 0.2s = 2.25s (excludes TTFT).
+        assert_eq!(dur.as_secs(), 2);
+        assert_eq!(dur.subsec_millis(), 250);
     }
 }

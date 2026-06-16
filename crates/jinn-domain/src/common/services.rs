@@ -272,7 +272,7 @@ impl PluginFire for NoopPluginFire {
         _session: SessionRegistryId,
         hook: &str,
         _ctx: &serde_json::Value,
-        _enabled_plugins: Vec<String>,
+        _enabled_instances: Vec<crate::feat::plugin_system::PluginInstanceId>,
     ) -> Result<(), Report<PluginFireError>> {
         tracing::debug!(hook, "noop plugin fire for session");
         Ok(())
@@ -292,6 +292,7 @@ impl PluginFire for NoopPluginFire {
         &self,
         _target: Option<SessionRegistryId>,
         _session_id: &crate::protocol::SessionId,
+        _parent_session_id: Option<&crate::protocol::SessionId>,
         _plugin_name: &str,
         _tool_name: &str,
         _arguments: &serde_json::Value,
@@ -338,7 +339,7 @@ pub struct NoopSessionPluginRegistry;
 impl crate::feat::plugin_system::SessionPluginRegistry for NoopSessionPluginRegistry {
     async fn create_session_registry(
         &self,
-        _plugin_names: Vec<String>,
+        _instances: Vec<(crate::feat::plugin_system::PluginInstanceId, String)>,
         _origin_session_id: crate::protocol::SessionId,
     ) -> Result<
         crate::feat::plugin_system::CreateSessionRegistryResult,

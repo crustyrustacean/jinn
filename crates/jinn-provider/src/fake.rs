@@ -7,6 +7,7 @@
 //! return `end_turn`.
 
 use parking_lot::Mutex;
+use std::collections::VecDeque;
 use std::sync::Arc;
 use std::sync::atomic::{AtomicUsize, Ordering};
 
@@ -26,6 +27,38 @@ use crate::stream_event::StreamEvent;
 /// on subsequent calls.
 pub const TOOL_LOOP_TRIGGER: &str = "__tool_loop_test__";
 
+/// A single scripted response for the stateful FIFO queue.
+///
+/// `tokens` are emitted as text; `tool_calls` are emitted as tool-use
+/// events after the tokens. The stream ends with `Done`; the stop reason is
+/// `ToolUse` when `tool_calls` is non-empty, `EndTurn` otherwise.
+#[derive(Debug, Clone)]
+pub struct ScriptedResponse {
+    /// Text tokens to emit before any tool calls.
+    pub tokens: Vec<String>,
+    /// Tool calls to emit after the text tokens.
+    pub tool_calls: Vec<ToolCall>,
+}
+
+impl ScriptedResponse {
+    /// Build a text-only scripted response.
+    #[must_use]
+    pub fn text(token: &str) -> Self {
+        Self {
+            tokens: vec![token.to_owned()],
+            tool_calls: vec![],
+        }
+    }
+
+    /// Build a scripted response that emits a single tool call.
+    #[must_use]
+    pub fn tool_call(tool_call: ToolCall) -> Self {
+        Self {
+            tokens: vec![],
+            tool_calls: vec![tool_call],
+        }
+    }
+}
 /// Factory that creates fake LLM service instances.
 ///
 /// Each service yields the tokens the factory was configured with.
@@ -48,6 +81,10 @@ pub struct FakeLlmServiceFactory {
     tool_loop_subsequent_tokens: Vec<String>,
     /// Messages received by all services created from this factory.
     received_calls: Arc<Mutex<Vec<Vec<LlmMessage>>>>,
+    /// Shared FIFO queue of scripted responses. Each `chat_stream_with_tools`
+    /// call pops the next entry; when empty, the static fields above are used
+    /// (preserving the legacy `new`/`with_tool_calls`/`with_tool_loop` behavior).
+    scripted_queue: Arc<Mutex<VecDeque<ScriptedResponse>>>,
 }
 
 impl FakeLlmServiceFactory {
@@ -61,6 +98,7 @@ impl FakeLlmServiceFactory {
             tool_loop_first_tool_calls: vec![],
             tool_loop_subsequent_tokens: vec![],
             received_calls: Arc::new(Mutex::new(Vec::new())),
+            scripted_queue: Arc::new(Mutex::new(VecDeque::new())),
         }
     }
 
@@ -78,6 +116,7 @@ impl FakeLlmServiceFactory {
             tool_loop_first_tool_calls: vec![],
             tool_loop_subsequent_tokens: vec![],
             received_calls: Arc::new(Mutex::new(Vec::new())),
+            scripted_queue: Arc::new(Mutex::new(VecDeque::new())),
         }
     }
 
@@ -104,6 +143,7 @@ impl FakeLlmServiceFactory {
             tool_loop_first_tool_calls: first_tool_calls,
             tool_loop_subsequent_tokens: subsequent_tokens,
             received_calls: Arc::new(Mutex::new(Vec::new())),
+            scripted_queue: Arc::new(Mutex::new(VecDeque::new())),
         }
     }
 
@@ -135,6 +175,16 @@ impl FakeLlmServiceFactory {
     pub fn clear_calls(&self) {
         self.received_calls.lock().clear();
     }
+
+    /// Push a scripted response onto the FIFO queue.
+    ///
+    /// The next `chat_stream_with_tools` call pops this response (before any
+    /// static fallback). Queue entries are served in FIFO order. Use this to
+    /// supply distinct canned responses for successive LLM calls (e.g. an
+    /// origin turn followed by several judge-child verdicts).
+    pub fn push_scripted_response(&self, resp: ScriptedResponse) {
+        self.scripted_queue.lock().push_back(resp);
+    }
 }
 
 impl LlmServiceFactory for FakeLlmServiceFactory {
@@ -146,9 +196,9 @@ impl LlmServiceFactory for FakeLlmServiceFactory {
             tool_loop_first_tool_calls: self.tool_loop_first_tool_calls.clone(),
             tool_loop_subsequent_tokens: self.tool_loop_subsequent_tokens.clone(),
             received_calls: self.received_calls.clone(),
+            scripted_queue: self.scripted_queue.clone(),
         }))
     }
-
     fn name(&self) -> &'static str {
         "FakeLlm"
     }
@@ -168,6 +218,8 @@ struct FakeLlmService {
     tool_loop_subsequent_tokens: Vec<String>,
     /// Shared call recording with the parent factory.
     received_calls: Arc<Mutex<Vec<Vec<LlmMessage>>>>,
+    /// Shared FIFO queue of scripted responses (with the parent factory).
+    scripted_queue: Arc<Mutex<VecDeque<ScriptedResponse>>>,
 }
 
 impl FakeLlmService {
@@ -182,6 +234,50 @@ impl FakeLlmService {
     /// Returns true if the messages contain the tool loop trigger.
     fn is_tool_loop_trigger(messages: &[LlmMessage]) -> bool {
         Self::last_user_content(messages).is_some_and(|c| c.contains(TOOL_LOOP_TRIGGER))
+    }
+
+    /// Builds a stream from a single scripted response.
+    #[allow(
+        clippy::needless_pass_by_value,
+        reason = "consumes resp by ownership; cheap struct"
+    )]
+    fn build_scripted_stream(
+        resp: ScriptedResponse,
+    ) -> Vec<Result<StreamEvent, Report<LlmServiceError>>> {
+        let mut events: Vec<Result<StreamEvent, Report<LlmServiceError>>> = Vec::new();
+
+        for token in &resp.tokens {
+            events.push(Ok(StreamEvent::Text(token.clone())));
+        }
+
+        if resp.tool_calls.is_empty() {
+            events.push(Ok(StreamEvent::Done {
+                stop_reason: StopReason::EndTurn,
+                usage: None,
+            }));
+        } else {
+            for (index, tc) in resp.tool_calls.iter().enumerate() {
+                events.push(Ok(StreamEvent::ToolUseStart {
+                    index,
+                    id: tc.id.clone(),
+                    name: tc.name.clone(),
+                }));
+                events.push(Ok(StreamEvent::ToolUseInputDelta {
+                    index,
+                    partial_json: tc.arguments.clone(),
+                }));
+                events.push(Ok(StreamEvent::ToolUseComplete {
+                    index,
+                    tool_call: tc.clone(),
+                }));
+            }
+            events.push(Ok(StreamEvent::Done {
+                stop_reason: StopReason::ToolUse,
+                usage: None,
+            }));
+        }
+
+        events
     }
 
     /// Builds a `tool_use` stream for the first call of a tool loop.
@@ -260,6 +356,13 @@ impl LlmService for FakeLlmService {
     ) -> Result<ToolStream, Report<LlmServiceError>> {
         // Record the messages for test observability.
         self.received_calls.lock().push(messages.clone());
+
+        // Scripted FIFO queue takes precedence over the static fields.
+        // Each call pops the next response; when empty, fall back to the
+        // static (tool-loop / tokens+tool_calls) behavior below.
+        if let Some(resp) = self.scripted_queue.lock().pop_front() {
+            return Ok(Box::pin(stream::iter(Self::build_scripted_stream(resp))));
+        }
 
         // Check for multi-turn tool loop trigger.
         if let Some(ref counter) = self.tool_loop_call_count

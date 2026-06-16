@@ -11,7 +11,7 @@ use super::async_handle::PluginJob;
 use super::async_thread::{RequestHandler, run_async_thread};
 use super::command::PluginCommand;
 use super::loader::{PluginMeta, discover_plugins, load_all};
-use super::plugin_data::PluginData;
+use super::plugin_data::{GlobalPluginData, PluginData};
 use super::sync_state::SyncPlugins;
 use super::tool_def::PluginToolMetadata;
 use super::{async_handle::AsyncPluginHandle, sync_handle::PluginSyncHandle};
@@ -76,6 +76,7 @@ impl PluginSystem {
         request_handler: RequestHandler,
     ) -> PluginSystemBuildResult {
         let plugin_data = PluginData::new();
+        let global_data = GlobalPluginData::new();
 
         // Emit channel: constructed sync (sync Lua hooks call sync `.send()`),
         // drainer uses async recv via `to_async()`.
@@ -126,6 +127,7 @@ impl PluginSystem {
         let async_plugins = plugins;
         let async_global_plugins = global_plugins;
         let async_plugin_data = plugin_data.clone();
+        let async_global_data = global_data.clone();
         let async_emit_tx = emit_tx.clone_async();
         let async_request_handler = request_handler.clone();
         let in_flight = super::InFlightRequests::new();
@@ -140,13 +142,36 @@ impl PluginSystem {
             .spawn(move || {
                 let async_lua = mlua::Lua::new();
                 let async_result = load_all(&async_lua, &async_global_plugins);
+
+                // Attachable plugin TOOL HANDLERS load into the global Lua state here
+                // so `execute_plugin_tool`'s global path (`target: None`) can find
+                // them for any calling session. The attachable plugins' HOOKS are
+                // discarded — attachable hooks still fire per-session via
+                // `load_session_plugins` when a session attaches the plugin.
+                // This makes plugin tool execution global + stateless like builtins.
+                let attachable_metas: Vec<PluginMeta> = async_plugins
+                    .iter()
+                    .filter(|m| m.kind == super::loader::PluginKind::Attachable)
+                    .cloned()
+                    .collect();
+                let mut global_tools = async_result.tools;
+                if !attachable_metas.is_empty() {
+                    let attachable_result = load_all(&async_lua, &attachable_metas);
+                    let attachable_tool_count = attachable_result.tools.len();
+                    global_tools.extend(attachable_result.tools);
+                    tracing::info!(
+                        attachable_tools = attachable_tool_count,
+                        "loaded attachable plugin tool handlers into global Lua state"
+                    );
+                }
                 run_async_thread(
                     job_rx,
                     async_lua,
                     async_result.hooks,
-                    async_result.tools,
+                    global_tools,
                     async_plugins,
                     async_plugin_data,
+                    async_global_data,
                     async_emit_tx,
                     async_request_handler,
                     async_in_flight,
