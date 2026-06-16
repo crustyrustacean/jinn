@@ -6,9 +6,9 @@ use crate::common::focus::{FocusScope, ScopeStack};
 use crate::common::tui_signals::TuiSignals;
 use crate::feat::cwd_input::state::CwdInputState;
 use crate::feat::preferences_actor::UserPreferences;
-use crate::feat::quake_bar::state::QuakeBarState;
 use crate::feat::preferences_actor::app_state_file::AppStateFile;
 use crate::feat::pruner_accumulation_input::state::PrunerAccumulationInputState;
+use crate::feat::quake_bar::state::QuakeBarState;
 use crate::feat::rename_session_input::state::RenameSessionInputState;
 
 use crate::feat::session_lifecycle::arg_input_state::ArgInputState;

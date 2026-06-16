@@ -35,7 +35,6 @@ pub enum FocusScope {
     /// Quake bar - global overlay console. Captures all keystrokes while open.
     QuakeBar,
 
-
     /// Sidebar resize mode - adjusting sidebar width with h/l keys.
     SidebarResize,
 }

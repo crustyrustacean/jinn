@@ -380,7 +380,10 @@ mod tests {
         };
 
         // Then every channel is brighter than the input.
-        assert!(r > 42 && g > 28 && b > 24, "expected brighter result, got {result:?}");
+        assert!(
+            r > 42 && g > 28 && b > 24,
+            "expected brighter result, got {result:?}"
+        );
     }
 
     #[rstest::rstest]
@@ -401,8 +404,11 @@ mod tests {
             panic!("expected Rgb, got {result:?}");
         };
 
-        // Then channels approach 255 but never overflow u8.
-        assert!(r <= 255 && g <= 255 && b <= 255, "channels overflowed: {result:?}");
-        assert!(r > 229, "expected brightening toward 255, got {result:?}");
+        // Then channels clamp at 255 without overshooting.
+        assert_eq!(
+            (r, g, b),
+            (255, 255, 255),
+            "expected clamp at 255, got {result:?}"
+        );
     }
 }

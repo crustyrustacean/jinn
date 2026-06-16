@@ -406,7 +406,33 @@ pub fn init() -> Keymap<KeyEvent, Scope, Intent, KeyCategory> {
             });
     });
 
+    // Quake Bar scope — the global overlay console. Captures every keystroke;
+    // only <esc> dismisses it. The opening <M-`> keybind is registered as a
+    // global binding (top-level, below) so it survives every scope — including
+    // the Input scope, whose catch-all would otherwise swallow it as a backtick.
+    keymap.scope(Scope::QuakeBar, |b| {
+        b.bind("<esc>", Intent::CloseQuakeBar, KeyCategory::General)
+            .bind("<enter>", Intent::SubmitQuakeBar, KeyCategory::Input)
+            .bind("<pgup>", Intent::QuakeBarScrollUp, KeyCategory::Navigation)
+            .bind("<pgdn>", Intent::QuakeBarScrollDown, KeyCategory::Navigation)
+            .bind("<backspace>", Intent::DeleteGrapheme, KeyCategory::Input)
+            .bind("<delete>", Intent::DeleteGraphemeForward, KeyCategory::Input)
+            .bind("<left>", Intent::MoveCursorLeft, KeyCategory::Input)
+            .bind("<right>", Intent::MoveCursorRight, KeyCategory::Input)
+            .bind("<home>", Intent::MoveCursorToStart, KeyCategory::Input)
+            .bind("<end>", Intent::MoveCursorToEnd, KeyCategory::Input)
+            .bind("<c-c>", Intent::CtrlClear, KeyCategory::General)
+            .catch_all(|key: KeyEvent| {
+                if let Key::Char(c) = key.key {
+                    Some(Intent::InsertChar { ch: c })
+                } else {
+                    None
+                }
+            });
+    });
 
+    // Global bindings — apply in every scope, with specific-scope-wins precedence.
+    keymap.bind_global("<M-`>", Intent::OpenQuakeBar, KeyCategory::General);
 
     keymap.on_mouse(|mouse: event::MouseEvent, _scope: &Scope| {
         match mouse.kind {
@@ -613,6 +639,92 @@ mod tests {
         assert!(
             matches!(intent, Intent::TriggerPlugin { .. }),
             "Alt+e must resolve to Intent::TriggerPlugin, got {intent:?}",
+        );
+    }
+
+    #[test]
+    fn backtick_in_input_scope_does_not_insert_literal_backtick() {
+        // Given a keymap with the global <M-`> binding, queried in Input scope.
+        use crate::app::WhichKeyInstance;
+        use jinn_domain::{Key, KeyEvent, Modifiers};
+
+        let keymap = init();
+        let mut wk = WhichKeyInstance::new(keymap, Scope::Input);
+
+        // When pressing <M-`> (Alt+backtick).
+        let alt_backtick = KeyEvent {
+            key: Key::Char('`'),
+            modifiers: Modifiers {
+                ctrl: false,
+                alt: true,
+                shift: false,
+            },
+        };
+        let intent = wk.handle_key(alt_backtick);
+
+        // Then it resolves to OpenQuakeBar, NOT a literal InsertChar('`').
+        let intent = intent.expect(
+            "<M-`> in Input scope must fire an intent; got None (global binding not found, catch-all regression)",
+        );
+        assert!(
+            matches!(intent, Intent::OpenQuakeBar),
+            "<M-`> must resolve to OpenQuakeBar, not InsertChar; got {intent:?}",
+        );
+    }
+
+    #[test]
+    fn quake_bar_scope_esc_fires_close_quake_bar() {
+        // Given a keymap queried in QuakeBar scope.
+        use crate::app::WhichKeyInstance;
+        use jinn_domain::{Key, KeyEvent, Modifiers};
+
+        let keymap = init();
+        let mut wk = WhichKeyInstance::new(keymap, Scope::QuakeBar);
+
+        // When pressing ESC.
+        let esc = KeyEvent {
+            key: Key::Esc,
+            modifiers: Modifiers {
+                ctrl: false,
+                alt: false,
+                shift: false,
+            },
+        };
+        let intent = wk.handle_key(esc);
+
+        // Then it resolves to CloseQuakeBar (which pops the quake bar scope).
+        let intent = intent.expect("ESC in QuakeBar scope must fire an intent");
+        assert!(
+            matches!(intent, Intent::CloseQuakeBar),
+            "ESC must resolve to CloseQuakeBar; got {intent:?}",
+        );
+    }
+
+    #[test]
+    fn quake_bar_scope_printable_char_routes_to_insert_char() {
+        // Given a keymap queried in QuakeBar scope.
+        use crate::app::WhichKeyInstance;
+        use jinn_domain::{Key, KeyEvent, Modifiers};
+
+        let keymap = init();
+        let mut wk = WhichKeyInstance::new(keymap, Scope::QuakeBar);
+
+        // When pressing a plain printable char.
+        let key_x = KeyEvent {
+            key: Key::Char('x'),
+            modifiers: Modifiers {
+                ctrl: false,
+                alt: false,
+                shift: false,
+            },
+        };
+        let intent = wk.handle_key(key_x);
+
+        // Then it resolves to InsertChar('x') (full keystroke capture).
+        let intent = intent.expect("printable char in QuakeBar scope must fire an intent");
+        assert!(
+            matches!(intent, Intent::InsertChar { ch: 'x' }),
+            "printable char must route to InsertChar; got {intent:?}",
         );
     }
 }
