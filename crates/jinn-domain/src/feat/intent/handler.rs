@@ -718,7 +718,6 @@ fn selected_entry_is_automated(state: &AppState) -> bool {
 }
 
 fn handle_sidebar_toggle_plugin(state: &mut AppState) -> IntentResult {
-    use crate::feat::attached_plugin::PluginInstanceId;
     use crate::feat::plugin_dispatch::protocol::command::{EnablePlugin, TogglePlugin};
     use crate::feat::ui::sidebar::sessions::state::SessionEntryKind;
 
