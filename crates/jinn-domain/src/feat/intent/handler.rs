@@ -718,7 +718,8 @@ fn selected_entry_is_automated(state: &AppState) -> bool {
 }
 
 fn handle_sidebar_toggle_plugin(state: &mut AppState) -> IntentResult {
-    use crate::feat::plugin_dispatch::protocol::command::TogglePlugin;
+    use crate::feat::attached_plugin::PluginInstanceId;
+    use crate::feat::plugin_dispatch::protocol::command::{EnablePlugin, TogglePlugin};
     use crate::feat::ui::sidebar::sessions::state::SessionEntryKind;
 
     let Some(index) = state.frontend.sessions_section.selected_index else {
@@ -730,32 +731,34 @@ fn handle_sidebar_toggle_plugin(state: &mut AppState) -> IntentResult {
     };
     match entry.kind {
         SessionEntryKind::Plugin { .. } => {
-            // The sidebar entry currently keys plugin rows by the parent session
-            // id; the instance id is resolved here by name against the origin.
-            // Phase 3 (per-instance entry id) will let us carry the instance id
-            // directly on the entry.
-            let session_id = entry
-                .parent_id
-                .clone()
-                .unwrap_or_else(|| entry.id.clone());
-            let instance_id = state
-                .session
-                .get(&session_id)
-                .and_then(|s| {
-                    s.core
-                        .attached_plugins
-                        .iter()
-                        .find(|p| p.label_or_name() == entry.title)
-                        .map(|p| p.instance_id.clone())
-                });
-            let Some(instance_id) = instance_id else {
+            // Plugin sidebar entries carry the instance id as their `id`
+            // (prefixed `i-...`). Resolve the instance directly from the
+            // origin's attached_plugins and toggle based on its CURRENT
+            // enabled state — enable if currently disabled, disable otherwise.
+            let session_id = entry.parent_id.clone().unwrap_or_else(|| entry.id.clone());
+            let Some(plugin) = state.session.get(&session_id).and_then(|s| {
+                s.core
+                    .attached_plugins
+                    .iter()
+                    .find(|p| p.instance_id.to_string() == entry.id.to_string())
+            }) else {
                 return IntentResult::empty();
             };
-            IntentResult::empty().message(TogglePlugin {
-                session_id,
-                plugin_name: entry.title.clone(),
-                instance_id,
-            })
+            let instance_id = plugin.instance_id.clone();
+            // Force-set the OPPOSITE of the current state.
+            if plugin.enabled {
+                IntentResult::empty().message(TogglePlugin {
+                    session_id,
+                    plugin_name: entry.title.clone(),
+                    instance_id,
+                })
+            } else {
+                IntentResult::empty().message(EnablePlugin {
+                    session_id,
+                    plugin_name: entry.title.clone(),
+                    instance_id,
+                })
+            }
         }
         SessionEntryKind::Session => IntentResult::empty(),
     }

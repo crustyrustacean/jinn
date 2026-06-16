@@ -391,7 +391,6 @@ impl PluginDispatchActor {
         .await;
     }
 
-
     fn handle_set_managed_session(&mut self, cmd: SetManagedSession) {
         let SetManagedSession {
             session_id,
@@ -930,7 +929,10 @@ mod tests {
             let s = s.session.get(&session_id).unwrap();
             let plugins = &s.core.attached_plugins;
             assert_eq!(plugins.len(), 2);
-            (plugins[0].instance_id.clone(), plugins[1].instance_id.clone())
+            (
+                plugins[0].instance_id.clone(),
+                plugins[1].instance_id.clone(),
+            )
         };
         assert_ne!(id_a, id_b);
 
@@ -938,20 +940,18 @@ mod tests {
         let child_b = SessionId::new();
 
         // When each instance sets its own managed session.
-        actor
-            .handle_set_managed_session(SetManagedSession {
-                session_id: session_id.clone(),
-                plugin_name: "judge_fail".to_owned(),
-                managed_session_id: child_a.clone(),
-                instance_id: id_a.clone(),
-            });
-        actor
-            .handle_set_managed_session(SetManagedSession {
-                session_id: session_id.clone(),
-                plugin_name: "judge_fail".to_owned(),
-                managed_session_id: child_b.clone(),
-                instance_id: id_b.clone(),
-            });
+        actor.handle_set_managed_session(SetManagedSession {
+            session_id: session_id.clone(),
+            plugin_name: "judge_fail".to_owned(),
+            managed_session_id: child_a.clone(),
+            instance_id: id_a.clone(),
+        });
+        actor.handle_set_managed_session(SetManagedSession {
+            session_id: session_id.clone(),
+            plugin_name: "judge_fail".to_owned(),
+            managed_session_id: child_b.clone(),
+            instance_id: id_b.clone(),
+        });
 
         // Then each instance holds its OWN managed session — the second did
         // not clobber the first.
@@ -968,15 +968,8 @@ mod tests {
             .iter()
             .map(|p| (p.instance_id.clone(), p.managed_session_id.clone()))
             .collect::<Vec<_>>();
-        assert_eq!(
-            by_id,
-            vec![
-                (id_a, Some(child_a)),
-                (id_b, Some(child_b)),
-            ]
-        );
+        assert_eq!(by_id, vec![(id_a, Some(child_a)), (id_b, Some(child_b)),]);
     }
-
 
     #[tokio::test]
     async fn enable_plugin_force_enables_only_targeted_instance() {
@@ -998,7 +991,10 @@ mod tests {
             let guard = actor.state.read();
             let s = guard.session.get(&session_id).expect("session");
             let plugins = &s.core.attached_plugins;
-            (plugins[0].instance_id.clone(), plugins[1].instance_id.clone())
+            (
+                plugins[0].instance_id.clone(),
+                plugins[1].instance_id.clone(),
+            )
         };
         actor
             .handle_toggle(TogglePlugin {

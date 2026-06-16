@@ -1375,3 +1375,358 @@ async fn judge_aggregation_single_instance_emits_directly() {
         "single instance must emit immediately (backward compatible)"
     );
 }
+
+#[tokio::test]
+async fn judge_aggregation_all_pass_disables_every_instance() {
+    // Given two judge instances where all-must-finish aggregation disables EVERY
+    // instance on pass (not just the aggregator). The test plugin mirrors the
+    // judge protocol: on_attach records the instance id in a shared set; the
+    // last verdict reads that set and emits disable_plugin per instance.
+    let dir = tempfile::tempdir().expect("tempdir");
+    write_plugin_kind(
+        dir.path(),
+        "attachable",
+        "panel",
+        r#"
+            local M = {}
+            local function count_key(o) return "judge:" .. o .. ":count" end
+            local function verdicts_key(o) return "judge:" .. o .. ":verdicts" end
+            local function completed_key(o) return "judge:" .. o .. ":completed" end
+            local function instances_key(o) return "judge:" .. o .. ":instances" end
+            function M.on_attach(ctx)
+                local k = count_key(ctx.session_id)
+                ctx.set_global_data(k, (ctx.get_global_data(k) or 0) + 1)
+                local ikey = instances_key(ctx.session_id)
+                local instances = ctx.get_global_data(ikey) or {}
+                instances[ctx.instance_id] = true
+                ctx.set_global_data(ikey, instances)
+            end
+            M.tools = {
+                {
+                    name = "judgment_passed",
+                    description = "pass",
+                    scope = "attached",
+                    parameters = {},
+                    handler = function(ctx)
+                        local origin = ctx.parent_session_id
+                        local me = ctx.session_id
+                        local count = ctx.get_global_data(count_key(origin)) or 0
+                        local verdicts = ctx.get_global_data(verdicts_key(origin)) or {}
+                        verdicts[me] = { verdict = "passed" }
+                        ctx.set_global_data(verdicts_key(origin), verdicts)
+                        local completed = (ctx.get_global_data(completed_key(origin)) or 0) + 1
+                        ctx.set_global_data(completed_key(origin), completed)
+                        if completed < count then return end
+                        ctx.emit("push_chat_entry", {
+                            session_id = origin,
+                            kind = { transient = "result" },
+                        })
+                        local instances = ctx.get_global_data(instances_key(origin)) or {}
+                        for instance_id, _ in pairs(instances) do
+                            ctx.emit("disable_plugin", {
+                                session_id = origin,
+                                plugin_name = ctx.plugin_name,
+                                instance_id = instance_id,
+                            })
+                        end
+                    end,
+                },
+            }
+            return M
+        "#,
+    );
+
+    let sys = build_system(dir.path());
+    let origin = SessionId::from("origin".to_owned());
+    let inst_a = PluginInstanceId::new();
+    let inst_b = PluginInstanceId::new();
+    for inst in [&inst_a, &inst_b] {
+        let reg = sys
+            .async_handle
+            .create_session_registry(vec![(inst.clone(), "panel".to_owned())], SessionId::new())
+            .await
+            .expect("create registry");
+        sys.async_handle
+            .fire_async_for_session(
+                Some(reg.registry_id),
+                "on_attach",
+                &AttachCtx {
+                    session_id: origin.to_string(),
+                    plugin_name: "panel".to_owned(),
+                },
+                vec![inst.clone()],
+            )
+            .await
+            .expect("fire on_attach");
+    }
+    tokio::time::sleep(std::time::Duration::from_millis(150)).await;
+
+    // When both children post passing verdicts.
+    for child in ["child-a", "child-b"] {
+        sys.async_handle
+            .execute_tool(
+                None,
+                SessionId::from(child.to_owned()),
+                Some(origin.clone()),
+                "panel",
+                "judgment_passed",
+                &json!({}),
+            )
+            .await
+            .expect("execute verdict");
+    }
+    tokio::time::sleep(std::time::Duration::from_millis(100)).await;
+
+    // Then disable_plugin was emitted for BOTH instance ids (all-pass → disable all).
+    let cmds = sys.captured.lock();
+    let disable_ids: Vec<String> = cmds
+        .iter()
+        .filter(|c| c.name == "disable_plugin")
+        .map(|c| c.data["instance_id"].as_str().unwrap().to_owned())
+        .collect();
+    assert_eq!(
+        disable_ids.len(),
+        2,
+        "all-pass must disable every participating instance"
+    );
+    assert!(
+        disable_ids.contains(&inst_a.to_string()),
+        "instance a disabled: {disable_ids:?}"
+    );
+    assert!(
+        disable_ids.contains(&inst_b.to_string()),
+        "instance b disabled: {disable_ids:?}"
+    );
+}
+
+#[tokio::test]
+async fn judge_aggregation_any_fail_reenables_every_instance() {
+    // Given two judge instances where ANY failure re-enables ALL instances
+    // (re-activate on failure). The test plugin emits enable_plugin per
+    // instance in the shared set when any verdict is "failed".
+    let dir = tempfile::tempdir().expect("tempdir");
+    write_plugin_kind(
+        dir.path(),
+        "attachable",
+        "panel",
+        r#"
+            local M = {}
+            local function count_key(o) return "judge:" .. o .. ":count" end
+            local function verdicts_key(o) return "judge:" .. o .. ":verdicts" end
+            local function completed_key(o) return "judge:" .. o .. ":completed" end
+            local function instances_key(o) return "judge:" .. o .. ":instances" end
+            function M.on_attach(ctx)
+                local k = count_key(ctx.session_id)
+                ctx.set_global_data(k, (ctx.get_global_data(k) or 0) + 1)
+                local ikey = instances_key(ctx.session_id)
+                local instances = ctx.get_global_data(ikey) or {}
+                instances[ctx.instance_id] = true
+                ctx.set_global_data(ikey, instances)
+            end
+            M.tools = {
+                {
+                    name = "judgment_failed",
+                    description = "fail",
+                    scope = "attached",
+                    parameters = {
+                        { name = "message", type = "string", description = "why" },
+                    },
+                    handler = function(ctx, args)
+                        local origin = ctx.parent_session_id
+                        local me = ctx.session_id
+                        local count = ctx.get_global_data(count_key(origin)) or 0
+                        local verdicts = ctx.get_global_data(verdicts_key(origin)) or {}
+                        verdicts[me] = { verdict = "failed", message = args.message }
+                        ctx.set_global_data(verdicts_key(origin), verdicts)
+                        local completed = (ctx.get_global_data(completed_key(origin)) or 0) + 1
+                        ctx.set_global_data(completed_key(origin), completed)
+                        if completed < count then return end
+                        ctx.emit("enqueue_user_message", {
+                            session_id = origin,
+                            text = "failed",
+                        })
+                        local instances = ctx.get_global_data(instances_key(origin)) or {}
+                        for instance_id, _ in pairs(instances) do
+                            ctx.emit("enable_plugin", {
+                                session_id = origin,
+                                plugin_name = ctx.plugin_name,
+                                instance_id = instance_id,
+                            })
+                        end
+                    end,
+                },
+            }
+            return M
+        "#,
+    );
+
+    let sys = build_system(dir.path());
+    let origin = SessionId::from("origin".to_owned());
+    let inst_a = PluginInstanceId::new();
+    let inst_b = PluginInstanceId::new();
+    for inst in [&inst_a, &inst_b] {
+        let reg = sys
+            .async_handle
+            .create_session_registry(vec![(inst.clone(), "panel".to_owned())], SessionId::new())
+            .await
+            .expect("create registry");
+        sys.async_handle
+            .fire_async_for_session(
+                Some(reg.registry_id),
+                "on_attach",
+                &AttachCtx {
+                    session_id: origin.to_string(),
+                    plugin_name: "panel".to_owned(),
+                },
+                vec![inst.clone()],
+            )
+            .await
+            .expect("fire on_attach");
+    }
+    tokio::time::sleep(std::time::Duration::from_millis(150)).await;
+
+    // When both children post failing verdicts.
+    for child in ["child-a", "child-b"] {
+        sys.async_handle
+            .execute_tool(
+                None,
+                SessionId::from(child.to_owned()),
+                Some(origin.clone()),
+                "panel",
+                "judgment_failed",
+                &json!({ "message": "bad" }),
+            )
+            .await
+            .expect("execute verdict");
+    }
+    tokio::time::sleep(std::time::Duration::from_millis(100)).await;
+
+    // Then enable_plugin was emitted for BOTH instance ids (any-fail → re-enable all).
+    let cmds = sys.captured.lock();
+    let enable_ids: Vec<String> = cmds
+        .iter()
+        .filter(|c| c.name == "enable_plugin")
+        .map(|c| c.data["instance_id"].as_str().unwrap().to_owned())
+        .collect();
+    assert_eq!(
+        enable_ids.len(),
+        2,
+        "any-fail must re-enable every participating instance"
+    );
+    assert!(
+        enable_ids.contains(&inst_a.to_string()),
+        "instance a re-enabled: {enable_ids:?}"
+    );
+    assert!(
+        enable_ids.contains(&inst_b.to_string()),
+        "instance b re-enabled: {enable_ids:?}"
+    );
+}
+
+#[tokio::test]
+async fn judge_aggregation_single_instance_backward_compat_disables_itself() {
+    // Given a SINGLE judge instance (count=1). On pass it disables itself — the
+    // only instance — preserving the pre-aggregation one-shot behavior.
+    let dir = tempfile::tempdir().expect("tempdir");
+    write_plugin_kind(
+        dir.path(),
+        "attachable",
+        "panel",
+        r#"
+            local M = {}
+            local function count_key(o) return "judge:" .. o .. ":count" end
+            local function verdicts_key(o) return "judge:" .. o .. ":verdicts" end
+            local function completed_key(o) return "judge:" .. o .. ":completed" end
+            local function instances_key(o) return "judge:" .. o .. ":instances" end
+            function M.on_attach(ctx)
+                local k = count_key(ctx.session_id)
+                ctx.set_global_data(k, (ctx.get_global_data(k) or 0) + 1)
+                local ikey = instances_key(ctx.session_id)
+                local instances = ctx.get_global_data(ikey) or {}
+                instances[ctx.instance_id] = true
+                ctx.set_global_data(ikey, instances)
+            end
+            M.tools = {
+                {
+                    name = "judgment_passed",
+                    description = "pass",
+                    scope = "attached",
+                    parameters = {},
+                    handler = function(ctx)
+                        local origin = ctx.parent_session_id
+                        local me = ctx.session_id
+                        local count = ctx.get_global_data(count_key(origin)) or 0
+                        local verdicts = ctx.get_global_data(verdicts_key(origin)) or {}
+                        verdicts[me] = { verdict = "passed" }
+                        ctx.set_global_data(verdicts_key(origin), verdicts)
+                        local completed = (ctx.get_global_data(completed_key(origin)) or 0) + 1
+                        ctx.set_global_data(completed_key(origin), completed)
+                        if completed < count then return end
+                        ctx.emit("push_chat_entry", {
+                            session_id = origin,
+                            kind = { transient = "result" },
+                        })
+                        local instances = ctx.get_global_data(instances_key(origin)) or {}
+                        for instance_id, _ in pairs(instances) do
+                            ctx.emit("disable_plugin", {
+                                session_id = origin,
+                                plugin_name = ctx.plugin_name,
+                                instance_id = instance_id,
+                            })
+                        end
+                    end,
+                },
+            }
+            return M
+        "#,
+    );
+
+    let sys = build_system(dir.path());
+    let origin = SessionId::from("origin".to_owned());
+    let inst = PluginInstanceId::new();
+    let reg = sys
+        .async_handle
+        .create_session_registry(vec![(inst.clone(), "panel".to_owned())], SessionId::new())
+        .await
+        .expect("create registry");
+    sys.async_handle
+        .fire_async_for_session(
+            Some(reg.registry_id),
+            "on_attach",
+            &AttachCtx {
+                session_id: origin.to_string(),
+                plugin_name: "panel".to_owned(),
+            },
+            vec![inst.clone()],
+        )
+        .await
+        .expect("fire on_attach");
+    tokio::time::sleep(std::time::Duration::from_millis(150)).await;
+
+    // When the single child posts its verdict.
+    sys.async_handle
+        .execute_tool(
+            None,
+            SessionId::from("child".to_owned()),
+            Some(origin.clone()),
+            "panel",
+            "judgment_passed",
+            &json!({}),
+        )
+        .await
+        .expect("execute verdict");
+    tokio::time::sleep(std::time::Duration::from_millis(100)).await;
+
+    // Then it disables exactly itself (the only instance).
+    let cmds = sys.captured.lock();
+    let disable_ids: Vec<String> = cmds
+        .iter()
+        .filter(|c| c.name == "disable_plugin")
+        .map(|c| c.data["instance_id"].as_str().unwrap().to_owned())
+        .collect();
+    assert_eq!(
+        disable_ids,
+        vec![inst.to_string()],
+        "single instance disables itself"
+    );
+}
