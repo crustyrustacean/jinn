@@ -68,6 +68,17 @@ impl EntryTiming {
         }
     }
 
+    /// Return the recorded finish time, if any.
+    ///
+    /// `None` for `Instant` or when the stream has not yet finished.
+    #[must_use]
+    pub fn finished_at(&self) -> Option<Timestamp> {
+        match self {
+            Self::Streamed { finished_at, .. } => *finished_at,
+            _ => None,
+        }
+    }
+
     /// Return the primary timestamp for this entry.
     ///
     /// For `Instant`, this is `at`. For `Streamed`, this is `dispatched_at`.
