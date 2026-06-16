@@ -499,27 +499,29 @@ impl TaskList {
         let new_task_id = new_task.id.clone();
 
         // Insert the copy at the requested position within the target phase.
-        let phase = self
-            .phases
-            .get_mut(target_phase_idx)
-            .ok_or(TaskListError::InternalInvariant {
-                what: "postpone_task: target phase not found",
-            })?;
+        let phase =
+            self.phases
+                .get_mut(target_phase_idx)
+                .ok_or(TaskListError::InternalInvariant {
+                    what: "postpone_task: target phase not found",
+                })?;
         match &position {
             TaskPosition::After(after_id) => {
-                let idx = phase
-                    .find_task_index(after_id)
-                    .ok_or(TaskListError::InternalInvariant {
-                        what: "postpone_task: ref task not found after lookup above",
-                    })?;
+                let idx =
+                    phase
+                        .find_task_index(after_id)
+                        .ok_or(TaskListError::InternalInvariant {
+                            what: "postpone_task: ref task not found after lookup above",
+                        })?;
                 phase.tasks.insert(idx + 1, new_task);
             }
             TaskPosition::Before(before_id) => {
-                let idx = phase
-                    .find_task_index(before_id)
-                    .ok_or(TaskListError::InternalInvariant {
-                        what: "postpone_task: ref task not found after lookup above",
-                    })?;
+                let idx =
+                    phase
+                        .find_task_index(before_id)
+                        .ok_or(TaskListError::InternalInvariant {
+                            what: "postpone_task: ref task not found after lookup above",
+                        })?;
                 phase.tasks.insert(idx, new_task);
             }
             TaskPosition::End => {
@@ -570,12 +572,12 @@ impl TaskList {
         let new_task_id = new_task.id.clone();
 
         // Append the copy to the end of the target phase.
-        let phase = self
-            .phases
-            .get_mut(target_phase_idx)
-            .ok_or(TaskListError::InternalInvariant {
-                what: "postpone_to_phase: target phase not found",
-            })?;
+        let phase =
+            self.phases
+                .get_mut(target_phase_idx)
+                .ok_or(TaskListError::InternalInvariant {
+                    what: "postpone_to_phase: target phase not found",
+                })?;
         phase.tasks.push(new_task);
 
         Ok(new_task_id)
@@ -589,10 +591,7 @@ impl TaskList {
     ///
     /// Searches every phase; returns `None` if no task matches. Used to gather
     /// the source task's data before marking it postponed.
-    fn find_source_task(
-        &self,
-        source_task_id: &TaskId,
-    ) -> Option<(usize, String, TaskStatus)> {
+    fn find_source_task(&self, source_task_id: &TaskId) -> Option<(usize, String, TaskStatus)> {
         self.phases.iter().enumerate().find_map(|(pi, phase)| {
             phase.tasks.iter().find_map(|task| {
                 (&task.id == source_task_id).then(|| (pi, task.description.clone(), task.status))
