@@ -2916,6 +2916,16 @@ impl ChatSessionState {
         self.core.ephemeral.accumulated_overrides.total_tokens()
     }
 
+    /// The number of distinct entries currently held back in the accumulation
+    /// buffer awaiting the threshold flush. Each represents one pending prune.
+    /// Unlike the token total, this is stable across threshold changes and
+    /// counts only `ForcedExclude` (prune) overrides — shields and compaction
+    /// never enter the buffer.
+    #[must_use]
+    pub fn accumulated_prune_count(&self) -> usize {
+        self.core.ephemeral.accumulated_overrides.len()
+    }
+
     /// Pushes a `SetContextOverride` mutation into the accumulation buffer with
     /// its pre-resolved token cost. The buffer dedups by entry and respects
     /// shield dominance; the override is held back until the threshold flush.
