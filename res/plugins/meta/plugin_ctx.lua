@@ -151,10 +151,12 @@
 ---| '"push_chat_entry"'
 ---| '"enqueue_user_message"'
 ---| '"disable_plugin"'
+---| '"enable_plugin"'
 ---| '"fire_async_hook"'
 ---| '"set_chat_input"'
 ---| '"reset_session"'
 ---| '"create_session"'
+---| '"set_managed_session"'
 
 ---@class PushChatEntryPayload
 ---@field session_id string
@@ -169,9 +171,29 @@
 ---@field text string
 
 ---@class DisablePluginPayload
+---Force-disable a specific plugin instance (`enabled = false`). Targets the
+---instance by `instance_id` so duplicate attachments of the same plugin name
+---each disable independently.
+---
 ---@field session_id string
 ---@field plugin_name string
+---@field instance_id string
 
+---@class EnablePluginPayload
+---Force-enable a specific plugin instance (`enabled = true`).
+---
+---@field session_id string
+---@field plugin_name string
+---@field instance_id string
+
+---@class SetManagedSessionPayload
+---Set the managed (child) session on a specific plugin instance, so the
+---sidebar can preview/activate that instance's child session.
+---
+---@field session_id string
+---@field plugin_name string
+---@field managed_session_id string
+---@field instance_id string
 ---@class FireAsyncHookPayload
 ---Generic handoff from the sync VM to the async VM. The plugin actor resolves
 ---the `session_id`, then fires the named async `hook` with this payload as its

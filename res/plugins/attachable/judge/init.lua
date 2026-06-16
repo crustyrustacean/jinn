@@ -53,6 +53,12 @@ local function turn_key(origin)
 	return "judge:" .. origin .. ":turn"
 end
 
+local function instances_key(origin)
+	-- Set of participating instance ids: { [instance_id] = true }.
+	-- Used by the aggregator to disable/enable ALL instances on pass/fail.
+	return "judge:" .. origin .. ":instances"
+end
+
 -- ─── Plugin-defined tools ──────────────────────────────────────────────
 
 M.tools = {
@@ -125,12 +131,26 @@ function record_verdict(ctx, verdict, message)
 		})
 	end
 
-	-- Disable this instance (the aggregator). Identical to single-instance
-	-- behavior; each instance disables itself once aggregation is done.
-	ctx.emit("disable_plugin", {
-		session_id = origin,
-		plugin_name = ctx.plugin_name,
-	})
+	-- All-must-finish aggregation is complete. Resolve the lifecycle of
+	-- EVERY participating instance, not just this one:
+	--   pass → disable all (one-shot judges; the user re-enables manually)
+	--   fail → re-enable all (so the next turn re-runs every judge)
+	local instances = ctx.get_global_data(instances_key(origin)) or {}
+	for instance_id, _ in pairs(instances) do
+		if any_failed then
+			ctx.emit("enable_plugin", {
+				session_id = origin,
+				plugin_name = ctx.plugin_name,
+				instance_id = instance_id,
+			})
+		else
+			ctx.emit("disable_plugin", {
+				session_id = origin,
+				plugin_name = ctx.plugin_name,
+				instance_id = instance_id,
+			})
+		end
+	end
 
 	-- Reset per-turn shared state for the next turn.
 	ctx.set_global_data(verdicts_key(origin), {})
@@ -142,24 +162,37 @@ end
 --- @param ctx OnAttachCtx
 function M.on_attach(ctx)
 	local origin = ctx.session_id
-	local key = count_key(origin)
-	local count = (ctx.get_global_data(key) or 0) + 1
-	ctx.set_global_data(key, count)
+	-- Increment the count.
+	local ckey = count_key(origin)
+	local count = (ctx.get_global_data(ckey) or 0) + 1
+	ctx.set_global_data(ckey, count)
+	-- Register this instance in the participants set.
+	local ikey = instances_key(origin)
+	local instances = ctx.get_global_data(ikey) or {}
+	instances[ctx.instance_id] = true
+	ctx.set_global_data(ikey, instances)
 end
 
 --- @param ctx OnDetachCtx
 function M.on_detach(ctx)
 	local origin = ctx.session_id
-	local key = count_key(origin)
-	local count = (ctx.get_global_data(key) or 0) - 1
+	-- Decrement the count.
+	local ckey = count_key(origin)
+	local count = (ctx.get_global_data(ckey) or 0) - 1
 	if count <= 0 then
 		-- Last instance leaving: clear all shared keys for this origin.
-		ctx.set_global_data(key, nil)
+		ctx.set_global_data(ckey, nil)
 		ctx.set_global_data(verdicts_key(origin), nil)
 		ctx.set_global_data(completed_key(origin), nil)
 		ctx.set_global_data(turn_key(origin), nil)
+		ctx.set_global_data(instances_key(origin), nil)
 	else
-		ctx.set_global_data(key, count)
+		ctx.set_global_data(ckey, count)
+		-- Remove this instance from the participants set.
+		local ikey = instances_key(origin)
+		local instances = ctx.get_global_data(ikey) or {}
+		instances[ctx.instance_id] = nil
+		ctx.set_global_data(ikey, instances)
 	end
 end
 
@@ -204,6 +237,7 @@ function M.on_turn_end(ctx)
 		session_id = ctx.session_id,
 		plugin_name = ctx.plugin_name,
 		managed_session_id = judge_id,
+		instance_id = ctx.instance_id,
 	})
 
 	-- Ask the judge to evaluate the latest response.
