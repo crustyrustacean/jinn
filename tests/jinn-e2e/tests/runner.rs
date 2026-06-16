@@ -192,6 +192,14 @@ fn enumerate_scenarios(dir: &Path) -> Vec<ScenarioSpec> {
 ///
 /// `spec` is `"<feature_path>:<scenario_name>"`.
 async fn run_child(spec: &str) {
+    // Marker written directly to a file BEFORE tracing init, to prove run_child
+    // is reached even if the scenario hangs and cucumber buffers stderr.
+    {
+        let marker = std::env::temp_dir().join(format!("jinn-e2e-marker-{}", std::process::id()));
+        let _ = std::fs::write(&marker, format!("run_child reached: {spec}\n"));
+    }
+    init_tracing();
+    tracing::info!(spec = %spec, "judge-e2e child starting");
     let (feature_path, scenario_name) = spec
         .split_once(':')
         .unwrap_or_else(|| panic!("invalid --scenario spec: {spec:?} (expected '<feature_path>:<scenario_name>')"));
@@ -248,4 +256,37 @@ impl<I> Parser<I> for SingleFeatureParser {
     ) -> Self::Output {
         stream::once(std::future::ready(Ok((*self.feature).clone())))
     }
+}
+/// Initializes a tracing subscriber for the child process.
+///
+/// Controlled by `RUST_LOG` (defaults to `info` for this binary). Emits to
+/// stderr so it surfaces through the parent's inherited stdio.
+fn init_tracing() {
+    // Write to a log file instead of stderr: cucumber's writer captures
+    // stderr/stdout per-scenario and only flushes on completion, so a hung
+    // scenario would trap all diagnostics. A file bypasses that capture.
+    use std::fs::OpenOptions;
+    let log_path = std::env::temp_dir().join(format!(
+        "jinn-e2e-{}.log",
+        std::process::id()
+    ));
+    eprintln!("[judge-e2e] tracing to {}", log_path.display());
+    let file = OpenOptions::new()
+        .create(true)
+        .write(true)
+        .truncate(true)
+        .open(&log_path)
+        .expect("open tracing log file");
+    let _ = tracing_subscriber::fmt()
+        .with_env_filter(
+            tracing_subscriber::EnvFilter::try_from_default_env().unwrap_or_else(|_| {
+                // Suppress kameo's chatty per-message spans; keep jinn + warnings.
+                tracing_subscriber::EnvFilter::new(
+                    "warn,jinn=debug,jinn_domain=debug,kameo=warn,kameo_actors=off",
+                )
+            }),
+        )
+        .with_target(true)
+        .with_writer(file)
+        .try_init();
 }

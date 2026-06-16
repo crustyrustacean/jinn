@@ -142,6 +142,15 @@ impl DomainNodeContext {
         }
 
         let session_id = session.session_id().clone();
+        tracing::debug!(
+            parent_id = %parent_session_id,
+            child_id = %session_id,
+            automated,
+            persist,
+            inherit_tools,
+            tools = ?tools,
+            "create_child_session: child created"
+        );
         self.state.write().session.insert(session);
 
         // Resolve the child's session-scoped tool set from the two sources.
@@ -167,6 +176,23 @@ impl DomainNodeContext {
         inherit_tools: bool,
         tools: &[String],
     ) {
+        let catalog_keys: Vec<String> = self
+            .state
+            .read()
+            .context
+            .attachable_tool_catalog
+            .keys()
+            .cloned()
+            .collect();
+        tracing::debug!(
+            parent_id = %parent_id,
+            child_id = %child_id,
+            inherit_tools,
+            requested = ?tools,
+            catalog = ?catalog_keys,
+            "register_child_tools: resolving child tool set"
+        );
+        let mut child_map: HashMap<String, ToolDefinition> = HashMap::new();
         let mut child_map: HashMap<String, ToolDefinition> = HashMap::new();
         // Source 1: optionally copy the parent's session-scoped tools.
         if inherit_tools
