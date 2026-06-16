@@ -193,7 +193,6 @@ impl DomainNodeContext {
             "register_child_tools: resolving child tool set"
         );
         let mut child_map: HashMap<String, ToolDefinition> = HashMap::new();
-        let mut child_map: HashMap<String, ToolDefinition> = HashMap::new();
         // Source 1: optionally copy the parent's session-scoped tools.
         if inherit_tools
             && let Some(parent_tools) = self
