@@ -34,7 +34,7 @@ use crate::common::state::State;
 
 use crate::PhaseKind;
 use crate::SessionId;
-use crate::feat::attached_plugin::AttachedPlugin;
+use crate::feat::attached_plugin::{AttachedPlugin, PluginInstanceId};
 use crate::feat::plugin_dispatch::DomainNodeContext;
 use crate::feat::plugin_dispatch::protocol::command::{
     AttachPlugin, DetachPlugin, SetManagedSession, TogglePlugin,
@@ -152,7 +152,7 @@ impl PluginDispatchActor {
         tracing::debug!(session_id = %session_id, plugin = %plugin_name, "attaching plugin");
 
         // 1. Push AttachedPlugin onto session.core.attached_plugins.
-        let plugin_names: Vec<String> = {
+        let instances: Vec<(PluginInstanceId, String)> = {
             let state = &mut self.state.write().session;
             let Some(session) = state.get_mut(&session_id) else {
                 tracing::warn!(session_id = %session_id, "session not found for attach");
@@ -166,12 +166,12 @@ impl PluginDispatchActor {
                 .core
                 .attached_plugins
                 .iter()
-                .map(|p| p.name.clone())
+                .map(|p| (p.instance_id.clone(), p.name.clone()))
                 .collect()
         };
 
-        // 2. Destroy old registry (if any), create new with full plugin list.
-        self.recreate_session_registry(&session_id, plugin_names)
+        // 2. Destroy old registry (if any), create new with full instance list.
+        self.recreate_session_registry(&session_id, instances)
             .await;
 
         // 3. Publish event.
@@ -190,7 +190,7 @@ impl PluginDispatchActor {
         tracing::debug!(session_id = %session_id, plugin = %plugin_name, "detaching plugin");
 
         // 1. Remove AttachedPlugin from session.core.attached_plugins.
-        let remaining_names: Vec<String> = {
+        let remaining_instances: Vec<(PluginInstanceId, String)> = {
             let state = &mut self.state.write().session;
             if let Some(session) = state.get_mut(&session_id) {
                 session
@@ -201,7 +201,7 @@ impl PluginDispatchActor {
                     .core
                     .attached_plugins
                     .iter()
-                    .map(|p| p.name.clone())
+                    .map(|p| (p.instance_id.clone(), p.name.clone()))
                     .collect()
             } else {
                 tracing::warn!(session_id = %session_id, "session not found for detach");
@@ -210,7 +210,7 @@ impl PluginDispatchActor {
         };
 
         // 2. Destroy and recreate the registry (or destroy if no plugins remain).
-        self.recreate_session_registry(&session_id, remaining_names)
+        self.recreate_session_registry(&session_id, remaining_instances)
             .await;
 
         // 3. Publish event.
@@ -224,7 +224,7 @@ impl PluginDispatchActor {
     async fn recreate_session_registry(
         &mut self,
         session_id: &SessionId,
-        plugin_names: Vec<String>,
+        instances: Vec<(PluginInstanceId, String)>,
     ) {
         // 1. Tear down old registry (if any).
         if let Some(old_id) = self.registry.remove(session_id)
@@ -237,15 +237,15 @@ impl PluginDispatchActor {
             tracing::warn!(err = %e, session_id = %session_id, "destroy_session_registry failed");
         }
 
-        // 2. Create new registry only if there are plugins to load.
-        if plugin_names.is_empty() {
+        // 2. Create new registry only if there are instances to load.
+        if instances.is_empty() {
             return;
         }
 
         match self
             .services
             .session_plugin_registry
-            .create_session_registry(plugin_names, session_id.clone())
+            .create_session_registry(instances, session_id.clone())
             .await
         {
             Ok(result) => {
@@ -379,7 +379,7 @@ impl PluginDispatchActor {
             "session_id": session_id.to_string(),
         });
 
-        let enabled_plugins = {
+        let enabled_instances = {
             let state = self.state.read();
             state
                 .session
@@ -389,13 +389,13 @@ impl PluginDispatchActor {
                         .attached_plugins
                         .iter()
                         .filter(|p| p.enabled)
-                        .map(|p| p.name.clone())
+                        .map(|p| p.instance_id.clone())
                         .collect::<Vec<_>>()
                 })
                 .unwrap_or_default()
         };
 
-        self.spawn_fire_for_session(session_id, hook, &ctx_json, enabled_plugins);
+        self.spawn_fire_for_session(session_id, hook, &ctx_json, enabled_instances);
     }
 
     /// Fire a hook for a session on a background task, so the actor loop is not
@@ -405,7 +405,7 @@ impl PluginDispatchActor {
         session_id: &SessionId,
         hook: &str,
         ctx_json: &Value,
-        enabled_plugins: Vec<String>,
+        enabled_instances: Vec<PluginInstanceId>,
     ) {
         let plugins = self.services.plugins.clone();
         let registry_id = self.registry.get(session_id).copied();
@@ -431,7 +431,7 @@ impl PluginDispatchActor {
             let result = match registry_id {
                 Some(rid) => {
                     plugins
-                        .fire_async_for_session_json(rid, &hook, &ctx_json, enabled_plugins)
+                        .fire_async_for_session_json(rid, &hook, &ctx_json, enabled_instances)
                         .await
                 }
                 None => plugins.fire_async_json(&hook, &ctx_json).await,

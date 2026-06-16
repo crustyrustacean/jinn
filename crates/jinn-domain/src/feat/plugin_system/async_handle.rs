@@ -52,9 +52,9 @@ pub(crate) enum PluginJob {
         /// Oneshot responder.
         respond_to: oneshot::Sender<Result<(), Report<PluginError>>>,
         target_session: Option<super::session_registry::SessionRegistryId>,
-        /// Plugin names that are currently enabled. When non-empty,
-        /// only plugins in this list will have their hooks fired.
-        enabled_plugins: Vec<String>,
+        /// Instance ids of plugins that are currently enabled. When non-empty,
+        /// only instances in this list will have their hooks fired.
+        enabled_instances: Vec<super::PluginInstanceId>,
     },
     /// Fire all hooks, collect return values (async).
     Collect {
@@ -86,8 +86,8 @@ pub(crate) enum PluginJob {
     LoadSession {
         /// Registry ID returned by `create_session_registry`.
         registry_id: super::session_registry::SessionRegistryId,
-        /// Names of attachable plugins to load.
-        plugin_names: Vec<String>,
+        /// Attached plugin instances to load: (instance id, plugin name).
+        instances: Vec<(super::PluginInstanceId, String)>,
         /// The session that owns these plugins. Used for plugin_data scoping in tool handlers.
         origin_session_id: SessionId,
         /// Responder. Returns tool definitions extracted from loaded plugins.
@@ -184,7 +184,7 @@ impl AsyncPluginHandle {
         target_session: Option<super::session_registry::SessionRegistryId>,
         hook: &str,
         ctx: &T,
-        enabled_plugins: Vec<String>,
+        enabled_instances: Vec<super::PluginInstanceId>,
     ) -> Result<(), Report<PluginError>> {
         let ctx_json = serde_json::to_value(ctx)
             .change_context(PluginError)
@@ -196,7 +196,7 @@ impl AsyncPluginHandle {
                 ctx_json,
                 respond_to,
                 target_session,
-                enabled_plugins,
+                enabled_instances,
             })
             .await
             .map_err(|_e| Report::new(PluginError))
@@ -289,7 +289,7 @@ impl AsyncPluginHandle {
     /// fails to load.
     pub async fn create_session_registry_impl(
         &self,
-        plugin_names: Vec<String>,
+        instances: Vec<(super::PluginInstanceId, String)>,
         origin_session_id: SessionId,
     ) -> Result<CreateSessionRegistryResult, Report<PluginError>> {
         let registry_id = super::session_registry::SessionRegistryId::new();
@@ -297,7 +297,7 @@ impl AsyncPluginHandle {
         self.tx
             .send(PluginJob::LoadSession {
                 registry_id,
-                plugin_names,
+                instances,
                 origin_session_id,
                 respond_to,
             })
@@ -350,11 +350,11 @@ impl AsyncPluginHandle {
     pub fn set_plugin_data_for_session(
         &self,
         session_id: &SessionId,
-        plugin_name: &str,
+        instance_id: &super::PluginInstanceId,
         value: serde_json::Value,
     ) {
         self.plugin_data
-            .set_for_session(Some(session_id), plugin_name, value);
+            .set_for_session(session_id, instance_id, value);
     }
 
     /// Get a snapshot of a plugin's data (no session scope — for global plugins).
@@ -363,15 +363,13 @@ impl AsyncPluginHandle {
         self.plugin_data.get(plugin_name)
     }
 
-    /// Get a snapshot of a plugin's data scoped to a session.
-    #[must_use]
     pub fn get_plugin_data_for_session(
         &self,
         session_id: &SessionId,
-        plugin_name: &str,
+        instance_id: &super::PluginInstanceId,
     ) -> Option<serde_json::Value> {
         self.plugin_data
-            .get_for_session(Some(session_id), plugin_name)
+            .get_for_session(session_id, instance_id)
     }
 
     /// Cancel an in-flight request by its task name.
@@ -431,14 +429,14 @@ impl AsyncPluginHandle {
 impl crate::feat::plugin_system::SessionPluginRegistry for AsyncPluginHandle {
     async fn create_session_registry(
         &self,
-        plugin_names: Vec<String>,
+        instances: Vec<(super::PluginInstanceId, String)>,
         origin_session_id: SessionId,
     ) -> Result<
         crate::feat::plugin_system::CreateSessionRegistryResult,
         Report<crate::feat::plugin_system::SessionPluginRegistryError>,
     > {
         let result =
-            AsyncPluginHandle::create_session_registry_impl(self, plugin_names, origin_session_id)
+            AsyncPluginHandle::create_session_registry_impl(self, instances, origin_session_id)
                 .await
                 .map_err(|_e| Report::new(crate::feat::plugin_system::SessionPluginRegistryError))
                 .attach("create per-session plugin registry")?;

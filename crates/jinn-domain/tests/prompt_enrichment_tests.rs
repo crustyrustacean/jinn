@@ -23,7 +23,6 @@ use jinn_domain::feat::plugin_dispatch::{HookContext, PluginSyncHooks};
 use jinn_domain::feat::plugin_system::{
     PluginCommand, PluginSystem, PluginSystemBuildResult, SyncPlugins,
 };
-use jinn_domain::protocol::SessionId;
 use parking_lot::Mutex;
 use serde_json::{Value, json};
 use std::path::{Path, PathBuf};
@@ -412,9 +411,7 @@ async fn badge_returns_working_when_enriching() {
     // does), and the badge ctx carries the canonical `session_id` key the host
     // emits in production, so the sync hook reads from the matching bucket.
     let sys = build_system_with_oneshot(json!(null));
-    let sid = jinn_domain::SessionId::from("s1".to_owned());
-    sys.async_handle.set_plugin_data_for_session(
-        &sid,
+    sys.async_handle.set_plugin_data(
         "prompt_enrichment",
         json!({ "status": "enriching" }),
     );
@@ -440,9 +437,7 @@ async fn working_badge_uses_streaming_style() {
     // Given a system where the enrich plugin is actively enriching for a
     // specific session (session-scoped data + canonical session_id ctx, as above).
     let sys = build_system_with_oneshot(json!(null));
-    let sid = jinn_domain::SessionId::from("s1".to_owned());
-    sys.async_handle.set_plugin_data_for_session(
-        &sid,
+    sys.async_handle.set_plugin_data(
         "prompt_enrichment",
         json!({ "status": "enriching" }),
     );
@@ -523,8 +518,7 @@ async fn enrichment_retap_cancels_inflight_and_vetoes() {
     // Given the real enrichment plugin with status=enriching (simulating an
     // in-flight enrichment) and an on_enrich that would otherwise complete.
     let sys = build_system_with_oneshot(json!({ "ok": true, "value": { "text": "rewritten" } }));
-    sys.async_handle.set_plugin_data_for_session(
-        &SessionId::from("s1".to_owned()),
+    sys.async_handle.set_plugin_data(
         "prompt_enrichment",
         json!({ "status": "enriching" }),
     );

@@ -28,9 +28,9 @@ impl PluginFire for AsyncPluginHandle {
         session: SessionRegistryId,
         hook: &str,
         ctx: &Value,
-        enabled_plugins: Vec<String>,
+        enabled_instances: Vec<super::PluginInstanceId>,
     ) -> Result<(), Report<PluginFireError>> {
-        self.fire_async_for_session(Some(session), hook, ctx, enabled_plugins)
+        self.fire_async_for_session(Some(session), hook, ctx, enabled_instances)
             .await
             .map_err(|report| report.change_context(PluginFireError))
     }

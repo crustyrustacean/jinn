@@ -10,6 +10,7 @@
 
 use jinn_domain::SessionId;
 use jinn_domain::feat::plugin_system::SessionPluginRegistry;
+use jinn_domain::feat::plugin_system::PluginInstanceId;
 use parking_lot::Mutex;
 use std::path::Path;
 use std::sync::Arc;
@@ -146,7 +147,7 @@ async fn async_hook_with_request_resolves() {
     // Verify plugin_data was set.
     let data = sys
         .async_handle
-        .get_plugin_data_for_session(&SessionId::from("s1".to_owned()), "llm_caller")
+        .get_plugin_data("llm_caller")
         .expect("plugin data should exist");
     assert_eq!(
         data["verdict"],
@@ -317,7 +318,7 @@ async fn load_session_registry_creates_isolated_state() {
     let sys = build_system(dir.path());
     let result = sys
         .async_handle
-        .create_session_registry(vec!["judge_fail".to_owned()], SessionId::new())
+        .create_session_registry(vec![(PluginInstanceId::new(), "judge_fail".to_owned())], SessionId::new())
         .await
         .expect("create registry");
 
@@ -364,7 +365,7 @@ async fn fire_for_session_excludes_other_sessions_plugins() {
     let sys = build_system(dir.path());
     let _session_a = sys
         .async_handle
-        .create_session_registry(vec!["judge_fail".to_owned()], SessionId::new())
+        .create_session_registry(vec![(PluginInstanceId::new(), "judge_fail".to_owned())], SessionId::new())
         .await
         .expect("create registry A");
     let session_b = sys
@@ -435,7 +436,7 @@ async fn fire_for_session_merges_global_and_session_plugins() {
     let sys = build_system(dir.path());
     let result = sys
         .async_handle
-        .create_session_registry(vec!["judge_fail".to_owned()], SessionId::new())
+        .create_session_registry(vec![(PluginInstanceId::new(), "judge_fail".to_owned())], SessionId::new())
         .await
         .expect("create registry");
 
@@ -487,10 +488,11 @@ async fn disabled_plugin_is_skipped() {
         "#,
     );
 
+    let disabled_id = PluginInstanceId::new();
     let sys = build_system(dir.path());
     let result = sys
         .async_handle
-        .create_session_registry(vec!["judge_fail".to_owned()], SessionId::new())
+        .create_session_registry(vec![(disabled_id.clone(), "judge_fail".to_owned())], SessionId::new())
         .await
         .expect("create registry");
 
@@ -503,7 +505,7 @@ async fn disabled_plugin_is_skipped() {
                 session_id: "s1".to_owned(),
                 last_assistant_message: "hello".to_owned(),
             },
-            vec!["other_plugin".to_owned()],
+            vec![PluginInstanceId::new()],
         )
         .await
         .expect("fire");
@@ -541,10 +543,11 @@ async fn enabled_plugin_fires() {
         "#,
     );
 
+    let enabled_id = PluginInstanceId::new();
     let sys = build_system(dir.path());
     let result = sys
         .async_handle
-        .create_session_registry(vec!["judge_fail".to_owned()], SessionId::new())
+        .create_session_registry(vec![(enabled_id.clone(), "judge_fail".to_owned())], SessionId::new())
         .await
         .expect("create registry");
 
@@ -557,7 +560,7 @@ async fn enabled_plugin_fires() {
                 session_id: "s1".to_owned(),
                 last_assistant_message: "hello".to_owned(),
             },
-            vec!["judge_fail".to_owned()],
+            vec![enabled_id.clone()],
         )
         .await
         .expect("fire");
@@ -575,6 +578,142 @@ async fn enabled_plugin_fires() {
         "enabled plugin must fire: {messages:?}"
     );
 }
+
+#[tokio::test]
+async fn duplicate_plugin_instances_fire_independently() {
+    // Given a session with TWO instances of the same plugin.
+    let dir = tempfile::tempdir().expect("tempdir");
+    write_plugin_kind(
+        dir.path(),
+        "attachable",
+        "judge_fail",
+        r#"
+            local M = {}
+            function M.on_turn_end(ctx)
+                ctx.emit("push_chat_entry", {
+                    session_id = ctx.session_id,
+                    message = ctx.instance_id,
+                })
+            end
+            return M
+        "#,
+    );
+
+    let id_a = PluginInstanceId::new();
+    let id_b = PluginInstanceId::new();
+    assert_ne!(id_a, id_b, "two instances must have distinct ids");
+
+    let sys = build_system(dir.path());
+    let result = sys
+        .async_handle
+        .create_session_registry(
+            vec![
+                (id_a.clone(), "judge_fail".to_owned()),
+                (id_b.clone(), "judge_fail".to_owned()),
+            ],
+            SessionId::new(),
+        )
+        .await
+        .expect("create registry");
+
+    // When firing on_turn_end for the session (both instances enabled).
+    sys.async_handle
+        .fire_async_for_session(
+            Some(result.registry_id),
+            "on_turn_end",
+            &TurnEndCtx {
+                session_id: "s1".to_owned(),
+                last_assistant_message: "hello".to_owned(),
+            },
+            vec![id_a.clone(), id_b.clone()],
+        )
+        .await
+        .expect("fire");
+
+    tokio::time::sleep(std::time::Duration::from_millis(100)).await;
+    let cmds = sys.captured.lock();
+    let messages: Vec<&str> = cmds
+        .iter()
+        .map(|c| c.data["message"].as_str().expect("message"))
+        .collect();
+
+    // Then: each instance's hook fired exactly once (fire-per-instance).
+    assert_eq!(
+        messages.iter().filter(|m| **m == id_a.to_string()).count(),
+        1,
+        "instance A must fire exactly once: {messages:?}"
+    );
+    assert_eq!(
+        messages.iter().filter(|m| **m == id_b.to_string()).count(),
+        1,
+        "instance B must fire exactly once: {messages:?}"
+    );
+}
+#[tokio::test]
+async fn two_instances_have_isolated_plugin_data() {
+    // Given two instances of the same plugin, each writing a distinct value
+    // to its own plugin_data.
+    let dir = tempfile::tempdir().expect("tempdir");
+    write_plugin_kind(
+        dir.path(),
+        "attachable",
+        "instance_writer",
+        r#"
+            local M = {}
+            function M.on_turn_end(ctx)
+                ctx.set_plugin_data({ who = ctx.instance_id })
+            end
+            return M
+        "#,
+    );
+
+    let id_a = PluginInstanceId::new();
+    let id_b = PluginInstanceId::new();
+    assert_ne!(id_a, id_b);
+
+    let sys = build_system(dir.path());
+    let result = sys
+        .async_handle
+        .create_session_registry(
+            vec![
+                (id_a.clone(), "instance_writer".to_owned()),
+                (id_b.clone(), "instance_writer".to_owned()),
+            ],
+            SessionId::from("s1".to_owned()),
+        )
+        .await
+        .expect("create registry");
+
+    // When firing on_turn_end for the session (both instances enabled).
+    sys.async_handle
+        .fire_async_for_session(
+            Some(result.registry_id),
+            "on_turn_end",
+            &TurnEndCtx {
+                session_id: "s1".to_owned(),
+                last_assistant_message: "hello".to_owned(),
+            },
+            vec![id_a.clone(), id_b.clone()],
+        )
+        .await
+        .expect("fire");
+
+    tokio::time::sleep(std::time::Duration::from_millis(100)).await;
+
+    // Then: each instance's plugin_data is isolated — A reads its own id,
+    // B reads its own id, and neither sees the other's write.
+    let data_a = sys
+        .async_handle
+        .get_plugin_data_for_session(&SessionId::from("s1".to_owned()), &id_a)
+        .expect("instance A data");
+    let data_b = sys
+        .async_handle
+        .get_plugin_data_for_session(&SessionId::from("s1".to_owned()), &id_b)
+        .expect("instance B data");
+    assert_eq!(data_a["who"], json!(id_a.to_string()), "A reads its own id");
+    assert_eq!(data_b["who"], json!(id_b.to_string()), "B reads its own id");
+}
+
 
 #[tokio::test]
 async fn ctx_cancel_aborts_inflight_request() {
@@ -642,7 +781,7 @@ async fn ctx_cancel_aborts_inflight_request() {
 
     // The plugin_data should reflect the cancel envelope (session-scoped).
     let pd = async_handle
-        .get_plugin_data_for_session(&SessionId::from("s1".to_owned()), "canceler")
+        .get_plugin_data("canceler")
         .unwrap_or_default();
     assert_eq!(
         pd["status"],
@@ -714,7 +853,7 @@ async fn gather_runs_requests_concurrently() {
     );
     tokio::time::sleep(std::time::Duration::from_millis(50)).await;
     let pd = async_handle
-        .get_plugin_data_for_session(&SessionId::from("s1".to_owned()), "gatherer")
+        .get_plugin_data("gatherer")
         .unwrap_or_default();
     assert_eq!(
         pd["count"],
@@ -798,7 +937,7 @@ async fn cancel_one_of_two_distinct_tasks() {
     tokio::time::sleep(std::time::Duration::from_millis(200)).await;
 
     let pd = async_handle
-        .get_plugin_data_for_session(&SessionId::from("s1".to_owned()), "picker")
+        .get_plugin_data("picker")
         .unwrap_or_default();
     let results = pd["results"].as_array().expect("results array");
     assert_eq!(results.len(), 2, "gather must return both results");
