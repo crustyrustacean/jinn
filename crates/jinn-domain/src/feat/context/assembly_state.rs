@@ -30,6 +30,16 @@ pub struct ContextAssemblyState {
     pub session_tool_definitions:
         HashMap<crate::protocol::SessionId, HashMap<String, ToolDefinition>>,
 
+    /// Catalog of attachable plugin tool definitions, keyed by tool name.
+    /// OWNER: populated once at startup by `actor_wiring.rs` from attachable
+    /// tool metadata (the same definitions registered `execution_only: true`
+    /// in the tools actor). This is NOT a visibility source — `tools_for_session`
+    /// never consults it. It is a private lookup table for
+    /// `DomainNodeContext::create_child_session`, which copies selected entries
+    /// into `session_tool_definitions[child]` when a plugin spawns a child
+    /// session. Keeping the origin's tool catalog clean.
+    pub attachable_tool_catalog: HashMap<String, ToolDefinition>,
+
     /// Loaded compaction system prompt from `~/.config/jinn/prompts/_compaction.md`.
     /// OWNER: populated once at startup by the app init code.
     pub compaction_prompt: String,

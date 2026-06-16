@@ -143,7 +143,7 @@ pub fn load_theme(state: &State, user_dir: &Path, system_dir: &Path) {
 /// This is what [`crate::TuiAppBuilder`] delegates to so that tests still go
 /// through the single keymap-bootstrap site ([`keymap::bind_plugin_keybinds`])
 /// without requiring real on-disk prompt/theme files.
-pub(crate) fn launch_for_test(
+pub fn launch_for_test(
     core: AppCore,
     services: jinn_domain::Services,
     plugins: jinn_domain::feat::plugin_system::SyncPlugins,

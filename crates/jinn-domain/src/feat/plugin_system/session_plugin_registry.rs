@@ -86,7 +86,7 @@ pub trait SessionPluginRegistry: Send + Sync {
     /// cannot be loaded.
     async fn create_session_registry(
         &self,
-        plugin_names: Vec<String>,
+        instances: Vec<(crate::feat::plugin_system::PluginInstanceId, String)>,
         origin_session_id: SessionId,
     ) -> Result<CreateSessionRegistryResult, Report<SessionPluginRegistryError>>;
 

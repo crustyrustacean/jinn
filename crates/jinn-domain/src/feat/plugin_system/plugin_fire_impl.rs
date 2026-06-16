@@ -28,9 +28,9 @@ impl PluginFire for AsyncPluginHandle {
         session: SessionRegistryId,
         hook: &str,
         ctx: &Value,
-        enabled_plugins: Vec<String>,
+        enabled_instances: Vec<super::PluginInstanceId>,
     ) -> Result<(), Report<PluginFireError>> {
-        self.fire_async_for_session(Some(session), hook, ctx, enabled_plugins)
+        self.fire_async_for_session(Some(session), hook, ctx, enabled_instances)
             .await
             .map_err(|report| report.change_context(PluginFireError))
     }
@@ -60,6 +60,7 @@ impl PluginFire for AsyncPluginHandle {
         &self,
         target: Option<SessionRegistryId>,
         session_id: &crate::SessionId,
+        parent_session_id: Option<&crate::SessionId>,
         plugin_name: &str,
         tool_name: &str,
         arguments: &Value,
@@ -67,6 +68,7 @@ impl PluginFire for AsyncPluginHandle {
         self.execute_tool(
             target,
             session_id.clone(),
+            parent_session_id.cloned(),
             plugin_name,
             tool_name,
             arguments,

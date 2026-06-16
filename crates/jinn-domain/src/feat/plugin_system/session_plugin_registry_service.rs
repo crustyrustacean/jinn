@@ -38,11 +38,11 @@ impl SessionPluginRegistryService {
     /// cannot be loaded.
     pub async fn create_session_registry(
         &self,
-        plugin_names: Vec<String>,
+        instances: Vec<(crate::feat::plugin_system::PluginInstanceId, String)>,
         origin_session_id: SessionId,
     ) -> Result<CreateSessionRegistryResult, Report<SessionPluginRegistryError>> {
         self.backend
-            .create_session_registry(plugin_names, origin_session_id)
+            .create_session_registry(instances, origin_session_id)
             .await
     }
 

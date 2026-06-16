@@ -19,8 +19,6 @@ use unicode_segmentation::UnicodeSegmentation;
 
 use crate::common::app_state::{AppState, FocusScope};
 use crate::common::render_ctx::RenderCtx;
-use crate::feat::plugin_dispatch::{PreviewDirective, call_hooks_typed};
-// use crate::feat::plugin_dispatch::{PreviewDirective, call_hooks_typed};
 use crate::feat::session::chat_session::ChatSessionState;
 use crate::feat::theme::Theme;
 use crate::feat::ui::chat_log::entry_to_lines;
@@ -102,26 +100,18 @@ pub fn sessions_section_content_height(state: &AppState) -> u16 {
     visible.max(1) + 1
 }
 
-/// Resolves the preview session for a plugin entry by calling the
-/// `on_session_preview` sync hook.
+/// Resolves the preview session for a plugin entry from its managed session.
 ///
-/// The plugin reads `plugin_data` (written by the async side) and returns
-/// a session ID to preview. Returns `None` if the hook returns nothing
-/// or the session doesn't exist.
+/// Plugin entries carry the managed session ID directly (populated from
+/// `AttachedPlugin.managed_session_id` when building entries). No Lua hook
+/// call is needed. Returns `None` if the entry has no managed session or
+/// the session doesn't exist.
 pub(crate) fn resolve_plugin_preview<'a>(
     entry: &crate::feat::ui::sidebar::sessions::state::SessionEntry,
     ctx: &'a RenderCtx<'a>,
 ) -> Option<&'a ChatSessionState> {
-    let plugins = ctx.plugins?;
-    let preview_ctx = serde_json::json!({
-        "session_id": entry.id.to_string(),
-        "plugin_name": entry.title,
-    });
-    let directives =
-        call_hooks_typed::<PreviewDirective>(plugins, "on_session_preview", &preview_ctx.into());
-    let directive = directives.into_iter().next()?;
-    let session_id = SessionId::from(directive.session_id);
-    ctx.state.session.get(&session_id)
+    let session_id = entry.managed_session_id.as_ref()?;
+    ctx.state.session.get(session_id)
 }
 
 /// Renders the session preview popup when the sidebar sessions section is focused.

@@ -61,6 +61,7 @@ pub mod tool_def;
 
 // ── Re-exports ─────────────────────────────────────────────────────
 
+pub use crate::feat::attached_plugin::PluginInstanceId;
 pub use async_handle::AsyncPluginHandle;
 pub use async_thread::RequestHandler;
 pub use command::PluginCommand;

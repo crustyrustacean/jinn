@@ -60,9 +60,8 @@ pub use feat::provider_infra::cache_path;
 pub use feat::provider_infra::{
     ApiKeys, ApiKeysService, ConfigStorageService, FakeLlmServiceFactory, FilesystemConfigStorage,
     InMemoryConfigStorage, LlmServiceFactoryService, ModelCache, NoProvidersAvailableFactory,
-    ProviderId, ProviderRegistry, ProviderRegistryService, ProvidersConfig,
+    ProviderId, ProviderRegistry, ProviderRegistryService, ProvidersConfig, ScriptedResponse,
 };
-
 // Re-export context types
 
 // Re-export session types
@@ -106,6 +105,7 @@ pub use common::actor::protocol::command::ProceedWithShutdown;
 pub use common::actor::protocol::event::{
     ActorShutdownCompleted, ActorStarted, ActorStarting, AllActorsSpawned,
 };
+pub use feat::attached_plugin::PluginInstanceId;
 pub use feat::chat_input::protocol::command::{
     EnqueueUserMessage, PushChatEntry, SetChatInputEnabled, SetChatInputText,
 };
