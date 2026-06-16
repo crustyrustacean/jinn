@@ -1,0 +1,29 @@
+[package]
+name = "jinn-session-schema"
+version = "0.1.0"
+edition = "2021"
+publish = false
+description = """
+Standalone schema + migration crate for jinn's session store.
+
+Leaf crate: depends only on rusqlite + serialization helpers. Consumed by
+`jinn-domain`'s build.rs (to create the compile-time validation DB) and by the
+runtime migrator (through the dao pool). Keeping migrations here breaks the
+bootstrap cycle — a crate's build.rs cannot depend on itself.
+"""
+
+[dependencies]
+rusqlite = { workspace = true }
+serde = { workspace = true }
+serde_json = { workspace = true }
+error-stack = { workspace = true }
+jiff = { workspace = true }
+wherror = { workspace = true }
+
+# (no dev-dependencies; the `testing` feature is consumed by jinn-domain test code)
+
+[features]
+# Exposes test-only helpers (apply_migrations_inner, apply_up_to_no_fk) so
+# downstream crates' test suites can stand up a DB at a specific legacy
+# schema version. Enabled in [dev-dependencies] by jinn-domain's tests.
+testing = []
