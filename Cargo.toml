@@ -67,6 +67,7 @@ tokio = { workspace = true, features = ["full"] }
 
 # Internal
 jinn-domain = { path = "crates/jinn-domain" }
+jinn-session-schema = { path = "crates/jinn-session-schema" }
 
 ratatui-markdown = { path = "vendor/ratatui-markdown", features = ["markdown", "highlight", "highlight-lang-all", "highlight-pest", "mermaid"] }
 jinn-provider = { path = "crates/jinn-provider" }
@@ -170,7 +171,8 @@ csv = "1"
 ctrlc = "3"
 comfy-table = "7"
 # Database
-diesel = { version = "2", features = ["sqlite", "r2d2"] }
+dao = { path = "/mnt/zed/repos/dao/crates/dao" }
+rusqlite = { version = "0.40", features = ["bundled"] }
 
 # Testing (e2e)
 cucumber = "0.23"
