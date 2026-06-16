@@ -322,7 +322,11 @@ fn insert_plugin_entries(state: &AppState, entries: &mut Vec<SessionEntry>) {
                 kind: SessionEntryKind::Plugin {
                     enabled: ap.enabled,
                 },
-                id: parent_id.clone(),
+                // Use the instance id as the entry id so duplicate attachments
+                // of the same plugin (e.g. two judges) get distinct sidebar
+                // entries. The activate path resolves the real managed
+                // session from this instance id.
+                id: SessionId::from(ap.instance_id.to_string()),
                 title: ap.label_or_name().to_owned(),
                 is_active: false,
                 created_at: parent_created_at,
