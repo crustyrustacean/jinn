@@ -7,6 +7,7 @@ edition.workspace = true
 # Internal deps
 jinn-provider = { workspace = true }
 jinn-common = { workspace = true }
+jinn-core-types = { workspace = true }
 jinn-provider-config = { workspace = true }
 jinn-web-fetch = { workspace = true }
 jinn-selection-widget = { workspace = true }
