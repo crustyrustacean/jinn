@@ -152,16 +152,17 @@ impl PluginDispatchActor {
         tracing::debug!(session_id = %session_id, plugin = %plugin_name, "attaching plugin");
 
         // 1. Push AttachedPlugin onto session.core.attached_plugins.
+        //    Construct it first so we can capture the new instance id for the
+        //    `on_attach` hook (fired after the registry is rebuilt).
+        let new_instance = AttachedPlugin::new(&plugin_name);
+        let new_instance_id = new_instance.instance_id.clone();
         let instances: Vec<(PluginInstanceId, String)> = {
             let state = &mut self.state.write().session;
             let Some(session) = state.get_mut(&session_id) else {
                 tracing::warn!(session_id = %session_id, "session not found for attach");
                 return;
             };
-            session
-                .core
-                .attached_plugins
-                .push(AttachedPlugin::new(&plugin_name));
+            session.core.attached_plugins.push(new_instance);
             session
                 .core
                 .attached_plugins
@@ -171,10 +172,19 @@ impl PluginDispatchActor {
         };
 
         // 2. Destroy old registry (if any), create new with full instance list.
-        self.recreate_session_registry(&session_id, instances)
-            .await;
+        self.recreate_session_registry(&session_id, instances).await;
 
-        // 3. Publish event.
+        // 3. Fire the `on_attach` lifecycle hook for the new instance. Runs
+        //    after the registry is rebuilt so the hook executes against the
+        //    live Lua state. Only the new instance receives it.
+        self.spawn_fire_for_session(
+            &session_id,
+            "on_attach",
+            &serde_json::json!({}),
+            vec![new_instance_id.clone()],
+        );
+
+        // 4. Publish event.
         self.publish(PluginAttached {
             session_id,
             plugin_name,
@@ -189,27 +199,50 @@ impl PluginDispatchActor {
         } = cmd;
         tracing::debug!(session_id = %session_id, plugin = %plugin_name, "detaching plugin");
 
-        // 1. Remove AttachedPlugin from session.core.attached_plugins.
-        let remaining_instances: Vec<(PluginInstanceId, String)> = {
+        // 1. Capture the instances being removed and remove them from
+        //    session.core.attached_plugins.
+        let (removed_instances, remaining_instances): (
+            Vec<PluginInstanceId>,
+            Vec<(PluginInstanceId, String)>,
+        ) = {
             let state = &mut self.state.write().session;
-            if let Some(session) = state.get_mut(&session_id) {
-                session
-                    .core
-                    .attached_plugins
-                    .retain(|p| p.name.as_str() != plugin_name.as_str());
-                session
-                    .core
-                    .attached_plugins
-                    .iter()
-                    .map(|p| (p.instance_id.clone(), p.name.clone()))
-                    .collect()
-            } else {
+            let Some(session) = state.get_mut(&session_id) else {
                 tracing::warn!(session_id = %session_id, "session not found for detach");
                 return;
-            }
+            };
+            let removed: Vec<PluginInstanceId> = session
+                .core
+                .attached_plugins
+                .iter()
+                .filter(|p| p.name.as_str() == plugin_name.as_str())
+                .map(|p| p.instance_id.clone())
+                .collect();
+            session
+                .core
+                .attached_plugins
+                .retain(|p| p.name.as_str() != plugin_name.as_str());
+            let remaining = session
+                .core
+                .attached_plugins
+                .iter()
+                .map(|p| (p.instance_id.clone(), p.name.clone()))
+                .collect();
+            (removed, remaining)
         };
 
-        // 2. Destroy and recreate the registry (or destroy if no plugins remain).
+        // 2. Fire the `on_detach` lifecycle hook for each removed instance.
+        //    Runs BEFORE the registry is rebuilt, so the hook still executes
+        //    against the live (pre-teardown) Lua state.
+        for instance_id in &removed_instances {
+            self.spawn_fire_for_session(
+                &session_id,
+                "on_detach",
+                &serde_json::json!({}),
+                vec![instance_id.clone()],
+            );
+        }
+
+        // 3. Destroy and recreate the registry (or destroy if no plugins remain).
         self.recreate_session_registry(&session_id, remaining_instances)
             .await;
 
@@ -289,8 +322,9 @@ impl PluginDispatchActor {
         let TogglePlugin {
             session_id,
             plugin_name,
+            instance_id,
         } = cmd;
-        tracing::debug!(session_id = %session_id, plugin = %plugin_name, "toggling plugin");
+        tracing::debug!(session_id = %session_id, plugin = %plugin_name, instance = %instance_id, "disabling plugin instance");
 
         let now_enabled = {
             let state = &mut self.state.write().session;
@@ -302,12 +336,12 @@ impl PluginDispatchActor {
                 .core
                 .attached_plugins
                 .iter_mut()
-                .find(|p| p.name.as_str() == plugin_name.as_str())
+                .find(|p| p.instance_id == instance_id)
             else {
                 tracing::warn!(session_id = %session_id, plugin = %plugin_name, "plugin not attached");
                 return;
             };
-            plugin.enabled = !plugin.enabled;
+            plugin.enabled = false;
             plugin.enabled
         };
 
@@ -326,6 +360,7 @@ impl PluginDispatchActor {
             session_id,
             plugin_name,
             managed_session_id,
+            instance_id,
         } = cmd;
         tracing::debug!(session_id = %session_id, plugin = %plugin_name, managed = %managed_session_id, "setting managed session");
 
@@ -338,7 +373,7 @@ impl PluginDispatchActor {
             .core
             .attached_plugins
             .iter_mut()
-            .find(|p| p.name.as_str() == plugin_name.as_str())
+            .find(|p| p.instance_id == instance_id)
         else {
             tracing::warn!(session_id = %session_id, plugin = %plugin_name, "plugin not attached");
             return;
@@ -587,9 +622,9 @@ mod tests {
     use crate::common::app_state::AppState;
     use crate::common::services::bus_service::BusAudit;
     use crate::common::session_map::SessionMap;
-    use crate::feat::attached_plugin::PluginRunState;
+    use crate::feat::attached_plugin::{PluginInstanceId, PluginRunState};
     use crate::feat::plugin_dispatch::protocol::command::{
-        AttachPlugin, DetachPlugin, TogglePlugin,
+        AttachPlugin, DetachPlugin, SetManagedSession, TogglePlugin,
     };
     use crate::feat::plugin_system::PluginToolMetadata;
     use crate::feat::plugin_system::ToolScope;
@@ -742,7 +777,7 @@ mod tests {
     }
 
     #[tokio::test]
-    async fn toggle_plugin_flips_enabled() {
+    async fn disable_plugin_force_disables_targeted_instance() {
         // Given a plugin dispatch actor with a plugin attached.
         let (mut actor, _audit, session_id) = make_actor().await;
         actor
@@ -752,11 +787,26 @@ mod tests {
             })
             .await;
 
-        // When toggling the plugin.
+        // Capture the instance id assigned at attach.
+        let instance_id = actor
+            .state
+            .read()
+            .session
+            .get(&session_id)
+            .unwrap()
+            .core
+            .attached_plugins
+            .first()
+            .expect("plugin attached")
+            .instance_id
+            .clone();
+
+        // When disabling the plugin instance.
         actor
             .handle_toggle(TogglePlugin {
                 session_id: session_id.clone(),
                 plugin_name: "judge_fail".to_owned(),
+                instance_id: instance_id.clone(),
             })
             .await;
 
@@ -814,6 +864,76 @@ mod tests {
     }
 
     #[tokio::test]
+    async fn set_managed_session_per_instance_does_not_clobber_sibling() {
+        // Given a plugin dispatch actor with two instances of the same plugin.
+        let (mut actor, _audit, session_id) = make_actor().await;
+        actor
+            .handle_attach(AttachPlugin {
+                session_id: session_id.clone(),
+                plugin_name: "judge_fail".to_owned(),
+            })
+            .await;
+        actor
+            .handle_attach(AttachPlugin {
+                session_id: session_id.clone(),
+                plugin_name: "judge_fail".to_owned(),
+            })
+            .await;
+
+        // ...and their instance ids.
+        let (id_a, id_b) = {
+            let s = actor.state.read();
+            let s = s.session.get(&session_id).unwrap();
+            let plugins = &s.core.attached_plugins;
+            assert_eq!(plugins.len(), 2);
+            (plugins[0].instance_id.clone(), plugins[1].instance_id.clone())
+        };
+        assert_ne!(id_a, id_b);
+
+        let child_a = SessionId::new();
+        let child_b = SessionId::new();
+
+        // When each instance sets its own managed session.
+        actor
+            .handle_set_managed_session(SetManagedSession {
+                session_id: session_id.clone(),
+                plugin_name: "judge_fail".to_owned(),
+                managed_session_id: child_a.clone(),
+                instance_id: id_a.clone(),
+            });
+        actor
+            .handle_set_managed_session(SetManagedSession {
+                session_id: session_id.clone(),
+                plugin_name: "judge_fail".to_owned(),
+                managed_session_id: child_b.clone(),
+                instance_id: id_b.clone(),
+            });
+
+        // Then each instance holds its OWN managed session — the second did
+        // not clobber the first.
+        let plugins = actor
+            .state
+            .read()
+            .session
+            .get(&session_id)
+            .unwrap()
+            .core
+            .attached_plugins
+            .clone();
+        let by_id = plugins
+            .iter()
+            .map(|p| (p.instance_id.clone(), p.managed_session_id.clone()))
+            .collect::<Vec<_>>();
+        assert_eq!(
+            by_id,
+            vec![
+                (id_a, Some(child_a)),
+                (id_b, Some(child_b)),
+            ]
+        );
+    }
+
+    #[tokio::test]
     async fn toggle_unknown_plugin_is_noop() {
         // Given a plugin dispatch actor.
         let (mut actor, _audit, session_id) = make_actor().await;
@@ -823,6 +943,7 @@ mod tests {
             .handle_toggle(TogglePlugin {
                 session_id: session_id.clone(),
                 plugin_name: "nonexistent".to_owned(),
+                instance_id: PluginInstanceId::new(),
             })
             .await;
 

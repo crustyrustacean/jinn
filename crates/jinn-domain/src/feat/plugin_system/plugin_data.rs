@@ -58,7 +58,10 @@ impl PluginData {
         instance_id: &PluginInstanceId,
     ) -> Option<serde_json::Value> {
         self.0
-            .get(&PluginDataKey::Attached(session_id.clone(), instance_id.clone()))
+            .get(&PluginDataKey::Attached(
+                session_id.clone(),
+                instance_id.clone(),
+            ))
             .map(|v| v.clone())
     }
 
@@ -138,6 +141,82 @@ impl PluginData {
 }
 
 impl Default for PluginData {
+    fn default() -> Self {
+        Self::new()
+    }
+}
+
+/// Thread-safe global data store — cross-plugin, cross-instance shared state.
+///
+/// A string-keyed bag of JSON values that any plugin or instance can read or
+/// write. Used for cross-instance coordination (e.g. multi-judge aggregation:
+/// a judge posts its verdict under a shared key; the last-to-finish reads all
+/// verdicts and merges them).
+///
+/// Wrapped in `Arc` so it can be cloned cheaply and shared between the sync
+/// and async halves of the plugin system, identical to `PluginData`.
+///
+/// # Concurrency
+///
+/// Read-modify-write sequences (read a counter, +1, write) are race-free in
+/// practice because the plugin thread is single-threaded: hooks and tool
+/// callbacks serialize through one `LocalSet`, so no two writers touch the
+/// store concurrently. The child LLM turns run in parallel on the worker pool
+/// but never touch this store. If jinn ever moves to multi-threaded plugin
+/// execution, this invariant breaks and the store would need atomic/CAS ops.
+#[derive(Clone)]
+pub struct GlobalPluginData(Arc<DashMap<String, serde_json::Value>>);
+
+impl GlobalPluginData {
+    /// Create a new empty global data store.
+    #[must_use]
+    pub fn new() -> Self {
+        Self(Arc::new(DashMap::new()))
+    }
+
+    /// Get a snapshot of the value under `key`.
+    ///
+    /// Returns a cloned `serde_json::Value` taken at the moment of the call;
+    /// it won't reflect subsequent writes.
+    #[must_use]
+    pub fn get(&self, key: &str) -> Option<serde_json::Value> {
+        self.0.get(key).map(|v| v.clone())
+    }
+
+    /// Set the value under `key`. Replaces any previous value.
+    pub fn set(&self, key: &str, value: serde_json::Value) {
+        self.0.insert(key.to_owned(), value);
+    }
+
+    /// Shallow-merge a partial object under `key`.
+    ///
+    /// Top-level keys in `partial` overwrite the same keys in the stored value;
+    /// other top-level keys are untouched. The stored value is treated as `{}`
+    /// when no data exists yet, or when the stored value is not an object (a
+    /// stray scalar is replaced wholesale). Mirrors
+    /// `PluginData::merge_for_session` semantics.
+    pub fn merge(&self, key: &str, partial: serde_json::Value) {
+        use serde_json::Value;
+
+        let merged = self
+            .0
+            .get(key)
+            .filter(|v| v.is_object())
+            .map(|v| {
+                let mut current = v.clone();
+                if let (Value::Object(cur), Value::Object(part)) = (&mut current, &partial) {
+                    for (k, v) in part {
+                        cur.insert(k.clone(), v.clone());
+                    }
+                }
+                current
+            })
+            .unwrap_or(partial);
+        self.0.insert(key.to_owned(), merged);
+    }
+}
+
+impl Default for GlobalPluginData {
     fn default() -> Self {
         Self::new()
     }
@@ -276,5 +355,48 @@ mod tests {
         assert_eq!(s1_data["extra"], "data");
         assert_eq!(s2_data["count"], 1);
         assert!(s2_data.get("extra").is_none());
+    }
+
+    #[test]
+    fn global_data_get_returns_none_for_missing_key() {
+        let data = GlobalPluginData::new();
+        assert!(data.get("nope").is_none());
+    }
+
+    #[test]
+    fn global_data_set_then_get_roundtrips_number() {
+        let data = GlobalPluginData::new();
+        data.set("count", serde_json::json!(3));
+        assert_eq!(data.get("count"), Some(serde_json::json!(3)));
+    }
+
+    #[test]
+    fn global_data_roundtrips_object_and_array() {
+        let data = GlobalPluginData::new();
+        data.set("obj", serde_json::json!({ "a": 1, "b": "x" }));
+        data.set("arr", serde_json::json!([1, 2, 3]));
+        assert_eq!(
+            data.get("obj"),
+            Some(serde_json::json!({ "a": 1, "b": "x" }))
+        );
+        assert_eq!(data.get("arr"), Some(serde_json::json!([1, 2, 3])));
+    }
+
+    #[test]
+    fn global_data_merge_shallow_merges_top_level_keys() {
+        let data = GlobalPluginData::new();
+        data.set("k", serde_json::json!({ "keep": 1, "repl": "old" }));
+        data.merge("k", serde_json::json!({ "repl": "new", "added": true }));
+        let result = data.get("k").expect("exists");
+        assert_eq!(result["keep"], 1);
+        assert_eq!(result["repl"], "new");
+        assert_eq!(result["added"], true);
+    }
+
+    #[test]
+    fn global_data_merge_on_missing_key_treats_as_empty_object() {
+        let data = GlobalPluginData::new();
+        data.merge("fresh", serde_json::json!({ "seed": 42 }));
+        assert_eq!(data.get("fresh"), Some(serde_json::json!({ "seed": 42 })));
     }
 }

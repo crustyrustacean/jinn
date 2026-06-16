@@ -9,8 +9,8 @@
 )]
 
 use jinn_domain::SessionId;
-use jinn_domain::feat::plugin_system::SessionPluginRegistry;
 use jinn_domain::feat::plugin_system::PluginInstanceId;
+use jinn_domain::feat::plugin_system::SessionPluginRegistry;
 use parking_lot::Mutex;
 use std::path::Path;
 use std::sync::Arc;
@@ -318,7 +318,10 @@ async fn load_session_registry_creates_isolated_state() {
     let sys = build_system(dir.path());
     let result = sys
         .async_handle
-        .create_session_registry(vec![(PluginInstanceId::new(), "judge_fail".to_owned())], SessionId::new())
+        .create_session_registry(
+            vec![(PluginInstanceId::new(), "judge_fail".to_owned())],
+            SessionId::new(),
+        )
         .await
         .expect("create registry");
 
@@ -365,7 +368,10 @@ async fn fire_for_session_excludes_other_sessions_plugins() {
     let sys = build_system(dir.path());
     let _session_a = sys
         .async_handle
-        .create_session_registry(vec![(PluginInstanceId::new(), "judge_fail".to_owned())], SessionId::new())
+        .create_session_registry(
+            vec![(PluginInstanceId::new(), "judge_fail".to_owned())],
+            SessionId::new(),
+        )
         .await
         .expect("create registry A");
     let session_b = sys
@@ -436,7 +442,10 @@ async fn fire_for_session_merges_global_and_session_plugins() {
     let sys = build_system(dir.path());
     let result = sys
         .async_handle
-        .create_session_registry(vec![(PluginInstanceId::new(), "judge_fail".to_owned())], SessionId::new())
+        .create_session_registry(
+            vec![(PluginInstanceId::new(), "judge_fail".to_owned())],
+            SessionId::new(),
+        )
         .await
         .expect("create registry");
 
@@ -492,7 +501,10 @@ async fn disabled_plugin_is_skipped() {
     let sys = build_system(dir.path());
     let result = sys
         .async_handle
-        .create_session_registry(vec![(disabled_id.clone(), "judge_fail".to_owned())], SessionId::new())
+        .create_session_registry(
+            vec![(disabled_id.clone(), "judge_fail".to_owned())],
+            SessionId::new(),
+        )
         .await
         .expect("create registry");
 
@@ -547,7 +559,10 @@ async fn enabled_plugin_fires() {
     let sys = build_system(dir.path());
     let result = sys
         .async_handle
-        .create_session_registry(vec![(enabled_id.clone(), "judge_fail".to_owned())], SessionId::new())
+        .create_session_registry(
+            vec![(enabled_id.clone(), "judge_fail".to_owned())],
+            SessionId::new(),
+        )
         .await
         .expect("create registry");
 
@@ -714,7 +729,6 @@ async fn two_instances_have_isolated_plugin_data() {
     assert_eq!(data_b["who"], json!(id_b.to_string()), "B reads its own id");
 }
 
-
 #[tokio::test]
 async fn ctx_cancel_aborts_inflight_request() {
     // Given a plugin whose on_turn_end calls ctx.request with a task name,
@@ -780,9 +794,7 @@ async fn ctx_cancel_aborts_inflight_request() {
     tokio::time::sleep(std::time::Duration::from_millis(150)).await;
 
     // The plugin_data should reflect the cancel envelope (session-scoped).
-    let pd = async_handle
-        .get_plugin_data("canceler")
-        .unwrap_or_default();
+    let pd = async_handle.get_plugin_data("canceler").unwrap_or_default();
     assert_eq!(
         pd["status"],
         serde_json::json!("cancelled"),
@@ -852,9 +864,7 @@ async fn gather_runs_requests_concurrently() {
         elapsed
     );
     tokio::time::sleep(std::time::Duration::from_millis(50)).await;
-    let pd = async_handle
-        .get_plugin_data("gatherer")
-        .unwrap_or_default();
+    let pd = async_handle.get_plugin_data("gatherer").unwrap_or_default();
     assert_eq!(
         pd["count"],
         serde_json::json!(3),
@@ -936,9 +946,7 @@ async fn cancel_one_of_two_distinct_tasks() {
     fire.await.expect("fire").expect("fire ok");
     tokio::time::sleep(std::time::Duration::from_millis(200)).await;
 
-    let pd = async_handle
-        .get_plugin_data("picker")
-        .unwrap_or_default();
+    let pd = async_handle.get_plugin_data("picker").unwrap_or_default();
     let results = pd["results"].as_array().expect("results array");
     assert_eq!(results.len(), 2, "gather must return both results");
     // Find which result is which by error/value.
@@ -1018,5 +1026,352 @@ async fn attachable_tool_executes_globally_for_descendant_session() {
     assert!(
         routed.contains(&"origin-session"),
         "handler must route via ctx.parent_session_id to origin-session: {routed:?}"
+    );
+}
+
+struct AttachCtx {
+    session_id: String,
+    plugin_name: String,
+}
+
+impl Serialize for AttachCtx {
+    fn serialize<S: serde::Serializer>(&self, serializer: S) -> Result<S::Ok, S::Error> {
+        use serde::ser::SerializeStruct;
+        let mut s = serializer.serialize_struct("AttachCtx", 2)?;
+        s.serialize_field("session_id", &self.session_id)?;
+        s.serialize_field("plugin_name", &self.plugin_name)?;
+        s.end()
+    }
+}
+
+#[tokio::test]
+async fn on_attach_hook_fires_per_instance_with_ctx() {
+    // Given an attachable plugin with an on_attach hook that emits a command
+    // recording ctx.instance_id + ctx.session_id.
+    let dir = tempfile::tempdir().expect("tempdir");
+    write_plugin_kind(
+        dir.path(),
+        "attachable",
+        "judge_fail",
+        r#"
+            local M = {}
+            function M.on_attach(ctx)
+                ctx.emit("push_chat_entry", {
+                    session_id = ctx.session_id,
+                    instance_id = ctx.instance_id,
+                })
+            end
+            return M
+        "#,
+    );
+
+    // When creating a session registry for one instance and firing on_attach
+    // scoped to that instance.
+    let instance_id = PluginInstanceId::new();
+    let sys = build_system(dir.path());
+    let result = sys
+        .async_handle
+        .create_session_registry(
+            vec![(instance_id.clone(), "judge_fail".to_owned())],
+            SessionId::new(),
+        )
+        .await
+        .expect("create registry");
+
+    sys.async_handle
+        .fire_async_for_session(
+            Some(result.registry_id),
+            "on_attach",
+            &AttachCtx {
+                session_id: "s1".to_owned(),
+                plugin_name: "judge_fail".to_owned(),
+            },
+            vec![instance_id.clone()],
+        )
+        .await
+        .expect("fire on_attach");
+
+    // Then the hook ran: it emitted a command carrying the instance id and
+    // session id from ctx.
+    tokio::time::sleep(std::time::Duration::from_millis(100)).await;
+    let cmds = sys.captured.lock();
+    assert_eq!(cmds.len(), 1, "on_attach should emit exactly once");
+    assert_eq!(cmds[0].data["session_id"], "s1");
+    assert_eq!(
+        cmds[0].data["instance_id"],
+        instance_id.to_string(),
+        "ctx.instance_id must equal the fired instance id"
+    );
+}
+
+#[tokio::test]
+async fn on_detach_hook_fires_with_ctx() {
+    // Given an attachable plugin with an on_detach hook.
+    let dir = tempfile::tempdir().expect("tempdir");
+    write_plugin_kind(
+        dir.path(),
+        "attachable",
+        "judge_fail",
+        r#"
+            local M = {}
+            function M.on_detach(ctx)
+                ctx.emit("push_chat_entry", {
+                    session_id = ctx.session_id,
+                    instance_id = ctx.instance_id,
+                })
+            end
+            return M
+        "#,
+    );
+
+    // When firing on_detach scoped to one instance (the dispatch actor fires
+    // this before tearing down the registry).
+    let instance_id = PluginInstanceId::new();
+    let sys = build_system(dir.path());
+    let result = sys
+        .async_handle
+        .create_session_registry(
+            vec![(instance_id.clone(), "judge_fail".to_owned())],
+            SessionId::new(),
+        )
+        .await
+        .expect("create registry");
+
+    sys.async_handle
+        .fire_async_for_session(
+            Some(result.registry_id),
+            "on_detach",
+            &AttachCtx {
+                session_id: "s1".to_owned(),
+                plugin_name: "judge_fail".to_owned(),
+            },
+            vec![instance_id.clone()],
+        )
+        .await
+        .expect("fire on_detach");
+
+    // Then the hook ran against the still-live registry, emitting with ctx.
+    tokio::time::sleep(std::time::Duration::from_millis(100)).await;
+    let cmds = sys.captured.lock();
+    assert_eq!(cmds.len(), 1, "on_detach should emit exactly once");
+    assert_eq!(cmds[0].data["session_id"], "s1");
+    assert_eq!(cmds[0].data["instance_id"], instance_id.to_string());
+}
+
+#[tokio::test]
+async fn judge_aggregation_last_to_finish_emits_once() {
+    // Given an attachable plugin implementing the aggregation protocol: on_attach
+    // increments a shared count; judgment_passed posts a verdict keyed on the
+    // child session (ctx.session_id) and emits ONE result only when
+    // completed == count.
+    let dir = tempfile::tempdir().expect("tempdir");
+    write_plugin_kind(
+        dir.path(),
+        "attachable",
+        "panel",
+        r#"
+            local M = {}
+            local function count_key(origin) return "judge:" .. origin .. ":count" end
+            local function verdicts_key(origin) return "judge:" .. origin .. ":verdicts" end
+            local function completed_key(origin) return "judge:" .. origin .. ":completed" end
+            function M.on_attach(ctx)
+                local k = count_key(ctx.session_id)
+                ctx.set_global_data(k, (ctx.get_global_data(k) or 0) + 1)
+            end
+            M.tools = {
+                {
+                    name = "judgment_passed",
+                    description = "pass",
+                    scope = "attached",
+                    parameters = {},
+                    handler = function(ctx)
+                        local origin = ctx.parent_session_id
+                        local me = ctx.session_id
+                        local count = ctx.get_global_data(count_key(origin)) or 0
+                        local verdicts = ctx.get_global_data(verdicts_key(origin)) or {}
+                        verdicts[me] = { verdict = "passed" }
+                        ctx.set_global_data(verdicts_key(origin), verdicts)
+                        local completed = (ctx.get_global_data(completed_key(origin)) or 0) + 1
+                        ctx.set_global_data(completed_key(origin), completed)
+                        if completed < count then return end
+                        ctx.emit("push_chat_entry", {
+                            session_id = origin,
+                            kind = { transient = "merged-result" },
+                        })
+                    end,
+                },
+            }
+            return M
+        "#,
+    );
+
+    let sys = build_system(dir.path());
+
+    // Attach two instances on the same origin (sets count=2 in the shared bag).
+    // on_attach fires against a session registry; the bag is shared with the
+    // global tool-execution Lua state.
+    let origin = SessionId::from("origin".to_owned());
+    let inst_a = PluginInstanceId::new();
+    let inst_b = PluginInstanceId::new();
+    for inst in [&inst_a, &inst_b] {
+        let reg = sys
+            .async_handle
+            .create_session_registry(vec![(inst.clone(), "panel".to_owned())], SessionId::new())
+            .await
+            .expect("create registry");
+        sys.async_handle
+            .fire_async_for_session(
+                Some(reg.registry_id),
+                "on_attach",
+                &AttachCtx {
+                    session_id: origin.to_string(),
+                    plugin_name: "panel".to_owned(),
+                },
+                vec![inst.clone()],
+            )
+            .await
+            .expect("fire on_attach");
+    }
+    // Give the async hook fires time to land.
+    tokio::time::sleep(std::time::Duration::from_millis(150)).await;
+
+    // First child posts its verdict. completed=1 < count=2 → no emit yet.
+    sys.captured.lock().clear();
+    sys.async_handle
+        .execute_tool(
+            None,
+            SessionId::from("child-a".to_owned()),
+            Some(origin.clone()),
+            "panel",
+            "judgment_passed",
+            &json!({}),
+        )
+        .await
+        .expect("execute child-a verdict");
+    tokio::time::sleep(std::time::Duration::from_millis(100)).await;
+    assert_eq!(
+        sys.captured.lock().len(),
+        0,
+        "first verdict must not emit while completed < count"
+    );
+
+    // Second child posts — now completed=2 == count=2 → exactly one emit.
+    sys.async_handle
+        .execute_tool(
+            None,
+            SessionId::from("child-b".to_owned()),
+            Some(origin.clone()),
+            "panel",
+            "judgment_passed",
+            &json!({}),
+        )
+        .await
+        .expect("execute child-b verdict");
+    tokio::time::sleep(std::time::Duration::from_millis(100)).await;
+
+    // Then exactly one result was emitted to the origin.
+    let cmds = sys.captured.lock();
+    let emits: Vec<_> = cmds
+        .iter()
+        .filter(|c| c.name == "push_chat_entry")
+        .collect();
+    assert_eq!(
+        emits.len(),
+        1,
+        "exactly one merged result must be emitted (last-to-finish aggregates)"
+    );
+    assert_eq!(emits[0].data["session_id"], "origin");
+}
+
+#[tokio::test]
+async fn judge_aggregation_single_instance_emits_directly() {
+    // Given the aggregation protocol with a SINGLE instance (count=1). The
+    // single verdict immediately satisfies completed == count, so it emits
+    // directly — identical to pre-aggregation behavior.
+    let dir = tempfile::tempdir().expect("tempdir");
+    write_plugin_kind(
+        dir.path(),
+        "attachable",
+        "panel",
+        r#"
+            local M = {}
+            local function count_key(o) return "judge:" .. o .. ":count" end
+            local function verdicts_key(o) return "judge:" .. o .. ":verdicts" end
+            local function completed_key(o) return "judge:" .. o .. ":completed" end
+            function M.on_attach(ctx)
+                local k = count_key(ctx.session_id)
+                ctx.set_global_data(k, (ctx.get_global_data(k) or 0) + 1)
+            end
+            M.tools = {
+                {
+                    name = "judgment_passed",
+                    description = "pass",
+                    scope = "attached",
+                    parameters = {},
+                    handler = function(ctx)
+                        local origin = ctx.parent_session_id
+                        local me = ctx.session_id
+                        local count = ctx.get_global_data(count_key(origin)) or 0
+                        local verdicts = ctx.get_global_data(verdicts_key(origin)) or {}
+                        verdicts[me] = { verdict = "passed" }
+                        ctx.set_global_data(verdicts_key(origin), verdicts)
+                        local completed = (ctx.get_global_data(completed_key(origin)) or 0) + 1
+                        ctx.set_global_data(completed_key(origin), completed)
+                        if completed < count then return end
+                        ctx.emit("push_chat_entry", {
+                            session_id = origin,
+                            kind = { transient = "result" },
+                        })
+                    end,
+                },
+            }
+            return M
+        "#,
+    );
+
+    let sys = build_system(dir.path());
+
+    // Attach ONE instance → count=1.
+    let origin = SessionId::from("origin".to_owned());
+    let inst = PluginInstanceId::new();
+    let reg = sys
+        .async_handle
+        .create_session_registry(vec![(inst.clone(), "panel".to_owned())], SessionId::new())
+        .await
+        .expect("create registry");
+    sys.async_handle
+        .fire_async_for_session(
+            Some(reg.registry_id),
+            "on_attach",
+            &AttachCtx {
+                session_id: origin.to_string(),
+                plugin_name: "panel".to_owned(),
+            },
+            vec![inst.clone()],
+        )
+        .await
+        .expect("fire on_attach");
+    tokio::time::sleep(std::time::Duration::from_millis(150)).await;
+
+    // When the single child posts its verdict.
+    sys.async_handle
+        .execute_tool(
+            None,
+            SessionId::from("child".to_owned()),
+            Some(origin.clone()),
+            "panel",
+            "judgment_passed",
+            &json!({}),
+        )
+        .await
+        .expect("execute verdict");
+    tokio::time::sleep(std::time::Duration::from_millis(100)).await;
+
+    // Then it emits directly — no waiting for siblings.
+    let cmds = sys.captured.lock();
+    assert_eq!(
+        cmds.iter().filter(|c| c.name == "push_chat_entry").count(),
+        1,
+        "single instance must emit immediately (backward compatible)"
     );
 }

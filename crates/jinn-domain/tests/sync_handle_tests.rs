@@ -212,7 +212,10 @@ fn sync_call_hooks_for_session_includes_global_and_session_plugins() {
     let session_id = rt
         .block_on(async {
             async_handle
-                .create_session_registry(vec![(PluginInstanceId::new(), "a".to_owned())], SessionId::new())
+                .create_session_registry(
+                    vec![(PluginInstanceId::new(), "a".to_owned())],
+                    SessionId::new(),
+                )
                 .await
                 .expect("create registry")
         })
