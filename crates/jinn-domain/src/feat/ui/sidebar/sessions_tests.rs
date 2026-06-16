@@ -2209,3 +2209,77 @@ fn sorted_open_sessions_excludes_automated_sessions() {
         "automated session must be hidden from the sidebar"
     );
 }
+
+// ---------------------------------------------------------------------------
+// Plugin entry busy indicator — derives from the managed session's phase.
+// ---------------------------------------------------------------------------
+
+fn state_with_managed_judge_session(streaming: bool) -> AppState {
+    use crate::feat::attached_plugin::AttachedPlugin;
+
+    let mut state = AppState::default();
+    let root_id = state.session.active_session_id().clone();
+
+    // Create a child "judge" session under root.
+    let mut judge = ChatSessionState::new();
+    judge.set_parent_session(root_id.clone());
+    let judge_id = judge.session_id().clone();
+    if streaming {
+        judge.begin_streaming();
+    }
+    state.session.insert(judge);
+
+    // Attach a plugin to root, linked to the judge session.
+    let mut ap = AttachedPlugin::new("judge");
+    ap.managed_session_id = Some(judge_id.clone());
+    state
+        .session
+        .get_mut(&root_id)
+        .expect("root")
+        .core
+        .attached_plugins
+        .push(ap);
+    state
+}
+
+#[test]
+fn plugin_entry_not_idle_when_managed_session_streaming() {
+    // Given a plugin whose managed session is in the Streaming phase.
+    let state = state_with_managed_judge_session(true);
+
+    // When collecting sorted sessions.
+    let sessions = sorted_open_sessions(&state);
+
+    // Then the plugin entry is busy (is_idle = false).
+    let plugin = sessions
+        .iter()
+        .find(|s| s.title == "judge")
+        .expect("plugin entry");
+    assert!(
+        !plugin.is_idle,
+        "plugin entry should be busy (spinner) when managed session is streaming"
+    );
+    assert!(
+        plugin.managed_session_id.is_some(),
+        "plugin entry should carry its managed session id"
+    );
+}
+
+#[test]
+fn plugin_entry_idle_when_managed_session_idle() {
+    // Given a plugin whose managed session is idle.
+    let state = state_with_managed_judge_session(false);
+
+    // When collecting sorted sessions.
+    let sessions = sorted_open_sessions(&state);
+
+    // Then the plugin entry is idle (is_idle = true).
+    let plugin = sessions
+        .iter()
+        .find(|s| s.title == "judge")
+        .expect("plugin entry");
+    assert!(
+        plugin.is_idle,
+        "plugin entry should be idle (bolt) when managed session is idle"
+    );
+}

@@ -33,11 +33,12 @@ use tokio::runtime::Runtime;
 use crate::SessionId;
 use crate::feat::plugin_dispatch::PluginHookSite;
 
+use super::PluginInstanceId;
 use super::async_handle::{PluginError, PluginJob};
 use super::bindings;
 use super::command::PluginCommand;
 use super::loader::{PluginMeta, load_all};
-use super::plugin_data::PluginData;
+use super::plugin_data::{GlobalPluginData, PluginData};
 use super::session_registry::SessionRegistryId;
 use super::sync_state::PluginHooks;
 
@@ -61,13 +62,27 @@ pub type RequestHandler = std::sync::Arc<
 struct SessionState {
     /// Lua interpreter for this session.
     lua: Lua,
-    /// Hooks registered per plugin for this session.
-    hooks: HashMap<String, PluginHooks>,
+    /// Hooks registered per plugin *instance* for this session.
+    ///
+    /// Keyed by instance id (not plugin name) so duplicate attachments of the
+    /// same plugin each fire independently with isolated hook tables.
+    hooks: HashMap<PluginInstanceId, SessionPluginEntry>,
     /// Tool definitions from attached plugins in this session.
     tools: Vec<super::tool_def::PluginToolDef>,
     /// The domain session that owns this Lua state (the "origin" session).
     /// Used to scope plugin_data correctly when tool handlers run in child sessions.
     origin_session_id: Option<SessionId>,
+}
+
+/// A loaded plugin instance's hooks + its originating name.
+///
+/// `name` is the plugin name (selects the `init.lua`); `hooks` holds the
+/// registry key for the instance's returned Lua table. Keying the session
+/// hooks map by instance id (not name) lets two attachments of the same
+/// plugin coexist with independent state.
+struct SessionPluginEntry {
+    name: String,
+    hooks: PluginHooks,
 }
 
 /// Thread state passed through the loop.
@@ -84,6 +99,8 @@ struct ThreadState {
     attachable_plugins: Vec<PluginMeta>,
     /// Shared plugin data store.
     plugin_data: PluginData,
+    /// Shared global data store (cross-plugin, cross-instance).
+    global_data: GlobalPluginData,
     /// Emit channel (async).
     emit_tx: kanal::AsyncSender<PluginCommand>,
     /// Request handler.
@@ -103,10 +120,12 @@ pub(crate) fn run_async_thread(
     global_tools: Vec<super::tool_def::PluginToolDef>,
     all_plugins: Vec<PluginMeta>,
     plugin_data: PluginData,
+    global_data: GlobalPluginData,
     emit_tx: kanal::AsyncSender<PluginCommand>,
     request_handler: RequestHandler,
     in_flight: super::InFlightRequests,
 ) {
+    let mut global_tools = global_tools;
     let rt = match Runtime::new() {
         Ok(r) => r,
         Err(e) => {
@@ -117,11 +136,18 @@ pub(crate) fn run_async_thread(
 
     // Partition discovered plugins into global (already loaded) and attachable.
     // Global plugins were loaded into `lua` by PluginSystem::build; the remaining
-    // attachable plugins are kept here for on-demand per-session loading.
+    // attachable plugins are kept here for on-demand per-session hook loading.
     let attachable_plugins: Vec<PluginMeta> = all_plugins
         .into_iter()
         .filter(|m| m.kind == super::loader::PluginKind::Attachable)
         .collect();
+
+    // Attachable plugin tool *handlers* are stateless and run globally (like
+    // builtins), so their handler closures are loaded into the global Lua state
+    // at startup. Their *hooks* fire per-session and are loaded into a separate
+    // per-session Lua state on attach — we discard the hooks returned here.
+    let attachable_tools = load_all(&lua, &attachable_plugins).tools;
+    global_tools.extend(attachable_tools);
 
     let state = ThreadState {
         global_lua: lua,
@@ -130,6 +156,7 @@ pub(crate) fn run_async_thread(
         sessions: HashMap::new(),
         attachable_plugins,
         plugin_data,
+        global_data,
         emit_tx,
         request_handler,
         in_flight,
@@ -176,10 +203,10 @@ async fn execute_plugin_job(state: &mut ThreadState, job: PluginJob) {
             ctx_json,
             respond_to,
             target_session,
-            enabled_plugins,
+            enabled_instances,
         } => {
             let result =
-                run_hooks_fire(state, target_session, &hook, &ctx_json, &enabled_plugins).await;
+                run_hooks_fire(state, target_session, &hook, &ctx_json, &enabled_instances).await;
             let _ = respond_to.send(result);
         }
         PluginJob::Collect {
@@ -202,11 +229,11 @@ async fn execute_plugin_job(state: &mut ThreadState, job: PluginJob) {
         }
         PluginJob::LoadSession {
             registry_id,
-            plugin_names,
+            instances,
             origin_session_id,
             respond_to,
         } => {
-            let result = load_session_plugins(state, registry_id, &plugin_names, origin_session_id);
+            let result = load_session_plugins(state, registry_id, &instances, origin_session_id);
             let _ = respond_to.send(result);
         }
         PluginJob::DestroySession { registry_id } => {
@@ -215,6 +242,7 @@ async fn execute_plugin_job(state: &mut ThreadState, job: PluginJob) {
         PluginJob::ExecuteTool {
             target,
             session_id,
+            parent_session_id,
             plugin_name,
             tool_name,
             arguments,
@@ -224,6 +252,7 @@ async fn execute_plugin_job(state: &mut ThreadState, job: PluginJob) {
                 state,
                 target,
                 &session_id,
+                parent_session_id.as_ref(),
                 &plugin_name,
                 &tool_name,
                 &arguments,
@@ -242,10 +271,19 @@ fn execute_plugin_tool(
     state: &mut ThreadState,
     target: Option<SessionRegistryId>,
     session_id: &SessionId,
+    parent_session_id: Option<&SessionId>,
     plugin_name: &str,
     tool_name: &str,
     arguments: &serde_json::Value,
 ) -> Result<String, Report<PluginError>> {
+    tracing::debug!(
+        target = ?target,
+        session_id = %session_id,
+        parent_session_id = ?parent_session_id,
+        plugin = %plugin_name,
+        tool = %tool_name,
+        "execute_plugin_tool"
+    );
     // Locate the correct Lua state and tools list.
     let (lua, tools, data_scope_id) = if let Some(id) = &target {
         let session = state.sessions.get_mut(id).ok_or_else(|| {
@@ -270,11 +308,26 @@ fn execute_plugin_tool(
         })?;
 
     // Build the ctx table for the handler.
+    //
+    // `session_id` is the id of the session whose turn is executing this
+    // handler: for an attached plugin's tool, that's the calling child
+    // session (used by the judge to key its verdict). For a global plugin's
+    // tool invoked during session X's turn, it's X. Consistent with hooks,
+    // where `ctx.session_id` is the session the hook runs for.
+    let ctx_json = match parent_session_id {
+        Some(p) => serde_json::json!({
+            "session_id": session_id.to_string(),
+            "parent_session_id": p.to_string(),
+        }),
+        None => serde_json::json!({ "session_id": session_id.to_string() }),
+    };
     let ctx = build_async_ctx(
         lua,
-        &serde_json::json!({}),
+        &ctx_json,
         plugin_name,
+        None,
         &state.plugin_data,
+        &state.global_data,
         &state.emit_tx,
         &state.request_handler,
         &state.in_flight,
@@ -315,38 +368,46 @@ fn execute_plugin_tool(
     Ok(result_str)
 }
 
-/// Load attachable plugins into a new per-session Lua state.
+/// Load attachable plugin *instances* into a new per-session Lua state.
+///
+/// `instances` carries one entry per attachment (instance id + plugin name),
+/// so duplicate attachments of the same plugin each load independently.
 fn load_session_plugins(
     state: &mut ThreadState,
     registry_id: SessionRegistryId,
-    plugin_names: &[String],
+    instances: &[(super::PluginInstanceId, String)],
     origin_session_id: SessionId,
 ) -> Result<Vec<super::tool_def::PluginToolMetadata>, Report<PluginError>> {
-    // Resolve each name to a PluginMeta in the attachable set.
-    let metas: Vec<PluginMeta> = plugin_names
+    // Resolve each (instance id, name) to a SessionInstanceMeta.
+    let metas: Vec<super::loader::SessionInstanceMeta> = instances
         .iter()
-        .map(|name| {
+        .map(|(instance_id, name)| {
             state
                 .attachable_plugins
                 .iter()
                 .find(|m| &m.name == name)
-                .cloned()
+                .map(|meta| super::loader::SessionInstanceMeta {
+                    instance_id: instance_id.clone(),
+                    meta: meta.clone(),
+                })
         })
         .collect::<Option<Vec<_>>>()
         .ok_or_else(|| {
+            let names: Vec<&str> = instances.iter().map(|(_, n)| n.as_str()).collect();
             Report::new(PluginError)
                 .attach("one or more requested plugins not found in attachable set")
-                .attach(format!("requested: {plugin_names:?}"))
+                .attach(format!("requested: {names:?}"))
         })?;
 
     let lua = Lua::new();
-    let result = load_all(&lua, &metas);
+    let result = super::loader::load_instances(&lua, &metas);
 
-    if result.hooks.len() != plugin_names.len() {
-        let loaded_names: Vec<&str> = result.hooks.keys().map(String::as_str).collect();
+    if result.hooks.len() != instances.len() {
+        let loaded_names: Vec<&str> = result.hooks.values().map(|(n, _)| n.as_str()).collect();
+        let req_names: Vec<&str> = instances.iter().map(|(_, n)| n.as_str()).collect();
         return Err(Report::new(PluginError)
             .attach("some plugins failed to load")
-            .attach(format!("requested: {plugin_names:?}"))
+            .attach(format!("requested: {req_names:?}"))
             .attach(format!("loaded: {loaded_names:?}")));
     }
     let metadata: Vec<_> = result
@@ -358,7 +419,11 @@ fn load_session_plugins(
         registry_id,
         SessionState {
             lua,
-            hooks: result.hooks,
+            hooks: result
+                .hooks
+                .into_iter()
+                .map(|(id, (name, hooks))| (id, SessionPluginEntry { name, hooks }))
+                .collect(),
             tools: result.tools,
             origin_session_id: Some(origin_session_id),
         },
@@ -372,7 +437,7 @@ async fn run_hooks_fire(
     target_session: Option<SessionRegistryId>,
     hook: &str,
     ctx_json: &serde_json::Value,
-    enabled_plugins: &[String],
+    enabled_instances: &[PluginInstanceId],
 ) -> Result<(), Report<PluginError>> {
     for (plugin_name, plugin_hooks) in &state.global_hooks {
         run_single_hook(
@@ -381,7 +446,9 @@ async fn run_hooks_fire(
             hook,
             ctx_json,
             plugin_name,
+            None,
             &state.plugin_data,
+            &state.global_data,
             &state.emit_tx,
             &state.request_handler,
             &state.in_flight,
@@ -392,17 +459,19 @@ async fn run_hooks_fire(
     if let Some(id) = target_session
         && let Some(session) = state.sessions.get(&id)
     {
-        for (plugin_name, plugin_hooks) in &session.hooks {
-            if !enabled_plugins.is_empty() && !enabled_plugins.contains(plugin_name) {
+        for (instance_id, entry) in &session.hooks {
+            if !enabled_instances.is_empty() && !enabled_instances.contains(instance_id) {
                 continue;
             }
             run_single_hook(
                 &session.lua,
-                plugin_hooks,
+                &entry.hooks,
                 hook,
                 ctx_json,
-                plugin_name,
+                &entry.name,
+                Some(instance_id),
                 &state.plugin_data,
+                &state.global_data,
                 &state.emit_tx,
                 &state.request_handler,
                 &state.in_flight,
@@ -430,7 +499,9 @@ async fn run_hooks_collect(
             hook,
             ctx_json,
             plugin_name,
+            None,
             &state.plugin_data,
+            &state.global_data,
             &state.emit_tx,
             &state.request_handler,
             &state.in_flight,
@@ -455,14 +526,16 @@ async fn run_hooks_collect(
     if let Some(id) = target_session
         && let Some(session) = state.sessions.get(&id)
     {
-        for (plugin_name, plugin_hooks) in &session.hooks {
+        for (instance_id, entry) in &session.hooks {
             match run_single_hook(
                 &session.lua,
-                plugin_hooks,
+                &entry.hooks,
                 hook,
                 ctx_json,
-                plugin_name,
+                &entry.name,
+                Some(instance_id),
                 &state.plugin_data,
+                &state.global_data,
                 &state.emit_tx,
                 &state.request_handler,
                 &state.in_flight,
@@ -474,7 +547,7 @@ async fn run_hooks_collect(
                         Ok(json) => results.push(json),
                         Err(e) => {
                             return Err(Report::new(PluginError)
-                                .attach(format!("convert return for plugin {plugin_name}: {e}")));
+                                .attach(format!("convert return for plugin {}: {e}", entry.name)));
                         }
                     }
                 }
@@ -501,7 +574,9 @@ async fn run_single_hook(
     hook: &str,
     ctx_json: &serde_json::Value,
     plugin_name: &str,
+    instance_id: Option<&PluginInstanceId>,
     plugin_data: &PluginData,
+    global_data: &GlobalPluginData,
     emit_tx: &kanal::AsyncSender<PluginCommand>,
     request_handler: &RequestHandler,
     in_flight: &super::InFlightRequests,
@@ -524,13 +599,16 @@ async fn run_single_hook(
         _ => return Ok(None),
     };
 
-    // Inject plugin_data into ctx JSON, scoped by session.
+    // Inject plugin_data into ctx JSON, scoped by instance for attached
+    // plugins or by name for global plugins.
     let mut ctx_json = ctx_json.clone();
     let session_id = extract_session_id(&ctx_json);
     if let Some(obj) = ctx_json.as_object_mut() {
-        let data = plugin_data
-            .get_for_session(session_id.as_ref(), plugin_name)
-            .unwrap_or(serde_json::Value::Null);
+        let data = match (session_id.as_ref(), instance_id) {
+            (Some(sid), Some(iid)) => plugin_data.get_for_session(sid, iid),
+            _ => plugin_data.get(plugin_name),
+        }
+        .unwrap_or(serde_json::Value::Null);
         obj.insert("plugin_data".to_owned(), data);
     }
 
@@ -538,7 +616,9 @@ async fn run_single_hook(
         lua,
         &ctx_json,
         plugin_name,
+        instance_id,
         plugin_data,
+        global_data,
         emit_tx,
         request_handler,
         in_flight,
@@ -605,7 +685,9 @@ fn build_async_ctx(
     lua: &Lua,
     ctx_json: &serde_json::Value,
     plugin_name: &str,
+    instance_id: Option<&PluginInstanceId>,
     plugin_data: &PluginData,
+    global_data: &GlobalPluginData,
     emit_tx: &kanal::AsyncSender<PluginCommand>,
     request_handler: &RequestHandler,
     in_flight: &super::InFlightRequests,
@@ -623,6 +705,13 @@ fn build_async_ctx(
     // ctx.plugin_name — let Lua refer to itself by name (used for
     // self-targeting actions like disable_plugin).
     ctx.set("plugin_name", plugin_name)?;
+
+    // ctx.instance_id — stable identity of this attachment. Two attachments
+    // of the same plugin name get distinct ids. Lets multi-instance plugins
+    // (e.g. a panel of judges) key their shared state.
+    if let Some(id) = instance_id {
+        ctx.set("instance_id", id.to_string())?;
+    }
 
     // ctx.emit(cmd, data) — fire-and-forget via channel.
     // Uses sync `Sender` (via `clone_sync()`) so it can be called from a sync
@@ -739,9 +828,13 @@ fn build_async_ctx(
         let pd = plugin_data.clone();
         let pname = plugin_name.to_owned();
         let sid = session_id.cloned();
+        let iid = instance_id.cloned();
         let set_data_fn = lua.create_function(move |lua, value: mlua::Value| {
             let json = bindings::value_to_json(lua, &value).unwrap_or_default();
-            pd.set_for_session(sid.as_ref(), &pname, json);
+            match (&sid, &iid) {
+                (Some(s), Some(i)) => pd.set_for_session(s, i, json),
+                _ => pd.set(&pname, json),
+            }
             Ok(())
         })?;
         ctx.set("set_plugin_data", set_data_fn)?;
@@ -757,9 +850,13 @@ fn build_async_ctx(
         let pd = plugin_data.clone();
         let pname = plugin_name.to_owned();
         let sid = session_id.cloned();
+        let iid = instance_id.cloned();
         let merge_data_fn = lua.create_function(move |lua, value: mlua::Value| {
             let json = bindings::value_to_json(lua, &value).unwrap_or_default();
-            pd.merge_for_session(sid.as_ref(), &pname, json);
+            match (&sid, &iid) {
+                (Some(s), Some(i)) => pd.merge_for_session(s, i, json),
+                _ => pd.merge(&pname, json),
+            }
             Ok(())
         })?;
         ctx.set("merge_plugin_data", merge_data_fn)?;
@@ -776,13 +873,57 @@ fn build_async_ctx(
         let pd = plugin_data.clone();
         let pname = plugin_name.to_owned();
         let sid = session_id.cloned();
+        let iid = instance_id.cloned();
         let get_data_fn = lua.create_function(move |lua, (): ()| {
-            let json = pd
-                .get_for_session(sid.as_ref(), &pname)
-                .unwrap_or_else(|| serde_json::json!({}));
+            let json = match (&sid, &iid) {
+                (Some(s), Some(i)) => pd.get_for_session(s, i),
+                _ => pd.get(&pname),
+            }
+            .unwrap_or_else(|| serde_json::json!({}));
             bindings::json_to_lua_value(lua, &json)
         })?;
         ctx.set("get_plugin_data", get_data_fn)?;
+    }
+
+    // ctx.set_global_data(key, value) — writes to the shared global bag.
+    //
+    // Any plugin or instance can read/write any key. Used for cross-instance
+    // coordination (e.g. multi-judge aggregation). Values round-trip via the
+    // JSON bindings.
+    {
+        let gd = global_data.clone();
+        let set_global_fn =
+            lua.create_function(move |lua, (key, value): (String, mlua::Value)| {
+                let json = bindings::value_to_json(lua, &value).unwrap_or_default();
+                gd.set(&key, json);
+                Ok(())
+            })?;
+        ctx.set("set_global_data", set_global_fn)?;
+    }
+
+    // ctx.merge_global_data(key, value) — shallow-merges a partial object
+    // under `key`. Mirrors `ctx.merge_plugin_data` semantics, but for the
+    // global bag.
+    {
+        let gd = global_data.clone();
+        let merge_global_fn =
+            lua.create_function(move |lua, (key, value): (String, mlua::Value)| {
+                let json = bindings::value_to_json(lua, &value).unwrap_or_default();
+                gd.merge(&key, json);
+                Ok(())
+            })?;
+        ctx.set("merge_global_data", merge_global_fn)?;
+    }
+
+    // ctx.get_global_data(key) — reads the live global bag. Returns nil when
+    // the key is absent (so Lua callers can branch on it).
+    {
+        let gd = global_data.clone();
+        let get_global_fn = lua.create_function(move |lua, key: String| match gd.get(&key) {
+            Some(json) => bindings::json_to_lua_value(lua, &json),
+            None => Ok(mlua::Value::Nil),
+        })?;
+        ctx.set("get_global_data", get_global_fn)?;
     }
 
     // Suppress unused warning for PathBuf import (kept for future use).

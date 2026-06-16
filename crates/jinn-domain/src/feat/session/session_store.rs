@@ -121,12 +121,6 @@ pub trait SessionStore: Send + Sync + 'static {
         &self,
     ) -> Result<Vec<SessionSummary>, Report<SessionStoreError>>;
 
-    /// Loads all non-archived judge sessions that belong to the given origin session.
-    ///
-    /// Queries by `json_extract(judge_meta, '$.origin_session')`.
-    ///
-    /// # Errors
-    ///
     /// Shut down the store, performing any cleanup or flush operations.
     ///
     /// Called once during application shutdown. Implementations may use
