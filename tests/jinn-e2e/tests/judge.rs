@@ -11,21 +11,19 @@ use std::time::Duration;
 
 use cucumber::World;
 use jinn::actor_wiring::{ActorSystemBuilder, ActorSystemBuilderArgs};
-use jinn_domain::feat::session::model_selection::ModelSelection;
-use jinn_domain::feat::plugin_dispatch::protocol::command::AttachPlugin;
 use jinn_domain::EnqueueUserMessage;
-use jinn_domain::common::bridge::Bridge;
-use jinn_domain::{ChatEntry, ChatEntryKind};
 use jinn_domain::SessionId;
-use jinn_domain::{
-    ApiKeys, ApiKeysService, AppStateStorageService, ConfigStorageService,
-    FakeLlmServiceFactory, InMemoryAppStateStorage, InMemoryConfigStorage,
-    InMemoryUserPreferencesStorage,
-    LlmServiceFactoryService, ProviderRegistry, ProviderRegistryService, ProvidersConfig,
-    ScriptedResponse, SessionStoreService, SqliteSessionStore,
-    UserPreferencesStorageService,
-};
 use jinn_domain::ToolCall;
+use jinn_domain::common::bridge::Bridge;
+use jinn_domain::feat::plugin_dispatch::protocol::command::AttachPlugin;
+use jinn_domain::feat::session::model_selection::ModelSelection;
+use jinn_domain::{
+    ApiKeys, ApiKeysService, AppStateStorageService, ConfigStorageService, FakeLlmServiceFactory,
+    InMemoryAppStateStorage, InMemoryConfigStorage, InMemoryUserPreferencesStorage,
+    LlmServiceFactoryService, ProviderRegistry, ProviderRegistryService, ProvidersConfig,
+    ScriptedResponse, SessionStoreService, SqliteSessionStore, UserPreferencesStorageService,
+};
+use jinn_domain::{ChatEntry, ChatEntryKind};
 
 /// A verdict kind queued via the scripted LLM factory.
 #[derive(Debug, Clone)]
@@ -67,11 +65,23 @@ impl Drop for JudgeWorld {
     fn drop(&mut self) {
         // Stop the actor system (unregisters "env-init" from kameo's global
         // registry), then drop the runtime to free its worker threads.
+        //
+        // Must run on a dedicated std thread: `block_on` panics if called from
+        // within an existing tokio runtime context (cucumber's #[tokio::main]).
+        // The child process exits immediately after Drop, so the OS reclaims
+        // anything this graceful shutdown might miss.
         if let (Some(root), Some(rt)) = (self.root_supervisor.take(), self.runtime.take()) {
-            let _ = rt.handle().block_on(async {
-                let _ = root.stop_gracefully().await;
-                let _ = tokio::time::timeout(std::time::Duration::from_secs(10), root.wait_for_shutdown()).await;
+            let join = std::thread::spawn(move || {
+                rt.handle().block_on(async {
+                    let _ = root.stop_gracefully().await;
+                    let _ = tokio::time::timeout(
+                        std::time::Duration::from_secs(10),
+                        root.wait_for_shutdown(),
+                    )
+                    .await;
+                });
             });
+            let _ = join.join();
         }
     }
 }
@@ -87,17 +97,14 @@ impl JudgeWorld {
         // plugin (resolved via the workspace root) into the temp config tree
         // so attach("judge") resolves a real init.lua in the test process.
         {
-            let manifest_dir = option_env!("CARGO_MANIFEST_DIR")
-                .unwrap_or(".")
-                .to_string();
+            let manifest_dir = option_env!("CARGO_MANIFEST_DIR").unwrap_or(".").to_string();
             let repo_root = std::path::Path::new(&manifest_dir)
                 .ancestors()
                 .nth(2)
                 .expect("workspace root");
             let src = repo_root.join("res/plugins/attachable/judge/init.lua");
             let dst_dir = temp_path.join("config/jinn/plugins/attachable/judge");
-            std::fs::create_dir_all(&dst_dir)
-                .unwrap_or_else(|e| panic!("mkdir {dst_dir:?}: {e}"));
+            std::fs::create_dir_all(&dst_dir).unwrap_or_else(|e| panic!("mkdir {dst_dir:?}: {e}"));
             std::fs::copy(&src, dst_dir.join("init.lua"))
                 .unwrap_or_else(|e| panic!("copy {src:?} -> {dst_dir:?}: {e}"));
         }
@@ -117,7 +124,8 @@ impl JudgeWorld {
                     .expect("test runtime");
                 let handle = rt.handle().clone();
 
-                let config_storage = ConfigStorageService::new(Arc::new(InMemoryConfigStorage::new()));
+                let config_storage =
+                    ConfigStorageService::new(Arc::new(InMemoryConfigStorage::new()));
                 let resolved_api_keys = ApiKeysService::new(ApiKeys::new());
                 let empty_config = ProvidersConfig {
                     providers: vec![],
@@ -141,10 +149,11 @@ impl JudgeWorld {
                         .block_on(SqliteSessionStore::new_in(&paths.sessions_dir()))
                         .expect("store"),
                 ));
-                let app_state_storage = AppStateStorageService::new(Arc::new(
-                    InMemoryAppStateStorage::new(),
-                ));
-                app_state_storage.reload().expect("test state storage initial reload");
+                let app_state_storage =
+                    AppStateStorageService::new(Arc::new(InMemoryAppStateStorage::new()));
+                app_state_storage
+                    .reload()
+                    .expect("test state storage initial reload");
 
                 let (core, services, _sync_plugins) = rt.handle().block_on(async {
                     ActorSystemBuilder::new(ActorSystemBuilderArgs {
@@ -162,7 +171,8 @@ impl JudgeWorld {
                     .await
                 });
                 let root_supervisor = services.root_supervisor.clone();
-                tx.send((core, rt, root_supervisor)).expect("send setup results");
+                tx.send((core, rt, root_supervisor))
+                    .expect("send setup results");
             });
 
             rx.recv().expect("receive setup results")
@@ -218,16 +228,22 @@ impl JudgeWorld {
         });
     }
 
-    /// Polls shared state until `predicate` holds (5s deadline).
-    async fn wait_until(&self, predicate: impl Fn(&jinn_domain::AppState) -> bool) {
+    /// Polls shared state until `predicate` holds, returning whether it was
+    /// observed before the deadline. Returns the observed state for an
+    /// assertion (avoids re-locking after the poll, which races with
+    /// transient-entry clearing).
+    async fn wait_until<F, T>(&self, predicate: F) -> Option<T>
+    where
+        F: Fn(&jinn_domain::AppState) -> Option<T>,
+    {
         let state = self.core.state.clone();
         let deadline = tokio::time::Instant::now() + Duration::from_secs(15);
         loop {
-            if predicate(&state.read()) {
-                break;
+            if let Some(v) = predicate(&state.read()) {
+                return Some(v);
             }
             if tokio::time::Instant::now() > deadline {
-                break;
+                return None;
             }
             tokio::time::sleep(Duration::from_millis(10)).await;
         }
@@ -262,21 +278,21 @@ async fn given_attach_plugin(world: &mut JudgeWorld, plugin_name: String) {
     });
     // Wait until the attachment lands on the session's attached_plugins vec
     // (proves the dispatch actor processed the attach).
-    world
+    let attached = world
         .wait_until(|s| {
             s.session
                 .get(&session_id)
                 .is_some_and(|sess| sess.core.attached_plugins.iter().any(|p| p.name == "judge"))
+                .then_some(())
         })
         .await;
+    assert!(attached.is_some(), "judge plugin never attached");
     // The registry load (recreate_session_registry) + on_attach fire
     // happen async on the plugin thread and are not observable from app
     // state. Wait a bounded, generous amount so the origin's Idle
     // transition finds the registry populated.
     tokio::time::sleep(Duration::from_millis(300)).await;
 }
-
-
 
 #[cucumber::given(expr = "the app queues a scripted origin turn with text {string}")]
 fn given_queue_origin_turn(world: &mut JudgeWorld, text: String) {
@@ -309,64 +325,67 @@ async fn when_enqueue_user_message(world: &mut JudgeWorld, text: String) {
                 .history()
                 .iter()
                 .any(|e| matches!(&e.kind, ChatEntryKind::Assistant(_)))
+                .then_some(())
         })
         .await;
 }
 
 #[cucumber::then(expr = "the origin session final entry is a transient {string}")]
 async fn then_final_entry_transient(world: &mut JudgeWorld, expected: String) {
-    world
+    let expected_for_predicate = expected.clone();
+    // Bind the result INSIDE wait_until to avoid the race where a
+    // transient entry is observed by the poll but cleared before the
+    // re-check (e.g. the aggregator disables plugins and a follow-on
+    // action clears transients).
+    let held = world
         .wait_until(|s| {
             s.session
                 .active_session()
                 .history()
                 .iter()
-                .any(|e| matches!(&e.kind, ChatEntryKind::Transient(t) if t.contains(&expected)))
+                .any(|e| matches!(&e.kind, ChatEntryKind::Transient(t) if t.contains(&expected_for_predicate)))
+                .then_some(())
         })
         .await;
-    let held = world
-        .core
-        .state
-        .read()
-        .session
-        .active_session()
-        .history()
-        .iter()
-        .any(|e| matches!(&e.kind, ChatEntryKind::Transient(t) if t.contains(&expected)));
-    let dump = world
-        .core
-        .state
-        .read()
-        .session
-        .active_session()
-        .history()
-        .iter()
-        .map(|e| format!("{:?}", e.kind))
-        .collect::<Vec<_>>()
-        .join("\n  ");
-    let phase = world.core.state.read().session.active_session().phase();
-    let attached = world
-        .core
-        .state
-        .read()
-        .session
-        .active_session()
-        .core
-        .attached_plugins
-        .iter()
-        .map(|p| format!("{}(enabled={}, hooks_loaded_unknown)", p.name, p.enabled))
-        .collect::<Vec<_>>()
-        .join(", ");
-    assert!(
-        held,
-        "no transient entry containing {expected:?}\nPhase: {phase:?}\nAttached: {attached}\nHistory:\n  {dump}"
-    );
+    if held.is_none() {
+        let dump = world
+            .core
+            .state
+            .read()
+            .session
+            .active_session()
+            .history()
+            .iter()
+            .map(|e| format!("{:?}", e.kind))
+            .collect::<Vec<_>>()
+            .join("\n  ");
+        let phase = world.core.state.read().session.active_session().phase();
+        let attached = world
+            .core
+            .state
+            .read()
+            .session
+            .active_session()
+            .core
+            .attached_plugins
+            .iter()
+            .map(|p| format!("{}(enabled={})", p.name, p.enabled))
+            .collect::<Vec<_>>()
+            .join(", ");
+        panic!(
+            "no transient entry containing {expected:?}\nPhase: {phase:?}\nAttached: {attached}\nHistory:\n  {dump}"
+        );
+    }
 }
 
-
-#[cucumber::then(expr = "the origin session final entry is a failed user message containing {string}")]
+#[cucumber::then(
+    expr = "the origin session final entry is a failed user message containing {string}"
+)]
 async fn then_final_entry_fail_message(world: &mut JudgeWorld, expected: String) {
-    world
+    let expected_for_predicate = expected.clone();
+    // Bind the result INSIDE wait_until (same race rationale as the
+    // transient step — see above).
+    let held = world
         .wait_until(|s| {
             s.session
                 .active_session()
@@ -375,25 +394,27 @@ async fn then_final_entry_fail_message(world: &mut JudgeWorld, expected: String)
                 .any(|e| {
                     matches!(
                         &e.kind,
-                        ChatEntryKind::User { display, .. } if display.contains(&expected)
+                        ChatEntryKind::User { display, .. } if display.contains(&expected_for_predicate)
                     )
                 })
+                .then_some(())
         })
         .await;
-    let held = world
-        .core
-        .state
-        .read()
-        .session
-        .active_session()
-        .history()
-        .iter()
-        .any(|e| {
-            matches!(
-                &e.kind,
-                ChatEntryKind::User { display, .. } if display.contains(&expected)
-            )
-        });
-    assert!(held, "no failed user message containing {expected:?}");
+    if held.is_none() {
+        let dump = world
+            .core
+            .state
+            .read()
+            .session
+            .active_session()
+            .history()
+            .iter()
+            .map(|e| format!("{:?}", e.kind))
+            .collect::<Vec<_>>()
+            .join("\n  ");
+        let phase = world.core.state.read().session.active_session().phase();
+        panic!(
+            "no failed user message containing {expected:?}\nPhase: {phase:?}\nHistory:\n  {dump}"
+        );
+    }
 }
-
