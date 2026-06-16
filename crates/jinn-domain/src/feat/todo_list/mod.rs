@@ -367,19 +367,8 @@ impl TaskList {
         description: &str,
         position: TaskPosition,
     ) -> Result<TaskId, TaskListError> {
-        let existing: Vec<_> = self
-            .phases
-            .iter()
-            .flat_map(|p| &p.tasks)
-            .map(|t| t.id.clone())
-            .collect();
-        let task_id = TaskId::new(&existing);
-
-        let new_task = Task {
-            id: task_id.clone(),
-            description: description.to_owned(),
-            status: TaskStatus::Pending,
-        };
+        let new_task = self.new_pending_task(description.to_owned());
+        let task_id = new_task.id.clone();
 
         let phase = self
             .phases
@@ -481,110 +470,56 @@ impl TaskList {
         source_task_id: &TaskId,
         position: TaskPosition,
     ) -> Result<TaskId, TaskListError> {
-        // Extract the reference task ID from the position.
+        // The reference task determines the target phase; `End` carries no
+        // reference and is rejected (the tool layer always supplies After/Before).
         let ref_task_id: &TaskId = match &position {
             TaskPosition::After(id) | TaskPosition::Before(id) => id,
-            TaskPosition::End => {
-                return Err(TaskListError::BothAfterAndBefore);
-            }
+            TaskPosition::End => return Err(TaskListError::BothAfterAndBefore),
         };
 
-        // Validate source != reference.
+        // The reference cannot be the source itself.
         if source_task_id == ref_task_id {
             return Err(TaskListError::SelfReference(source_task_id.clone()));
         }
 
-        // Find source task info (phase index, task index, description, status).
-        let mut source_info: Option<(usize, usize, String, TaskStatus)> = None;
-        for (pi, phase) in self.phases.iter().enumerate() {
-            for (ti, task) in phase.tasks.iter().enumerate() {
-                if &task.id == source_task_id {
-                    source_info = Some((pi, ti, task.description.clone(), task.status));
-                    break;
-                }
-            }
-            if source_info.is_some() {
-                break;
-            }
-        }
+        // Locate the source task and validate it is postponable.
+        let (src_phase_idx, src_desc, src_status) = self
+            .find_source_task(source_task_id)
+            .ok_or_else(|| TaskListError::TaskNotFound(source_task_id.clone()))?;
+        Self::validate_postponable(src_status, source_task_id)?;
 
-        let (src_pi, _src_ti, src_desc, src_status) =
-            source_info.ok_or_else(|| TaskListError::TaskNotFound(source_task_id.clone()))?;
+        // Resolve the target phase from the reference task.
+        let target_phase_idx = self
+            .find_phase_containing(ref_task_id)
+            .ok_or_else(|| TaskListError::TaskNotFound(ref_task_id.clone()))?;
 
-        // Validate source is not already postponed.
-        if src_status == TaskStatus::Postponed {
-            return Err(TaskListError::AlreadyPostponed(source_task_id.clone()));
-        }
-        if src_status == TaskStatus::Cancelled {
-            return Err(TaskListError::TaskCancelled(source_task_id.clone()));
-        }
+        // Mark the source as postponed, then build its pending copy.
+        self.mark_source_postponed(src_phase_idx, source_task_id, "postpone_task")?;
+        let new_task = self.new_pending_task(src_desc);
+        let new_task_id = new_task.id.clone();
 
-        // Find reference task's phase.
-        let mut ref_phase_idx: Option<usize> = None;
-        for (pi, phase) in self.phases.iter().enumerate() {
-            if phase.tasks.iter().any(|t| &t.id == ref_task_id) {
-                ref_phase_idx = Some(pi);
-                break;
-            }
-        }
-
-        let target_pi =
-            ref_phase_idx.ok_or_else(|| TaskListError::TaskNotFound(ref_task_id.clone()))?;
-
-        // Mark source task as postponed.
-        let source_task = self
+        // Insert the copy at the requested position within the target phase.
+        let phase = self
             .phases
-            .get_mut(src_pi)
-            .and_then(|phase| phase.tasks.iter_mut().find(|t| &t.id == source_task_id));
-        if let Some(t) = source_task {
-            t.status = TaskStatus::Postponed;
-        } else {
-            tracing::error!(
-                source_task_id = %source_task_id,
-                src_phase_index = src_pi,
-                "postpone_task: source task missing on second lookup; returning TaskNotFound"
-            );
-            return Err(TaskListError::TaskNotFound(source_task_id.clone()));
-        }
-
-        // Generate new task ID.
-        let existing: Vec<_> = self
-            .phases
-            .iter()
-            .flat_map(|p| &p.tasks)
-            .map(|t| t.id.clone())
-            .collect();
-        let new_task_id = TaskId::new(&existing);
-
-        let new_task = Task {
-            id: new_task_id.clone(),
-            description: src_desc,
-            status: TaskStatus::Pending,
-        };
-
-        // Insert at position in target phase.
-        let Some(phase) = self.phases.get_mut(target_pi) else {
-            return Err(TaskListError::InternalInvariant {
+            .get_mut(target_phase_idx)
+            .ok_or(TaskListError::InternalInvariant {
                 what: "postpone_task: target phase not found",
-            });
-        };
+            })?;
         match &position {
             TaskPosition::After(after_id) => {
-                let idx =
-                    phase
-                        .find_task_index(after_id)
-                        .ok_or(TaskListError::InternalInvariant {
-                            what: "postpone_task: ref task not found after lookup above",
-                        })?;
+                let idx = phase
+                    .find_task_index(after_id)
+                    .ok_or(TaskListError::InternalInvariant {
+                        what: "postpone_task: ref task not found after lookup above",
+                    })?;
                 phase.tasks.insert(idx + 1, new_task);
             }
             TaskPosition::Before(before_id) => {
-                let idx =
-                    phase
-                        .find_task_index(before_id)
-                        .ok_or(TaskListError::InternalInvariant {
-                            what: "postpone_task: ref task not found after lookup above",
-                        })?;
+                let idx = phase
+                    .find_task_index(before_id)
+                    .ok_or(TaskListError::InternalInvariant {
+                        what: "postpone_task: ref task not found after lookup above",
+                    })?;
                 phase.tasks.insert(idx, new_task);
             }
             TaskPosition::End => {
@@ -616,75 +551,126 @@ impl TaskList {
         source_task_id: &TaskId,
         target_phase_id: &PhaseId,
     ) -> Result<TaskId, TaskListError> {
-        // Find source task info (track both phase and task indices).
-        let mut source_info: Option<(usize, usize, String, TaskStatus)> = None;
-        for (phase_idx, phase) in self.phases.iter().enumerate() {
-            for (task_idx, task) in phase.tasks.iter().enumerate() {
-                if &task.id == source_task_id {
-                    source_info =
-                        Some((phase_idx, task_idx, task.description.clone(), task.status));
-                    break;
-                }
-            }
-            if source_info.is_some() {
-                break;
-            }
-        }
+        // Locate the source task and validate it is postponable.
+        let (src_phase_idx, src_desc, src_status) = self
+            .find_source_task(source_task_id)
+            .ok_or_else(|| TaskListError::TaskNotFound(source_task_id.clone()))?;
+        Self::validate_postponable(src_status, source_task_id)?;
 
-        let (src_phase_idx, _src_task_idx, src_desc, src_status) =
-            source_info.ok_or_else(|| TaskListError::TaskNotFound(source_task_id.clone()))?;
-
-        // Validate source is not already postponed.
-        if src_status == TaskStatus::Postponed {
-            return Err(TaskListError::AlreadyPostponed(source_task_id.clone()));
-        }
-        if src_status == TaskStatus::Cancelled {
-            return Err(TaskListError::TaskCancelled(source_task_id.clone()));
-        }
-
-        // Validate target phase exists.
-        let target_pi = self
+        // Resolve the target phase.
+        let target_phase_idx = self
             .phases
             .iter()
             .position(|p| &p.id == target_phase_id)
             .ok_or_else(|| TaskListError::PhaseNotFound(target_phase_id.clone()))?;
 
-        // Mark source task as postponed.
+        // Mark the source as postponed, then build its pending copy.
+        self.mark_source_postponed(src_phase_idx, source_task_id, "postpone_to_phase")?;
+        let new_task = self.new_pending_task(src_desc);
+        let new_task_id = new_task.id.clone();
+
+        // Append the copy to the end of the target phase.
+        let phase = self
+            .phases
+            .get_mut(target_phase_idx)
+            .ok_or(TaskListError::InternalInvariant {
+                what: "postpone_to_phase: target phase not found",
+            })?;
+        phase.tasks.push(new_task);
+
+        Ok(new_task_id)
+    }
+
+    // -----------------------------------------------------------------------
+    // Postpone internals — shared by `postpone_task` and `postpone_to_phase`.
+    // -----------------------------------------------------------------------
+
+    /// Locates a task by ID, returning its phase index, description, and status.
+    ///
+    /// Searches every phase; returns `None` if no task matches. Used to gather
+    /// the source task's data before marking it postponed.
+    fn find_source_task(
+        &self,
+        source_task_id: &TaskId,
+    ) -> Option<(usize, String, TaskStatus)> {
+        self.phases.iter().enumerate().find_map(|(pi, phase)| {
+            phase.tasks.iter().find_map(|task| {
+                (&task.id == source_task_id).then(|| (pi, task.description.clone(), task.status))
+            })
+        })
+    }
+
+    /// Validates that a task in the given status may be postponed.
+    ///
+    /// Returns an error for tasks that are already postponed or cancelled.
+    fn validate_postponable(
+        status: TaskStatus,
+        source_task_id: &TaskId,
+    ) -> Result<(), TaskListError> {
+        match status {
+            TaskStatus::Postponed => Err(TaskListError::AlreadyPostponed(source_task_id.clone())),
+            TaskStatus::Cancelled => Err(TaskListError::TaskCancelled(source_task_id.clone())),
+            TaskStatus::Pending | TaskStatus::Completed => Ok(()),
+        }
+    }
+
+    /// Marks the source task as `Postponed` in place.
+    ///
+    /// The task is looked up a second time (by phase index + ID) to perform the
+    /// mutation. The miss branch is unreachable in practice — the source was
+    /// found moments earlier — but is reported as `TaskNotFound` (with a trace
+    /// log) rather than panicking, mirroring the original defensive behavior.
+    fn mark_source_postponed(
+        &mut self,
+        src_phase_idx: usize,
+        source_task_id: &TaskId,
+        fn_name: &'static str,
+    ) -> Result<(), TaskListError> {
         let source_task = self
             .phases
             .get_mut(src_phase_idx)
             .and_then(|phase| phase.tasks.iter_mut().find(|t| &t.id == source_task_id));
-        if let Some(t) = source_task {
-            t.status = TaskStatus::Postponed;
-        } else {
-            tracing::error!(
-                source_task_id = %source_task_id,
-                src_phase_index = src_phase_idx,
-                "postpone_to_phase: source task missing on second lookup; returning TaskNotFound"
-            );
-            return Err(TaskListError::TaskNotFound(source_task_id.clone()));
+        match source_task {
+            Some(t) => {
+                t.status = TaskStatus::Postponed;
+                Ok(())
+            }
+            None => {
+                tracing::error!(
+                    source_task_id = %source_task_id,
+                    src_phase_index = src_phase_idx,
+                    "{fn_name}: source task missing on second lookup; returning TaskNotFound"
+                );
+                Err(TaskListError::TaskNotFound(source_task_id.clone()))
+            }
         }
+    }
 
-        // Generate new task ID.
+    /// Returns the index of the phase containing the given task, if any.
+    fn find_phase_containing(&self, task_id: &TaskId) -> Option<usize> {
+        self.phases
+            .iter()
+            .position(|phase| phase.tasks.iter().any(|t| &t.id == task_id))
+    }
+
+    /// Mints a unique task ID based on all existing task IDs.
+    fn next_task_id(&self) -> TaskId {
         let existing: Vec<_> = self
             .phases
             .iter()
             .flat_map(|p| &p.tasks)
             .map(|t| t.id.clone())
             .collect();
-        let new_task_id = TaskId::new(&existing);
+        TaskId::new(&existing)
+    }
 
-        let new_task = Task {
-            id: new_task_id.clone(),
-            description: src_desc,
+    /// Builds a fresh `Pending` task with a unique ID and the given description.
+    fn new_pending_task(&self, description: String) -> Task {
+        Task {
+            id: self.next_task_id(),
+            description,
             status: TaskStatus::Pending,
-        };
-
-        // Append to end of target phase.
-        if let Some(phase) = self.phases.get_mut(target_pi) {
-            phase.tasks.push(new_task);
         }
-        Ok(new_task_id)
     }
 
     /// Replaces the entire task list from a description-based structure.
