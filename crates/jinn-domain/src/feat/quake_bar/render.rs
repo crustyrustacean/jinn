@@ -10,6 +10,9 @@
 //!   `=` separators in muted text
 //! - session data row: count of entries queued for prune
 //! - bright divider
+//! - command log (0..20 rows, viewport capped at 10)
+//! - muted divider (a single `-`)
+//! - input row: `> {text}` with a yellow `>` (focus accent)
 //! - command log (0..20 rows)
 //! - muted divider
 //! - input row: `> {text}` with a yellow `>` (focus accent)
@@ -32,8 +35,18 @@ use super::state::QuakeBarState;
 const DIVIDER_LIGHTEN_FACTOR: f32 = 2.0;
 
 /// Fixed rows that are always present regardless of log size:
-/// header, session data, bright divider, muted divider, input, bright divider.
-const FIXED_ROWS: u16 = 6;
+/// header, session data, bright divider, muted divider, input.
+/// (The bottom bright divider was removed — the background color
+/// contrast alone separates the bar from content below.)
+const FIXED_ROWS: u16 = 5;
+
+/// Maximum rows the command log viewport can occupy, regardless of
+/// terminal height. Capping the viewport (rather than letting it grow
+/// with the terminal) guarantees scroll is meaningful: on tall terminals
+/// the log region stays bounded so PgUp/PgDn reveal older entries
+/// instead of showing all 20 lines at once (which would make scroll a
+/// permanent no-op).
+const LOG_VIEWPORT_MAX: u16 = 10;
 
 /// The yellow `>` prefix length (in cells) on the input row.
 const INPUT_PREFIX_CELLS: u16 = 2;
@@ -76,10 +89,12 @@ pub fn render_quake_bar(frame: &mut Frame<'_>, area: Rect, ctx: &RenderCtx) {
         theme.muted_text,
     );
 
-    // Session data row: count of distinct entries pending prune (shield/compaction never reach the buffer).
-    let pending = state.active_session().accumulated_prune_count();
+    // Session data row: tokens of pending prune (ForcedExclude) mutations
+    // buffered in the accumulator. Shield/compaction never reach the buffer,
+    // so this reflects only real prunes queued below the flush threshold.
+    let pending = state.active_session().accumulated_overrides_total();
     let data = Line::from(Span::styled(
-        format!("Prune candidates queued: {pending}"),
+        format!("Prune ctx pending: {pending} tok"),
         Style::default().fg(theme.primary_text).bg(bg),
     ));
     frame.render_widget(
@@ -108,15 +123,19 @@ pub fn render_quake_bar(frame: &mut Frame<'_>, area: Rect, ctx: &RenderCtx) {
         y += 1;
     }
 
-    // Muted divider.
+    // Muted divider: a single '-' above the input row (literal one cell).
     frame.render_widget(
-        Paragraph::new(divider_line(quake_area.width, '-', theme.muted_text, bg)).style(bg_style),
+        Paragraph::new(Line::from(Span::styled(
+            "-".to_owned(),
+            Style::default().fg(theme.muted_text).bg(bg),
+        )))
+        .style(bg_style),
         single_row(quake_area, y),
     );
     y += 1;
 
     // Input row: yellow "> " prefix + editable text + live cursor.
-    y = render_input_row(
+    render_input_row(
         frame,
         quake_area,
         y,
@@ -124,12 +143,6 @@ pub fn render_quake_bar(frame: &mut Frame<'_>, area: Rect, ctx: &RenderCtx) {
         bg,
         theme.focus_accent,
         theme.primary_text,
-    );
-
-    // Final bright divider.
-    frame.render_widget(
-        Paragraph::new(divider_line(quake_area.width, '─', bright, bg)).style(bg_style),
-        single_row(quake_area, y),
     );
 }
 
@@ -198,7 +211,7 @@ fn header_line(width: u16, primary: Color, muted: Color, bg: Color) -> Line<'sta
     Line::from(spans)
 }
 
-/// Produces spans for a label centered within `width` cells, padded with `=`.
+/// Produces spans for a label centered within `width` cells, padded with `-`.
 fn centered_label(
     label: &str,
     width: usize,
@@ -211,9 +224,9 @@ fn centered_label(
     let left = total_sep / 2;
     let right = total_sep - left;
     vec![
-        Span::styled("=".repeat(left), Style::default().fg(sep_fg).bg(bg)),
+        Span::styled("-".repeat(left), Style::default().fg(sep_fg).bg(bg)),
         Span::styled(label.to_owned(), Style::default().fg(label_fg).bg(bg)),
-        Span::styled("=".repeat(right), Style::default().fg(sep_fg).bg(bg)),
+        Span::styled("-".repeat(right), Style::default().fg(sep_fg).bg(bg)),
     ]
 }
 
@@ -233,9 +246,11 @@ fn single_row(area: Rect, y: u16) -> Rect {
     }
 }
 
-/// Log rows available after the [`FIXED_ROWS`] are accounted for.
+/// Log rows available after the [`FIXED_ROWS`] are accounted for,
+/// capped at [`LOG_VIEWPORT_MAX`] so the region stays bounded on tall
+/// terminals.
 fn available_log_rows(height: u16) -> usize {
-    height.saturating_sub(FIXED_ROWS) as usize
+    height.saturating_sub(FIXED_ROWS).min(LOG_VIEWPORT_MAX) as usize
 }
 
 #[cfg(test)]
@@ -313,24 +328,24 @@ mod tests {
             })
             .unwrap();
 
-        // Then a "=" separator cell uses muted_text foreground.
+        // Then a "-" separator cell uses muted_text foreground.
         let buffer = terminal.backend().buffer().clone();
         let muted = state.frontend.theme.muted_text;
         let header_y = area.y;
         let mut found = false;
         for x in area.x..area.x + area.width {
             if let Some(cell) = buffer.cell((x, header_y))
-                && cell.symbol() == "="
+                && cell.symbol() == "-"
                 && cell.style().fg == Some(muted)
             {
                 found = true;
             }
         }
-        assert!(found, "'=' separators should be muted_text");
+        assert!(found, "'-' separators should be muted_text");
     }
 
     #[test]
-    fn session_row_shows_prune_candidate_count() {
+    fn session_row_shows_pending_prune_tokens() {
         // Given a quake-bar state.
         let state = quake_state_with_log(&[]);
         let (mut terminal, area) = setup_term(80, 24);
@@ -343,15 +358,15 @@ mod tests {
             })
             .unwrap();
 
-        // Then the data row contains the "Prune candidates queued" label.
+        // Then the data row contains the "Prune ctx pending" token label.
         let buffer = terminal.backend().buffer().clone();
         let data_y = area.y + 1;
         let symbols: String = (area.x..area.x + area.width)
             .filter_map(|x| buffer.cell((x, data_y)).map(|c| c.symbol().to_owned()))
             .collect();
         assert!(
-            symbols.contains("Prune candidates queued"),
-            "session data row should show the prune-candidate count label"
+            symbols.contains("Prune ctx pending"),
+            "session data row should show the pending-prune token label"
         );
     }
 
@@ -428,7 +443,7 @@ mod tests {
         let buffer = terminal.backend().buffer().clone();
         let muted = state.frontend.theme.muted_text;
         let muted_y = area.y + 3;
-        let cell = buffer.cell((area.x + 5, muted_y)).expect("divider cell");
+        let cell = buffer.cell((area.x, muted_y)).expect("divider cell");
         assert_eq!(
             cell.style().fg,
             Some(muted),
@@ -493,6 +508,52 @@ mod tests {
         assert!(
             symbols.contains("hello world"),
             "logged line should render in the log region"
+        );
+    }
+
+    #[test]
+    fn scroll_up_changes_which_log_line_is_visible() {
+        // Given a quake bar with a full 20-line log, pinned to the bottom.
+        let mut state = quake_state_with_log(&[]);
+        for i in 0..20 {
+            state.frontend.quake_bar.log.push(format!("line-{i}"));
+        }
+        // Short terminal so the log viewport (height 12 - FIXED_ROWS 6 = 6)
+        // is smaller than the 20-line log, making scroll observable.
+        let (mut terminal, area) = setup_term(80, 12);
+
+        // Snapshot the last visible log line before scrolling.
+        terminal
+            .draw(|frame| {
+                let ctx = RenderCtx::new(&state);
+                render_quake_bar(frame, area, &ctx);
+            })
+            .unwrap();
+        let before = terminal.backend().buffer().clone();
+        // Last log row = header(1) + data(1) + bright divider(1) + (viewport-1).
+        let log_rows = (area.height.saturating_sub(FIXED_ROWS)) as usize;
+        let last_log_y = area.y + 3 + log_rows.saturating_sub(1) as u16;
+        let newest_before: String = (area.x..area.x + area.width)
+            .filter_map(|x| before.cell((x, last_log_y)).map(|c| c.symbol().to_owned()))
+            .collect();
+
+        // When scrolling up once.
+        state.frontend.quake_bar.log.scroll_up();
+
+        // Then the rendered bottom log line changes (the window moved up).
+        terminal
+            .draw(|frame| {
+                let ctx = RenderCtx::new(&state);
+                render_quake_bar(frame, area, &ctx);
+            })
+            .unwrap();
+        let after = terminal.backend().buffer().clone();
+        let newest_after: String = (area.x..area.x + area.width)
+            .filter_map(|x| after.cell((x, last_log_y)).map(|c| c.symbol().to_owned()))
+            .collect();
+        assert_ne!(
+            newest_before, newest_after,
+            "scroll_up must change the rendered log window"
         );
     }
 }

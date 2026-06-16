@@ -757,4 +757,32 @@ mod tests {
             "printable char must route to InsertChar; got {intent:?}",
         );
     }
+
+    #[test]
+    fn quake_bar_scope_pgup_fires_scroll_up() {
+        // Given a keymap queried in QuakeBar scope.
+        use crate::app::WhichKeyInstance;
+        use jinn_domain::{Key, KeyEvent, Modifiers};
+
+        let keymap = init();
+        let mut wk = WhichKeyInstance::new(keymap, Scope::QuakeBar);
+
+        // When pressing PageUp.
+        let pgup = KeyEvent {
+            key: Key::PageUp,
+            modifiers: Modifiers {
+                ctrl: false,
+                alt: false,
+                shift: false,
+            },
+        };
+        let intent = wk.handle_key(pgup);
+
+        // Then it resolves to QuakeBarScrollUp (so the log actually scrolls).
+        let intent = intent.expect("PageUp in QuakeBar scope must fire an intent");
+        assert!(
+            matches!(intent, Intent::QuakeBarScrollUp),
+            "PageUp must resolve to QuakeBarScrollUp; got {intent:?}",
+        );
+    }
 }
