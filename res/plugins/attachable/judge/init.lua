@@ -108,43 +108,47 @@ function record_verdict(ctx, verdict, message)
 		return
 	end
 
-	-- Aggregate: any "failed" verdict → failed (with merged messages);
-	-- otherwise passed.
-	local parts = {}
-	local any_failed = false
+	-- Majority vote: count pass vs fail. Strict majority pass wins;
+	-- a tie or fail-majority means the response failed.
+	local pass_count = 0
+	local fail_count = 0
+	local fail_parts = {}
 	for _id, v in pairs(verdicts) do
-		if v.verdict == "failed" then
-			any_failed = true
-			table.insert(parts, v.message or "(no reason given)")
+		if v.verdict == "passed" then
+			pass_count = pass_count + 1
+		elseif v.verdict == "failed" then
+			fail_count = fail_count + 1
+			table.insert(fail_parts, v.message or "(no reason given)")
 		end
 	end
+	local passed = pass_count > fail_count
 
-	if any_failed then
-		ctx.emit("enqueue_user_message", {
-			session_id = origin,
-			text = "✗ Judgment failed: " .. table.concat(parts, "; "),
-		})
-	else
+	if passed then
 		ctx.emit("push_chat_entry", {
 			session_id = origin,
 			kind = { transient = "✓ Judgment passed" },
 		})
+	else
+		ctx.emit("enqueue_user_message", {
+			session_id = origin,
+			text = "✗ Judgment failed: " .. table.concat(fail_parts, "; "),
+		})
 	end
 
-	-- All-must-finish aggregation is complete. Resolve the lifecycle of
-	-- EVERY participating instance, not just this one:
+	-- Aggregation complete. Resolve the lifecycle of EVERY participating
+	-- instance, not just this one:
 	--   pass → disable all (one-shot judges; the user re-enables manually)
-	--   fail → re-enable all (so the next turn re-runs every judge)
+	--   fail/tie → re-enable all (so the next turn re-runs every judge)
 	local instances = ctx.get_global_data(instances_key(origin)) or {}
 	for instance_id, _ in pairs(instances) do
-		if any_failed then
-			ctx.emit("enable_plugin", {
+		if passed then
+			ctx.emit("disable_plugin", {
 				session_id = origin,
 				plugin_name = ctx.plugin_name,
 				instance_id = instance_id,
 			})
 		else
-			ctx.emit("disable_plugin", {
+			ctx.emit("enable_plugin", {
 				session_id = origin,
 				plugin_name = ctx.plugin_name,
 				instance_id = instance_id,
