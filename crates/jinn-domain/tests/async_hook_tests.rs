@@ -1730,3 +1730,239 @@ async fn judge_aggregation_single_instance_backward_compat_disables_itself() {
         "single instance disables itself"
     );
 }
+
+// ─── Majority-vote aggregation ────────────────────────────────────────────
+
+/// Inline plugin mirroring the real judge's majority aggregation: strict
+/// majority pass wins; otherwise (fail-majority or tie) fail, concatenating
+/// only the failed verdicts' messages.
+const MAJORITY_PANEL_LUA: &str = r#"
+    local M = {}
+    local function count_key(o) return "judge:" .. o .. ":count" end
+    local function verdicts_key(o) return "judge:" .. o .. ":verdicts" end
+    local function completed_key(o) return "judge:" .. o .. ":completed" end
+    local function instances_key(o) return "judge:" .. o .. ":instances" end
+    local function record(ctx, verdict, message)
+        local origin = ctx.parent_session_id
+        local me = ctx.session_id
+        local count = ctx.get_global_data(count_key(origin)) or 0
+        local verdicts = ctx.get_global_data(verdicts_key(origin)) or {}
+        verdicts[me] = { verdict = verdict, message = message }
+        ctx.set_global_data(verdicts_key(origin), verdicts)
+        local completed = (ctx.get_global_data(completed_key(origin)) or 0) + 1
+        ctx.set_global_data(completed_key(origin), completed)
+        if completed < count then return end
+        local pass_count = 0
+        local fail_count = 0
+        local fail_parts = {}
+        for _id, v in pairs(verdicts) do
+            if v.verdict == "passed" then pass_count = pass_count + 1
+            elseif v.verdict == "failed" then
+                fail_count = fail_count + 1
+                table.insert(fail_parts, v.message or "(no reason given)")
+            end
+        end
+        local passed = pass_count > fail_count
+        if passed then
+            ctx.emit("push_chat_entry", { session_id = origin, kind = { transient = "pass" } })
+        else
+            ctx.emit("enqueue_user_message", { session_id = origin, text = "fail:" .. table.concat(fail_parts, ";") })
+        end
+    end
+    function M.on_attach(ctx)
+        local k = count_key(ctx.session_id)
+        ctx.set_global_data(k, (ctx.get_global_data(k) or 0) + 1)
+        local ikey = instances_key(ctx.session_id)
+        local instances = ctx.get_global_data(ikey) or {}
+        instances[ctx.instance_id] = true
+        ctx.set_global_data(ikey, instances)
+    end
+    M.tools = {
+        { name = "judgment_passed", description = "pass", scope = "attached", parameters = {},
+          handler = function(ctx) record(ctx, "passed", nil) end },
+        { name = "judgment_failed", description = "fail", scope = "attached",
+          parameters = { { name = "message", type = "string", description = "why" } },
+          handler = function(ctx, args) record(ctx, "failed", tostring(args.message)) end },
+    }
+    return M
+"#;
+
+/// Drives `n_pass` passing verdicts and `n_fail` failing verdicts through a
+/// fresh panel, then asserts the emitted result.
+async fn run_majority_panel(n_pass: usize, n_fail: usize, fail_msg: &str) -> Vec<String> {
+    let dir = tempfile::tempdir().expect("tempdir");
+    write_plugin_kind(dir.path(), "attachable", "panel", MAJORITY_PANEL_LUA);
+    let sys = build_system(dir.path());
+    let origin = SessionId::from("origin".to_owned());
+    let total = n_pass + n_fail;
+    let mut regs = Vec::new();
+    for _i in 0..total {
+        let inst = PluginInstanceId::new();
+        let reg = sys
+            .async_handle
+            .create_session_registry(vec![(inst.clone(), "panel".to_owned())], SessionId::new())
+            .await
+            .expect("create registry");
+        sys.async_handle
+            .fire_async_for_session(
+                Some(reg.registry_id),
+                "on_attach",
+                &AttachCtx {
+                    session_id: origin.to_string(),
+                    plugin_name: "panel".to_owned(),
+                },
+                vec![inst.clone()],
+            )
+            .await
+            .expect("fire on_attach");
+        regs.push(inst);
+    }
+    tokio::time::sleep(std::time::Duration::from_millis(150)).await;
+
+    // Post the verdicts.
+    for i in 0..total {
+        let child = format!("child-{i}");
+        let (tool, args) = if i < n_pass {
+            ("judgment_passed", json!({}))
+        } else {
+            ("judgment_failed", json!({ "message": fail_msg }))
+        };
+        sys.async_handle
+            .execute_tool(
+                None,
+                SessionId::from(child),
+                Some(origin.clone()),
+                "panel",
+                tool,
+                &args,
+            )
+            .await
+            .expect("execute verdict");
+    }
+    tokio::time::sleep(std::time::Duration::from_millis(100)).await;
+
+    let cmds = sys.captured.lock();
+    cmds.iter()
+        .filter(|c| c.name == "enqueue_user_message" || c.name == "push_chat_entry")
+        .map(|c| c.name.clone())
+        .collect()
+}
+
+#[tokio::test]
+async fn majority_two_pass_one_fail_emits_pass() {
+    // Given a 3-judge panel: 2 pass, 1 fail.
+    // When all verdicts are posted.
+    let results = run_majority_panel(2, 1, "off-topic").await;
+
+    // Then exactly one pass entry is emitted (strict majority pass wins).
+    assert_eq!(results, vec!["push_chat_entry".to_owned()]);
+}
+
+#[tokio::test]
+async fn majority_one_pass_two_fail_emits_fail() {
+    // Given a 3-judge panel: 1 pass, 2 fail.
+    // When all verdicts are posted.
+    let dir = tempfile::tempdir().expect("tempdir");
+    write_plugin_kind(dir.path(), "attachable", "panel", MAJORITY_PANEL_LUA);
+    let sys = build_system(dir.path());
+    let origin = SessionId::from("origin".to_owned());
+    let total = 3;
+    for i in 0..total {
+        let inst = PluginInstanceId::new();
+        let reg = sys
+            .async_handle
+            .create_session_registry(vec![(inst.clone(), "panel".to_owned())], SessionId::new())
+            .await
+            .expect("create registry");
+        sys.async_handle
+            .fire_async_for_session(
+                Some(reg.registry_id),
+                "on_attach",
+                &AttachCtx {
+                    session_id: origin.to_string(),
+                    plugin_name: "panel".to_owned(),
+                },
+                vec![inst.clone()],
+            )
+            .await
+            .expect("fire on_attach");
+    }
+    tokio::time::sleep(std::time::Duration::from_millis(150)).await;
+
+    // Post: child-0 passes, child-1 and child-2 fail.
+    let verdicts = [
+        ("judgment_passed", json!({}), ""),
+        (
+            "judgment_failed",
+            json!({ "message": "too short" }),
+            "too short",
+        ),
+        (
+            "judgment_failed",
+            json!({ "message": "off-topic" }),
+            "off-topic",
+        ),
+    ];
+    for (i, (tool, args, _)) in verdicts.iter().enumerate() {
+        let child = format!("child-{i}");
+        sys.async_handle
+            .execute_tool(
+                None,
+                SessionId::from(child),
+                Some(origin.clone()),
+                "panel",
+                tool,
+                args,
+            )
+            .await
+            .expect("execute verdict");
+    }
+    tokio::time::sleep(std::time::Duration::from_millis(100)).await;
+
+    // Then exactly one fail message is emitted, concatenating ONLY the two
+    // failed reasons (order-independent: Lua table iteration is not ordered).
+    let cmds = sys.captured.lock();
+    let fails: Vec<String> = cmds
+        .iter()
+        .filter(|c| c.name == "enqueue_user_message")
+        .map(|c| c.data["text"].as_str().unwrap().to_owned())
+        .collect();
+    assert_eq!(fails.len(), 1, "exactly one merged fail message: {fails:?}");
+    let text = &fails[0];
+    assert!(text.contains("too short"), "first reason present: {text}");
+    assert!(text.contains("off-topic"), "second reason present: {text}");
+    assert!(
+        text.matches(';').count() == 1,
+        "exactly one separator between two reasons: {text}"
+    );
+}
+
+#[tokio::test]
+async fn majority_tie_counts_as_fail() {
+    // Given a 2-judge panel: 1 pass, 1 fail (tie).
+    // When all verdicts are posted.
+    let results = run_majority_panel(1, 1, "weak").await;
+
+    // Then a fail message is emitted (tie → fail), not a pass entry.
+    assert_eq!(results, vec!["enqueue_user_message".to_owned()]);
+}
+
+#[tokio::test]
+async fn majority_single_pass_is_backward_compat_pass() {
+    // Given a single judge (count=1) that passes.
+    // When its verdict is posted.
+    let results = run_majority_panel(1, 0, "").await;
+
+    // Then a pass entry is emitted (1 vs 0 is a strict majority).
+    assert_eq!(results, vec!["push_chat_entry".to_owned()]);
+}
+
+#[tokio::test]
+async fn majority_single_fail_is_backward_compat_fail() {
+    // Given a single judge (count=1) that fails.
+    // When its verdict is posted.
+    let results = run_majority_panel(0, 1, "bad").await;
+
+    // Then a fail message is emitted.
+    assert_eq!(results, vec!["enqueue_user_message".to_owned()]);
+}
