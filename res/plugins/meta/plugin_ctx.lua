@@ -17,6 +17,7 @@
 
 ---@class PluginCtx
 ---@field session_id string The current session ID.
+---@field parent_session_id string? The parent session ID, if this session was created as a child. Nil for top-level sessions.
 ---@field plugin_name string Name of this plugin (for self-targeting actions like `disable_plugin`).
 ---@field plugin_data any This plugin's persistent state.
 ---@field emit fun(verb: PluginVerb, data: table) Fire-and-forget emit a domain command.
@@ -24,6 +25,21 @@
 ---@field set_plugin_data fun(data: any) Replace this plugin's persistent state.
 ---@field merge_plugin_data fun(data: any) Shallow-merge top-level keys into this plugin's persistent state (async-only).
 ---@field get_plugin_data fun(): any Re-read this plugin's **current** persistent state (live; async-only). Use after an `await` — `plugin_data` is a frozen snapshot taken at hook entry.
+---
+--- Global data — cross-plugin / cross-instance coordination channel.
+--- A string-keyed bag of JSON values. Any plugin or instance can read
+--- or write any key. Used for aggregation (e.g. multi-judge: post
+--- verdicts under a shared key; the last-to-finish reads and merges).
+--- Values support null/bool/number/string/array/object (JSON types only).
+---
+--- Read-modify-write is safe in practice because the plugin thread is
+--- single-threaded; do not rely on this under multi-threaded execution.
+---
+---@field get_global_data fun(key: string): any Read the live value under `key`, or nil if absent (async-only).
+---@field set_global_data fun(key: string, value: any) Write (replace) the value under `key` (async-only).
+---@field merge_global_data fun(key: string, value: any) Shallow-merge top-level keys of `value` into the object under `key` (async-only).
+---
+---@field instance_id string This plugin instance's stable id (async-only). Distinct for duplicate attachments of the same plugin.
 
 -- ─── Per-hook ctx classes ──────────────────────────────────────────
 --
@@ -37,6 +53,24 @@
 
 ---@class OnSessionCreatedCtx : PluginCtx
 ---Fires when a new session is created. No hook-specific fields.
+
+
+---@class OnAttachCtx : PluginCtx
+---Fires when this plugin instance is attached to a session. Runs against
+---the live (just-rebuilt) per-session Lua state. Use it to register this
+---instance in shared global-data coordination keys (e.g. increment a
+---participant count). Only the newly-attached instance receives it.
+---
+---Per-instance: each attachment of a plugin gets its own `on_attach` fire,
+---even for duplicate instances of the same plugin name.
+
+
+---@class OnDetachCtx : PluginCtx
+---Fires when this plugin instance is detached from a session. Runs BEFORE
+---the per-session registry is rebuilt, so the hook still executes against the
+---live (pre-teardown) Lua state. Use it to clean up shared global-data
+---coordination keys (e.g. decrement a participant count). Only the
+---removed instance(s) receive it.
 
 ---@class OnTurnEndCtx : PluginCtx
 ---Fires when a session transitions to Idle (turn complete).
@@ -117,10 +151,12 @@
 ---| '"push_chat_entry"'
 ---| '"enqueue_user_message"'
 ---| '"disable_plugin"'
+---| '"enable_plugin"'
 ---| '"fire_async_hook"'
 ---| '"set_chat_input"'
 ---| '"reset_session"'
 ---| '"create_session"'
+---| '"set_managed_session"'
 
 ---@class PushChatEntryPayload
 ---@field session_id string
@@ -135,9 +171,29 @@
 ---@field text string
 
 ---@class DisablePluginPayload
+---Force-disable a specific plugin instance (`enabled = false`). Targets the
+---instance by `instance_id` so duplicate attachments of the same plugin name
+---each disable independently.
+---
 ---@field session_id string
 ---@field plugin_name string
+---@field instance_id string
 
+---@class EnablePluginPayload
+---Force-enable a specific plugin instance (`enabled = true`).
+---
+---@field session_id string
+---@field plugin_name string
+---@field instance_id string
+
+---@class SetManagedSessionPayload
+---Set the managed (child) session on a specific plugin instance, so the
+---sidebar can preview/activate that instance's child session.
+---
+---@field session_id string
+---@field plugin_name string
+---@field managed_session_id string
+---@field instance_id string
 ---@class FireAsyncHookPayload
 ---Generic handoff from the sync VM to the async VM. The plugin actor resolves
 ---the `session_id`, then fires the named async `hook` with this payload as its
@@ -204,6 +260,8 @@
 ---@field parent_session_id string The parent session ID.
 ---@field automated boolean|nil If true, the session is marked automated.
 ---@field persist boolean|nil If true (default), the session is persisted to storage.
+---@field inherit_tools boolean|nil If true, copy the parent session's session-scoped tools into the child. Default false.
+---@field tools string[]|nil Names of attachable tools to resolve from the catalog into the child. Orthogonal to `inherit_tools` (union).
 ---
 ---@class CreateSessionResponse
 ---@field session_id string The ID of the newly created session.

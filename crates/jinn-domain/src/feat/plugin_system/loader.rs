@@ -212,6 +212,83 @@ pub fn load_all(lua: &Lua, plugins: &[PluginMeta]) -> LoadResult {
     LoadResult { hooks, tools }
 }
 
+/// An attachable plugin instance to load into a session Lua state.
+///
+/// Carries the instance id (for keying the hooks map) alongside the
+/// resolved plugin metadata (script path, name). Two attachments of the
+/// same plugin pass two entries with distinct instance ids but the same
+/// `PluginMeta`.
+pub(crate) struct SessionInstanceMeta {
+    pub instance_id: super::PluginInstanceId,
+    pub meta: PluginMeta,
+}
+
+/// Result of loading session plugin instances into a Lua state.
+///
+/// Like [`LoadResult`] but keyed by instance id so duplicate attachments
+/// of the same plugin coexist with independent hook tables.
+pub(crate) struct SessionLoadResult {
+    /// Instance id → (plugin name, hook data).
+    pub hooks: HashMap<super::PluginInstanceId, (String, PluginHooks)>,
+    /// All tool definitions extracted from loaded plugins.
+    pub tools: Vec<super::tool_def::PluginToolDef>,
+}
+
+/// Load plugin *instances* into a Lua state with `_ENV` isolation, keyed
+/// by instance id.
+///
+/// Each instance gets its own registry entry (independent module state),
+/// so two attachments of the same plugin do not share mutable state.
+///
+/// # Panics
+///
+/// Panics if `load_plugin` returns a key that fails to resolve in the Lua
+/// registry (impossible in practice — the key was just stored).
+#[expect(
+    clippy::expect_used,
+    reason = "invariant: table_key just returned by load_plugin"
+)]
+pub(crate) fn load_instances(lua: &Lua, instances: &[SessionInstanceMeta]) -> SessionLoadResult {
+    let mut hooks = HashMap::new();
+    let mut tools = Vec::new();
+
+    for inst in instances {
+        let meta = &inst.meta;
+        let script_path = meta.path.join("init.lua");
+        let source = match std::fs::read_to_string(&script_path) {
+            Ok(s) => s,
+            Err(e) => {
+                tracing::warn!(plugin = meta.name, err = %e, "failed to read plugin");
+                continue;
+            }
+        };
+
+        match load_plugin(lua, &source) {
+            Ok(table_key) => {
+                let table: mlua::Table = lua
+                    .registry_value(&table_key)
+                    .expect("registry_value resolves for key returned by load_plugin");
+                let plugin_tools = super::tool_def::extract_tools(lua, &table, &meta.name);
+                tracing::debug!(
+                    plugin = meta.name,
+                    tools = plugin_tools.len(),
+                    "loaded plugin instance"
+                );
+                tools.extend(plugin_tools);
+                hooks.insert(
+                    inst.instance_id.clone(),
+                    (meta.name.clone(), PluginHooks::new(table_key)),
+                );
+            }
+            Err(e) => {
+                tracing::error!(plugin = meta.name, err = %e, "failed to load plugin instance");
+            }
+        }
+    }
+
+    SessionLoadResult { hooks, tools }
+}
+
 /// Load a single plugin script into the Lua state with `_ENV` isolation.
 ///
 /// The script must return a table (the hook table). The returned table

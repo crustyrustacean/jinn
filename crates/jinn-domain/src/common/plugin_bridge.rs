@@ -88,6 +88,7 @@ pub fn dispatch_verb(verb: &str, ctx: CmdCtx, payload: Value) -> Option<BridgeCl
         crate::feat::chat_input::protocol::command::SetChatInputText,
         crate::feat::chat_input::protocol::command::SetChatInputEnabled,
         crate::feat::plugin_dispatch::protocol::command::TogglePlugin,
+        crate::feat::plugin_dispatch::protocol::command::EnablePlugin,
         crate::feat::plugin_dispatch::protocol::command::SetManagedSession,
         crate::feat::session::protocol::ResetSessionHistory,
         crate::common::actor::protocol::dynamic_command::DynamicCommand,
@@ -126,11 +127,11 @@ mod tests {
     )]
     #[case::disable_plugin(
         "disable_plugin",
-        json!({"session_id":"s","plugin_name":"p"})
+        json!({"session_id":"s","plugin_name":"p","instance_id":"i-1"})
     )]
     #[case::set_managed_session(
         "set_managed_session",
-        json!({"session_id":"s","plugin_name":"p","managed_session_id":"m"})
+        json!({"session_id":"s","plugin_name":"p","managed_session_id":"m","instance_id":"i-1"})
     )]
     #[case::reset_session("reset_session", json!({"session_id":"s"}))]
     #[case::fire_async_hook("fire_async_hook", json!({"hook":"h","session_id":"s"}))]

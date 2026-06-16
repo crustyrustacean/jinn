@@ -117,16 +117,11 @@ pub(crate) enum ToolRegistration {
         /// The name of the actor providing this tool.
         provider: String,
     },
-    /// A plugin-defined tool routed to the plugin system's async thread.
     Plugin {
         /// The tool's JSON-schema definition.
         definition: ToolDefinition,
         /// `None` for global plugins, `Some(id)` for session-attached plugins.
         target: Option<SessionRegistryId>,
-        /// The domain session ID for execution scoping.
-        /// `None` for global tools, `Some(session_id)` for attached tools.
-        /// Used to reject tool calls from sessions other than the target.
-        target_session_id: Option<SessionId>,
         /// The name of the plugin that owns this tool.
         plugin_name: String,
     },
@@ -150,13 +145,11 @@ impl std::fmt::Debug for ToolRegistration {
             Self::Plugin {
                 definition,
                 target,
-                target_session_id,
                 plugin_name,
             } => f
                 .debug_struct("Plugin")
                 .field("name", &definition.name)
                 .field("target", target)
-                .field("target_session_id", target_session_id)
                 .field("plugin_name", plugin_name)
                 .finish(),
         }
@@ -390,6 +383,7 @@ impl Message<RegisterPluginTools> for ToolOrchestratorActor {
             msg.target.as_ref(),
             &msg.definitions,
             msg.session_id,
+            msg.execution_only,
         )
         .await;
     }
@@ -430,6 +424,7 @@ impl ToolOrchestratorActor {
         target: Option<&SessionRegistryId>,
         definitions: &[ToolDefinition],
         session_id: Option<SessionId>,
+        execution_only: bool,
     ) {
         for def in definitions {
             let name = def.name.clone();
@@ -438,18 +433,24 @@ impl ToolOrchestratorActor {
                 ToolRegistration::Plugin {
                     definition: def.clone(),
                     target: target.copied(),
-                    target_session_id: session_id.clone(),
                     plugin_name: plugin_name.to_owned(),
                 },
             );
         }
 
-        self.publish(ToolsRegistered {
-            provider: format!("plugin:{plugin_name}"),
-            definitions: definitions.to_vec(),
-            session_id,
-        })
-        .await;
+        // Visibility (Registry 1) is driven by ToolsRegistered, projected into
+        // session_tool_definitions by the session-actor context handler.
+        // execution_only: register the executor in Registry 2 without publishing a
+        // visibility event. Used for attachable plugin tools loaded globally at
+        // startup (per-session visibility is registered separately on attach).
+        if !execution_only {
+            self.publish(ToolsRegistered {
+                provider: format!("plugin:{plugin_name}"),
+                definitions: definitions.to_vec(),
+                session_id,
+            })
+            .await;
+        }
     }
 
     /// Dispatches each tool call and tracks the pending batch.
@@ -459,9 +460,9 @@ impl ToolOrchestratorActor {
         tool_calls: Vec<ToolCall>,
         dispatched_at: Timestamp,
     ) {
-        tracing::trace!(
-            session_id = ?session_id,
-            tool_call_count = tool_calls.len(),
+        tracing::debug!(
+            session_id = %session_id,
+            tools = ?tool_calls.iter().map(|t| t.name.clone()).collect::<Vec<_>>(),
             "handle_execute_tool_batch"
         );
 
@@ -618,44 +619,16 @@ impl ToolOrchestratorActor {
             }
             Some(ToolRegistration::Plugin {
                 target,
-                target_session_id,
                 plugin_name,
                 ..
             }) => {
-                // Scope check: attached tools can only be called from their target session.
-                if target_session_id.is_some() && target_session_id.as_ref() != Some(&session_id) {
-                    tracing::warn!(
-                        tool = %tool_call.name,
-                        target_session = ?target_session_id,
-                        calling_session = %session_id,
-                        "attached tool called from wrong session"
-                    );
-                    {
-                        let target_display = target_session_id
-                            .as_ref()
-                            .map(std::string::ToString::to_string)
-                            .unwrap_or_default();
-                        let result = ToolResult {
-                            tool_call_id: tool_call.id.clone(),
-                            name: tool_call.name.clone(),
-                            content: format!(
-                                "Error: tool '{}' is only available in session {}",
-                                tool_call.name, target_display
-                            ),
-                            success: false,
-                            full_content: None,
-                            truncation: None,
-                            pin_position: None,
-                        };
-                        self.publish(ToolExecutionCompleted {
-                            session_id: session_id.clone(),
-                            result,
-                        })
-                        .await;
-                    }
-                    return None;
-                }
-
+                tracing::debug!(
+                    session_id = %session_id,
+                    tool = %tool_call.name,
+                    target = ?target,
+                    plugin = %plugin_name,
+                    "dispatching plugin tool"
+                );
                 let bus = self.bus().clone();
                 let plugin_fire = self.services.plugins.clone();
                 let target = *target;
@@ -663,12 +636,21 @@ impl ToolOrchestratorActor {
                 let plugin_name = plugin_name.clone();
                 let arguments: serde_json::Value =
                     serde_json::from_str(&tool_call.arguments).unwrap_or_default();
+                // Resolve the calling session's parent edge so plugin tool handlers
+                // can recover their origin via ctx.parent_session_id.
+                let parent_session_id = {
+                    let s = self.state.read();
+                    s.session
+                        .get(&sid)
+                        .and_then(|sess| sess.core.parent_session.clone())
+                };
 
                 let handle = tokio::spawn(async move {
                     let result = match plugin_fire
                         .execute_plugin_tool(
                             target,
                             &sid,
+                            parent_session_id.as_ref(),
                             &plugin_name,
                             &tool_call.name,
                             &arguments,

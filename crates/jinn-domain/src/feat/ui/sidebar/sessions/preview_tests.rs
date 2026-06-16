@@ -488,28 +488,11 @@ fn popup_height_capped_when_cursor_near_top() {
 use crate::common::app_state::AppState;
 use crate::common::render_ctx::RenderCtx;
 use crate::common::state::State;
-use crate::feat::plugin_dispatch::HookContext;
-use crate::feat::plugin_dispatch::plugin_sync_hooks::PluginSyncHooks;
 use crate::feat::ui::sidebar::sessions::preview::resolve_plugin_preview;
 use crate::feat::ui::sidebar::sessions::state::{SessionEntry, SessionEntryKind};
 use crate::protocol::SessionId;
 
-/// Stub plugin hooks that returns a fixed JSON value for `on_session_preview`.
-struct PreviewStub {
-    /// `Some(value)` to return from `on_session_preview`, `None` to return nothing.
-    preview_value: Option<serde_json::Value>,
-}
-
-impl PluginSyncHooks for PreviewStub {
-    fn call_hooks(&self, hook: &str, _ctx: &HookContext) -> Vec<serde_json::Value> {
-        match hook {
-            "on_session_preview" => self.preview_value.clone().into_iter().collect(),
-            _ => vec![],
-        }
-    }
-}
-
-fn plugin_entry(title: &str, parent_id: SessionId) -> SessionEntry {
+fn plugin_entry(title: &str, parent_id: SessionId, managed: Option<SessionId>) -> SessionEntry {
     SessionEntry {
         kind: SessionEntryKind::Plugin { enabled: true },
         id: parent_id,
@@ -517,6 +500,7 @@ fn plugin_entry(title: &str, parent_id: SessionId) -> SessionEntry {
         is_active: false,
         created_at: jiff::Timestamp::now(),
         is_idle: true,
+        managed_session_id: managed,
         last_entry_is_error: false,
         parent_id: None,
         depth: 0,
@@ -525,9 +509,9 @@ fn plugin_entry(title: &str, parent_id: SessionId) -> SessionEntry {
     }
 }
 
-#[rstest::rstest]
-fn plugin_preview_returns_session_when_hook_responds() {
-    // Given a plugin entry and a child session in the state.
+#[test]
+fn plugin_preview_returns_session_when_managed_id_set() {
+    // Given a plugin entry with a managed session id and that child in state.
     let state = State::new(AppState::default());
     let child_id = SessionId::new();
     let mut child = ChatSessionState::new();
@@ -535,32 +519,26 @@ fn plugin_preview_returns_session_when_hook_responds() {
     state.write().session.insert(child);
 
     let parent_id = SessionId::new();
-    let entry = plugin_entry("judge", parent_id);
-    let stub = PreviewStub {
-        preview_value: Some(serde_json::json!({ "session_id": child_id.to_string() })),
-    };
+    let entry = plugin_entry("judge", parent_id, Some(child_id.clone()));
     let guard = state.read();
-    let render_ctx = RenderCtx::new(&guard).with_plugins(&stub);
+    let render_ctx = RenderCtx::new(&guard);
 
     // When resolving plugin preview.
     let result = resolve_plugin_preview(&entry, &render_ctx);
 
-    // Then it returns the child session.
+    // Then it returns the managed child session.
     let session = result.expect("should return a session");
     assert_eq!(session.session_id(), &child_id);
 }
 
-#[rstest::rstest]
-fn plugin_preview_returns_none_when_hook_returns_nil() {
-    // Given a plugin entry with no preview.
+#[test]
+fn plugin_preview_returns_none_when_managed_id_absent() {
+    // Given a plugin entry with no managed session id.
     let state = State::new(AppState::default());
     let parent_id = SessionId::new();
-    let entry = plugin_entry("judge", parent_id);
-    let stub = PreviewStub {
-        preview_value: None,
-    };
+    let entry = plugin_entry("judge", parent_id, None);
     let guard = state.read();
-    let render_ctx = RenderCtx::new(&guard).with_plugins(&stub);
+    let render_ctx = RenderCtx::new(&guard);
 
     // When resolving plugin preview.
     let result = resolve_plugin_preview(&entry, &render_ctx);
@@ -569,17 +547,14 @@ fn plugin_preview_returns_none_when_hook_returns_nil() {
     assert!(result.is_none());
 }
 
-#[rstest::rstest]
-fn plugin_preview_returns_none_when_session_id_missing_from_state() {
-    // Given a plugin entry where the hook returns a session ID that doesn't exist.
+#[test]
+fn plugin_preview_returns_none_when_managed_session_missing_from_state() {
+    // Given a plugin entry whose managed session id is not present in state.
     let state = State::new(AppState::default());
     let parent_id = SessionId::new();
-    let entry = plugin_entry("judge", parent_id);
-    let stub = PreviewStub {
-        preview_value: Some(serde_json::json!({ "session_id": "s-nonexistent" })),
-    };
+    let entry = plugin_entry("judge", parent_id, Some(SessionId::new()));
     let guard = state.read();
-    let render_ctx = RenderCtx::new(&guard).with_plugins(&stub);
+    let render_ctx = RenderCtx::new(&guard);
 
     // When resolving plugin preview.
     let result = resolve_plugin_preview(&entry, &render_ctx);

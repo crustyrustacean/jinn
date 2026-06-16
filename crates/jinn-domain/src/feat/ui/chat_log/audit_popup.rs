@@ -58,7 +58,7 @@ pub fn format_audit_lines(entry: &ChatEntry, theme: &Theme) -> Vec<Line<'static>
                     .fg(theme.input_mode_queue)
                     .bg(theme.infopopup_bg),
             ),
-            Span::styled("  Duration: ".to_owned(), body_style),
+            Span::styled("  Stream Duration: ".to_owned(), body_style),
             Span::styled(
                 duration_text,
                 Style::default().fg(theme.streaming).bg(theme.infopopup_bg),
@@ -688,7 +688,7 @@ mod tests {
         entry
     }
 
-    /// Helper: find the timing line (contains both TTFT and Duration).
+    /// Helper: find the timing line (contains both TTFT and Stream Duration).
     fn find_timing_line(lines: &[Line<'_>]) -> Option<usize> {
         lines.iter().position(|l| text(l).contains("TTFT:"))
     }
@@ -701,7 +701,7 @@ mod tests {
         // When formatting.
         let lines = format(&entry);
 
-        // Then no line contains TTFT or Duration.
+        // Then no line contains TTFT or Stream Duration.
         for (i, line) in lines.iter().enumerate() {
             let t = text(line);
             assert!(
@@ -709,8 +709,8 @@ mod tests {
                 "line {i} should not contain TTFT: {t}"
             );
             assert!(
-                !t.contains("Duration:"),
-                "line {i} should not contain Duration: {t}"
+                !t.contains("Stream Duration:"),
+                "line {i} should not contain Stream Duration: {t}"
             );
         }
     }
@@ -727,18 +727,18 @@ mod tests {
         // When formatting.
         let lines = format(&entry);
 
-        // Then there is a line containing both TTFT and Duration.
+        // Then there is a line containing both TTFT and Stream Duration.
         let idx = find_timing_line(&lines).expect("should have a timing line");
         let t = text(&lines[idx]);
         assert!(t.contains("TTFT:"), "timing line should contain TTFT: {t}");
         assert!(
-            t.contains("Duration:"),
-            "timing line should contain Duration: {t}"
+            t.contains("Stream Duration:"),
+            "timing line should contain Stream Duration: {t}"
         );
         // And TTFT shows ~2s.
         assert!(t.contains("2.0s"), "TTFT should be 2.0s: {t}");
-        // And Duration shows ~15s.
-        assert!(t.contains("15.0s"), "Duration should be 15.0s: {t}");
+        // And Stream Duration shows ~13s (finished_at 15s - first_token_at 2s).
+        assert!(t.contains("13.0s"), "Stream Duration should be 13.0s: {t}");
     }
 
     #[test]
@@ -763,12 +763,12 @@ mod tests {
         // When formatting.
         let lines = format(&entry);
 
-        // Then the timing line shows (pending) for Duration.
+        // Then the timing line shows (pending) for Stream Duration.
         let idx = find_timing_line(&lines).expect("should have a timing line");
         let t = text(&lines[idx]);
         assert!(
             t.contains("(pending)"),
-            "Duration should show (pending): {t}"
+            "Stream Duration should show (pending): {t}"
         );
     }
 
@@ -808,13 +808,13 @@ mod tests {
         // When formatting.
         let lines = format_audit_lines(&entry, &theme);
 
-        // Then the Duration value span uses the streaming color.
+        // Then the Stream Duration value span uses the streaming color.
         let idx = find_timing_line(&lines).expect("should have a timing line");
-        let duration_span = &lines[idx].spans[3]; // index 3 is the Duration value
+        let duration_span = &lines[idx].spans[3]; // index 3 is the Stream Duration value
         assert_eq!(
             duration_span.style.fg,
             Some(theme.streaming),
-            "Duration value should use streaming color"
+            "Stream Duration value should use streaming color"
         );
     }
 }

@@ -36,6 +36,7 @@ fn tree_entry(
         is_active: false,
         created_at: Timestamp::now(),
         is_idle: true,
+        managed_session_id: None,
         last_entry_is_error: false,
         parent_id: None,
         depth,
@@ -178,6 +179,7 @@ fn assembled_line_includes_tree_prefix_for_non_root() {
         is_active: false,
         created_at: Timestamp::now(),
         is_idle: true,
+        managed_session_id: None,
         last_entry_is_error: false,
         parent_id: None,
         depth: 1,
@@ -207,6 +209,7 @@ fn assembled_line_has_no_tree_prefix_for_root() {
         is_active: false,
         created_at: Timestamp::now(),
         is_idle: true,
+        managed_session_id: None,
         last_entry_is_error: false,
         parent_id: None,
         depth: 0,
@@ -237,6 +240,7 @@ fn assembled_line_has_tree_prefix_span_for_child() {
         is_active: false,
         created_at: Timestamp::now(),
         is_idle: true,
+        managed_session_id: None,
         last_entry_is_error: false,
         parent_id: None,
         depth: 1,
@@ -271,6 +275,7 @@ fn title_is_truncated_more_at_higher_depth() {
         is_active: false,
         created_at: Timestamp::now(),
         is_idle: true,
+        managed_session_id: None,
         last_entry_is_error: false,
         parent_id: None,
         depth: 0,
@@ -284,6 +289,7 @@ fn title_is_truncated_more_at_higher_depth() {
         is_active: false,
         created_at: Timestamp::now(),
         is_idle: true,
+        managed_session_id: None,
         last_entry_is_error: false,
         parent_id: None,
         depth: 3,
@@ -322,6 +328,7 @@ fn active_arrow_shows_at_depth_greater_than_zero() {
         is_active: true,
         created_at: Timestamp::now(),
         is_idle: true,
+        managed_session_id: None,
         last_entry_is_error: false,
         parent_id: None,
         depth: 2,
@@ -356,6 +363,7 @@ fn tree_prefix_uses_muted_text_color() {
         is_active: false,
         created_at: Timestamp::now(),
         is_idle: true,
+        managed_session_id: None,
         last_entry_is_error: false,
         parent_id: None,
         depth: 1,
@@ -409,14 +417,15 @@ fn non_judge_child_at_depth_1_uses_grapheme_count_for_tree() {
 // Plugin entry rendering
 // ---------------------------------------------------------------------------
 
-fn plugin_entry(enabled: bool) -> SessionEntry {
+fn plugin_entry(enabled: bool, is_idle: bool) -> SessionEntry {
     SessionEntry {
         kind: SessionEntryKind::Plugin { enabled },
         id: SessionId::new(),
         title: "my-plugin".to_owned(),
         is_active: false,
         created_at: Timestamp::now(),
-        is_idle: true,
+        is_idle,
+        managed_session_id: None,
         last_entry_is_error: false,
         parent_id: None,
         depth: 1,
@@ -428,7 +437,7 @@ fn plugin_entry(enabled: bool) -> SessionEntry {
 #[test]
 fn render_plugin_entry_shows_plugin_name() {
     // Given a plugin entry with an enabled plugin.
-    let entry = plugin_entry(true);
+    let entry = plugin_entry(true, true);
     let theme = default_theme();
 
     // When assembling the entry line.
@@ -445,7 +454,7 @@ fn render_plugin_entry_shows_plugin_name() {
 #[test]
 fn render_plugin_entry_shows_lightning_icon() {
     // Given a plugin entry.
-    let entry = plugin_entry(true);
+    let entry = plugin_entry(true, true);
     let theme = default_theme();
 
     // When assembling the entry line.
@@ -462,7 +471,7 @@ fn render_plugin_entry_shows_lightning_icon() {
 #[test]
 fn render_plugin_entry_dimmed_when_disabled() {
     // Given a disabled plugin entry.
-    let entry = plugin_entry(false);
+    let entry = plugin_entry(false, true);
     let theme = default_theme();
 
     // When assembling the entry line.
@@ -479,7 +488,7 @@ fn render_plugin_entry_dimmed_when_disabled() {
 #[test]
 fn render_plugin_entry_enabled_not_dimmed() {
     // Given an enabled plugin entry.
-    let entry = plugin_entry(true);
+    let entry = plugin_entry(true, true);
     let theme = default_theme();
 
     // When assembling the entry line.
@@ -490,5 +499,43 @@ fn render_plugin_entry_enabled_not_dimmed() {
     assert!(
         !text.contains('\u{2717}'),
         "expected no disabled marker in enabled entry, got: {text}"
+    );
+}
+
+// ---------------------------------------------------------------------------
+// plugin entry - busy indicator
+// ---------------------------------------------------------------------------
+
+#[test]
+fn render_busy_plugin_entry_shows_spinner_not_bolt() {
+    // Given a plugin entry whose managed session is busy.
+    let entry = plugin_entry(true, false);
+    let theme = default_theme();
+
+    // When assembling the entry line.
+    let line = assemble_entry_line(&entry, false, 30, &idle_throbber(), &theme);
+    let text = line.to_string();
+
+    // Then the spinner (not the idle ⚡ bolt) is rendered.
+    assert!(
+        !text.contains('\u{26A1}'),
+        "expected busy plugin to not show the idle bolt, got: {text}"
+    );
+}
+
+#[test]
+fn render_idle_plugin_entry_shows_bolt() {
+    // Given a plugin entry whose managed session is idle.
+    let entry = plugin_entry(true, true);
+    let theme = default_theme();
+
+    // When assembling the entry line.
+    let line = assemble_entry_line(&entry, false, 30, &idle_throbber(), &theme);
+    let text = line.to_string();
+
+    // Then the idle ⚡ bolt is rendered.
+    assert!(
+        text.contains('\u{26A1}'),
+        "expected idle plugin to show the bolt, got: {text}"
     );
 }

@@ -46,7 +46,7 @@ use jinn_domain::UnpinChatEntry;
 use jinn_domain::UserPreferencesStorageService;
 use jinn_domain::feat::session::model_selection::ModelSelection;
 
-use jinn_plugin::SyncPlugins;
+use jinn_domain::SyncPlugins;
 use jinn_tui::AppStatus;
 use jinn_tui::MsgHandler;
 use jinn_tui::Scope;
