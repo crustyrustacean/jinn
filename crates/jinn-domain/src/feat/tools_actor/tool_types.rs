@@ -44,8 +44,6 @@ pub struct ToolContext {
     /// (e.g., bash streaming). When `None`, the tool runs silently
     /// and returns a single `ToolResult`.
     pub bus: Option<BusService>,
-    /// Shell binary path (captured at startup from $SHELL).
-    pub shell: String,
     /// Maximum lines for tool output truncation. `None` uses built-in default.
     pub max_output_lines: Option<usize>,
     /// Maximum bytes for tool output truncation. `None` uses built-in default.
@@ -92,7 +90,6 @@ mod tests {
             session_id: Some(crate::protocol::SessionId::new()),
             app_paths: crate::common::app_paths::AppPaths::default(),
             bus: None,
-            shell: "/bin/sh".to_owned(),
             max_output_lines: None,
             max_output_bytes: None,
             dispatched_at: jiff::Timestamp::now(),
