@@ -1,2 +1,0 @@
-[print_schema]
-file = "crates/jinn-domain/src/schema.rs"
