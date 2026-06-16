@@ -60,9 +60,8 @@ pub use feat::provider_infra::cache_path;
 pub use feat::provider_infra::{
     ApiKeys, ApiKeysService, ConfigStorageService, FakeLlmServiceFactory, FilesystemConfigStorage,
     InMemoryConfigStorage, LlmServiceFactoryService, ModelCache, NoProvidersAvailableFactory,
-    ProviderId, ProviderRegistry, ProviderRegistryService, ProvidersConfig,
+    ProviderId, ProviderRegistry, ProviderRegistryService, ProvidersConfig, ScriptedResponse,
 };
-
 // Re-export context types
 
 // Re-export session types
