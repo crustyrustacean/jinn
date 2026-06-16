@@ -718,7 +718,7 @@ fn selected_entry_is_automated(state: &AppState) -> bool {
 }
 
 fn handle_sidebar_toggle_plugin(state: &mut AppState) -> IntentResult {
-    use crate::feat::plugin_dispatch::protocol::command::TogglePlugin;
+    use crate::feat::plugin_dispatch::protocol::command::{EnablePlugin, TogglePlugin};
     use crate::feat::ui::sidebar::sessions::state::SessionEntryKind;
 
     let Some(index) = state.frontend.sessions_section.selected_index else {
@@ -729,10 +729,36 @@ fn handle_sidebar_toggle_plugin(state: &mut AppState) -> IntentResult {
         return IntentResult::empty();
     };
     match entry.kind {
-        SessionEntryKind::Plugin { .. } => IntentResult::empty().message(TogglePlugin {
-            session_id: entry.id.clone(),
-            plugin_name: entry.title.clone(),
-        }),
+        SessionEntryKind::Plugin { .. } => {
+            // Plugin sidebar entries carry the instance id as their `id`
+            // (prefixed `i-...`). Resolve the instance directly from the
+            // origin's attached_plugins and toggle based on its CURRENT
+            // enabled state — enable if currently disabled, disable otherwise.
+            let session_id = entry.parent_id.clone().unwrap_or_else(|| entry.id.clone());
+            let Some(plugin) = state.session.get(&session_id).and_then(|s| {
+                s.core
+                    .attached_plugins
+                    .iter()
+                    .find(|p| p.instance_id.to_string() == entry.id.to_string())
+            }) else {
+                return IntentResult::empty();
+            };
+            let instance_id = plugin.instance_id.clone();
+            // Force-set the OPPOSITE of the current state.
+            if plugin.enabled {
+                IntentResult::empty().message(TogglePlugin {
+                    session_id,
+                    plugin_name: entry.title.clone(),
+                    instance_id,
+                })
+            } else {
+                IntentResult::empty().message(EnablePlugin {
+                    session_id,
+                    plugin_name: entry.title.clone(),
+                    instance_id,
+                })
+            }
+        }
         SessionEntryKind::Session => IntentResult::empty(),
     }
 }
@@ -895,7 +921,7 @@ mod tests {
         state.active_chat_input_mut().set_enabled(true);
 
         // When handling InsertChar.
-        let result = IntentHandler::handle(&Intent::InsertChar { ch: 'x' }, &mut state, None);
+        let _result = IntentHandler::handle(&Intent::InsertChar { ch: 'x' }, &mut state, None);
 
         // Then the buffer has the inserted char.
         assert_eq!(state.active_chat_input().text(), "x");

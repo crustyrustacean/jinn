@@ -10,7 +10,7 @@ headless-chrome = ["jinn-web-fetch/headless-chrome"]
 
 
 [workspace]
-members = ["crates/*",  "vendor/*"]
+members = ["crates/*", "vendor/*", "tests/jinn-e2e"]
 
 
 [workspace.package]

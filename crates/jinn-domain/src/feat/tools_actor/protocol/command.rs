@@ -63,6 +63,11 @@ pub struct RegisterPluginTools {
     pub session_id: Option<SessionId>,
     /// The tool definitions being registered.
     pub definitions: Vec<ToolDefinition>,
+    /// If true, register the executor in the tools map WITHOUT publishing a
+    /// visibility event. Used for attachable plugin tools whose handlers load
+    /// globally at startup: execution is global, visibility is per-session.
+    #[serde(default)]
+    pub execution_only: bool,
 }
 
 impl crate::common::bus::BusMessage for RegisterPluginTools {}

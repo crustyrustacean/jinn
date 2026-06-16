@@ -525,3 +525,102 @@ fn factory_name_returns_fake_llm() {
     let factory = FakeLlmServiceFactory::new(vec![]);
     assert_eq!(factory.name(), "FakeLlm");
 }
+
+/// Collect a tool stream into (text-joined, stop-reason).
+async fn collect_tool_stream(stream: crate::service::ToolStream) -> (String, Option<StopReason>) {
+    let mut text = String::new();
+    let mut stop = None;
+    let mut s = stream;
+    while let Some(ev) = s.next().await {
+        match ev.expect("stream event") {
+            StreamEvent::Text(t) => text.push_str(&t),
+            StreamEvent::Done { stop_reason, .. } => stop = Some(stop_reason),
+            _ => {}
+        }
+    }
+    (text, stop)
+}
+
+#[rstest::rstest]
+#[tokio::test]
+async fn scripted_queue_serves_responses_in_fifo_order() {
+    // Given a factory with two scripted responses queued.
+    let factory = FakeLlmServiceFactory::new(vec![]);
+    factory.push_scripted_response(crate::fake::ScriptedResponse {
+        tokens: vec!["first".to_owned()],
+        tool_calls: vec![],
+    });
+    factory.push_scripted_response(crate::fake::ScriptedResponse {
+        tokens: vec!["second".to_owned()],
+        tool_calls: vec![],
+    });
+
+    // When two calls drain the queue.
+    let s1 = factory
+        .create()
+        .expect("create")
+        .chat_stream_with_tools(vec![], vec![])
+        .await
+        .expect("stream1");
+    let s2 = factory
+        .create()
+        .expect("create")
+        .chat_stream_with_tools(vec![], vec![])
+        .await
+        .expect("stream2");
+    let (t1, r1) = collect_tool_stream(s1).await;
+    let (t2, r2) = collect_tool_stream(s2).await;
+
+    // Then the first call yields "first", the second yields "second" (FIFO).
+    assert_eq!(t1, "first");
+    assert_eq!(t2, "second");
+    assert_eq!(r1, Some(StopReason::EndTurn));
+    assert_eq!(r2, Some(StopReason::EndTurn));
+}
+
+#[rstest::rstest]
+#[tokio::test]
+async fn scripted_queue_tool_call_uses_tooluse_stop_reason() {
+    // Given a scripted verdict tool call.
+    let factory = FakeLlmServiceFactory::new(vec![]);
+    factory.push_scripted_response(crate::fake::ScriptedResponse {
+        tokens: vec![],
+        tool_calls: vec![ToolCall {
+            id: "tc1".to_owned(),
+            name: "judgment_failed".to_owned(),
+            arguments: r#"{"message":"bad"}"#.to_owned(),
+        }],
+    });
+
+    // When streaming.
+    let stream = factory
+        .create()
+        .expect("create")
+        .chat_stream_with_tools(vec![], vec![])
+        .await
+        .expect("stream");
+    let (text, reason) = collect_tool_stream(stream).await;
+
+    // Then the stop reason is ToolUse (so the tool loop fires the handler).
+    assert!(text.is_empty());
+    assert_eq!(reason, Some(StopReason::ToolUse));
+}
+
+#[rstest::rstest]
+#[tokio::test]
+async fn scripted_queue_exhaustion_falls_back_to_static_text_stream() {
+    // Given a factory with an empty queue but configured tokens.
+    let factory = FakeLlmServiceFactory::new(vec!["fallback".to_owned()]);
+
+    // When a call drains nothing (queue empty).
+    let stream = factory
+        .create()
+        .expect("create")
+        .chat_stream_with_tools(vec![], vec![])
+        .await
+        .expect("stream");
+    let (text, _reason) = collect_tool_stream(stream).await;
+
+    // Then the static token path is used as the fallback.
+    assert_eq!(text, "fallback");
+}
