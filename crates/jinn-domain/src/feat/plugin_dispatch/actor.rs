@@ -37,7 +37,7 @@ use crate::SessionId;
 use crate::feat::attached_plugin::{AttachedPlugin, PluginInstanceId};
 use crate::feat::plugin_dispatch::DomainNodeContext;
 use crate::feat::plugin_dispatch::protocol::command::{
-    AttachPlugin, DetachPlugin, SetManagedSession, TogglePlugin,
+    AttachPlugin, DetachPlugin, EnablePlugin, SetManagedSession, TogglePlugin,
 };
 use crate::feat::plugin_dispatch::protocol::event::{
     PluginAttached, PluginDetached, PluginToggled,
@@ -121,6 +121,7 @@ impl kameo::Actor for PluginDispatchActor {
         bus.subscribe::<AttachPlugin, _>(&actor_ref).await;
         bus.subscribe::<DetachPlugin, _>(&actor_ref).await;
         bus.subscribe::<TogglePlugin, _>(&actor_ref).await;
+        bus.subscribe::<EnablePlugin, _>(&actor_ref).await;
         bus.subscribe::<SetManagedSession, _>(&actor_ref).await;
         bus.subscribe::<DynamicCommand, _>(&actor_ref).await;
 
@@ -355,6 +356,42 @@ impl PluginDispatchActor {
         .await;
     }
 
+    async fn handle_enable(&mut self, cmd: EnablePlugin) {
+        let EnablePlugin {
+            session_id,
+            plugin_name,
+            instance_id,
+        } = cmd;
+        tracing::debug!(session_id = %session_id, plugin = %plugin_name, instance = %instance_id, "enabling plugin instance");
+
+        let now_enabled = {
+            let state = &mut self.state.write().session;
+            let Some(session) = state.get_mut(&session_id) else {
+                tracing::warn!(session_id = %session_id, "session not found for enable");
+                return;
+            };
+            let Some(plugin) = session
+                .core
+                .attached_plugins
+                .iter_mut()
+                .find(|p| p.instance_id == instance_id)
+            else {
+                tracing::warn!(session_id = %session_id, plugin = %plugin_name, "plugin not attached");
+                return;
+            };
+            plugin.enabled = true;
+            plugin.enabled
+        };
+
+        self.publish(PluginToggled {
+            session_id,
+            plugin_name,
+            enabled: now_enabled,
+        })
+        .await;
+    }
+
+
     fn handle_set_managed_session(&mut self, cmd: SetManagedSession) {
         let SetManagedSession {
             session_id,
@@ -587,6 +624,13 @@ impl Message<SetManagedSession> for PluginDispatchActor {
     type Reply = ();
     async fn handle(&mut self, msg: SetManagedSession, _ctx: &mut Context<Self, Self::Reply>) {
         self.handle_set_managed_session(msg);
+    }
+}
+
+impl Message<EnablePlugin> for PluginDispatchActor {
+    type Reply = ();
+    async fn handle(&mut self, msg: EnablePlugin, _ctx: &mut Context<Self, Self::Reply>) {
+        self.handle_enable(msg).await;
     }
 }
 
@@ -933,6 +977,120 @@ mod tests {
         );
     }
 
+
+    #[tokio::test]
+    async fn enable_plugin_force_enables_only_targeted_instance() {
+        // Given a dispatch actor with two instances of the same plugin, both disabled.
+        let (mut actor, _audit, session_id) = make_actor().await;
+        actor
+            .handle_attach(AttachPlugin {
+                session_id: session_id.clone(),
+                plugin_name: "judge_fail".to_owned(),
+            })
+            .await;
+        actor
+            .handle_attach(AttachPlugin {
+                session_id: session_id.clone(),
+                plugin_name: "judge_fail".to_owned(),
+            })
+            .await;
+        let (id_a, id_b) = {
+            let guard = actor.state.read();
+            let s = guard.session.get(&session_id).expect("session");
+            let plugins = &s.core.attached_plugins;
+            (plugins[0].instance_id.clone(), plugins[1].instance_id.clone())
+        };
+        actor
+            .handle_toggle(TogglePlugin {
+                session_id: session_id.clone(),
+                plugin_name: "judge_fail".to_owned(),
+                instance_id: id_a.clone(),
+            })
+            .await;
+        actor
+            .handle_toggle(TogglePlugin {
+                session_id: session_id.clone(),
+                plugin_name: "judge_fail".to_owned(),
+                instance_id: id_b.clone(),
+            })
+            .await;
+
+        // When enabling only instance B.
+        actor
+            .handle_enable(EnablePlugin {
+                session_id: session_id.clone(),
+                plugin_name: "judge_fail".to_owned(),
+                instance_id: id_b.clone(),
+            })
+            .await;
+
+        // Then only instance B is enabled; instance A stays disabled.
+        let plugins = actor
+            .state
+            .read()
+            .session
+            .get(&session_id)
+            .expect("session")
+            .core
+            .attached_plugins
+            .clone();
+        assert_eq!(plugins.len(), 2);
+        let a = plugins.iter().find(|p| p.instance_id == id_a).expect("a");
+        let b = plugins.iter().find(|p| p.instance_id == id_b).expect("b");
+        assert!(!a.enabled, "instance A must stay disabled");
+        assert!(b.enabled, "instance B must be enabled");
+    }
+
+    #[tokio::test]
+    async fn disable_then_enable_round_trips_the_targeted_instance() {
+        // Given a dispatch actor with one enabled plugin instance.
+        let (mut actor, _audit, session_id) = make_actor().await;
+        actor
+            .handle_attach(AttachPlugin {
+                session_id: session_id.clone(),
+                plugin_name: "judge_fail".to_owned(),
+            })
+            .await;
+        let instance_id = {
+            let guard = actor.state.read();
+            guard
+                .session
+                .get(&session_id)
+                .expect("session")
+                .core
+                .attached_plugins[0]
+                .instance_id
+                .clone()
+        };
+
+        // When disabling then re-enabling that instance.
+        actor
+            .handle_toggle(TogglePlugin {
+                session_id: session_id.clone(),
+                plugin_name: "judge_fail".to_owned(),
+                instance_id: instance_id.clone(),
+            })
+            .await;
+        actor
+            .handle_enable(EnablePlugin {
+                session_id: session_id.clone(),
+                plugin_name: "judge_fail".to_owned(),
+                instance_id: instance_id.clone(),
+            })
+            .await;
+
+        // Then the instance is back to enabled (round-trip on the right instance).
+        let enabled = actor
+            .state
+            .read()
+            .session
+            .get(&session_id)
+            .expect("session")
+            .core
+            .attached_plugins[0]
+            .enabled;
+        assert!(enabled, "disable+enable must restore enabled");
+    }
     #[tokio::test]
     async fn toggle_unknown_plugin_is_noop() {
         // Given a plugin dispatch actor.

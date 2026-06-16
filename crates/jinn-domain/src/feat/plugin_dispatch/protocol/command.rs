@@ -126,6 +126,48 @@ impl crate::common::plugin_bridge::TryFromLua for SetManagedSession {
         })
     }
 }
+
+/// Enable an attached plugin instance (force-set `enabled = true`). No-op if
+/// not attached.
+///
+/// The symmetric counterpart to [`TogglePlugin`] (which is force-disable).
+/// Targets a specific instance by `instance_id` (required). Used by the judge
+/// aggregation to re-activate all instances when any judge fails.
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct EnablePlugin {
+    pub session_id: SessionId,
+    pub plugin_name: String,
+    pub instance_id: PluginInstanceId,
+}
+
+impl BusMessage for EnablePlugin {}
+
+impl crate::common::plugin_bridge::TryFromLua for EnablePlugin {
+    const VERB: &'static str = "enable_plugin";
+
+    fn try_from_lua(
+        ctx: crate::common::plugin_bridge::CmdCtx,
+        data: serde_json::Value,
+    ) -> Result<Self, error_stack::Report<crate::common::plugin_bridge::PluginBridgeError>> {
+        #[derive(Deserialize)]
+        struct LuaPayload {
+            session_id: SessionId,
+            plugin_name: String,
+            instance_id: PluginInstanceId,
+        }
+
+        let lua: LuaPayload = serde_json::from_value(data)
+            .change_context(crate::common::plugin_bridge::PluginBridgeError)
+            .attach(ctx)
+            .attach("deserialize enable_plugin payload")?;
+
+        Ok(EnablePlugin {
+            session_id: lua.session_id,
+            plugin_name: lua.plugin_name,
+            instance_id: lua.instance_id,
+        })
+    }
+}
 #[cfg(test)]
 mod tests {
     #![allow(clippy::expect_used, clippy::panic, reason = "test code")]
