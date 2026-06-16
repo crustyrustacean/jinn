@@ -239,6 +239,7 @@ impl SyncHook<'_> {
             self.lua,
             &ctx_json,
             &self.plugin_name,
+            None,
             self.plugin_data,
             &self.emit_tx,
             &self.in_flight,
@@ -399,7 +400,8 @@ impl crate::feat::plugin_dispatch::PluginSyncHooks for SyncPlugins {
 pub(crate) fn build_sync_ctx(
     lua: &Lua,
     ctx_json: &serde_json::Value,
-    plugin_name: &str,
+plugin_name: &str,
+instance_id: Option<&str>,
     plugin_data: &PluginData,
     emit_tx: &kanal::Sender<PluginCommand>,
     in_flight: &super::InFlightRequests,
@@ -414,6 +416,14 @@ pub(crate) fn build_sync_ctx(
     }
 
     // ctx.plugin_name — let Lua refer to itself by name.
+    ctx.set("plugin_name", plugin_name)?;
+
+    // ctx.instance_id — stable unique identity of this attachment
+    // (nil for global plugins). Set alongside plugin_name so hooks and
+    // tool handlers know which instance they are running for.
+    if let Some(id) = instance_id {
+        ctx.set("instance_id", id)?;
+    }
     ctx.set("plugin_name", plugin_name)?;
 
     // ctx.emit(cmd, data) — fire-and-forget via channel.

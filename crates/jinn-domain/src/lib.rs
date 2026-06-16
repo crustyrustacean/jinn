@@ -124,6 +124,7 @@ pub use feat::provider::protocol::event::{
 };
 pub use feat::session::protocol::session_fork_requested::SessionForkRequested;
 pub use feat::session::protocol::session_id::SessionId;
+pub use feat::attached_plugin::PluginInstanceId;
 pub use feat::session::protocol::session_load_completed::SessionLoadCompleted;
 pub use feat::session::protocol::session_load_requested::SessionLoadRequested;
 pub use feat::session::protocol::session_new::SessionNew;

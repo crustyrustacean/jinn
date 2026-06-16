@@ -289,6 +289,7 @@ fn execute_plugin_tool(
         lua,
         &ctx_json,
         plugin_name,
+        None,
         &state.plugin_data,
         &state.emit_tx,
         &state.request_handler,
@@ -396,6 +397,7 @@ async fn run_hooks_fire(
             hook,
             ctx_json,
             plugin_name,
+            None,
             &state.plugin_data,
             &state.emit_tx,
             &state.request_handler,
@@ -417,6 +419,7 @@ async fn run_hooks_fire(
                 hook,
                 ctx_json,
                 plugin_name,
+                None,
                 &state.plugin_data,
                 &state.emit_tx,
                 &state.request_handler,
@@ -445,6 +448,7 @@ async fn run_hooks_collect(
             hook,
             ctx_json,
             plugin_name,
+            None,
             &state.plugin_data,
             &state.emit_tx,
             &state.request_handler,
@@ -477,6 +481,7 @@ async fn run_hooks_collect(
                 hook,
                 ctx_json,
                 plugin_name,
+                None,
                 &state.plugin_data,
                 &state.emit_tx,
                 &state.request_handler,
@@ -516,6 +521,7 @@ async fn run_single_hook(
     hook: &str,
     ctx_json: &serde_json::Value,
     plugin_name: &str,
+    instance_id: Option<&str>,
     plugin_data: &PluginData,
     emit_tx: &kanal::AsyncSender<PluginCommand>,
     request_handler: &RequestHandler,
@@ -553,6 +559,7 @@ async fn run_single_hook(
         lua,
         &ctx_json,
         plugin_name,
+        instance_id,
         plugin_data,
         emit_tx,
         request_handler,
@@ -620,6 +627,7 @@ fn build_async_ctx(
     lua: &Lua,
     ctx_json: &serde_json::Value,
     plugin_name: &str,
+    instance_id: Option<&str>,
     plugin_data: &PluginData,
     emit_tx: &kanal::AsyncSender<PluginCommand>,
     request_handler: &RequestHandler,
@@ -638,6 +646,13 @@ fn build_async_ctx(
     // ctx.plugin_name — let Lua refer to itself by name (used for
     // self-targeting actions like disable_plugin).
     ctx.set("plugin_name", plugin_name)?;
+
+    // ctx.instance_id — stable identity of this attachment. Two attachments
+    // of the same plugin name get distinct ids. Lets multi-instance plugins
+    // (e.g. a panel of judges) key their shared state.
+    if let Some(id) = instance_id {
+        ctx.set("instance_id", id)?;
+    }
 
     // ctx.emit(cmd, data) — fire-and-forget via channel.
     // Uses sync `Sender` (via `clone_sync()`) so it can be called from a sync
