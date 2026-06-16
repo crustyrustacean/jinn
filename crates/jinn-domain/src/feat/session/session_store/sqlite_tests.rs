@@ -22,9 +22,9 @@ fn make_session(id: &SessionId, title: &str) -> ChatSessionState {
     session
 }
 
-fn make_store() -> (TempDir, SqliteSessionStore) {
+async fn make_store() -> (TempDir, SqliteSessionStore) {
     let dir = TempDir::new().expect("temp dir");
-    let store = SqliteSessionStore::new_in(dir.path()).expect("store");
+    let store = SqliteSessionStore::new_in(dir.path()).await.expect("store");
     (dir, store)
 }
 
@@ -34,7 +34,7 @@ fn make_store() -> (TempDir, SqliteSessionStore) {
 #[tokio::test]
 async fn save_creates_summary() {
     // Given a SqliteSessionStore in a temp directory.
-    let (_dir, store) = make_store();
+    let (_dir, store) = make_store().await;
     let session_id = SessionId::new();
     let session = make_session(&session_id, "Test Session");
 
@@ -52,7 +52,7 @@ async fn save_creates_summary() {
 #[tokio::test]
 async fn load_session_restores_data() {
     // Given a SqliteSessionStore in a temp directory.
-    let (_dir, store) = make_store();
+    let (_dir, store) = make_store().await;
     let session_id = SessionId::new();
     let session = make_session(&session_id, "Test Session");
 
@@ -76,7 +76,7 @@ async fn load_session_restores_data() {
 #[tokio::test]
 async fn summaries_returns_correct_count() {
     // Given a store with 2 sessions.
-    let (_dir, store) = make_store();
+    let (_dir, store) = make_store().await;
     let id_a = SessionId::new();
     let id_b = SessionId::new();
 
@@ -94,7 +94,7 @@ async fn summaries_returns_correct_count() {
 #[tokio::test]
 async fn save_updates_existing_session() {
     // Given a store with a saved session.
-    let (_dir, store) = make_store();
+    let (_dir, store) = make_store().await;
     let session_id = SessionId::new();
     store
         .save(&make_session(&session_id, "v1"))
@@ -126,7 +126,7 @@ async fn save_updates_existing_session() {
 #[tokio::test]
 async fn load_session_returns_none_for_unknown_id() {
     // Given an empty store.
-    let (_dir, store) = make_store();
+    let (_dir, store) = make_store().await;
 
     // When loading a nonexistent session.
     let result = store
@@ -144,7 +144,7 @@ async fn load_session_returns_none_for_unknown_id() {
 #[tokio::test]
 async fn load_summaries_returns_empty_when_no_sessions() {
     // Given a fresh store.
-    let (_dir, store) = make_store();
+    let (_dir, store) = make_store().await;
 
     // When loading summaries.
     let summaries = store.load_summaries().await.expect("load_summaries");
@@ -161,7 +161,7 @@ async fn save_creates_directory() {
     // Given a SqliteSessionStore pointed at a non-existent directory.
     let dir = TempDir::new().expect("temp dir");
     let nested = dir.path().join("does").join("not").join("exist");
-    let store = SqliteSessionStore::new_in(&nested).expect("store");
+    let store = SqliteSessionStore::new_in(&nested).await.expect("store");
     let session = make_session(&SessionId::new(), "Mkdir Test");
 
     // When saving.
@@ -177,7 +177,7 @@ async fn save_creates_directory() {
 #[tokio::test]
 async fn delete_removes_session() {
     // Given a store with a saved session.
-    let (_dir, store) = make_store();
+    let (_dir, store) = make_store().await;
     let session_id = SessionId::new();
     store
         .save(&make_session(&session_id, "To Delete"))
@@ -200,7 +200,7 @@ async fn delete_removes_session() {
 #[tokio::test]
 async fn delete_is_noop_for_unknown_id() {
     // Given a store.
-    let (_dir, store) = make_store();
+    let (_dir, store) = make_store().await;
 
     // When deleting a nonexistent session.
     store.delete(&SessionId::new()).await.expect("delete");
@@ -214,7 +214,7 @@ async fn delete_is_noop_for_unknown_id() {
 #[tokio::test]
 async fn fork_creates_new_session_with_entries_up_to_ordinal() {
     // Given a store with a session that has 3 entries.
-    let (_dir, store) = make_store();
+    let (_dir, store) = make_store().await;
     let source_id = SessionId::new();
     let mut source = ChatSessionState::new();
     source.set_session_id(source_id.clone());
@@ -253,7 +253,7 @@ async fn fork_creates_new_session_with_entries_up_to_ordinal() {
 #[tokio::test]
 async fn fork_does_not_modify_source() {
     // Given a store with a session that has 3 entries.
-    let (_dir, store) = make_store();
+    let (_dir, store) = make_store().await;
     let source_id = SessionId::new();
     let mut source = ChatSessionState::new();
     source.set_session_id(source_id.clone());
@@ -280,7 +280,7 @@ async fn fork_does_not_modify_source() {
 #[tokio::test]
 async fn fork_shares_entry_data_not_junction_rows() {
     // Given a store with a saved session.
-    let (_dir, store) = make_store();
+    let (_dir, store) = make_store().await;
     let source_id = SessionId::new();
     let mut source = ChatSessionState::new();
     source.set_session_id(source_id.clone());
@@ -310,7 +310,7 @@ async fn fork_shares_entry_data_not_junction_rows() {
 #[tokio::test]
 async fn fork_returns_error_for_unknown_source() {
     // Given a store.
-    let (_dir, store) = make_store();
+    let (_dir, store) = make_store().await;
 
     // When forking from a nonexistent source.
     let result = store.fork(&SessionId::new(), 0).await;
@@ -325,7 +325,7 @@ async fn fork_returns_error_for_unknown_source() {
 #[tokio::test]
 async fn all_entry_kinds_round_trip() {
     // Given a session with every entry kind.
-    let (_dir, store) = make_store();
+    let (_dir, store) = make_store().await;
     let session_id = SessionId::new();
     let mut session = ChatSessionState::new();
     session.set_session_id(session_id.clone());
@@ -383,7 +383,7 @@ async fn all_entry_kinds_round_trip() {
 #[tokio::test]
 async fn pin_position_round_trips() {
     // Given a session with pinned entries.
-    let (_dir, store) = make_store();
+    let (_dir, store) = make_store().await;
     let session_id = SessionId::new();
     let mut session = ChatSessionState::new();
     session.set_session_id(session_id.clone());
@@ -428,7 +428,7 @@ async fn pin_position_round_trips() {
 #[tokio::test]
 async fn token_ledger_round_trips() {
     // Given a session with token records.
-    let (_dir, store) = make_store();
+    let (_dir, store) = make_store().await;
     let session_id = SessionId::new();
     let mut session = ChatSessionState::new();
     session.set_session_id(session_id.clone());
@@ -462,7 +462,7 @@ async fn token_ledger_round_trips() {
 #[tokio::test]
 async fn delete_cleans_up_orphaned_entries() {
     // Given two sessions sharing entries via fork.
-    let (_dir, store) = make_store();
+    let (_dir, store) = make_store().await;
     let source_id = SessionId::new();
     let mut source = ChatSessionState::new();
     source.set_session_id(source_id.clone());
@@ -498,7 +498,7 @@ async fn delete_cleans_up_orphaned_entries() {
 #[tokio::test]
 async fn cwd_round_trips_through_save_and_load() {
     // Given a store with a session that has a custom cwd.
-    let (_dir, store) = make_store();
+    let (_dir, store) = make_store().await;
     let session_id = SessionId::new();
     let mut session = ChatSessionState::new();
     session.set_session_id(session_id.clone());
@@ -522,7 +522,7 @@ async fn cwd_round_trips_through_save_and_load() {
 #[tokio::test]
 async fn fork_inherits_cwd_from_source() {
     // Given a store with a session that has a custom cwd.
-    let (_dir, store) = make_store();
+    let (_dir, store) = make_store().await;
     let source_id = SessionId::new();
     let mut source = ChatSessionState::new();
     source.set_session_id(source_id.clone());
@@ -547,7 +547,7 @@ async fn fork_inherits_cwd_from_source() {
 #[tokio::test]
 async fn save_updates_cwd_on_existing_session() {
     // Given a store with a saved session.
-    let (_dir, store) = make_store();
+    let (_dir, store) = make_store().await;
     let session_id = SessionId::new();
     let mut session = ChatSessionState::new();
     session.set_session_id(session_id.clone());
@@ -572,7 +572,7 @@ async fn save_updates_cwd_on_existing_session() {
 #[tokio::test]
 async fn ignored_field_round_trips() {
     // Given a session with ignored entries.
-    let (_dir, store) = make_store();
+    let (_dir, store) = make_store().await;
     let session_id = SessionId::new();
     let mut session = ChatSessionState::new();
     session.set_session_id(session_id.clone());
@@ -612,7 +612,7 @@ async fn ignored_field_round_trips() {
 #[tokio::test]
 async fn lifecycle_metadata_round_trips() {
     // Given a store with a session that has lifecycle metadata.
-    let (_dir, store) = make_store();
+    let (_dir, store) = make_store().await;
     let session_id = SessionId::new();
     let mut session = make_session(&session_id, "Lifecycle Session");
     session.set_lifecycle_name(Some("fossil branch".to_owned()));
@@ -638,7 +638,7 @@ async fn lifecycle_metadata_round_trips() {
 #[tokio::test]
 async fn session_without_lifecycle_loads_as_none() {
     // Given a store with a session that has no lifecycle metadata.
-    let (_dir, store) = make_store();
+    let (_dir, store) = make_store().await;
     let session_id = SessionId::new();
     let session = make_session(&session_id, "Plain Session");
 
@@ -659,7 +659,7 @@ async fn session_without_lifecycle_loads_as_none() {
 #[tokio::test]
 async fn fork_inherits_lifecycle_metadata() {
     // Given a store with a session that has lifecycle metadata.
-    let (_dir, store) = make_store();
+    let (_dir, store) = make_store().await;
     let source_id = SessionId::new();
     let mut source = ChatSessionState::new();
     source.set_session_id(source_id.clone());
@@ -688,7 +688,7 @@ async fn fork_inherits_lifecycle_metadata() {
 #[tokio::test]
 async fn lifecycle_script_state_setup_ran_round_trips() {
     // Given a session with SetupRan.
-    let (_dir, store) = make_store();
+    let (_dir, store) = make_store().await;
     let session_id = SessionId::new();
     let mut session = ChatSessionState::new();
     session.set_session_id(session_id.clone());
@@ -715,7 +715,7 @@ async fn lifecycle_script_state_setup_ran_round_trips() {
 #[tokio::test]
 async fn lifecycle_script_state_nothing_ran_round_trips() {
     // Given a session with NothingRan (default).
-    let (_dir, store) = make_store();
+    let (_dir, store) = make_store().await;
     let session_id = SessionId::new();
     let session = make_session(&session_id, "Default State");
 
@@ -738,7 +738,7 @@ async fn lifecycle_script_state_nothing_ran_round_trips() {
 #[tokio::test]
 async fn fork_inherits_lifecycle_script_state() {
     // Given a store with a session that has SetupRan.
-    let (_dir, store) = make_store();
+    let (_dir, store) = make_store().await;
     let source_id = SessionId::new();
     let mut source = ChatSessionState::new();
     source.set_session_id(source_id.clone());
@@ -766,7 +766,7 @@ async fn fork_inherits_lifecycle_script_state() {
 #[tokio::test]
 async fn is_automated_round_trips_through_save_and_load() {
     // Given a persisted automated session.
-    let (_dir, store) = make_store();
+    let (_dir, store) = make_store().await;
     let session_id = SessionId::new();
     let mut session = ChatSessionState::new();
     session.set_session_id(session_id.clone());
@@ -791,7 +791,7 @@ async fn is_automated_round_trips_through_save_and_load() {
 #[tokio::test]
 async fn non_persistent_session_is_not_written() {
     // Given a transient (persist=false) session.
-    let (_dir, store) = make_store();
+    let (_dir, store) = make_store().await;
     let session_id = SessionId::new();
     let mut session = ChatSessionState::new();
     session.set_session_id(session_id.clone());
@@ -818,7 +818,7 @@ async fn non_persistent_session_is_not_written() {
 #[tokio::test]
 async fn persistent_session_is_written() {
     // Given a persistent (persist=true) session.
-    let (_dir, store) = make_store();
+    let (_dir, store) = make_store().await;
     let session_id = SessionId::new();
     let mut session = ChatSessionState::new();
     session.set_session_id(session_id.clone());
@@ -849,7 +849,7 @@ async fn persistent_session_is_written() {
 #[tokio::test]
 async fn streamed_timing_roundtrips_through_db() {
     // Given a persisted session with an entry that has Streamed timing.
-    let (_dir, store) = make_store();
+    let (_dir, store) = make_store().await;
     let session_id = SessionId::new();
     let mut session = make_session(&session_id, "Timing test");
     session.core.persist = true;
@@ -895,7 +895,7 @@ async fn streamed_timing_roundtrips_through_db() {
 #[tokio::test]
 async fn fork_ordinal_persists_across_save_and_load() {
     // Given a store with a session that has 3 entries.
-    let (_dir, store) = make_store();
+    let (_dir, store) = make_store().await;
     let source_id = SessionId::new();
     let mut source = ChatSessionState::new();
     source.set_session_id(source_id.clone());
@@ -920,7 +920,7 @@ async fn fork_ordinal_persists_across_save_and_load() {
 #[tokio::test]
 async fn fork_blocking_sets_fork_ordinal() {
     // Given a store with a session that has 5 entries.
-    let (_dir, store) = make_store();
+    let (_dir, store) = make_store().await;
     let source_id = SessionId::new();
     let mut source = ChatSessionState::new();
     source.set_session_id(source_id.clone());
@@ -952,10 +952,8 @@ async fn fork_blocking_sets_fork_ordinal() {
 }
 
 use crate::feat::session::model_selection::ModelSelection;
-use crate::feat::session::session_store::migrator::run_migrations;
-use diesel::Connection;
-use diesel::RunQueryDsl;
-use diesel::SqliteConnection;
+use crate::feat::session::session_store::migrator::seed_at_version;
+use rusqlite::params;
 
 // --- Legacy blob loading (0.65 -> 0.66 compat) ---
 
@@ -972,29 +970,20 @@ async fn legacy_065_blob_loads_after_v19() {
     // v19 has not yet run, so profile.model is still a bare string.
     let dir = TempDir::new().expect("temp dir");
     let db_path = dir.path().join("sessions.db");
-    let url = db_path.to_string_lossy().to_string();
-    {
-        let mut conn = SqliteConnection::establish(&url).expect("connect");
-        run_migrations(&mut conn).expect("migrations");
-        // Roll the recorded version back to 18 so the store's open re-runs v19,
-        // faithfully simulating a 0.65 DB (at v18) being opened by 0.66.
-        diesel::sql_query("DELETE FROM _migrations WHERE version >= 19")
-            .execute(&mut conn)
-            .expect("downgrade to v18");
-        diesel::sql_query(
+    seed_at_version(db_path.to_string_lossy().as_ref(), 18, |conn| {
+        conn.execute(
             "INSERT INTO sessions (id, title, updated_at, created_at, cwd, profile, blobs, \
              lifecycle_script_state, is_automated, persist, metadata) \
              VALUES ('legacy-065', 'Legacy 065', '2024-01-01T00:00:00Z', '2024-01-01T00:00:00Z', '.', \
              '{\"model\":\"ollama/llama3\"}', '{}', 'nothing_ran', 0, 0, ?)",
-        )
-        .bind::<diesel::sql_types::Text, _>(LEGACY_065_BLOB)
-        .execute(&mut conn)
-        .expect("insert legacy blob");
-    }
+            params![LEGACY_065_BLOB],
+        ).map(|_| ())
+    })
+    .await;
 
     // When loading the session through the store.
-    // (The store re-runs migrations on open; v19 repairs the blob.)
-    let store = SqliteSessionStore::new_in(dir.path()).expect("store");
+    // (The store re-runs migrations on open; v19 repairs the blob, v20 drops zombies.)
+    let store = SqliteSessionStore::new_in(dir.path()).await.expect("store");
     let loaded = store
         .load_session(&SessionId::from("legacy-065".to_owned()))
         .await
@@ -1021,23 +1010,19 @@ async fn current_066_blob_loads_unchanged() {
     // Given a fresh database with a 0.66-shape blob inserted directly.
     let dir = TempDir::new().expect("temp dir");
     let db_path = dir.path().join("sessions.db");
-    let url = db_path.to_string_lossy().to_string();
-    {
-        let mut conn = SqliteConnection::establish(&url).expect("connect");
-        run_migrations(&mut conn).expect("migrations");
-        diesel::sql_query(
+    seed_at_version(db_path.to_string_lossy().as_ref(), 18, |conn| {
+        conn.execute(
             "INSERT INTO sessions (id, title, updated_at, created_at, cwd, profile, blobs, \
              lifecycle_script_state, is_automated, persist, metadata) \
              VALUES ('current-066', 'Current 066', '2024-01-01T00:00:00Z', '2024-01-01T00:00:00Z', '.', \
              '{\"model\":{\"single\":\"ollama/llama3\"}}', '{}', 'nothing_ran', 0, 0, ?)",
-        )
-        .bind::<diesel::sql_types::Text, _>(CURRENT_066_BLOB)
-        .execute(&mut conn)
-        .expect("insert current blob");
-    }
+            params![CURRENT_066_BLOB],
+        ).map(|_| ())
+    })
+    .await;
 
     // When loading the session through the store.
-    let store = SqliteSessionStore::new_in(dir.path()).expect("store");
+    let store = SqliteSessionStore::new_in(dir.path()).await.expect("store");
     let loaded = store
         .load_session(&SessionId::from("current-066".to_owned()))
         .await
@@ -1052,119 +1037,126 @@ async fn current_066_blob_loads_unchanged() {
     assert_eq!(loaded.persona_name(), "coding-assistant");
 }
 
-/// A pre-v8 session (no metadata blob) must still load via the legacy
-/// column path. After v17, the profile column holds the new
-/// `{"single": ...}` form, so the legacy path reconstructs correctly.
+/// A pre-v8 session (no metadata blob) must still load after v20 backfills its
+/// metadata from the zombie columns. The legacy column-read path is gone (v20
+/// dropped those columns), so loading succeeds via the backfilled blob.
 #[rstest::rstest]
 #[tokio::test]
-async fn legacy_pre_v8_row_loads_via_columns() {
-    // Given a fresh database with a session row whose metadata is NULL
+async fn legacy_pre_v8_row_loads_after_v20_backfill() {
+    // Given a fresh database at v18 with a session row whose metadata is NULL
     // (pre-v8 shape). The profile column carries the post-v17 form.
     let dir = TempDir::new().expect("temp dir");
     let db_path = dir.path().join("sessions.db");
-    let url = db_path.to_string_lossy().to_string();
-    {
-        let mut conn = SqliteConnection::establish(&url).expect("connect");
-        run_migrations(&mut conn).expect("migrations");
-        diesel::sql_query(
+    seed_at_version(db_path.to_string_lossy().as_ref(), 18, |conn| {
+        conn.execute(
             "INSERT INTO sessions (id, title, updated_at, created_at, cwd, profile, blobs, \
              lifecycle_script_state, is_automated, persist) \
              VALUES ('legacy-pre-v8', 'Legacy Pre-V8', '2024-01-01T00:00:00Z', '2024-01-01T00:00:00Z', '.', \
              '{\"model\":{\"single\":\"ollama/llama3\"},\"persona_name\":\"coding-assistant\"}', '{}', 'nothing_ran', 0, 0)",
-        )
-        .execute(&mut conn)
-        .expect("insert null-metadata row");
-    }
+            params![],
+        ).map(|_| ())
+    })
+    .await;
 
-    // When loading the session through the store.
-    let store = SqliteSessionStore::new_in(dir.path()).expect("store");
+    // When loading the session through the store (which runs v19 + v20 on open).
+    let store = SqliteSessionStore::new_in(dir.path()).await.expect("store");
     let loaded = store
         .load_session(&SessionId::from("legacy-pre-v8".to_owned()))
         .await
         .expect("load_session")
         .expect("session should exist");
 
-    // Then the legacy column path reconstructs the profile (model + persona).
+    // Then v20 backfilled the metadata from the profile column, and the blob
+    // path restores model + persona.
     assert_eq!(
         loaded.model_selection(),
         &ModelSelection::Single("ollama/llama3".to_owned()),
-        "pre-v8 row must load its model from the profile column"
+        "pre-v8 row must load its model after v20 backfill"
     );
     assert_eq!(
         loaded.persona_name(),
         "coding-assistant",
-        "pre-v8 row must load persona from the profile column"
+        "pre-v8 row must load persona after v20 backfill"
     );
 }
-/// After the dual-write collapse, the zombie columns must hold their SQL
-/// DEFAULTs while `metadata` carries the real data.
+/// After v20, the `sessions` table has exactly the 9 authoritative columns —
+/// the zombie columns (`profile`, `blobs`, `cwd`, `lifecycle_script_state`,
+/// `lifecycle_args`) are gone. A saved session's real data lives entirely
+/// in the `metadata` blob.
 #[rstest::rstest]
 #[tokio::test]
-async fn save_writes_blob_not_zombie_columns() {
-    use diesel::Connection;
-    use diesel::QueryableByName;
-    use diesel::RunQueryDsl;
-    use diesel::SqliteConnection;
-
-    #[derive(QueryableByName)]
-    struct TextRow {
-        #[diesel(sql_type = diesel::sql_types::Text)]
-        v: String,
-    }
-
-    fn col(conn: &mut SqliteConnection, expr: &str) -> String {
-        let rows: Vec<TextRow> = diesel::sql_query(&format!("SELECT {expr} AS v FROM sessions"))
-            .load(conn)
-            .expect("select column");
-        rows.into_iter().next().expect("one row").v
-    }
-    // Given a saved session with a real model and persona.
-    let (_dir, store) = make_store();
+async fn sessions_table_has_exactly_nine_columns() {
+    // Given a saved session.
+    let (dir, store) = make_store().await;
     let session_id = SessionId::new();
-    let mut session = make_session(&session_id, "With Model");
+    let mut session = make_session(&session_id, "Schema Check");
     session.set_model(ModelSelection::Single("anthropic/claude-opus-4".to_owned()));
     store.save(&session).await.expect("save");
 
-    // When inspecting the raw row directly.
-    let path = _dir.path().join("sessions.db");
-    let mut conn = SqliteConnection::establish(path.to_str().expect("path")).expect("connect");
+    // When listing the sessions table columns.
+    let db_path = dir.path().join("sessions.db");
+    let pool = dao::Pool::open(db_path.to_string_lossy().as_ref()).expect("open");
+    let cols: Vec<ColumnRow> = pool
+        .query_all::<ColumnRow>("PRAGMA table_info(sessions)", vec![])
+        .await
+        .expect("table_info");
 
-    // Then the zombie columns hold their SQL DEFAULTs (no longer written).
+    // Then exactly the 9 authoritative columns exist (no zombies).
+    let names: Vec<&str> = cols.iter().map(|c| c.name.as_str()).collect();
     assert_eq!(
-        col(&mut conn, "profile"),
-        "{}",
-        "profile column should be the default"
-    );
-    assert_eq!(
-        col(&mut conn, "blobs"),
-        "{}",
-        "blobs column should be the default"
-    );
-    assert_eq!(
-        col(&mut conn, "cwd"),
-        ".",
-        "cwd column should be the default"
-    );
-    assert_eq!(
-        col(&mut conn, "lifecycle_script_state"),
-        "nothing_ran",
-        "lifecycle_script_state column should be the default"
-    );
-    assert_eq!(
-        col(&mut conn, "lifecycle_args"),
-        "[]",
-        "lifecycle_args column should be the default"
-    );
-    assert_eq!(
-        col(&mut conn, "persist"),
-        "1",
-        "persist column holds its SQL DEFAULT (TRUE), no longer written from the session"
+        names,
+        vec![
+            "id",
+            "title",
+            "updated_at",
+            "created_at",
+            "parent_session",
+            "archived",
+            "metadata",
+            "is_automated",
+            "persist"
+        ],
+        "sessions table must have exactly the 9 authoritative columns post-v20"
     );
 
-    // And metadata carries the real profile with the model.
-    let metadata = col(&mut conn, "metadata");
+    // And metadata carries the real model.
+    let row: Option<MetadataRow> = pool
+        .query_one(
+            "SELECT metadata FROM sessions WHERE id = ?",
+            vec![Box::new(session_id.to_string())],
+        )
+        .await
+        .expect("select metadata");
+    let metadata = row
+        .expect("row exists")
+        .metadata
+        .expect("metadata non-null");
     assert!(
         metadata.contains("\"anthropic/claude-opus-4\""),
         "metadata blob should contain the real model: {metadata}"
     );
+}
+
+#[derive(Debug)]
+struct ColumnRow {
+    name: String,
+}
+impl dao::FromRow for ColumnRow {
+    fn from_row(row: &dao::Row) -> dao::Result<Self> {
+        Ok(Self {
+            name: row.get("name")?,
+        })
+    }
+}
+
+#[derive(Debug)]
+struct MetadataRow {
+    metadata: Option<String>,
+}
+impl dao::FromRow for MetadataRow {
+    fn from_row(row: &dao::Row) -> dao::Result<Self> {
+        Ok(Self {
+            metadata: row.get("metadata")?,
+        })
+    }
 }

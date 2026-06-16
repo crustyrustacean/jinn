@@ -18,7 +18,6 @@ pub mod init;
 
 // Not yet reorganized (handled in later phases)
 pub mod protocol;
-pub mod schema;
 
 // Re-export actor types that are still in use
 pub use common::actor::{ActorCounter, NoDirectMsg};
