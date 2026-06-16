@@ -4,11 +4,50 @@
 //! by name; the dispatcher (`PluginDispatchActor`) loads them into a per-session
 //! Lua state and fires their hooks at lifecycle events.
 //!
+//! Each attachment gets a stable [`PluginInstanceId`] so that two attachments
+//! of the *same* plugin (e.g. a panel of judges) are distinguishable everywhere
+//! identity matters: hook firing, plugin data scoping, and cross-instance
+//! coordination.
+//!
 //! See `crates/jinn-plugin/src/lib.rs` for the four access patterns.
 
 use serde::{Deserialize, Serialize};
+use uuid::Uuid;
 
 use crate::protocol::SessionId;
+
+/// Stable unique identifier for a single attached-plugin *instance*.
+///
+/// Generated when an [`AttachedPlugin`] is created and persisted with it, so
+/// the identity survives restarts. Two attachments of the same plugin name get
+/// distinct ids. Old persisted data lacking the field hydrates a fresh id via
+/// `#[serde(default)]`.
+///
+/// Stored as an opaque string and derives equality/hashing so it can be used
+/// as a `HashMap` key (the per-session hooks map and the plugin-data store both
+/// key on it).
+#[derive(Debug, Clone, PartialEq, Eq, Hash, Serialize, Deserialize)]
+pub struct PluginInstanceId(String);
+
+impl PluginInstanceId {
+    /// Generate a new unique instance id using UUID v7.
+    #[must_use]
+    pub fn new() -> Self {
+        Self(format!("i-{}", Uuid::now_v7()))
+    }
+}
+
+impl Default for PluginInstanceId {
+    fn default() -> Self {
+        Self::new()
+    }
+}
+
+impl std::fmt::Display for PluginInstanceId {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        write!(f, "{}", self.0)
+    }
+}
 
 /// A plugin attached to a session.
 ///
@@ -18,6 +57,13 @@ pub struct AttachedPlugin {
     /// Plugin name — selects which `init.lua` to load. Matches the plugin
     /// directory name under `plugins/attachable/`.
     pub name: String,
+    /// Stable unique identity of this attachment. Two attachments of the same
+    /// plugin name get distinct ids. Used to key the per-session hooks map and
+    /// the plugin-data store so duplicate instances are isolated and fire
+    /// independently. Old persisted data lacking the field hydrates a fresh id
+    /// via `#[serde(default)]`.
+    #[serde(default = "PluginInstanceId::new")]
+    pub instance_id: PluginInstanceId,
     /// User-editable display label. Defaults to the plugin name at construction.
     /// Empty string falls back to `name` (backward-compat for persisted data
     /// that lacks the `label` field).
@@ -52,6 +98,7 @@ impl AttachedPlugin {
         let label = name.clone();
         Self {
             name,
+            instance_id: PluginInstanceId::new(),
             label,
             enabled: true,
             run_state: PluginRunState::Idle,
@@ -169,5 +216,47 @@ mod tests {
             let j2 = serde_json::to_string(&back).expect("s2");
             assert_eq!(j, j2);
         }
+    }
+
+    #[rstest::rstest]
+    fn new_attachment_generates_nonempty_instance_id() {
+        // Given two newly-constructed attachments.
+        let a = AttachedPlugin::new("judge");
+        let b = AttachedPlugin::new("judge");
+
+        // Then each has a non-empty instance id and they differ.
+        assert!(!a.instance_id.to_string().is_empty());
+        assert!(!b.instance_id.to_string().is_empty());
+        assert_ne!(a.instance_id, b.instance_id);
+    }
+
+    #[rstest::rstest]
+    fn instance_id_survives_serde_roundtrip() {
+        // Given an attachment with a generated instance id.
+        let p = AttachedPlugin::new("judge");
+        let original_id = p.instance_id.clone();
+
+        // When serializing and deserializing.
+        let j = serde_json::to_string(&p).expect("serialize");
+        let back: AttachedPlugin = serde_json::from_str(&j).expect("deserialize");
+
+        // Then the instance id is preserved.
+        assert_eq!(back.instance_id, original_id);
+    }
+
+    #[rstest::rstest]
+    fn instance_id_missing_in_json_hydrates_fresh_id() {
+        // Given a serialized attachment with the instance_id field removed
+        // (simulating persisted data from before this field existed).
+        let p = AttachedPlugin::new("judge");
+        let mut v = serde_json::to_value(&p).expect("serialize");
+        v.as_object_mut().expect("object").remove("instance_id");
+
+        // When deserializing.
+        let back: AttachedPlugin = serde_json::from_value(v).expect("deserialize");
+
+        // Then a fresh (non-empty) id is generated and differs from the original.
+        assert!(!back.instance_id.to_string().is_empty());
+        assert_ne!(back.instance_id, p.instance_id);
     }
 }
