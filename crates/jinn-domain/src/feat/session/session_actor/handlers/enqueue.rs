@@ -336,6 +336,12 @@ impl SessionPersistenceActor {
         &self,
         payload: &PushChatEntry,
     ) {
+        tracing::debug!(
+            session_id = %payload.session_id,
+            kind = %payload.entry.kind_str(),
+            preview = %payload.entry.text().chars().take(60).collect::<String>(),
+            "handle_push_chat_entry"
+        );
         {
             let mut state = self.state.write();
             let session = state.session_mut_or_create(&payload.session_id);

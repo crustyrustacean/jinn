@@ -238,7 +238,7 @@ impl PluginDispatchActor {
             self.spawn_fire_for_session(
                 &session_id,
                 "on_detach",
-                &serde_json::json!({}),
+                &serde_json::json!({ "session_id": session_id.to_string() }),
                 vec![instance_id.clone()],
             );
         }

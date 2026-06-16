@@ -61,12 +61,14 @@ async fn run_parent() {
     let scenarios = enumerate_scenarios(&features_dir);
 
     if scenarios.is_empty() {
-        eprintln!("[judge-e2e] no scenarios found in {}", features_dir.display());
+        eprintln!(
+            "[judge-e2e] no scenarios found in {}",
+            features_dir.display()
+        );
         std::process::exit(1);
     }
 
-    let current_exe =
-        std::env::current_exe().expect("current_exe for child spawning");
+    let current_exe = std::env::current_exe().expect("current_exe for child spawning");
 
     // Cap concurrency at available parallelism so we don't boot 50 actor systems
     // at once on an 8-core laptop.
@@ -75,36 +77,35 @@ async fn run_parent() {
         .unwrap_or(4);
 
     let total = scenarios.len();
-    eprintln!(
-        "[judge-e2e] running {total} scenario(s) across up to {jobs} child process(es)"
-    );
+    eprintln!("[judge-e2e] running {total} scenario(s) across up to {jobs} child process(es)");
 
-    let results: Vec<(ScenarioSpec, bool)> =
-        stream::iter(scenarios.into_iter().map(|spec| {
-            let exe = current_exe.clone();
-            async move {
-                let passed = spawn_child(&exe, &spec).await;
-                (spec, passed)
-            }
-        }))
-        // `buffer_unordered(jobs)` runs at most `jobs` children concurrently.
-        .buffer_unordered(jobs)
-        .collect()
-        .await;
+    let results: Vec<(ScenarioSpec, bool)> = stream::iter(scenarios.into_iter().map(|spec| {
+        let exe = current_exe.clone();
+        async move {
+            let passed = spawn_child(&exe, &spec).await;
+            (spec, passed)
+        }
+    }))
+    // `buffer_unordered(jobs)` runs at most `jobs` children concurrently.
+    .buffer_unordered(jobs)
+    .collect()
+    .await;
 
     let mut failures = 0usize;
     for (spec, passed) in &results {
         let status = if *passed { "PASS" } else { "FAIL" };
-        eprintln!("[judge-e2e] {status}: {}:{}", spec.feature_file_name(), spec.scenario);
+        eprintln!(
+            "[judge-e2e] {status}: {}:{}",
+            spec.feature_file_name(),
+            spec.scenario
+        );
         if !passed {
             failures += 1;
         }
     }
 
     if failures > 0 {
-        eprintln!(
-            "[judge-e2e] {failures}/{total} scenario(s) FAILED"
-        );
+        eprintln!("[judge-e2e] {failures}/{total} scenario(s) FAILED");
         std::process::exit(1);
     }
     eprintln!("[judge-e2e] {total}/{total} scenario(s) passed");
@@ -155,9 +156,8 @@ impl ScenarioSpec {
 /// Walks `dir` for `*.feature` files and flattens their scenarios into a list.
 fn enumerate_scenarios(dir: &Path) -> Vec<ScenarioSpec> {
     let mut out = Vec::new();
-    let entries = std::fs::read_dir(dir).unwrap_or_else(|e| {
-        panic!("failed to read feature dir {}: {e}", dir.display())
-    });
+    let entries = std::fs::read_dir(dir)
+        .unwrap_or_else(|e| panic!("failed to read feature dir {}: {e}", dir.display()));
     // Collect + sort for a stable enumeration order.
     let mut files: Vec<PathBuf> = entries
         .filter_map(Result::ok)
@@ -200,16 +200,13 @@ async fn run_child(spec: &str) {
     }
     init_tracing();
     tracing::info!(spec = %spec, "judge-e2e child starting");
-    let (feature_path, scenario_name) = spec
-        .split_once(':')
-        .unwrap_or_else(|| panic!("invalid --scenario spec: {spec:?} (expected '<feature_path>:<scenario_name>')"));
+    let (feature_path, scenario_name) = spec.split_once(':').unwrap_or_else(|| {
+        panic!("invalid --scenario spec: {spec:?} (expected '<feature_path>:<scenario_name>')")
+    });
 
     let feature_path = PathBuf::from(feature_path);
-    let feature =
-        gherkin::Feature::parse_path(&feature_path, GherkinEnv::default())
-            .unwrap_or_else(|e| {
-                panic!("failed to parse {}: {e}", feature_path.display())
-            });
+    let feature = gherkin::Feature::parse_path(&feature_path, GherkinEnv::default())
+        .unwrap_or_else(|e| panic!("failed to parse {}: {e}", feature_path.display()));
 
     // Select only the matching scenario. If the name is ambiguous or missing,
     // emit an empty feature — cucumber will report no steps run, surfacing the
@@ -246,14 +243,9 @@ struct SingleFeatureParser {
 
 impl<I> Parser<I> for SingleFeatureParser {
     type Cli = cucumber::cli::Empty;
-    type Output =
-        stream::Once<std::future::Ready<parser::Result<gherkin::Feature>>>;
+    type Output = stream::Once<std::future::Ready<parser::Result<gherkin::Feature>>>;
 
-    fn parse(
-        self,
-        _input: I,
-        _cli: Self::Cli,
-    ) -> Self::Output {
+    fn parse(self, _input: I, _cli: Self::Cli) -> Self::Output {
         stream::once(std::future::ready(Ok((*self.feature).clone())))
     }
 }
@@ -266,10 +258,7 @@ fn init_tracing() {
     // stderr/stdout per-scenario and only flushes on completion, so a hung
     // scenario would trap all diagnostics. A file bypasses that capture.
     use std::fs::OpenOptions;
-    let log_path = std::env::temp_dir().join(format!(
-        "jinn-e2e-{}.log",
-        std::process::id()
-    ));
+    let log_path = std::env::temp_dir().join(format!("jinn-e2e-{}.log", std::process::id()));
     eprintln!("[judge-e2e] tracing to {}", log_path.display());
     let file = OpenOptions::new()
         .create(true)
@@ -282,7 +271,7 @@ fn init_tracing() {
             tracing_subscriber::EnvFilter::try_from_default_env().unwrap_or_else(|_| {
                 // Suppress kameo's chatty per-message spans; keep jinn + warnings.
                 tracing_subscriber::EnvFilter::new(
-                    "warn,jinn=debug,jinn_domain=debug,kameo=warn,kameo_actors=off",
+                    "warn,jinn=debug,jinn_domain=debug,e2e=debug,kameo=warn,kameo_actors=off",
                 )
             }),
         )
