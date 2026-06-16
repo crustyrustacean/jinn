@@ -202,7 +202,12 @@ impl<'a> TaskListView<'a> {
     }
 
     /// Style for a phase header line, with reversed colors when the phase is selected.
-    fn phase_header_style(&self, phase: &Phase, index: usize, active_phase_id: Option<&PhaseId>) -> Style {
+    fn phase_header_style(
+        &self,
+        phase: &Phase,
+        index: usize,
+        active_phase_id: Option<&PhaseId>,
+    ) -> Style {
         let mut style = Style::default()
             .fg(self.phase_header_color(phase, active_phase_id))
             .add_modifier(Modifier::BOLD);
@@ -242,7 +247,12 @@ impl<'a> TaskListView<'a> {
 
     /// Phase header lines: the collapse/expand indicator on the first wrapped segment,
     /// continuation lines indented beneath the description.
-    fn phase_header_lines(&self, phase: &Phase, index: usize, active_phase_id: Option<&PhaseId>) -> Vec<Line<'static>> {
+    fn phase_header_lines(
+        &self,
+        phase: &Phase,
+        index: usize,
+        active_phase_id: Option<&PhaseId>,
+    ) -> Vec<Line<'static>> {
         let indicator = if self.is_expanded(index) {
             "\u{25BE} " // ▾ expanded
         } else {
