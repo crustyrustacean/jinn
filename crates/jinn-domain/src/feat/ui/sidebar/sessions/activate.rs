@@ -41,15 +41,22 @@ pub fn handle_session_activate(state: &mut AppState) -> IntentResult {
             IntentResult::empty()
         }
         SessionEntryKind::Plugin { .. } => {
-            // Look up the managed session from the attached plugin.
-            let managed_id = state.session.get(&entry.id).and_then(|session| {
-                session
-                    .core
-                    .attached_plugins
-                    .iter()
-                    .find(|p| p.name == entry.title)
-                    .and_then(|p| p.managed_session_id.clone())
-            });
+            // Resolve the instance via its parent (origin) session and the
+            // instance id carried in the entry id. The activate arm must
+            // navigate to THIS instance's managed session, not the first
+            // attachment with a matching name.
+            let managed_id = entry
+                .parent_id
+                .as_ref()
+                .and_then(|pid| state.session.get(pid))
+                .and_then(|session| {
+                    session
+                        .core
+                        .attached_plugins
+                        .iter()
+                        .find(|p| p.instance_id.to_string() == entry.id.to_string())
+                        .and_then(|p| p.managed_session_id.clone())
+                });
             if let Some(managed_id) = managed_id {
                 state.session.set_active(managed_id);
                 state.frontend.scope_stack.swap_base(FocusScope::Normal);
@@ -96,14 +103,18 @@ pub fn handle_session_activate_insert(state: &mut AppState) -> IntentResult {
             IntentResult::empty()
         }
         SessionEntryKind::Plugin { .. } => {
-            let managed_id = state.session.get(&entry.id).and_then(|session| {
-                session
-                    .core
-                    .attached_plugins
-                    .iter()
-                    .find(|p| p.name == entry.title)
-                    .and_then(|p| p.managed_session_id.clone())
-            });
+            let managed_id = entry
+                .parent_id
+                .as_ref()
+                .and_then(|pid| state.session.get(pid))
+                .and_then(|session| {
+                    session
+                        .core
+                        .attached_plugins
+                        .iter()
+                        .find(|p| p.instance_id.to_string() == entry.id.to_string())
+                        .and_then(|p| p.managed_session_id.clone())
+                });
             if let Some(managed_id) = managed_id {
                 state.session.set_active(managed_id);
                 state.frontend.scope_stack.swap_base(FocusScope::Normal);
@@ -126,6 +137,7 @@ mod tests {
     use super::*;
     use crate::common::app_state::AppState;
     use crate::common::focus::FocusScope;
+    use crate::feat::ui::sidebar::sessions::state::SessionEntryKind;
 
     use crate::protocol::SessionId;
 
@@ -145,6 +157,67 @@ mod tests {
         state.frontend.sessions_section.selected_index = Some(target_idx);
         state.frontend.scope_stack.push(FocusScope::SidebarSessions);
         (state, second)
+    }
+
+    /// A session with two attached judge plugin instances, each holding its own
+    /// managed (child) session. Cursor points at the SECOND plugin entry so we
+    /// can verify activate resolves by instance id (not first-match-by-name).
+    fn state_with_two_judge_instances_cursor_on_second_plugin() -> (AppState, SessionId) {
+        use crate::feat::attached_plugin::AttachedPlugin;
+        use crate::feat::session::chat_session::ChatSessionState;
+
+        let mut state = AppState::default();
+        let origin = state.session.active_session_id().clone();
+
+        // Two child sessions, one per judge instance.
+        let child_a = {
+            let mut s = ChatSessionState::default();
+            let id = s.session_id().clone();
+            state.session.insert(s);
+            id
+        };
+        let child_b = {
+            let mut s = ChatSessionState::default();
+            let id = s.session_id().clone();
+            state.session.insert(s);
+            id
+        };
+
+        // Attach two judge instances to the origin, each with its own managed session.
+        {
+            let guard = state.session.get_mut(&origin).expect("origin");
+            let mut a = AttachedPlugin::new("judge");
+            a.managed_session_id = Some(child_a.clone());
+            let mut b = AttachedPlugin::new("judge");
+            b.managed_session_id = Some(child_b.clone());
+            guard.core.attached_plugins.push(a);
+            guard.core.attached_plugins.push(b);
+        }
+
+        // Cursor points at the second plugin entry in the built tree.
+        let sessions = sorted_open_sessions(&state);
+        let plugin_idx = sessions
+            .iter()
+            .filter(|e| matches!(e.kind, SessionEntryKind::Plugin { .. }))
+            .nth(1)
+            .and_then(|e| sessions.iter().position(|x| x.id == e.id))
+            .expect("at least two plugin entries");
+        state.frontend.sessions_section.selected_index = Some(plugin_idx);
+        state.frontend.scope_stack.push(FocusScope::SidebarSessions);
+        (state, child_b)
+    }
+
+    #[rstest::rstest]
+    fn activate_second_judge_instance_resolves_its_own_managed_session() {
+        // Given a session with two judge instances, cursor on the second.
+        let (mut state, expected_child) = state_with_two_judge_instances_cursor_on_second_plugin();
+
+        // When activating.
+        let _result = handle_session_activate(&mut state);
+
+        // Then the active session is the SECOND instance's managed session,
+        // not the first (proves instance-targeted resolution).
+        assert_eq!(state.session.active_session_id(), &expected_child);
     }
 
     #[rstest::rstest]
