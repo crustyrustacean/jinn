@@ -11,7 +11,7 @@ use super::async_handle::PluginJob;
 use super::async_thread::{RequestHandler, run_async_thread};
 use super::command::PluginCommand;
 use super::loader::{PluginMeta, discover_plugins, load_all};
-use super::plugin_data::PluginData;
+use super::plugin_data::{GlobalPluginData, PluginData};
 use super::sync_state::SyncPlugins;
 use super::tool_def::PluginToolMetadata;
 use super::{async_handle::AsyncPluginHandle, sync_handle::PluginSyncHandle};
@@ -76,6 +76,7 @@ impl PluginSystem {
         request_handler: RequestHandler,
     ) -> PluginSystemBuildResult {
         let plugin_data = PluginData::new();
+        let global_data = GlobalPluginData::new();
 
         // Emit channel: constructed sync (sync Lua hooks call sync `.send()`),
         // drainer uses async recv via `to_async()`.
@@ -126,6 +127,7 @@ impl PluginSystem {
         let async_plugins = plugins;
         let async_global_plugins = global_plugins;
         let async_plugin_data = plugin_data.clone();
+        let async_global_data = global_data.clone();
         let async_emit_tx = emit_tx.clone_async();
         let async_request_handler = request_handler.clone();
         let in_flight = super::InFlightRequests::new();
@@ -169,6 +171,7 @@ impl PluginSystem {
                     global_tools,
                     async_plugins,
                     async_plugin_data,
+                    async_global_data,
                     async_emit_tx,
                     async_request_handler,
                     async_in_flight,

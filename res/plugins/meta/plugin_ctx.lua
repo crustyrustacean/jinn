@@ -25,6 +25,21 @@
 ---@field set_plugin_data fun(data: any) Replace this plugin's persistent state.
 ---@field merge_plugin_data fun(data: any) Shallow-merge top-level keys into this plugin's persistent state (async-only).
 ---@field get_plugin_data fun(): any Re-read this plugin's **current** persistent state (live; async-only). Use after an `await` — `plugin_data` is a frozen snapshot taken at hook entry.
+---
+--- Global data — cross-plugin / cross-instance coordination channel.
+--- A string-keyed bag of JSON values. Any plugin or instance can read
+--- or write any key. Used for aggregation (e.g. multi-judge: post
+--- verdicts under a shared key; the last-to-finish reads and merges).
+--- Values support null/bool/number/string/array/object (JSON types only).
+---
+--- Read-modify-write is safe in practice because the plugin thread is
+--- single-threaded; do not rely on this under multi-threaded execution.
+---
+---@field get_global_data fun(key: string): any Read the live value under `key`, or nil if absent (async-only).
+---@field set_global_data fun(key: string, value: any) Write (replace) the value under `key` (async-only).
+---@field merge_global_data fun(key: string, value: any) Shallow-merge top-level keys of `value` into the object under `key` (async-only).
+---
+---@field instance_id string This plugin instance's stable id (async-only). Distinct for duplicate attachments of the same plugin.
 
 -- ─── Per-hook ctx classes ──────────────────────────────────────────
 --
@@ -38,6 +53,24 @@
 
 ---@class OnSessionCreatedCtx : PluginCtx
 ---Fires when a new session is created. No hook-specific fields.
+
+
+---@class OnAttachCtx : PluginCtx
+---Fires when this plugin instance is attached to a session. Runs against
+---the live (just-rebuilt) per-session Lua state. Use it to register this
+---instance in shared global-data coordination keys (e.g. increment a
+---participant count). Only the newly-attached instance receives it.
+---
+---Per-instance: each attachment of a plugin gets its own `on_attach` fire,
+---even for duplicate instances of the same plugin name.
+
+
+---@class OnDetachCtx : PluginCtx
+---Fires when this plugin instance is detached from a session. Runs BEFORE
+---the per-session registry is rebuilt, so the hook still executes against the
+---live (pre-teardown) Lua state. Use it to clean up shared global-data
+---coordination keys (e.g. decrement a participant count). Only the
+---removed instance(s) receive it.
 
 ---@class OnTurnEndCtx : PluginCtx
 ---Fires when a session transitions to Idle (turn complete).

@@ -368,8 +368,7 @@ impl AsyncPluginHandle {
         session_id: &SessionId,
         instance_id: &super::PluginInstanceId,
     ) -> Option<serde_json::Value> {
-        self.plugin_data
-            .get_for_session(session_id, instance_id)
+        self.plugin_data.get_for_session(session_id, instance_id)
     }
 
     /// Cancel an in-flight request by its task name.

@@ -399,8 +399,8 @@ impl crate::feat::plugin_dispatch::PluginSyncHooks for SyncPlugins {
 pub(crate) fn build_sync_ctx(
     lua: &Lua,
     ctx_json: &serde_json::Value,
-plugin_name: &str,
-instance_id: Option<&str>,
+    plugin_name: &str,
+    instance_id: Option<&str>,
     plugin_data: &PluginData,
     emit_tx: &kanal::Sender<PluginCommand>,
     in_flight: &super::InFlightRequests,

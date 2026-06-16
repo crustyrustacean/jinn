@@ -729,10 +729,34 @@ fn handle_sidebar_toggle_plugin(state: &mut AppState) -> IntentResult {
         return IntentResult::empty();
     };
     match entry.kind {
-        SessionEntryKind::Plugin { .. } => IntentResult::empty().message(TogglePlugin {
-            session_id: entry.id.clone(),
-            plugin_name: entry.title.clone(),
-        }),
+        SessionEntryKind::Plugin { .. } => {
+            // The sidebar entry currently keys plugin rows by the parent session
+            // id; the instance id is resolved here by name against the origin.
+            // Phase 3 (per-instance entry id) will let us carry the instance id
+            // directly on the entry.
+            let session_id = entry
+                .parent_id
+                .clone()
+                .unwrap_or_else(|| entry.id.clone());
+            let instance_id = state
+                .session
+                .get(&session_id)
+                .and_then(|s| {
+                    s.core
+                        .attached_plugins
+                        .iter()
+                        .find(|p| p.label_or_name() == entry.title)
+                        .map(|p| p.instance_id.clone())
+                });
+            let Some(instance_id) = instance_id else {
+                return IntentResult::empty();
+            };
+            IntentResult::empty().message(TogglePlugin {
+                session_id,
+                plugin_name: entry.title.clone(),
+                instance_id,
+            })
+        }
         SessionEntryKind::Session => IntentResult::empty(),
     }
 }

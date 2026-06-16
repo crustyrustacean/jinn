@@ -33,12 +33,12 @@ use tokio::runtime::Runtime;
 use crate::SessionId;
 use crate::feat::plugin_dispatch::PluginHookSite;
 
-use super::async_handle::{PluginError, PluginJob};
 use super::PluginInstanceId;
+use super::async_handle::{PluginError, PluginJob};
 use super::bindings;
 use super::command::PluginCommand;
 use super::loader::{PluginMeta, load_all};
-use super::plugin_data::PluginData;
+use super::plugin_data::{GlobalPluginData, PluginData};
 use super::session_registry::SessionRegistryId;
 use super::sync_state::PluginHooks;
 
@@ -99,6 +99,8 @@ struct ThreadState {
     attachable_plugins: Vec<PluginMeta>,
     /// Shared plugin data store.
     plugin_data: PluginData,
+    /// Shared global data store (cross-plugin, cross-instance).
+    global_data: GlobalPluginData,
     /// Emit channel (async).
     emit_tx: kanal::AsyncSender<PluginCommand>,
     /// Request handler.
@@ -118,6 +120,7 @@ pub(crate) fn run_async_thread(
     global_tools: Vec<super::tool_def::PluginToolDef>,
     all_plugins: Vec<PluginMeta>,
     plugin_data: PluginData,
+    global_data: GlobalPluginData,
     emit_tx: kanal::AsyncSender<PluginCommand>,
     request_handler: RequestHandler,
     in_flight: super::InFlightRequests,
@@ -153,6 +156,7 @@ pub(crate) fn run_async_thread(
         sessions: HashMap::new(),
         attachable_plugins,
         plugin_data,
+        global_data,
         emit_tx,
         request_handler,
         in_flight,
@@ -296,9 +300,18 @@ fn execute_plugin_tool(
         })?;
 
     // Build the ctx table for the handler.
+    //
+    // `session_id` is the id of the session whose turn is executing this
+    // handler: for an attached plugin's tool, that's the calling child
+    // session (used by the judge to key its verdict). For a global plugin's
+    // tool invoked during session X's turn, it's X. Consistent with hooks,
+    // where `ctx.session_id` is the session the hook runs for.
     let ctx_json = match parent_session_id {
-        Some(p) => serde_json::json!({ "parent_session_id": p.to_string() }),
-        None => serde_json::json!({}),
+        Some(p) => serde_json::json!({
+            "session_id": session_id.to_string(),
+            "parent_session_id": p.to_string(),
+        }),
+        None => serde_json::json!({ "session_id": session_id.to_string() }),
     };
     let ctx = build_async_ctx(
         lua,
@@ -306,6 +319,7 @@ fn execute_plugin_tool(
         plugin_name,
         None,
         &state.plugin_data,
+        &state.global_data,
         &state.emit_tx,
         &state.request_handler,
         &state.in_flight,
@@ -426,6 +440,7 @@ async fn run_hooks_fire(
             plugin_name,
             None,
             &state.plugin_data,
+            &state.global_data,
             &state.emit_tx,
             &state.request_handler,
             &state.in_flight,
@@ -448,6 +463,7 @@ async fn run_hooks_fire(
                 &entry.name,
                 Some(instance_id),
                 &state.plugin_data,
+                &state.global_data,
                 &state.emit_tx,
                 &state.request_handler,
                 &state.in_flight,
@@ -477,6 +493,7 @@ async fn run_hooks_collect(
             plugin_name,
             None,
             &state.plugin_data,
+            &state.global_data,
             &state.emit_tx,
             &state.request_handler,
             &state.in_flight,
@@ -510,6 +527,7 @@ async fn run_hooks_collect(
                 &entry.name,
                 Some(instance_id),
                 &state.plugin_data,
+                &state.global_data,
                 &state.emit_tx,
                 &state.request_handler,
                 &state.in_flight,
@@ -550,6 +568,7 @@ async fn run_single_hook(
     plugin_name: &str,
     instance_id: Option<&PluginInstanceId>,
     plugin_data: &PluginData,
+    global_data: &GlobalPluginData,
     emit_tx: &kanal::AsyncSender<PluginCommand>,
     request_handler: &RequestHandler,
     in_flight: &super::InFlightRequests,
@@ -591,6 +610,7 @@ async fn run_single_hook(
         plugin_name,
         instance_id,
         plugin_data,
+        global_data,
         emit_tx,
         request_handler,
         in_flight,
@@ -659,6 +679,7 @@ fn build_async_ctx(
     plugin_name: &str,
     instance_id: Option<&PluginInstanceId>,
     plugin_data: &PluginData,
+    global_data: &GlobalPluginData,
     emit_tx: &kanal::AsyncSender<PluginCommand>,
     request_handler: &RequestHandler,
     in_flight: &super::InFlightRequests,
@@ -854,6 +875,47 @@ fn build_async_ctx(
             bindings::json_to_lua_value(lua, &json)
         })?;
         ctx.set("get_plugin_data", get_data_fn)?;
+    }
+
+    // ctx.set_global_data(key, value) — writes to the shared global bag.
+    //
+    // Any plugin or instance can read/write any key. Used for cross-instance
+    // coordination (e.g. multi-judge aggregation). Values round-trip via the
+    // JSON bindings.
+    {
+        let gd = global_data.clone();
+        let set_global_fn =
+            lua.create_function(move |lua, (key, value): (String, mlua::Value)| {
+                let json = bindings::value_to_json(lua, &value).unwrap_or_default();
+                gd.set(&key, json);
+                Ok(())
+            })?;
+        ctx.set("set_global_data", set_global_fn)?;
+    }
+
+    // ctx.merge_global_data(key, value) — shallow-merges a partial object
+    // under `key`. Mirrors `ctx.merge_plugin_data` semantics, but for the
+    // global bag.
+    {
+        let gd = global_data.clone();
+        let merge_global_fn =
+            lua.create_function(move |lua, (key, value): (String, mlua::Value)| {
+                let json = bindings::value_to_json(lua, &value).unwrap_or_default();
+                gd.merge(&key, json);
+                Ok(())
+            })?;
+        ctx.set("merge_global_data", merge_global_fn)?;
+    }
+
+    // ctx.get_global_data(key) — reads the live global bag. Returns nil when
+    // the key is absent (so Lua callers can branch on it).
+    {
+        let gd = global_data.clone();
+        let get_global_fn = lua.create_function(move |lua, key: String| match gd.get(&key) {
+            Some(json) => bindings::json_to_lua_value(lua, &json),
+            None => Ok(mlua::Value::Nil),
+        })?;
+        ctx.set("get_global_data", get_global_fn)?;
     }
 
     // Suppress unused warning for PathBuf import (kept for future use).

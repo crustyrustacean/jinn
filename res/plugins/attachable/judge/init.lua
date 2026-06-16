@@ -6,12 +6,54 @@
 --
 -- A FRESH child session is created every turn (persist=false, no history
 -- reuse). Tool handlers derive the origin from `ctx.parent_session_id`
--- (the child→origin parent edge).
+-- (the child→origin parent edge) and key their verdict on `ctx.session_id`
+-- (the child's own id, unique per verdict).
+--
+-- Multi-instance (panel/aggregation):
+--   Multiple judge instances may be attached to one origin. Each runs its own
+--   child in parallel. They coordinate via a shared global-data bag, keyed by
+--   origin. The LAST judge to complete aggregates all verdicts and emits ONE
+--   merged result to the origin, then disables itself. All-must-finish: if one
+--   judge's child errors or hangs, the merged result never fires (no timeout —
+--   accepted trade-off).
+--
+--   We key verdicts by the CHILD session id (ctx.session_id), not the judge
+--   instance id. Each child is unique, so N judges → N children → N verdicts
+--   with no collisions, and the tool handler never needs to know which parent
+--   instance spawned it.
+--
+--   Shared keys (namespaced by origin):
+--     judge:<origin>:count      — number of participating instances (attach/detach)
+--     judge:<origin>:verdicts   — { [child_session_id] = { verdict, message } }
+--     judge:<origin>:completed  — count of verdicts posted this turn
+--     judge:<origin>:turn       — turn counter; bumped each turn so the first
+--                                 fire resets verdicts/completed exactly once
+--
+-- Concurrency note: this read-modify-write pattern on the global bag is safe
+-- because hooks + tool callbacks serialize through the single plugin thread.
+-- The child LLM turns run concurrently but never touch these keys.
 
 local M = {}
 
+-- ─── Shared-key helpers (namespaced by origin) ──────────────────────────
 
--- ─── Plugin-defined tools ──────────────────────────────────────────
+local function count_key(origin)
+	return "judge:" .. origin .. ":count"
+end
+
+local function verdicts_key(origin)
+	return "judge:" .. origin .. ":verdicts"
+end
+
+local function completed_key(origin)
+	return "judge:" .. origin .. ":completed"
+end
+
+local function turn_key(origin)
+	return "judge:" .. origin .. ":turn"
+end
+
+-- ─── Plugin-defined tools ──────────────────────────────────────────────
 
 M.tools = {
 	{
@@ -20,15 +62,7 @@ M.tools = {
 		scope = "attached",
 		parameters = {},
 		handler = function(ctx)
-			local origin = ctx.parent_session_id
-			ctx.emit("push_chat_entry", {
-				session_id = origin,
-				kind = { transient = "✓ Judgment passed" },
-			})
-			ctx.emit("disable_plugin", {
-				session_id = origin,
-				plugin_name = ctx.plugin_name,
-			})
+			record_verdict(ctx, "passed", nil)
 		end,
 	},
 	{
@@ -39,24 +73,112 @@ M.tools = {
 			{ name = "message", type = "string", description = "Why the response failed" },
 		},
 		handler = function(ctx, args)
-			local origin = ctx.parent_session_id
-			ctx.emit("enqueue_user_message", {
-				session_id = origin,
-				text = "✗ Judgment failed: " .. tostring(args.message),
-			})
+			record_verdict(ctx, "failed", tostring(args.message))
 		end,
 	},
 }
 
--- ─── Hooks ─────────────────────────────────────────────────────────
+-- ─── Verdict posting + aggregation (called from tool handlers) ──────────
+--
+-- Posts this child's verdict, increments the completed count, and — when
+-- all participants have posted — merges everything and emits ONE result.
 
----@param ctx OnTurnEndCtx
+function record_verdict(ctx, verdict, message)
+	local origin = ctx.parent_session_id
+	local me = ctx.session_id -- the child session; unique per verdict
+	local count = ctx.get_global_data(count_key(origin)) or 0
+
+	-- Post this child's verdict.
+	local verdicts = ctx.get_global_data(verdicts_key(origin)) or {}
+	verdicts[me] = { verdict = verdict, message = message }
+	ctx.set_global_data(verdicts_key(origin), verdicts)
+
+	-- Increment completed.
+	local completed = (ctx.get_global_data(completed_key(origin)) or 0) + 1
+	ctx.set_global_data(completed_key(origin), completed)
+
+	-- Only the last to finish aggregates + emits.
+	if completed < count then
+		return
+	end
+
+	-- Aggregate: any "failed" verdict → failed (with merged messages);
+	-- otherwise passed.
+	local parts = {}
+	local any_failed = false
+	for _id, v in pairs(verdicts) do
+		if v.verdict == "failed" then
+			any_failed = true
+			table.insert(parts, v.message or "(no reason given)")
+		end
+	end
+
+	if any_failed then
+		ctx.emit("enqueue_user_message", {
+			session_id = origin,
+			text = "✗ Judgment failed: " .. table.concat(parts, "; "),
+		})
+	else
+		ctx.emit("push_chat_entry", {
+			session_id = origin,
+			kind = { transient = "✓ Judgment passed" },
+		})
+	end
+
+	-- Disable this instance (the aggregator). Identical to single-instance
+	-- behavior; each instance disables itself once aggregation is done.
+	ctx.emit("disable_plugin", {
+		session_id = origin,
+		plugin_name = ctx.plugin_name,
+	})
+
+	-- Reset per-turn shared state for the next turn.
+	ctx.set_global_data(verdicts_key(origin), {})
+	ctx.set_global_data(completed_key(origin), 0)
+end
+
+-- ─── Hooks ────────────────────���─────────────────────────────────────────
+
+--- @param ctx OnAttachCtx
+function M.on_attach(ctx)
+	local origin = ctx.session_id
+	local key = count_key(origin)
+	local count = (ctx.get_global_data(key) or 0) + 1
+	ctx.set_global_data(key, count)
+end
+
+--- @param ctx OnDetachCtx
+function M.on_detach(ctx)
+	local origin = ctx.session_id
+	local key = count_key(origin)
+	local count = (ctx.get_global_data(key) or 0) - 1
+	if count <= 0 then
+		-- Last instance leaving: clear all shared keys for this origin.
+		ctx.set_global_data(key, nil)
+		ctx.set_global_data(verdicts_key(origin), nil)
+		ctx.set_global_data(completed_key(origin), nil)
+		ctx.set_global_data(turn_key(origin), nil)
+	else
+		ctx.set_global_data(key, count)
+	end
+end
+
+--- @param ctx OnTurnEndCtx
 function M.on_turn_end(ctx)
 	-- Push a transient status indicator to the origin session.
 	ctx.emit("push_chat_entry", {
 		session_id = ctx.session_id,
 		kind = { transient = "⚖ Judge evaluating..." },
 	})
+
+	local origin = ctx.session_id
+
+	-- Per-turn reset: bump the turn counter and reset verdicts/completed.
+	-- Because hooks serialize, the first fire each turn resets cleanly.
+	local prev_turn = ctx.get_global_data(turn_key(origin)) or 0
+	ctx.set_global_data(turn_key(origin), prev_turn + 1)
+	ctx.set_global_data(verdicts_key(origin), {})
+	ctx.set_global_data(completed_key(origin), 0)
 
 	-- Every turn: create a fresh transient child session. No reuse, no reset —
 	-- the judge starts from a clean slate so it cannot reference prior judgments.
@@ -76,7 +198,7 @@ function M.on_turn_end(ctx)
 	end
 	local judge_id = result.value.session_id
 
-	-- Tell the domain layer about the managed session so the sidebar can
+	-- Tell the domain domain layer about the managed session so the sidebar can
 	-- navigate to it (and reflect its busy state).
 	ctx.emit("set_managed_session", {
 		session_id = ctx.session_id,
@@ -98,12 +220,12 @@ After reviewing the last assistant response, call exactly one of:
   - judgment_failed(message) if the response has problems, explaining what went wrong
 
 Be thorough. Check for accuracy, completeness, and relevance. After issuing a judgment tool call, STOP.]],
-			ctx.session_id
+			origin
 		),
 	})
 
 	-- Return immediately. The child LLM will run, call a judgment tool,
-	-- and the tool handler will push results back to the origin session.
+	-- and the tool handler will post the verdict and (if last) emit the result.
 end
 
 return M
