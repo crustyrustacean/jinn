@@ -32,6 +32,10 @@ pub enum FocusScope {
     /// Pruner accumulation threshold popup - numeric input for the KV-cache gate.
     PrunerAccumulationInput,
 
+    /// Quake bar - global overlay console. Captures all keystrokes while open.
+    QuakeBar,
+
+
     /// Sidebar resize mode - adjusting sidebar width with h/l keys.
     SidebarResize,
 }
@@ -51,7 +55,8 @@ impl FocusScope {
             | Self::ArgInput
             | Self::RenameSessionInput
             | Self::CwdInput
-            | Self::PrunerAccumulationInput => Mode::Input,
+            | Self::PrunerAccumulationInput
+            | Self::QuakeBar => Mode::Input,
             Self::Picker { .. } => Mode::Picker,
         }
     }
@@ -71,6 +76,7 @@ impl std::fmt::Display for FocusScope {
             Self::RenameSessionInput => write!(f, "RenameSessionInput"),
             Self::CwdInput => write!(f, "CwdInput"),
             Self::PrunerAccumulationInput => write!(f, "PrunerAccumulationInput"),
+            Self::QuakeBar => write!(f, "QuakeBar"),
             Self::SidebarResize => write!(f, "SidebarResize"),
         }
     }

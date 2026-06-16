@@ -6,6 +6,7 @@ use crate::common::focus::{FocusScope, ScopeStack};
 use crate::common::tui_signals::TuiSignals;
 use crate::feat::cwd_input::state::CwdInputState;
 use crate::feat::preferences_actor::UserPreferences;
+use crate::feat::quake_bar::state::QuakeBarState;
 use crate::feat::preferences_actor::app_state_file::AppStateFile;
 use crate::feat::pruner_accumulation_input::state::PrunerAccumulationInputState;
 use crate::feat::rename_session_input::state::RenameSessionInputState;
@@ -151,6 +152,10 @@ pub struct FrontendState {
     /// OWNER: IntentHandler (cwd input editing, confirmation).
     pub cwd_input: CwdInputState,
 
+    /// Quake bar state - active when `FocusScope::QuakeBar` is on the scope stack.
+    /// OWNER: `input` written by IntentHandler; `log` written by QuakeBarActor.
+    pub quake_bar: QuakeBarState,
+
     pub sidebar_width: u16,
 }
 
@@ -181,6 +186,7 @@ impl Default for FrontendState {
             rename_session_input: RenameSessionInputState::default(),
             pruner_accumulation_input: PrunerAccumulationInputState::default(),
             cwd_input: CwdInputState::default(),
+            quake_bar: QuakeBarState::default(),
 
             sidebar_width: 30,
         }

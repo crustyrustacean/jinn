@@ -22,6 +22,7 @@ pub mod preferences_actor;
 pub mod provider;
 pub mod provider_infra;
 pub mod pruner_accumulation_input;
+pub mod quake_bar;
 pub mod queue_actor;
 pub mod rename_session_input;
 
