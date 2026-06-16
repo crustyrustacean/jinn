@@ -460,9 +460,9 @@ impl ToolOrchestratorActor {
         tool_calls: Vec<ToolCall>,
         dispatched_at: Timestamp,
     ) {
-        tracing::trace!(
-            session_id = ?session_id,
-            tool_call_count = tool_calls.len(),
+        tracing::debug!(
+            session_id = %session_id,
+            tools = ?tool_calls.iter().map(|t| t.name.clone()).collect::<Vec<_>>(),
             "handle_execute_tool_batch"
         );
 
@@ -622,6 +622,13 @@ impl ToolOrchestratorActor {
                 plugin_name,
                 ..
             }) => {
+                tracing::debug!(
+                    session_id = %session_id,
+                    tool = %tool_call.name,
+                    target = ?target,
+                    plugin = %plugin_name,
+                    "dispatching plugin tool"
+                );
                 let bus = self.bus().clone();
                 let plugin_fire = self.services.plugins.clone();
                 let target = *target;

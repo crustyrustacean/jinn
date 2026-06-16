@@ -181,7 +181,7 @@ impl PluginDispatchActor {
         self.spawn_fire_for_session(
             &session_id,
             "on_attach",
-            &serde_json::json!({}),
+            &serde_json::json!({ "session_id": session_id.to_string() }),
             vec![new_instance_id.clone()],
         );
 
@@ -435,6 +435,7 @@ impl PluginDispatchActor {
     }
 
     fn fire_on_phase_changed(&self, session_id: &SessionId, new_phase: PhaseKind) {
+        tracing::debug!(session_id = %session_id, phase = ?new_phase, "fire_on_phase_changed");
         // Plugin session completed: resolve any pending plugin LLM one-shot oneshot.
         if new_phase == PhaseKind::Idle && self.domain_ctx.has_pending(session_id) {
             let response = self.resolve_response_for_session(session_id);

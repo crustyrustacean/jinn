@@ -276,6 +276,14 @@ fn execute_plugin_tool(
     tool_name: &str,
     arguments: &serde_json::Value,
 ) -> Result<String, Report<PluginError>> {
+    tracing::debug!(
+        target = ?target,
+        session_id = %session_id,
+        parent_session_id = ?parent_session_id,
+        plugin = %plugin_name,
+        tool = %tool_name,
+        "execute_plugin_tool"
+    );
     // Locate the correct Lua state and tools list.
     let (lua, tools, data_scope_id) = if let Some(id) = &target {
         let session = state.sessions.get_mut(id).ok_or_else(|| {
