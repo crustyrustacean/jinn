@@ -11,6 +11,7 @@
 //! environment directly.
 
 use std::collections::{HashMap, HashSet};
+use std::sync::Arc;
 
 use error_stack::{Report, ResultExt as _};
 use jinn_provider::Backend;
@@ -21,7 +22,7 @@ use super::config::{AliasEntry, ConfigError, ProvidersConfig};
 use super::generic_factory::GenericLlmServiceFactory;
 use super::provider_id::ProviderId;
 use super::resolved_provider::ResolvedProvider;
-use super::service::{LlmServiceError, LlmServiceFactory};
+use super::service::{LlmService, LlmServiceError, LlmServiceFactory};
 
 /// Registry of configured providers.
 ///
@@ -34,8 +35,12 @@ pub struct ProviderRegistry {
     config: ProvidersConfig,
     /// Expanded per-model entries, indexed by `ProviderId`.
     resolved_map: HashMap<ProviderId, ResolvedProvider>,
-    /// All expanded entries in order.
     resolved_list: Vec<ResolvedProvider>,
+    /// Test-only injected factory returned by [`create_factory`](Self::create_factory)
+    /// before any provider resolution, so the real per-request path exercises a
+    /// scripted fake instead of erroring on the (empty in tests) registry.
+    /// `None` in production. See [`with_factory_override`](Self::with_factory_override).
+    factory_override: Option<FactoryOverride>,
 }
 
 impl ProviderRegistry {
@@ -129,7 +134,36 @@ impl ProviderRegistry {
             config,
             resolved_map,
             resolved_list,
+            factory_override: None,
         })
+    }
+
+    /// Inject a shared factory returned by [`create_factory`](Self::create_factory)
+    /// regardless of provider id. Intended for e2e/test worlds that need the
+    /// real per-request resolution path to yield a scripted fake. Production
+    /// never calls this.
+    #[must_use]
+    pub fn with_factory_override(self, factory: Arc<dyn LlmServiceFactory>) -> Self {
+        Self {
+            factory_override: Some(FactoryOverride(factory)),
+            ..self
+        }
+    }
+
+    /// Returns the test-injected factory override, if any. Used by
+    /// [`ProviderRegistryService::replace`](super::registry_service::ProviderRegistryService::replace)
+    /// to carry the override across startup swaps so it survives the init actor's
+    /// rebuild-from-config.
+    pub(crate) fn factory_override(&self) -> Option<FactoryOverride> {
+        self.factory_override.clone()
+    }
+
+    /// Restores a test-injected factory override previously captured via
+    /// [`factory_override`](Self::factory_override). Used by
+    /// [`ProviderRegistryService::replace`](super::registry_service::ProviderRegistryService::replace)
+    /// to carry the override across startup swaps.
+    pub(crate) fn set_factory_override(&mut self, factory: Option<FactoryOverride>) {
+        self.factory_override = factory;
     }
 
     /// Returns a reference to the underlying config (for persistence).
@@ -269,6 +303,11 @@ impl ProviderRegistry {
         id: &ProviderId,
         api_keys: &ApiKeys,
     ) -> Result<Box<dyn LlmServiceFactory>, Report<LlmServiceError>> {
+        // Test-injected override: return a clone of the scripted fake before
+        // attempting provider resolution. Production never sets this (`None`).
+        if let Some(override_factory) = &self.factory_override {
+            return Ok(Box::new(FactoryOverride(override_factory.0.clone())));
+        }
         let resolved = self.get(id).ok_or_else(|| {
             Report::new(LlmServiceError::Config).attach(format!("unknown provider: {id}"))
         })?;
@@ -326,4 +365,24 @@ fn resolved_is_available(resolved: &ResolvedProvider, api_keys: &ApiKeys) -> boo
         return false;
     };
     api_keys.is_set(env_var)
+}
+
+/// Wraps a shared factory so an `Arc<dyn LlmServiceFactory>` can be returned
+/// as a `Box<dyn LlmServiceFactory>` (the trait method's return type) while
+/// keeping the underlying shared state (e.g. an `Arc<Mutex<...>>` queue) common
+/// across all clones.
+///
+/// Used by the e2e harness to inject a scripted fake behind the real per-request
+/// factory resolution path.
+#[derive(Debug, Clone)]
+pub(crate) struct FactoryOverride(Arc<dyn LlmServiceFactory>);
+
+impl LlmServiceFactory for FactoryOverride {
+    fn create(&self) -> Result<Box<dyn LlmService>, Report<LlmServiceError>> {
+        self.0.create()
+    }
+
+    fn name(&self) -> &str {
+        self.0.name()
+    }
 }

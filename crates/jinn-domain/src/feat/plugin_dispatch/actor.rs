@@ -291,8 +291,7 @@ impl PluginDispatchActor {
                 //    not on attach. The call below is now a no-op, retained
                 //    as a hook-in point on the attach path.
                 if !result.tool_metadata.is_empty() {
-                    self.register_plugin_tools_with_actor(session_id, result.tool_metadata)
-                        .await;
+                    self.register_plugin_tools_with_actor(session_id, result.tool_metadata);
                 }
             }
             Err(e) => {
@@ -302,7 +301,8 @@ impl PluginDispatchActor {
     }
 
     /// Send plugin tool definitions to the tools actor for registration.
-    async fn register_plugin_tools_with_actor(
+    #[allow(clippy::unused_self, reason = "intentional no-op; retained as a call-site on the attach path for future hook-in and to keep regression tests valid")]
+    fn register_plugin_tools_with_actor(
         &self,
         session_id: &SessionId,
         tools: Vec<crate::feat::plugin_dispatch::PluginToolMetadata>,
@@ -723,8 +723,7 @@ mod tests {
         // When registering a global-scope tool defined inside an attached plugin.
         let tools = vec![test_tool_metadata("web_search", ToolScope::Global)];
         actor
-            .register_plugin_tools_with_actor(&session_id, tools)
-            .await;
+            .register_plugin_tools_with_actor(&session_id, tools);
 
         // Then no RegisterPluginTools message is published — global tools are
         // registered globally at startup, not on attach.
@@ -740,8 +739,7 @@ mod tests {
         // When registering attached plugin tools.
         let tools = vec![test_tool_metadata("judge", ToolScope::Attached)];
         actor
-            .register_plugin_tools_with_actor(&session_id, tools)
-            .await;
+            .register_plugin_tools_with_actor(&session_id, tools);
 
         // Then NO RegisterPluginTools message is published. Attached tools
         // are registered execution-only at startup and cataloged in
