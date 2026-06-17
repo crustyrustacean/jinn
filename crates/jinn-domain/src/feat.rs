@@ -16,6 +16,7 @@ pub mod intent;
 pub mod llm_actor;
 pub mod navigation;
 pub mod persona;
+pub mod reasoning;
 pub mod picker;
 pub mod preferences_actor;
 pub mod provider;
