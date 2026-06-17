@@ -314,4 +314,113 @@ mod tests {
         // Then try_recv returns None.
         assert!(handler.try_recv().is_none());
     }
+
+    // --- coalesce_paste ---
+
+    /// Builds an `Event::Paste` carrying `text`.
+    fn paste(text: &str) -> Event {
+        Event::Paste(text.to_owned())
+    }
+
+    /// A non-paste event used as a boundary in merge tests.
+    fn key_event() -> Event {
+        Event::Key(crossterm::event::KeyEvent::new_with_kind_and_state(
+            crossterm::event::KeyCode::Enter,
+            crossterm::event::KeyModifiers::NONE,
+            crossterm::event::KeyEventKind::Press,
+            crossterm::event::KeyEventState::NONE,
+        ))
+    }
+
+    #[rstest::rstest]
+    fn coalesce_two_paste_chunks_merges_into_one() {
+        // Given an initial paste chunk and a following paste chunk.
+        let pending = [paste(" world")];
+
+        // When coalescing.
+        let (full, remaining) = coalesce_paste("hello".to_owned(), &pending);
+
+        // Then the two chunks are concatenated.
+        assert_eq!(full, "hello world");
+        // And no non-paste event remains.
+        assert!(remaining.is_empty());
+    }
+
+    #[rstest::rstest]
+    fn coalesce_many_paste_chunks_preserve_order() {
+        // Given an initial chunk plus four more, in order.
+        let pending = [
+            paste("b"),
+            paste("c"),
+            paste("d"),
+            paste("e"),
+        ];
+
+        // When coalescing.
+        let (full, remaining) = coalesce_paste("a".to_owned(), &pending);
+
+        // Then all chunks merge in their original order.
+        assert_eq!(full, "abcde");
+        assert!(remaining.is_empty());
+    }
+
+    #[rstest::rstest]
+    fn coalesce_stops_at_first_non_paste_event() {
+        // Given a paste chunk, a key event, and another paste chunk.
+        let key = key_event();
+        let pending = [paste("tail"), key.clone(), paste("after")];
+
+        // When coalescing.
+        let (full, remaining) = coalesce_paste("head".to_owned(), &pending);
+
+        // Then only the leading paste run merges.
+        assert_eq!(full, "headtail");
+        // And the key event is the head of the remaining tail (the
+        // trailing paste stays after it, unmerged).
+        assert_eq!(remaining.len(), 2);
+        assert_eq!(remaining[0], key);
+    }
+
+    #[rstest::rstest]
+    fn coalesce_empty_chunk_is_harmless() {
+        // Given an initial empty paste chunk followed by a non-empty one.
+        let pending = [paste(""), paste("data")];
+
+        // When coalescing.
+        let (full, remaining) = coalesce_paste(String::new(), &pending);
+
+        // Then the empty chunks contribute nothing and the data merges in.
+        assert_eq!(full, "data");
+        assert!(remaining.is_empty());
+    }
+
+    #[rstest::rstest]
+    fn coalesce_single_paste_with_no_pending_returns_full() {
+        // Given an initial paste with no following events.
+        // When coalescing.
+        let (full, remaining) = coalesce_paste("only".to_owned(), &[]);
+
+        // Then the initial text is returned unchanged with no remainder.
+        assert_eq!(full, "only");
+        assert!(remaining.is_empty());
+    }
+
+    #[rstest::rstest]
+    fn coalesce_large_paste_is_byte_equal_to_chunk_sum() {
+        // Given many paste chunks whose sizes vary.
+        let chunk_sizes = [0, 1, 64, 1_024, 16_384, 1];
+        let pending: Vec<Event> = chunk_sizes
+            .iter()
+            .map(|&n| paste(&"x".repeat(n)))
+            .collect();
+        let expected: String = chunk_sizes.iter().map(|&n| "x".repeat(n)).collect();
+
+        // When coalescing.
+        let (full, remaining) = coalesce_paste(String::new(), &pending);
+
+        // Then the result is byte-for-byte equal to the concatenation.
+        assert_eq!(full.len(), expected.len());
+        assert_eq!(full, expected);
+        assert!(remaining.is_empty());
+    }
 }
