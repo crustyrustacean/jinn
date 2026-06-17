@@ -243,7 +243,6 @@ fn run_event_poll(sender: &MsgSender, stop: Arc<AtomicBool>) {
         let poll_duration = poll_deadline.saturating_duration_since(now);
 
         match crossterm::event::poll(poll_duration) {
-
             Ok(true) => {
                 // Event available - read and forward, coalescing paste chunks.
                 match crossterm::event::read() {
@@ -349,12 +348,7 @@ mod tests {
     #[rstest::rstest]
     fn coalesce_many_paste_chunks_preserve_order() {
         // Given an initial chunk plus four more, in order.
-        let pending = [
-            paste("b"),
-            paste("c"),
-            paste("d"),
-            paste("e"),
-        ];
+        let pending = [paste("b"), paste("c"), paste("d"), paste("e")];
 
         // When coalescing.
         let (full, remaining) = coalesce_paste("a".to_owned(), &pending);
@@ -409,10 +403,7 @@ mod tests {
     fn coalesce_large_paste_is_byte_equal_to_chunk_sum() {
         // Given many paste chunks whose sizes vary.
         let chunk_sizes = [0, 1, 64, 1_024, 16_384, 1];
-        let pending: Vec<Event> = chunk_sizes
-            .iter()
-            .map(|&n| paste(&"x".repeat(n)))
-            .collect();
+        let pending: Vec<Event> = chunk_sizes.iter().map(|&n| paste(&"x".repeat(n))).collect();
         let expected: String = chunk_sizes.iter().map(|&n| "x".repeat(n)).collect();
 
         // When coalescing.
