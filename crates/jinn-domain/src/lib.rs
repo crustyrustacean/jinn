@@ -75,7 +75,6 @@ pub use feat::session::SqliteSessionStore;
 pub use feat::session::no_api_keys_msg;
 pub use feat::session::phase_machine::PhaseKind;
 
-
 // Re-export reasoning types
 pub use feat::reasoning::{ReasoningConfig, ReasoningEffort, resolve_effort};
 // Re-export preferences types

@@ -17,6 +17,7 @@ fn make_factory(server: &mockito::ServerGuard) -> OpenAiCompatibleFactory {
         Some(server.url()),
         "test-key".to_owned(),
         None,
+        None,
         "test-openai".to_owned(),
     )
 }
@@ -32,6 +33,7 @@ fn make_factory_with_extra(
         Some(server.url()),
         "test-key".to_owned(),
         Some(extra),
+        None,
         "test-openai".to_owned(),
     )
 }
@@ -352,6 +354,7 @@ async fn list_models_returns_model_ids() {
         Some(server.url()),
         "test-key".into(),
         None,
+        None,
     );
 
     // When listing models.
@@ -386,6 +389,7 @@ async fn list_models_parses_context_length() {
         "gpt-4".into(),
         Some(server.url()),
         "test-key".into(),
+        None,
         None,
     );
 
@@ -422,6 +426,7 @@ async fn list_models_handles_missing_context_length() {
         "local-model".into(),
         Some(server.url()),
         "test-key".into(),
+        None,
         None,
     );
 
@@ -570,6 +575,7 @@ async fn base_url_override_routes_to_correct_host() {
         Some(server.url()),
         "test-key".to_owned(),
         None,
+        None,
         "test-openrouter".to_owned(),
     );
 
@@ -613,6 +619,7 @@ fn factory_rejects_empty_api_key() {
         "gpt-4".to_owned(),
         None,
         String::new(),
+        None,
         None,
         "test-openai".to_owned(),
     );
@@ -684,6 +691,7 @@ async fn custom_headers_from_config_are_sent() {
         "test-model".to_owned(),
         Some(server.url()),
         "test-key".to_owned(),
+        None,
         None,
         "test-custom".to_owned(),
     );

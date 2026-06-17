@@ -231,7 +231,7 @@ fn create_factory_delegates_to_registry() {
 
     // When creating a factory via the service.
     let id = crate::provider_id::ProviderId::new("sample/sample".to_owned());
-    let factory = service.create_factory(&id, &api_keys);
+    let factory = service.create_factory(&id, &api_keys, None);
 
     // Then it succeeds and returns a factory named "Sample".
     assert!(factory.is_ok());

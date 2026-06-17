@@ -119,16 +119,24 @@ impl SessionPersistenceActor {
                 )
                 .await;
 
-                let (provider_id, model_used) = {
+                let (provider_id, model_used, reasoning_effort) = {
                     let mut state = self.state.write();
                     let session = state.session_mut(&payload.session_id);
-                    let model = &mut session.profile_mut().model;
-                    if model.is_no_provider() {
-                        (None, None)
+                    let profile = session.profile_mut();
+                    let global_default = self
+                        .services
+                        .user_preferences_storage
+                        .read()
+                        .reasoning
+                        .default_effort;
+                    let reasoning_effort =
+                        crate::resolve_effort(profile.reasoning_effort, global_default);
+                    if profile.model.is_no_provider() {
+                        (None, None, reasoning_effort)
                     } else {
-                        let resolved = model.resolve_model();
+                        let resolved = profile.model.resolve_model();
                         session.set_last_token_model(resolved.clone());
-                        (Some(resolved.clone()), Some(resolved))
+                        (Some(resolved.clone()), Some(resolved), reasoning_effort)
                     }
                 };
 
@@ -136,6 +144,7 @@ impl SessionPersistenceActor {
 
                 self.publish(SendToLlmProvider {
                     model_used,
+                    reasoning_effort,
                     session_id: payload.session_id.clone(),
                     messages: assembled.messages,
                     provider_id,
@@ -238,9 +247,19 @@ impl SessionPersistenceActor {
 
         // Resolve model under write lock (round-robin mutates index).
         // Sending → Streaming + record outgoing token count.
-        let (provider_id, model_used, old_phase, new_phase) = {
+        let (provider_id, model_used, reasoning_effort, old_phase, new_phase) = {
             let mut state = self.state.write();
             let session = state.session_mut_or_create(&payload.session_id);
+            let reasoning_effort = {
+                let profile = session.profile();
+                let global_default = self
+                    .services
+                    .user_preferences_storage
+                    .read()
+                    .reasoning
+                    .default_effort;
+                crate::resolve_effort(profile.reasoning_effort, global_default)
+            };
             let model = &mut session.profile_mut().model;
             let (provider_id, model_used) = if model.is_no_provider() {
                 (None, None)
@@ -257,7 +276,13 @@ impl SessionPersistenceActor {
                 tokens_received: 0,
                 cost: None,
             });
-            (provider_id, model_used, old_phase, session.phase())
+            (
+                provider_id,
+                model_used,
+                reasoning_effort,
+                old_phase,
+                session.phase(),
+            )
         };
 
         let estimated_tokens = assembled.estimated_tokens();
@@ -272,6 +297,7 @@ impl SessionPersistenceActor {
 
         self.publish(SendToLlmProvider {
             model_used,
+            reasoning_effort,
             session_id: payload.session_id.clone(),
             messages: assembled.messages,
             provider_id,

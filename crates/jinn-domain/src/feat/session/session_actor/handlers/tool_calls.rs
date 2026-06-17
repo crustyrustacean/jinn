@@ -157,12 +157,22 @@ impl SessionPersistenceActor {
 
         // Resolve model under write lock (round-robin mutates index), push token
         // record, and transition phase — all in one lock acquisition.
-        let (provider_id, model_used, old_phase, new_phase) = {
+        let (provider_id, model_used, reasoning_effort, old_phase, new_phase) = {
             let mut state = self.state.write();
             let session = state.session_mut_or_create(session_id);
             let old_phase = session.phase();
             session.begin_streaming();
 
+            let reasoning_effort = {
+                let profile = session.profile();
+                let global_default = self
+                    .services
+                    .user_preferences_storage
+                    .read()
+                    .reasoning
+                    .default_effort;
+                crate::resolve_effort(profile.reasoning_effort, global_default)
+            };
             let (provider_id, model_used) = {
                 let model = &mut session.profile_mut().model;
                 if model.is_no_provider() {
@@ -181,7 +191,13 @@ impl SessionPersistenceActor {
                 cost: None,
             });
 
-            (provider_id, model_used, old_phase, session.phase())
+            (
+                provider_id,
+                model_used,
+                reasoning_effort,
+                old_phase,
+                session.phase(),
+            )
         };
         super::super::helpers::emit_phase_changed(self.bus(), session_id, old_phase, new_phase)
             .await;
@@ -190,6 +206,7 @@ impl SessionPersistenceActor {
 
         self.publish(SendToLlmProvider {
             model_used,
+            reasoning_effort,
             session_id: session_id.clone(),
             messages: assembled.messages,
             provider_id,

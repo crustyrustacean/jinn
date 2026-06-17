@@ -66,6 +66,11 @@ pub struct SendToLlmProvider {
     /// Set by the dispatch layer after resolving alloys.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub model_used: Option<String>,
+    /// Resolved reasoning effort for this request (session override
+    /// merged with the global default). `None` means send no effort
+    /// field (provider default).
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub reasoning_effort: Option<jinn_provider::ReasoningEffort>,
     /// When this request was dispatched to the LLM.
     pub dispatched_at: Timestamp,
 }
