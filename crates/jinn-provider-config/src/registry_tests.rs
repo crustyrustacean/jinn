@@ -327,7 +327,11 @@ fn create_factory_succeeds_for_sample_backend() {
     let api_keys = ApiKeys::new();
 
     // When creating a factory.
-    let factory = registry.create_factory(&ProviderId::new("sample/sample".to_owned()), &api_keys);
+    let factory = registry.create_factory(
+        &ProviderId::new("sample/sample".to_owned()),
+        &api_keys,
+        None,
+    );
 
     // Then it succeeds and returns a factory named "Sample".
     assert!(factory.is_ok());
@@ -359,6 +363,7 @@ fn create_factory_succeeds_for_keyless_openai_backend() {
     let factory = registry.create_factory(
         &ProviderId::new("lmstudio/local-model".to_owned()),
         &api_keys,
+        None,
     );
 
     // Then it succeeds (dummy key is substituted for keyless providers).
@@ -468,7 +473,11 @@ fn create_factory_for_model_succeeds_for_known_provider() {
     registry.merge_cache(&cache);
 
     // When creating a factory for the remote model.
-    let factory = registry.create_factory(&ProviderId::new("ollama/mistral".to_owned()), &api_keys);
+    let factory = registry.create_factory(
+        &ProviderId::new("ollama/mistral".to_owned()),
+        &api_keys,
+        None,
+    );
 
     // Then it succeeds.
     assert!(factory.is_ok());
@@ -483,7 +492,11 @@ fn create_factory_fails_for_unknown_provider_after_merge() {
     let api_keys = ApiKeys::new();
 
     // When creating a factory for an unknown provider (no cache merged).
-    let factory = registry.create_factory(&ProviderId::new("unknown/model".to_owned()), &api_keys);
+    let factory = registry.create_factory(
+        &ProviderId::new("unknown/model".to_owned()),
+        &api_keys,
+        None,
+    );
 
     // Then it fails.
     assert!(factory.is_err());
@@ -528,6 +541,7 @@ fn create_factory_succeeds_for_merged_remote_model() {
     let factory = registry.create_factory(
         &ProviderId::new("lmstudio/my-real-model".to_owned()),
         &api_keys,
+        None,
     );
 
     // Then it succeeds (merged into registry).
@@ -543,7 +557,11 @@ fn create_factory_for_static_model_still_works() {
     let api_keys = ApiKeys::new();
 
     // When creating a factory for the statically configured model.
-    let factory = registry.create_factory(&ProviderId::new("ollama/llama3".to_owned()), &api_keys);
+    let factory = registry.create_factory(
+        &ProviderId::new("ollama/llama3".to_owned()),
+        &api_keys,
+        None,
+    );
 
     // Then it succeeds (unchanged behavior).
     assert!(factory.is_ok());
@@ -590,6 +608,7 @@ fn create_factory_succeeds_for_merged_model_with_slashes() {
     let factory = registry.create_factory(
         &ProviderId::new("openrouter/anthropic/claude-sonnet-4".to_owned()),
         &api_keys,
+        None,
     );
 
     // Then it succeeds.

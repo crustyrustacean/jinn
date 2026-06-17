@@ -32,8 +32,8 @@ pub use crate::feat::auto_prune_worker::trivial_assistant::TrivialAssistantAutoP
 pub use crate::feat::compaction_worker::CompactionConfig;
 pub use crate::feat::cwd_input::CwdSelectorConfig;
 pub use crate::feat::llm_actor::RequestRetryConfig;
-pub use crate::feat::session_lifecycle::SessionLifecycle;
 pub use crate::feat::reasoning::ReasoningConfig;
+pub use crate::feat::session_lifecycle::SessionLifecycle;
 pub use crate::feat::tools_actor::OpenrouterWebSearchConfig;
 pub use crate::feat::tools_actor::bash::BashConfig;
 pub use crate::feat::ui::MinimapConfig;
@@ -117,7 +117,6 @@ pub struct UserPreferences {
     #[serde(default)]
     pub reasoning: ReasoningConfig,
 }
-
 
 impl Default for UserPreferences {
     fn default() -> Self {

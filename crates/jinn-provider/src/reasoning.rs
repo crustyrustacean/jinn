@@ -135,8 +135,7 @@ mod tests {
         // Given a wire string that isn't a known effort level.
         // When deserializing.
         // Then it is an error (strict — no silent fallback).
-        let result =
-            serde_json::from_value::<ReasoningEffort>(serde_json::json!("ultra"));
+        let result = serde_json::from_value::<ReasoningEffort>(serde_json::json!("ultra"));
         assert!(result.is_err());
     }
 
@@ -148,10 +147,7 @@ mod tests {
     #[case(ReasoningEffort::Low, "low")]
     #[case(ReasoningEffort::Minimal, "minimal")]
     #[case(ReasoningEffort::None, "none")]
-    fn as_str_matches_serialized_form(
-        #[case] effort: ReasoningEffort,
-        #[case] expected: &str,
-    ) {
+    fn as_str_matches_serialized_form(#[case] effort: ReasoningEffort, #[case] expected: &str) {
         // Given a ReasoningEffort variant.
         // When calling as_str().
         // Then it returns the same string serde would emit.

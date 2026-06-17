@@ -183,14 +183,22 @@ impl QueueActor {
             assemble_prompt(&guard, session_id, &self.counter, None)
         };
 
-        let (provider_id, model_used) = {
+        let (provider_id, model_used, reasoning_effort) = {
             let mut state = self.state.write();
-            let model = &mut state.session_mut(session_id).profile_mut().model;
-            if model.is_no_provider() {
-                (None, None)
+            let profile = state.session_mut(session_id).profile_mut();
+            let global_default = self
+                .deps
+                .services
+                .user_preferences_storage
+                .read()
+                .reasoning
+                .default_effort;
+            let reasoning_effort = crate::resolve_effort(profile.reasoning_effort, global_default);
+            if profile.model.is_no_provider() {
+                (None, None, reasoning_effort)
             } else {
-                let resolved = model.resolve_model();
-                (Some(resolved.clone()), Some(resolved))
+                let resolved = profile.model.resolve_model();
+                (Some(resolved.clone()), Some(resolved), reasoning_effort)
             }
         };
 
@@ -198,6 +206,7 @@ impl QueueActor {
 
         self.publish(SendToLlmProvider {
             model_used,
+            reasoning_effort,
             session_id: session_id.clone(),
             messages: assembled.messages,
             provider_id,
@@ -249,14 +258,22 @@ impl QueueActor {
             assemble_prompt(&guard, session_id, &self.counter, None)
         };
 
-        let (provider_id, model_used) = {
+        let (provider_id, model_used, reasoning_effort) = {
             let mut state = self.state.write();
-            let model = &mut state.session_mut(session_id).profile_mut().model;
-            if model.is_no_provider() {
-                (None, None)
+            let profile = state.session_mut(session_id).profile_mut();
+            let global_default = self
+                .deps
+                .services
+                .user_preferences_storage
+                .read()
+                .reasoning
+                .default_effort;
+            let reasoning_effort = crate::resolve_effort(profile.reasoning_effort, global_default);
+            if profile.model.is_no_provider() {
+                (None, None, reasoning_effort)
             } else {
-                let resolved = model.resolve_model();
-                (Some(resolved.clone()), Some(resolved))
+                let resolved = profile.model.resolve_model();
+                (Some(resolved.clone()), Some(resolved), reasoning_effort)
             }
         };
 
@@ -264,6 +281,7 @@ impl QueueActor {
 
         self.publish(SendToLlmProvider {
             model_used,
+            reasoning_effort,
             session_id: session_id.clone(),
             messages: assembled.messages,
             provider_id,
