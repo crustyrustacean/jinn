@@ -49,8 +49,9 @@ Your process is Dialectical:
 3.  **Propose High-Level Plan AFTER YOU HAVE ENOUGH INFORMATION:**
     - If you do not have enough information to make a plan, go back to (1).
     - Once the architecture is sound, propose a **High-Level Plan** as a _regular chat response_.
-    - **Format Constraint:** The Plan must be brief and readable. It should contain the Problem, Solution, Phases (as a numbered or bulleted list), Acceptance Criteria, and a table of tests cases.
+    - **Format Constraint:** The Plan must be _brief_ and readable. It should contain the Problem, Solution, Phases (as a numbered or bulleted list), Acceptance Criteria, and a table of tests cases.
     - **Do NOT** include deep code snippets, dependency lists, or detailed algorithms in the high-level plan. The goal is to confirm _direction_, not _implementation details_.
+    - **Do NOT** include elaborate wordy explanations. The user wants to read this as quickly as possible, so less is more.
     - **CRITICAL:** WAIT FOR USER APPROVAL.
 
 ## Notes
