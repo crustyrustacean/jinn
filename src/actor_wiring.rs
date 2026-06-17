@@ -76,13 +76,7 @@ impl ActorSystemBuilder {
         Self { args }
     }
     /// Spawn all actors via kameo, build the bus and bridge, and wait for readiness.
-    pub async fn build(
-        self,
-    ) -> (
-        AppCore,
-        Services,
-        jinn_domain::feat::plugin_system::SyncPlugins,
-    ) {
+    pub async fn build(self) -> (AppCore, Services, jinn_plugin::SyncPlugins) {
         let ActorSystemBuilderArgs {
             handle,
             llm_service,
@@ -143,41 +137,40 @@ impl ActorSystemBuilder {
         // ── Plugin system ─��──────────────────────────────────────────────────
         // Constructed early — handles go into Services and TuiApp.
 
-        let plugin_command_dispatcher: jinn_domain::feat::plugin_system::CommandDispatcher =
+        let plugin_command_dispatcher: jinn_plugin::CommandDispatcher =
             crate::plugin_wiring::build_command_dispatcher(bridge.clone());
         let handler_cell = domain_ctx_cell.clone();
-        let plugin_request_handler: jinn_domain::feat::plugin_system::RequestHandler =
-            std::sync::Arc::new({
-                move |name: &str,
-                      data: &serde_json::Value,
-                      cancel: Option<tokio_util::sync::CancellationToken>| {
-                    let cell = handler_cell.clone();
-                    let name = name.to_string();
-                    let data = data.clone();
-                    std::boxed::Box::pin(async move {
-                        match cell.get() {
-                            Some(ctx) => {
-                                crate::plugin_wiring::handle_plugin_request(
-                                    &name,
-                                    &data,
-                                    ctx,
-                                    cancel.as_ref(),
-                                )
-                                .await
-                            }
-                            None => {
-                                tracing::warn!(
-                                    name,
-                                    "plugin request before domain_ctx ready; returning null"
-                                );
-                                serde_json::Value::Null
-                            }
+        let plugin_request_handler: jinn_plugin::RequestHandler = std::sync::Arc::new({
+            move |name: &str,
+                  data: &serde_json::Value,
+                  cancel: Option<tokio_util::sync::CancellationToken>| {
+                let cell = handler_cell.clone();
+                let name = name.to_string();
+                let data = data.clone();
+                std::boxed::Box::pin(async move {
+                    match cell.get() {
+                        Some(ctx) => {
+                            crate::plugin_wiring::handle_plugin_request(
+                                &name,
+                                &data,
+                                ctx,
+                                cancel.as_ref(),
+                            )
+                            .await
                         }
-                    })
-                }
-            });
+                        None => {
+                            tracing::warn!(
+                                name,
+                                "plugin request before domain_ctx ready; returning null"
+                            );
+                            serde_json::Value::Null
+                        }
+                    }
+                })
+            }
+        });
 
-        let plugin_build = jinn_domain::feat::plugin_system::PluginSystem::build(
+        let plugin_build = jinn_plugin::PluginSystem::build(
             &paths.plugins_dir(),
             &paths.system_plugins_dir(),
             handle.clone(),
@@ -192,10 +185,8 @@ impl ActorSystemBuilder {
 
         // Store discovered plugin metadata in state for the sidebar.
         {
-            let plugins = jinn_domain::feat::plugin_system::discover_plugins(
-                &paths.plugins_dir(),
-                &paths.system_plugins_dir(),
-            );
+            let plugins =
+                jinn_plugin::discover_plugins(&paths.plugins_dir(), &paths.system_plugins_dir());
             tracing::info!(count = plugins.len(), "discovered plugins");
             let plugins: Vec<jinn_domain::common::app_state::DiscoveredPlugin> = plugins
                 .into_iter()
@@ -230,10 +221,10 @@ impl ActorSystemBuilder {
                     as std::sync::Arc<dyn jinn_domain::feat::plugin_dispatch::PluginSyncCall>,
             ),
             session_plugin_registry:
-                jinn_domain::feat::plugin_system::SessionPluginRegistryService::new(
+                jinn_domain::feat::plugin_dispatch::SessionPluginRegistryService::new(
                     std::sync::Arc::new(async_plugins.clone())
                         as std::sync::Arc<
-                            dyn jinn_domain::feat::plugin_system::SessionPluginRegistry,
+                            dyn jinn_domain::feat::plugin_dispatch::SessionPluginRegistry,
                         >,
                 ),
             tempdir: None,
@@ -421,8 +412,8 @@ impl ActorSystemBuilder {
         // Global-scope plugin tools: registered globally (execution + visibility).
         {
             use jinn_domain::ToolDefinition;
-            use jinn_domain::feat::plugin_system::ToolScopeReexport;
             use jinn_domain::feat::tools_actor::protocol::command::RegisterPluginTools;
+            use jinn_plugin::ToolScopeReexport;
 
             let global_scope_tools: Vec<_> = global_tool_metadata
                 .clone()
@@ -477,8 +468,8 @@ impl ActorSystemBuilder {
         // ToolsRegistered event, so nothing lands in global_tool_definitions).
         {
             use jinn_domain::ToolDefinition;
-            use jinn_domain::feat::plugin_system::ToolScopeReexport;
             use jinn_domain::feat::tools_actor::protocol::command::RegisterPluginTools;
+            use jinn_plugin::ToolScopeReexport;
 
             let attached_scope_tools: Vec<_> = global_tool_metadata
                 .into_iter()

@@ -10,8 +10,9 @@
 //! [`super::PluginSyncCall`] runs hooks on the *async* plugin VM by channeling
 //! from the calling actor thread. Sync interception and badge rendering must run
 //! on the *render thread's* `sync_lua` state (the same Lua state that reads the
-//! toggle flag), with zero channel hops. That state is `!Send`
-//! (`mlua::Lua` is `!Send`), so this trait is intentionally non-`Send`.
+//! toggle flag), with zero channel hops. That state holds a non-`Send` Lua VM
+//! (owned by `jinn-plugin`, which this crate never links directly), so this trait
+//! is intentionally non-`Send`.
 
 use serde::de::DeserializeOwned;
 use serde_json::Value;

@@ -84,7 +84,6 @@ use crate::common::actor_deps::{ActorDeps, BusPublish};
 use crate::common::services::Services;
 use crate::common::services::bus_service::BusService;
 use crate::common::state::State;
-use crate::feat::plugin_system::SessionRegistryId;
 use crate::feat::session::chat_session::ChatSessionState;
 use crate::feat::tools_actor::protocol::command::{
     CancelToolBatch, ExecuteToolBatch, ExecuteWebFetch, RegisterPluginTools, RegisterTools,
@@ -95,6 +94,7 @@ use crate::feat::tools_actor::protocol::event::{
 use crate::feat::tools_actor::tool_types::{ToolCall, ToolContext, ToolDefinition, ToolResult};
 use crate::protocol::SessionId;
 use jiff::Timestamp;
+use jinn_core_types::SessionRegistryId;
 use jinn_provider::ServerToolType;
 use kameo::prelude::{Actor, ActorRef, Context, Message};
 

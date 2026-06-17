@@ -1500,7 +1500,7 @@ mod tests {
 
     /// Helper: create state with a session that has an attached plugin, cursor on the plugin entry.
     fn state_with_plugin_selected() -> AppState {
-        use crate::feat::attached_plugin::AttachedPlugin;
+        use jinn_core_types::AttachedPlugin;
 
         let mut state = AppState::default();
         let session_id = state.session.active_session_id().clone();

@@ -270,7 +270,7 @@ pub struct SessionCore {
     /// Attached plugins - persistent per-session plugin attachments.
     /// OWNER: plugin-dispatch-actor (attach/detach/toggle).
     #[serde(default)]
-    pub attached_plugins: Vec<crate::feat::attached_plugin::AttachedPlugin>,
+    pub attached_plugins: Vec<jinn_core_types::AttachedPlugin>,
     /// Runtime-only state - not persisted across restarts.
     #[serde(skip)]
     pub ephemeral: SessionCoreEphemeral,

@@ -6,6 +6,9 @@ edition.workspace = true
 [dependencies]
 # Internal deps
 jinn-provider = { workspace = true }
+jinn-common = { workspace = true }
+jinn-core-types = { workspace = true }
+jinn-provider-config = { workspace = true }
 jinn-web-fetch = { workspace = true }
 jinn-selection-widget = { workspace = true }
 
@@ -50,7 +53,6 @@ dao = { workspace = true }
 tempfile = { workspace = true }
 twox-hash = { workspace = true }
 dashmap = { workspace = true }
-mlua = { workspace = true }
 
 # Schema + migrations — the single source of truth for the SQLite schema.
 # Consumed by build.rs (compile-time validation DB) and by the runtime migrator.
@@ -69,6 +71,7 @@ rusqlite = { workspace = true }
 rstest = { workspace = true }
 jinn-testutil = { workspace = true }
 tokio = { workspace = true, features = ["test-util"] }
+jinn-common = { workspace = true, features = ["testing"] }
 
 
 [build-dependencies]

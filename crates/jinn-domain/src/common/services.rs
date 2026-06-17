@@ -20,11 +20,11 @@ use kameo::actor::Spawn;
 use crate::feat::plugin_dispatch::{
     PluginFire, PluginFireError, PluginSyncCall, PluginSyncCallError,
 };
-use crate::feat::plugin_system::SessionRegistryId;
 use crate::feat::preferences_actor::{
     AppStateStorageService, InMemoryAppStateStorage, InMemoryUserPreferencesStorage,
     UserPreferencesStorageService,
 };
+use jinn_core_types::SessionRegistryId;
 
 pub use crate::feat::provider_infra;
 use crate::feat::provider_infra::{
@@ -77,7 +77,7 @@ pub struct Services {
     /// Plugin system sync handle (blocking hook calls from actors).
     pub plugin_sync: crate::feat::plugin_dispatch::PluginSyncCallService,
     /// Per-session plugin registry (manages isolated Lua states for attached plugins).
-    pub session_plugin_registry: crate::feat::plugin_system::SessionPluginRegistryService,
+    pub session_plugin_registry: crate::feat::plugin_dispatch::SessionPluginRegistryService,
     /// Test-only owned temp directory. `None` in production.
     ///
     /// Held here so the dir outlives the [`AppPaths`] that points at it
@@ -169,10 +169,11 @@ impl Services {
             plugin_sync: crate::feat::plugin_dispatch::PluginSyncCallService::new(
                 std::sync::Arc::new(NoopPluginSyncCall) as std::sync::Arc<dyn PluginSyncCall>,
             ),
-            session_plugin_registry: crate::feat::plugin_system::SessionPluginRegistryService::new(
-                std::sync::Arc::new(NoopSessionPluginRegistry)
-                    as std::sync::Arc<dyn crate::feat::plugin_system::SessionPluginRegistry>,
-            ),
+            session_plugin_registry:
+                crate::feat::plugin_dispatch::SessionPluginRegistryService::new(
+                    std::sync::Arc::new(NoopSessionPluginRegistry)
+                        as std::sync::Arc<dyn crate::feat::plugin_dispatch::SessionPluginRegistry>,
+                ),
             tempdir: Some(tempdir),
             bus,
             bridge,
@@ -225,10 +226,11 @@ impl Services {
             plugin_sync: crate::feat::plugin_dispatch::PluginSyncCallService::new(
                 std::sync::Arc::new(NoopPluginSyncCall) as std::sync::Arc<dyn PluginSyncCall>,
             ),
-            session_plugin_registry: crate::feat::plugin_system::SessionPluginRegistryService::new(
-                std::sync::Arc::new(NoopSessionPluginRegistry)
-                    as std::sync::Arc<dyn crate::feat::plugin_system::SessionPluginRegistry>,
-            ),
+            session_plugin_registry:
+                crate::feat::plugin_dispatch::SessionPluginRegistryService::new(
+                    std::sync::Arc::new(NoopSessionPluginRegistry)
+                        as std::sync::Arc<dyn crate::feat::plugin_dispatch::SessionPluginRegistry>,
+                ),
             tempdir: Some(tempdir),
             bus,
             bridge,
@@ -272,7 +274,7 @@ impl PluginFire for NoopPluginFire {
         _session: SessionRegistryId,
         hook: &str,
         _ctx: &serde_json::Value,
-        _enabled_instances: Vec<crate::feat::plugin_system::PluginInstanceId>,
+        _enabled_instances: Vec<jinn_core_types::PluginInstanceId>,
     ) -> Result<(), Report<PluginFireError>> {
         tracing::debug!(hook, "noop plugin fire for session");
         Ok(())
@@ -336,25 +338,25 @@ impl PluginSyncCall for NoopPluginSyncCall {
 pub struct NoopSessionPluginRegistry;
 
 #[async_trait::async_trait]
-impl crate::feat::plugin_system::SessionPluginRegistry for NoopSessionPluginRegistry {
+impl crate::feat::plugin_dispatch::SessionPluginRegistry for NoopSessionPluginRegistry {
     async fn create_session_registry(
         &self,
-        _instances: Vec<(crate::feat::plugin_system::PluginInstanceId, String)>,
+        _instances: Vec<(jinn_core_types::PluginInstanceId, String)>,
         _origin_session_id: crate::protocol::SessionId,
     ) -> Result<
-        crate::feat::plugin_system::CreateSessionRegistryResult,
-        Report<crate::feat::plugin_system::SessionPluginRegistryError>,
+        crate::feat::plugin_dispatch::CreateSessionRegistryResult,
+        Report<crate::feat::plugin_dispatch::SessionPluginRegistryError>,
     > {
-        Ok(crate::feat::plugin_system::CreateSessionRegistryResult {
-            registry_id: crate::feat::plugin_system::SessionRegistryId::new(),
+        Ok(crate::feat::plugin_dispatch::CreateSessionRegistryResult {
+            registry_id: jinn_core_types::SessionRegistryId::new(),
             tool_metadata: Vec::new(),
         })
     }
 
     async fn destroy_session_registry(
         &self,
-        _registry_id: crate::feat::plugin_system::SessionRegistryId,
-    ) -> Result<(), Report<crate::feat::plugin_system::SessionPluginRegistryError>> {
+        _registry_id: jinn_core_types::SessionRegistryId,
+    ) -> Result<(), Report<crate::feat::plugin_dispatch::SessionPluginRegistryError>> {
         Ok(())
     }
 

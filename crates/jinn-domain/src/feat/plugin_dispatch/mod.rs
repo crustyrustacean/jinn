@@ -28,6 +28,8 @@ pub mod plugin_fire;
 pub mod plugin_sync;
 pub mod plugin_sync_hooks;
 pub mod protocol;
+pub mod session_plugin_registry;
+pub mod session_plugin_registry_service;
 
 pub use actor::{PluginDispatchActor, PluginDispatchActorDeps};
 pub use domain_node_context::DomainNodeContext;
@@ -39,3 +41,8 @@ pub use plugin_sync_hooks::{
     BadgeDirective, BadgeSegment, InterceptOutcome, PluginSyncHooks, PreviewDirective,
     call_hooks_typed,
 };
+pub use session_plugin_registry::{
+    CreateSessionRegistryResult, PluginToolMetadata, SessionPluginRegistry,
+    SessionPluginRegistryError, ToolScope,
+};
+pub use session_plugin_registry_service::SessionPluginRegistryService;

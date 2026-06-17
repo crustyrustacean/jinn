@@ -8,7 +8,7 @@ use error_stack::Report;
 use serde_json::Value;
 use wherror::Error;
 
-use crate::feat::plugin_system::SessionRegistryId;
+use jinn_core_types::SessionRegistryId;
 
 /// Error raised by [`PluginFire`] implementations.
 #[derive(Debug, Error)]
@@ -44,7 +44,7 @@ pub trait PluginFire: Send + Sync {
         session: SessionRegistryId,
         hook: &str,
         ctx: &Value,
-        enabled_instances: Vec<crate::feat::plugin_system::PluginInstanceId>,
+        enabled_instances: Vec<jinn_core_types::PluginInstanceId>,
     ) -> Result<(), Report<PluginFireError>>;
 
     /// Fire an async hook, collecting return values from all global plugins.
@@ -135,7 +135,7 @@ impl PluginFireService {
         session: SessionRegistryId,
         hook: &str,
         ctx: &Value,
-        enabled_instances: Vec<crate::feat::plugin_system::PluginInstanceId>,
+        enabled_instances: Vec<jinn_core_types::PluginInstanceId>,
     ) -> Result<(), Report<PluginFireError>> {
         self.backend
             .fire_async_for_session_json(session, hook, ctx, enabled_instances)

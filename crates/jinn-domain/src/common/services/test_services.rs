@@ -10,7 +10,7 @@ use crate::common::services::{NoopPluginFire, NoopPluginSyncCall, NoopSessionPlu
 use crate::feat::plugin_dispatch::{
     PluginFire, PluginFireService, PluginSyncCall, PluginSyncCallService,
 };
-use crate::feat::plugin_system::{SessionPluginRegistry, SessionPluginRegistryService};
+use crate::feat::plugin_dispatch::{SessionPluginRegistry, SessionPluginRegistryService};
 use crate::feat::preferences_actor::{
     AppStateStorageService, InMemoryAppStateStorage, InMemoryUserPreferencesStorage,
     UserPreferencesStorageService,

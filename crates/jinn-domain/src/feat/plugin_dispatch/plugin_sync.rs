@@ -8,7 +8,7 @@ use error_stack::Report;
 use serde_json::Value;
 use wherror::Error;
 
-use crate::feat::plugin_system::SessionRegistryId;
+use jinn_core_types::SessionRegistryId;
 
 /// Error raised by [`PluginSyncCall`] implementations.
 #[derive(Debug, Error)]
