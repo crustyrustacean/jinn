@@ -155,7 +155,7 @@ fn given_active_provider_set(world: &mut JudgeWorld) {
         .write()
         .session
         .active_session_mut()
-        .set_model(ModelSelection::Single("test".to_owned()));
+        .set_model(ModelSelection::Single("test/test".to_owned()));
 }
 
 #[cucumber::given(expr = "the app attaches the plugin {string}")]
