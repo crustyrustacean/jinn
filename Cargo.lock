@@ -1821,6 +1821,7 @@ dependencies = [
  "jiff",
  "jinn-cli",
  "jinn-domain",
+ "jinn-plugin",
  "jinn-tui",
  "jinn-web-fetch",
  "kameo",
@@ -1851,6 +1852,29 @@ dependencies = [
 ]
 
 [[package]]
+name = "jinn-common"
+version = "0.68.0"
+dependencies = [
+ "dirs",
+ "error-stack",
+ "rstest",
+ "tempfile",
+ "toml",
+ "toml_edit 0.22.27",
+ "wherror",
+]
+
+[[package]]
+name = "jinn-core-types"
+version = "0.68.0"
+dependencies = [
+ "rstest",
+ "serde",
+ "serde_json",
+ "uuid",
+]
+
+[[package]]
 name = "jinn-domain"
 version = "0.68.0"
 dependencies = [
@@ -1866,7 +1890,10 @@ dependencies = [
  "fuzzy-matcher",
  "humantime",
  "jiff",
+ "jinn-common",
+ "jinn-core-types",
  "jinn-provider",
+ "jinn-provider-config",
  "jinn-selection-widget",
  "jinn-session-schema",
  "jinn-testutil",
@@ -1877,7 +1904,6 @@ dependencies = [
  "kanal",
  "kill_tree",
  "libc",
- "mlua",
  "parking_lot",
  "rand 0.9.4",
  "ratatui",
@@ -1927,6 +1953,31 @@ dependencies = [
 ]
 
 [[package]]
+name = "jinn-plugin"
+version = "0.68.0"
+dependencies = [
+ "async-trait",
+ "dashmap",
+ "derive_more",
+ "error-stack",
+ "futures",
+ "jinn-core-types",
+ "jinn-domain",
+ "kanal",
+ "mlua",
+ "parking_lot",
+ "rstest",
+ "serde",
+ "serde_json",
+ "tempfile",
+ "tokio",
+ "tokio-util",
+ "tracing",
+ "uuid",
+ "wherror",
+]
+
+[[package]]
 name = "jinn-provider"
 version = "0.68.0"
 dependencies = [
@@ -1943,6 +1994,26 @@ dependencies = [
  "serde",
  "serde_json",
  "tokio",
+ "tracing",
+ "wherror",
+]
+
+[[package]]
+name = "jinn-provider-config"
+version = "0.68.0"
+dependencies = [
+ "dirs",
+ "error-stack",
+ "jiff",
+ "jinn-common",
+ "jinn-provider",
+ "parking_lot",
+ "rstest",
+ "serde",
+ "serde_json",
+ "tempfile",
+ "toml",
+ "toml_edit 0.22.27",
  "tracing",
  "wherror",
 ]
@@ -2004,6 +2075,7 @@ dependencies = [
  "dirs",
  "error-stack",
  "jinn-domain",
+ "jinn-plugin",
  "jinn-selection-widget",
  "jinn-testutil",
  "kameo",

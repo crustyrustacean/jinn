@@ -239,11 +239,7 @@ pub fn sorted_open_sessions(state: &AppState) -> Vec<SessionEntry> {
 #[expect(clippy::expect_used, reason = "infallible")]
 fn insert_plugin_entries(state: &AppState, entries: &mut Vec<SessionEntry>) {
     // Collect (insert_index, session_id, plugins) for each session with plugins.
-    let mut insertions: Vec<(
-        usize,
-        SessionId,
-        Vec<crate::feat::attached_plugin::AttachedPlugin>,
-    )> = Vec::new();
+    let mut insertions: Vec<(usize, SessionId, Vec<jinn_core_types::AttachedPlugin>)> = Vec::new();
 
     let mut i = 0;
     while i < entries.len() {

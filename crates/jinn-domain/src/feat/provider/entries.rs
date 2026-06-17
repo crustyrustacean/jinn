@@ -2,7 +2,7 @@
 //!
 //! Contains loader functions, sorting, and formatting utilities for the
 //! provider picker overlay. The [`PickerEntry`] struct and [`PickerItem`]
-//! implementation live in `jinn-protocol`.
+//! implementation live in `crate::protocol`.
 
 use crate::feat::picker::style::promote_active_to_top;
 use crate::feat::theme::Theme;

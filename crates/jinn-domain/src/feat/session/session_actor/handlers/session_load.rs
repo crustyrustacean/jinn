@@ -118,11 +118,8 @@ impl SessionPersistenceActor {
             return;
         };
         for ap in &mut session.core.attached_plugins {
-            if matches!(
-                ap.run_state,
-                crate::feat::attached_plugin::PluginRunState::Running
-            ) {
-                ap.run_state = crate::feat::attached_plugin::PluginRunState::Idle;
+            if matches!(ap.run_state, jinn_core_types::PluginRunState::Running) {
+                ap.run_state = jinn_core_types::PluginRunState::Idle;
             }
         }
     }
