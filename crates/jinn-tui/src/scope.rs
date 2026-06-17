@@ -54,6 +54,9 @@ pub enum Scope {
     /// Pruner accumulation threshold input mode - numeric input for the KV-cache gate.
     PrunerAccumulationInput,
 
+    /// Quake bar overlay - global console. Captures all keystrokes while open.
+    QuakeBar,
+
     /// Sidebar resize mode - adjusting sidebar width.
     SidebarResize,
 }
@@ -84,6 +87,7 @@ impl std::fmt::Display for Scope {
             Self::RenameSessionInput => write!(f, "RenameSessionInput"),
             Self::CwdInput => write!(f, "CwdInput"),
             Self::PrunerAccumulationInput => write!(f, "PrunerAccumulationInput"),
+            Self::QuakeBar => write!(f, "QuakeBar"),
         }
     }
 }
@@ -115,6 +119,7 @@ impl std::str::FromStr for Scope {
             "RenameSessionInput" => Ok(Self::RenameSessionInput),
             "CwdInput" => Ok(Self::CwdInput),
             "PrunerAccumulationInput" => Ok(Self::PrunerAccumulationInput),
+            "QuakeBar" => Ok(Self::QuakeBar),
             "SidebarResize" => Ok(Self::SidebarResize),
 
             _ => Err(()),

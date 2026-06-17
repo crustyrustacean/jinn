@@ -8,15 +8,13 @@ A TUI agent harness with multi-session support and Vim-style keybinds.
 - Which-key style keybind system with help popup
 - Quickly navigate and change things via Telescope-inspired picker:
   - Select model/provider
-  - Skills and tools enable/disable
-- Custom lifecycle scripts that run on session start/stop
-  - Use to set up environment or git worktrees and also automerge the branch when closing the session
+  - Enable/disable skills (with preview) and tools
 - Context management
-  - Multiple background workers continually manage the context while sessions are in-progress
+  - Background workers continually manage the context while sessions are in-progress. Changes are buffered (configurable) to take advantage of prefix cache pricing.
   - Individual chat entries can be added to or removed from context using `x`
   - Pin messages with `p` to keep them in context indefinitely
 - Fork a new session from any message by hitting `f`
-- Agent-managed task list
+- Agent-managed task list with progress display.
 - Customizable personas
 - Standard agent harness-y things like `AGENTS.md`, `~/.agents` skill discovery, custom prompts (including project-specific for all of these)
 
@@ -57,23 +55,22 @@ The binary will be at `target/release/jinn` and you'll need to add it to your `$
 jinn
 ```
 
-Note that each section of the application has it's own set of keybinds. Make use of `?` to display which keybinds are available in any given scope (or `F1` if you are in a text input box).
+Note that each part of the UI has it's own set of keybinds. Make use of `?` to display which keybinds are available in any given scope (or `F1` if you are in a text input box).
 
 ### Creating new sessions
 
 There are multiple ways to create new sessions:
 
 - `/new` in the chat input
-- `<M-s>n` (alt+s) for a new regular session (`<M-s>` moves to the session list)
-- `<M-s>N` for a new session with lifecycle scripting
+- `<M-s>n` (alt+s)n
 
-### Input types
+### Message Queueing
 
-`jinn` supports multiple message input types based on the current session state:
+`jinn` supports multiple message queues based on the current session state:
 
 - Session is idle -> message always send immediately
 - Session is working:
-  - QUEUE mode -> Messages enter a buffer and will be flushed (one at a time) after the agent is done working. Use this mode if you want to wait for the model to finish something before they get the next message (like "Please double-check your work").
+  - QUEUE mode -> Messages enter a buffer and will be flushed (one at a time) after the agent is done working. Use this mode if you want to wait for the model to finish before they get the next message (like "Please double-check your work").
   - STEER mode (default) -> Messages enter a buffer and will be flushed (all at once) in between tool calls. This allows you to "steer" the model in the middle of it's work.
 
 ### Navigation
@@ -87,9 +84,9 @@ Navigating between interface elements uses directional keybinds based on spatial
 
 Under the default theme, anything colored `yellow` means "has focus".
 
-### Prompts
+### Custom Prompts
 
-Prompts are activated using `#foo` where `foo` is the name of the prompt. You will see a prompt picker popup when typing `#`. You can use the arrow keys to select a prompt.
+Prompts are inserted using `#foo` where `foo` is the name of the prompt. You will get a popup with your available prompts as soon as you type `#`. You can use the arrow keys to select a prompt.
 
 Prompts are only expanded when they get sent to the model and will always show up as `#foo` in the chat input and in the history. If you want to edit the contents of a prompt _before_ sending, type `#foo#`. As soon as the second `#` is typed, the prompt will be fully expanded in the chat input and you can edit it before sending (this does _not_ change the on-disk prompt).
 
@@ -109,8 +106,7 @@ To create a new feature or project:
    - You don't _have_ to use one of these skills to begin the coding loop, but it's recommended because they include instructions about periodically getting the latest code to reduce merge conflicts, and also how to properly manage the task list. The skills are SCM and language-agnostic and have been testing on `git`, `Fossil`, `Rust`, `Kotlin`, `Android`, and Shell scripts.
 
 5. After implementation is complete, submit a `#gap-analysis` message.
-
-- Using the `#gap-analysis` prompt tells the agent to confirm that the implementation meets the acceptance criteria. It will produce a table and make recommendations based on anything that was missed.
+   - Using the `#gap-analysis` prompt tells the agent to confirm that the implementation meets the acceptance criteria. It will produce a table and make recommendations based on anything that was missed.
 
 ## Configuration
 
@@ -130,20 +126,16 @@ None. Bring your OS's sandboxing features.
 - macOS: [App Sandbox](https://developer.apple.com/documentation/xcode/configuring-the-macos-app-sandbox)
 - Windows: [Windows Sandbox (WSB)](https://learn.microsoft.com/en-us/windows/security/application-security/application-isolation/windows-sandbox/)
 
-## Roadmap
+## Major Roadmap Items
 
 - Plugins
   - Plugins are a continual WIP. Various parts of `jinn` are being exposed over time to enable more sophisticated plugins.
-- Headless mode
-  - Target functionality is `prompt -> tool loop until completion -> exit`
-- Scripted mode
-  - Target functionality is full automation by mapping the input script to keystrokes + being able to record scripts while in TUI mode.
 
 ## Contributing
 
 Contributions are welcome, but please file an issue first. PRs _without_ a corresponding issue will be closed.
 
-Automated agents are welcome, but please identify as a bot/agent in the issue tracker.
+Automated agent issues/submissions are welcome, but please identify as a bot/agent in the issue tracker.
 
 ## Shoutouts
 

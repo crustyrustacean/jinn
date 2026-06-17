@@ -368,6 +368,7 @@ pub fn scope_for_focus(focus: &jinn_domain::FocusScope) -> Scope {
         FocusScope::RenameSessionInput => Scope::RenameSessionInput,
         FocusScope::CwdInput => Scope::CwdInput,
         FocusScope::PrunerAccumulationInput => Scope::PrunerAccumulationInput,
+        FocusScope::QuakeBar => Scope::QuakeBar,
         FocusScope::SidebarResize => Scope::SidebarResize,
 
         FocusScope::Normal => Scope::Normal,
