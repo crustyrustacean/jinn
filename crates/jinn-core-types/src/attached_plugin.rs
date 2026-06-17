@@ -12,42 +12,10 @@
 //! See `crates/jinn-plugin/src/lib.rs` for the four access patterns.
 
 use serde::{Deserialize, Serialize};
-use uuid::Uuid;
 
-use crate::protocol::SessionId;
+use crate::SessionId;
 
-/// Stable unique identifier for a single attached-plugin *instance*.
-///
-/// Generated when an [`AttachedPlugin`] is created and persisted with it, so
-/// the identity survives restarts. Two attachments of the same plugin name get
-/// distinct ids. Old persisted data lacking the field hydrates a fresh id via
-/// `#[serde(default)]`.
-///
-/// Stored as an opaque string and derives equality/hashing so it can be used
-/// as a `HashMap` key (the per-session hooks map and the plugin-data store both
-/// key on it).
-#[derive(Debug, Clone, PartialEq, Eq, Hash, Serialize, Deserialize)]
-pub struct PluginInstanceId(String);
-
-impl PluginInstanceId {
-    /// Generate a new unique instance id using UUID v7.
-    #[must_use]
-    pub fn new() -> Self {
-        Self(format!("i-{}", Uuid::now_v7()))
-    }
-}
-
-impl Default for PluginInstanceId {
-    fn default() -> Self {
-        Self::new()
-    }
-}
-
-impl std::fmt::Display for PluginInstanceId {
-    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        write!(f, "{}", self.0)
-    }
-}
+use crate::PluginInstanceId;
 
 /// A plugin attached to a session.
 ///

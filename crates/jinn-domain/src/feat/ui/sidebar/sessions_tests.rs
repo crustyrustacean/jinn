@@ -1948,7 +1948,7 @@ fn clear_visual_parents_on_load_actually_removes_entries() {
 // --- Plugin entries in sorted_open_sessions ---
 
 fn state_with_plugins() -> AppState {
-    use crate::feat::attached_plugin::AttachedPlugin;
+    use jinn_core_types::AttachedPlugin;
 
     let mut state = AppState::default();
 
@@ -2085,7 +2085,7 @@ fn sorted_open_sessions_plugins_after_real_children() {
 }
 
 fn state_with_session_and_plugins(plugin_count: usize) -> AppState {
-    use crate::feat::attached_plugin::AttachedPlugin;
+    use jinn_core_types::AttachedPlugin;
 
     let mut state = AppState::default();
     let session = state.session.active_session_id().clone();
@@ -2117,7 +2117,7 @@ fn navigate_down_lands_on_plugin_entry() {
 
 #[test]
 fn navigate_up_lands_on_plugin_entry() {
-    use crate::feat::attached_plugin::AttachedPlugin;
+    use jinn_core_types::AttachedPlugin;
     let mut state = state_with_sessions(2);
     {
         let sessions: Vec<_> = state.session.iter().collect();
@@ -2215,7 +2215,7 @@ fn sorted_open_sessions_excludes_automated_sessions() {
 // ---------------------------------------------------------------------------
 
 fn state_with_managed_judge_session(streaming: bool) -> AppState {
-    use crate::feat::attached_plugin::AttachedPlugin;
+    use jinn_core_types::AttachedPlugin;
 
     let mut state = AppState::default();
     let root_id = state.session.active_session_id().clone();

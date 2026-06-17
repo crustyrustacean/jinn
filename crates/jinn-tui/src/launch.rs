@@ -51,7 +51,7 @@ pub struct LaunchError;
 pub fn launch(
     core: AppCore,
     services: jinn_domain::Services,
-    plugins: jinn_domain::feat::plugin_system::SyncPlugins,
+    plugins: jinn_plugin::SyncPlugins,
 ) -> Result<TuiApp, Report<LaunchError>> {
     let paths = &services.paths;
     load_compaction_prompt(
@@ -146,7 +146,7 @@ pub fn load_theme(state: &State, user_dir: &Path, system_dir: &Path) {
 pub fn launch_for_test(
     core: AppCore,
     services: jinn_domain::Services,
-    plugins: jinn_domain::feat::plugin_system::SyncPlugins,
+    plugins: jinn_plugin::SyncPlugins,
 ) -> TuiApp {
     let mut ui_registry = AppUiRegistry::new();
     jinn_domain::register_all_ui_elements(&mut ui_registry);

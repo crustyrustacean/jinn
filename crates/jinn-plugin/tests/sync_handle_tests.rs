@@ -13,8 +13,8 @@ use std::path::Path;
 use std::sync::Arc;
 
 use jinn_domain::SessionId;
-use jinn_domain::feat::plugin_system::SessionPluginRegistry;
-use jinn_domain::feat::plugin_system::{
+use jinn_domain::feat::plugin_dispatch::SessionPluginRegistry;
+use jinn_plugin::{
     PluginCommand, PluginInstanceId, PluginSyncHandle, PluginSystem, PluginSystemBuildResult,
 };
 use serde::Serialize;
@@ -156,7 +156,7 @@ fn sync_handle_excludes_nil() {
 fn build_both(
     dir: &Path,
 ) -> (
-    jinn_domain::feat::plugin_system::AsyncPluginHandle,
+    jinn_plugin::AsyncPluginHandle,
     PluginSyncHandle,
     Arc<Mutex<Vec<PluginCommand>>>,
 ) {

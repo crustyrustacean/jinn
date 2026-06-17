@@ -467,7 +467,7 @@ pub(crate) struct PersistableCore {
     /// Attached plugins - persistent per-session plugin attachments.
     /// OWNER: plugin-dispatch-actor (attach/detach/toggle).
     #[serde(default)]
-    attached_plugins: Vec<crate::feat::attached_plugin::AttachedPlugin>,
+    attached_plugins: Vec<jinn_core_types::AttachedPlugin>,
     /// Whether this session should be persisted to disk.
     /// Defaults to true for blobs written by older versions.
     #[serde(default = "crate::feat::session::chat_session::default_persist")]

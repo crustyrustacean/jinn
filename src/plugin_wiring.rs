@@ -13,7 +13,7 @@ use std::sync::Arc;
 
 use jinn_domain::common::bridge::Bridge;
 use jinn_domain::common::plugin_bridge::{CmdCtx, dispatch_verb};
-use jinn_domain::feat::plugin_system::PluginCommand;
+use jinn_plugin::PluginCommand;
 
 /// Dispatch a plugin command to the appropriate domain action.
 ///

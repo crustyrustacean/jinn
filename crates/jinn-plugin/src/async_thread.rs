@@ -30,8 +30,8 @@ use error_stack::{Report, ResultExt};
 use mlua::Lua;
 use tokio::runtime::Runtime;
 
-use crate::SessionId;
-use crate::feat::plugin_dispatch::PluginHookSite;
+use jinn_core_types::SessionId;
+use jinn_domain::feat::plugin_dispatch::PluginHookSite;
 
 use super::PluginInstanceId;
 use super::async_handle::{PluginError, PluginJob};

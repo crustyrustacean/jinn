@@ -1,6 +1,5 @@
 //! Feature modules - domain-specific logic, actors, and UI elements.
 
-pub mod attached_plugin;
 pub mod auto_prune_worker;
 pub mod chat_entry_selection;
 pub mod chat_input;
@@ -27,7 +26,6 @@ pub mod rename_session_input;
 
 pub mod plugin_dispatch;
 pub mod plugin_lifecycle;
-pub mod plugin_system;
 pub mod session;
 pub mod session_lifecycle;
 pub mod sidebar_resize;

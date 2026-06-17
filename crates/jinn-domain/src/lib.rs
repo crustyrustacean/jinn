@@ -107,7 +107,6 @@ pub use common::actor::protocol::command::ProceedWithShutdown;
 pub use common::actor::protocol::event::{
     ActorShutdownCompleted, ActorStarted, ActorStarting, AllActorsSpawned,
 };
-pub use feat::attached_plugin::PluginInstanceId;
 pub use feat::chat_input::protocol::command::{
     EnqueueUserMessage, PushChatEntry, SetChatInputEnabled, SetChatInputText,
 };
@@ -136,3 +135,4 @@ pub use feat::tools_actor::protocol::event::{
 };
 pub use feat::tools_actor::registry::{BuiltinToolEntry, builtin_tools};
 pub use feat::tools_actor::tool_types::{ToolCall, ToolDefinition, ToolResult};
+pub use jinn_core_types::PluginInstanceId;

@@ -16,8 +16,8 @@ use wherror::Error;
 use super::bindings;
 use super::command::PluginCommand;
 use super::plugin_data::PluginData;
-use crate::SessionId;
-use crate::feat::plugin_dispatch::{HookContext, PluginHookSite};
+use jinn_core_types::SessionId;
+use jinn_domain::feat::plugin_dispatch::{HookContext, PluginHookSite};
 
 /// Stored hook data for a loaded plugin.
 pub struct PluginHooks {
@@ -374,7 +374,7 @@ impl SyncPlugins {
     }
 }
 
-impl crate::feat::plugin_dispatch::PluginSyncHooks for SyncPlugins {
+impl jinn_domain::feat::plugin_dispatch::PluginSyncHooks for SyncPlugins {
     fn call_hooks(&self, hook: &str, ctx: &HookContext) -> Vec<serde_json::Value> {
         self.sync_hooks(hook)
             .filter_map(|h| match h.call::<serde_json::Value>(ctx) {

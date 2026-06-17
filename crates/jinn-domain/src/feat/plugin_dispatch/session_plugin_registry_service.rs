@@ -9,11 +9,11 @@ use std::sync::Arc;
 use derive_more::Debug;
 use error_stack::Report;
 
-use crate::feat::plugin_system::{
+use crate::feat::plugin_dispatch::{
     CreateSessionRegistryResult, SessionPluginRegistry, SessionPluginRegistryError,
-    SessionRegistryId,
 };
-use crate::protocol::SessionId;
+use jinn_core_types::SessionId;
+use jinn_core_types::SessionRegistryId;
 /// Service wrapper for [`SessionPluginRegistry`].
 ///
 /// Cheap to clone (Arc). Construct once at startup, share via [`crate::Services`].
@@ -38,7 +38,7 @@ impl SessionPluginRegistryService {
     /// cannot be loaded.
     pub async fn create_session_registry(
         &self,
-        instances: Vec<(crate::feat::plugin_system::PluginInstanceId, String)>,
+        instances: Vec<(jinn_core_types::PluginInstanceId, String)>,
         origin_session_id: SessionId,
     ) -> Result<CreateSessionRegistryResult, Report<SessionPluginRegistryError>> {
         self.backend
