@@ -625,19 +625,23 @@ dependencies = [
 ]
 
 [[package]]
-name = "dao"
+name = "daow"
 version = "0.1.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "19a2bc7627e6bad307dcd245dbd910b4f68c99b38dfecf04d18488e1684f599a"
 dependencies = [
  "async-trait",
- "dao-macros",
+ "daow-macros",
  "rusqlite",
  "tokio",
  "tracing",
 ]
 
 [[package]]
-name = "dao-macros"
+name = "daow-macros"
 version = "0.1.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "df636362877e1dd1d5c63a00b44f02befc01f1423b2d89ff16725d1dd444d743"
 dependencies = [
  "proc-macro2",
  "quote",
@@ -1881,7 +1885,7 @@ dependencies = [
  "anstyle",
  "anstyle-lossy",
  "async-trait",
- "dao",
+ "daow",
  "dashmap",
  "derive_more",
  "dirs",

@@ -49,7 +49,7 @@ anstyle-lossy = { workspace = true }
 anstyle = { workspace = true }
 reasoning-parser = "1.2"
 regex = { workspace = true }
-dao = { workspace = true }
+daow = { workspace = true }
 tempfile = { workspace = true }
 twox-hash = { workspace = true }
 dashmap = { workspace = true }

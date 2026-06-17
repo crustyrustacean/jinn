@@ -1095,7 +1095,7 @@ async fn sessions_table_has_exactly_nine_columns() {
 
     // When listing the sessions table columns.
     let db_path = dir.path().join("sessions.db");
-    let pool = dao::Pool::open(db_path.to_string_lossy().as_ref()).expect("open");
+    let pool = daow::Pool::open(db_path.to_string_lossy().as_ref()).expect("open");
     let cols: Vec<ColumnRow> = pool
         .query_all::<ColumnRow>("PRAGMA table_info(sessions)", vec![])
         .await
@@ -1141,8 +1141,8 @@ async fn sessions_table_has_exactly_nine_columns() {
 struct ColumnRow {
     name: String,
 }
-impl dao::FromRow for ColumnRow {
-    fn from_row(row: &dao::Row) -> dao::Result<Self> {
+impl daow::FromRow for ColumnRow {
+    fn from_row(row: &daow::Row) -> daow::Result<Self> {
         Ok(Self {
             name: row.get("name")?,
         })
@@ -1153,8 +1153,8 @@ impl dao::FromRow for ColumnRow {
 struct MetadataRow {
     metadata: Option<String>,
 }
-impl dao::FromRow for MetadataRow {
-    fn from_row(row: &dao::Row) -> dao::Result<Self> {
+impl daow::FromRow for MetadataRow {
+    fn from_row(row: &daow::Row) -> daow::Result<Self> {
         Ok(Self {
             metadata: row.get("metadata")?,
         })

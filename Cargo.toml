@@ -175,7 +175,7 @@ csv = "1"
 ctrlc = "3"
 comfy-table = "7"
 # Database
-dao = { path = "/mnt/zed/repos/dao/crates/dao" }
+daow = "0.1.0"
 rusqlite = { version = "0.40", features = ["bundled"] }
 
 # Testing (e2e)

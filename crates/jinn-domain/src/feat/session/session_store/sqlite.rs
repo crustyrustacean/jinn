@@ -14,7 +14,7 @@ use std::collections::HashMap;
 use std::path::Path;
 
 use async_trait::async_trait;
-use dao::{Entity, FromRow, Pool, Row, dao};
+use daow::{Entity, FromRow, Pool, Row, dao};
 use error_stack::{Report, ResultExt as _};
 use serde::{Deserialize, Serialize};
 use serde_json::Value as JsonValue;
@@ -161,7 +161,7 @@ impl SqliteSessionStore {
 impl std::fmt::Debug for SqliteSessionStore {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         f.debug_struct("SqliteSessionStore")
-            .field("backend", &"dao::Pool<sqlite>")
+            .field("backend", &"daow::Pool<sqlite>")
             .finish()
     }
 }
@@ -375,7 +375,7 @@ struct JoinedEntry {
 }
 
 impl FromRow for JoinedEntry {
-    fn from_row(row: &Row) -> dao::Result<Self> {
+    fn from_row(row: &Row) -> daow::Result<Self> {
         Ok(Self {
             entry_id: row.get("entry_id")?,
             timing: row.get("timing")?,
@@ -402,7 +402,7 @@ struct TokenLedgerRow {
     model_used: Option<String>,
 }
 
-// ── Typed DAO traits (compile-time SQL validation via DAO_DATABASE_URL) ───
+// ── Typed DAO traits (compile-time SQL validation via DAOW_DATABASE_URL) ───
 
 /// Session-level queries that run directly on the pool. These use `#[query]` /
 /// `#[execute]` so the `dao` macro validates the SQL against the post-v20 schema
@@ -416,20 +416,20 @@ trait SessionDao {
     #[query(
         "SELECT id, title, updated_at, created_at, parent_session, archived, metadata, is_automated, persist FROM sessions"
     )]
-    async fn all_sessions(&self) -> dao::Result<Vec<SessionRow>>;
+    async fn all_sessions(&self) -> daow::Result<Vec<SessionRow>>;
 
     #[query(
         "SELECT id, title, updated_at, created_at, parent_session, archived, metadata, is_automated, persist FROM sessions WHERE id = ?"
     )]
-    async fn session_by_id(&self, id: String) -> dao::Result<Option<SessionRow>>;
+    async fn session_by_id(&self, id: String) -> daow::Result<Option<SessionRow>>;
 
     #[query(
         "SELECT id, title, updated_at, created_at, parent_session, archived, metadata, is_automated, persist FROM sessions WHERE archived = FALSE"
     )]
-    async fn unarchived_sessions(&self) -> dao::Result<Vec<SessionRow>>;
+    async fn unarchived_sessions(&self) -> daow::Result<Vec<SessionRow>>;
 
     #[execute("UPDATE sessions SET archived = ? WHERE id = ?")]
-    async fn set_archived(&self, archived: bool, id: String) -> dao::Result<dao::ExecuteResult>;
+    async fn set_archived(&self, archived: bool, id: String) -> daow::Result<daow::ExecuteResult>;
 }
 
 // ── Conversions ──────────────────────────────────────────────────────────
@@ -671,7 +671,7 @@ fn save_in_transaction<'a>(
     let row_is_automated = row.is_automated;
 
     async move {
-        pool.with_conn(move |conn| -> dao::Result<()> {
+        pool.with_conn(move |conn| -> daow::Result<()> {
             // rusqlite 0.40: `transaction()` returns a `Transaction<'_>` that
             // derefs to `Connection` and must be committed explicitly.
             let tx = conn.transaction()?;
@@ -901,7 +901,7 @@ fn insert_token_ledger_row(
 fn delete_with_scoped_reaping(
     conn: &mut rusqlite::Connection,
     session_id_str: &str,
-) -> dao::Result<()> {
+) -> daow::Result<()> {
     let tx = conn.transaction()?;
     // Capture this session's entry references before the FK cascade
     // removes them. These are the only candidates for reaping.
@@ -987,7 +987,7 @@ fn fork_in_transaction(
     source_str: &str,
     new_id_str: &str,
     at_ordinal: usize,
-) -> dao::Result<()> {
+) -> daow::Result<()> {
     let tx = conn.transaction()?;
     // Load source session metadata.
     let source_meta: Option<(Option<String>, Option<String>, bool)> = tx
@@ -1005,7 +1005,7 @@ fn fork_in_transaction(
         .ok();
 
     let Some((title, metadata, is_automated)) = source_meta else {
-        return Err(dao::Error::Custom(
+        return Err(daow::Error::Custom(
             "source session not found for fork".to_string(),
         ));
     };
@@ -1175,7 +1175,7 @@ struct CheckpointResult {
 }
 
 impl FromRow for CheckpointResult {
-    fn from_row(row: &Row) -> dao::Result<Self> {
+    fn from_row(row: &Row) -> daow::Result<Self> {
         Ok(Self {
             busy: row.get("busy")?,
             log: row.get("log")?,
