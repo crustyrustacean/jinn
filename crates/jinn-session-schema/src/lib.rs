@@ -5,7 +5,7 @@
 //!
 //! - **Build time:** `jinn-domain/build.rs` calls [`run_migrations`] on a fresh
 //!   `OUT_DIR` database, then points `dao`'s `#[dao]` macro at it via
-//!   `DAO_DATABASE_URL` for compile-time SQL validation.
+//!   `DAOW_DATABASE_URL` for compile-time SQL validation.
 //! - **Runtime:** jinn's session store calls [`run_migrations`] through a
 //!   `dao::Pool::with_conn` closure on the user's `sessions.db` at startup.
 //!

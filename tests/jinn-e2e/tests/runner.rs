@@ -133,7 +133,12 @@ async fn spawn_child(exe: &Path, spec: &ScenarioSpec) -> bool {
 
 /// Resolves the `tests/features/judge` directory relative to the crate manifest.
 fn feature_dir() -> PathBuf {
-    PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("tests/features/judge")
+    // Canonicalize so the absolute path is forwarded to child processes,
+    // which may inherit a different CWD than the parent.
+    PathBuf::from(env!("CARGO_MANIFEST_DIR"))
+        .join("tests/features/judge")
+        .canonicalize()
+        .unwrap_or_else(|e| panic!("feature dir not found: {e}"))
 }
 
 /// A single scenario to run, identified by its feature file path + scenario name.
@@ -204,9 +209,13 @@ async fn run_child(spec: &str) {
         panic!("invalid --scenario spec: {spec:?} (expected '<feature_path>:<scenario_name>')")
     });
 
-    let feature_path = PathBuf::from(feature_path);
-    let feature = gherkin::Feature::parse_path(&feature_path, GherkinEnv::default())
-        .unwrap_or_else(|e| panic!("failed to parse {}: {e}", feature_path.display()));
+    eprintln!(
+        "[judge-e2e child] cwd={:?} feature_path={:?}",
+        std::env::current_dir(),
+        feature_path
+    );
+    let feature = gherkin::Feature::parse_path(feature_path, GherkinEnv::default())
+        .unwrap_or_else(|e| panic!("failed to parse {feature_path}: {e}"));
 
     // Select only the matching scenario. If the name is ambiguous or missing,
     // emit an empty feature — cucumber will report no steps run, surfacing the

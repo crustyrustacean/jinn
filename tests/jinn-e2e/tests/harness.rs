@@ -37,13 +37,27 @@ pub async fn build_tuiapp_in_temp(
 ) -> TuiApp {
     let config_storage = ConfigStorageService::new(Arc::new(InMemoryConfigStorage::new()));
     let resolved_api_keys = ApiKeysService::new(ApiKeys::new());
-    let empty_config = ProvidersConfig {
-        providers: vec![],
+    let test_config = ProvidersConfig {
+        providers: vec![jinn_domain::ProviderEntry {
+            name: "test".to_owned(),
+            backend: "sample".to_owned(), // backend is irrelevant — the override wins.
+            models: vec!["test".to_owned()],
+            base_url: None,
+            api_key_env: None,
+            requires_key: false,
+            extra_body: None,
+            context_length: None,
+        }],
         aliases: vec![],
         default_provider: None,
     };
     let provider_registry = ProviderRegistryService::new(
-        ProviderRegistry::from_config(empty_config).expect("empty config is valid"),
+        ProviderRegistry::from_config(test_config)
+            .expect("test config is valid")
+            // Inject the fake as the factory for the `test/test` provider id so the
+            // per-request factory path in the LLM actor resolves to the scripted
+            // fake instead of erroring on the empty production registry.
+            .with_factory_override(fake_factory.clone()),
     );
     let llm_service = LlmServiceFactoryService::new(fake_factory);
     let user_preferences_storage = {

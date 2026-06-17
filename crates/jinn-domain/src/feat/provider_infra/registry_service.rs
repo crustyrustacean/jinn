@@ -124,8 +124,16 @@ impl ProviderRegistryService {
     ///
     /// Used during startup when the init actor builds the registry
     /// from `providers.toml` and needs to swap it into the service.
+    ///
+    /// A test-injected `factory_override` (if any) is carried over so e2e
+    /// worlds can pre-inject a scripted fake before the init actor runs.
     pub fn replace(&self, registry: ProviderRegistry) {
         let mut guard = self.inner.write();
+        let preserved_override = guard.factory_override.clone();
+        let mut registry = registry;
+        if registry.factory_override.is_none() {
+            registry.factory_override = preserved_override;
+        }
         *guard = registry;
     }
 
