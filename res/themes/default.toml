@@ -61,3 +61,6 @@ infopopup_bg = [40, 44, 52]
 infopopup_title = "yellow"
 infopopup_border = "cyan"
 infopopup_fg = [220, 220, 220]
+
+# Quake bar (global overlay console)
+quake_bar_bg = [42, 28, 24]

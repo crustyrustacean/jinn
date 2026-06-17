@@ -110,6 +110,10 @@ pub struct Theme {
     pub infopopup_border: Color,
     /// Body text color for info popups.
     pub infopopup_fg: Color,
+
+    // Quake bar
+    /// Background color for the quake bar overlay.
+    pub quake_bar_bg: Color,
 }
 
 impl Theme {
@@ -190,6 +194,7 @@ impl Theme {
             Style::default().fg(self.infopopup_border),
         );
         m.insert("infopopup_fg", Style::default().fg(self.infopopup_fg));
+        m.insert("quake_bar_bg", Style::default().bg(self.quake_bar_bg));
         m
     }
 }
@@ -286,6 +291,10 @@ pub struct ThemeFile {
     pub infopopup_border: Option<ThemeColor>,
     #[serde(default)]
     pub infopopup_fg: Option<ThemeColor>,
+
+    // Quake bar
+    #[serde(default)]
+    pub quake_bar_bg: Option<ThemeColor>,
 }
 
 impl ThemeFile {
@@ -424,6 +433,9 @@ impl ThemeFile {
             infopopup_fg: self
                 .infopopup_fg
                 .map_or(fallback.infopopup_fg, crate::color::ThemeColor::inner),
+            quake_bar_bg: self
+                .quake_bar_bg
+                .map_or(fallback.quake_bar_bg, crate::color::ThemeColor::inner),
         }
     }
 
@@ -476,6 +488,7 @@ impl ThemeFile {
             infopopup_title: Self::resolve_field(self.infopopup_title),
             infopopup_border: Self::resolve_field(self.infopopup_border),
             infopopup_fg: Self::resolve_field(self.infopopup_fg),
+            quake_bar_bg: Self::resolve_field(self.quake_bar_bg),
             input_mode_queue: self
                 .input_mode_queue
                 .map_or(Color::Reset, crate::color::ThemeColor::inner),
@@ -533,6 +546,7 @@ mod tests {
             infopopup_title: None,
             infopopup_border: None,
             infopopup_fg: None,
+            quake_bar_bg: None,
         };
 
         // When resolving.
@@ -593,6 +607,7 @@ mod tests {
             infopopup_title: None,
             infopopup_border: None,
             infopopup_fg: None,
+            quake_bar_bg: None,
         };
 
         // When resolving.
@@ -659,6 +674,7 @@ mod tests {
             infopopup_title: Some(ThemeColor(Color::Yellow)),
             infopopup_border: Some(ThemeColor(Color::Cyan)),
             infopopup_fg: Some(ThemeColor(Color::Rgb(220, 220, 220))),
+            quake_bar_bg: Some(ThemeColor(Color::Rgb(42, 28, 24))),
             popup_title: Some(ThemeColor(Color::Yellow)),
             input_mode_queue: Some(ThemeColor(Color::DarkGray)),
             input_mode_steer: Some(ThemeColor(Color::Magenta)),
@@ -727,6 +743,7 @@ mod tests {
             infopopup_title: None,
             infopopup_border: None,
             infopopup_fg: None,
+            quake_bar_bg: None,
         };
 
         // When resolving with the fallback.
@@ -744,8 +761,8 @@ fn style_map_returns_entry_for_every_theme_field() {
     let theme = crate::default_theme();
     // When building the style map.
     let map = theme.style_map();
-    // Then it has one entry per Theme field (37 fields).
-    assert_eq!(map.len(), 37, "style_map should cover all Theme fields");
+    // Then it has one entry per Theme field (38 fields).
+    assert_eq!(map.len(), 38, "style_map should cover all Theme fields");
 }
 
 #[test]

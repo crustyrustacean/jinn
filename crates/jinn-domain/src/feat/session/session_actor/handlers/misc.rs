@@ -124,8 +124,10 @@ impl SessionPersistenceActor {
                 .iter()
                 .filter_map(|m| match m {
                     crate::feat::session::history_mutation::HistoryMutation::SetContextOverride { entry_id, source, .. } => {
-                        // Compaction overrides bypass the accumulator entirely,
-                        // so their cost is irrelevant — skip to avoid needless work.
+                        // Only prune ForcedExclude mutations reach the
+                        // accumulator, so only their cost is relevant.
+                        // Shield ForcedInclude and compaction overrides
+                        // apply immediately and need no cost.
                         if is_compaction_source(source) {
                             None
                         } else {
@@ -156,17 +158,21 @@ impl SessionPersistenceActor {
             let session = state.session_mut_or_create(&payload.session_id);
 
             for mutation in payload.mutations.clone() {
-                if is_compaction_override(&mutation) || !is_context_override(&mutation) {
-                    // Compaction overrides and all non-context mutations apply
-                    // immediately (compaction is itself a context reduction).
-                    session.queue_mutations(vec![mutation]);
-                } else {
-                    // Pruner SetContextOverride: route into the accumulation buffer.
+                if is_prune_override(&mutation) {
+                    // Pruner ForcedExclude: route into the accumulation buffer
+                    // so it counts toward the batch flush threshold.
                     if let crate::feat::session::history_mutation::HistoryMutation::SetContextOverride { entry_id, value, source } = &mutation {
                         let cost = token_costs.get(entry_id).copied().unwrap_or(0);
                         session.core.ephemeral.accumulated_overrides
                             .push(entry_id.clone(), *value, source.clone(), cost);
                     }
+                } else {
+                    // All other mutations apply immediately:
+                    //   - compaction overrides (compaction is itself a context reduction),
+                    //   - shield ForcedInclude (protection, never a prune),
+                    //   - any non-context mutation.
+                    // Only prune ForcedExclude is subject to the accumulation gate.
+                    session.queue_mutations(vec![mutation]);
                 }
             }
 
@@ -224,25 +230,23 @@ impl SessionPersistenceActor {
     }
 }
 
-/// Whether a mutation is a `SetContextOverride` from the compaction worker.
+/// Whether a mutation is a prune `ForcedExclude` override — the only
+/// direction subject to the accumulation gate.
 ///
-/// Compaction overrides bypass the accumulation gate (Decision-B): holding back
-/// the gathered entries while their summary is already inserted would leave both
-/// in context and confuse the model.
-fn is_compaction_override(
-    mutation: &crate::feat::session::history_mutation::HistoryMutation,
-) -> bool {
+/// The accumulator exists to batch pruner excludes into a single flush so
+/// the server-side KV cache isn't invalidated per-entry. Shield
+/// `ForcedInclude` (protection), compaction overrides, and any non-context
+/// mutation apply immediately instead.
+fn is_prune_override(mutation: &crate::feat::session::history_mutation::HistoryMutation) -> bool {
     use crate::feat::session::history_mutation::HistoryMutation;
     matches!(
         mutation,
-        HistoryMutation::SetContextOverride { source, .. } if is_compaction_source(source)
+        HistoryMutation::SetContextOverride {
+            value: crate::feat::session::chat_entry::ContextOverride::ForcedExclude,
+            source,
+            ..
+        } if !is_compaction_source(source)
     )
-}
-
-/// Whether a mutation is any `SetContextOverride` (the variants subject to the gate).
-fn is_context_override(mutation: &crate::feat::session::history_mutation::HistoryMutation) -> bool {
-    use crate::feat::session::history_mutation::HistoryMutation;
-    matches!(mutation, HistoryMutation::SetContextOverride { .. })
 }
 
 /// Whether a `ChangeSource` is the compaction worker.
@@ -540,7 +544,8 @@ mod tests {
     }
 
     #[tokio::test]
-    async fn handle_submit_history_mutations_buffers_multiple_subthreshold_submissions() {
+    async fn handle_submit_history_mutations_buffers_prune_override_and_applies_shield_immediately()
+    {
         // Given a default (10_000) accumulation threshold and two user entries.
         let (actor, _audit) = test_actor_recording().await;
         let session_id = {
@@ -563,7 +568,8 @@ mod tests {
                 .clone()
         };
 
-        // When submitting two sub-threshold overrides for distinct entries.
+        // When submitting a sub-threshold ForcedExclude (prune) for entry 1
+        // and a ForcedInclude (shield) for entry 2.
         actor
             .handle_submit_history_mutations(
                 &crate::feat::session::protocol::submit_history_mutations::SubmitHistoryMutations {
@@ -593,7 +599,9 @@ mod tests {
             )
             .await;
 
-        // Then both overrides are buffered (not applied); neither entry changed.
+        // Then the ForcedExclude is buffered (entry 1 still Default) and the
+        // ForcedInclude applies immediately (entry 2 is ForcedInclude), so only
+        // one override sits in the accumulator.
         let state = actor.state.read();
         let session = state.session.get(&session_id).unwrap();
         assert_eq!(session.core.ephemeral.pending_mutations.len(), 0);
@@ -603,15 +611,14 @@ mod tests {
         );
         assert_eq!(
             session.history()[1].context_override(),
-            crate::feat::session::chat_entry::ContextOverride::Default
+            crate::feat::session::chat_entry::ContextOverride::ForcedInclude
         );
         assert_eq!(
             session.core.ephemeral.accumulated_overrides.len(),
-            2,
-            "both sub-threshold overrides should be buffered"
+            1,
+            "only the ForcedExclude (prune) should be buffered; the shield applies immediately"
         );
     }
-
     #[tokio::test]
     async fn handle_submit_history_mutations_emits_context_override_changed_on_change() {
         let (actor, audit) = test_actor_recording().await;
@@ -727,6 +734,92 @@ mod tests {
         assert!(
             session.history().is_empty(),
             "history should be empty after reset"
+        );
+    }
+
+    #[tokio::test]
+    async fn shield_forced_include_override_applies_immediately_not_buffered() {
+        // Given a session with one assistant entry and the default 10_000 threshold.
+        let (actor, _audit) = test_actor_recording().await;
+        let (session_id, entry_id) = {
+            let mut state = actor.state.write();
+            let session = state.active_session_mut();
+            let entry = ChatEntry::assistant("response");
+            let id = entry.id.clone();
+            session.push_entry(entry);
+            (state.session.active_session_id().clone(), id)
+        };
+
+        // When submitting a shield ForcedInclude override (protection, never a prune).
+        actor
+            .handle_submit_history_mutations(
+                &crate::feat::session::protocol::submit_history_mutations::SubmitHistoryMutations {
+                    session_id: session_id.clone(),
+                    mutations: vec![
+                        crate::feat::session::history_mutation::HistoryMutation::SetContextOverride {
+                            entry_id: entry_id.clone(),
+                            value: crate::feat::session::chat_entry::ContextOverride::ForcedInclude,
+                            source: ChangeSource::Worker { name: "anchor-shield".to_owned() },
+                        },
+                    ],
+                },
+            )
+            .await;
+
+        // Then the override applied immediately (no buffering) because shields never count toward the prune threshold.
+        let state = actor.state.read();
+        let session = state.session.get(&session_id).unwrap();
+        assert_eq!(
+            session.history()[0].context_override(),
+            crate::feat::session::chat_entry::ContextOverride::ForcedInclude,
+            "shield ForcedInclude must apply immediately"
+        );
+        assert!(
+            session.core.ephemeral.accumulated_overrides.is_empty(),
+            "shield ForcedInclude must not enter the accumulation buffer"
+        );
+    }
+
+    #[tokio::test]
+    async fn compaction_forced_exclude_override_applies_immediately_not_buffered() {
+        // Given a session with one assistant entry.
+        let (actor, _audit) = test_actor_recording().await;
+        let (session_id, entry_id) = {
+            let mut state = actor.state.write();
+            let session = state.active_session_mut();
+            let entry = ChatEntry::assistant("response");
+            let id = entry.id.clone();
+            session.push_entry(entry);
+            (state.session.active_session_id().clone(), id)
+        };
+
+        // When submitting a compaction ForcedExclude override.
+        actor
+            .handle_submit_history_mutations(
+                &crate::feat::session::protocol::submit_history_mutations::SubmitHistoryMutations {
+                    session_id: session_id.clone(),
+                    mutations: vec![
+                        crate::feat::session::history_mutation::HistoryMutation::SetContextOverride {
+                            entry_id: entry_id.clone(),
+                            value: crate::feat::session::chat_entry::ContextOverride::ForcedExclude,
+                            source: ChangeSource::Worker { name: "compaction".to_owned() },
+                        },
+                    ],
+                },
+            )
+            .await;
+
+        // Then the override applied immediately and did not enter the buffer.
+        let state = actor.state.read();
+        let session = state.session.get(&session_id).unwrap();
+        assert_eq!(
+            session.history()[0].context_override(),
+            crate::feat::session::chat_entry::ContextOverride::ForcedExclude,
+            "compaction ForcedExclude must apply immediately"
+        );
+        assert!(
+            session.core.ephemeral.accumulated_overrides.is_empty(),
+            "compaction ForcedExclude must not enter the accumulation buffer"
         );
     }
 }

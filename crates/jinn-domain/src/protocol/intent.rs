@@ -304,6 +304,18 @@ pub enum Intent {
         root: CwdRoot,
     },
 
+    // --- Quake Bar (global overlay console) ---
+    /// Open the quake bar overlay (pushes `FocusScope::QuakeBar`).
+    OpenQuakeBar,
+    /// Close the quake bar overlay (pops `FocusScope::QuakeBar`).
+    CloseQuakeBar,
+    /// Submit the quake bar input into the command log.
+    SubmitQuakeBar,
+    /// Scroll the quake bar command log toward the oldest line.
+    QuakeBarScrollUp,
+    /// Scroll the quake bar command log toward the newest line.
+    QuakeBarScrollDown,
+
     // --- Plugin ---
     /// Trigger a plugin-declared action via a registered keybind.
     ///
@@ -448,6 +460,12 @@ impl std::fmt::Display for Intent {
             Intent::CwdInputLeave => write!(f, "cwd input leave"),
 
             Intent::ChangeCwd { root } => write!(f, "change cwd from '{root}'"),
+
+            Intent::OpenQuakeBar => write!(f, "open quake bar"),
+            Intent::CloseQuakeBar => write!(f, "close quake bar"),
+            Intent::SubmitQuakeBar => write!(f, "quake bar submit"),
+            Intent::QuakeBarScrollUp => write!(f, "quake bar scroll up"),
+            Intent::QuakeBarScrollDown => write!(f, "quake bar scroll down"),
             Intent::TriggerPlugin { description, .. } => write!(f, "{description}"),
         }
     }

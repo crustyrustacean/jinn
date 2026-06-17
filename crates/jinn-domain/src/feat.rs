@@ -21,6 +21,7 @@ pub mod preferences_actor;
 pub mod provider;
 pub use jinn_provider_config as provider_infra;
 pub mod pruner_accumulation_input;
+pub mod quake_bar;
 pub mod queue_actor;
 pub mod rename_session_input;
 
