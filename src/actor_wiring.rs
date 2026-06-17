@@ -70,6 +70,24 @@ pub struct ActorSystemBuilder {
     args: ActorSystemBuilderArgs,
 }
 
+/// Filters discovered plugins down to attachable ones and maps them into
+/// [`DiscoveredPlugin`] entries for the plugin picker.
+///
+/// Global plugins are loaded at startup and cannot be attached per-session,
+/// so they're excluded from the picker that issues `AttachPlugin`.
+fn attachable_discovered_plugins(
+    plugins: Vec<jinn_plugin::PluginMeta>,
+) -> Vec<jinn_domain::common::app_state::DiscoveredPlugin> {
+    plugins
+        .into_iter()
+        .filter(|p| p.kind == jinn_plugin::PluginKind::Attachable)
+        .map(|p| jinn_domain::common::app_state::DiscoveredPlugin {
+            name: p.name,
+            description: p.description,
+        })
+        .collect()
+}
+
 impl ActorSystemBuilder {
     #[must_use]
     pub fn new(args: ActorSystemBuilderArgs) -> Self {
@@ -183,19 +201,14 @@ impl ActorSystemBuilder {
         let plugin_sync_handle = plugin_build.sync_handle;
         let global_tool_metadata = plugin_build.global_tool_metadata;
 
-        // Store discovered plugin metadata in state for the sidebar.
+        // Store discovered plugin metadata in state for the plugin picker.
+        // Only attachable plugins are exposed — global plugins are loaded at
+        // startup and cannot be attached per-session.
         {
             let plugins =
                 jinn_plugin::discover_plugins(&paths.plugins_dir(), &paths.system_plugins_dir());
             tracing::info!(count = plugins.len(), "discovered plugins");
-            let plugins: Vec<jinn_domain::common::app_state::DiscoveredPlugin> = plugins
-                .into_iter()
-                .map(|p| jinn_domain::common::app_state::DiscoveredPlugin {
-                    name: p.name,
-                    description: p.description,
-                })
-                .collect();
-            state.write().discovered_plugins = plugins;
+            state.write().discovered_plugins = attachable_discovered_plugins(plugins);
         }
 
         // Root supervision tree: every spawned actor becomes a supervised
@@ -1120,5 +1133,72 @@ impl ActorSystemBuilder {
         };
 
         (core, services, sync_plugins)
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    #![allow(
+        clippy::expect_used,
+        clippy::panic,
+        clippy::indexing_slicing,
+        reason = "test code"
+    )]
+    use super::*;
+    use jinn_plugin::{PluginKind, PluginMeta};
+    use std::path::PathBuf;
+
+    fn meta(name: &str, kind: PluginKind) -> PluginMeta {
+        PluginMeta {
+            name: name.to_owned(),
+            path: PathBuf::new(),
+            description: Some(format!("desc for {name}")),
+            kind,
+        }
+    }
+
+    #[test]
+    fn global_plugin_excluded_from_discovered_plugins() {
+        // Given a mix of one global and one attachable plugin.
+        let plugins = vec![meta("welcome", PluginKind::Global), meta("judge", PluginKind::Attachable)];
+
+        // When filtering to attachable plugins.
+        let result = attachable_discovered_plugins(plugins);
+
+        // Then only the attachable plugin is kept.
+        assert_eq!(result.len(), 1);
+        assert_eq!(result[0].name, "judge");
+    }
+
+    #[test]
+    fn all_attachable_plugins_kept_global_dropped() {
+        // Given two attachable plugins and one global.
+        let plugins = vec![
+            meta("judge", PluginKind::Attachable),
+            meta("consensus", PluginKind::Attachable),
+            meta("welcome", PluginKind::Global),
+        ];
+
+        // When filtering to attachable plugins.
+        let result = attachable_discovered_plugins(plugins);
+
+        // Then both attachable plugins are kept and the global is dropped.
+        let names: Vec<&str> = result.iter().map(|p| p.name.as_str()).collect();
+        assert_eq!(names, vec!["judge", "consensus"]);
+    }
+
+    #[test]
+    fn empty_when_only_global_plugins_discovered() {
+        // Given only global plugins.
+        let plugins = vec![
+            meta("welcome", PluginKind::Global),
+            meta("prompt_enrichment", PluginKind::Global),
+        ];
+
+        // When filtering to attachable plugins.
+        let result = attachable_discovered_plugins(plugins);
+
+        // Then nothing remains to attach.
+        assert!(result.is_empty());
     }
 }
