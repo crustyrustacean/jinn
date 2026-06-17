@@ -80,7 +80,11 @@ impl SqliteSessionStore {
     /// Returns an error if the sessions directory cannot be determined, the
     /// pool cannot be built, or migrations fail.
     pub async fn new() -> Result<Self, Report<SessionStoreError>> {
-        let dir = app_sessions_dir();
+        // `sessions_dir()` already resolves to the canonical DB parent
+        // (`~/.local/share/jinn` on Linux). An earlier revision appended an
+        // extra `sessions` segment here, which silently split sessions across
+        // two databases (`.../jinn/sessions.db` vs `.../jinn/sessions/sessions.db`).
+        let dir = crate::common::app_paths::AppPaths::default().sessions_dir();
         Self::new_with_config(&dir, PoolConfig::default()).await
     }
 
@@ -1211,11 +1215,3 @@ fn classify_checkpoint_result(result: &CheckpointResult) {
     }
 }
 
-// ── Paths ────────────────────────────────────────────────────────────────
-
-/// Resolves the platform-default sessions directory.
-fn app_sessions_dir() -> std::path::PathBuf {
-    let mut p = crate::common::app_paths::AppPaths::default().sessions_dir();
-    p.push("sessions");
-    p
-}
