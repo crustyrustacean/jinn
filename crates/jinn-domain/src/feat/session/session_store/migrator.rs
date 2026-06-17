@@ -13,7 +13,7 @@
 //! The `_migrations` table records each completed migration. On startup the
 //! runner reads the highest version and skips any migrations already applied.
 
-use dao::Pool;
+use daow::Pool;
 use error_stack::{Report, ResultExt as _};
 use jinn_session_schema::SchemaMigrationError;
 
@@ -32,8 +32,8 @@ use super::SessionStoreError;
 /// Returns an error if the connection cannot be acquired, any migration fails,
 /// or `foreign_key_check` reports violations afterward.
 pub async fn run_migrations(pool: &Pool) -> Result<(), Report<SessionStoreError>> {
-    // The closure returns `dao::Result<Result<_, Report<SchemaMigrationError>>>`:
-    // the outer `dao::Error` covers connection/pragma failures; the inner is the
+    // The closure returns `daow::Result<Result<_, Report<SchemaMigrationError>>>`:
+    // the outer `daow::Error` covers connection/pragma failures; the inner is the
     // migration outcome (which carries rich `.attach()` context from the schema
     // crate). Both layers are folded into `Report<SessionStoreError>` here.
     let outcome = pool
@@ -70,7 +70,7 @@ where
     pool.with_conn(move |conn| {
         bootstrap_tracking_table(conn).expect("bootstrap");
         apply_migrations_inner(conn, target);
-        seed(conn).map_err(dao::Error::from)?;
+        seed(conn).map_err(daow::Error::from)?;
         Ok(())
     })
     .await
@@ -95,7 +95,7 @@ mod tests {
         let dir = TempDir::new().expect("temp dir");
         let path = dir.path().join("test.db");
         // Leak the temp dir so it outlives the test — migration tests don't
-        // need cleanup, and dao::Pool holds the path by value.
+        // need cleanup, and daow::Pool holds the path by value.
         std::mem::forget(dir);
         Pool::open(path.to_string_lossy().to_string().as_str()).expect("open pool")
     }
@@ -190,7 +190,7 @@ mod tests {
                 conn.query_row("SELECT COUNT(*) AS count FROM _migrations", [], |r| {
                     r.get(0)
                 })
-                .map_err(dao::Error::from)
+                .map_err(daow::Error::from)
             })
             .await
             .unwrap();
@@ -224,7 +224,7 @@ mod tests {
                     conn.query_row("SELECT COUNT(*) AS count FROM _migrations", [], |r| {
                         r.get(0)
                     })
-                    .map_err(dao::Error::from)
+                    .map_err(daow::Error::from)
                 })
                 .await
                 .unwrap();
@@ -296,7 +296,7 @@ mod tests {
                     [],
                     |r| Ok((r.get(0)?, r.get(1)?)),
                 )
-                .map_err(dao::Error::from)
+                .map_err(daow::Error::from)
             })
             .await
             .unwrap();
@@ -345,7 +345,7 @@ mod tests {
                     [],
                     |r| r.get(0),
                 )
-                .map_err(dao::Error::from)
+                .map_err(daow::Error::from)
             })
             .await
             .unwrap();
@@ -553,7 +553,7 @@ mod tests {
                     [],
                     |r| r.get(0),
                 )
-                .map_err(dao::Error::from)
+                .map_err(daow::Error::from)
             })
             .await
             .unwrap();
@@ -598,7 +598,7 @@ mod tests {
                     [],
                     |r| r.get(0),
                 )
-                .map_err(dao::Error::from)
+                .map_err(daow::Error::from)
             })
             .await
             .unwrap();
@@ -640,7 +640,7 @@ mod tests {
                     [],
                     |r| r.get(0),
                 )
-                .map_err(dao::Error::from)
+                .map_err(daow::Error::from)
             })
             .await
             .unwrap();
@@ -703,7 +703,7 @@ mod tests {
                 conn.query_row("SELECT timing FROM entries WHERE id = 'e1'", [], |r| {
                     r.get(0)
                 })
-                .map_err(dao::Error::from)
+                .map_err(daow::Error::from)
             })
             .await
             .unwrap();
@@ -781,7 +781,7 @@ mod tests {
                 conn.query_row("SELECT metadata FROM sessions WHERE id = 's1'", [], |r| {
                     r.get(0)
                 })
-                .map_err(dao::Error::from)
+                .map_err(daow::Error::from)
             })
             .await
             .unwrap();
@@ -817,7 +817,7 @@ mod tests {
                 conn.query_row("SELECT metadata FROM sessions WHERE id = 's1'", [], |r| {
                     r.get(0)
                 })
-                .map_err(dao::Error::from)
+                .map_err(daow::Error::from)
             })
             .await
             .unwrap();
@@ -848,7 +848,7 @@ mod tests {
                 conn.query_row("SELECT metadata FROM sessions WHERE id = 's1'", [], |r| {
                     r.get(0)
                 })
-                .map_err(dao::Error::from)
+                .map_err(daow::Error::from)
             })
             .await
             .unwrap();
@@ -880,7 +880,7 @@ mod tests {
                 conn.query_row("SELECT metadata FROM sessions WHERE id = 's1'", [], |r| {
                     r.get(0)
                 })
-                .map_err(dao::Error::from)
+                .map_err(daow::Error::from)
             })
             .await
             .unwrap();
@@ -955,7 +955,7 @@ mod tests {
                     [],
                     |r| r.get(0),
                 )
-                .map_err(dao::Error::from)
+                .map_err(daow::Error::from)
             })
             .await
             .expect("query legacy metadata");
@@ -987,7 +987,7 @@ mod tests {
                     [],
                     |r| r.get::<_, String>(0),
                 )
-                .map_err(dao::Error::from)
+                .map_err(daow::Error::from)
             })
             .await
             .expect("query backfilled blob");
@@ -1002,7 +1002,7 @@ mod tests {
         let sql = format!("SELECT COUNT(*) FROM {table}");
         pool.with_conn(move |conn| {
             conn.query_row(&sql, [], |r| r.get(0))
-                .map_err(dao::Error::from)
+                .map_err(daow::Error::from)
         })
         .await
         .expect("count")

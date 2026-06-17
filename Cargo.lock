@@ -625,18 +625,18 @@ dependencies = [
 ]
 
 [[package]]
-name = "dao"
+name = "daow"
 version = "0.1.0"
 dependencies = [
  "async-trait",
- "dao-macros",
+ "daow-macros",
  "rusqlite",
  "tokio",
  "tracing",
 ]
 
 [[package]]
-name = "dao-macros"
+name = "daow-macros"
 version = "0.1.0"
 dependencies = [
  "proc-macro2",
@@ -1857,7 +1857,7 @@ dependencies = [
  "anstyle",
  "anstyle-lossy",
  "async-trait",
- "dao",
+ "daow",
  "dashmap",
  "derive_more",
  "dirs",

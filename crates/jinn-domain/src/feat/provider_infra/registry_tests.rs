@@ -796,3 +796,75 @@ fn unavailable_providers_returns_empty_when_all_available() {
     // Then the list is empty (all are available).
     assert!(unavailable.is_empty());
 }
+
+#[rstest::rstest]
+fn create_factory_returns_injected_override() {
+    // Given a registry whose resolved provider would normally map to the
+    // 'sample' backend, but an override factory is injected.
+    let config = make_config(
+        vec![ProviderEntry {
+            name: "sample".to_owned(),
+            backend: "sample".to_owned(),
+            models: vec!["sample".to_owned()],
+            base_url: None,
+            api_key_env: None,
+            requires_key: false,
+            extra_body: None,
+            context_length: None,
+        }],
+        vec![],
+        None,
+    );
+    let registry = ProviderRegistry::from_config(config)
+        .expect("registry")
+        .with_factory_override(
+            std::sync::Arc::new(crate::FakeLlmServiceFactory::new(vec![]))
+                as std::sync::Arc<dyn super::service::LlmServiceFactory>,
+        );
+    let api_keys = ApiKeys::new();
+
+    // When creating a factory.
+    let factory = registry.create_factory(&ProviderId::new("sample/sample".to_owned()), &api_keys);
+
+    // Then the injected override (not the sample backend) is returned.
+    assert!(factory.is_ok());
+    assert_eq!(factory.unwrap().name(), "FakeLlm");
+}
+
+#[rstest::rstest]
+fn create_factory_falls_through_to_production_when_no_override() {
+    // Given a registry with a sample provider and NO override.
+    let config = make_config(
+        vec![ProviderEntry {
+            name: "sample".to_owned(),
+            backend: "sample".to_owned(),
+            models: vec!["sample".to_owned()],
+            base_url: None,
+            api_key_env: None,
+            requires_key: false,
+            extra_body: None,
+            context_length: None,
+        }],
+        vec![],
+        None,
+    );
+    let registry = ProviderRegistry::from_config(config).expect("registry");
+    let api_keys = ApiKeys::new();
+
+    // When creating a factory.
+    let factory = registry.create_factory(&ProviderId::new("sample/sample".to_owned()), &api_keys);
+
+    // Then production behavior is preserved (sample backend, not an override).
+    assert!(factory.is_ok());
+    assert_eq!(factory.unwrap().name(), "Sample");
+}
+
+#[rstest::rstest]
+fn from_config_leaves_factory_override_none() {
+    // Given a registry built from config.
+    let config = make_config(vec![ollama_entry()], vec![], None);
+    let registry = ProviderRegistry::from_config(config).expect("registry");
+
+    // Then no factory override is set (production unchanged).
+    assert!(registry.factory_override.is_none());
+}

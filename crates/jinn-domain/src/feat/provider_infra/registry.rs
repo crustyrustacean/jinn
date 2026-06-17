@@ -11,6 +11,7 @@
 //! environment directly.
 
 use std::collections::{HashMap, HashSet};
+use std::sync::Arc;
 
 use error_stack::{Report, ResultExt as _};
 use jinn_provider::Backend;
@@ -21,7 +22,7 @@ use super::config::{AliasEntry, ConfigError, ProvidersConfig};
 use super::generic_factory::GenericLlmServiceFactory;
 use super::provider_id::ProviderId;
 use super::resolved_provider::ResolvedProvider;
-use super::service::{LlmServiceError, LlmServiceFactory};
+use super::service::{LlmService, LlmServiceError, LlmServiceFactory};
 
 /// Registry of configured providers.
 ///
@@ -36,6 +37,14 @@ pub struct ProviderRegistry {
     resolved_map: HashMap<ProviderId, ResolvedProvider>,
     /// All expanded entries in order.
     resolved_list: Vec<ResolvedProvider>,
+    /// Test-injected factory override.
+    ///
+    /// When `Some`, [`create_factory`](Self::create_factory) returns a clone of
+    /// this factory for every resolved provider, bypassing backend parsing.
+    /// `None` in all production paths (`from_config` leaves it unset). Used by
+    /// e2e tests to serve a scripted fake through the real per-request factory
+    /// resolution path in the LLM actor.
+    pub(crate) factory_override: Option<Arc<dyn LlmServiceFactory>>,
 }
 
 impl ProviderRegistry {
@@ -129,7 +138,19 @@ impl ProviderRegistry {
             config,
             resolved_map,
             resolved_list,
+            factory_override: None,
         })
+    }
+    /// Inject a test-only factory override.
+    ///
+    /// When set, [`create_factory`](Self::create_factory) returns a clone of
+    /// this factory for every resolved provider, bypassing backend parsing.
+    /// Production code never sets this; only e2e tests use it to serve a
+    /// scripted fake through the real per-request resolution path.
+    #[must_use]
+    pub fn with_factory_override(mut self, factory: Arc<dyn LlmServiceFactory>) -> Self {
+        self.factory_override = Some(factory);
+        self
     }
 
     /// Returns a reference to the underlying config (for persistence).
@@ -269,19 +290,28 @@ impl ProviderRegistry {
         id: &ProviderId,
         api_keys: &ApiKeys,
     ) -> Result<Box<dyn LlmServiceFactory>, Report<LlmServiceError>> {
+        // Test-injected override: return a clone for EVERY factory request,
+        // bypassing provider resolution entirely. This is the entry point used
+        // by the per-request path in the LLM actor, so checking here lets e2e
+        // tests serve a scripted fake through the real resolution path without
+        // registering real providers. Clones share the fake's inner
+        // `Arc<Mutex<VecDeque>>` queue.
+        if let Some(override_factory) = &self.factory_override {
+            return Ok(Box::new(FactoryOverride(override_factory.clone())));
+        }
         let resolved = self.get(id).ok_or_else(|| {
             Report::new(LlmServiceError::Config).attach(format!("unknown provider: {id}"))
         })?;
         self.create_factory_from_resolved(resolved, api_keys)
     }
 
-    /// Creates a factory from a statically resolved provider entry.
-    #[expect(clippy::unused_self, reason = "called via self from create_factory")]
     fn create_factory_from_resolved(
         &self,
         resolved: &ResolvedProvider,
         api_keys: &ApiKeys,
     ) -> Result<Box<dyn LlmServiceFactory>, Report<LlmServiceError>> {
+        // Test override is handled in `create_factory` before provider resolution,
+        // so this path is only reached in production (no override set).
         if resolved.backend == "sample" {
             let factory: Box<dyn LlmServiceFactory> = Box::new(SampleLlmServiceFactory);
             return Ok(factory);
@@ -326,4 +356,26 @@ fn resolved_is_available(resolved: &ResolvedProvider, api_keys: &ApiKeys) -> boo
         return false;
     };
     api_keys.is_set(env_var)
+}
+
+/// Thin delegating wrapper that lets a shared `Arc<dyn LlmServiceFactory>`
+/// be returned as a fresh `Box<dyn LlmServiceFactory>` per `create_factory` call.
+/// Each instance delegates to the same shared factory (and thus the same backing
+/// state, e.g. the fake's `Arc<Mutex<VecDeque>>` FIFO queue).
+struct FactoryOverride(Arc<dyn LlmServiceFactory>);
+
+impl LlmServiceFactory for FactoryOverride {
+    fn create(&self) -> Result<Box<dyn LlmService>, Report<LlmServiceError>> {
+        self.0.create()
+    }
+
+    fn name(&self) -> &str {
+        self.0.name()
+    }
+}
+
+impl std::fmt::Debug for FactoryOverride {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        f.debug_tuple("FactoryOverride").field(&self.0).finish()
+    }
 }

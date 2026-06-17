@@ -1,5 +1,5 @@
 //! Build script: creates a SQLite DB with the post-v20 schema and exposes its
-//! path as `DAO_DATABASE_URL` so the `#[dao]` macro can validate `#[query]` /
+//! path as `DAOW_DATABASE_URL` so the `#[dao]` macro can validate `#[query]` /
 //! `#[execute]` SQL against a real database at compile time.
 //!
 //! The schema is sourced from `jinn_session_schema::run_migrations` — the
@@ -23,7 +23,7 @@ fn main() {
         .unwrap_or_else(|e| panic!("failed to apply migrations to dao validation db: {e}"));
 
     println!(
-        "cargo:rustc-env=DAO_DATABASE_URL={}",
+        "cargo:rustc-env=DAOW_DATABASE_URL={}",
         db_path.to_string_lossy()
     );
 
