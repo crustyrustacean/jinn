@@ -126,7 +126,11 @@ impl ProviderRegistryService {
     /// from `providers.toml` and needs to swap it into the service.
     pub fn replace(&self, registry: ProviderRegistry) {
         let mut guard = self.inner.write();
+        // Carry the test-injected factory override across the swap so it
+        // survives the init actor's rebuild-from-config at startup.
+        let preserved = guard.factory_override();
         *guard = registry;
+        guard.set_factory_override(preserved);
     }
 
     /// Updates the default provider in the config.
