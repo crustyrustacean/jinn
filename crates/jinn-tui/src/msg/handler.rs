@@ -11,6 +11,7 @@ use std::sync::Arc;
 use std::sync::atomic::{AtomicBool, Ordering};
 use std::time::{Duration, Instant};
 
+use crossterm::event::Event;
 use derive_more::Debug;
 use kanal::Receiver;
 
@@ -127,6 +128,96 @@ const POLL_TIMEOUT: Duration = Duration::from_millis(16);
 /// Tick interval for periodic render refresh.
 const TICK_INTERVAL: Duration = Duration::from_millis(100);
 
+/// Concatenates a leading paste chunk with any immediately-following paste
+/// chunks from `pending`, returning the full coalesced paste text and the
+/// remaining (non-paste) tail.
+///
+/// `pending` are events already read from crossterm that follow the initial
+/// paste chunk. Iteration stops at the first non-`Paste` event, which becomes
+/// the head of the returned remaining slice so the caller can re-emit it in
+/// order. Back-to-back paste chunks merge into a single string; any boundary
+/// (a key, mouse, resize, etc.) terminates the run.
+///
+/// Pure over an already-read event slice so the merge contract is unit-testable
+/// without a live terminal.
+fn coalesce_paste(initial: String, pending: &[Event]) -> (String, &[Event]) {
+    // Reserve the combined byte length up front so the result allocates once
+    // instead of growing incrementally — matters for arbitrarily large pastes.
+    let paste_byte_len: usize = pending
+        .iter()
+        .take_while(|e| matches!(e, Event::Paste(_)))
+        .filter_map(|e| match e {
+            Event::Paste(chunk) => Some(chunk.len()),
+            _ => None,
+        })
+        .sum();
+
+    let mut full = initial;
+    full.reserve(paste_byte_len);
+
+    let mut remaining = pending;
+    while let Some((first, rest)) = remaining.split_first() {
+        match first {
+            Event::Paste(chunk) => {
+                full.push_str(chunk);
+                remaining = rest;
+            }
+            _ => break,
+        }
+    }
+
+    (full, remaining)
+}
+
+/// Non-blocking drain of every crossterm event that is ready *right now*.
+///
+/// Returns once `poll(Duration::ZERO)` reports no event, on a read/poll error,
+/// or when `stop` is set. Used to gather follow-on paste chunks (and any
+/// interleaved non-paste event) into one batch so a paste action can be
+/// coalesced before it crosses the message channel.
+fn drain_ready_events(stop: &AtomicBool) -> Vec<Event> {
+    let mut events = Vec::new();
+    while !stop.load(Ordering::Relaxed) {
+        match crossterm::event::poll(Duration::ZERO) {
+            Ok(true) => match crossterm::event::read() {
+                Ok(evt) => events.push(evt),
+                Err(e) => {
+                    tracing::error!(err = ?e, "crossterm event read error during paste drain");
+                    break;
+                }
+            },
+            Ok(false) => break,
+            Err(e) => {
+                tracing::error!(err = ?e, "crossterm event poll error during paste drain");
+                break;
+            }
+        }
+    }
+    events
+}
+
+/// Forwards a crossterm event read by the poll loop, coalescing pastes.
+///
+/// A `Paste` event triggers a non-blocking drain of any immediately-following
+/// chunks; the merged text is emitted as a single [`Msg::Input(Event::Paste(_))`].
+/// Any trailing non-paste event consumed by the drain is re-emitted in order.
+/// Non-paste events forward unchanged.
+fn forward_read_event(sender: &MsgSender, evt: Event, stop: &AtomicBool) {
+    let Event::Paste(initial) = evt else {
+        sender.send(Msg::Input(evt));
+        return;
+    };
+
+    let drained = drain_ready_events(stop);
+    let (full, remaining) = coalesce_paste(initial, &drained);
+
+    sender.send(Msg::Input(Event::Paste(full)));
+
+    for trailing in remaining {
+        sender.send(Msg::Input(trailing.clone()));
+    }
+}
+
 /// Runs the event poll loop on a dedicated OS thread.
 ///
 /// Uses synchronous `crossterm::event::poll` / `read` instead of the async
@@ -152,12 +243,11 @@ fn run_event_poll(sender: &MsgSender, stop: Arc<AtomicBool>) {
         let poll_duration = poll_deadline.saturating_duration_since(now);
 
         match crossterm::event::poll(poll_duration) {
+
             Ok(true) => {
-                // Event available - read and forward.
+                // Event available - read and forward, coalescing paste chunks.
                 match crossterm::event::read() {
-                    Ok(evt) => {
-                        sender.send(Msg::Input(evt));
-                    }
+                    Ok(evt) => forward_read_event(sender, evt, &stop),
                     Err(e) => {
                         tracing::error!(err = ?e, "crossterm event read error");
                     }
