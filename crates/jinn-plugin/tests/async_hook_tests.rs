@@ -1867,7 +1867,7 @@ async fn majority_one_pass_two_fail_emits_fail() {
     let sys = build_system(dir.path());
     let origin = SessionId::from("origin".to_owned());
     let total = 3;
-    for i in 0..total {
+    for _i in 0..total {
         let inst = PluginInstanceId::new();
         let reg = sys
             .async_handle
