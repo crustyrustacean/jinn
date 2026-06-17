@@ -8,6 +8,12 @@
 //! Types are added as-needed. This is not a dumping ground: only types that are
 //! both foundational and domain-agnostic belong here.
 
+pub mod attached_plugin;
+pub mod plugin_instance_id;
 pub mod session_id;
+pub mod session_registry_id;
 
+pub use attached_plugin::{AttachedPlugin, PluginRunState};
+pub use plugin_instance_id::PluginInstanceId;
 pub use session_id::SessionId;
+pub use session_registry_id::SessionRegistryId;

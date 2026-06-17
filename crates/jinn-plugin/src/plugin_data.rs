@@ -14,8 +14,8 @@
 //! so duplicate instances of the same plugin name get isolated slots. Global
 //! plugins (no instance) key on their name.
 
-use crate::SessionId;
 use dashmap::DashMap;
+use jinn_core_types::SessionId;
 use std::sync::Arc;
 
 use super::PluginInstanceId;

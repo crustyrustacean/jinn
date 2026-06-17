@@ -8,14 +8,14 @@
     reason = "test code"
 )]
 
+use jinn_core_types::PluginInstanceId;
 use jinn_domain::SessionId;
-use jinn_domain::feat::plugin_system::PluginInstanceId;
-use jinn_domain::feat::plugin_system::SessionPluginRegistry;
+use jinn_domain::feat::plugin_dispatch::SessionPluginRegistry;
 use parking_lot::Mutex;
 use std::path::Path;
 use std::sync::Arc;
 
-use jinn_domain::feat::plugin_system::{PluginCommand, PluginSystem, PluginSystemBuildResult};
+use jinn_plugin::{PluginCommand, PluginSystem, PluginSystemBuildResult};
 use serde::Serialize;
 use serde_json::json;
 
@@ -29,7 +29,7 @@ fn write_plugin(dir: &Path, name: &str, lua_source: &str) {
 
 struct TestSystem {
     captured: Arc<Mutex<Vec<PluginCommand>>>,
-    async_handle: jinn_domain::feat::plugin_system::AsyncPluginHandle,
+    async_handle: jinn_plugin::AsyncPluginHandle,
 }
 
 fn build_system(dir: &Path) -> TestSystem {

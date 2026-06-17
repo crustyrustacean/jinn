@@ -34,7 +34,6 @@ use crate::common::state::State;
 
 use crate::PhaseKind;
 use crate::SessionId;
-use crate::feat::attached_plugin::{AttachedPlugin, PluginInstanceId};
 use crate::feat::plugin_dispatch::DomainNodeContext;
 use crate::feat::plugin_dispatch::protocol::command::{
     AttachPlugin, DetachPlugin, EnablePlugin, SetManagedSession, TogglePlugin,
@@ -42,10 +41,12 @@ use crate::feat::plugin_dispatch::protocol::command::{
 use crate::feat::plugin_dispatch::protocol::event::{
     PluginAttached, PluginDetached, PluginToggled,
 };
-use crate::feat::plugin_system::SessionRegistryId;
 use crate::feat::session::chat_entry::ChatEntryKind;
 use crate::feat::session::protocol::session_phase_changed::SessionPhaseChanged;
 use crate::feat::session_lifecycle::protocol::event::SessionCreated;
+use jinn_core_types::AttachedPlugin;
+use jinn_core_types::PluginInstanceId;
+use jinn_core_types::SessionRegistryId;
 use kameo::prelude::{ActorRef, Context, Message};
 /// Errors raised by [`PluginDispatchActor`] operations.
 ///
@@ -304,7 +305,7 @@ impl PluginDispatchActor {
     async fn register_plugin_tools_with_actor(
         &self,
         session_id: &SessionId,
-        tools: Vec<crate::feat::plugin_system::PluginToolMetadata>,
+        tools: Vec<crate::feat::plugin_dispatch::PluginToolMetadata>,
     ) {
         // No-op: attached-scoped plugin tools are no longer published to the
         // origin session on attach. Their execution handlers are registered
@@ -666,14 +667,15 @@ mod tests {
     use crate::common::app_state::AppState;
     use crate::common::services::bus_service::BusAudit;
     use crate::common::session_map::SessionMap;
-    use crate::feat::attached_plugin::{PluginInstanceId, PluginRunState};
+    use crate::feat::plugin_dispatch::PluginToolMetadata;
+    use crate::feat::plugin_dispatch::ToolScope;
     use crate::feat::plugin_dispatch::protocol::command::{
         AttachPlugin, DetachPlugin, SetManagedSession, TogglePlugin,
     };
-    use crate::feat::plugin_system::PluginToolMetadata;
-    use crate::feat::plugin_system::ToolScope;
     use crate::feat::session::chat_session::ChatSessionState;
     use crate::feat::tools_actor::protocol::command::RegisterPluginTools;
+    use jinn_core_types::PluginInstanceId;
+    use jinn_core_types::PluginRunState;
     use std::sync::Arc;
 
     async fn make_actor() -> (PluginDispatchActor, BusAudit, SessionId) {

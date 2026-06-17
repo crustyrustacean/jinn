@@ -237,7 +237,7 @@ fn extract_params(entry: &mlua::Table) -> Vec<LuaParamDef> {
         .collect()
 }
 
-impl From<PluginToolMetadata> for crate::feat::plugin_system::PluginToolMetadata {
+impl From<PluginToolMetadata> for jinn_domain::feat::plugin_dispatch::PluginToolMetadata {
     fn from(value: PluginToolMetadata) -> Self {
         Self {
             name: value.name,
@@ -249,7 +249,7 @@ impl From<PluginToolMetadata> for crate::feat::plugin_system::PluginToolMetadata
     }
 }
 
-impl From<ToolScope> for crate::feat::plugin_system::ToolScope {
+impl From<ToolScope> for jinn_domain::feat::plugin_dispatch::ToolScope {
     fn from(value: ToolScope) -> Self {
         match value {
             ToolScope::Global => Self::Global,

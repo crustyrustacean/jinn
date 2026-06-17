@@ -8,8 +8,8 @@ use error_stack::ResultExt;
 use serde::{Deserialize, Serialize};
 
 use crate::common::bus::BusMessage;
-use crate::feat::attached_plugin::PluginInstanceId;
 use crate::protocol::SessionId;
+use jinn_core_types::PluginInstanceId;
 
 /// Attach an attachable plugin to a session.
 ///

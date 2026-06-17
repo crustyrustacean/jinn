@@ -1821,6 +1821,7 @@ dependencies = [
  "jiff",
  "jinn-cli",
  "jinn-domain",
+ "jinn-plugin",
  "jinn-tui",
  "jinn-web-fetch",
  "kameo",
@@ -1903,7 +1904,6 @@ dependencies = [
  "kanal",
  "kill_tree",
  "libc",
- "mlua",
  "parking_lot",
  "rand 0.9.4",
  "ratatui",
@@ -1950,6 +1950,31 @@ dependencies = [
  "tokio",
  "tracing",
  "tracing-subscriber",
+]
+
+[[package]]
+name = "jinn-plugin"
+version = "0.68.0"
+dependencies = [
+ "async-trait",
+ "dashmap",
+ "derive_more",
+ "error-stack",
+ "futures",
+ "jinn-core-types",
+ "jinn-domain",
+ "kanal",
+ "mlua",
+ "parking_lot",
+ "rstest",
+ "serde",
+ "serde_json",
+ "tempfile",
+ "tokio",
+ "tokio-util",
+ "tracing",
+ "uuid",
+ "wherror",
 ]
 
 [[package]]
@@ -2050,6 +2075,7 @@ dependencies = [
  "dirs",
  "error-stack",
  "jinn-domain",
+ "jinn-plugin",
  "jinn-selection-widget",
  "jinn-testutil",
  "kameo",

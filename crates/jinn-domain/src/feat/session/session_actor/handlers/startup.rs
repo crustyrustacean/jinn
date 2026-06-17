@@ -320,7 +320,7 @@ mod tests {
     async fn startup_rehydrates_attached_plugins_for_loaded_sessions() {
         // Given a session in the store with an attached plugin.
         let mut store_session = ChatSessionState::new();
-        let ap = crate::feat::attached_plugin::AttachedPlugin::new("test");
+        let ap = jinn_core_types::AttachedPlugin::new("test");
         store_session.core.attached_plugins.push(ap);
         let (actor, _audit, _store) = test_actor_with_store_recording(vec![store_session]).await;
 
@@ -348,13 +348,13 @@ mod tests {
     #[tokio::test]
     async fn startup_resets_running_plugins_to_idle() {
         let mut store_session = ChatSessionState::new();
-        let ap = crate::feat::attached_plugin::AttachedPlugin::new("test");
+        let ap = jinn_core_types::AttachedPlugin::new("test");
         // Force into Running state to simulate crash.
         store_session
             .core
             .attached_plugins
-            .push(crate::feat::attached_plugin::AttachedPlugin {
-                run_state: crate::feat::attached_plugin::PluginRunState::Running,
+            .push(jinn_core_types::AttachedPlugin {
+                run_state: jinn_core_types::PluginRunState::Running,
                 ..ap
             });
         let session_id = store_session.session_id().clone();
@@ -377,10 +377,7 @@ mod tests {
             .expect("session should be loaded");
         let ap = &session.core.attached_plugins[0];
         assert!(
-            matches!(
-                ap.run_state,
-                crate::feat::attached_plugin::PluginRunState::Idle
-            ),
+            matches!(ap.run_state, jinn_core_types::PluginRunState::Idle),
             "Running plugin should be reset to Idle on startup, got {:?}",
             ap.run_state
         );

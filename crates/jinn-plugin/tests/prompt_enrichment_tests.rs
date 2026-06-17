@@ -20,9 +20,7 @@
 )]
 
 use jinn_domain::feat::plugin_dispatch::{HookContext, PluginSyncHooks};
-use jinn_domain::feat::plugin_system::{
-    PluginCommand, PluginSystem, PluginSystemBuildResult, SyncPlugins,
-};
+use jinn_plugin::{PluginCommand, PluginSystem, PluginSystemBuildResult, SyncPlugins};
 use parking_lot::Mutex;
 use serde_json::{Value, json};
 use std::path::{Path, PathBuf};
@@ -57,7 +55,7 @@ type Captured = Arc<Mutex<Vec<PluginCommand>>>;
 struct TestSystem {
     captured: Captured,
     sync: SyncPlugins,
-    async_handle: jinn_domain::feat::plugin_system::AsyncPluginHandle,
+    async_handle: jinn_plugin::AsyncPluginHandle,
     oneshot_calls: Arc<Mutex<u32>>,
 }
 

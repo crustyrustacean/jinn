@@ -425,7 +425,7 @@ pub fn init() -> Keymap<KeyEvent, Scope, Intent, KeyCategory> {
 /// `SyncPlugins::declared_keybinds`).
 pub fn bind_plugin_keybinds(
     keymap: &mut Keymap<KeyEvent, Scope, Intent, KeyCategory>,
-    plugins: &jinn_domain::feat::plugin_system::SyncPlugins,
+    plugins: &jinn_plugin::SyncPlugins,
 ) {
     for kb in plugins.declared_keybinds() {
         let Ok(scope) = Scope::from_str(&kb.scope) else {
@@ -487,7 +487,7 @@ mod tests {
     fn bind_plugin_keybinds_no_plugins_is_noop() {
         // No plugins loaded => no keybinds to bind; function must be a no-op.
         let mut keymap = init();
-        let plugins = jinn_domain::feat::plugin_system::SyncPlugins::empty();
+        let plugins = jinn_plugin::SyncPlugins::empty();
         bind_plugin_keybinds(&mut keymap, &plugins);
         // No panic, no bindings added => success.
     }
@@ -502,7 +502,7 @@ mod tests {
     ///       requires the PascalCase `"Input"` (matching `Scope::Display`).
     #[test]
     fn bind_plugin_keybinds_loads_prompt_enrichment_binding() {
-        use jinn_domain::feat::plugin_system::{PluginSystem, PluginSystemBuildResult};
+        use jinn_plugin::{PluginSystem, PluginSystemBuildResult};
         use std::path::Path;
 
         // Locate the dev plugin tree (crate-relative).
@@ -570,8 +570,8 @@ mod tests {
     #[test]
     fn handle_key_alt_e_in_input_scope_fires_trigger_plugin() {
         use crate::app::WhichKeyInstance;
-        use jinn_domain::feat::plugin_system::{PluginSystem, PluginSystemBuildResult};
         use jinn_domain::{Key, KeyEvent, Modifiers};
+        use jinn_plugin::{PluginSystem, PluginSystemBuildResult};
         use std::path::Path;
 
         let manifest_dir = Path::new(env!("CARGO_MANIFEST_DIR"));

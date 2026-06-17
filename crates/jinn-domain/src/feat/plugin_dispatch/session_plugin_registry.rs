@@ -7,8 +7,8 @@
 use error_stack::Report;
 use wherror::Error;
 
-use crate::feat::plugin_system::SessionRegistryId;
-use crate::protocol::SessionId;
+use jinn_core_types::SessionId;
+use jinn_core_types::SessionRegistryId;
 
 /// Result of creating a per-session plugin registry.
 #[derive(Debug)]
@@ -86,7 +86,7 @@ pub trait SessionPluginRegistry: Send + Sync {
     /// cannot be loaded.
     async fn create_session_registry(
         &self,
-        instances: Vec<(crate::feat::plugin_system::PluginInstanceId, String)>,
+        instances: Vec<(jinn_core_types::PluginInstanceId, String)>,
         origin_session_id: SessionId,
     ) -> Result<CreateSessionRegistryResult, Report<SessionPluginRegistryError>>;
 

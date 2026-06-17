@@ -4,9 +4,9 @@
 //! to satisfy the orphan rule. The trait `PluginSyncCall` is defined in
 //! `jinn-domain`, which `jinn-plugin` depends on.
 
-use crate::feat::plugin_dispatch::{PluginSyncCall, PluginSyncCallError};
-use crate::feat::plugin_system::SessionRegistryId;
+use crate::SessionRegistryId;
 use error_stack::Report;
+use jinn_domain::feat::plugin_dispatch::{PluginSyncCall, PluginSyncCallError};
 use serde_json::Value;
 
 use super::sync_handle::PluginSyncHandle;

@@ -163,8 +163,8 @@ mod tests {
     /// managed (child) session. Cursor points at the SECOND plugin entry so we
     /// can verify activate resolves by instance id (not first-match-by-name).
     fn state_with_two_judge_instances_cursor_on_second_plugin() -> (AppState, SessionId) {
-        use crate::feat::attached_plugin::AttachedPlugin;
         use crate::feat::session::chat_session::ChatSessionState;
+        use jinn_core_types::AttachedPlugin;
 
         let mut state = AppState::default();
         let origin = state.session.active_session_id().clone();

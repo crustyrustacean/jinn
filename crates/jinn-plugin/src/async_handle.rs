@@ -4,8 +4,8 @@
 //! sender and the shared plugin data store. The actual Lua execution happens
 //! on a dedicated background thread (see `async_thread.rs`).
 
-use crate::SessionId;
 use error_stack::{Report, ResultExt};
+use jinn_core_types::SessionId;
 use serde::Serialize;
 use serde::de::DeserializeOwned;
 use tokio::sync::oneshot;
@@ -425,37 +425,43 @@ impl AsyncPluginHandle {
 }
 
 #[async_trait::async_trait]
-impl crate::feat::plugin_system::SessionPluginRegistry for AsyncPluginHandle {
+impl jinn_domain::feat::plugin_dispatch::SessionPluginRegistry for AsyncPluginHandle {
     async fn create_session_registry(
         &self,
         instances: Vec<(super::PluginInstanceId, String)>,
         origin_session_id: SessionId,
     ) -> Result<
-        crate::feat::plugin_system::CreateSessionRegistryResult,
-        Report<crate::feat::plugin_system::SessionPluginRegistryError>,
+        jinn_domain::feat::plugin_dispatch::CreateSessionRegistryResult,
+        Report<jinn_domain::feat::plugin_dispatch::SessionPluginRegistryError>,
     > {
         let result =
             AsyncPluginHandle::create_session_registry_impl(self, instances, origin_session_id)
                 .await
-                .map_err(|_e| Report::new(crate::feat::plugin_system::SessionPluginRegistryError))
+                .map_err(|_e| {
+                    Report::new(jinn_domain::feat::plugin_dispatch::SessionPluginRegistryError)
+                })
                 .attach("create per-session plugin registry")?;
-        Ok(crate::feat::plugin_system::CreateSessionRegistryResult {
-            registry_id: result.registry_id,
-            tool_metadata: result
-                .tool_metadata
-                .into_iter()
-                .map(std::convert::Into::into)
-                .collect(),
-        })
+        Ok(
+            jinn_domain::feat::plugin_dispatch::CreateSessionRegistryResult {
+                registry_id: result.registry_id,
+                tool_metadata: result
+                    .tool_metadata
+                    .into_iter()
+                    .map(std::convert::Into::into)
+                    .collect(),
+            },
+        )
     }
 
     async fn destroy_session_registry(
         &self,
-        registry_id: crate::feat::plugin_system::SessionRegistryId,
-    ) -> Result<(), Report<crate::feat::plugin_system::SessionPluginRegistryError>> {
+        registry_id: crate::SessionRegistryId,
+    ) -> Result<(), Report<jinn_domain::feat::plugin_dispatch::SessionPluginRegistryError>> {
         AsyncPluginHandle::destroy_session_registry_impl(self, registry_id)
             .await
-            .map_err(|_e| Report::new(crate::feat::plugin_system::SessionPluginRegistryError))
+            .map_err(|_e| {
+                Report::new(jinn_domain::feat::plugin_dispatch::SessionPluginRegistryError)
+            })
             .attach("destroy per-session plugin registry")
     }
 

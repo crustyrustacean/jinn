@@ -12,34 +12,6 @@
 //! - **Sync** — render thread, hooks return immediately via [`SyncPlugins`]
 //! - **Async** — background thread, hooks can call `ctx.request()` via [`AsyncPluginHandle`]
 
-use serde::{Deserialize, Serialize};
-use uuid::Uuid;
-
-// ── SessionRegistryId (was in plugin_system before merge) ──────────
-
-/// Opaque identifier for a per-session plugin registry on the plugin thread.
-///
-/// Created by the plugin system when a session attaches plugins and stored
-/// on the session. Passed back to the plugin system when firing session-scoped
-/// hooks via `PluginFire::fire_async_for_session` or
-/// `PluginSyncCall::call_hooks_for_session`.
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Serialize, Deserialize)]
-pub struct SessionRegistryId(Uuid);
-
-impl SessionRegistryId {
-    /// Generate a new random registry ID.
-    #[must_use]
-    pub fn new() -> Self {
-        Self(Uuid::new_v4())
-    }
-}
-
-impl Default for SessionRegistryId {
-    fn default() -> Self {
-        Self::new()
-    }
-}
-
 // ── Module declarations ────────────────────────────────────────────
 
 pub mod async_handle;
@@ -51,8 +23,6 @@ pub mod loader;
 pub mod plugin_data;
 pub mod plugin_fire_impl;
 pub mod plugin_sync_impl;
-pub mod session_plugin_registry;
-pub mod session_plugin_registry_service;
 pub mod session_registry;
 pub mod sync_handle;
 pub mod sync_state;
@@ -61,18 +31,15 @@ pub mod tool_def;
 
 // ── Re-exports ─────────────────────────────────────────────────────
 
-pub use crate::feat::attached_plugin::PluginInstanceId;
 pub use async_handle::AsyncPluginHandle;
 pub use async_thread::RequestHandler;
 pub use command::PluginCommand;
 pub use in_flight_requests::InFlightRequests;
+pub use jinn_core_types::{
+    AttachedPlugin, PluginInstanceId, PluginRunState, SessionId, SessionRegistryId,
+};
 pub use loader::{PluginKind, PluginMeta, discover_plugins};
 pub use plugin_data::PluginData;
-pub use session_plugin_registry::{
-    CreateSessionRegistryResult, PluginToolMetadata, SessionPluginRegistry,
-    SessionPluginRegistryError, ToolScope,
-};
-pub use session_plugin_registry_service::SessionPluginRegistryService;
 pub use sync_handle::PluginSyncHandle;
 pub use sync_state::{PluginHooks, SyncPlugins};
 pub use system::{CommandDispatcher, PluginSystem, PluginSystemBuildResult};
