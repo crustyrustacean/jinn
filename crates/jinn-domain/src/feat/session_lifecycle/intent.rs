@@ -105,6 +105,7 @@ pub fn handle_session_lifecycle_setup(
         persona_name,
         std::collections::HashSet::new(),
         std::collections::HashSet::new(),
+        None,
     ));
     let new_id = new_session.session_id().clone();
 

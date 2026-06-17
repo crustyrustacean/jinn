@@ -50,6 +50,11 @@ pub struct SessionProfile {
     /// deserialize to an empty set (all enabled).
     #[serde(default)]
     pub disabled_skills: HashSet<String>,
+    /// Reasoning effort override for this session, or `None` to inherit the
+    /// global default from `jinn.toml`. Legacy sessions without this field
+    /// deserialize to `None` (inherit global).
+    #[serde(default)]
+    pub reasoning_effort: Option<crate::ReasoningEffort>,
 }
 
 impl Default for SessionProfile {
@@ -59,6 +64,7 @@ impl Default for SessionProfile {
             persona_name: DEFAULT_PERSONA_NAME.to_owned(),
             disabled_tools: HashSet::new(),
             disabled_skills: HashSet::new(),
+            reasoning_effort: None,
         }
     }
 }
@@ -71,6 +77,7 @@ impl SessionProfile {
             persona_name: DEFAULT_PERSONA_NAME.to_owned(),
             disabled_tools: HashSet::new(),
             disabled_skills: HashSet::new(),
+            reasoning_effort: None,
         }
     }
 
@@ -81,6 +88,7 @@ impl SessionProfile {
             persona_name: DEFAULT_PERSONA_NAME.to_owned(),
             disabled_tools: HashSet::new(),
             disabled_skills: HashSet::new(),
+            reasoning_effort: None,
         }
     }
 
@@ -90,12 +98,14 @@ impl SessionProfile {
         persona_name: String,
         disabled_tools: HashSet<String>,
         disabled_skills: HashSet<String>,
+        reasoning_effort: Option<crate::ReasoningEffort>,
     ) -> Self {
         Self {
             model,
             persona_name,
             disabled_tools,
             disabled_skills,
+            reasoning_effort,
         }
     }
 }
@@ -148,6 +158,7 @@ mod tests {
             "coding-assistant".to_owned(),
             disabled.clone(),
             HashSet::new(),
+            None,
         );
 
         // When serialized and deserialized.
@@ -169,6 +180,7 @@ mod tests {
             "coding-assistant".to_owned(),
             HashSet::new(),
             disabled.clone(),
+            None,
         );
 
         // When serialized and deserialized.
@@ -189,6 +201,18 @@ mod tests {
 
         // Then disabled_skills is empty (all skills enabled).
         assert!(profile.disabled_skills.is_empty());
+    }
+
+    #[rstest::rstest]
+    fn legacy_json_without_reasoning_effort_deserializes_to_none() {
+        // Given JSON from an older version that lacks reasoning_effort.
+        let json = r#"{"model":{"single":"ollama/llama3"},"persona_name":"coding-assistant","disabled_tools":[],"disabled_skills":[]}"#;
+
+        // When deserialized.
+        let profile: SessionProfile = serde_json::from_str(json).expect("deserialize");
+
+        // Then reasoning_effort is None (inherit global default).
+        assert!(profile.reasoning_effort.is_none());
     }
 
     #[rstest::rstest]
