@@ -1,8 +1,4 @@
 //! PluginSyncCall trait implementation for PluginSyncHandle.
-//!
-//! This impl lives in `jinn-plugin` (where `PluginSyncHandle` is defined)
-//! to satisfy the orphan rule. The trait `PluginSyncCall` is defined in
-//! `jinn-domain`, which `jinn-plugin` depends on.
 
 use crate::SessionRegistryId;
 use error_stack::Report;
