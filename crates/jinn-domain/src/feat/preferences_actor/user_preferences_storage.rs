@@ -241,7 +241,7 @@ mod tests {
     use crate::feat::preferences_actor::RequestRetryConfig;
     use crate::feat::preferences_actor::user_preferences::{
         AutoPruneConfig, BashConfig, CompactionConfig, CwdSelectorConfig, MinimapConfig,
-        OpenrouterWebSearchConfig, WebFetchConfig,
+        OpenrouterWebSearchConfig, ReasoningConfig, WebFetchConfig,
     };
 
     #[rstest::rstest]
@@ -274,6 +274,7 @@ mod tests {
             minimap: MinimapConfig::default(),
             auto_prune: AutoPruneConfig::default(),
             bash: BashConfig::default(),
+            reasoning: ReasoningConfig::default(),
         };
 
         // When saving and reloading.
@@ -328,6 +329,7 @@ mod tests {
             minimap: MinimapConfig::default(),
             auto_prune: AutoPruneConfig::default(),
             bash: BashConfig::default(),
+            reasoning: ReasoningConfig::default(),
         };
 
         // When saving and reloading.
@@ -359,6 +361,7 @@ mod tests {
             minimap: MinimapConfig::default(),
             auto_prune: AutoPruneConfig::default(),
             bash: BashConfig::default(),
+            reasoning: ReasoningConfig::default(),
         };
         service.save(&prefs).expect("save");
 
@@ -390,6 +393,7 @@ mod tests {
             minimap: MinimapConfig::default(),
             auto_prune: AutoPruneConfig::default(),
             bash: BashConfig::default(),
+            reasoning: ReasoningConfig::default(),
         };
         service.save(&prefs).expect("save");
 
@@ -408,6 +412,7 @@ mod tests {
             minimap: MinimapConfig::default(),
             auto_prune: AutoPruneConfig::default(),
             bash: BashConfig::default(),
+            reasoning: ReasoningConfig::default(),
         };
         service.save(&updated).expect("save updated");
 
@@ -435,6 +440,7 @@ mod tests {
             minimap: MinimapConfig::default(),
             auto_prune: AutoPruneConfig::default(),
             bash: BashConfig::default(),
+            reasoning: ReasoningConfig::default(),
         };
         service.save(&prefs).expect("save");
 
