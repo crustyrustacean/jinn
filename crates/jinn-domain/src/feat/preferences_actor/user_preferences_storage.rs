@@ -241,7 +241,7 @@ mod tests {
     use crate::feat::preferences_actor::RequestRetryConfig;
     use crate::feat::preferences_actor::user_preferences::{
         AutoPruneConfig, BashConfig, CompactionConfig, CwdSelectorConfig, MinimapConfig,
-        OpenrouterWebSearchConfig, WebFetchConfig,
+        OpenrouterWebSearchConfig, ReasoningConfig, WebFetchConfig,
     };
     use crate::feat::project::ProjectConfig;
 
@@ -276,6 +276,7 @@ mod tests {
             auto_prune: AutoPruneConfig::default(),
             bash: BashConfig::default(),
             projects: vec![],
+            reasoning: ReasoningConfig::default(),
         };
 
         // When saving and reloading.
@@ -333,6 +334,7 @@ mod tests {
             projects: vec![ProjectConfig {
                 path: PathBuf::from("/tmp/proj-a"),
             }],
+            reasoning: ReasoningConfig::default(),
         };
 
         // When saving and reloading.
@@ -371,6 +373,7 @@ mod tests {
             auto_prune: AutoPruneConfig::default(),
             bash: BashConfig::default(),
             projects: vec![],
+            reasoning: ReasoningConfig::default(),
         };
         service.save(&prefs).expect("save");
 
@@ -403,6 +406,7 @@ mod tests {
             auto_prune: AutoPruneConfig::default(),
             bash: BashConfig::default(),
             projects: vec![],
+            reasoning: ReasoningConfig::default(),
         };
         service.save(&prefs).expect("save");
 
@@ -422,6 +426,7 @@ mod tests {
             auto_prune: AutoPruneConfig::default(),
             bash: BashConfig::default(),
             projects: vec![],
+            reasoning: ReasoningConfig::default(),
         };
         service.save(&updated).expect("save updated");
 
@@ -450,6 +455,7 @@ mod tests {
             auto_prune: AutoPruneConfig::default(),
             bash: BashConfig::default(),
             projects: vec![],
+            reasoning: ReasoningConfig::default(),
         };
         service.save(&prefs).expect("save");
 

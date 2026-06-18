@@ -956,3 +956,91 @@ fn render_alloy_with_one_model_shows_alloy_1() {
         "should contain [alloy 1] (ollama)/llama3, got: {row}"
     );
 }
+
+#[rstest::rstest]
+fn render_appends_resolved_reasoning_effort_after_model() {
+    // Given a session with a model and a global reasoning default of High.
+    let mut element = StatusBarElement;
+    let mut state = AppState::default();
+    state
+        .active_session_mut()
+        .set_model(ModelSelection::Single("ollama/llama3".to_owned()));
+    state.frontend.preferences.reasoning.default_effort = Some(crate::ReasoningEffort::High);
+
+    // When rendering.
+    let (mut terminal, area) = setup_term(50, 2);
+    terminal
+        .draw(|frame| {
+            let ctx = RenderCtx::new(&state);
+            element.render(frame, area, &ctx);
+        })
+        .unwrap();
+    let buffer = terminal.backend().buffer().clone();
+    let row = buffer_row(&buffer, 1, 50);
+
+    // Then the model line shows [high] immediately after the model.
+    assert!(
+        row.contains("(ollama)/llama3 [high]"),
+        "should contain [high] after model, got: {row}"
+    );
+}
+
+#[rstest::rstest]
+fn render_session_override_beats_global_reasoning_effort() {
+    // Given a global default of High but a session override of Low.
+    let mut element = StatusBarElement;
+    let mut state = AppState::default();
+    state
+        .active_session_mut()
+        .set_model(ModelSelection::Single("ollama/llama3".to_owned()));
+    state.frontend.preferences.reasoning.default_effort = Some(crate::ReasoningEffort::High);
+    state.active_session_mut().profile_mut().reasoning_effort = Some(crate::ReasoningEffort::Low);
+
+    // When rendering.
+    let (mut terminal, area) = setup_term(50, 2);
+    terminal
+        .draw(|frame| {
+            let ctx = RenderCtx::new(&state);
+            element.render(frame, area, &ctx);
+        })
+        .unwrap();
+    let buffer = terminal.backend().buffer().clone();
+    let row = buffer_row(&buffer, 1, 50);
+
+    // Then the override wins: shows [low], not [high].
+    assert!(
+        row.contains("(ollama)/llama3 [low]"),
+        "should show session override [low], got: {row}"
+    );
+    assert!(
+        !row.contains("[high]"),
+        "should not show global [high] when override is set, got: {row}"
+    );
+}
+
+#[rstest::rstest]
+fn render_omits_reasoning_effort_bracket_when_unresolved() {
+    // Given a model but no resolved reasoning effort (no override, no global).
+    let mut element = StatusBarElement;
+    let mut state = AppState::default();
+    state
+        .active_session_mut()
+        .set_model(ModelSelection::Single("ollama/llama3".to_owned()));
+
+    // When rendering.
+    let (mut terminal, area) = setup_term(50, 2);
+    terminal
+        .draw(|frame| {
+            let ctx = RenderCtx::new(&state);
+            element.render(frame, area, &ctx);
+        })
+        .unwrap();
+    let buffer = terminal.backend().buffer().clone();
+    let row = buffer_row(&buffer, 1, 50);
+
+    // Then no reasoning bracket appears at all (no [none] noise).
+    assert!(
+        !row.contains("["),
+        "should contain no bracket when effort unresolved, got: {row}"
+    );
+}

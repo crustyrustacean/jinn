@@ -112,11 +112,12 @@ pub fn init() -> Keymap<KeyEvent, Scope, Intent, KeyCategory> {
             .describe_group_with_category("<leader>s", "search", KeyCategory::General)
             .bind("<leader>sm", Intent::OpenPicker { kind: PickerKind::Provider }, KeyCategory::General)
             .bind("<leader>ss", Intent::OpenPicker { kind: PickerKind::Session }, KeyCategory::General)
-            .bind("<leader>sp", Intent::OpenPicker { kind: PickerKind::Persona }, KeyCategory::General)
+            .bind("<leader>se", Intent::OpenPicker { kind: PickerKind::Persona }, KeyCategory::General)
             .bind("<leader>st", Intent::OpenPicker { kind: PickerKind::Tool }, KeyCategory::General)
             .bind("<leader>sk", Intent::OpenPicker { kind: PickerKind::Skill }, KeyCategory::General)
             .bind("<leader>sh", Intent::OpenPicker { kind: PickerKind::Theme }, KeyCategory::General)
             .bind("<leader>sp", Intent::OpenPicker { kind: PickerKind::Plugin }, KeyCategory::General)
+            .bind("<leader>sr", Intent::OpenPicker { kind: PickerKind::ReasoningEffort }, KeyCategory::General)
             // Projects - curated directory list for quick session creation
             .bind("<leader>so", Intent::OpenPicker { kind: PickerKind::Project }, KeyCategory::General)
             // Input - enter input mode
@@ -302,6 +303,10 @@ pub fn init() -> Keymap<KeyEvent, Scope, Intent, KeyCategory> {
         })
 
         .scope(Scope::PickerCompactionModel, |b| {
+            add_picker_base(b);
+        })
+
+        .scope(Scope::PickerReasoningEffort, |b| {
             add_picker_base(b);
         })
         .scope(Scope::PickerTool, |b| {
@@ -878,5 +883,168 @@ mod tests {
             matches!(intent, Some(jinn_domain::Intent::PickerInsertChar { ch: 'a' })),
             "bare 'a' in PickerProject should type into the filter, not add cwd; got {intent:?}",
         );
+    }
+
+
+    #[rstest::rstest]
+    fn leader_sr_resolves_to_reasoning_effort_picker() {
+        // Given the default keymap.
+        use jinn_domain::{Key, KeyEvent, Modifiers};
+        use ratatui_which_key::NodeResult;
+        let keymap = init();
+        let leader = KeyEvent {
+            key: Key::Char(' '),
+            modifiers: Modifiers::none(),
+        };
+
+        // When navigating the <leader>sr sequence.
+        let path = [
+            leader,
+            KeyEvent {
+                key: Key::Char('s'),
+                modifiers: Modifiers::none(),
+            },
+            KeyEvent {
+                key: Key::Char('r'),
+                modifiers: Modifiers::none(),
+            },
+        ];
+        let result = keymap.navigate(&path, &Scope::Normal).expect("path exists");
+
+        // Then it resolves to OpenPicker{ReasoningEffort}.
+        match result {
+            NodeResult::Leaf { action } => assert!(
+                matches!(
+                    action,
+                    Intent::OpenPicker {
+                        kind: PickerKind::ReasoningEffort
+                    }
+                ),
+                "<leader>sr must resolve to OpenPicker{{ReasoningEffort}}; got {action:?}",
+            ),
+            other => panic!("<leader>sr must be a leaf, got branch: {other:?}"),
+        }
+    }
+
+    #[rstest::rstest]
+    fn reasoning_effort_picker_scope_binds_base_intents() {
+        // Given the default keymap.
+        use jinn_domain::{Key, KeyEvent, Modifiers};
+        use ratatui_which_key::NodeResult;
+        let keymap = init();
+        let esc = KeyEvent {
+            key: Key::Esc,
+            modifiers: Modifiers::none(),
+        };
+        let enter = KeyEvent {
+            key: Key::Enter,
+            modifiers: Modifiers::none(),
+        };
+
+        // When navigating the two explicit base keys within the ReasoningEffort picker scope.
+        let esc_res = keymap
+            .navigate(&[esc], &Scope::PickerReasoningEffort)
+            .expect("esc bound");
+        let enter_res = keymap
+            .navigate(&[enter], &Scope::PickerReasoningEffort)
+            .expect("enter bound");
+
+        // Then each resolves to a real picker base intent (the bug: scope had no bindings).
+        let NodeResult::Leaf { action: esc_action } = esc_res else {
+            panic!("esc must be a leaf");
+        };
+        assert!(
+            matches!(esc_action, Intent::EnterNormalMode),
+            "esc must resolve to EnterNormalMode, got {esc_action:?}"
+        );
+
+        let NodeResult::Leaf {
+            action: enter_action,
+        } = enter_res
+        else {
+            panic!("enter must be a leaf");
+        };
+        assert!(
+            matches!(enter_action, Intent::PickerConfirm),
+            "enter must resolve to PickerConfirm, got {enter_action:?}"
+        );
+    }
+
+    #[rstest::rstest]
+    fn leader_se_resolves_to_persona_picker() {
+        // Given the default keymap.
+        use jinn_domain::{Key, KeyEvent, Modifiers};
+        use ratatui_which_key::NodeResult;
+        let keymap = init();
+        let path = [
+            KeyEvent {
+                key: Key::Char(' '),
+                modifiers: Modifiers::none(),
+            },
+            KeyEvent {
+                key: Key::Char('s'),
+                modifiers: Modifiers::none(),
+            },
+            KeyEvent {
+                key: Key::Char('e'),
+                modifiers: Modifiers::none(),
+            },
+        ];
+
+        // When navigating the <leader>se sequence.
+        let result = keymap.navigate(&path, &Scope::Normal).expect("path exists");
+
+        // Then it resolves to OpenPicker{Persona} (rebound from <leader>sp).
+        match result {
+            NodeResult::Leaf { action } => assert!(
+                matches!(
+                    action,
+                    Intent::OpenPicker {
+                        kind: PickerKind::Persona
+                    }
+                ),
+                "<leader>se must resolve to OpenPicker{{Persona}}; got {action:?}",
+            ),
+            other => panic!("<leader>se must be a leaf, got branch: {other:?}"),
+        }
+    }
+
+    #[rstest::rstest]
+    fn leader_sp_resolves_to_plugin_picker_only() {
+        // Given the default keymap (persona moved off <leader>sp).
+        use jinn_domain::{Key, KeyEvent, Modifiers};
+        use ratatui_which_key::NodeResult;
+        let keymap = init();
+        let path = [
+            KeyEvent {
+                key: Key::Char(' '),
+                modifiers: Modifiers::none(),
+            },
+            KeyEvent {
+                key: Key::Char('s'),
+                modifiers: Modifiers::none(),
+            },
+            KeyEvent {
+                key: Key::Char('p'),
+                modifiers: Modifiers::none(),
+            },
+        ];
+
+        // When navigating the <leader>sp sequence.
+        let result = keymap.navigate(&path, &Scope::Normal).expect("path exists");
+
+        // Then it resolves to OpenPicker{Plugin} only (collision resolved).
+        match result {
+            NodeResult::Leaf { action } => assert!(
+                matches!(
+                    action,
+                    Intent::OpenPicker {
+                        kind: PickerKind::Plugin
+                    }
+                ),
+                "<leader>sp must resolve to OpenPicker{{Plugin}} only; got {action:?}",
+            ),
+            other => panic!("<leader>sp must be a leaf, got branch: {other:?}"),
+        }
     }
 }

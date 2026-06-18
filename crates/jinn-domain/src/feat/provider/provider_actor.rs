@@ -21,11 +21,15 @@ use std::convert::Infallible;
 use crate::common::actor_deps::{ActorDeps, BusPublish};
 use crate::common::state::State;
 use crate::feat::provider::protocol::command::{
-    LoadCompactionModelPickerEntries, LoadProviderPickerEntries, ProviderSwitch,
+    LoadCompactionModelPickerEntries, LoadProviderPickerEntries, LoadReasoningEffortPickerEntries,
+    ProviderSwitch,
 };
 use crate::feat::provider::protocol::event::{ModelCacheLoaded, ModelsRefreshed, ProviderSwitched};
 
-use super::loader::{load_compaction_model_picker_items, load_provider_picker_items};
+use super::loader::{
+    load_compaction_model_picker_items, load_provider_picker_items,
+    load_reasoning_effort_picker_items,
+};
 use kameo::Actor;
 use kameo::actor::ActorRef;
 use kameo::message::{Context as MsgContext, Message};
@@ -60,6 +64,8 @@ impl Actor for ProviderActor {
         bus.subscribe::<LoadProviderPickerEntries, _>(&actor_ref)
             .await;
         bus.subscribe::<LoadCompactionModelPickerEntries, _>(&actor_ref)
+            .await;
+        bus.subscribe::<LoadReasoningEffortPickerEntries, _>(&actor_ref)
             .await;
         bus.subscribe::<ModelsRefreshed, _>(&actor_ref).await;
         bus.subscribe::<ModelCacheLoaded, _>(&actor_ref).await;
@@ -107,6 +113,19 @@ impl Message<LoadCompactionModelPickerEntries> for ProviderActor {
     ) {
         let mut state = self.state.write();
         load_compaction_model_picker_items(&self.deps.services, &mut state);
+    }
+}
+
+impl Message<LoadReasoningEffortPickerEntries> for ProviderActor {
+    type Reply = ();
+
+    async fn handle(
+        &mut self,
+        _msg: LoadReasoningEffortPickerEntries,
+        _ctx: &mut MsgContext<Self, Self::Reply>,
+    ) {
+        let mut state = self.state.write();
+        load_reasoning_effort_picker_items(&self.deps.services, &mut state);
     }
 }
 

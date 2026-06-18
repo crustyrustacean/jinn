@@ -9,6 +9,7 @@ use crate::common::render_ctx::RenderCtx;
 use crate::common::ui_element::UiElement;
 use crate::feat::session::{TokenStats, aggregate_tree_stats};
 use crate::feat::ui::status_bar::turn_counter;
+use crate::resolve_effort;
 use ratatui::Frame;
 use ratatui::layout::{Alignment, Constraint, Layout, Rect};
 use ratatui::style::Style;
@@ -168,6 +169,17 @@ impl UiElement for StatusBarElement {
 
         let model = match active_model.as_alloy() {
             Some(alloy) => format!("[alloy {}] {model}", alloy.models.len()),
+            None => model,
+        };
+
+        // Append the resolved reasoning effort as `[<mode>]` to the right of the model.
+        // Omitted entirely when no effort is resolved (no `[none]` noise).
+        let resolved_effort = resolve_effort(
+            state.active_session().profile().reasoning_effort,
+            state.frontend.preferences.reasoning.default_effort,
+        );
+        let model = match resolved_effort {
+            Some(effort) => format!("{model} [{}]", effort.as_str()),
             None => model,
         };
 
