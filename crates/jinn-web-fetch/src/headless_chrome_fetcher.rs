@@ -23,6 +23,7 @@ use parking_lot::Mutex;
 
 use async_trait::async_trait;
 use headless_chrome::{Browser, LaunchOptions};
+use std::time::Duration;
 use tracing;
 
 use crate::{Extractor, FetchError, FetchOptions, FetchOutput, OutputFormat, WebFetcher};
@@ -83,6 +84,30 @@ impl HeadlessChromeFetcher {
     }
 }
 
+/// The literal text of the headless_chrome `ConnectionClosed` error.
+///
+/// Used to detect a dead WebSocket without depending on a downcast into
+/// `headless_chrome`'s (transitively-available) `anyhow` error tree. See
+/// the crate's `src/browser/transport/mod.rs`: the error is
+/// `#[error("Unable to make method calls because underlying connection is closed")]`.
+const CONNECTION_CLOSED_MARKER: &str = "underlying connection is closed";
+
+/// Maps a headless_chrome failure string to a [`FetchError`].
+///
+/// Detects `ConnectionClosed` (the shared WebSocket died: idle-teardown
+/// timeout, OOM kill, real crash) via its error message and maps it to
+/// [`FetchError::BrowserCrash`] so the caller can evict the shared browser
+/// and relaunch. All other failures (a bad page, a tab-level timeout) stay
+/// as [`FetchError::Render`], since they must not evict the shared browser
+/// under concurrency.
+fn classify_render_error(display: &str) -> FetchError {
+    if display.contains(CONNECTION_CLOSED_MARKER) {
+        FetchError::BrowserCrash
+    } else {
+        FetchError::Render(display.to_owned())
+    }
+}
+
 #[async_trait]
 impl WebFetcher for HeadlessChromeFetcher {
     async fn fetch(&self, url: &str, options: FetchOptions) -> Result<FetchOutput, FetchError> {
@@ -104,21 +129,21 @@ impl WebFetcher for HeadlessChromeFetcher {
         let result = (|| -> Result<FetchOutput, FetchError> {
             let tab = browser
                 .new_tab()
-                .map_err(|e| FetchError::Render(e.to_string()))?;
+                .map_err(|e| classify_render_error(&e.to_string()))?;
 
             // Navigate to the URL.
             tracing::trace!(url = %url, "HeadlessChromeFetcher: navigating to URL");
             tab.navigate_to(url)
-                .map_err(|e| FetchError::Render(e.to_string()))?
+                .map_err(|e| classify_render_error(&e.to_string()))?
                 .wait_until_navigated()
-                .map_err(|e| FetchError::Render(e.to_string()))?;
+                .map_err(|e| classify_render_error(&e.to_string()))?;
             tracing::trace!("HeadlessChromeFetcher: navigation complete");
 
             // Get the rendered HTML from the tab.
             tracing::trace!("HeadlessChromeFetcher: getting page HTML");
             let html = tab
                 .get_content()
-                .map_err(|e| FetchError::Render(e.to_string()))?;
+                .map_err(|e| classify_render_error(&e.to_string()))?;
             tracing::debug!(
                 html_len = html.len(),
                 "HeadlessChromeFetcher: HTML retrieved"
