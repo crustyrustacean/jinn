@@ -31,6 +31,9 @@ pub(super) fn render_picker(frame: &mut Frame<'_>, area: Rect, ctx: &RenderCtx) 
         Some(PickerKind::TaskList) => {
             jinn_domain::feat::picker::render::render_task_list_picker(frame, area, ctx);
         }
+        Some(PickerKind::Project) => {
+            jinn_domain::feat::picker::render::render_project_picker(frame, area, ctx);
+        }
         None => {}
     }
 }

@@ -31,6 +31,9 @@ pub enum PickerKind {
     Skill,
     /// Task list browser - read-only zoom view of the active session's task list.
     TaskList,
+    /// Project picker - curated project directories; create a new session rooted
+    /// at the highlighted dir with `<enter>` (or `<c-enter>` to also pick a lifecycle).
+    Project,
 }
 
 impl std::fmt::Display for PickerKind {
@@ -49,6 +52,7 @@ impl std::fmt::Display for PickerKind {
             Self::Tool => write!(f, "tools"),
             Self::Skill => write!(f, "skills"),
             Self::TaskList => write!(f, "task list"),
+            Self::Project => write!(f, "projects"),
         }
     }
 }

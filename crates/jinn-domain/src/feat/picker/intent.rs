@@ -10,6 +10,7 @@ use crate::common::app_state::AppState;
 use crate::common::app_state::FocusScope;
 use crate::feat::context::protocol::command::{LoadPersonaPickerEntries, ScanContextFiles};
 use crate::feat::preferences_actor::protocol::app_state_command::{AppStateUpdate, UpdateAppState};
+use crate::feat::preferences_actor::protocol::command::{PreferenceUpdate, UpdatePreferences};
 use crate::feat::provider::ProviderState;
 use crate::feat::provider::picker_entry::PickerEntry;
 use crate::feat::provider::protocol::command::{
@@ -90,13 +91,20 @@ pub fn handle_open_picker(state: &mut AppState, kind: PickerKind) -> IntentResul
             state.frontend.task_list_picker_mut().reset();
             load_task_list_picker_entries(state);
         }
+        PickerKind::Project => {
+            // Defensive: a stale override from an abandoned previous flow
+            // must never leak into a new project-picker session.
+            state.frontend.pending_session_cwd = None;
+            state.frontend.project_picker_mut().reset();
+            load_project_picker_entries(state);
+        }
     }
 
     match kind {
         PickerKind::Provider => IntentResult::with_message(LoadProviderPickerEntries),
         PickerKind::Session => IntentResult::with_message(LoadSessionPickerEntries),
         PickerKind::Persona => IntentResult::with_message(LoadPersonaPickerEntries),
-        PickerKind::Theme | PickerKind::Tool | PickerKind::Skill | PickerKind::TaskList => {
+        PickerKind::Theme | PickerKind::Tool | PickerKind::Skill | PickerKind::TaskList | PickerKind::Project => {
             IntentResult::empty()
         }
         PickerKind::SessionLifecycle => {
@@ -281,6 +289,7 @@ pub fn handle_picker_confirm(state: &mut AppState) -> (IntentResult, Option<Inte
         Some(PickerKind::Theme) => (confirm_theme(state), None),
         Some(PickerKind::SessionLifecycle) => (confirm_session_lifecycle(state), None),
         Some(PickerKind::Plugin) => (confirm_plugin(state), None),
+        Some(PickerKind::Project) => (confirm_project(state), None),
 
         Some(PickerKind::CompactionModel | PickerKind::TaskList) | None => {
             (IntentResult::empty(), None)
@@ -687,6 +696,112 @@ fn load_task_list_picker_entries(state: &mut AppState) {
 
     state.frontend.task_list_picker_mut().set_items(entries);
 }
+
+/// Populates the project picker entries from `UserPreferences.projects`.
+///
+/// Entries are pre-computed display strings (tilde-compressed) so the picker
+/// never has to call `shorten_path` per-render.
+fn load_project_picker_entries(state: &mut AppState) {
+    use crate::feat::project::picker_entry::{ProjectEntry, project_entries};
+
+    let theme = state.frontend.theme.clone();
+    let entries: Vec<ProjectEntry> =
+        project_entries(&state.frontend.preferences.projects, &theme);
+    state.frontend.project_picker_mut().set_items(entries);
+}
+
+/// Confirms the highlighted project: stashes its dir as the pending session
+/// CWD, pops the picker, and delegates to a plain new session.
+///
+/// `Enter` path: the new session inherits nothing from the active session's
+/// CWD - it is created at the chosen project dir via the override channel.
+fn confirm_project(state: &mut AppState) -> IntentResult {
+    let Some(entry) = state.frontend.project_picker().selected_item() else {
+        return IntentResult::empty();
+    };
+
+    // Stash the chosen dir and pop the picker before delegating, so the new
+    // session is created in Normal scope at the right CWD.
+    state.frontend.pending_session_cwd = Some(entry.path.clone());
+    state.frontend.scope_stack.pop();
+
+    crate::feat::session_lifecycle::intent::handle_session_lifecycle_setup(
+        state, "", &[], None,
+    )
+}
+
+/// Confirms the highlighted project and chains into the lifecycle picker.
+///
+/// `<c-enter>` path: same dir-stash + pop as `confirm_project`, but then opens
+/// the session lifecycle picker so the user picks a recipe (and optional args).
+/// The stashed dir survives the lifecycle -> arg-input chain because every
+/// confirmation path in that chain consumes `pending_session_cwd`.
+pub fn handle_project_lifecycle_confirm(state: &mut AppState) -> IntentResult {
+    let Some(entry) = state.frontend.project_picker().selected_item() else {
+        return IntentResult::empty();
+    };
+
+    state.frontend.pending_session_cwd = Some(entry.path.clone());
+    state.frontend.scope_stack.pop();
+
+    // Re-enter the lifecycle picker. `handle_open_picker` pushes a fresh
+    // `Picker { SessionLifecycle }` scope.
+    handle_open_picker(state, PickerKind::SessionLifecycle)
+}
+
+/// Removes the highlighted project from the curated list (`d`).
+///
+/// Applies the diff optimistically to `frontend.preferences.projects`,
+/// reloads the picker items so the list updates immediately, and emits
+/// `UpdatePreferences` so the `PreferencesActor` persists the change.
+/// The `PreferencesStateSyncActor` will overwrite `frontend.preferences` with
+/// the same data when the broadcast round-trips.
+pub fn handle_project_remove_highlighted(state: &mut AppState) -> IntentResult {
+    let Some(entry) = state.frontend.project_picker().selected_item().cloned() else {
+        return IntentResult::empty();
+    };
+
+    state
+        .frontend
+        .preferences
+        .projects
+        .retain(|p| p.path != entry.path);
+    load_project_picker_entries(state);
+
+    IntentResult::with_message(UpdatePreferences {
+        updates: vec![PreferenceUpdate::RemoveProject(entry.path)],
+    })
+}
+
+/// Appends the active session's CWD to the curated project list (`a`).
+///
+/// Dedup is handled by `PreferenceUpdate::AddProject::apply` (and echoed here
+/// by skipping when the path already exists, so the optimistic list and the
+/// picker match the persisted state exactly). Emits `UpdatePreferences` for
+/// persistence and reloads the picker items.
+pub fn handle_project_add_current_cwd(state: &mut AppState) -> IntentResult {
+    let cwd = state.active_session().cwd().to_path_buf();
+
+    let already_present = state
+        .frontend
+        .preferences
+        .projects
+        .iter()
+        .any(|p| p.path == cwd);
+    if !already_present {
+        state
+            .frontend
+            .preferences
+            .projects
+            .push(crate::feat::project::ProjectConfig { path: cwd.clone() });
+        load_project_picker_entries(state);
+    }
+
+    IntentResult::with_message(UpdatePreferences {
+        updates: vec![PreferenceUpdate::AddProject(cwd)],
+    })
+}
+
 
 /// Confirms the skill picker: collects disabled skill names from picker entries
 /// and writes them to the active session's profile.

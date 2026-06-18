@@ -140,6 +140,22 @@ pub fn render_task_list_picker(frame: &mut Frame<'_>, area: Rect, ctx: &RenderCt
     widget.render(frame, area);
 }
 
+/// Renders the project picker overlay using [`SelectionWidget`].
+///
+/// Shows curated project directories. The footer advertises the three
+/// project-picker actions: `<enter>` (new session at dir), `<c-enter>`
+/// (new session at dir + lifecycle picker), and `<c-n>` (add a new project dir).
+pub fn render_project_picker(frame: &mut Frame<'_>, area: Rect, ctx: &RenderCtx) {
+    let state = ctx.state;
+    let widget = SelectionWidget::new(state.frontend.project_picker())
+        .title(Line::from(" Projects "))
+        .title_style(Style::default().fg(state.frontend.theme.popup_title))
+        .footer(Line::from(
+            " Enter new session \u{00b7} <c-enter> new + lifecycle \u{00b7} <c-n> add dir \u{00b7} ESC to cancel "
+        ));
+    widget.render(frame, area);
+}
+
 #[cfg(test)]
 mod tests {
     #![allow(
