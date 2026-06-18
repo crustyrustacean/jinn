@@ -72,6 +72,10 @@ fn ensure_browser(slot: &Arc<Mutex<Option<Browser>>>) -> Result<Browser, FetchEr
     tracing::info!("HeadlessChromeFetcher: launching headless Chrome");
     let browser = Browser::new(LaunchOptions {
         headless: true,
+        // Keep the browser warm across natural idle gaps (default is 30s,
+        // which tears the WebSocket down far too eagerly). Self-heal in
+        // `fetch_once` still recovers when a genuine death eventually occurs.
+        idle_browser_timeout: Duration::from_secs(600),
         ..Default::default()
     })
     .map_err(|e| {
