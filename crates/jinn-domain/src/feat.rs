@@ -19,6 +19,7 @@ pub mod persona;
 pub mod picker;
 pub mod preferences_actor;
 pub mod project;
+pub mod project_add_input;
 pub mod provider;
 pub use jinn_provider_config as provider_infra;
 pub mod pruner_accumulation_input;

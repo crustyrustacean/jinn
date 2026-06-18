@@ -53,6 +53,8 @@ pub enum Scope {
     RenameSessionInput,
     /// CWD input mode - typing a directory path.
     CwdInput,
+    /// Project-add input mode - typing a directory path to register a project.
+    ProjectAddInput,
     /// Pruner accumulation threshold input mode - numeric input for the KV-cache gate.
     PrunerAccumulationInput,
 
@@ -89,6 +91,7 @@ impl std::fmt::Display for Scope {
             Self::SidebarResize => write!(f, "SidebarResize"),
             Self::RenameSessionInput => write!(f, "RenameSessionInput"),
             Self::CwdInput => write!(f, "CwdInput"),
+            Self::ProjectAddInput => write!(f, "ProjectAddInput"),
             Self::PrunerAccumulationInput => write!(f, "PrunerAccumulationInput"),
             Self::QuakeBar => write!(f, "QuakeBar"),
         }
@@ -122,6 +125,7 @@ impl std::str::FromStr for Scope {
             "TokenBudgetInput" => Ok(Self::TokenBudgetInput),
             "RenameSessionInput" => Ok(Self::RenameSessionInput),
             "CwdInput" => Ok(Self::CwdInput),
+            "ProjectAddInput" => Ok(Self::ProjectAddInput),
             "PrunerAccumulationInput" => Ok(Self::PrunerAccumulationInput),
             "QuakeBar" => Ok(Self::QuakeBar),
             "SidebarResize" => Ok(Self::SidebarResize),
