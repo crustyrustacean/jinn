@@ -14,7 +14,7 @@ use std::collections::{HashMap, HashSet};
 use std::sync::Arc;
 
 use error_stack::{Report, ResultExt as _};
-use jinn_provider::Backend;
+use jinn_provider::{Backend, ReasoningEffort};
 
 use super::SampleLlmServiceFactory;
 use super::api_keys::ApiKeys;
@@ -302,6 +302,7 @@ impl ProviderRegistry {
         &self,
         id: &ProviderId,
         api_keys: &ApiKeys,
+        reasoning: Option<ReasoningEffort>,
     ) -> Result<Box<dyn LlmServiceFactory>, Report<LlmServiceError>> {
         // Test-injected override: return a clone of the scripted fake before
         // attempting provider resolution. Production never sets this (`None`).
@@ -311,7 +312,7 @@ impl ProviderRegistry {
         let resolved = self.get(id).ok_or_else(|| {
             Report::new(LlmServiceError::Config).attach(format!("unknown provider: {id}"))
         })?;
-        self.create_factory_from_resolved(resolved, api_keys)
+        self.create_factory_from_resolved(resolved, api_keys, reasoning)
     }
 
     /// Creates a factory from a statically resolved provider entry.
@@ -320,6 +321,7 @@ impl ProviderRegistry {
         &self,
         resolved: &ResolvedProvider,
         api_keys: &ApiKeys,
+        reasoning: Option<ReasoningEffort>,
     ) -> Result<Box<dyn LlmServiceFactory>, Report<LlmServiceError>> {
         if resolved.backend == "sample" {
             let factory: Box<dyn LlmServiceFactory> = Box::new(SampleLlmServiceFactory);
@@ -350,6 +352,7 @@ impl ProviderRegistry {
             resolved.base_url.clone(),
             api_key,
             resolved.extra_body.clone(),
+            reasoning,
         );
 
         Ok(Box::new(factory))

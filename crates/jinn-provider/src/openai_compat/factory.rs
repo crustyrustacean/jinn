@@ -9,6 +9,7 @@ use reqwest::Client;
 
 use crate::openai_compat::provider_config::ProviderConfig;
 use crate::openai_compat::service::OpenAiCompatibleService;
+use crate::reasoning::ReasoningEffort;
 use crate::service::{LlmService, LlmServiceError, LlmServiceFactory};
 
 /// Factory for OpenAI-compatible LLM services.
@@ -28,6 +29,8 @@ pub struct OpenAiCompatibleFactory {
     api_key: String,
     /// Extra body fields (e.g., `enable_thinking` for ZAI).
     extra_body: Option<serde_json::Value>,
+    /// Resolved reasoning effort (session-override merged).
+    reasoning: Option<ReasoningEffort>,
     /// Shared HTTP client.
     client: Client,
     /// Display name for this factory instance.
@@ -43,6 +46,7 @@ impl OpenAiCompatibleFactory {
         base_url: Option<String>,
         api_key: String,
         extra_body: Option<serde_json::Value>,
+        reasoning: Option<ReasoningEffort>,
         name: String,
     ) -> Self {
         Self {
@@ -51,6 +55,7 @@ impl OpenAiCompatibleFactory {
             base_url,
             api_key,
             extra_body,
+            reasoning,
             client: Client::new(),
             name,
         }
@@ -65,6 +70,7 @@ impl OpenAiCompatibleFactory {
         base_url: Option<String>,
         api_key: String,
         extra_body: Option<serde_json::Value>,
+        reasoning: Option<ReasoningEffort>,
         name: String,
     ) -> Self {
         Self {
@@ -73,6 +79,7 @@ impl OpenAiCompatibleFactory {
             base_url,
             api_key,
             extra_body,
+            reasoning,
             client,
             name,
         }
@@ -93,6 +100,7 @@ impl LlmServiceFactory for OpenAiCompatibleFactory {
             self.base_url.clone(),
             self.api_key.clone(),
             self.extra_body.clone(),
+            self.reasoning,
         );
 
         Ok(Box::new(service))
@@ -111,6 +119,7 @@ impl Clone for OpenAiCompatibleFactory {
             base_url: self.base_url.clone(),
             api_key: self.api_key.clone(),
             extra_body: self.extra_body.clone(),
+            reasoning: self.reasoning,
             client: self.client.clone(),
             name: self.name.clone(),
         }

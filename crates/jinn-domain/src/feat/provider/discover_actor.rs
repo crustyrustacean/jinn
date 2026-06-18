@@ -154,6 +154,7 @@ impl DiscoverActor {
                         entry.base_url.clone(),
                         api_key_str.to_owned(),
                         entry.extra_body.clone(),
+                        None,
                     );
                     svc.list_models().await
                 }

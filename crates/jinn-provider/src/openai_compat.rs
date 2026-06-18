@@ -8,6 +8,7 @@
 mod factory;
 mod models;
 mod provider_config;
+mod reasoning_body;
 mod request;
 mod response;
 mod service;

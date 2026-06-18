@@ -32,6 +32,7 @@ pub use crate::feat::auto_prune_worker::trivial_assistant::TrivialAssistantAutoP
 pub use crate::feat::compaction_worker::CompactionConfig;
 pub use crate::feat::cwd_input::CwdSelectorConfig;
 pub use crate::feat::llm_actor::RequestRetryConfig;
+pub use crate::feat::reasoning::ReasoningConfig;
 pub use crate::feat::session_lifecycle::SessionLifecycle;
 pub use crate::feat::tools_actor::OpenrouterWebSearchConfig;
 pub use crate::feat::tools_actor::bash::BashConfig;
@@ -112,6 +113,9 @@ pub struct UserPreferences {
     /// Bash tool configuration.
     #[serde(default)]
     pub bash: BashConfig,
+    /// Reasoning effort configuration for reasoning-capable models.
+    #[serde(default)]
+    pub reasoning: ReasoningConfig,
 }
 
 impl Default for UserPreferences {
@@ -145,6 +149,7 @@ impl Default for UserPreferences {
             minimap: MinimapConfig::default(),
             auto_prune: AutoPruneConfig::default(),
             bash: BashConfig::default(),
+            reasoning: ReasoningConfig::default(),
         }
     }
 }
@@ -447,6 +452,23 @@ mod tests {
     }
 
     #[rstest::rstest]
+    fn legacy_config_without_reasoning_table_loads_to_none() {
+        // Given a minimal legacy config with no [reasoning] table.
+        let legacy = r"
+            [compaction]
+            threshold = 0.7
+            reserve_tokens = 20000
+            fallback_context_window = 150000
+        ";
+
+        // When deserializing as UserPreferences.
+        let parsed: UserPreferences = toml::from_str(legacy).expect("parse legacy");
+
+        // Then reasoning.default_effort is None (provider decides).
+        assert!(parsed.reasoning.default_effort.is_none());
+    }
+
+    #[rstest::rstest]
     fn init_writes_template_when_missing() {
         // Given a path to a nonexistent file.
         let dir = TempDir::new().expect("temp dir");
@@ -513,6 +535,7 @@ mod tests {
             minimap: MinimapConfig::default(),
             auto_prune: AutoPruneConfig::default(),
             bash: BashConfig::default(),
+            reasoning: ReasoningConfig::default(),
         };
 
         // When saving and reloading.
@@ -568,6 +591,7 @@ mod tests {
             minimap: MinimapConfig::default(),
             auto_prune: AutoPruneConfig::default(),
             bash: BashConfig::default(),
+            reasoning: ReasoningConfig::default(),
         };
 
         // When saving.
@@ -596,6 +620,7 @@ mod tests {
             minimap: MinimapConfig::default(),
             auto_prune: AutoPruneConfig::default(),
             bash: BashConfig::default(),
+            reasoning: ReasoningConfig::default(),
         };
 
         // When saving and reloading.
@@ -896,6 +921,7 @@ mod tests {
             minimap: MinimapConfig::default(),
             auto_prune: AutoPruneConfig::default(),
             bash: BashConfig::default(),
+            reasoning: ReasoningConfig::default(),
         };
 
         save_preferences_to(&prefs, &path).expect("save");
