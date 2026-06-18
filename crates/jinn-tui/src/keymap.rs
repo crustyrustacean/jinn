@@ -119,7 +119,6 @@ pub fn init() -> Keymap<KeyEvent, Scope, Intent, KeyCategory> {
             .bind("<leader>sp", Intent::OpenPicker { kind: PickerKind::Plugin }, KeyCategory::General)
             // Projects - curated directory list for quick session creation
             .bind("<leader>so", Intent::OpenPicker { kind: PickerKind::Project }, KeyCategory::General)
-            .bind("<leader>sa", Intent::ProjectAddCurrentCwd, KeyCategory::General)
             // Input - enter input mode
             .bind("i", Intent::EnterInsertMode, KeyCategory::Input)
             .bind("<c-j>", Intent::EnterInsertMode, KeyCategory::Input)
@@ -326,8 +325,7 @@ pub fn init() -> Keymap<KeyEvent, Scope, Intent, KeyCategory> {
             add_picker_base(b);
             b.bind("<c-enter>", Intent::ProjectNewAtHighlightedWithLifecycle, KeyCategory::General)
              .bind("<c-n>", Intent::OpenProjectAddInput, KeyCategory::General)
-             .bind("d", Intent::ProjectRemoveHighlighted, KeyCategory::General)
-             .bind("a", Intent::ProjectAddCurrentCwd, KeyCategory::General);
+             .bind("<c-d>", Intent::ProjectRemoveHighlighted, KeyCategory::General);
         });
 
     // ArgInput scope - typing positional args for a lifecycle command.
@@ -813,6 +811,72 @@ mod tests {
         assert!(
             matches!(intent, Intent::QuakeBarScrollUp),
             "PageUp must resolve to QuakeBarScrollUp; got {intent:?}",
+        );
+    }
+
+    #[test]
+    fn ctrl_d_in_project_picker_removes_highlighted() {
+        use crate::app::WhichKeyInstance;
+        use jinn_domain::{Key, Modifiers};
+
+        // Given a fresh keymap.
+        let keymap = init();
+        let mut wk = WhichKeyInstance::new(keymap, Scope::PickerProject);
+
+        // When pressing Ctrl+D.
+        let intent = wk.handle_key(jinn_domain::KeyEvent {
+            key: Key::Char('d'),
+            modifiers: Modifiers::ctrl(),
+        });
+
+        // Then it fires ProjectRemoveHighlighted.
+        assert!(
+            matches!(intent, Some(jinn_domain::Intent::ProjectRemoveHighlighted)),
+            "<c-d> in PickerProject should fire ProjectRemoveHighlighted; got {intent:?}",
+        );
+    }
+
+    #[test]
+    fn bare_d_in_project_picker_types_into_filter() {
+        use crate::app::WhichKeyInstance;
+        use jinn_domain::{Key, Modifiers};
+
+        // Given a fresh keymap.
+        let keymap = init();
+        let mut wk = WhichKeyInstance::new(keymap, Scope::PickerProject);
+
+        // When pressing bare 'd'.
+        let intent = wk.handle_key(jinn_domain::KeyEvent {
+            key: Key::Char('d'),
+            modifiers: Modifiers::none(),
+        });
+
+        // Then it falls through to the catch-all and types into the filter.
+        assert!(
+            matches!(intent, Some(jinn_domain::Intent::PickerInsertChar { ch: 'd' })),
+            "bare 'd' in PickerProject should type into the filter; got {intent:?}",
+        );
+    }
+
+    #[test]
+    fn bare_a_in_project_picker_types_into_filter_not_add_cwd() {
+        use crate::app::WhichKeyInstance;
+        use jinn_domain::{Key, Modifiers};
+
+        // Given a fresh keymap.
+        let keymap = init();
+        let mut wk = WhichKeyInstance::new(keymap, Scope::PickerProject);
+
+        // When pressing bare 'a'.
+        let intent = wk.handle_key(jinn_domain::KeyEvent {
+            key: Key::Char('a'),
+            modifiers: Modifiers::none(),
+        });
+
+        // Then it types into the filter (the unapproved 'a' add-cwd bind is gone).
+        assert!(
+            matches!(intent, Some(jinn_domain::Intent::PickerInsertChar { ch: 'a' })),
+            "bare 'a' in PickerProject should type into the filter, not add cwd; got {intent:?}",
         );
     }
 }
