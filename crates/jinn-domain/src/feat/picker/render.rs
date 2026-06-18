@@ -151,7 +151,7 @@ pub fn render_project_picker(frame: &mut Frame<'_>, area: Rect, ctx: &RenderCtx)
         .title(Line::from(" Projects "))
         .title_style(Style::default().fg(state.frontend.theme.popup_title))
         .footer(Line::from(
-            " Enter new session \u{00b7} <c-enter> new + lifecycle \u{00b7} <c-n> add dir \u{00b7} ESC to cancel "
+            " Enter new session \u{00b7} <c-enter> new + lifecycle \u{00b7} <c-n> add dir \u{00b7} d remove \u{00b7} a add cwd \u{00b7} ESC to cancel "
         ));
     widget.render(frame, area);
 }
