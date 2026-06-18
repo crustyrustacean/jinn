@@ -138,6 +138,17 @@ pub fn render(app: &mut TuiApp, frame: &mut Frame<'_>) {
         ));
     }
 
+    // Project-add input popup overlay (+ selectable rect). Clone of CwdInput,
+    // opened from inside the project picker (<c-n>) to register a new dir.
+    if matches!(
+        state.frontend.scope_stack.current(),
+        FocusScope::ProjectAddInput
+    ) {
+        jinn_domain::feat::project_add_input::render::render_project_add_input(frame, area, &ctx);
+        rects
+            .push(jinn_domain::feat::project_add_input::render::project_add_input_popup_rect(area));
+    }
+
     // Quake bar overlay (last, so it covers everything below it).
     if matches!(state.frontend.scope_stack.current(), FocusScope::QuakeBar) {
         jinn_domain::feat::quake_bar::render::render_quake_bar(frame, area, &ctx);

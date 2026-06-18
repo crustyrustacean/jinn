@@ -243,6 +243,7 @@ mod tests {
         AutoPruneConfig, BashConfig, CompactionConfig, CwdSelectorConfig, MinimapConfig,
         OpenrouterWebSearchConfig, ReasoningConfig, WebFetchConfig,
     };
+    use crate::feat::project::ProjectConfig;
 
     #[rstest::rstest]
     fn in_memory_load_returns_default_when_empty() {
@@ -274,6 +275,7 @@ mod tests {
             minimap: MinimapConfig::default(),
             auto_prune: AutoPruneConfig::default(),
             bash: BashConfig::default(),
+            projects: vec![],
             reasoning: ReasoningConfig::default(),
         };
 
@@ -329,6 +331,9 @@ mod tests {
             minimap: MinimapConfig::default(),
             auto_prune: AutoPruneConfig::default(),
             bash: BashConfig::default(),
+            projects: vec![ProjectConfig {
+                path: PathBuf::from("/tmp/proj-a"),
+            }],
             reasoning: ReasoningConfig::default(),
         };
 
@@ -336,8 +341,14 @@ mod tests {
         storage.save(&prefs).expect("save");
         let reloaded = storage.reload().expect("reload");
 
-        // Then the round-tripped data matches.
+        // Then the round-tripped data matches (including [[project]] array).
         assert_eq!(reloaded.tool_entry_max_lines, Some(42));
+        assert_eq!(
+            reloaded.projects,
+            vec![ProjectConfig {
+                path: PathBuf::from("/tmp/proj-a"),
+            }]
+        );
     }
 
     // --- Service caching tests ---
@@ -361,6 +372,7 @@ mod tests {
             minimap: MinimapConfig::default(),
             auto_prune: AutoPruneConfig::default(),
             bash: BashConfig::default(),
+            projects: vec![],
             reasoning: ReasoningConfig::default(),
         };
         service.save(&prefs).expect("save");
@@ -393,6 +405,7 @@ mod tests {
             minimap: MinimapConfig::default(),
             auto_prune: AutoPruneConfig::default(),
             bash: BashConfig::default(),
+            projects: vec![],
             reasoning: ReasoningConfig::default(),
         };
         service.save(&prefs).expect("save");
@@ -412,6 +425,7 @@ mod tests {
             minimap: MinimapConfig::default(),
             auto_prune: AutoPruneConfig::default(),
             bash: BashConfig::default(),
+            projects: vec![],
             reasoning: ReasoningConfig::default(),
         };
         service.save(&updated).expect("save updated");
@@ -440,6 +454,7 @@ mod tests {
             minimap: MinimapConfig::default(),
             auto_prune: AutoPruneConfig::default(),
             bash: BashConfig::default(),
+            projects: vec![],
             reasoning: ReasoningConfig::default(),
         };
         service.save(&prefs).expect("save");

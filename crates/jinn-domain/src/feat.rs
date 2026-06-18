@@ -18,6 +18,8 @@ pub mod navigation;
 pub mod persona;
 pub mod picker;
 pub mod preferences_actor;
+pub mod project;
+pub mod project_add_input;
 pub mod provider;
 pub mod reasoning;
 pub use jinn_provider_config as provider_infra;

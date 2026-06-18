@@ -55,6 +55,18 @@ impl Message<PreferencesUpdated> for PreferencesStateSyncActor {
     async fn handle(&mut self, msg: PreferencesUpdated, _ctx: &mut Context<Self, Self::Reply>) {
         let mut state = self.state.write();
         state.frontend.preferences = msg.preferences;
+
+        // If a project picker is open, its items are a snapshot taken at open
+        // time. Reload them so adds/removes that round-trip through the
+        // preferences actor are reflected immediately.
+        if matches!(
+            state.frontend.scope_stack.current(),
+            crate::common::focus::FocusScope::Picker {
+                kind: crate::feat::picker::PickerKind::Project
+            }
+        ) {
+            crate::feat::picker::intent::load_project_picker_entries(&mut state);
+        }
     }
 }
 
@@ -101,5 +113,60 @@ mod tests {
         tokio::time::sleep(std::time::Duration::from_millis(50)).await;
         let guard = state.read();
         assert_eq!(guard.frontend.preferences, prefs);
+    }
+
+    #[tokio::test]
+    async fn preferences_updated_reloads_open_project_picker_items() {
+        use crate::common::focus::FocusScope;
+        use crate::feat::picker::PickerKind;
+        use crate::feat::picker::intent::load_project_picker_entries;
+        use crate::feat::project::ProjectConfig;
+        use crate::feat::ui::picker_states::PickerExt;
+
+        // Given a state with a project picker open and one stale entry.
+        let harness = TestHarness::new().await;
+        let deps = create_deps(&harness).await;
+        let state = deps.state.clone();
+        {
+            let mut guard = state.write();
+            // Seed the picker with one entry from default (empty) preferences.
+            load_project_picker_entries(&mut guard);
+            guard.frontend.scope_stack.push(FocusScope::Picker {
+                kind: PickerKind::Project,
+            });
+            assert_eq!(
+                guard.frontend.project_picker().items().len(),
+                0,
+                "picker starts empty with default preferences"
+            );
+        }
+        let _actor = harness.spawn_actor::<PreferencesStateSyncActor>(deps).await;
+
+        // When preferences update adds two projects.
+        let prefs = UserPreferences {
+            projects: vec![
+                ProjectConfig {
+                    path: std::path::PathBuf::from("/tmp/alpha"),
+                },
+                ProjectConfig {
+                    path: std::path::PathBuf::from("/tmp/beta"),
+                },
+            ],
+            ..UserPreferences::default()
+        };
+        harness
+            .publish(PreferencesUpdated {
+                preferences: prefs.clone(),
+            })
+            .await;
+        tokio::time::sleep(std::time::Duration::from_millis(50)).await;
+
+        // Then the open project picker's items are reloaded from the new prefs.
+        let guard = state.read();
+        assert_eq!(
+            guard.frontend.project_picker().items().len(),
+            2,
+            "open project picker should reload items after preferences update"
+        );
     }
 }
