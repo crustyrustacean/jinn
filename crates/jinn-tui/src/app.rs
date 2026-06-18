@@ -355,6 +355,7 @@ pub fn scope_for_focus(focus: &jinn_domain::FocusScope) -> Scope {
             PickerKind::Plugin => Scope::PickerPlugin,
 
             PickerKind::CompactionModel => Scope::PickerCompactionModel,
+            PickerKind::ReasoningEffort => Scope::PickerReasoningEffort,
             PickerKind::Tool => Scope::PickerTool,
             PickerKind::Skill => Scope::PickerSkill,
             PickerKind::TaskList => Scope::PickerTaskList,

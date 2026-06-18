@@ -25,6 +25,8 @@ pub enum PickerKind {
 
     /// Compaction model picker - select a model for context compaction summarization.
     CompactionModel,
+    /// Reasoning effort picker - select reasoning effort for reasoning-capable models.
+    ReasoningEffort,
     /// Tool picker - toggle which tools are enabled for the session.
     Tool,
     /// Skill picker - toggle which skills are enabled for the session.
@@ -46,9 +48,25 @@ impl std::fmt::Display for PickerKind {
 
             Self::CompactionModel => write!(f, "compaction model"),
 
+            Self::ReasoningEffort => write!(f, "reasoning effort"),
+
             Self::Tool => write!(f, "tools"),
             Self::Skill => write!(f, "skills"),
             Self::TaskList => write!(f, "task list"),
         }
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    #![allow(clippy::expect_used, clippy::panic, reason = "test code")]
+    use super::*;
+
+    #[test]
+    fn reasoning_effort_displays_as_reasoning_effort() {
+        // Given the ReasoningEffort picker kind.
+        // When displaying.
+        // Then it renders as 'reasoning effort'.
+        assert_eq!(PickerKind::ReasoningEffort.to_string(), "reasoning effort");
     }
 }

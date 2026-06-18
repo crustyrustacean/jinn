@@ -413,7 +413,7 @@ mod tests {
     use crate::feat::chat_input::protocol::command::{
         EnqueueResumeTurn, EnqueueUserMessage, PushChatEntry, SetChatInputText,
     };
-    use crate::feat::provider::protocol::command::SendMessage;
+    use crate::feat::provider::protocol::command::{SendMessage, SendToLlmProvider};
     use crate::feat::session::phase_machine::PhaseKind;
     use crate::protocol::{ChatEntry, ChatEntryKind};
 
@@ -844,6 +844,84 @@ mod tests {
         assert!(
             audit.contains_name("SendToLlmProvider"),
             "SendToLlmProvider must be emitted after drain on Idle dispatch"
+        );
+    }
+
+    // --- reasoning effort resolution (AC1, AC2) ---
+
+    #[tokio::test]
+    async fn enqueue_publishes_global_default_reasoning_effort() {
+        // Given a global default reasoning effort of High and a session with no override.
+        let (actor, state, audit) = create_actor().await;
+        let session_id = {
+            let mut guard = state.write();
+            let _ = guard.active_session_mut();
+            guard.session.active_session_id().clone()
+        };
+        {
+            let mut prefs = actor.services.user_preferences_storage.read();
+            prefs.reasoning.default_effort = Some(crate::ReasoningEffort::High);
+            actor
+                .services
+                .user_preferences_storage
+                .save(&prefs)
+                .expect("save global default");
+        }
+
+        // When enqueuing a message.
+        actor
+            .handle_enqueue_user_message(&EnqueueUserMessage {
+                session_id: session_id.clone(),
+                entry: ChatEntry::user("think hard"),
+            })
+            .await;
+
+        // Then the published SendToLlmProvider carries the global default effort.
+        let cmds = audit.of_type::<SendToLlmProvider>();
+        assert_eq!(cmds.len(), 1, "expected one SendToLlmProvider command");
+        assert_eq!(
+            cmds[0].reasoning_effort,
+            Some(crate::ReasoningEffort::High),
+            "global default effort should be forwarded"
+        );
+    }
+
+    #[tokio::test]
+    async fn enqueue_session_override_beats_global_reasoning_effort() {
+        // Given a global default of High and a session override of Low.
+        let (actor, state, audit) = create_actor().await;
+        let session_id = {
+            let mut guard = state.write();
+            let session = guard.active_session_mut();
+            session.profile_mut().reasoning_effort = Some(crate::ReasoningEffort::Low);
+            guard.session.active_session_id().clone()
+        };
+        {
+            let mut prefs = actor.services.user_preferences_storage.read();
+            prefs.reasoning.default_effort = Some(crate::ReasoningEffort::High);
+            actor
+                .services
+                .user_preferences_storage
+                .save(&prefs)
+                .expect("save global default");
+        }
+
+        // When enqueuing a message.
+        actor
+            .handle_enqueue_user_message(&EnqueueUserMessage {
+                session_id: session_id.clone(),
+                entry: ChatEntry::user("think a little"),
+            })
+            .await;
+
+        // Then the published SendToLlmProvider carries the session override (Low),
+        // not the global default (High).
+        let cmds = audit.of_type::<SendToLlmProvider>();
+        assert_eq!(cmds.len(), 1, "expected one SendToLlmProvider command");
+        assert_eq!(
+            cmds[0].reasoning_effort,
+            Some(crate::ReasoningEffort::Low),
+            "session override should win over global default"
         );
     }
 }
