@@ -104,9 +104,11 @@ pub fn handle_open_picker(state: &mut AppState, kind: PickerKind) -> IntentResul
         PickerKind::Provider => IntentResult::with_message(LoadProviderPickerEntries),
         PickerKind::Session => IntentResult::with_message(LoadSessionPickerEntries),
         PickerKind::Persona => IntentResult::with_message(LoadPersonaPickerEntries),
-        PickerKind::Theme | PickerKind::Tool | PickerKind::Skill | PickerKind::TaskList | PickerKind::Project => {
-            IntentResult::empty()
-        }
+        PickerKind::Theme
+        | PickerKind::Tool
+        | PickerKind::Skill
+        | PickerKind::TaskList
+        | PickerKind::Project => IntentResult::empty(),
         PickerKind::SessionLifecycle => {
             // Populate from user preferences + implicit blank lifecycle.
             load_lifecycle_picker_entries(state);
@@ -705,8 +707,7 @@ fn load_project_picker_entries(state: &mut AppState) {
     use crate::feat::project::picker_entry::{ProjectEntry, project_entries};
 
     let theme = state.frontend.theme.clone();
-    let entries: Vec<ProjectEntry> =
-        project_entries(&state.frontend.preferences.projects, &theme);
+    let entries: Vec<ProjectEntry> = project_entries(&state.frontend.preferences.projects, &theme);
     state.frontend.project_picker_mut().set_items(entries);
 }
 
@@ -725,9 +726,7 @@ fn confirm_project(state: &mut AppState) -> IntentResult {
     state.frontend.pending_session_cwd = Some(entry.path.clone());
     state.frontend.scope_stack.pop();
 
-    crate::feat::session_lifecycle::intent::handle_session_lifecycle_setup(
-        state, "", &[], None,
-    )
+    crate::feat::session_lifecycle::intent::handle_session_lifecycle_setup(state, "", &[], None)
 }
 
 /// Confirms the highlighted project and chains into the lifecycle picker.
@@ -801,7 +800,6 @@ pub fn handle_project_add_current_cwd(state: &mut AppState) -> IntentResult {
         updates: vec![PreferenceUpdate::AddProject(cwd)],
     })
 }
-
 
 /// Confirms the skill picker: collects disabled skill names from picker entries
 /// and writes them to the active session's profile.
@@ -2492,5 +2490,154 @@ mod tests {
 
         // Then a Single selection is returned (1-model alloy collapses).
         assert_eq!(selection, ModelSelection::Single("prov/model-1".to_owned()));
+    }
+
+    // --- Project picker ---
+
+    /// Builds an AppState with a project picker open, the active session's CWD
+    /// set to a distinct value, and `n` curated project entries loaded.
+    fn state_with_project_picker(paths: &[&str]) -> AppState {
+        let mut state = AppState::default();
+        let origin = ChatSessionState::new();
+        state.session.insert(origin);
+        state
+            .session
+            .set_active(state.session.active_session_id().clone());
+        state
+            .active_session_mut()
+            .set_cwd(std::path::PathBuf::from("/tmp/active-session-cwd"));
+        state.frontend.scope_stack.push(FocusScope::Picker {
+            kind: PickerKind::Project,
+        });
+        let theme = state.frontend.theme.clone();
+        let projects: Vec<crate::feat::project::ProjectConfig> = paths
+            .iter()
+            .map(|p| crate::feat::project::ProjectConfig {
+                path: std::path::PathBuf::from(p),
+            })
+            .collect();
+        state.frontend.preferences.projects = projects;
+        load_project_picker_entries(&mut state);
+        // index 0 is selected by default after set_items + reset.
+        state
+    }
+
+    #[rstest::rstest]
+    fn confirm_project_creates_new_session_at_chosen_dir() {
+        // Given a project picker whose highlighted entry is /tmp/project-a.
+        let mut state = state_with_project_picker(&["/tmp/project-a", "/tmp/project-b"]);
+
+        // When confirming the highlighted project (Enter).
+        let result = confirm_project(&mut state);
+
+        // Then a new session was created (a message was emitted to drive it).
+        assert!(!result.message_names.is_empty());
+        // And the new active session's CWD is the chosen project dir, not the
+        // previously active session's CWD.
+        assert_eq!(
+            state.active_session().cwd(),
+            std::path::Path::new("/tmp/project-a"),
+        );
+        // And the pending override was consumed.
+        assert!(state.frontend.pending_session_cwd.is_none());
+    }
+
+    #[rstest::rstest]
+    fn confirm_project_leaves_previous_session_cwd_unchanged() {
+        // Given a project picker with an existing active session.
+        let mut state = state_with_project_picker(&["/tmp/project-a"]);
+        let prev_id = state.session.active_session_id().clone();
+
+        // When confirming the highlighted project.
+        let _result = confirm_project(&mut state);
+
+        // Then the previous session (now backgrounded) keeps its original CWD.
+        let prev = state
+            .session
+            .get(&prev_id)
+            .expect("previous session still exists");
+        assert_eq!(prev.cwd(), std::path::Path::new("/tmp/active-session-cwd"));
+    }
+
+    #[rstest::rstest]
+    fn confirm_project_with_lifecycle_sets_override_then_opens_lifecycle_picker() {
+        // Given a project picker whose highlighted entry is /tmp/project-a.
+        let mut state = state_with_project_picker(&["/tmp/project-a"]);
+
+        // When confirming with lifecycle (<c-enter>).
+        let _result = handle_project_lifecycle_confirm(&mut state);
+
+        // Then the project scope was popped and the lifecycle picker opened.
+        assert!(matches!(
+            state.frontend.scope_stack.current(),
+            FocusScope::Picker {
+                kind: PickerKind::SessionLifecycle
+            }
+        ));
+        // And the chosen dir is stashed as the pending override, awaiting the
+        // lifecycle/args confirm chain.
+        assert_eq!(
+            state.frontend.pending_session_cwd.as_deref(),
+            Some(std::path::Path::new("/tmp/project-a")),
+        );
+    }
+
+    #[rstest::rstest]
+    fn project_remove_highlighted_deletes_highlighted_entry() {
+        // Given a project picker with two entries and the first highlighted.
+        let mut state = state_with_project_picker(&["/tmp/project-a", "/tmp/project-b"]);
+
+        // When removing the highlighted entry (d).
+        let result = handle_project_remove_highlighted(&mut state);
+
+        // Then the highlighted entry is removed from preferences.projects.
+        let paths: Vec<_> = state
+            .frontend
+            .preferences
+            .projects
+            .iter()
+            .map(|p| p.path.clone())
+            .collect();
+        assert_eq!(paths, vec![std::path::PathBuf::from("/tmp/project-b")]);
+        // And an UpdatePreferences(RemoveProject) message was emitted.
+        assert!(!result.message_names.is_empty());
+        // And the picker now shows one entry.
+        assert_eq!(state.frontend.project_picker().items().len(), 1);
+    }
+
+    #[rstest::rstest]
+    fn project_add_current_cwd_appends_active_session_dir() {
+        // Given a project picker with one entry and active CWD /tmp/new-project.
+        let mut state = state_with_project_picker(&["/tmp/project-a"]);
+        state
+            .active_session_mut()
+            .set_cwd(std::path::PathBuf::from("/tmp/new-project"));
+
+        // When adding the active session's CWD to projects (a).
+        let result = handle_project_add_current_cwd(&mut state);
+
+        // Then the active CWD is appended to preferences.projects.
+        assert!(
+            state
+                .frontend
+                .preferences
+                .projects
+                .iter()
+                .any(|p| p.path == std::path::Path::new("/tmp/new-project"))
+        );
+        // And an UpdatePreferences(AddProject) message was emitted.
+        assert!(!result.message_names.is_empty());
+    }
+
+    #[rstest::rstest]
+    fn project_add_current_cwd_dedupes_existing_path() {
+        // Given a project picker whose only entry IS the active CWD.
+        let mut state = state_with_project_picker(&["/tmp/active-session-cwd"]);
+
+        // When adding the active session's CWD again (a).
+        let _result = handle_project_add_current_cwd(&mut state);
+
+        // Then no duplicate was appended (still exactly one entry).
+        assert_eq!(state.frontend.preferences.projects.len(), 1);
     }
 }

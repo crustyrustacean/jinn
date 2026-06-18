@@ -364,4 +364,49 @@ mod tests {
             "same skill name appears under two width keys"
         );
     }
+
+    #[test]
+    fn render_project_picker_footer_documents_keybindings() {
+        // Given a project picker with one entry.
+        let mut state = AppState::default();
+        {
+            let theme = state.frontend.theme.clone();
+            let entry = crate::feat::project::picker_entry::ProjectEntry::new(
+                std::path::PathBuf::from("/tmp/project-a"),
+                theme,
+            );
+            state.frontend.project_picker_mut().set_items(vec![entry]);
+        }
+        state.frontend.scope_stack.push(FocusScope::Picker {
+            kind: PickerKind::Project,
+        });
+
+        // When rendering the project picker.
+        let backend = TestBackend::new(100, 30);
+        let mut terminal = Terminal::new(backend).expect("terminal");
+        terminal
+            .draw(|frame| {
+                let ctx = RenderCtx::new(&state);
+                let area = Rect::new(0, 0, 100, 30);
+                render_project_picker(frame, area, &ctx);
+            })
+            .expect("draw");
+
+        // Then the rendered footer documents the key bindings.
+        let rendered: String = terminal
+            .backend()
+            .buffer()
+            .content
+            .iter()
+            .map(|c| c.symbol())
+            .collect();
+        assert!(
+            rendered.contains("<c-enter>"),
+            "footer should advertise the <c-enter> new+lifecycle binding"
+        );
+        assert!(
+            rendered.contains("<c-n>"),
+            "footer should advertise the <c-n> add-dir binding"
+        );
+    }
 }

@@ -545,8 +545,12 @@ mod tests {
             });
 
         // When handling SessionLifecycleSetup with args.
-        let result =
-            handle_session_lifecycle_setup(&mut state, "fossil branch", &["my-branch".to_owned()], None);
+        let result = handle_session_lifecycle_setup(
+            &mut state,
+            "fossil branch",
+            &["my-branch".to_owned()],
+            None,
+        );
 
         // Then PersistSession is emitted first.
         assert!(result.message_names[0].contains("PersistSession"));
@@ -1386,5 +1390,23 @@ mod tests {
         assert!(result.message_names[0].contains("PushChatEntry"));
         // And the second is RunSessionSetup.
         assert!(result.message_names[1].contains("RunSessionSetup"));
+    }
+
+    #[test]
+    fn abandon_via_enter_normal_mode_clears_pending_session_cwd() {
+        // Given a state with a pending session CWD override stashed from a
+        // project-picker confirm (midway through the lifecycle/args chain).
+        let mut state = AppState::default();
+        let active_cwd = state.active_session().cwd().to_path_buf();
+        state.frontend.pending_session_cwd = Some(std::path::PathBuf::from("/tmp/project-a"));
+
+        // When abandoning the chain via ESC (EnterNormalMode).
+        let _result = crate::feat::chat_input::intent::handle_enter_normal_mode(&mut state);
+
+        // Then the pending override is cleared so it never leaks into a future
+        // `n`/`N`.
+        assert!(state.frontend.pending_session_cwd.is_none());
+        // And the active session's CWD is unchanged (no side-channel mutation).
+        assert_eq!(state.active_session().cwd(), active_cwd);
     }
 }
