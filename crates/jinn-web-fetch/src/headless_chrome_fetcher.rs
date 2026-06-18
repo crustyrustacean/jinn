@@ -229,15 +229,30 @@ impl WebFetcher for HeadlessChromeFetcher {
             }
         }
 
-        // First attempt.
-        match fetch_once(&self.browser, url, &options, &self.extractors) {
-            Err(FetchError::BrowserCrash) => {
-                // Connection-level death: the shared WebSocket is gone.
-                // `fetch_once` already evicted the handle; relaunch and retry exactly once.
-                tracing::info!("HeadlessChromeFetcher: retrying after connection death");
-                fetch_once(&self.browser, url, &options, &self.extractors)
+
+        // so they must never run on a tokio worker thread. Run the whole fetch
+        // (attempt + retry) on the blocking pool. The browser slot is shared via
+        // Arc, so the cached Chrome is still reused across calls.
+        let browser_slot = self.browser.clone();
+        let extractors = self.extractors.clone();
+        let url_owned = url.to_owned();
+        let join = tokio::task::spawn_blocking(move || {
+            match fetch_once(&browser_slot, &url_owned, &options, &extractors) {
+                Err(FetchError::BrowserCrash) => {
+                    // Connection-level death: the shared WebSocket is gone.
+                    // `fetch_once` already evicted the handle; relaunch and
+                    // retry exactly once.
+                    tracing::info!("HeadlessChromeFetcher: retrying after connection death");
+                    fetch_once(&browser_slot, &url_owned, &options, &extractors)
+                }
+                other => other,
             }
-            other => other,
+        });
+        // Map a panic inside the blocking task to a Render error rather than
+        // propagating the JoinError; headless_chrome has panicking code paths.
+        match join.await {
+            Ok(inner) => inner,
+            Err(_join_err) => Err(FetchError::Render("browser task panicked".to_owned())),
         }
     }
 
