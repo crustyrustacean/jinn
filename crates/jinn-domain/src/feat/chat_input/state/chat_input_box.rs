@@ -241,15 +241,13 @@ impl ChatInputBoxState {
     #[must_use]
     pub fn grapheme_at(&self, index: usize) -> Option<&str> {
         let bounds = &self.grapheme_bounds;
-        if index < bounds.len().saturating_sub(1) {
+        (index < bounds.len().saturating_sub(1)).then(|| {
             // Indexing is safe: `index < count` implies `index + 1 <= count < bounds.len()`.
             #[expect(clippy::indexing_slicing, reason = "index < count checked above")]
             #[expect(clippy::string_slice, reason = "bounds are grapheme byte offsets")]
             let slice = &self.input_buffer[bounds[index]..bounds[index + 1]];
-            Some(slice)
-        } else {
-            None
-        }
+            slice
+        })
     }
 
     /// Returns the number of visual lines (word-wrapped at `wrap_width`).
@@ -266,7 +264,7 @@ impl ChatInputBoxState {
     #[must_use]
     pub fn cursor_row_col(&self) -> (usize, usize) {
         let lines = self.wrapped_lines();
-        self.cursor_row_col_wrapped(&lines)
+        self.cursor_row_col_wrapped(lines)
     }
 
     /// Insert text at the current cursor position and advance the cursor by the
@@ -420,10 +418,6 @@ impl ChatInputBoxState {
     /// Scans left from the current cursor position, skips any whitespace,
     /// then finds the start of the preceding word.
     /// No-op when the cursor is at position 0.
-    #[expect(
-        clippy::indexing_slicing,
-        reason = "pos > 0 is checked before indexing pos - 1, guaranteed in bounds"
-    )]
     pub fn move_cursor_word_left(&mut self) {
         if self.cursor_pos == 0 {
             return;
@@ -442,10 +436,6 @@ impl ChatInputBoxState {
     /// Scans right from the current cursor position, skips any non-whitespace,
     /// then skips any whitespace to land at the start of the next word.
     /// No-op when the cursor is at the end of the buffer.
-    #[expect(
-        clippy::indexing_slicing,
-        reason = "pos < count is checked before indexing pos, guaranteed in bounds"
-    )]
     pub fn move_cursor_word_right(&mut self) {
         let count = self.grapheme_count();
         if self.cursor_pos >= count {
@@ -553,7 +543,7 @@ impl ChatInputBoxState {
     )]
     pub fn scroll_to_cursor(&mut self, max_visible_lines: usize) {
         let lines = self.wrapped_lines();
-        let (cursor_row, _) = self.cursor_row_col_wrapped(&lines);
+        let (cursor_row, _) = self.cursor_row_col_wrapped(lines);
 
         if cursor_row < self.scroll_offset {
             self.scroll_offset = cursor_row;
@@ -566,6 +556,14 @@ impl ChatInputBoxState {
     ///
     /// Served from [`cached_wrap`](Self::cached_wrap), which is refreshed eagerly on every
     /// mutation and width change. O(1) — no `wrap_text` call.
+    ///
+    /// # Panics
+    ///
+    /// Panics if the cache is empty
+    #[expect(
+        clippy::expect_used,
+        reason = "cache should have stuff in it but this will probably crash and I'll get mad"
+    )]
     pub fn wrapped_lines(&self) -> &[super::wrap::WrappedLine] {
         self.cached_wrap
             .as_ref()
@@ -787,12 +785,12 @@ impl ChatInputBoxState {
 fn skip_while_left(
     state: &ChatInputBoxState,
     mut pos: usize,
-    pred: impl Fn(&str) -> bool,
+    predicate: impl Fn(&str) -> bool,
 ) -> usize {
     while pos > 0 {
         // Indexing safe: pos > 0, so pos - 1 >= 0, and pos - 1 < count <= bounds.len().
         let prev = state.grapheme_at(pos - 1).unwrap_or("");
-        if !pred(prev) {
+        if !predicate(prev) {
             break;
         }
         pos -= 1;

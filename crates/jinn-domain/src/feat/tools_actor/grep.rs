@@ -222,6 +222,7 @@ mod tests {
         clippy::panic,
         clippy::unreachable,
         clippy::indexing_slicing,
+        clippy::format_push_string,
         reason = "test code"
     )]
     use super::*;

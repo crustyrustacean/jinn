@@ -266,8 +266,7 @@ impl TuiApp {
                 )
                 .into_iter()
                 .last()
-                .map(|r| r.run_action)
-                .unwrap_or(true)
+                .is_none_or(|r| r.run_action)
             };
             if run_action {
                 let payload = serde_json::json!({

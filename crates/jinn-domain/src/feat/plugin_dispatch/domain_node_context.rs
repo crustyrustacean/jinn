@@ -1039,7 +1039,7 @@ mod tests {
                     true,
                     30_000,
                     None,
-                ) => { res.ok(); }
+                ) => { res.unwrap(); }
             }
         });
         // Give the one-shot time to park.
@@ -1059,6 +1059,8 @@ mod tests {
 
     #[tokio::test]
     async fn success_path_does_not_publish_cancel_stream() {
+        use futures::FutureExt as _;
+        use std::future::Future as _;
         // Given a one-shot that resolves successfully.
         //
         // The OneshotCancelGuard must be disarmed on the success path so that
@@ -1077,7 +1079,6 @@ mod tests {
             30_000,
             None,
         );
-        use std::future::Future as _;
         futures::pin_mut!(fut);
         let waker = futures::task::noop_waker();
         let mut poll_cx = std::task::Context::from_waker(&waker);
@@ -1095,11 +1096,10 @@ mod tests {
 
         // Then the future completes with Ok and, after being dropped, did NOT
         // publish a CancelStream (the guard was disarmed).
-        use futures::FutureExt as _;
         let result = fut
             .now_or_never()
             .expect("resolved oneshot completes immediately");
-        assert!(result.is_ok(), "success must resolve Ok, got: {:?}", result);
+        assert!(result.is_ok(), "success must resolve Ok, got: {result:?}");
 
         let cancel_msgs: Vec<CancelStream> = audit.of_type::<CancelStream>();
         assert!(

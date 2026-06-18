@@ -107,6 +107,10 @@ mod tests {
         // Then text is present but null (Option<String> defaulted to None).
         assert_eq!(msg.name, "plugin::fire_async");
         assert_eq!(msg.payload["hook"], "on_toggle");
-        assert!(msg.payload.get("text").is_none_or(|v| v.is_null()));
+        assert!(
+            msg.payload
+                .get("text")
+                .is_none_or(serde_json::Value::is_null)
+        );
     }
 }
