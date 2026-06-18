@@ -303,6 +303,10 @@ pub fn init() -> Keymap<KeyEvent, Scope, Intent, KeyCategory> {
         .scope(Scope::PickerCompactionModel, |b| {
             add_picker_base(b);
         })
+
+        .scope(Scope::PickerReasoningEffort, |b| {
+            add_picker_base(b);
+        })
         .scope(Scope::PickerTool, |b| {
             add_picker_base(b);
             b.bind("<Tab>", Intent::ToolToggleSelected, KeyCategory::General);
@@ -825,6 +829,50 @@ mod tests {
             ),
             other => panic!("<leader>sr must be a leaf, got branch: {other:?}"),
         }
+    }
+
+    #[rstest::rstest]
+    fn reasoning_effort_picker_scope_binds_base_intents() {
+        // Given the default keymap.
+        use jinn_domain::{Key, KeyEvent, Modifiers};
+        use ratatui_which_key::NodeResult;
+        let keymap = init();
+        let esc = KeyEvent {
+            key: Key::Esc,
+            modifiers: Modifiers::none(),
+        };
+        let enter = KeyEvent {
+            key: Key::Enter,
+            modifiers: Modifiers::none(),
+        };
+
+        // When navigating the two explicit base keys within the ReasoningEffort picker scope.
+        let esc_res = keymap
+            .navigate(&[esc], &Scope::PickerReasoningEffort)
+            .expect("esc bound");
+        let enter_res = keymap
+            .navigate(&[enter], &Scope::PickerReasoningEffort)
+            .expect("enter bound");
+
+        // Then each resolves to a real picker base intent (the bug: scope had no bindings).
+        let NodeResult::Leaf { action: esc_action } = esc_res else {
+            panic!("esc must be a leaf");
+        };
+        assert!(
+            matches!(esc_action, Intent::EnterNormalMode),
+            "esc must resolve to EnterNormalMode, got {esc_action:?}"
+        );
+
+        let NodeResult::Leaf {
+            action: enter_action,
+        } = enter_res
+        else {
+            panic!("enter must be a leaf");
+        };
+        assert!(
+            matches!(enter_action, Intent::PickerConfirm),
+            "enter must resolve to PickerConfirm, got {enter_action:?}"
+        );
     }
 
     #[rstest::rstest]
