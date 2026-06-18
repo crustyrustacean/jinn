@@ -35,10 +35,11 @@ use super::state::QuakeBarState;
 const DIVIDER_LIGHTEN_FACTOR: f32 = 2.0;
 
 /// Fixed rows that are always present regardless of log size:
-/// header, session data, bright divider, muted divider, input.
+/// header, session data (prune pending), lifecycle data, bright divider,
+/// muted divider, input.
 /// (The bottom bright divider was removed — the background color
 /// contrast alone separates the bar from content below.)
-const FIXED_ROWS: u16 = 5;
+const FIXED_ROWS: u16 = 6;
 
 /// Maximum rows the command log viewport can occupy, regardless of
 /// terminal height. Capping the viewport (rather than letting it grow
@@ -99,6 +100,25 @@ pub fn render_quake_bar(frame: &mut Frame<'_>, area: Rect, ctx: &RenderCtx) {
     ));
     frame.render_widget(
         Paragraph::new(data).style(bg_style),
+        single_row(quake_area, y),
+    );
+    y += 1;
+
+    // Lifecycle data row: which lifecycle owns the active session, plus its
+    // script-progression state. Blank-lifecycle sessions show "<none>".
+    let label = {
+        let session = state.active_session();
+        match session.lifecycle_name() {
+            None => "Lifecycle: <none>".to_owned(),
+            Some(name) => format!("Lifecycle: {name} ({})", session.lifecycle_script_state()),
+        }
+    };
+    let lifecycle_line = Line::from(Span::styled(
+        label,
+        Style::default().fg(theme.primary_text).bg(bg),
+    ));
+    frame.render_widget(
+        Paragraph::new(lifecycle_line).style(bg_style),
         single_row(quake_area, y),
     );
     y += 1;
@@ -371,6 +391,94 @@ mod tests {
     }
 
     #[test]
+    fn lifecycle_row_shows_none_for_blank_session() {
+        // Given a quake-bar state with a blank-lifecycle active session.
+        let state = quake_state_with_log(&[]);
+        let (mut terminal, area) = setup_term(80, 24);
+
+        // When rendering.
+        terminal
+            .draw(|frame| {
+                let ctx = RenderCtx::new(&state);
+                render_quake_bar(frame, area, &ctx);
+            })
+            .unwrap();
+
+        // Then the lifecycle row contains "<none>".
+        let buffer = terminal.backend().buffer().clone();
+        let lifecycle_y = area.y + 2;
+        let symbols: String = (area.x..area.x + area.width)
+            .filter_map(|x| buffer.cell((x, lifecycle_y)).map(|c| c.symbol().to_owned()))
+            .collect();
+        assert!(
+            symbols.contains("<none>"),
+            "lifecycle row should show <none> for a blank-lifecycle session"
+        );
+    }
+
+    #[test]
+    fn lifecycle_row_shows_name_and_state_for_named_session() {
+        // Given a quake-bar state whose active session has a named lifecycle
+        // advanced to SetupRan.
+        let mut state = AppState::default();
+        state.frontend.scope_stack.push(FocusScope::QuakeBar);
+        {
+            let session = state.active_session_mut();
+            session.set_lifecycle_name(Some("fossil branch".to_owned()));
+            session.advance_lifecycle_after_setup();
+        }
+        let (mut terminal, area) = setup_term(80, 24);
+
+        // When rendering.
+        terminal
+            .draw(|frame| {
+                let ctx = RenderCtx::new(&state);
+                render_quake_bar(frame, area, &ctx);
+            })
+            .unwrap();
+
+        // Then the lifecycle row contains "fossil branch (setup_ran)".
+        let buffer = terminal.backend().buffer().clone();
+        let lifecycle_y = area.y + 2;
+        let symbols: String = (area.x..area.x + area.width)
+            .filter_map(|x| buffer.cell((x, lifecycle_y)).map(|c| c.symbol().to_owned()))
+            .collect();
+        assert!(
+            symbols.contains("fossil branch (setup_ran)"),
+            "lifecycle row should show the lifecycle name and snake_case script state"
+        );
+    }
+
+    #[test]
+    fn lifecycle_row_uses_primary_text() {
+        // Given a quake-bar state.
+        let state = quake_state_with_log(&[]);
+        let (mut terminal, area) = setup_term(80, 24);
+
+        // When rendering.
+        terminal
+            .draw(|frame| {
+                let ctx = RenderCtx::new(&state);
+                render_quake_bar(frame, area, &ctx);
+            })
+            .unwrap();
+
+        // Then the lifecycle row cells use primary_text foreground on quake_bar_bg.
+        let buffer = terminal.backend().buffer().clone();
+        let lifecycle_y = area.y + 2;
+        let primary = state.frontend.theme.primary_text;
+        let bg = state.frontend.theme.quake_bar_bg;
+        let found = (area.x..area.x + area.width).any(|x| {
+            buffer.cell((x, lifecycle_y)).is_some_and(|c| {
+                c.symbol() != " " && c.style().fg == Some(primary) && c.style().bg == Some(bg)
+            })
+        });
+        assert!(
+            found,
+            "lifecycle row should use primary_text on quake_bar_bg"
+        );
+    }
+    #[test]
     fn input_prefix_is_focus_accent_yellow() {
         // Given a quake-bar state with some input.
         let state = quake_state_with_input("hi");
@@ -387,8 +495,8 @@ mod tests {
         // Then the ">" prefix cell uses focus_accent.
         let buffer = terminal.backend().buffer().clone();
         let focus = state.frontend.theme.focus_accent;
-        // The input row sits after header(1)+data(1)+bright(1)+log(0)+muted(1) = 4 rows.
-        let input_y = area.y + 4;
+        // The input row sits after header(1)+data(1)+lifecycle(1)+bright(1)+log(0)+muted(1) = 5 rows.
+        let input_y = area.y + 5;
         let prefix_cell = buffer.cell((area.x, input_y)).expect("prefix cell");
         assert_eq!(prefix_cell.symbol(), ">");
         assert_eq!(
@@ -416,7 +524,7 @@ mod tests {
         let buffer = terminal.backend().buffer().clone();
         let bg = state.frontend.theme.quake_bar_bg;
         let expected_bright = crate::feat::theme::contrast::lighten(bg, DIVIDER_LIGHTEN_FACTOR);
-        let bright_y = area.y + 2;
+        let bright_y = area.y + 3;
         let cell = buffer.cell((area.x + 5, bright_y)).expect("divider cell");
         assert_eq!(
             cell.style().fg,
@@ -442,7 +550,7 @@ mod tests {
         // Then the muted divider (row 3, no log) uses muted_text foreground.
         let buffer = terminal.backend().buffer().clone();
         let muted = state.frontend.theme.muted_text;
-        let muted_y = area.y + 3;
+        let muted_y = area.y + 4;
         let cell = buffer.cell((area.x, muted_y)).expect("divider cell");
         assert_eq!(
             cell.style().fg,
@@ -499,9 +607,9 @@ mod tests {
             })
             .unwrap();
 
-        // Then the log row (row 3) contains the logged text.
+        // Then the log row (row 4) contains the logged text.
         let buffer = terminal.backend().buffer().clone();
-        let log_y = area.y + 3;
+        let log_y = area.y + 4;
         let symbols: String = (area.x..area.x + area.width)
             .filter_map(|x| buffer.cell((x, log_y)).map(|c| c.symbol().to_owned()))
             .collect();
@@ -530,9 +638,9 @@ mod tests {
             })
             .unwrap();
         let before = terminal.backend().buffer().clone();
-        // Last log row = header(1) + data(1) + bright divider(1) + (viewport-1).
+        // Last log row = header(1) + data(1) + lifecycle(1) + bright divider(1) + (viewport-1).
         let log_rows = (area.height.saturating_sub(FIXED_ROWS)) as usize;
-        let last_log_y = area.y + 3 + log_rows.saturating_sub(1) as u16;
+        let last_log_y = area.y + 4 + log_rows.saturating_sub(1) as u16;
         let newest_before: String = (area.x..area.x + area.width)
             .filter_map(|x| before.cell((x, last_log_y)).map(|c| c.symbol().to_owned()))
             .collect();
