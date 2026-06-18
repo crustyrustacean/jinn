@@ -10,6 +10,11 @@
 
 pub use jinn_provider::{ReasoningConfig, ReasoningEffort};
 
+pub mod picker_entry;
+pub mod picker_render;
+
+pub use picker_entry::ReasoningEffortEntry;
+
 /// Resolves the effective reasoning effort for a request.
 ///
 /// A session override always wins. When there is no override, the global

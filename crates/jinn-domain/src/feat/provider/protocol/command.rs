@@ -109,6 +109,14 @@ pub struct LoadCompactionModelPickerEntries;
 
 impl BusMessage for LoadCompactionModelPickerEntries {}
 
+/// The provider actor receives this, loads reasoning effort entries (one per
+/// `ReasoningEffort` variant, marking the resolved one active) and writes them
+/// into `AppState`.
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct LoadReasoningEffortPickerEntries;
+
+impl BusMessage for LoadReasoningEffortPickerEntries {}
+
 #[cfg(test)]
 mod tests {
     #![allow(
