@@ -37,6 +37,20 @@ setup_command = "git worktree add -b <branch> ../<branch> && echo ../<branch>"
 teardown_command = "git merge <branch> && git worktree remove ../<branch> && git branch -d <branch>"
 
 
+# ---------------------------------------------------------------------------
+# Project directories
+# ---------------------------------------------------------------------------
+# Projects are curated directories you frequently start sessions in. They
+# appear in the project picker (`<leader>so`) and let you create a session
+# directly at one of these paths without first changing the active session's
+# directory.
+#
+# Add one block per directory. Duplicates are ignored.
+#
+# [[project]]
+# path = "~/code/jinn"
+
+
 # Compaction command + auto compaction.
 [compaction]
 # Automatically compact the conversation when the used context window exceeds

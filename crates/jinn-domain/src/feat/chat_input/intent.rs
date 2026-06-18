@@ -591,10 +591,13 @@ pub fn handle_enter_normal_mode(state: &mut AppState) -> IntentResult {
         return IntentResult::empty();
     }
 
+    // A pending session CWD override only matters between opening the project
+    // picker and confirming session creation. Returning to Normal means that
+    // chain was abandoned, so clear any stale override so it never leaks into
+    // a future `n`/`N`.
+    state.frontend.pending_session_cwd = None;
+
     // Clear all overlay scopes - always returns to Normal.
-    // Using clear_overlays() instead of pop() ensures that ESC from Input mode
-    // always lands in Normal, even when a sidebar scope is stacked below Input
-    // (e.g., [Normal, SidebarPersona, Input] → [Normal]).
     // Using clear_overlays() instead of pop() ensures that ESC from Input mode
     // always lands in Normal, even when a sidebar scope is stacked below Input
     // (e.g., [Normal, SidebarPersona, Input] → [Normal]).

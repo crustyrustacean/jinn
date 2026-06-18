@@ -80,6 +80,11 @@ pub struct PickerStates {
     /// Task list picker state - read-only zoom view of the active session's task list.
     /// OWNER: IntentHandler (populated on task list picker open).
     pub task_list_picker: jinn_selection_widget::TreePickerState<TaskListTreeEntry>,
+
+    /// Project picker state (items, filter text, selection index).
+    /// OWNER: IntentHandler (populated from `UserPreferences.projects` on open).
+    pub project_picker:
+        jinn_selection_widget::SelectionState<crate::feat::project::picker_entry::ProjectEntry>,
 }
 
 /// Extension trait providing typed access to picker state on [`FrontendState`](super::FrontendState).
@@ -189,6 +194,17 @@ pub trait PickerExt {
     fn task_list_picker_mut(
         &mut self,
     ) -> &mut jinn_selection_widget::TreePickerState<TaskListTreeEntry>;
+
+    // --- Project picker ---
+
+    /// Read-only access to the project picker state.
+    fn project_picker(
+        &self,
+    ) -> &jinn_selection_widget::SelectionState<crate::feat::project::picker_entry::ProjectEntry>;
+    /// Mutable access to the project picker state.
+    fn project_picker_mut(
+        &mut self,
+    ) -> &mut jinn_selection_widget::SelectionState<crate::feat::project::picker_entry::ProjectEntry>;
 }
 
 impl PickerExt for super::frontend_state::FrontendState {
@@ -318,5 +334,18 @@ impl PickerExt for super::frontend_state::FrontendState {
         &mut self,
     ) -> &mut jinn_selection_widget::TreePickerState<TaskListTreeEntry> {
         &mut self.pickers.task_list_picker
+    }
+    fn project_picker(
+        &self,
+    ) -> &jinn_selection_widget::SelectionState<crate::feat::project::picker_entry::ProjectEntry>
+    {
+        &self.pickers.project_picker
+    }
+
+    fn project_picker_mut(
+        &mut self,
+    ) -> &mut jinn_selection_widget::SelectionState<crate::feat::project::picker_entry::ProjectEntry>
+    {
+        &mut self.pickers.project_picker
     }
 }

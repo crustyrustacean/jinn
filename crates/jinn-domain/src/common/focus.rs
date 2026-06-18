@@ -29,6 +29,8 @@ pub enum FocusScope {
     RenameSessionInput,
     /// Cwd input popup - typing a directory path to change session cwd.
     CwdInput,
+    /// Project-add input popup - typing a directory path to register a new project.
+    ProjectAddInput,
     /// Pruner accumulation threshold popup - numeric input for the KV-cache gate.
     PrunerAccumulationInput,
 
@@ -54,6 +56,7 @@ impl FocusScope {
             | Self::ArgInput
             | Self::RenameSessionInput
             | Self::CwdInput
+            | Self::ProjectAddInput
             | Self::PrunerAccumulationInput
             | Self::QuakeBar => Mode::Input,
             Self::Picker { .. } => Mode::Picker,
@@ -74,6 +77,7 @@ impl std::fmt::Display for FocusScope {
             Self::ArgInput => write!(f, "ArgInput"),
             Self::RenameSessionInput => write!(f, "RenameSessionInput"),
             Self::CwdInput => write!(f, "CwdInput"),
+            Self::ProjectAddInput => write!(f, "ProjectAddInput"),
             Self::PrunerAccumulationInput => write!(f, "PrunerAccumulationInput"),
             Self::QuakeBar => write!(f, "QuakeBar"),
             Self::SidebarResize => write!(f, "SidebarResize"),
