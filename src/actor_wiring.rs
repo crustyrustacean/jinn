@@ -1160,7 +1160,10 @@ mod tests {
     #[test]
     fn global_plugin_excluded_from_discovered_plugins() {
         // Given a mix of one global and one attachable plugin.
-        let plugins = vec![meta("welcome", PluginKind::Global), meta("judge", PluginKind::Attachable)];
+        let plugins = vec![
+            meta("welcome", PluginKind::Global),
+            meta("judge", PluginKind::Attachable),
+        ];
 
         // When filtering to attachable plugins.
         let result = attachable_discovered_plugins(plugins);
