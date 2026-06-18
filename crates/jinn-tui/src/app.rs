@@ -294,6 +294,7 @@ impl TuiApp {
 
     /// Resolves a TriggerPlugin intent: runs the sync pre-check hook (plugins may
     /// veto), then fires the async hook via the bridge when allowed.
+    #[expect(clippy::needless_pass_by_value, reason = "destructured from message")]
     fn handle_trigger_plugin(
         &self,
         plugin_name: String,

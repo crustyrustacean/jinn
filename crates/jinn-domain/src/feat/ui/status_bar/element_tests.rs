@@ -1040,7 +1040,7 @@ fn render_omits_reasoning_effort_bracket_when_unresolved() {
 
     // Then no reasoning bracket appears at all (no [none] noise).
     assert!(
-        !row.contains("["),
+        !row.contains('['),
         "should contain no bracket when effort unresolved, got: {row}"
     );
 }
