@@ -565,4 +565,57 @@ mod tests {
         assert_eq!(lines.len(), 2);
         assert!(lines[1].is_continuation);
     }
+
+    // --- Memo transparency regression (Phase 3) ---
+    //
+    // `ChatInputBoxState::wrapped_lines()` is memoized; this confirms the memo's output is
+    // byte-identical to a fresh `wrap_text(buffer, width)` call across a representative
+    // corpus. The memo must never diverge from the underlying computation.
+
+    #[rstest::rstest]
+    #[case::empty("", 20)]
+    #[case::short("hello", 20)]
+    #[case::wraps_word_boundary("hello world and more", 10)]
+    #[case::overflow_long_word("abcdefghijklmn", 5)]
+    #[case::newlines("hello\nworld", 80)]
+    #[case::wrap_then_newline("hello world and more\nshort", 10)]
+    #[case::unicode_emoji("🎉🎊🎈🎁🎁🎊🎈🎉", 5)]
+    #[case::cjk("中文测试字符", 10)]
+    #[case::mixed_ascii_cjk("hello中文", 9)]
+    #[case::trailing_newline("hello\n", 80)]
+    #[case::exact_width("hello", 5)]
+    fn wrapped_lines_memo_matches_fresh_wrap_text(#[case] text: &str, #[case] width: usize) {
+        // Given a ChatInputBoxState loaded with `text` at the given width.
+        use crate::feat::chat_input::state::ChatInputBoxState;
+        let mut state = ChatInputBoxState::new();
+        state.set_wrap_width(width);
+        state.insert_text(text);
+
+        // When fetching memoized wrapped_lines.
+        let memoized = state.wrapped_lines();
+        // And computing fresh from wrap_text.
+        let fresh = wrap_text(text, width);
+
+        // Then they are byte-identical (grapheme ranges, continuation flags, logical indices).
+        assert_eq!(
+            memoized.len(),
+            fresh.len(),
+            "line count mismatch for {text:?}@{width}"
+        );
+        for (i, (m, f)) in memoized.iter().zip(fresh.iter()).enumerate() {
+            assert_eq!(
+                m.grapheme_start, f.grapheme_start,
+                "start mismatch line {i}"
+            );
+            assert_eq!(m.grapheme_end, f.grapheme_end, "end mismatch line {i}");
+            assert_eq!(
+                m.is_continuation, f.is_continuation,
+                "continuation mismatch line {i}"
+            );
+            assert_eq!(
+                m.logical_line_index, f.logical_line_index,
+                "logical_line_index mismatch line {i}"
+            );
+        }
+    }
 }
