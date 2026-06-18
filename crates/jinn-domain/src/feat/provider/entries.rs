@@ -62,6 +62,7 @@ pub(crate) fn promote_selected_to_top(entries: &mut Vec<PickerEntry>) {
 /// - Line 1: refresh info (`CTRL+R to refresh | Updated ...`).
 /// - Line 2: mode info (`CTRL+A (toggle alloy) ...`) — always starts with the
 ///   toggle hint, then appends mode-specific ENTER/selection semantics.
+///
 /// Each line is independently truncated to `width`.
 pub fn format_footers(
     model_cache: Option<&crate::feat::provider_infra::ModelCache>,

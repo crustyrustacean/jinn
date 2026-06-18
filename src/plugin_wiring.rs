@@ -294,7 +294,7 @@ mod tests {
         let fut = handle_plugin_request("llm_oneshot", &payload, &ctx, None);
         let mut fut = std::pin::pin!(fut);
         let waker = std::task::Waker::noop();
-        let mut cx = std::task::Context::from_waker(&waker);
+        let mut cx = std::task::Context::from_waker(waker);
 
         // Then it returns Ready with an error envelope.
         match fut.as_mut().poll(&mut cx) {

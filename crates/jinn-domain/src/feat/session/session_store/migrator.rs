@@ -62,6 +62,7 @@ use jinn_session_schema::testing::{
 };
 
 #[cfg(test)]
+#[expect(clippy::expect_used, reason = "test code")]
 pub(crate) async fn seed_at_version<F>(db_path: &str, target: i32, seed: F)
 where
     F: FnOnce(&mut rusqlite::Connection) -> rusqlite::Result<()> + Send + 'static,
@@ -284,9 +285,12 @@ mod tests {
         .unwrap();
 
         // When running migration v10.
-        pool.with_conn(|conn| Ok(migrate_v10(conn).expect("migrate v10")))
-            .await
-            .unwrap();
+        pool.with_conn(|conn| {
+            migrate_v10(conn).expect("migrate v10");
+            Ok(())
+        })
+        .await
+        .unwrap();
 
         // Then strategy_state only has the compaction key.
         let (state_str, profile_str): (String, String) = pool
@@ -333,9 +337,12 @@ mod tests {
         .unwrap();
 
         // When running migration v10.
-        pool.with_conn(|conn| Ok(migrate_v10(conn).expect("migrate v10")))
-            .await
-            .unwrap();
+        pool.with_conn(|conn| {
+            migrate_v10(conn).expect("migrate v10");
+            Ok(())
+        })
+        .await
+        .unwrap();
 
         // Then strategy_state has a compaction key with default data.
         let state_str: String = pool
@@ -372,9 +379,12 @@ mod tests {
         .unwrap();
 
         // When running migration v15.
-        pool.with_conn(|conn| Ok(migrate_v15(conn).expect("migrate v15")))
-            .await
-            .unwrap();
+        pool.with_conn(|conn| {
+            migrate_v15(conn).expect("migrate v15");
+            Ok(())
+        })
+        .await
+        .unwrap();
 
         // Then the sessions table no longer has a strategy_state column.
         let cols: Vec<String> = column_names(&pool, "sessions").await;
@@ -541,9 +551,12 @@ mod tests {
         .unwrap();
 
         // When running migration v17.
-        pool.with_conn(|conn| Ok(migrate_v17(conn).expect("migrate v17")))
-            .await
-            .unwrap();
+        pool.with_conn(|conn| {
+            migrate_v17(conn).expect("migrate v17");
+            Ok(())
+        })
+        .await
+        .unwrap();
 
         // Then the profile JSON has model rewritten as {"single":"ollama/llama3"}.
         let profile_str: String = pool
@@ -586,9 +599,12 @@ mod tests {
         .unwrap();
 
         // When running migration v17.
-        pool.with_conn(|conn| Ok(migrate_v17(conn).expect("migrate v17")))
-            .await
-            .unwrap();
+        pool.with_conn(|conn| {
+            migrate_v17(conn).expect("migrate v17");
+            Ok(())
+        })
+        .await
+        .unwrap();
 
         // Then the profile JSON has model rewritten as {"single":"<none>"}.
         let profile_str: String = pool
@@ -625,12 +641,18 @@ mod tests {
         .unwrap();
 
         // When running migration v17 twice.
-        pool.with_conn(|conn| Ok(migrate_v17(conn).expect("first")))
-            .await
-            .unwrap();
-        pool.with_conn(|conn| Ok(migrate_v17(conn).expect("second")))
-            .await
-            .unwrap();
+        pool.with_conn(|conn| {
+            migrate_v17(conn).expect("first");
+            Ok(())
+        })
+        .await
+        .unwrap();
+        pool.with_conn(|conn| {
+            migrate_v17(conn).expect("second");
+            Ok(())
+        })
+        .await
+        .unwrap();
 
         // Then the profile is still correct, not double-wrapped.
         let profile_str: String = pool
@@ -658,14 +680,17 @@ mod tests {
         let pool = apply_migrations_up_to(16).await;
 
         // When running migration v17.
-        pool.with_conn(|conn| Ok(migrate_v17(conn).expect("migrate v17")))
-            .await
-            .unwrap();
+        pool.with_conn(|conn| {
+            migrate_v17(conn).expect("migrate v17");
+            Ok(())
+        })
+        .await
+        .unwrap();
 
         // Then the token_ledger table has a model_used column.
         let cols = column_names(&pool, "token_ledger").await;
         assert!(
-            cols.contains(&"model_used".to_string()),
+            cols.contains(&"model_used".to_owned()),
             "expected model_used column, got: {cols:?}"
         );
     }
@@ -771,9 +796,12 @@ mod tests {
         insert_v19_session(&pool, "s1", &blob).await;
 
         // When running migration v19.
-        pool.with_conn(|conn| Ok(migrate_v19(conn).expect("migrate v19")))
-            .await
-            .unwrap();
+        pool.with_conn(|conn| {
+            migrate_v19(conn).expect("migrate v19");
+            Ok(())
+        })
+        .await
+        .unwrap();
 
         // Then the blob's embedded profile.model is rewritten to {"single":...}.
         let meta_str: String = pool
@@ -804,12 +832,18 @@ mod tests {
         insert_v19_session(&pool, "s1", &blob).await;
 
         // When running migration v19 twice (idempotency check).
-        pool.with_conn(|conn| Ok(migrate_v19(conn).expect("first")))
-            .await
-            .unwrap();
-        pool.with_conn(|conn| Ok(migrate_v19(conn).expect("second")))
-            .await
-            .unwrap();
+        pool.with_conn(|conn| {
+            migrate_v19(conn).expect("first");
+            Ok(())
+        })
+        .await
+        .unwrap();
+        pool.with_conn(|conn| {
+            migrate_v19(conn).expect("second");
+            Ok(())
+        })
+        .await
+        .unwrap();
 
         // Then the blob is unchanged - model is still {"single":...}, not double-wrapped.
         let meta_str: String = pool
@@ -838,9 +872,12 @@ mod tests {
         insert_v19_session(&pool, "s1", blob).await;
 
         // When running migration v19.
-        pool.with_conn(|conn| Ok(migrate_v19(conn).expect("migrate v19")))
-            .await
-            .unwrap();
+        pool.with_conn(|conn| {
+            migrate_v19(conn).expect("migrate v19");
+            Ok(())
+        })
+        .await
+        .unwrap();
 
         // Then the blob is semantically unchanged (no model added, no fields lost).
         let meta_str: String = pool
@@ -870,9 +907,12 @@ mod tests {
         insert_v19_session(&pool, "s1", &blob).await;
 
         // When running migration v19.
-        pool.with_conn(|conn| Ok(migrate_v19(conn).expect("migrate v19")))
-            .await
-            .unwrap();
+        pool.with_conn(|conn| {
+            migrate_v19(conn).expect("migrate v19");
+            Ok(())
+        })
+        .await
+        .unwrap();
 
         // Then the Alloy model is preserved exactly, not wrapped as Single.
         let meta_str: String = pool

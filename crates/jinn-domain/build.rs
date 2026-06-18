@@ -7,6 +7,8 @@
 //! `.sql` file to drift out of sync. See the `dao` crate's README ("The
 //! schema-crate pattern") for the rationale.
 
+#![allow(warnings, reason = "want to fail fast")]
+
 use std::path::PathBuf;
 
 fn main() {

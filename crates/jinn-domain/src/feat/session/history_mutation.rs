@@ -17,7 +17,7 @@ use crate::feat::session::chat_entry::{
 /// resolves `ChatEntryId` → current position at application time.
 /// Mutations targeting nonexistent entries are silently skipped.
 #[derive(Debug, Clone, Serialize, Deserialize)]
-#[allow(
+#[expect(
     clippy::large_enum_variant,
     reason = "InsertEntry owns a full ChatEntry by design; variants are produced in Vec batches and matched by value"
 )]

@@ -903,7 +903,6 @@ where
 // jinn-domain's tests can stand up a DB at a specific legacy version.
 
 #[cfg(feature = "testing")]
-#[expect(clippy::too_many_lines, reason = "one branch per migration")]
 pub fn apply_migrations_inner(conn: &mut rusqlite::Connection, target: i32) {
     if target >= 0 {
         migrate_v0(conn).expect("v0");
