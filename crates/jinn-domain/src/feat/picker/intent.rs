@@ -2715,7 +2715,6 @@ mod tests {
         state.frontend.scope_stack.push(FocusScope::Picker {
             kind: PickerKind::Project,
         });
-        let theme = state.frontend.theme.clone();
         let projects: Vec<crate::feat::project::ProjectConfig> = paths
             .iter()
             .map(|p| crate::feat::project::ProjectConfig {
@@ -2810,5 +2809,4 @@ mod tests {
         // And the picker now shows one entry.
         assert_eq!(state.frontend.project_picker().items().len(), 1);
     }
-
 }

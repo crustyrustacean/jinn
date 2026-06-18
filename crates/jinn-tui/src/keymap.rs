@@ -858,7 +858,10 @@ mod tests {
 
         // Then it falls through to the catch-all and types into the filter.
         assert!(
-            matches!(intent, Some(jinn_domain::Intent::PickerInsertChar { ch: 'd' })),
+            matches!(
+                intent,
+                Some(jinn_domain::Intent::PickerInsertChar { ch: 'd' })
+            ),
             "bare 'd' in PickerProject should type into the filter; got {intent:?}",
         );
     }
@@ -880,11 +883,13 @@ mod tests {
 
         // Then it types into the filter (the unapproved 'a' add-cwd bind is gone).
         assert!(
-            matches!(intent, Some(jinn_domain::Intent::PickerInsertChar { ch: 'a' })),
+            matches!(
+                intent,
+                Some(jinn_domain::Intent::PickerInsertChar { ch: 'a' })
+            ),
             "bare 'a' in PickerProject should type into the filter, not add cwd; got {intent:?}",
         );
     }
-
 
     #[rstest::rstest]
     fn leader_sr_resolves_to_reasoning_effort_picker() {

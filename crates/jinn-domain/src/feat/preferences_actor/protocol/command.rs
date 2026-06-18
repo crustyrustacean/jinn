@@ -133,10 +133,12 @@ mod tests {
     #[rstest::rstest]
     fn add_project_dedupes_existing_path() {
         // Given preferences with one project.
-        let mut prefs = UserPreferences::default();
-        prefs.projects = vec![ProjectConfig {
-            path: PathBuf::from("/home/me/code/alpha"),
-        }];
+        let mut prefs = UserPreferences {
+            projects: vec![ProjectConfig {
+                path: PathBuf::from("/home/me/code/alpha"),
+            }],
+            ..UserPreferences::default()
+        };
 
         // When adding the same path again.
         PreferenceUpdate::AddProject(PathBuf::from("/home/me/code/alpha")).apply(&mut prefs);
@@ -148,15 +150,17 @@ mod tests {
     #[rstest::rstest]
     fn remove_project_deletes_matching_path() {
         // Given preferences with two projects.
-        let mut prefs = UserPreferences::default();
-        prefs.projects = vec![
-            ProjectConfig {
-                path: PathBuf::from("/home/me/code/alpha"),
-            },
-            ProjectConfig {
-                path: PathBuf::from("/home/me/code/beta"),
-            },
-        ];
+        let mut prefs = UserPreferences {
+            projects: vec![
+                ProjectConfig {
+                    path: PathBuf::from("/home/me/code/alpha"),
+                },
+                ProjectConfig {
+                    path: PathBuf::from("/home/me/code/beta"),
+                },
+            ],
+            ..UserPreferences::default()
+        };
 
         // When removing the first path.
         PreferenceUpdate::RemoveProject(PathBuf::from("/home/me/code/alpha")).apply(&mut prefs);
@@ -169,10 +173,12 @@ mod tests {
     #[rstest::rstest]
     fn remove_project_noop_when_path_absent() {
         // Given preferences with one project.
-        let mut prefs = UserPreferences::default();
-        prefs.projects = vec![ProjectConfig {
-            path: PathBuf::from("/home/me/code/alpha"),
-        }];
+        let mut prefs = UserPreferences {
+            projects: vec![ProjectConfig {
+                path: PathBuf::from("/home/me/code/alpha"),
+            }],
+            ..UserPreferences::default()
+        };
 
         // When removing a path that is not present.
         PreferenceUpdate::RemoveProject(PathBuf::from("/home/me/code/missing")).apply(&mut prefs);
