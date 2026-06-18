@@ -243,6 +243,7 @@ mod tests {
         AutoPruneConfig, BashConfig, CompactionConfig, CwdSelectorConfig, MinimapConfig,
         OpenrouterWebSearchConfig, WebFetchConfig,
     };
+    use crate::feat::project::ProjectConfig;
 
     #[rstest::rstest]
     fn in_memory_load_returns_default_when_empty() {
@@ -329,15 +330,23 @@ mod tests {
             minimap: MinimapConfig::default(),
             auto_prune: AutoPruneConfig::default(),
             bash: BashConfig::default(),
-            projects: vec![],
+            projects: vec![ProjectConfig {
+                path: PathBuf::from("/tmp/proj-a"),
+            }],
         };
 
         // When saving and reloading.
         storage.save(&prefs).expect("save");
         let reloaded = storage.reload().expect("reload");
 
-        // Then the round-tripped data matches.
+        // Then the round-tripped data matches (including [[project]] array).
         assert_eq!(reloaded.tool_entry_max_lines, Some(42));
+        assert_eq!(
+            reloaded.projects,
+            vec![ProjectConfig {
+                path: PathBuf::from("/tmp/proj-a"),
+            }]
+        );
     }
 
     // --- Service caching tests ---

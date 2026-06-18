@@ -145,9 +145,8 @@ pub fn render(app: &mut TuiApp, frame: &mut Frame<'_>) {
         FocusScope::ProjectAddInput
     ) {
         jinn_domain::feat::project_add_input::render::render_project_add_input(frame, area, &ctx);
-        rects.push(
-            jinn_domain::feat::project_add_input::render::project_add_input_popup_rect(area),
-        );
+        rects
+            .push(jinn_domain::feat::project_add_input::render::project_add_input_popup_rect(area));
     }
 
     // Quake bar overlay (last, so it covers everything below it).

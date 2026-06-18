@@ -78,7 +78,8 @@ pub struct PickerStates {
 
     /// Project picker state (items, filter text, selection index).
     /// OWNER: IntentHandler (populated from `UserPreferences.projects` on open).
-    pub project_picker: jinn_selection_widget::SelectionState<crate::feat::project::picker_entry::ProjectEntry>,
+    pub project_picker:
+        jinn_selection_widget::SelectionState<crate::feat::project::picker_entry::ProjectEntry>,
 }
 
 /// Extension trait providing typed access to picker state on [`FrontendState`](super::FrontendState).
@@ -308,13 +309,15 @@ impl PickerExt for super::frontend_state::FrontendState {
     }
     fn project_picker(
         &self,
-    ) -> &jinn_selection_widget::SelectionState<crate::feat::project::picker_entry::ProjectEntry> {
+    ) -> &jinn_selection_widget::SelectionState<crate::feat::project::picker_entry::ProjectEntry>
+    {
         &self.pickers.project_picker
     }
 
     fn project_picker_mut(
         &mut self,
-    ) -> &mut jinn_selection_widget::SelectionState<crate::feat::project::picker_entry::ProjectEntry> {
+    ) -> &mut jinn_selection_widget::SelectionState<crate::feat::project::picker_entry::ProjectEntry>
+    {
         &mut self.pickers.project_picker
     }
 }

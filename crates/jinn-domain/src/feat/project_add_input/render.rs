@@ -158,10 +158,7 @@ mod tests {
 
     fn state_with_input(input: &str) -> AppState {
         let mut state = AppState::default();
-        state
-            .frontend
-            .scope_stack
-            .push(FocusScope::ProjectAddInput);
+        state.frontend.scope_stack.push(FocusScope::ProjectAddInput);
         state.frontend.project_add_input = ProjectAddInputState {
             text: LineInput {
                 input: input.to_owned(),
@@ -235,7 +232,9 @@ mod tests {
         let mut found_check = false;
         let success_color = state.frontend.theme.success;
         for x in popup_area.x..(popup_area.x + popup_area.width).min(buffer.area().width) {
-            if let Some(cell) = buffer.cell((x, footer_y)) && cell.symbol() == "✓" {
+            if let Some(cell) = buffer.cell((x, footer_y))
+                && cell.symbol() == "✓"
+            {
                 assert_eq!(
                     cell.style().fg,
                     Some(success_color),
@@ -272,7 +271,9 @@ mod tests {
         let error_color = state.frontend.theme.error_text;
         let mut found_x = false;
         for x in popup_area.x..(popup_area.x + popup_area.width).min(buffer.area().width) {
-            if let Some(cell) = buffer.cell((x, footer_y)) && cell.symbol() == "✗" {
+            if let Some(cell) = buffer.cell((x, footer_y))
+                && cell.symbol() == "✗"
+            {
                 assert_eq!(
                     cell.style().fg,
                     Some(error_color),

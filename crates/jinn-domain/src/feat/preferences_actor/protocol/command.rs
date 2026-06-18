@@ -117,8 +117,7 @@ mod tests {
         let mut prefs = UserPreferences::default();
 
         // When adding a project directory.
-        PreferenceUpdate::AddProject(PathBuf::from("/home/me/code/alpha"))
-            .apply(&mut prefs);
+        PreferenceUpdate::AddProject(PathBuf::from("/home/me/code/alpha")).apply(&mut prefs);
 
         // Then the project list contains exactly that path.
         assert_eq!(prefs.projects.len(), 1);
@@ -134,8 +133,7 @@ mod tests {
         }];
 
         // When adding the same path again.
-        PreferenceUpdate::AddProject(PathBuf::from("/home/me/code/alpha"))
-            .apply(&mut prefs);
+        PreferenceUpdate::AddProject(PathBuf::from("/home/me/code/alpha")).apply(&mut prefs);
 
         // Then the list still has exactly one entry (no duplicate).
         assert_eq!(prefs.projects.len(), 1);
@@ -155,8 +153,7 @@ mod tests {
         ];
 
         // When removing the first path.
-        PreferenceUpdate::RemoveProject(PathBuf::from("/home/me/code/alpha"))
-            .apply(&mut prefs);
+        PreferenceUpdate::RemoveProject(PathBuf::from("/home/me/code/alpha")).apply(&mut prefs);
 
         // Then only the second project remains.
         assert_eq!(prefs.projects.len(), 1);
@@ -172,8 +169,7 @@ mod tests {
         }];
 
         // When removing a path that is not present.
-        PreferenceUpdate::RemoveProject(PathBuf::from("/home/me/code/missing"))
-            .apply(&mut prefs);
+        PreferenceUpdate::RemoveProject(PathBuf::from("/home/me/code/missing")).apply(&mut prefs);
 
         // Then the existing project is retained unchanged.
         assert_eq!(prefs.projects.len(), 1);

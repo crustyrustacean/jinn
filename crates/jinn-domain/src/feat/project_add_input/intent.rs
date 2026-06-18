@@ -5,9 +5,7 @@ use crate::common::focus::FocusScope;
 use crate::common::line_input::LineInput;
 use crate::common::path_display::shorten_path;
 use crate::feat::cwd_input::resolve::{CwdResolution, resolve_cwd_input};
-use crate::feat::preferences_actor::protocol::command::{
-    PreferenceUpdate, UpdatePreferences,
-};
+use crate::feat::preferences_actor::protocol::command::{PreferenceUpdate, UpdatePreferences};
 use crate::feat::project::ProjectConfig;
 use crate::feat::project_add_input::state::ProjectAddInputState;
 use crate::protocol::IntentResult;
@@ -95,11 +93,7 @@ pub fn handle_delete(state: &mut AppState) -> IntentResult {
 
 /// Deletes the grapheme at/after the cursor (forward delete).
 pub fn handle_delete_forward(state: &mut AppState) -> IntentResult {
-    state
-        .frontend
-        .project_add_input
-        .text
-        .delete_forward();
+    state.frontend.project_add_input.text.delete_forward();
     IntentResult::empty()
 }
 
@@ -184,10 +178,7 @@ mod tests {
     fn leave_pops_scope_and_clears_state() {
         // Given a state with project_add_input scope pushed + some typed text.
         let mut state = AppState::default();
-        state
-            .frontend
-            .scope_stack
-            .push(FocusScope::ProjectAddInput);
+        state.frontend.scope_stack.push(FocusScope::ProjectAddInput);
         state.frontend.project_add_input.text.input = "/some/path".to_owned();
 
         // When leaving.
@@ -242,10 +233,7 @@ mod tests {
     fn confirm_nonexistent_path_stays_open_unchanged() {
         // Given a state with project_add_input scope pushed + a bad path.
         let mut state = AppState::default();
-        state
-            .frontend
-            .scope_stack
-            .push(FocusScope::ProjectAddInput);
+        state.frontend.scope_stack.push(FocusScope::ProjectAddInput);
         state.frontend.project_add_input.text.input = "/this/does/not/exist".to_owned();
 
         // When confirming.
@@ -267,10 +255,7 @@ mod tests {
     fn confirm_empty_input_is_noop() {
         // Given a state with project_add_input scope pushed + empty input.
         let mut state = AppState::default();
-        state
-            .frontend
-            .scope_stack
-            .push(FocusScope::ProjectAddInput);
+        state.frontend.scope_stack.push(FocusScope::ProjectAddInput);
 
         // When confirming with empty input.
         let result = handle_project_add_input_confirm(&mut state);
