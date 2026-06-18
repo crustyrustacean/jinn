@@ -499,7 +499,7 @@ async fn enrichment_first_tap_proceeds_when_idle() {
 
     // Then exactly one result, run_action=true (no veto).
     assert_eq!(results.len(), 1, "exactly one plugin should answer");
-    let run_action = results[0].get("run_action").and_then(|v| v.as_bool());
+    let run_action = results[0].get("run_action").and_then(Value::as_bool);
     assert_eq!(
         run_action,
         Some(true),
@@ -528,7 +528,7 @@ async fn enrichment_retap_cancels_inflight_and_vetoes() {
 
     // Then the hook returns run_action=false (cancel the in-flight, don't re-run).
     assert_eq!(results.len(), 1, "exactly one plugin should answer");
-    let run_action = results[0].get("run_action").and_then(|v| v.as_bool());
+    let run_action = results[0].get("run_action").and_then(Value::as_bool);
     assert_eq!(
         run_action,
         Some(false),

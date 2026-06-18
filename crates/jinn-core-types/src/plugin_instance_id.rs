@@ -47,6 +47,11 @@ impl std::fmt::Display for PluginInstanceId {
 
 #[cfg(test)]
 mod tests {
+    #![allow(
+        clippy::expect_used,
+        clippy::indexing_slicing,
+        reason = "test file, panics are acceptable"
+    )]
     use super::*;
 
     #[rstest::rstest]

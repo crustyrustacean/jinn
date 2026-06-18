@@ -301,7 +301,7 @@ impl PluginDispatchActor {
     }
 
     /// Send plugin tool definitions to the tools actor for registration.
-    #[allow(
+    #[expect(
         clippy::unused_self,
         reason = "intentional no-op; retained as a call-site on the attach path for future hook-in and to keep regression tests valid"
     )]

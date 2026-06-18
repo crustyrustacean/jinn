@@ -860,8 +860,7 @@ async fn gather_runs_requests_concurrently() {
     // Then the gather completed in roughly the time of ONE request (not three).
     assert!(
         elapsed < std::time::Duration::from_millis(250),
-        "gather must run concurrently; elapsed {:?} suggests sequential",
-        elapsed
+        "gather must run concurrently; elapsed {elapsed:?} suggests sequential",
     );
     tokio::time::sleep(std::time::Duration::from_millis(50)).await;
     let pd = async_handle.get_plugin_data("gatherer").unwrap_or_default();
@@ -911,10 +910,10 @@ async fn cancel_one_of_two_distinct_tasks() {
                     if let Some(t) = cancel {
                         // Race sleep against cancellation.
                         tokio::select! {
-                            _ = tokio::time::sleep(std::time::Duration::from_millis(150)) => {
+                            () = tokio::time::sleep(std::time::Duration::from_millis(150)) => {
                                 serde_json::json!({"ok": true, "value": id})
                             }
-                            _ = t.cancelled() => {
+                            () = t.cancelled() => {
                                 serde_json::json!({"ok": false, "error": "cancelled"})
                             }
                         }
