@@ -803,12 +803,12 @@ impl<'a> AsyncCtxBuilder<'a> {
 
     /// ctx.gather(specs) → run N requests concurrently, await all, return array.
     fn register_gather(&self, ctx: &mlua::Table) -> Result<(), mlua::Error> {
-        let handler = self.request_handler.clone();
+        let req_handler = self.request_handler.clone();
         let in_flight = self.in_flight.clone();
         let gather_fn = self
             .lua
             .create_async_function(move |lua, specs: mlua::Table| {
-                let handler = handler.clone();
+                let req_handler = req_handler.clone();
                 let in_flight = in_flight.clone();
                 async move {
                     // Collect request specs into owned values before spawning.
@@ -828,7 +828,7 @@ impl<'a> AsyncCtxBuilder<'a> {
                     // Spawn each request concurrently and collect handles.
                     let mut handles = Vec::new();
                     for (name, data, task) in specs_owned {
-                        let handler = handler.clone();
+                        let handler = req_handler.clone();
                         let in_flight = in_flight.clone();
                         handles.push(tokio::spawn(async move {
                             run_request(&handler, &in_flight, &name, data, task).await

@@ -569,8 +569,7 @@ impl ToolOrchestratorActor {
 
         match self.tools.get(&tool_call.name) {
             Some(ToolRegistration::Builtin { execute, .. }) => {
-                self.dispatch_builtin(session_id, tool_call, dispatched_at, *execute)
-                    .await
+                Some(self.dispatch_builtin(session_id, tool_call, dispatched_at, *execute))
             }
             Some(ToolRegistration::Actor { .. }) => {
                 self.dispatch_actor(session_id, tool_call).await
@@ -579,31 +578,28 @@ impl ToolOrchestratorActor {
                 target,
                 plugin_name,
                 ..
-            }) => {
-                self.dispatch_plugin(session_id, tool_call, *target, plugin_name.clone())
-                    .await
-            }
+            }) => Some(self.dispatch_plugin(session_id, tool_call, *target, plugin_name.clone())),
             None => self.reject_unknown_tool(session_id, tool_call).await,
         }
     }
 
     /// Spawns a builtin tool, applying its configured timeout, and publishes the result.
-    async fn dispatch_builtin(
+    fn dispatch_builtin(
         &self,
         session_id: SessionId,
         tool_call: ToolCall,
         dispatched_at: Timestamp,
         execute_fn: fn(ToolCall, ToolContext) -> BoxedToolFuture,
-    ) -> Option<tokio::task::JoinHandle<()>> {
+    ) -> tokio::task::JoinHandle<()> {
         let bus = self.bus().clone();
         let tool_ctx = self.build_tool_context(&session_id, dispatched_at);
         let timeout = tool_ctx.timeout;
 
-        Some(tokio::spawn(async move {
+        tokio::spawn(async move {
             let result = run_builtin_with_timeout(tool_call, tool_ctx, execute_fn, timeout).await;
             bus.publish(ToolExecutionCompleted { session_id, result })
                 .await;
-        }))
+        })
     }
 
     /// Routes an actor-backed tool to its command (currently only `web-fetch`).
@@ -631,13 +627,13 @@ impl ToolOrchestratorActor {
     }
 
     /// Spawns a plugin tool execution and publishes the result.
-    async fn dispatch_plugin(
+    fn dispatch_plugin(
         &self,
         session_id: SessionId,
         tool_call: ToolCall,
         target: Option<SessionRegistryId>,
         plugin_name: String,
-    ) -> Option<tokio::task::JoinHandle<()>> {
+    ) -> tokio::task::JoinHandle<()> {
         tracing::debug!(
             session_id = %session_id,
             tool = %tool_call.name,
@@ -659,7 +655,7 @@ impl ToolOrchestratorActor {
                 .and_then(|sess| sess.core.parent_session.clone())
         };
 
-        Some(tokio::spawn(async move {
+        tokio::spawn(async move {
             let result = run_plugin_tool(
                 plugin_fire,
                 target,
@@ -672,7 +668,7 @@ impl ToolOrchestratorActor {
             .await;
             bus.publish(ToolExecutionCompleted { session_id, result })
                 .await;
-        }))
+        })
     }
 
     /// Publishes an error result for a tool with no registration.

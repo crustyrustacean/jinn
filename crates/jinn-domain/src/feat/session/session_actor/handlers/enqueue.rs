@@ -223,12 +223,12 @@ impl SessionPersistenceActor {
         })
         .await;
 
-        self.drain_steering_into_history(&payload.session_id).await;
+        self.drain_steering_into_history(&payload.session_id);
         self.resolve_model_and_dispatch(&payload.session_id).await;
     }
 
     /// Drains any pending steering fragments into session history before assembly.
-    pub(in crate::feat::session::session_actor) async fn drain_steering_into_history(
+    pub(in crate::feat::session::session_actor) fn drain_steering_into_history(
         &self,
         session_id: &crate::SessionId,
     ) {
