@@ -140,80 +140,86 @@ impl Message<ExecuteWebFetch> for WebFetchActor {
             url_args = %msg.tool_call.arguments,
             "web-fetch: handling ExecuteWebFetch"
         );
-        let result = self.execute_fetch(&msg.tool_call).await;
-        tracing::info!(
-            tool_call_id = %result.tool_call_id,
-            success = result.success,
-            content_len = result.content.len(),
-            "web-fetch: fetch complete"
-        );
-        let () = self
-            .publish(ToolExecutionCompleted {
-                session_id: msg.session_id,
-                result,
-            })
-            .await;
+        // Dispatch the fetch to a standalone task and return immediately. The
+        // mailbox is freed for the next request, so concurrent fetches (across
+        // sessions, or multiple URLs in one tool batch) run as independent
+        // Chrome tabs instead of serially blocking the actor. The task runs the
+        // fetch to completion and publishes the result itself.
+        let web_fetcher = self.web_fetcher.clone();
+        let bus = self.deps.services.bus.clone();
+        let tool_call = msg.tool_call;
+        let session_id = msg.session_id;
+        tokio::spawn(async move {
+            let result = execute_fetch(&web_fetcher, &tool_call).await;
+            tracing::info!(
+                tool_call_id = %result.tool_call_id,
+                success = result.success,
+                content_len = result.content.len(),
+                "web-fetch: fetch complete"
+            );
+            let () = bus
+                .publish(ToolExecutionCompleted { session_id, result })
+                .await;
+        });
     }
 }
 
-impl WebFetchActor {
-    /// Parses arguments and executes the fetch.
-    async fn execute_fetch(&self, tool_call: &ToolCall) -> ToolResult {
-        tracing::debug!(arguments = %tool_call.arguments, "web-fetch: parsing arguments");
-        let args = match serde_json::from_str::<WebFetchArgs>(&tool_call.arguments) {
-            Ok(a) => a,
-            Err(e) => {
-                tracing::warn!(err = %e, "web-fetch: failed to parse arguments");
-                return ToolResult {
-                    tool_call_id: tool_call.id.clone(),
-                    name: tool_call.name.clone(),
-                    content: format!("invalid arguments: {e}"),
-                    success: false,
-                    full_content: None,
-                    truncation: None,
-                    pin_position: None,
-                };
-            }
-        };
+/// Parses arguments and executes the fetch.
+async fn execute_fetch(web_fetcher: &Arc<dyn WebFetcher>, tool_call: &ToolCall) -> ToolResult {
+    tracing::debug!(arguments = %tool_call.arguments, "web-fetch: parsing arguments");
+    let args = match serde_json::from_str::<WebFetchArgs>(&tool_call.arguments) {
+        Ok(a) => a,
+        Err(e) => {
+            tracing::warn!(err = %e, "web-fetch: failed to parse arguments");
+            return ToolResult {
+                tool_call_id: tool_call.id.clone(),
+                name: tool_call.name.clone(),
+                content: format!("invalid arguments: {e}"),
+                success: false,
+                full_content: None,
+                truncation: None,
+                pin_position: None,
+            };
+        }
+    };
 
-        let format = args.options.and_then(|o| o.format).unwrap_or_default();
-        let options = FetchOptions { format };
-        tracing::info!(
-            url = %args.url,
-            format = ?options.format,
-            "web-fetch: calling fetcher"
-        );
+    let format = args.options.and_then(|o| o.format).unwrap_or_default();
+    let options = FetchOptions { format };
+    tracing::info!(
+        url = %args.url,
+        format = ?options.format,
+        "web-fetch: calling fetcher"
+    );
 
-        match self.web_fetcher.fetch(&args.url, options).await {
-            Ok(output) => {
-                tracing::debug!(
-                    status = output.status,
-                    content_type = %output.content_type,
-                    final_url = %output.url,
-                    content_len = output.content.len(),
-                    "web-fetch: fetch succeeded"
-                );
-                ToolResult {
-                    tool_call_id: tool_call.id.clone(),
-                    name: tool_call.name.clone(),
-                    content: output.content,
-                    success: true,
-                    full_content: None,
-                    truncation: None,
-                    pin_position: None,
-                }
+    match web_fetcher.fetch(&args.url, options).await {
+        Ok(output) => {
+            tracing::debug!(
+                status = output.status,
+                content_type = %output.content_type,
+                final_url = %output.url,
+                content_len = output.content.len(),
+                "web-fetch: fetch succeeded"
+            );
+            ToolResult {
+                tool_call_id: tool_call.id.clone(),
+                name: tool_call.name.clone(),
+                content: output.content,
+                success: true,
+                full_content: None,
+                truncation: None,
+                pin_position: None,
             }
-            Err(e) => {
-                tracing::warn!(err = %e, "web-fetch: fetch failed");
-                ToolResult {
-                    tool_call_id: tool_call.id.clone(),
-                    name: tool_call.name.clone(),
-                    content: format!("fetch failed: {e}"),
-                    success: false,
-                    full_content: None,
-                    truncation: None,
-                    pin_position: None,
-                }
+        }
+        Err(e) => {
+            tracing::warn!(err = %e, "web-fetch: fetch failed");
+            ToolResult {
+                tool_call_id: tool_call.id.clone(),
+                name: tool_call.name.clone(),
+                content: format!("fetch failed: {e}"),
+                success: false,
+                full_content: None,
+                truncation: None,
+                pin_position: None,
             }
         }
     }
