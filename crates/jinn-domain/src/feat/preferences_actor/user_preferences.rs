@@ -32,6 +32,7 @@ pub use crate::feat::auto_prune_worker::trivial_assistant::TrivialAssistantAutoP
 pub use crate::feat::compaction_worker::CompactionConfig;
 pub use crate::feat::cwd_input::CwdSelectorConfig;
 pub use crate::feat::llm_actor::RequestRetryConfig;
+pub use crate::feat::project::ProjectConfig;
 pub use crate::feat::session_lifecycle::SessionLifecycle;
 pub use crate::feat::tools_actor::OpenrouterWebSearchConfig;
 pub use crate::feat::tools_actor::bash::BashConfig;
@@ -79,6 +80,12 @@ pub struct UserPreferences {
     #[serde(default)]
     #[serde(rename = "session_lifecycle")]
     pub session_lifecycles: Vec<SessionLifecycle>,
+
+    /// Curated project directories shown in the project picker.
+    /// These are purely user-curated (no auto-tracking); the user adds/removes
+    /// entries explicitly. See [`ProjectConfig`].
+    #[serde(default)]
+    pub projects: Vec<ProjectConfig>,
 
     /// Maximum number of lines for tool output before truncation.
     /// `None` means use the built-in default (2000 lines).
@@ -135,6 +142,7 @@ impl Default for UserPreferences {
                     ),
                 ),
             }],
+            projects: vec![],
             max_tool_output_lines: None,
             max_tool_output_bytes: None,
             compaction: CompactionConfig::default(),
@@ -333,6 +341,7 @@ where
         let mut patcher = DocumentPatcher::new();
         patcher.register_array_key(["session_lifecycle"], "name");
         patcher.register_array_key(["auto_prune", "regex", "rules"], "pattern");
+        patcher.register_array_key(["project"], "path");
 
         patcher
             .apply(new_table, doc.as_table_mut())
@@ -513,6 +522,7 @@ mod tests {
             minimap: MinimapConfig::default(),
             auto_prune: AutoPruneConfig::default(),
             bash: BashConfig::default(),
+            projects: vec![],
         };
 
         // When saving and reloading.
@@ -568,6 +578,7 @@ mod tests {
             minimap: MinimapConfig::default(),
             auto_prune: AutoPruneConfig::default(),
             bash: BashConfig::default(),
+            projects: vec![],
         };
 
         // When saving.
@@ -596,6 +607,7 @@ mod tests {
             minimap: MinimapConfig::default(),
             auto_prune: AutoPruneConfig::default(),
             bash: BashConfig::default(),
+            projects: vec![],
         };
 
         // When saving and reloading.
@@ -896,6 +908,7 @@ mod tests {
             minimap: MinimapConfig::default(),
             auto_prune: AutoPruneConfig::default(),
             bash: BashConfig::default(),
+            projects: vec![],
         };
 
         save_preferences_to(&prefs, &path).expect("save");

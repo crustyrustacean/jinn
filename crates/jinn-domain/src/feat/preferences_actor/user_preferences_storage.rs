@@ -274,6 +274,7 @@ mod tests {
             minimap: MinimapConfig::default(),
             auto_prune: AutoPruneConfig::default(),
             bash: BashConfig::default(),
+            projects: vec![],
         };
 
         // When saving and reloading.
@@ -328,6 +329,7 @@ mod tests {
             minimap: MinimapConfig::default(),
             auto_prune: AutoPruneConfig::default(),
             bash: BashConfig::default(),
+            projects: vec![],
         };
 
         // When saving and reloading.
@@ -359,6 +361,7 @@ mod tests {
             minimap: MinimapConfig::default(),
             auto_prune: AutoPruneConfig::default(),
             bash: BashConfig::default(),
+            projects: vec![],
         };
         service.save(&prefs).expect("save");
 
@@ -390,6 +393,7 @@ mod tests {
             minimap: MinimapConfig::default(),
             auto_prune: AutoPruneConfig::default(),
             bash: BashConfig::default(),
+            projects: vec![],
         };
         service.save(&prefs).expect("save");
 
@@ -408,6 +412,7 @@ mod tests {
             minimap: MinimapConfig::default(),
             auto_prune: AutoPruneConfig::default(),
             bash: BashConfig::default(),
+            projects: vec![],
         };
         service.save(&updated).expect("save updated");
 
@@ -435,6 +440,7 @@ mod tests {
             minimap: MinimapConfig::default(),
             auto_prune: AutoPruneConfig::default(),
             bash: BashConfig::default(),
+            projects: vec![],
         };
         service.save(&prefs).expect("save");
 
