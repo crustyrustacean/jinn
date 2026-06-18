@@ -554,6 +554,7 @@ fn confirm_session_lifecycle(state: &mut AppState) -> IntentResult {
         state,
         &lifecycle_name,
         &[],
+        None,
     )
 }
 
