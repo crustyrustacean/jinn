@@ -63,6 +63,7 @@ impl OpenAiCompatibleFactory {
 
     /// Create a new factory with a shared HTTP client.
     #[must_use]
+    #[expect(clippy::too_many_arguments, reason = "no big deal")]
     pub fn with_client(
         client: Client,
         config: ProviderConfig,

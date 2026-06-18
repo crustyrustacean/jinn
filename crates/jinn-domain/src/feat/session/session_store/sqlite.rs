@@ -791,6 +791,7 @@ impl PersistableTokenRecord {
 }
 
 /// Upserts a session row (full-column; immutable columns are no-ops on re-write).
+#[expect(clippy::ref_option, reason = "ignore")]
 fn upsert_session_row(
     conn: &rusqlite::Connection,
     id: &str,

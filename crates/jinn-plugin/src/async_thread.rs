@@ -693,6 +693,15 @@ fn build_async_ctx(
     in_flight: &super::InFlightRequests,
     session_id: Option<&SessionId>,
 ) -> Result<mlua::Table, mlua::Error> {
+    let builder = AsyncCtxBuilder::new(
+        lua,
+        plugin_name,
+        plugin_data,
+        global_data,
+        emit_tx,
+        request_handler,
+        in_flight,
+    );
     let ctx = lua.create_table()?;
 
     // Set data fields from JSON.
@@ -702,46 +711,81 @@ fn build_async_ctx(
         }
     }
 
-    // ctx.plugin_name — let Lua refer to itself by name (used for
-    // self-targeting actions like disable_plugin).
     ctx.set("plugin_name", plugin_name)?;
-
-    // ctx.instance_id — stable identity of this attachment. Two attachments
-    // of the same plugin name get distinct ids. Lets multi-instance plugins
-    // (e.g. a panel of judges) key their shared state.
     if let Some(id) = instance_id {
         ctx.set("instance_id", id.to_string())?;
     }
 
-    // ctx.emit(cmd, data) — fire-and-forget via channel.
-    // Uses sync `Sender` (via `clone_sync()`) so it can be called from a sync
-    // Lua closure. Unbounded channel => `send` is non-blocking.
-    {
-        let emit_tx = emit_tx.clone_sync();
-        let plugin_name = plugin_name.to_owned();
-        let emit_fn = lua.create_function(move |lua, (name, data): (String, mlua::Value)| {
-            let json = bindings::value_to_json(lua, &data).unwrap_or_default();
-            let _ = emit_tx.send(PluginCommand {
-                plugin_name: plugin_name.clone(),
-                name,
-                data: json,
-            });
-            Ok(())
-        })?;
-        ctx.set("emit", emit_fn)?;
+    builder.register_emit(&ctx)?;
+    builder.register_request(&ctx)?;
+    builder.register_gather(&ctx)?;
+    builder.register_cancel(&ctx)?;
+    builder.register_data_fns(&ctx, session_id, instance_id)?;
+    builder.register_global_data_fns(&ctx)?;
+
+    // Suppress unused warning for PathBuf import (kept for future use).
+    let _: Option<PathBuf> = None;
+
+    Ok(ctx)
+}
+
+/// Bundles the host dependencies shared by every `ctx.*` Lua closure registered
+/// in [`build_async_ctx`]. The varying bits (`session_id`, `instance_id`,
+/// `ctx_json`) stay as method parameters.
+struct AsyncCtxBuilder<'a> {
+    lua: &'a Lua,
+    plugin_name: &'a str,
+    plugin_data: &'a PluginData,
+    global_data: &'a GlobalPluginData,
+    emit_tx: &'a kanal::AsyncSender<PluginCommand>,
+    request_handler: &'a RequestHandler,
+    in_flight: &'a super::InFlightRequests,
+}
+
+impl<'a> AsyncCtxBuilder<'a> {
+    fn new(
+        lua: &'a Lua,
+        plugin_name: &'a str,
+        plugin_data: &'a PluginData,
+        global_data: &'a GlobalPluginData,
+        emit_tx: &'a kanal::AsyncSender<PluginCommand>,
+        request_handler: &'a RequestHandler,
+        in_flight: &'a super::InFlightRequests,
+    ) -> Self {
+        Self {
+            lua,
+            plugin_name,
+            plugin_data,
+            global_data,
+            emit_tx,
+            request_handler,
+            in_flight,
+        }
     }
 
-    // ctx.request(name, data, opts?) → yields coroutine, awaits response.
-    //
-    // `opts` is an optional table with key `task` (string). When present, the
-    // request is registered under that task name in the in-flight registry and
-    // the handler future races against a cancellation token. This lets
-    // `ctx.cancel(task)` abort the in-flight request from any hook (sync or
-    // async) and lets `ctx.gather` await multiple requests concurrently.
-    {
-        let handler = request_handler.clone();
-        let in_flight = in_flight.clone();
-        let request_fn = lua.create_async_function(
+    /// ctx.emit(cmd, data) — fire-and-forget via channel.
+    fn register_emit(&self, ctx: &mlua::Table) -> Result<(), mlua::Error> {
+        let emit_tx = self.emit_tx.clone_sync();
+        let plugin_name = self.plugin_name.to_owned();
+        let emit_fn =
+            self.lua
+                .create_function(move |lua, (name, data): (String, mlua::Value)| {
+                    let json = bindings::value_to_json(lua, &data).unwrap_or_default();
+                    let _ = emit_tx.send(PluginCommand {
+                        plugin_name: plugin_name.clone(),
+                        name,
+                        data: json,
+                    });
+                    Ok(())
+                })?;
+        ctx.set("emit", emit_fn)
+    }
+
+    /// ctx.request(name, data, opts?) → yields coroutine, awaits response.
+    fn register_request(&self, ctx: &mlua::Table) -> Result<(), mlua::Error> {
+        let handler = self.request_handler.clone();
+        let in_flight = self.in_flight.clone();
+        let request_fn = self.lua.create_async_function(
             move |lua, (name, data, opts): (String, mlua::Value, Option<mlua::Table>)| {
                 let handler = handler.clone();
                 let in_flight = in_flight.clone();
@@ -754,82 +798,92 @@ fn build_async_ctx(
                 }
             },
         )?;
-        ctx.set("request", request_fn)?;
+        ctx.set("request", request_fn)
     }
 
-    // ctx.gather(specs) → run N requests concurrently, await all, return array.
-    //
-    // `specs` is a Lua array of tables: `{ name=.., data=.., opts={task=..} }`.
-    // Each request runs as an independent spawned task racing its own token;
-    // cancelling one task (via `ctx.cancel`) aborts only that request.
-    // Returns a Lua array of results (same envelope shape as `ctx.request`),
-    // in input order.
-    {
-        let handler = request_handler.clone();
-        let in_flight = in_flight.clone();
-        let gather_fn = lua.create_async_function(move |lua, specs: mlua::Table| {
-            let handler = handler.clone();
-            let in_flight = in_flight.clone();
-            async move {
-                // Collect request specs into owned values before spawning.
-                let mut specs_owned: Vec<(String, serde_json::Value, Option<String>)> = Vec::new();
-                for pair in specs.sequence_values::<mlua::Table>() {
-                    let t = pair.map_err(|e| mlua::Error::external(format!("gather spec: {e}")))?;
-                    let name: String = t.get("name")?;
-                    let data_val: mlua::Value = t.get("data").unwrap_or(mlua::Value::Nil);
-                    let data = bindings::value_to_json(&lua, &data_val).unwrap_or_default();
-                    let opts: Option<mlua::Table> = t.get("opts").ok();
-                    let task = opts.as_ref().and_then(|o| o.get::<String>("task").ok());
-                    specs_owned.push((name, data, task));
-                }
+    /// ctx.gather(specs) → run N requests concurrently, await all, return array.
+    fn register_gather(&self, ctx: &mlua::Table) -> Result<(), mlua::Error> {
+        let req_handler = self.request_handler.clone();
+        let in_flight = self.in_flight.clone();
+        let gather_fn = self
+            .lua
+            .create_async_function(move |lua, specs: mlua::Table| {
+                let req_handler = req_handler.clone();
+                let in_flight = in_flight.clone();
+                async move {
+                    // Collect request specs into owned values before spawning.
+                    let mut specs_owned: Vec<(String, serde_json::Value, Option<String>)> =
+                        Vec::new();
+                    for pair in specs.sequence_values::<mlua::Table>() {
+                        let t =
+                            pair.map_err(|e| mlua::Error::external(format!("gather spec: {e}")))?;
+                        let name: String = t.get("name")?;
+                        let data_val: mlua::Value = t.get("data").unwrap_or(mlua::Value::Nil);
+                        let data = bindings::value_to_json(&lua, &data_val).unwrap_or_default();
+                        let opts: Option<mlua::Table> = t.get("opts").ok();
+                        let task = opts.as_ref().and_then(|o| o.get::<String>("task").ok());
+                        specs_owned.push((name, data, task));
+                    }
 
-                // Spawn each request concurrently and collect handles.
-                let mut handles = Vec::new();
-                for (name, data, task) in specs_owned {
-                    let handler = handler.clone();
-                    let in_flight = in_flight.clone();
-                    handles.push(tokio::spawn(async move {
-                        run_request(&handler, &in_flight, &name, data, task).await
-                    }));
-                }
+                    // Spawn each request concurrently and collect handles.
+                    let mut handles = Vec::new();
+                    for (name, data, task) in specs_owned {
+                        let handler = req_handler.clone();
+                        let in_flight = in_flight.clone();
+                        handles.push(tokio::spawn(async move {
+                            run_request(&handler, &in_flight, &name, data, task).await
+                        }));
+                    }
 
-                // Await all and build the result array.
-                let results: Vec<serde_json::Value> = futures::future::join_all(handles)
-                    .await
-                    .into_iter()
-                    .map(|r| {
-                        r.unwrap_or_else(
-                            |_| serde_json::json!({"ok": false, "error": "task panicked"}),
-                        )
-                    })
-                    .collect();
-                bindings::json_to_lua_value(&lua, &serde_json::Value::Array(results))
-            }
-        })?;
-        ctx.set("gather", gather_fn)?;
+                    // Await all and build the result array.
+                    let results: Vec<serde_json::Value> = futures::future::join_all(handles)
+                        .await
+                        .into_iter()
+                        .map(|r| {
+                            r.unwrap_or_else(
+                                |_| serde_json::json!({"ok": false, "error": "task panicked"}),
+                            )
+                        })
+                        .collect();
+                    bindings::json_to_lua_value(&lua, &serde_json::Value::Array(results))
+                }
+            })?;
+        ctx.set("gather", gather_fn)
     }
 
-    // ctx.cancel(task) → fire the in-flight request's token, remove its entry.
-    //
-    // Sync-safe: just fires the token (no .await). The cancelled request's
-    // spawned future (in `ctx.request`/`ctx.gather`) observes the cancellation
-    // via its `select!` arm and publishes `CancelStream` there.
-    {
-        let in_flight = in_flight.clone();
-        let cancel_fn = lua.create_function(move |_, task: String| {
+    /// ctx.cancel(task) → fire the in-flight request's token, remove its entry.
+    fn register_cancel(&self, ctx: &mlua::Table) -> Result<(), mlua::Error> {
+        let in_flight = self.in_flight.clone();
+        let cancel_fn = self.lua.create_function(move |_, task: String| {
             in_flight.cancel(&task);
             Ok(())
         })?;
-        ctx.set("cancel", cancel_fn)?;
+        ctx.set("cancel", cancel_fn)
     }
 
-    // ctx.set_plugin_data(value) — writes to shared DashMap.
-    {
-        let pd = plugin_data.clone();
-        let pname = plugin_name.to_owned();
+    /// ctx.{set,merge,get}_plugin_data — per-instance DashMap access.
+    fn register_data_fns(
+        &self,
+        ctx: &mlua::Table,
+        session_id: Option<&SessionId>,
+        instance_id: Option<&PluginInstanceId>,
+    ) -> Result<(), mlua::Error> {
+        self.register_set_plugin_data(ctx, session_id, instance_id)?;
+        self.register_merge_plugin_data(ctx, session_id, instance_id)?;
+        self.register_get_plugin_data(ctx, session_id, instance_id)
+    }
+
+    fn register_set_plugin_data(
+        &self,
+        ctx: &mlua::Table,
+        session_id: Option<&SessionId>,
+        instance_id: Option<&PluginInstanceId>,
+    ) -> Result<(), mlua::Error> {
+        let pd = self.plugin_data.clone();
+        let pname = self.plugin_name.to_owned();
         let sid = session_id.cloned();
         let iid = instance_id.cloned();
-        let set_data_fn = lua.create_function(move |lua, value: mlua::Value| {
+        let set_data_fn = self.lua.create_function(move |lua, value: mlua::Value| {
             let json = bindings::value_to_json(lua, &value).unwrap_or_default();
             match (&sid, &iid) {
                 (Some(s), Some(i)) => pd.set_for_session(s, i, json),
@@ -837,21 +891,20 @@ fn build_async_ctx(
             }
             Ok(())
         })?;
-        ctx.set("set_plugin_data", set_data_fn)?;
+        ctx.set("set_plugin_data", set_data_fn)
     }
 
-    // ctx.merge_plugin_data(value) — shallow-merges into the shared DashMap.
-    //
-    // Top-level keys in `value` overwrite the stored value's same keys;
-    // other top-level keys are untouched. Lets an async hook update one
-    // field (e.g. `status`) without a read-modify-write round-trip. See
-    // `PluginData::merge` for merge semantics.
-    {
-        let pd = plugin_data.clone();
-        let pname = plugin_name.to_owned();
+    fn register_merge_plugin_data(
+        &self,
+        ctx: &mlua::Table,
+        session_id: Option<&SessionId>,
+        instance_id: Option<&PluginInstanceId>,
+    ) -> Result<(), mlua::Error> {
+        let pd = self.plugin_data.clone();
+        let pname = self.plugin_name.to_owned();
         let sid = session_id.cloned();
         let iid = instance_id.cloned();
-        let merge_data_fn = lua.create_function(move |lua, value: mlua::Value| {
+        let merge_data_fn = self.lua.create_function(move |lua, value: mlua::Value| {
             let json = bindings::value_to_json(lua, &value).unwrap_or_default();
             match (&sid, &iid) {
                 (Some(s), Some(i)) => pd.merge_for_session(s, i, json),
@@ -859,22 +912,20 @@ fn build_async_ctx(
             }
             Ok(())
         })?;
-        ctx.set("merge_plugin_data", merge_data_fn)?;
+        ctx.set("merge_plugin_data", merge_data_fn)
     }
 
-    // ctx.get_plugin_data() — reads the live shared DashMap.
-    //
-    // Unlike the frozen `ctx.plugin_data` field (a snapshot taken at hook
-    // entry), this re-reads the store on every call, so an async hook can
-    // observe writes that landed after an `await` — e.g. a supersession
-    // counter bumped by a concurrent fire. Returns an empty table when no
-    // data is set, so Lua callers can index it directly.
-    {
-        let pd = plugin_data.clone();
-        let pname = plugin_name.to_owned();
+    fn register_get_plugin_data(
+        &self,
+        ctx: &mlua::Table,
+        session_id: Option<&SessionId>,
+        instance_id: Option<&PluginInstanceId>,
+    ) -> Result<(), mlua::Error> {
+        let pd = self.plugin_data.clone();
+        let pname = self.plugin_name.to_owned();
         let sid = session_id.cloned();
         let iid = instance_id.cloned();
-        let get_data_fn = lua.create_function(move |lua, (): ()| {
+        let get_data_fn = self.lua.create_function(move |lua, (): ()| {
             let json = match (&sid, &iid) {
                 (Some(s), Some(i)) => pd.get_for_session(s, i),
                 _ => pd.get(&pname),
@@ -882,54 +933,50 @@ fn build_async_ctx(
             .unwrap_or_else(|| serde_json::json!({}));
             bindings::json_to_lua_value(lua, &json)
         })?;
-        ctx.set("get_plugin_data", get_data_fn)?;
+        ctx.set("get_plugin_data", get_data_fn)
     }
 
-    // ctx.set_global_data(key, value) — writes to the shared global bag.
-    //
-    // Any plugin or instance can read/write any key. Used for cross-instance
-    // coordination (e.g. multi-judge aggregation). Values round-trip via the
-    // JSON bindings.
-    {
-        let gd = global_data.clone();
+    /// ctx.{set,merge,get}_global_data — shared global bag access.
+    fn register_global_data_fns(&self, ctx: &mlua::Table) -> Result<(), mlua::Error> {
+        self.register_set_global_data(ctx)?;
+        self.register_merge_global_data(ctx)?;
+        self.register_get_global_data(ctx)
+    }
+
+    fn register_set_global_data(&self, ctx: &mlua::Table) -> Result<(), mlua::Error> {
+        let gd = self.global_data.clone();
         let set_global_fn =
-            lua.create_function(move |lua, (key, value): (String, mlua::Value)| {
-                let json = bindings::value_to_json(lua, &value).unwrap_or_default();
-                gd.set(&key, json);
-                Ok(())
-            })?;
-        ctx.set("set_global_data", set_global_fn)?;
+            self.lua
+                .create_function(move |lua, (key, value): (String, mlua::Value)| {
+                    let json = bindings::value_to_json(lua, &value).unwrap_or_default();
+                    gd.set(&key, json);
+                    Ok(())
+                })?;
+        ctx.set("set_global_data", set_global_fn)
     }
 
-    // ctx.merge_global_data(key, value) — shallow-merges a partial object
-    // under `key`. Mirrors `ctx.merge_plugin_data` semantics, but for the
-    // global bag.
-    {
-        let gd = global_data.clone();
+    fn register_merge_global_data(&self, ctx: &mlua::Table) -> Result<(), mlua::Error> {
+        let gd = self.global_data.clone();
         let merge_global_fn =
-            lua.create_function(move |lua, (key, value): (String, mlua::Value)| {
-                let json = bindings::value_to_json(lua, &value).unwrap_or_default();
-                gd.merge(&key, json);
-                Ok(())
-            })?;
-        ctx.set("merge_global_data", merge_global_fn)?;
+            self.lua
+                .create_function(move |lua, (key, value): (String, mlua::Value)| {
+                    let json = bindings::value_to_json(lua, &value).unwrap_or_default();
+                    gd.merge(&key, json);
+                    Ok(())
+                })?;
+        ctx.set("merge_global_data", merge_global_fn)
     }
 
-    // ctx.get_global_data(key) — reads the live global bag. Returns nil when
-    // the key is absent (so Lua callers can branch on it).
-    {
-        let gd = global_data.clone();
-        let get_global_fn = lua.create_function(move |lua, key: String| match gd.get(&key) {
-            Some(json) => bindings::json_to_lua_value(lua, &json),
-            None => Ok(mlua::Value::Nil),
-        })?;
-        ctx.set("get_global_data", get_global_fn)?;
+    fn register_get_global_data(&self, ctx: &mlua::Table) -> Result<(), mlua::Error> {
+        let gd = self.global_data.clone();
+        let get_global_fn =
+            self.lua
+                .create_function(move |lua, key: String| match gd.get(&key) {
+                    Some(json) => bindings::json_to_lua_value(lua, &json),
+                    None => Ok(mlua::Value::Nil),
+                })?;
+        ctx.set("get_global_data", get_global_fn)
     }
-
-    // Suppress unused warning for PathBuf import (kept for future use).
-    let _: Option<PathBuf> = None;
-
-    Ok(ctx)
 }
 
 /// Extract a `SessionId` from a hook context JSON value.
