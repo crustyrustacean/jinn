@@ -171,13 +171,13 @@ mod tests {
 
         // Two child sessions, one per judge instance.
         let child_a = {
-            let mut s = ChatSessionState::default();
+            let s = ChatSessionState::default();
             let id = s.session_id().clone();
             state.session.insert(s);
             id
         };
         let child_b = {
-            let mut s = ChatSessionState::default();
+            let s = ChatSessionState::default();
             let id = s.session_id().clone();
             state.session.insert(s);
             id

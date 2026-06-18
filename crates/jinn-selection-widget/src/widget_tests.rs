@@ -7,6 +7,7 @@
 //! Tests for [`SelectionWidget`] and [`compute_popup_rect`].
 
 use jinn_testutil::setup_term;
+use ratatui::buffer::Cell;
 use ratatui::layout::Rect;
 use ratatui::style::Color;
 use ratatui::text::Line;
@@ -263,19 +264,14 @@ fn render_multiple_footers_each_on_own_row() {
 
     let row_contains = |y: u16, needle: &str| -> bool {
         (inner.x..inner.x + inner.width)
-            .any(|col| buffer.cell((col, y)).map(|c| c.symbol()).as_deref() == Some(needle))
+            .any(|col| buffer.cell((col, y)).map(Cell::symbol) == Some(needle))
     };
 
     // Find the first letter of each marker on its expected row.
     let bottom_has_marker = (inner.x..inner.x + inner.width)
-        .any(|col| buffer.cell((col, bottom_y)).map(|c| c.symbol()).as_deref() == Some("B"));
-    let top_has_marker = (inner.x..inner.x + inner.width).any(|col| {
-        buffer
-            .cell((col, top_footer_y))
-            .map(|c| c.symbol())
-            .as_deref()
-            == Some("T")
-    });
+        .any(|col| buffer.cell((col, bottom_y)).map(Cell::symbol) == Some("B"));
+    let top_has_marker = (inner.x..inner.x + inner.width)
+        .any(|col| buffer.cell((col, top_footer_y)).map(Cell::symbol) == Some("T"));
 
     assert!(
         bottom_has_marker,

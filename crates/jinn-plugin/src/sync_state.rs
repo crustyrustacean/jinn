@@ -241,7 +241,7 @@ impl SyncHook<'_> {
             None,
             self.plugin_data,
             &self.emit_tx,
-            &self.in_flight,
+            self.in_flight,
         )
         .map_err(|e| Report::new(PluginSyncStateError).attach(e.to_string()))
         .attach("build ctx")?;

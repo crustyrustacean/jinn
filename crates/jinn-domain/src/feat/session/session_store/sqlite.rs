@@ -601,15 +601,11 @@ impl TryFrom<SessionLoadContext> for ChatSessionState {
         // Exhaustive destructuring of SessionRow - adding a column to the
         // sessions table without updating this pattern is a compile error.
         let SessionRow {
-            id: _,
-            title: _,
-            updated_at: _,
-            created_at: _,
-            parent_session: _,
             archived,
             metadata,
             is_automated,
             persist: _persist, // column value used by PersistableCore round-trip
+            ..
         } = ctx.row;
 
         // Post-v20 every row has a metadata blob (v20 backfilled any NULL rows
@@ -974,10 +970,7 @@ fn delete_entries(conn: &rusqlite::Connection, ids: &[String]) -> rusqlite::Resu
 
 /// Builds a `?, ?, …` placeholder string of `n` elements.
 fn repeat_placeholders(n: usize) -> String {
-    std::iter::repeat("?")
-        .take(n)
-        .collect::<Vec<_>>()
-        .join(", ")
+    std::iter::repeat_n("?", n).collect::<Vec<_>>().join(", ")
 }
 
 // ── Fork ─────────────────────────────────────────────────────────────────
@@ -1010,7 +1003,7 @@ fn fork_in_transaction(
 
     let Some((title, metadata, is_automated)) = source_meta else {
         return Err(daow::Error::Custom(
-            "source session not found for fork".to_string(),
+            "source session not found for fork".to_owned(),
         ));
     };
 

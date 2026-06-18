@@ -668,7 +668,7 @@ async fn run_request(
                     in_flight.remove(task);
                     r
                 }
-                _ = token.cancelled() => {
+                () = token.cancelled() => {
                     tracing::debug!(task, "run_request: cancel token fired — handler future dropped");
                     json!({"ok": false, "error": "cancelled"})
                 }
