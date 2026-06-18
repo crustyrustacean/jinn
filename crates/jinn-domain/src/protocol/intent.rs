@@ -141,8 +141,6 @@ pub enum Intent {
     ProjectNewAtHighlightedWithLifecycle,
     /// Project picker: remove the highlighted dir from the curated project list (`d`).
     ProjectRemoveHighlighted,
-    /// Project picker: append the active session's CWD to the curated list (`a`).
-    ProjectAddCurrentCwd,
     /// Toggle the selected model's selected state for multi-select alloy building.
     ModelToggleSelected,
     /// Toggle the provider picker between single-model and alloy-selection modes.
@@ -401,7 +399,6 @@ impl std::fmt::Display for Intent {
             Intent::SkillToggleSelected => write!(f, "toggle skill"),
             Intent::ProjectNewAtHighlightedWithLifecycle => write!(f, "project new + lifecycle"),
             Intent::ProjectRemoveHighlighted => write!(f, "remove project"),
-            Intent::ProjectAddCurrentCwd => write!(f, "add current dir to projects"),
             Intent::ModelToggleSelected => write!(f, "toggle model"),
             Intent::ToggleAlloyMode => write!(f, "toggle alloy mode"),
             Intent::PreviewScrollUp => write!(f, "preview scroll up"),
