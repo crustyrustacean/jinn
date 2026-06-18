@@ -495,6 +495,15 @@ impl IntentHandler {
             Intent::PickerMoveCursorRight => feat::picker::intent::handle_move_cursor_right(state),
             Intent::ToolToggleSelected => feat::picker::intent::handle_tool_toggle(state),
             Intent::SkillToggleSelected => feat::picker::intent::handle_skill_toggle(state),
+            Intent::ProjectNewAtHighlightedWithLifecycle => {
+                feat::picker::intent::handle_project_lifecycle_confirm(state)
+            }
+            Intent::ProjectRemoveHighlighted => {
+                feat::picker::intent::handle_project_remove_highlighted(state)
+            }
+            Intent::ProjectAddCurrentCwd => {
+                feat::picker::intent::handle_project_add_current_cwd(state)
+            }
             Intent::ModelToggleSelected => feat::picker::intent::handle_model_toggle(state),
             Intent::ToggleAlloyMode => feat::picker::intent::handle_toggle_alloy_mode(state),
             Intent::PreviewScrollUp => feat::picker::intent::handle_preview_scroll_up(state),

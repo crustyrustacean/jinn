@@ -77,6 +77,7 @@ pub fn validate_picker_confirm(state: &AppState) -> Result<(), PickerConfirmErro
         // TaskList is read-only; Enter is a no-op. Skip the selection gate so the
         // confirm handler (which itself returns empty) is always reached.
         PickerKind::TaskList => true,
+        PickerKind::Project => state.frontend.project_picker().selected_item().is_some(),
     };
 
     if has_selection {
