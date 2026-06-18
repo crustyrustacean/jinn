@@ -140,6 +140,34 @@ pub fn render_task_list_picker(frame: &mut Frame<'_>, area: Rect, ctx: &RenderCt
     widget.render(frame, area);
 }
 
+/// Renders the project picker overlay using [`SelectionWidget`].
+///
+/// Shows curated project directories. The footer advertises the three
+/// project-picker actions: `<enter>` (new session at dir), `<c-enter>`
+/// (new session at dir + lifecycle picker), and `<c-n>` (add a new project dir).
+pub fn render_project_picker(frame: &mut Frame<'_>, area: Rect, ctx: &RenderCtx) {
+    let state = ctx.state;
+    let gray = Style::default().fg(state.frontend.theme.muted_text);
+    let orange = Style::default().fg(state.frontend.theme.accent_action);
+    let footer = Line::from(vec![
+        ratatui::text::Span::styled("Enter ", orange),
+        ratatui::text::Span::styled("new session \u{00b7} ", gray),
+        ratatui::text::Span::styled("<c-enter> ", orange),
+        ratatui::text::Span::styled("new + lifecycle \u{00b7} ", gray),
+        ratatui::text::Span::styled("<c-n> ", orange),
+        ratatui::text::Span::styled("add dir \u{00b7} ", gray),
+        ratatui::text::Span::styled("<c-d> ", orange),
+        ratatui::text::Span::styled("remove \u{00b7} ", gray),
+        ratatui::text::Span::styled("ESC ", orange),
+        ratatui::text::Span::styled("to cancel", gray),
+    ]);
+    let widget = SelectionWidget::new(state.frontend.project_picker())
+        .title(Line::from(" Projects "))
+        .title_style(Style::default().fg(state.frontend.theme.popup_title))
+        .footer(footer);
+    widget.render(frame, area);
+}
+
 #[cfg(test)]
 mod tests {
     #![allow(
@@ -346,6 +374,78 @@ mod tests {
             names,
             vec!["web-coder".to_owned(), "web-coder".to_owned()],
             "same skill name appears under two width keys"
+        );
+    }
+
+    #[test]
+    fn render_project_picker_footer_documents_keybindings() {
+        // Given a project picker with one entry.
+        let mut state = AppState::default();
+        {
+            let theme = state.frontend.theme.clone();
+            let entry = crate::feat::project::picker_entry::ProjectEntry::new(
+                std::path::PathBuf::from("/tmp/project-a"),
+                theme,
+            );
+            state.frontend.project_picker_mut().set_items(vec![entry]);
+        }
+        state.frontend.scope_stack.push(FocusScope::Picker {
+            kind: PickerKind::Project,
+        });
+
+        // When rendering the project picker.
+        let backend = TestBackend::new(100, 30);
+        let mut terminal = Terminal::new(backend).expect("terminal");
+        terminal
+            .draw(|frame| {
+                let ctx = RenderCtx::new(&state);
+                let area = Rect::new(0, 0, 100, 30);
+                render_project_picker(frame, area, &ctx);
+            })
+            .expect("draw");
+
+        // Then the rendered footer documents the key bindings.
+        let rendered: String = terminal
+            .backend()
+            .buffer()
+            .content
+            .iter()
+            .map(ratatui::buffer::Cell::symbol)
+            .collect();
+        assert!(
+            rendered.contains("<c-enter>"),
+            "footer should advertise the <c-enter> new+lifecycle binding"
+        );
+        assert!(
+            rendered.contains("<c-n>"),
+            "footer should advertise the <c-n> add-dir binding"
+        );
+        assert!(
+            rendered.contains("<c-d>"),
+            "footer should advertise the <c-d> remove binding"
+        );
+        assert!(
+            rendered.contains("remove"),
+            "footer should advertise the remove action"
+        );
+        assert!(
+            !rendered.contains("add cwd"),
+            "footer should not advertise the removed a-add-cwd binding"
+        );
+
+        // And the keybind tokens are styled with accent_action (orange),
+        // while the descriptive text uses muted_text (gray).
+        let accent_action = state.frontend.theme.accent_action;
+        let mut found_orange_keybind = false;
+        for cell in &terminal.backend().buffer().content {
+            if cell.fg == accent_action && !cell.symbol().trim().is_empty() {
+                found_orange_keybind = true;
+                break;
+            }
+        }
+        assert!(
+            found_orange_keybind,
+            "at least one footer cell should use accent_action for a keybind"
         );
     }
 }

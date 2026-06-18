@@ -43,6 +43,8 @@ pub enum Scope {
     PickerSkill,
     /// Picker - Read-only task list browser.
     PickerTaskList,
+    /// Picker - Curated project directory selection.
+    PickerProject,
     /// Input mode - typing into the input buffer.
     Input,
     /// Arg input mode - typing positional args for a lifecycle command.
@@ -53,6 +55,8 @@ pub enum Scope {
     RenameSessionInput,
     /// CWD input mode - typing a directory path.
     CwdInput,
+    /// Project-add input mode - typing a directory path to register a project.
+    ProjectAddInput,
     /// Pruner accumulation threshold input mode - numeric input for the KV-cache gate.
     PrunerAccumulationInput,
 
@@ -83,12 +87,14 @@ impl std::fmt::Display for Scope {
             Self::PickerTool => write!(f, "Picker(tool)"),
             Self::PickerSkill => write!(f, "Picker(skill)"),
             Self::PickerTaskList => write!(f, "Picker(task-list)"),
+            Self::PickerProject => write!(f, "Picker(project)"),
             Self::Input => write!(f, "Input"),
             Self::ArgInput => write!(f, "ArgInput"),
             Self::TokenBudgetInput => write!(f, "TokenBudgetInput"),
             Self::SidebarResize => write!(f, "SidebarResize"),
             Self::RenameSessionInput => write!(f, "RenameSessionInput"),
             Self::CwdInput => write!(f, "CwdInput"),
+            Self::ProjectAddInput => write!(f, "ProjectAddInput"),
             Self::PrunerAccumulationInput => write!(f, "PrunerAccumulationInput"),
             Self::QuakeBar => write!(f, "QuakeBar"),
         }
@@ -117,11 +123,13 @@ impl std::str::FromStr for Scope {
             "Picker(tool)" => Ok(Self::PickerTool),
             "Picker(skill)" => Ok(Self::PickerSkill),
             "Picker(task-list)" => Ok(Self::PickerTaskList),
+            "Picker(project)" => Ok(Self::PickerProject),
             "Input" => Ok(Self::Input),
             "ArgInput" => Ok(Self::ArgInput),
             "TokenBudgetInput" => Ok(Self::TokenBudgetInput),
             "RenameSessionInput" => Ok(Self::RenameSessionInput),
             "CwdInput" => Ok(Self::CwdInput),
+            "ProjectAddInput" => Ok(Self::ProjectAddInput),
             "PrunerAccumulationInput" => Ok(Self::PrunerAccumulationInput),
             "QuakeBar" => Ok(Self::QuakeBar),
             "SidebarResize" => Ok(Self::SidebarResize),

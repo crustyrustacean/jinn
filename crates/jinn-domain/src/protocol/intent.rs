@@ -136,6 +136,11 @@ pub enum Intent {
     ToolToggleSelected,
     /// Toggle the selected skill's enabled/disabled state in the skill picker.
     SkillToggleSelected,
+    /// Project picker: create a new session at the highlighted dir, then open
+    /// the session lifecycle picker (project picker `<c-enter>` action).
+    ProjectNewAtHighlightedWithLifecycle,
+    /// Project picker: remove the highlighted dir from the curated project list (`d`).
+    ProjectRemoveHighlighted,
     /// Toggle the selected model's selected state for multi-select alloy building.
     ModelToggleSelected,
     /// Toggle the provider picker between single-model and alloy-selection modes.
@@ -297,6 +302,14 @@ pub enum Intent {
     /// Cancel the cwd input popup.
     CwdInputLeave,
 
+    // --- Project Add Input (type a path to register a project) ---
+    /// Open the project-add input popup (type a directory path).
+    OpenProjectAddInput,
+    /// Confirm the project-add input - resolve, validate, and register.
+    ProjectAddInputConfirm,
+    /// Cancel the project-add input popup.
+    ProjectAddInputLeave,
+
     // --- CWD Selection ---
     /// Change the session's working directory via an external picker.
     ChangeCwd {
@@ -384,6 +397,8 @@ impl std::fmt::Display for Intent {
             Intent::PickerMoveCursorRight => write!(f, "picker cursor right"),
             Intent::ToolToggleSelected => write!(f, "toggle tool"),
             Intent::SkillToggleSelected => write!(f, "toggle skill"),
+            Intent::ProjectNewAtHighlightedWithLifecycle => write!(f, "project new + lifecycle"),
+            Intent::ProjectRemoveHighlighted => write!(f, "remove project"),
             Intent::ModelToggleSelected => write!(f, "toggle model"),
             Intent::ToggleAlloyMode => write!(f, "toggle alloy mode"),
             Intent::PreviewScrollUp => write!(f, "preview scroll up"),
@@ -458,6 +473,9 @@ impl std::fmt::Display for Intent {
             Intent::OpenCwdInput => write!(f, "change cwd"),
             Intent::CwdInputConfirm => write!(f, "cwd input confirm"),
             Intent::CwdInputLeave => write!(f, "cwd input leave"),
+            Intent::OpenProjectAddInput => write!(f, "add project dir"),
+            Intent::ProjectAddInputConfirm => write!(f, "project-add input confirm"),
+            Intent::ProjectAddInputLeave => write!(f, "project-add input leave"),
 
             Intent::ChangeCwd { root } => write!(f, "change cwd from '{root}'"),
 
