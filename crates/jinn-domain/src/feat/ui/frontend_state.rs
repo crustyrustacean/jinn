@@ -4,6 +4,7 @@ use parking_lot::RwLock;
 
 use crate::common::focus::{FocusScope, ScopeStack};
 use crate::common::tui_signals::TuiSignals;
+use crate::feat::project_add_input::state::ProjectAddInputState;
 use crate::feat::cwd_input::state::CwdInputState;
 use crate::feat::preferences_actor::UserPreferences;
 use crate::feat::preferences_actor::app_state_file::AppStateFile;
@@ -152,6 +153,11 @@ pub struct FrontendState {
     /// OWNER: IntentHandler (cwd input editing, confirmation).
     pub cwd_input: CwdInputState,
 
+    /// Project-add input popup state - active when `FocusScope::ProjectAddInput` is on
+    /// the scope stack.
+    /// OWNER: IntentHandler (project-add input editing, confirmation).
+    pub project_add_input: ProjectAddInputState,
+
     /// Optional CWD override for the next session creation.
     ///
     /// Set by the project picker (`<enter>`/`<c-enter>`) so a new session can
@@ -195,6 +201,7 @@ impl Default for FrontendState {
             rename_session_input: RenameSessionInputState::default(),
             pruner_accumulation_input: PrunerAccumulationInputState::default(),
             cwd_input: CwdInputState::default(),
+            project_add_input: ProjectAddInputState::default(),
             pending_session_cwd: None,
             quake_bar: QuakeBarState::default(),
 
