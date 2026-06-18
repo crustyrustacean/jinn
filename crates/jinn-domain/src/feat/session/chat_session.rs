@@ -102,6 +102,17 @@ impl LifecycleScriptState {
     }
 }
 
+impl std::fmt::Display for LifecycleScriptState {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        let s = match self {
+            Self::NothingRan => "nothing_ran",
+            Self::SetupRan => "setup_ran",
+            Self::TeardownRan => "teardown_ran",
+        };
+        f.write_str(s)
+    }
+}
+
 /// Groups runtime-only fields that are specific to the current running instance
 /// and have no meaning across restarts (stream indices, queues, in-progress flags).
 /// The entire struct is skipped during serialization so individual fields cannot
