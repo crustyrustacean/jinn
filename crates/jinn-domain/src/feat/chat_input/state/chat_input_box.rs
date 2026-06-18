@@ -7,6 +7,7 @@ use unicode_segmentation::UnicodeSegmentation as _;
 
 use super::autocomplete::AutocompleteState;
 use super::autocomplete::AutocompleteTrigger;
+use super::wrap::WrappedLine;
 use crate::feat::chat_input::AutocompleteMatch;
 
 /// Submission mode for the chat input box.
@@ -58,12 +59,21 @@ pub struct ChatInputBoxState {
     input_mode: InputMode,
     /// The text the user has typed so far.
     input_buffer: String,
+    /// Byte offset of the start of each grapheme cluster, plus a trailing
+    /// sentinel equal to `input_buffer.len()`. Rebuilt on every mutation via
+    /// [`mutate_buffer`](Self::mutate_buffer) so reads (cursor moves, lookups)
+    /// are O(1) instead of re-segmenting the whole buffer.
+    grapheme_bounds: Vec<usize>,
+    /// Cached result of [`wrap_text`](super::wrap::wrap_text). Refreshed eagerly on
+    /// every buffer mutation (via [`mutate_buffer`](Self::mutate_buffer)) and on
+    /// [`set_wrap_width`](Self::set_wrap_width), so reads are O(1).
+    cached_wrap: Option<CachedWrap>,
     /// Cursor position as a grapheme-cluster index (0 = before first grapheme).
     cursor_pos: usize,
     /// The column remembered across consecutive up/down movements.
     ///
     /// Set on the first vertical move, preserved across subsequent vertical moves
-    /// (even when clamped by shorter lines). Cleared by any non-vertical operation.
+    /// (even when clamped with shorter lines). Cleared by any non-vertical operation.
     desired_col: Option<usize>,
     /// Active prompt-template autocomplete session, if any.
     autocomplete: Option<AutocompleteState>,
@@ -80,13 +90,39 @@ pub struct ChatInputBoxState {
     disabled: bool,
 }
 
+/// Cached word-wrap result. Refreshed eagerly by [`ChatInputBoxState`]
+/// on buffer mutation and width change, so repeated renders and cursor moves
+/// reuse the same wrap instead of recomputing it.
+#[derive(Debug, Clone)]
+struct CachedWrap {
+    lines: Vec<WrappedLine>,
+}
+
+/// Byte offset of the start of each grapheme cluster in `text`, plus a
+/// trailing sentinel equal to `text.len()`.
+///
+/// `out[i]` is the byte offset where grapheme `i` begins; `out[out.len()-1]`
+/// equals the buffer length so that the byte range of grapheme `i` is
+/// always `out[i]..out[i+1]` (and the end-cursor offset is `out[count]`).
+///
+/// Empty text yields `[0]`.
+fn build_grapheme_bounds(text: &str) -> Vec<usize> {
+    let mut out: Vec<usize> = text.grapheme_indices(true).map(|(i, _)| i).collect();
+    out.push(text.len());
+    out
+}
+
 impl ChatInputBoxState {
     /// Create a new state with no text entered and cursor at position 0.
     #[must_use]
     pub fn new() -> Self {
+        let input_buffer = String::new();
+        let grapheme_bounds = build_grapheme_bounds(&input_buffer);
         Self {
             input_mode: InputMode::default(),
-            input_buffer: String::new(),
+            input_buffer,
+            grapheme_bounds,
+            cached_wrap: Some(CachedWrap { lines: Vec::new() }),
             cursor_pos: 0,
             desired_col: None,
             autocomplete: None,
@@ -94,6 +130,35 @@ impl ChatInputBoxState {
             scroll_offset: 0,
             disabled: false,
         }
+    }
+
+    /// Single mutation seam for `input_buffer`.
+    ///
+    /// Runs `f` against the buffer, then rebuilds [`grapheme_bounds`](Self::grapheme_bounds)
+    /// and refreshes [`cached_wrap`](Self::cached_wrap)
+    /// so every subsequent read (cursor move, render) is O(1).
+    /// **All** buffer writes MUST go through here; bypassing it leaves the caches stale
+    /// (silent corruption).
+    fn mutate_buffer<F>(&mut self, f: F)
+    where
+        F: FnOnce(&mut String),
+    {
+        f(&mut self.input_buffer);
+        self.grapheme_bounds = build_grapheme_bounds(&self.input_buffer);
+        self.refresh_wrap_cache();
+    }
+
+    /// Recomputes [`cached_wrap`](Self::cached_wrap) from the current buffer and
+    /// [`wrap_width`](Self::wrap_width). Called eagerly from [`mutate_buffer`](Self::mutate_buffer)
+    /// and [`set_wrap_width`](Self::set_wrap_width) so reads never recompute.
+    ///
+    /// Eager (not lazy) because render holds only `&self` (the app state is shared via
+    /// `Arc<RwLock<AppState>>`); a lazy `&mut self` fill would require interior mutability
+    /// that breaks `Send + Sync`. The per-edit cost is identical to today (one `wrap_text`
+    /// per edit); the win is that the 3x render reads and cursor moves become O(1).
+    fn refresh_wrap_cache(&mut self) {
+        let lines = super::wrap::wrap_text(&self.input_buffer, self.wrap_width);
+        self.cached_wrap = Some(CachedWrap { lines });
     }
 
     /// Returns the current submission mode.
@@ -128,7 +193,8 @@ impl ChatInputBoxState {
     /// Returns the total number of grapheme clusters in the buffer.
     #[must_use]
     pub fn grapheme_count(&self) -> usize {
-        self.input_buffer.graphemes(true).count()
+        // grapheme_bounds has a trailing sentinel == buffer length, so count = len - 1.
+        self.grapheme_bounds.len().saturating_sub(1)
     }
 
     /// Returns whether editing is currently disabled for this input box.
@@ -147,20 +213,23 @@ impl ChatInputBoxState {
     ///
     /// Sets cursor to `start + new_text_grapheme_count`.
     fn replace_grapheme_range(&mut self, start: usize, end: usize, new_text: &str) {
-        let graphemes: Vec<(usize, &str)> = self.input_buffer.grapheme_indices(true).collect();
+        let count = self.grapheme_count();
+        // Bounds are clamped to `count`; `grapheme_bounds[count] == buf.len()` (sentinel).
+        #[expect(
+            clippy::indexing_slicing,
+            reason = "indices clamped to count <= last bound"
+        )]
+        let byte_start = self.grapheme_bounds[start.min(count)];
+        #[expect(
+            clippy::indexing_slicing,
+            reason = "indices clamped to count <= last bound"
+        )]
+        let byte_end = self.grapheme_bounds[end.min(count)];
 
-        let byte_start = graphemes
-            .get(start)
-            .map_or(self.input_buffer.len(), |(i, _)| *i);
-        let byte_end = graphemes
-            .get(end)
-            .map_or(self.input_buffer.len(), |(i, _)| *i);
-
-        // Drain the old range.
-        self.input_buffer.drain(byte_start..byte_end);
-
-        // Insert new text at the same byte position.
-        self.input_buffer.insert_str(byte_start, new_text);
+        self.mutate_buffer(|buf| {
+            buf.drain(byte_start..byte_end);
+            buf.insert_str(byte_start, new_text);
+        });
 
         // Recompute cursor: start index + graphemes in new text.
         let new_grapheme_count = new_text.graphemes(true).count();
@@ -171,7 +240,16 @@ impl ChatInputBoxState {
     /// Returns the grapheme at the given index, if it exists.
     #[must_use]
     pub fn grapheme_at(&self, index: usize) -> Option<&str> {
-        self.input_buffer.graphemes(true).nth(index)
+        let bounds = &self.grapheme_bounds;
+        if index < bounds.len().saturating_sub(1) {
+            // Indexing is safe: `index < count` implies `index + 1 <= count < bounds.len()`.
+            #[expect(clippy::indexing_slicing, reason = "index < count checked above")]
+            #[expect(clippy::string_slice, reason = "bounds are grapheme byte offsets")]
+            let slice = &self.input_buffer[bounds[index]..bounds[index + 1]];
+            Some(slice)
+        } else {
+            None
+        }
     }
 
     /// Returns the number of visual lines (word-wrapped at `wrap_width`).
@@ -202,24 +280,30 @@ impl ChatInputBoxState {
         if text.is_empty() {
             return;
         }
-        let byte_offset = self
-            .input_buffer
-            .grapheme_indices(true)
-            .nth(self.cursor_pos)
-            .map_or(self.input_buffer.len(), |(i, _)| i);
-        self.input_buffer.insert_str(byte_offset, text);
-        self.cursor_pos += text.graphemes(true).count();
+        // cursor_pos is clamped to count; `grapheme_bounds[count] == buf.len()` (sentinel).
+        #[expect(
+            clippy::indexing_slicing,
+            reason = "cursor_pos clamped to count <= last bound"
+        )]
+        let byte_offset = self.grapheme_bounds[self.cursor_pos.min(self.grapheme_count())];
+        let extra = text.graphemes(true).count();
+        self.mutate_buffer(|buf| {
+            buf.insert_str(byte_offset, text);
+        });
+        self.cursor_pos += extra;
         self.desired_col = None;
     }
 
     /// Insert a character at the current cursor position and advance the cursor by 1.
     pub fn insert_grapheme_at_cursor(&mut self, ch: char) {
-        let byte_offset = self
-            .input_buffer
-            .grapheme_indices(true)
-            .nth(self.cursor_pos)
-            .map_or(self.input_buffer.len(), |(i, _)| i);
-        self.input_buffer.insert(byte_offset, ch);
+        #[expect(
+            clippy::indexing_slicing,
+            reason = "cursor_pos clamped to count <= last bound"
+        )]
+        let byte_offset = self.grapheme_bounds[self.cursor_pos.min(self.grapheme_count())];
+        self.mutate_buffer(|buf| {
+            buf.insert(byte_offset, ch);
+        });
         self.cursor_pos += 1;
         self.desired_col = None;
     }
@@ -227,26 +311,34 @@ impl ChatInputBoxState {
     /// Delete the grapheme immediately before the cursor and move the cursor back by 1.
     ///
     /// No-op when the cursor is at position 0.
-    #[expect(
-        clippy::indexing_slicing,
-        reason = "delete_idx is cursor_pos - 1 where cursor_pos > 0, and graphemes length equals grapheme count which is >= cursor_pos"
-    )]
     pub fn delete_grapheme_before_cursor(&mut self) {
         if self.cursor_pos == 0 {
             return;
         }
-        let graphemes: Vec<(usize, &str)> = self.input_buffer.grapheme_indices(true).collect();
         let delete_idx = self.cursor_pos - 1;
-        let (start, g) = graphemes[delete_idx];
-        let end = start + g.len();
-        self.input_buffer.drain(start..end);
+        // `delete_idx = cursor_pos - 1` and cursor_pos > 0, so both indices are valid grapheme bounds.
+        #[expect(
+            clippy::indexing_slicing,
+            reason = "cursor_pos > 0 checked; delete_idx and +1 are valid bounds"
+        )]
+        let byte_start = self.grapheme_bounds[delete_idx];
+        #[expect(
+            clippy::indexing_slicing,
+            reason = "cursor_pos > 0 checked; delete_idx + 1 is a valid bound"
+        )]
+        let byte_end = self.grapheme_bounds[delete_idx + 1];
+        self.mutate_buffer(|buf| {
+            buf.drain(byte_start..byte_end);
+        });
         self.cursor_pos -= 1;
         self.desired_col = None;
     }
 
     /// Clear the buffer and reset the cursor to position 0.
     pub fn reset(&mut self) {
-        self.input_buffer.clear();
+        self.mutate_buffer(|buf| {
+            buf.clear();
+        });
         self.cursor_pos = 0;
         self.desired_col = None;
         self.scroll_offset = 0;
@@ -256,8 +348,11 @@ impl ChatInputBoxState {
     ///
     /// Used when loading content from an external editor.
     pub fn replace_all(&mut self, content: String) {
-        self.input_buffer = content;
-        self.cursor_pos = self.input_buffer.graphemes(true).count();
+        let count = content.graphemes(true).count();
+        self.mutate_buffer(|buf| {
+            *buf = content;
+        });
+        self.cursor_pos = count;
         self.desired_col = None;
     }
 
@@ -296,19 +391,26 @@ impl ChatInputBoxState {
     /// Delete the grapheme at the cursor position (forward delete).
     ///
     /// No-op when the cursor is at the end of the buffer.
-    #[expect(
-        clippy::indexing_slicing,
-        reason = "cursor_pos < count is checked above, so index is in bounds"
-    )]
     pub fn delete_grapheme_after_cursor(&mut self) {
         let count = self.grapheme_count();
         if self.cursor_pos >= count {
             return;
         }
-        let graphemes: Vec<(usize, &str)> = self.input_buffer.grapheme_indices(true).collect();
-        let (start, g) = graphemes[self.cursor_pos];
-        let end = start + g.len();
-        self.input_buffer.drain(start..end);
+        let idx = self.cursor_pos;
+        // `idx = cursor_pos < count`, so idx and idx + 1 are valid grapheme bounds.
+        #[expect(
+            clippy::indexing_slicing,
+            reason = "cursor_pos < count checked; idx is a valid bound"
+        )]
+        let byte_start = self.grapheme_bounds[idx];
+        #[expect(
+            clippy::indexing_slicing,
+            reason = "cursor_pos < count checked; idx + 1 is a valid bound"
+        )]
+        let byte_end = self.grapheme_bounds[idx + 1];
+        self.mutate_buffer(|buf| {
+            buf.drain(byte_start..byte_end);
+        });
         self.desired_col = None;
     }
 
@@ -326,17 +428,10 @@ impl ChatInputBoxState {
         if self.cursor_pos == 0 {
             return;
         }
-        let graphemes: Vec<&str> = self.input_buffer.graphemes(true).collect();
+        // Skip whitespace, then the word, scanning left via cached grapheme bounds.
         let mut pos = self.cursor_pos;
-
-        // Skip whitespace moving left.
-        while pos > 0 && graphemes[pos - 1].trim().is_empty() {
-            pos -= 1;
-        }
-        // Skip non-whitespace moving left (the word itself).
-        while pos > 0 && !graphemes[pos - 1].trim().is_empty() {
-            pos -= 1;
-        }
+        pos = skip_while_left(self, pos, |g| g.trim().is_empty());
+        pos = skip_while_left(self, pos, |g| !g.trim().is_empty());
         self.cursor_pos = pos;
         self.desired_col = None;
     }
@@ -356,17 +451,10 @@ impl ChatInputBoxState {
         if self.cursor_pos >= count {
             return;
         }
-        let graphemes: Vec<&str> = self.input_buffer.graphemes(true).collect();
+        // Skip the current word, then whitespace, scanning right via cached bounds.
         let mut pos = self.cursor_pos;
-
-        // Skip non-whitespace moving right (the current word).
-        while pos < count && !graphemes[pos].trim().is_empty() {
-            pos += 1;
-        }
-        // Skip whitespace moving right.
-        while pos < count && graphemes[pos].trim().is_empty() {
-            pos += 1;
-        }
+        pos = skip_while_right(self, pos, count, |g| !g.trim().is_empty());
+        pos = skip_while_right(self, pos, count, |g| g.trim().is_empty());
         self.cursor_pos = pos;
         self.desired_col = None;
     }
@@ -376,13 +464,21 @@ impl ChatInputBoxState {
     /// Remembers the column across consecutive vertical moves, even when
     /// clamped by shorter lines. No-op when the cursor is on the first line.
     pub fn move_cursor_up(&mut self) {
-        let lines = self.wrapped_lines();
-        let (row, col) = self.cursor_row_col_wrapped(&lines);
-        if row == 0 {
-            return;
-        }
-        let target_col = *self.desired_col.get_or_insert(col);
-        self.cursor_pos = self.grapheme_index_for_wrapped_row_col(&lines, row - 1, target_col);
+        // `wrapped_lines` / `cursor_row_col_wrapped` borrow `&self`; compute the new
+        // cursor position first, then write fields so the borrows don't overlap the `&mut`.
+        let (target_row, target_col) = {
+            let lines = self.wrapped_lines();
+            let (row, col) = self.cursor_row_col_wrapped(lines);
+            if row == 0 {
+                return;
+            }
+            let target_col = self.desired_col.unwrap_or(col);
+            (row - 1, target_col)
+        };
+        // Desired column is remembered across consecutive vertical moves.
+        let target_col = *self.desired_col.get_or_insert(target_col);
+        self.cursor_pos =
+            self.grapheme_index_for_wrapped_row_col(self.wrapped_lines(), target_row, target_col);
     }
 
     /// Move the cursor down one visual line (after wrapping).
@@ -390,14 +486,21 @@ impl ChatInputBoxState {
     /// Remembers the column across consecutive vertical moves, even when
     /// clamped by shorter lines. No-op when the cursor is on the last line.
     pub fn move_cursor_down(&mut self) {
-        let lines = self.wrapped_lines();
-        let (row, col) = self.cursor_row_col_wrapped(&lines);
-        let last_row = lines.len().saturating_sub(1);
-        if row >= last_row {
-            return;
-        }
-        let target_col = *self.desired_col.get_or_insert(col);
-        self.cursor_pos = self.grapheme_index_for_wrapped_row_col(&lines, row + 1, target_col);
+        // Compute the new cursor while `lines` is borrowed, then mutate fields.
+        let (target_row, target_col) = {
+            let lines = self.wrapped_lines();
+            let (row, col) = self.cursor_row_col_wrapped(lines);
+            let last_row = lines.len().saturating_sub(1);
+            if row >= last_row {
+                return;
+            }
+            let target_col = self.desired_col.unwrap_or(col);
+            (row + 1, target_col)
+        };
+        // Desired column is remembered across consecutive vertical moves.
+        let target_col = *self.desired_col.get_or_insert(target_col);
+        self.cursor_pos =
+            self.grapheme_index_for_wrapped_row_col(self.wrapped_lines(), target_row, target_col);
     }
 
     /// Compute the grapheme index for a given `(visual_row, col)` position
@@ -425,6 +528,7 @@ impl ChatInputBoxState {
     /// Sets the wrap width (called during render).
     pub fn set_wrap_width(&mut self, width: usize) {
         self.wrap_width = width;
+        self.refresh_wrap_cache();
     }
 
     /// Returns the current scroll offset.
@@ -458,9 +562,42 @@ impl ChatInputBoxState {
         }
     }
 
-    /// Computes wrapped lines for the current buffer and wrap_width.
-    pub fn wrapped_lines(&self) -> Vec<super::wrap::WrappedLine> {
-        super::wrap::wrap_text(&self.input_buffer, self.wrap_width)
+    /// Wrapped lines for the current buffer and wrap_width.
+    ///
+    /// Served from [`cached_wrap`](Self::cached_wrap), which is refreshed eagerly on every
+    /// mutation and width change. O(1) — no `wrap_text` call.
+    pub fn wrapped_lines(&self) -> &[super::wrap::WrappedLine] {
+        self.cached_wrap
+            .as_ref()
+            .expect("cache is always Some")
+            .lines
+            .as_slice()
+    }
+
+    /// Returns the byte slice covering graphemes `start..end`.
+    ///
+    /// Uses the cached grapheme bounds so no segmentation is needed. Indices are
+    /// clamped to the valid range; `start` may equal `end` (empty slice).
+    pub fn grapheme_slice(&self, start: usize, end: usize) -> &str {
+        let count = self.grapheme_count();
+        let s = start.min(count);
+        let e = end.min(count);
+        if s >= e {
+            return "";
+        }
+        // s, e are clamped to count; `grapheme_bounds[count] == buf.len()` (sentinel).
+        #[expect(
+            clippy::indexing_slicing,
+            reason = "s and e clamped to count <= last bound"
+        )]
+        let from = self.grapheme_bounds[s];
+        #[expect(
+            clippy::indexing_slicing,
+            reason = "s and e clamped to count <= last bound"
+        )]
+        let to = self.grapheme_bounds[e];
+        #[expect(clippy::string_slice, reason = "from/to are grapheme byte offsets")]
+        &self.input_buffer[from..to]
     }
 
     /// Returns cursor (visual_row, col_within_wrapped_line) using pre-computed lines.
@@ -643,6 +780,43 @@ impl ChatInputBoxState {
         self.replace_grapheme_range(token_start, self.cursor_pos, body);
         self.autocomplete = None;
     }
+}
+
+/// Walk left from `pos` while the grapheme at `pos - 1` satisfies `pred`.
+/// Uses [`ChatInputBoxState`]'s cached grapheme bounds (no re-segmentation).
+fn skip_while_left(
+    state: &ChatInputBoxState,
+    mut pos: usize,
+    pred: impl Fn(&str) -> bool,
+) -> usize {
+    while pos > 0 {
+        // Indexing safe: pos > 0, so pos - 1 >= 0, and pos - 1 < count <= bounds.len().
+        let prev = state.grapheme_at(pos - 1).unwrap_or("");
+        if !pred(prev) {
+            break;
+        }
+        pos -= 1;
+    }
+    pos
+}
+
+/// Walk right from `pos` while the grapheme at `pos` satisfies `pred`.
+/// `count` is the total grapheme count; indexing stays strictly below it.
+fn skip_while_right(
+    state: &ChatInputBoxState,
+    mut pos: usize,
+    count: usize,
+    pred: impl Fn(&str) -> bool,
+) -> usize {
+    while pos < count {
+        // Indexing safe: pos < count, and grapheme_at is defined for pos < count.
+        let g = state.grapheme_at(pos).unwrap_or("");
+        if !pred(g) {
+            break;
+        }
+        pos += 1;
+    }
+    pos
 }
 
 impl Default for ChatInputBoxState {
@@ -1036,5 +1210,89 @@ mod tests {
         // The returned reference is to the actual autocomplete state, not a leaked box.
         // Verify by checking the matches.
         assert_eq!(ac.as_ref().unwrap().matches().len(), 1);
+    }
+
+    // --- Render cache: observable invariants (Phase 3) ---
+
+    #[rstest::rstest]
+    fn grapheme_at_and_count_reflect_buffer_after_edit() {
+        // Given a buffer "abc" with an edit (insert "XY" at pos 1).
+        let mut state = ChatInputBoxState::new();
+        state.insert_text("abc");
+        state.move_cursor_left();
+        state.move_cursor_left(); // cursor at 1
+        state.insert_text("XY");
+
+        // Then grapheme_count reflects the new length.
+        assert_eq!(state.grapheme_count(), 5);
+        // And grapheme_at returns the edited slices.
+        assert_eq!(state.grapheme_at(0), Some("a"));
+        assert_eq!(state.grapheme_at(1), Some("X"));
+        assert_eq!(state.grapheme_at(2), Some("Y"));
+        assert_eq!(state.grapheme_at(3), Some("b"));
+    }
+
+    #[rstest::rstest]
+    fn edit_then_cursor_moves_match_known_good() {
+        // Given "hello" with a sequence of edits and cursor moves.
+        let mut state = ChatInputBoxState::new();
+        state.insert_text("hello");
+        // Known-good sequence: move left twice, insert X, move to end, delete back.
+        state.move_cursor_left();
+        state.move_cursor_left(); // cursor at 3 ("lo" after cursor)
+        state.insert_text("X"); // "helXlo", cursor at 4
+        state.move_cursor_right(); // cursor at 5
+        state.delete_grapheme_before_cursor(); // "hello", cursor at 4
+
+        // Then the final buffer and cursor match the known-good result.
+        // "hello" -> insert X at idx3 -> "helXlo" -> delete-before at end removes "l" -> "helXo".
+        assert_eq!(state.text(), "helXo");
+        assert_eq!(state.cursor_pos(), 4);
+    }
+
+    #[rstest::rstest]
+    fn grapheme_slice_returns_contiguous_byte_range() {
+        // Given "abc" — grapheme_slice(1, 3) is the bytes for graphemes 1..3.
+        let mut state = ChatInputBoxState::new();
+        state.insert_text("abc");
+
+        // When slicing graphemes 1..3.
+        let slice = state.grapheme_slice(1, 3);
+
+        // Then it equals "bc" (contiguous byte range, no collect).
+        assert_eq!(slice, "bc");
+    }
+
+    #[rstest::rstest]
+    fn set_wrap_width_invalidates_wrap_but_not_grapheme_cache() {
+        // Given "aaa aaa" at width 80 (one line).
+        let mut state = ChatInputBoxState::new();
+        state.insert_text("aaa aaa");
+        state.set_wrap_width(80);
+        assert_eq!(state.wrapped_lines().len(), 1);
+
+        // When narrowing the width.
+        state.set_wrap_width(3);
+
+        // Then wrapped_lines reflects the new width (invalidated).
+        assert!(state.wrapped_lines().len() > 1);
+        // And grapheme_count is unaffected.
+        assert_eq!(state.grapheme_count(), 7);
+    }
+
+    #[rstest::rstest]
+    fn wrapped_lines_reflects_content_after_mutation() {
+        // Given "x".
+        let mut state = ChatInputBoxState::new();
+        state.insert_text("x");
+        state.set_wrap_width(20);
+        assert_eq!(state.wrapped_lines().len(), 1);
+
+        // When mutating the buffer to a long single word.
+        state.set_wrap_width(5);
+        state.insert_text("y".repeat(20).as_str());
+
+        // Then wrapped_lines reflects the new content (wrapped into many lines).
+        assert!(state.wrapped_lines().len() > 1);
     }
 }
