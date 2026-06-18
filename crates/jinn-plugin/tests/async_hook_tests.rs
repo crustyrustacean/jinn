@@ -1158,6 +1158,7 @@ async fn on_detach_hook_fires_with_ctx() {
 }
 
 #[tokio::test]
+#[allow(clippy::too_many_lines)]
 async fn judge_aggregation_last_to_finish_emits_once() {
     // Given an attachable plugin implementing the aggregation protocol: on_attach
     // increments a shared count; judgment_passed posts a verdict keyed on the
@@ -1376,6 +1377,7 @@ async fn judge_aggregation_single_instance_emits_directly() {
 }
 
 #[tokio::test]
+#[allow(clippy::too_many_lines)]
 async fn judge_aggregation_all_pass_disables_every_instance() {
     // Given two judge instances where all-must-finish aggregation disables EVERY
     // instance on pass (not just the aggregator). The test plugin mirrors the
@@ -1499,6 +1501,7 @@ async fn judge_aggregation_all_pass_disables_every_instance() {
 }
 
 #[tokio::test]
+#[allow(clippy::too_many_lines)]
 async fn judge_aggregation_any_fail_reenables_every_instance() {
     // Given two judge instances where ANY failure re-enables ALL instances
     // (re-activate on failure). The test plugin emits enable_plugin per
