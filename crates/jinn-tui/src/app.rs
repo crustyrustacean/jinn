@@ -238,51 +238,7 @@ impl TuiApp {
             ..
         } = intent
         {
-            let (sid, text) = {
-                let state = self.core.state.read();
-                let sid = session_id.unwrap_or_else(|| state.session.active_session_id().clone());
-                let text = state.active_chat_input().text().to_owned();
-                (sid, text)
-            };
-            tracing::debug!(plugin = %plugin_name, action = %action, "route_intent: TriggerPlugin");
-            // Sync pre-check: plugins may veto the async action (e.g. cancel
-            // an in-flight request instead of starting a new one). Default: run.
-            let run_action = {
-                use jinn_domain::call_hooks_typed;
-                #[derive(serde::Deserialize)]
-                struct KeybindTriggerResult {
-                    run_action: bool,
-                }
-                let ctx_json = serde_json::json!({
-                    "hook": action,
-                    "session_id": sid.to_string(),
-                    "text": text,
-                    "keybound_plugin": plugin_name,
-                });
-                call_hooks_typed::<KeybindTriggerResult>(
-                    &self.plugins,
-                    "on_keybind_trigger",
-                    &ctx_json.into(),
-                )
-                .into_iter()
-                .last()
-                .is_none_or(|r| r.run_action)
-            };
-            if run_action {
-                let payload = serde_json::json!({
-                    "hook": action,
-                    "session_id": sid,
-                    "text": text,
-                });
-                let closure = jinn_domain::common::bridge::Bridge::publish_closure(
-                    jinn_domain::DynamicCommand {
-                        name: "plugin::fire_async".into(),
-                        payload,
-                    },
-                );
-                let _ = self.core.bridge.send(closure);
-            }
-            tracing::info!(run_action, action = %action, "route_intent: TriggerPlugin decision");
+            self.handle_trigger_plugin(plugin_name, action, session_id);
             return;
         }
         // Send bus closures via bridge.
@@ -334,6 +290,60 @@ impl TuiApp {
         let new_scope = scope_for_focus(state_read.frontend.scope_stack.current());
         drop(state_read);
         self.which_key.set_scope(new_scope);
+    }
+
+    /// Resolves a TriggerPlugin intent: runs the sync pre-check hook (plugins may
+    /// veto), then fires the async hook via the bridge when allowed.
+    fn handle_trigger_plugin(
+        &self,
+        plugin_name: String,
+        action: String,
+        session_id: Option<jinn_domain::SessionId>,
+    ) {
+        let (sid, text) = {
+            let state = self.core.state.read();
+            let sid = session_id.unwrap_or_else(|| state.session.active_session_id().clone());
+            let text = state.active_chat_input().text().to_owned();
+            (sid, text)
+        };
+        tracing::debug!(plugin = %plugin_name, action = %action, "route_intent: TriggerPlugin");
+        // Sync pre-check: plugins may veto the async action (e.g. cancel
+        // an in-flight request instead of starting a new one). Default: run.
+        let run_action = {
+            use jinn_domain::call_hooks_typed;
+            #[derive(serde::Deserialize)]
+            struct KeybindTriggerResult {
+                run_action: bool,
+            }
+            let ctx_json = serde_json::json!({
+                "hook": action,
+                "session_id": sid.to_string(),
+                "text": text,
+                "keybound_plugin": plugin_name,
+            });
+            call_hooks_typed::<KeybindTriggerResult>(
+                &self.plugins,
+                "on_keybind_trigger",
+                &ctx_json.into(),
+            )
+            .into_iter()
+            .last()
+            .is_none_or(|r| r.run_action)
+        };
+        if run_action {
+            let payload = serde_json::json!({
+                "hook": action,
+                "session_id": sid,
+                "text": text,
+            });
+            let closure =
+                jinn_domain::common::bridge::Bridge::publish_closure(jinn_domain::DynamicCommand {
+                    name: "plugin::fire_async".into(),
+                    payload,
+                });
+            let _ = self.core.bridge.send(closure);
+        }
+        tracing::info!(run_action, action = %action, "route_intent: TriggerPlugin decision");
     }
 
     /// Renders the application for a single frame.
