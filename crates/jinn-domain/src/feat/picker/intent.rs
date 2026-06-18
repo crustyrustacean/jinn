@@ -739,7 +739,7 @@ fn load_task_list_picker_entries(state: &mut AppState) {
 ///
 /// Entries are pre-computed display strings (tilde-compressed) so the picker
 /// never has to call `shorten_path` per-render.
-fn load_project_picker_entries(state: &mut AppState) {
+pub(crate) fn load_project_picker_entries(state: &mut AppState) {
     use crate::feat::project::picker_entry::{ProjectEntry, project_entries};
 
     let theme = state.frontend.theme.clone();

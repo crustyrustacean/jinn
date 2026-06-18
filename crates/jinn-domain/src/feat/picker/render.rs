@@ -147,12 +147,24 @@ pub fn render_task_list_picker(frame: &mut Frame<'_>, area: Rect, ctx: &RenderCt
 /// (new session at dir + lifecycle picker), and `<c-n>` (add a new project dir).
 pub fn render_project_picker(frame: &mut Frame<'_>, area: Rect, ctx: &RenderCtx) {
     let state = ctx.state;
+    let gray = Style::default().fg(state.frontend.theme.muted_text);
+    let orange = Style::default().fg(state.frontend.theme.accent_action);
+    let footer = Line::from(vec![
+        ratatui::text::Span::styled("Enter ", orange),
+        ratatui::text::Span::styled("new session \u{00b7} ", gray),
+        ratatui::text::Span::styled("<c-enter> ", orange),
+        ratatui::text::Span::styled("new + lifecycle \u{00b7} ", gray),
+        ratatui::text::Span::styled("<c-n> ", orange),
+        ratatui::text::Span::styled("add dir \u{00b7} ", gray),
+        ratatui::text::Span::styled("<c-d> ", orange),
+        ratatui::text::Span::styled("remove \u{00b7} ", gray),
+        ratatui::text::Span::styled("ESC ", orange),
+        ratatui::text::Span::styled("to cancel", gray),
+    ]);
     let widget = SelectionWidget::new(state.frontend.project_picker())
         .title(Line::from(" Projects "))
         .title_style(Style::default().fg(state.frontend.theme.popup_title))
-        .footer(Line::from(
-            " Enter new session \u{00b7} <c-enter> new + lifecycle \u{00b7} <c-n> add dir \u{00b7} <c-d> remove \u{00b7} ESC to cancel "
-        ));
+        .footer(footer);
     widget.render(frame, area);
 }
 
@@ -409,12 +421,31 @@ mod tests {
             "footer should advertise the <c-n> add-dir binding"
         );
         assert!(
-            rendered.contains("<c-d> remove"),
+            rendered.contains("<c-d>"),
             "footer should advertise the <c-d> remove binding"
+        );
+        assert!(
+            rendered.contains("remove"),
+            "footer should advertise the remove action"
         );
         assert!(
             !rendered.contains("add cwd"),
             "footer should not advertise the removed a-add-cwd binding"
+        );
+
+        // And the keybind tokens are styled with accent_action (orange),
+        // while the descriptive text uses muted_text (gray).
+        let accent_action = state.frontend.theme.accent_action;
+        let mut found_orange_keybind = false;
+        for cell in &terminal.backend().buffer().content {
+            if cell.fg == accent_action && !cell.symbol().trim().is_empty() {
+                found_orange_keybind = true;
+                break;
+            }
+        }
+        assert!(
+            found_orange_keybind,
+            "at least one footer cell should use accent_action for a keybind"
         );
     }
 }
