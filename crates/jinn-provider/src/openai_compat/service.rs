@@ -11,9 +11,11 @@ use crate::ModelInfo;
 use crate::llm_message::LlmMessage;
 use crate::openai_compat::models;
 use crate::openai_compat::provider_config::ProviderConfig;
+use crate::openai_compat::reasoning_body::emit_reasoning_into;
 use crate::openai_compat::request;
 use crate::openai_compat::response::StreamResponseParser;
 use crate::openai_compat::sse::{SseEvent, SseParser};
+use crate::reasoning::ReasoningEffort;
 use crate::service::{ChatStream, LlmService, LlmServiceError, ToolStream};
 use crate::stream_event::StreamEvent;
 use crate::tool_types::ToolDefinition;
@@ -43,6 +45,7 @@ impl OpenAiCompatibleService {
         base_url: Option<String>,
         api_key: String,
         extra_body: Option<serde_json::Value>,
+        reasoning: Option<ReasoningEffort>,
     ) -> Self {
         Self::with_client(
             reqwest::Client::new(),
@@ -51,6 +54,7 @@ impl OpenAiCompatibleService {
             base_url,
             api_key,
             extra_body,
+            reasoning,
         )
     }
 
@@ -63,6 +67,7 @@ impl OpenAiCompatibleService {
         base_url: Option<String>,
         api_key: String,
         extra_body: Option<serde_json::Value>,
+        reasoning: Option<ReasoningEffort>,
     ) -> Self {
         let base_url = base_url.unwrap_or_else(|| config.default_base_url.to_owned());
         let mut extra_body = match extra_body {
@@ -70,15 +75,9 @@ impl OpenAiCompatibleService {
             _ => serde_json::Map::new(),
         };
 
-        // OpenRouter: always request reasoning tokens so thinking/reasoning
-        // is included in streaming responses.
-        // See https://openrouter.ai/docs/guides/best-practices/reasoning-tokens
-        if config.name == "OpenRouter" && !extra_body.contains_key("reasoning") {
-            extra_body.insert(
-                "reasoning".to_owned(),
-                serde_json::json!({ "enabled": true }),
-            );
-        }
+        // Emit reasoning-effort fields in the shape appropriate to this backend.
+        // Never clobbers a user-provided reasoning/reasoning_effort field.
+        emit_reasoning_into(&mut extra_body, reasoning, &config);
 
         Self {
             client,

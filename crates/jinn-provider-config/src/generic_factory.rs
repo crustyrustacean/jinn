@@ -8,7 +8,9 @@
 
 use error_stack::Report;
 
-use jinn_provider::{Backend, LlmService, LlmServiceError, LlmServiceFactory, ProviderConfig};
+use jinn_provider::{
+    Backend, LlmService, LlmServiceError, LlmServiceFactory, ProviderConfig, ReasoningEffort,
+};
 
 /// Generic factory that builds an LLM service from a provider config.
 ///
@@ -30,6 +32,9 @@ pub struct GenericLlmServiceFactory {
     api_key: Option<String>,
     /// Extra JSON body parameters for vendor-specific options.
     extra_body: Option<serde_json::Value>,
+    /// Resolved reasoning effort (session-override merged).
+    /// Ignored by Anthropic/Google; forwarded in the OpenAI-compat arm.
+    reasoning: Option<ReasoningEffort>,
 }
 
 impl GenericLlmServiceFactory {
@@ -42,6 +47,7 @@ impl GenericLlmServiceFactory {
         base_url: Option<String>,
         api_key: Option<String>,
         extra_body: Option<serde_json::Value>,
+        reasoning: Option<ReasoningEffort>,
     ) -> Self {
         Self {
             name,
@@ -50,6 +56,7 @@ impl GenericLlmServiceFactory {
             base_url,
             api_key,
             extra_body,
+            reasoning,
         }
     }
 }
@@ -84,6 +91,7 @@ impl LlmServiceFactory for GenericLlmServiceFactory {
                     self.base_url.clone(),
                     api_key,
                     self.extra_body.clone(),
+                    self.reasoning,
                     self.name.clone(),
                 );
                 factory.create()
@@ -117,6 +125,7 @@ mod tests {
             None,
             None,
             None,
+            None,
         );
 
         // When creating the service.
@@ -137,6 +146,7 @@ mod tests {
             "claude-sonnet-4-20250514".to_owned(),
             None,
             Some("sk-ant-test".to_owned()),
+            None,
             None,
         );
 
@@ -163,6 +173,7 @@ mod tests {
             "gemini-2.0-flash".to_owned(),
             None,
             Some("test-google-key".to_owned()),
+            None,
             None,
         );
 

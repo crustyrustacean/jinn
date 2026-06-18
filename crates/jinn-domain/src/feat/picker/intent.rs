@@ -18,6 +18,7 @@ use crate::feat::provider::protocol::command::{
 };
 use crate::feat::session::model_selection::{AlloyStrategy, ModelSelection};
 use crate::feat::session::protocol::load_session_picker_entries::LoadSessionPickerEntries;
+use crate::feat::session::protocol::mark_session_interacted::MarkSessionInteracted;
 use crate::feat::session::protocol::session_load_requested::SessionLoadRequested;
 use crate::feat::skills::ScanSkills;
 use crate::feat::tools_actor::tool_entry::ToolEntry;
@@ -73,6 +74,10 @@ pub fn handle_open_picker(state: &mut AppState, kind: PickerKind) -> IntentResul
         PickerKind::CompactionModel => {
             state.frontend.compaction_model_picker_mut().reset();
         }
+
+        PickerKind::ReasoningEffort => {
+            state.frontend.reasoning_effort_picker_mut().reset();
+        }
         PickerKind::Tool => {
             state.frontend.tool_picker_mut().reset();
             // Snapshot current disabled tools for ESC revert.
@@ -122,6 +127,10 @@ pub fn handle_open_picker(state: &mut AppState, kind: PickerKind) -> IntentResul
 
         PickerKind::CompactionModel => IntentResult::with_message(
             crate::feat::provider::protocol::command::LoadCompactionModelPickerEntries,
+        ),
+
+        PickerKind::ReasoningEffort => IntentResult::with_message(
+            crate::feat::provider::protocol::command::LoadReasoningEffortPickerEntries,
         ),
     }
 }
@@ -292,6 +301,7 @@ pub fn handle_picker_confirm(state: &mut AppState) -> (IntentResult, Option<Inte
         Some(PickerKind::SessionLifecycle) => (confirm_session_lifecycle(state), None),
         Some(PickerKind::Plugin) => (confirm_plugin(state), None),
         Some(PickerKind::Project) => (confirm_project(state), None),
+        Some(PickerKind::ReasoningEffort) => (confirm_reasoning_effort(state), None),
 
         Some(PickerKind::CompactionModel | PickerKind::TaskList) | None => {
             (IntentResult::empty(), None)
@@ -427,6 +437,7 @@ fn confirm_persona(state: &mut AppState) -> IntentResult {
     }
 
     // Also update the active session's persona binding.
+    let session_id = state.session.active_session_id().clone();
     state
         .active_session_mut()
         .set_persona_name(persona_name.clone());
@@ -436,6 +447,31 @@ fn confirm_persona(state: &mut AppState) -> IntentResult {
     IntentResult::with_message(UpdateAppState {
         updates: vec![AppStateUpdate::SetPersona(Some(persona_name))],
     })
+    .message(MarkSessionInteracted { session_id })
+}
+
+/// Confirms the selected reasoning effort and applies it.
+///
+/// Dual-write mirroring [`confirm_persona`]: sets the active session's
+/// `reasoning_effort` override in-memory, persists it immediately via
+/// [`MarkSessionInteracted`], and updates the global default via
+/// [`UpdatePreferences`] so new sessions inherit the choice.
+fn confirm_reasoning_effort(state: &mut AppState) -> IntentResult {
+    let Some(entry) = state.frontend.reasoning_effort_picker().selected_item() else {
+        return IntentResult::empty();
+    };
+    let effort = entry.effort;
+    let session_id = state.session.active_session_id().clone();
+
+    state.active_session_mut().profile_mut().reasoning_effort = Some(effort);
+
+    state.frontend.scope_stack.pop();
+
+    IntentResult::empty()
+        .message(MarkSessionInteracted { session_id })
+        .message(UpdatePreferences {
+            updates: vec![PreferenceUpdate::SetDefaultReasoningEffort(Some(effort))],
+        })
 }
 
 /// Confirms the selected theme and persists it to preferences.
@@ -1541,6 +1577,205 @@ mod tests {
             "confirm_persona should set the correct persona"
         );
         assert!(!result.message_names.is_empty());
+    }
+
+    #[rstest::rstest]
+    fn confirm_reasoning_effort_sets_session_override() {
+        // Kills: delete the `profile_mut().reasoning_effort = Some(effort)` line.
+        // If the session override were never set, the profile would stay None.
+        use crate::feat::reasoning::{ReasoningEffort, ReasoningEffortEntry};
+
+        let mut state = AppState::default();
+        let origin = ChatSessionState::new();
+        state.session.insert(origin);
+        state
+            .session
+            .set_active(state.session.active_session_id().clone());
+
+        // Populate the picker with a single entry; select it.
+        let entry = ReasoningEffortEntry {
+            effort: ReasoningEffort::High,
+            name: "high".to_owned(),
+            description: "High effort".to_owned(),
+            is_active: false,
+            theme: crate::feat::theme::default_theme(),
+        };
+        state
+            .frontend
+            .reasoning_effort_picker_mut()
+            .set_items(vec![entry]);
+        state.frontend.reasoning_effort_picker_mut().move_down(1);
+
+        // When confirming.
+        let _ = confirm_reasoning_effort(&mut state);
+
+        // Then the active session's override is set to High.
+        assert_eq!(
+            state.active_session().profile().reasoning_effort,
+            Some(ReasoningEffort::High),
+            "confirm should set the session reasoning_effort override"
+        );
+    }
+
+    #[rstest::rstest]
+    fn confirm_reasoning_effort_pops_picker_scope() {
+        // Kills: delete the `scope_stack.pop()` line.
+        // If the scope were never popped, the picker would remain open.
+        use crate::common::app_state::FocusScope;
+        use crate::feat::reasoning::{ReasoningEffort, ReasoningEffortEntry};
+
+        let mut state = AppState::default();
+        let origin = ChatSessionState::new();
+        state.session.insert(origin);
+        state
+            .session
+            .set_active(state.session.active_session_id().clone());
+        let entry = ReasoningEffortEntry {
+            effort: ReasoningEffort::Medium,
+            name: "medium".to_owned(),
+            description: "Medium effort".to_owned(),
+            is_active: false,
+            theme: crate::feat::theme::default_theme(),
+        };
+        state
+            .frontend
+            .reasoning_effort_picker_mut()
+            .set_items(vec![entry]);
+        state.frontend.reasoning_effort_picker_mut().move_down(1);
+        state.frontend.scope_stack.push(FocusScope::Picker {
+            kind: PickerKind::ReasoningEffort,
+        });
+
+        // When confirming.
+        let _ = confirm_reasoning_effort(&mut state);
+
+        // Then the picker scope has been popped (no ReasoningEffort scope remains).
+        let still_open = state
+            .frontend
+            .scope_stack
+            .picker_kind()
+            .is_some_and(|k| *k == PickerKind::ReasoningEffort);
+        assert!(!still_open, "picker scope should be popped after confirm");
+    }
+
+    #[rstest::rstest]
+    fn confirm_reasoning_effort_emits_mark_session_interacted() {
+        // Kills: delete the `.message(MarkSessionInteracted { .. })` chain.
+        // If the persist message were never emitted, the profile change would
+        // only be saved on a later (unrelated) event.
+        use crate::feat::reasoning::{ReasoningEffort, ReasoningEffortEntry};
+
+        let mut state = AppState::default();
+        let origin = ChatSessionState::new();
+        state.session.insert(origin);
+        state
+            .session
+            .set_active(state.session.active_session_id().clone());
+        let entry = ReasoningEffortEntry {
+            effort: ReasoningEffort::Low,
+            name: "low".to_owned(),
+            description: "Low effort".to_owned(),
+            is_active: false,
+            theme: crate::feat::theme::default_theme(),
+        };
+        state
+            .frontend
+            .reasoning_effort_picker_mut()
+            .set_items(vec![entry]);
+        state.frontend.reasoning_effort_picker_mut().move_down(1);
+
+        // When confirming.
+        let result = confirm_reasoning_effort(&mut state);
+
+        // Then a MarkSessionInteracted message is emitted.
+        assert!(
+            result
+                .message_names
+                .iter()
+                .any(|n| n.ends_with("MarkSessionInteracted")),
+            "confirm should emit MarkSessionInteracted to persist the change"
+        );
+    }
+
+    #[rstest::rstest]
+    fn confirm_reasoning_effort_emits_update_preferences() {
+        // Kills: delete the `.message(UpdatePreferences { .. })` chain.
+        // If the global default write were never emitted, new sessions would
+        // not inherit the chosen effort.
+        use crate::feat::reasoning::{ReasoningEffort, ReasoningEffortEntry};
+
+        let mut state = AppState::default();
+        let origin = ChatSessionState::new();
+        state.session.insert(origin);
+        state
+            .session
+            .set_active(state.session.active_session_id().clone());
+        let entry = ReasoningEffortEntry {
+            effort: ReasoningEffort::Max,
+            name: "max".to_owned(),
+            description: "Maximum effort".to_owned(),
+            is_active: false,
+            theme: crate::feat::theme::default_theme(),
+        };
+        state
+            .frontend
+            .reasoning_effort_picker_mut()
+            .set_items(vec![entry]);
+        state.frontend.reasoning_effort_picker_mut().move_down(1);
+
+        // When confirming.
+        let result = confirm_reasoning_effort(&mut state);
+
+        // Then an UpdatePreferences message is emitted (global default write).
+        assert!(
+            result
+                .message_names
+                .iter()
+                .any(|n| n.ends_with("UpdatePreferences")),
+            "confirm should emit UpdatePreferences to persist the global default"
+        );
+    }
+
+    #[rstest::rstest]
+    fn confirm_persona_emits_mark_session_interacted() {
+        // Kills: delete the `.message(MarkSessionInteracted { .. })` chain
+        // added to confirm_persona.
+        // If the persist message were never emitted, a pick-then-quit would lose
+        // the persona change.
+        use crate::feat::persona::PersonaEntry;
+
+        let mut state = AppState::default();
+        let origin = ChatSessionState::new();
+        state.session.insert(origin);
+        state
+            .session
+            .set_active(state.session.active_session_id().clone());
+        state.context.personas = vec![crate::feat::persona::Persona {
+            name: "coder".to_owned(),
+            description: String::new(),
+            body: "You are a coder.".to_owned(),
+            file_path: PathBuf::new(),
+        }];
+        let entry = PersonaEntry {
+            name: "coder".to_owned(),
+            description: String::new(),
+            is_active: false,
+            theme: crate::feat::theme::default_theme(),
+        };
+        state.frontend.persona_picker_mut().set_items(vec![entry]);
+        state.frontend.persona_picker_mut().move_down(1);
+
+        // When confirming.
+        let result = confirm_persona(&mut state);
+
+        // Then a MarkSessionInteracted message is emitted.
+        assert!(
+            result
+                .message_names
+                .iter()
+                .any(|n| n.ends_with("MarkSessionInteracted")),
+            "confirm_persona should emit MarkSessionInteracted to persist"
+        );
     }
 
     #[rstest::rstest]

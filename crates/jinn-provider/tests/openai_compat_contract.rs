@@ -17,6 +17,7 @@ fn make_factory(server: &mockito::ServerGuard) -> OpenAiCompatibleFactory {
         Some(server.url()),
         "test-key".to_owned(),
         None,
+        None,
         "test-openai".to_owned(),
     )
 }
@@ -32,6 +33,7 @@ fn make_factory_with_extra(
         Some(server.url()),
         "test-key".to_owned(),
         Some(extra),
+        None,
         "test-openai".to_owned(),
     )
 }
@@ -352,6 +354,7 @@ async fn list_models_returns_model_ids() {
         Some(server.url()),
         "test-key".into(),
         None,
+        None,
     );
 
     // When listing models.
@@ -386,6 +389,7 @@ async fn list_models_parses_context_length() {
         "gpt-4".into(),
         Some(server.url()),
         "test-key".into(),
+        None,
         None,
     );
 
@@ -422,6 +426,7 @@ async fn list_models_handles_missing_context_length() {
         "local-model".into(),
         Some(server.url()),
         "test-key".into(),
+        None,
         None,
     );
 
@@ -570,6 +575,7 @@ async fn base_url_override_routes_to_correct_host() {
         Some(server.url()),
         "test-key".to_owned(),
         None,
+        None,
         "test-openrouter".to_owned(),
     );
 
@@ -613,6 +619,7 @@ fn factory_rejects_empty_api_key() {
         "gpt-4".to_owned(),
         None,
         String::new(),
+        None,
         None,
         "test-openai".to_owned(),
     );
@@ -685,6 +692,7 @@ async fn custom_headers_from_config_are_sent() {
         Some(server.url()),
         "test-key".to_owned(),
         None,
+        None,
         "test-custom".to_owned(),
     );
 
@@ -712,4 +720,92 @@ async fn custom_headers_from_config_are_sent() {
     let _events: Vec<StreamEvent> = stream.filter_map(|r| async move { r.ok() }).collect().await;
 
     // Then the request succeeded (mock assertion is implicit via match_header).
+}
+
+// ---------------------------------------------------------------------------
+// Reasoning effort wire shape (AC3)
+// ---------------------------------------------------------------------------
+
+#[rstest::rstest]
+#[tokio::test]
+async fn openrouter_emits_nested_reasoning_effort_in_request() {
+    // Given a mock OpenRouter server and a factory with High reasoning effort.
+    let mut server = mockito::Server::new_async().await;
+    let factory = OpenAiCompatibleFactory::new(
+        ProviderConfig::openrouter(),
+        "openai/gpt-4".to_owned(),
+        Some(server.url()),
+        "test-key".to_owned(),
+        None,
+        Some(jinn_provider::ReasoningEffort::High),
+        "openrouter".to_owned(),
+    );
+
+    let mock = server
+        .mock("POST", "/chat/completions")
+        .match_body(mockito::Matcher::PartialJsonString(
+            "{\"reasoning\":{\"effort\":\"high\",\"enabled\":true}}".to_owned(),
+        ))
+        .with_status(200)
+        .with_header("content-type", "text/event-stream")
+        .with_body("data: {\"id\":\"x\",\"choices\":[{\"index\":0,\"delta\":{\"content\":\"ok\"},\"finish_reason\":null}]}\n\ndata: {\"id\":\"x\",\"choices\":[{\"index\":0,\"delta\":{},\"finish_reason\":\"stop\"}]}\n\n")
+        .create_async()
+        .await;
+
+    let service = factory.create().unwrap();
+    let stream = service
+        .chat_stream_with_tools(
+            vec![LlmMessage::User {
+                content: "test".into(),
+            }],
+            vec![],
+        )
+        .await
+        .unwrap();
+    let _events: Vec<StreamEvent> = stream.filter_map(|r| async move { r.ok() }).collect().await;
+
+    // Then the request body used the nested OpenRouter wire shape.
+    mock.assert_async().await;
+}
+
+#[rstest::rstest]
+#[tokio::test]
+async fn non_openrouter_emits_flat_reasoning_effort_in_request() {
+    // Given a mock non-OpenRouter (OpenAI direct) server and a factory with High effort.
+    let mut server = mockito::Server::new_async().await;
+    let factory = OpenAiCompatibleFactory::new(
+        ProviderConfig::openai(),
+        "gpt-4".to_owned(),
+        Some(server.url()),
+        "test-key".to_owned(),
+        None,
+        Some(jinn_provider::ReasoningEffort::High),
+        "openai".to_owned(),
+    );
+
+    let mock = server
+        .mock("POST", "/chat/completions")
+        .match_body(mockito::Matcher::PartialJsonString(
+            "{\"reasoning_effort\":\"high\"}".to_owned(),
+        ))
+        .with_status(200)
+        .with_header("content-type", "text/event-stream")
+        .with_body("data: {\"id\":\"x\",\"choices\":[{\"index\":0,\"delta\":{\"content\":\"ok\"},\"finish_reason\":null}]}\n\ndata: {\"id\":\"x\",\"choices\":[{\"index\":0,\"delta\":{},\"finish_reason\":\"stop\"}]}\n\n")
+        .create_async()
+        .await;
+
+    let service = factory.create().unwrap();
+    let stream = service
+        .chat_stream_with_tools(
+            vec![LlmMessage::User {
+                content: "test".into(),
+            }],
+            vec![],
+        )
+        .await
+        .unwrap();
+    let _events: Vec<StreamEvent> = stream.filter_map(|r| async move { r.ok() }).collect().await;
+
+    // Then the request body used the flat (non-nested) wire shape for this backend.
+    mock.assert_async().await;
 }

@@ -119,16 +119,24 @@ impl SessionPersistenceActor {
                 )
                 .await;
 
-                let (provider_id, model_used) = {
+                let (provider_id, model_used, reasoning_effort) = {
                     let mut state = self.state.write();
                     let session = state.session_mut(&payload.session_id);
-                    let model = &mut session.profile_mut().model;
-                    if model.is_no_provider() {
-                        (None, None)
+                    let profile = session.profile_mut();
+                    let global_default = self
+                        .services
+                        .user_preferences_storage
+                        .read()
+                        .reasoning
+                        .default_effort;
+                    let reasoning_effort =
+                        crate::resolve_effort(profile.reasoning_effort, global_default);
+                    if profile.model.is_no_provider() {
+                        (None, None, reasoning_effort)
                     } else {
-                        let resolved = model.resolve_model();
+                        let resolved = profile.model.resolve_model();
                         session.set_last_token_model(resolved.clone());
-                        (Some(resolved.clone()), Some(resolved))
+                        (Some(resolved.clone()), Some(resolved), reasoning_effort)
                     }
                 };
 
@@ -136,6 +144,7 @@ impl SessionPersistenceActor {
 
                 self.publish(SendToLlmProvider {
                     model_used,
+                    reasoning_effort,
                     session_id: payload.session_id.clone(),
                     messages: assembled.messages,
                     provider_id,
@@ -238,9 +247,19 @@ impl SessionPersistenceActor {
 
         // Resolve model under write lock (round-robin mutates index).
         // Sending → Streaming + record outgoing token count.
-        let (provider_id, model_used, old_phase, new_phase) = {
+        let (provider_id, model_used, reasoning_effort, old_phase, new_phase) = {
             let mut state = self.state.write();
             let session = state.session_mut_or_create(&payload.session_id);
+            let reasoning_effort = {
+                let profile = session.profile();
+                let global_default = self
+                    .services
+                    .user_preferences_storage
+                    .read()
+                    .reasoning
+                    .default_effort;
+                crate::resolve_effort(profile.reasoning_effort, global_default)
+            };
             let model = &mut session.profile_mut().model;
             let (provider_id, model_used) = if model.is_no_provider() {
                 (None, None)
@@ -257,7 +276,13 @@ impl SessionPersistenceActor {
                 tokens_received: 0,
                 cost: None,
             });
-            (provider_id, model_used, old_phase, session.phase())
+            (
+                provider_id,
+                model_used,
+                reasoning_effort,
+                old_phase,
+                session.phase(),
+            )
         };
 
         let estimated_tokens = assembled.estimated_tokens();
@@ -272,6 +297,7 @@ impl SessionPersistenceActor {
 
         self.publish(SendToLlmProvider {
             model_used,
+            reasoning_effort,
             session_id: payload.session_id.clone(),
             messages: assembled.messages,
             provider_id,
@@ -387,7 +413,7 @@ mod tests {
     use crate::feat::chat_input::protocol::command::{
         EnqueueResumeTurn, EnqueueUserMessage, PushChatEntry, SetChatInputText,
     };
-    use crate::feat::provider::protocol::command::SendMessage;
+    use crate::feat::provider::protocol::command::{SendMessage, SendToLlmProvider};
     use crate::feat::session::phase_machine::PhaseKind;
     use crate::protocol::{ChatEntry, ChatEntryKind};
 
@@ -818,6 +844,84 @@ mod tests {
         assert!(
             audit.contains_name("SendToLlmProvider"),
             "SendToLlmProvider must be emitted after drain on Idle dispatch"
+        );
+    }
+
+    // --- reasoning effort resolution (AC1, AC2) ---
+
+    #[tokio::test]
+    async fn enqueue_publishes_global_default_reasoning_effort() {
+        // Given a global default reasoning effort of High and a session with no override.
+        let (actor, state, audit) = create_actor().await;
+        let session_id = {
+            let mut guard = state.write();
+            let _ = guard.active_session_mut();
+            guard.session.active_session_id().clone()
+        };
+        {
+            let mut prefs = actor.services.user_preferences_storage.read();
+            prefs.reasoning.default_effort = Some(crate::ReasoningEffort::High);
+            actor
+                .services
+                .user_preferences_storage
+                .save(&prefs)
+                .expect("save global default");
+        }
+
+        // When enqueuing a message.
+        actor
+            .handle_enqueue_user_message(&EnqueueUserMessage {
+                session_id: session_id.clone(),
+                entry: ChatEntry::user("think hard"),
+            })
+            .await;
+
+        // Then the published SendToLlmProvider carries the global default effort.
+        let cmds = audit.of_type::<SendToLlmProvider>();
+        assert_eq!(cmds.len(), 1, "expected one SendToLlmProvider command");
+        assert_eq!(
+            cmds[0].reasoning_effort,
+            Some(crate::ReasoningEffort::High),
+            "global default effort should be forwarded"
+        );
+    }
+
+    #[tokio::test]
+    async fn enqueue_session_override_beats_global_reasoning_effort() {
+        // Given a global default of High and a session override of Low.
+        let (actor, state, audit) = create_actor().await;
+        let session_id = {
+            let mut guard = state.write();
+            let session = guard.active_session_mut();
+            session.profile_mut().reasoning_effort = Some(crate::ReasoningEffort::Low);
+            guard.session.active_session_id().clone()
+        };
+        {
+            let mut prefs = actor.services.user_preferences_storage.read();
+            prefs.reasoning.default_effort = Some(crate::ReasoningEffort::High);
+            actor
+                .services
+                .user_preferences_storage
+                .save(&prefs)
+                .expect("save global default");
+        }
+
+        // When enqueuing a message.
+        actor
+            .handle_enqueue_user_message(&EnqueueUserMessage {
+                session_id: session_id.clone(),
+                entry: ChatEntry::user("think a little"),
+            })
+            .await;
+
+        // Then the published SendToLlmProvider carries the session override (Low),
+        // not the global default (High).
+        let cmds = audit.of_type::<SendToLlmProvider>();
+        assert_eq!(cmds.len(), 1, "expected one SendToLlmProvider command");
+        assert_eq!(
+            cmds[0].reasoning_effort,
+            Some(crate::ReasoningEffort::Low),
+            "session override should win over global default"
         );
     }
 }

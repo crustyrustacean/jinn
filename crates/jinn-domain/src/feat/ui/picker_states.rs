@@ -9,6 +9,7 @@ use std::collections::HashSet;
 
 use crate::feat::persona::PersonaEntry;
 use crate::feat::plugin_dispatch::picker_entry::PluginPickerEntry;
+use crate::feat::reasoning::ReasoningEffortEntry;
 use crate::feat::session::picker_entry::SessionTreeEntry;
 use crate::feat::session_lifecycle::picker_entry::SessionLifecycleEntry;
 use crate::feat::skills::skill_entry::SkillEntry;
@@ -71,6 +72,10 @@ pub struct PickerStates {
     /// Compaction model picker state (items, filter text, selection index).
     /// OWNER: IntentHandler (compaction model picker navigation).
     pub compaction_model_picker: jinn_selection_widget::SelectionState<PickerEntry>,
+
+    /// Reasoning effort picker state (items, filter text, selection index).
+    /// OWNER: IntentHandler (reasoning effort picker navigation).
+    pub reasoning_effort_picker: jinn_selection_widget::SelectionState<ReasoningEffortEntry>,
 
     /// Task list picker state - read-only zoom view of the active session's task list.
     /// OWNER: IntentHandler (populated on task list picker open).
@@ -169,6 +174,17 @@ pub trait PickerExt {
     fn compaction_model_picker_mut(
         &mut self,
     ) -> &mut jinn_selection_widget::SelectionState<PickerEntry>;
+
+    // --- Reasoning effort picker ---
+
+    /// Read-only access to the reasoning effort picker state.
+    fn reasoning_effort_picker(
+        &self,
+    ) -> &jinn_selection_widget::SelectionState<ReasoningEffortEntry>;
+    /// Mutable access to the reasoning effort picker state.
+    fn reasoning_effort_picker_mut(
+        &mut self,
+    ) -> &mut jinn_selection_widget::SelectionState<ReasoningEffortEntry>;
 
     // --- Task list picker ---
 
@@ -296,6 +312,18 @@ impl PickerExt for super::frontend_state::FrontendState {
         &mut self,
     ) -> &mut jinn_selection_widget::SelectionState<PickerEntry> {
         &mut self.pickers.compaction_model_picker
+    }
+
+    fn reasoning_effort_picker(
+        &self,
+    ) -> &jinn_selection_widget::SelectionState<ReasoningEffortEntry> {
+        &self.pickers.reasoning_effort_picker
+    }
+
+    fn reasoning_effort_picker_mut(
+        &mut self,
+    ) -> &mut jinn_selection_widget::SelectionState<ReasoningEffortEntry> {
+        &mut self.pickers.reasoning_effort_picker
     }
 
     fn task_list_picker(&self) -> &jinn_selection_widget::TreePickerState<TaskListTreeEntry> {

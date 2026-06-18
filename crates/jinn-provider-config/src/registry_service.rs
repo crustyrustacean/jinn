@@ -12,6 +12,8 @@ use error_stack::Report;
 use parking_lot::RwLock;
 use parking_lot::RwLockReadGuard;
 
+use jinn_provider::ReasoningEffort;
+
 use super::api_keys::ApiKeys;
 use super::config::{AliasEntry, ProvidersConfig};
 use super::provider_id::ProviderId;
@@ -108,8 +110,9 @@ impl ProviderRegistryService {
         &self,
         id: &ProviderId,
         api_keys: &ApiKeys,
+        reasoning: Option<ReasoningEffort>,
     ) -> Result<Box<dyn LlmServiceFactory>, Report<LlmServiceError>> {
-        self.read().create_factory(id, api_keys)
+        self.read().create_factory(id, api_keys, reasoning)
     }
 
     /// Merges runtime-discovered models from the model cache into the registry.

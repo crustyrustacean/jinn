@@ -498,12 +498,11 @@ impl LlmActor {
             if let Some(pid) = payload.provider_id.clone() {
                 let id = crate::feat::provider_infra::ProviderId::new(pid.clone());
                 let api_keys = self.deps.services.api_keys.read();
-                match self
-                    .deps
-                    .services
-                    .provider_registry
-                    .create_factory(&id, &api_keys)
-                {
+                match self.deps.services.provider_registry.create_factory(
+                    &id,
+                    &api_keys,
+                    payload.reasoning_effort,
+                ) {
                     Ok(f) => {
                         tracing::debug!(provider_id = %pid, "created per-request LLM factory");
                         Ok(LlmServiceFactoryService::new(Arc::from(f)))
@@ -955,6 +954,7 @@ mod tests {
         let session_id = SessionId::new();
         let payload = SendToLlmProvider {
             model_used: None,
+            reasoning_effort: None,
             session_id: session_id.clone(),
             messages: vec![],
             tool_definitions: vec![],
@@ -992,6 +992,7 @@ mod tests {
         let session_id = SessionId::new();
         let payload = SendToLlmProvider {
             model_used: None,
+            reasoning_effort: None,
             session_id: session_id.clone(),
             messages: vec![],
             tool_definitions: vec![],
@@ -1026,6 +1027,7 @@ mod tests {
         let session_id = SessionId::new();
         let payload = SendToLlmProvider {
             model_used: None,
+            reasoning_effort: None,
             session_id: session_id.clone(),
             messages: vec![],
             tool_definitions: vec![],
@@ -1066,6 +1068,7 @@ mod tests {
         let session_id = SessionId::new();
         let payload = SendToLlmProvider {
             model_used: None,
+            reasoning_effort: None,
             session_id: session_id.clone(),
             messages: vec![],
             tool_definitions: vec![],
@@ -1137,6 +1140,7 @@ mod tests {
         harness
             .publish(SendToLlmProvider {
                 model_used: None,
+                reasoning_effort: None,
                 session_id: session_id.clone(),
                 messages: vec![],
                 tool_definitions: vec![],
@@ -1184,6 +1188,7 @@ mod tests {
         harness
             .publish(SendToLlmProvider {
                 model_used: None,
+                reasoning_effort: None,
                 session_id: session_id.clone(),
                 messages: vec![],
                 tool_definitions: vec![],

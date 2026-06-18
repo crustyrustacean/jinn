@@ -35,6 +35,8 @@ pub enum Scope {
 
     /// Picker - Compaction model selection.
     PickerCompactionModel,
+    /// Picker - Reasoning effort selection.
+    PickerReasoningEffort,
     /// Picker - Tool toggle selection.
     PickerTool,
     /// Picker - Skill toggle selection.
@@ -81,6 +83,7 @@ impl std::fmt::Display for Scope {
             Self::PickerPlugin => write!(f, "Picker(plugin)"),
 
             Self::PickerCompactionModel => write!(f, "Picker(compaction-model)"),
+            Self::PickerReasoningEffort => write!(f, "Picker(reasoning-effort)"),
             Self::PickerTool => write!(f, "Picker(tool)"),
             Self::PickerSkill => write!(f, "Picker(skill)"),
             Self::PickerTaskList => write!(f, "Picker(task-list)"),
@@ -116,6 +119,7 @@ impl std::str::FromStr for Scope {
             "Picker(plugin)" => Ok(Self::PickerPlugin),
 
             "Picker(compaction-model)" => Ok(Self::PickerCompactionModel),
+            "Picker(reasoning-effort)" => Ok(Self::PickerReasoningEffort),
             "Picker(tool)" => Ok(Self::PickerTool),
             "Picker(skill)" => Ok(Self::PickerSkill),
             "Picker(task-list)" => Ok(Self::PickerTaskList),
@@ -132,5 +136,27 @@ impl std::str::FromStr for Scope {
 
             _ => Err(()),
         }
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    #![allow(clippy::expect_used, clippy::panic, reason = "test code")]
+
+    use super::Scope;
+    use std::str::FromStr;
+
+    #[rstest::rstest]
+    fn picker_reasoning_effort_scope_round_trips() {
+        // Given the PickerReasoningEffort scope variant.
+        // When formatting then parsing back.
+        // Then the round-trip preserves the variant.
+        let s = Scope::PickerReasoningEffort.to_string();
+        assert_eq!(s, "Picker(reasoning-effort)");
+        assert_eq!(
+            Scope::from_str(&s),
+            Ok(Scope::PickerReasoningEffort),
+            "Display/FromStr should round-trip"
+        );
     }
 }

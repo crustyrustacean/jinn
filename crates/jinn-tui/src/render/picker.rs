@@ -22,6 +22,11 @@ pub(super) fn render_picker(frame: &mut Frame<'_>, area: Rect, ctx: &RenderCtx) 
         Some(PickerKind::CompactionModel) => {
             jinn_domain::feat::provider::render::render_compaction_model_picker(frame, area, ctx);
         }
+        Some(PickerKind::ReasoningEffort) => {
+            jinn_domain::feat::reasoning::picker_render::render_reasoning_effort_picker(
+                frame, area, ctx,
+            );
+        }
         Some(PickerKind::Tool) => {
             jinn_domain::feat::picker::render::render_tool_picker(frame, area, ctx);
         }

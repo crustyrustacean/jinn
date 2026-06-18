@@ -105,6 +105,14 @@ engine = "exa"
 # Default timeout (in seconds) for bash tool invocations.
 default_timeout_secs = 180
 
+# Reasoning effort for reasoning-capable models.
+# Controls how hard the model thinks before answering. Applies to OpenRouter
+# (nested reasoning.effort) and all other OpenAI-compatible backends (flat
+# reasoning_effort). When unset (default), the provider decides.
+[reasoning]
+# One of: max, xhigh, high, medium, low, minimal, none.
+# default_effort = "high"
+
 # <M-c>/<M-d> CWD selection
 [cwd_selector]
 # Shell command template run by the cwd_selector tool. `{path}` is replaced

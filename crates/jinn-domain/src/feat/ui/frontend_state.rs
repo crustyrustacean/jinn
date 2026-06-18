@@ -246,4 +246,14 @@ mod tests {
             "theme change must clear skill preview cache via invalidate_all"
         );
     }
+
+    #[test]
+    fn default_includes_empty_reasoning_effort_picker() {
+        // Given a default FrontendState.
+        let state = FrontendState::default();
+
+        // When accessing the reasoning effort picker.
+        // Then it exists and is empty (no items).
+        assert_eq!(state.pickers.reasoning_effort_picker.items().len(), 0);
+    }
 }

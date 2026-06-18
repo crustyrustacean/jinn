@@ -11,6 +11,7 @@
 
 use crate::common::render_ctx::RenderCtx;
 use crate::common::ui_element::UiElement;
+use crate::feat::chat_input::state::chat_input_box::ChatInputBoxState;
 use crate::feat::chat_input::state::wrap::WrappedLine;
 use crate::protocol::Mode;
 use ratatui::Frame;
@@ -18,7 +19,6 @@ use ratatui::layout::Rect;
 use ratatui::style::{Modifier, Style};
 use ratatui::text::{Line, Span};
 use ratatui::widgets::{Block, Borders, Paragraph};
-use unicode_segmentation::UnicodeSegmentation;
 use unicode_width::UnicodeWidthStr;
 
 /// Display element for the user's message composition area.
@@ -96,10 +96,16 @@ impl UiElement for ChatInputBoxElement {
         let inner = block.inner(area);
         let max_visible_lines = inner.height as usize;
 
+        // Fetch the memoized wrapped lines ONCE. Every consumer below reuses this slice;
+        // `wrapped_lines()` is `&self` and returns the cached slice (refreshed eagerly on
+        // every buffer mutation via the mutation seam, and on `set_wrap_width`).
+        let input = state.active_chat_input();
+        let wrapped = input.wrapped_lines();
+
         let lines = build_wrapped_lines(
-            state.active_chat_input().text(),
-            &state.active_chat_input().wrapped_lines(),
-            state.active_chat_input().scroll_offset(),
+            input,
+            wrapped,
+            input.scroll_offset(),
             max_visible_lines,
             prompt_style,
             text_style,
@@ -111,8 +117,8 @@ impl UiElement for ChatInputBoxElement {
         render_mode_badge(frame, area, badge_line);
 
         // Render scroll position indicators if content overflows.
-        let total_lines = state.active_chat_input().wrapped_lines().len();
-        let scroll_offset = state.active_chat_input().scroll_offset();
+        let total_lines = wrapped.len();
+        let scroll_offset = input.scroll_offset();
         render_scroll_indicators(
             frame,
             inner,
@@ -125,13 +131,11 @@ impl UiElement for ChatInputBoxElement {
 
         // Position cursor when in input mode.
         if input_mode {
-            let (row, col) = state.active_chat_input().cursor_row_col();
-            let scroll_offset = state.active_chat_input().scroll_offset();
+            let (row, col) = input.cursor_row_col();
+            let scroll_offset = input.scroll_offset();
             let visual_row = row.saturating_sub(scroll_offset);
             let prefix_width: usize = 2; // "> " = 2 columns
-            let lines = state.active_chat_input().wrapped_lines();
-            let display_col =
-                compute_display_col(state.active_chat_input().text(), &lines, row, col);
+            let display_col = compute_display_col(input, wrapped, row, col);
             let cursor_x = inner.x + (prefix_width + display_col) as u16;
             let cursor_y = inner.y + visual_row as u16;
             frame.set_cursor_position((cursor_x, cursor_y));
@@ -143,18 +147,17 @@ impl UiElement for ChatInputBoxElement {
 ///
 /// The first visual line gets a `> ` prompt prefix, all others get `  ` indentation.
 fn build_wrapped_lines<'a>(
-    text: &str,
+    input: &'a ChatInputBoxState,
     wrapped: &[WrappedLine],
     scroll_offset: usize,
     max_visible_lines: usize,
     prompt_style: Style,
     text_style: Style,
 ) -> Vec<Line<'a>> {
-    if text.is_empty() {
+    if input.text().is_empty() {
         return vec![Line::from(vec![Span::styled("> ", prompt_style)])];
     }
 
-    let graphemes: Vec<&str> = text.graphemes(true).collect();
     let mut lines = Vec::new();
 
     for (row, line) in wrapped.iter().enumerate() {
@@ -166,10 +169,7 @@ fn build_wrapped_lines<'a>(
         }
 
         let prefix = if row == 0 { "> " } else { "  " };
-        let content: String = graphemes
-            .get(line.grapheme_start..line.grapheme_end)
-            .map(|g| g.join(""))
-            .unwrap_or_default();
+        let content = input.grapheme_slice(line.grapheme_start, line.grapheme_end);
         lines.push(Line::from(vec![
             Span::styled(prefix, prompt_style),
             Span::styled(content, text_style),
@@ -260,16 +260,18 @@ fn render_mode_badge(frame: &mut Frame<'_>, area: Rect, badge_line: Line<'_>) {
 /// Sums the display widths of graphemes from the start of the wrapped line
 /// up to `col` graphemes in. For ASCII text, this is equivalent to `col`.
 /// For wide characters (CJK, emoji), each grapheme may contribute 2+ columns.
-fn compute_display_col(text: &str, lines: &[WrappedLine], row: usize, col: usize) -> usize {
+fn compute_display_col(
+    input: &ChatInputBoxState,
+    lines: &[WrappedLine],
+    row: usize,
+    col: usize,
+) -> usize {
     let Some(line) = lines.get(row) else {
         return col;
     };
-    let graphemes: Vec<&str> = text.graphemes(true).collect();
-    let end = (line.grapheme_start + col).min(graphemes.len());
+    let end = line.grapheme_start + col;
     if line.grapheme_start >= end {
         return 0;
     }
-    graphemes.get(line.grapheme_start..end).map_or(0, |gs| {
-        gs.iter().map(|g| UnicodeWidthStr::width(*g)).sum::<usize>()
-    })
+    UnicodeWidthStr::width(input.grapheme_slice(line.grapheme_start, end))
 }
