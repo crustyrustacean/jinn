@@ -656,6 +656,20 @@ fn enter_normal_mode_returns_to_normal_scope() {
 }
 
 #[rstest::rstest]
+fn enter_normal_mode_clears_pending_session_cwd() {
+    // Given a state with a stale pending session CWD override.
+    let mut state = AppState::default();
+    state.frontend.pending_session_cwd = Some(std::path::PathBuf::from("/tmp/stale"));
+
+    // When handling EnterNormalMode (ESC from the project/lifecycle chain).
+    let _ = crate::feat::chat_input::intent::handle_enter_normal_mode(&mut state);
+
+    // Then the pending override is cleared so it never leaks into a future
+    // session creation.
+    assert!(state.frontend.pending_session_cwd.is_none());
+}
+
+#[rstest::rstest]
 fn enter_normal_mode_from_input_emits_no_commands() {
     // Given a state in Input mode.
     use crate::common::app_state::FocusScope;

@@ -152,6 +152,15 @@ pub struct FrontendState {
     /// OWNER: IntentHandler (cwd input editing, confirmation).
     pub cwd_input: CwdInputState,
 
+    /// Optional CWD override for the next session creation.
+    ///
+    /// Set by the project picker (`<enter>`/`<c-enter>`) so a new session can
+    /// be rooted at a chosen project directory without mutating the active
+    /// session's CWD. Consumed (and cleared) by `handle_session_lifecycle_setup`
+    /// when the new session is created.
+    /// OWNER: IntentHandler (set by project picker, consumed by session creation).
+    pub pending_session_cwd: Option<std::path::PathBuf>,
+
     /// Quake bar state - active when `FocusScope::QuakeBar` is on the scope stack.
     /// OWNER: `input` written by IntentHandler; `log` written by QuakeBarActor.
     pub quake_bar: QuakeBarState,
@@ -186,6 +195,7 @@ impl Default for FrontendState {
             rename_session_input: RenameSessionInputState::default(),
             pruner_accumulation_input: PrunerAccumulationInputState::default(),
             cwd_input: CwdInputState::default(),
+            pending_session_cwd: None,
             quake_bar: QuakeBarState::default(),
 
             sidebar_width: 30,

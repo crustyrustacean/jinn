@@ -639,6 +639,7 @@ impl IntentHandler {
                 state,
                 lifecycle_name,
                 args,
+                None,
             ),
             Intent::SessionClose => feat::session_lifecycle::intent::handle_session_close(state),
             Intent::ArgInputConfirm => {
