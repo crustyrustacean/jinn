@@ -183,7 +183,6 @@ impl SessionPersistenceActor {
         payload: &EnqueueResumeTurn,
     ) {
         use crate::feat::session::protocol::session_phase_changed::SessionPhaseChanged;
-        use crate::feat::session::token_stats::TokenRecord;
         use crate::protocol::ChatEntry;
 
         // Only dispatch from Idle. Busy sessions ignore resume (no queuing).
@@ -224,32 +223,56 @@ impl SessionPersistenceActor {
         })
         .await;
 
-        // Drain any pending steering fragments into history before assembly.
-        {
+        self.drain_steering_into_history(&payload.session_id).await;
+        self.resolve_model_and_dispatch(&payload.session_id).await;
+    }
+
+    /// Drains any pending steering fragments into session history before assembly.
+    pub(in crate::feat::session::session_actor) async fn drain_steering_into_history(
+        &self,
+        session_id: &crate::SessionId,
+    ) {
+        let drained = {
             let mut state = self.state.write();
-            let session = state.session_mut_or_create(&payload.session_id);
+            let session = state.session_mut_or_create(session_id);
             if let Some(entry) = session.steering_buffer_mut().drain_into_entry() {
                 let entry_id = entry.id.clone();
                 let index = session.push_entry(entry);
-                tracing::debug!(
-                    session_id = %payload.session_id,
-                    entry_id = %entry_id,
-                    history_index = index,
-                    "drained steering entry into history at enqueue (resume turn)"
-                );
+                Some((entry_id, index))
+            } else {
+                None
             }
+        };
+        if let Some((entry_id, index)) = drained {
+            tracing::debug!(
+                session_id = %session_id,
+                entry_id = %entry_id,
+                history_index = index,
+                "drained steering entry into history at enqueue (resume turn)"
+            );
         }
-        // Assemble prompt and dispatch. Marker is excluded by default.
+    }
+
+    /// Assembles the prompt, resolves the model (mutating round-robin index under
+    /// write lock), transitions Sending → Streaming, records the outgoing token count,
+    /// emits `SendToLlmProvider`, and saves.
+    pub(in crate::feat::session::session_actor) async fn resolve_model_and_dispatch(
+        &self,
+        session_id: &crate::SessionId,
+    ) {
+        use crate::feat::session::token_stats::TokenRecord;
+
+        // Assemble prompt. Marker is excluded by default.
         let assembled = {
             let guard = self.state.read();
-            assemble_prompt(&guard, &payload.session_id, &self.counter, None)
+            assemble_prompt(&guard, session_id, &self.counter, None)
         };
 
         // Resolve model under write lock (round-robin mutates index).
         // Sending → Streaming + record outgoing token count.
         let (provider_id, model_used, reasoning_effort, old_phase, new_phase) = {
             let mut state = self.state.write();
-            let session = state.session_mut_or_create(&payload.session_id);
+            let session = state.session_mut_or_create(session_id);
             let reasoning_effort = {
                 let profile = session.profile();
                 let global_default = self
@@ -287,18 +310,13 @@ impl SessionPersistenceActor {
 
         let estimated_tokens = assembled.estimated_tokens();
 
-        super::super::helpers::emit_phase_changed(
-            self.bus(),
-            &payload.session_id,
-            old_phase,
-            new_phase,
-        )
-        .await;
+        super::super::helpers::emit_phase_changed(self.bus(), session_id, old_phase, new_phase)
+            .await;
 
         self.publish(SendToLlmProvider {
             model_used,
             reasoning_effort,
-            session_id: payload.session_id.clone(),
+            session_id: session_id.clone(),
             messages: assembled.messages,
             provider_id,
             estimated_tokens,
@@ -307,7 +325,7 @@ impl SessionPersistenceActor {
         })
         .await;
 
-        self.save_active_session(&payload.session_id).await;
+        self.save_active_session(session_id).await;
     }
 
     /// SetChatInputText: update the session's input buffer.

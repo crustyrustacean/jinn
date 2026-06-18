@@ -75,135 +75,170 @@ impl UiElement for StatusBarElement {
         let [cwd_area, info_area] =
             Layout::vertical([Constraint::Length(1), Constraint::Length(1)]).areas(area);
 
-        // --- Line 1: CWD ---
-        let cwd = state.active_session().cwd();
-        let cwd_display = shorten_path(cwd);
         let style = Style::default().fg(state.frontend.theme.muted_text);
-        let cwd_widget = Paragraph::new(Line::from(Span::styled(cwd_display, style)))
+
+        render_cwd_line(frame, cwd_area, state, style);
+        render_tree_aggregate(frame, cwd_area, state, style);
+        render_token_info_line(frame, info_area, state, style);
+    }
+}
+
+/// Renders the CWD line (left-aligned) for the active session.
+fn render_cwd_line(
+    frame: &mut Frame<'_>,
+    area: Rect,
+    state: &crate::common::app_state::AppState,
+    style: Style,
+) {
+    let cwd = state.active_session().cwd();
+    let cwd_display = shorten_path(cwd);
+    let cwd_widget = Paragraph::new(Line::from(Span::styled(cwd_display, style)))
+        .style(style)
+        .alignment(Alignment::Left);
+    frame.render_widget(cwd_widget, area);
+}
+
+/// Renders the tree aggregate (right-aligned on the CWD line) when the tree has >1 session.
+fn render_tree_aggregate(
+    frame: &mut Frame<'_>,
+    area: Rect,
+    state: &crate::common::app_state::AppState,
+    style: Style,
+) {
+    let tree = aggregate_tree_stats(
+        state.session.sessions(),
+        state.session.frozen_nodes(),
+        state.session.active_session_id(),
+    );
+    if tree.session_count <= 1 {
+        return;
+    }
+    let up_arrow = '\u{2191}';
+    let down_arrow = '\u{2193}';
+    let turn_symbol = '\u{21BB}';
+    let session_symbol = '\u{29C9}';
+    let tree_prefix = '\u{1F333}';
+    let tree_display = format!(
+        "{tree_prefix} {up_arrow}{} {down_arrow}{} ${:.5} {turn_symbol}{turns} {session_symbol}{count}",
+        format_tokens(tree.total_sent),
+        format_tokens(tree.total_received),
+        tree.total_cost,
+        turns = tree.total_turns,
+        count = tree.session_count,
+    );
+    let tree_widget =
+        Paragraph::new(Line::from(Span::styled(tree_display, style))).alignment(Alignment::Right);
+    frame.render_widget(tree_widget, area);
+}
+
+/// Renders the token/model info line (left: token stats + cost + turns; right: model).
+fn render_token_info_line(
+    frame: &mut Frame<'_>,
+    area: Rect,
+    state: &crate::common::app_state::AppState,
+    style: Style,
+) {
+    let active_model = state.active_session().profile().model.clone();
+    let token_info = build_token_info_string(state, &active_model);
+
+    let model = build_model_string(state, &active_model);
+    let total_cost = TokenStats::total_cost(state.active_session().token_ledger());
+
+    let left_side = {
+        let turn_count = turn_counter::compute_turn_count(
+            state.active_session().history(),
+            state.active_session().fork_ordinal(),
+        );
+        let turn_symbol = '\u{21BB}';
+        let left_spans: Vec<Span> = vec![
+            Span::styled(token_info, style),
+            Span::styled(format!(" ${:.5}", total_cost.abs()), style),
+            Span::styled(format!(" {turn_symbol}{turn_count}"), style),
+        ];
+        Paragraph::new(Line::from(left_spans))
             .style(style)
-            .alignment(Alignment::Left);
-        frame.render_widget(cwd_widget, cwd_area);
+            .alignment(Alignment::Left)
+    };
+    frame.render_widget(left_side, area);
 
-        // --- Line 1 right: Tree aggregate (only when tree has >1 session) ---
-        let tree = aggregate_tree_stats(
-            state.session.sessions(),
-            state.session.frozen_nodes(),
-            state.session.active_session_id(),
-        );
-        if tree.session_count > 1 {
-            let up_arrow = '\u{2191}';
-            let down_arrow = '\u{2193}';
-            let turn_symbol = '\u{21BB}';
-            let session_symbol = '\u{29C9}';
-            let tree_prefix = '\u{1F333}';
-            let tree_display = format!(
-                "{tree_prefix} {up_arrow}{} {down_arrow}{} ${:.5} {turn_symbol}{turns} {session_symbol}{count}",
-                format_tokens(tree.total_sent),
-                format_tokens(tree.total_received),
-                tree.total_cost,
-                turns = tree.total_turns,
-                count = tree.session_count,
-            );
-            let tree_widget = Paragraph::new(Line::from(Span::styled(tree_display, style)))
-                .alignment(Alignment::Right);
-            frame.render_widget(tree_widget, cwd_area);
-        }
+    let right_spans = vec![Span::styled(model, style)];
+    let model_widget = Paragraph::new(Line::from(right_spans)).alignment(Alignment::Right);
+    frame.render_widget(model_widget, area);
+}
 
-        // --- Line 2: Existing info ---
-        let active_model = state.active_session().profile().model.clone();
+/// Builds the left-side token info string: sent/received counts + context budget.
+fn build_token_info_string(
+    state: &crate::common::app_state::AppState,
+    active_model: &crate::feat::session::model_selection::ModelSelection,
+) -> String {
+    let active_session = state.active_session();
+    let token_stats = TokenStats::from_ledger(active_session.token_ledger());
+    let up_arrow = '\u{2191}';
+    let down_arrow = '\u{2193}';
+    let token_info = format!(
+        "{up_arrow}{} {down_arrow}{}",
+        format_tokens(token_stats.total_sent),
+        format_tokens(token_stats.total_received),
+    );
 
-        // Compute token stats for the active session only (no descendants).
-        let active_session = state.active_session();
-        let token_stats = TokenStats::from_ledger(active_session.token_ledger());
-        let total_cost = TokenStats::total_cost(active_session.token_ledger());
-        let up_arrow = '\u{2191}';
-        let down_arrow = '\u{2193}';
-        let mut token_info = format!(
-            "{up_arrow}{} {down_arrow}{}",
-            format_tokens(token_stats.total_sent),
-            format_tokens(token_stats.total_received),
-        );
-
-        let ctx_size = state.active_session().context_size();
-        let ctx_limit = resolve_context_limit(
-            state.provider.model_cache.as_ref(),
-            active_model.display_str(),
-        );
-        let context_display = match (ctx_size, ctx_limit) {
-            (Some(used), Some(max)) => {
-                let ctx_used = u64::from(used);
-                let max_u64 = u64::from(max);
-                let pct = if max_u64 > 0 {
-                    format!("{:.1}%", (ctx_used as f64 / max_u64 as f64) * 100.0)
-                } else {
-                    "0.0%".to_owned()
-                };
-                format!("{}/{}", pct, format_budget(max as usize))
-            }
-            (None, Some(max)) => {
-                format!("0.0%/{}", format_budget(max as usize))
-            }
-            (Some(used), None) => {
-                format!("{}/???", format_tokens(u64::from(used)))
-            }
-            (None, None) => "0/???".to_owned(),
-        };
-        token_info = format!("{token_info} {context_display}");
-
-        let model = {
-            let last_dispatched = state
-                .active_session()
-                .token_ledger()
-                .last()
-                .and_then(|r| r.model_used.as_deref());
-            let resolved = last_dispatched.unwrap_or_else(|| active_model.display_str());
-
-            if active_model.is_no_provider() {
-                "no model selected".to_owned()
-            } else if let Some((provider, m)) = resolved.split_once('/') {
-                format!("({provider})/{m}")
+    let ctx_size = state.active_session().context_size();
+    let ctx_limit = resolve_context_limit(
+        state.provider.model_cache.as_ref(),
+        active_model.display_str(),
+    );
+    let context_display = match (ctx_size, ctx_limit) {
+        (Some(used), Some(max)) => {
+            let ctx_used = u64::from(used);
+            let max_u64 = u64::from(max);
+            let pct = if max_u64 > 0 {
+                format!("{:.1}%", (ctx_used as f64 / max_u64 as f64) * 100.0)
             } else {
-                resolved.to_owned()
-            }
-        };
+                "0.0%".to_owned()
+            };
+            format!("{}/{}", pct, format_budget(max as usize))
+        }
+        (None, Some(max)) => format!("0.0%/{}", format_budget(max as usize)),
+        (Some(used), None) => format!("{}/???", format_tokens(u64::from(used))),
+        (None, None) => "0/???".to_owned(),
+    };
+    format!("{token_info} {context_display}")
+}
 
-        let model = match active_model.as_alloy() {
-            Some(alloy) => format!("[alloy {}] {model}", alloy.models.len()),
-            None => model,
-        };
+/// Builds the right-side model display string: resolved name + reasoning effort.
+fn build_model_string(
+    state: &crate::common::app_state::AppState,
+    active_model: &crate::feat::session::model_selection::ModelSelection,
+) -> String {
+    let model = {
+        let last_dispatched = state
+            .active_session()
+            .token_ledger()
+            .last()
+            .and_then(|r| r.model_used.as_deref());
+        let resolved = last_dispatched.unwrap_or_else(|| active_model.display_str());
 
-        // Append the resolved reasoning effort as `[<mode>]` to the right of the model.
-        // Omitted entirely when no effort is resolved (no `[none]` noise).
-        let resolved_effort = resolve_effort(
-            state.active_session().profile().reasoning_effort,
-            state.frontend.preferences.reasoning.default_effort,
-        );
-        let model = match resolved_effort {
-            Some(effort) => format!("{model} [{}]", effort.as_str()),
-            None => model,
-        };
+        if active_model.is_no_provider() {
+            "no model selected".to_owned()
+        } else if let Some((provider, m)) = resolved.split_once('/') {
+            format!("({provider})/{m}")
+        } else {
+            resolved.to_owned()
+        }
+    };
 
-        let left_side = {
-            // Build left side: cost + turn count.
-            let turn_count = turn_counter::compute_turn_count(
-                state.active_session().history(),
-                state.active_session().fork_ordinal(),
-            );
-            let turn_symbol = '\u{21BB}';
-            let left_spans: Vec<Span> = vec![
-                Span::styled(token_info, style),
-                Span::styled(format!(" ${:.5}", total_cost.abs()), style),
-                Span::styled(format!(" {turn_symbol}{turn_count}"), style),
-            ];
-            Paragraph::new(Line::from(left_spans))
-                .style(style)
-                .alignment(Alignment::Left)
-        };
-        frame.render_widget(left_side, info_area);
+    let model = match active_model.as_alloy() {
+        Some(alloy) => format!("[alloy {}] {model}", alloy.models.len()),
+        None => model,
+    };
 
-        let right_spans = vec![Span::styled(model, style)];
-        let right_line = Line::from(right_spans);
-        let model_widget = Paragraph::new(right_line).alignment(Alignment::Right);
-        frame.render_widget(model_widget, info_area);
+    // Append the resolved reasoning effort as `[<mode>]`.
+    // Omitted entirely when no effort is resolved (no `[none]` noise).
+    let resolved_effort = resolve_effort(
+        state.active_session().profile().reasoning_effort,
+        state.frontend.preferences.reasoning.default_effort,
+    );
+    match resolved_effort {
+        Some(effort) => format!("{model} [{}]", effort.as_str()),
+        None => model,
     }
 }

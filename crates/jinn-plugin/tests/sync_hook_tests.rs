@@ -404,7 +404,7 @@ fn on_keybind_trigger_returns_nil_for_other_plugins() {
     // Then gatekeeper returns nothing (nil) for other plugins' keybinds —
     // call_hooks_typed filters it out, so the default (run_action=true) applies.
     assert!(
-        results.iter().all(Value::is_null),
+        results.iter().all(serde_json::Value::is_null),
         "plugin must return nil for other plugins' keybinds; got {results:?}"
     );
 }
