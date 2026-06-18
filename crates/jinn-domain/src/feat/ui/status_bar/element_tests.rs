@@ -59,6 +59,45 @@ fn render_shows_provider_and_model() {
 }
 
 #[rstest::rstest]
+fn render_single_model_ignores_stale_ledger_model_used() {
+    // Given a Single selection of ollama/llama3, but a token ledger whose last
+    // record claims a different (stale) model was dispatched.
+    let mut element = StatusBarElement;
+    let mut state = AppState::default();
+    state
+        .active_session_mut()
+        .set_model(ModelSelection::Single("ollama/llama3".to_owned()));
+    state.active_session_mut().push_token_record(TokenRecord {
+        model_used: Some("openrouter/gpt-4".to_owned()),
+        timestamp: jiff::Timestamp::now(),
+        tokens_sent: 1000,
+        tokens_received: 500,
+        cost: None,
+    });
+
+    // When rendering.
+    let (mut terminal, area) = setup_term(50, 2);
+    terminal
+        .draw(|frame| {
+            let ctx = RenderCtx::new(&state);
+            element.render(frame, area, &ctx);
+        })
+        .unwrap();
+    let buffer = terminal.backend().buffer().clone();
+    let row = buffer_row(&buffer, 1, 50);
+
+    // Then the selected model is shown, not the stale dispatched model.
+    assert!(
+        row.contains("(ollama)/llama3"),
+        "should show selected model, got: {row}"
+    );
+    assert!(
+        !row.contains("gpt-4"),
+        "should not show stale dispatched model, got: {row}"
+    );
+}
+
+#[rstest::rstest]
 fn render_right_aligns_text() {
     let mut element = StatusBarElement;
     let mut state = AppState::default();
