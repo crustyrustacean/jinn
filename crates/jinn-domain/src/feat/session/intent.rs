@@ -9,7 +9,7 @@ use super::validator;
 
 /// Creates a new chat session, delegating to the blank lifecycle setup.
 pub fn handle_session_new(state: &mut AppState) -> IntentResult {
-    crate::feat::session_lifecycle::intent::handle_session_lifecycle_setup(state, "", &[])
+    crate::feat::session_lifecycle::intent::handle_session_lifecycle_setup(state, "", &[], None)
 }
 
 /// Refreshes the model list from the active provider.

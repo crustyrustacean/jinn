@@ -81,6 +81,7 @@ impl AppState {
             PickerKind::Tool => Some(self.frontend.tool_picker_mut()),
             PickerKind::Skill => Some(self.frontend.skill_picker_mut()),
             PickerKind::TaskList => Some(self.frontend.task_list_picker_mut()),
+            PickerKind::Project => Some(self.frontend.project_picker_mut()),
         }
     }
     /// Read-only access to the active picker's navigation interface.
@@ -104,6 +105,7 @@ impl AppState {
             PickerKind::Tool => Some(self.frontend.tool_picker()),
             PickerKind::Skill => Some(self.frontend.skill_picker()),
             PickerKind::TaskList => Some(self.frontend.task_list_picker()),
+            PickerKind::Project => Some(self.frontend.project_picker()),
         }
     }
 

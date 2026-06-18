@@ -7,6 +7,7 @@ use crate::common::tui_signals::TuiSignals;
 use crate::feat::cwd_input::state::CwdInputState;
 use crate::feat::preferences_actor::UserPreferences;
 use crate::feat::preferences_actor::app_state_file::AppStateFile;
+use crate::feat::project_add_input::state::ProjectAddInputState;
 use crate::feat::pruner_accumulation_input::state::PrunerAccumulationInputState;
 use crate::feat::quake_bar::state::QuakeBarState;
 use crate::feat::rename_session_input::state::RenameSessionInputState;
@@ -152,6 +153,20 @@ pub struct FrontendState {
     /// OWNER: IntentHandler (cwd input editing, confirmation).
     pub cwd_input: CwdInputState,
 
+    /// Project-add input popup state - active when `FocusScope::ProjectAddInput` is on
+    /// the scope stack.
+    /// OWNER: IntentHandler (project-add input editing, confirmation).
+    pub project_add_input: ProjectAddInputState,
+
+    /// Optional CWD override for the next session creation.
+    ///
+    /// Set by the project picker (`<enter>`/`<c-enter>`) so a new session can
+    /// be rooted at a chosen project directory without mutating the active
+    /// session's CWD. Consumed (and cleared) by `handle_session_lifecycle_setup`
+    /// when the new session is created.
+    /// OWNER: IntentHandler (set by project picker, consumed by session creation).
+    pub pending_session_cwd: Option<std::path::PathBuf>,
+
     /// Quake bar state - active when `FocusScope::QuakeBar` is on the scope stack.
     /// OWNER: `input` written by IntentHandler; `log` written by QuakeBarActor.
     pub quake_bar: QuakeBarState,
@@ -186,6 +201,8 @@ impl Default for FrontendState {
             rename_session_input: RenameSessionInputState::default(),
             pruner_accumulation_input: PrunerAccumulationInputState::default(),
             cwd_input: CwdInputState::default(),
+            project_add_input: ProjectAddInputState::default(),
+            pending_session_cwd: None,
             quake_bar: QuakeBarState::default(),
 
             sidebar_width: 30,

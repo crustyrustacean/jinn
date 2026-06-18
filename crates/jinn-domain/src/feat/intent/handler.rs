@@ -327,6 +327,57 @@ impl IntentHandler {
                 feat::cwd_input::intent::handle_cwd_input_leave(state)
             }
 
+            // --- ProjectAddInput text-edit guards (mirror CwdInput) ---
+            Intent::InsertChar { ch }
+                if matches!(
+                    state.frontend.scope_stack.current(),
+                    crate::common::app_state::FocusScope::ProjectAddInput
+                ) =>
+            {
+                feat::project_add_input::intent::handle_insert_char(state, *ch)
+            }
+            Intent::DeleteGrapheme
+                if matches!(
+                    state.frontend.scope_stack.current(),
+                    crate::common::app_state::FocusScope::ProjectAddInput
+                ) =>
+            {
+                feat::project_add_input::intent::handle_delete(state)
+            }
+            Intent::DeleteGraphemeForward
+                if matches!(
+                    state.frontend.scope_stack.current(),
+                    crate::common::app_state::FocusScope::ProjectAddInput
+                ) =>
+            {
+                feat::project_add_input::intent::handle_delete_forward(state)
+            }
+            Intent::MoveCursorLeft
+                if matches!(
+                    state.frontend.scope_stack.current(),
+                    crate::common::app_state::FocusScope::ProjectAddInput
+                ) =>
+            {
+                feat::project_add_input::intent::handle_cursor_left(state)
+            }
+            Intent::MoveCursorRight
+                if matches!(
+                    state.frontend.scope_stack.current(),
+                    crate::common::app_state::FocusScope::ProjectAddInput
+                ) =>
+            {
+                feat::project_add_input::intent::handle_cursor_right(state)
+            }
+            Intent::EnterNormalMode
+                if matches!(
+                    state.frontend.scope_stack.current(),
+                    crate::common::app_state::FocusScope::ProjectAddInput
+                ) =>
+            {
+                // ESC cancels project-add input - pop scope, clear state.
+                feat::project_add_input::intent::handle_project_add_input_leave(state)
+            }
+
             // --- Quake Bar text-edit guards ---
             // The quake bar captures ALL keystrokes while open; these guards
             // route editing intents to the quake bar instead of chat input.
@@ -443,6 +494,9 @@ impl IntentHandler {
                 crate::common::app_state::FocusScope::CwdInput => {
                     feat::cwd_input::intent::handle_paste(state, text)
                 }
+                crate::common::app_state::FocusScope::ProjectAddInput => {
+                    feat::project_add_input::intent::handle_paste(state, text)
+                }
                 _ => IntentResult::empty(),
             },
             // --- Navigation ---
@@ -495,6 +549,12 @@ impl IntentHandler {
             Intent::PickerMoveCursorRight => feat::picker::intent::handle_move_cursor_right(state),
             Intent::ToolToggleSelected => feat::picker::intent::handle_tool_toggle(state),
             Intent::SkillToggleSelected => feat::picker::intent::handle_skill_toggle(state),
+            Intent::ProjectNewAtHighlightedWithLifecycle => {
+                feat::picker::intent::handle_project_lifecycle_confirm(state)
+            }
+            Intent::ProjectRemoveHighlighted => {
+                feat::picker::intent::handle_project_remove_highlighted(state)
+            }
             Intent::ModelToggleSelected => feat::picker::intent::handle_model_toggle(state),
             Intent::ToggleAlloyMode => feat::picker::intent::handle_toggle_alloy_mode(state),
             Intent::PreviewScrollUp => feat::picker::intent::handle_preview_scroll_up(state),
@@ -639,6 +699,7 @@ impl IntentHandler {
                 state,
                 lifecycle_name,
                 args,
+                None,
             ),
             Intent::SessionClose => feat::session_lifecycle::intent::handle_session_close(state),
             Intent::ArgInputConfirm => {
@@ -734,6 +795,16 @@ impl IntentHandler {
             Intent::OpenCwdInput => feat::cwd_input::intent::handle_cwd_input_enter(state),
             Intent::CwdInputConfirm => feat::cwd_input::intent::handle_cwd_input_confirm(state),
             Intent::CwdInputLeave => feat::cwd_input::intent::handle_cwd_input_leave(state),
+
+            Intent::OpenProjectAddInput => {
+                feat::project_add_input::intent::handle_project_add_input_enter(state)
+            }
+            Intent::ProjectAddInputConfirm => {
+                feat::project_add_input::intent::handle_project_add_input_confirm(state)
+            }
+            Intent::ProjectAddInputLeave => {
+                feat::project_add_input::intent::handle_project_add_input_leave(state)
+            }
 
             // --- Quake Bar ---
             Intent::OpenQuakeBar => feat::quake_bar::intent::handle_open(state),

@@ -83,6 +83,7 @@ pub fn handle_session_lifecycle_setup(
     state: &mut AppState,
     lifecycle_name: &str,
     args: &[String],
+    cwd: Option<&std::path::Path>,
 ) -> IntentResult {
     // Extract setup command before mutating state (borrow checker).
     let setup_command = find_lifecycle(state, lifecycle_name).and_then(|l| l.setup.clone());
@@ -117,14 +118,28 @@ pub fn handle_session_lifecycle_setup(
     });
     new_session.set_lifecycle_args(args.to_vec());
 
-    // Inherit the CWD from the active session BEFORE insert/set_active —
-    // once set_active(new_id) runs below, active_session() points at this new
-    // session. CWD is sticky in practice (one project for many sessions), so
-    // inheriting it matches real workflow and avoids sourcing from the app
-    // launch dir. A scripted lifecycle's stdout output still wins as the final
-    // CWD via the session actor; this only sets the starting value.
-    let inherited_cwd = state.active_session().cwd().to_path_buf();
-    new_session.set_cwd(inherited_cwd);
+    // Resolve the new session's starting CWD. The precedence is:
+    //   1. explicit `cwd` override (e.g. from the project picker),
+    //   2. a pending override stashed on the frontend
+    //      (set by the project picker then consumed here),
+    //   3. inherit the active session's CWD (legacy behavior).
+    //
+    // CWD is resolved BEFORE insert/set_active — once set_active(new_id)
+    // runs below, active_session() points at this new session. The pending
+    // override is always cleared here so it never leaks into the next creation,
+    // even when an explicit `cwd` was supplied.
+    //
+    // A scripted lifecycle's stdout output still wins as the final CWD via the
+    // session actor; this only sets the starting value.
+    let starting_cwd = cwd
+        .map(std::path::Path::to_path_buf)
+        .or_else(|| state.frontend.pending_session_cwd.take())
+        .unwrap_or_else(|| state.active_session().cwd().to_path_buf());
+    // Defensively clear any residual pending override so it can never leak into
+    // the next creation (the `.take()` above is skipped when an explicit cwd
+    // overrides, so clear unconditionally here).
+    state.frontend.pending_session_cwd = None;
+    new_session.set_cwd(starting_cwd);
 
     state.session.insert(new_session);
     state.session.set_active(new_id.clone());
@@ -172,7 +187,7 @@ pub fn handle_session_lifecycle_setup(
             .message(created_event);
     }
 
-    // No setup command — the inherited CWD was already set on the new session
+    // No setup command — the starting CWD was already set on the new session
     // before insert (above), so there's nothing more to do here.
     IntentResult::with_message(created_event)
 }
@@ -211,7 +226,7 @@ pub fn handle_arg_input_confirm(state: &mut AppState) -> IntentResult {
     // Clear arg input state.
     state.frontend.arg_input = crate::common::app_state::ArgInputState::default();
 
-    handle_session_lifecycle_setup(state, &lifecycle_name, &args)
+    handle_session_lifecycle_setup(state, &lifecycle_name, &args, None)
 }
 
 /// Handle character insertion in the arg input popup.
@@ -370,7 +385,7 @@ mod tests {
         let old_id = state.session.active_session_id().clone();
 
         // When handling SessionLifecycleSetup with blank lifecycle.
-        let result = handle_session_lifecycle_setup(&mut state, "", &[]);
+        let result = handle_session_lifecycle_setup(&mut state, "", &[], None);
 
         // Then a new session is created.
         assert_ne!(*state.session.active_session_id(), old_id);
@@ -386,6 +401,59 @@ mod tests {
         // And the new session inherited the active session's CWD, not the app
         // launch dir.
         assert_eq!(state.active_session().cwd(), inherited_cwd);
+    }
+
+    #[rstest::rstest]
+    fn explicit_cwd_override_overrides_inherited_cwd() {
+        // Given a state whose active session has a distinct CWD and a
+        // pending override stashed on the frontend (as the project picker does).
+        let mut state = AppState::default();
+        state
+            .active_session_mut()
+            .set_cwd(std::path::PathBuf::from("/tmp/active-project"));
+        state.frontend.pending_session_cwd =
+            Some(std::path::PathBuf::from("/tmp/override-project"));
+
+        // When handling SessionLifecycleSetup with an explicit cwd override.
+        let _result = handle_session_lifecycle_setup(
+            &mut state,
+            "",
+            &[],
+            Some(std::path::Path::new("/tmp/explicit-dir")),
+        );
+
+        // Then the new session's CWD is the explicit override, not the active
+        // session's CWD and not the pending override.
+        assert_eq!(
+            state.active_session().cwd(),
+            std::path::Path::new("/tmp/explicit-dir"),
+        );
+        // And the pending override is cleared (never leaks to the next creation).
+        assert!(state.frontend.pending_session_cwd.is_none());
+    }
+
+    #[rstest::rstest]
+    fn pending_session_cwd_is_consumed_when_no_explicit_cwd_given() {
+        // Given a state whose active session has a distinct CWD and a
+        // pending override stashed on the frontend.
+        let mut state = AppState::default();
+        state
+            .active_session_mut()
+            .set_cwd(std::path::PathBuf::from("/tmp/active-project"));
+        state.frontend.pending_session_cwd =
+            Some(std::path::PathBuf::from("/tmp/override-project"));
+
+        // When handling SessionLifecycleSetup with no explicit cwd.
+        let _result = handle_session_lifecycle_setup(&mut state, "", &[], None);
+
+        // Then the new session's CWD is the pending override, not the active
+        // session's CWD.
+        assert_eq!(
+            state.active_session().cwd(),
+            std::path::Path::new("/tmp/override-project"),
+        );
+        // And the pending override is cleared after consumption.
+        assert!(state.frontend.pending_session_cwd.is_none());
     }
 
     #[rstest::rstest]
@@ -411,7 +479,7 @@ mod tests {
             });
 
         // When handling SessionLifecycleSetup with the scripted lifecycle.
-        let _result = handle_session_lifecycle_setup(&mut state, "fossil branch", &[]);
+        let _result = handle_session_lifecycle_setup(&mut state, "fossil branch", &[], None);
 
         // Then the new session's in-memory CWD is the inherited value
         // (pre-seeded before the actor runs the script). The actor may
@@ -441,7 +509,7 @@ mod tests {
             });
 
         // When handling SessionLifecycleSetup.
-        let result = handle_session_lifecycle_setup(&mut state, "fossil branch", &[]);
+        let result = handle_session_lifecycle_setup(&mut state, "fossil branch", &[], None);
 
         // Then a new session is created.
         assert_ne!(*state.session.active_session_id(), old_id);
@@ -478,8 +546,12 @@ mod tests {
             });
 
         // When handling SessionLifecycleSetup with args.
-        let result =
-            handle_session_lifecycle_setup(&mut state, "fossil branch", &["my-branch".to_owned()]);
+        let result = handle_session_lifecycle_setup(
+            &mut state,
+            "fossil branch",
+            &["my-branch".to_owned()],
+            None,
+        );
 
         // Then PersistSession is emitted first.
         assert!(result.message_names[0].contains("PersistSession"));
@@ -504,7 +576,7 @@ mod tests {
             });
 
         // When handling SessionLifecycleSetup.
-        let _result = handle_session_lifecycle_setup(&mut state, "", &[]);
+        let _result = handle_session_lifecycle_setup(&mut state, "", &[], None);
 
         // Then overlays are cleared and Input scope is pushed.
         assert!(matches!(
@@ -1016,7 +1088,7 @@ mod tests {
         assert!(state.active_session().is_empty());
 
         // When creating a new session via lifecycle setup.
-        let _result = handle_session_lifecycle_setup(&mut state, "", &[]);
+        let _result = handle_session_lifecycle_setup(&mut state, "", &[], None);
 
         // Then the old empty session is preserved (no auto-close).
         assert!(state.session.contains(&old_id));
@@ -1034,7 +1106,7 @@ mod tests {
             .push_entry(ChatEntry::user("hello"));
 
         // When creating a new session.
-        let _result = handle_session_lifecycle_setup(&mut state, "", &[]);
+        let _result = handle_session_lifecycle_setup(&mut state, "", &[], None);
 
         // Then the old session is preserved.
         assert!(state.session.contains(&old_id));
@@ -1065,7 +1137,7 @@ mod tests {
                 ),
                 teardown: None,
             });
-        let result = handle_session_lifecycle_setup(&mut state, "fossil branch", &[]);
+        let result = handle_session_lifecycle_setup(&mut state, "fossil branch", &[], None);
 
         // Then both sessions exist (old empty one is preserved).
         assert_eq!(state.session.session_count(), 2);
@@ -1319,5 +1391,23 @@ mod tests {
         assert!(result.message_names[0].contains("PushChatEntry"));
         // And the second is RunSessionSetup.
         assert!(result.message_names[1].contains("RunSessionSetup"));
+    }
+
+    #[test]
+    fn abandon_via_enter_normal_mode_clears_pending_session_cwd() {
+        // Given a state with a pending session CWD override stashed from a
+        // project-picker confirm (midway through the lifecycle/args chain).
+        let mut state = AppState::default();
+        let active_cwd = state.active_session().cwd().to_path_buf();
+        state.frontend.pending_session_cwd = Some(std::path::PathBuf::from("/tmp/project-a"));
+
+        // When abandoning the chain via ESC (EnterNormalMode).
+        let _result = crate::feat::chat_input::intent::handle_enter_normal_mode(&mut state);
+
+        // Then the pending override is cleared so it never leaks into a future
+        // `n`/`N`.
+        assert!(state.frontend.pending_session_cwd.is_none());
+        // And the active session's CWD is unchanged (no side-channel mutation).
+        assert_eq!(state.active_session().cwd(), active_cwd);
     }
 }
