@@ -2333,6 +2333,23 @@ fn lifecycle_script_state_defaults_to_nothing_ran() {
 }
 
 #[rstest::rstest]
+#[case(LifecycleScriptState::NothingRan, "nothing_ran")]
+#[case(LifecycleScriptState::SetupRan, "setup_ran")]
+#[case(LifecycleScriptState::TeardownRan, "teardown_ran")]
+fn lifecycle_script_state_displays_snake_case(
+    #[case] state: LifecycleScriptState,
+    #[case] expected: &str,
+) {
+    // Given each lifecycle script state variant.
+
+    // When formatting it.
+    let rendered = state.to_string();
+
+    // Then it renders as the snake_case form matching serde rename.
+    assert_eq!(rendered, expected);
+}
+
+#[rstest::rstest]
 fn session_state_can_be_set_to_archived() {
     // Given a new session.
     let mut session = ChatSessionState::new();
