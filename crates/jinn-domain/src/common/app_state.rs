@@ -77,6 +77,7 @@ impl AppState {
             PickerKind::Plugin => Some(self.frontend.plugin_picker_mut()),
 
             PickerKind::CompactionModel => Some(self.frontend.compaction_model_picker_mut()),
+            PickerKind::ReasoningEffort => Some(self.frontend.reasoning_effort_picker_mut()),
             PickerKind::Tool => Some(self.frontend.tool_picker_mut()),
             PickerKind::Skill => Some(self.frontend.skill_picker_mut()),
             PickerKind::TaskList => Some(self.frontend.task_list_picker_mut()),
@@ -99,6 +100,7 @@ impl AppState {
             PickerKind::Plugin => Some(self.frontend.plugin_picker()),
 
             PickerKind::CompactionModel => Some(self.frontend.compaction_model_picker()),
+            PickerKind::ReasoningEffort => Some(self.frontend.reasoning_effort_picker()),
             PickerKind::Tool => Some(self.frontend.tool_picker()),
             PickerKind::Skill => Some(self.frontend.skill_picker()),
             PickerKind::TaskList => Some(self.frontend.task_list_picker()),

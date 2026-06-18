@@ -72,6 +72,11 @@ pub fn validate_picker_confirm(state: &AppState) -> Result<(), PickerConfirmErro
             .compaction_model_picker()
             .selected_item()
             .is_some(),
+        PickerKind::ReasoningEffort => state
+            .frontend
+            .reasoning_effort_picker()
+            .selected_item()
+            .is_some(),
         PickerKind::Tool => state.frontend.tool_picker().selected_item().is_some(),
         PickerKind::Skill => state.frontend.skill_picker().selected_item().is_some(),
         // TaskList is read-only; Enter is a no-op. Skip the selection gate so the
@@ -159,6 +164,57 @@ mod tests {
         assert!(
             result.is_ok(),
             "should allow opening picker when none is active"
+        );
+    }
+
+    #[rstest::rstest]
+    fn validate_picker_confirm_accepts_reasoning_with_selection() {
+        // Kills: make the ReasoningEffort arm return false unconditionally.
+        // If the selection gate were broken, confirming with a selection would
+        // be rejected.
+        use crate::feat::reasoning::{ReasoningEffort, ReasoningEffortEntry};
+
+        let mut state = AppState::default();
+        let entry = ReasoningEffortEntry {
+            effort: ReasoningEffort::High,
+            name: "high".to_owned(),
+            description: "High effort".to_owned(),
+            is_active: false,
+            theme: crate::feat::theme::default_theme(),
+        };
+        state
+            .frontend
+            .reasoning_effort_picker_mut()
+            .set_items(vec![entry]);
+        state.frontend.reasoning_effort_picker_mut().move_down(1);
+        state.frontend.scope_stack.push(FocusScope::Picker {
+            kind: PickerKind::ReasoningEffort,
+        });
+
+        let result = validate_picker_confirm(&state);
+
+        assert!(
+            result.is_ok(),
+            "should accept confirm when a reasoning entry is selected"
+        );
+    }
+
+    #[rstest::rstest]
+    fn validate_picker_confirm_rejects_reasoning_without_selection() {
+        // Kills: make the ReasoningEffort arm return true unconditionally.
+        // If the selection gate were broken, confirming with no selection
+        // would be allowed.
+        let mut state = AppState::default();
+        // No entries set, so no selection.
+        state.frontend.scope_stack.push(FocusScope::Picker {
+            kind: PickerKind::ReasoningEffort,
+        });
+
+        let result = validate_picker_confirm(&state);
+
+        assert!(
+            result.is_err(),
+            "should reject confirm when no reasoning entry is selected"
         );
     }
 }

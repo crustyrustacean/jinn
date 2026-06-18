@@ -3,6 +3,7 @@
 use crate::common::app_state::AppState;
 use crate::common::services::Services;
 use crate::feat::provider_infra;
+use crate::feat::reasoning::{ReasoningEffort, ReasoningEffortEntry, resolve_effort};
 use crate::feat::ui::picker_states::PickerExt;
 
 use super::entries::{load_provider_entries, promote_selected_to_top, sorted_entries};
@@ -118,6 +119,70 @@ pub fn load_compaction_model_picker_items(services: &Services, state: &mut AppSt
         .set_items(entries);
 }
 
+/// Human-readable description for each effort variant.
+///
+/// Display-only; the wire value is [`ReasoningEffort::as_str`].
+fn effort_description(effort: ReasoningEffort) -> &'static str {
+    match effort {
+        ReasoningEffort::Max => "Maximum effort",
+        ReasoningEffort::Xhigh => "Extra-high effort",
+        ReasoningEffort::High => "High effort",
+        ReasoningEffort::Medium => "Medium effort",
+        ReasoningEffort::Low => "Low effort",
+        ReasoningEffort::Minimal => "Minimal effort",
+        ReasoningEffort::None => "Skip reasoning",
+    }
+}
+
+/// All seven effort variants in declaration order.
+///
+/// Kept in sync with the `ReasoningEffort` enum. Serves as the single source of
+/// truth for the picker's row order.
+const ALL_EFFORTS: [ReasoningEffort; 7] = [
+    ReasoningEffort::Max,
+    ReasoningEffort::Xhigh,
+    ReasoningEffort::High,
+    ReasoningEffort::Medium,
+    ReasoningEffort::Low,
+    ReasoningEffort::Minimal,
+    ReasoningEffort::None,
+];
+
+/// Loads reasoning effort entries into the picker state, ready for display.
+///
+/// Builds one entry per `ReasoningEffort` variant (7 total), marking as active
+/// the variant resolved by [`resolve_effort`] from the session override and the
+/// global default. When both are unset, no entry is active.
+pub fn load_reasoning_effort_picker_items(services: &Services, state: &mut AppState) {
+    // Read both stores: the session override and the global default.
+    let session_override = state.active_session().profile().reasoning_effort;
+    let global = services
+        .user_preferences_storage
+        .read()
+        .reasoning
+        .default_effort;
+    let active = resolve_effort(session_override, global);
+
+    let entries = ALL_EFFORTS
+        .iter()
+        .map(|&effort| {
+            let name = effort.as_str().to_owned();
+            ReasoningEffortEntry {
+                effort,
+                name,
+                description: effort_description(effort).to_owned(),
+                is_active: active == Some(effort),
+                theme: state.frontend.theme.clone(),
+            }
+        })
+        .collect::<Vec<_>>();
+
+    state
+        .frontend
+        .reasoning_effort_picker_mut()
+        .set_items(entries);
+}
+
 #[cfg(test)]
 mod tests {
     #![allow(
@@ -166,6 +231,89 @@ mod tests {
         assert_eq!(items[0].model, "session default");
         // Second entry should be the ollama/llama3 model.
         assert_eq!(items[1].provider_id, "ollama/llama3");
+    }
+
+    #[rstest::rstest]
+    fn load_reasoning_effort_picker_items_populates_seven_entries() {
+        // Given services with no global default and a default AppState.
+        let services = TestServices::builder().build();
+        let mut state = AppState::default();
+
+        // When loading reasoning effort picker items.
+        load_reasoning_effort_picker_items(&services, &mut state);
+
+        // Then the picker has exactly 7 entries (one per variant).
+        let items = state.frontend.reasoning_effort_picker().items();
+        assert_eq!(items.len(), 7, "one entry per ReasoningEffort variant");
+    }
+
+    #[rstest::rstest]
+    fn reasoning_effort_loader_marks_session_override_active() {
+        // Given a session with a reasoning_effort override of Low and no global default.
+        let services = TestServices::builder().build();
+        let mut state = AppState::default();
+        state.active_session_mut().profile_mut().reasoning_effort =
+            Some(crate::ReasoningEffort::Low);
+
+        // When loading.
+        load_reasoning_effort_picker_items(&services, &mut state);
+
+        // Then only the Low entry is marked active.
+        let items = state.frontend.reasoning_effort_picker().items();
+        let low = items
+            .iter()
+            .find(|e| e.effort == crate::ReasoningEffort::Low)
+            .expect("Low entry");
+        assert!(low.is_active, "Low should be active (session override)");
+        assert_eq!(
+            items.iter().filter(|e| e.is_active).count(),
+            1,
+            "exactly one active entry"
+        );
+    }
+
+    #[rstest::rstest]
+    fn reasoning_effort_loader_marks_global_default_active_when_no_override() {
+        // Given no session override and a global default of High.
+        let services = TestServices::builder().build();
+        {
+            let mut prefs = services.user_preferences_storage.read();
+            prefs.reasoning.default_effort = Some(crate::ReasoningEffort::High);
+            services
+                .user_preferences_storage
+                .save(&prefs)
+                .expect("save prefs");
+        }
+        let mut state = AppState::default();
+
+        // When loading.
+        load_reasoning_effort_picker_items(&services, &mut state);
+
+        // Then the High entry is active (global applies, no override).
+        let items = state.frontend.reasoning_effort_picker().items();
+        let high = items
+            .iter()
+            .find(|e| e.effort == crate::ReasoningEffort::High)
+            .expect("High entry");
+        assert!(high.is_active, "High should be active (global default)");
+    }
+
+    #[rstest::rstest]
+    fn reasoning_effort_loader_marks_no_entry_active_when_both_unset() {
+        // Given no session override and no global default.
+        let services = TestServices::builder().build();
+        let mut state = AppState::default();
+
+        // When loading.
+        load_reasoning_effort_picker_items(&services, &mut state);
+
+        // Then no entry is active (resolve_effort returns None).
+        let items = state.frontend.reasoning_effort_picker().items();
+        assert_eq!(
+            items.iter().filter(|e| e.is_active).count(),
+            0,
+            "no active entry when both unset"
+        );
     }
 
     #[rstest::rstest]

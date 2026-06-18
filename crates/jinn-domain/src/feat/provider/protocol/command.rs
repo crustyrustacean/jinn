@@ -66,6 +66,11 @@ pub struct SendToLlmProvider {
     /// Set by the dispatch layer after resolving alloys.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub model_used: Option<String>,
+    /// Resolved reasoning effort for this request (session override
+    /// merged with the global default). `None` means send no effort
+    /// field (provider default).
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub reasoning_effort: Option<jinn_provider::ReasoningEffort>,
     /// When this request was dispatched to the LLM.
     pub dispatched_at: Timestamp,
 }
@@ -103,6 +108,14 @@ impl BusMessage for LoadProviderPickerEntries {}
 pub struct LoadCompactionModelPickerEntries;
 
 impl BusMessage for LoadCompactionModelPickerEntries {}
+
+/// The provider actor receives this, loads reasoning effort entries (one per
+/// `ReasoningEffort` variant, marking the resolved one active) and writes them
+/// into `AppState`.
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct LoadReasoningEffortPickerEntries;
+
+impl BusMessage for LoadReasoningEffortPickerEntries {}
 
 #[cfg(test)]
 mod tests {
