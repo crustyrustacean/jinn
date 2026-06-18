@@ -1312,13 +1312,7 @@ fn bash_config_default_is_180_secs() {
 }
 
 #[test]
-#[expect(
-    clippy::expect_used,
-    clippy::panic,
-    clippy::unreachable,
-    clippy::indexing_slicing,
-    reason = "test code"
-)]
+#[expect(clippy::expect_used, reason = "test code")]
 fn bash_config_toml_roundtrip_explicit_value() {
     // Given a TOML fragment with an explicit override.
     let toml_str = "
@@ -1340,13 +1334,7 @@ fn bash_config_toml_roundtrip_explicit_value() {
 }
 
 #[test]
-#[expect(
-    clippy::expect_used,
-    clippy::panic,
-    clippy::unreachable,
-    clippy::indexing_slicing,
-    reason = "test code"
-)]
+#[expect(clippy::expect_used, reason = "test code")]
 fn bash_config_toml_empty_table_falls_back_to_default() {
     // Given an empty [bash] table in TOML.
     let toml_str = "";

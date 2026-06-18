@@ -569,139 +569,127 @@ impl ToolOrchestratorActor {
 
         match self.tools.get(&tool_call.name) {
             Some(ToolRegistration::Builtin { execute, .. }) => {
-                let bus = self.bus().clone();
-                let execute_fn = *execute;
-                let tool_ctx = self.build_tool_context(&session_id, dispatched_at);
-                let timeout = tool_ctx.timeout;
-
-                let handle = tokio::spawn(async move {
-                    let call_id = tool_call.id.clone();
-                    let call_name = tool_call.name.clone();
-                    let result = match timeout {
-                        Some(dur) => {
-                            match tokio::time::timeout(dur, execute_fn(tool_call, tool_ctx)).await {
-                                Ok(r) => r,
-                                Err(_) => ToolResult {
-                                    tool_call_id: call_id,
-                                    name: call_name,
-                                    content: format!("tool execution timed out after {dur:?}"),
-                                    success: false,
-                                    full_content: None,
-                                    truncation: None,
-                                    pin_position: None,
-                                },
-                            }
-                        }
-                        None => execute_fn(tool_call, tool_ctx).await,
-                    };
-                    bus.publish(ToolExecutionCompleted { session_id, result })
-                        .await;
-                });
-                Some(handle)
+                Some(self.dispatch_builtin(session_id, tool_call, dispatched_at, *execute))
             }
             Some(ToolRegistration::Actor { .. }) => {
-                match tool_call.name.as_str() {
-                    "web-fetch" => {
-                        self.publish(ExecuteWebFetch {
-                            session_id,
-                            tool_call,
-                        })
-                        .await;
-                    }
-                    other => {
-                        tracing::warn!(
-                            tool = %other,
-                            "unknown actor tool — no command mapping"
-                        );
-                    }
-                }
-                None
+                self.dispatch_actor(session_id, tool_call).await
             }
             Some(ToolRegistration::Plugin {
                 target,
                 plugin_name,
                 ..
-            }) => {
-                tracing::debug!(
-                    session_id = %session_id,
-                    tool = %tool_call.name,
-                    target = ?target,
-                    plugin = %plugin_name,
-                    "dispatching plugin tool"
-                );
-                let bus = self.bus().clone();
-                let plugin_fire = self.services.plugins.clone();
-                let target = *target;
-                let sid = session_id.clone();
-                let plugin_name = plugin_name.clone();
-                let arguments: serde_json::Value =
-                    serde_json::from_str(&tool_call.arguments).unwrap_or_default();
-                // Resolve the calling session's parent edge so plugin tool handlers
-                // can recover their origin via ctx.parent_session_id.
-                let parent_session_id = {
-                    let s = self.state.read();
-                    s.session
-                        .get(&sid)
-                        .and_then(|sess| sess.core.parent_session.clone())
-                };
+            }) => Some(self.dispatch_plugin(session_id, tool_call, *target, plugin_name.clone())),
+            None => self.reject_unknown_tool(session_id, tool_call).await,
+        }
+    }
 
-                let handle = tokio::spawn(async move {
-                    let result = match plugin_fire
-                        .execute_plugin_tool(
-                            target,
-                            &sid,
-                            parent_session_id.as_ref(),
-                            &plugin_name,
-                            &tool_call.name,
-                            &arguments,
-                        )
-                        .await
-                    {
-                        Ok(content) => ToolResult {
-                            tool_call_id: tool_call.id.clone(),
-                            name: tool_call.name.clone(),
-                            content,
-                            success: true,
-                            full_content: None,
-                            truncation: None,
-                            pin_position: None,
-                        },
-                        Err(report) => {
-                            tracing::warn!(?report, %plugin_name, "plugin tool execution failed");
-                            ToolResult {
-                                tool_call_id: tool_call.id.clone(),
-                                name: tool_call.name.clone(),
-                                content: format!("plugin tool error: {report:#}"),
-                                success: false,
-                                full_content: None,
-                                truncation: None,
-                                pin_position: None,
-                            }
-                        }
-                    };
-                    bus.publish(ToolExecutionCompleted { session_id, result })
-                        .await;
-                });
-                Some(handle)
+    /// Spawns a builtin tool, applying its configured timeout, and publishes the result.
+    fn dispatch_builtin(
+        &self,
+        session_id: SessionId,
+        tool_call: ToolCall,
+        dispatched_at: Timestamp,
+        execute_fn: fn(ToolCall, ToolContext) -> BoxedToolFuture,
+    ) -> tokio::task::JoinHandle<()> {
+        let bus = self.bus().clone();
+        let tool_ctx = self.build_tool_context(&session_id, dispatched_at);
+        let timeout = tool_ctx.timeout;
+
+        tokio::spawn(async move {
+            let result = run_builtin_with_timeout(tool_call, tool_ctx, execute_fn, timeout).await;
+            bus.publish(ToolExecutionCompleted { session_id, result })
+                .await;
+        })
+    }
+
+    /// Routes an actor-backed tool to its command (currently only `web-fetch`).
+    async fn dispatch_actor(
+        &self,
+        session_id: SessionId,
+        tool_call: ToolCall,
+    ) -> Option<tokio::task::JoinHandle<()>> {
+        match tool_call.name.as_str() {
+            "web-fetch" => {
+                self.publish(ExecuteWebFetch {
+                    session_id,
+                    tool_call,
+                })
+                .await;
             }
-            None => {
-                let call_id = tool_call.id.clone();
-                let call_name = tool_call.name.clone();
-                let result = ToolResult {
-                    tool_call_id: call_id,
-                    name: call_name,
-                    content: format!("unknown tool: {}", tool_call.name),
-                    success: false,
-                    full_content: None,
-                    truncation: None,
-                    pin_position: None,
-                };
-
-                self.publish(ToolExecutionCompleted { session_id, result })
-                    .await;
-                None
+            other => {
+                tracing::warn!(
+                    tool = %other,
+                    "unknown actor tool — no command mapping"
+                );
             }
         }
+        None
+    }
+
+    /// Spawns a plugin tool execution and publishes the result.
+    fn dispatch_plugin(
+        &self,
+        session_id: SessionId,
+        tool_call: ToolCall,
+        target: Option<SessionRegistryId>,
+        plugin_name: String,
+    ) -> tokio::task::JoinHandle<()> {
+        tracing::debug!(
+            session_id = %session_id,
+            tool = %tool_call.name,
+            target = ?target,
+            plugin = %plugin_name,
+            "dispatching plugin tool"
+        );
+        let bus = self.bus().clone();
+        let plugin_fire = self.services.plugins.clone();
+        let sid = session_id.clone();
+        let arguments: serde_json::Value =
+            serde_json::from_str(&tool_call.arguments).unwrap_or_default();
+        // Resolve the calling session's parent edge so plugin tool handlers
+        // can recover their origin via ctx.parent_session_id.
+        let parent_session_id = {
+            let s = self.state.read();
+            s.session
+                .get(&sid)
+                .and_then(|sess| sess.core.parent_session.clone())
+        };
+
+        tokio::spawn(async move {
+            let result = run_plugin_tool(
+                plugin_fire,
+                target,
+                sid,
+                parent_session_id,
+                plugin_name,
+                tool_call,
+                arguments,
+            )
+            .await;
+            bus.publish(ToolExecutionCompleted { session_id, result })
+                .await;
+        })
+    }
+
+    /// Publishes an error result for a tool with no registration.
+    async fn reject_unknown_tool(
+        &self,
+        session_id: SessionId,
+        tool_call: ToolCall,
+    ) -> Option<tokio::task::JoinHandle<()>> {
+        let result = ToolResult {
+            tool_call_id: tool_call.id.clone(),
+            name: tool_call.name.clone(),
+            content: format!("unknown tool: {}", tool_call.name),
+            success: false,
+            full_content: None,
+            truncation: None,
+            pin_position: None,
+        };
+
+        self.publish(ToolExecutionCompleted { session_id, result })
+            .await;
+        None
     }
 
     /// Aggregates a tool result into the pending batch.
@@ -743,6 +731,79 @@ impl ToolOrchestratorActor {
                 results,
             })
             .await;
+        }
+    }
+}
+
+/// Runs a builtin tool, racing it against its configured timeout.
+///
+/// On timeout the returned `ToolResult` carries a failure message instead of panicking.
+async fn run_builtin_with_timeout(
+    tool_call: ToolCall,
+    tool_ctx: ToolContext,
+    execute_fn: fn(ToolCall, ToolContext) -> BoxedToolFuture,
+    timeout: Option<std::time::Duration>,
+) -> ToolResult {
+    let call_id = tool_call.id.clone();
+    let call_name = tool_call.name.clone();
+    match timeout {
+        Some(dur) => match tokio::time::timeout(dur, execute_fn(tool_call, tool_ctx)).await {
+            Ok(r) => r,
+            Err(_) => ToolResult {
+                tool_call_id: call_id,
+                name: call_name,
+                content: format!("tool execution timed out after {dur:?}"),
+                success: false,
+                full_content: None,
+                truncation: None,
+                pin_position: None,
+            },
+        },
+        None => execute_fn(tool_call, tool_ctx).await,
+    }
+}
+
+/// Executes a plugin tool, mapping the result (or error) into a `ToolResult`.
+async fn run_plugin_tool(
+    plugin_fire: crate::feat::plugin_dispatch::PluginFireService,
+    target: Option<SessionRegistryId>,
+    sid: SessionId,
+    parent_session_id: Option<SessionId>,
+    plugin_name: String,
+    tool_call: ToolCall,
+    arguments: serde_json::Value,
+) -> ToolResult {
+    match plugin_fire
+        .execute_plugin_tool(
+            target,
+            &sid,
+            parent_session_id.as_ref(),
+            &plugin_name,
+            &tool_call.name,
+            &arguments,
+        )
+        .await
+    {
+        Ok(content) => ToolResult {
+            tool_call_id: tool_call.id.clone(),
+            name: tool_call.name.clone(),
+            content,
+            success: true,
+            full_content: None,
+            truncation: None,
+            pin_position: None,
+        },
+        Err(report) => {
+            tracing::warn!(?report, %plugin_name, "plugin tool execution failed");
+            ToolResult {
+                tool_call_id: tool_call.id.clone(),
+                name: tool_call.name.clone(),
+                content: format!("plugin tool error: {report:#}"),
+                success: false,
+                full_content: None,
+                truncation: None,
+                pin_position: None,
+            }
         }
     }
 }

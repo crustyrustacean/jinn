@@ -243,30 +243,32 @@ fn apply_array_of_tables_by_key(
     target: &mut Item,
     key_field: &'static str,
 ) -> Result<(), PatchError> {
-    let array: &mut ArrayOfTables = if target.is_array_of_tables() {
-        target
-            .as_array_of_tables_mut()
-            .ok_or(PatchError::InternalInvariant {
-                what: "just checked",
-            })?
-    } else if target.is_none() || target.is_value() {
-        *target = Item::ArrayOfTables(ArrayOfTables::new());
-        target
-            .as_array_of_tables_mut()
-            .ok_or(PatchError::InternalInvariant {
-                what: "just inserted ArrayOfTables",
-            })?
-    } else {
-        // Was a regular table — replace.
-        *target = Item::ArrayOfTables(ArrayOfTables::new());
-        target
-            .as_array_of_tables_mut()
-            .ok_or(PatchError::InternalInvariant {
-                what: "just inserted ArrayOfTables",
-            })?
-    };
+    let array = ensure_array_of_tables(target)?;
+    let (new_keys_in_order, new_by_key) = index_new_entries_by_key(new, key_field);
+    let matched = mark_matched_entries(array, &new_by_key, key_field)?;
+    apply_in_place_updates(array, &new_by_key, key_field)?;
+    remove_unmatched_entries(array, &matched);
+    append_new_entries(array, &new_keys_in_order, &new_by_key, key_field);
+    Ok(())
+}
 
-    // Collect new entries keyed by their key-field value, preserving order.
+/// Coerces `target` into an `ArrayOfTables`, replacing non-array contents.
+fn ensure_array_of_tables(target: &mut Item) -> Result<&mut ArrayOfTables, PatchError> {
+    if !target.is_array_of_tables() {
+        *target = Item::ArrayOfTables(ArrayOfTables::new());
+    }
+    target
+        .as_array_of_tables_mut()
+        .ok_or(PatchError::InternalInvariant {
+            what: "just ensured ArrayOfTables",
+        })
+}
+
+/// Collects new entries keyed by their key-field value, preserving first-seen order.
+fn index_new_entries_by_key<'a>(
+    new: &'a [toml::Value],
+    key_field: &'static str,
+) -> (Vec<String>, HashMap<String, &'a toml::Value>) {
     let mut new_keys_in_order: Vec<String> = Vec::new();
     let mut new_by_key: HashMap<String, &toml::Value> = HashMap::new();
     for entry in new {
@@ -277,7 +279,6 @@ fn apply_array_of_tables_by_key(
             continue;
         };
         let key_str = value_to_string_key(key_val);
-
         match new_by_key.entry(key_str.clone()) {
             Entry::Vacant(v) => {
                 new_keys_in_order.push(key_str);
@@ -286,21 +287,36 @@ fn apply_array_of_tables_by_key(
             Entry::Occupied(_) => {}
         }
     }
+    (new_keys_in_order, new_by_key)
+}
 
-    // Walk existing array entries; mark which were matched.
+/// Marks which existing entries match a new entry by key (or have no key — preserved).
+fn mark_matched_entries(
+    array: &ArrayOfTables,
+    new_by_key: &HashMap<String, &toml::Value>,
+    key_field: &'static str,
+) -> Result<Vec<bool>, PatchError> {
     let mut matched: Vec<bool> = vec![false; array.len()];
     for (idx, entry) in array.iter().enumerate() {
         let actual_key: Option<String> = entry.get(key_field).and_then(item_to_string_key);
-        match actual_key {
-            Some(k) if new_by_key.contains_key(&k) => {
-                *matched.get_mut(idx).ok_or(PatchError::Generic)? = true;
-            }
-            None => *matched.get_mut(idx).ok_or(PatchError::Generic)? = true, // missing key field — preserve
-            _ => {}
+        let is_match = match actual_key {
+            Some(k) => new_by_key.contains_key(&k),
+            // missing key field — preserve
+            None => true,
+        };
+        if is_match {
+            *matched.get_mut(idx).ok_or(PatchError::Generic)? = true;
         }
     }
+    Ok(matched)
+}
 
-    // Apply in-place updates to matched entries.
+/// Applies in-place field updates to entries whose key matched a new entry.
+fn apply_in_place_updates(
+    array: &mut ArrayOfTables,
+    new_by_key: &HashMap<String, &toml::Value>,
+    key_field: &'static str,
+) -> Result<(), PatchError> {
     let matched_keys: Vec<(usize, String)> = array
         .iter()
         .enumerate()
@@ -338,16 +354,26 @@ fn apply_array_of_tables_by_key(
             }
         }
     }
+    Ok(())
+}
 
-    // Remove unmatched entries (their key was removed from the struct).
+/// Removes existing entries whose key was dropped from the new struct.
+fn remove_unmatched_entries(array: &mut ArrayOfTables, matched: &[bool]) {
     for i in (0..array.len()).rev() {
         if !matched.get(i).copied().unwrap_or(false) {
             array.remove(i);
         }
     }
+}
 
-    // Append new entries that weren't matched.
-    for key_str in &new_keys_in_order {
+/// Appends new entries that had no existing match.
+fn append_new_entries(
+    array: &mut ArrayOfTables,
+    new_keys_in_order: &[String],
+    new_by_key: &HashMap<String, &toml::Value>,
+    key_field: &'static str,
+) {
+    for key_str in new_keys_in_order {
         if !entry_exists_with_key(array, key_field, key_str) {
             let Some(new_entry_value) = new_by_key.get(key_str).copied() else {
                 continue;
@@ -362,8 +388,6 @@ fn apply_array_of_tables_by_key(
             array.push(new_table);
         }
     }
-
-    Ok(())
 }
 
 fn entry_exists_with_key(array: &ArrayOfTables, key_field: &str, key_value: &str) -> bool {

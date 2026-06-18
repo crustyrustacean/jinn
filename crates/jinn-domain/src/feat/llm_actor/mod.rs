@@ -258,75 +258,17 @@ async fn process_stream_events(
     model_id: &str,
     dispatched_at: jiff::Timestamp,
 ) -> bool {
-    let mut accumulated_text = String::new();
-    let mut accumulated_thinking = String::new();
-    let mut accumulated_tool_calls: Vec<ToolCall> = Vec::new();
-    let mut token_index = 0usize;
-    let mut parser = reasoning_parser::ParserFactory::new().create(model_id);
-
+    let mut accum = StreamAccumulator::new(model_id);
     let mut stream_ended_normally = false;
+
     while let Some(result) = stream.next().await {
         match result {
             Ok(event) => match event {
                 StreamEvent::Text(token) => {
-                    tracing::info!(
-                        session_id = ?sid,
-                        token_len = token.len(),
-                        token_preview = %token.get(..token.len().min(50)).unwrap_or_default(),
-                        "LLM ACTOR StreamEvent::Text"
-                    );
-                    accumulated_text.push_str(&token);
-                    let parsed = match parser.parse_reasoning_streaming_incremental(&token) {
-                        Ok(r) => r,
-                        Err(e) => {
-                            tracing::warn!(
-                                err = ?e,
-                                "reasoning parser error, treating as normal text"
-                            );
-                            reasoning_parser::ParserResult::normal(token.clone())
-                        }
-                    };
-                    if !parsed.reasoning_text.is_empty() {
-                        accumulated_thinking.push_str(&parsed.reasoning_text);
-                        bus.publish(StreamToken {
-                            session_id: sid.clone(),
-                            index: token_index,
-                            token: parsed.reasoning_text,
-                            is_thinking: true,
-                            dispatched_at,
-                        })
-                        .await;
-                        token_index += 1;
-                    }
-                    if !parsed.normal_text.is_empty() {
-                        bus.publish(StreamToken {
-                            session_id: sid.clone(),
-                            index: token_index,
-                            token: parsed.normal_text,
-                            is_thinking: false,
-                            dispatched_at,
-                        })
-                        .await;
-                        token_index += 1;
-                    }
+                    handle_text_event(bus, sid, dispatched_at, &mut accum, token).await;
                 }
                 StreamEvent::Reasoning(token) => {
-                    tracing::info!(
-                        session_id = ?sid,
-                        token_len = token.len(),
-                        token_preview = %token.get(..token.len().min(50)).unwrap_or_default(),
-                        "LLM ACTOR StreamEvent::Reasoning"
-                    );
-                    accumulated_thinking.push_str(&token);
-                    bus.publish(StreamToken {
-                        session_id: sid.clone(),
-                        index: token_index,
-                        token,
-                        is_thinking: true,
-                        dispatched_at,
-                    })
-                    .await;
-                    token_index += 1;
+                    handle_reasoning_event(bus, sid, dispatched_at, &mut accum, token).await;
                 }
                 StreamEvent::ToolUseStart { index, id, name } => {
                     bus.publish(ToolUseStarted {
@@ -350,7 +292,7 @@ async fn process_stream_events(
                     .await;
                 }
                 StreamEvent::ToolUseComplete { tool_call, .. } => {
-                    accumulated_tool_calls.push(tool_call.clone());
+                    accum.tool_calls.push(tool_call.clone());
                     bus.publish(ToolCallReceived {
                         session_id: sid.clone(),
                         tool_call,
@@ -360,58 +302,8 @@ async fn process_stream_events(
                 }
                 StreamEvent::Done { stop_reason, usage } => {
                     stream_ended_normally = true;
-                    tracing::trace!(
-                        session_id = ?sid,
-                        stop_reason = %stop_reason,
-                        tool_call_count = accumulated_tool_calls.len(),
-                        "stream Done"
-                    );
-                    let cost = usage.as_ref().and_then(|u| u.cost);
-                    let provider_completion_tokens =
-                        usage.as_ref().and_then(|u| u.completion_tokens);
-                    let thinking_content = if accumulated_thinking.is_empty() {
-                        None
-                    } else {
-                        Some(std::mem::take(&mut accumulated_thinking))
-                    };
-                    if stop_reason == StopReason::ToolUse {
-                        // Emit ExecuteToolBatch for the orchestrator.
-                        bus.publish(ExecuteToolBatch {
-                            session_id: sid.clone(),
-                            tool_calls: accumulated_tool_calls.clone(),
-                            dispatched_at,
-                        })
+                    handle_done_event(bus, sid, &mut accum, stop_reason, usage, dispatched_at)
                         .await;
-
-                        // Emit StreamCompleted with ToolUse reason so the session
-                        // actor knows the stream ended due to tool calls.
-                        bus.publish(StreamCompleted {
-                            model_used: Some(model_id.to_owned()),
-                            session_id: sid.clone(),
-                            reason: StreamCompletedReason::ToolUse,
-                            thinking_content,
-                            assistant_content: Some(std::mem::take(&mut accumulated_text)),
-                            tool_calls: Some(std::mem::take(&mut accumulated_tool_calls)),
-                            cost,
-                            provider_completion_tokens,
-                            dispatched_at,
-                        })
-                        .await;
-                    } else {
-                        // Normal end_turn - emit StreamCompleted.
-                        bus.publish(StreamCompleted {
-                            model_used: Some(model_id.to_owned()),
-                            session_id: sid.clone(),
-                            reason: StreamCompletedReason::Finished,
-                            thinking_content,
-                            assistant_content: Some(std::mem::take(&mut accumulated_text)),
-                            tool_calls: None,
-                            cost,
-                            provider_completion_tokens,
-                            dispatched_at,
-                        })
-                        .await;
-                    }
                     break;
                 }
                 StreamEvent::Error { message, .. } => {
@@ -457,6 +349,206 @@ async fn process_stream_events(
     stream_ended_normally
 }
 
+/// Accumulates streamed text, reasoning, and tool calls during an LLM stream.
+struct StreamAccumulator {
+    text: String,
+    thinking: String,
+    tool_calls: Vec<ToolCall>,
+    token_index: usize,
+    model_id: String,
+    parser: Box<dyn reasoning_parser::ReasoningParser>,
+}
+
+impl StreamAccumulator {
+    fn new(model_id: &str) -> Self {
+        let parser = reasoning_parser::ParserFactory::new().create(model_id);
+        Self {
+            text: String::new(),
+            thinking: String::new(),
+            tool_calls: Vec::new(),
+            token_index: 0,
+            model_id: model_id.to_owned(),
+            parser,
+        }
+    }
+
+    /// Publishes a reasoning fragment to the bus and advances the token index.
+    async fn publish_thinking(
+        &mut self,
+        bus: &BusService,
+        sid: &SessionId,
+        token: String,
+        dispatched_at: jiff::Timestamp,
+    ) {
+        self.thinking.push_str(&token);
+        bus.publish(StreamToken {
+            session_id: sid.clone(),
+            index: self.token_index,
+            token,
+            is_thinking: true,
+            dispatched_at,
+        })
+        .await;
+        self.token_index += 1;
+    }
+
+    /// Publishes a normal-text fragment to the bus and advances the token index.
+    async fn publish_text(
+        &mut self,
+        bus: &BusService,
+        sid: &SessionId,
+        token: String,
+        dispatched_at: jiff::Timestamp,
+    ) {
+        bus.publish(StreamToken {
+            session_id: sid.clone(),
+            index: self.token_index,
+            token,
+            is_thinking: false,
+            dispatched_at,
+        })
+        .await;
+        self.token_index += 1;
+    }
+
+    /// Takes the accumulated thinking text, returning `None` if empty.
+    fn take_thinking(&mut self) -> Option<String> {
+        if self.thinking.is_empty() {
+            None
+        } else {
+            Some(std::mem::take(&mut self.thinking))
+        }
+    }
+}
+
+/// Builds the terminal `StreamCompleted` payload shared by ToolUse and Finished.
+async fn publish_stream_completed(
+    bus: &BusService,
+    sid: &SessionId,
+    accum: &mut StreamAccumulator,
+    reason: StreamCompletedReason,
+    tool_calls: Option<Vec<ToolCall>>,
+    cost: Option<f64>,
+    provider_completion_tokens: Option<u64>,
+    dispatched_at: jiff::Timestamp,
+) {
+    bus.publish(StreamCompleted {
+        model_used: Some(accum.model_id.clone()),
+        session_id: sid.clone(),
+        reason,
+        thinking_content: accum.take_thinking(),
+        assistant_content: Some(std::mem::take(&mut accum.text)),
+        tool_calls,
+        cost,
+        provider_completion_tokens,
+        dispatched_at,
+    })
+    .await;
+}
+
+/// Handles a `StreamEvent::Text`: parses reasoning/normal split, publishes both.
+async fn handle_text_event(
+    bus: &BusService,
+    sid: &SessionId,
+    dispatched_at: jiff::Timestamp,
+    accum: &mut StreamAccumulator,
+    token: String,
+) {
+    tracing::info!(
+        session_id = ?sid,
+        token_len = token.len(),
+        token_preview = %token.get(..token.len().min(50)).unwrap_or_default(),
+        "LLM ACTOR StreamEvent::Text"
+    );
+    accum.text.push_str(&token);
+    let parsed = match accum.parser.parse_reasoning_streaming_incremental(&token) {
+        Ok(r) => r,
+        Err(e) => {
+            tracing::warn!(err = ?e, "reasoning parser error, treating as normal text");
+            reasoning_parser::ParserResult::normal(token.clone())
+        }
+    };
+    if !parsed.reasoning_text.is_empty() {
+        accum
+            .publish_thinking(bus, sid, parsed.reasoning_text, dispatched_at)
+            .await;
+    }
+    if !parsed.normal_text.is_empty() {
+        accum
+            .publish_text(bus, sid, parsed.normal_text, dispatched_at)
+            .await;
+    }
+}
+
+/// Handles a `StreamEvent::Reasoning`: accumulates and publishes thinking text.
+async fn handle_reasoning_event(
+    bus: &BusService,
+    sid: &SessionId,
+    dispatched_at: jiff::Timestamp,
+    accum: &mut StreamAccumulator,
+    token: String,
+) {
+    tracing::info!(
+        session_id = ?sid,
+        token_len = token.len(),
+        token_preview = %token.get(..token.len().min(50)).unwrap_or_default(),
+        "LLM ACTOR StreamEvent::Reasoning"
+    );
+    accum.publish_thinking(bus, sid, token, dispatched_at).await;
+}
+
+/// Handles `StreamEvent::Done`: routes tool-use vs finished and publishes
+/// `ExecuteToolBatch` + `StreamCompleted`.
+async fn handle_done_event(
+    bus: &BusService,
+    sid: &SessionId,
+    accum: &mut StreamAccumulator,
+    stop_reason: StopReason,
+    usage: Option<jinn_provider::StreamUsage>,
+    dispatched_at: jiff::Timestamp,
+) {
+    tracing::trace!(
+        session_id = ?sid,
+        stop_reason = %stop_reason,
+        tool_call_count = accum.tool_calls.len(),
+        "stream Done"
+    );
+    let cost = usage.as_ref().and_then(|u| u.cost);
+    let provider_completion_tokens = usage.as_ref().and_then(|u| u.completion_tokens);
+    if stop_reason == StopReason::ToolUse {
+        let tool_calls = std::mem::take(&mut accum.tool_calls);
+        bus.publish(ExecuteToolBatch {
+            session_id: sid.clone(),
+            tool_calls: tool_calls.clone(),
+            dispatched_at,
+        })
+        .await;
+        publish_stream_completed(
+            bus,
+            sid,
+            accum,
+            StreamCompletedReason::ToolUse,
+            Some(tool_calls),
+            cost,
+            provider_completion_tokens,
+            dispatched_at,
+        )
+        .await;
+    } else {
+        publish_stream_completed(
+            bus,
+            sid,
+            accum,
+            StreamCompletedReason::Finished,
+            None,
+            cost,
+            provider_completion_tokens,
+            dispatched_at,
+        )
+        .await;
+    }
+}
+
 impl LlmActor {
     /// Dispatches incoming commands to the appropriate handler.
     /// Starts an LLM streaming response for a session, aborting any existing stream.
@@ -494,29 +586,7 @@ impl LlmActor {
         }
 
         // Resolve the factory: per-request if provider_id is set, global fallback otherwise.
-        let factory = {
-            if let Some(pid) = payload.provider_id.clone() {
-                let id = crate::feat::provider_infra::ProviderId::new(pid.clone());
-                let api_keys = self.deps.services.api_keys.read();
-                match self.deps.services.provider_registry.create_factory(
-                    &id,
-                    &api_keys,
-                    payload.reasoning_effort,
-                ) {
-                    Ok(f) => {
-                        tracing::debug!(provider_id = %pid, "created per-request LLM factory");
-                        Ok(LlmServiceFactoryService::new(Arc::from(f)))
-                    }
-                    Err(e) => {
-                        tracing::error!(err = ?e, provider_id = %pid, "failed to create per-request factory");
-                        Err(format!("LLM factory creation failed for {pid}: {e:?}"))
-                    }
-                }
-            } else {
-                Ok(self.factory.clone())
-            }
-        };
-        let factory = match factory {
+        let factory = match self.resolve_factory(payload) {
             Ok(f) => f,
             Err(msg) => {
                 emit_stream_error(
@@ -584,6 +654,34 @@ impl LlmActor {
         }
 
         self.tasks.insert(session_id, handle);
+    }
+
+    /// Resolves the LLM factory for a request: per-request when `provider_id` is set,
+    /// the global factory otherwise. Returns an error message on failure.
+    fn resolve_factory(
+        &self,
+        payload: &SendToLlmProvider,
+    ) -> Result<LlmServiceFactoryService, String> {
+        if let Some(pid) = payload.provider_id.clone() {
+            let id = crate::feat::provider_infra::ProviderId::new(pid.clone());
+            let api_keys = self.deps.services.api_keys.read();
+            match self.deps.services.provider_registry.create_factory(
+                &id,
+                &api_keys,
+                payload.reasoning_effort,
+            ) {
+                Ok(f) => {
+                    tracing::debug!(provider_id = %pid, "created per-request LLM factory");
+                    Ok(LlmServiceFactoryService::new(Arc::from(f)))
+                }
+                Err(e) => {
+                    tracing::error!(err = ?e, provider_id = %pid, "failed to create per-request factory");
+                    Err(format!("LLM factory creation failed for {pid}: {e:?}"))
+                }
+            }
+        } else {
+            Ok(self.factory.clone())
+        }
     }
 
     /// Handles stream completion events to clean up session state.
