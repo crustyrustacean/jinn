@@ -772,35 +772,6 @@ pub fn handle_project_remove_highlighted(state: &mut AppState) -> IntentResult {
     })
 }
 
-/// Appends the active session's CWD to the curated project list (`a`).
-///
-/// Dedup is handled by `PreferenceUpdate::AddProject::apply` (and echoed here
-/// by skipping when the path already exists, so the optimistic list and the
-/// picker match the persisted state exactly). Emits `UpdatePreferences` for
-/// persistence and reloads the picker items.
-pub fn handle_project_add_current_cwd(state: &mut AppState) -> IntentResult {
-    let cwd = state.active_session().cwd().to_path_buf();
-
-    let already_present = state
-        .frontend
-        .preferences
-        .projects
-        .iter()
-        .any(|p| p.path == cwd);
-    if !already_present {
-        state
-            .frontend
-            .preferences
-            .projects
-            .push(crate::feat::project::ProjectConfig { path: cwd.clone() });
-        load_project_picker_entries(state);
-    }
-
-    IntentResult::with_message(UpdatePreferences {
-        updates: vec![PreferenceUpdate::AddProject(cwd)],
-    })
-}
-
 /// Confirms the skill picker: collects disabled skill names from picker entries
 /// and writes them to the active session's profile.
 fn confirm_skill(state: &mut AppState) -> IntentResult {
@@ -2605,39 +2576,4 @@ mod tests {
         assert_eq!(state.frontend.project_picker().items().len(), 1);
     }
 
-    #[rstest::rstest]
-    fn project_add_current_cwd_appends_active_session_dir() {
-        // Given a project picker with one entry and active CWD /tmp/new-project.
-        let mut state = state_with_project_picker(&["/tmp/project-a"]);
-        state
-            .active_session_mut()
-            .set_cwd(std::path::PathBuf::from("/tmp/new-project"));
-
-        // When adding the active session's CWD to projects (a).
-        let result = handle_project_add_current_cwd(&mut state);
-
-        // Then the active CWD is appended to preferences.projects.
-        assert!(
-            state
-                .frontend
-                .preferences
-                .projects
-                .iter()
-                .any(|p| p.path == std::path::Path::new("/tmp/new-project"))
-        );
-        // And an UpdatePreferences(AddProject) message was emitted.
-        assert!(!result.message_names.is_empty());
-    }
-
-    #[rstest::rstest]
-    fn project_add_current_cwd_dedupes_existing_path() {
-        // Given a project picker whose only entry IS the active CWD.
-        let mut state = state_with_project_picker(&["/tmp/active-session-cwd"]);
-
-        // When adding the active session's CWD again (a).
-        let _result = handle_project_add_current_cwd(&mut state);
-
-        // Then no duplicate was appended (still exactly one entry).
-        assert_eq!(state.frontend.preferences.projects.len(), 1);
-    }
 }
