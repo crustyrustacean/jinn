@@ -398,7 +398,7 @@ mod tests {
             .buffer()
             .content
             .iter()
-            .map(|c| c.symbol())
+            .map(ratatui::buffer::Cell::symbol)
             .collect();
         assert!(
             rendered.contains("<c-enter>"),
