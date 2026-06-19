@@ -24,6 +24,7 @@ use std::collections::HashMap;
 use std::sync::Arc;
 use std::time::Duration;
 
+use anyhow::Error as AnyhowError;
 use async_trait::async_trait;
 use headless_chrome::{Browser, LaunchOptions};
 use parking_lot::Mutex;
@@ -110,22 +111,17 @@ struct ChromeBrowser {
 
 impl HeadlessBrowser for ChromeBrowser {
     fn render(&self, url: &str) -> Result<RenderedPage, FetchError> {
-        let tab = self
-            .browser
-            .new_tab()
-            .map_err(|e| classify_render_error(&e.to_string()))?;
+        let tab = self.browser.new_tab().map_err(classify_browser_error)?;
 
         tracing::trace!(url = %url, "HeadlessChromeFetcher: navigating to URL");
         tab.navigate_to(url)
-            .map_err(|e| classify_render_error(&e.to_string()))?
+            .map_err(classify_browser_error)?
             .wait_until_navigated()
-            .map_err(|e| classify_render_error(&e.to_string()))?;
+            .map_err(classify_browser_error)?;
         tracing::trace!("HeadlessChromeFetcher: navigation complete");
 
         tracing::trace!("HeadlessChromeFetcher: getting page HTML");
-        let html = tab
-            .get_content()
-            .map_err(|e| classify_render_error(&e.to_string()))?;
+        let html = tab.get_content().map_err(classify_browser_error)?;
         tracing::debug!(
             html_len = html.len(),
             "HeadlessChromeFetcher: HTML retrieved"
@@ -163,16 +159,68 @@ impl HeadlessBrowserFactory for ChromeFactory {
         "ChromeFactory"
     }
 }
+/// The type of a connection-level death in headless_chrome.
+///
+/// Re-exported from `headless_chrome::browser::transport`. Detecting this
+/// *by type* (via [`classify_browser_error`]) is the primary, robust signal
+/// for a dead shared WebSocket — it survives any future rewording of the
+/// The string-marker fallback in [`is_connection_closed`] exists for
+/// defense in depth.
+use headless_chrome::browser::transport::ConnectionClosed;
 
 /// The literal text of the headless_chrome `ConnectionClosed` error.
 ///
-/// Used to detect a dead WebSocket without depending on a downcast into
-/// `headless_chrome`'s (transitively-available) `anyhow` error tree. See
-/// the crate's `src/browser/transport/mod.rs`: the error is
+/// Defensive fallback for [`classify_browser_error`]: if a future
+/// `headless_chrome` release changes how the error is surfaced such that
+/// the type downcast misses, this substring still catches the (currently
+/// stable) display message. See the crate's
+/// `src/browser/transport/mod.rs`:
 /// `#[error("Unable to make method calls because underlying connection is closed")]`.
 const CONNECTION_CLOSED_MARKER: &str = "underlying connection is closed";
 
+/// Maps a headless_chrome failure to a [`FetchError`].
+///
+/// Detection order:
+/// 1. **Type downcast** (primary): if the error *is* (or wraps) a
+///    [`ConnectionClosed`], classify as [`FetchError::BrowserCrash`]. This
+///    is type-safe and does not depend on the error's `Display` text.
+/// 2. **String match** (fallback): if the display string contains the
+///    [`CONNECTION_CLOSED_MARKER`] substring, also classify as
+///    [`FetchError::BrowserCrash`]. Guards against future surfacing changes.
+/// 3. Otherwise, classify as [`FetchError::Render`].
+///
+/// `ConnectionClosed` (the shared WebSocket died: idle-teardown timeout, OOM
+/// kill, real crash) must trigger eviction + relaunch; per-tab failures (a bad
+/// page, a tab-level timeout) stay as [`FetchError::Render`] so they never
+/// evict the shared browser under concurrency.
+fn classify_browser_error(err: AnyhowError) -> FetchError {
+    if is_connection_closed(&err) {
+        FetchError::BrowserCrash
+    } else {
+        FetchError::Render(err.to_string())
+    }
+}
+
+/// Returns `true` if `err` represents a connection-level death.
+///
+/// Primary signal is a type downcast; the string marker is a fallback.
+/// The downcast walks the full error source chain, so a context-wrapped
+/// `ConnectionClosed` (e.g. some future `headless_chrome` release that
+/// starts using `.context(..)`) is still detected.
+fn is_connection_closed(err: &AnyhowError) -> bool {
+    // `chain()` includes the head error first, then each `.source()`.
+    let type_match = err
+        .chain()
+        .any(|e| e.downcast_ref::<ConnectionClosed>().is_some());
+    type_match || err.to_string().contains(CONNECTION_CLOSED_MARKER)
+}
+
 /// Maps a headless_chrome failure string to a [`FetchError`].
+///
+/// Test-only seam that drives [`is_connection_closed`] from a raw display
+/// string. Production routes through [`classify_browser_error`] (type
+/// downcast + string fallback). Exposed so the string-fallback path can be
+/// unit-tested in isolation without constructing an `anyhow::Error`.
 ///
 /// Detects `ConnectionClosed` (the shared WebSocket died: idle-teardown
 /// timeout, OOM kill, real crash) via its error message and maps it to
@@ -180,7 +228,8 @@ const CONNECTION_CLOSED_MARKER: &str = "underlying connection is closed";
 /// and relaunch. All other failures (a bad page, a tab-level timeout) stay
 /// as [`FetchError::Render`], since they must not evict the shared browser
 /// under concurrency.
-fn classify_render_error(display: &str) -> FetchError {
+#[cfg(test)]
+pub(crate) fn classify_render_error(display: &str) -> FetchError {
     if display.contains(CONNECTION_CLOSED_MARKER) {
         FetchError::BrowserCrash
     } else {
