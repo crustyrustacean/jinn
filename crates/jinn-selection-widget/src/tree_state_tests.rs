@@ -261,12 +261,6 @@ fn set_items_rebuilds_index() {
     assert_eq!(state.filtered_item(1).unwrap().id, "y");
 }
 
-// =========================================================================
-// Phase 2: HIGH severity - core state mutation tests
-// =========================================================================
-
-// --- insert_char ---
-
 #[test]
 fn tree_insert_char_appends_to_filter() {
     let mut state = TreePickerState::with_items(vec![item("a", None, "Alpha")]);
@@ -308,8 +302,6 @@ fn tree_insert_char_at_cursor_middle() {
     assert_eq!(state.filter(), "axbc");
     assert_eq!(state.cursor_pos(), 2);
 }
-
-// --- insert_text ---
 
 #[test]
 fn tree_insert_text_strips_newlines_and_carriage_returns() {
@@ -356,8 +348,6 @@ fn tree_insert_text_at_cursor_middle() {
     assert_eq!(state.cursor_pos(), 3);
 }
 
-// --- backspace ---
-
 #[test]
 fn tree_backspace_at_start_is_noop() {
     let mut state = TreePickerState::with_items(vec![item("a", None, "Alpha")]);
@@ -401,8 +391,6 @@ fn tree_backspace_resets_selection_and_scroll() {
     assert_eq!(state.scroll_offset(), 0);
 }
 
-// --- move_cursor_left ---
-
 #[test]
 fn tree_move_cursor_left_decrements() {
     let mut state = TreePickerState::with_items(vec![item("a", None, "Alpha")]);
@@ -429,8 +417,6 @@ fn tree_move_cursor_left_multiple_times() {
     assert_eq!(state.cursor_pos(), 0);
 }
 
-// --- move_cursor_right ---
-
 #[test]
 fn tree_move_cursor_right_increments() {
     let mut state = TreePickerState::with_items(vec![item("a", None, "Alpha")]);
@@ -448,8 +434,6 @@ fn tree_move_cursor_right_clamps_at_end() {
     state.move_cursor_right();
     assert_eq!(state.cursor_pos(), 3);
 }
-
-// --- move_up ---
 
 #[test]
 fn tree_move_up_decrements() {
@@ -485,8 +469,6 @@ fn tree_move_up_adjusts_scroll_offset() {
     assert_eq!(state.selection(), 1);
     assert_eq!(state.scroll_offset(), 1);
 }
-
-// --- move_down ---
 
 #[test]
 fn tree_move_down_increments() {
@@ -529,8 +511,6 @@ fn tree_move_down_adjusts_scroll_offset() {
     assert_eq!(state.selection(), 5);
     assert_eq!(state.scroll_offset(), 1);
 }
-
-// --- ensure_visible ---
 
 #[test]
 fn tree_ensure_visible_selection_above_view() {
@@ -586,8 +566,6 @@ fn tree_ensure_visible_with_zero_max_visible_selection_below() {
     // max_visible == 0 guard prevents scroll down.
     assert_eq!(state.scroll_offset(), 2);
 }
-
-// --- DFS traversal: is_last_child and visited guard ---
 
 #[test]
 fn tree_dfs_multiple_roots_correct_last_child_flags() {

@@ -137,7 +137,6 @@ mod tests {
 
     #[rstest::rstest]
     fn create_routes_anthropic_to_anthropic_factory() {
-        // Kills: delete match arm Backend::Anthropic.
         // If the Anthropic arm were deleted, it would fall through to the OpenAI-compatible
         // path, which would produce a different error (wrong endpoint).
         let factory = GenericLlmServiceFactory::new(
@@ -165,7 +164,6 @@ mod tests {
 
     #[rstest::rstest]
     fn create_routes_google_to_google_factory() {
-        // Kills: delete match arm Backend::Google.
         // If the Google arm were deleted, it would fall through to the OpenAI-compatible path.
         let factory = GenericLlmServiceFactory::new(
             "test-google".to_owned(),

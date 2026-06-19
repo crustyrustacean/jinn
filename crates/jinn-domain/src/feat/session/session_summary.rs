@@ -65,8 +65,6 @@ mod tests {
     use crate::feat::session::chat_session::ChatSessionState;
     use crate::protocol::ChatEntry;
 
-    // --- Test: SessionSummary parses from full ChatSessionState JSON ---
-
     #[rstest::rstest]
     fn session_summary_parses_from_full_chat_session_state_json() {
         // Given a full ChatSessionState JSON line with history.

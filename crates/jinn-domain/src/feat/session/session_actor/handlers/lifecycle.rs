@@ -1107,8 +1107,6 @@ mod tests {
     use crate::protocol::{ChatEntry, ChatEntryKind, SessionId};
     use std::path::Path;
 
-    // --- Helper function tests ---
-
     #[rstest::rstest]
     #[tokio::test]
     async fn strip_ansi_removes_bold_codes() {
@@ -1205,8 +1203,6 @@ mod tests {
         assert!(text.contains("\u{2699}\u{FE0F}"));
         assert!(text.contains("Running teardown script"));
     }
-
-    // --- Teardown failure handler tests ---
 
     #[tokio::test]
     async fn teardown_failure_does_not_switch_active_session() {
@@ -1394,8 +1390,6 @@ mod tests {
         assert!(found, "expected SessionTeardownFinished with error");
     }
 
-    // --- CloseSession handler tests ---
-
     #[tokio::test]
     async fn remove_session_removes_session_from_hashmap() {
         let (mut actor, audit) = test_actor_recording().await;
@@ -1517,8 +1511,6 @@ mod tests {
             "did not expect SessionClosed for nonexistent session"
         );
     }
-
-    // --- Teardown-only (t key) tests ---
 
     #[tokio::test]
     async fn teardown_only_success_does_not_remove_session() {
@@ -1653,8 +1645,6 @@ mod tests {
             "expected PushChatEntry with teardown success entry"
         );
     }
-
-    // --- SessionState / LifecycleScriptState close tests ---
 
     #[tokio::test]
     async fn close_session_with_nothing_ran_skips_teardown_and_archives() {
@@ -1819,8 +1809,6 @@ mod tests {
         assert_ne!(*state.session.active_session_id(), only_id);
     }
 
-    // --- Teardown failure/success during close ---
-
     #[tokio::test]
     async fn close_session_leaves_lifecycle_at_setup_ran_when_teardown_fails() {
         use crate::feat::preferences_actor::user_preferences::SessionLifecycle;
@@ -1960,8 +1948,6 @@ mod tests {
         assert!(found, "expected SessionTeardownFinished with no error");
     }
 
-    // --- Empty session archive/close tests ---
-
     #[tokio::test]
     async fn archiving_empty_session_does_not_persist_non_interacted() {
         let (actor, store, _audit) = test_actor_with_store_recording(vec![]).await;
@@ -1997,8 +1983,6 @@ mod tests {
             "empty non-interacted session should not be persisted"
         );
     }
-
-    // --- Teardown persistence tests ---
 
     #[tokio::test]
     async fn teardown_only_advances_lifecycle_to_teardown_ran() {

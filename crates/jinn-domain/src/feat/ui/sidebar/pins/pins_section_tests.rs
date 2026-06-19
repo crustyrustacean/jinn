@@ -34,8 +34,6 @@ fn state_with_pinned(count: usize) -> AppState {
     state
 }
 
-// --- Persona edit tests ---
-
 #[rstest::rstest]
 fn sidebar_persona_edit_opens_picker_when_persona_focused() {
     // Given a state with persona section focused and sidebar scope.
@@ -217,8 +215,6 @@ fn pins_pin_top_noop_when_no_selection() {
     assert!(result.message_names.is_empty());
 }
 
-// --- SidebarSection tests ---
-
 #[rstest::rstest]
 fn section_id_is_pins() {
     // Given a PinsSection.
@@ -254,8 +250,6 @@ fn content_height_matches_entry_count() {
     // Then it returns header(1) + header-gap(1) + entries(3) + trailing gap(1) = 6.
     assert_eq!(height, 6);
 }
-
-// --- Rendering tests ---
 
 fn render_rows(
     section: &mut PinsSection,
@@ -422,8 +416,6 @@ fn render_sorts_entries_by_position() {
     );
 }
 
-// --- SessionNew section restriction tests ---
-
 // Note: SessionNew section-scoping is now handled by the keymap (n is only
 // bound in SidebarSessions scope), so the IntentHandler no longer checks
 // which section is focused. These tests validated the old handler-level check.
@@ -473,8 +465,6 @@ fn session_new_works_when_not_in_sidebar() {
     // Then a new session is created (no section restriction outside sidebar).
     assert_ne!(*state.session.active_session_id(), old_id);
 }
-
-// --- sync_chat_log_cursor tests ---
 
 #[rstest::rstest]
 fn sync_chat_log_cursor_sets_cursor_by_entry_id_with_visual_items() {
@@ -618,8 +608,6 @@ fn resolve_selected_entry_id_returns_real_session_and_entry_ids() {
     );
 }
 
-// --- Pinned skill display tests ---
-
 use crate::feat::session::tool_result_status::ToolResultStatus;
 
 /// Build an AppState with one pinned tool-result entry.
@@ -712,8 +700,6 @@ fn pins_non_skill_tool_result_unchanged() {
     );
 }
 
-// --- Display-width truncation tests ---
-
 #[rstest::rstest]
 fn truncate_to_width_returns_string_unchanged_when_it_fits() {
     // Given a string that fits within the budget.
@@ -794,8 +780,6 @@ fn truncate_str_strips_ansi_before_truncating() {
     // Then ANSI is stripped and the plain text is truncated.
     assert_eq!(result, "he\u{2026}");
 }
-
-// --- area_width constraint tests ---
 
 #[test]
 fn tool_result_with_wide_emoji_fits_narrow_sidebar() {

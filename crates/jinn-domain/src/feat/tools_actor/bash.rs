@@ -942,8 +942,6 @@ mod tests {
         );
     }
 
-    // --- StreamingBatcher unit tests ---
-
     #[rstest::rstest]
     fn push_line_appends_to_accumulated() {
         // Given a fresh batcher.
@@ -1048,8 +1046,6 @@ mod tests {
             accumulated.len()
         );
     }
-
-    // --- Phase 4: Mutation-killing tests ---
 
     #[rstest::rstest]
     fn format_exit_result_success_with_output() {

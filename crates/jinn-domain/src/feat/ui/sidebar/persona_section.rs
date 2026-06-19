@@ -138,8 +138,6 @@ mod tests {
         EnterFrom, SectionNavResult, SidebarIntent, SidebarSection, SidebarSectionId,
     };
 
-    // --- Section identity ---
-
     #[rstest::rstest]
     fn section_id_is_persona() {
         // Given a PersonaSection.
@@ -149,8 +147,6 @@ mod tests {
         // Then it returns Persona.
         assert_eq!(section.id(), SidebarSectionId::Persona);
     }
-
-    // --- Content height ---
 
     #[rstest::rstest]
     fn content_height_is_four_with_active_persona() {
@@ -183,8 +179,6 @@ mod tests {
         // Then it returns 4 (consistent layout).
         assert_eq!(height, 4);
     }
-
-    // --- Navigation ---
 
     #[rstest::rstest]
     fn navigate_returns_exhausted_for_move_down() {
@@ -222,8 +216,6 @@ mod tests {
         assert_eq!(result, SectionNavResult::Moved);
     }
 
-    // --- Cursor ---
-
     #[rstest::rstest]
     fn receive_cursor_sets_cursor_to_some_zero() {
         // Given default app state (cursor is None).
@@ -235,8 +227,6 @@ mod tests {
         // Then the persona section cursor is set to Some(0).
         assert_eq!(state.frontend.persona_section.cursor, Some(0));
     }
-
-    // --- Rendering ---
 
     use jinn_testutil::setup_term;
 

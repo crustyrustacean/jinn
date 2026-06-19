@@ -335,7 +335,6 @@ mod tests {
 
     #[rstest::rstest]
     fn is_empty_returns_false_when_data_present() {
-        // Kills: replace is_empty with true.
         // If is_empty always returned true, data loading would appear to never work.
         let dir = tempfile::tempdir().expect("temp dir");
         let user_path = write_json(

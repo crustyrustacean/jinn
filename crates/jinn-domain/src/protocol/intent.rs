@@ -28,7 +28,6 @@ impl std::fmt::Display for CwdRoot {
 /// The keymap decides the intent; the `IntentHandler` decides what to do with it.
 #[derive(Debug, Clone)]
 pub enum Intent {
-    // --- Chat Input ---
     /// Insert a character at the cursor position.
     InsertChar {
         /// The character to insert.
@@ -67,7 +66,6 @@ pub enum Intent {
         text: String,
     },
 
-    // --- Navigation ---
     /// Scroll the chat log up.
     ScrollUp,
     /// Scroll the chat log down.
@@ -83,7 +81,6 @@ pub enum Intent {
     /// Open the input in an external editor.
     EditInput,
 
-    // --- Mode & App ---
     /// Quit the application.
     Quit,
     /// Context-sensitive interrupt: clear input or cancel stream.
@@ -109,7 +106,6 @@ pub enum Intent {
     /// Dismisses any active confirmation prompt via the pre-match interceptors.
     NoOp,
 
-    // --- Picker ---
     /// Open a picker of the specified kind.
     OpenPicker {
         /// Which picker to open.
@@ -159,7 +155,6 @@ pub enum Intent {
     RescanPromptTemplates,
     /// Rescan the agent skills directory and reload the skill picker.
     RefreshSkills,
-    // --- Sidebar ---
     /// Enter the sidebar scope.
     SidebarFocus,
     /// Jump directly to the Sessions sidebar section from any scope.
@@ -207,7 +202,6 @@ pub enum Intent {
     /// Only valid when the cursor is on a `SessionEntryKind::Plugin` entry.
     SidebarTogglePlugin,
 
-    // --- Chat Entry Selection ---
     /// Select the next chat entry.
     ChatEntrySelectNext,
     /// Select the previous chat entry.
@@ -229,7 +223,6 @@ pub enum Intent {
     /// Reset the currently selected chat entry's context override to `Default`.
     ChatEntryResetSelected,
 
-    // --- Session Lifecycle ---
     /// Run a lifecycle setup command to create a new session.
     SessionLifecycleSetup {
         /// The lifecycle name (e.g., "fossil branch").
@@ -242,7 +235,6 @@ pub enum Intent {
     /// Confirm the arg input and trigger lifecycle setup.
     ArgInputConfirm,
 
-    // --- Sidebar Resize ---
     /// Enter sidebar resize mode.
     SidebarResizeEnter,
     /// Expand the sidebar (move border left).
@@ -252,7 +244,6 @@ pub enum Intent {
     /// Exit sidebar resize mode, returning to Normal scope.
     SidebarResizeLeave,
 
-    // --- Rename Session Input ---
     /// Open the rename session input popup.
     SidebarRenameSession,
     /// Confirm the rename session input and apply.
@@ -273,7 +264,6 @@ pub enum Intent {
     /// Delete the grapheme after the cursor in rename input.
     RenameDeleteForward,
 
-    // --- Pruner Accumulation Input (set threshold) ---
     /// Open the pruner accumulation threshold input popup.
     OpenPrunerAccumulationInput,
     /// Confirm the pruner accumulation input and persist.
@@ -294,7 +284,6 @@ pub enum Intent {
     /// Delete the grapheme after the cursor in pruner accumulation input.
     PrunerAccumulationDeleteForward,
 
-    // --- CWD Input (type a path) ---
     /// Open the cwd input popup (type a directory path).
     OpenCwdInput,
     /// Confirm the cwd input - resolve, validate, and apply.
@@ -302,7 +291,6 @@ pub enum Intent {
     /// Cancel the cwd input popup.
     CwdInputLeave,
 
-    // --- Project Add Input (type a path to register a project) ---
     /// Open the project-add input popup (type a directory path).
     OpenProjectAddInput,
     /// Confirm the project-add input - resolve, validate, and register.
@@ -310,14 +298,12 @@ pub enum Intent {
     /// Cancel the project-add input popup.
     ProjectAddInputLeave,
 
-    // --- CWD Selection ---
     /// Change the session's working directory via an external picker.
     ChangeCwd {
         /// Where to search from.
         root: CwdRoot,
     },
 
-    // --- Quake Bar (global overlay console) ---
     /// Open the quake bar overlay (pushes `FocusScope::QuakeBar`).
     OpenQuakeBar,
     /// Close the quake bar overlay (pops `FocusScope::QuakeBar`).
@@ -329,7 +315,6 @@ pub enum Intent {
     /// Scroll the quake bar command log toward the newest line.
     QuakeBarScrollDown,
 
-    // --- Plugin ---
     /// Trigger a plugin-declared action via a registered keybind.
     ///
     /// The `description` is rendered by ratatui-which-key via the `Display` impl.

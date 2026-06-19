@@ -30,8 +30,6 @@ use unicode_segmentation::UnicodeSegmentation as _;
 
 use super::validator;
 
-// --- Character input ---
-
 /// Handles `InsertChar` - inserts a character and manages autocomplete.
 pub fn handle_insert_char(ch: char, state: &mut AppState) -> IntentResult {
     let is_autocomplete_active = state.active_chat_input().autocomplete().is_some();
@@ -125,8 +123,6 @@ pub fn handle_insert_char(ch: char, state: &mut AppState) -> IntentResult {
     IntentResult::empty()
 }
 
-// --- Paste ---
-
 /// Handles `PasteText` - bulk inserts pasted text and deactivates autocomplete.
 ///
 /// Pastes bypass the per-character insertion pipeline entirely, inserting the
@@ -137,8 +133,6 @@ pub fn handle_paste_text(text: &str, state: &mut AppState) -> IntentResult {
     state.active_chat_input_mut().insert_text(text);
     IntentResult::empty()
 }
-
-// --- Deletion ---
 
 /// Handles `DeleteGrapheme` - backspace with autocomplete awareness.
 pub fn handle_delete_grapheme(state: &mut AppState) -> IntentResult {
@@ -226,10 +220,6 @@ pub fn handle_delete_grapheme_forward(state: &mut AppState) -> IntentResult {
     try_reactivate_autocomplete(state);
     IntentResult::empty()
 }
-
-// --- Submission ---
-
-// --- Input mode toggle ---
 
 /// Handles `ToggleInputMode` - flips Queue ↔ Steer.
 pub fn handle_toggle_input_mode(state: &mut AppState) -> IntentResult {
@@ -408,8 +398,6 @@ fn execute_slash_command(
     }
 }
 
-// --- Autocomplete ---
-
 /// Handles `AutocompleteConfirm` - confirms selection or falls back to tab switch.
 pub fn handle_autocomplete_confirm(state: &mut AppState) -> IntentResult {
     if validator::validate_autocomplete_confirm(state).is_ok() {
@@ -440,8 +428,6 @@ pub fn handle_autocomplete_confirm(state: &mut AppState) -> IntentResult {
         IntentResult::empty()
     }
 }
-
-// --- Cursor movement ---
 
 /// Handles `MoveCursorLeft` - moves cursor left, deactivates autocomplete if needed.
 pub fn handle_move_cursor_left(state: &mut AppState) -> IntentResult {
@@ -513,8 +499,6 @@ pub fn handle_move_cursor_down(state: &mut AppState) -> IntentResult {
     IntentResult::empty()
 }
 
-// --- Normal Escape ---
-
 /// Handles `NormalEscape` - no-op for selection (always-selected invariant).
 ///
 /// If the session is busy (streaming/sending), activates the cancel stream
@@ -531,8 +515,6 @@ pub fn handle_normal_escape(state: &mut AppState) -> IntentResult {
 
     IntentResult::empty()
 }
-
-// --- Mode transitions ---
 
 /// Handles `EnterInsertMode` - pushes Input onto the scope stack.
 pub fn handle_enter_insert_mode(state: &mut AppState) -> IntentResult {
@@ -604,8 +586,6 @@ pub fn handle_enter_normal_mode(state: &mut AppState) -> IntentResult {
     state.frontend.scope_stack.clear_overlays();
     IntentResult::empty()
 }
-
-// --- Helpers ---
 
 /// Checks whether the `#` at the cursor is in a valid position to trigger autocomplete.
 fn is_valid_hash_trigger_position(input: &ChatInputBoxState) -> bool {

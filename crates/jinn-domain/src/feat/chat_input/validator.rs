@@ -65,8 +65,6 @@ mod tests {
     )]
     use super::*;
 
-    // --- SubmitMessage tests ---
-
     #[rstest::rstest]
     fn submit_message_succeeds_with_non_empty_buffer() {
         // Given a state with text in the input buffer.

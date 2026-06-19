@@ -88,8 +88,6 @@ mod tests {
     )]
     use super::*;
 
-    // --- compute_scroll: scroll-to-selected logic ---
-
     #[rstest::rstest]
     fn compute_scroll_clamps_up_when_selected_above_viewport() {
         // Given 20 entries, each 1 line, selected entry at line 2, viewport scrolled to line 5.
@@ -205,8 +203,6 @@ mod tests {
         assert_eq!(result.clamped, 0);
         assert_eq!(result.blank_count, 2);
     }
-
-    // --- find_visible_indices: boundary conditions ---
 
     #[rstest::rstest]
     fn find_visible_entries_at_viewport_boundary() {

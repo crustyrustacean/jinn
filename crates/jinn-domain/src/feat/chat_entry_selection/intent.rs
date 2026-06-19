@@ -732,8 +732,6 @@ mod tests {
         );
     }
 
-    // --- Yank Selected Entry ---
-
     #[rstest::rstest]
     fn yank_selected_sets_yank_text_when_entry_selected() {
         // Given a state with a selected user entry.
@@ -842,8 +840,6 @@ mod tests {
             Some("bash: output text".to_owned())
         );
     }
-
-    // --- Toggle Ignored Block ---
 
     #[rstest::rstest]
     fn toggle_ignored_block_noop_with_no_selection() {
@@ -1005,8 +1001,6 @@ mod tests {
             "block should be collapsed after toggle on ignored entry"
         );
     }
-
-    // --- Ignore selected tests ---
 
     #[rstest::rstest]
     fn handle_ignore_selected_toggles_false_to_true() {
@@ -1239,8 +1233,6 @@ mod tests {
         assert_eq!(selected.context_override(), ContextOverride::ForcedExclude);
     }
 
-    // --- Reset (`r`) handler tests ---
-
     #[rstest::rstest]
     fn handle_reset_sets_forced_exclude_back_to_default() {
         // Given a selected entry that is ForcedExclude.
@@ -1409,8 +1401,6 @@ mod tests {
         assert_eq!(history[0].context_override(), ContextOverride::Default);
         assert_eq!(history[1].context_override(), ContextOverride::Default);
     }
-
-    // --- Sweep tests ---
 
     #[rstest::rstest]
     fn sweep_first_press_toggles_and_captures_state() {

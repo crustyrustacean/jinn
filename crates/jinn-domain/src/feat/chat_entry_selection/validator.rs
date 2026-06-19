@@ -9,15 +9,11 @@ use wherror::Error;
 #[cfg(test)]
 use crate::feat::session::tool_result_status::ToolResultStatus;
 
-// --- Infallible validators ---
-
 /// Validates the ChatEntrySelectNext intent.
 pub fn validate_chat_entry_select_next(_state: &AppState) {}
 
 /// Validates the ChatEntrySelectPrev intent.
 pub fn validate_chat_entry_select_prev(_state: &AppState) {}
-
-// --- Fallible validators ---
 
 /// Errors from validating a YankSelectedEntry intent.
 #[derive(Debug, Error)]
@@ -656,8 +652,6 @@ mod ignore_selected_tests {
         // Then validation succeeds (all entry types can be toggled).
         assert!(result.is_ok());
     }
-
-    // --- Acceptance cases ---
 
     #[rstest::rstest]
     fn ignore_selected_accepts_user_entry() {

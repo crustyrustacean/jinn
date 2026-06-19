@@ -511,8 +511,6 @@ mod tests {
         load_theme(&state, &empty, &empty);
     }
 
-    // --- fetch_models tests ---
-
     #[tokio::test]
     async fn fetch_models_writes_file_on_success() {
         // Given a mock server returning valid JSON.
