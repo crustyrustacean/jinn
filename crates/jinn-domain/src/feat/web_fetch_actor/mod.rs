@@ -284,10 +284,11 @@ mod tests {
     use super::{WebFetchActor, WebFetchActorDeps};
     use kameo::actor::Spawn;
 
-    /// A mock web fetcher that returns a fixed response.
+    /// A mock web fetcher that returns a fixed response, optionally after a delay.
     struct MockFetcher {
         content: String,
         success: bool,
+        delay: Option<std::time::Duration>,
     }
 
     #[async_trait]
@@ -297,6 +298,9 @@ mod tests {
             _url: &str,
             _options: FetchOptions,
         ) -> Result<FetchOutput, jinn_web_fetch::FetchError> {
+            if let Some(delay) = self.delay {
+                tokio::time::sleep(delay).await;
+            }
             if self.success {
                 Ok(FetchOutput {
                     content: self.content.clone(),
@@ -314,6 +318,7 @@ mod tests {
         Arc::new(MockFetcher {
             content: "Hello, World!".to_owned(),
             success: true,
+            delay: None,
         })
     }
 
@@ -321,6 +326,7 @@ mod tests {
         Arc::new(MockFetcher {
             content: String::new(),
             success: false,
+            delay: None,
         })
     }
 
@@ -437,6 +443,47 @@ mod tests {
         assert_eq!(messages.len(), 1);
         assert!(!messages[0].result.success);
         assert!(messages[0].result.content.contains("fetch failed"));
+    }
+
+    #[tokio::test]
+    async fn execute_web_fetch_concurrent_requests_overlap() {
+        // Given a WebFetchActor whose fetcher sleeps 200ms per fetch.
+        let harness = TestHarness::new().await;
+        let recorder = harness.spawn_recorder::<ToolExecutionCompleted>().await;
+        let actor = WebFetchActor::spawn(WebFetchActorDeps {
+            deps: harness.actor_deps().await,
+            web_fetcher: Arc::new(MockFetcher {
+                content: "Hello, World!".to_owned(),
+                success: true,
+                delay: Some(std::time::Duration::from_millis(200)),
+            }),
+        });
+        actor.wait_for_startup().await;
+
+        // When publishing two ExecuteWebFetch commands back-to-back.
+        let start = std::time::Instant::now();
+        for id in ["tc_a", "tc_b"] {
+            harness
+                .publish(ExecuteWebFetch {
+                    session_id: SessionId::new(),
+                    tool_call: ToolCall {
+                        id: id.to_owned(),
+                        name: "web-fetch".to_owned(),
+                        arguments: r#"{"url": "https://example.com/"}"#.to_owned(),
+                    },
+                })
+                .await;
+        }
+
+        // Then both completions arrive, and the total wall time reflects
+        // overlapping fetches (well under the 400ms a serial mailbox would take).
+        let messages = await_recorded(&recorder, 2, std::time::Duration::from_secs(2)).await;
+        assert_eq!(messages.len(), 2, "both fetches should complete");
+        let elapsed = start.elapsed();
+        assert!(
+            elapsed < std::time::Duration::from_millis(380),
+            "fetches overlapped (took {elapsed:?}); a serial mailbox would take ~400ms"
+        );
     }
 }
 
