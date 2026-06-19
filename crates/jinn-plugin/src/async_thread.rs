@@ -826,25 +826,26 @@ impl<'a> AsyncCtxBuilder<'a> {
                     }
 
                     // Spawn each request concurrently and collect handles.
-                    let mut handles = Vec::new();
+                    let mut collected_handles = Vec::new();
                     for (name, data, task) in specs_owned {
                         let handler = req_handler.clone();
                         let in_flight = in_flight.clone();
-                        handles.push(tokio::spawn(async move {
+                        collected_handles.push(tokio::spawn(async move {
                             run_request(&handler, &in_flight, &name, data, task).await
                         }));
                     }
 
                     // Await all and build the result array.
-                    let results: Vec<serde_json::Value> = futures::future::join_all(handles)
-                        .await
-                        .into_iter()
-                        .map(|r| {
-                            r.unwrap_or_else(
-                                |_| serde_json::json!({"ok": false, "error": "task panicked"}),
-                            )
-                        })
-                        .collect();
+                    let results: Vec<serde_json::Value> =
+                        futures::future::join_all(collected_handles)
+                            .await
+                            .into_iter()
+                            .map(|r| {
+                                r.unwrap_or_else(
+                                    |_| serde_json::json!({"ok": false, "error": "task panicked"}),
+                                )
+                            })
+                            .collect();
                     bindings::json_to_lua_value(&lua, &serde_json::Value::Array(results))
                 }
             })?;

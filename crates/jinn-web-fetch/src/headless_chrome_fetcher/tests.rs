@@ -199,7 +199,7 @@ fn classify_real_connection_closed_type_yields_browser_crash() {
     let real = headless_chrome::browser::transport::ConnectionClosed {}.into();
 
     // When classifying.
-    let err = classify_browser_error(real);
+    let err = classify_browser_error(&real);
 
     // Then it is a connection-level crash — independent of the Display text,
     // so a future headless_chrome release that reworded the message would
@@ -214,7 +214,7 @@ fn classify_arbitrary_anyhow_error_yields_render() {
     let unrelated = anyhow::anyhow!("navigation timed out after 30000ms");
 
     // When classifying.
-    let err = classify_browser_error(unrelated);
+    let err = classify_browser_error(&unrelated);
 
     // Then it is a per-tab render error (no eviction).
     assert!(matches!(err, FetchError::Render(_)));
@@ -228,7 +228,7 @@ fn classify_wrapped_connection_closed_in_source_chain_yields_browser_crash() {
         .context("while opening new tab");
 
     // When classifying.
-    let err = classify_browser_error(wrapped);
+    let err = classify_browser_error(&wrapped);
 
     // Then the connection death is still detected through the chain.
     assert!(matches!(err, FetchError::BrowserCrash));
