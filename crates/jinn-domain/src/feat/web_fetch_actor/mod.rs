@@ -140,80 +140,86 @@ impl Message<ExecuteWebFetch> for WebFetchActor {
             url_args = %msg.tool_call.arguments,
             "web-fetch: handling ExecuteWebFetch"
         );
-        let result = self.execute_fetch(&msg.tool_call).await;
-        tracing::info!(
-            tool_call_id = %result.tool_call_id,
-            success = result.success,
-            content_len = result.content.len(),
-            "web-fetch: fetch complete"
-        );
-        let () = self
-            .publish(ToolExecutionCompleted {
-                session_id: msg.session_id,
-                result,
-            })
-            .await;
+        // Dispatch the fetch to a standalone task and return immediately. The
+        // mailbox is freed for the next request, so concurrent fetches (across
+        // sessions, or multiple URLs in one tool batch) run as independent
+        // Chrome tabs instead of serially blocking the actor. The task runs the
+        // fetch to completion and publishes the result itself.
+        let web_fetcher = self.web_fetcher.clone();
+        let bus = self.deps.services.bus.clone();
+        let tool_call = msg.tool_call;
+        let session_id = msg.session_id;
+        tokio::spawn(async move {
+            let result = execute_fetch(&web_fetcher, &tool_call).await;
+            tracing::info!(
+                tool_call_id = %result.tool_call_id,
+                success = result.success,
+                content_len = result.content.len(),
+                "web-fetch: fetch complete"
+            );
+            let () = bus
+                .publish(ToolExecutionCompleted { session_id, result })
+                .await;
+        });
     }
 }
 
-impl WebFetchActor {
-    /// Parses arguments and executes the fetch.
-    async fn execute_fetch(&self, tool_call: &ToolCall) -> ToolResult {
-        tracing::debug!(arguments = %tool_call.arguments, "web-fetch: parsing arguments");
-        let args = match serde_json::from_str::<WebFetchArgs>(&tool_call.arguments) {
-            Ok(a) => a,
-            Err(e) => {
-                tracing::warn!(err = %e, "web-fetch: failed to parse arguments");
-                return ToolResult {
-                    tool_call_id: tool_call.id.clone(),
-                    name: tool_call.name.clone(),
-                    content: format!("invalid arguments: {e}"),
-                    success: false,
-                    full_content: None,
-                    truncation: None,
-                    pin_position: None,
-                };
-            }
-        };
+/// Parses arguments and executes the fetch.
+async fn execute_fetch(web_fetcher: &Arc<dyn WebFetcher>, tool_call: &ToolCall) -> ToolResult {
+    tracing::debug!(arguments = %tool_call.arguments, "web-fetch: parsing arguments");
+    let args = match serde_json::from_str::<WebFetchArgs>(&tool_call.arguments) {
+        Ok(a) => a,
+        Err(e) => {
+            tracing::warn!(err = %e, "web-fetch: failed to parse arguments");
+            return ToolResult {
+                tool_call_id: tool_call.id.clone(),
+                name: tool_call.name.clone(),
+                content: format!("invalid arguments: {e}"),
+                success: false,
+                full_content: None,
+                truncation: None,
+                pin_position: None,
+            };
+        }
+    };
 
-        let format = args.options.and_then(|o| o.format).unwrap_or_default();
-        let options = FetchOptions { format };
-        tracing::info!(
-            url = %args.url,
-            format = ?options.format,
-            "web-fetch: calling fetcher"
-        );
+    let format = args.options.and_then(|o| o.format).unwrap_or_default();
+    let options = FetchOptions { format };
+    tracing::info!(
+        url = %args.url,
+        format = ?options.format,
+        "web-fetch: calling fetcher"
+    );
 
-        match self.web_fetcher.fetch(&args.url, options).await {
-            Ok(output) => {
-                tracing::debug!(
-                    status = output.status,
-                    content_type = %output.content_type,
-                    final_url = %output.url,
-                    content_len = output.content.len(),
-                    "web-fetch: fetch succeeded"
-                );
-                ToolResult {
-                    tool_call_id: tool_call.id.clone(),
-                    name: tool_call.name.clone(),
-                    content: output.content,
-                    success: true,
-                    full_content: None,
-                    truncation: None,
-                    pin_position: None,
-                }
+    match web_fetcher.fetch(&args.url, options).await {
+        Ok(output) => {
+            tracing::debug!(
+                status = output.status,
+                content_type = %output.content_type,
+                final_url = %output.url,
+                content_len = output.content.len(),
+                "web-fetch: fetch succeeded"
+            );
+            ToolResult {
+                tool_call_id: tool_call.id.clone(),
+                name: tool_call.name.clone(),
+                content: output.content,
+                success: true,
+                full_content: None,
+                truncation: None,
+                pin_position: None,
             }
-            Err(e) => {
-                tracing::warn!(err = %e, "web-fetch: fetch failed");
-                ToolResult {
-                    tool_call_id: tool_call.id.clone(),
-                    name: tool_call.name.clone(),
-                    content: format!("fetch failed: {e}"),
-                    success: false,
-                    full_content: None,
-                    truncation: None,
-                    pin_position: None,
-                }
+        }
+        Err(e) => {
+            tracing::warn!(err = %e, "web-fetch: fetch failed");
+            ToolResult {
+                tool_call_id: tool_call.id.clone(),
+                name: tool_call.name.clone(),
+                content: format!("fetch failed: {e}"),
+                success: false,
+                full_content: None,
+                truncation: None,
+                pin_position: None,
             }
         }
     }
@@ -278,10 +284,11 @@ mod tests {
     use super::{WebFetchActor, WebFetchActorDeps};
     use kameo::actor::Spawn;
 
-    /// A mock web fetcher that returns a fixed response.
+    /// A mock web fetcher that returns a fixed response, optionally after a delay.
     struct MockFetcher {
         content: String,
         success: bool,
+        delay: Option<std::time::Duration>,
     }
 
     #[async_trait]
@@ -291,6 +298,9 @@ mod tests {
             _url: &str,
             _options: FetchOptions,
         ) -> Result<FetchOutput, jinn_web_fetch::FetchError> {
+            if let Some(delay) = self.delay {
+                tokio::time::sleep(delay).await;
+            }
             if self.success {
                 Ok(FetchOutput {
                     content: self.content.clone(),
@@ -308,6 +318,7 @@ mod tests {
         Arc::new(MockFetcher {
             content: "Hello, World!".to_owned(),
             success: true,
+            delay: None,
         })
     }
 
@@ -315,6 +326,7 @@ mod tests {
         Arc::new(MockFetcher {
             content: String::new(),
             success: false,
+            delay: None,
         })
     }
 
@@ -431,6 +443,47 @@ mod tests {
         assert_eq!(messages.len(), 1);
         assert!(!messages[0].result.success);
         assert!(messages[0].result.content.contains("fetch failed"));
+    }
+
+    #[tokio::test]
+    async fn execute_web_fetch_concurrent_requests_overlap() {
+        // Given a WebFetchActor whose fetcher sleeps 200ms per fetch.
+        let harness = TestHarness::new().await;
+        let recorder = harness.spawn_recorder::<ToolExecutionCompleted>().await;
+        let actor = WebFetchActor::spawn(WebFetchActorDeps {
+            deps: harness.actor_deps().await,
+            web_fetcher: Arc::new(MockFetcher {
+                content: "Hello, World!".to_owned(),
+                success: true,
+                delay: Some(std::time::Duration::from_millis(200)),
+            }),
+        });
+        actor.wait_for_startup().await;
+
+        // When publishing two ExecuteWebFetch commands back-to-back.
+        let start = std::time::Instant::now();
+        for id in ["tc_a", "tc_b"] {
+            harness
+                .publish(ExecuteWebFetch {
+                    session_id: SessionId::new(),
+                    tool_call: ToolCall {
+                        id: id.to_owned(),
+                        name: "web-fetch".to_owned(),
+                        arguments: r#"{"url": "https://example.com/"}"#.to_owned(),
+                    },
+                })
+                .await;
+        }
+
+        // Then both completions arrive, and the total wall time reflects
+        // overlapping fetches (well under the 400ms a serial mailbox would take).
+        let messages = await_recorded(&recorder, 2, std::time::Duration::from_secs(2)).await;
+        assert_eq!(messages.len(), 2, "both fetches should complete");
+        let elapsed = start.elapsed();
+        assert!(
+            elapsed < std::time::Duration::from_millis(380),
+            "fetches overlapped (took {elapsed:?}); a serial mailbox would take ~400ms"
+        );
     }
 }
 
