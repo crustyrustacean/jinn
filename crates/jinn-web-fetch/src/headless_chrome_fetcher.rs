@@ -111,17 +111,20 @@ struct ChromeBrowser {
 
 impl HeadlessBrowser for ChromeBrowser {
     fn render(&self, url: &str) -> Result<RenderedPage, FetchError> {
-        let tab = self.browser.new_tab().map_err(classify_browser_error)?;
+        let tab = self
+            .browser
+            .new_tab()
+            .map_err(|e| classify_browser_error(&e))?;
 
         tracing::trace!(url = %url, "HeadlessChromeFetcher: navigating to URL");
         tab.navigate_to(url)
-            .map_err(classify_browser_error)?
+            .map_err(|e| classify_browser_error(&e))?
             .wait_until_navigated()
-            .map_err(classify_browser_error)?;
+            .map_err(|e| classify_browser_error(&e))?;
         tracing::trace!("HeadlessChromeFetcher: navigation complete");
 
         tracing::trace!("HeadlessChromeFetcher: getting page HTML");
-        let html = tab.get_content().map_err(classify_browser_error)?;
+        let html = tab.get_content().map_err(|e| classify_browser_error(&e))?;
         tracing::debug!(
             html_len = html.len(),
             "HeadlessChromeFetcher: HTML retrieved"
@@ -193,8 +196,8 @@ const CONNECTION_CLOSED_MARKER: &str = "underlying connection is closed";
 /// kill, real crash) must trigger eviction + relaunch; per-tab failures (a bad
 /// page, a tab-level timeout) stay as [`FetchError::Render`] so they never
 /// evict the shared browser under concurrency.
-fn classify_browser_error(err: AnyhowError) -> FetchError {
-    if is_connection_closed(&err) {
+fn classify_browser_error(err: &AnyhowError) -> FetchError {
+    if is_connection_closed(err) {
         FetchError::BrowserCrash
     } else {
         FetchError::Render(err.to_string())
