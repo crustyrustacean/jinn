@@ -6,94 +6,153 @@
 //!
 //! # Crash recovery
 //!
-//! If a tab operation fails (browser crash, OOM kill, etc.), the browser
-//! instance is cleared from the internal [`Mutex`]. The next `fetch()` call
-//! will re-launch. The caller receives [`FetchError::BrowserCrash`].
+//! If a tab operation fails with a connection-level death (idle-teardown,
+//! browser crash, OOM kill), the browser handle is cleared from the internal
+//! [`Mutex`] and the fetch is retried exactly once against a freshly-launched
+//! browser. Per-tab failures (a bad page, a tab-level timeout) do _not_ evict
+//! the shared browser, since under concurrency that would kill other sessions'
+//! in-flight tabs.
 //!
 //! # Lifecycle
 //!
 //! - **Lazy launch**: first `fetch()` starts Chromium.
 //! - **Reuse**: subsequent calls open a new tab on the same browser.
+//! - **Self-heal**: a dead WebSocket triggers exactly one relaunch + retry.
 //! - **Shutdown**: [`WebFetcher::shutdown`] drops the browser (kills process).
 
 use std::collections::HashMap;
 use std::sync::Arc;
-
-use parking_lot::Mutex;
+use std::time::Duration;
 
 use async_trait::async_trait;
 use headless_chrome::{Browser, LaunchOptions};
-use std::time::Duration;
-use tracing;
+use parking_lot::Mutex;
 
 use crate::{Extractor, FetchError, FetchOptions, FetchOutput, OutputFormat, WebFetcher};
 
-/// A web fetcher that uses headless Chrome to render JavaScript-heavy pages.
+/// How long a kept-warm browser survives while idle before headless_chrome
+/// tears its WebSocket down. The library default (30s) is far too eager;
+/// self-heal still recovers when a genuine death eventually occurs past this.
+const IDLE_BROWSER_TIMEOUT: Duration = Duration::from_secs(600);
+
+/// A page rendered to HTML by a headless browser tab.
 ///
-/// The browser is lazily launched on the first `fetch()` call and reused
-/// across subsequent calls. Thread-safe via `Arc<Mutex<Option<Browser>>>`.
-///
-/// Content extraction is delegated to [`Extractor`] implementations looked
-/// up by [`OutputFormat`]. Formats without a registered extractor (e.g.,
-/// [`OutputFormat::Html`]) return the raw page HTML unchanged.
-pub struct HeadlessChromeFetcher {
-    /// The lazily-launched browser instance.
-    browser: Arc<Mutex<Option<Browser>>>,
-    /// Extractor implementations keyed by output format.
-    /// Formats not in the map (e.g., `Html`) pass through raw content.
-    extractors: HashMap<OutputFormat, Arc<dyn Extractor>>,
+/// Extraction (text/markdown) is the fetcher's concern, applied after render,
+/// so the browser abstraction stays format-agnostic.
+#[derive(Clone)]
+pub(crate) struct RenderedPage {
+    /// Raw HTML after JavaScript execution.
+    pub(crate) html: String,
+    /// Final URL after any redirects.
+    pub(crate) final_url: String,
 }
 
-impl HeadlessChromeFetcher {
-    /// Creates a new fetcher with the given extractor map, without launching a browser.
+/// Capability: render one page to HTML in a headless browser tab.
+///
+/// Abstracts the concrete [`headless_chrome::Browser`] so the fetcher's launch,
+/// eviction, and retry logic is unit-testable without spawning Chromium.
+/// Implementations classify their own errors: connection death surfaces as
+/// [`FetchError::BrowserCrash`]; per-tab failures as [`FetchError::Render`].
+pub(crate) trait HeadlessBrowser: Send + Sync {
+    /// Renders `url` to a page.
     ///
-    /// The browser will be launched on the first `fetch()` call.
-    #[must_use]
-    pub fn new(extractors: HashMap<OutputFormat, Arc<dyn Extractor>>) -> Self {
-        Self {
-            browser: Arc::new(Mutex::new(None)),
-            extractors,
-        }
-    }
-
+    /// # Errors
+    ///
+    /// [`FetchError::BrowserCrash`] when the shared connection is dead;
+    /// [`FetchError::Render`] for per-tab failures.
+    fn render(&self, url: &str) -> Result<RenderedPage, FetchError>;
+    /// Backend identifier for tracing/debug.
+    fn name(&self) -> &'static str;
 }
 
-/// Ensures a browser is running in `slot`, launching one if necessary.
+/// Capability: launch a fresh headless browser handle.
 ///
-/// Returns a clone of the handle. The lock is held only long enough to
-/// check/launch/clone — never across tab operations — so concurrent fetches
-/// can each grab a handle and run independent tabs.
-fn ensure_browser(slot: &Arc<Mutex<Option<Browser>>>) -> Result<Browser, FetchError> {
-    let mut guard = slot.lock();
-    if let Some(ref browser) = *guard {
-        tracing::trace!("HeadlessChromeFetcher: reusing existing browser");
-        return Ok(browser.clone());
-    }
-    tracing::info!("HeadlessChromeFetcher: launching headless Chrome");
-    let browser = Browser::new(LaunchOptions {
+/// The fetcher calls this on first use and on every crash-recovery relaunch.
+/// Under concurrency the slot mutex serializes relaunches, so only one task
+/// actually launches and the rest reuse it.
+pub(crate) trait HeadlessBrowserFactory: Send + Sync {
+    /// Launches a new browser.
+    ///
+    /// # Errors
+    ///
+    /// [`FetchError::BrowserLaunch`] if the process cannot be started.
+    fn launch(&self) -> Result<Arc<dyn HeadlessBrowser>, FetchError>;
+    /// Factory identifier for tracing/debug.
+    fn name(&self) -> &'static str;
+}
+
+/// The [`LaunchOptions`] used for every Chromium launch.
+///
+/// Exposed `pub(crate)` so the idle-timeout invariant is unit-testable.
+pub(crate) fn build_launch_options() -> LaunchOptions<'static> {
+    LaunchOptions {
         headless: true,
-        // Keep the browser warm across natural idle gaps (default is 30s,
-        // which tears the WebSocket down far too eagerly). Self-heal in
-        // `fetch_once` still recovers when a genuine death eventually occurs.
-        idle_browser_timeout: Duration::from_secs(600),
+        idle_browser_timeout: IDLE_BROWSER_TIMEOUT,
         ..Default::default()
-    })
-    .map_err(|e| {
-        tracing::error!(err = %e, "HeadlessChromeFetcher: failed to launch browser");
-        FetchError::BrowserLaunch
-    })?;
-    tracing::info!("HeadlessChromeFetcher: browser launched successfully");
-    *guard = Some(browser.clone());
-    Ok(browser)
+    }
 }
 
-/// Evicts the stored browser from `slot`, returning the old handle.
-///
-/// Used for crash recovery: the shared handle is dropped so the next
-/// [`ensure_browser`] launches a fresh Chrome. Under concurrency the mutex
-/// serializes eviction, so only one task performs the relaunch.
-fn take_browser(slot: &Arc<Mutex<Option<Browser>>>) -> Option<Browser> {
-    slot.lock().take()
+// ---------------------------------------------------------------------------
+// Concrete headless_chrome backend
+// ---------------------------------------------------------------------------
+
+/// Production backend: wraps a real [`headless_chrome::Browser`].
+struct ChromeBrowser {
+    browser: Browser,
+}
+
+impl HeadlessBrowser for ChromeBrowser {
+    fn render(&self, url: &str) -> Result<RenderedPage, FetchError> {
+        let tab = self
+            .browser
+            .new_tab()
+            .map_err(|e| classify_render_error(&e.to_string()))?;
+
+        tracing::trace!(url = %url, "HeadlessChromeFetcher: navigating to URL");
+        tab.navigate_to(url)
+            .map_err(|e| classify_render_error(&e.to_string()))?
+            .wait_until_navigated()
+            .map_err(|e| classify_render_error(&e.to_string()))?;
+        tracing::trace!("HeadlessChromeFetcher: navigation complete");
+
+        tracing::trace!("HeadlessChromeFetcher: getting page HTML");
+        let html = tab
+            .get_content()
+            .map_err(|e| classify_render_error(&e.to_string()))?;
+        tracing::debug!(html_len = html.len(), "HeadlessChromeFetcher: HTML retrieved");
+
+        let final_url = tab.get_url();
+        tracing::debug!(final_url = %final_url, "HeadlessChromeFetcher: final URL");
+
+        tracing::trace!("HeadlessChromeFetcher: closing tab");
+        let _ = tab.close(true);
+
+        Ok(RenderedPage { html, final_url })
+    }
+
+    fn name(&self) -> &'static str {
+        "headless_chrome::Browser"
+    }
+}
+
+/// Production factory: launches a real Chromium via [`headless_chrome`].
+struct ChromeFactory;
+
+impl HeadlessBrowserFactory for ChromeFactory {
+    fn launch(&self) -> Result<Arc<dyn HeadlessBrowser>, FetchError> {
+        tracing::info!("HeadlessChromeFetcher: launching headless Chrome");
+        let browser =
+            Browser::new(build_launch_options()).map_err(|e| {
+                tracing::error!(err = %e, "HeadlessChromeFetcher: failed to launch browser");
+                FetchError::BrowserLaunch
+            })?;
+        tracing::info!("HeadlessChromeFetcher: browser launched successfully");
+        Ok(Arc::new(ChromeBrowser { browser }))
+    }
+
+    fn name(&self) -> &'static str {
+        "ChromeFactory"
+    }
 }
 
 /// The literal text of the headless_chrome `ConnectionClosed` error.
@@ -120,97 +179,142 @@ fn classify_render_error(display: &str) -> FetchError {
     }
 }
 
-/// Runs a single fetch against an already-obtained [`Browser`] handle.
+// ---------------------------------------------------------------------------
+// Fetcher
+// ---------------------------------------------------------------------------
+
+/// A web fetcher that uses headless Chrome to render JavaScript-heavy pages.
 ///
-/// Opens a fresh tab, navigates to `url`, waits for navigation, extracts
-/// the rendered HTML via the configured extractor, captures the final URL
-/// (after redirects), and closes the tab. This is the pure, browser-bound
-/// half of a fetch — it performs no launch, eviction, or retry logic, so it
-/// can be run inside `spawn_blocking` and re-used across attempts.
+/// The browser is lazily launched on the first `fetch()` call and reused
+/// across subsequent calls. Thread-safe via a shared slot guarded by a mutex,
+/// held only during launch/clone/evict — never across a render — so concurrent
+/// fetches run independent tabs.
 ///
-/// All headless_chrome failures are routed through [`classify_render_error`]
-/// so a dead WebSocket surfaces as [`FetchError::BrowserCrash`] (a shared,
-/// connection-level condition) rather than [`FetchError::Render`] (a
-/// per-tab condition that must never evict the shared browser).
-fn run_fetch_on_browser(
-    browser: &Browser,
-    url: &str,
-    options: &FetchOptions,
-    extractors: &HashMap<OutputFormat, Arc<dyn Extractor>>,
-) -> Result<FetchOutput, FetchError> {
-    let tab = browser
-        .new_tab()
-        .map_err(|e| classify_render_error(&e.to_string()))?;
-
-    // Navigate to the URL.
-    tracing::trace!(url = %url, "HeadlessChromeFetcher: navigating to URL");
-    tab.navigate_to(url)
-        .map_err(|e| classify_render_error(&e.to_string()))?
-        .wait_until_navigated()
-        .map_err(|e| classify_render_error(&e.to_string()))?;
-    tracing::trace!("HeadlessChromeFetcher: navigation complete");
-
-    // Get the rendered HTML from the tab.
-    tracing::trace!("HeadlessChromeFetcher: getting page HTML");
-    let html = tab
-        .get_content()
-        .map_err(|e| classify_render_error(&e.to_string()))?;
-    tracing::debug!(
-        html_len = html.len(),
-        "HeadlessChromeFetcher: HTML retrieved"
-    );
-
-    // Apply extraction based on the requested format.
-    tracing::trace!(format = ?options.format, "HeadlessChromeFetcher: extracting content");
-    let content = match extractors.get(&options.format) {
-        Some(extractor) => extractor.extract(&html),
-        None => html,
-    };
-    tracing::debug!(
-        content_len = content.len(),
-        "HeadlessChromeFetcher: content extracted"
-    );
-
-    // Try to get final URL (after redirects).
-    let final_url = tab.get_url();
-    tracing::debug!(final_url = %final_url, "HeadlessChromeFetcher: final URL");
-
-    // Close the tab.
-    tracing::trace!("HeadlessChromeFetcher: closing tab");
-    let _ = tab.close(true);
-
-    Ok(FetchOutput {
-        content,
-        url: final_url,
-        status: 200,
-        content_type: "text/html".to_owned(),
-    })
+/// Content extraction is delegated to [`Extractor`] implementations looked
+/// up by [`OutputFormat`]. Formats without a registered extractor (e.g.,
+/// [`OutputFormat::Html`]) return the raw page HTML unchanged.
+pub struct HeadlessChromeFetcher {
+    /// The lazily-launched browser instance.
+    browser: Arc<Mutex<Option<Arc<dyn HeadlessBrowser>>>>,
+    /// Extractor implementations keyed by output format.
+    /// Formats not in the map (e.g., `Html`) pass through raw content.
+    extractors: HashMap<OutputFormat, Arc<dyn Extractor>>,
+    /// Produces new browser handles on first use and crash recovery.
+    factory: Arc<dyn HeadlessBrowserFactory>,
 }
 
+impl HeadlessChromeFetcher {
+    /// Creates a new fetcher with the given extractor map, without launching a browser.
+    ///
+    /// The browser will be launched on the first `fetch()` call.
+    #[must_use]
+    pub fn new(extractors: HashMap<OutputFormat, Arc<dyn Extractor>>) -> Self {
+        Self::with_factory(extractors, Arc::new(ChromeFactory))
+    }
 
-/// One fetch attempt against the cached browser: ensure a handle, run the
-/// tab sequence.
+    /// Test seam: creates a fetcher backed by a swappable browser factory.
+    ///
+    /// Production code uses [`Self::new`] (the real Chromium factory). Tests
+    /// inject a fake factory to drive self-heal, retry, and eviction behavior
+    /// without spawning Chrome.
+    /// Constructs a fetcher with a specific browser factory.
+    ///
+    /// `pub(crate)` so tests can inject a fake factory; production uses
+    /// [`new`](Self::new), which wires the real [`ChromeFactory`].
+    pub(crate) fn with_factory(
+        extractors: HashMap<OutputFormat, Arc<dyn Extractor>>,
+        factory: Arc<dyn HeadlessBrowserFactory>,
+    ) -> Self {
+        Self {
+            browser: Arc::new(Mutex::new(None)),
+            extractors,
+            factory,
+        }
+    }
+}
+
+/// Ensures a browser is running in `slot`, launching one if necessary.
+///
+/// Returns a clone of the handle. The lock is held only long enough to
+/// check/launch/clone — never across a render — so concurrent fetches can each
+/// grab a handle and run independent tabs. Because launch happens under the
+/// lock, concurrent crash-recovery attempts funnel to exactly one relaunch.
+fn ensure_browser(
+    slot: &Arc<Mutex<Option<Arc<dyn HeadlessBrowser>>>>,
+    factory: &Arc<dyn HeadlessBrowserFactory>,
+) -> Result<Arc<dyn HeadlessBrowser>, FetchError> {
+    let mut guard = slot.lock();
+    if let Some(ref browser) = *guard {
+        tracing::trace!("HeadlessChromeFetcher: reusing existing browser");
+        return Ok(browser.clone());
+    }
+    let browser = factory.launch()?;
+    *guard = Some(browser.clone());
+    Ok(browser)
+}
+
+/// Evicts the stored browser from `slot`, returning the old handle.
+///
+/// Used for crash recovery: the shared handle is dropped so the next
+/// [`ensure_browser`] launches a fresh browser. Under concurrency the mutex
+/// serializes eviction, so only one task performs the relaunch.
+fn take_browser(
+    slot: &Arc<Mutex<Option<Arc<dyn HeadlessBrowser>>>>,
+) -> Option<Arc<dyn HeadlessBrowser>> {
+    slot.lock().take()
+}
+
+/// Applies the configured extractor (if any) to rendered HTML.
+fn extract_content(
+    html: &str,
+    options: &FetchOptions,
+    extractors: &HashMap<OutputFormat, Arc<dyn Extractor>>,
+) -> String {
+    tracing::trace!(format = ?options.format, "HeadlessChromeFetcher: extracting content");
+    match extractors.get(&options.format) {
+        Some(extractor) => extractor.extract(html),
+        None => html.to_owned(),
+    }
+}
+
+/// One fetch attempt against the cached browser: ensure a handle, render, extract.
 ///
 /// On a connection-level death ([`FetchError::BrowserCrash`]), evicts the
 /// shared handle so the next attempt relaunches. Per-tab failures
 /// ([`FetchError::Render`]) are returned without eviction — evicting on them
 /// would kill other sessions' in-flight tabs under concurrency.
 fn fetch_once(
-    browser_slot: &Arc<Mutex<Option<Browser>>>,
+    browser_slot: &Arc<Mutex<Option<Arc<dyn HeadlessBrowser>>>>,
+    factory: &Arc<dyn HeadlessBrowserFactory>,
     url: &str,
     options: &FetchOptions,
     extractors: &HashMap<OutputFormat, Arc<dyn Extractor>>,
 ) -> Result<FetchOutput, FetchError> {
-    let browser = ensure_browser(browser_slot)?;
-    let result = run_fetch_on_browser(&browser, url, options, extractors);
-    if result.is_err() {
-        tracing::warn!(err = ?result.as_ref().err(), "HeadlessChromeFetcher: fetch failed");
-        // Evict only on connection death, never on per-tab failures.
-        if matches!(result, Err(FetchError::BrowserCrash | FetchError::BrowserLaunch)) {
-            tracing::info!("HeadlessChromeFetcher: clearing browser for crash recovery");
-            take_browser(browser_slot);
+    let browser = ensure_browser(browser_slot, factory)?;
+    let result = match browser.render(url) {
+        Ok(page) => {
+            let content = extract_content(&page.html, options, extractors);
+            tracing::debug!(
+                content_len = content.len(),
+                "HeadlessChromeFetcher: content extracted"
+            );
+            Ok(FetchOutput {
+                content,
+                url: page.final_url,
+                status: 200,
+                content_type: "text/html".to_owned(),
+            })
         }
-    }
+        Err(err) => {
+            tracing::warn!(err = %err, "HeadlessChromeFetcher: render failed");
+            // Evict only on connection death, never on per-tab failures.
+            if matches!(err, FetchError::BrowserCrash | FetchError::BrowserLaunch) {
+                tracing::info!("HeadlessChromeFetcher: clearing browser for crash recovery");
+                take_browser(browser_slot);
+            }
+            Err(err)
+        }
+    };
     result
 }
 
@@ -229,21 +333,22 @@ impl WebFetcher for HeadlessChromeFetcher {
             }
         }
 
-
+        // headless_chrome tab ops busy-loop on thread::sleep (util::Wait::until),
         // so they must never run on a tokio worker thread. Run the whole fetch
-        // (attempt + retry) on the blocking pool. The browser slot is shared via
-        // Arc, so the cached Chrome is still reused across calls.
+        // (attempt + retry) on the blocking pool. The browser slot and factory
+        // are shared via Arc, so the cached Chrome is still reused across calls.
         let browser_slot = self.browser.clone();
         let extractors = self.extractors.clone();
+        let factory = self.factory.clone();
         let url_owned = url.to_owned();
         let join = tokio::task::spawn_blocking(move || {
-            match fetch_once(&browser_slot, &url_owned, &options, &extractors) {
+            match fetch_once(&browser_slot, &factory, &url_owned, &options, &extractors) {
                 Err(FetchError::BrowserCrash) => {
                     // Connection-level death: the shared WebSocket is gone.
                     // `fetch_once` already evicted the handle; relaunch and
                     // retry exactly once.
                     tracing::info!("HeadlessChromeFetcher: retrying after connection death");
-                    fetch_once(&browser_slot, &url_owned, &options, &extractors)
+                    fetch_once(&browser_slot, &factory, &url_owned, &options, &extractors)
                 }
                 other => other,
             }
@@ -259,7 +364,10 @@ impl WebFetcher for HeadlessChromeFetcher {
     async fn shutdown(&self) {
         tracing::info!("HeadlessChromeFetcher: shutting down");
         if let Some(browser) = take_browser(&self.browser) {
-            tracing::debug!("HeadlessChromeFetcher: dropping browser (kills Chromium process)");
+            tracing::debug!(
+                backend = browser.name(),
+                "HeadlessChromeFetcher: dropping browser (kills Chromium process)"
+            );
             // Drop the browser - this kills the Chromium process.
             drop(browser);
         }
@@ -272,3 +380,6 @@ impl Default for HeadlessChromeFetcher {
         Self::new(HashMap::new())
     }
 }
+
+#[cfg(test)]
+mod tests;
