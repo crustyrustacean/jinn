@@ -130,6 +130,19 @@ impl ModelSelection {
         }
     }
 
+    /// Returns the provider name for this selection.
+    ///
+    /// The provider name is the prefix of the model string before the first
+    /// `/` (e.g. `"openrouter"` from `openrouter/openai/gpt-oss-120b`).
+    /// Returns `""` for models with no `/` separator.
+    ///
+    /// Used to filter server tools by provider — see
+    /// `ToolDefinition::available_for_provider` in `jinn-provider`.
+    #[must_use]
+    pub fn provider_name(&self) -> &str {
+        self.display_str().split('/').next().unwrap_or("")
+    }
+
     /// Returns the alloy data if `Alloy`, `None` if `Single`.
     pub fn as_alloy(&self) -> Option<AlloyData<'_>> {
         match self {
@@ -392,5 +405,39 @@ mod tests {
             selection,
             ModelSelection::Single("ollama/llama3".to_owned())
         );
+    }
+
+    #[test]
+    fn provider_name_returns_prefix_for_single_model() {
+        // Given a Single model with provider/model/sub format.
+        let selection = ModelSelection::Single("openrouter/openai/gpt-oss-120b".to_owned());
+
+        // Then provider_name returns the prefix before the first slash.
+        assert_eq!(selection.provider_name(), "openrouter");
+    }
+
+    #[test]
+    fn provider_name_returns_whole_string_for_no_slash() {
+        // Given a Single model with no slash (bare model name).
+        let selection = ModelSelection::Single("llama3".to_owned());
+
+        // Then provider_name returns the whole string (a bare name is not
+        // "openrouter", so web search is still correctly filtered out).
+        assert_eq!(selection.provider_name(), "llama3");
+    }
+
+    #[test]
+    fn provider_name_uses_first_model_of_alloy() {
+        // Given an Alloy whose first member is on openrouter.
+        let selection = ModelSelection::Alloy {
+            models: vec![
+                "openrouter/openai/gpt-oss-120b".to_owned(),
+                "zai/glm-4.6".to_owned(),
+            ],
+            strategy: AlloyStrategy::RoundRobin { index: 0 },
+        };
+
+        // Then provider_name returns the first member's provider.
+        assert_eq!(selection.provider_name(), "openrouter");
     }
 }

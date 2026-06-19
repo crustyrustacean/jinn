@@ -624,7 +624,9 @@ fn confirm_plugin(state: &mut AppState) -> IntentResult {
 
 /// Marks each entry as enabled/disabled based on the session's `disabled_tools` set.
 fn load_tool_picker_entries(state: &mut AppState) {
-    let disabled = state.active_session().disabled_tools();
+    let active_session = state.active_session();
+    let disabled = active_session.disabled_tools();
+    let provider_name = active_session.model_selection().provider_name().to_owned();
     let theme = state.frontend.theme.clone();
 
     let active_id = state.session.active_session_id().clone();
@@ -632,6 +634,7 @@ fn load_tool_picker_entries(state: &mut AppState) {
         .context
         .tools_for_session(&active_id)
         .into_iter()
+        .filter(|def| def.available_for_provider(&provider_name))
         .map(|def| {
             let name = def.name.clone();
             let description = def.description.clone();
@@ -2787,5 +2790,74 @@ mod tests {
         assert!(!result.message_names.is_empty());
         // And the picker now shows one entry.
         assert_eq!(state.frontend.project_picker().items().len(), 1);
+    }
+
+    fn setup_state_with_web_search_tool(model: &str) -> AppState {
+        let mut state = AppState::default();
+        let origin = ChatSessionState::new();
+        state.session.insert(origin);
+        state
+            .session
+            .set_active(state.session.active_session_id().clone());
+        state
+            .active_session_mut()
+            .set_model(ModelSelection::Single(model.to_owned()));
+
+        state.context.global_tool_definitions.insert(
+            "openrouter:web_search".to_owned(),
+            crate::protocol::ToolDefinition {
+                name: "openrouter:web_search".to_owned(),
+                description: "Search the web".to_owned(),
+                parameters: serde_json::json!({}),
+                prompt_snippet: None,
+                prompt_guidelines: vec![],
+                server_tool_type: Some(jinn_provider::ServerToolType::OpenrouterWebSearch),
+            },
+        );
+        state
+    }
+
+    #[rstest::rstest]
+    fn load_tool_picker_entries_hides_web_search_for_non_openrouter_model() {
+        // Given state on a non-openrouter model with a web_search tool registered.
+        let mut state = setup_state_with_web_search_tool("zai/glm-4.6");
+
+        // When loading tool picker entries.
+        load_tool_picker_entries(&mut state);
+
+        // Then the web_search tool is NOT offered (it can't run on this provider).
+        let names: Vec<&str> = state
+            .frontend
+            .tool_picker()
+            .items()
+            .iter()
+            .map(|e| e.name.as_str())
+            .collect();
+        assert!(
+            !names.contains(&"openrouter:web_search"),
+            "web_search should be hidden for non-openrouter model, got: {names:?}"
+        );
+    }
+
+    #[rstest::rstest]
+    fn load_tool_picker_entries_shows_web_search_for_openrouter_model() {
+        // Given state on an openrouter model with a web_search tool registered.
+        let mut state = setup_state_with_web_search_tool("openrouter/openai/gpt-oss-120b");
+
+        // When loading tool picker entries.
+        load_tool_picker_entries(&mut state);
+
+        // Then the web_search tool IS offered.
+        let names: Vec<&str> = state
+            .frontend
+            .tool_picker()
+            .items()
+            .iter()
+            .map(|e| e.name.as_str())
+            .collect();
+        assert!(
+            names.contains(&"openrouter:web_search"),
+            "web_search should be visible for openrouter model, got: {names:?}"
+        );
     }
 }
