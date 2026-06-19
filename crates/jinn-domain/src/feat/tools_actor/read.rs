@@ -335,8 +335,6 @@ mod tests {
         assert_eq!(resolved, PathBuf::from("/etc/hosts"));
     }
 
-    // --- Integration tests (execute function) ---
-
     fn test_ctx() -> crate::feat::tools_actor::tool_types::ToolContext {
         crate::feat::tools_actor::tool_types::ToolContext {
             cwd: PathBuf::from("/tmp"),
@@ -502,8 +500,6 @@ mod tests {
             "expected line 2, got: {first_line}"
         );
     }
-
-    // --- Phase 5: Mutation-killing tests ---
 
     #[rstest::rstest]
     #[tokio::test]

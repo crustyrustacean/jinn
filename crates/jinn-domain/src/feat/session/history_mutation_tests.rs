@@ -13,8 +13,6 @@ use crate::feat::session::chat_session::ChatSessionState;
 use crate::feat::session::history_mutation::HistoryMutation;
 use crate::protocol::ChangeSource;
 
-// --- find_entry_index_by_id ---
-
 #[test]
 fn find_entry_index_by_id_returns_index_for_existing_entry() {
     // Given a session with two entries.
@@ -44,8 +42,6 @@ fn find_entry_index_by_id_returns_none_for_nonexistent_id() {
     // Then it returns None.
     assert!(idx.is_none());
 }
-
-// --- queue_mutations ---
 
 #[test]
 fn queue_mutations_appends_nonempty_batch() {
@@ -81,8 +77,6 @@ fn queue_mutations_ignores_empty_batch() {
     assert!(session.drain_pending_mutations().is_empty());
 }
 
-// --- drain_pending_mutations ---
-
 #[test]
 fn drain_pending_mutations_empties_the_queue() {
     // Given a session with one queued batch.
@@ -107,8 +101,6 @@ fn drain_pending_mutations_empties_the_queue() {
     // And the queue is now empty.
     assert!(session.drain_pending_mutations().is_empty());
 }
-
-// --- apply_mutations: SetContextOverride ---
 
 #[test]
 fn apply_mutations_sets_context_override_by_id() {
@@ -154,8 +146,6 @@ fn apply_mutations_skips_set_context_override_for_nonexistent_id() {
         ContextOverride::Default
     );
 }
-
-// --- apply_mutations: InsertEntry ---
 
 #[test]
 fn apply_mutations_inserts_entry_after_specified_id() {
@@ -366,8 +356,6 @@ fn multiple_insert_entries_in_one_batch_produce_correct_ordering() {
     assert_eq!(session.history()[2].id, first_insert_id);
 }
 
-// --- apply_mutations: PinEntry ---
-
 #[test]
 fn apply_mutations_pins_entry_by_id() {
     // Given a session with one entry.
@@ -401,8 +389,6 @@ fn apply_mutations_skips_pin_for_nonexistent_id() {
     assert!(session.history()[0].pin_position.is_none());
 }
 
-// --- apply_mutations: UnpinEntry ---
-
 #[test]
 fn apply_mutations_unpins_entry_by_id() {
     // Given a session with a pinned entry.
@@ -416,8 +402,6 @@ fn apply_mutations_unpins_entry_by_id() {
     // Then the entry is unpinned.
     assert!(session.history()[0].pin_position.is_none());
 }
-
-// --- apply_mutations: edge cases ---
 
 #[test]
 fn apply_mutations_on_empty_history_is_noop() {
@@ -449,8 +433,6 @@ fn apply_mutations_on_empty_history_is_noop() {
     // Then nothing happened.
     assert!(session.history().is_empty());
 }
-
-// --- drain_and_apply_pending_mutations ---
 
 #[test]
 fn drain_and_apply_applies_all_batches_in_order() {
@@ -508,8 +490,6 @@ fn drain_and_apply_returns_zero_when_queue_empty() {
     // Then zero batches were applied.
     assert_eq!(count, 0);
 }
-
-// --- PinEntry with specific positions ---
 
 #[test]
 fn pin_entry_top_sets_position() {
@@ -587,8 +567,6 @@ fn pin_entry_can_change_position() {
     assert_eq!(session.history()[0].pin_position, Some(PinPosition::Bottom));
 }
 
-// --- ContextOverride variants ---
-
 #[test]
 fn set_context_override_forced_include() {
     // Given a session with an entry.
@@ -645,8 +623,6 @@ fn set_context_override_default_resets_to_default() {
         ContextOverride::Default
     );
 }
-
-// --- ForcedInclude protection guard ---
 
 #[test]
 fn forced_include_is_not_overwritten_by_forced_exclude() {
@@ -751,8 +727,6 @@ fn unpin_entry_on_unpinned_entry_is_noop() {
     // Then no panic, still None.
     assert!(session.history()[0].pin_position.is_none());
 }
-
-// --- accumulation gate ---
 
 /// Worker source used by the auto-prune workers in these tests.
 fn worker(name: &str) -> ChangeSource {

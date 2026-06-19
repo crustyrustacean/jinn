@@ -306,8 +306,6 @@ mod tests {
         assert_eq!(reloaded.theme_name.as_deref(), Some("gruvbox-dark"));
     }
 
-    // --- Service caching tests ---
-
     #[rstest::rstest]
     fn service_load_caches_result() {
         // Given an InMemoryAppStateStorage wrapped in a service.

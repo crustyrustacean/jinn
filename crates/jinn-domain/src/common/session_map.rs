@@ -449,8 +449,6 @@ mod tests {
         assert_eq!(session.session_id(), &new_id);
     }
 
-    // --- remove_and_replace tests ---
-
     #[rstest::rstest]
     fn remove_and_replace_creates_fresh_when_map_emptied() {
         // Given a map with one session.
@@ -504,8 +502,6 @@ mod tests {
         assert_eq!(map.session_count(), 1);
     }
 
-    // --- remove_without_replacement tests ---
-
     #[rstest::rstest]
     fn remove_without_replacement_removes_session() {
         // Given a map with two sessions.
@@ -553,8 +549,6 @@ mod tests {
         // Then it returns false.
         assert!(!removed);
     }
-
-    // --- query method tests ---
 
     #[rstest::rstest]
     fn iter_yields_all_sessions() {
@@ -625,8 +619,6 @@ mod tests {
         assert!(id.is_some());
         assert!(map.contains(&id.unwrap()));
     }
-
-    // --- session loading guard tests ---
 
     #[rstest::rstest]
     fn is_loading_returns_false_initially() {

@@ -115,8 +115,6 @@ mod tests {
 
     use super::*;
 
-    // --- value_to_json tests ---
-
     #[rstest::rstest]
     fn value_to_json_converts_sequential_array() {
         // Given a Lua table with sequential integer keys.
@@ -182,8 +180,6 @@ mod tests {
             "empty table should be an object, got: {json:?}"
         );
     }
-
-    // --- json_to_lua_value tests ---
 
     #[rstest::rstest]
     fn json_to_lua_value_converts_array_to_table_with_correct_indices() {

@@ -8,8 +8,6 @@ use crate::feat::ui::picker_states::PickerExt;
 use crate::protocol::PickerKind;
 use wherror::Error;
 
-// --- Infallible validators ---
-
 /// Validates the PickerInsertChar intent.
 pub fn validate_picker_insert_char(_state: &AppState, _ch: char) {}
 
@@ -27,8 +25,6 @@ pub fn validate_picker_move_cursor_left(_state: &AppState) {}
 
 /// Validates the PickerMoveCursorRight intent.
 pub fn validate_picker_move_cursor_right(_state: &AppState) {}
-
-// --- Fallible validators ---
 
 /// Errors from validating a PickerConfirm intent.
 #[derive(Debug, Error)]
@@ -129,7 +125,6 @@ mod tests {
 
     #[rstest::rstest]
     fn validate_picker_confirm_rejects_no_active_picker() {
-        // Kills: replace validate_picker_confirm with Ok(()).
         // If the validator always returned Ok, confirming with no picker would be allowed.
         let state = AppState::default();
 
@@ -143,7 +138,6 @@ mod tests {
 
     #[rstest::rstest]
     fn validate_open_picker_rejects_when_already_in_picker() {
-        // Kills: replace validate_open_picker with Ok(()).
         // If the validator always returned Ok, nested pickers would be allowed.
         let mut state = AppState::default();
         state.frontend.scope_stack.push(FocusScope::Picker {
@@ -170,7 +164,6 @@ mod tests {
 
     #[rstest::rstest]
     fn validate_picker_confirm_accepts_reasoning_with_selection() {
-        // Kills: make the ReasoningEffort arm return false unconditionally.
         // If the selection gate were broken, confirming with a selection would
         // be rejected.
         use crate::feat::reasoning::{ReasoningEffort, ReasoningEffortEntry};
@@ -202,7 +195,6 @@ mod tests {
 
     #[rstest::rstest]
     fn validate_picker_confirm_rejects_reasoning_without_selection() {
-        // Kills: make the ReasoningEffort arm return true unconditionally.
         // If the selection gate were broken, confirming with no selection
         // would be allowed.
         let mut state = AppState::default();

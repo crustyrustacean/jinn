@@ -323,8 +323,6 @@ mod tests {
         rt.block_on(async { worker.evaluate(&SessionId::new(), Arc::from(history)).await })
     }
 
-    // --- Worker evaluate() tests ---
-
     #[test]
     fn no_read_calls_produces_no_mutations() {
         let history = vec![

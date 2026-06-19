@@ -433,8 +433,6 @@ mod tests {
     )]
     use super::*;
 
-    // --- Setup command tests ---
-
     #[rstest::rstest]
     #[tokio::test]
     async fn setup_returns_canonicalized_directory_path() {
@@ -626,8 +624,6 @@ mod tests {
         assert_eq!(result.unwrap(), Some(expected));
     }
 
-    // --- Teardown command tests ---
-
     #[rstest::rstest]
     #[tokio::test]
     async fn teardown_succeeds_with_empty_stdout() {
@@ -693,7 +689,6 @@ mod tests {
         assert!(result.is_ok());
     }
 
-    // --- CWD propagation regression tests ---
     //
     // These observe the *spawned process's actual working directory* —
     // the gap that let the bug ship. They use spawn_setup_command /

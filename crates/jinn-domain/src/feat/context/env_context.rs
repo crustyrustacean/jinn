@@ -395,8 +395,6 @@ mod tests {
         assert_eq!(files[0].content, "parent context");
     }
 
-    // --- Tests for load_project_context_files_sync ---
-
     #[rstest::rstest]
     fn sync_load_finds_agents_md() {
         // Given a temp directory with AGENTS.md.

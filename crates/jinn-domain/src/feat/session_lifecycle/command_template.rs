@@ -631,8 +631,6 @@ mod tests {
     )]
     use super::*;
 
-    // --- Parsing: $N syntax (backward compat) ---
-
     #[rstest::rstest]
     fn parse_no_params() {
         let tmpl = CommandTemplate::parse("echo hello");
@@ -696,8 +694,6 @@ mod tests {
         assert_eq!(tmpl.params(), &[Param::Positional(1), Param::Positional(3)]);
         assert_eq!(tmpl.param_count(), 2);
     }
-
-    // --- Parsing: <name> syntax ---
 
     #[rstest::rstest]
     fn parse_named_param() {
@@ -767,8 +763,6 @@ mod tests {
         assert_eq!(tmpl.param_count(), 2);
     }
 
-    // --- Rendering: $N syntax ---
-
     #[rstest::rstest]
     fn render_no_params() {
         let tmpl = CommandTemplate::parse("echo hello");
@@ -810,8 +804,6 @@ mod tests {
             "script.sh a b c"
         );
     }
-
-    // --- Rendering: <name> syntax ---
 
     #[rstest::rstest]
     fn render_one_named_param() {
@@ -859,8 +851,6 @@ mod tests {
         );
     }
 
-    // --- Display ---
-
     #[rstest::rstest]
     fn display_no_params() {
         let tmpl = CommandTemplate::parse("echo hello");
@@ -898,8 +888,6 @@ mod tests {
         assert_eq!(tmpl.display(), "script.sh <branch> <1>");
     }
 
-    // --- Shell redirection safety ---
-
     #[rstest::rstest]
     fn display_does_not_confuse_redirection_with_params() {
         let tmpl = CommandTemplate::parse("echo $1 > output.txt");
@@ -915,8 +903,6 @@ mod tests {
         );
     }
 
-    // --- Edge cases ---
-
     #[rstest::rstest]
     fn parse_unclosed_angle_bracket_is_not_a_param() {
         let tmpl = CommandTemplate::parse("script.sh <unclosed");
@@ -929,15 +915,11 @@ mod tests {
         assert!(!tmpl.has_params());
     }
 
-    // --- Display trait ---
-
     #[rstest::rstest]
     fn display_trait_delegates_to_display_method() {
         let tmpl = CommandTemplate::parse("script.sh $1 $2");
         assert_eq!(format!("{tmpl}"), tmpl.display());
     }
-
-    // --- display_line_segments ---
 
     #[rstest::rstest]
     fn display_line_segments_no_params() {
@@ -1116,8 +1098,6 @@ mod tests {
         assert_eq!(lines[0][3], DisplaySegment::param("extra", 1));
     }
 
-    // --- Safe render: missing args ---
-
     #[rstest::rstest]
     fn render_missing_named_param_substitutes_empty() {
         // Given a template with two named params but only one arg.
@@ -1153,8 +1133,6 @@ mod tests {
         // Then no panic - missing params replaced with empty.
         assert_eq!(result, "script.sh  ");
     }
-
-    // --- Quoted arg parsing ---
 
     #[rstest::rstest]
     fn parse_quoted_args_empty_input() {
@@ -1252,8 +1230,6 @@ mod tests {
         );
     }
 
-    // --- Backslash escape tests ---
-
     #[rstest::rstest]
     fn parse_quoted_args_escaped_quote_outside_quotes() {
         // Input: foo\"bar → parser sees \" as escaped quote → foo"bar
@@ -1333,8 +1309,6 @@ mod tests {
         );
     }
 
-    // --- shell_quote ---
-
     #[rstest::rstest]
     fn shell_quote_safe_value_passes_through() {
         assert_eq!(shell_quote("hello"), "hello");
@@ -1381,8 +1355,6 @@ mod tests {
         assert_eq!(shell_quote("my-branch"), "my-branch");
     }
 
-    // --- split_preserving_quotes ---
-
     #[rstest::rstest]
     fn split_preserving_quotes_keeps_quotes() {
         assert_eq!(
@@ -1419,8 +1391,6 @@ mod tests {
             vec!["\"foo bar".to_owned()]
         );
     }
-
-    // --- tokenize_spans ---
 
     #[rstest::rstest]
     fn tokenize_spans_no_placeholders_returns_single_static() {
@@ -1514,8 +1484,6 @@ mod tests {
         );
     }
 
-    // --- substitute_spans ---
-
     #[rstest::rstest]
     fn substitute_spans_all_args_provided() {
         // Given spans with two placeholders and both args available.
@@ -1576,8 +1544,6 @@ mod tests {
         // Then it's treated as static text.
         assert_eq!(segments[0], DisplaySegment::static_text("<unknown>"));
     }
-
-    // --- Phase 2: Mutation-killing tests ---
 
     // try_parse_dollar edge cases
     #[rstest::rstest]

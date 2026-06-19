@@ -223,7 +223,6 @@ impl IntentHandler {
         }
 
         match intent {
-            // --- Arg Input (takes priority when ArgInput scope is active) ---
             Intent::InsertChar { ch }
                 if matches!(
                     state.frontend.scope_stack.current(),
@@ -276,7 +275,6 @@ impl IntentHandler {
                 crate::protocol::IntentResult::empty()
             }
 
-            // --- Cwd Input text-edit guards (mirror ArgInput) ---
             Intent::InsertChar { ch }
                 if matches!(
                     state.frontend.scope_stack.current(),
@@ -327,7 +325,6 @@ impl IntentHandler {
                 feat::cwd_input::intent::handle_cwd_input_leave(state)
             }
 
-            // --- ProjectAddInput text-edit guards (mirror CwdInput) ---
             Intent::InsertChar { ch }
                 if matches!(
                     state.frontend.scope_stack.current(),
@@ -378,7 +375,6 @@ impl IntentHandler {
                 feat::project_add_input::intent::handle_project_add_input_leave(state)
             }
 
-            // --- Quake Bar text-edit guards ---
             // The quake bar captures ALL keystrokes while open; these guards
             // route editing intents to the quake bar instead of chat input.
             Intent::InsertChar { ch }
@@ -447,7 +443,6 @@ impl IntentHandler {
                 feat::quake_bar::intent::handle_close(state)
             }
 
-            // --- Chat Input ---
             // Editing intents are no-ops when the active session's input box is disabled.
             _ if is_chat_input_editing(intent) && state.active_chat_input().disabled() => {
                 IntentResult::empty()
@@ -477,7 +472,6 @@ impl IntentHandler {
             Intent::MoveCursorUp => feat::chat_input::intent::handle_move_cursor_up(state),
             Intent::MoveCursorDown => feat::chat_input::intent::handle_move_cursor_down(state),
 
-            // --- Paste ---
             Intent::PasteText { text } => match state.frontend.scope_stack.current() {
                 crate::common::app_state::FocusScope::Input => {
                     feat::chat_input::intent::handle_paste_text(text, state)
@@ -499,7 +493,6 @@ impl IntentHandler {
                 }
                 _ => IntentResult::empty(),
             },
-            // --- Navigation ---
             Intent::ScrollUp => feat::navigation::intent::handle_scroll_up(state),
             Intent::ScrollDown => feat::navigation::intent::handle_scroll_down(state),
             Intent::MouseScrollUp => feat::navigation::intent::handle_mouse_scroll_up(state),
@@ -509,7 +502,6 @@ impl IntentHandler {
 
             Intent::EditInput => feat::navigation::intent::handle_edit_input(state),
 
-            // --- Mode & App ---
             Intent::Quit => feat::global::intent::handle_quit(state),
             Intent::Interrupt { session_id } => {
                 feat::global::intent::handle_interrupt(state, session_id.as_ref())
@@ -521,7 +513,6 @@ impl IntentHandler {
             Intent::NormalEscape => feat::chat_input::intent::handle_normal_escape(state),
             Intent::NoOp | Intent::TriggerPlugin { .. } => IntentResult::empty(),
 
-            // --- Picker ---
             Intent::OpenPicker { kind } => feat::picker::intent::handle_open_picker(state, *kind),
             Intent::PickerInsertChar { ch } => feat::picker::intent::handle_insert_char(state, *ch),
             Intent::PickerBackspace => feat::picker::intent::handle_backspace(state),
@@ -566,7 +557,6 @@ impl IntentHandler {
             }
             Intent::RefreshSkills => feat::picker::intent::handle_refresh_skills(state),
 
-            // --- Sidebar ---
             Intent::SidebarFocus => feat::ui::sidebar::intent::handle_sidebar_focus(state),
             Intent::SidebarFocusSessions => {
                 feat::ui::sidebar::intent::handle_sidebar_focus_sessions(state)
@@ -662,7 +652,6 @@ impl IntentHandler {
                 feat::ui::sidebar::sessions::handle_session_activate_insert(state)
             }
 
-            // --- Chat Entry Selection ---
             Intent::ChatEntrySelectNext => {
                 feat::chat_entry_selection::intent::handle_select_next(state)
             }
@@ -691,7 +680,6 @@ impl IntentHandler {
                 feat::chat_entry_selection::intent::handle_reset_selected(state)
             }
 
-            // --- Session Lifecycle ---
             Intent::SessionLifecycleSetup {
                 lifecycle_name,
                 args,
@@ -706,7 +694,6 @@ impl IntentHandler {
                 feat::session_lifecycle::intent::handle_arg_input_confirm(state)
             }
 
-            // --- Sidebar Resize ---
             Intent::SidebarResizeEnter => feat::sidebar_resize::intent::handle_resize_enter(state),
             Intent::SidebarResizeExpand => {
                 feat::sidebar_resize::intent::handle_resize_expand(state)
@@ -716,7 +703,6 @@ impl IntentHandler {
             }
             Intent::SidebarResizeLeave => feat::sidebar_resize::intent::handle_resize_leave(state),
 
-            // --- Rename Session / Plugin Input ---
             Intent::SidebarRenameSession => {
                 // Branch on selected entry kind: session -> session rename, plugin -> no-op.
                 let index = state.frontend.sessions_section.selected_index;
@@ -765,7 +751,6 @@ impl IntentHandler {
                 feat::rename_session_input::intent::handle_delete_forward(state)
             }
 
-            // --- Pruner Accumulation Input (set threshold) ---
             Intent::OpenPrunerAccumulationInput => {
                 feat::pruner_accumulation_input::intent::handle_enter(state)
             }
@@ -791,7 +776,6 @@ impl IntentHandler {
                 feat::pruner_accumulation_input::intent::handle_delete_forward(state)
             }
 
-            // --- CWD Input (type a path) ---
             Intent::OpenCwdInput => feat::cwd_input::intent::handle_cwd_input_enter(state),
             Intent::CwdInputConfirm => feat::cwd_input::intent::handle_cwd_input_confirm(state),
             Intent::CwdInputLeave => feat::cwd_input::intent::handle_cwd_input_leave(state),
@@ -806,14 +790,12 @@ impl IntentHandler {
                 feat::project_add_input::intent::handle_project_add_input_leave(state)
             }
 
-            // --- Quake Bar ---
             Intent::OpenQuakeBar => feat::quake_bar::intent::handle_open(state),
             Intent::CloseQuakeBar => feat::quake_bar::intent::handle_close(state),
             Intent::SubmitQuakeBar => feat::quake_bar::intent::handle_submit(state),
             Intent::QuakeBarScrollUp => feat::quake_bar::intent::handle_scroll_up(state),
             Intent::QuakeBarScrollDown => feat::quake_bar::intent::handle_scroll_down(state),
 
-            // --- CWD Selection ---
             Intent::ChangeCwd { root } => {
                 crate::feat::navigation::intent::handle_change_cwd(state, *root)
             }
@@ -1566,8 +1548,6 @@ mod tests {
             "should not emit ActiveSessionChanged when session unchanged"
         );
     }
-
-    // --- Session-management intents on plugin entries ---
 
     /// Helper: create state with a session that has an attached plugin, cursor on the plugin entry.
     fn state_with_plugin_selected() -> AppState {

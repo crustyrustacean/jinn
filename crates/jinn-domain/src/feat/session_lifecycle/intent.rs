@@ -867,8 +867,6 @@ mod tests {
         assert_eq!(state.frontend.arg_input.text.cursor_pos, 0);
     }
 
-    // --- Arg input validation ---
-
     #[rstest::rstest]
     fn validate_arg_input_accepts_sufficient_args() {
         // Given a state with a $1 $2 lifecycle and two args provided.
@@ -1078,8 +1076,6 @@ mod tests {
         assert!(result.message_names[2].contains("RunSessionSetup"));
     }
 
-    // --- Auto-close empty session tests ---
-
     #[rstest::rstest]
     fn empty_session_is_preserved_on_new_session() {
         // Given default state with a single empty session.
@@ -1151,8 +1147,6 @@ mod tests {
         assert!(result.message_names[1].contains("PushChatEntry"));
         assert!(result.message_names[2].contains("RunSessionSetup"));
     }
-
-    // --- Phase 3: Mutation-killing tests for arg input editing ---
 
     #[rstest::rstest]
     fn arg_input_delete_multi_byte_grapheme_at_boundary() {

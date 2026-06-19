@@ -342,8 +342,6 @@ mod tests {
         assert_eq!(restored.cmd, original);
     }
 
-    // --- Phase 7: Mutation-killing tests ---
-
     #[test]
     fn builtin_id_display_outputs_inner_string() {
         // Given a BuiltinId.

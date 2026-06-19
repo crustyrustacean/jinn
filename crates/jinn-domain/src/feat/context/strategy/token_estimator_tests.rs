@@ -144,8 +144,6 @@ fn estimate_entry_tokens_for_pinned_actor_is_nonzero() {
     assert!(tokens > 0);
 }
 
-// --- TiktokenCounter tests ---
-
 #[rstest::rstest]
 fn tiktoken_counter_counts_hello_world() {
     // Given a tiktoken counter with o200k_base.
@@ -245,8 +243,6 @@ fn estimate_entry_tokens_for_ignored_pinned_entry_is_nonzero() {
     // Then pin overrides ignored - tokens are still counted.
     assert!(tokens > 0);
 }
-
-// --- estimate_tool_schema_tokens tests ---
 
 #[rstest::rstest]
 fn estimate_tool_schema_tokens_returns_zero_for_empty_tools() {

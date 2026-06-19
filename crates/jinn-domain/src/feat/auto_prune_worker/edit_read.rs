@@ -347,8 +347,6 @@ mod tests {
             .collect()
     }
 
-    // --- extract_path_from_arguments tests ---
-
     #[test]
     fn extract_path_from_valid_json() {
         let path = extract_path_from_arguments(r#"{"path": "/foo/bar.rs"}"#);
@@ -379,8 +377,6 @@ mod tests {
         assert_eq!(path, None);
     }
 
-    // --- is_modify_tool tests ---
-
     #[test]
     fn is_modify_tool_recognizes_edit_and_write() {
         assert!(is_modify_tool("edit"));
@@ -388,8 +384,6 @@ mod tests {
         assert!(!is_modify_tool("read"));
         assert!(!is_modify_tool("bash"));
     }
-
-    // --- Baseline ---
 
     #[test]
     fn no_edit_read_pattern_produces_no_mutations() {
@@ -402,8 +396,6 @@ mod tests {
         let mutations = evaluate(history);
         assert!(mutations.is_empty());
     }
-
-    // --- Backward pruning: edit → read ---
 
     #[test]
     fn backward_prunes_prior_edits_on_same_file() {
@@ -651,8 +643,6 @@ mod tests {
             assert!(ids.contains(&edit[1].id), "edit result should be pruned");
         }
     }
-
-    // --- `min_age` protection tests ---
 
     /// Write at the end of a short history is protected by `min_age`: no
     /// `ForcedExclude` mutation is emitted for the write's call or result,
