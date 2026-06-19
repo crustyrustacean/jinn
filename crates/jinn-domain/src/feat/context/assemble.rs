@@ -15,7 +15,6 @@ use crate::feat::skills::format::format_skills_for_prompt;
 use crate::protocol::{
     ChatEntry, LlmMessage, PinPosition, SessionId, ToolDefinition, entries_to_messages,
 };
-use jinn_provider::ServerToolType;
 
 /// Overrides for [`assemble_prompt`]. When provided, these replace the default
 /// sources for system prompt, tools, skills, and context files.
@@ -111,27 +110,13 @@ pub fn assemble_prompt(
         .and_then(|o| o.tool_definitions.clone())
         .unwrap_or_else(|| state.context.tools_for_session(session_id));
 
-    // Filter out disabled tools from the default tool list.
+    // Filter out disabled tools and server tools that don't match the active provider.
     // Override tool_definitions are not filtered (user-provided takes priority).
+    let provider_name = session.model_selection().provider_name().to_owned();
     let disabled = session.disabled_tools();
     if overrides.is_none_or(|o| o.tool_definitions.is_none()) {
-        tool_defs.retain(|def| !disabled.contains(&def.name));
-    }
-
-    // Filter out server tools that don't match the active provider.
-    // The model string format is "provider_name/model_name" - extract provider.
-    let provider_name = session
-        .model_selection()
-        .display_str()
-        .split('/')
-        .next()
-        .unwrap_or("");
-    if overrides.is_none_or(|o| o.tool_definitions.is_none()) {
         tool_defs.retain(|def| {
-            match def.server_tool_type {
-                Some(ServerToolType::OpenrouterWebSearch) => provider_name == "openrouter",
-                _ => true, // Regular function tools always pass through.
-            }
+            !disabled.contains(&def.name) && def.available_for_provider(&provider_name)
         });
     }
 
@@ -151,7 +136,9 @@ pub fn assemble_prompt(
             .context
             .tools_for_session(session_id)
             .into_iter()
-            .filter(|def| !disabled.contains(def.name.as_str()))
+            .filter(|def| {
+                !disabled.contains(def.name.as_str()) && def.available_for_provider(&provider_name)
+            })
             .map(|def| (def.name.clone(), def))
             .collect();
         build_tool_context_block(&filtered_map)
@@ -316,9 +303,11 @@ mod tests {
     use crate::common::state::State;
     use crate::feat::context::env_context::ContextFile;
     use crate::feat::context::strategy::token_estimator::TiktokenCounter;
+    use crate::feat::session::model_selection::ModelSelection;
     use crate::feat::skills::Skill;
     use crate::feat::tools_actor::tool_types::ToolDefinition;
     use crate::protocol::{ChatEntry, SessionId};
+    use jinn_provider::ServerToolType;
 
     fn counter() -> TiktokenCounter {
         TiktokenCounter::o200k_base()
@@ -579,6 +568,97 @@ mod tests {
         let result = assemble_prompt(&guard, &session_id, &counter(), None);
 
         // Then tool definitions are included.
+        assert_eq!(result.tool_definitions.len(), 1);
+        assert_eq!(result.tool_definitions[0].name, "bash");
+    }
+
+    fn make_web_search_tool() -> ToolDefinition {
+        ToolDefinition {
+            name: "openrouter:web_search".to_owned(),
+            description: "Search the web".to_owned(),
+            parameters: serde_json::json!({"type": "object"}),
+            prompt_snippet: Some("Web search (OpenRouter)".to_owned()),
+            prompt_guidelines: vec![],
+            server_tool_type: Some(ServerToolType::OpenrouterWebSearch),
+        }
+    }
+
+    fn set_active_model(state: &State, model: &str) {
+        let mut guard = state.write();
+        guard
+            .active_session_mut()
+            .set_model(ModelSelection::Single(model.to_owned()));
+    }
+
+    #[test]
+    fn assemble_prompt_includes_web_search_for_openrouter_model() {
+        // Given a state on an openrouter model with web search registered.
+        let (state, session_id) = state_with_history(vec![ChatEntry::user("search it")]);
+        set_active_model(&state, "openrouter/openai/gpt-oss-120b");
+        {
+            let mut guard = state.write();
+            guard
+                .context
+                .global_tool_definitions
+                .insert("openrouter:web_search".to_owned(), make_web_search_tool());
+        }
+
+        // When assembling the prompt.
+        let guard = state.read();
+        let result = assemble_prompt(&guard, &session_id, &counter(), None);
+
+        // Then web search is in the tool definitions AND the system prompt block.
+        assert_eq!(result.tool_definitions.len(), 1);
+        assert_eq!(result.tool_definitions[0].name, "openrouter:web_search");
+        match &result.messages[0] {
+            LlmMessage::System { content } => assert!(content.contains("Web search (OpenRouter)")),
+            other => panic!("expected System message, got {other:?}"),
+        }
+    }
+
+    #[test]
+    fn assemble_prompt_excludes_web_search_for_non_openrouter_model() {
+        // Given a state on a non-openrouter model with web search registered.
+        let (state, session_id) = state_with_history(vec![ChatEntry::user("search it")]);
+        set_active_model(&state, "zai/glm-4.6");
+        {
+            let mut guard = state.write();
+            guard
+                .context
+                .global_tool_definitions
+                .insert("openrouter:web_search".to_owned(), make_web_search_tool());
+        }
+
+        // When assembling the prompt.
+        let guard = state.read();
+        let result = assemble_prompt(&guard, &session_id, &counter(), None);
+
+        // Then web search is absent from tool definitions AND the system prompt block.
+        assert!(result.tool_definitions.is_empty());
+        match &result.messages[0] {
+            LlmMessage::System { content } => assert!(!content.contains("Web search (OpenRouter)")),
+            other => panic!("expected System message, got {other:?}"),
+        }
+    }
+
+    #[test]
+    fn assemble_prompt_keeps_function_tools_for_non_openrouter_model() {
+        // Given a state on a non-openrouter model with a function tool registered.
+        let (state, session_id) = state_with_history(vec![ChatEntry::user("do work")]);
+        set_active_model(&state, "zai/glm-4.6");
+        {
+            let mut guard = state.write();
+            guard
+                .context
+                .global_tool_definitions
+                .insert("bash".to_owned(), make_tool("bash"));
+        }
+
+        // When assembling the prompt.
+        let guard = state.read();
+        let result = assemble_prompt(&guard, &session_id, &counter(), None);
+
+        // Then the function tool is still present despite the non-openrouter model.
         assert_eq!(result.tool_definitions.len(), 1);
         assert_eq!(result.tool_definitions[0].name, "bash");
     }
