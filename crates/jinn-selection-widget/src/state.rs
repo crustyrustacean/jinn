@@ -94,8 +94,6 @@ where
         }
     }
 
-    // --- Item management ---
-
     /// Replaces the full item list and re-filters against the current filter text.
     ///
     /// Does **not** reset the filter text or cursor position - the consumer may want to
@@ -108,8 +106,6 @@ where
             .selection
             .min(self.filtered_indices.len().saturating_sub(1));
     }
-
-    // --- Filter input methods (all trigger re-filter, reset selection to 0) ---
 
     /// Inserts a character at the cursor position, advances the cursor, re-filters, and
     /// resets selection and scroll offset to 0.
@@ -168,8 +164,6 @@ where
         self.scroll_offset = 0;
     }
 
-    // --- Cursor movement (do NOT trigger re-filter or reset selection) ---
-
     /// Moves the cursor one grapheme to the left.
     ///
     /// No-op when the cursor is already at position 0.
@@ -187,8 +181,6 @@ where
             self.cursor_pos += 1;
         }
     }
-
-    // --- Selection movement (do NOT trigger re-filter) ---
 
     /// Moves the selection up by one, clamping at 0, then adjusts scroll offset.
     ///
@@ -214,8 +206,6 @@ where
         self.ensure_visible(max_visible);
     }
 
-    // --- Scroll ---
-
     /// Adjusts `scroll_offset` so that `selection` is within the visible window.
     ///
     /// `max_visible` is the number of rows that fit in the picker area.
@@ -228,8 +218,6 @@ where
             // Selection is within the visible window - no adjustment needed.
         }
     }
-
-    // --- Reset ---
 
     /// Clears the filter text and resets selection, cursor, and scroll offset to 0.
     ///
@@ -251,8 +239,6 @@ where
     pub fn clear_filter(&mut self) {
         self.reset();
     }
-
-    // --- Read access ---
 
     /// Returns the current filter text.
     #[must_use]
@@ -342,8 +328,6 @@ where
     pub fn filtered_match_indices(&self, idx: usize) -> Option<&[usize]> {
         self.filtered_match_indices.get(idx).map(Vec::as_slice)
     }
-
-    // --- Internal ---
 
     /// Recomputes the filtered index cache based on the current filter text.
     ///

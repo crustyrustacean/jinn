@@ -6,8 +6,6 @@ use crate::common::bus::BusMessage;
 use crate::protocol::Mode;
 use crate::protocol::key::KeyEvent;
 
-// --- Events ---
-
 /// A key was pressed down.
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct KeyDown {

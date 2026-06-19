@@ -28,8 +28,6 @@ async fn make_store() -> (TempDir, SqliteSessionStore) {
     (dir, store)
 }
 
-// --- Save + load round-trip ---
-
 #[rstest::rstest]
 #[tokio::test]
 async fn save_creates_summary() {
@@ -69,8 +67,6 @@ async fn load_session_restores_data() {
     assert_eq!(loaded.title(), Some("Test Session"));
     assert_eq!(loaded.history().len(), 1);
 }
-
-// --- Multiple sessions ---
 
 #[rstest::rstest]
 #[tokio::test]
@@ -120,8 +116,6 @@ async fn save_updates_existing_session() {
     assert_eq!(loaded.history().len(), 2);
 }
 
-// --- Load nonexistent session ---
-
 #[rstest::rstest]
 #[tokio::test]
 async fn load_session_returns_none_for_unknown_id() {
@@ -138,8 +132,6 @@ async fn load_session_returns_none_for_unknown_id() {
     assert!(result.is_none());
 }
 
-// --- Empty store ---
-
 #[rstest::rstest]
 #[tokio::test]
 async fn load_summaries_returns_empty_when_no_sessions() {
@@ -152,8 +144,6 @@ async fn load_summaries_returns_empty_when_no_sessions() {
     // Then an empty vec is returned.
     assert!(summaries.is_empty());
 }
-
-// --- Save creates directory ---
 
 #[rstest::rstest]
 #[tokio::test]
@@ -170,8 +160,6 @@ async fn save_creates_directory() {
     // Then the directory is created.
     assert!(nested.exists());
 }
-
-// --- Delete ---
 
 #[rstest::rstest]
 #[tokio::test]
@@ -207,8 +195,6 @@ async fn delete_is_noop_for_unknown_id() {
 
     // Then no error occurs.
 }
-
-// --- Fork ---
 
 #[rstest::rstest]
 #[tokio::test]
@@ -319,8 +305,6 @@ async fn fork_returns_error_for_unknown_source() {
     assert!(result.is_err());
 }
 
-// --- Entry kinds round-trip ---
-
 #[rstest::rstest]
 #[tokio::test]
 async fn all_entry_kinds_round_trip() {
@@ -377,8 +361,6 @@ async fn all_entry_kinds_round_trip() {
     );
 }
 
-// --- Pin position round-trip ---
-
 #[rstest::rstest]
 #[tokio::test]
 async fn pin_position_round_trips() {
@@ -422,8 +404,6 @@ async fn pin_position_round_trips() {
     assert_eq!(loaded.history()[3].pin_position, None);
 }
 
-// --- Token ledger round-trip ---
-
 #[rstest::rstest]
 #[tokio::test]
 async fn token_ledger_round_trips() {
@@ -455,8 +435,6 @@ async fn token_ledger_round_trips() {
     assert_eq!(loaded.token_ledger()[0].tokens_sent, 100);
     assert_eq!(loaded.token_ledger()[0].tokens_received, 50);
 }
-
-// --- Delete orphans shared entries ---
 
 #[rstest::rstest]
 #[tokio::test]
@@ -491,8 +469,6 @@ async fn delete_cleans_up_orphaned_entries() {
     let summaries = store.load_summaries().await.expect("load_summaries");
     assert!(summaries.is_empty());
 }
-
-// --- CWD persistence ---
 
 #[rstest::rstest]
 #[tokio::test]
@@ -606,8 +582,6 @@ async fn ignored_field_round_trips() {
     assert!(loaded.history()[3].ignored(), "entry 3 should be ignored");
 }
 
-// --- Lifecycle metadata persistence ---
-
 #[rstest::rstest]
 #[tokio::test]
 async fn lifecycle_metadata_round_trips() {
@@ -681,8 +655,6 @@ async fn fork_inherits_lifecycle_metadata() {
     assert_eq!(forked.lifecycle_name(), Some("fossil branch"));
     assert_eq!(forked.lifecycle_args(), &["dev".to_owned()]);
 }
-
-// --- Lifecycle script state persistence ---
 
 #[rstest::rstest]
 #[tokio::test]
@@ -954,8 +926,6 @@ async fn fork_blocking_sets_fork_ordinal() {
 use crate::feat::session::model_selection::ModelSelection;
 use crate::feat::session::session_store::migrator::seed_at_version;
 use rusqlite::params;
-
-// --- Legacy blob loading (0.65 -> 0.66 compat) ---
 
 /// A metadata blob in the 0.65 shape: `profile.model` is a bare string.
 ///

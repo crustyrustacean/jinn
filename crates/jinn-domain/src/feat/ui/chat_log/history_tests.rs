@@ -16,7 +16,6 @@ use crate::protocol::{ChatEntry, PinPosition};
 use jinn_testutil::setup_term;
 use ratatui::style::Color;
 
-// --- Gutter width constant for test offsets ---
 const G: u16 = GUTTER_WIDTH; // = 2
 
 /// Creates an AppState with Normal scope (clears the default Input overlay).

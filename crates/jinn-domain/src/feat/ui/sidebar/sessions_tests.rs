@@ -65,15 +65,11 @@ fn state_with_sessions(count: usize) -> AppState {
     state
 }
 
-// --- Section identity ---
-
 #[rstest::rstest]
 fn section_id_is_sessions() {
     let section = SessionsSection::new();
     assert_eq!(section.id(), SidebarSectionId::Sessions);
 }
-
-// --- Content height ---
 
 #[rstest::rstest]
 fn content_height_with_one_session() {
@@ -172,8 +168,6 @@ fn navigate_action_returns_moved() {
     let result = navigate(&SidebarIntent::Action(crate::Intent::Quit), &mut state);
     assert_eq!(result, SectionNavResult::Moved);
 }
-
-// --- scroll_to_cursor ---
 
 #[rstest::rstest]
 fn scroll_to_cursor_adjusts_offset_when_cursor_above_window() {
@@ -283,8 +277,6 @@ fn navigate_up_scrolls_viewport_at_top() {
     assert_eq!(state.frontend.sessions_section.scroll_offset, 4);
 }
 
-// --- receive_cursor ---
-
 #[rstest::rstest]
 fn receive_cursor_from_top_positions_at_index_zero() {
     // Given state with 3 sessions.
@@ -325,8 +317,6 @@ fn receive_cursor_noop_when_empty() {
     // Then no index is selected.
     assert_eq!(state.frontend.sessions_section.selected_index, None);
 }
-
-// --- sorted_open_sessions ---
 
 #[rstest::rstest]
 fn sorted_sessions_orders_by_created_at_descending() {
@@ -407,8 +397,6 @@ fn working_complete_returns_to_idle() {
     assert_eq!(sessions.len(), 1);
     assert!(sessions[0].is_idle);
 }
-
-// --- Rendering ---
 
 use jinn_testutil::setup_term;
 
@@ -669,8 +657,6 @@ fn render_footer_uses_border_unfocused_when_other_sidebar_section_focused() {
     );
 }
 
-// --- Close session ---
-
 #[rstest::rstest]
 fn close_session_switches_to_next() {
     // Given state with 3 sessions, sessions section focused, cursor at index 0 (active session).
@@ -810,8 +796,6 @@ fn close_session_rejected_when_wrong_section() {
     assert_eq!(result, Err(SessionCloseError::WrongSection));
 }
 
-// --- Error-colored session titles ---
-
 #[rstest::rstest]
 fn render_session_title_is_red_when_last_entry_is_error() {
     // Given a session whose last history entry is an error.
@@ -908,8 +892,6 @@ fn sorted_sessions_empty_history_is_not_error() {
     assert!(!entry_last_is_error(&state, &sessions[0].id));
 }
 
-// --- Activate session ---
-
 #[rstest::rstest]
 fn activate_switches_to_cursor_session() {
     // Given state with 3 sessions, sessions section focused, cursor at index 1.
@@ -939,8 +921,6 @@ fn activate_is_noop_when_not_sessions_section() {
     // Then active session is unchanged.
     assert_eq!(*state.session.active_session_id(), original_active);
 }
-
-// --- SessionNewWithLifecycle ---
 
 #[rstest::rstest]
 fn session_new_with_lifecycle_opens_picker_from_normal_mode() {
@@ -1082,8 +1062,6 @@ fn default_theme() -> crate::feat::theme::Theme {
     AppState::default().frontend.theme
 }
 
-// --- entry_title_style ---
-
 #[rstest::rstest]
 fn title_style_is_red_reversed_when_error_and_selected() {
     // Given an entry with error and selected.
@@ -1147,8 +1125,6 @@ fn title_style_is_muted_text_when_inactive_not_selected() {
     assert_eq!(style.fg, Some(theme.muted_text));
 }
 
-// --- indicator_span ---
-
 #[rstest::rstest]
 fn indicator_span_returns_blank_space_when_idle() {
     // Given an idle entry.
@@ -1175,8 +1151,6 @@ fn indicator_span_returns_throbber_character_when_working() {
     assert_eq!(span.style.fg, Some(Color::Cyan));
 }
 
-// --- arrow_span ---
-
 #[rstest::rstest]
 fn arrow_span_returns_active_prefix_when_active() {
     // Given an active session.
@@ -1200,8 +1174,6 @@ fn arrow_span_returns_inactive_prefix_when_not_active() {
     // Then it contains the inactive prefix (two spaces).
     assert_eq!(span.content, "  ");
 }
-
-// --- truncate_str ---
 
 #[rstest::rstest]
 fn truncate_str_returns_original_when_short() {
@@ -1300,8 +1272,6 @@ fn state_with_tree() -> AppState {
 
     state
 }
-
-// --- Tree ordering ---
 
 #[rstest::rstest]
 fn tree_roots_sorted_by_created_at_descending() {
@@ -1408,8 +1378,6 @@ fn orphan_session_appears_as_root() {
     );
 }
 
-// --- Navigation through tree ---
-
 #[rstest::rstest]
 fn navigate_down_from_root_goes_to_first_child() {
     // Given state with a tree and cursor on root_a.
@@ -1466,8 +1434,6 @@ fn navigate_up_from_child_goes_to_parent() {
         "previous entry should be root_a"
     );
 }
-
-// --- Close sessions in tree ---
 
 #[rstest::rstest]
 fn close_child_session_clamps_cursor() {
@@ -1537,8 +1503,6 @@ fn close_root_session_promotes_children_to_roots() {
     );
 }
 
-// --- Activate child session ---
-
 #[rstest::rstest]
 fn activate_child_session_switches_active() {
     // Given state with a tree, cursor on child_a1.
@@ -1558,8 +1522,6 @@ fn activate_child_session_switches_active() {
     // Then the active session is child_a1.
     assert_eq!(*state.session.active_session_id(), child_a1_id);
 }
-
-// --- Render tree with mixed depths ---
 
 #[rstest::rstest]
 fn render_tree_shows_tree_characters() {
@@ -1945,8 +1907,6 @@ fn clear_visual_parents_on_load_actually_removes_entries() {
     );
 }
 
-// --- Plugin entries in sorted_open_sessions ---
-
 fn state_with_plugins() -> AppState {
     use jinn_core_types::AttachedPlugin;
 
@@ -2176,8 +2136,6 @@ fn close_on_plugin_entry_is_rejected() {
     // Then validation rejects it.
     assert!(result.is_err());
 }
-
-// --- Automated sessions excluded from sorted_open_sessions ---
 
 #[test]
 fn sorted_open_sessions_excludes_automated_sessions() {

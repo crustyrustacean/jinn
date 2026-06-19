@@ -281,8 +281,6 @@ fn tool_loop_disabled_cleared() {
 // SECTION 2: Invalid transitions
 // ═══════════════════════════════════════════════════════════════════════════
 
-// --- on_dispatch_message ---
-
 #[test]
 fn reject_dispatch_while_streaming() {
     let mut m = streaming_machine();
@@ -296,8 +294,6 @@ fn reject_dispatch_while_sending() {
     let err = m.on_dispatch_message().unwrap_err();
     assert_from(&err, PhaseKind::Sending);
 }
-
-// --- on_first_token ---
 
 #[test]
 fn reject_first_token_while_idle() {
@@ -313,8 +309,6 @@ fn reject_first_token_while_streaming() {
     assert_from(&err, PhaseKind::Streaming);
 }
 
-// --- on_stream_completed_finished ---
-
 #[test]
 fn reject_stream_completed_while_idle() {
     let mut m = idle_machine();
@@ -329,8 +323,6 @@ fn reject_stream_completed_while_sending() {
     assert_from(&err, PhaseKind::Sending);
 }
 
-// --- on_tool_batch_completed ---
-
 #[test]
 fn reject_tool_batch_while_idle() {
     let mut m = idle_machine();
@@ -344,8 +336,6 @@ fn reject_tool_batch_while_streaming() {
     let err = m.on_tool_batch_completed().unwrap_err();
     assert_from(&err, PhaseKind::Streaming);
 }
-
-// --- cancel ---
 
 #[test]
 fn reject_cancel_while_idle() {
@@ -370,8 +360,6 @@ fn cancel_during_sending() {
     // And old_streaming is default (no streaming data in Sending phase).
     assert!(result.old_streaming.streaming_entry_index.is_none());
 }
-
-// --- soft_cancel ---
 
 #[test]
 fn reject_soft_cancel_while_idle() {

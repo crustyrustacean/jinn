@@ -661,8 +661,6 @@ fn registry_propagates_none_extra_body_when_absent() {
     assert!(resolved.extra_body.is_none());
 }
 
-// --- merge_cache tests ---
-
 #[rstest::rstest]
 fn merge_cache_adds_remote_entries() {
     // Given a registry with ollama (static: llama3).
@@ -786,7 +784,6 @@ fn merge_cache_ignores_unknown_provider() {
 
 #[rstest::rstest]
 fn unavailable_providers_returns_correct_entries() {
-    // Kills: replace unavailable_providers with vec![] and delete ! in filter.
     // Given a registry with one keyless and one key-required provider (no key).
     let config = make_config(vec![ollama_entry(), openrouter_entry()], vec![], None);
     let registry = ProviderRegistry::from_config(config).expect("registry");
@@ -803,7 +800,6 @@ fn unavailable_providers_returns_correct_entries() {
 
 #[rstest::rstest]
 fn unavailable_providers_returns_empty_when_all_available() {
-    // Kills: delete ! in filter (would return available instead).
     // Given a registry with only keyless providers.
     let config = make_config(vec![ollama_entry()], vec![], None);
     let registry = ProviderRegistry::from_config(config).expect("registry");

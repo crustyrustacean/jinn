@@ -512,8 +512,6 @@ mod tests {
         assert!(guard.context.active_persona.is_none());
     }
 
-    // --- handle_pin_chat_entry ---
-
     #[rstest::rstest]
     #[tokio::test]
     async fn handle_pin_chat_entry_pins_and_emits() {
@@ -556,8 +554,6 @@ mod tests {
         );
     }
 
-    // --- handle_unpin_chat_entry ---
-
     #[rstest::rstest]
     #[tokio::test]
     async fn handle_unpin_chat_entry_unpins_and_emits() {
@@ -599,10 +595,6 @@ mod tests {
             "expected ChatEntryPinChanged event"
         );
     }
-
-    // --- on_prompt_templates_loaded ---
-
-    // --- handle_load_persona_picker_entries ---
 
     #[rstest::rstest]
     #[tokio::test]

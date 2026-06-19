@@ -471,7 +471,6 @@ mod tests {
         let lines = wrap_text(text, 5);
 
         // Then there is exactly 1 line (no wrap at boundary).
-        // Kills: col > width → col >= width (would incorrectly wrap).
         assert_eq!(lines.len(), 1);
         assert_eq!(lines[0].grapheme_start, 0);
         assert_eq!(lines[0].grapheme_end, 5);
@@ -500,7 +499,6 @@ mod tests {
         let lines = wrap_text(text, 6);
 
         // Then no wrap (no break point recorded because space is at end).
-        // Kills: i + 1 < graphemes.len() → i + 1 <= graphemes.len()
         assert_eq!(lines.len(), 1);
     }
 
@@ -527,7 +525,6 @@ mod tests {
         let lines = wrap_text(text, 5);
 
         // Then first line is NOT a continuation, rest ARE.
-        // Kills: delete ! in !first_line (would mark first as continuation).
         assert!(!lines[0].is_continuation);
         for line in &lines[1..] {
             assert!(line.is_continuation);
@@ -541,7 +538,6 @@ mod tests {
         let lines = wrap_text(text, 10);
 
         // Then ranges are contiguous and correct.
-        // Kills: replace + with * or - in grapheme_offset arithmetic.
         assert_eq!(lines.len(), 3);
         assert_eq!(lines[0].grapheme_start, 0);
         assert_eq!(lines[0].grapheme_end, 6); // "hello "
@@ -561,12 +557,10 @@ mod tests {
 
         // Then it breaks at exact width (forced break, no word boundary).
         // This verifies that whitespace detection is correct.
-        // Kills: replace == with != in whitespace check.
         assert_eq!(lines.len(), 2);
         assert!(lines[1].is_continuation);
     }
 
-    // --- Memo transparency regression (Phase 3) ---
     //
     // `ChatInputBoxState::wrapped_lines()` is memoized; this confirms the memo's output is
     // byte-identical to a fresh `wrap_text(buffer, width)` call across a representative

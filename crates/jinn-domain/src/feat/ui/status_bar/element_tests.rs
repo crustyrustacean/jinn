@@ -59,6 +59,45 @@ fn render_shows_provider_and_model() {
 }
 
 #[rstest::rstest]
+fn render_single_model_ignores_stale_ledger_model_used() {
+    // Given a Single selection of ollama/llama3, but a token ledger whose last
+    // record claims a different (stale) model was dispatched.
+    let mut element = StatusBarElement;
+    let mut state = AppState::default();
+    state
+        .active_session_mut()
+        .set_model(ModelSelection::Single("ollama/llama3".to_owned()));
+    state.active_session_mut().push_token_record(TokenRecord {
+        model_used: Some("openrouter/gpt-4".to_owned()),
+        timestamp: jiff::Timestamp::now(),
+        tokens_sent: 1000,
+        tokens_received: 500,
+        cost: None,
+    });
+
+    // When rendering.
+    let (mut terminal, area) = setup_term(50, 2);
+    terminal
+        .draw(|frame| {
+            let ctx = RenderCtx::new(&state);
+            element.render(frame, area, &ctx);
+        })
+        .unwrap();
+    let buffer = terminal.backend().buffer().clone();
+    let row = buffer_row(&buffer, 1, 50);
+
+    // Then the selected model is shown, not the stale dispatched model.
+    assert!(
+        row.contains("(ollama)/llama3"),
+        "should show selected model, got: {row}"
+    );
+    assert!(
+        !row.contains("gpt-4"),
+        "should not show stale dispatched model, got: {row}"
+    );
+}
+
+#[rstest::rstest]
 fn render_right_aligns_text() {
     let mut element = StatusBarElement;
     let mut state = AppState::default();
@@ -99,8 +138,6 @@ fn render_shows_provider_with_slash_in_model() {
     assert!(row.starts_with("\u{2191}"));
     assert!(row.contains("(openrouter)/anthropic/claude-sonnet-4"));
 }
-
-// --- Token display tests ---
 
 #[rstest::rstest]
 fn render_shows_token_counts_with_zero_values() {
@@ -204,8 +241,6 @@ fn render_shows_zero_percent_max_when_no_context_size() {
     assert!(row.contains("0 0") || row.contains("\u{2191}0 \u{2193}0"));
 }
 
-// --- Turn counter tests ---
-
 #[rstest::rstest]
 fn render_shows_zero_turns_when_no_history() {
     // Given a state with no chat entries.
@@ -296,8 +331,6 @@ fn render_turn_count_skips_tool_loop_intermediates() {
     // Then only the user and final assistant count as turns.
     assert!(row.contains("\u{21BB}2"));
 }
-
-// --- CWD display tests ---
 
 #[rstest::rstest]
 fn render_shows_cwd_on_first_line() {
@@ -397,8 +430,6 @@ fn render_shows_tilde_substitution_for_path_under_home() {
         "expected ~/projects/my-app in cwd line, got: {row0}"
     );
 }
-
-// --- Context limit display tests ---
 
 #[rstest::rstest]
 fn render_shows_context_limit_with_usage_and_percentage() {
@@ -529,8 +560,6 @@ fn render_falls_back_when_no_model_cache() {
     );
 }
 
-// --- Context display: (None, Some) case ---
-
 #[rstest::rstest]
 fn render_shows_zero_percent_with_max_when_no_messages_sent() {
     // Given a model with a known context length but no messages sent (no context_size).
@@ -603,8 +632,6 @@ fn render_shows_used_over_unknown_when_no_context_length() {
     // Then the status bar shows the formatted usage with unknown limit.
     assert!(row.contains("15.0k/???"), "expected 15.0k/???, got: {row}");
 }
-
-// --- Cost display tests ---
 
 #[rstest::rstest]
 fn render_always_shows_cost_even_when_zero() {
@@ -700,8 +727,6 @@ fn render_shows_cost_before_turns_indicator() {
         "cost should appear before turns symbol, got: {row}"
     );
 }
-
-// --- Tree aggregate display tests ---
 
 #[rstest::rstest]
 fn render_hides_tree_aggregate_for_single_session() {
@@ -825,8 +850,6 @@ fn render_shows_tree_aggregate_from_child_viewpoint() {
         "tree aggregate from child should show \u{29C9}2, got: {row0}"
     );
 }
-
-// --- Alloy display tests ---
 
 #[rstest::rstest]
 fn render_single_model_shows_provider_and_model_without_alloy_prefix() {

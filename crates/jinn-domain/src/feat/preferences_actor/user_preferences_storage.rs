@@ -351,8 +351,6 @@ mod tests {
         );
     }
 
-    // --- Service caching tests ---
-
     #[rstest::rstest]
     fn service_load_caches_result() {
         // Given an InMemoryUserPreferencesStorage wrapped in a service.

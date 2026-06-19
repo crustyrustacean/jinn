@@ -707,8 +707,6 @@ mod tests {
         );
     }
 
-    // --- handle_reset_session_history ---
-
     #[tokio::test]
     async fn reset_session_history_clears_chat_entries() {
         use crate::feat::session::protocol::reset_session_history::ResetSessionHistory;

@@ -62,8 +62,6 @@ fn set_parent(
     }
 }
 
-// --- find_tree_root tests ---
-
 #[rstest::rstest]
 fn single_session_is_own_root() {
     // Given a single session with no parent.
@@ -141,8 +139,6 @@ fn orphan_session_treated_as_root() {
     // Then the orphan itself is the root (ghost parent not in map).
     assert_eq!(root, orphan_id);
 }
-
-// --- aggregate_tree_stats tests ---
 
 #[rstest::rstest]
 fn single_session_returns_own_stats() {
@@ -300,8 +296,6 @@ fn disconnected_sessions_excluded() {
     assert_eq!(stats.total_received, 150);
     assert_eq!(stats.total_turns, 2);
 }
-
-// --- frozen node tests ---
 
 #[rstest::rstest]
 fn frozen_parent_is_found_as_root() {
@@ -614,8 +608,6 @@ fn empty_sessions_produce_zeros() {
     assert!(stats.total_cost < f64::EPSILON);
     assert_eq!(stats.total_turns, 0);
 }
-
-// --- fork_ordinal tests ---
 
 #[rstest::rstest]
 fn forked_session_excluded_from_tree_turn_count() {

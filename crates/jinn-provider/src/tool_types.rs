@@ -220,8 +220,6 @@ mod tests {
         assert!(result.truncation.is_none());
     }
 
-    // --- ServerToolType tests ---
-
     #[rstest::rstest]
     fn server_tool_type_as_str_returns_correct_string() {
         assert_eq!(

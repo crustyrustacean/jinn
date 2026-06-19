@@ -193,8 +193,6 @@ impl BusPublish for DiscoveryCoordinatorActor {
     }
 }
 
-// --- Message handlers ---
-
 impl Message<SkillsLoaded> for DiscoveryCoordinatorActor {
     type Reply = ();
 

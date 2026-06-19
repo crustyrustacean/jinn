@@ -1314,7 +1314,6 @@ mod tests {
 
     #[rstest::rstest]
     fn to_retry_config_uses_actual_values_not_defaults() {
-        // Kills: replace to_retry_config with Default::default().
         // If to_retry_config returned Default::default(), all durations would be zero.
         let config = RequestRetryConfig {
             max_retries: 3,
