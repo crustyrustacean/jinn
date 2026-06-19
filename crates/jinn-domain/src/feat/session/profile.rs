@@ -239,8 +239,6 @@ mod tests {
         assert!(profile.disabled_tools.is_empty());
     }
 
-    // --- Mutation-killing tests ---
-
     #[rstest::rstest]
     fn default_persona_name_is_coding_assistant() {
         // Given a default SessionProfile.

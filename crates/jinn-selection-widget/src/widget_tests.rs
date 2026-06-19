@@ -48,10 +48,6 @@ fn make_items(labels: &[&str]) -> Vec<TestItem> {
     labels.iter().map(|&l| TestItem::new(l)).collect()
 }
 
-// =========================================================================
-// Ported from render.rs provider picker tests
-// =========================================================================
-
 #[rstest::rstest]
 fn render_shows_telescope_layout() {
     // Given a selection state with filter text.
@@ -155,10 +151,6 @@ fn render_calls_render_row_for_selected_item() {
     let marker_cell = buffer.cell((popup.x + 1, result_y)).expect("marker cell");
     assert_eq!(marker_cell.symbol(), ">");
 }
-
-// =========================================================================
-// New widget-specific tests
-// =========================================================================
 
 #[rstest::rstest]
 fn render_shows_title() {

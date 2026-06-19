@@ -68,8 +68,6 @@ mod tests {
     use crate::feat::session::model_selection::ModelSelection;
     use crate::protocol::PickerKind;
 
-    // --- RefreshModels tests ---
-
     #[rstest::rstest]
     fn refresh_models_succeeds_with_provider() {
         // Given a state with a configured provider.
@@ -96,8 +94,6 @@ mod tests {
         // Then it returns NoProvider error.
         assert!(matches!(result, Err(RefreshModelsError::NoProvider)));
     }
-
-    // --- SessionNew tests ---
 
     #[rstest::rstest]
     fn session_new_succeeds_when_no_picker_active() {

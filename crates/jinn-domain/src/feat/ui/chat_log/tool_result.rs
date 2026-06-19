@@ -713,8 +713,6 @@ mod tests {
         );
     }
 
-    // --- Skill summary display tests ---
-
     /// Collect a line's text from its spans.
     fn line_text(line: &Line<'_>) -> String {
         line.spans.iter().map(|s| s.content.clone()).collect()

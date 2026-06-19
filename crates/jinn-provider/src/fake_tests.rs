@@ -162,8 +162,6 @@ async fn fake_service_emits_done_with_tool_use() {
     );
 }
 
-// --- Multi-turn tool loop tests ---
-
 #[rstest::rstest]
 #[tokio::test]
 async fn tool_loop_emits_text_token() {

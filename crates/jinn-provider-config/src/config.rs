@@ -578,7 +578,6 @@ tool_stream = true
 
     #[rstest::rstest]
     fn save_config_actually_writes_to_disk() {
-        // Kills: replace save_config with Ok(()).
         // If save_config were a no-op, the file would not exist after the call.
         let dir = TempDir::new().expect("temp dir");
         let path = dir.path().join("providers.toml");
@@ -608,7 +607,6 @@ tool_stream = true
 
     #[rstest::rstest]
     fn create_default_config_returns_actual_path() {
-        // Kills: replace create_default_config with Ok(Default::default()).
         // If it returned an empty PathBuf, the path would not point to a file.
         let dir = TempDir::new().expect("temp dir");
         let path = dir.path().join("providers.toml");
@@ -623,7 +621,6 @@ tool_stream = true
 
     #[rstest::rstest]
     fn default_true_makes_requires_key_default_to_true() {
-        // Kills: replace default_true with false.
         // Verifies that a provider entry without requires_key in TOML defaults to true.
         let dir = TempDir::new().expect("temp dir");
         let path = dir.path().join("providers.toml");
@@ -641,8 +638,6 @@ tool_stream = true
             "requires_key should default to true"
         );
     }
-
-    // --- Stress tests: comment preservation across realistic fixtures ---
 
     /// Build a realistic providers.toml with comments in every position we care about:
     ///   - top-of-file banner
@@ -833,8 +828,6 @@ tool_stream = true
         );
         assert!(written.contains("\"smart\""), "smart alias preserved");
     }
-
-    // --- Alloy block forward-compat test ---
 
     #[rstest::rstest]
     fn save_config_preserves_unknown_alloy_block() {

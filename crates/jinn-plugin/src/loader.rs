@@ -340,8 +340,6 @@ mod tests {
         std::fs::write(plugin_dir.join("init.lua"), init_content).expect("write init.lua");
     }
 
-    // --- scan_dir ---
-
     #[test]
     fn scan_dir_finds_plugins_with_init_lua() {
         let dir = tempfile::tempdir().expect("tempdir");
@@ -370,8 +368,6 @@ mod tests {
         let result = scan_kind_dir(dir.path(), PluginKind::Global);
         assert!(result.is_empty());
     }
-
-    // --- discover_plugins ---
 
     #[test]
     fn discover_plugins_user_overrides_system() {
@@ -487,8 +483,6 @@ mod tests {
         assert_eq!(attachable.len(), 1);
         assert_eq!(attachable[0].description, Some("UserJudge".to_owned()));
     }
-
-    // --- load_all / isolation ---
 
     #[test]
     fn load_all_isolates_plugin_globals() {

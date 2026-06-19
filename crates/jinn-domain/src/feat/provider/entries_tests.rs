@@ -223,8 +223,6 @@ fn load_provider_entries_alias_inherits_availability() {
     assert!(!cloud.is_available);
 }
 
-// --- Remote model cache tests ---
-
 #[rstest::rstest]
 fn static_entries_present_after_cache_merge() {
     // Given a registry with one keyless provider (ollama/llama3).
@@ -432,8 +430,6 @@ fn load_provider_entries_includes_all_remote_models() {
     // Then all 3 entries are present (1 static + 2 remote).
     assert_eq!(entries.len(), 3);
 }
-
-// --- sorted_entries tests ---
 
 #[rstest::rstest]
 fn active_provider_promoted_to_first() {
@@ -703,8 +699,6 @@ fn sorted_entries_sorts_by_model_name_within_blocks() {
     assert_eq!(result[1].provider_id, "a/zebra");
 }
 
-// --- format_footers / age_color / truncate_line tests ---
-
 /// Flattens a line's spans into a single owned string for assertion.
 fn line_text(line: &ratatui::text::Line<'_>) -> String {
     line.spans.iter().map(|s| &*s.content).collect()
@@ -953,8 +947,6 @@ fn partial_span_retains_style() {
     // Then the partial span retains its style.
     assert_eq!(result.spans[1].style.fg, Some(Color::Red));
 }
-
-// --- Highlight tests ---
 
 fn make_picker_entry(
     model: &str,

@@ -681,8 +681,6 @@ mod tests {
         assert_eq!(reloaded.min_collapse_count, Some(5));
     }
 
-    // --- Comment preservation tests for save_preferences ---
-
     #[rstest::rstest]
     fn save_preferences_preserves_user_comments_on_scalar_change() {
         // Given a comment-rich jinn.toml.
@@ -895,7 +893,6 @@ mod tests {
 
     #[rstest::rstest]
     fn load_preferences_actually_reads_file_content() {
-        // Kills: replace load_preferences with Ok(Default::default()).
         // If load_preferences were a no-op returning defaults, this would fail
         // because we verify that file content is actually read and parsed.
         let dir = TempDir::new().expect("temp dir");
@@ -915,7 +912,6 @@ mod tests {
 
     #[rstest::rstest]
     fn save_preferences_actually_writes_to_disk() {
-        // Kills: replace save_preferences with Ok(()).
         // If save_preferences were a no-op, the file would not exist on disk.
         let dir = TempDir::new().expect("temp dir");
         let path = dir.path().join(PREFS_FILE_NAME);
@@ -974,8 +970,6 @@ mod tests {
         let prefs = UserPreferences::default();
         assert_eq!(prefs.web_fetch.backend, WebFetchBackend::HeadlessChrome);
     }
-
-    // --- OpenRouterWebSearchConfig tests ---
 
     #[rstest::rstest]
     fn default_preferences_has_default_openrouter_web_search() {

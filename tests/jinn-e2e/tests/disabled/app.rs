@@ -365,8 +365,6 @@ fn parse_pin_position(name: &str) -> PinPosition {
     }
 }
 
-// --- Given steps ---
-
 /// World is already initialised with a fresh AppWorld.
 #[cucumber::given(expr = "a fresh app")]
 fn given_a_fresh_app(_world: &mut AppWorld) {}
@@ -497,8 +495,6 @@ fn given_pinned_entry(world: &mut AppWorld, position: String, text: String) {
     let entry_id = state.active_session().history()[index].id.clone();
     state.active_session_mut().pin_entry(&entry_id, pin_pos);
 }
-
-// --- When steps ---
 
 /// Simulates the user pressing a single key (no modifiers).
 #[cucumber::when(expr = "the user presses {word}")]
@@ -811,8 +807,6 @@ fn run_headless_script(world: &mut AppWorld, content: &str) {
         }
     }
 }
-
-// --- Then steps ---
 
 /// Asserts the application's current mode matches the expected value.
 #[cucumber::then(expr = "the mode should be {word}")]
@@ -1181,8 +1175,6 @@ fn then_session_has_no_pinned_entries(world: &mut AppWorld) {
     );
 }
 
-// --- Chat scroll step definitions ---
-
 /// Asserts the cursor is on the last entry in the chat history.
 /// Waits up to 5 seconds for the history to have at least one entry.
 #[cucumber::then(expr = "the cursor should be on the last entry")]
@@ -1228,8 +1220,6 @@ fn then_scroll_at_bottom(world: &mut AppWorld) {
     );
 }
 
-// --- Prompt template expansion step definitions ---
-
 /// Asserts the last User entry has the expected display and expanded text.
 #[cucumber::then(expr = "the last user entry has display {string} and expanded {string}")]
 fn then_last_user_entry_display_expanded(world: &mut AppWorld, display: String, expanded: String) {
@@ -1254,8 +1244,6 @@ fn then_last_user_entry_display_expanded(world: &mut AppWorld, display: String, 
         _ => panic!("expected User entry, got {:?}", last.kind),
     }
 }
-
-// --- Session CWD step definitions ---
 
 /// Asserts the active session's CWD is not empty.
 #[cucumber::then(expr = "the session CWD should not be empty")]
@@ -1361,3 +1349,4 @@ fn then_session_cwd_fallback(world: &mut AppWorld) {
     let expected = state.session.default_cwd();
     assert_eq!(actual, expected, "expected CWD to fall back to global CWD");
 }
+

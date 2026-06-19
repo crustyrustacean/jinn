@@ -171,8 +171,6 @@ mod tests {
     use super::*;
     use ratatui::style::Color;
 
-    // --- ANSI name parsing ---
-
     #[rstest::rstest]
     #[case("yellow", Color::Yellow)]
     #[case("Yellow", Color::Yellow)]
@@ -203,8 +201,6 @@ mod tests {
         assert_eq!(result, None);
     }
 
-    // --- Hex parsing ---
-
     #[rstest::rstest]
     #[case("#FFA500", Color::Rgb(255, 165, 0))]
     #[case("#ffa500", Color::Rgb(255, 165, 0))]
@@ -229,8 +225,6 @@ mod tests {
         // Then it returns None.
         assert_eq!(result, None);
     }
-
-    // --- ANSI code parsing ---
 
     #[rstest::rstest]
     fn ansi_code_80_resolves() {
@@ -262,8 +256,6 @@ mod tests {
         // Then it returns None.
         assert_eq!(result, None);
     }
-
-    // --- parse_color_string dispatch ---
 
     #[rstest::rstest]
     fn string_dispatches_to_hex() {

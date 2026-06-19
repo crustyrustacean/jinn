@@ -122,8 +122,6 @@ where
         state
     }
 
-    // --- Item management ---
-
     /// Replaces the full item list and re-filters against the current filter text.
     ///
     /// Does **not** reset the filter text or cursor position.
@@ -134,8 +132,6 @@ where
         self.recompute_filtered();
         self.selection = self.selection.min(self.visible.len().saturating_sub(1));
     }
-
-    // --- Filter input methods (all trigger re-filter, reset selection to 0) ---
 
     /// Inserts a character at the cursor position, advances the cursor, re-filters, and
     /// resets selection and scroll offset to 0.
@@ -194,8 +190,6 @@ where
         self.scroll_offset = 0;
     }
 
-    // --- Cursor movement (do NOT trigger re-filter or reset selection) ---
-
     /// Moves the cursor one grapheme to the left.
     pub fn move_cursor_left(&mut self) {
         if self.cursor_pos > 0 {
@@ -209,8 +203,6 @@ where
             self.cursor_pos += 1;
         }
     }
-
-    // --- Selection movement (do NOT trigger re-filter) ---
 
     /// Moves the selection up by one, clamping at 0, then adjusts scroll offset.
     pub fn move_up(&mut self, max_visible: usize) {
@@ -230,8 +222,6 @@ where
         self.ensure_visible(max_visible);
     }
 
-    // --- Scroll ---
-
     /// Adjusts `scroll_offset` so that `selection` is within the visible window.
     pub fn ensure_visible(&mut self, max_visible: usize) {
         if self.selection < self.scroll_offset {
@@ -243,8 +233,6 @@ where
         }
     }
 
-    // --- Reset ---
-
     /// Clears the filter text and resets selection, cursor, and scroll offset to 0.
     ///
     /// Does **not** clear the item list.
@@ -255,8 +243,6 @@ where
         self.scroll_offset = 0;
         self.recompute_filtered();
     }
-
-    // --- Read access ---
 
     /// Returns the current filter text.
     #[must_use]
@@ -320,8 +306,6 @@ where
     pub fn filtered_match_indices(&self, idx: usize) -> Option<&[usize]> {
         self.match_indices.get(idx).map(Vec::as_slice)
     }
-
-    // --- Internal ---
 
     /// Builds the parent/child index from the current items.
     fn build_index(&mut self) {
@@ -539,8 +523,6 @@ impl<I: TreeItem> PickerOps for TreePickerState<I> {
         TreePickerState::filter(self).is_empty()
     }
 }
-
-// --- Free functions ---
 
 /// Recursively emits all children in DFS order with full tree metadata.
 #[expect(

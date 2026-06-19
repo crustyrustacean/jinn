@@ -467,8 +467,6 @@ mod tests {
         assert!(result.full_content.is_some());
     }
 
-    // --- Unit tests for helper functions ---
-
     #[rstest::rstest]
     fn build_content_stdout_only() {
         // Given stdout and empty stderr.

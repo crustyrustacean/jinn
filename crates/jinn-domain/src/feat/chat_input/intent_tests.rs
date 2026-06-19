@@ -611,8 +611,6 @@ fn move_cursor_down_delegates_to_state() {
     assert!(result.message_names.is_empty());
 }
 
-// --- Mode transition tests ---
-
 #[rstest::rstest]
 fn enter_insert_mode_sets_mode_to_input() {
     // Given a state in Normal mode.
@@ -853,8 +851,6 @@ fn enter_normal_mode_with_queue_emits_no_cancel_stream() {
     );
 }
 
-// --- NormalEscape tests ---
-
 #[rstest::rstest]
 fn normal_escape_does_not_clear_selection() {
     // Given a state with a selected entry.
@@ -940,8 +936,6 @@ fn normal_escape_when_idle_emits_no_commands() {
     // Then no commands are emitted.
     assert!(result.message_names.is_empty());
 }
-
-// --- Slash autocomplete tests ---
 
 #[rstest::rstest]
 fn slash_at_position_0_triggers_autocomplete() {
@@ -1157,8 +1151,6 @@ fn slash_autocomplete_cursor_leaves_token_emits_no_commands() {
     assert!(result.message_names.is_empty());
 }
 
-// --- Slash command execution tests ---
-
 #[rstest::rstest]
 fn submit_new_command_creates_session() {
     // Given a state with "/new" in the buffer (no autocomplete active).
@@ -1351,8 +1343,6 @@ fn enter_slash_command_emits_no_enqueue() {
     );
 }
 
-// --- Paste ---
-
 #[rstest::rstest]
 fn paste_text_inserts_into_chat_input() {
     // Given a default AppState.
@@ -1409,8 +1399,6 @@ fn paste_text_at_cursor_emits_no_commands() {
     // Then no commands are emitted.
     assert!(result.message_names.is_empty());
 }
-
-// --- Hash after newline tests ---
 
 #[rstest::rstest]
 fn hash_triggers_after_newline() {
@@ -1532,8 +1520,6 @@ fn hash_cursor_reentry_emits_no_commands() {
     assert!(result.message_names.is_empty());
 }
 
-// --- Popup auto-close on cursor move past token ---
-
 #[rstest::rstest]
 fn cursor_right_past_token_deactivates_autocomplete() {
     // Given a state with "#code hello" and autocomplete active at token_start=0.
@@ -1586,8 +1572,6 @@ fn cursor_right_within_token_keeps_autocomplete_active() {
         "popup should stay open when cursor is within token"
     );
 }
-
-// --- ESC dismisses autocomplete (two-level ESC) ---
 
 #[rstest::rstest]
 fn enter_normal_mode_deactivates_hash_autocomplete() {

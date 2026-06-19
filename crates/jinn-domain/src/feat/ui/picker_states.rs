@@ -92,8 +92,6 @@ pub struct PickerStates {
 /// Import this trait to access picker fields through methods instead of direct field access.
 /// This decouples consumers from the internal storage layout of `FrontendState`.
 pub trait PickerExt {
-    // --- Session picker ---
-
     /// Read-only access to the session picker state.
     fn session_picker(&self) -> &jinn_selection_widget::TreePickerState<SessionTreeEntry>;
     /// Mutable access to the session picker state.
@@ -101,14 +99,10 @@ pub trait PickerExt {
         &mut self,
     ) -> &mut jinn_selection_widget::TreePickerState<SessionTreeEntry>;
 
-    // --- Persona picker ---
-
     /// Read-only access to the persona picker state.
     fn persona_picker(&self) -> &jinn_selection_widget::SelectionState<PersonaEntry>;
     /// Mutable access to the persona picker state.
     fn persona_picker_mut(&mut self) -> &mut jinn_selection_widget::SelectionState<PersonaEntry>;
-
-    // --- Theme picker ---
 
     /// Read-only access to the theme picker state.
     fn theme_picker(&self) -> &jinn_selection_widget::SelectionState<ThemeEntry>;
@@ -119,8 +113,6 @@ pub trait PickerExt {
     /// Mutable access to the saved theme before preview.
     fn theme_preview_original_mut(&mut self) -> &mut Option<Theme>;
 
-    // --- Tool picker ---
-
     /// Read-only access to the tool picker state.
     fn tool_picker(&self) -> &jinn_selection_widget::SelectionState<ToolEntry>;
     /// Mutable access to the tool picker state.
@@ -129,8 +121,6 @@ pub trait PickerExt {
     fn tool_picker_snapshot(&self) -> &Option<HashSet<String>>;
     /// Mutable access to the disabled tools snapshot.
     fn tool_picker_snapshot_mut(&mut self) -> &mut Option<HashSet<String>>;
-
-    // --- Skill picker ---
 
     /// Read-only access to the skill picker state.
     fn skill_picker(&self) -> &jinn_selection_widget::SelectionState<SkillEntry>;
@@ -145,8 +135,6 @@ pub trait PickerExt {
     /// Set the preview pane scroll offset for the skill picker.
     fn set_skill_preview_scroll(&mut self, val: usize);
 
-    // --- Session lifecycle picker ---
-
     /// Read-only access to the session lifecycle picker state.
     fn session_lifecycle_picker(
         &self,
@@ -156,8 +144,6 @@ pub trait PickerExt {
         &mut self,
     ) -> &mut jinn_selection_widget::SelectionState<SessionLifecycleEntry>;
 
-    // --- Plugin picker ---
-
     /// Read-only access to the plugin picker state.
     fn plugin_picker(&self) -> &jinn_selection_widget::SelectionState<PluginPickerEntry>;
 
@@ -166,16 +152,12 @@ pub trait PickerExt {
         &mut self,
     ) -> &mut jinn_selection_widget::SelectionState<PluginPickerEntry>;
 
-    // --- Compaction model picker ---
-
     /// Read-only access to the compaction model picker state.
     fn compaction_model_picker(&self) -> &jinn_selection_widget::SelectionState<PickerEntry>;
     /// Mutable access to the compaction model picker state.
     fn compaction_model_picker_mut(
         &mut self,
     ) -> &mut jinn_selection_widget::SelectionState<PickerEntry>;
-
-    // --- Reasoning effort picker ---
 
     /// Read-only access to the reasoning effort picker state.
     fn reasoning_effort_picker(
@@ -186,16 +168,12 @@ pub trait PickerExt {
         &mut self,
     ) -> &mut jinn_selection_widget::SelectionState<ReasoningEffortEntry>;
 
-    // --- Task list picker ---
-
     /// Read-only access to the task list picker state.
     fn task_list_picker(&self) -> &jinn_selection_widget::TreePickerState<TaskListTreeEntry>;
     /// Mutable access to the task list picker state.
     fn task_list_picker_mut(
         &mut self,
     ) -> &mut jinn_selection_widget::TreePickerState<TaskListTreeEntry>;
-
-    // --- Project picker ---
 
     /// Read-only access to the project picker state.
     fn project_picker(

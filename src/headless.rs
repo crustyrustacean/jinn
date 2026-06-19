@@ -172,8 +172,6 @@ mod tests {
         }
     }
 
-    // --- parse_script unit tests ---
-
     #[rstest::rstest]
     fn parse_script_single_key() {
         let result = parse_script("a", &leader());

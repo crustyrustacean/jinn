@@ -287,7 +287,6 @@ mod tests {
 
     #[rstest::rstest]
     fn cache_path_returns_nonempty_path() {
-        // Kills: replace cache_path with Default::default().
         // If cache_path returned an empty PathBuf, it wouldn't point to a valid cache location.
         let path = cache_path();
 

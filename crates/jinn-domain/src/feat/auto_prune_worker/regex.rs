@@ -418,8 +418,6 @@ mod tests {
         rt.block_on(async { worker.evaluate(&SessionId::new(), history).await })
     }
 
-    // --- from_config tests ---
-
     #[test]
     fn from_config_clamps_keep_last_to_minimum_1() {
         let worker = RegexAutoPruneWorker::from_config(&RegexAutoPruneConfig {
@@ -482,8 +480,6 @@ mod tests {
             "disabled worker should produce no mutations"
         );
     }
-
-    // --- evaluate tests ---
 
     #[test]
     fn no_matching_tool_calls_produces_no_mutations() {
@@ -844,8 +840,6 @@ mod tests {
         assert_eq!(mutations.len(), 4);
     }
 
-    // --- min_age tests ---
-
     /// Helper: like `worker_for_cargo_check` but with explicit `min_age`.
     fn worker_with_min_age(keep_last: usize, min_age: usize) -> RegexAutoPruneWorker {
         RegexAutoPruneWorker::from_config(&RegexAutoPruneConfig {
@@ -954,7 +948,6 @@ mod tests {
         );
     }
 
-    // --- Moved config type tests (RegexPruneRule / RegexAutoPruneConfig) ---
     use crate::common::app_info::PREFS_FILE_NAME;
     use crate::feat::preferences_actor::user_preferences::{
         AutoPruneConfig, UserPreferences, load_preferences_from, save_preferences_to,

@@ -271,7 +271,6 @@ fn config_snapshot_returns_current_config() {
 
 #[rstest::rstest]
 fn is_available_returns_false_for_key_required_without_key() {
-    // Kills: replace is_available with true.
     // If is_available always returned true, the key-required provider would appear available.
     let service = service_with_providers();
     let api_keys = crate::api_keys::ApiKeys::new();
@@ -282,7 +281,6 @@ fn is_available_returns_false_for_key_required_without_key() {
 
 #[rstest::rstest]
 fn merge_cache_actually_adds_entries_to_registry() {
-    // Kills: replace merge_cache with ().
     // If merge_cache were a no-op, the new model would not be available.
     let service = service_with_providers();
 

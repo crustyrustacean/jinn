@@ -210,12 +210,25 @@ fn build_model_string(
     active_model: &crate::feat::session::model_selection::ModelSelection,
 ) -> String {
     let model = {
-        let last_dispatched = state
-            .active_session()
-            .token_ledger()
-            .last()
-            .and_then(|r| r.model_used.as_deref());
-        let resolved = last_dispatched.unwrap_or_else(|| active_model.display_str());
+        // For an Alloy, the bar surfaces the last-rotated member (which one
+        // actually answered) from the token ledger, falling back to the first
+        // member before any dispatch. For a Single selection the model _is_ the
+        // source of truth — never read the historical ledger, which would show
+        // a stale model after switching providers via the picker.
+        //
+        // `model_used` is cloned to an owned `Option<String>` so the resolved
+        // `&str` borrows only `active_model` and a local, avoiding a lifetime
+        // clash between the ledger borrow and the `active_model` borrow.
+        let last_dispatched = active_model.as_alloy().and_then(|_| {
+            state
+                .active_session()
+                .token_ledger()
+                .last()
+                .and_then(|r| r.model_used.clone())
+        });
+        let resolved = last_dispatched
+            .as_deref()
+            .unwrap_or_else(|| active_model.display_str());
 
         if active_model.is_no_provider() {
             "no model selected".to_owned()

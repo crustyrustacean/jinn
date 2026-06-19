@@ -692,8 +692,6 @@ mod tests {
         ));
     }
 
-    // --- Split-chunk tests (OpenRouter format) ---
-
     #[rstest::rstest]
     fn openrouter_split_chunk_usage_in_separate_chunk_from_finish_reason() {
         // Given OpenRouter-style SSE: finish_reason in chunk 1, usage+cost in chunk 2.
