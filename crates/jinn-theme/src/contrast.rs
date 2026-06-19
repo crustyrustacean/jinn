@@ -312,8 +312,6 @@ mod tests {
         assert_ne!(result, fg);
     }
 
-    // --- darken ---
-
     #[rstest::rstest]
     fn darken_white_by_half_produces_mid_gray() {
         // Given White (229, 229, 229) darkened by 0.5.
@@ -367,8 +365,6 @@ mod tests {
         // Then green channel is halved.
         assert_eq!(result, Color::Rgb(0, 103, 0)); // 205 * 0.5 = 102.5 → rounds to 103
     }
-
-    // --- lighten ---
 
     #[rstest::rstest]
     fn lighten_brightens_dark_rusty_color() {

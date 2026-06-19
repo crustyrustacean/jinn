@@ -23,8 +23,6 @@ fn push_entry_adds_to_history() {
     assert_eq!(data.active_session().history().len(), 1);
 }
 
-// --- ScopeStack tests ---
-
 #[rstest::rstest]
 fn default_creates_normal_base() {
     // Given a default ScopeStack.
@@ -165,8 +163,6 @@ fn is_sidebar_returns_false_when_normal() {
     assert!(!stack.is_sidebar());
 }
 
-// --- FocusScope::mode() parameterized ---
-
 #[rstest::rstest]
 #[case(FocusScope::Normal, Mode::Normal)]
 #[case(FocusScope::Input, Mode::Input)]
@@ -179,8 +175,6 @@ fn focus_scope_mode_mapping(#[case] scope: FocusScope, #[case] expected: Mode) {
     assert_eq!(scope.mode(), expected);
 }
 
-// --- FocusScope::Display ---
-
 #[rstest::rstest]
 #[case(FocusScope::Normal, "Normal")]
 #[case(FocusScope::Input, "Input")]
@@ -192,8 +186,6 @@ fn focus_scope_display(#[case] scope: FocusScope, #[case] expected: &str) {
     // Then it produces the expected string.
     assert_eq!(scope.to_string(), expected);
 }
-
-// --- session_mut_or_create CWD ---
 
 #[rstest::rstest]
 fn session_mut_or_create_sets_cwd_from_default_cwd() {
@@ -211,8 +203,6 @@ fn session_mut_or_create_sets_cwd_from_default_cwd() {
     // Then the session's CWD is the default CWD.
     assert_eq!(session.cwd(), std::path::Path::new("/custom/cwd"));
 }
-
-// --- ScopeStack::is_empty / len ---
 
 #[rstest::rstest]
 fn is_empty_returns_false_after_construction() {
@@ -244,8 +234,6 @@ fn len_increases_after_push() {
     // Then it returns 2.
     assert_eq!(stack.len(), 2);
 }
-
-// --- active_picker_ops ---
 
 #[rstest::rstest]
 fn active_picker_ops_returns_some_when_picker_active() {

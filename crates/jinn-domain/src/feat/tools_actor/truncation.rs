@@ -266,8 +266,6 @@ mod tests {
     )]
     use super::*;
 
-    // --- truncate_head ---
-
     #[rstest::rstest]
     fn head_no_truncation_when_under_limits() {
         // Given content well within both limits.
@@ -359,8 +357,6 @@ mod tests {
         assert_eq!(result.content, "hello");
     }
 
-    // --- truncate_tail ---
-
     #[rstest::rstest]
     fn tail_no_truncation_when_under_limits() {
         // Given content well within both limits.
@@ -436,8 +432,6 @@ mod tests {
         assert_eq!(meta.truncated_by, TruncatedBy::Bytes);
     }
 
-    // --- format_size ---
-
     #[rstest::rstest]
     #[case::bytes(500, "500B")]
     #[case::kilobytes(2048, "2.0KB")]
@@ -470,8 +464,6 @@ mod tests {
         assert_eq!(format_size(1023), "1023B");
     }
 
-    // --- DEFAULT_MAX_BYTES ---
-
     #[rstest::rstest]
     fn default_max_bytes_is_50kb() {
         // Given the DEFAULT_MAX_BYTES constant.
@@ -479,8 +471,6 @@ mod tests {
         assert_eq!(DEFAULT_MAX_BYTES, 50 * 1024);
         assert_eq!(DEFAULT_MAX_BYTES, 51200);
     }
-
-    // --- truncate_string_from_end ---
 
     #[rstest::rstest]
     fn truncate_string_from_end_short_string_unchanged() {
@@ -534,8 +524,6 @@ mod tests {
         assert!(!result.is_empty());
     }
 
-    // --- truncate_head boundary tests ---
-
     #[rstest::rstest]
     fn head_first_line_exactly_at_byte_limit() {
         // Given a first line exactly at max_bytes.
@@ -588,8 +576,6 @@ mod tests {
         assert!(!result.truncated);
         assert_eq!(result.content, content);
     }
-
-    // --- truncate_tail boundary tests ---
 
     #[rstest::rstest]
     fn tail_first_line_exactly_at_byte_limit_keeps_it() {

@@ -441,8 +441,6 @@ mod tests {
         assert!(height > 0, "expected non-zero height, got {height}");
     }
 
-    // --- Navigation tests ---
-
     #[test]
     fn navigate_returns_exhausted_without_selection() {
         let mut app = AppState::default();
@@ -510,8 +508,6 @@ mod tests {
         let section = TaskListSection;
         assert_eq!(section.id(), SidebarSectionId::TaskList);
     }
-
-    // --- Collapsed rendering tests ---
 
     #[test]
     fn collapsed_rendering_shows_no_tasks() {
@@ -587,9 +583,6 @@ mod tests {
             "selected phase header should have REVERSED modifier for cursor highlight"
         );
     }
-
-    // --- Expanded rendering tests ---
-    // --- Expanded rendering tests ---
 
     #[test]
     fn expanded_rendering_shows_tasks_for_selected_phase() {
@@ -693,8 +686,6 @@ mod tests {
         );
     }
 
-    // --- Cancelled task tests ---
-
     #[test]
     fn cancelled_task_visible_with_indicator() {
         let mut app = AppState::default();
@@ -750,8 +741,6 @@ mod tests {
         );
     }
 
-    // --- wrap_description tests ---
-
     #[test]
     fn wrap_description_short_text_no_wrap() {
         let result = wrap_description("hello", 20);
@@ -780,8 +769,6 @@ mod tests {
         assert_eq!(result.len(), 1);
         assert_eq!(result[0], "");
     }
-
-    // --- Word-wrap integration tests ---
 
     #[test]
     fn build_render_lines_long_task_wraps() {
@@ -933,8 +920,6 @@ mod tests {
         );
     }
 
-    // --- Render/height invariant tests ---
-
     /// Regression: when phase descriptions wrap, the number of lines painted by
     /// `build_render_lines` must equal the height reserved by `compute_height`.
     /// Previously the render path used the indicator's byte length (4) while
@@ -1056,8 +1041,6 @@ mod tests {
             "last phase header must be rendered, got: {text}"
         );
     }
-
-    // --- Phase header styling tests ---
 
     /// Helper: find a line containing `phase_name` and return its first span's foreground color.
     fn phase_header_fg(lines: &[Line<'static>], phase_name: &str) -> Option<ratatui::style::Color> {

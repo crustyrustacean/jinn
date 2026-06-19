@@ -298,8 +298,6 @@ fn is_at_bottom_false_when_scrolled_up() {
     assert!(!session.is_at_bottom());
 }
 
-// --- Queue tests ---
-
 #[rstest::rstest]
 fn enqueue_message_adds_to_queue() {
     // Given a new session with an empty queue.
@@ -437,8 +435,6 @@ fn drain_empties_queue() {
     assert_eq!(session.queue_len(), 0);
 }
 
-// --- Sending tests ---
-
 #[rstest::rstest]
 fn begin_sending_sets_is_sending() {
     // Given a new session (idle).
@@ -503,8 +499,6 @@ fn finish_sending_via_machine_is_noop_when_not_sending() {
     // Then phase stays Idle (no panic, just a logged warning).
     assert_eq!(session.phase(), PhaseKind::Idle);
 }
-
-// --- Combined status tests ---
 
 #[rstest::rstest]
 fn is_idle_true_when_not_sending_or_streaming() {
@@ -590,8 +584,6 @@ fn finish_streaming_returns_to_idle() {
     assert_ne!(session.phase(), PhaseKind::Streaming);
     assert_ne!(session.phase(), PhaseKind::Sending);
 }
-
-// --- Tool call streaming tests ---
 
 #[rstest::rstest]
 fn begin_tool_call_creates_entry_with_empty_arguments() {
@@ -762,10 +754,6 @@ fn cancel_streaming_clears_tool_call_indices() {
     assert_ne!(session.phase(), PhaseKind::Streaming);
     assert_eq!(session.history().len(), 2); // assistant + tool call still there
 }
-
-// --- Strategy switching tests ---
-
-// --- Pinning tests ---
 
 #[rstest::rstest]
 fn pin_state_sets_position() {
@@ -958,8 +946,6 @@ fn pin_position_survives_restore_history() {
     assert_eq!(pinned[1].pin_position, Some(PinPosition::Bottom));
 }
 
-// --- Pin + ignored block propagation tests ---
-
 #[rstest::rstest]
 fn pin_entry_propagates_shown_to_forward_sub_block() {
     // Given: a shown (expanded) ignored block with entries before and after the pin target.
@@ -1050,8 +1036,6 @@ fn pin_entry_at_block_end_no_forward_propagation() {
     assert_eq!(session.ui.shown_ignored_blocks.len(), 1);
     assert!(session.ui.shown_ignored_blocks.contains(&rep_id));
 }
-
-// --- Regression: pin-hidden-bug integration tests ---
 
 /// Regression test for: pinning an ignored entry inside an expanded block
 /// should keep all entries visible. Before the fix, the forward sub-block
@@ -1192,8 +1176,6 @@ fn regression_unpin_remerges_block_correctly() {
     session.toggle_ignored_block_visibility(&rep_id);
     assert!(!session.ui.shown_ignored_blocks.contains(&rep_id));
 }
-
-// --- Selection tests ---
 
 #[rstest::rstest]
 fn select_next_entry_starts_at_first_when_no_selection() {
@@ -1405,8 +1387,6 @@ fn restore_history_auto_selects_last_entry() {
     assert_eq!(session.selected_entry_index(), Some(0));
 }
 
-// --- Thinking streaming tests ---
-
 #[rstest::rstest]
 fn begin_thinking_appends_before_assistant_is_created() {
     // Given a streaming session (no assistant entry yet - lazy creation).
@@ -1546,8 +1526,6 @@ fn finish_streaming_without_preserve_keeps_existing_assistant() {
     assert!(matches!(session.history()[0].kind, ChatEntryKind::Assistant(ref t) if t == "Hello"));
 }
 
-// --- Smart auto-scroll (was_at_last) tests ---
-
 #[rstest::rstest]
 fn push_entry_auto_selects_first_entry() {
     // Given an empty session.
@@ -1686,8 +1664,6 @@ fn begin_thinking_preserves_selection_when_not_at_last() {
     assert_eq!(session.selected_entry_index(), Some(0));
 }
 
-// --- Viewport state tests ---
-
 #[rstest::rstest]
 fn visible_entry_range_returns_visible_entries() {
     // Given a session with viewport state.
@@ -1794,8 +1770,6 @@ fn visible_entry_range_uses_rendered_scroll_offset_not_scroll_offset() {
     assert_eq!(range, 1..4);
 }
 
-// --- CWD persistence tests ---
-
 #[rstest::rstest]
 fn cwd_preserved_across_serialization_round_trip() {
     // Given a session with a specific CWD.
@@ -1856,7 +1830,6 @@ fn serde_defaults_lifecycle_fields_when_missing() {
     assert!(back.lifecycle_name().is_none());
     assert!(back.lifecycle_args().is_empty());
 }
-// --- is_empty tests ---
 
 #[rstest::rstest]
 fn is_empty_true_for_new_session() {
@@ -1876,8 +1849,6 @@ fn is_empty_false_after_pushing_entry() {
     // Then it is not empty.
     assert!(!session.is_empty());
 }
-
-// --- Streaming tool result tests ---
 
 #[test]
 fn begin_tool_result_creates_pending_entry() {
@@ -2075,8 +2046,6 @@ fn finalize_tool_result_pushes_new_entry_for_unknown_id() {
     }
 }
 
-// --- Phase 1 fix: begin_tool_result guard tests ---
-
 #[test]
 fn begin_tool_result_does_not_push_when_not_streaming() {
     // Given a session NOT in streaming phase (defaults to Idle).
@@ -2109,8 +2078,6 @@ fn begin_tool_result_does_not_push_in_sending_phase() {
         session.history().len()
     );
 }
-
-// --- Phase 2 fix: finalize_tool_result history search tests ---
 
 #[test]
 fn finalize_tool_result_updates_existing_pending_by_kind_id() {
@@ -2235,8 +2202,6 @@ fn finalize_tool_result_pushes_new_with_truncation_when_no_existing() {
     }
 }
 
-// --- LifecycleScriptState transition tests ---
-
 #[rstest::rstest]
 fn advance_after_setup_transitions_nothing_to_setup() {
     // Given NothingRan.
@@ -2308,8 +2273,6 @@ fn advance_after_teardown_is_noop_from_teardown_ran() {
     // Then state stays TeardownRan (no panic).
     assert_eq!(state, LifecycleScriptState::TeardownRan);
 }
-
-// --- SessionState default test ---
 
 #[rstest::rstest]
 fn session_state_defaults_to_loaded() {
@@ -2528,8 +2491,6 @@ fn restore_is_noop_when_nothing_saved() {
     assert_eq!(session.selected_entry_index(), Some(0));
 }
 
-// --- Empty assistant navigation skip tests ---
-
 #[rstest::rstest]
 fn select_next_entry_skips_empty_assistant() {
     // Given history [user, empty_assistant, user] with selection at 0.
@@ -2591,8 +2552,6 @@ fn select_prev_entry_stays_put_when_only_empty_assistant_remains() {
     // Then selection stays at 1 (can't skip to empty assistant).
     assert_eq!(session.selected_entry_index(), Some(1));
 }
-
-// --- is_tool_call_streaming tests ---
 
 #[rstest::rstest]
 fn is_tool_call_streaming_returns_false_for_non_streaming_entry() {
@@ -2680,8 +2639,6 @@ fn is_tool_call_streaming_returns_false_for_unknown_id() {
         "unknown ID should not be streaming"
     );
 }
-
-// --- Toggle ignored block visibility tests ---
 
 #[rstest::rstest]
 fn toggle_ignored_block_visibility_expands_block() {
@@ -2921,8 +2878,6 @@ fn toggle_ignored_block_visibility_stops_at_pinned_entry_in_first_sub_block() {
         "representative should NOT be the second sub-block start (index 7)"
     );
 }
-
-// --- Navigation with visual items tests ---
 
 #[rstest::rstest]
 fn select_next_walks_visual_items_with_collapsed_block() {
@@ -3215,8 +3170,6 @@ fn toggle_twice_on_default_user_ends_forced_include() {
     assert!(session.history()[idx].is_in_context());
 }
 
-// --- is_persistable tests ---
-
 #[test]
 fn new_session_is_not_persistable() {
     // Given a new session with no history or interaction.
@@ -3259,8 +3212,6 @@ fn forked_session_is_always_persistable() {
     assert!(session.is_persistable());
     assert!(!session.has_interacted());
 }
-
-// --- force_exclude_dangling_tool_calls tests ---
 
 #[test]
 fn force_exclude_excludes_dangling_tool_call_and_empty_assistant() {
@@ -3417,12 +3368,6 @@ fn force_exclude_no_tool_calls_is_noop() {
     }
 }
 
-// ===========================================================================
-// Phase 1: Session Phase State Machine Guards
-// ===========================================================================
-
-// --- cancel_stream_and_drain ---
-
 #[rstest::rstest]
 fn cancel_stream_and_drain_puts_user_display_text_in_input() {
     // Given a streaming session with queued user messages.
@@ -3512,8 +3457,6 @@ fn cancel_stream_and_drain_uses_display_not_expanded() {
     let text = session.chat_input().text().to_owned();
     assert_eq!(text, "short");
 }
-
-// --- steering drain on cancel ---
 
 #[rstest::rstest]
 fn cancel_stream_and_drain_puts_steering_in_input() {
@@ -3646,9 +3589,6 @@ fn cancel_stream_and_drain_steering_with_only_tool_continuation() {
     let text = session.chat_input().text().to_owned();
     assert_eq!(text, "frag1");
 }
-// ===========================================================================
-// Phase 2: insert_entry_at Index Shifting
-// ===========================================================================
 
 #[rstest::rstest]
 fn insert_entry_at_shifts_streaming_entry_index() {
@@ -3981,10 +3921,6 @@ fn insert_entry_at_shifts_multiple_indices() {
     );
 }
 
-// ===========================================================================
-// Phase 3: PhaseKind::from_str
-// ===========================================================================
-
 #[rstest::rstest]
 #[case::idle("idle", PhaseKind::Idle)]
 #[case::sending("sending", PhaseKind::Sending)]
@@ -4024,12 +3960,6 @@ fn phase_kind_from_str_rejects_empty() {
     // Then it returns an error.
     assert!(result.is_err());
 }
-
-// ===========================================================================
-// Phase 4: Scroll & Viewport Boundary Logic
-// ===========================================================================
-
-// --- scroll_to_selected ---
 
 #[rstest::rstest]
 fn scroll_to_selected_noop_when_no_selection() {
@@ -4182,8 +4112,6 @@ fn scroll_to_selected_resets_to_auto_when_at_bottom() {
     assert!(session.scroll_offset().is_none());
 }
 
-// --- visible_entry_range boundary ---
-
 #[rstest::rstest]
 fn visible_entry_range_boundary_at_viewport_edge() {
     // Given entries where one entry's end exactly equals viewport_top.
@@ -4231,8 +4159,6 @@ fn visible_entry_range_includes_entry_at_viewport_bottom_edge() {
     // Entry 2: 6>0 && 4<4 → 4<4 is false → NOT visible.
     assert_eq!(range, 0..2);
 }
-
-// --- move_cursor_to_first_visible with empty assistants ---
 
 #[rstest::rstest]
 fn move_cursor_to_first_visible_skips_empty_assistant() {
@@ -4349,12 +4275,6 @@ fn move_cursor_to_first_visible_noop_when_empty_range() {
     assert_eq!(session.selected_entry_index(), None);
 }
 
-// ===========================================================================
-// Phase 5: Selection & Pin Index Arithmetic
-// ===========================================================================
-
-// --- select_next_entry boundary with empty assistants ---
-
 #[rstest::rstest]
 fn select_next_entry_skips_empty_assistant_at_start() {
     // Given a session: [empty-assistant, user, user].
@@ -4449,8 +4369,6 @@ fn select_prev_entry_clamps_when_only_empty_assistants() {
     assert_eq!(session.selected_entry_index(), None);
 }
 
-// --- pin_entry block scanning direction ---
-
 #[rstest::rstest]
 fn pin_entry_scans_backward_to_find_block_start() {
     // Given a contiguous ignored block: entries at indices 1-4 are ignored.
@@ -4526,8 +4444,6 @@ fn pin_entry_forward_start_at_history_end_is_noop() {
     assert_eq!(session.ui.shown_ignored_blocks.len(), 1);
     assert!(session.ui.shown_ignored_blocks.contains(&rep_id));
 }
-
-// --- toggle_ignored_block_visibility block scanning direction ---
 
 #[rstest::rstest]
 fn toggle_ignored_block_scans_backward_from_entry() {
@@ -4611,10 +4527,6 @@ fn select_prev_entry_at_first_index_stays() {
     // Then cursor stays at 0.
     assert_eq!(session.selected_entry_index(), Some(0));
 }
-
-// ===========================================================================
-// Phase 6: Accessors, Constructors, and Simple Methods
-// ===========================================================================
 
 #[rstest::rstest]
 fn new_with_profile_preserves_profile() {
@@ -4823,8 +4735,6 @@ fn is_automated_returns_real_value() {
     assert!(wf_session.is_automated());
 }
 
-// --- Steering buffer persistence tests ---
-
 #[rstest::rstest]
 fn steering_buffer_not_persisted_across_serialization() {
     // Given a session with a non-empty steering buffer.
@@ -4983,8 +4893,6 @@ fn loaded_skills_returns_only_valid_pinned_skill_names() {
         "loaded_skills() should return exactly the one valid pinned skill name"
     );
 }
-
-// --- apply_mutations user-force-exclude guard ---
 
 use crate::feat::session::history_mutation::HistoryMutation;
 

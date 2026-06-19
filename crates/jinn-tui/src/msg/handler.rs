@@ -314,8 +314,6 @@ mod tests {
         assert!(handler.try_recv().is_none());
     }
 
-    // --- coalesce_paste ---
-
     /// Builds an `Event::Paste` carrying `text`.
     fn paste(text: &str) -> Event {
         Event::Paste(text.to_owned())

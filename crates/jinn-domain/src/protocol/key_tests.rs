@@ -71,8 +71,6 @@ fn parse_notation_enter_returns_unmodified() {
     assert!(key_event.modifiers.is_none());
 }
 
-// --- parse_key_name coverage (via parse_notation) ---
-
 #[rstest::rstest]
 #[case::tab("tab", Key::Tab)]
 #[case::enter("enter", Key::Enter)]

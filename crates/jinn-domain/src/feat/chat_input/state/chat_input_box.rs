@@ -836,8 +836,6 @@ mod tests {
     use super::*;
     use crate::feat::chat_input::AutocompleteMatch;
 
-    // --- Cursor movement ---
-
     #[rstest::rstest]
     fn move_cursor_left_at_zero_is_noop() {
         // Given an empty buffer.
@@ -934,8 +932,6 @@ mod tests {
         assert_eq!(state.cursor_pos(), 6);
     }
 
-    // --- replace_grapheme_range ---
-
     #[rstest::rstest]
     fn replace_grapheme_range_replaces_middle() {
         // Given "hello world" with cursor at end (grapheme 11).
@@ -963,8 +959,6 @@ mod tests {
         // Cursor is after the replacement: 6 (start) + 6 (graphemes in "#there").
         assert_eq!(state.cursor_pos(), 12);
     }
-
-    // --- scroll_to_cursor ---
 
     #[rstest::rstest]
     fn scroll_to_cursor_when_cursor_above_offset() {
@@ -1010,8 +1004,6 @@ mod tests {
         // Then offset is adjusted so cursor is visible.
         assert!(state.scroll_offset() > 0);
     }
-
-    // --- Autocomplete methods ---
 
     #[rstest::rstest]
     fn autocomplete_token_start_returns_none_when_inactive() {
@@ -1209,8 +1201,6 @@ mod tests {
         // Verify by checking the matches.
         assert_eq!(ac.as_ref().unwrap().matches().len(), 1);
     }
-
-    // --- Render cache: observable invariants (Phase 3) ---
 
     #[rstest::rstest]
     fn grapheme_at_and_count_reflect_buffer_after_edit() {

@@ -82,7 +82,6 @@ pub(crate) async fn test_actor_recording() -> (
         audit,
     )
 }
-// --- Shared test store helpers ---
 
 #[cfg(test)]
 use parking_lot::Mutex;

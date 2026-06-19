@@ -195,8 +195,6 @@ mod tests {
         ]
     }
 
-    // --- Serde round-trips ---
-
     #[test]
     fn single_serializes_as_bare_string_key() {
         // Given a Single model selection.
@@ -254,8 +252,6 @@ mod tests {
         assert_eq!(back, selection);
     }
 
-    // --- Default ---
-
     #[test]
     fn default_is_single_no_provider() {
         // Given the default model selection.
@@ -264,8 +260,6 @@ mod tests {
         // Then it is Single with the no-provider sentinel.
         assert_eq!(selection, ModelSelection::Single(NO_PROVIDER_ID.to_owned()));
     }
-
-    // --- resolve_model ---
 
     #[test]
     fn resolve_model_on_single_returns_the_string() {
@@ -334,8 +328,6 @@ mod tests {
         }
     }
 
-    // --- is_no_provider ---
-
     #[test]
     fn is_no_provider_true_for_sentinel() {
         // Given a Single with the no-provider sentinel.
@@ -366,8 +358,6 @@ mod tests {
         assert!(!selection.is_no_provider());
     }
 
-    // --- as_single ---
-
     #[test]
     fn as_single_returns_str_for_single() {
         // Given a Single model selection.
@@ -390,8 +380,6 @@ mod tests {
         // Then it returns None.
         assert!(selection.as_single().is_none());
     }
-
-    // --- from_single ---
 
     #[test]
     fn from_single_wraps_string() {

@@ -9,7 +9,6 @@
 //! code review. Each group struct carries `/// OWNER:` documentation on the struct
 //! and on each field.
 
-// --- Re-exports: types moved to their feature homes ---
 pub use crate::common::focus::{FocusScope, ScopeStack};
 pub use crate::common::session_map::SessionLoadGuard;
 pub use crate::feat::context::assembly_state::ContextAssemblyState;

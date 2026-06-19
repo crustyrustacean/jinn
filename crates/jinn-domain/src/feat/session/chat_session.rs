@@ -1122,8 +1122,6 @@ impl ChatSessionState {
         self.core.ephemeral.machine.kind()
     }
 
-    // --- Tool call streaming ---
-
     /// Create a placeholder `ToolCall` entry and record its history index.
     ///
     /// Called when `ToolUseStarted` arrives - the tool name is known but arguments
@@ -1216,8 +1214,6 @@ impl ChatSessionState {
         // If not found (shouldn't happen), push a new entry.
         self.push_entry(ChatEntry::tool_call(id, name, arguments));
     }
-
-    // --- Streaming tool result ---
 
     /// Create a pending ToolResult entry when a streaming tool starts executing.
     ///
@@ -1418,8 +1414,6 @@ impl ChatSessionState {
         }
     }
 
-    // --- Queue ---
-
     /// Read-only access to the turn dispatch queue items.
     pub fn queue(
         &self,
@@ -1555,8 +1549,6 @@ impl ChatSessionState {
     pub fn model(&self) -> &ModelSelection {
         &self.core.profile.model
     }
-
-    // --- Sending ---
 
     /// Mark the session as having dispatched a message to the LLM.
     //
@@ -1799,8 +1791,6 @@ impl ChatSessionState {
             .store(offset, Ordering::Relaxed);
     }
 
-    // --- Renderer viewport state ---
-
     /// Store per-entry wrapped line ranges computed by the renderer.
     ///
     /// `entry_line_ranges[i] = (start_wrapped_line, end_wrapped_line)` in the
@@ -1958,8 +1948,6 @@ impl ChatSessionState {
         }
     }
 
-    // --- History restoration ---
-
     /// Restore conversation history from a persisted snapshot.
     ///
     /// Replaces the current history with the given entries. Used by session
@@ -1977,8 +1965,6 @@ impl ChatSessionState {
         }
         self.reset_scroll();
     }
-
-    // --- Pinning ---
 
     /// Pin an entry by ID, setting its pin position.
     ///
@@ -2065,8 +2051,6 @@ impl ChatSessionState {
     pub fn pinned_entries(&self) -> Vec<&ChatEntry> {
         self.core.history.iter().filter(|e| e.is_pinned()).collect()
     }
-
-    // --- Selection ---
 
     /// Select the next entry (moving toward newer messages).
     ///
@@ -2256,8 +2240,6 @@ impl ChatSessionState {
         }
     }
 
-    // --- Saved history position ---
-
     /// Saves the current chat log scroll position as the "pre-pin" snapshot.
     ///
     /// Call this before `sync_chat_log_cursor` changes the viewport.
@@ -2367,8 +2349,6 @@ impl ChatSessionState {
     pub fn is_entry_expanded(&self, id: &ChatEntryId) -> bool {
         self.ui.expanded_entries.contains(id)
     }
-
-    // --- Ignored block visibility ---
 
     /// Toggle visibility of the ignored block containing the given entry.
     ///
@@ -2487,8 +2467,6 @@ impl ChatSessionState {
     pub fn set_cwd(&mut self, cwd: std::path::PathBuf) {
         self.core.cwd = cwd;
     }
-
-    // --- Token ledger ---
 
     /// Read-only access to the token ledger.
     pub fn token_ledger(&self) -> &[TokenRecord] {
@@ -2639,8 +2617,6 @@ impl ChatSessionState {
         self.core.created_at = ts;
     }
 
-    // --- New durable field accessors ---
-
     /// This session's unique identifier.
     pub fn session_id(&self) -> &SessionId {
         &self.core.session_id
@@ -2685,8 +2661,6 @@ impl ChatSessionState {
     pub fn blobs_mut(&mut self) -> &mut HashMap<String, JsonValue> {
         &mut self.core.blobs
     }
-
-    // --- Lifecycle fields ---
 
     /// The name of the lifecycle that created this session, if any.
     pub fn lifecycle_name(&self) -> Option<&str> {
@@ -2812,8 +2786,6 @@ impl ChatSessionState {
     pub fn is_tool_loop_disabled(&self) -> bool {
         self.core.ephemeral.machine.is_tool_loop_disabled()
     }
-
-    // --- History mutations (background workers) ---
 
     /// Resolve a [`ChatEntryId`] to its current index in history.
     ///

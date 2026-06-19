@@ -152,8 +152,6 @@ impl BusPublish for ProviderActor {
 }
 
 impl ProviderActor {
-    // --- Command handlers ---
-
     /// ProviderSwitch: update session profile and emit ProviderSwitched event.
     fn handle_provider_switch(&self, payload: &ProviderSwitch) {
         {
@@ -163,8 +161,6 @@ impl ProviderActor {
                 .set_model(payload.provider_id.clone());
         }
     }
-
-    // --- Event handlers ---
 
     /// ModelsRefreshed: update model cache and reload provider picker entries.
     fn handle_models_refreshed(&self, event: &ModelsRefreshed) {
@@ -391,8 +387,6 @@ mod tests {
         let loaded = s.provider.model_cache.as_ref().unwrap();
         assert!(loaded.last_updated_at.is_some());
     }
-
-    // --- Context length merge tests ---
 
     #[rstest::rstest]
     #[tokio::test]
@@ -703,8 +697,6 @@ mod tests {
             .expect("cache should be set");
         assert_eq!(loaded.entries["ollama"][0].context_length, Some(8192));
     }
-
-    // --- models.dev merge tests (pure unit tests, no actor involved) ---
 
     #[rstest::rstest]
     #[tokio::test]

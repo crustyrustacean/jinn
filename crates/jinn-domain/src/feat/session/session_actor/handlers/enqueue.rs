@@ -449,8 +449,6 @@ mod tests {
         (actor, state, audit)
     }
 
-    // --- handle_enqueue_user_message ---
-
     #[tokio::test]
     async fn handle_enqueue_user_message_dispatches_when_idle() {
         // Given an idle session.
@@ -564,8 +562,6 @@ mod tests {
         );
     }
 
-    // --- handle_set_chat_input_text ---
-
     #[tokio::test]
     async fn handle_set_chat_input_text_updates_buffer() {
         // Given a session.
@@ -587,8 +583,6 @@ mod tests {
         let session = guard.session.get(&session_id).expect("session");
         assert_eq!(session.chat_input().text(), "new input text");
     }
-
-    // --- handle_push_chat_entry ---
 
     #[tokio::test]
     async fn handle_push_chat_entry_pushes_and_emits() {
@@ -631,8 +625,6 @@ mod tests {
         );
     }
 
-    // --- handle_send_message ---
-
     #[tokio::test]
     async fn handle_send_message_emits_enqueue_user_message() {
         // Given a test context.
@@ -653,8 +645,6 @@ mod tests {
             "expected EnqueueUserMessage command from SendMessage"
         );
     }
-
-    // --- Plugin dispatch tests ---
 
     #[tokio::test]
     async fn before_turn_no_attachments_dispatches_normally() {
@@ -679,8 +669,6 @@ mod tests {
         let session = guard.session.get(&session_id).expect("session");
         assert_eq!(session.phase(), PhaseKind::Streaming);
     }
-
-    // --- handle_enqueue_resume_turn ---
 
     #[tokio::test]
     async fn handle_enqueue_resume_turn_noop_when_streaming() {
@@ -864,8 +852,6 @@ mod tests {
             "SendToLlmProvider must be emitted after drain on Idle dispatch"
         );
     }
-
-    // --- reasoning effort resolution (AC1, AC2) ---
 
     #[tokio::test]
     async fn enqueue_publishes_global_default_reasoning_effort() {

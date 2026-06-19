@@ -200,7 +200,6 @@ mod tests {
 
     #[rstest::rstest]
     fn load_compaction_model_picker_items_populates_picker() {
-        // Kills: replace load_compaction_model_picker_items with ().
         // If the function were a no-op, the picker would remain empty.
         let services = TestServices::builder()
             .with_providers(ProvidersConfig {

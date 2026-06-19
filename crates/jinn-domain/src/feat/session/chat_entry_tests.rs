@@ -150,8 +150,6 @@ fn tool_result_entry_has_tool_result_kind() {
     );
 }
 
-// --- PinPosition tests ---
-
 #[rstest::rstest]
 #[case::user(ChatEntry::user("u"))]
 #[case::system(ChatEntry::system("s"))]
@@ -253,8 +251,6 @@ fn pin_position_deserializes_old_format() {
     assert_eq!(entry.pin_position, None);
 }
 
-// --- Thinking entry tests ---
-
 #[rstest::rstest]
 fn thinking_entry_has_thinking_kind() {
     // Given text "reasoning here".
@@ -312,8 +308,6 @@ fn thinking_entry_pin_position_defaults_to_none() {
     // Then pin_position is None.
     assert_eq!(entry.pin_position, None);
 }
-
-// --- Transient entry tests ---
 
 #[rstest::rstest]
 fn transient_entry_has_transient_kind() {
@@ -383,8 +377,6 @@ fn transient_entry_serializes_correct_json_shape() {
     assert!(v.get("Transient").is_some(), "should have Transient key");
     assert_eq!(v["Transient"], "some info");
 }
-
-// --- ToolResultStatus serialization tests ---
 
 #[rstest::rstest]
 fn tool_result_status_pending_serializes() {
@@ -514,8 +506,6 @@ fn tool_result_fingerprint_differs_with_truncation() {
     assert_ne!(entry1.content_fingerprint(), entry2.content_fingerprint());
 }
 
-// --- is_empty_assistant tests ---
-
 #[rstest::rstest]
 fn is_empty_assistant_true_for_empty_assistant() {
     // Given an empty assistant entry.
@@ -551,8 +541,6 @@ fn is_empty_assistant_false_for_system_entry() {
     // Then is_empty_assistant returns false.
     assert!(!entry.is_empty_assistant());
 }
-
-// --- is_included_by_default tests ---
 
 #[rstest::rstest]
 fn user_kind_is_included_by_default() {
@@ -649,8 +637,6 @@ fn actor_kind_is_not_included_by_default() {
     // Then the kind is NOT included by default.
     assert!(!entry.kind.is_included_by_default());
 }
-
-// --- is_in_context tests ---
 
 #[rstest::rstest]
 fn user_entry_is_in_context_by_default() {
@@ -787,8 +773,6 @@ fn all_exclude_default_kinds_are_not_in_context() {
     }
 }
 
-// --- Empty assistant is_in_context tests ---
-
 #[rstest::rstest]
 fn empty_assistant_default_is_not_in_context() {
     // Given an empty Assistant entry with Default override.
@@ -833,8 +817,6 @@ fn pinned_empty_assistant_default_is_in_context() {
     // Then pin overrides the empty-assistant rule - it IS in context.
     assert!(entry.is_in_context());
 }
-
-// --- Pending tool result is_in_context tests ---
 
 #[rstest::rstest]
 fn pending_tool_result_default_is_not_in_context() {
@@ -882,8 +864,6 @@ fn pinned_pending_tool_result_default_is_in_context() {
     // Then pin overrides the pending rule - it IS in context.
     assert!(entry.is_in_context());
 }
-
-// --- ContextOverride serialization tests ---
 
 #[rstest::rstest]
 fn context_override_default_serializes_roundtrip() {
@@ -937,8 +917,6 @@ fn context_override_default_is_default_trait() {
     assert_eq!(value, ContextOverride::Default);
 }
 
-// --- ChatEntryId::as_uuid ---
-
 #[rstest::rstest]
 fn chat_entry_id_as_uuid_returns_inner_uuid() {
     // Given a ChatEntryId.
@@ -964,8 +942,6 @@ fn chat_entry_id_as_uuid_matches_to_string() {
     // Then they match.
     assert_eq!(uuid_str, display_str);
 }
-
-// --- is_user_force_excluded ---
 
 fn entry_with_user_force_exclude() -> ChatEntry {
     let mut entry = ChatEntry::assistant("excluded by user");

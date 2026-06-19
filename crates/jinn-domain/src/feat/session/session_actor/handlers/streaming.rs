@@ -1247,8 +1247,6 @@ mod tests {
         );
     }
 
-    // --- Hybrid token counting tests ---
-
     #[tokio::test]
     async fn on_stream_completed_provider_tokens_used_directly() {
         let (actor, _audit) = test_actor_recording().await;
@@ -1516,8 +1514,6 @@ mod tests {
         let session = state.session.get(&session_id).expect("session exists");
         assert_eq!(session.token_ledger()[0].tokens_received, expected);
     }
-
-    // --- EntryTiming integration tests ---
 
     #[tokio::test]
     async fn dispatched_at_flows_from_stream_token_to_entry_timing() {
@@ -1933,8 +1929,6 @@ mod tests {
             other => panic!("expected Streamed, got {other:?}"),
         }
     }
-
-    // --- Pure helper tests (no actor, lock, or async needed) ---
 
     /// Deterministic counter for unit testing - counts characters.
     struct CharCounter;

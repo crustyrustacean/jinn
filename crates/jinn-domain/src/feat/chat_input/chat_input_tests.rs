@@ -365,8 +365,6 @@ fn move_cursor_down_empty_buffer_is_noop() {
     assert_eq!(state.cursor_pos(), 0);
 }
 
-// --- desired column tests ---
-
 #[rstest::rstest]
 fn desired_col_preserved_across_shorter_intermediate_line_down() {
     // Given "abcdefghijkl\nxy\nmnopqrstuvwx" with cursor at col 10 on line 0.
@@ -486,8 +484,6 @@ fn desired_col_cleared_by_delete() {
     state.move_cursor_down(); // desired_col is None → uses actual col 1
     assert_eq!(state.cursor_row_col(), (2, 1));
 }
-
-// --- Wrap-aware tests ---
 
 #[rstest::rstest]
 fn visual_line_count_wraps_long_line() {

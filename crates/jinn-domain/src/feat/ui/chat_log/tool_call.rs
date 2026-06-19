@@ -264,8 +264,6 @@ mod tests {
         }
     }
 
-    // --- Bash tests (single-line in all modes) ---
-
     #[rstest::rstest]
     fn bash_renders_with_dollar_prefix() {
         // Given a bash tool call with a JSON command argument.
@@ -334,8 +332,6 @@ mod tests {
         );
     }
 
-    // --- Collapsed mode tests ---
-
     #[rstest::rstest]
     fn non_bash_renders_with_name_args() {
         // Given a non-bash tool call.
@@ -369,8 +365,6 @@ mod tests {
             lines.len()
         );
     }
-
-    // --- Streaming mode tests ---
 
     #[rstest::rstest]
     fn streaming_non_bash_renders_multiple_lines() {
@@ -461,8 +455,6 @@ mod tests {
         );
     }
 
-    // --- Expanded mode tests ---
-
     #[rstest::rstest]
     fn expanded_non_bash_shows_all_lines() {
         // Given an expanded write tool call with escaped newlines.
@@ -490,8 +482,6 @@ mod tests {
             "expanded tool call should not show truncation indicator"
         );
     }
-
-    // --- Style tests ---
 
     #[rstest::rstest]
     fn pending_has_no_background() {

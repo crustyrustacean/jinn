@@ -332,7 +332,6 @@ mod tests {
 
     #[rstest::rstest]
     fn config_storage_service_save_actually_persists() {
-        // Kills: replace ConfigStorageService::save with Ok(()).
         // If save were a no-op, the underlying storage would not be updated.
         let storage = InMemoryConfigStorage::new();
         let service = ConfigStorageService::new(Arc::new(storage) as Arc<dyn ConfigStorage>);
