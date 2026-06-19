@@ -60,6 +60,18 @@ impl ServerToolType {
             Self::OpenrouterWebSearch => "openrouter:web_search",
         }
     }
+
+    /// Whether a provider with the given name can execute this server tool.
+    ///
+    /// The provider name is the prefix of the active model string
+    /// (`{provider_name}/{model}`, see `ModelSelection::provider_name`). Only
+    /// OpenRouter can run OpenRouter server tools.
+    #[must_use]
+    pub fn supports_provider(&self, provider_name: &str) -> bool {
+        match self {
+            Self::OpenrouterWebSearch => provider_name == "openrouter",
+        }
+    }
 }
 
 /// A tool definition that describes a tool the LLM can invoke.
@@ -82,6 +94,25 @@ pub struct ToolDefinition {
     /// For server-side tools, the provider tool type. `None` for function tools.
     #[serde(default)]
     pub server_tool_type: Option<ServerToolType>,
+}
+
+impl ToolDefinition {
+    /// Whether this tool is usable when the active provider is `provider_name`.
+    ///
+    /// Plain function tools are always available. Server tools delegate to
+    /// their [`ServerToolType`], which knows which providers can execute them.
+    ///
+    /// `provider_name` is the prefix of the model string (e.g. `"openrouter"`
+    /// from `openrouter/openai/gpt-oss-120b`). The caller is expected to derive it
+    /// from the session's active model (in `jinn-domain`, that is
+    /// `ModelSelection::provider_name`).
+    #[must_use]
+    pub fn available_for_provider(&self, provider_name: &str) -> bool {
+        match &self.server_tool_type {
+            None => true,
+            Some(server_type) => server_type.supports_provider(provider_name),
+        }
+    }
 }
 
 /// A tool call requested by the LLM during a streaming response.
@@ -258,5 +289,78 @@ mod tests {
         // Then server_tool_type defaults to None.
         assert_eq!(def.name, "file_read");
         assert_eq!(def.server_tool_type, None);
+    }
+
+    #[rstest::rstest]
+    fn supports_provider_true_for_openrouter() {
+        // Given the OpenRouter web search server tool.
+        let tool = ServerToolType::OpenrouterWebSearch;
+
+        // Then it is supported when the provider is "openrouter".
+        assert!(tool.supports_provider("openrouter"));
+    }
+
+    #[rstest::rstest]
+    fn supports_provider_false_for_non_openrouter() {
+        // Given the OpenRouter web search server tool.
+        let tool = ServerToolType::OpenrouterWebSearch;
+
+        // Then it is NOT supported for other providers.
+        assert!(!tool.supports_provider("zai"));
+        assert!(!tool.supports_provider("ollama"));
+        assert!(!tool.supports_provider(""));
+    }
+
+    fn function_tool() -> ToolDefinition {
+        ToolDefinition {
+            name: "file_read".to_owned(),
+            description: "Read a file".to_owned(),
+            parameters: serde_json::json!({}),
+            prompt_snippet: None,
+            prompt_guidelines: vec![],
+            server_tool_type: None,
+        }
+    }
+
+    fn web_search_tool() -> ToolDefinition {
+        ToolDefinition {
+            name: "openrouter:web_search".to_owned(),
+            description: "Search the web".to_owned(),
+            parameters: serde_json::json!({}),
+            prompt_snippet: None,
+            prompt_guidelines: vec![],
+            server_tool_type: Some(ServerToolType::OpenrouterWebSearch),
+        }
+    }
+
+    #[rstest::rstest]
+    fn available_for_provider_true_for_function_tool_on_any_provider() {
+        // Given a plain function tool.
+        let def = function_tool();
+
+        // Then it is available regardless of provider.
+        assert!(def.available_for_provider("zai"));
+        assert!(def.available_for_provider("openrouter"));
+        assert!(def.available_for_provider(""));
+    }
+
+    #[rstest::rstest]
+    fn available_for_provider_true_for_web_search_on_openrouter() {
+        // Given the OpenRouter web search tool.
+        let def = web_search_tool();
+
+        // Then it is available on the openrouter provider.
+        assert!(def.available_for_provider("openrouter"));
+    }
+
+    #[rstest::rstest]
+    fn available_for_provider_false_for_web_search_on_non_openrouter() {
+        // Given the OpenRouter web search tool.
+        let def = web_search_tool();
+
+        // Then it is NOT available on a non-openrouter provider.
+        assert!(!def.available_for_provider("zai"));
+        assert!(!def.available_for_provider("ollama"));
+        assert!(!def.available_for_provider(""));
     }
 }
