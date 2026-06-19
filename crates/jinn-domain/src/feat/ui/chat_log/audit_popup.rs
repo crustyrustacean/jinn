@@ -32,7 +32,6 @@ pub fn format_audit_lines(entry: &ChatEntry, theme: &Theme) -> Vec<Line<'static>
         .fg(theme.infopopup_fg)
         .bg(theme.infopopup_bg);
 
-    // --- Metadata section ---
     let mut lines = Vec::new();
     lines.push(centered_title("Metadata", AUDIT_POPUP_WIDTH, header_style));
     lines.push(Line::from(vec![Span::styled(
@@ -40,7 +39,6 @@ pub fn format_audit_lines(entry: &ChatEntry, theme: &Theme) -> Vec<Line<'static>
         body_style,
     )]));
 
-    // --- Timing line (streamed entries only) ---
     if let EntryTiming::Streamed { .. } = &entry.timing {
         let ttft_text = match entry.timing.ttft() {
             Some(d) => format_duration(&d),
@@ -68,7 +66,6 @@ pub fn format_audit_lines(entry: &ChatEntry, theme: &Theme) -> Vec<Line<'static>
 
     lines.push(Line::from(vec![Span::styled(String::new(), body_style)]));
 
-    // --- Audit section ---
     let count = entry.context_history.len();
     let current = context_override_label(entry.context_override);
     let audit_label = format!("audit ({count} events) ({current})");

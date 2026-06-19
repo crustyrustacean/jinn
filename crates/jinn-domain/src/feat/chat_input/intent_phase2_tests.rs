@@ -8,11 +8,6 @@
 
 use crate::common::app_state::AppState;
 
-// =============================================================================
-// =============================================================================
-
-// --- is_valid_hash_trigger_position: kills || → && at line 549 ---
-
 #[rstest::rstest]
 fn hash_trigger_valid_after_space() {
     // Given an input with "hello #".
@@ -104,8 +99,6 @@ fn hash_trigger_invalid_after_letter() {
     );
 }
 
-// --- is_valid_slash_trigger_position: kills && → || at line 558 ---
-
 #[rstest::rstest]
 fn slash_trigger_only_at_position_zero() {
     // Given an input with text then "/".
@@ -125,8 +118,6 @@ fn slash_trigger_only_at_position_zero() {
         "'/' not at position 0 should NOT trigger autocomplete"
     );
 }
-
-// --- handle_delete_grapheme: kills <= → < at line 137 ---
 
 #[rstest::rstest]
 fn delete_grapheme_deactivates_when_cursor_at_token_start_plus_one() {
@@ -181,8 +172,6 @@ fn delete_grapheme_deactivates_when_cursor_at_token_start_plus_one() {
     );
 }
 
-// --- handle_delete_grapheme_forward: kills == → != at line 189 ---
-
 #[rstest::rstest]
 fn delete_forward_deactivates_when_cursor_at_token_start() {
     // Given "#t" with cursor moved to position 0 (the '#' position).
@@ -217,8 +206,6 @@ fn delete_forward_deactivates_when_cursor_at_token_start() {
         "delete forward at token_start should deactivate"
     );
 }
-
-// --- should_deactivate_on_cursor_move: kills <= → < ---
 
 #[rstest::rstest]
 fn cursor_move_left_deactivates_when_cursor_before_token() {
@@ -275,8 +262,6 @@ fn cursor_move_left_deactivates_when_cursor_before_token() {
     );
 }
 
-// --- find_hash_token_at_cursor: kills == → !=, boundary checks ---
-
 #[rstest::rstest]
 fn reactivating_hash_autocomplete_within_token() {
     // Given "#test" with autocomplete deactivated, cursor within token.
@@ -317,8 +302,6 @@ fn reactivating_hash_autocomplete_within_token() {
     );
 }
 
-// --- find_slash_token_at_cursor: kills <= → < and boundary checks ---
-
 #[rstest::rstest]
 fn reactivating_slash_autocomplete_within_command() {
     // Given "/help" with autocomplete deactivated, cursor within command.
@@ -352,8 +335,6 @@ fn reactivating_slash_autocomplete_within_command() {
     );
 }
 
-// --- render_scroll_indicators: kills > → >= ---
-
 #[rstest::rstest]
 fn scroll_indicators_show_at_exact_boundary() {
     // This test exercises the chat_input element rendering to kill the > → >=
@@ -368,8 +349,6 @@ fn scroll_indicators_show_at_exact_boundary() {
     crate::feat::chat_input::register(&mut registry);
     assert!(registry.iter_mut().count() > 0);
 }
-
-// --- handle_enter_normal_mode: kills == → != in autocomplete check ---
 
 #[rstest::rstest]
 fn enter_normal_mode_dismisses_active_autocomplete_without_scope_change() {

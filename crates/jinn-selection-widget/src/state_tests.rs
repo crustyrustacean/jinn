@@ -39,12 +39,6 @@ fn make_items(labels: &[&str]) -> Vec<TestItem> {
     labels.iter().map(|&l| TestItem::new(l)).collect()
 }
 
-// =========================================================================
-// Ported from ProviderPickerState tests
-// =========================================================================
-
-// --- insert_char tests ---
-
 #[rstest::rstest]
 fn insert_char_appends_to_filter() {
     // Given a fresh selection state.
@@ -99,8 +93,6 @@ fn insert_char_advances_cursor() {
     // Then cursor is at 1.
     assert_eq!(state.cursor_pos(), 1);
 }
-
-// --- backspace tests ---
 
 #[rstest::rstest]
 fn backspace_removes_before_cursor() {
@@ -164,8 +156,6 @@ fn backspace_at_start_is_noop() {
     assert_eq!(state.cursor_pos(), 0);
 }
 
-// --- cursor movement tests ---
-
 #[rstest::rstest]
 fn move_cursor_left_decrements() {
     // Given a selection state with cursor at 3.
@@ -218,8 +208,6 @@ fn move_cursor_right_clamps_at_end() {
     // Then cursor stays at 3.
     assert_eq!(state.cursor_pos(), 3);
 }
-
-// --- selection movement tests ---
 
 #[rstest::rstest]
 fn move_up_decrements() {
@@ -283,8 +271,6 @@ fn move_down_clamps_when_empty() {
     // Then selection stays at 0.
     assert_eq!(state.selection(), 0);
 }
-
-// --- scroll offset tests ---
 
 #[rstest::rstest]
 fn move_up_adjusts_scroll_offset_when_selection_above_view() {
@@ -360,8 +346,6 @@ fn ensure_visible_selection_below_view() {
     assert_eq!(state.scroll_offset(), 3);
 }
 
-// --- reset tests ---
-
 #[rstest::rstest]
 fn reset_clears_everything() {
     // Given a selection state with filter "ab", selection 3, cursor at 2, scroll_offset 1.
@@ -380,10 +364,6 @@ fn reset_clears_everything() {
     assert_eq!(state.cursor_pos(), 0);
     assert_eq!(state.scroll_offset(), 0);
 }
-
-// =========================================================================
-// New filtering tests
-// =========================================================================
 
 #[rstest::rstest]
 fn set_items_populates_filtered_list() {
@@ -571,10 +551,6 @@ fn no_clone_needed() {
     assert_eq!(state.filtered_count(), 1);
 }
 
-// =========================================================================
-// Multi-term fuzzy matching tests
-// =========================================================================
-
 #[rstest::rstest]
 fn multi_term_filter_matches_items_containing_all_terms() {
     // Given items including "claude-3.5-sonnet".
@@ -660,12 +636,6 @@ fn multi_term_filter_with_multiple_spaces_splits_on_whitespace() {
     assert_eq!(state.filtered_count(), 1);
 }
 
-// =========================================================================
-// Phase 1: HIGH severity - core state mutation tests
-// =========================================================================
-
-// --- insert_text newline stripping and cursor advancement ---
-
 #[rstest::rstest]
 fn insert_text_strips_newlines_and_carriage_returns() {
     // Given a fresh selection state.
@@ -735,8 +705,6 @@ fn insert_text_at_cursor_middle() {
     assert_eq!(state.cursor_pos(), 3);
 }
 
-// --- set_selection clamping ---
-
 #[rstest::rstest]
 fn set_selection_clamps_to_last_item() {
     // Given a selection state with 3 items.
@@ -784,8 +752,6 @@ fn set_selection_clamps_to_zero_for_single_item() {
     // Then selection is clamped to 0 (only valid index for 1 item is 0).
     assert_eq!(state.selection(), 0);
 }
-
-// --- ensure_visible boundary conditions ---
 
 #[rstest::rstest]
 fn ensure_visible_selection_equal_to_scroll_offset() {
@@ -857,8 +823,6 @@ fn ensure_visible_with_zero_max_visible_below_does_not_scroll() {
     assert_eq!(state.scroll_offset(), 2);
 }
 
-// --- filtered_match_indices exact values ---
-
 #[rstest::rstest]
 fn filtered_match_indices_returns_exact_byte_positions() {
     // Given a selection state with item "hello".
@@ -888,8 +852,6 @@ fn filtered_match_indices_returns_none_for_out_of_bounds() {
     // Then result is None.
     assert!(result.is_none());
 }
-
-// --- clear_filter tests ---
 
 #[rstest::rstest]
 fn clear_filter_empties_filter_and_resets_state() {

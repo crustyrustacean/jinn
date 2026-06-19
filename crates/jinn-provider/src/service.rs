@@ -206,8 +206,6 @@ mod tests {
     )]
     use super::*;
 
-    // --- classify_http_error ---
-
     #[rstest::rstest]
     fn classify_429_as_rate_limited() {
         let report = classify_http_error(reqwest::StatusCode::TOO_MANY_REQUESTS, "", "test", None);
@@ -254,8 +252,6 @@ mod tests {
         assert!(matches!(err, LlmServiceError::Provider));
     }
 
-    // --- parse_retry_after_hint ---
-
     #[rstest::rstest]
     fn parse_retry_after_hint_returns_none_for_unparseable_body() {
         // The regex captures a datetime without timezone, which jiff
@@ -274,8 +270,6 @@ mod tests {
             "expired or unparseable should return None"
         );
     }
-
-    // --- parse_retry_after_header ---
 
     #[rstest::rstest]
     fn parse_retry_after_header_seconds() {

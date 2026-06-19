@@ -33,8 +33,6 @@ fn state_with_pinned(count: usize) -> AppState {
     state
 }
 
-// --- Registration ---
-
 #[rstest::rstest]
 fn register_adds_section() {
     // Given a new sidebar.
@@ -46,8 +44,6 @@ fn register_adds_section() {
     // Then section count is 1.
     assert_eq!(sidebar.section_count(), 1);
 }
-
-// --- Rendering ---
 
 #[rstest::rstest]
 fn render_clears_area_with_sidebar_background() {
@@ -79,8 +75,6 @@ fn render_clears_area_with_sidebar_background() {
         }
     }
 }
-
-// --- navigate_sidebar ---
 
 #[rstest::rstest]
 fn move_down_from_persona_with_pins_enters_pins_at_first_entry() {
@@ -214,8 +208,6 @@ fn move_up_from_sessions_skips_empty_pins_to_persona() {
     );
 }
 
-// --- handle_sidebar_focus ---
-
 #[rstest::rstest]
 fn sidebar_focus_places_cursor_on_persona() {
     // Given default app state.
@@ -227,8 +219,6 @@ fn sidebar_focus_places_cursor_on_persona() {
     // Then persona section has the cursor.
     assert_eq!(state.frontend.persona_section.cursor, Some(0));
 }
-
-// --- jump_to_section ---
 
 #[rstest::rstest]
 fn jump_next_from_persona_to_pins_retains_persona_cursor() {
@@ -399,8 +389,6 @@ fn jump_to_sessions_retains_cursor_and_adjusts_scroll() {
         assert_eq!(state.frontend.sessions_section.scroll_offset, 4);
     }
 }
-
-// --- Layout position ---
 
 /// Creates a sidebar with all built-in sections registered.
 fn sidebar_with_all_sections() -> Sidebar {

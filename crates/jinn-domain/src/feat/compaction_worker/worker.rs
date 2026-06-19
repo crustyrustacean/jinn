@@ -209,7 +209,6 @@ impl CompactionWorker {
         session_id: &SessionId,
         history: &[ChatEntry],
     ) -> Vec<HistoryMutation> {
-        // --- Compaction deduplication gate ---
         // If a previous auto-compaction is in flight, check whether the
         // snapshot contains the compaction summary entry. If found, the
         // mutations were applied — clear the flag and proceed. If not found,
@@ -237,7 +236,6 @@ impl CompactionWorker {
             let compaction_prompt = state.context.compaction_prompt.clone();
             let retry_config = prefs.request_retry.to_retry_config();
 
-            // --- Threshold gate ---
             // Uses the exact same values displayed in the status bar:
             //   - context_size() = tiktoken count from last prompt assembly
             //   - context_length = model's context window from provider/model cache

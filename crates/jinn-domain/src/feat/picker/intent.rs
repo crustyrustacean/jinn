@@ -351,8 +351,6 @@ pub fn handle_move_cursor_right(state: &mut AppState) -> IntentResult {
     IntentResult::empty()
 }
 
-// --- Private confirm handlers ---
-
 /// Confirms the selected provider and dispatches a switch command.
 ///
 /// In single mode, ENTER commits the highlighted entry as a single model.
@@ -947,7 +945,6 @@ mod tests {
 
     #[rstest::rstest]
     fn confirm_provider_rejects_unavailable() {
-        // Kills: delete ! in confirm_provider.
         // If the ! were deleted, unavailable providers could be confirmed.
         let mut state = AppState::default();
         let origin = ChatSessionState::new();
@@ -1518,7 +1515,6 @@ mod tests {
 
     #[rstest::rstest]
     fn confirm_persona_sets_correct_persona() {
-        // Kills: replace == with != in confirm_persona.
         // If the match were inverted, the wrong persona would be set.
         use crate::feat::persona::PersonaEntry;
 
@@ -1581,7 +1577,6 @@ mod tests {
 
     #[rstest::rstest]
     fn confirm_reasoning_effort_sets_session_override() {
-        // Kills: delete the `profile_mut().reasoning_effort = Some(effort)` line.
         // If the session override were never set, the profile would stay None.
         use crate::feat::reasoning::{ReasoningEffort, ReasoningEffortEntry};
 
@@ -1619,7 +1614,6 @@ mod tests {
 
     #[rstest::rstest]
     fn confirm_reasoning_effort_pops_picker_scope() {
-        // Kills: delete the `scope_stack.pop()` line.
         // If the scope were never popped, the picker would remain open.
         use crate::common::app_state::FocusScope;
         use crate::feat::reasoning::{ReasoningEffort, ReasoningEffortEntry};
@@ -1660,7 +1654,6 @@ mod tests {
 
     #[rstest::rstest]
     fn confirm_reasoning_effort_emits_mark_session_interacted() {
-        // Kills: delete the `.message(MarkSessionInteracted { .. })` chain.
         // If the persist message were never emitted, the profile change would
         // only be saved on a later (unrelated) event.
         use crate::feat::reasoning::{ReasoningEffort, ReasoningEffortEntry};
@@ -1699,7 +1692,6 @@ mod tests {
 
     #[rstest::rstest]
     fn confirm_reasoning_effort_emits_update_preferences() {
-        // Kills: delete the `.message(UpdatePreferences { .. })` chain.
         // If the global default write were never emitted, new sessions would
         // not inherit the chosen effort.
         use crate::feat::reasoning::{ReasoningEffort, ReasoningEffortEntry};
@@ -1738,7 +1730,6 @@ mod tests {
 
     #[rstest::rstest]
     fn confirm_persona_emits_mark_session_interacted() {
-        // Kills: delete the `.message(MarkSessionInteracted { .. })` chain
         // added to confirm_persona.
         // If the persist message were never emitted, a pick-then-quit would lose
         // the persona change.
@@ -1780,7 +1771,6 @@ mod tests {
 
     #[rstest::rstest]
     fn confirm_session_lifecycle_finds_correct_lifecycle_for_args() {
-        // Kills: replace == with != in confirm_session_lifecycle.
         // If the match were inverted, find() would locate the WRONG lifecycle,
         // producing the wrong template_display in the arg_input state.
         let mut state = AppState::default();
@@ -1833,7 +1823,6 @@ mod tests {
 
     #[rstest::rstest]
     fn load_lifecycle_picker_entries_populates_picker() {
-        // Kills: replace load_lifecycle_picker_entries with ().
         // If the function were a no-op, the picker would remain empty.
         let mut state = AppState::default();
 
@@ -1860,8 +1849,6 @@ mod tests {
         assert_eq!(items[0].name, "blank");
         assert_eq!(items[1].name, "project-a");
     }
-
-    // --- Skill picker tests ---
 
     fn setup_state_with_skills() -> AppState {
         use crate::feat::skills::Skill;
@@ -2020,8 +2007,6 @@ mod tests {
         // Then the cursor has moved down to 1.
         assert_eq!(state.frontend.skill_picker().selection(), 1);
     }
-
-    // --- Plugin picker tests ---
 
     fn setup_state_with_plugins() -> AppState {
         use crate::common::app_state::DiscoveredPlugin;
@@ -2423,8 +2408,6 @@ mod tests {
         );
     }
 
-    // --- Tool picker tests ---
-
     fn setup_state_with_plugin_tools() -> AppState {
         let mut state = AppState::default();
         let origin = ChatSessionState::new();
@@ -2541,8 +2524,6 @@ mod tests {
             .expect("entry");
         assert!(failed.enabled, "judgment_failed should still be enabled");
     }
-
-    // --- Phase 2: mode-aware confirm + selection semantics ---
 
     /// Builds a state with the provider picker open (Provider scope), `n` available
     /// single-model entries `model-0..model-n`, and the first entry highlighted.
@@ -2697,8 +2678,6 @@ mod tests {
         // Then a Single selection is returned (1-model alloy collapses).
         assert_eq!(selection, ModelSelection::Single("prov/model-1".to_owned()));
     }
-
-    // --- Project picker ---
 
     /// Builds an AppState with a project picker open, the active session's CWD
     /// set to a distinct value, and `n` curated project entries loaded.

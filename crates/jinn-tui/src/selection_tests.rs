@@ -212,8 +212,6 @@ fn accessors_return_positions_for_active_state() {
     assert_eq!(state.bounds(), Some(bounds()));
 }
 
-// --- Line selection tests ---
-
 #[rstest::rstest]
 fn first_line_starts_at_anchor_x() {
     // Given a buffer with "ABCDE" on row 1 starting at col 0.
@@ -413,8 +411,6 @@ fn backward_selection_extracts_same_text_as_forward() {
     assert_eq!(forward_text, backward_text);
 }
 
-// --- SelectableRects tests ---
-
 #[rstest::rstest]
 fn selectable_rects_find_returns_smallest_matching() {
     // Given overlapping rects - a large screen and a smaller pane.
@@ -472,7 +468,6 @@ fn selectable_rects_rebuild_replaces_previous_rects() {
     );
 }
 
-// Kills: find_for_position < -> <= (both occurrences, line 44)
 #[rstest::rstest]
 fn find_for_position_excludes_right_and_bottom_edges() {
     // Rect at (0,0) with width=10, height=5.
@@ -499,7 +494,6 @@ fn find_for_position_excludes_right_and_bottom_edges() {
     assert_eq!(rects.find_for_position(5, 2), Some(rect));
 }
 
-// Kills: find_for_position * -> +, * -> /
 #[rstest::rstest]
 fn find_for_position_uses_multiplication_for_area() {
     // Two rects: one 2x3=6 area, one 3x2=6 area (tie).
@@ -517,7 +511,6 @@ fn find_for_position_uses_multiplication_for_area() {
     );
 }
 
-// Kills: find_last_nonws_in_row delete !
 #[rstest::rstest]
 fn find_last_nonws_returns_last_not_first_nonws() {
     use crate::selection::find_last_nonws_in_row;
@@ -539,7 +532,6 @@ fn find_last_nonws_returns_last_not_first_nonws() {
     );
 }
 
-// Kills: SelectionState::cancel -> Default::default()
 #[rstest::rstest]
 fn cancel_dragging_returns_idle_variant() {
     let state = SelectionState::Dragging {
@@ -553,7 +545,6 @@ fn cancel_dragging_returns_idle_variant() {
     assert!(matches!(cancelled, SelectionState::Idle));
 }
 
-// Kills: SelectionState::is_active -> true
 #[rstest::rstest]
 fn idle_is_not_active() {
     assert!(

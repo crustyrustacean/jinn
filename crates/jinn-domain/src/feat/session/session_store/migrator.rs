@@ -49,7 +49,6 @@ pub async fn run_migrations(pool: &Pool) -> Result<(), Report<SessionStoreError>
     outcome.change_context(SessionStoreError)
 }
 
-// --- Testing surface ---
 //
 // The migrator test module (below) stands DBs up at specific legacy versions and
 // asserts single-migration transformations. Those functions live in the schema

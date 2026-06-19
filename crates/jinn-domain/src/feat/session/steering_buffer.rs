@@ -199,8 +199,6 @@ mod tests {
         );
     }
 
-    // --- drain_fragments ---
-
     #[test]
     fn drain_fragments_empty_returns_empty_vec() {
         // Given an empty buffer.

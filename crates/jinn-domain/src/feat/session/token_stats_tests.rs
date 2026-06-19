@@ -13,8 +13,6 @@ use crate::feat::session::token_stats::{
 use crate::protocol::SessionId;
 use std::collections::HashMap;
 
-// --- TokenStats::from_ledger ---
-
 #[rstest::rstest]
 fn from_ledger_returns_defaults_for_empty() {
     // Given an empty ledger.
@@ -82,8 +80,6 @@ fn from_ledger_sums_multiple_records() {
     assert_eq!(stats.request_count, 3);
 }
 
-// --- AggregatedTokenStats ---
-
 #[rstest::rstest]
 fn aggregated_totals_sum_own_and_children() {
     // Given aggregated stats with own and children.
@@ -106,8 +102,6 @@ fn aggregated_totals_sum_own_and_children() {
     assert_eq!(agg.total_sent(), 300);
     assert_eq!(agg.total_received(), 150);
 }
-
-// --- aggregate_session_stats ---
 
 #[rstest::rstest]
 fn aggregate_for_unknown_session_returns_defaults() {
@@ -242,8 +236,6 @@ fn aggregate_handles_nested_children() {
     assert_eq!(stats.total_sent(), 1700);
     assert_eq!(stats.total_received(), 850);
 }
-
-// --- TokenRecord serde ---
 
 #[rstest::rstest]
 fn token_record_with_model_used_round_trips_through_serde() {

@@ -18,8 +18,6 @@ async fn render_test_app() -> crate::TuiApp {
     crate::TuiApp::test_builder().build().await
 }
 
-// --- Element-driven selectable rect tests ---
-
 #[rstest::rstest]
 #[tokio::test]
 async fn render_registers_content_rect_for_selectable_chat_log() {

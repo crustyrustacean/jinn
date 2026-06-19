@@ -155,8 +155,6 @@ fn parse_mode(name: &str) -> jinn_domain::Mode {
     }
 }
 
-// --- Given steps ---
-
 /// World is already initialised with a fresh TuiApp.
 #[cucumber::given(expr = "a new app")]
 fn given_a_new_app(_world: &mut TuiWorld) {}
@@ -204,8 +202,6 @@ fn given_active_provider_set(world: &mut TuiWorld) {
         .set_model(ModelSelection::Single("test".to_owned()));
 }
 
-// --- When steps ---
-
 /// Simulates the user pressing a single key (no modifiers).
 #[cucumber::when(expr = "the user presses {word}")]
 fn when_user_presses_key(world: &mut TuiWorld, key: String) {
@@ -239,8 +235,6 @@ fn when_routes_push_chat_entry(world: &mut TuiWorld, source: String, text: Strin
 fn when_routes_toggle_which_key(world: &mut TuiWorld) {
     world.route_intent(jinn_domain::Intent::ToggleWhichkey);
 }
-
-// --- Then steps ---
 
 /// Asserts the application's current mode matches the expected value.
 #[cucumber::then(expr = "the mode should be {word}")]
@@ -453,3 +447,4 @@ fn then_app_should_not_quit(world: &mut TuiWorld) {
         "expected app to not quit, but should_quit is true"
     );
 }
+

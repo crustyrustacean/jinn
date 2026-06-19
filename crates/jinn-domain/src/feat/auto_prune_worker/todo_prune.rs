@@ -314,8 +314,6 @@ mod tests {
         rt.block_on(async { w.evaluate(&SessionId::new(), Arc::from(history)).await })
     }
 
-    // --- Tests ---
-
     #[test]
     fn no_todo_calls_produces_no_mutations() {
         let history = vec![
@@ -703,8 +701,6 @@ mod tests {
         assert!(!mutation_ids.contains(&g1[0].id));
         assert!(!mutation_ids.contains(&g1[1].id));
     }
-
-    // --- min_age tests ---
 
     /// Evaluate with explicit min_age.
     fn evaluate_with_min_age(history: Vec<ChatEntry>, min_age: usize) -> Vec<HistoryMutation> {

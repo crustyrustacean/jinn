@@ -173,7 +173,6 @@ mod tests {
 
     #[rstest::rstest]
     fn persona_name_sync_sets_correct_persona() {
-        // Kills: replace == with != in persona_name matching.
         // If the condition were flipped, the wrong persona would be set.
         // Given a sync actor with two personas loaded.
         let (actor, state) = create_actor();

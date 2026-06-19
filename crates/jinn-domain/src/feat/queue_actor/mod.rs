@@ -336,8 +336,6 @@ mod tests {
         SessionId::new()
     }
 
-    // --- SessionPhaseChanged dispatch ---
-
     #[tokio::test]
     async fn idle_transition_dispatches_user_message() {
         // Given a session with a queued user message.
@@ -435,8 +433,6 @@ mod tests {
         // Then nothing was published.
         assert!(audit.of_type::<SendToLlmProvider>().is_empty());
     }
-
-    // --- dispatch_user_message ---
 
     #[tokio::test]
     async fn dispatch_user_message_emits_chat_entry_submitted() {
@@ -546,8 +542,6 @@ mod tests {
         assert!(sends[0].provider_id.is_some());
     }
 
-    // --- dispatch_tool_continuation ---
-
     #[tokio::test]
     async fn dispatch_tool_continuation_emits_send_to_llm_provider() {
         // Given a queue actor.
@@ -590,8 +584,6 @@ mod tests {
         assert!(persists.is_empty());
     }
 
-    // --- dispatch_resume ---
-
     #[tokio::test]
     async fn dispatch_resume_emits_send_to_llm_provider() {
         // Given a queue actor.
@@ -605,8 +597,6 @@ mod tests {
         let sends: Vec<SendToLlmProvider> = audit.of_type::<SendToLlmProvider>();
         assert_eq!(sends.len(), 1);
     }
-
-    // --- Steering buffer drain ---
 
     #[tokio::test]
     async fn dispatch_user_message_drains_steering_buffer() {
@@ -649,8 +639,6 @@ mod tests {
         let session = state.session(&sid);
         assert!(!session.history().is_empty());
     }
-
-    // --- Steering-on-Idle dispatch (empty queue fallback) ---
 
     #[tokio::test]
     async fn idle_with_empty_queue_and_steering_dispatches_steering() {

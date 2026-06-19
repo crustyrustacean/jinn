@@ -567,8 +567,6 @@ fn message_order_after_compaction() {
     );
 }
 
-// --- Error entry tests ---
-
 #[rstest::rstest]
 fn error_entry_default_is_skipped() {
     // Given an Error entry (default context override).
@@ -748,8 +746,6 @@ fn forced_include_actor_entry_produces_user_message() {
         }
     );
 }
-
-// --- End-to-end: dangling tool calls after hard cancel ---
 
 #[test]
 fn forced_exclude_dangling_tool_call_produces_valid_messages() {

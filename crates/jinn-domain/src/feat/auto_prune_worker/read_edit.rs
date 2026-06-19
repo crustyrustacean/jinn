@@ -324,8 +324,6 @@ mod tests {
             .collect()
     }
 
-    // --- No-read baseline tests ---
-
     #[test]
     fn no_read_edit_pattern_produces_no_mutations() {
         let history = vec![
@@ -337,8 +335,6 @@ mod tests {
         let mutations = evaluate(history);
         assert!(mutations.is_empty());
     }
-
-    // --- read_edit does not prune edits ---
 
     #[test]
     fn read_edit_does_not_prune_edits() {
@@ -361,8 +357,6 @@ mod tests {
             "read_edit worker should never prune edits"
         );
     }
-
-    // --- Forward pruning tests ---
 
     #[test]
     fn read_then_one_edit_no_prune() {
@@ -690,8 +684,6 @@ mod tests {
         assert_eq!(mutations.len(), 2, "should still prune read with 3 edits");
     }
 
-    // --- Forward pruning with write support ---
-
     #[test]
     fn read_then_two_writes_prunes_read() {
         let mut history = Vec::new();
@@ -748,8 +740,6 @@ mod tests {
         assert!(mutations.is_empty());
     }
 
-    // --- Threshold tests ---
-
     #[test]
     fn threshold_3_requires_3_edits() {
         let mut history = Vec::new();
@@ -797,8 +787,6 @@ mod tests {
         assert!(ids.contains(&read[0].id));
         assert!(ids.contains(&read[1].id));
     }
-
-    // --- min_age protection tests ---
 
     /// Read near the end of history is protected by `min_age`: no
     /// `ForcedExclude` mutation is emitted, even though 2 edits follow.
