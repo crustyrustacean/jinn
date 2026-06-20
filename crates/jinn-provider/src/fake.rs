@@ -181,9 +181,13 @@ impl FakeLlmServiceFactory {
     /// The next `chat_stream_with_tools` call pops this response (before any
     /// static fallback). Queue entries are served in FIFO order. Use this to
     /// supply distinct canned responses for successive LLM calls (e.g. an
-    /// origin turn followed by several judge-child verdicts).
+    /// Push a scripted response onto the FIFO queue.
     pub fn push_scripted_response(&self, resp: ScriptedResponse) {
         self.scripted_queue.lock().push_back(resp);
+    }
+
+    pub fn pending_responses(&self) -> usize {
+        self.scripted_queue.lock().len()
     }
 }
 

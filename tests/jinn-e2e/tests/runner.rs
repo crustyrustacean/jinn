@@ -108,7 +108,9 @@ impl WorldKind {
             .parent()
             .and_then(|p| p.file_name())
             .and_then(|n| n.to_str())
-            .unwrap_or_else(|| panic!("feature path has no parent dir: {}", feature_path.display()));
+            .unwrap_or_else(|| {
+                panic!("feature path has no parent dir: {}", feature_path.display())
+            });
         Self::ALL
             .iter()
             .copied()
