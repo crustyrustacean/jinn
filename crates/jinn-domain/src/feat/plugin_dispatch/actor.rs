@@ -553,7 +553,7 @@ impl PluginDispatchActor {
             let result = match registry_id {
                 Some(rid) => {
                     plugins
-                        .fire_async_for_session_json(rid, &hook, &ctx_json, enabled_instances)
+                        .fire_async_for_session_json(rid, &hook, &ctx_json, Some(enabled_instances))
                         .await
                 }
                 None => plugins.fire_async_json(&hook, &ctx_json).await,

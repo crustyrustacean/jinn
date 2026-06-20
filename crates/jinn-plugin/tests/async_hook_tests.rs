@@ -333,7 +333,7 @@ async fn load_session_registry_creates_isolated_state() {
                 session_id: "s1".to_owned(),
                 last_assistant_message: "hello".to_owned(),
             },
-            vec![],
+            None,
         )
         .await
         .expect("fire for session");
@@ -389,7 +389,7 @@ async fn fire_for_session_excludes_other_sessions_plugins() {
                 session_id: "sB".to_owned(),
                 last_assistant_message: "hello".to_owned(),
             },
-            vec![],
+            None,
         )
         .await
         .expect("fire for B");
@@ -457,7 +457,7 @@ async fn fire_for_session_merges_global_and_session_plugins() {
                 session_id: "s1".to_owned(),
                 last_assistant_message: "hello".to_owned(),
             },
-            vec![],
+            None,
         )
         .await
         .expect("fire");
@@ -517,7 +517,7 @@ async fn disabled_plugin_is_skipped() {
                 session_id: "s1".to_owned(),
                 last_assistant_message: "hello".to_owned(),
             },
-            vec![PluginInstanceId::new()],
+            Some(vec![PluginInstanceId::new()]),
         )
         .await
         .expect("fire");
@@ -575,7 +575,7 @@ async fn enabled_plugin_fires() {
                 session_id: "s1".to_owned(),
                 last_assistant_message: "hello".to_owned(),
             },
-            vec![enabled_id.clone()],
+            Some(vec![enabled_id.clone()]),
         )
         .await
         .expect("fire");
@@ -640,7 +640,7 @@ async fn duplicate_plugin_instances_fire_independently() {
                 session_id: "s1".to_owned(),
                 last_assistant_message: "hello".to_owned(),
             },
-            vec![id_a.clone(), id_b.clone()],
+            Some(vec![id_a.clone(), id_b.clone()]),
         )
         .await
         .expect("fire");
@@ -708,7 +708,7 @@ async fn two_instances_have_isolated_plugin_data() {
                 session_id: "s1".to_owned(),
                 last_assistant_message: "hello".to_owned(),
             },
-            vec![id_a.clone(), id_b.clone()],
+            Some(vec![id_a.clone(), id_b.clone()]),
         )
         .await
         .expect("fire");
@@ -1085,7 +1085,7 @@ async fn on_attach_hook_fires_per_instance_with_ctx() {
                 session_id: "s1".to_owned(),
                 plugin_name: "judge_fail".to_owned(),
             },
-            vec![instance_id.clone()],
+            Some(vec![instance_id.clone()]),
         )
         .await
         .expect("fire on_attach");
@@ -1144,7 +1144,7 @@ async fn on_detach_hook_fires_with_ctx() {
                 session_id: "s1".to_owned(),
                 plugin_name: "judge_fail".to_owned(),
             },
-            vec![instance_id.clone()],
+            Some(vec![instance_id.clone()]),
         )
         .await
         .expect("fire on_detach");
@@ -1230,7 +1230,7 @@ async fn judge_aggregation_last_to_finish_emits_once() {
                     session_id: origin.to_string(),
                     plugin_name: "panel".to_owned(),
                 },
-                vec![inst.clone()],
+                Some(vec![inst.clone()]),
             )
             .await
             .expect("fire on_attach");
@@ -1350,7 +1350,7 @@ async fn judge_aggregation_single_instance_emits_directly() {
                 session_id: origin.to_string(),
                 plugin_name: "panel".to_owned(),
             },
-            vec![inst.clone()],
+            Some(vec![inst.clone()]),
         )
         .await
         .expect("fire on_attach");
@@ -1461,7 +1461,7 @@ async fn judge_aggregation_all_pass_disables_every_instance() {
                     session_id: origin.to_string(),
                     plugin_name: "panel".to_owned(),
                 },
-                vec![inst.clone()],
+                Some(vec![inst.clone()]),
             )
             .await
             .expect("fire on_attach");
@@ -1589,7 +1589,7 @@ async fn judge_aggregation_any_fail_reenables_every_instance() {
                     session_id: origin.to_string(),
                     plugin_name: "panel".to_owned(),
                 },
-                vec![inst.clone()],
+                Some(vec![inst.clone()]),
             )
             .await
             .expect("fire on_attach");
@@ -1708,7 +1708,7 @@ async fn judge_aggregation_single_instance_backward_compat_disables_itself() {
                 session_id: origin.to_string(),
                 plugin_name: "panel".to_owned(),
             },
-            vec![inst.clone()],
+            Some(vec![inst.clone()]),
         )
         .await
         .expect("fire on_attach");
@@ -1822,7 +1822,7 @@ async fn run_majority_panel(n_pass: usize, n_fail: usize, fail_msg: &str) -> Vec
                     session_id: origin.to_string(),
                     plugin_name: "panel".to_owned(),
                 },
-                vec![inst.clone()],
+                Some(vec![inst.clone()]),
             )
             .await
             .expect("fire on_attach");
@@ -1893,7 +1893,7 @@ async fn majority_one_pass_two_fail_emits_fail() {
                     session_id: origin.to_string(),
                     plugin_name: "panel".to_owned(),
                 },
-                vec![inst.clone()],
+                Some(vec![inst.clone()]),
             )
             .await
             .expect("fire on_attach");

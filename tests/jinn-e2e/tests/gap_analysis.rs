@@ -383,17 +383,6 @@ async fn then_exactly_one(world: &mut GapAnalysisWorld, _name: String) {
     }
 }
 
-#[cucumber::then(expr = "the origin session history has exactly two expanded {string} entries")]
-async fn then_exactly_two(world: &mut GapAnalysisWorld, _name: String) {
-    let held = world
-        .wait_until(|s| (expanded_gap_entries(s).len() == 2).then_some(()))
-        .await;
-    if held.is_none() {
-        let dump = history_dump(world);
-        panic!("expected exactly two expanded `#gap-analysis` entries\n{dump}");
-    }
-}
-
 /// Renders the active session's history + phase as a debug string for
 /// assertion-failure diagnostics.
 fn history_dump(world: &GapAnalysisWorld) -> String {
