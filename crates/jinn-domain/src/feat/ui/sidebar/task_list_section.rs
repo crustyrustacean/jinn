@@ -774,4 +774,130 @@ mod tests {
             "selected active phase header should have streaming color AND REVERSED modifier"
         );
     }
+
+    // ---- Phase 1: preview scroll / clamp / reset ----
+
+    /// Sets viewport + content so `preview_scroll` can page and clamp.
+    fn setup_preview(viewport: u16, content_lines: usize, scroll: usize) -> AppState {
+        let mut app = AppState::default();
+        app.frontend.task_list_section.preview_viewport_height = viewport;
+        app.frontend.task_list_section.preview_content_line_count = content_lines;
+        app.frontend.task_list_section.preview_scroll = scroll;
+        app
+    }
+
+    #[test]
+    fn preview_scroll_up_decreases_by_viewport() {
+        // Given viewport 5 and scroll at 10.
+        let mut app = setup_preview(5, 20, 10);
+
+        // When scrolling up by a page.
+        handle_preview_scroll_up(&mut app);
+
+        // Then scroll decreases by the viewport height.
+        assert_eq!(app.frontend.task_list_section.preview_scroll, 5);
+    }
+
+    #[test]
+    fn preview_scroll_down_increases_by_viewport() {
+        // Given viewport 5 and scroll at 0.
+        let mut app = setup_preview(5, 20, 0);
+
+        // When scrolling down by a page.
+        handle_preview_scroll_down(&mut app);
+
+        // Then scroll increases by the viewport height.
+        assert_eq!(app.frontend.task_list_section.preview_scroll, 5);
+    }
+
+    #[test]
+    fn preview_scroll_up_clamps_at_zero() {
+        // Given viewport 5 with scroll 2 (less than one page).
+        let mut app = setup_preview(5, 20, 2);
+
+        // When scrolling up.
+        handle_preview_scroll_up(&mut app);
+
+        // Then scroll clamps to 0 rather than underflowing.
+        assert_eq!(app.frontend.task_list_section.preview_scroll, 0);
+    }
+
+    #[test]
+    fn preview_scroll_down_clamps_at_max_offset() {
+        // Given viewport 5 and content of 8 lines (max offset 3).
+        let mut app = setup_preview(5, 8, 0);
+
+        // When scrolling down past the end.
+        handle_preview_scroll_down(&mut app);
+
+        // Then scroll clamps to max_offset 3, not 5.
+        assert_eq!(app.frontend.task_list_section.preview_scroll, 3);
+    }
+
+    #[test]
+    fn preview_scroll_up_noop_when_viewport_unmeasured() {
+        // Given an unmeasured viewport (0, before first render).
+        let mut app = setup_preview(0, 20, 7);
+
+        // When scrolling up.
+        handle_preview_scroll_up(&mut app);
+
+        // Then scroll is unchanged.
+        assert_eq!(app.frontend.task_list_section.preview_scroll, 7);
+    }
+
+    #[test]
+    fn preview_scroll_down_noop_when_viewport_unmeasured() {
+        // Given an unmeasured viewport (0, before first render).
+        let mut app = setup_preview(0, 20, 7);
+
+        // When scrolling down.
+        handle_preview_scroll_down(&mut app);
+
+        // Then scroll is unchanged.
+        assert_eq!(app.frontend.task_list_section.preview_scroll, 7);
+    }
+
+    #[test]
+    fn navigate_down_resets_preview_scroll() {
+        // Given a task list with scroll at 7 and focus on phase 0.
+        let mut app = setup_with_tasks();
+        setup_focused_on_phase(&mut app, 0);
+        app.frontend.task_list_section.preview_scroll = 7;
+
+        // When moving down to the next phase.
+        let result = navigate(&SidebarIntent::MoveDown, &mut app);
+
+        // Then navigation moved and scroll reset to 0.
+        assert_eq!(result, SectionNavResult::Moved);
+        assert_eq!(app.frontend.task_list_section.preview_scroll, 0);
+    }
+
+    #[test]
+    fn navigate_up_resets_preview_scroll() {
+        // Given a task list with scroll at 7 and focus on phase 1.
+        let mut app = setup_with_tasks();
+        setup_focused_on_phase(&mut app, 1);
+        app.frontend.task_list_section.preview_scroll = 7;
+
+        // When moving up to the previous phase.
+        let result = navigate(&SidebarIntent::MoveUp, &mut app);
+
+        // Then navigation moved and scroll reset to 0.
+        assert_eq!(result, SectionNavResult::Moved);
+        assert_eq!(app.frontend.task_list_section.preview_scroll, 0);
+    }
+
+    #[test]
+    fn receive_cursor_resets_preview_scroll() {
+        // Given a task list with scroll at 7.
+        let mut app = setup_with_tasks();
+        app.frontend.task_list_section.preview_scroll = 7;
+
+        // When re-entering the section from the top.
+        receive_cursor(&mut app, EnterFrom::Top);
+
+        // Then scroll reset to 0.
+        assert_eq!(app.frontend.task_list_section.preview_scroll, 0);
+    }
 }
