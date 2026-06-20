@@ -31,6 +31,8 @@ use crate::protocol::{
 };
 
 use crate::feat::session::entry_timing::EntryTiming;
+use crate::feat::context::prompt_template::PromptTemplateStore;
+use crate::feat::context::prompt_template::expand_tokens;
 
 /// Error returned when a streaming operation fails.
 #[derive(Debug, wherror::Error)]
@@ -776,7 +778,8 @@ impl ChatSessionState {
     ///
     /// Future work: restrict to the session feature module and require external
     /// code to use the `PushChatEntry` command (which also triggers persistence).
-    pub fn push_entry(&mut self, entry: ChatEntry) -> usize {
+    pub fn push_entry(&mut self, mut entry: ChatEntry) -> usize {
+        expand_user_entry(&mut entry, &self.core.ephemeral.discovered_prompt_templates);
         let was_at_last = self
             .ui
             .selected_cursor_id
@@ -2937,6 +2940,19 @@ impl ChatSessionState {
         } else {
             false
         }
+    }
+}
+
+/// If `entry` is a [`ChatEntryKind::User`] entry, expand `#name` prompt-template
+/// tokens in its `display` against `store` and write the result to `expanded`.
+/// `display` is left untouched so the UI keeps the raw token text while the model
+/// receives the expanded prompt body. Non-`User` kinds are unchanged.
+///
+/// This is the single expansion site for all user entries — see
+/// [`ChatSessionState::push_entry`].
+fn expand_user_entry(entry: &mut ChatEntry, store: &PromptTemplateStore) {
+    if let ChatEntryKind::User { display, expanded } = &mut entry.kind {
+        *expanded = expand_tokens(display, store);
     }
 }
 
