@@ -36,6 +36,68 @@ fn push_entry_adds_to_history() {
 }
 
 #[rstest::rstest]
+fn push_entry_expands_known_prompt_token_in_user_entry() {
+    // Given a session whose store has a `#name` template.
+    use crate::feat::context::prompt_template::PromptTemplateStore;
+    use crate::feat::context::protocol::prompt_template::PromptTemplate;
+
+    let mut session = ChatSessionState::new();
+    session.set_discovered_prompt_templates(PromptTemplateStore::from_vec(vec![PromptTemplate {
+        name: "name".to_owned(),
+        description: "d".to_owned(),
+        body: "BODY".to_owned(),
+    }]));
+
+    // When pushing a user entry containing the token.
+    let index = session.push_entry(ChatEntry::user("#name"));
+
+    // Then `display` keeps the raw token (UI unchanged) but the model-facing
+    // `expanded` field carries the resolved body.
+    let ChatEntryKind::User { display, expanded } = &session.history()[index].kind else {
+        panic!("expected a user entry");
+    };
+    assert_eq!(display, "#name");
+    assert_eq!(expanded, "BODY");
+}
+
+#[rstest::rstest]
+fn push_entry_leaves_unknown_prompt_token_literal() {
+    // Given a session with a store that has no matching template.
+    let mut session = ChatSessionState::new();
+    session.set_discovered_prompt_templates(
+        crate::feat::context::prompt_template::PromptTemplateStore::from_vec(vec![]),
+    );
+
+    // When pushing a user entry with an unknown token.
+    let index = session.push_entry(ChatEntry::user("#nope"));
+
+    // Then both fields keep the raw token literal.
+    let ChatEntryKind::User { display, expanded } = &session.history()[index].kind else {
+        panic!("expected a user entry");
+    };
+    assert_eq!(display, "#nope");
+    assert_eq!(expanded, "#nope");
+}
+
+#[rstest::rstest]
+fn push_entry_does_not_expand_non_user_entries() {
+    // Given an empty store (no templates).
+    let mut session = ChatSessionState::new();
+
+    // When pushing an assistant entry with literal `#name`.
+    let index = session.push_entry(ChatEntry::assistant("#name"));
+
+    // Then the assistant text is unchanged.
+    assert!(
+        matches!(
+            &session.history()[index].kind,
+            ChatEntryKind::Assistant(t) if t == "#name"
+        ),
+        "assistant entry should not be touched by expansion"
+    );
+}
+
+#[rstest::rstest]
 fn first_stream_token_creates_assistant_entry() {
     // Given a session with one entry, streaming started.
     let mut session = ChatSessionState::new();
