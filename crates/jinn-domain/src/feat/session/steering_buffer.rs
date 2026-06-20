@@ -51,7 +51,10 @@ impl SteeringBuffer {
     /// the buffer.
     ///
     /// Returns `None` when the buffer is empty. The produced entry has equal
-    /// display and expanded text (no prompt-token expansion is performed).
+    /// display and expanded text; prompt-token (`#name`) expansion happens later
+    /// in [`ChatSessionState::push_entry`], just like every other user entry.
+    ///
+    /// [`ChatSessionState::push_entry`]: crate::feat::session::chat_session::ChatSessionState::push_entry
     pub fn drain_into_entry(&mut self) -> Option<ChatEntry> {
         if self.fragments.is_empty() {
             return None;

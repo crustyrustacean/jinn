@@ -80,6 +80,11 @@ fn apply_pre_render_mutation(app: &mut TuiApp, area: Rect) {
             .active_chat_input_mut()
             .scroll_to_cursor(inner_height);
     }
+    jinn_domain::feat::ui::sidebar::task_list_section::preview::write_preview_geometry(
+        &mut wstate,
+        area,
+        pre_layout.sidebar,
+    );
 }
 
 /// Renders the always-visible layers: border, sidebar, chat tab, session preview,
@@ -103,6 +108,12 @@ fn render_base_layers(
     chat_tab::sidebar::render_sidebar(sidebar, frame, layout.sidebar, sidebar_focused, ctx, rects);
     chat_tab::render_chat_tab(ui_registry, frame, layout, ctx, rects);
     jinn_domain::feat::ui::sidebar::sessions::render_session_preview_for_state(
+        frame,
+        layout.sidebar,
+        frame_area,
+        ctx,
+    );
+    jinn_domain::feat::ui::sidebar::task_list_section::preview::render_task_list_preview_for_state(
         frame,
         layout.sidebar,
         frame_area,
