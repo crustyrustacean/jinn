@@ -125,3 +125,18 @@ pub fn copy_plugin_to_temp(temp_root: &Path, plugin_name: &str) {
         }
     }
 }
+
+/// Seeds a prompt template into the temp tree's user prompts dir.
+///
+/// Writes `<name>.md` with TOML frontmatter (`name`, `description`) + body,
+/// matching the format `prompt_scan_actor` scans. Must be called **before**
+/// [`build_tuiapp_in_temp`] so the scan at actor-system startup picks it up.
+pub fn seed_prompt_template(temp_root: &Path, name: &str, body: &str) {
+    let dir = temp_root.join("config").join("jinn").join("prompts");
+    std::fs::create_dir_all(&dir).unwrap_or_else(|e| panic!("mkdir {dir:?}: {e}"));
+    let content = format!(
+        "+++\nname = \"{name}\"\ndescription = \"\"\n+++\n{body}"
+    );
+    std::fs::write(dir.join(format!("{name}.md")), content)
+        .unwrap_or_else(|e| panic!("write prompt {name}: {e}"));
+}
