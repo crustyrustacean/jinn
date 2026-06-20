@@ -9,6 +9,7 @@
 //! via the [`DocumentPatcher`](crate::common::toml_patch::DocumentPatcher).
 
 pub mod picker_entry;
+pub mod resolver;
 
 use std::path::PathBuf;
 
