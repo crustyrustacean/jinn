@@ -1,4 +1,4 @@
-//! Process-isolated cucumber runner for the e2e judge tests.
+//! Process-isolated cucumber runner for the e2e test suites.
 //!
 //! Cucumber's default `Runner` executes scenarios sequentially inside a single
 //! process. The jinn actor system can't have two coexisting instances in one
@@ -9,20 +9,23 @@
 //! This module splits the binary into two modes selected by argv:
 //!
 //! - **Parent mode** (`cargo test` / `just test`, no `--scenario`):
-//!   Parses `.feature` files, enumerates scenarios, and spawns one **child
-//!   process per scenario** concurrently (capped by available parallelism).
-//!   Each child's exit code (0 = pass / non-0 = fail) is mapped to a PASS/FAIL
-//!   line; the parent exits non-zero if any child failed.
+//!   Parses `.feature` files from every registered suite directory, enumerates
+//!   scenarios, and spawns one **child process per scenario** concurrently
+//!   (capped by available parallelism). Each child's exit code (0 = pass /
+//!   non-0 = fail) is mapped to a PASS/FAIL line; the parent exits non-zero if
+//!   any child failed.
 //!
 //! - **Child mode** (`--scenario "<feature_path>:<scenario_name>"`):
 //!   Runs cucumber with the default runner + step macros, but a **filtering
 //!   parser** that emits only the single named scenario. One process = one
 //!   scenario = one actor system. No collision, no leak, no global-registry
-//!   hack.
+//!   hack. The World is selected by the feature file's parent directory
+//!   (`tests/features/<suite>/...` → [`WorldKind`]).
 //!
-//! Gherkin authoring is fully preserved — step functions in `judge.rs` use the
-//! `#[given]` / `#[when]` / `#[then]` macros exactly as before. Adding a
-//! scenario is just editing a `.feature` file.
+//! Gherkin authoring is fully preserved — step functions in each suite's module
+//! use the `#[given]` / `#[when]` / `#[then]` macros exactly as before. Adding
+//! a scenario is just editing a `.feature` file. Adding a new suite is
+//! registering a [`WorldKind`] variant + its feature subdir + a dispatch arm.
 
 use std::path::{Path, PathBuf};
 use std::process::Stdio;
@@ -34,6 +37,7 @@ use cucumber::{Parser, World as _};
 use futures::stream::{self, StreamExt as _};
 use tokio::process::Command;
 
+use crate::gap_analysis::GapAnalysisWorld;
 use crate::judge::JudgeWorld;
 
 /// Env var carrying the `"<feature_path>:<scenario_name>"` selector that
@@ -52,19 +56,106 @@ pub async fn run() {
     }
 }
 
+// ─── Suites: feature dir ↔ World dispatch ─────────────────────────────────
+
+/// A registered e2e suite: maps a feature subdirectory under `tests/features`
+/// to the Cucumber [`World`](cucumber::World) that owns its step definitions.
+///
+/// Each variant corresponds to exactly one suite module + one feature
+/// subdirectory. Cucumber collects step definitions per-World (via
+/// `WorldInventory`), so `JudgeWorld::cucumber()` only matches judge steps and
+/// `GapAnalysisWorld::cucumber()` only matches gap-analysis steps — there is no
+/// cross-suite step collision.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+enum WorldKind {
+    Judge,
+    GapAnalysis,
+}
+
+impl WorldKind {
+    /// All registered suites, in enumeration order.
+    const ALL: &'static [Self] = &[Self::Judge, Self::GapAnalysis];
+
+    /// The subdirectory under `tests/features` holding this suite's `.feature`
+    /// files.
+    const fn feature_subdir(self) -> &'static str {
+        match self {
+            Self::Judge => "judge",
+            Self::GapAnalysis => "gap-analysis",
+        }
+    }
+
+    /// Resolves the `tests/features/<subdir>` directory relative to the crate
+    /// manifest, canonicalized so the absolute path is forwarded to child
+    /// processes (which may inherit a different CWD than the parent).
+    ///
+    /// Returns `None` if the directory does not exist yet — a registered suite
+    /// with no `.feature` files is silently skipped at enumeration time rather
+    /// than crashing the parent.
+    fn feature_dir(self, manifest_dir: &str) -> Option<PathBuf> {
+        PathBuf::from(manifest_dir)
+            .join("tests/features")
+            .join(self.feature_subdir())
+            .canonicalize()
+            .ok()
+    }
+
+    /// Derives the suite owning a `.feature` file from its parent directory
+    /// name. Returns `None` if the directory isn't a registered suite (a
+    /// misconfiguration surfaced as a panic at enumeration time).
+    fn from_feature_path(feature_path: &Path) -> Self {
+        let parent = feature_path
+            .parent()
+            .and_then(|p| p.file_name())
+            .and_then(|n| n.to_str())
+            .unwrap_or_else(|| panic!("feature path has no parent dir: {}", feature_path.display()));
+        Self::ALL
+            .iter()
+            .copied()
+            .find(|k| k.feature_subdir() == parent)
+            .unwrap_or_else(|| panic!("no registered suite for feature dir {parent:?}"))
+    }
+
+    /// Runs a single pre-parsed feature through this suite's World.
+    ///
+    /// Cucumber's `Runner` is generic over the World type, so the two arms
+    /// can't share a builder — each must fully configure and launch its own
+    /// `::cucumber()` call. The parser + `fail_on_skipped` configuration is
+    /// identical across suites.
+    async fn run_scenario(self, feature: gherkin::Feature) {
+        match self {
+            Self::Judge => {
+                JudgeWorld::cucumber::<&str>()
+                    .with_parser(SingleFeatureParser {
+                        feature: Arc::new(feature),
+                    })
+                    .fail_on_skipped()
+                    .run_and_exit("ignored-by-single-feature-parser")
+                    .await;
+            }
+            Self::GapAnalysis => {
+                GapAnalysisWorld::cucumber::<&str>()
+                    .with_parser(SingleFeatureParser {
+                        feature: Arc::new(feature),
+                    })
+                    .fail_on_skipped()
+                    .run_and_exit("ignored-by-single-feature-parser")
+                    .await;
+            }
+        }
+    }
+}
+
 // ─── Parent: subprocess orchestrator ──────────────────────────────────────
 
-/// Parent mode: enumerate scenarios from `tests/features/judge`, spawn one child
-/// per scenario, report PASS/FAIL, exit non-zero if any failed.
+/// Parent mode: enumerate scenarios from every registered suite, spawn one
+/// child per scenario, report PASS/FAIL, exit non-zero if any failed.
 async fn run_parent() {
-    let features_dir = feature_dir();
-    let scenarios = enumerate_scenarios(&features_dir);
+    let manifest_dir = env!("CARGO_MANIFEST_DIR").to_owned();
+    let scenarios = enumerate_scenarios(&manifest_dir);
 
     if scenarios.is_empty() {
-        eprintln!(
-            "[judge-e2e] no scenarios found in {}",
-            features_dir.display()
-        );
+        eprintln!("[e2e] no scenarios found under tests/features/");
         std::process::exit(1);
     }
 
@@ -77,7 +168,7 @@ async fn run_parent() {
         .unwrap_or(4);
 
     let total = scenarios.len();
-    eprintln!("[judge-e2e] running {total} scenario(s) across up to {jobs} child process(es)");
+    eprintln!("[e2e] running {total} scenario(s) across up to {jobs} child process(es)");
 
     let results: Vec<(ScenarioSpec, bool)> = stream::iter(scenarios.into_iter().map(|spec| {
         let exe = current_exe.clone();
@@ -95,7 +186,7 @@ async fn run_parent() {
     for (spec, passed) in &results {
         let status = if *passed { "PASS" } else { "FAIL" };
         eprintln!(
-            "[judge-e2e] {status}: {}:{}",
+            "[e2e] {status}: {}:{}",
             spec.feature_file_name(),
             spec.scenario
         );
@@ -105,10 +196,10 @@ async fn run_parent() {
     }
 
     if failures > 0 {
-        eprintln!("[judge-e2e] {failures}/{total} scenario(s) FAILED");
+        eprintln!("[e2e] {failures}/{total} scenario(s) FAILED");
         std::process::exit(1);
     }
-    eprintln!("[judge-e2e] {total}/{total} scenario(s) passed");
+    eprintln!("[e2e] {total}/{total} scenario(s) passed");
 }
 
 /// Spawns a child process for a single scenario and returns whether it passed.
@@ -125,20 +216,10 @@ async fn spawn_child(exe: &Path, spec: &ScenarioSpec) -> bool {
     match cmd.output().await {
         Ok(output) => output.status.success(),
         Err(e) => {
-            eprintln!("[judge-e2e] failed to spawn child for {spec_str}: {e}");
+            eprintln!("[e2e] failed to spawn child for {spec_str}: {e}");
             false
         }
     }
-}
-
-/// Resolves the `tests/features/judge` directory relative to the crate manifest.
-fn feature_dir() -> PathBuf {
-    // Canonicalize so the absolute path is forwarded to child processes,
-    // which may inherit a different CWD than the parent.
-    PathBuf::from(env!("CARGO_MANIFEST_DIR"))
-        .join("tests/features/judge")
-        .canonicalize()
-        .unwrap_or_else(|e| panic!("feature dir not found: {e}"))
 }
 
 /// A single scenario to run, identified by its feature file path + scenario name.
@@ -158,9 +239,31 @@ impl ScenarioSpec {
     }
 }
 
-/// Walks `dir` for `*.feature` files and flattens their scenarios into a list.
-fn enumerate_scenarios(dir: &Path) -> Vec<ScenarioSpec> {
+/// Walks every registered suite's feature directory for `*.feature` files and
+/// flattens their scenarios into a list. A scenario is identified by
+/// `(feature_path, scenario_name)`; its [`WorldKind`] is derived from the
+/// feature file's parent directory at child-process time (see [`WorldKind`]).
+fn enumerate_scenarios(manifest_dir: &str) -> Vec<ScenarioSpec> {
     let mut out = Vec::new();
+    for kind in WorldKind::ALL {
+        // A registered suite with no feature dir yet is silently skipped —
+        // it has no scenarios to run.
+        if let Some(dir) = kind.feature_dir(manifest_dir) {
+            enumerate_dir(&dir, &mut out);
+        }
+    }
+    // Stable order: by file then scenario name.
+    out.sort_by(|a, b| {
+        a.feature_path
+            .cmp(&b.feature_path)
+            .then_with(|| a.scenario.cmp(&b.scenario))
+    });
+    out
+}
+
+/// Walks a single feature `dir`, appending every scenario in every `.feature`
+/// file to `out`.
+fn enumerate_dir(dir: &Path, out: &mut Vec<ScenarioSpec>) {
     let entries = std::fs::read_dir(dir)
         .unwrap_or_else(|e| panic!("failed to read feature dir {}: {e}", dir.display()));
     // Collect + sort for a stable enumeration order.
@@ -181,14 +284,6 @@ fn enumerate_scenarios(dir: &Path) -> Vec<ScenarioSpec> {
             });
         }
     }
-    // Stable order: by file then scenario name (already sorted by file above;
-    // re-sort to be safe across readers).
-    out.sort_by(|a, b| {
-        a.feature_path
-            .cmp(&b.feature_path)
-            .then_with(|| a.scenario.cmp(&b.scenario))
-    });
-    out
 }
 
 // ─── Child: single-scenario cucumber run ───────────────────────────────────
@@ -204,13 +299,13 @@ async fn run_child(spec: &str) {
         let _ = std::fs::write(&marker, format!("run_child reached: {spec}\n"));
     }
     init_tracing();
-    tracing::info!(spec = %spec, "judge-e2e child starting");
+    tracing::info!(spec = %spec, "e2e child starting");
     let (feature_path, scenario_name) = spec.split_once(':').unwrap_or_else(|| {
         panic!("invalid --scenario spec: {spec:?} (expected '<feature_path>:<scenario_name>')")
     });
 
     eprintln!(
-        "[judge-e2e child] cwd={:?} feature_path={:?}",
+        "[e2e child] cwd={:?} feature_path={:?}",
         std::env::current_dir(),
         feature_path
     );
@@ -232,16 +327,12 @@ async fn run_child(spec: &str) {
         ..feature
     };
 
-    // Run cucumber with the filtering parser + default runner/writer.
+    // Route to the suite's World by feature file location, then run cucumber
+    // with the filtering parser + default runner/writer.
     // `fail_on_skipped` makes a scenario with no matching steps fail (instead of
     // silently passing), which catches typos in the feature or step patterns.
-    JudgeWorld::cucumber::<&str>()
-        .with_parser(SingleFeatureParser {
-            feature: Arc::new(single_feature),
-        })
-        .fail_on_skipped()
-        .run_and_exit("ignored-by-single-feature-parser")
-        .await;
+    let kind = WorldKind::from_feature_path(std::path::Path::new(feature_path));
+    kind.run_scenario(single_feature).await;
 }
 
 /// Parser that emits exactly one pre-parsed feature (used in child mode).
@@ -258,6 +349,7 @@ impl<I> Parser<I> for SingleFeatureParser {
         stream::once(std::future::ready(Ok((*self.feature).clone())))
     }
 }
+
 /// Initializes a tracing subscriber for the child process.
 ///
 /// Controlled by `RUST_LOG` (defaults to `info` for this binary). Emits to
@@ -268,7 +360,7 @@ fn init_tracing() {
     // scenario would trap all diagnostics. A file bypasses that capture.
     use std::fs::OpenOptions;
     let log_path = std::env::temp_dir().join(format!("jinn-e2e-{}.log", std::process::id()));
-    eprintln!("[judge-e2e] tracing to {}", log_path.display());
+    eprintln!("[e2e] tracing to {}", log_path.display());
     let file = OpenOptions::new()
         .create(true)
         .write(true)
