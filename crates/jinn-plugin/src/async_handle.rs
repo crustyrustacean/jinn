@@ -52,9 +52,9 @@ pub(crate) enum PluginJob {
         /// Oneshot responder.
         respond_to: oneshot::Sender<Result<(), Report<PluginError>>>,
         target_session: Option<super::session_registry::SessionRegistryId>,
-        /// Instance ids of plugins that are currently enabled. When non-empty,
-        /// only instances in this list will have their hooks fired.
-        enabled_instances: Vec<super::PluginInstanceId>,
+        /// Instance whitelist. `None` fires all attached session plugins;
+        /// `Some(set)` fires only instances in `set` (empty `Some` fires none).
+        enabled_instances: Option<Vec<super::PluginInstanceId>>,
     },
     /// Fire all hooks, collect return values (async).
     Collect {
@@ -166,7 +166,7 @@ impl AsyncPluginHandle {
         hook: &str,
         ctx: &T,
     ) -> Result<(), Report<PluginError>> {
-        self.fire_async_for_session(None, hook, ctx, vec![]).await
+        self.fire_async_for_session(None, hook, ctx, None).await
     }
 
     /// Fire an async hook, optionally scoped to a session's attached plugins.
@@ -184,7 +184,7 @@ impl AsyncPluginHandle {
         target_session: Option<super::session_registry::SessionRegistryId>,
         hook: &str,
         ctx: &T,
-        enabled_instances: Vec<super::PluginInstanceId>,
+        enabled_instances: Option<Vec<super::PluginInstanceId>>,
     ) -> Result<(), Report<PluginError>> {
         let ctx_json = serde_json::to_value(ctx)
             .change_context(PluginError)

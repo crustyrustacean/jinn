@@ -205,8 +205,14 @@ async fn execute_plugin_job(state: &mut ThreadState, job: PluginJob) {
             target_session,
             enabled_instances,
         } => {
-            let result =
-                run_hooks_fire(state, target_session, &hook, &ctx_json, &enabled_instances).await;
+            let result = run_hooks_fire(
+                state,
+                target_session,
+                &hook,
+                &ctx_json,
+                enabled_instances.as_deref(),
+            )
+            .await;
             let _ = respond_to.send(result);
         }
         PluginJob::Collect {
@@ -437,7 +443,7 @@ async fn run_hooks_fire(
     target_session: Option<SessionRegistryId>,
     hook: &str,
     ctx_json: &serde_json::Value,
-    enabled_instances: &[PluginInstanceId],
+    enabled_instances: Option<&[PluginInstanceId]>,
 ) -> Result<(), Report<PluginError>> {
     for (plugin_name, plugin_hooks) in &state.global_hooks {
         run_single_hook(
@@ -460,7 +466,9 @@ async fn run_hooks_fire(
         && let Some(session) = state.sessions.get(&id)
     {
         for (instance_id, entry) in &session.hooks {
-            if !enabled_instances.is_empty() && !enabled_instances.contains(instance_id) {
+            if let Some(set) = enabled_instances
+                && !set.contains(instance_id)
+            {
                 continue;
             }
             run_single_hook(

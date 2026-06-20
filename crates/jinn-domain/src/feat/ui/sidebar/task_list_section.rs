@@ -4,12 +4,14 @@
 //! Phases are collapsed by default; the focused phase expands to show its tasks.
 //! The section is hidden when the task list is empty.
 
+pub mod preview;
+
 use std::borrow::Cow;
 
 use crate::common::app_state::AppState;
 use crate::common::render_ctx::RenderCtx;
 use crate::feat::theme::Theme;
-use crate::feat::todo_list::{Phase, PhaseId, Task, TaskList, TaskStatus};
+use crate::feat::todo_list::{Phase, PhaseId, TaskList};
 use crate::protocol::IntentResult;
 use crate::feat::ui::sidebar::section_trait::{
     EnterFrom, SectionNavResult, SidebarIntent, SidebarSection, SidebarSectionId,
@@ -181,16 +183,10 @@ impl SidebarSection for TaskListSection {
 
 const PHASE_INDENT: usize = 2;
 
-/// Indent for task descriptions (4 spaces + 1 indicator + 1 space = 6 columns).
-///
-/// Pending relocation to the preview popup module (Phase 3).
-#[allow(dead_code)]
-const TASK_INDENT: usize = 6;
-
-/// Display width of the phase collapse/expand indicator (`“▾ ”` / `“▸ ”` = 2 columns).
+/// Display width of the phase collapse/expand indicator (`“▸ ”` / `“◂ ”` = 2 columns).
 ///
 /// This is the **display-column** width of the indicator, deliberately not its byte
-/// length (`“▾ ”` is 4 UTF-8 bytes). `textwrap` measures by display columns, so
+/// length (`“▸ ”` is 4 UTF-8 bytes). `textwrap` measures by display columns, so
 /// this constant must be used everywhere the wrap width is computed for phase headers,
 /// keeping `build_render_lines` and `compute_height` in lockstep.
 const PHASE_INDICATOR_WIDTH: usize = 2;
@@ -248,16 +244,6 @@ impl<'a> TaskListView<'a> {
             .saturating_sub(PHASE_INDENT + PHASE_INDICATOR_WIDTH)
     }
 
-    /// Available text width for a task line's wrapped description.
-    ///
-    /// Accounts for the full task indent (indent + indicator + space).
-    ///
-    /// Pending relocation to the preview popup module (Phase 3).
-    #[allow(dead_code)]
-    fn task_text_width(&self) -> usize {
-        self.sidebar_width.saturating_sub(TASK_INDENT)
-    }
-
     /// True when the phase at `index` is the focused, expanded one.
     fn is_expanded(&self, index: usize) -> bool {
         self.expanded == Some(index)
@@ -289,23 +275,6 @@ impl<'a> TaskListView<'a> {
             style = style.add_modifier(Modifier::REVERSED);
         }
         style
-    }
-
-    /// Style for a task line based on its status.
-    ///
-    /// Pending relocation to the preview popup module (Phase 3).
-    #[allow(dead_code)]
-    fn task_style(&self, status: TaskStatus) -> Style {
-        match status {
-            TaskStatus::Pending => Style::default().fg(self.theme.primary_text),
-            TaskStatus::Completed | TaskStatus::Postponed => {
-                Style::default().fg(self.theme.muted_text)
-            }
-            // Cancelled tasks are shown with strikethrough.
-            TaskStatus::Cancelled => Style::default()
-                .fg(self.theme.muted_text)
-                .add_modifier(Modifier::CROSSED_OUT),
-        }
     }
 
     /// The title line at the top of the section.
@@ -347,47 +316,6 @@ impl<'a> TaskListView<'a> {
                     format!("    {}{segment}", " ".repeat(PHASE_INDICATOR_WIDTH))
                 };
                 Line::from(Span::styled(prefix, style))
-            })
-            .collect()
-    }
-
-    /// Lines for the tasks of an expanded phase, or the `(no tasks)` placeholder.
-    ///
-    /// Pending relocation to the preview popup module (Phase 3).
-    #[allow(dead_code)]
-    fn phase_task_lines(&self, phase: &Phase) -> Vec<Line<'static>> {
-        if phase.is_empty() {
-            return vec![Line::from(Span::styled(
-                "    (no tasks)",
-                Style::default().fg(self.theme.muted_text),
-            ))];
-        }
-        phase
-            .tasks()
-            .iter()
-            .flat_map(|task| self.task_lines(task))
-            .collect()
-    }
-
-    /// Lines for a single task: its status indicator on the first wrapped segment,
-    /// continuation lines indented beneath the description.
-    ///
-    /// Pending relocation to the preview popup module (Phase 3).
-    #[allow(dead_code)]
-    /// continuation lines indented beneath the description.
-    fn task_lines(&self, task: &Task) -> Vec<Line<'static>> {
-        let indicator = task.status().indicator();
-        let style = self.task_style(task.status());
-        let wrapped = wrap_description(task.description(), self.task_text_width());
-        wrapped
-            .iter()
-            .enumerate()
-            .map(|(i, segment)| {
-                if i == 0 {
-                    Line::from(Span::styled(format!("    {indicator} {segment}"), style))
-                } else {
-                    Line::from(Span::styled(format!("      {segment}"), style))
-                }
             })
             .collect()
     }

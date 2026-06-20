@@ -255,13 +255,9 @@ pub fn handle_submit_message(state: &mut AppState) -> IntentResult {
         // Unknown /command - fall through to normal message.
     }
 
-    let expanded = crate::feat::context::prompt_template::expand_tokens(
-        &input_text,
-        state.active_session().discovered_prompt_templates(),
-    );
     state.active_chat_input_mut().reset();
 
-    let result = route_to_enqueue_or_steer(state, &session_id, input_text, expanded);
+    let result = route_to_enqueue_or_steer(state, &session_id, input_text);
     with_mark_interacted(session_id, result)
 }
 
@@ -311,29 +307,26 @@ fn handle_submit_message_with_autocomplete(state: &mut AppState) -> IntentResult
         _ => {}
     }
 
-    let expanded = {
-        let store = state.active_session().discovered_prompt_templates();
-        crate::feat::context::prompt_template::expand_tokens(&display, store)
-    };
     state.active_chat_input_mut().reset();
 
-    let result = route_to_enqueue_or_steer(state, &session_id, display, expanded);
+    let result = route_to_enqueue_or_steer(state, &session_id, display);
     with_mark_interacted(session_id, result)
 }
 
-/// Routes a submitted (display, expanded) message based on input mode × session phase.
+/// Routes a submitted message based on input mode × session phase.
 ///
 /// - Mode `Queue` (any phase) → `EnqueueUserMessage`
 /// - Mode `Steer` + phase != `Idle` → `SubmitSteeringMessage`
 /// - Mode `Steer` + phase == `Idle` → `EnqueueUserMessage` (fall-through)
 ///
-/// When steering, the buffer accumulates the raw display text; `expanded` is
-/// discarded since prompt-template tokens aren't meaningful as steering fragments.
+/// Prompt-token (`#name`) expansion happens later, in
+/// [`crate::feat::session::chat_session::ChatSessionState::push_entry`], so
+/// both the enqueued message and the steering fragment flow through the single
+/// expansion site. When steering, the buffer accumulates the raw display text.
 fn route_to_enqueue_or_steer(
     state: &AppState,
     session_id: &SessionId,
     display: String,
-    expanded: String,
 ) -> IntentResult {
     let mode = state.active_chat_input().input_mode();
     let phase = state.active_session().phase();
@@ -347,7 +340,7 @@ fn route_to_enqueue_or_steer(
             );
             IntentResult::empty().message(EnqueueUserMessage {
                 session_id: session_id.clone(),
-                entry: ChatEntry::user_expanded(display, expanded),
+                entry: ChatEntry::user(display),
             })
         }
         (InputMode::Steer, _) => {
