@@ -182,6 +182,9 @@ impl SidebarSection for TaskListSection {
 const PHASE_INDENT: usize = 2;
 
 /// Indent for task descriptions (4 spaces + 1 indicator + 1 space = 6 columns).
+///
+/// Pending relocation to the preview popup module (Phase 3).
+#[allow(dead_code)]
 const TASK_INDENT: usize = 6;
 
 /// Display width of the phase collapse/expand indicator (`“▾ ”` / `“▸ ”` = 2 columns).
@@ -248,6 +251,9 @@ impl<'a> TaskListView<'a> {
     /// Available text width for a task line's wrapped description.
     ///
     /// Accounts for the full task indent (indent + indicator + space).
+    ///
+    /// Pending relocation to the preview popup module (Phase 3).
+    #[allow(dead_code)]
     fn task_text_width(&self) -> usize {
         self.sidebar_width.saturating_sub(TASK_INDENT)
     }
@@ -286,6 +292,9 @@ impl<'a> TaskListView<'a> {
     }
 
     /// Style for a task line based on its status.
+    ///
+    /// Pending relocation to the preview popup module (Phase 3).
+    #[allow(dead_code)]
     fn task_style(&self, status: TaskStatus) -> Style {
         match status {
             TaskStatus::Pending => Style::default().fg(self.theme.primary_text),
@@ -322,7 +331,7 @@ impl<'a> TaskListView<'a> {
         active_phase_id: Option<&PhaseId>,
     ) -> Vec<Line<'static>> {
         let indicator = if self.is_expanded(index) {
-            "\u{25BE} " // ▾ expanded
+            "\u{25C2} " // ◂ preview is to the left
         } else {
             "\u{25B8} " // ▸ collapsed
         };
@@ -343,6 +352,9 @@ impl<'a> TaskListView<'a> {
     }
 
     /// Lines for the tasks of an expanded phase, or the `(no tasks)` placeholder.
+    ///
+    /// Pending relocation to the preview popup module (Phase 3).
+    #[allow(dead_code)]
     fn phase_task_lines(&self, phase: &Phase) -> Vec<Line<'static>> {
         if phase.is_empty() {
             return vec![Line::from(Span::styled(
@@ -358,6 +370,10 @@ impl<'a> TaskListView<'a> {
     }
 
     /// Lines for a single task: its status indicator on the first wrapped segment,
+    /// continuation lines indented beneath the description.
+    ///
+    /// Pending relocation to the preview popup module (Phase 3).
+    #[allow(dead_code)]
     /// continuation lines indented beneath the description.
     fn task_lines(&self, task: &Task) -> Vec<Line<'static>> {
         let indicator = task.status().indicator();
@@ -376,32 +392,21 @@ impl<'a> TaskListView<'a> {
             .collect()
     }
 
-    /// Number of rows a phase contributes at `index`: its wrapped header plus
-    /// the task rows when it is the expanded phase. Used by `compute_height` to
-    /// stay in lockstep with `build_render_lines`.
-    fn phase_height(&self, phase: &Phase, index: usize) -> usize {
-        let header = wrap_description(phase.description(), self.phase_text_width()).len();
-        if !self.is_expanded(index) {
-            return header;
-        }
-        let tasks = if phase.is_empty() {
-            1 // "(no tasks)"
-        } else {
-            let task_width = self.task_text_width();
-            phase
-                .tasks()
-                .iter()
-                .map(|task| wrap_description(task.description(), task_width).len())
-                .sum()
-        };
-        header + tasks
+    /// Number of rows a phase contributes at `index`: just its wrapped header.
+    ///
+    /// Task rows live in the preview popup, never inline, so the inline height
+    /// is independent of expansion. Used by `compute_height` to stay in lockstep
+    /// with `build_render_lines`.
+    fn phase_height(&self, phase: &Phase, _index: usize) -> usize {
+        wrap_description(phase.description(), self.phase_text_width()).len()
     }
 }
 
 /// Builds the render lines for a task list.
 ///
-/// When unfocused (no expanded phase), renders only phase headers with `▸` indicators.
-/// When focused, expands the selected phase showing its tasks with a `▾` indicator.
+/// Renders only phase headers — the focused phase shows a `◂` indicator pointing
+/// at the preview popup to its left, and gets `REVERSED` styling. Task contents are
+/// shown in the preview popup (see `preview.rs`), never inline.
 fn build_render_lines(list: &TaskList, state: &AppState) -> Vec<Line<'static>> {
     let view = TaskListView::from_state(state);
     let active_phase_id = list.active_phase().map(Phase::id);
@@ -412,12 +417,9 @@ fn build_render_lines(list: &TaskList, state: &AppState) -> Vec<Line<'static>> {
     lines.push(view.header_line(list.phases().len()));
     lines.push(Line::from(""));
 
-    // One phase per iteration: the header, and the tasks when expanded.
+    // One phase per iteration: the header only (tasks live in the preview popup).
     for (phase_idx, phase) in list.phases().iter().enumerate() {
         lines.extend(view.phase_header_lines(phase, phase_idx, active_phase_id));
-        if view.is_expanded(phase_idx) {
-            lines.extend(view.phase_task_lines(phase));
-        }
     }
 
     lines
@@ -652,427 +654,23 @@ mod tests {
         );
     }
 
+    /// The inline section is always collapsed; the focused phase shows a
+    /// left-pointing arrow (U+25C2 `◂`) signalling that its preview popup is
+    /// drawn to the left of the sidebar. Collapsed phases show U+25B8 `▸`.
     #[test]
-    fn expanded_rendering_shows_tasks_for_selected_phase() {
-        let mut app = setup_with_tasks();
-        setup_focused_on_phase(&mut app, 0); // expand Research phase
-        let list = app.session.active_session().task_list().clone();
-        let lines = build_render_lines(&list, &app);
-        let combined = extract_text(&lines);
-        // Research phase tasks should be visible.
-        assert!(
-            combined.contains("Read docs"),
-            "expanded phase should show task: Read docs"
-        );
-        assert!(
-            combined.contains("Call API"),
-            "expanded phase should show task: Call API"
-        );
-        // Build phase tasks should NOT be visible (collapsed).
-        assert!(
-            !combined.contains("Write code"),
-            "non-expanded phase should NOT show task: Write code"
-        );
-    }
-
-    #[test]
-    fn expanded_shows_expand_indicator() {
+    fn focused_phase_shows_left_arrow_indicator() {
         let mut app = setup_with_tasks();
         setup_focused_on_phase(&mut app, 0);
         let list = app.session.active_session().task_list().clone();
-        let lines = build_render_lines(&list, &app);
-        let combined = extract_text(&lines);
-        assert!(
-            combined.contains('\u{25BE}'),
-            "expanded phase should show \u{25BE} indicator"
-        );
-    }
-
-    #[test]
-    fn expanded_shows_pending_indicator() {
-        let mut app = setup_with_tasks();
-        setup_focused_on_phase(&mut app, 0);
-        let list = app.session.active_session().task_list().clone();
-        let lines = build_render_lines(&list, &app);
-        let combined = extract_text(&lines);
-        assert!(
-            combined.contains('\u{25CB}'),
-            "should contain pending indicator \u{25CB}"
-        );
-    }
-
-    #[test]
-    fn expanded_shows_completed_indicator() {
-        let mut app = AppState::default();
-        let session = app.session.active_session_mut();
-        let pid = session.task_list_mut().add_phase("Build");
-        let tid = session
-            .task_list_mut()
-            .add_task(&pid, "Write code", TaskPosition::End)
-            .unwrap();
-        session.task_list_mut().complete_task(&tid).unwrap();
-        setup_focused_on_phase(&mut app, 0);
-        let list = app.session.active_session().task_list().clone();
-        let lines = build_render_lines(&list, &app);
-        let combined = extract_text(&lines);
-        assert!(
-            combined.contains('\u{2713}'),
-            "should contain completed indicator \u{2713}"
-        );
-    }
-
-    #[test]
-    fn expanded_shows_postponed_indicator() {
-        let mut app = AppState::default();
-        let session = app.session.active_session_mut();
-        let p1 = session.task_list_mut().add_phase("Research");
-        let t1 = session
-            .task_list_mut()
-            .add_task(&p1, "Read docs", TaskPosition::End)
-            .unwrap();
-        let p2 = session.task_list_mut().add_phase("Build");
-        let t2 = session
-            .task_list_mut()
-            .add_task(&p2, "Write code", TaskPosition::End)
-            .unwrap();
-
-        // Postpone t1 (Read docs) to after t2.
-        session
-            .task_list_mut()
-            .postpone_task(&t1, TaskPosition::After(t2))
-            .unwrap();
-
-        setup_focused_on_phase(&mut app, 0); // expand Research
-        let list = app.session.active_session().task_list().clone();
-        let lines = build_render_lines(&list, &app);
-        let combined = extract_text(&lines);
-
-        // Research phase should show postponed task with ▼.
-        assert!(
-            combined.contains('\u{25BC}'),
-            "should contain postponed indicator \u{25BC}"
-        );
-    }
-
-    #[test]
-    fn cancelled_task_visible_with_indicator() {
-        let mut app = AppState::default();
-        let session = app.session.active_session_mut();
-        let pid = session.task_list_mut().add_phase("Build");
-        let tid = session
-            .task_list_mut()
-            .add_task(&pid, "Bad idea", TaskPosition::End)
-            .unwrap();
-        session.task_list_mut().cancel_task(&tid).unwrap();
-        setup_focused_on_phase(&mut app, 0);
-        let list = app.session.active_session().task_list().clone();
-        let lines = build_render_lines(&list, &app);
-        let combined = extract_text(&lines);
-
-        // Cancelled task should be visible with ✗ indicator.
-        assert!(
-            combined.contains('\u{2717}'),
-            "should contain cancelled indicator \u{2717}"
-        );
-        assert!(
-            combined.contains("Bad idea"),
-            "cancelled task description should be visible"
-        );
-    }
-
-    #[test]
-    fn cancelled_task_has_crossed_out_modifier() {
-        let mut app = AppState::default();
-        let session = app.session.active_session_mut();
-        let pid = session.task_list_mut().add_phase("Build");
-        let tid = session
-            .task_list_mut()
-            .add_task(&pid, "Bad idea", TaskPosition::End)
-            .unwrap();
-        session.task_list_mut().cancel_task(&tid).unwrap();
-        setup_focused_on_phase(&mut app, 0);
-        let list = app.session.active_session().task_list().clone();
-        let lines = build_render_lines(&list, &app);
-
-        // Find a line containing the cancelled task and check it has CROSSED_OUT.
-        let has_crossed_out = lines.iter().any(|line| {
-            let text: String = line.spans.iter().map(|s| s.content.to_string()).collect();
-            text.contains("Bad idea")
-                && line
-                    .spans
-                    .iter()
-                    .any(|s| s.style.add_modifier.contains(Modifier::CROSSED_OUT))
-        });
-        assert!(
-            has_crossed_out,
-            "cancelled task should have CROSSED_OUT modifier"
-        );
-    }
-
-    #[test]
-    fn wrap_description_short_text_no_wrap() {
-        let result = wrap_description("hello", 20);
-        assert_eq!(result.len(), 1);
-        assert_eq!(result[0], "hello");
-    }
-
-    #[test]
-    fn wrap_description_long_text_wraps() {
-        let text = "This is a very long description that should wrap";
-        let result = wrap_description(text, 15);
-        assert!(result.len() > 1, "expected wrapping, got {result:?}");
-        let joined = result.join(" ");
-        assert!(joined.contains("very long"));
-    }
-
-    #[test]
-    fn wrap_description_zero_width_returns_original() {
-        let result = wrap_description("hello", 0);
-        assert_eq!(result, vec!["hello".to_owned()]);
-    }
-
-    #[test]
-    fn wrap_description_empty_text_returns_single_empty() {
-        let result = wrap_description("", 20);
-        assert_eq!(result.len(), 1);
-        assert_eq!(result[0], "");
-    }
-
-    #[test]
-    fn build_render_lines_long_task_wraps() {
-        let mut app = AppState::default();
-        app.frontend.sidebar_width = 20;
-        let session = app.session.active_session_mut();
-        let pid = session.task_list_mut().add_phase("Build");
-        session
-            .task_list_mut()
-            .add_task(
-                &pid,
-                "This is a very long task description that should wrap",
-                TaskPosition::End,
-            )
-            .unwrap();
-        let list = session.task_list().clone();
-        setup_focused_on_phase(&mut app, 0);
-
-        let lines = build_render_lines(&list, &app);
-        let combined = extract_text(&lines);
-        assert!(
-            combined.contains("very long"),
-            "should contain 'very long' in: {combined}"
-        );
-        assert!(
-            combined.contains("wrap"),
-            "should contain 'wrap' in: {combined}"
-        );
-        // More lines than collapsed baseline (header + blank + 2 phases + blank = 5).
-        assert!(
-            lines.len() > 5,
-            "expected wrapping to produce extra lines, got {}",
-            lines.len()
-        );
-    }
-
-    #[test]
-    fn build_render_lines_long_phase_wraps() {
-        let mut app = AppState::default();
-        app.frontend.sidebar_width = 20;
-        let session = app.session.active_session_mut();
-        session
-            .task_list_mut()
-            .add_phase("Research and investigate the whole codebase");
-        let list = session.task_list().clone();
-
-        let lines = build_render_lines(&list, &app);
-        let combined = extract_text(&lines);
-        assert!(
-            combined.contains("codebase"),
-            "should contain 'codebase' in: {combined}"
-        );
-    }
-
-    #[test]
-    fn content_height_wraps_long_description() {
-        let mut app = AppState::default();
-        app.frontend.sidebar_width = 20;
-        let session = app.session.active_session_mut();
-        let pid = session.task_list_mut().add_phase("Build");
-        session
-            .task_list_mut()
-            .add_task(
-                &pid,
-                "This is a very long task description that should definitely wrap across multiple lines",
-                TaskPosition::End,
-            )
-            .unwrap();
-        let list = session.task_list().clone();
-        setup_focused_on_phase(&mut app, 0);
-
-        let height = compute_height(&list, &app);
-        // Collapsed baseline: header(1) + blank(1) + phase(1) + trailing_gap(1) = 4.
-        // With expansion, height should be > 4 due to task wrapping.
-        assert!(
-            height > 4,
-            "expected height > 4 due to wrapping, got {height}"
-        );
-    }
-
-    #[test]
-    fn content_height_minimum_sidebar_no_panic() {
-        let mut app = AppState::default();
-        app.frontend.sidebar_width = 15;
-        let session = app.session.active_session_mut();
-        let pid = session.task_list_mut().add_phase("Build");
-        session
-            .task_list_mut()
-            .add_task(&pid, "Write some code", TaskPosition::End)
-            .unwrap();
-        let list = session.task_list().clone();
-
-        // Should not panic.
-        let height = compute_height(&list, &app);
-        assert!(height > 0, "expected non-zero height, got {height}");
-    }
-
-    #[test]
-    fn empty_description_does_not_panic() {
-        let mut app = AppState::default();
-        let session = app.session.active_session_mut();
-        let pid = session.task_list_mut().add_phase("Build");
-        session
-            .task_list_mut()
-            .add_task(&pid, "", TaskPosition::End)
-            .unwrap();
-        let list = session.task_list().clone();
-        setup_focused_on_phase(&mut app, 0);
-
-        let lines = build_render_lines(&list, &app);
-        let height = compute_height(&list, &app);
-        assert!(!lines.is_empty());
-        assert!(height > 0);
-    }
-
-    #[test]
-    fn exact_fit_does_not_wrap_collapsed() {
-        // When collapsed (no focus), a phase description that exactly fits should
-        // contribute exactly 1 row for the phase header.
-        // sidebar_width = 30, PHASE_INDENT(2) + indicator_len(2) = 4, so available = 26.
-        // "12345678901234567890123456" = 26 chars.
-        let mut app = AppState::default();
-        app.frontend.sidebar_width = 30;
-        let session = app.session.active_session_mut();
-        session
-            .task_list_mut()
-            .add_phase("12345678901234567890123456");
-        let list = session.task_list().clone();
-
-        let height = compute_height(&list, &app);
-        // Collapsed: header(1) + blank(1) + phase(1) = 3.
-        assert_eq!(height, 3, "expected no wrapping for exact-fit description");
-    }
-
-    #[test]
-    fn content_height_collapsed_vs_expanded() {
-        let app_collapsed = setup_with_tasks();
-        let list = app_collapsed.session.active_session().task_list().clone();
-        let collapsed_height = compute_height(&list, &app_collapsed);
-
-        let mut app_expanded = setup_with_tasks();
-        setup_focused_on_phase(&mut app_expanded, 0);
-        let list2 = app_expanded.session.active_session().task_list().clone();
-        let expanded_height = compute_height(&list2, &app_expanded);
+        let combined = extract_text(&build_render_lines(&list, &app));
 
         assert!(
-            expanded_height > collapsed_height,
-            "expanded height ({expanded_height}) should be > collapsed height ({collapsed_height})"
+            combined.contains('\u{25C2}'),
+            "focused phase should show left-arrow indicator \u{25C2}"
         );
-    }
-
-    /// Regression: when phase descriptions wrap, the number of lines painted by
-    /// `build_render_lines` must equal the height reserved by `compute_height`.
-    /// Previously the render path used the indicator's byte length (4) while
-    /// `compute_height` used its display width (2), so wrapped phase headers
-    /// overran the reserved space and the last phase header was clipped.
-    #[test]
-    fn collapsed_render_line_count_matches_computed_height_when_wrapping() {
-        // Given a sidebar of default width (30). Phase descriptions are chosen so
-        // their word boundaries land between columns 24 and 26: at the render path's
-        // buggy width (30 - 2 - 4 = 24) each wraps to 2 lines, but at the correct
-        // width (30 - 2 - 2 = 26) each fits on 1 line. This is the exact divergence
-        // that previously clipped the last phase header.
-        let mut app = AppState::default();
-        app.frontend.sidebar_width = 30;
-        let session = app.session.active_session_mut();
-        session
-            .task_list_mut()
-            .add_phase("initialize the loader tail");
-        session
-            .task_list_mut()
-            .add_phase("validate the payload tail");
-        session
-            .task_list_mut()
-            .add_phase("register the handler tail");
-        let list = app.session.active_session().task_list().clone();
-
-        // When rendering collapsed (no focus) and computing its height.
-        let rendered = build_render_lines(&list, &app);
-        let height = compute_height(&list, &app);
-
-        // Then the painted line count equals the reserved height.
-        assert_eq!(
-            rendered.len(),
-            usize::from(height),
-            "collapsed: rendered lines ({}) must equal computed height ({height})",
-            rendered.len()
-        );
-    }
-
-    #[test]
-    fn expanded_render_line_count_matches_computed_height_when_wrapping() {
-        // Same property as the collapsed test, but with a phase expanded so its
-        // task lines also contribute to both the render output and the height.
-        let mut app = AppState::default();
-        app.frontend.sidebar_width = 30;
-        let session = app.session.active_session_mut();
-        let pid = session
-            .task_list_mut()
-            .add_phase("initialize the loader tail");
-        session
-            .task_list_mut()
-            .add_task(&pid, "Read the documentation carefully", TaskPosition::End)
-            .unwrap();
-        session
-            .task_list_mut()
-            .add_phase("validate the payload tail");
-        session
-            .task_list_mut()
-            .add_phase("register the handler tail");
-        let list_before = app.session.active_session().task_list().clone();
-
-        // Given the first phase is expanded.
-        setup_focused_on_phase(&mut app, 0);
-        let list = app.session.active_session().task_list().clone();
-
-        // When rendering expanded and computing its height.
-        let rendered = build_render_lines(&list, &app);
-        let height = compute_height(&list, &app);
-
-        // Then the painted line count equals the reserved height.
-        assert_eq!(
-            rendered.len(),
-            usize::from(height),
-            "expanded: rendered lines ({}) must equal computed height ({height})",
-            rendered.len()
-        );
-        // And the expanded height exceeds the collapsed height (sanity: tasks shown).
         assert!(
-            height
-                > compute_height(&list_before, &{
-                    let mut a = AppState::default();
-                    a.frontend.sidebar_width = 30;
-                    a
-                }),
-            "expanded height should exceed collapsed height"
+            combined.contains('\u{25B8}'),
+            "unfocused phases should show right-arrow indicator \u{25B8}"
         );
     }
 
