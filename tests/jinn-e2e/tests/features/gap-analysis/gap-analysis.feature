@@ -36,7 +36,7 @@ Feature: Gap-analysis auto-fire on task list completion
     And the app ends another turn without changing the list
     Then the origin session history has exactly one expanded "gap-analysis" entry
 
-  Scenario: Re-fires after a new plan
+  Scenario: Plugin disables itself after firing
     Given a fresh app
     And the active provider is set
     And the app has a prompt template "gap-analysis" with body "Run the gap analysis."
@@ -44,4 +44,4 @@ Feature: Gap-analysis auto-fire on task list completion
     When the app completes the task list then ends the turn
     And the app sets a pending task list then ends the turn
     And the app completes the task list then ends the turn
-    Then the origin session history has exactly two expanded "gap-analysis" entries
+    Then the origin session history has exactly one expanded "gap-analysis" entry
