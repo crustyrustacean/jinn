@@ -315,6 +315,11 @@ pub enum Intent {
     /// Scroll the quake bar command log toward the newest line.
     QuakeBarScrollDown,
 
+    /// Scroll the task list preview popup toward the top (older tasks).
+    TaskListPreviewScrollUp,
+    /// Scroll the task list preview popup toward the bottom (newer tasks).
+    TaskListPreviewScrollDown,
+
     /// Trigger a plugin-declared action via a registered keybind.
     ///
     /// The `description` is rendered by ratatui-which-key via the `Display` impl.
@@ -469,6 +474,8 @@ impl std::fmt::Display for Intent {
             Intent::SubmitQuakeBar => write!(f, "quake bar submit"),
             Intent::QuakeBarScrollUp => write!(f, "quake bar scroll up"),
             Intent::QuakeBarScrollDown => write!(f, "quake bar scroll down"),
+            Intent::TaskListPreviewScrollUp => write!(f, "task list preview scroll up"),
+            Intent::TaskListPreviewScrollDown => write!(f, "task list preview scroll down"),
             Intent::TriggerPlugin { description, .. } => write!(f, "{description}"),
         }
     }
