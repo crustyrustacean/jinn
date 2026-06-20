@@ -30,9 +30,9 @@ use crate::protocol::{
     ChangeSource, ChatEntry, ChatEntryId, ChatEntryKind, ContextOverride, PinPosition, SessionId,
 };
 
-use crate::feat::session::entry_timing::EntryTiming;
 use crate::feat::context::prompt_template::PromptTemplateStore;
 use crate::feat::context::prompt_template::expand_tokens;
+use crate::feat::session::entry_timing::EntryTiming;
 
 /// Error returned when a streaming operation fails.
 #[derive(Debug, wherror::Error)]
