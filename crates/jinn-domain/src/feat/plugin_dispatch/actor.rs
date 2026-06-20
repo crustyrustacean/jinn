@@ -43,6 +43,7 @@ use crate::feat::plugin_dispatch::protocol::event::{
 };
 use crate::feat::session::chat_entry::ChatEntryKind;
 use crate::feat::session::protocol::session_phase_changed::SessionPhaseChanged;
+use crate::feat::session::protocol::task_list_updated::TaskListUpdated;
 use crate::feat::session_lifecycle::protocol::event::SessionCreated;
 use jinn_core_types::AttachedPlugin;
 use jinn_core_types::PluginInstanceId;
@@ -119,6 +120,7 @@ impl kameo::Actor for PluginDispatchActor {
         bus.subscribe::<AllActorsSpawned, _>(&actor_ref).await;
         bus.subscribe::<SessionCreated, _>(&actor_ref).await;
         bus.subscribe::<SessionPhaseChanged, _>(&actor_ref).await;
+        bus.subscribe::<TaskListUpdated, _>(&actor_ref).await;
         bus.subscribe::<AttachPlugin, _>(&actor_ref).await;
         bus.subscribe::<DetachPlugin, _>(&actor_ref).await;
         bus.subscribe::<TogglePlugin, _>(&actor_ref).await;
@@ -474,6 +476,50 @@ impl PluginDispatchActor {
         self.spawn_fire_for_session(session_id, hook, &ctx_json, enabled_instances);
     }
 
+    fn handle_task_list_updated(&self, msg: &TaskListUpdated) {
+        let Some((ctx_json, enabled_instances)) = self.build_task_list_ctx(&msg.session_id) else {
+            return;
+        };
+        self.spawn_fire_for_session(
+            &msg.session_id,
+            "on_task_list_updated",
+            &ctx_json,
+            enabled_instances,
+        );
+    }
+
+    /// Build the `on_task_list_updated` ctx payload and the list of attached+
+    /// enabled plugin instance ids for `session_id`.
+    ///
+    /// Returns `None` when the session is unknown (no-op firing).
+    fn build_task_list_ctx(
+        &self,
+        session_id: &SessionId,
+    ) -> Option<(Value, Vec<PluginInstanceId>)> {
+        let state = self.state.read();
+        let session = state.session.get(session_id)?;
+        let list = session.task_list();
+        let (completed, total) = list.completion_counts();
+        // `active_phase()` is `None` for an empty list too, so guard against that:
+        // an empty list is "nothing was done", not "completed".
+        let is_complete = !list.is_empty() && list.active_phase().is_none();
+        let ctx_json = serde_json::json!({
+            "session_id": session_id.to_string(),
+            "task_list": list.render_text_with_blockers(),
+            "completed": completed,
+            "total": total,
+            "is_complete": is_complete,
+        });
+        let enabled_instances = session
+            .core
+            .attached_plugins
+            .iter()
+            .filter(|p| p.enabled)
+            .map(|p| p.instance_id.clone())
+            .collect::<Vec<_>>();
+        Some((ctx_json, enabled_instances))
+    }
+
     /// Fire a hook for a session on a background task, so the actor loop is not
     /// blocked while the hook runs.
     fn spawn_fire_for_session(
@@ -603,6 +649,13 @@ impl Message<SessionPhaseChanged> for PluginDispatchActor {
     }
 }
 
+impl Message<TaskListUpdated> for PluginDispatchActor {
+    type Reply = ();
+    async fn handle(&mut self, msg: TaskListUpdated, _ctx: &mut Context<Self, Self::Reply>) {
+        self.handle_task_list_updated(&msg);
+    }
+}
+
 impl Message<AttachPlugin> for PluginDispatchActor {
     type Reply = ();
     async fn handle(&mut self, msg: AttachPlugin, _ctx: &mut Context<Self, Self::Reply>) {
@@ -706,6 +759,74 @@ mod tests {
         (actor, audit, session_id)
     }
 
+    // ─── on_task_list_updated ctx ─────────────────────────────────────
+
+    fn seed_completed_task_list(state: &State, session_id: &SessionId) {
+        use crate::feat::todo_list::TaskPosition;
+        let mut write = state.write();
+        let session = write.session.get_mut(session_id).unwrap();
+        let phase = session.task_list_mut().add_phase("Build");
+        let task = session
+            .task_list_mut()
+            .add_task(&phase, "do thing", TaskPosition::End)
+            .unwrap();
+        session.task_list_mut().complete_task(&task).unwrap();
+    }
+
+    fn seed_pending_task_list(state: &State, session_id: &SessionId) {
+        use crate::feat::todo_list::TaskPosition;
+        let mut write = state.write();
+        let session = write.session.get_mut(session_id).unwrap();
+        let phase = session.task_list_mut().add_phase("Build");
+        session
+            .task_list_mut()
+            .add_task(&phase, "do thing", TaskPosition::End)
+            .unwrap();
+    }
+
+    #[tokio::test]
+    async fn task_list_ctx_marks_complete_when_all_tasks_done() {
+        // Given a session whose task list has one completed task.
+        let (actor, _audit, session_id) = make_actor().await;
+        seed_completed_task_list(&actor.state, &session_id);
+
+        // When building the on_task_list_updated ctx.
+        let (ctx, _enabled) = actor.build_task_list_ctx(&session_id).unwrap();
+
+        // Then the ctx reports the list as complete.
+        assert_eq!(ctx["completed"], 1);
+        assert_eq!(ctx["total"], 1);
+        assert_eq!(ctx["is_complete"], true);
+    }
+
+    #[tokio::test]
+    async fn task_list_ctx_marks_incomplete_when_tasks_pending() {
+        // Given a session whose task list has one pending task.
+        let (actor, _audit, session_id) = make_actor().await;
+        seed_pending_task_list(&actor.state, &session_id);
+
+        // When building the on_task_list_updated ctx.
+        let (ctx, _enabled) = actor.build_task_list_ctx(&session_id).unwrap();
+
+        // Then the ctx reports the list as not complete.
+        assert_eq!(ctx["completed"], 0);
+        assert_eq!(ctx["total"], 1);
+        assert_eq!(ctx["is_complete"], false);
+    }
+
+    #[tokio::test]
+    async fn task_list_ctx_marks_incomplete_when_list_empty() {
+        // Given a session with an empty task list.
+        let (actor, _audit, session_id) = make_actor().await;
+
+        // When building the on_task_list_updated ctx.
+        let (ctx, _enabled) = actor.build_task_list_ctx(&session_id).unwrap();
+
+        // Then the ctx reports the list as not complete (empty ≠ complete).
+        assert_eq!(ctx["completed"], 0);
+        assert_eq!(ctx["total"], 0);
+        assert_eq!(ctx["is_complete"], false);
+    }
     fn test_tool_metadata(name: &str, scope: ToolScope) -> PluginToolMetadata {
         PluginToolMetadata {
             name: name.to_owned(),
