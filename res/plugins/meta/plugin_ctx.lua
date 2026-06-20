@@ -145,6 +145,18 @@
 ---
 ---@field plugin_data any This plugin's persistent state (read-only for sync hooks).
 ---
+
+---@class OnTaskListUpdatedCtx : PluginCtx
+---Fired whenever a session's task list is mutated (task completed/added/postponed,
+---a phase added, or the whole list replaced via `set_list`). Carries the full
+---rendered task list plus derived completion state so plugins can fold it into
+---their own internal state. Per the judge pattern, the plugin decides what to do
+---on a later `on_turn_end`, not in this hook directly.
+---
+---@field task_list string The task list rendered as text (phases + tasks + blockers).
+---@field completed integer Number of completed tasks across all phases.
+---@field total integer Total tasks across all phases.
+---@field is_complete boolean True only when the list is non-empty AND no phase has pending work (i.e. the implementation plan is finished).
 -- ─── Verb payload shapes ───────────────────────────────────────────
 
 ---@alias PluginVerb
