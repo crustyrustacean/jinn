@@ -10,6 +10,7 @@ use crate::common::app_state::AppState;
 use crate::common::render_ctx::RenderCtx;
 use crate::feat::theme::Theme;
 use crate::feat::todo_list::{Phase, PhaseId, Task, TaskList, TaskStatus};
+use crate::protocol::IntentResult;
 use crate::feat::ui::sidebar::section_trait::{
     EnterFrom, SectionNavResult, SidebarIntent, SidebarSection, SidebarSectionId,
 };
@@ -31,11 +32,29 @@ pub struct TaskListSection;
 ///
 /// Tracks which phase is selected (has cursor). `None` means the section
 /// is unfocused — all phases are collapsed.
+///
+/// The preview popup scroll is driven by three fields, all written by the render
+/// pre-pass so keypress handlers can page and clamp without re-wrapping:
+/// - `preview_scroll`           — current top line offset (the only field mutated by
+///   scroll intents and reset on navigation).
+/// - `preview_viewport_height`  — popup inner height (rows) for page size.
+/// - `preview_content_line_count` — total wrapped lines in the selected phase,
+///   used to clamp `preview_scroll` to `[0, max_offset]`.
 #[derive(Debug, Clone, Default)]
 pub struct TaskListSectionState {
     /// Index into the task list's phases vector.
     /// `None` when the section is unfocused.
     pub selected_phase_index: Option<usize>,
+    /// Current scroll offset (top line index) of the task list preview popup.
+    pub preview_scroll: usize,
+    /// Inner height (rows) of the preview popup's content area, as measured by
+    /// the last render pass. Used by `PageUp`/`PageDown` to page by a viewport.
+    /// Zero before the first render; scroll handlers no-op when it is zero.
+    pub preview_viewport_height: u16,
+    /// Total wrapped content line count of the selected phase, as measured by
+    /// the last render pass. Lets the scroll handlers clamp `preview_scroll` to
+    /// `[0, max_offset]` without re-wrapping the tasks.
+    pub preview_content_line_count: usize,
 }
 
 /// Navigate within the task list section.
@@ -52,7 +71,9 @@ pub fn navigate(intent: &SidebarIntent, state: &mut AppState) -> SectionNavResul
     match intent {
         SidebarIntent::MoveDown => {
             if index + 1 < phase_count {
-                state.frontend.task_list_section.selected_phase_index = Some(index + 1);
+                let section = &mut state.frontend.task_list_section;
+                section.selected_phase_index = Some(index + 1);
+                section.preview_scroll = 0;
                 SectionNavResult::Moved
             } else {
                 SectionNavResult::Exhausted
@@ -60,7 +81,9 @@ pub fn navigate(intent: &SidebarIntent, state: &mut AppState) -> SectionNavResul
         }
         SidebarIntent::MoveUp => {
             if index > 0 {
-                state.frontend.task_list_section.selected_phase_index = Some(index - 1);
+                let section = &mut state.frontend.task_list_section;
+                section.selected_phase_index = Some(index - 1);
+                section.preview_scroll = 0;
                 SectionNavResult::Moved
             } else {
                 SectionNavResult::Exhausted
@@ -78,10 +101,55 @@ pub fn receive_cursor(state: &mut AppState, enter_from: EnterFrom) {
     if phase_count == 0 {
         return;
     }
-    state.frontend.task_list_section.selected_phase_index = Some(match enter_from {
+    let section = &mut state.frontend.task_list_section;
+    section.selected_phase_index = Some(match enter_from {
         EnterFrom::Top => 0,
         EnterFrom::Bottom => phase_count - 1,
     });
+    section.preview_scroll = 0;
+}
+
+/// Scrolls the preview popup one viewport toward the oldest task line.
+///
+/// Pages `preview_scroll` up by `preview_viewport_height` and clamps to
+/// `[0, max_offset]`. No-op when the viewport height has not yet been measured
+/// (e.g. before the first render).
+pub fn handle_preview_scroll_up(state: &mut AppState) -> IntentResult {
+    let section = &mut state.frontend.task_list_section;
+    if section.preview_viewport_height == 0 {
+        return IntentResult::empty();
+    }
+    let page = usize::from(section.preview_viewport_height);
+    section.preview_scroll = section.preview_scroll.saturating_sub(page);
+    clamp_scroll(section);
+    IntentResult::empty()
+}
+
+/// Scrolls the preview popup one viewport toward the newest task line.
+///
+/// Pages `preview_scroll` down by `preview_viewport_height` and clamps to
+/// `[0, max_offset]`. No-op when the viewport height has not yet been measured.
+pub fn handle_preview_scroll_down(state: &mut AppState) -> IntentResult {
+    let section = &mut state.frontend.task_list_section;
+    if section.preview_viewport_height == 0 {
+        return IntentResult::empty();
+    }
+    let page = usize::from(section.preview_viewport_height);
+    section.preview_scroll = section.preview_scroll.saturating_add(page);
+    clamp_scroll(section);
+    IntentResult::empty()
+}
+
+/// Clamps `preview_scroll` to the valid range for the current content.
+///
+/// Called defensively by the render path and by both scroll handlers so that
+/// content shrinkage (e.g. a phase switch to a shorter phase) can never leave
+/// `preview_scroll` pointing past the end.
+pub(crate) fn clamp_scroll(section: &mut TaskListSectionState) {
+    let max_offset = section
+        .preview_content_line_count
+        .saturating_sub(usize::from(section.preview_viewport_height));
+    section.preview_scroll = section.preview_scroll.min(max_offset);
 }
 
 impl SidebarSection for TaskListSection {
