@@ -9,6 +9,7 @@
 //! actor-system migration and are intentionally left disabled pending a
 //! dedicated fix-up task.
 
+mod gap_analysis;
 mod harness;
 mod judge;
 mod runner;
