@@ -7,9 +7,7 @@ description: Structured phased implementation workflow for multi-phase coding ta
 
 A disciplined workflow for implementing multi-phase coding tasks. The task list tracks progress in real time.
 
-
-**Project commands are referenced by role** (`check`, `test`, `lint`, `format`, `commit`, `sync-trunk`, `vcs`). The project's `AGENTS.md` resolves each role to its actual command (e.g. for jinn: `test` → `just test`, `commit` → `fossil commit`, `sync-trunk` → `fossil merge trunk`). When this skill says "run the project's `test` command," look up `test` in `AGENTS.md` and run that. If the project does not define a role, skip it.
----
+## **Project commands are referenced by role** (`check`, `test`, `lint`, `format`, `commit`, `sync-trunk`, `vcs`). The project's `AGENTS.md` resolves each role to its actual command (e.g. for jinn: `test` → `just test`, `commit` → `fossil commit`, `sync-trunk` → `fossil merge trunk`). When this skill says "run the project's `test` command," look up `test` in `AGENTS.md` and run that. If the project does not define a role, skip it.
 
 ## Constraints
 
@@ -104,4 +102,4 @@ just fmt-fix         # the project's `format` command
 fossil commit -m "<TASK>: Lints fixed"   # the project's `commit` command
 ```
 
-All reported errors and warnings must be fixed. If the project defines no `lint`/`format` commands, skip this step.
+_All reported errors and warnings must be fixed_, **even if they are from other files that you didn't touch**. **DO NOT SIGNAL COMPLETION UNLESS THERE ARE ZERO WARNINGS**. If the project defines no `lint`/`format` commands, skip this step.
