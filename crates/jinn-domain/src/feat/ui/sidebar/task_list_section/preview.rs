@@ -31,8 +31,8 @@ use crate::feat::ui::sidebar::task_list_section::clamp_scroll;
 const MIN_POPUP_WIDTH: u16 = 30;
 /// Bordered overlay height floor: borders (2) + at least 3 content rows.
 const MIN_POPUP_HEIGHT: u16 = 5;
-/// Indent for task descriptions (4 spaces + 1 indicator + 1 space = 6 columns).
-const TASK_INDENT: usize = 6;
+/// Indent for task descriptions (1 indicator + 1 space = 2 columns).
+const TASK_INDENT: usize = 2;
 
 /// Word-wraps a description string to the given available width.
 ///
@@ -77,9 +77,9 @@ fn task_lines(theme: &Theme, available_width: usize, task: &Task) -> Vec<Line<'s
         .enumerate()
         .map(|(i, segment)| {
             if i == 0 {
-                Line::from(Span::styled(format!("    {indicator} {segment}"), style))
+                Line::from(Span::styled(format!("{indicator} {segment}"), style))
             } else {
-                Line::from(Span::styled(format!("      {segment}"), style))
+                Line::from(Span::styled(format!("  {segment}"), style))
             }
         })
         .collect()
@@ -90,7 +90,7 @@ fn task_lines(theme: &Theme, available_width: usize, task: &Task) -> Vec<Line<'s
 fn phase_task_lines(theme: &Theme, available_width: usize, phase: &Phase) -> Vec<Line<'static>> {
     if phase.is_empty() {
         return vec![Line::from(Span::styled(
-            "    (no tasks)",
+            "(no tasks)",
             Style::default().fg(theme.muted_text),
         ))];
     }
@@ -277,7 +277,8 @@ mod tests {
     )]
     use super::*;
     use crate::common::app_state::{AppState, FocusScope};
-    use crate::feat::todo_list::TaskPosition;
+    use crate::feat::theme::default_theme;
+    use crate::feat::todo_list::{TaskList, TaskPosition, TaskStatus};
     use ratatui::{Terminal, backend::TestBackend};
 
     fn frame_area() -> Rect {
@@ -509,6 +510,25 @@ mod tests {
         assert_eq!(
             app.frontend.task_list_section.preview_content_line_count, 1,
             "60-char task must wrap to popup width (1 line), not sidebar width (3 lines)"
+        );
+    }
+
+    #[test]
+    fn task_line_has_no_leading_margin() {
+        // Given a phase with a pending task.
+        let mut list = TaskList::new();
+        let pid = list.add_phase("Research");
+        list.add_task(&pid, "Read docs", TaskPosition::End).unwrap();
+        let phase = &list.phases()[0];
+
+        // When rendering task lines at a generous width.
+        let lines = phase_task_lines(&default_theme(), 80, phase);
+
+        // Then the first line starts with the status indicator, with no leading margin.
+        let first = lines[0].spans.first().expect("task line has a span");
+        assert!(
+            first.content.starts_with(TaskStatus::Pending.indicator()),
+            "task line must not carry a leftover sidebar indent; got: {first:?}"
         );
     }
 }
