@@ -150,6 +150,23 @@ impl SidebarSection for PinsSection {
     }
 }
 
+/// Computes the pins section content height from state.
+///
+/// Mirrors [`PinsSection::content_height`] so the task list preview popup
+/// can determine where the task list section starts without needing the
+/// section instance. Hides (0) when there are no pinned entries.
+///
+/// [`PinsSection::content_height`]: PinsSection::content_height
+#[must_use]
+pub fn pins_section_content_height(state: &AppState) -> u16 {
+    let count = state.active_session().pinned_entries().len();
+    if count == 0 {
+        return 0;
+    }
+    // Header(1) + header-gap(1) + entries(count) + trailing gap(1).
+    count as u16 + 3
+}
+
 // ---------------------------------------------------------------------------
 // Intent handler functions (called by IntentHandler)
 // ---------------------------------------------------------------------------

@@ -236,6 +236,22 @@ pub fn init() -> Keymap<KeyEvent, Scope, Intent, KeyCategory> {
                 "s",
                 Intent::OpenPicker { kind: jinn_domain::feat::picker::PickerKind::TaskList },
                 KeyCategory::Sidebar,
+            )
+            // Scroll the task list preview popup (left of the sidebar).
+            .bind(
+                "<pgup>",
+                Intent::TaskListPreviewScrollUp,
+                KeyCategory::Navigation,
+            )
+            .bind(
+                "<pgdn>",
+                Intent::TaskListPreviewScrollDown,
+                KeyCategory::Navigation,
+            );
+            b.bind(
+                "s",
+                Intent::OpenPicker { kind: jinn_domain::feat::picker::PickerKind::TaskList },
+                KeyCategory::Sidebar,
             );
         })
         // Input scope: typing into the input buffer
@@ -816,6 +832,62 @@ mod tests {
         assert!(
             matches!(intent, Intent::QuakeBarScrollUp),
             "PageUp must resolve to QuakeBarScrollUp; got {intent:?}",
+        );
+    }
+
+    #[test]
+    fn task_list_scope_pgup_fires_preview_scroll_up() {
+        // Given a keymap queried in SidebarTaskList scope.
+        use crate::app::WhichKeyInstance;
+        use jinn_domain::{Key, KeyEvent, Modifiers};
+
+        let keymap = init();
+        let mut wk = WhichKeyInstance::new(keymap, Scope::SidebarTaskList);
+
+        // When pressing PageUp.
+        let pgup = KeyEvent {
+            key: Key::PageUp,
+            modifiers: Modifiers {
+                ctrl: false,
+                alt: false,
+                shift: false,
+            },
+        };
+        let intent = wk.handle_key(pgup);
+
+        // Then it resolves to TaskListPreviewScrollUp.
+        let intent = intent.expect("PageUp in SidebarTaskList scope must fire an intent");
+        assert!(
+            matches!(intent, Intent::TaskListPreviewScrollUp),
+            "PageUp must resolve to TaskListPreviewScrollUp; got {intent:?}",
+        );
+    }
+
+    #[test]
+    fn task_list_scope_pgdn_fires_preview_scroll_down() {
+        // Given a keymap queried in SidebarTaskList scope.
+        use crate::app::WhichKeyInstance;
+        use jinn_domain::{Key, KeyEvent, Modifiers};
+
+        let keymap = init();
+        let mut wk = WhichKeyInstance::new(keymap, Scope::SidebarTaskList);
+
+        // When pressing PageDown.
+        let pgdn = KeyEvent {
+            key: Key::PageDown,
+            modifiers: Modifiers {
+                ctrl: false,
+                alt: false,
+                shift: false,
+            },
+        };
+        let intent = wk.handle_key(pgdn);
+
+        // Then it resolves to TaskListPreviewScrollDown.
+        let intent = intent.expect("PageDown in SidebarTaskList scope must fire an intent");
+        assert!(
+            matches!(intent, Intent::TaskListPreviewScrollDown),
+            "PageDown must resolve to TaskListPreviewScrollDown; got {intent:?}",
         );
     }
 

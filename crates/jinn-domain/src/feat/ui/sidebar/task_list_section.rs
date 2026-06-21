@@ -4,15 +4,18 @@
 //! Phases are collapsed by default; the focused phase expands to show its tasks.
 //! The section is hidden when the task list is empty.
 
+pub mod preview;
+
 use std::borrow::Cow;
 
 use crate::common::app_state::AppState;
 use crate::common::render_ctx::RenderCtx;
 use crate::feat::theme::Theme;
-use crate::feat::todo_list::{Phase, PhaseId, Task, TaskList, TaskStatus};
+use crate::feat::todo_list::{Phase, PhaseId, TaskList};
 use crate::feat::ui::sidebar::section_trait::{
     EnterFrom, SectionNavResult, SidebarIntent, SidebarSection, SidebarSectionId,
 };
+use crate::protocol::IntentResult;
 use ratatui::Frame;
 use ratatui::layout::Rect;
 use ratatui::style::{Color, Modifier, Style};
@@ -31,11 +34,29 @@ pub struct TaskListSection;
 ///
 /// Tracks which phase is selected (has cursor). `None` means the section
 /// is unfocused — all phases are collapsed.
+///
+/// The preview popup scroll is driven by three fields, all written by the render
+/// pre-pass so keypress handlers can page and clamp without re-wrapping:
+/// - `preview_scroll`           — current top line offset (the only field mutated by
+///   scroll intents and reset on navigation).
+/// - `preview_viewport_height`  — popup inner height (rows) for page size.
+/// - `preview_content_line_count` — total wrapped lines in the selected phase,
+///   used to clamp `preview_scroll` to `[0, max_offset]`.
 #[derive(Debug, Clone, Default)]
 pub struct TaskListSectionState {
     /// Index into the task list's phases vector.
     /// `None` when the section is unfocused.
     pub selected_phase_index: Option<usize>,
+    /// Current scroll offset (top line index) of the task list preview popup.
+    pub preview_scroll: usize,
+    /// Inner height (rows) of the preview popup's content area, as measured by
+    /// the last render pass. Used by `PageUp`/`PageDown` to page by a viewport.
+    /// Zero before the first render; scroll handlers no-op when it is zero.
+    pub preview_viewport_height: u16,
+    /// Total wrapped content line count of the selected phase, as measured by
+    /// the last render pass. Lets the scroll handlers clamp `preview_scroll` to
+    /// `[0, max_offset]` without re-wrapping the tasks.
+    pub preview_content_line_count: usize,
 }
 
 /// Navigate within the task list section.
@@ -52,7 +73,9 @@ pub fn navigate(intent: &SidebarIntent, state: &mut AppState) -> SectionNavResul
     match intent {
         SidebarIntent::MoveDown => {
             if index + 1 < phase_count {
-                state.frontend.task_list_section.selected_phase_index = Some(index + 1);
+                let section = &mut state.frontend.task_list_section;
+                section.selected_phase_index = Some(index + 1);
+                section.preview_scroll = 0;
                 SectionNavResult::Moved
             } else {
                 SectionNavResult::Exhausted
@@ -60,7 +83,9 @@ pub fn navigate(intent: &SidebarIntent, state: &mut AppState) -> SectionNavResul
         }
         SidebarIntent::MoveUp => {
             if index > 0 {
-                state.frontend.task_list_section.selected_phase_index = Some(index - 1);
+                let section = &mut state.frontend.task_list_section;
+                section.selected_phase_index = Some(index - 1);
+                section.preview_scroll = 0;
                 SectionNavResult::Moved
             } else {
                 SectionNavResult::Exhausted
@@ -78,10 +103,55 @@ pub fn receive_cursor(state: &mut AppState, enter_from: EnterFrom) {
     if phase_count == 0 {
         return;
     }
-    state.frontend.task_list_section.selected_phase_index = Some(match enter_from {
+    let section = &mut state.frontend.task_list_section;
+    section.selected_phase_index = Some(match enter_from {
         EnterFrom::Top => 0,
         EnterFrom::Bottom => phase_count - 1,
     });
+    section.preview_scroll = 0;
+}
+
+/// Scrolls the preview popup one viewport toward the oldest task line.
+///
+/// Pages `preview_scroll` up by `preview_viewport_height` and clamps to
+/// `[0, max_offset]`. No-op when the viewport height has not yet been measured
+/// (e.g. before the first render).
+pub fn handle_preview_scroll_up(state: &mut AppState) -> IntentResult {
+    let section = &mut state.frontend.task_list_section;
+    if section.preview_viewport_height == 0 {
+        return IntentResult::empty();
+    }
+    let page = usize::from(section.preview_viewport_height);
+    section.preview_scroll = section.preview_scroll.saturating_sub(page);
+    clamp_scroll(section);
+    IntentResult::empty()
+}
+
+/// Scrolls the preview popup one viewport toward the newest task line.
+///
+/// Pages `preview_scroll` down by `preview_viewport_height` and clamps to
+/// `[0, max_offset]`. No-op when the viewport height has not yet been measured.
+pub fn handle_preview_scroll_down(state: &mut AppState) -> IntentResult {
+    let section = &mut state.frontend.task_list_section;
+    if section.preview_viewport_height == 0 {
+        return IntentResult::empty();
+    }
+    let page = usize::from(section.preview_viewport_height);
+    section.preview_scroll = section.preview_scroll.saturating_add(page);
+    clamp_scroll(section);
+    IntentResult::empty()
+}
+
+/// Clamps `preview_scroll` to the valid range for the current content.
+///
+/// Called defensively by the render path and by both scroll handlers so that
+/// content shrinkage (e.g. a phase switch to a shorter phase) can never leave
+/// `preview_scroll` pointing past the end.
+pub(crate) fn clamp_scroll(section: &mut TaskListSectionState) {
+    let max_offset = section
+        .preview_content_line_count
+        .saturating_sub(usize::from(section.preview_viewport_height));
+    section.preview_scroll = section.preview_scroll.min(max_offset);
 }
 
 impl SidebarSection for TaskListSection {
@@ -113,13 +183,10 @@ impl SidebarSection for TaskListSection {
 
 const PHASE_INDENT: usize = 2;
 
-/// Indent for task descriptions (4 spaces + 1 indicator + 1 space = 6 columns).
-const TASK_INDENT: usize = 6;
-
-/// Display width of the phase collapse/expand indicator (`“▾ ”` / `“▸ ”` = 2 columns).
+/// Display width of the phase collapse/expand indicator (`“▸ ”` / `“◂ ”` = 2 columns).
 ///
 /// This is the **display-column** width of the indicator, deliberately not its byte
-/// length (`“▾ ”` is 4 UTF-8 bytes). `textwrap` measures by display columns, so
+/// length (`“▸ ”` is 4 UTF-8 bytes). `textwrap` measures by display columns, so
 /// this constant must be used everywhere the wrap width is computed for phase headers,
 /// keeping `build_render_lines` and `compute_height` in lockstep.
 const PHASE_INDICATOR_WIDTH: usize = 2;
@@ -177,13 +244,6 @@ impl<'a> TaskListView<'a> {
             .saturating_sub(PHASE_INDENT + PHASE_INDICATOR_WIDTH)
     }
 
-    /// Available text width for a task line's wrapped description.
-    ///
-    /// Accounts for the full task indent (indent + indicator + space).
-    fn task_text_width(&self) -> usize {
-        self.sidebar_width.saturating_sub(TASK_INDENT)
-    }
-
     /// True when the phase at `index` is the focused, expanded one.
     fn is_expanded(&self, index: usize) -> bool {
         self.expanded == Some(index)
@@ -217,20 +277,6 @@ impl<'a> TaskListView<'a> {
         style
     }
 
-    /// Style for a task line based on its status.
-    fn task_style(&self, status: TaskStatus) -> Style {
-        match status {
-            TaskStatus::Pending => Style::default().fg(self.theme.primary_text),
-            TaskStatus::Completed | TaskStatus::Postponed => {
-                Style::default().fg(self.theme.muted_text)
-            }
-            // Cancelled tasks are shown with strikethrough.
-            TaskStatus::Cancelled => Style::default()
-                .fg(self.theme.muted_text)
-                .add_modifier(Modifier::CROSSED_OUT),
-        }
-    }
-
     /// The title line at the top of the section.
     fn header_line(&self, phase_count: usize) -> Line<'static> {
         Line::from(vec![Span::styled(
@@ -254,7 +300,7 @@ impl<'a> TaskListView<'a> {
         active_phase_id: Option<&PhaseId>,
     ) -> Vec<Line<'static>> {
         let indicator = if self.is_expanded(index) {
-            "\u{25BE} " // ▾ expanded
+            "\u{25C2} " // ◂ preview is to the left
         } else {
             "\u{25B8} " // ▸ collapsed
         };
@@ -274,66 +320,21 @@ impl<'a> TaskListView<'a> {
             .collect()
     }
 
-    /// Lines for the tasks of an expanded phase, or the `(no tasks)` placeholder.
-    fn phase_task_lines(&self, phase: &Phase) -> Vec<Line<'static>> {
-        if phase.is_empty() {
-            return vec![Line::from(Span::styled(
-                "    (no tasks)",
-                Style::default().fg(self.theme.muted_text),
-            ))];
-        }
-        phase
-            .tasks()
-            .iter()
-            .flat_map(|task| self.task_lines(task))
-            .collect()
-    }
-
-    /// Lines for a single task: its status indicator on the first wrapped segment,
-    /// continuation lines indented beneath the description.
-    fn task_lines(&self, task: &Task) -> Vec<Line<'static>> {
-        let indicator = task.status().indicator();
-        let style = self.task_style(task.status());
-        let wrapped = wrap_description(task.description(), self.task_text_width());
-        wrapped
-            .iter()
-            .enumerate()
-            .map(|(i, segment)| {
-                if i == 0 {
-                    Line::from(Span::styled(format!("    {indicator} {segment}"), style))
-                } else {
-                    Line::from(Span::styled(format!("      {segment}"), style))
-                }
-            })
-            .collect()
-    }
-
-    /// Number of rows a phase contributes at `index`: its wrapped header plus
-    /// the task rows when it is the expanded phase. Used by `compute_height` to
-    /// stay in lockstep with `build_render_lines`.
-    fn phase_height(&self, phase: &Phase, index: usize) -> usize {
-        let header = wrap_description(phase.description(), self.phase_text_width()).len();
-        if !self.is_expanded(index) {
-            return header;
-        }
-        let tasks = if phase.is_empty() {
-            1 // "(no tasks)"
-        } else {
-            let task_width = self.task_text_width();
-            phase
-                .tasks()
-                .iter()
-                .map(|task| wrap_description(task.description(), task_width).len())
-                .sum()
-        };
-        header + tasks
+    /// Number of rows a phase contributes at `index`: just its wrapped header.
+    ///
+    /// Task rows live in the preview popup, never inline, so the inline height
+    /// is independent of expansion. Used by `compute_height` to stay in lockstep
+    /// with `build_render_lines`.
+    fn phase_height(&self, phase: &Phase, _index: usize) -> usize {
+        wrap_description(phase.description(), self.phase_text_width()).len()
     }
 }
 
 /// Builds the render lines for a task list.
 ///
-/// When unfocused (no expanded phase), renders only phase headers with `▸` indicators.
-/// When focused, expands the selected phase showing its tasks with a `▾` indicator.
+/// Renders only phase headers — the focused phase shows a `◂` indicator pointing
+/// at the preview popup to its left, and gets `REVERSED` styling. Task contents are
+/// shown in the preview popup (see `preview.rs`), never inline.
 fn build_render_lines(list: &TaskList, state: &AppState) -> Vec<Line<'static>> {
     let view = TaskListView::from_state(state);
     let active_phase_id = list.active_phase().map(Phase::id);
@@ -344,12 +345,9 @@ fn build_render_lines(list: &TaskList, state: &AppState) -> Vec<Line<'static>> {
     lines.push(view.header_line(list.phases().len()));
     lines.push(Line::from(""));
 
-    // One phase per iteration: the header, and the tasks when expanded.
+    // One phase per iteration: the header only (tasks live in the preview popup).
     for (phase_idx, phase) in list.phases().iter().enumerate() {
         lines.extend(view.phase_header_lines(phase, phase_idx, active_phase_id));
-        if view.is_expanded(phase_idx) {
-            lines.extend(view.phase_task_lines(phase));
-        }
     }
 
     lines
@@ -584,427 +582,23 @@ mod tests {
         );
     }
 
+    /// The inline section is always collapsed; the focused phase shows a
+    /// left-pointing arrow (U+25C2 `◂`) signalling that its preview popup is
+    /// drawn to the left of the sidebar. Collapsed phases show U+25B8 `▸`.
     #[test]
-    fn expanded_rendering_shows_tasks_for_selected_phase() {
-        let mut app = setup_with_tasks();
-        setup_focused_on_phase(&mut app, 0); // expand Research phase
-        let list = app.session.active_session().task_list().clone();
-        let lines = build_render_lines(&list, &app);
-        let combined = extract_text(&lines);
-        // Research phase tasks should be visible.
-        assert!(
-            combined.contains("Read docs"),
-            "expanded phase should show task: Read docs"
-        );
-        assert!(
-            combined.contains("Call API"),
-            "expanded phase should show task: Call API"
-        );
-        // Build phase tasks should NOT be visible (collapsed).
-        assert!(
-            !combined.contains("Write code"),
-            "non-expanded phase should NOT show task: Write code"
-        );
-    }
-
-    #[test]
-    fn expanded_shows_expand_indicator() {
+    fn focused_phase_shows_left_arrow_indicator() {
         let mut app = setup_with_tasks();
         setup_focused_on_phase(&mut app, 0);
         let list = app.session.active_session().task_list().clone();
-        let lines = build_render_lines(&list, &app);
-        let combined = extract_text(&lines);
-        assert!(
-            combined.contains('\u{25BE}'),
-            "expanded phase should show \u{25BE} indicator"
-        );
-    }
-
-    #[test]
-    fn expanded_shows_pending_indicator() {
-        let mut app = setup_with_tasks();
-        setup_focused_on_phase(&mut app, 0);
-        let list = app.session.active_session().task_list().clone();
-        let lines = build_render_lines(&list, &app);
-        let combined = extract_text(&lines);
-        assert!(
-            combined.contains('\u{25CB}'),
-            "should contain pending indicator \u{25CB}"
-        );
-    }
-
-    #[test]
-    fn expanded_shows_completed_indicator() {
-        let mut app = AppState::default();
-        let session = app.session.active_session_mut();
-        let pid = session.task_list_mut().add_phase("Build");
-        let tid = session
-            .task_list_mut()
-            .add_task(&pid, "Write code", TaskPosition::End)
-            .unwrap();
-        session.task_list_mut().complete_task(&tid).unwrap();
-        setup_focused_on_phase(&mut app, 0);
-        let list = app.session.active_session().task_list().clone();
-        let lines = build_render_lines(&list, &app);
-        let combined = extract_text(&lines);
-        assert!(
-            combined.contains('\u{2713}'),
-            "should contain completed indicator \u{2713}"
-        );
-    }
-
-    #[test]
-    fn expanded_shows_postponed_indicator() {
-        let mut app = AppState::default();
-        let session = app.session.active_session_mut();
-        let p1 = session.task_list_mut().add_phase("Research");
-        let t1 = session
-            .task_list_mut()
-            .add_task(&p1, "Read docs", TaskPosition::End)
-            .unwrap();
-        let p2 = session.task_list_mut().add_phase("Build");
-        let t2 = session
-            .task_list_mut()
-            .add_task(&p2, "Write code", TaskPosition::End)
-            .unwrap();
-
-        // Postpone t1 (Read docs) to after t2.
-        session
-            .task_list_mut()
-            .postpone_task(&t1, TaskPosition::After(t2))
-            .unwrap();
-
-        setup_focused_on_phase(&mut app, 0); // expand Research
-        let list = app.session.active_session().task_list().clone();
-        let lines = build_render_lines(&list, &app);
-        let combined = extract_text(&lines);
-
-        // Research phase should show postponed task with ▼.
-        assert!(
-            combined.contains('\u{25BC}'),
-            "should contain postponed indicator \u{25BC}"
-        );
-    }
-
-    #[test]
-    fn cancelled_task_visible_with_indicator() {
-        let mut app = AppState::default();
-        let session = app.session.active_session_mut();
-        let pid = session.task_list_mut().add_phase("Build");
-        let tid = session
-            .task_list_mut()
-            .add_task(&pid, "Bad idea", TaskPosition::End)
-            .unwrap();
-        session.task_list_mut().cancel_task(&tid).unwrap();
-        setup_focused_on_phase(&mut app, 0);
-        let list = app.session.active_session().task_list().clone();
-        let lines = build_render_lines(&list, &app);
-        let combined = extract_text(&lines);
-
-        // Cancelled task should be visible with ✗ indicator.
-        assert!(
-            combined.contains('\u{2717}'),
-            "should contain cancelled indicator \u{2717}"
-        );
-        assert!(
-            combined.contains("Bad idea"),
-            "cancelled task description should be visible"
-        );
-    }
-
-    #[test]
-    fn cancelled_task_has_crossed_out_modifier() {
-        let mut app = AppState::default();
-        let session = app.session.active_session_mut();
-        let pid = session.task_list_mut().add_phase("Build");
-        let tid = session
-            .task_list_mut()
-            .add_task(&pid, "Bad idea", TaskPosition::End)
-            .unwrap();
-        session.task_list_mut().cancel_task(&tid).unwrap();
-        setup_focused_on_phase(&mut app, 0);
-        let list = app.session.active_session().task_list().clone();
-        let lines = build_render_lines(&list, &app);
-
-        // Find a line containing the cancelled task and check it has CROSSED_OUT.
-        let has_crossed_out = lines.iter().any(|line| {
-            let text: String = line.spans.iter().map(|s| s.content.to_string()).collect();
-            text.contains("Bad idea")
-                && line
-                    .spans
-                    .iter()
-                    .any(|s| s.style.add_modifier.contains(Modifier::CROSSED_OUT))
-        });
-        assert!(
-            has_crossed_out,
-            "cancelled task should have CROSSED_OUT modifier"
-        );
-    }
-
-    #[test]
-    fn wrap_description_short_text_no_wrap() {
-        let result = wrap_description("hello", 20);
-        assert_eq!(result.len(), 1);
-        assert_eq!(result[0], "hello");
-    }
-
-    #[test]
-    fn wrap_description_long_text_wraps() {
-        let text = "This is a very long description that should wrap";
-        let result = wrap_description(text, 15);
-        assert!(result.len() > 1, "expected wrapping, got {result:?}");
-        let joined = result.join(" ");
-        assert!(joined.contains("very long"));
-    }
-
-    #[test]
-    fn wrap_description_zero_width_returns_original() {
-        let result = wrap_description("hello", 0);
-        assert_eq!(result, vec!["hello".to_owned()]);
-    }
-
-    #[test]
-    fn wrap_description_empty_text_returns_single_empty() {
-        let result = wrap_description("", 20);
-        assert_eq!(result.len(), 1);
-        assert_eq!(result[0], "");
-    }
-
-    #[test]
-    fn build_render_lines_long_task_wraps() {
-        let mut app = AppState::default();
-        app.frontend.sidebar_width = 20;
-        let session = app.session.active_session_mut();
-        let pid = session.task_list_mut().add_phase("Build");
-        session
-            .task_list_mut()
-            .add_task(
-                &pid,
-                "This is a very long task description that should wrap",
-                TaskPosition::End,
-            )
-            .unwrap();
-        let list = session.task_list().clone();
-        setup_focused_on_phase(&mut app, 0);
-
-        let lines = build_render_lines(&list, &app);
-        let combined = extract_text(&lines);
-        assert!(
-            combined.contains("very long"),
-            "should contain 'very long' in: {combined}"
-        );
-        assert!(
-            combined.contains("wrap"),
-            "should contain 'wrap' in: {combined}"
-        );
-        // More lines than collapsed baseline (header + blank + 2 phases + blank = 5).
-        assert!(
-            lines.len() > 5,
-            "expected wrapping to produce extra lines, got {}",
-            lines.len()
-        );
-    }
-
-    #[test]
-    fn build_render_lines_long_phase_wraps() {
-        let mut app = AppState::default();
-        app.frontend.sidebar_width = 20;
-        let session = app.session.active_session_mut();
-        session
-            .task_list_mut()
-            .add_phase("Research and investigate the whole codebase");
-        let list = session.task_list().clone();
-
-        let lines = build_render_lines(&list, &app);
-        let combined = extract_text(&lines);
-        assert!(
-            combined.contains("codebase"),
-            "should contain 'codebase' in: {combined}"
-        );
-    }
-
-    #[test]
-    fn content_height_wraps_long_description() {
-        let mut app = AppState::default();
-        app.frontend.sidebar_width = 20;
-        let session = app.session.active_session_mut();
-        let pid = session.task_list_mut().add_phase("Build");
-        session
-            .task_list_mut()
-            .add_task(
-                &pid,
-                "This is a very long task description that should definitely wrap across multiple lines",
-                TaskPosition::End,
-            )
-            .unwrap();
-        let list = session.task_list().clone();
-        setup_focused_on_phase(&mut app, 0);
-
-        let height = compute_height(&list, &app);
-        // Collapsed baseline: header(1) + blank(1) + phase(1) + trailing_gap(1) = 4.
-        // With expansion, height should be > 4 due to task wrapping.
-        assert!(
-            height > 4,
-            "expected height > 4 due to wrapping, got {height}"
-        );
-    }
-
-    #[test]
-    fn content_height_minimum_sidebar_no_panic() {
-        let mut app = AppState::default();
-        app.frontend.sidebar_width = 15;
-        let session = app.session.active_session_mut();
-        let pid = session.task_list_mut().add_phase("Build");
-        session
-            .task_list_mut()
-            .add_task(&pid, "Write some code", TaskPosition::End)
-            .unwrap();
-        let list = session.task_list().clone();
-
-        // Should not panic.
-        let height = compute_height(&list, &app);
-        assert!(height > 0, "expected non-zero height, got {height}");
-    }
-
-    #[test]
-    fn empty_description_does_not_panic() {
-        let mut app = AppState::default();
-        let session = app.session.active_session_mut();
-        let pid = session.task_list_mut().add_phase("Build");
-        session
-            .task_list_mut()
-            .add_task(&pid, "", TaskPosition::End)
-            .unwrap();
-        let list = session.task_list().clone();
-        setup_focused_on_phase(&mut app, 0);
-
-        let lines = build_render_lines(&list, &app);
-        let height = compute_height(&list, &app);
-        assert!(!lines.is_empty());
-        assert!(height > 0);
-    }
-
-    #[test]
-    fn exact_fit_does_not_wrap_collapsed() {
-        // When collapsed (no focus), a phase description that exactly fits should
-        // contribute exactly 1 row for the phase header.
-        // sidebar_width = 30, PHASE_INDENT(2) + indicator_len(2) = 4, so available = 26.
-        // "12345678901234567890123456" = 26 chars.
-        let mut app = AppState::default();
-        app.frontend.sidebar_width = 30;
-        let session = app.session.active_session_mut();
-        session
-            .task_list_mut()
-            .add_phase("12345678901234567890123456");
-        let list = session.task_list().clone();
-
-        let height = compute_height(&list, &app);
-        // Collapsed: header(1) + blank(1) + phase(1) = 3.
-        assert_eq!(height, 3, "expected no wrapping for exact-fit description");
-    }
-
-    #[test]
-    fn content_height_collapsed_vs_expanded() {
-        let app_collapsed = setup_with_tasks();
-        let list = app_collapsed.session.active_session().task_list().clone();
-        let collapsed_height = compute_height(&list, &app_collapsed);
-
-        let mut app_expanded = setup_with_tasks();
-        setup_focused_on_phase(&mut app_expanded, 0);
-        let list2 = app_expanded.session.active_session().task_list().clone();
-        let expanded_height = compute_height(&list2, &app_expanded);
+        let combined = extract_text(&build_render_lines(&list, &app));
 
         assert!(
-            expanded_height > collapsed_height,
-            "expanded height ({expanded_height}) should be > collapsed height ({collapsed_height})"
+            combined.contains('\u{25C2}'),
+            "focused phase should show left-arrow indicator \u{25C2}"
         );
-    }
-
-    /// Regression: when phase descriptions wrap, the number of lines painted by
-    /// `build_render_lines` must equal the height reserved by `compute_height`.
-    /// Previously the render path used the indicator's byte length (4) while
-    /// `compute_height` used its display width (2), so wrapped phase headers
-    /// overran the reserved space and the last phase header was clipped.
-    #[test]
-    fn collapsed_render_line_count_matches_computed_height_when_wrapping() {
-        // Given a sidebar of default width (30). Phase descriptions are chosen so
-        // their word boundaries land between columns 24 and 26: at the render path's
-        // buggy width (30 - 2 - 4 = 24) each wraps to 2 lines, but at the correct
-        // width (30 - 2 - 2 = 26) each fits on 1 line. This is the exact divergence
-        // that previously clipped the last phase header.
-        let mut app = AppState::default();
-        app.frontend.sidebar_width = 30;
-        let session = app.session.active_session_mut();
-        session
-            .task_list_mut()
-            .add_phase("initialize the loader tail");
-        session
-            .task_list_mut()
-            .add_phase("validate the payload tail");
-        session
-            .task_list_mut()
-            .add_phase("register the handler tail");
-        let list = app.session.active_session().task_list().clone();
-
-        // When rendering collapsed (no focus) and computing its height.
-        let rendered = build_render_lines(&list, &app);
-        let height = compute_height(&list, &app);
-
-        // Then the painted line count equals the reserved height.
-        assert_eq!(
-            rendered.len(),
-            usize::from(height),
-            "collapsed: rendered lines ({}) must equal computed height ({height})",
-            rendered.len()
-        );
-    }
-
-    #[test]
-    fn expanded_render_line_count_matches_computed_height_when_wrapping() {
-        // Same property as the collapsed test, but with a phase expanded so its
-        // task lines also contribute to both the render output and the height.
-        let mut app = AppState::default();
-        app.frontend.sidebar_width = 30;
-        let session = app.session.active_session_mut();
-        let pid = session
-            .task_list_mut()
-            .add_phase("initialize the loader tail");
-        session
-            .task_list_mut()
-            .add_task(&pid, "Read the documentation carefully", TaskPosition::End)
-            .unwrap();
-        session
-            .task_list_mut()
-            .add_phase("validate the payload tail");
-        session
-            .task_list_mut()
-            .add_phase("register the handler tail");
-        let list_before = app.session.active_session().task_list().clone();
-
-        // Given the first phase is expanded.
-        setup_focused_on_phase(&mut app, 0);
-        let list = app.session.active_session().task_list().clone();
-
-        // When rendering expanded and computing its height.
-        let rendered = build_render_lines(&list, &app);
-        let height = compute_height(&list, &app);
-
-        // Then the painted line count equals the reserved height.
-        assert_eq!(
-            rendered.len(),
-            usize::from(height),
-            "expanded: rendered lines ({}) must equal computed height ({height})",
-            rendered.len()
-        );
-        // And the expanded height exceeds the collapsed height (sanity: tasks shown).
         assert!(
-            height
-                > compute_height(&list_before, &{
-                    let mut a = AppState::default();
-                    a.frontend.sidebar_width = 30;
-                    a
-                }),
-            "expanded height should exceed collapsed height"
+            combined.contains('\u{25B8}'),
+            "unfocused phases should show right-arrow indicator \u{25B8}"
         );
     }
 
@@ -1179,5 +773,131 @@ mod tests {
             has_both,
             "selected active phase header should have streaming color AND REVERSED modifier"
         );
+    }
+
+    // ---- Phase 1: preview scroll / clamp / reset ----
+
+    /// Sets viewport + content so `preview_scroll` can page and clamp.
+    fn setup_preview(viewport: u16, content_lines: usize, scroll: usize) -> AppState {
+        let mut app = AppState::default();
+        app.frontend.task_list_section.preview_viewport_height = viewport;
+        app.frontend.task_list_section.preview_content_line_count = content_lines;
+        app.frontend.task_list_section.preview_scroll = scroll;
+        app
+    }
+
+    #[test]
+    fn preview_scroll_up_decreases_by_viewport() {
+        // Given viewport 5 and scroll at 10.
+        let mut app = setup_preview(5, 20, 10);
+
+        // When scrolling up by a page.
+        handle_preview_scroll_up(&mut app);
+
+        // Then scroll decreases by the viewport height.
+        assert_eq!(app.frontend.task_list_section.preview_scroll, 5);
+    }
+
+    #[test]
+    fn preview_scroll_down_increases_by_viewport() {
+        // Given viewport 5 and scroll at 0.
+        let mut app = setup_preview(5, 20, 0);
+
+        // When scrolling down by a page.
+        handle_preview_scroll_down(&mut app);
+
+        // Then scroll increases by the viewport height.
+        assert_eq!(app.frontend.task_list_section.preview_scroll, 5);
+    }
+
+    #[test]
+    fn preview_scroll_up_clamps_at_zero() {
+        // Given viewport 5 with scroll 2 (less than one page).
+        let mut app = setup_preview(5, 20, 2);
+
+        // When scrolling up.
+        handle_preview_scroll_up(&mut app);
+
+        // Then scroll clamps to 0 rather than underflowing.
+        assert_eq!(app.frontend.task_list_section.preview_scroll, 0);
+    }
+
+    #[test]
+    fn preview_scroll_down_clamps_at_max_offset() {
+        // Given viewport 5 and content of 8 lines (max offset 3).
+        let mut app = setup_preview(5, 8, 0);
+
+        // When scrolling down past the end.
+        handle_preview_scroll_down(&mut app);
+
+        // Then scroll clamps to max_offset 3, not 5.
+        assert_eq!(app.frontend.task_list_section.preview_scroll, 3);
+    }
+
+    #[test]
+    fn preview_scroll_up_noop_when_viewport_unmeasured() {
+        // Given an unmeasured viewport (0, before first render).
+        let mut app = setup_preview(0, 20, 7);
+
+        // When scrolling up.
+        handle_preview_scroll_up(&mut app);
+
+        // Then scroll is unchanged.
+        assert_eq!(app.frontend.task_list_section.preview_scroll, 7);
+    }
+
+    #[test]
+    fn preview_scroll_down_noop_when_viewport_unmeasured() {
+        // Given an unmeasured viewport (0, before first render).
+        let mut app = setup_preview(0, 20, 7);
+
+        // When scrolling down.
+        handle_preview_scroll_down(&mut app);
+
+        // Then scroll is unchanged.
+        assert_eq!(app.frontend.task_list_section.preview_scroll, 7);
+    }
+
+    #[test]
+    fn navigate_down_resets_preview_scroll() {
+        // Given a task list with scroll at 7 and focus on phase 0.
+        let mut app = setup_with_tasks();
+        setup_focused_on_phase(&mut app, 0);
+        app.frontend.task_list_section.preview_scroll = 7;
+
+        // When moving down to the next phase.
+        let result = navigate(&SidebarIntent::MoveDown, &mut app);
+
+        // Then navigation moved and scroll reset to 0.
+        assert_eq!(result, SectionNavResult::Moved);
+        assert_eq!(app.frontend.task_list_section.preview_scroll, 0);
+    }
+
+    #[test]
+    fn navigate_up_resets_preview_scroll() {
+        // Given a task list with scroll at 7 and focus on phase 1.
+        let mut app = setup_with_tasks();
+        setup_focused_on_phase(&mut app, 1);
+        app.frontend.task_list_section.preview_scroll = 7;
+
+        // When moving up to the previous phase.
+        let result = navigate(&SidebarIntent::MoveUp, &mut app);
+
+        // Then navigation moved and scroll reset to 0.
+        assert_eq!(result, SectionNavResult::Moved);
+        assert_eq!(app.frontend.task_list_section.preview_scroll, 0);
+    }
+
+    #[test]
+    fn receive_cursor_resets_preview_scroll() {
+        // Given a task list with scroll at 7.
+        let mut app = setup_with_tasks();
+        app.frontend.task_list_section.preview_scroll = 7;
+
+        // When re-entering the section from the top.
+        receive_cursor(&mut app, EnterFrom::Top);
+
+        // Then scroll reset to 0.
+        assert_eq!(app.frontend.task_list_section.preview_scroll, 0);
     }
 }

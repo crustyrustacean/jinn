@@ -120,6 +120,19 @@ impl SidebarSection for PersonaSection {
     }
 }
 
+/// Computes the persona section content height from state.
+///
+/// Mirrors [`PersonaSection::content_height`] so the task list preview popup
+/// can determine where the task list section starts without needing the
+/// section instance.
+///
+/// [`PersonaSection::content_height`]: PersonaSection::content_height
+#[must_use]
+pub fn persona_section_content_height(_state: &AppState) -> u16 {
+    // Header(1) + blank(1) + entry(1) + trailing gap(1) = 4.
+    4
+}
+
 #[cfg(test)]
 mod tests {
     #![allow(
