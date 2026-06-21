@@ -12,10 +12,10 @@ use crate::common::app_state::AppState;
 use crate::common::render_ctx::RenderCtx;
 use crate::feat::theme::Theme;
 use crate::feat::todo_list::{Phase, PhaseId, TaskList};
-use crate::protocol::IntentResult;
 use crate::feat::ui::sidebar::section_trait::{
     EnterFrom, SectionNavResult, SidebarIntent, SidebarSection, SidebarSectionId,
 };
+use crate::protocol::IntentResult;
 use ratatui::Frame;
 use ratatui::layout::Rect;
 use ratatui::style::{Color, Modifier, Style};

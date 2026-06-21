@@ -847,7 +847,11 @@ mod tests {
         // When pressing PageUp.
         let pgup = KeyEvent {
             key: Key::PageUp,
-            modifiers: Modifiers { ctrl: false, alt: false, shift: false },
+            modifiers: Modifiers {
+                ctrl: false,
+                alt: false,
+                shift: false,
+            },
         };
         let intent = wk.handle_key(pgup);
 
@@ -871,7 +875,11 @@ mod tests {
         // When pressing PageDown.
         let pgdn = KeyEvent {
             key: Key::PageDown,
-            modifiers: Modifiers { ctrl: false, alt: false, shift: false },
+            modifiers: Modifiers {
+                ctrl: false,
+                alt: false,
+                shift: false,
+            },
         };
         let intent = wk.handle_key(pgdn);
 
