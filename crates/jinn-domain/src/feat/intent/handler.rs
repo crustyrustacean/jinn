@@ -795,6 +795,12 @@ impl IntentHandler {
             Intent::SubmitQuakeBar => feat::quake_bar::intent::handle_submit(state),
             Intent::QuakeBarScrollUp => feat::quake_bar::intent::handle_scroll_up(state),
             Intent::QuakeBarScrollDown => feat::quake_bar::intent::handle_scroll_down(state),
+            Intent::TaskListPreviewScrollUp => {
+                feat::ui::sidebar::task_list_section::handle_preview_scroll_up(state)
+            }
+            Intent::TaskListPreviewScrollDown => {
+                feat::ui::sidebar::task_list_section::handle_preview_scroll_down(state)
+            }
 
             Intent::ChangeCwd { root } => {
                 crate::feat::navigation::intent::handle_change_cwd(state, *root)
