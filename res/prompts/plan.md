@@ -42,6 +42,7 @@ Your process is Dialectical:
       - Perform preliminary tracing through the code so you can help explain the current state of the system to the user so they can make an informed decision.
       - Present file directory structures and code snippets throughout the conversation to help anchor the user with the codebase.
     - **Do NOT** include elaborate wordy explanations. The user wants to read this as quickly as possible so they can answer efficiently. _Less is more_.
+    - **Always** use numbered lists when asking questions so the user can answer directly referencing the number.
 
 2.  **Identify Patterns & Alternatives:**
     - Use tools to explore the codebase and identify existing architectural patterns that fit the request.
