@@ -8,6 +8,7 @@ use crate::feat::context::assemble::assemble_prompt;
 use crate::feat::context::protocol::event::ContextOverrideChanged;
 use crate::feat::provider::protocol::command::SendToLlmProvider;
 use crate::feat::session::chat_entry::PinPosition;
+use crate::feat::session::phase_machine::PhaseKind;
 use crate::feat::session::token_stats::TokenRecord;
 use crate::feat::tools_actor::protocol::event::{
     ToolBatchCompleted, ToolCallReceived, ToolCallStreaming, ToolExecutionCompleted,
@@ -64,6 +65,18 @@ impl SessionPersistenceActor {
         {
             let mut state = self.state.write();
             let session = state.session_mut_or_create(&event.session_id);
+            // Drop stale results that arrive after a cancel. Legitimate tool
+            // execution only ever runs in `Sending`; a result landing in any
+            // other phase (e.g. `Idle` after cancel) is a straggler whose
+            // background task has not yet been aborted.
+            if !matches!(session.phase(), PhaseKind::Sending) {
+                tracing::debug!(
+                    session_id = %event.session_id,
+                    phase = ?session.phase(),
+                    "dropping stale ToolExecutionCompleted: session not in Sending"
+                );
+                return;
+            }
             session.finalize_tool_result(
                 &event.result.tool_call_id,
                 &event.result.name,
@@ -235,6 +248,24 @@ impl SessionPersistenceActor {
             "on_tool_batch_completed"
         );
 
+        // Drop stale batches that arrive after a cancel. Legitimate tool
+        // execution only ever runs in `Sending`; any other phase means the
+        // turn was canceled (phase is `Idle`) or a cross-turn race landed it
+        // elsewhere — in all cases the result is stale and must not restart
+        // the loop. Must precede the `tool_loop_disabled` branch.
+        {
+            let state = self.state.read();
+            let session = state.session(&event.session_id);
+            if !matches!(session.phase(), PhaseKind::Sending) {
+                tracing::debug!(
+                    session_id = ?event.session_id,
+                    phase = ?session.phase(),
+                    "dropping stale ToolBatchCompleted: session not in Sending"
+                );
+                return;
+            }
+        }
+
         // If tool loop is disabled, end the turn instead of continuing.
         // This is used by judge verdict tools to prevent infinite tool-call loops.
         // finish_sending_via_machine delegates to on_tool_batch_completed() which
@@ -311,6 +342,7 @@ mod tests {
             session.push_entry(ChatEntry::assistant("checking"));
             session.push_entry(ChatEntry::tool_call("tc-1", "bash", r#"{"command":"ls"}"#));
             session.push_entry(ChatEntry::assistant("here are the files"));
+            session.begin_sending();
             state.session.active_session_id().clone()
         };
 
@@ -359,6 +391,7 @@ mod tests {
             session.push_entry(ChatEntry::assistant("checking"));
             session.push_entry(ChatEntry::tool_call("tc-1", "bash", r#"{"command":"ls"}"#));
             session.push_entry(ChatEntry::assistant("here are the files"));
+            session.begin_sending();
         }
         let session_id = state.read().session.active_session_id().clone();
 
@@ -479,8 +512,6 @@ mod tests {
                 r#"{\"command\":\"ls\"}"#,
             ));
             session.begin_sending();
-            session.begin_streaming();
-            session.begin_tool_result("tc-1", "bash", jiff::Timestamp::now());
             state.session.active_session_id().clone()
         };
 
@@ -501,6 +532,111 @@ mod tests {
         assert!(
             audit.contains_name("HistoryAppended"),
             "expected HistoryAppended event after tool execution completed"
+        );
+    }
+
+    #[tokio::test]
+    async fn on_tool_execution_completed_dropped_when_not_sending() {
+        // Given a session driven to Idle via the cancel path.
+        let (actor, audit) = test_actor_recording().await;
+        let session_id = {
+            let mut state = actor.state.write();
+            let session = state.active_session_mut();
+            session.push_entry(ChatEntry::user("run it"));
+            session.push_entry(ChatEntry::tool_call(
+                "tc-1",
+                "bash",
+                r#"{\"command\":\"ls\"}"#,
+            ));
+            session.begin_sending();
+            session.cancel_stream_and_drain();
+            state.session.active_session_id().clone()
+        };
+
+        // When a stale ToolExecutionCompleted arrives post-cancel.
+        let event = crate::feat::tools_actor::protocol::event::ToolExecutionCompleted {
+            session_id: session_id.clone(),
+            result: crate::feat::tools_actor::tool_types::ToolResult {
+                tool_call_id: "tc-1".to_owned(),
+                name: "bash".to_owned(),
+                content: "file1.txt".to_owned(),
+                success: true,
+                full_content: None,
+                truncation: None,
+                pin_position: None,
+            },
+        };
+        actor.on_tool_execution_completed(&event).await;
+
+        // Then no finalized ToolResult entry is added to history.
+        {
+            let state = actor.state.read();
+            let session = state.session.get(&session_id).expect("session");
+            let tr = session
+                .history()
+                .iter()
+                .find(|e| matches!(&e.kind, ChatEntryKind::ToolResult { id, .. } if id == "tc-1"));
+            assert!(
+                tr.is_none(),
+                "expected no finalized ToolResult entry for tc-1 after drop"
+            );
+        }
+        // And no HistoryAppended is emitted.
+        assert!(
+            !audit.contains_name("HistoryAppended"),
+            "expected no HistoryAppended for dropped stale tool result"
+        );
+    }
+
+    #[tokio::test]
+    async fn on_tool_batch_completed_dropped_when_not_sending() {
+        // Given a session driven to Idle via the cancel path.
+        let (actor, audit) = test_actor_recording().await;
+        let session_id = {
+            let mut state = actor.state.write();
+            let session = state.active_session_mut();
+            session.push_entry(ChatEntry::user("run it"));
+            session.push_entry(ChatEntry::tool_call(
+                "tc-1",
+                "bash",
+                r#"{\"command\":\"ls\"}"#,
+            ));
+            session.begin_sending();
+            session.cancel_stream_and_drain();
+            state.session.active_session_id().clone()
+        };
+
+        let event = ToolBatchCompleted {
+            session_id: session_id.clone(),
+            results: vec![ToolResult {
+                tool_call_id: "tc-1".to_owned(),
+                name: "bash".to_owned(),
+                content: "file1.txt".to_owned(),
+                success: true,
+                full_content: None,
+                truncation: None,
+                pin_position: None,
+            }],
+        };
+
+        // When a stale ToolBatchCompleted arrives post-cancel.
+        actor.on_tool_batch_completed(&event).await;
+
+        // Then the loop is not restarted: phase stays Idle.
+        {
+            let state = actor.state.read();
+            let session = state.session.get(&session_id).expect("session exists");
+            assert!(
+                matches!(session.phase(), PhaseKind::Idle),
+                "expected Idle after cancel, got {:?}",
+                session.phase()
+            );
+        }
+
+        // And no continuation send is emitted.
+        assert!(
+            !audit.contains_name("SendToLlmProvider"),
+            "expected no SendToLlmProvider for dropped stale batch"
         );
     }
 
