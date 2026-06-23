@@ -988,7 +988,7 @@ fn render_appends_resolved_reasoning_effort_after_model() {
     state
         .active_session_mut()
         .set_model(ModelSelection::Single("ollama/llama3".to_owned()));
-    state.frontend.preferences.reasoning.default_effort = Some(crate::ReasoningEffort::High);
+    state.active_session_mut().profile_mut().reasoning_effort = Some(crate::ReasoningEffort::High);
 
     // When rendering.
     let (mut terminal, area) = setup_term(50, 2);
@@ -1016,6 +1016,7 @@ fn render_session_override_beats_global_reasoning_effort() {
     state
         .active_session_mut()
         .set_model(ModelSelection::Single("ollama/llama3".to_owned()));
+    // A stale global value must not affect rendering — only the session's own effort matters.
     state.frontend.preferences.reasoning.default_effort = Some(crate::ReasoningEffort::High);
     state.active_session_mut().profile_mut().reasoning_effort = Some(crate::ReasoningEffort::Low);
 
