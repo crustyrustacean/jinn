@@ -718,6 +718,25 @@ fn close_last_session_creates_new() {
 }
 
 #[rstest::rstest]
+fn close_last_session_seeds_new_session_reasoning_effort_from_global() {
+    // Given a single session with a global default effort of High.
+    let mut state = AppState::default();
+    state.frontend.scope_stack.push(FocusScope::SidebarSessions);
+    state.frontend.preferences.reasoning.default_effort = Some(crate::ReasoningEffort::High);
+    state.frontend.sessions_section.selected_index = Some(0);
+
+    // When closing the last session (forces a replacement).
+    handle_session_close(&mut state);
+
+    // Then the replacement session is seeded with the global effort.
+    assert_eq!(
+        state.active_session().profile().reasoning_effort,
+        Some(crate::ReasoningEffort::High),
+        "replacement session should be seeded from the global default"
+    );
+}
+
+#[rstest::rstest]
 fn close_session_clamps_index() {
     // Given state with 3 sessions, sessions section focused, cursor at last index.
     let mut state = state_with_sessions(3);

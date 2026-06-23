@@ -1730,6 +1730,39 @@ mod tests {
     }
 
     #[tokio::test]
+    async fn archive_replacement_session_seeds_reasoning_effort_from_global() {
+        // Given a global default effort of High (saved to the preferences store).
+        let (actor, _audit) = test_actor_recording().await;
+        {
+            let mut prefs = actor.services.user_preferences_storage.read();
+            prefs.reasoning.default_effort = Some(crate::ReasoningEffort::High);
+            actor
+                .services
+                .user_preferences_storage
+                .save(&prefs)
+                .expect("save global default");
+        }
+        let target_id = actor.state.read().session.active_session_id().clone();
+
+        // When archiving the only session (forces a remove_and_replace).
+        actor
+            .handle_archive_session(
+                &crate::feat::session::protocol::archive_session::ArchiveSession {
+                    session_id: target_id.clone(),
+                },
+            )
+            .await;
+
+        // Then the replacement session is seeded with the global effort.
+        let state = actor.state.read();
+        assert_eq!(
+            state.active_session().profile().reasoning_effort,
+            Some(crate::ReasoningEffort::High),
+            "replacement session should be seeded from the global default"
+        );
+    }
+
+    #[tokio::test]
     async fn archive_empty_session_removes_and_archives() {
         let (actor, audit) = test_actor_recording().await;
         let second = ChatSessionState::new();
