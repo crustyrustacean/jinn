@@ -123,14 +123,8 @@ impl SessionPersistenceActor {
                     let mut state = self.state.write();
                     let session = state.session_mut(&payload.session_id);
                     let profile = session.profile_mut();
-                    let global_default = self
-                        .services
-                        .user_preferences_storage
-                        .read()
-                        .reasoning
-                        .default_effort;
                     let reasoning_effort =
-                        crate::resolve_effort(profile.reasoning_effort, global_default);
+                        crate::resolve_effort(profile.reasoning_effort);
                     if profile.model.is_no_provider() {
                         (None, None, reasoning_effort)
                     } else {
@@ -275,13 +269,7 @@ impl SessionPersistenceActor {
             let session = state.session_mut_or_create(session_id);
             let reasoning_effort = {
                 let profile = session.profile();
-                let global_default = self
-                    .services
-                    .user_preferences_storage
-                    .read()
-                    .reasoning
-                    .default_effort;
-                crate::resolve_effort(profile.reasoning_effort, global_default)
+                crate::resolve_effort(profile.reasoning_effort)
             };
             let model = &mut session.profile_mut().model;
             let (provider_id, model_used) = if model.is_no_provider() {
@@ -854,8 +842,10 @@ mod tests {
     }
 
     #[tokio::test]
-    async fn enqueue_publishes_global_default_reasoning_effort() {
-        // Given a global default reasoning effort of High and a session with no override.
+    async fn enqueue_publishes_none_when_session_has_no_effort() {
+        // Given a global default reasoning effort of High but a session with no own effort.
+        // The global is consulted only at session creation, never at request time — so the
+        // published effort is None (let the provider decide).
         let (actor, state, audit) = create_actor().await;
         let session_id = {
             let mut guard = state.write();
@@ -880,19 +870,21 @@ mod tests {
             })
             .await;
 
-        // Then the published SendToLlmProvider carries the global default effort.
+        // Then the published SendToLlmProvider carries no effort — the session owns
+        // None and the global is not consulted at request time.
         let cmds = audit.of_type::<SendToLlmProvider>();
         assert_eq!(cmds.len(), 1, "expected one SendToLlmProvider command");
         assert_eq!(
             cmds[0].reasoning_effort,
-            Some(crate::ReasoningEffort::High),
-            "global default effort should be forwarded"
+            None,
+            "session with no own effort resolves to None; global is not consulted"
         );
     }
 
     #[tokio::test]
-    async fn enqueue_session_override_beats_global_reasoning_effort() {
-        // Given a global default of High and a session override of Low.
+    async fn enqueue_publishes_sessions_own_reasoning_effort() {
+        // Given a session with its own effort of Low (and a stale global of High that
+        // must be ignored at request time).
         let (actor, state, audit) = create_actor().await;
         let session_id = {
             let mut guard = state.write();
@@ -918,8 +910,15 @@ mod tests {
             })
             .await;
 
-        // Then the published SendToLlmProvider carries the session override (Low),
-        // not the global default (High).
+        // Then the published SendToLlmProvider carries the session's own effort (Low);
+        // the global is not consulted at request time.
+        let cmds = audit.of_type::<SendToLlmProvider>();
+        assert_eq!(cmds.len(), 1, "expected one SendToLlmProvider command");
+        assert_eq!(
+            cmds[0].reasoning_effort,
+            Some(crate::ReasoningEffort::Low),
+            "session's own effort is published; global is ignored"
+        );
         let cmds = audit.of_type::<SendToLlmProvider>();
         assert_eq!(cmds.len(), 1, "expected one SendToLlmProvider command");
         assert_eq!(

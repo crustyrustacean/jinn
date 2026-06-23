@@ -186,14 +186,7 @@ impl QueueActor {
         let (provider_id, model_used, reasoning_effort) = {
             let mut state = self.state.write();
             let profile = state.session_mut(session_id).profile_mut();
-            let global_default = self
-                .deps
-                .services
-                .user_preferences_storage
-                .read()
-                .reasoning
-                .default_effort;
-            let reasoning_effort = crate::resolve_effort(profile.reasoning_effort, global_default);
+            let reasoning_effort = crate::resolve_effort(profile.reasoning_effort);
             if profile.model.is_no_provider() {
                 (None, None, reasoning_effort)
             } else {
@@ -261,14 +254,7 @@ impl QueueActor {
         let (provider_id, model_used, reasoning_effort) = {
             let mut state = self.state.write();
             let profile = state.session_mut(session_id).profile_mut();
-            let global_default = self
-                .deps
-                .services
-                .user_preferences_storage
-                .read()
-                .reasoning
-                .default_effort;
-            let reasoning_effort = crate::resolve_effort(profile.reasoning_effort, global_default);
+            let reasoning_effort = crate::resolve_effort(profile.reasoning_effort);
             if profile.model.is_no_provider() {
                 (None, None, reasoning_effort)
             } else {

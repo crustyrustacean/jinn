@@ -246,10 +246,7 @@ fn build_model_string(
 
     // Append the resolved reasoning effort as `[<mode>]`.
     // Omitted entirely when no effort is resolved (no `[none]` noise).
-    let resolved_effort = resolve_effort(
-        state.active_session().profile().reasoning_effort,
-        state.frontend.preferences.reasoning.default_effort,
-    );
+    let resolved_effort = resolve_effort(state.active_session().profile().reasoning_effort);
     match resolved_effort {
         Some(effort) => format!("{model} [{}]", effort.as_str()),
         None => model,
