@@ -1616,6 +1616,67 @@ mod tests {
     }
 
     #[rstest::rstest]
+    fn confirm_reasoning_effort_in_session_a_does_not_leak_into_session_b() {
+        // Regression: changing effort in one session used to leak into every other
+        // override-free session because the live global was consulted at request time.
+        // Now each session owns its own value; the global seeds new sessions only.
+        use crate::feat::reasoning::{ReasoningEffort, ReasoningEffortEntry, resolve_effort};
+
+        let mut state = AppState::default();
+
+        // Session B: seeded with High (its own, frozen value).
+        let mut b = ChatSessionState::new();
+        b.profile_mut().reasoning_effort = Some(ReasoningEffort::High);
+        let b_id = b.session_id().clone();
+        state.session.insert(b);
+
+        // Session A (active): seeded with High, then changed to Xhigh via the picker.
+        let mut a = ChatSessionState::new();
+        a.profile_mut().reasoning_effort = Some(ReasoningEffort::High);
+        state.session.insert(a);
+        state
+            .session
+            .set_active(state.session.active_session_id().clone());
+
+        let entry = ReasoningEffortEntry {
+            effort: ReasoningEffort::Xhigh,
+            name: "xhigh".to_owned(),
+            description: "Extra high effort".to_owned(),
+            is_active: false,
+            theme: crate::feat::theme::default_theme(),
+        };
+        state
+            .frontend
+            .reasoning_effort_picker_mut()
+            .set_items(vec![entry]);
+        state.frontend.reasoning_effort_picker_mut().move_down(1);
+
+        // When confirming the effort change in session A.
+        let result = confirm_reasoning_effort(&mut state);
+
+        // Then session A's own effort is Xhigh.
+        assert_eq!(
+            state.active_session().profile().reasoning_effort,
+            Some(ReasoningEffort::Xhigh),
+            "session A should have the confirmed effort"
+        );
+        // And the global default was advanced to Xhigh (so future sessions inherit it).
+        assert!(
+            result
+                .message_names
+                .iter()
+                .any(|n| n.ends_with("UpdatePreferences")),
+            "confirm should still seed the global for future sessions"
+        );
+        // But session B's resolved effort is unchanged — the global no longer leaks.
+        assert_eq!(
+            resolve_effort(state.session.get(&b_id).unwrap().profile().reasoning_effort),
+            Some(ReasoningEffort::High),
+            "session B's own effort must be unaffected by session A's change"
+        );
+    }
+
+    #[rstest::rstest]
     fn confirm_reasoning_effort_pops_picker_scope() {
         // If the scope were never popped, the picker would remain open.
         use crate::common::app_state::FocusScope;

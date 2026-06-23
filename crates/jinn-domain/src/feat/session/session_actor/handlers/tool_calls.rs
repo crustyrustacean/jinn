@@ -178,13 +178,7 @@ impl SessionPersistenceActor {
 
             let reasoning_effort = {
                 let profile = session.profile();
-                let global_default = self
-                    .services
-                    .user_preferences_storage
-                    .read()
-                    .reasoning
-                    .default_effort;
-                crate::resolve_effort(profile.reasoning_effort, global_default)
+                crate::resolve_effort(profile.reasoning_effort)
             };
             let (provider_id, model_used) = {
                 let model = &mut session.profile_mut().model;

@@ -1029,12 +1029,15 @@ impl SessionPersistenceActor {
         );
 
         let app_state = self.services.app_state_storage.read();
+        let prefs = self.services.user_preferences_storage.read();
         let fresh_session = {
             let model = app_state.last_model.unwrap_or_default();
+            let reasoning_effort = prefs.reasoning.default_effort;
 
-            ChatSessionState::new_with_profile(
-                crate::feat::session::profile::SessionProfile::from_model_selection(model),
-            )
+            let mut profile =
+                crate::feat::session::profile::SessionProfile::from_model_selection(model);
+            profile.reasoning_effort = reasoning_effort;
+            ChatSessionState::new_with_profile(profile)
         };
         state.session.remove_and_replace(session_id, fresh_session);
 
@@ -1723,6 +1726,39 @@ mod tests {
         assert!(
             !has_teardown,
             "did not expect SessionTeardownFinished for archive"
+        );
+    }
+
+    #[tokio::test]
+    async fn archive_replacement_session_seeds_reasoning_effort_from_global() {
+        // Given a global default effort of High (saved to the preferences store).
+        let (actor, _audit) = test_actor_recording().await;
+        {
+            let mut prefs = actor.services.user_preferences_storage.read();
+            prefs.reasoning.default_effort = Some(crate::ReasoningEffort::High);
+            actor
+                .services
+                .user_preferences_storage
+                .save(&prefs)
+                .expect("save global default");
+        }
+        let target_id = actor.state.read().session.active_session_id().clone();
+
+        // When archiving the only session (forces a remove_and_replace).
+        actor
+            .handle_archive_session(
+                &crate::feat::session::protocol::archive_session::ArchiveSession {
+                    session_id: target_id.clone(),
+                },
+            )
+            .await;
+
+        // Then the replacement session is seeded with the global effort.
+        let state = actor.state.read();
+        assert_eq!(
+            state.active_session().profile().reasoning_effort,
+            Some(crate::ReasoningEffort::High),
+            "replacement session should be seeded from the global default"
         );
     }
 

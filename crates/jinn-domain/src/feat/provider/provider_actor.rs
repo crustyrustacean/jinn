@@ -125,7 +125,7 @@ impl Message<LoadReasoningEffortPickerEntries> for ProviderActor {
         _ctx: &mut MsgContext<Self, Self::Reply>,
     ) {
         let mut state = self.state.write();
-        load_reasoning_effort_picker_items(&self.deps.services, &mut state);
+        load_reasoning_effort_picker_items(&mut state);
     }
 }
 
