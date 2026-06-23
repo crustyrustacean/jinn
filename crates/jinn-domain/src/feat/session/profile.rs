@@ -50,9 +50,12 @@ pub struct SessionProfile {
     /// deserialize to an empty set (all enabled).
     #[serde(default)]
     pub disabled_skills: HashSet<String>,
-    /// Reasoning effort override for this session, or `None` to inherit the
-    /// global default from `jinn.toml`. Legacy sessions without this field
-    /// deserialize to `None` (inherit global).
+    /// Reasoning effort for this session.
+    ///
+    /// Session-owned: seeded from the global `[reasoning] default_effort` at
+    /// creation, then owned by the session. Never re-resolved against the live
+    /// global (see `resolve_effort`). `None` means "send no effort field; let
+    /// the provider decide". Legacy sessions deserialize to `None`.
     #[serde(default)]
     pub reasoning_effort: Option<crate::ReasoningEffort>,
 }
