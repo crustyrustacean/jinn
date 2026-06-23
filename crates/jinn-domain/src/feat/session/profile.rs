@@ -214,8 +214,30 @@ mod tests {
         // When deserialized.
         let profile: SessionProfile = serde_json::from_str(json).expect("deserialize");
 
-        // Then reasoning_effort is None (inherit global default).
+        // Then reasoning_effort is None ("provider decides"; the live global is
+        // never consulted after creation, so this stays None until set).
         assert!(profile.reasoning_effort.is_none());
+    }
+
+    #[rstest::rstest]
+    fn reasoning_effort_round_trips_through_serialization() {
+        // Given a profile with a saved effort of High.
+        let profile = {
+            let mut p = SessionProfile::from_config("ollama/llama3".to_owned());
+            p.reasoning_effort = Some(crate::ReasoningEffort::High);
+            p
+        };
+
+        // When serializing then deserializing (the persist/load path).
+        let json = serde_json::to_string(&profile).expect("serialize");
+        let reloaded: SessionProfile = serde_json::from_str(&json).expect("deserialize");
+
+        // Then the saved effort is preserved.
+        assert_eq!(
+            reloaded.reasoning_effort,
+            Some(crate::ReasoningEffort::High),
+            "saved effort must survive the serialize/deserialize round trip"
+        );
     }
 
     #[rstest::rstest]
