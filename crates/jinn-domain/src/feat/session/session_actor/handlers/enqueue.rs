@@ -123,8 +123,7 @@ impl SessionPersistenceActor {
                     let mut state = self.state.write();
                     let session = state.session_mut(&payload.session_id);
                     let profile = session.profile_mut();
-                    let reasoning_effort =
-                        crate::resolve_effort(profile.reasoning_effort);
+                    let reasoning_effort = crate::resolve_effort(profile.reasoning_effort);
                     if profile.model.is_no_provider() {
                         (None, None, reasoning_effort)
                     } else {
@@ -875,8 +874,7 @@ mod tests {
         let cmds = audit.of_type::<SendToLlmProvider>();
         assert_eq!(cmds.len(), 1, "expected one SendToLlmProvider command");
         assert_eq!(
-            cmds[0].reasoning_effort,
-            None,
+            cmds[0].reasoning_effort, None,
             "session with no own effort resolves to None; global is not consulted"
         );
     }
