@@ -101,12 +101,14 @@ pub fn handle_session_lifecycle_setup(
         .as_ref()
         .map_or_else(|| "coding-assistant".to_owned(), |p| p.name.clone());
 
+    let reasoning_effort = state.frontend.preferences.reasoning.default_effort;
+
     let mut new_session = ChatSessionState::new_with_profile(SessionProfile::new(
         model,
         persona_name,
         std::collections::HashSet::new(),
         std::collections::HashSet::new(),
-        None,
+        reasoning_effort,
     ));
     let new_id = new_session.session_id().clone();
 

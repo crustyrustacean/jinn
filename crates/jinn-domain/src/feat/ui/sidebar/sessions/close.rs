@@ -97,9 +97,14 @@ pub fn handle_session_close(state: &mut AppState) -> crate::protocol::IntentResu
                 .clone()
                 .unwrap_or_default();
 
-            crate::feat::session::chat_session::ChatSessionState::new_with_profile(
-                crate::feat::session::profile::SessionProfile::from_model_selection(model),
-            )
+            // Seed effort from the global default, mirroring model selection:
+            // the new session owns its own copy from creation onward.
+            let reasoning_effort = state.frontend.preferences.reasoning.default_effort;
+
+            let mut profile =
+                crate::feat::session::profile::SessionProfile::from_model_selection(model);
+            profile.reasoning_effort = reasoning_effort;
+            crate::feat::session::chat_session::ChatSessionState::new_with_profile(profile)
         };
         state.session.remove_and_replace(&closing_id, new_session);
     } else {

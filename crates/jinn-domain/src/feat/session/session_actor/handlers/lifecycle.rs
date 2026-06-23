@@ -1029,12 +1029,15 @@ impl SessionPersistenceActor {
         );
 
         let app_state = self.services.app_state_storage.read();
+        let prefs = self.services.user_preferences_storage.read();
         let fresh_session = {
             let model = app_state.last_model.unwrap_or_default();
+            let reasoning_effort = prefs.reasoning.default_effort;
 
-            ChatSessionState::new_with_profile(
-                crate::feat::session::profile::SessionProfile::from_model_selection(model),
-            )
+            let mut profile =
+                crate::feat::session::profile::SessionProfile::from_model_selection(model);
+            profile.reasoning_effort = reasoning_effort;
+            ChatSessionState::new_with_profile(profile)
         };
         state.session.remove_and_replace(session_id, fresh_session);
 
