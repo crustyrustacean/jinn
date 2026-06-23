@@ -1620,7 +1620,7 @@ mod tests {
         // Regression: changing effort in one session used to leak into every other
         // override-free session because the live global was consulted at request time.
         // Now each session owns its own value; the global seeds new sessions only.
-        use crate::feat::reasoning::{resolve_effort, ReasoningEffort, ReasoningEffortEntry};
+        use crate::feat::reasoning::{ReasoningEffort, ReasoningEffortEntry, resolve_effort};
 
         let mut state = AppState::default();
 

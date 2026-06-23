@@ -46,7 +46,6 @@ mod tests {
 
     use super::*;
 
-
     #[rstest::rstest]
     #[case(ReasoningEffort::Max, Some(ReasoningEffort::Max))]
     #[case(ReasoningEffort::Xhigh, Some(ReasoningEffort::Xhigh))]
@@ -55,7 +54,10 @@ mod tests {
     #[case(ReasoningEffort::Low, Some(ReasoningEffort::Low))]
     #[case(ReasoningEffort::Minimal, Some(ReasoningEffort::Minimal))]
     #[case(ReasoningEffort::None, Some(ReasoningEffort::None))]
-    fn returns_the_sessions_own_effort(#[case] effort: ReasoningEffort, #[case] expected: Option<ReasoningEffort>) {
+    fn returns_the_sessions_own_effort(
+        #[case] effort: ReasoningEffort,
+        #[case] expected: Option<ReasoningEffort>,
+    ) {
         // Given a session with its own effort.
         // When resolving.
         // Then the session's own effort is returned unchanged.
