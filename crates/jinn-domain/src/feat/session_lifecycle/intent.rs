@@ -101,12 +101,14 @@ pub fn handle_session_lifecycle_setup(
         .as_ref()
         .map_or_else(|| "coding-assistant".to_owned(), |p| p.name.clone());
 
+    let reasoning_effort = state.frontend.preferences.reasoning.default_effort;
+
     let mut new_session = ChatSessionState::new_with_profile(SessionProfile::new(
         model,
         persona_name,
         std::collections::HashSet::new(),
         std::collections::HashSet::new(),
-        None,
+        reasoning_effort,
     ));
     let new_id = new_session.session_id().clone();
 
@@ -1110,6 +1112,40 @@ mod tests {
         assert_eq!(state.session.session_count(), 2);
         // And the new session is active.
         assert_ne!(*state.session.active_session_id(), old_id);
+    }
+
+    #[rstest::rstest]
+    fn lifecycle_setup_seeds_reasoning_effort_from_global_default() {
+        // Given a global default effort of High.
+        let mut state = AppState::default();
+        state.frontend.preferences.reasoning.default_effort = Some(crate::ReasoningEffort::High);
+
+        // When creating a new session via lifecycle setup.
+        let _result = handle_session_lifecycle_setup(&mut state, "", &[], None);
+
+        // Then the new session owns the seeded effort (a copy, not a live reference).
+        assert_eq!(
+            state.active_session().profile().reasoning_effort,
+            Some(crate::ReasoningEffort::High),
+            "new session should be seeded from the global default"
+        );
+    }
+
+    #[rstest::rstest]
+    fn lifecycle_setup_seeds_none_reasoning_effort_when_global_unset() {
+        // Given no global default effort.
+        let mut state = AppState::default();
+        state.frontend.preferences.reasoning.default_effort = None;
+
+        // When creating a new session via lifecycle setup.
+        let _result = handle_session_lifecycle_setup(&mut state, "", &[], None);
+
+        // Then the new session's effort is None (provider decides).
+        assert_eq!(
+            state.active_session().profile().reasoning_effort,
+            None,
+            "new session should be seeded as None when global is unset"
+        );
     }
 
     #[rstest::rstest]

@@ -2,8 +2,14 @@
 //!
 //! This module re-exports the [`ReasoningEffort`] / [`ReasoningConfig`] types
 //! (defined in `jinn-provider`, the lowest crate in the dependency chain) and
-//! provides [`resolve_effort`], the pure policy that picks the effective effort
-//! from a session override and the global default.
+//! provides [`resolve_effort`], which surfaces a session's own effort.
+//!
+//! Effort is **session-owned**, mirroring model and persona selection: the global
+//! `[reasoning] default_effort` from `jinn.toml`/preferences is consulted **only at
+//! session creation** to seed each session's `profile.reasoning_effort`. After
+//! that, the session's own value is the sole source of truth at request and
+//! render time — it is never re-resolved against the live global (which would
+//! leak one session's picker choice into every other override-free session).
 //!
 //! The types live in `jinn-provider` so the OpenAI-compatible request builder
 //! can emit them without `jinn-domain` reaching down into provider internals.
@@ -15,18 +21,17 @@ pub mod picker_render;
 
 pub use picker_entry::ReasoningEffortEntry;
 
-/// Resolves the effective reasoning effort for a request.
+/// Returns the session's own reasoning effort.
 ///
-/// A session override always wins. When there is no override, the global
-/// default applies. When both are unset, `None` is returned — meaning "send no
-/// effort field and let the provider decide" (OpenRouter still requests
-/// reasoning tokens via `{ "enabled": true }`).
+/// The effort is seeded from the global default at session creation and then
+/// owned by the session. When the session's effort is `None`, `None` is
+/// returned — meaning "send no effort field and let the provider decide"
+/// (OpenRouter still requests reasoning tokens via `{ "enabled": true }`).
+///
+/// See the module docs for why the global is not consulted here.
 #[must_use]
-pub fn resolve_effort(
-    session_override: Option<ReasoningEffort>,
-    global_default: Option<ReasoningEffort>,
-) -> Option<ReasoningEffort> {
-    session_override.or(global_default)
+pub fn resolve_effort(session_effort: Option<ReasoningEffort>) -> Option<ReasoningEffort> {
+    session_effort
 }
 
 #[cfg(test)]
@@ -41,33 +46,29 @@ mod tests {
 
     use super::*;
 
-    #[test]
-    fn session_override_wins_over_global_default() {
-        // Given a session override of Low and a global default of High.
+    #[rstest::rstest]
+    #[case(ReasoningEffort::Max, Some(ReasoningEffort::Max))]
+    #[case(ReasoningEffort::Xhigh, Some(ReasoningEffort::Xhigh))]
+    #[case(ReasoningEffort::High, Some(ReasoningEffort::High))]
+    #[case(ReasoningEffort::Medium, Some(ReasoningEffort::Medium))]
+    #[case(ReasoningEffort::Low, Some(ReasoningEffort::Low))]
+    #[case(ReasoningEffort::Minimal, Some(ReasoningEffort::Minimal))]
+    #[case(ReasoningEffort::None, Some(ReasoningEffort::None))]
+    fn returns_the_sessions_own_effort(
+        #[case] effort: ReasoningEffort,
+        #[case] expected: Option<ReasoningEffort>,
+    ) {
+        // Given a session with its own effort.
         // When resolving.
-        // Then the session override (Low) is used.
-        assert_eq!(
-            resolve_effort(Some(ReasoningEffort::Low), Some(ReasoningEffort::High)),
-            Some(ReasoningEffort::Low)
-        );
+        // Then the session's own effort is returned unchanged.
+        assert_eq!(resolve_effort(Some(effort)), expected);
     }
 
     #[test]
-    fn global_default_used_when_session_override_absent() {
-        // Given no session override and a global default of High.
+    fn returns_none_when_session_has_no_effort() {
+        // Given a session with no effort set.
         // When resolving.
-        // Then the global default (High) is used.
-        assert_eq!(
-            resolve_effort(None, Some(ReasoningEffort::High)),
-            Some(ReasoningEffort::High)
-        );
-    }
-
-    #[test]
-    fn none_when_both_session_and_global_unset() {
-        // Given no session override and no global default.
-        // When resolving.
-        // Then None is returned (send no effort field).
-        assert_eq!(resolve_effort(None, None), None);
+        // Then None is returned (send no effort field; let the provider decide).
+        assert_eq!(resolve_effort(None), None);
     }
 }
