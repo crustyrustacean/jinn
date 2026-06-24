@@ -58,6 +58,16 @@ pub(crate) fn default_stream_idle_timeout_secs() -> u64 {
     DEFAULT_STREAM_IDLE_TIMEOUT_SECS
 }
 
+/// Default execution timeout (seconds) applied to all builtin tools except
+/// `bash`, which keeps its own `bash.default_timeout_secs`. The shorter of
+/// this and `bash.default_timeout_secs` wins for bash commands.
+pub(crate) const DEFAULT_TOOL_DEFAULT_TIMEOUT_SECS: u64 = 120;
+
+/// Serde default function for [`UserPreferences::tool_default_timeout_secs`].
+pub(crate) fn default_tool_default_timeout_secs() -> u64 {
+    DEFAULT_TOOL_DEFAULT_TIMEOUT_SECS
+}
+
 /// Errors that can occur during user preferences I/O.
 #[derive(Debug, Error)]
 pub enum UserPreferencesError {
@@ -139,6 +149,12 @@ pub struct UserPreferences {
     /// (see `[request_retry]`) using a separate stall counter.
     #[serde(default = "default_stream_idle_timeout_secs")]
     pub stream_idle_timeout_secs: u64,
+    /// Default execution timeout (seconds) for all builtin tools (except
+    /// `bash`, which keeps its own `bash.default_timeout_secs`). Acts as a
+    /// safety ceiling so a hung tool never stalls the turn indefinitely.
+    /// The shorter of this and `bash.default_timeout_secs` wins for bash.
+    #[serde(default = "default_tool_default_timeout_secs")]
+    pub tool_default_timeout_secs: u64,
 }
 
 impl Default for UserPreferences {
@@ -175,6 +191,7 @@ impl Default for UserPreferences {
             bash: BashConfig::default(),
             reasoning: ReasoningConfig::default(),
             stream_idle_timeout_secs: default_stream_idle_timeout_secs(),
+            tool_default_timeout_secs: default_tool_default_timeout_secs(),
         }
     }
 }
@@ -564,6 +581,7 @@ mod tests {
             projects: vec![],
             reasoning: ReasoningConfig::default(),
             stream_idle_timeout_secs: default_stream_idle_timeout_secs(),
+            tool_default_timeout_secs: default_tool_default_timeout_secs(),
         };
 
         // When saving and reloading.
@@ -622,6 +640,7 @@ mod tests {
             projects: vec![],
             reasoning: ReasoningConfig::default(),
             stream_idle_timeout_secs: default_stream_idle_timeout_secs(),
+            tool_default_timeout_secs: default_tool_default_timeout_secs(),
         };
 
         // When saving.
@@ -653,6 +672,7 @@ mod tests {
             projects: vec![],
             reasoning: ReasoningConfig::default(),
             stream_idle_timeout_secs: default_stream_idle_timeout_secs(),
+            tool_default_timeout_secs: default_tool_default_timeout_secs(),
         };
 
         // When saving and reloading.
@@ -952,6 +972,7 @@ mod tests {
             projects: vec![],
             reasoning: ReasoningConfig::default(),
             stream_idle_timeout_secs: default_stream_idle_timeout_secs(),
+            tool_default_timeout_secs: default_tool_default_timeout_secs(),
         };
 
         save_preferences_to(&prefs, &path).expect("save");
