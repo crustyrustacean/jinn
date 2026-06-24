@@ -1130,7 +1130,14 @@ impl ChatSessionState {
         if let Some(i) = self.core.ephemeral.machine.streaming_thinking_entry_index() {
             indices.push(i);
         }
-        indices.extend(self.core.ephemeral.machine.streaming_tool_call_indices().values().copied());
+        indices.extend(
+            self.core
+                .ephemeral
+                .machine
+                .streaming_tool_call_indices()
+                .values()
+                .copied(),
+        );
         indices.extend(
             self.core
                 .ephemeral

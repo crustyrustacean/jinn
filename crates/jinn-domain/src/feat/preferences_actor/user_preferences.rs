@@ -49,7 +49,6 @@ pub use crate::feat::web_fetch_actor::{WebFetchBackend, WebFetchConfig};
 /// prevents the shipped template from drifting from the struct.
 pub(crate) const DEFAULT_CONFIG: &str = include_str!("default_jinn.toml");
 
-
 /// Default max seconds between stream events before a stall is declared.
 pub(crate) const DEFAULT_STREAM_IDLE_TIMEOUT_SECS: u64 = 60;
 

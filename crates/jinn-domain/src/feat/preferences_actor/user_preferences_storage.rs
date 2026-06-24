@@ -10,9 +10,11 @@ use std::sync::Arc;
 use error_stack::{Report, ResultExt as _};
 use parking_lot::RwLock;
 
-#[cfg(test)]
-use super::user_preferences::{default_stream_idle_timeout_secs, default_tool_default_timeout_secs};
 use super::user_preferences::{UserPreferences, UserPreferencesError, preferences_path};
+#[cfg(test)]
+use super::user_preferences::{
+    default_stream_idle_timeout_secs, default_tool_default_timeout_secs,
+};
 
 /// Trait for user preferences I/O.
 ///

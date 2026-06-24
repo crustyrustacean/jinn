@@ -606,10 +606,7 @@ impl ToolOrchestratorActor {
             use futures::FutureExt as _;
             use std::panic::AssertUnwindSafe;
             let result = match AssertUnwindSafe(run_builtin_with_timeout(
-                tool_call,
-                tool_ctx,
-                execute_fn,
-                timeout,
+                tool_call, tool_ctx, execute_fn, timeout,
             ))
             .catch_unwind()
             .await
@@ -1107,7 +1104,12 @@ mod timeout_tests {
 
 #[cfg(test)]
 mod panic_safety_tests {
-    #![allow(clippy::expect_used, clippy::indexing_slicing, reason = "test code")]
+    #![allow(
+        clippy::expect_used,
+        clippy::indexing_slicing,
+        clippy::panic,
+        reason = "test code"
+    )]
     use std::panic::AssertUnwindSafe;
 
     use futures::FutureExt as _;
@@ -1130,27 +1132,27 @@ mod panic_safety_tests {
             arguments: "{}".to_owned(),
         };
         // When the builtin future panics and is caught.
-        let result: ToolResult =
-            match AssertUnwindSafe(panicking_execute(tool_call.clone(), super::ToolContext {
+        let result: ToolResult = match AssertUnwindSafe(panicking_execute(
+            tool_call.clone(),
+            super::ToolContext {
                 cwd: std::path::PathBuf::from("/tmp"),
                 timeout: None,
                 bash_default_timeout: None,
                 state: None,
                 session_id: None,
-                app_paths: crate::common::app_paths::AppPaths::new_in(
-                    std::path::Path::new("/tmp"),
-                ),
+                app_paths: crate::common::app_paths::AppPaths::new_in(std::path::Path::new("/tmp")),
                 bus: None,
                 max_output_lines: None,
                 max_output_bytes: None,
                 dispatched_at: jiff::Timestamp::now(),
-            }))
-            .catch_unwind()
-            .await
-            {
-                Ok(r) => r,
-                Err(_) => panicked_tool_result(&tool_call.id, &tool_call.name),
-            };
+            },
+        ))
+        .catch_unwind()
+        .await
+        {
+            Ok(r) => r,
+            Err(_) => panicked_tool_result(&tool_call.id, &tool_call.name),
+        };
 
         // Then a failed ToolResult is produced (not a silent hang).
         assert!(!result.success, "panicked tool must report failure");
