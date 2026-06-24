@@ -18,7 +18,7 @@
 use std::collections::HashMap;
 
 use crate::StreamEvent;
-use crate::stream_event::{StopReason, StreamUsage};
+use crate::stream_event::{StopReason, StreamUsage, UrlCitation};
 use crate::tool_types::ToolCall;
 
 /// State tracked per tool call index during streaming.
@@ -54,6 +54,9 @@ pub struct StreamResponseParser {
     /// This allows usage data from subsequent SSE chunks (e.g. OpenRouter's
     /// split-chunk format) to be attached before emission.
     pending_done: Option<PendingDone>,
+    /// Accumulated `url_citation` annotations gathered across chunks. Emitted
+    /// once as a single [`StreamEvent::Citations`] immediately before `Done`.
+    accumulated_citations: Vec<UrlCitation>,
 }
 
 impl StreamResponseParser {
@@ -127,6 +130,13 @@ impl StreamResponseParser {
             }
         }
 
+        // Annotation deltas (e.g. OpenRouter `url_citation` web-search sources).
+        if let Some(annotations) = delta.get("annotations").and_then(|a| a.as_array()) {
+            for ann in annotations {
+                self.accumulate_citation(ann);
+            }
+        }
+
         // Finish reason - only handle the first one we see.
         let Some(finish_reason) = choice.get("finish_reason").and_then(|f| f.as_str()) else {
             return;
@@ -134,6 +144,41 @@ impl StreamResponseParser {
         if !finish_reason.is_empty() && self.pending_done.is_none() && !self.done_finalized {
             self.handle_finish_reason(finish_reason, results);
         }
+    }
+
+    /// Parse a single annotation entry; if it is a `url_citation`, push it into
+    /// the accumulated citations. Non-matching annotation types are ignored.
+    fn accumulate_citation(&mut self, annotation: &serde_json::Value) {
+        if annotation.get("type").and_then(|t| t.as_str()) != Some("url_citation") {
+            return;
+        }
+        let Some(citation) = annotation.get("url_citation") else {
+            return;
+        };
+        let Some(url) = citation.get("url").and_then(|u| u.as_str()) else {
+            return;
+        };
+        let title = citation
+            .get("title")
+            .and_then(|t| t.as_str())
+            .unwrap_or(url)
+            .to_owned();
+        self.accumulated_citations.push(crate::UrlCitation {
+            url: url.to_owned(),
+            title,
+            content: citation
+                .get("content")
+                .and_then(|c| c.as_str())
+                .map(std::string::String::from),
+            start_index: citation
+                .get("start_index")
+                .and_then(serde_json::Value::as_u64)
+                .and_then(|n| u32::try_from(n).ok()),
+            end_index: citation
+                .get("end_index")
+                .and_then(serde_json::Value::as_u64)
+                .and_then(|n| u32::try_from(n).ok()),
+        });
     }
 
     /// Try to attach usage data from a chunk to the pending Done event.
@@ -253,13 +298,16 @@ impl StreamResponseParser {
             return vec![];
         }
 
+        let mut done_events = self.emit_citations_if_any();
+
         // If we have a pending Done (from finish_reason), emit it now.
         if let Some(pending) = self.pending_done.take() {
             self.done_finalized = true;
-            return vec![StreamEvent::Done {
+            done_events.push(StreamEvent::Done {
                 stop_reason: pending.stop_reason,
                 usage: pending.usage,
-            }];
+            });
+            return done_events;
         }
 
         // No finish_reason was ever received - create a fallback Done.
@@ -270,12 +318,29 @@ impl StreamResponseParser {
             StopReason::ToolUse
         };
 
+        // Emit accumulated citations before the terminal Done, mirroring the
+        // pending_done branch.
+        results.splice(0..0, self.emit_citations_if_any());
+
         results.push(StreamEvent::Done {
             stop_reason,
             usage: None,
         });
         self.done_finalized = true;
         results
+    }
+
+    /// Drain accumulated citations into a single `StreamEvent::Citations`, if any.
+    ///
+    /// OpenRouter may spread `url_citation` annotations across many delta chunks;
+    /// we accumulate them and emit once, immediately before the terminal `Done`.
+    fn emit_citations_if_any(&mut self) -> Vec<StreamEvent> {
+        let citations = std::mem::take(&mut self.accumulated_citations);
+        if citations.is_empty() {
+            vec![]
+        } else {
+            vec![StreamEvent::Citations(citations)]
+        }
     }
 }
 
@@ -816,5 +881,152 @@ mod tests {
         // [DONE] sentinel flushes exactly one Done.
         let done_events = parser.handle_done();
         assert_eq!(done_events.len(), 1, "should emit exactly one Done event");
+    }
+
+    #[rstest::rstest]
+    fn single_url_citation_annotation_accumulates_until_done() {
+        // Given a stream chunk carrying one url_citation annotation.
+        let mut parser = StreamResponseParser::new();
+        let json = serde_json::json!({
+            "id": "x",
+            "choices": [{
+                "index": 0,
+                "delta": {
+                    "content": "See [1].",
+                    "annotations": [{
+                        "type": "url_citation",
+                        "url_citation": {
+                            "url": "https://example.com/a",
+                            "title": "Source A",
+                            "content": "snippet A",
+                            "start_index": 4,
+                            "end_index": 7
+                        }
+                    }]
+                },
+                "finish_reason": null
+            }]
+        })
+        .to_string();
+        let events = parser.parse_data(&json);
+
+        // Citations are accumulated; none emitted mid-stream.
+        assert!(!events.iter().any(|e| matches!(e, StreamEvent::Citations(_))));
+
+        // When the stream finishes.
+        let finish = serde_json::json!({
+            "id": "x",
+            "choices": [{"index": 0, "delta": {}, "finish_reason": "stop"}]
+        })
+        .to_string();
+        parser.parse_data(&finish);
+        let done_events = parser.handle_done();
+
+        // Then exactly one Citations event precedes the terminal Done.
+        assert_eq!(done_events.len(), 2);
+        assert!(matches!(&done_events[0], StreamEvent::Citations(c) if c.len() == 1));
+        let StreamEvent::Citations(citations) = &done_events[0] else {
+            unreachable!()
+        };
+        assert_eq!(citations[0].url, "https://example.com/a");
+        assert_eq!(citations[0].title, "Source A");
+        assert_eq!(citations[0].content.as_deref(), Some("snippet A"));
+        assert_eq!(citations[0].start_index, Some(4));
+        assert_eq!(citations[0].end_index, Some(7));
+    }
+
+    #[rstest::rstest]
+    fn multiple_annotation_chunks_merge_into_one_citations_event() {
+        // Given two chunks, each carrying one annotation.
+        let mut parser = StreamResponseParser::new();
+        let chunk1 = serde_json::json!({
+            "id": "x",
+            "choices": [{
+                "index": 0,
+                "delta": {
+                    "annotations": [{
+                        "type": "url_citation",
+                        "url_citation": {"url": "https://example.com/a", "title": "A"}
+                    }]
+                }
+            }]
+        })
+        .to_string();
+        let chunk2 = serde_json::json!({
+            "id": "x",
+            "choices": [{
+                "index": 0,
+                "delta": {
+                    "annotations": [{
+                        "type": "url_citation",
+                        "url_citation": {"url": "https://example.com/b", "title": "B"}
+                    }]
+                }
+            }]
+        })
+        .to_string();
+        parser.parse_data(&chunk1);
+        parser.parse_data(&chunk2);
+
+        // When the stream finishes.
+        let finish = serde_json::json!({
+            "id": "x",
+            "choices": [{"index": 0, "delta": {}, "finish_reason": "stop"}]
+        })
+        .to_string();
+        parser.parse_data(&finish);
+        let done_events = parser.handle_done();
+
+        // Then a single Citations event holds both, in arrival order.
+        assert_eq!(done_events.len(), 2);
+        let StreamEvent::Citations(citations) = &done_events[0] else {
+            panic!("expected Citations event, got {:?}", done_events[0])
+        };
+        assert_eq!(citations.len(), 2);
+        assert_eq!(citations[0].url, "https://example.com/a");
+        assert_eq!(citations[1].url, "https://example.com/b");
+    }
+
+    #[rstest::rstest]
+    fn no_annotations_emits_no_citations_event() {
+        // Given a plain stream with no annotations.
+        let mut parser = StreamResponseParser::new();
+        let json = serde_json::json!({
+            "id": "x",
+            "choices": [{"index": 0, "delta": {"content": "hi"}, "finish_reason": "stop"}]
+        })
+        .to_string();
+        parser.parse_data(&json);
+        let done_events = parser.handle_done();
+
+        // Then only the Done event is emitted; no Citations.
+        assert_eq!(done_events.len(), 1);
+        assert!(matches!(done_events[0], StreamEvent::Done { .. }));
+    }
+
+    #[rstest::rstest]
+    fn non_url_citation_annotations_are_ignored() {
+        // Given a chunk carrying an annotation of a different type.
+        let mut parser = StreamResponseParser::new();
+        let json = serde_json::json!({
+            "id": "x",
+            "choices": [{
+                "index": 0,
+                "delta": {
+                    "annotations": [{
+                        "type": "file_citation",
+                        "file_citation": {"file_id": "file_123"}
+                    }]
+                },
+                "finish_reason": "stop"
+            }]
+        })
+        .to_string();
+        parser.parse_data(&json);
+        let done_events = parser.handle_done();
+
+        // Then no Citations event is emitted.
+        assert_eq!(done_events.len(), 1);
+        assert!(matches!(done_events[0], StreamEvent::Done { .. }));
     }
 }
