@@ -1073,6 +1073,101 @@ mod test_fakes {
             Ok(Box::pin(futures::stream::iter(events)))
         }
     }
+
+    /// A factory that simulates independent retry budgets: the inner service
+    /// returns a sequence of `Retryable` connection errors (consumed by
+    /// `RetryingLlmService`'s per-instance connection counter), then a stalled
+    /// stream (consumed by the outer stall counter), then a normal completion.
+    /// Used to prove the stall counter and connection-retry counter are
+    /// independent budgets.
+    #[derive(Debug)]
+    pub(super) struct RetryableThenStallThenCompleteLlmFactory {
+        call_count: Arc<std::sync::atomic::AtomicU32>,
+        retryable_failures: u32,
+        stall_calls: u32,
+        tokens: Vec<String>,
+    }
+
+    impl RetryableThenStallThenCompleteLlmFactory {
+        /// `retryable_failures` connection errors, then `stall_calls` stalled
+        /// streams, then a normal completion.
+        pub(super) fn new(retryable_failures: u32, stall_calls: u32, tokens: Vec<String>) -> Self {
+            Self {
+                call_count: Arc::new(std::sync::atomic::AtomicU32::new(0)),
+                retryable_failures,
+                stall_calls,
+                tokens,
+            }
+        }
+    }
+
+    impl LlmServiceFactory for RetryableThenStallThenCompleteLlmFactory {
+        fn create(&self) -> Result<Box<dyn LlmService>, Report<LlmServiceError>> {
+            Ok(Box::new(RetryableThenStallThenCompleteLlmService {
+                call_count: self.call_count.clone(),
+                retryable_failures: self.retryable_failures,
+                stall_calls: self.stall_calls,
+                tokens: self.tokens.clone(),
+            }))
+        }
+        fn name(&self) -> &'static str {
+            "RetryableThenStallThenComplete"
+        }
+    }
+
+    #[derive(Debug)]
+    struct RetryableThenStallThenCompleteLlmService {
+        call_count: Arc<std::sync::atomic::AtomicU32>,
+        retryable_failures: u32,
+        stall_calls: u32,
+        tokens: Vec<String>,
+    }
+
+    #[async_trait::async_trait]
+    impl LlmService for RetryableThenStallThenCompleteLlmService {
+        fn name(&self) -> &'static str {
+            "RetryableThenStallThenComplete"
+        }
+        async fn chat_stream(
+            &self,
+            _messages: Vec<jinn_provider::LlmMessage>,
+        ) -> Result<ChatStream, Report<LlmServiceError>> {
+            let tokens = self.tokens.clone();
+            Ok(Box::pin(futures::stream::iter(tokens.into_iter().map(Ok))))
+        }
+        async fn chat_stream_with_tools(
+            &self,
+            _messages: Vec<jinn_provider::LlmMessage>,
+            _tools: Vec<jinn_provider::ToolDefinition>,
+        ) -> Result<ToolStream, Report<LlmServiceError>> {
+            use std::sync::atomic::Ordering;
+            let n = self.call_count.fetch_add(1, Ordering::SeqCst);
+            if n < self.retryable_failures {
+                // Connection-level retryable failure (consumed by
+                // RetryingLlmService's per-instance counter).
+                return Err(Report::new(LlmServiceError::Retryable));
+            }
+            let stall_end = self.retryable_failures + self.stall_calls;
+            if n < stall_end {
+                // Mid-stream stall (consumed by the outer stall counter).
+                return Ok(Box::pin(futures::stream::pending()));
+            }
+            // Normal completion.
+            use jinn_provider::{StopReason, StreamEvent};
+            let mut events: Vec<Result<StreamEvent, Report<LlmServiceError>>> = self
+                .tokens
+                .iter()
+                .cloned()
+                .map(StreamEvent::Text)
+                .map(Ok)
+                .collect();
+            events.push(Ok(StreamEvent::Done {
+                stop_reason: StopReason::EndTurn,
+                usage: None,
+            }));
+            Ok(Box::pin(futures::stream::iter(events)))
+        }
+    }
 }
 
 #[cfg(test)]
@@ -1425,6 +1520,144 @@ mod tests {
         );
     }
 
+    #[tokio::test]
+    async fn stall_retry_publishes_system_chat_entry() {
+        // Given a factory whose first call stalls and second completes.
+        let harness = TestHarness::new().await;
+        let deps = harness.actor_deps().await;
+        {
+            let mut prefs = deps.services.user_preferences_storage.read();
+            prefs.stream_idle_timeout_secs = 1;
+            prefs.request_retry.max_retries = 3;
+            prefs.request_retry.base_delay_secs = 0;
+            prefs.request_retry.max_delay_secs = 0;
+            deps.services
+                .user_preferences_storage
+                .save(&prefs)
+                .expect("save prefs");
+        }
+        let factory = LlmServiceFactoryService::new(Arc::new(
+            super::test_fakes::StallThenCompleteLlmFactory::new(vec!["ok".to_owned()]),
+        ));
+        let _actor = harness
+            .spawn_actor::<LlmActor>(LlmActorDeps {
+                factory,
+                deps,
+                state: State::new(crate::common::app_state::AppState::default()),
+            })
+            .await;
+        let entry_recorder = harness.spawn_recorder::<PushChatEntry>().await;
+        let completed_recorder = harness.spawn_recorder::<StreamCompleted>().await;
+
+        let session_id = SessionId::new();
+        let payload = SendToLlmProvider {
+            model_used: None,
+            reasoning_effort: None,
+            session_id: session_id.clone(),
+            messages: vec![],
+            tool_definitions: vec![],
+            provider_id: None,
+            estimated_tokens: 0,
+            dispatched_at: jiff::Timestamp::now(),
+        };
+
+        // When the stream stalls and retries.
+        harness.publish(payload).await;
+
+        // Then the turn eventually completes.
+        let completed =
+            await_recorded(&completed_recorder, 1, std::time::Duration::from_secs(15)).await;
+        assert!(
+            completed
+                .iter()
+                .any(|sc| sc.reason == StreamCompletedReason::Finished),
+            "stalled stream should complete after retry"
+        );
+
+        // And a System chat entry announcing the retry was published.
+        let entries = await_recorded(&entry_recorder, 1, std::time::Duration::from_secs(15)).await;
+        let found_retry_notice = entries.iter().any(|pce| {
+            matches!(
+                &pce.entry.kind,
+                crate::protocol::ChatEntryKind::System(text) if text.contains("retrying"),
+            )
+        });
+        assert!(
+            found_retry_notice,
+            "a System entry containing 'retrying' should be published on stall retry"
+        );
+    }
+
+    #[tokio::test]
+    async fn separate_stall_counter_does_not_share_budget_with_request_retries() {
+        // Given a factory that first returns two Retryable connection errors
+        // (consumed by RetryingLlmService's per-instance connection budget),
+        // then one stalled stream (consumed by the outer stall budget), then a
+        // normal completion. With max_retries=2, a SHARED budget would be
+        // exhausted by the two connection failures and the stall would error
+        // out instead of completing. A SEPARATE stall budget lets the turn
+        // reach Finished.
+        let harness = TestHarness::new().await;
+        let deps = harness.actor_deps().await;
+        {
+            let mut prefs = deps.services.user_preferences_storage.read();
+            prefs.stream_idle_timeout_secs = 1;
+            // Two connection retries AND two stall retries share the same
+            // config value, but operate on independent counters.
+            prefs.request_retry.max_retries = 2;
+            prefs.request_retry.base_delay_secs = 0;
+            prefs.request_retry.max_delay_secs = 0;
+            deps.services
+                .user_preferences_storage
+                .save(&prefs)
+                .expect("save prefs");
+        }
+        let factory = LlmServiceFactoryService::new(Arc::new(
+            super::test_fakes::RetryableThenStallThenCompleteLlmFactory::new(
+                2, // two connection-retryable failures first
+                1, // then one stalled stream
+                vec!["ok".to_owned()],
+            ),
+        ));
+        let _actor = harness
+            .spawn_actor::<LlmActor>(LlmActorDeps {
+                factory,
+                deps,
+                state: State::new(crate::common::app_state::AppState::default()),
+            })
+            .await;
+        let completed_recorder = harness.spawn_recorder::<StreamCompleted>().await;
+
+        let session_id = SessionId::new();
+        let payload = SendToLlmProvider {
+            model_used: None,
+            reasoning_effort: None,
+            session_id: session_id.clone(),
+            messages: vec![],
+            tool_definitions: vec![],
+            provider_id: None,
+            estimated_tokens: 0,
+            dispatched_at: jiff::Timestamp::now(),
+        };
+
+        // When the inner service fails with two Retryable errors (consuming the
+        // connection-retry budget on the first RetryingLlmService instance),
+        // then stalls once (consuming the stall budget), then completes.
+        harness.publish(payload).await;
+
+        // Then the turn reaches Finished: the two connection retries did NOT
+        // deplete the stall budget, so the stall retry still proceeds and
+        // completes. A shared budget would have terminated with Error after
+        // the stall (2 connection + 1 stall > 2 total).
+        let completed =
+            await_recorded(&completed_recorder, 1, std::time::Duration::from_secs(15)).await;
+        assert!(
+            completed
+                .iter()
+                .any(|sc| sc.reason == StreamCompletedReason::Finished),
+            "independent stall counter must allow completion after connection retries"
+        );
+    }
     #[tokio::test]
     async fn start_stream_aborts_existing_stream_for_same_session() {
         // Given an LLM actor with an existing stream for a session.

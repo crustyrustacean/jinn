@@ -5335,3 +5335,55 @@ fn reset_streaming_entries_for_retry_removes_partial_assistant_and_stays_streami
         "reset must stay in Streaming phase for the retry"
     );
 }
+
+#[rstest::rstest]
+fn reset_streaming_entries_for_retry_removes_partial_thinking_entry() {
+    // Given a streaming session with committed user + assistant entries
+    // and a partial thinking entry (e.g. a stalled reasoning stream).
+    let mut session = ChatSessionState::builder()
+        .with_user_entry("hello")
+        .begin_streaming()
+        .build();
+    // First token creates the committed streaming assistant entry.
+    session
+        .append_stream_token("partial", jiff::Timestamp::now())
+        .expect("append token");
+    session.begin_thinking(jiff::Timestamp::now());
+    session
+        .append_thinking_token("partial reasoning")
+        .expect("append thinking token");
+    let history_len_before = session.history().len();
+    assert_eq!(history_len_before, 3, "user + assistant + thinking");
+
+    // When resetting streaming entries for retry.
+    let removed = session.reset_streaming_entries_for_retry();
+
+    // Then both streaming entries (assistant + thinking) are removed;
+    // the committed user entry survives.
+    assert_eq!(
+        removed, 2,
+        "partial assistant and thinking entries should be removed"
+    );
+    assert_eq!(
+        session.history().len(),
+        1,
+        "only the committed user entry should remain"
+    );
+    assert!(
+        session
+            .history()
+            .iter()
+            .all(|e| matches!(e.kind, ChatEntryKind::User { .. })),
+        "no streaming entries should remain after reset"
+    );
+    assert_eq!(
+        session.streaming_thinking_entry_index(),
+        None,
+        "thinking streaming index cleared"
+    );
+    assert_eq!(
+        session.phase(),
+        PhaseKind::Streaming,
+        "reset must stay in Streaming phase for the retry"
+    );
+}
