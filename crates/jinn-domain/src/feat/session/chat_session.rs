@@ -1097,6 +1097,51 @@ impl ChatSessionState {
         }
     }
 
+    /// Discard partial streaming entries so a stalled stream can be retried.
+    ///
+    /// Removes in-progress assistant and thinking entries from history and
+    /// clears all streaming indices (assistant, thinking, tool-call, tool-result),
+    /// while staying in the `Streaming` phase. The retried stream's first token
+    /// creates fresh entries. Committed history (completed user/assistant entries)
+    /// is untouched.
+    pub fn reset_streaming_entries_for_retry(&mut self) -> usize {
+        // Collect every history index we own, then remove in descending order so
+        // earlier indices stay valid as later ones are removed.
+        let mut indices = self.collect_streaming_history_indices();
+        indices.sort_unstable_by(|a, b| b.cmp(a));
+        indices.dedup();
+        let mut removed = 0;
+        for idx in indices {
+            if idx < self.core.history.len() {
+                self.core.history.remove(idx);
+                removed += 1;
+            }
+        }
+        self.core.ephemeral.machine.clear_streaming_indices();
+        removed
+    }
+
+    /// Every history entry index currently tracked by the streaming phase.
+    fn collect_streaming_history_indices(&self) -> Vec<usize> {
+        let mut indices = Vec::new();
+        if let Some(i) = self.core.ephemeral.machine.streaming_entry_index() {
+            indices.push(i);
+        }
+        if let Some(i) = self.core.ephemeral.machine.streaming_thinking_entry_index() {
+            indices.push(i);
+        }
+        indices.extend(self.core.ephemeral.machine.streaming_tool_call_indices().values().copied());
+        indices.extend(
+            self.core
+                .ephemeral
+                .machine
+                .streaming_tool_result_indices()
+                .values()
+                .copied(),
+        );
+        indices
+    }
+
     /// Collects the text chunks drained out of the steering buffer and turn
     /// queue, in cancel-recovery order.
     ///
