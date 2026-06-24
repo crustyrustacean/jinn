@@ -346,6 +346,8 @@ fn entry_prefix_and_content(kind: &ChatEntryKind) -> (&'static str, String) {
         ChatEntryKind::Thinking(text) => ("", truncate_str(text, 40)),
 
         ChatEntryKind::Transient(s) => ("\u{2139} ", truncate_str(s, 40)),
+        // Annotations (web-search sources) are display-only; not pinned.
+        ChatEntryKind::Annotation { .. } => ("", String::new()),
     }
 }
 

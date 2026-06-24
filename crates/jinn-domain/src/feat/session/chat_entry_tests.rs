@@ -301,6 +301,40 @@ fn thinking_entry_serializes_roundtrip() {
 }
 
 #[rstest::rstest]
+fn annotation_entry_serializes_roundtrip() {
+    // Given an annotation entry with two citations.
+    use jinn_provider::StreamEvent;
+    let citations = vec![
+        jinn_provider::UrlCitation {
+            url: "https://example.com/a".to_owned(),
+            title: "Source A".to_owned(),
+            content: Some("snippet a".to_owned()),
+            start_index: None,
+            end_index: None,
+        },
+        jinn_provider::UrlCitation {
+            url: "https://example.com/b".to_owned(),
+            title: "Source B".to_owned(),
+            content: None,
+            start_index: None,
+            end_index: None,
+        },
+    ];
+    let entry = ChatEntry::annotation(citations);
+
+    // When serializing and deserializing.
+    let json = serde_json::to_string(&entry).expect("serialize");
+    let back: ChatEntry = serde_json::from_str(&json).expect("deserialize");
+
+    // Then the roundtrip preserves the Annotation kind.
+    assert_eq!(entry.kind, back.kind);
+
+    // And the JSON exposes the expected variant tag.
+    assert!(json.contains("\"Annotation\""));
+    let _ = StreamEvent::Citations(vec![]); // ensure variant still compiles
+}
+
+#[rstest::rstest]
 fn thinking_entry_pin_position_defaults_to_none() {
     // Given a thinking entry.
     let entry = ChatEntry::thinking("test");
@@ -633,6 +667,15 @@ fn system_kind_is_not_included_by_default() {
 fn actor_kind_is_not_included_by_default() {
     // Given an Actor entry.
     let entry = ChatEntry::actor("echo", "HELLO");
+
+    // Then the kind is NOT included by default.
+    assert!(!entry.kind.is_included_by_default());
+}
+
+#[rstest::rstest]
+fn annotation_kind_is_not_included_by_default() {
+    // Given an Annotation entry.
+    let entry = ChatEntry::annotation(vec![]);
 
     // Then the kind is NOT included by default.
     assert!(!entry.kind.is_included_by_default());
@@ -1018,4 +1061,23 @@ fn is_user_force_excluded_returns_false_when_user_toggled_back_to_default() {
         !entry.is_user_force_excluded(),
         "entry toggled back to Default must return false"
     );
+}
+
+#[rstest::rstest]
+fn annotation_produces_no_message() {
+    // Given an annotation entry (display-only, excluded from context).
+    let entry = ChatEntry::annotation(vec![jinn_provider::UrlCitation {
+        url: "https://example.com".to_owned(),
+        title: "Source".to_owned(),
+        content: None,
+        start_index: None,
+        end_index: None,
+    }]);
+
+    // When converting to LLM messages.
+    let messages =
+        crate::feat::provider::entries_to_messages::entries_to_messages(&[entry]);
+
+    // Then no messages are produced.
+    assert!(messages.is_empty());
 }
