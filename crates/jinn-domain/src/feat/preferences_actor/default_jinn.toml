@@ -82,6 +82,12 @@ max_delay_secs = 60
 # retried using the `[request_retry]` values above, with its own counter.
 stream_idle_timeout_secs = 60
 
+# Default execution timeout (seconds) for all builtin tools except `bash`
+# (which keeps its own `bash.default_timeout_secs`). Acts as a safety ceiling
+# so a hung tool never stalls the turn indefinitely. For `bash` commands the
+# shorter of this and `bash.default_timeout_secs` fires first.
+tool_default_timeout_secs = 120
+
 # web-fetch tool.
 [web_fetch]
 # HTTP backend used by the web_fetch tool. One of: "http" or "headless-chrome".

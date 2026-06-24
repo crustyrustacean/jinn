@@ -515,6 +515,10 @@ impl ToolOrchestratorActor {
     }
 
     /// Builds a [`ToolContext`] for the given session by reading its CWD from shared state.
+    ///
+    /// The outer `timeout` (from `tool_default_timeout_secs`) is a safety ceiling for
+    /// all builtin tools. `bash` additionally applies its own inner
+    /// `bash.default_timeout_secs`; the shorter of the two fires first.
     fn build_tool_context(&self, session_id: &SessionId, dispatched_at: Timestamp) -> ToolContext {
         let prefs = self.services.user_preferences_storage.read();
         let cwd = {
@@ -526,10 +530,10 @@ impl ToolOrchestratorActor {
         };
         let max_output_lines = prefs.max_tool_output_lines;
         let max_output_bytes = prefs.max_tool_output_bytes;
-
+        let timeout = std::time::Duration::from_secs(prefs.tool_default_timeout_secs);
         ToolContext {
             cwd,
-            timeout: None,
+            timeout: Some(timeout),
             bash_default_timeout: prefs
                 .bash
                 .default_timeout_secs
@@ -934,6 +938,126 @@ excluded_domains = ["spam.com"]
         assert_eq!(
             prefs.openrouter_web_search.excluded_domains,
             defaults.excluded_domains
+        );
+    }
+}
+
+#[cfg(test)]
+mod timeout_tests {
+    #![allow(clippy::expect_used, clippy::indexing_slicing, reason = "test code")]
+    use std::path::PathBuf;
+    use std::time::Duration;
+
+    use super::{BoxedToolFuture, ToolContext, run_builtin_with_timeout};
+    use crate::common::app_paths::AppPaths;
+    use crate::feat::preferences_actor::user_preferences::UserPreferences;
+    use jinn_provider::tool_types::{ToolCall, ToolResult};
+
+    fn make_call() -> ToolCall {
+        ToolCall {
+            id: "call_1".to_owned(),
+            name: "slow_tool".to_owned(),
+            arguments: "{}".to_owned(),
+        }
+    }
+
+    fn empty_ctx() -> ToolContext {
+        ToolContext {
+            cwd: PathBuf::from("/tmp"),
+            timeout: None,
+            bash_default_timeout: None,
+            state: None,
+            session_id: None,
+            app_paths: AppPaths::new_in(std::path::Path::new("/tmp")),
+            bus: None,
+            max_output_lines: None,
+            max_output_bytes: None,
+            dispatched_at: jiff::Timestamp::now(),
+        }
+    }
+
+    /// A tool execute_fn that sleeps 500ms before succeeding.
+    fn slow_execute(_call: ToolCall, _ctx: ToolContext) -> BoxedToolFuture {
+        Box::pin(async {
+            tokio::time::sleep(Duration::from_millis(500)).await;
+            ToolResult {
+                tool_call_id: "call_1".to_owned(),
+                name: "slow_tool".to_owned(),
+                content: "done".to_owned(),
+                success: true,
+                full_content: None,
+                truncation: None,
+                pin_position: None,
+            }
+        })
+    }
+
+    /// A tool execute_fn that completes immediately.
+    fn fast_execute(_call: ToolCall, _ctx: ToolContext) -> BoxedToolFuture {
+        Box::pin(async {
+            ToolResult {
+                tool_call_id: "call_1".to_owned(),
+                name: "slow_tool".to_owned(),
+                content: "done".to_owned(),
+                success: true,
+                full_content: None,
+                truncation: None,
+                pin_position: None,
+            }
+        })
+    }
+
+    #[tokio::test]
+    async fn tool_exceeding_timeout_returns_failed_result() {
+        // Given a tool timeout of 50ms and a tool that sleeps 500ms.
+        // When running with the timeout.
+        let result = run_builtin_with_timeout(
+            make_call(),
+            empty_ctx(),
+            slow_execute,
+            Some(Duration::from_millis(50)),
+        )
+        .await;
+
+        // Then the result is a failure with a timeout message.
+        assert!(!result.success, "expected failure on timeout");
+        assert!(
+            result.content.contains("timed out"),
+            "expected timeout message, got: {}",
+            result.content
+        );
+    }
+
+    #[tokio::test]
+    async fn tool_completing_under_timeout_returns_normal_result() {
+        // Given a tool timeout of 500ms and a tool that completes immediately.
+        // When running with the timeout.
+        let result = run_builtin_with_timeout(
+            make_call(),
+            empty_ctx(),
+            fast_execute,
+            Some(Duration::from_millis(500)),
+        )
+        .await;
+
+        // Then the result succeeds with the tool's output.
+        assert!(result.success, "expected success under timeout");
+        assert_eq!(result.content, "done");
+    }
+
+    #[test]
+    fn tool_timeout_value_sourced_from_preferences() {
+        // Given preferences with a custom tool timeout.
+        let prefs = UserPreferences {
+            tool_default_timeout_secs: 7,
+            ..UserPreferences::default()
+        };
+
+        // Then the timeout value reflects the preference.
+        assert_eq!(prefs.tool_default_timeout_secs, 7);
+        assert_eq!(
+            Duration::from_secs(prefs.tool_default_timeout_secs),
+            Duration::from_secs(7)
         );
     }
 }
