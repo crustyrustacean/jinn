@@ -74,6 +74,20 @@ max_retries = 5
 base_delay_secs = 2
 max_delay_secs = 60
 
+# Maximum seconds between stream events before the stream is considered
+# stalled (half-open connection, provider hang, etc). The idle timer resets
+# on every event — token, reasoning, or tool-call delta — so a long-running
+# generation that keeps producing tokens is never falsely tripped. Only a
+# true provider/connection-level stall fires it. On stall, the request is
+# retried using the `[request_retry]` values above, with its own counter.
+stream_idle_timeout_secs = 60
+
+# Default execution timeout (seconds) for all builtin tools except `bash`
+# (which keeps its own `bash.default_timeout_secs`). Acts as a safety ceiling
+# so a hung tool never stalls the turn indefinitely. For `bash` commands the
+# shorter of this and `bash.default_timeout_secs` fires first.
+tool_default_timeout_secs = 120
+
 # web-fetch tool.
 [web_fetch]
 # HTTP backend used by the web_fetch tool. One of: "http" or "headless-chrome".

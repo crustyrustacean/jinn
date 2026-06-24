@@ -74,6 +74,14 @@ impl ChatHistory {
     pub(in crate::feat::session) fn clear(&mut self) {
         self.entries.clear();
     }
+
+    /// Remove the entry at `index`, shifting subsequent entries down.
+    ///
+    /// Used by the stall-retry path to discard partial streaming entries.
+    /// Panics if `index` is out of bounds.
+    pub(in crate::feat::session) fn remove(&mut self, index: usize) -> ChatEntry {
+        self.entries.remove(index)
+    }
 }
 
 impl Deref for ChatHistory {

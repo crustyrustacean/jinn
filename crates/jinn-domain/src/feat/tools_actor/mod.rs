@@ -515,6 +515,10 @@ impl ToolOrchestratorActor {
     }
 
     /// Builds a [`ToolContext`] for the given session by reading its CWD from shared state.
+    ///
+    /// The outer `timeout` (from `tool_default_timeout_secs`) is a safety ceiling for
+    /// all builtin tools. `bash` additionally applies its own inner
+    /// `bash.default_timeout_secs`; the shorter of the two fires first.
     fn build_tool_context(&self, session_id: &SessionId, dispatched_at: Timestamp) -> ToolContext {
         let prefs = self.services.user_preferences_storage.read();
         let cwd = {
@@ -526,10 +530,10 @@ impl ToolOrchestratorActor {
         };
         let max_output_lines = prefs.max_tool_output_lines;
         let max_output_bytes = prefs.max_tool_output_bytes;
-
+        let timeout = std::time::Duration::from_secs(prefs.tool_default_timeout_secs);
         ToolContext {
             cwd,
-            timeout: None,
+            timeout: Some(timeout),
             bash_default_timeout: prefs
                 .bash
                 .default_timeout_secs
@@ -595,8 +599,21 @@ impl ToolOrchestratorActor {
         let tool_ctx = self.build_tool_context(&session_id, dispatched_at);
         let timeout = tool_ctx.timeout;
 
+        let call_id = tool_call.id.clone();
+        let call_name = tool_call.name.clone();
+
         tokio::spawn(async move {
-            let result = run_builtin_with_timeout(tool_call, tool_ctx, execute_fn, timeout).await;
+            use futures::FutureExt as _;
+            use std::panic::AssertUnwindSafe;
+            let result = match AssertUnwindSafe(run_builtin_with_timeout(
+                tool_call, tool_ctx, execute_fn, timeout,
+            ))
+            .catch_unwind()
+            .await
+            {
+                Ok(r) => r,
+                Err(_) => panicked_tool_result(&call_id, &call_name),
+            };
             bus.publish(ToolExecutionCompleted { session_id, result })
                 .await;
         })
@@ -655,8 +672,13 @@ impl ToolOrchestratorActor {
                 .and_then(|sess| sess.core.parent_session.clone())
         };
 
+        let call_id = tool_call.id.clone();
+        let call_name = tool_call.name.clone();
+
         tokio::spawn(async move {
-            let result = run_plugin_tool(
+            use futures::FutureExt as _;
+            use std::panic::AssertUnwindSafe;
+            let result = match AssertUnwindSafe(run_plugin_tool(
                 plugin_fire,
                 target,
                 sid,
@@ -664,8 +686,13 @@ impl ToolOrchestratorActor {
                 plugin_name,
                 tool_call,
                 arguments,
-            )
-            .await;
+            ))
+            .catch_unwind()
+            .await
+            {
+                Ok(r) => r,
+                Err(_) => panicked_tool_result(&call_id, &call_name),
+            };
             bus.publish(ToolExecutionCompleted { session_id, result })
                 .await;
         })
@@ -735,6 +762,23 @@ impl ToolOrchestratorActor {
     }
 }
 
+/// Constructs a failed [`ToolResult`] for a tool that panicked.
+///
+/// Ensures a panicking tool still publishes a completion so the batch always finishes.
+fn panicked_tool_result(tool_call_id: &str, name: &str) -> ToolResult {
+    tracing::error!(tool = %name, tool_call_id = %tool_call_id, "tool execution panicked");
+    ToolResult {
+        tool_call_id: tool_call_id.to_owned(),
+        name: name.to_owned(),
+        content: "tool execution panicked".to_owned(),
+        success: false,
+        full_content: None,
+        truncation: None,
+        pin_position: None,
+    }
+}
+
+/// Runs a builtin tool, racing it against its configured timeout.
 /// Runs a builtin tool, racing it against its configured timeout.
 ///
 /// On timeout the returned `ToolResult` carries a failure message instead of panicking.
@@ -935,5 +979,205 @@ excluded_domains = ["spam.com"]
             prefs.openrouter_web_search.excluded_domains,
             defaults.excluded_domains
         );
+    }
+}
+
+#[cfg(test)]
+mod timeout_tests {
+    #![allow(clippy::expect_used, clippy::indexing_slicing, reason = "test code")]
+    use std::path::PathBuf;
+    use std::time::Duration;
+
+    use super::{BoxedToolFuture, ToolContext, run_builtin_with_timeout};
+    use crate::common::app_paths::AppPaths;
+    use crate::feat::preferences_actor::user_preferences::UserPreferences;
+    use jinn_provider::tool_types::{ToolCall, ToolResult};
+
+    fn make_call() -> ToolCall {
+        ToolCall {
+            id: "call_1".to_owned(),
+            name: "slow_tool".to_owned(),
+            arguments: "{}".to_owned(),
+        }
+    }
+
+    fn empty_ctx() -> ToolContext {
+        ToolContext {
+            cwd: PathBuf::from("/tmp"),
+            timeout: None,
+            bash_default_timeout: None,
+            state: None,
+            session_id: None,
+            app_paths: AppPaths::new_in(std::path::Path::new("/tmp")),
+            bus: None,
+            max_output_lines: None,
+            max_output_bytes: None,
+            dispatched_at: jiff::Timestamp::now(),
+        }
+    }
+
+    /// A tool execute_fn that sleeps 500ms before succeeding.
+    fn slow_execute(_call: ToolCall, _ctx: ToolContext) -> BoxedToolFuture {
+        Box::pin(async {
+            tokio::time::sleep(Duration::from_millis(500)).await;
+            ToolResult {
+                tool_call_id: "call_1".to_owned(),
+                name: "slow_tool".to_owned(),
+                content: "done".to_owned(),
+                success: true,
+                full_content: None,
+                truncation: None,
+                pin_position: None,
+            }
+        })
+    }
+
+    /// A tool execute_fn that completes immediately.
+    fn fast_execute(_call: ToolCall, _ctx: ToolContext) -> BoxedToolFuture {
+        Box::pin(async {
+            ToolResult {
+                tool_call_id: "call_1".to_owned(),
+                name: "slow_tool".to_owned(),
+                content: "done".to_owned(),
+                success: true,
+                full_content: None,
+                truncation: None,
+                pin_position: None,
+            }
+        })
+    }
+
+    #[tokio::test]
+    async fn tool_exceeding_timeout_returns_failed_result() {
+        // Given a tool timeout of 50ms and a tool that sleeps 500ms.
+        // When running with the timeout.
+        let result = run_builtin_with_timeout(
+            make_call(),
+            empty_ctx(),
+            slow_execute,
+            Some(Duration::from_millis(50)),
+        )
+        .await;
+
+        // Then the result is a failure with a timeout message.
+        assert!(!result.success, "expected failure on timeout");
+        assert!(
+            result.content.contains("timed out"),
+            "expected timeout message, got: {}",
+            result.content
+        );
+    }
+
+    #[tokio::test]
+    async fn tool_completing_under_timeout_returns_normal_result() {
+        // Given a tool timeout of 500ms and a tool that completes immediately.
+        // When running with the timeout.
+        let result = run_builtin_with_timeout(
+            make_call(),
+            empty_ctx(),
+            fast_execute,
+            Some(Duration::from_millis(500)),
+        )
+        .await;
+
+        // Then the result succeeds with the tool's output.
+        assert!(result.success, "expected success under timeout");
+        assert_eq!(result.content, "done");
+    }
+
+    #[test]
+    fn tool_timeout_value_sourced_from_preferences() {
+        // Given preferences with a custom tool timeout.
+        let prefs = UserPreferences {
+            tool_default_timeout_secs: 7,
+            ..UserPreferences::default()
+        };
+
+        // Then the timeout value reflects the preference.
+        assert_eq!(prefs.tool_default_timeout_secs, 7);
+        assert_eq!(
+            Duration::from_secs(prefs.tool_default_timeout_secs),
+            Duration::from_secs(7)
+        );
+    }
+}
+
+#[cfg(test)]
+mod panic_safety_tests {
+    #![allow(
+        clippy::expect_used,
+        clippy::indexing_slicing,
+        clippy::panic,
+        reason = "test code"
+    )]
+    use std::panic::AssertUnwindSafe;
+
+    use futures::FutureExt as _;
+
+    use super::panicked_tool_result;
+    use jinn_provider::tool_types::{ToolCall, ToolResult};
+
+    #[tokio::test]
+    async fn builtin_tool_panic_publishes_failed_execution_completed() {
+        // Given a builtin execute_fn that panics.
+        fn panicking_execute(_call: ToolCall, _ctx: super::ToolContext) -> super::BoxedToolFuture {
+            Box::pin(async {
+                panic!("simulated builtin tool panic");
+            })
+        }
+
+        let tool_call = ToolCall {
+            id: "call_panic".to_owned(),
+            name: "boom".to_owned(),
+            arguments: "{}".to_owned(),
+        };
+        // When the builtin future panics and is caught.
+        let result: ToolResult = match AssertUnwindSafe(panicking_execute(
+            tool_call.clone(),
+            super::ToolContext {
+                cwd: std::path::PathBuf::from("/tmp"),
+                timeout: None,
+                bash_default_timeout: None,
+                state: None,
+                session_id: None,
+                app_paths: crate::common::app_paths::AppPaths::new_in(std::path::Path::new("/tmp")),
+                bus: None,
+                max_output_lines: None,
+                max_output_bytes: None,
+                dispatched_at: jiff::Timestamp::now(),
+            },
+        ))
+        .catch_unwind()
+        .await
+        {
+            Ok(r) => r,
+            Err(_) => panicked_tool_result(&tool_call.id, &tool_call.name),
+        };
+
+        // Then a failed ToolResult is produced (not a silent hang).
+        assert!(!result.success, "panicked tool must report failure");
+        assert_eq!(result.content, "tool execution panicked");
+        assert_eq!(result.tool_call_id, "call_panic");
+        assert_eq!(result.name, "boom");
+    }
+
+    #[tokio::test]
+    async fn plugin_tool_panic_publishes_failed_execution_completed() {
+        // Given a plugin-like future that panics.
+        let plugin_future = async {
+            panic!("simulated plugin tool panic");
+        };
+
+        // When the plugin future panics and is caught.
+        let result: ToolResult = match AssertUnwindSafe(plugin_future).catch_unwind().await {
+            Ok(r) => r,
+            Err(_) => panicked_tool_result("call_plugin", "plugin_tool"),
+        };
+
+        // Then a failed ToolResult is produced (not a silent hang).
+        assert!(!result.success, "panicked plugin tool must report failure");
+        assert_eq!(result.content, "tool execution panicked");
+        assert_eq!(result.tool_call_id, "call_plugin");
+        assert_eq!(result.name, "plugin_tool");
     }
 }
