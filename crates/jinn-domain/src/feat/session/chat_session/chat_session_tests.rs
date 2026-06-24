@@ -5268,3 +5268,67 @@ fn tool_call_entry_gets_dispatched_at_from_tool_use_started() {
         other => panic!("expected Streamed, got {other:?}"),
     }
 }
+
+#[rstest::rstest]
+fn reset_streaming_entries_for_retry_removes_partial_streaming_entry() {
+    // Given a streaming session with a partial assistant entry.
+    let mut session = streaming_session();
+    session
+        .append_stream_token("Partial", dispatched_at())
+        .expect("append token");
+    let history_len_before = session.history().len();
+    assert!(history_len_before >= 1, "streaming entry should exist");
+
+    // When resetting streaming entries for retry.
+    let removed = session.reset_streaming_entries_for_retry();
+
+    // Then the partial entry is removed and the session stays in Streaming phase.
+    assert_eq!(removed, 1, "exactly one streaming entry should be removed");
+    assert_eq!(
+        session.phase(),
+        crate::feat::session::phase_machine::PhaseKind::Streaming,
+        "must stay in Streaming phase so the retry can reuse it"
+    );
+    assert_eq!(
+        session.streaming_thinking_entry_index(),
+        None,
+        "streaming indices cleared",
+    );
+}
+
+#[rstest::rstest]
+fn reset_streaming_entries_for_retry_removes_partial_assistant_and_stays_streaming() {
+        // Given a streaming session with a partial assistant entry.
+        let mut session = ChatSessionState::new();
+        session.push_entry(ChatEntry::user("hello"));
+        session.begin_streaming();
+        session
+            .append_stream_token("partial", jiff::Timestamp::now())
+            .expect("append token");
+        let history_len_before = session.history().len();
+        assert_eq!(history_len_before, 2, "user + partial assistant");
+
+        // When resetting streaming entries for retry.
+        let removed = session.reset_streaming_entries_for_retry();
+
+        // Then the partial assistant entry was removed.
+        assert_eq!(removed, 1, "only the partial assistant entry should be removed");
+        assert_eq!(
+            session.history().len(),
+            1,
+            "user entry should remain, partial assistant discarded"
+        );
+        assert!(
+            session
+                .history()
+                .iter()
+                .all(|e| !matches!(e.kind, ChatEntryKind::Assistant(_))),
+            "no assistant entry should remain after reset"
+        );
+        // And the session is still in the Streaming phase (no transition).
+        assert_eq!(
+            session.phase(),
+            PhaseKind::Streaming,
+            "reset must stay in Streaming phase for the retry"
+        );
+    }
