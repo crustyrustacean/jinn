@@ -11,6 +11,10 @@ use error_stack::{Report, ResultExt as _};
 use parking_lot::RwLock;
 
 use super::user_preferences::{UserPreferences, UserPreferencesError, preferences_path};
+#[cfg(test)]
+use super::user_preferences::{
+    default_stream_idle_timeout_secs, default_tool_default_timeout_secs,
+};
 
 /// Trait for user preferences I/O.
 ///
@@ -277,6 +281,8 @@ mod tests {
             bash: BashConfig::default(),
             projects: vec![],
             reasoning: ReasoningConfig::default(),
+            stream_idle_timeout_secs: default_stream_idle_timeout_secs(),
+            tool_default_timeout_secs: default_tool_default_timeout_secs(),
         };
 
         // When saving and reloading.
@@ -335,6 +341,8 @@ mod tests {
                 path: PathBuf::from("/tmp/proj-a"),
             }],
             reasoning: ReasoningConfig::default(),
+            stream_idle_timeout_secs: default_stream_idle_timeout_secs(),
+            tool_default_timeout_secs: default_tool_default_timeout_secs(),
         };
 
         // When saving and reloading.
@@ -372,6 +380,8 @@ mod tests {
             bash: BashConfig::default(),
             projects: vec![],
             reasoning: ReasoningConfig::default(),
+            stream_idle_timeout_secs: default_stream_idle_timeout_secs(),
+            tool_default_timeout_secs: default_tool_default_timeout_secs(),
         };
         service.save(&prefs).expect("save");
 
@@ -405,6 +415,8 @@ mod tests {
             bash: BashConfig::default(),
             projects: vec![],
             reasoning: ReasoningConfig::default(),
+            stream_idle_timeout_secs: default_stream_idle_timeout_secs(),
+            tool_default_timeout_secs: default_tool_default_timeout_secs(),
         };
         service.save(&prefs).expect("save");
 
@@ -425,6 +437,8 @@ mod tests {
             bash: BashConfig::default(),
             projects: vec![],
             reasoning: ReasoningConfig::default(),
+            stream_idle_timeout_secs: default_stream_idle_timeout_secs(),
+            tool_default_timeout_secs: default_tool_default_timeout_secs(),
         };
         service.save(&updated).expect("save updated");
 
@@ -454,6 +468,8 @@ mod tests {
             bash: BashConfig::default(),
             projects: vec![],
             reasoning: ReasoningConfig::default(),
+            stream_idle_timeout_secs: default_stream_idle_timeout_secs(),
+            tool_default_timeout_secs: default_tool_default_timeout_secs(),
         };
         service.save(&prefs).expect("save");
 

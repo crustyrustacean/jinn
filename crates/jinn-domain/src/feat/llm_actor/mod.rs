@@ -73,7 +73,9 @@ use crate::common::actor_deps::{ActorDeps, BusPublish};
 use crate::common::services::bus_service::BusService;
 use crate::common::state::State;
 use crate::feat::chat_input::protocol::command::PushChatEntry;
-use crate::feat::provider::protocol::command::{CancelStream, SendToLlmProvider};
+use crate::feat::provider::protocol::command::{
+    CancelStream, ResetStreamForRetry, SendToLlmProvider,
+};
 use crate::feat::provider::protocol::event::{StreamCompleted, StreamCompletedReason, StreamToken};
 use crate::feat::provider_infra::LlmServiceFactoryService;
 use crate::feat::provider_infra::StopReason;
@@ -89,7 +91,9 @@ use error_stack::Report;
 use futures::StreamExt as _;
 use jiff::Timestamp;
 
-use jinn_provider::{LlmService, LlmServiceError, OnRetry, RetryingLlmService};
+use jinn_provider::{
+    LlmMessage, LlmService, LlmServiceError, OnRetry, RetryingLlmService, ToolDefinition,
+};
 use session::SessionData;
 
 /// OnRetry callback that pushes a system chat entry to notify the user.
@@ -155,6 +159,22 @@ async fn emit_stream_error(
         dispatched_at,
     })
     .await;
+}
+
+/// Exponential backoff with full jitter for mid-stream stall retries.
+///
+/// Mirrors `RetryingLlmService::compute_delay` but without the
+/// retryable-error / Retry-After-hint logic — a stall is always retryable
+/// and has no provider hint.
+fn compute_stall_backoff(config: &RequestRetryConfig, attempt: u32) -> Duration {
+    let base_secs = config.base_delay_secs as f64;
+    let exponential = base_secs * 2_f64.powi(i32::try_from(attempt).unwrap_or(i32::MAX));
+    let capped = exponential.min(config.max_delay_secs as f64);
+    if capped <= 0.0 {
+        return Duration::ZERO;
+    }
+    let final_delay = rand::random_range(0.0..capped);
+    Duration::from_secs_f64(final_delay)
 }
 
 /// LLM streaming actor.
@@ -247,23 +267,42 @@ impl kameo::message::Message<StreamCompleted> for LlmActor {
     }
 }
 
+/// Outcome of consuming an LLM stream.
+///
+/// `process_stream_events` distinguishes a normal termination from an
+/// idle stall so the caller (the stall-retry loop in `start_stream`) can
+/// decide whether to retry.
+enum StreamOutcome {
+    /// The stream terminated normally via a `Done`/`Error` event or stream end.
+    /// `StreamCompleted` has already been published on the bus.
+    Completed,
+    /// No event arrived for longer than the idle timeout. `StreamCompleted` has
+    /// NOT been published — the caller owns the retry decision.
+    Stalled,
+}
+
 /// Processes events from an LLM stream, emitting token/tool events via the sink.
 ///
-/// Returns `true` if the stream ended with a terminal event (Done or Error),
-/// `false` if the stream ended abnormally without one.
+/// Returns [`StreamOutcome::Completed`] if the stream ended with a terminal event
+/// (Done or Error), or [`StreamOutcome::Stalled`] if no event arrived for
+/// `idle_timeout` (the caller then decides whether to retry).
 async fn process_stream_events(
     mut stream: jinn_provider::ToolStream,
     bus: &BusService,
     sid: &SessionId,
     model_id: &str,
     dispatched_at: jiff::Timestamp,
-) -> bool {
+    idle_timeout: std::time::Duration,
+) -> StreamOutcome {
     let mut accum = StreamAccumulator::new(model_id);
-    let mut stream_ended_normally = false;
 
-    while let Some(result) = stream.next().await {
-        match result {
-            Ok(event) => match event {
+    loop {
+        // Reset the idle timer on every iteration: each event — token, reasoning,
+        // or tool-call delta — resets it. Only a true provider/connection-level
+        // stall (zero events) trips the timeout. Long reasoning blocks that keep
+        // producing tokens are never falsely tripped.
+        match tokio::time::timeout(idle_timeout, stream.next()).await {
+            Ok(Some(Ok(event))) => match event {
                 StreamEvent::Text(token) => {
                     handle_text_event(bus, sid, dispatched_at, &mut accum, token).await;
                 }
@@ -301,13 +340,11 @@ async fn process_stream_events(
                     .await;
                 }
                 StreamEvent::Done { stop_reason, usage } => {
-                    stream_ended_normally = true;
                     handle_done_event(bus, sid, &mut accum, stop_reason, usage, dispatched_at)
                         .await;
-                    break;
+                    return StreamOutcome::Completed;
                 }
                 StreamEvent::Error { message, .. } => {
-                    stream_ended_normally = true;
                     tracing::error!(
                         session_id = ?sid,
                         error = %message,
@@ -320,33 +357,42 @@ async fn process_stream_events(
                         dispatched_at,
                     )
                     .await;
-                    break;
+                    return StreamOutcome::Completed;
                 }
             },
-            Err(e) => {
-                stream_ended_normally = true;
+            Ok(Some(Err(e))) => {
                 emit_stream_error(bus, sid, format!("LLM stream error: {e:?}"), dispatched_at)
                     .await;
-                break;
+                return StreamOutcome::Completed;
+            }
+            Ok(None) => {
+                // Stream ended without a terminal event (Done/Error).
+                tracing::error!(
+                    session_id = ?sid,
+                    "LLM stream ended without a terminal event (Done/Error)"
+                );
+                emit_stream_error(
+                    bus,
+                    sid,
+                    "LLM stream ended unexpectedly. The connection may have been interrupted."
+                        .to_owned(),
+                    dispatched_at,
+                )
+                .await;
+                return StreamOutcome::Completed;
+            }
+            Err(_elapsed) => {
+                // Idle timeout fired: no event for `idle_timeout`. Hand control back
+                // to the caller's stall-retry loop. Do NOT publish `StreamCompleted`.
+                tracing::warn!(
+                    session_id = ?sid,
+                    idle_timeout_secs = idle_timeout.as_secs(),
+                    "LLM stream stalled — no event within idle timeout"
+                );
+                return StreamOutcome::Stalled;
             }
         }
     }
-
-    if !stream_ended_normally {
-        tracing::error!(
-            session_id = ?sid,
-            "LLM stream ended without a terminal event (Done/Error)"
-        );
-        emit_stream_error(
-            bus,
-            sid,
-            "LLM stream ended unexpectedly. The connection may have been interrupted.".to_owned(),
-            dispatched_at,
-        )
-        .await;
-    }
-
-    stream_ended_normally
 }
 
 /// Accumulates streamed text, reasoning, and tool calls during an LLM stream.
@@ -553,13 +599,9 @@ impl LlmActor {
     /// Dispatches incoming commands to the appropriate handler.
     /// Starts an LLM streaming response for a session, aborting any existing stream.
     async fn start_stream(&mut self, payload: &SendToLlmProvider) {
-        let retry_config = self
-            .deps
-            .services
-            .user_preferences_storage
-            .read()
-            .request_retry
-            .to_retry_config();
+        let prefs = self.deps.services.user_preferences_storage.read();
+        let retry_config = prefs.request_retry.clone();
+        let idle_timeout_secs = prefs.stream_idle_timeout_secs;
 
         let tools = payload.tool_definitions.clone();
         let messages = payload.messages.clone();
@@ -608,45 +650,17 @@ impl LlmActor {
         let sid = session_id.clone();
         let dispatched_at = payload.dispatched_at;
 
-        let handle = tokio::spawn(async move {
-            let service: Box<dyn LlmService> = match factory.create() {
-                Ok(s) => s,
-                Err(e) => {
-                    tracing::error!(err = ?e, "failed to create LLM service");
-                    emit_stream_error(
-                        &bus,
-                        &sid,
-                        format!("LLM service creation failed: {e:?}"),
-                        dispatched_at,
-                    )
-                    .await;
-                    return;
-                }
-            };
-
-            let service = RetryingLlmService::new(
-                service,
-                retry_config,
-                Box::new(PushEntryOnRetry::new(bus.clone(), sid.clone())),
-            );
-
-            let stream = match service.chat_stream_with_tools(messages, tools).await {
-                Ok(s) => s,
-                Err(e) => {
-                    tracing::error!(err = ?e, "failed to start LLM stream");
-                    emit_stream_error(
-                        &bus,
-                        &sid,
-                        format!("LLM stream error: {e:?}"),
-                        dispatched_at,
-                    )
-                    .await;
-                    return;
-                }
-            };
-
-            process_stream_events(stream, &bus, &sid, &model_id, dispatched_at).await;
-        });
+        let handle = tokio::spawn(run_stream_with_stall_retry(
+            factory,
+            bus,
+            sid,
+            model_id,
+            messages,
+            tools,
+            dispatched_at,
+            retry_config,
+            idle_timeout_secs,
+        ));
 
         // Update session state.
         if let Some(session) = self.sessions.get_mut(&session_id) {
@@ -757,9 +771,153 @@ impl LlmActor {
     }
 }
 
+/// Drives the streaming conversation with stall detection and bounded auto-retry.
+///
+/// A stall (no stream events for `idle_timeout_secs`) is treated like a hard
+/// server error: partial streaming entries are discarded, a system entry is pushed,
+/// and the request is retried with backoff up to `request_retry.max_retries` times.
+async fn run_stream_with_stall_retry(
+    factory: LlmServiceFactoryService,
+    bus: BusService,
+    sid: SessionId,
+    model_id: String,
+    messages: Vec<LlmMessage>,
+    tools: Vec<ToolDefinition>,
+    dispatched_at: jiff::Timestamp,
+    retry_config: RequestRetryConfig,
+    idle_timeout_secs: u64,
+) {
+    let idle_timeout = Duration::from_secs(idle_timeout_secs);
+    let max_stall_retries = retry_config.max_retries;
+    let mut stall_attempt: u32 = 0;
+
+    loop {
+        let service = match build_streaming_service(&factory, &retry_config, &bus, &sid) {
+            Ok(s) => s,
+            Err(message) => {
+                emit_stream_error(&bus, &sid, message, dispatched_at).await;
+                return;
+            }
+        };
+
+        let stream = match service
+            .chat_stream_with_tools(messages.clone(), tools.clone())
+            .await
+        {
+            Ok(s) => s,
+            Err(e) => {
+                tracing::error!(err = ?e, "failed to start LLM stream");
+                emit_stream_error(
+                    &bus,
+                    &sid,
+                    format!("LLM stream error: {e:?}"),
+                    dispatched_at,
+                )
+                .await;
+                return;
+            }
+        };
+
+        let outcome =
+            process_stream_events(stream, &bus, &sid, &model_id, dispatched_at, idle_timeout).await;
+
+        match outcome {
+            StreamOutcome::Completed => return,
+            StreamOutcome::Stalled => {
+                stall_attempt += 1;
+                if stall_attempt > max_stall_retries {
+                    tracing::error!(
+                        session_id = ?sid,
+                        stall_attempt,
+                        max_stall_retries,
+                        "LLM stream stalled; stall-retry budget exhausted"
+                    );
+                    emit_stream_error(
+                        &bus,
+                        &sid,
+                        format!("LLM stream stalled (no activity for {idle_timeout_secs}s)"),
+                        dispatched_at,
+                    )
+                    .await;
+                    return;
+                }
+
+                if handle_stall_retry(&bus, &sid, &retry_config, stall_attempt, max_stall_retries)
+                    .await
+                {
+                    continue;
+                }
+                return;
+            }
+        }
+    }
+}
+
+/// Constructs a fresh retrying service for one streaming attempt.
+fn build_streaming_service(
+    factory: &LlmServiceFactoryService,
+    retry_config: &RequestRetryConfig,
+    bus: &BusService,
+    sid: &SessionId,
+) -> Result<RetryingLlmService, String> {
+    let service: Box<dyn LlmService> = factory.create().map_err(|e| {
+        tracing::error!(err = ?e, "failed to create LLM service");
+        format!("LLM service creation failed: {e:?}")
+    })?;
+    Ok(RetryingLlmService::new(
+        service,
+        retry_config.to_retry_config(),
+        Box::new(PushEntryOnRetry::new(bus.clone(), sid.clone())),
+    ))
+}
+
+/// Handles a stall by discarding partial output and scheduling a retry.
+///
+/// Returns `true` when the caller should retry, `false` if recovery is impossible
+/// (should not happen given the caller checks the budget, but kept defensive).
+async fn handle_stall_retry(
+    bus: &BusService,
+    sid: &SessionId,
+    retry_config: &RequestRetryConfig,
+    stall_attempt: u32,
+    max_stall_retries: u32,
+) -> bool {
+    let delay = compute_stall_backoff(retry_config, stall_attempt.saturating_sub(1));
+    tracing::warn!(
+        session_id = ?sid,
+        stall_attempt,
+        max_stall_retries,
+        backoff_secs = delay.as_secs(),
+        "LLM stream stalled; resetting and retrying"
+    );
+
+    // Discard partial streaming entries so the retry starts clean.
+    bus.publish(ResetStreamForRetry {
+        session_id: sid.clone(),
+    })
+    .await;
+    // Notify the user the turn is recovering.
+    bus.publish(PushChatEntry {
+        session_id: sid.clone(),
+        entry: ChatEntry::system(format!(
+            "LLM stream stalled, retrying in {}s (attempt {stall_attempt}/{max_stall_retries})",
+            delay.as_secs()
+        )),
+    })
+    .await;
+    tokio::time::sleep(delay).await;
+    true
+}
+
 #[cfg(test)]
 mod test_fakes {
-    #![allow(clippy::expect_used, clippy::indexing_slicing, reason = "test code")]
+    #![allow(
+        clippy::expect_used,
+        clippy::indexing_slicing,
+        clippy::items_after_statements,
+        clippy::unused_async,
+        reason = "test code"
+    )]
     use super::*;
     use jinn_provider::{ChatStream, LlmServiceFactory, ToolStream};
 
@@ -838,6 +996,178 @@ mod test_fakes {
             Err(Report::new(LlmServiceError::Provider))
         }
     }
+    /// A factory whose first `chat_stream_with_tools` call returns a
+    /// stream that never yields (simulating a provider stall), and whose
+    /// subsequent calls return a normal text+Done stream. Used to exercise
+    /// the stall-retry loop in `start_stream`.
+    #[derive(Debug)]
+    pub(super) struct StallThenCompleteLlmFactory {
+        call_count: Arc<std::sync::atomic::AtomicU32>,
+        tokens: Vec<String>,
+    }
+
+    impl StallThenCompleteLlmFactory {
+        pub(super) fn new(tokens: Vec<String>) -> Self {
+            Self {
+                call_count: Arc::new(std::sync::atomic::AtomicU32::new(0)),
+                tokens,
+            }
+        }
+    }
+
+    impl LlmServiceFactory for StallThenCompleteLlmFactory {
+        fn create(&self) -> Result<Box<dyn LlmService>, Report<LlmServiceError>> {
+            Ok(Box::new(StallThenCompleteLlmService {
+                call_count: self.call_count.clone(),
+                tokens: self.tokens.clone(),
+            }))
+        }
+        fn name(&self) -> &'static str {
+            "StallThenComplete"
+        }
+    }
+
+    #[derive(Debug)]
+    struct StallThenCompleteLlmService {
+        call_count: Arc<std::sync::atomic::AtomicU32>,
+        tokens: Vec<String>,
+    }
+
+    #[async_trait::async_trait]
+    impl LlmService for StallThenCompleteLlmService {
+        fn name(&self) -> &'static str {
+            "StallThenComplete"
+        }
+        async fn chat_stream(
+            &self,
+            _messages: Vec<jinn_provider::LlmMessage>,
+        ) -> Result<ChatStream, Report<LlmServiceError>> {
+            // Unused by the stall-retry path; emit tokens for safety.
+            let tokens = self.tokens.clone();
+            Ok(Box::pin(futures::stream::iter(tokens.into_iter().map(Ok))))
+        }
+        async fn chat_stream_with_tools(
+            &self,
+            _messages: Vec<jinn_provider::LlmMessage>,
+            _tools: Vec<jinn_provider::ToolDefinition>,
+        ) -> Result<ToolStream, Report<LlmServiceError>> {
+            use std::sync::atomic::Ordering;
+            let n = self.call_count.fetch_add(1, Ordering::SeqCst);
+            if n == 0 {
+                // First attempt: never yields — simulates a provider stall.
+                return Ok(Box::pin(futures::stream::pending()));
+            }
+            // Subsequent attempts: emit tokens then Done(EndTurn).
+            use jinn_provider::{StopReason, StreamEvent};
+            let mut events: Vec<Result<StreamEvent, Report<LlmServiceError>>> = self
+                .tokens
+                .iter()
+                .cloned()
+                .map(StreamEvent::Text)
+                .map(Ok)
+                .collect();
+            events.push(Ok(StreamEvent::Done {
+                stop_reason: StopReason::EndTurn,
+                usage: None,
+            }));
+            Ok(Box::pin(futures::stream::iter(events)))
+        }
+    }
+
+    /// A factory that simulates independent retry budgets: the inner service
+    /// returns a sequence of `Retryable` connection errors (consumed by
+    /// `RetryingLlmService`'s per-instance connection counter), then a stalled
+    /// stream (consumed by the outer stall counter), then a normal completion.
+    /// Used to prove the stall counter and connection-retry counter are
+    /// independent budgets.
+    #[derive(Debug)]
+    pub(super) struct RetryableThenStallThenCompleteLlmFactory {
+        call_count: Arc<std::sync::atomic::AtomicU32>,
+        retryable_failures: u32,
+        stall_calls: u32,
+        tokens: Vec<String>,
+    }
+
+    impl RetryableThenStallThenCompleteLlmFactory {
+        /// `retryable_failures` connection errors, then `stall_calls` stalled
+        /// streams, then a normal completion.
+        pub(super) fn new(retryable_failures: u32, stall_calls: u32, tokens: Vec<String>) -> Self {
+            Self {
+                call_count: Arc::new(std::sync::atomic::AtomicU32::new(0)),
+                retryable_failures,
+                stall_calls,
+                tokens,
+            }
+        }
+    }
+
+    impl LlmServiceFactory for RetryableThenStallThenCompleteLlmFactory {
+        fn create(&self) -> Result<Box<dyn LlmService>, Report<LlmServiceError>> {
+            Ok(Box::new(RetryableThenStallThenCompleteLlmService {
+                call_count: self.call_count.clone(),
+                retryable_failures: self.retryable_failures,
+                stall_calls: self.stall_calls,
+                tokens: self.tokens.clone(),
+            }))
+        }
+        fn name(&self) -> &'static str {
+            "RetryableThenStallThenComplete"
+        }
+    }
+
+    #[derive(Debug)]
+    struct RetryableThenStallThenCompleteLlmService {
+        call_count: Arc<std::sync::atomic::AtomicU32>,
+        retryable_failures: u32,
+        stall_calls: u32,
+        tokens: Vec<String>,
+    }
+
+    #[async_trait::async_trait]
+    impl LlmService for RetryableThenStallThenCompleteLlmService {
+        fn name(&self) -> &'static str {
+            "RetryableThenStallThenComplete"
+        }
+        async fn chat_stream(
+            &self,
+            _messages: Vec<jinn_provider::LlmMessage>,
+        ) -> Result<ChatStream, Report<LlmServiceError>> {
+            let tokens = self.tokens.clone();
+            Ok(Box::pin(futures::stream::iter(tokens.into_iter().map(Ok))))
+        }
+        async fn chat_stream_with_tools(
+            &self,
+            _messages: Vec<jinn_provider::LlmMessage>,
+            _tools: Vec<jinn_provider::ToolDefinition>,
+        ) -> Result<ToolStream, Report<LlmServiceError>> {
+            use std::sync::atomic::Ordering;
+            let n = self.call_count.fetch_add(1, Ordering::SeqCst);
+            if n < self.retryable_failures {
+                // Connection-level retryable failure (consumed by
+                // RetryingLlmService's per-instance counter).
+                return Err(Report::new(LlmServiceError::Retryable));
+            }
+            let stall_end = self.retryable_failures + self.stall_calls;
+            if n < stall_end {
+                // Mid-stream stall (consumed by the outer stall counter).
+                return Ok(Box::pin(futures::stream::pending()));
+            }
+            // Normal completion.
+            use jinn_provider::{StopReason, StreamEvent};
+            let mut events: Vec<Result<StreamEvent, Report<LlmServiceError>>> = self
+                .tokens
+                .iter()
+                .cloned()
+                .map(StreamEvent::Text)
+                .map(Ok)
+                .collect();
+            events.push(Ok(StreamEvent::Done {
+                stop_reason: StopReason::EndTurn,
+                usage: None,
+            }));
+            Ok(Box::pin(futures::stream::iter(events)))
+        }
+    }
 }
 
 #[cfg(test)]
@@ -847,6 +1177,7 @@ mod tests {
         clippy::panic,
         clippy::unreachable,
         clippy::indexing_slicing,
+        clippy::unused_async,
         reason = "test code"
     )]
     use super::session::SessionState;
@@ -1082,6 +1413,251 @@ mod tests {
         assert_eq!(token_events[1].index, 1, "second token index should be 1");
     }
 
+    #[tokio::test]
+    async fn stalled_stream_is_retried_and_eventually_completes() {
+        // Given a factory whose first call stalls and second completes.
+        let harness = TestHarness::new().await;
+        // Build deps once so the prefs we set reach the spawned actor.
+        let deps = harness.actor_deps().await;
+        {
+            let mut prefs = deps.services.user_preferences_storage.read();
+            prefs.stream_idle_timeout_secs = 1;
+            prefs.request_retry.max_retries = 3;
+            prefs.request_retry.base_delay_secs = 0;
+            prefs.request_retry.max_delay_secs = 0;
+            deps.services
+                .user_preferences_storage
+                .save(&prefs)
+                .expect("save prefs");
+        }
+        let factory = LlmServiceFactoryService::new(Arc::new(
+            super::test_fakes::StallThenCompleteLlmFactory::new(vec!["ok".to_owned()]),
+        ));
+        let _actor = harness
+            .spawn_actor::<LlmActor>(LlmActorDeps {
+                factory,
+                deps,
+                state: State::new(crate::common::app_state::AppState::default()),
+            })
+            .await;
+        let recorder = harness.spawn_recorder::<StreamCompleted>().await;
+
+        let session_id = SessionId::new();
+        let payload = SendToLlmProvider {
+            model_used: None,
+            reasoning_effort: None,
+            session_id: session_id.clone(),
+            messages: vec![],
+            tool_definitions: vec![],
+            provider_id: None,
+            estimated_tokens: 0,
+            dispatched_at: jiff::Timestamp::now(),
+        };
+
+        // When the stream stalls and then retries.
+        harness.publish(payload).await;
+
+        // Then StreamCompleted(Finished) is eventually emitted despite the stall.
+        let completed = await_recorded(&recorder, 1, std::time::Duration::from_secs(15)).await;
+        let found = completed
+            .iter()
+            .any(|sc| sc.reason == StreamCompletedReason::Finished);
+        assert!(
+            found,
+            "stalled stream should be retried and complete normally"
+        );
+    }
+
+    #[tokio::test]
+    async fn stalled_stream_gives_up_after_max_retries_and_errors() {
+        // Given a factory that always stalls.
+        let harness = TestHarness::new().await;
+        let deps = harness.actor_deps().await;
+        {
+            let mut prefs = deps.services.user_preferences_storage.read();
+            prefs.stream_idle_timeout_secs = 1;
+            prefs.request_retry.max_retries = 1;
+            prefs.request_retry.base_delay_secs = 0;
+            prefs.request_retry.max_delay_secs = 0;
+            deps.services
+                .user_preferences_storage
+                .save(&prefs)
+                .expect("save prefs");
+        }
+        let factory = LlmServiceFactoryService::new(Arc::new(HangingLlmFactory));
+        let _actor = harness
+            .spawn_actor::<LlmActor>(LlmActorDeps {
+                factory,
+                deps,
+                state: State::new(crate::common::app_state::AppState::default()),
+            })
+            .await;
+        let recorder = harness.spawn_recorder::<StreamCompleted>().await;
+
+        let session_id = SessionId::new();
+        let payload = SendToLlmProvider {
+            model_used: None,
+            reasoning_effort: None,
+            session_id: session_id.clone(),
+            messages: vec![],
+            tool_definitions: vec![],
+            provider_id: None,
+            estimated_tokens: 0,
+            dispatched_at: jiff::Timestamp::now(),
+        };
+
+        // When the stream stalls and retries are exhausted.
+        harness.publish(payload).await;
+
+        // Then StreamCompleted(Error) is emitted (no infinite hang).
+        let completed = await_recorded(&recorder, 1, std::time::Duration::from_secs(15)).await;
+        let found = completed
+            .iter()
+            .any(|sc| sc.reason == StreamCompletedReason::Error);
+        assert!(
+            found,
+            "perpetually stalled stream should emit StreamCompleted(Error) after retries exhaust"
+        );
+    }
+
+    #[tokio::test]
+    async fn stall_retry_publishes_system_chat_entry() {
+        // Given a factory whose first call stalls and second completes.
+        let harness = TestHarness::new().await;
+        let deps = harness.actor_deps().await;
+        {
+            let mut prefs = deps.services.user_preferences_storage.read();
+            prefs.stream_idle_timeout_secs = 1;
+            prefs.request_retry.max_retries = 3;
+            prefs.request_retry.base_delay_secs = 0;
+            prefs.request_retry.max_delay_secs = 0;
+            deps.services
+                .user_preferences_storage
+                .save(&prefs)
+                .expect("save prefs");
+        }
+        let factory = LlmServiceFactoryService::new(Arc::new(
+            super::test_fakes::StallThenCompleteLlmFactory::new(vec!["ok".to_owned()]),
+        ));
+        let _actor = harness
+            .spawn_actor::<LlmActor>(LlmActorDeps {
+                factory,
+                deps,
+                state: State::new(crate::common::app_state::AppState::default()),
+            })
+            .await;
+        let entry_recorder = harness.spawn_recorder::<PushChatEntry>().await;
+        let completed_recorder = harness.spawn_recorder::<StreamCompleted>().await;
+
+        let session_id = SessionId::new();
+        let payload = SendToLlmProvider {
+            model_used: None,
+            reasoning_effort: None,
+            session_id: session_id.clone(),
+            messages: vec![],
+            tool_definitions: vec![],
+            provider_id: None,
+            estimated_tokens: 0,
+            dispatched_at: jiff::Timestamp::now(),
+        };
+
+        // When the stream stalls and retries.
+        harness.publish(payload).await;
+
+        // Then the turn eventually completes.
+        let completed =
+            await_recorded(&completed_recorder, 1, std::time::Duration::from_secs(15)).await;
+        assert!(
+            completed
+                .iter()
+                .any(|sc| sc.reason == StreamCompletedReason::Finished),
+            "stalled stream should complete after retry"
+        );
+
+        // And a System chat entry announcing the retry was published.
+        let entries = await_recorded(&entry_recorder, 1, std::time::Duration::from_secs(15)).await;
+        let found_retry_notice = entries.iter().any(|pce| {
+            matches!(
+                &pce.entry.kind,
+                crate::protocol::ChatEntryKind::System(text) if text.contains("retrying"),
+            )
+        });
+        assert!(
+            found_retry_notice,
+            "a System entry containing 'retrying' should be published on stall retry"
+        );
+    }
+
+    #[tokio::test]
+    async fn separate_stall_counter_does_not_share_budget_with_request_retries() {
+        // Given a factory that first returns two Retryable connection errors
+        // (consumed by RetryingLlmService's per-instance connection budget),
+        // then one stalled stream (consumed by the outer stall budget), then a
+        // normal completion. With max_retries=2, a SHARED budget would be
+        // exhausted by the two connection failures and the stall would error
+        // out instead of completing. A SEPARATE stall budget lets the turn
+        // reach Finished.
+        let harness = TestHarness::new().await;
+        let deps = harness.actor_deps().await;
+        {
+            let mut prefs = deps.services.user_preferences_storage.read();
+            prefs.stream_idle_timeout_secs = 1;
+            // Two connection retries AND two stall retries share the same
+            // config value, but operate on independent counters.
+            prefs.request_retry.max_retries = 2;
+            prefs.request_retry.base_delay_secs = 0;
+            prefs.request_retry.max_delay_secs = 0;
+            deps.services
+                .user_preferences_storage
+                .save(&prefs)
+                .expect("save prefs");
+        }
+        let factory = LlmServiceFactoryService::new(Arc::new(
+            super::test_fakes::RetryableThenStallThenCompleteLlmFactory::new(
+                2, // two connection-retryable failures first
+                1, // then one stalled stream
+                vec!["ok".to_owned()],
+            ),
+        ));
+        let _actor = harness
+            .spawn_actor::<LlmActor>(LlmActorDeps {
+                factory,
+                deps,
+                state: State::new(crate::common::app_state::AppState::default()),
+            })
+            .await;
+        let completed_recorder = harness.spawn_recorder::<StreamCompleted>().await;
+
+        let session_id = SessionId::new();
+        let payload = SendToLlmProvider {
+            model_used: None,
+            reasoning_effort: None,
+            session_id: session_id.clone(),
+            messages: vec![],
+            tool_definitions: vec![],
+            provider_id: None,
+            estimated_tokens: 0,
+            dispatched_at: jiff::Timestamp::now(),
+        };
+
+        // When the inner service fails with two Retryable errors (consuming the
+        // connection-retry budget on the first RetryingLlmService instance),
+        // then stalls once (consuming the stall budget), then completes.
+        harness.publish(payload).await;
+
+        // Then the turn reaches Finished: the two connection retries did NOT
+        // deplete the stall budget, so the stall retry still proceeds and
+        // completes. A shared budget would have terminated with Error after
+        // the stall (2 connection + 1 stall > 2 total).
+        let completed =
+            await_recorded(&completed_recorder, 1, std::time::Duration::from_secs(15)).await;
+        assert!(
+            completed
+                .iter()
+                .any(|sc| sc.reason == StreamCompletedReason::Finished),
+            "independent stall counter must allow completion after connection retries"
+        );
+    }
     #[tokio::test]
     async fn start_stream_aborts_existing_stream_for_same_session() {
         // Given an LLM actor with an existing stream for a session.
@@ -1326,5 +1902,245 @@ mod tests {
         assert_eq!(retry.max_retries, 3);
         assert_eq!(retry.base_delay, std::time::Duration::from_secs(5));
         assert_eq!(retry.max_delay, std::time::Duration::from_mins(2));
+    }
+
+    // ------------------------------------------------------------------
+    // Phase 1: Stream idle-stall detection + auto-retry tests
+    // ------------------------------------------------------------------
+
+    /// Builds a [`jinn_provider::ToolStream`] from a scripted event sequence,
+    /// optionally inserting an idle gap (a pending future) at a chosen point.
+    fn scripted_stream(events: Vec<jinn_provider::StreamEvent>) -> jinn_provider::ToolStream {
+        let events: Vec<Result<jinn_provider::StreamEvent, Report<LlmServiceError>>> =
+            events.into_iter().map(Ok).collect();
+        Box::pin(futures::stream::iter(events))
+    }
+
+    /// A stream that yields `head` then never produces another event.
+    async fn stalled_stream_after(
+        head: Vec<jinn_provider::StreamEvent>,
+    ) -> jinn_provider::ToolStream {
+        let head_events: Vec<Result<jinn_provider::StreamEvent, Report<LlmServiceError>>> =
+            head.into_iter().map(Ok).collect();
+        let stalled: futures::stream::Pending<
+            Result<jinn_provider::StreamEvent, Report<LlmServiceError>>,
+        > = futures::stream::pending();
+        Box::pin(futures::stream::iter(head_events).chain(stalled))
+    }
+
+    /// Builds a stream that yields `events` in order, sleeping `gap` after each one.
+    /// Used to verify the idle timer resets on every event.
+    fn gapped_stream(
+        events: Vec<jinn_provider::StreamEvent>,
+        gap: std::time::Duration,
+    ) -> jinn_provider::ToolStream {
+        use futures::stream;
+        use std::sync::Arc;
+        use std::sync::Mutex as StdMutex;
+        let events = Arc::new(StdMutex::new(events));
+        let stream = stream::unfold((events, gap), move |(events, gap)| async move {
+            let next = events.lock().expect("lock").first().cloned();
+            match next {
+                Some(event) => {
+                    events.lock().expect("lock").remove(0);
+                    tokio::time::sleep(gap).await;
+                    Some((Ok(event), (events, gap)))
+                }
+                None => None,
+            }
+        });
+        Box::pin(stream)
+    }
+    #[tokio::test]
+    async fn process_stream_events_returns_stalled_when_no_event_for_idle_timeout() {
+        // Given a harness bus and a stream that never yields.
+        let harness = TestHarness::new().await;
+        let stream: jinn_provider::ToolStream = Box::pin(futures::stream::pending::<
+            Result<jinn_provider::StreamEvent, Report<LlmServiceError>>,
+        >());
+        let sid = SessionId::new();
+
+        // When processing with a short idle timeout.
+        let outcome = process_stream_events(
+            stream,
+            &harness.bus(),
+            &sid,
+            "test-model",
+            jiff::Timestamp::now(),
+            std::time::Duration::from_millis(50),
+        )
+        .await;
+
+        // Then the outcome is Stalled (not Completed) and it returns quickly.
+        assert!(
+            matches!(outcome, StreamOutcome::Stalled),
+            "idle stream should stall"
+        );
+    }
+
+    #[tokio::test]
+    async fn process_stream_events_completes_on_done_event() {
+        // Given a stream that yields a token then Done.
+        use jinn_provider::{StopReason, StreamEvent};
+        let harness = TestHarness::new().await;
+        let stream = scripted_stream(vec![
+            StreamEvent::Text("hi".to_owned()),
+            StreamEvent::Done {
+                stop_reason: StopReason::EndTurn,
+                usage: None,
+            },
+        ]);
+        let sid = SessionId::new();
+
+        // When processing with a generous idle timeout.
+        let outcome = process_stream_events(
+            stream,
+            &harness.bus(),
+            &sid,
+            "test-model",
+            jiff::Timestamp::now(),
+            std::time::Duration::from_secs(5),
+        )
+        .await;
+
+        // Then the outcome is Completed.
+        assert!(
+            matches!(outcome, StreamOutcome::Completed),
+            "Done should complete"
+        );
+    }
+
+    #[tokio::test]
+    async fn process_stream_events_resets_idle_timeout_on_each_text_token() {
+        // Given a stream that yields tokens with sub-threshold gaps then Done.
+        // The gaps (40ms) are below the idle timeout (100ms), so the timer resets.
+        use jinn_provider::{StopReason, StreamEvent};
+        let harness = TestHarness::new().await;
+        let events = vec![
+            StreamEvent::Text("a".to_owned()),
+            StreamEvent::Text("b".to_owned()),
+            StreamEvent::Done {
+                stop_reason: StopReason::EndTurn,
+                usage: None,
+            },
+        ];
+        let stream = gapped_stream(events, std::time::Duration::from_millis(40));
+        let sid = SessionId::new();
+
+        // When processing with a 100ms idle timeout.
+        let outcome = process_stream_events(
+            stream,
+            &harness.bus(),
+            &sid,
+            "test-model",
+            jiff::Timestamp::now(),
+            std::time::Duration::from_millis(100),
+        )
+        .await;
+
+        // Then the outcome is Completed (the 40ms gaps never trip the 100ms timer).
+        assert!(
+            matches!(outcome, StreamOutcome::Completed),
+            "slow-but-active stream should complete, not stall"
+        );
+    }
+
+    #[tokio::test]
+    async fn process_stream_events_resets_idle_timeout_on_reasoning_tokens() {
+        // Given a stream that yields reasoning deltas with sub-threshold gaps then Done.
+        use jinn_provider::{StopReason, StreamEvent};
+        let harness = TestHarness::new().await;
+        let events = vec![
+            StreamEvent::Reasoning("thinking".to_owned()),
+            StreamEvent::Reasoning("more".to_owned()),
+            StreamEvent::Done {
+                stop_reason: StopReason::EndTurn,
+                usage: None,
+            },
+        ];
+        let stream = gapped_stream(events, std::time::Duration::from_millis(40));
+        let sid = SessionId::new();
+
+        // When processing with a 100ms idle timeout.
+        let outcome = process_stream_events(
+            stream,
+            &harness.bus(),
+            &sid,
+            "test-model",
+            jiff::Timestamp::now(),
+            std::time::Duration::from_millis(100),
+        )
+        .await;
+
+        // Then the outcome is Completed (reasoning tokens reset the timer).
+        assert!(
+            matches!(outcome, StreamOutcome::Completed),
+            "reasoning tokens should reset the idle timer"
+        );
+    }
+
+    #[tokio::test]
+    async fn process_stream_events_stalls_after_partial_tokens_then_idle() {
+        // Given a stream that yields one token then goes idle forever.
+        use jinn_provider::StreamEvent;
+        let harness = TestHarness::new().await;
+        let stream = stalled_stream_after(vec![StreamEvent::Text("partial".to_owned())]).await;
+        let sid = SessionId::new();
+
+        // When processing with a short idle timeout.
+        let outcome = process_stream_events(
+            stream,
+            &harness.bus(),
+            &sid,
+            "test-model",
+            jiff::Timestamp::now(),
+            std::time::Duration::from_millis(50),
+        )
+        .await;
+
+        // Then the outcome is Stalled (the token was consumed, but no Done followed).
+        assert!(
+            matches!(outcome, StreamOutcome::Stalled),
+            "stream that goes idle after partial tokens should stall"
+        );
+    }
+
+    #[rstest::rstest]
+    fn compute_stall_backoff_is_capped_at_max_delay(#[values(1, 2, 3, 5, 10)] attempt: u32) {
+        // Given a config with a small max delay cap.
+        let config = RequestRetryConfig {
+            max_retries: 5,
+            base_delay_secs: 2,
+            max_delay_secs: 4,
+        };
+
+        // When computing the backoff for this attempt.
+        let delay = compute_stall_backoff(&config, attempt);
+
+        // Then the delay never exceeds the max cap.
+        assert!(
+            delay <= std::time::Duration::from_secs(4),
+            "backoff for attempt {attempt} ({delay:?}) must not exceed max_delay"
+        );
+    }
+
+    #[tokio::test]
+    async fn compute_stall_backoff_uses_base_delay_for_first_attempt_upper_bound() {
+        // Given a config with a known base delay and large max.
+        let config = RequestRetryConfig {
+            max_retries: 5,
+            base_delay_secs: 2,
+            max_delay_secs: 60,
+        };
+
+        // When computing the backoff for attempt 1 (exponential = 2^1 = 2s * base 2s = 4s).
+        // The full-jitter result is in [0, 4s].
+        let delay = compute_stall_backoff(&config, 1);
+
+        // Then the delay is within [0, 4s].
+        assert!(
+            delay <= std::time::Duration::from_secs(4),
+            "attempt-1 backoff must be bounded by base*2^1"
+        );
     }
 }

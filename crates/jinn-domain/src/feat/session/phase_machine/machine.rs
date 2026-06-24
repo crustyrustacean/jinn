@@ -291,6 +291,21 @@ impl SessionPhaseMachine {
         }
     }
 
+    /// Clear all streaming indices without leaving the `Streaming` phase.
+    ///
+    /// Zeros the assistant entry, thinking entry, tool-call, and tool-result
+    /// index tracking. Used by the stall-retry path after partial streaming
+    /// entries have been removed from history, so the retried stream's first
+    /// token creates fresh entries. No-op if not streaming.
+    pub fn clear_streaming_indices(&mut self) {
+        if let Some(sp) = self.streaming_phase_mut() {
+            sp.streaming_entry_index = None;
+            sp.streaming_thinking_entry_index = None;
+            sp.streaming_tool_call_indices.clear();
+            sp.streaming_tool_result_indices.clear();
+        }
+    }
+
     /// Whether the machine is tracking a tool call at the given history index.
     pub fn is_tool_call_at_history_index(&self, history_index: usize) -> bool {
         self.streaming_tool_call_indices()
