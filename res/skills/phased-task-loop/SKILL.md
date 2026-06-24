@@ -58,7 +58,7 @@ Update the task list **at the moment a decision is made**, never retroactively:
 
 1.  **Check status.** Call `todo_get_task_list`. If all tasks in all phases are complete → **done, stop.** Otherwise, the NEXT block at the top of the result names the next task to work on. Begin there.
 
-2.  **Write an execution plan.** Save to `.plans/<task>/phase-N.md`. Required sections:
+2.  **Create an execution plan.** Save to `.plans/<task>/phase-N.md` using the `save_plan` tool. Required sections:
     - **Problem** — What and why.
     - **What Moves / What Stays** — Scope boundary.
     - **File Changes** — Numbered list. For each: created/modified/deleted, before/after code snippets, source→destination for moves.
