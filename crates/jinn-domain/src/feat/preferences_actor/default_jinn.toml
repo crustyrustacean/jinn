@@ -74,13 +74,27 @@ max_retries = 5
 base_delay_secs = 2
 max_delay_secs = 60
 
-# Maximum seconds between stream events before the stream is considered
-# stalled (half-open connection, provider hang, etc). The idle timer resets
-# on every event — token, reasoning, or tool-call delta — so a long-running
-# generation that keeps producing tokens is never falsely tripped. Only a
-# true provider/connection-level stall fires it. On stall, the request is
-# retried using the `[request_retry]` values above, with its own counter.
-stream_idle_timeout_secs = 60
+# History-activity watchdog. If a session in `Sending` or `Streaming`
+# produces no chat-history change (new entry, appended token, appended
+# thinking token) for this many seconds, the turn is treated as a hung
+# provider: partial streaming entries are discarded, a system message is
+# pushed, and the turn is re-dispatched with exponential backoff.
+# Covers HTTP-handshake hangs, keepalive-only connections, and stalled
+# tool batches alike — anything that stops mutating the visible history.
+history_stall_timeout_secs = 300
+
+# Maximum number of stall retries before the watchdog gives up and cancels
+# the session, returning control to the user. Independent of
+# `[request_retry]` max_retries.
+stall_retry_max_retries = 3
+
+# Base and maximum delay (seconds) for stall-retry exponential backoff.
+# After a stall is detected the watchdog waits at least `base_delay * 2^attempt`
+# (full jitter, capped at `max_delay_secs`) before retrying the same session, so a
+# misbehaving provider that answers-and-stalls rapidly is not hammered. Tighter
+# than `[request_retry]` because the stall window itself is the bulk of the wait.
+stall_retry_base_delay_secs = 2
+stall_retry_max_delay_secs = 30
 
 # Default execution timeout (seconds) for all builtin tools except `bash`
 # (which keeps its own `bash.default_timeout_secs`). Acts as a safety ceiling

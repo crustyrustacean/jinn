@@ -13,7 +13,9 @@ use parking_lot::RwLock;
 use super::user_preferences::{UserPreferences, UserPreferencesError, preferences_path};
 #[cfg(test)]
 use super::user_preferences::{
-    default_stream_idle_timeout_secs, default_tool_default_timeout_secs,
+    default_history_stall_timeout_secs, default_stall_retry_base_delay_secs,
+    default_stall_retry_max_delay_secs, default_stall_retry_max_retries,
+    default_tool_default_timeout_secs,
 };
 
 /// Trait for user preferences I/O.
@@ -281,8 +283,11 @@ mod tests {
             bash: BashConfig::default(),
             projects: vec![],
             reasoning: ReasoningConfig::default(),
-            stream_idle_timeout_secs: default_stream_idle_timeout_secs(),
             tool_default_timeout_secs: default_tool_default_timeout_secs(),
+            history_stall_timeout_secs: default_history_stall_timeout_secs(),
+            stall_retry_max_retries: default_stall_retry_max_retries(),
+            stall_retry_base_delay_secs: default_stall_retry_base_delay_secs(),
+            stall_retry_max_delay_secs: default_stall_retry_max_delay_secs(),
         };
 
         // When saving and reloading.
@@ -341,8 +346,11 @@ mod tests {
                 path: PathBuf::from("/tmp/proj-a"),
             }],
             reasoning: ReasoningConfig::default(),
-            stream_idle_timeout_secs: default_stream_idle_timeout_secs(),
             tool_default_timeout_secs: default_tool_default_timeout_secs(),
+            history_stall_timeout_secs: default_history_stall_timeout_secs(),
+            stall_retry_max_retries: default_stall_retry_max_retries(),
+            stall_retry_base_delay_secs: default_stall_retry_base_delay_secs(),
+            stall_retry_max_delay_secs: default_stall_retry_max_delay_secs(),
         };
 
         // When saving and reloading.
@@ -380,8 +388,11 @@ mod tests {
             bash: BashConfig::default(),
             projects: vec![],
             reasoning: ReasoningConfig::default(),
-            stream_idle_timeout_secs: default_stream_idle_timeout_secs(),
             tool_default_timeout_secs: default_tool_default_timeout_secs(),
+            history_stall_timeout_secs: default_history_stall_timeout_secs(),
+            stall_retry_max_retries: default_stall_retry_max_retries(),
+            stall_retry_base_delay_secs: default_stall_retry_base_delay_secs(),
+            stall_retry_max_delay_secs: default_stall_retry_max_delay_secs(),
         };
         service.save(&prefs).expect("save");
 
@@ -415,8 +426,11 @@ mod tests {
             bash: BashConfig::default(),
             projects: vec![],
             reasoning: ReasoningConfig::default(),
-            stream_idle_timeout_secs: default_stream_idle_timeout_secs(),
             tool_default_timeout_secs: default_tool_default_timeout_secs(),
+            history_stall_timeout_secs: default_history_stall_timeout_secs(),
+            stall_retry_max_retries: default_stall_retry_max_retries(),
+            stall_retry_base_delay_secs: default_stall_retry_base_delay_secs(),
+            stall_retry_max_delay_secs: default_stall_retry_max_delay_secs(),
         };
         service.save(&prefs).expect("save");
 
@@ -437,8 +451,11 @@ mod tests {
             bash: BashConfig::default(),
             projects: vec![],
             reasoning: ReasoningConfig::default(),
-            stream_idle_timeout_secs: default_stream_idle_timeout_secs(),
             tool_default_timeout_secs: default_tool_default_timeout_secs(),
+            history_stall_timeout_secs: default_history_stall_timeout_secs(),
+            stall_retry_max_retries: default_stall_retry_max_retries(),
+            stall_retry_base_delay_secs: default_stall_retry_base_delay_secs(),
+            stall_retry_max_delay_secs: default_stall_retry_max_delay_secs(),
         };
         service.save(&updated).expect("save updated");
 
@@ -468,8 +485,11 @@ mod tests {
             bash: BashConfig::default(),
             projects: vec![],
             reasoning: ReasoningConfig::default(),
-            stream_idle_timeout_secs: default_stream_idle_timeout_secs(),
             tool_default_timeout_secs: default_tool_default_timeout_secs(),
+            history_stall_timeout_secs: default_history_stall_timeout_secs(),
+            stall_retry_max_retries: default_stall_retry_max_retries(),
+            stall_retry_base_delay_secs: default_stall_retry_base_delay_secs(),
+            stall_retry_max_delay_secs: default_stall_retry_max_delay_secs(),
         };
         service.save(&prefs).expect("save");
 

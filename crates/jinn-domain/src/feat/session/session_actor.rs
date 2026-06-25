@@ -36,7 +36,7 @@ use crate::feat::context::protocol::command::{
 };
 use crate::feat::context::protocol::event::{ChatEntryPinChanged, PersonasLoaded};
 use crate::feat::context::strategy::token_estimator::TiktokenCounter;
-use crate::feat::provider::protocol::command::{ResetStreamForRetry, SendMessage};
+use crate::feat::provider::protocol::command::SendMessage;
 use crate::feat::provider::protocol::event::{
     ModelsRefreshed, PromptTemplatesLoaded, StreamCompleted, StreamToken,
 };
@@ -46,6 +46,7 @@ use crate::feat::session::protocol::close_session::CloseSession;
 use crate::feat::session::protocol::load_session_picker_entries::LoadSessionPickerEntries;
 use crate::feat::session::protocol::mark_session_interacted::MarkSessionInteracted;
 use crate::feat::session::protocol::reset_session_history::ResetSessionHistory;
+use crate::feat::session::protocol::retry_stalled_session::RetryStalledSession;
 use crate::feat::session::protocol::session_fork_requested::SessionForkRequested;
 use crate::feat::session::protocol::session_load_requested::SessionLoadRequested;
 use crate::feat::session::protocol::submit_history_mutations::SubmitHistoryMutations;
@@ -125,7 +126,6 @@ impl Actor for SessionPersistenceActor {
         bus.subscribe::<SetChatInputEnabled, _>(&actor_ref).await;
         bus.subscribe::<PushChatEntry, _>(&actor_ref).await;
         bus.subscribe::<SendMessage, _>(&actor_ref).await;
-        bus.subscribe::<ResetStreamForRetry, _>(&actor_ref).await;
 
         // Lifecycle command subscriptions.
         bus.subscribe::<RunSessionSetup, _>(&actor_ref).await;
@@ -141,6 +141,7 @@ impl Actor for SessionPersistenceActor {
         bus.subscribe::<SubmitHistoryMutations, _>(&actor_ref).await;
         bus.subscribe::<MarkSessionInteracted, _>(&actor_ref).await;
         bus.subscribe::<ResetSessionHistory, _>(&actor_ref).await;
+        bus.subscribe::<RetryStalledSession, _>(&actor_ref).await;
 
         // Context-related subscriptions.
         bus.subscribe::<PinChatEntry, _>(&actor_ref).await;
@@ -258,13 +259,6 @@ impl Message<SendMessage> for SessionPersistenceActor {
     }
 }
 
-impl Message<ResetStreamForRetry> for SessionPersistenceActor {
-    type Reply = ();
-    async fn handle(&mut self, msg: ResetStreamForRetry, _ctx: &mut Context<Self, Self::Reply>) {
-        self.on_reset_stream_for_retry(&msg);
-    }
-}
-
 impl Message<RunSessionSetup> for SessionPersistenceActor {
     type Reply = ();
     async fn handle(&mut self, msg: RunSessionSetup, _ctx: &mut Context<Self, Self::Reply>) {
@@ -371,6 +365,13 @@ impl Message<ResetSessionHistory> for SessionPersistenceActor {
     type Reply = ();
     async fn handle(&mut self, msg: ResetSessionHistory, _ctx: &mut Context<Self, Self::Reply>) {
         self.handle_reset_session_history(&msg);
+    }
+}
+
+impl Message<RetryStalledSession> for SessionPersistenceActor {
+    type Reply = ();
+    async fn handle(&mut self, msg: RetryStalledSession, _ctx: &mut Context<Self, Self::Reply>) {
+        self.on_retry_stalled_session(&msg).await;
     }
 }
 
