@@ -119,9 +119,8 @@ fn compaction_jump_anchor(session: &ChatSessionState) -> Option<usize> {
 /// Anchors on the current selection; when nothing is selected, the anchor
 /// is the sentinel past the newest entry (see `compaction_jump_anchor`).
 /// Scans forward — exclusive of the anchor — for the first compaction entry.
-/// Clamps (no wrap): a silent no-op if no compaction exists below the
-/// compaction entry. Clamps (no wrap): a silent no-op if no compaction
-/// exists below the anchor. The viewport auto-follows the new cursor.
+/// Clamps (no wrap): a silent no-op if no compaction exists beyond the
+/// anchor. The viewport auto-follows the new cursor.
 pub fn handle_jump_next_compaction(state: &mut AppState) -> IntentResult {
     let target_id = {
         let session = state.active_session();
@@ -146,9 +145,8 @@ pub fn handle_jump_next_compaction(state: &mut AppState) -> IntentResult {
 /// Anchors on the current selection; when nothing is selected, the anchor
 /// is the sentinel past the newest entry (see `compaction_jump_anchor`).
 /// Scans backward — exclusive of the anchor — for the first compaction entry.
-/// Clamps (no wrap): a silent no-op if no compaction exists above the
-/// compaction entry. Clamps (no wrap): a silent no-op if no compaction
-/// exists above the anchor. The viewport auto-follows the new cursor.
+/// Clamps (no wrap): a silent no-op if no compaction exists beyond the
+/// anchor. The viewport auto-follows the new cursor.
 pub fn handle_jump_prev_compaction(state: &mut AppState) -> IntentResult {
     let target_id = {
         let session = state.active_session();

@@ -1185,4 +1185,32 @@ mod tests {
             other => panic!("[c must be a leaf, got branch: {other:?}"),
         }
     }
+
+    #[test]
+    fn bracket_c_chord_does_not_resolve_in_input_scope() {
+        // Given the default keymap queried in Input scope.
+        // Input scope has a catch-all that turns every Char into InsertChar,
+        // so the `]c` / `[c` jump chords (bound only in Normal) must never fire here.
+        use crate::app::WhichKeyInstance;
+        use jinn_domain::{Key, KeyEvent, Modifiers};
+
+        let keymap = init();
+        let mut wk = WhichKeyInstance::new(keymap, Scope::Input);
+
+        let bracket = KeyEvent {
+            key: Key::Char(']'),
+            modifiers: Modifiers::none(),
+        };
+
+        // When pressing `]` in Input scope.
+        let intent = wk.handle_key(bracket);
+
+        // Then it resolves to a literal InsertChar(']'), not the jump chord prefix.
+        // The `]c` jump intents are therefore unreachable in Input scope.
+        let intent = intent.expect("] in Input scope must fire an intent (catch-all)");
+        assert!(
+            matches!(intent, Intent::InsertChar { ch: ']' }),
+            "] in Input scope must insert a literal ], not start the jump chord; got {intent:?}",
+        );
+    }
 }
