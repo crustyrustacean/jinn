@@ -345,6 +345,55 @@ fn worker_preserves_recent_entries_in_reserve() {
     );
 }
 
+/// Build a long assistant entry whose token estimate (~1 token / 4 chars)
+/// comfortably exceeds a small reserve, forcing the cut to land just after it.
+fn big_assistant(marker: &str) -> ChatEntry {
+    ChatEntry::assistant(format!("{marker} {padding}", padding = "w".repeat(600)))
+}
+
+#[test]
+fn kept_region_after_compaction_opens_with_a_valid_turn() {
+    // Given a history whose reserve boundary lands on an Assistant opener:
+    //   [User(small), Assistant(BIG), Assistant(small-opener), User(small)]
+    // compute_cut_index lands the cut on index 2 (the Assistant) because the
+    // big Assistant at index 1 alone exceeds the reserve.
+    let worker = test_worker(FAKE_SUMMARY);
+    let history = vec![
+        ChatEntry::user("start"),
+        big_assistant("big"),
+        ChatEntry::assistant("recent opener"),
+        ChatEntry::user("recent turn"),
+    ];
+    let config = small_reserve_config();
+
+    // When evaluating.
+    let mutations = run_evaluate(&worker, &history, &config);
+
+    // Then the boundary Assistant opener (index 2) is force-excluded,
+    // NOT kept. Without Pass 3 it would be the first in-context entry.
+    let excluded_ids = forced_exclude_ids(&mutations);
+    let assistant_opener_id = &history[2].id;
+    assert!(
+        excluded_ids.contains(assistant_opener_id),
+        "Assistant opener should be absorbed into the compaction, not kept"
+    );
+
+    // And the kept region opens with the User entry at index 3, which is
+    // never excluded.
+    let user_opener_id = &history[3].id;
+    assert!(
+        !excluded_ids.contains(user_opener_id),
+        "the User opener of the kept region must be preserved"
+    );
+
+    // And exactly one compaction summary is inserted.
+    assert_eq!(
+        insert_entries(&mutations).len(),
+        1,
+        "should insert exactly one compaction summary"
+    );
+}
+
 #[test]
 fn evaluate_for_session_returns_empty_for_empty_history() {
     // Given a worker with a session that has no history.
