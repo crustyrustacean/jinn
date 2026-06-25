@@ -50,10 +50,8 @@ fn is_valid_kept_opener(kind: &ChatEntryKind) -> bool {
 ///
 /// Returns the adjusted cut index (>= `cut_index`, <= `history.len()`).
 ///
-/// # Panics
-///
-/// Panics if `cut_index < history.len()` but `history[cut_index..]` is empty.
-#[expect(clippy::expect_used, reason = "infallible")]
+/// This function never panics: the opener walk is total and `cut_index` is
+/// bounded by `history.len()`.
 pub fn adjust_cut_to_boundary(history: &[ChatEntry], cut_index: usize) -> usize {
     // Pass 1 + Pass 2 (recursively self-consistent).
     let cut_index = adjust_cut_inner(history, cut_index);
@@ -63,11 +61,10 @@ pub fn adjust_cut_to_boundary(history: &[ChatEntry], cut_index: usize) -> usize 
     // (any Assistant, or a stray ToolResult whose partner was excluded).
     let mut cut_index = cut_index;
     while cut_index < history.len() {
-        let is_opener = history
-            .get(cut_index)
-            .map(|e| is_valid_kept_opener(&e.kind))
-            .unwrap_or(true);
-        if is_opener {
+        let Some(entry) = history.get(cut_index) else {
+            break;
+        };
+        if is_valid_kept_opener(&entry.kind) {
             break;
         }
         cut_index += 1;
@@ -291,19 +288,46 @@ mod tests {
         };
 
         // Then only User and System are valid openers.
-        assert!(is_valid_kept_opener(&user.kind), "User should be valid opener");
-        assert!(is_valid_kept_opener(&system.kind), "System should be valid opener");
+        assert!(
+            is_valid_kept_opener(&user.kind),
+            "User should be valid opener"
+        );
+        assert!(
+            is_valid_kept_opener(&system.kind),
+            "System should be valid opener"
+        );
 
         // And every other kind is rejected, including a non-empty Assistant.
-        assert!(!is_valid_kept_opener(&empty_assistant.kind), "empty Assistant must be invalid");
-        assert!(!is_valid_kept_opener(&text_assistant.kind), "non-empty Assistant must be invalid");
-        assert!(!is_valid_kept_opener(&tool_call.kind), "ToolCall must be invalid");
-        assert!(!is_valid_kept_opener(&tool_result.kind), "ToolResult must be invalid");
+        assert!(
+            !is_valid_kept_opener(&empty_assistant.kind),
+            "empty Assistant must be invalid"
+        );
+        assert!(
+            !is_valid_kept_opener(&text_assistant.kind),
+            "non-empty Assistant must be invalid"
+        );
+        assert!(
+            !is_valid_kept_opener(&tool_call.kind),
+            "ToolCall must be invalid"
+        );
+        assert!(
+            !is_valid_kept_opener(&tool_result.kind),
+            "ToolResult must be invalid"
+        );
         assert!(!is_valid_kept_opener(&actor.kind), "Actor must be invalid");
-        assert!(!is_valid_kept_opener(&thinking.kind), "Thinking must be invalid");
-        assert!(!is_valid_kept_opener(&transient.kind), "Transient must be invalid");
+        assert!(
+            !is_valid_kept_opener(&thinking.kind),
+            "Thinking must be invalid"
+        );
+        assert!(
+            !is_valid_kept_opener(&transient.kind),
+            "Transient must be invalid"
+        );
         assert!(!is_valid_kept_opener(&error.kind), "Error must be invalid");
-        assert!(!is_valid_kept_opener(&compaction.kind), "Compaction must be invalid");
+        assert!(
+            !is_valid_kept_opener(&compaction.kind),
+            "Compaction must be invalid"
+        );
     }
 
     #[test]
@@ -413,8 +437,7 @@ mod tests {
 
         // Then Pass 3 advances past the Assistant opener to end of history.
         assert_eq!(
-            adjusted,
-            5,
+            adjusted, 5,
             "complete tool loop whose opener is an Assistant must advance to a valid opener"
         );
     }
@@ -468,7 +491,10 @@ mod tests {
         let adjusted = adjust_cut_to_boundary(&entries, 3);
 
         // Then it advances past the ToolResult to the User at index 4.
-        assert_eq!(adjusted, 4, "should advance past dangling ToolResult to User");
+        assert_eq!(
+            adjusted, 4,
+            "should advance past dangling ToolResult to User"
+        );
     }
 
     #[test]
@@ -530,8 +556,7 @@ mod tests {
 
         // Then it advances past the Assistant to the User at index 3.
         assert_eq!(
-            adjusted,
-            3,
+            adjusted, 3,
             "non-empty standalone Assistant is an invalid opener and must advance"
         );
     }

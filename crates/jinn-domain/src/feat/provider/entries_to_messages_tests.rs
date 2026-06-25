@@ -1020,7 +1020,10 @@ fn assert_message_sequence_is_valid(messages: &[LlmMessage]) {
     // The first message must be a standalone opener, never a Tool or an
     // Assistant that is empty / has tool_calls (those need a preceding turn).
     assert!(
-        matches!(messages.first(), Some(LlmMessage::User { .. }) | Some(LlmMessage::System { .. })),
+        matches!(
+            messages.first(),
+            Some(LlmMessage::User { .. } | LlmMessage::System { .. })
+        ),
         "first message must be a User or System opener, got {:?}",
         messages.first()
     );
@@ -1030,7 +1033,8 @@ fn assert_message_sequence_is_valid(messages: &[LlmMessage]) {
     for msg in messages {
         match msg {
             LlmMessage::Assistant {
-                tool_calls: Some(calls), ..
+                tool_calls: Some(calls),
+                ..
             } => {
                 for tc in calls {
                     tool_call_ids.push(tc.id.clone());
@@ -1157,7 +1161,10 @@ fn including_compaction_summary_produces_valid_sequencing() {
 fn assert_messages_are_structurally_valid(messages: &[LlmMessage]) {
     // The first message must be a valid conversation opener.
     assert!(
-        matches!(messages.first(), Some(LlmMessage::User { .. }) | Some(LlmMessage::System { .. })),
+        matches!(
+            messages.first(),
+            Some(LlmMessage::User { .. } | LlmMessage::System { .. })
+        ),
         "first message must be a User or System turn, got {:?}",
         messages.first()
     );
@@ -1168,7 +1175,10 @@ fn assert_messages_are_structurally_valid(messages: &[LlmMessage]) {
     let mut tool_result_ids: Vec<String> = Vec::new();
     for msg in messages {
         match msg {
-            LlmMessage::Assistant { tool_calls: Some(calls), .. } => {
+            LlmMessage::Assistant {
+                tool_calls: Some(calls),
+                ..
+            } => {
                 for tc in calls {
                     tool_call_ids.push(tc.id.clone());
                 }
@@ -1220,7 +1230,9 @@ fn excluding_compaction_summary_yields_valid_message_sequence() {
     for entry in entries.iter_mut().take(cut) {
         entry.apply_context_override(
             crate::protocol::ContextOverride::ForcedExclude,
-            ChangeSource::Internal { label: "compaction".to_owned() },
+            ChangeSource::Internal {
+                label: "compaction".to_owned(),
+            },
         );
     }
 
