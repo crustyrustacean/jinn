@@ -202,6 +202,15 @@ pub struct SessionCore {
     pub title: Option<String>,
     /// When this session was last updated. Set at construction, updated on save.
     pub updated_at: Timestamp,
+    /// Wall-clock timestamp of the most recent chat-history mutation
+    /// (entry pushed, stream token appended, thinking token appended).
+    /// The stall watchdog compares `now - last_history_activity_at` against
+    /// the stall timeout to detect hung sessions. Seeded on phase entry
+    /// (`begin_sending`/`begin_streaming`) so the HTTP-handshake gap is covered.
+    /// Runtime-only turn state — not persisted (a loaded session is `Idle`).
+    /// OWNER: session-actor.
+    #[serde(skip)]
+    pub last_history_activity_at: Timestamp,
     /// When this session was created. Set once at construction, never mutated.
     pub created_at: Timestamp,
     /// All messages in this conversation.
@@ -296,6 +305,7 @@ impl Default for SessionCore {
             title: None,
             updated_at: Timestamp::now(),
             created_at: Timestamp::now(),
+            last_history_activity_at: Timestamp::now(),
             history: ChatHistory::new(),
             profile: SessionProfile::default(),
             cwd: std::path::PathBuf::from("."),
@@ -779,6 +789,7 @@ impl ChatSessionState {
     /// Future work: restrict to the session feature module and require external
     /// code to use the `PushChatEntry` command (which also triggers persistence).
     pub fn push_entry(&mut self, mut entry: ChatEntry) -> usize {
+        self.core.last_history_activity_at = Timestamp::now();
         expand_user_entry(&mut entry, &self.core.ephemeral.discovered_prompt_templates);
         let was_at_last = self
             .ui
@@ -894,6 +905,7 @@ impl ChatSessionState {
                 "begin_streaming: machine rejected transition - ignoring"
             );
         }
+        self.core.last_history_activity_at = Timestamp::now();
     }
 
     /// Append a token to the streaming assistant entry.
@@ -925,6 +937,7 @@ impl ChatSessionState {
             return Err(StreamingError::NoStreamingEntry);
         }
         self.ensure_assistant_entry(dispatched_at);
+        self.core.last_history_activity_at = Timestamp::now();
         let index = self
             .core
             .ephemeral
@@ -1008,6 +1021,7 @@ impl ChatSessionState {
             .machine
             .streaming_thinking_entry_index()
             .ok_or(StreamingError::NoThinkingEntry)?;
+        self.core.last_history_activity_at = Timestamp::now();
         if let ChatEntry {
             kind: ChatEntryKind::Thinking(ref mut text),
             ..
@@ -1618,6 +1632,7 @@ impl ChatSessionState {
                 "begin_sending: machine rejected transition - ignoring"
             );
         }
+        self.core.last_history_activity_at = Timestamp::now();
     }
 
     /// Clear the sending flag (called when the first stream token arrives).

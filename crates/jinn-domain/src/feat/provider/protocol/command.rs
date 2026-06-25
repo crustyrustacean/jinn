@@ -42,19 +42,6 @@ pub struct CancelStream {
 }
 impl BusMessage for CancelStream {}
 
-/// Discard partial streaming entries so a stalled stream can be retried cleanly.
-///
-/// Published by the LLM actor's stall-retry loop after a stream goes idle.
-/// The session actor removes in-progress assistant/thinking entries and clears
-/// streaming indices while staying in the `Streaming` phase, so the retried
-/// stream's first token creates fresh entries.
-#[derive(Debug, Clone, Serialize, Deserialize)]
-pub struct ResetStreamForRetry {
-    /// The session whose partial streaming entries should be discarded.
-    pub session_id: SessionId,
-}
-impl BusMessage for ResetStreamForRetry {}
-
 /// Command to send conversation context to the LLM provider.
 ///
 /// Emitted by `LlmRequestHandler` when a user message is submitted.

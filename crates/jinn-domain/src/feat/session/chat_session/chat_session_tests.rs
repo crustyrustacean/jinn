@@ -205,6 +205,83 @@ fn begin_streaming_twice_is_noop() {
 }
 
 #[rstest::rstest]
+fn push_entry_bumps_last_history_activity_at() {
+    // Given a session with a stale activity timestamp.
+    let mut session = ChatSessionState::new();
+    session.core.last_history_activity_at = jiff::Timestamp::UNIX_EPOCH;
+
+    // When pushing an entry.
+    let before = jiff::Timestamp::now();
+    session.push_entry(ChatEntry::user("hi"));
+
+    // Then the activity timestamp advanced to ~now.
+    assert!(session.core.last_history_activity_at >= before);
+}
+
+#[rstest::rstest]
+fn append_stream_token_bumps_last_history_activity_at() {
+    // Given a streaming session with a stale activity timestamp.
+    let mut session = ChatSessionState::new();
+    session.begin_streaming();
+    session.core.last_history_activity_at = jiff::Timestamp::UNIX_EPOCH;
+
+    // When appending a token.
+    let before = jiff::Timestamp::now();
+    session
+        .append_stream_token("Hello", jiff::Timestamp::now())
+        .expect("ok");
+
+    // Then the activity timestamp advanced to ~now.
+    assert!(session.core.last_history_activity_at >= before);
+}
+
+#[rstest::rstest]
+fn append_thinking_token_bumps_last_history_activity_at() {
+    // Given a session with a streaming assistant entry that has begun thinking.
+    let mut session = ChatSessionState::builder()
+        .with_user_entry("hello")
+        .begin_streaming()
+        .build();
+    session.begin_thinking(jiff::Timestamp::now());
+    session.core.last_history_activity_at = jiff::Timestamp::UNIX_EPOCH;
+
+    // When appending a thinking token.
+    let before = jiff::Timestamp::now();
+    session.append_thinking_token("reasoning").expect("ok");
+
+    // Then the activity timestamp advanced to ~now.
+    assert!(session.core.last_history_activity_at >= before);
+}
+
+#[rstest::rstest]
+fn begin_sending_seeds_last_history_activity_at() {
+    // Given a session with a stale activity timestamp.
+    let mut session = ChatSessionState::new();
+    session.core.last_history_activity_at = jiff::Timestamp::UNIX_EPOCH;
+
+    // When beginning sending.
+    let before = jiff::Timestamp::now();
+    session.begin_sending();
+
+    // Then the activity timestamp was seeded to ~now.
+    assert!(session.core.last_history_activity_at >= before);
+}
+
+#[rstest::rstest]
+fn begin_streaming_seeds_last_history_activity_at() {
+    // Given a session with a stale activity timestamp.
+    let mut session = ChatSessionState::new();
+    session.core.last_history_activity_at = jiff::Timestamp::UNIX_EPOCH;
+
+    // When beginning streaming.
+    let before = jiff::Timestamp::now();
+    session.begin_streaming();
+
+    // Then the activity timestamp was seeded to ~now.
+    assert!(session.core.last_history_activity_at >= before);
+}
+
+#[rstest::rstest]
 fn append_stream_token_when_not_streaming_returns_error() {
     // Given a session that is not streaming.
     let mut session = ChatSessionState::new();

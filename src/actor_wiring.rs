@@ -668,6 +668,19 @@ impl ActorSystemBuilder {
         .spawn()
         .await;
 
+        // Stall watchdog — detects hung sessions and retries/cancels them.
+        let _stall_watchdog =
+            jinn_domain::feat::stall_watchdog_actor::StallWatchdogActor::supervise(
+                &root,
+                jinn_domain::feat::stall_watchdog_actor::StallWatchdogActorDeps {
+                    deps: actor_deps.clone(),
+                    state: state.clone(),
+                },
+            )
+            .restart_policy(kameo::supervision::RestartPolicy::Never)
+            .spawn()
+            .await;
+
         // Queue actor.
         let _queue = jinn_domain::feat::queue_actor::QueueActor::supervise(
             &root,
