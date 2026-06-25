@@ -6,20 +6,47 @@ use crate::feat::context::strategy::token_estimator::CharRatioEstimator;
 use crate::feat::context::strategy::token_estimator::estimate_entry_tokens;
 use crate::feat::session::chat_entry::{ChatEntry, ChatEntryKind};
 
+/// Whether a chat entry kind is a self-sufficient opener for the kept
+/// (recent) region after compaction.
+///
+/// The kept region must stand on its own as a valid message sequence — see
+/// [`adjust_cut_to_boundary`] Pass 3. Only `User` and `System` qualify: every
+/// other kind structurally depends on a preceding message to render validly
+/// in `entries_to_messages` (`Assistant` needs a preceding user turn; `ToolCall`
+/// attaches to a preceding `Assistant`; `ToolResult` needs a matching preceding
+/// `assistant.tool_calls[].id`). `Actor`/`Thinking`/`Transient`/`Error` render as
+/// prefixed `User` messages but are context-optional, not a guaranteed first turn.
+///
+/// This is the predicate for Pass 3 of [`adjust_cut_to_boundary`].
+fn is_valid_kept_opener(kind: &ChatEntryKind) -> bool {
+    matches!(kind, ChatEntryKind::User { .. } | ChatEntryKind::System(..))
+}
+
 /// Adjust the token-based cut index forward to the next valid boundary.
 ///
-/// The cut must not land on a `ToolCall` or `ToolResult` entry, because
-/// these have structural dependencies on preceding messages:
+/// Three passes compose to guarantee the kept (recent) region — everything
+/// from the returned cut index onward — is a structurally valid LLM message
+/// sequence on its own, independent of any preceding (compacted) context.
+/// This makes the compaction summary non-load-bearing: excluding it can never
+/// produce an invalid request.
 ///
-/// - `ToolCall` merges into the preceding `Assistant` in `entries_to_messages`.
-///   If that `Assistant` is compacted away, the tool call becomes orphaned.
-/// - `ToolResult` produces a `tool` role message whose `tool_call_id` must
-///   match a preceding `assistant.tool_calls[].id`. If the `Assistant` is
-///   compacted but the `ToolResult` is kept, the provider rejects the request.
+/// - **Pass 1**: if the cut lands on a `ToolCall`/`ToolResult`, walk forward
+///   past them. These have structural dependencies on preceding messages:
+///   `ToolCall` merges into the preceding `Assistant` (orphaning if absent);
+///   `ToolResult` needs a matching preceding `assistant.tool_calls[].id`.
+/// - **Pass 2**: if the cut lands on an `Assistant`, advance past any
+///   *incomplete* tool loop it begins (a complete loop is safe to cut on
+///   structurally, but see Pass 3).
+/// - **Pass 3**: walk the cut forward until the leading kept entry is a valid
+///   self-sufficient opener ([`is_valid_kept_opener`] — only `User`/`System`).
+///   This absorbs entries Pass 1/2 left behind that would still render as an
+///   invalid first message: any `Assistant` (empty *or* non-empty standalone),
+///   or a stray `ToolResult` whose partner was excluded.
 ///
-/// Walking forward past `ToolCall`/`ToolResult` to the next independent entry
-/// (`Assistant`, `User`, `Error`, `System`, `Compaction`, etc.) ensures the
-/// kept entries form a structurally valid LLM message sequence.
+/// Composition: Pass 1/2 are inlined in `inner` (whose recursion keeps them
+///   self-consistent); Pass 3 is a single linear walk applied once at the top
+///   level. Pass 3 runs last so it catches the empty/text `Assistant` opener
+///   that Pass 2 leaves when a complete tool loop begins with one.
 ///
 /// Returns the adjusted cut index (>= `cut_index`, <= `history.len()`).
 ///
@@ -28,6 +55,31 @@ use crate::feat::session::chat_entry::{ChatEntry, ChatEntryKind};
 /// Panics if `cut_index < history.len()` but `history[cut_index..]` is empty.
 #[expect(clippy::expect_used, reason = "infallible")]
 pub fn adjust_cut_to_boundary(history: &[ChatEntry], cut_index: usize) -> usize {
+    // Pass 1 + Pass 2 (recursively self-consistent).
+    let cut_index = adjust_cut_inner(history, cut_index);
+
+    // Pass 3: advance to the first entry that is a valid self-sufficient opener.
+    // Linear walk; Pass 1/2 already ran, so this only mops up invalid openers
+    // (any Assistant, or a stray ToolResult whose partner was excluded).
+    let mut cut_index = cut_index;
+    while cut_index < history.len() {
+        let is_opener = history
+            .get(cut_index)
+            .map(|e| is_valid_kept_opener(&e.kind))
+            .unwrap_or(true);
+        if is_opener {
+            break;
+        }
+        cut_index += 1;
+    }
+    cut_index
+}
+
+/// Pass 1 and Pass 2 of [`adjust_cut_to_boundary`].
+///
+/// Kept private so the public entry point always applies Pass 3 afterwards.
+#[expect(clippy::expect_used, reason = "infallible")]
+fn adjust_cut_inner(history: &[ChatEntry], cut_index: usize) -> usize {
     if cut_index >= history.len() {
         return cut_index;
     }
@@ -95,7 +147,7 @@ pub fn adjust_cut_to_boundary(history: &[ChatEntry], cut_index: usize) -> usize 
     }
 
     // Incomplete tool loop - walk forward past the entire group and re-check.
-    adjust_cut_to_boundary(history, group_end)
+    adjust_cut_inner(history, group_end)
 }
 
 /// Compute the cut index by walking backwards accumulating tokens.
@@ -206,6 +258,55 @@ mod tests {
     };
 
     #[test]
+    fn is_valid_kept_opener_accepts_only_user_and_system() {
+        // Given every kind of entry.
+        let user = ChatEntry::user("hello");
+        let system = ChatEntry::system("ready");
+        let empty_assistant = ChatEntry::assistant("");
+        let text_assistant = ChatEntry::assistant("done");
+        let tool_call = ChatEntry::tool_call("tc", "bash", "{}");
+        let tool_result = ChatEntry::tool_result(
+            "tc",
+            "bash",
+            "out",
+            crate::feat::session::tool_result_status::ToolResultStatus::Success,
+        );
+        let actor = ChatEntry::actor("src", "text");
+        let thinking = ChatEntry::thinking("reasoning");
+        let transient = ChatEntry::transient("welcome");
+        let error = ChatEntry::error("boom");
+        let compaction = ChatEntry {
+            id: ChatEntryId::new(),
+            timing: crate::protocol::EntryTiming::instant_now(),
+            kind: ChatEntryKind::Compaction {
+                summary: "summary".to_owned(),
+                tokens_before: 0,
+                tokens_after: 0,
+                entries_compacted: 0,
+                model_used: "model".to_owned(),
+            },
+            pin_position: None,
+            context_override: ContextOverride::Default,
+            context_history: Vec::new(),
+        };
+
+        // Then only User and System are valid openers.
+        assert!(is_valid_kept_opener(&user.kind), "User should be valid opener");
+        assert!(is_valid_kept_opener(&system.kind), "System should be valid opener");
+
+        // And every other kind is rejected, including a non-empty Assistant.
+        assert!(!is_valid_kept_opener(&empty_assistant.kind), "empty Assistant must be invalid");
+        assert!(!is_valid_kept_opener(&text_assistant.kind), "non-empty Assistant must be invalid");
+        assert!(!is_valid_kept_opener(&tool_call.kind), "ToolCall must be invalid");
+        assert!(!is_valid_kept_opener(&tool_result.kind), "ToolResult must be invalid");
+        assert!(!is_valid_kept_opener(&actor.kind), "Actor must be invalid");
+        assert!(!is_valid_kept_opener(&thinking.kind), "Thinking must be invalid");
+        assert!(!is_valid_kept_opener(&transient.kind), "Transient must be invalid");
+        assert!(!is_valid_kept_opener(&error.kind), "Error must be invalid");
+        assert!(!is_valid_kept_opener(&compaction.kind), "Compaction must be invalid");
+    }
+
+    #[test]
     fn find_start_boundary_returns_zero_when_no_compaction() {
         let entries = vec![ChatEntry::user("hello"), ChatEntry::assistant("hi")];
         assert_eq!(find_start_boundary(&entries), 0);
@@ -288,11 +389,12 @@ mod tests {
     }
 
     #[test]
-    fn adjust_cut_stops_at_complete_tool_loop() {
+    fn adjust_cut_advances_past_complete_tool_loop_to_valid_opener() {
         // Given history: [User, Assistant, ToolCall, ToolResult, Assistant("done")]
         // Cut at index 2 lands on ToolCall - the tool loop IS complete (result present).
         // Pass 1 walks to index 4 (Assistant). Pass 2 finds no tool calls, so the
-        // Assistant at 4 is clean - cut stays at 4.
+        // Assistant at 4 is structurally clean - BUT Pass 3 rejects it as an opener
+        // (Assistant needs a preceding user turn), advancing to index 5 (len).
         let entries = vec![
             ChatEntry::user("do something"),
             ChatEntry::assistant("let me check"),
@@ -309,10 +411,156 @@ mod tests {
         // When adjusting cut at index 2.
         let adjusted = adjust_cut_to_boundary(&entries, 2);
 
-        // Then it stops at the Assistant at index 4 - the tool loop is complete.
+        // Then Pass 3 advances past the Assistant opener to end of history.
         assert_eq!(
-            adjusted, 4,
-            "should stop at Assistant after complete tool loop"
+            adjusted,
+            5,
+            "complete tool loop whose opener is an Assistant must advance to a valid opener"
+        );
+    }
+
+    #[test]
+    fn pass3_advances_past_empty_assistant_opener_complete_tool_loop() {
+        // Given history ending: [empty Assistant, ToolCall, ToolResult, User("next")].
+        // Cut lands on the empty Assistant (index 2). The tool loop is complete, but
+        // an empty Assistant is not a valid opener - Pass 3 advances to the User.
+        let entries = vec![
+            ChatEntry::user("earlier"),
+            ChatEntry::assistant("excluded"),
+            ChatEntry::assistant(""),
+            ChatEntry::tool_call("tc1", "bash", "{}"),
+            ChatEntry::tool_result(
+                "tc1",
+                "bash",
+                "out",
+                crate::feat::session::tool_result_status::ToolResultStatus::Success,
+            ),
+            ChatEntry::user("next"),
+        ];
+
+        // When adjusting cut at index 2 (the empty Assistant).
+        let adjusted = adjust_cut_to_boundary(&entries, 2);
+
+        // Then it advances past the empty-Assistant tool loop to the User at index 5.
+        assert_eq!(adjusted, 5, "should advance to the User opener");
+    }
+
+    #[test]
+    fn pass3_advances_past_dangling_tool_result_whose_call_is_excluded() {
+        // Given history: the cut lands on a ToolResult whose matching ToolCall is
+        // on the excluded (pre-cut) side. Pass 1 walks past the ToolResult, then
+        // Pass 3 mops up any further invalid opener. Here the entry after the
+        // ToolResult is a User, so the cut lands on it.
+        let entries = vec![
+            ChatEntry::user("earlier"),
+            ChatEntry::assistant("excluded"),
+            ChatEntry::tool_call("tc1", "bash", "{}"), // excluded side
+            ChatEntry::tool_result(
+                "tc1",
+                "bash",
+                "out",
+                crate::feat::session::tool_result_status::ToolResultStatus::Success,
+            ), // <- cut lands here (index 3)
+            ChatEntry::user("next"),
+        ];
+
+        // When adjusting cut at index 3 (the dangling ToolResult).
+        let adjusted = adjust_cut_to_boundary(&entries, 3);
+
+        // Then it advances past the ToolResult to the User at index 4.
+        assert_eq!(adjusted, 4, "should advance past dangling ToolResult to User");
+    }
+
+    #[test]
+    fn pass3_advances_past_tool_call_whose_result_is_kept_group_split() {
+        // Given history where the cut lands on a ToolCall whose ToolResult is in
+        // the kept region (group split). Pass 1 walks past the whole ToolCall/
+        // ToolResult run, landing on the User after it.
+        let entries = vec![
+            ChatEntry::user("earlier"),
+            ChatEntry::assistant("excluded"),
+            ChatEntry::tool_call("tc1", "bash", "{}"), // <- cut lands here (index 2)
+            ChatEntry::tool_result(
+                "tc1",
+                "bash",
+                "out",
+                crate::feat::session::tool_result_status::ToolResultStatus::Success,
+            ),
+            ChatEntry::user("next"),
+        ];
+
+        // When adjusting cut at index 2 (the split ToolCall).
+        let adjusted = adjust_cut_to_boundary(&entries, 2);
+
+        // Then it advances past the split tool group to the User at index 4.
+        assert_eq!(adjusted, 4, "should advance past split tool group to User");
+    }
+
+    #[test]
+    fn pass3_leaves_cut_unchanged_when_opener_is_real_user() {
+        // Given history where the cut already lands on a User entry - a valid opener.
+        let entries = vec![
+            ChatEntry::user("earlier"),
+            ChatEntry::assistant("excluded"),
+            ChatEntry::user("next"),
+            ChatEntry::assistant("reply"),
+        ];
+
+        // When adjusting cut at index 2 (a User).
+        let adjusted = adjust_cut_to_boundary(&entries, 2);
+
+        // Then the cut is unchanged - no false advancement.
+        assert_eq!(adjusted, 2, "valid User opener must not be advanced");
+    }
+
+    #[test]
+    fn pass3_advances_past_nonempty_standalone_assistant_opener() {
+        // Given history where the cut lands on a non-empty standalone Assistant
+        // (text only, no tool calls). Per the refined invariant this is an invalid
+        // opener - the kept region must open with User/System.
+        let entries = vec![
+            ChatEntry::user("earlier"),
+            ChatEntry::assistant("excluded"),
+            ChatEntry::assistant("here is a standalone reply"), // <- cut (index 2)
+            ChatEntry::user("next"),
+        ];
+
+        // When adjusting cut at index 2 (non-empty standalone Assistant).
+        let adjusted = adjust_cut_to_boundary(&entries, 2);
+
+        // Then it advances past the Assistant to the User at index 3.
+        assert_eq!(
+            adjusted,
+            3,
+            "non-empty standalone Assistant is an invalid opener and must advance"
+        );
+    }
+
+    #[test]
+    fn pass3_consumes_entire_remaining_history_when_no_valid_opener() {
+        // Given history whose entire kept tail is invalid openers (Assistants and
+        // tool entries) with no User/System after the cut.
+        let entries = vec![
+            ChatEntry::user("earlier"),
+            ChatEntry::assistant("excluded"),
+            ChatEntry::assistant("done"),
+            ChatEntry::tool_call("tc1", "bash", "{}"),
+            ChatEntry::tool_result(
+                "tc1",
+                "bash",
+                "out",
+                crate::feat::session::tool_result_status::ToolResultStatus::Success,
+            ),
+        ];
+
+        // When adjusting cut at index 2 (no valid opener anywhere after).
+        let adjusted = adjust_cut_to_boundary(&entries, 2);
+
+        // Then Pass 3 consumes the entire remaining history (5 = len).
+        assert_eq!(
+            adjusted,
+            entries.len(),
+            "should consume entire remaining history when no valid opener exists"
         );
     }
 
