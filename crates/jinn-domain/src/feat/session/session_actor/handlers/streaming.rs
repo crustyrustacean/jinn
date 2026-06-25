@@ -11,8 +11,8 @@ use crate::feat::context::protocol::event::ContextOverrideChanged;
 use crate::feat::context::strategy::token_estimator::{TiktokenCounter, TokenCounter};
 use crate::feat::provider::protocol::command::ResetStreamForRetry;
 use crate::feat::provider::protocol::event::{StreamCompleted, StreamCompletedReason, StreamToken};
-use crate::feat::session::protocol::citations_received::CitationsReceived;
 use crate::feat::session::chat_session::ChatSessionState;
+use crate::feat::session::protocol::citations_received::CitationsReceived;
 use crate::feat::session::queue_item::QueueItem;
 use crate::feat::tools_actor::tool_types::ToolCall;
 use crate::protocol::{ChatEntry, ChatEntryId, ChatEntryKind, SessionId};
@@ -371,8 +371,8 @@ mod tests {
         StreamCompleted, StreamCompletedReason, StreamToken,
     };
     use crate::feat::session::phase_machine::PhaseKind;
-    use crate::feat::session::token_stats::TokenRecord;
     use crate::feat::session::protocol::citations_received::CitationsReceived;
+    use crate::feat::session::token_stats::TokenRecord;
     use crate::protocol::{ChangeSource, ChatEntry, ChatEntryKind};
 
     #[tokio::test]
@@ -2129,7 +2129,11 @@ mod tests {
             .iter()
             .filter(|e| matches!(e.kind, ChatEntryKind::Annotation { .. }))
             .collect();
-        assert_eq!(annotations.len(), 1, "expected exactly one annotation entry");
+        assert_eq!(
+            annotations.len(),
+            1,
+            "expected exactly one annotation entry"
+        );
     }
 
     #[tokio::test]

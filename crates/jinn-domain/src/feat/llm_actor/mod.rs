@@ -566,10 +566,12 @@ async fn handle_done_event(
     );
     if !accum.citations.is_empty() {
         let citations = std::mem::take(&mut accum.citations);
-        bus.publish(crate::feat::session::protocol::citations_received::CitationsReceived {
-            session_id: sid.clone(),
-            citations,
-        })
+        bus.publish(
+            crate::feat::session::protocol::citations_received::CitationsReceived {
+                session_id: sid.clone(),
+                citations,
+            },
+        )
         .await;
     }
     let cost = usage.as_ref().and_then(|u| u.cost);
@@ -2064,11 +2066,11 @@ mod tests {
         );
 
         // And exactly one CitationsReceived was published on the bus.
-        let recorded = await_recorded(&recorder, 1, std::time::Duration::from_secs(2)).await;
-        assert_eq!(recorded.len(), 1, "one CitationsReceived published");
-        assert_eq!(recorded[0].citations.len(), 1);
-        assert_eq!(recorded[0].citations[0].url, "https://example.com/a");
-        assert_eq!(recorded[0].session_id, sid);
+        let events = await_recorded(&recorder, 1, std::time::Duration::from_secs(2)).await;
+        assert_eq!(events.len(), 1, "one CitationsReceived published");
+        assert_eq!(events[0].citations.len(), 1);
+        assert_eq!(events[0].citations[0].url, "https://example.com/a");
+        assert_eq!(events[0].session_id, sid);
     }
 
     #[tokio::test]

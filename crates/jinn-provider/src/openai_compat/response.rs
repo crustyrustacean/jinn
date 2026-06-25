@@ -911,7 +911,11 @@ mod tests {
         let events = parser.parse_data(&json);
 
         // Citations are accumulated; none emitted mid-stream.
-        assert!(!events.iter().any(|e| matches!(e, StreamEvent::Citations(_))));
+        assert!(
+            !events
+                .iter()
+                .any(|e| matches!(e, StreamEvent::Citations(_)))
+        );
 
         // When the stream finishes.
         let finish = serde_json::json!({
