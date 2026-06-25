@@ -166,6 +166,11 @@ pub fn init() -> Keymap<KeyEvent, Scope, Intent, KeyCategory> {
             .bind("f", Intent::ForkFromEntry, KeyCategory::ChatHistory)
             // Yank (copy) selected entry to clipboard
             .bind("y", Intent::YankSelectedEntry, KeyCategory::ChatHistory)
+            // Jump to next/previous compaction summary entry
+            .describe_group_with_category("]", "compaction", KeyCategory::ChatHistory)
+            .describe_group_with_category("[", "compaction", KeyCategory::ChatHistory)
+            .bind("]c", Intent::ChatEntryJumpNextCompaction, KeyCategory::ChatHistory)
+            .bind("[c", Intent::ChatEntryJumpPrevCompaction, KeyCategory::ChatHistory)
             // Session creation
             .bind("n", Intent::SessionNew, KeyCategory::General)
             .bind("N", Intent::SessionNewWithLifecycle, KeyCategory::General)
@@ -1123,5 +1128,89 @@ mod tests {
             ),
             other => panic!("<leader>sp must be a leaf, got branch: {other:?}"),
         }
+    }
+
+    #[rstest::rstest]
+    fn bracket_c_chord_resolves_to_jump_compaction_intents() {
+        // Given the default keymap.
+        use jinn_domain::{Key, KeyEvent, Modifiers};
+        use ratatui_which_key::NodeResult;
+        let keymap = init();
+
+        // When navigating ]c (next compaction) in Normal scope.
+        let next_path = [
+            KeyEvent {
+                key: Key::Char(']'),
+                modifiers: Modifiers::none(),
+            },
+            KeyEvent {
+                key: Key::Char('c'),
+                modifiers: Modifiers::none(),
+            },
+        ];
+        let next_result = keymap
+            .navigate(&next_path, &Scope::Normal)
+            .expect("]c path exists");
+
+        // Then it resolves to ChatEntryJumpNextCompaction.
+        match next_result {
+            NodeResult::Leaf { action } => assert!(
+                matches!(action, Intent::ChatEntryJumpNextCompaction),
+                "]c must resolve to ChatEntryJumpNextCompaction; got {action:?}",
+            ),
+            other => panic!("]c must be a leaf, got branch: {other:?}"),
+        }
+
+        // When navigating [c (previous compaction) in Normal scope.
+        let prev_path = [
+            KeyEvent {
+                key: Key::Char('['),
+                modifiers: Modifiers::none(),
+            },
+            KeyEvent {
+                key: Key::Char('c'),
+                modifiers: Modifiers::none(),
+            },
+        ];
+        let prev_result = keymap
+            .navigate(&prev_path, &Scope::Normal)
+            .expect("[c path exists");
+
+        // Then it resolves to ChatEntryJumpPrevCompaction.
+        match prev_result {
+            NodeResult::Leaf { action } => assert!(
+                matches!(action, Intent::ChatEntryJumpPrevCompaction),
+                "[c must resolve to ChatEntryJumpPrevCompaction; got {action:?}",
+            ),
+            other => panic!("[c must be a leaf, got branch: {other:?}"),
+        }
+    }
+
+    #[test]
+    fn bracket_c_chord_does_not_resolve_in_input_scope() {
+        // Given the default keymap queried in Input scope.
+        // Input scope has a catch-all that turns every Char into InsertChar,
+        // so the `]c` / `[c` jump chords (bound only in Normal) must never fire here.
+        use crate::app::WhichKeyInstance;
+        use jinn_domain::{Key, KeyEvent, Modifiers};
+
+        let keymap = init();
+        let mut wk = WhichKeyInstance::new(keymap, Scope::Input);
+
+        let bracket = KeyEvent {
+            key: Key::Char(']'),
+            modifiers: Modifiers::none(),
+        };
+
+        // When pressing `]` in Input scope.
+        let intent = wk.handle_key(bracket);
+
+        // Then it resolves to a literal InsertChar(']'), not the jump chord prefix.
+        // The `]c` jump intents are therefore unreachable in Input scope.
+        let intent = intent.expect("] in Input scope must fire an intent (catch-all)");
+        assert!(
+            matches!(intent, Intent::InsertChar { ch: ']' }),
+            "] in Input scope must insert a literal ], not start the jump chord; got {intent:?}",
+        );
     }
 }
