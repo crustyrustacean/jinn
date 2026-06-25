@@ -48,9 +48,16 @@ impl SessionPersistenceActor {
                     .map_or(i64::MAX, |s| s.get_seconds().max(0));
                 if elapsed_secs >= timeout_secs as i64 {
                     let removed = session.reset_streaming_entries_for_retry();
+                    // Partial tool calls left by a starved/errored stream
+                    // must be excluded from the retried request, otherwise
+                    // the next provider call carries structurally invalid
+                    // (truncated-arguments) entries. Mirrors the `Canceled`
+                    // path.
+                    let excluded = session.force_exclude_dangling_tool_calls();
                     tracing::warn!(
                         session_id = %payload.session_id,
                         removed_entries = removed,
+                        excluded_dangling = excluded.len(),
                         "retrying stalled turn"
                     );
                     session.push_entry(marker.clone());
@@ -191,6 +198,46 @@ mod tests {
                 e.kind, ChatEntryKind::Assistant(ref t) if t == "partial"
             )),
             "a self-resolved stream must not be discarded"
+        );
+    }
+
+    #[tokio::test]
+    async fn handler_excludes_dangling_partial_tool_call() {
+        // Given a stalled Streaming session holding a partial (dangling)
+        // tool call with no matching ToolResult.
+        let (actor, _audit, payload) = stall_setup().await;
+        let session_id = payload.session_id.clone();
+        {
+            let mut state = actor.state.write();
+            let session = state.active_session_mut();
+            let now = jiff::Timestamp::now();
+            session.begin_tool_call(0, "tc-partial", "bash", now);
+            session
+                .append_tool_call_delta(0, "{\"command\":\"cd /mnt")
+                .expect("append partial delta");
+            // Re-age the activity timestamp past the stall window (the tool
+            // call delta bumped it to now).
+            session.core.last_history_activity_at =
+                now.checked_sub(Duration::from_mins(2)).unwrap();
+        }
+
+        // When the retry handler runs.
+        actor.on_retry_stalled_session(&payload).await;
+
+        // Then the partial tool call entry is no longer included in the
+        // request context — it is marked ForcedExclude.
+        let state = actor.state.read();
+        let session = state.session.get(&session_id).expect("session exists");
+        let has_active_partial = session.core.history.iter().any(|e| {
+            matches!(&e.kind, ChatEntryKind::ToolCall { id, .. } if id == "tc-partial")
+                && !matches!(
+                    e.context_override(),
+                    crate::protocol::ContextOverride::ForcedExclude
+                )
+        });
+        assert!(
+            !has_active_partial,
+            "dangling partial tool call must be excluded from the retried request"
         );
     }
 }

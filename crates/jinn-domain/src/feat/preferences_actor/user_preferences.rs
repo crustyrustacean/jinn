@@ -52,7 +52,7 @@ pub(crate) const DEFAULT_CONFIG: &str = include_str!("default_jinn.toml");
 /// Default seconds without a chat-history change before a session is
 /// considered hung. Covers HTTP handshake hangs, keepalive-only connections,
 /// and stalled tool batches — anything that stops mutating the visible history.
-pub(crate) const DEFAULT_HISTORY_STALL_TIMEOUT_SECS: u64 = 300;
+pub(crate) const DEFAULT_HISTORY_STALL_TIMEOUT_SECS: u64 = 60;
 
 /// Default maximum stall retries before the watchdog gives up and cancels the turn.
 pub(crate) const DEFAULT_STALL_RETRY_MAX_RETRIES: u32 = 3;
@@ -1099,5 +1099,16 @@ mod tests {
         assert!(prefs.auto_prune.trivial_assistant.enabled);
         assert_eq!(prefs.auto_prune.trivial_assistant.min_age, 100);
         assert_eq!(prefs.auto_prune.trivial_assistant.max_tokens, 80);
+    }
+
+    #[rstest::rstest]
+    fn default_history_stall_timeout_is_sixty_seconds() {
+        // Given default preferences.
+        let prefs = UserPreferences::default();
+
+        // Then the stall timeout is 60 seconds (tightened from 300 to catch
+        // transient provider death faster without false-positiving on slow
+        // but responsive providers).
+        assert_eq!(prefs.history_stall_timeout_secs, 60);
     }
 }
