@@ -41,6 +41,7 @@ use crate::feat::provider::protocol::event::{
     ModelsRefreshed, PromptTemplatesLoaded, StreamCompleted, StreamToken,
 };
 use crate::feat::session::protocol::archive_session::ArchiveSession;
+use crate::feat::session::protocol::citations_received::CitationsReceived;
 use crate::feat::session::protocol::close_session::CloseSession;
 use crate::feat::session::protocol::load_session_picker_entries::LoadSessionPickerEntries;
 use crate::feat::session::protocol::mark_session_interacted::MarkSessionInteracted;
@@ -157,6 +158,7 @@ impl Actor for SessionPersistenceActor {
         bus.subscribe::<ToolBatchCompleted, _>(&actor_ref).await;
         bus.subscribe::<ToolExecutionStarted, _>(&actor_ref).await;
         bus.subscribe::<ToolExecutionOutput, _>(&actor_ref).await;
+        bus.subscribe::<CitationsReceived, _>(&actor_ref).await;
         bus.subscribe::<ChatEntryPinChanged, _>(&actor_ref).await;
         bus.subscribe::<TaskListUpdated, _>(&actor_ref).await;
         bus.subscribe::<ModelsRefreshed, _>(&actor_ref).await;
@@ -434,6 +436,13 @@ impl Message<ToolExecutionOutput> for SessionPersistenceActor {
     type Reply = ();
     async fn handle(&mut self, msg: ToolExecutionOutput, _ctx: &mut Context<Self, Self::Reply>) {
         self.on_tool_execution_output(&msg);
+    }
+}
+
+impl Message<CitationsReceived> for SessionPersistenceActor {
+    type Reply = ();
+    async fn handle(&mut self, msg: CitationsReceived, _ctx: &mut Context<Self, Self::Reply>) {
+        self.on_citations_received(&msg).await;
     }
 }
 

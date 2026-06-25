@@ -1184,12 +1184,12 @@ fn render_auto_scrolls_jumped_compaction_into_view() {
     );
 
     // When jumping to the previous compaction from the last entry (no selection
-    // → anchor on last entry; [c lands on the only compaction at index 0).
+    // -> anchor on last entry; the prev jump lands on the only compaction at index 0).
     handle_jump_prev_compaction(&mut state);
     assert_eq!(
         state.active_session().selected_cursor_id(),
         Some(&compaction_id),
-        "[c must land on the compaction entry"
+        "prev jump must land on the compaction entry"
     );
 
     // Re-render: the viewport must auto-scroll so the jumped-to compaction is now visible.
@@ -1203,5 +1203,59 @@ fn render_auto_scrolls_jumped_compaction_into_view() {
     assert!(
         range_after.contains(&0),
         "compaction at index 0 must be scrolled into view after the jump; range = {range_after:?}"
+    );
+}
+
+/// Collect every rendered cell symbol into a single string (row-major),
+/// so substring assertions can scan the whole viewport.
+fn buffer_text(buffer: &ratatui::buffer::Buffer) -> String {
+    let area = buffer.area;
+    let mut out = String::new();
+    for y in 0..area.height {
+        for x in 0..area.width {
+            out.push_str(buffer.cell((x, y)).map_or("", |c| c.symbol()));
+        }
+        out.push('\n');
+    }
+    out
+}
+
+#[rstest::rstest]
+fn render_annotation_entry_shows_source_title_and_url() {
+    // Given a ChatLogElement with an annotation entry carrying one citation.
+    use jinn_provider::UrlCitation;
+    let mut element = ChatLogElement::new();
+    let state = {
+        let mut s = AppState::default();
+        s.active_session_mut()
+            .push_entry(ChatEntry::annotation(vec![UrlCitation {
+                url: "https://example.com/a".to_owned(),
+                title: "Source A".to_owned(),
+                content: None,
+                start_index: None,
+                end_index: None,
+            }]));
+        s
+    };
+
+    let (mut terminal, area) = setup_term(60, 10);
+
+    // When rendering.
+    terminal
+        .draw(|frame| {
+            let ctx = RenderCtx::new(&state);
+            element.render(frame, area, &ctx);
+        })
+        .unwrap();
+
+    // Then both the citation title and its URL appear in the rendered output.
+    let text = buffer_text(terminal.backend().buffer());
+    assert!(
+        text.contains("Source A"),
+        "citation title should render: {text:?}"
+    );
+    assert!(
+        text.contains("https://example.com/a"),
+        "citation url should render: {text:?}"
     );
 }
