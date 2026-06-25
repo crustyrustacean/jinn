@@ -12,7 +12,10 @@ use parking_lot::RwLock;
 
 use super::user_preferences::{UserPreferences, UserPreferencesError, preferences_path};
 #[cfg(test)]
-use super::user_preferences::{default_history_stall_timeout_secs, default_stall_retry_max_retries, default_tool_default_timeout_secs};
+use super::user_preferences::{
+    default_history_stall_timeout_secs, default_stall_retry_max_retries,
+    default_tool_default_timeout_secs,
+};
 
 /// Trait for user preferences I/O.
 ///

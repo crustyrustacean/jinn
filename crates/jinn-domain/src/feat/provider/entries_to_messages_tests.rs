@@ -1008,3 +1008,243 @@ fn orphan_tool_call_after_excluded_empty_assistant_creates_synthetic() {
         other => panic!("expected Tool, got {other:?}"),
     }
 }
+
+// ═══════════════════════════════════════════════════════════════════════════
+// Compaction boundary: excluding the summary must never break message sequencing.
+// ═══════════════════════════════════════════════════════════════════════════
+
+/// Helper: every Assistant tool_call id has a following Tool message, no tool
+/// message precedes its assistant, and the first message is a valid opener
+/// (User or System).
+fn assert_message_sequence_is_valid(messages: &[LlmMessage]) {
+    // The first message must be a standalone opener, never a Tool or an
+    // Assistant that is empty / has tool_calls (those need a preceding turn).
+    assert!(
+        matches!(
+            messages.first(),
+            Some(LlmMessage::User { .. } | LlmMessage::System { .. })
+        ),
+        "first message must be a User or System opener, got {:?}",
+        messages.first()
+    );
+
+    let mut tool_call_ids: Vec<String> = Vec::new();
+    let mut tool_result_ids: Vec<String> = Vec::new();
+    for msg in messages {
+        match msg {
+            LlmMessage::Assistant {
+                tool_calls: Some(calls),
+                ..
+            } => {
+                for tc in calls {
+                    tool_call_ids.push(tc.id.clone());
+                }
+            }
+            LlmMessage::Tool { tool_call_id, .. } => {
+                tool_result_ids.push(tool_call_id.clone());
+            }
+            _ => {}
+        }
+    }
+
+    // Every emitted tool_call must have a matching tool result.
+    for tc_id in &tool_call_ids {
+        assert!(
+            tool_result_ids.iter().any(|r| r == tc_id),
+            "dangling tool_call {tc_id} found - no matching Tool result"
+        );
+    }
+    // And no orphan tool result whose call was dropped.
+    for tr_id in &tool_result_ids {
+        assert!(
+            tool_call_ids.iter().any(|r| r == tr_id),
+            "orphan tool result {tr_id} found - no preceding tool_call"
+        );
+    }
+}
+
+fn force_exclude(entry: &mut ChatEntry) {
+    entry.apply_context_override(
+        crate::protocol::ContextOverride::ForcedExclude,
+        ChangeSource::Internal {
+            label: "test".to_owned(),
+        },
+    );
+}
+
+fn compaction_entry(summary: &str) -> ChatEntry {
+    use crate::protocol::{ChatEntryId, ChatEntryKind, EntryTiming};
+    ChatEntry {
+        id: ChatEntryId::new(),
+        timing: EntryTiming::instant_now(),
+        kind: ChatEntryKind::Compaction {
+            summary: summary.to_owned(),
+            tokens_before: 100,
+            tokens_after: 50,
+            entries_compacted: 5,
+            model_used: "test-model".to_owned(),
+        },
+        pin_position: None,
+        context_override: crate::protocol::ContextOverride::Default,
+        context_history: Vec::new(),
+    }
+}
+
+#[test]
+fn excluding_compaction_summary_never_breaks_message_sequencing() {
+    // Given a history whose compaction boundary would, without Pass 3, leave
+    // an Assistant opener as the first kept entry:
+    //   [User, Assistant(BIG), Assistant(opener), User(recent turn)]
+    // After adjust_cut_to_boundary the kept region must open with the final User.
+    use crate::feat::compaction_worker::algorithm::adjust_cut_to_boundary;
+
+    let mut entries = vec![
+        ChatEntry::user("start"),
+        ChatEntry::assistant(format!("big {}", "w".repeat(600))),
+        ChatEntry::assistant("recent opener"),
+        ChatEntry::user("recent turn"),
+    ];
+
+    let cut = adjust_cut_to_boundary(&entries, 2);
+
+    // Force-exclude everything on the compacted side (indices < cut) and
+    // insert + force-exclude the compaction summary at the boundary.
+    for entry in entries.iter_mut().take(cut) {
+        force_exclude(entry);
+    }
+    let mut summary = compaction_entry("summary");
+    force_exclude(&mut summary);
+    entries.push(summary);
+
+    // When converting the kept region (summary force-excluded) to messages.
+    let messages = entries_to_messages(&entries);
+
+    // Then the sequence is structurally valid despite the summary being excluded.
+    assert!(
+        !messages.is_empty(),
+        "kept region should produce at least one message"
+    );
+    assert_message_sequence_is_valid(&messages);
+}
+
+#[test]
+fn including_compaction_summary_produces_valid_sequencing() {
+    // Same history as above, but the summary is included (regression: the
+    // old code was only valid because the summary masked the broken opener).
+    use crate::feat::compaction_worker::algorithm::adjust_cut_to_boundary;
+
+    let mut entries = vec![
+        ChatEntry::user("start"),
+        ChatEntry::assistant(format!("big {}", "w".repeat(600))),
+        ChatEntry::assistant("recent opener"),
+        ChatEntry::user("recent turn"),
+    ];
+
+    let cut = adjust_cut_to_boundary(&entries, 2);
+    for entry in entries.iter_mut().take(cut) {
+        force_exclude(entry);
+    }
+    let summary = compaction_entry("summary");
+    entries.push(summary);
+
+    // When converting with the summary included.
+    let messages = entries_to_messages(&entries);
+
+    // Then the sequence is valid.
+    assert_message_sequence_is_valid(&messages);
+}
+
+/// Assert that a message sequence is structurally valid as a standalone
+/// conversation: the first message is a valid opener (User or System), and
+/// every assistant tool_call has a matching following Tool message with no
+/// dangling tool_call_id.
+fn assert_messages_are_structurally_valid(messages: &[LlmMessage]) {
+    // The first message must be a valid conversation opener.
+    assert!(
+        matches!(
+            messages.first(),
+            Some(LlmMessage::User { .. } | LlmMessage::System { .. })
+        ),
+        "first message must be a User or System turn, got {:?}",
+        messages.first()
+    );
+
+    // Collect every tool_call_id emitted by an assistant, and every tool_call_id
+    // resolved by a Tool message.
+    let mut tool_call_ids: Vec<String> = Vec::new();
+    let mut tool_result_ids: Vec<String> = Vec::new();
+    for msg in messages {
+        match msg {
+            LlmMessage::Assistant {
+                tool_calls: Some(calls),
+                ..
+            } => {
+                for tc in calls {
+                    tool_call_ids.push(tc.id.clone());
+                }
+            }
+            LlmMessage::Tool { tool_call_id, .. } => {
+                tool_result_ids.push(tool_call_id.clone());
+            }
+            _ => {}
+        }
+    }
+
+    for tc_id in &tool_call_ids {
+        assert!(
+            tool_result_ids.iter().any(|r| r == tc_id),
+            "dangling tool_call {tc_id} has no matching Tool result"
+        );
+    }
+}
+
+#[test]
+fn excluding_compaction_summary_yields_valid_message_sequence() {
+    // Given a history reproducing the bug layout: a complete tool loop whose
+    // summary-compaction would sit between a ToolResult and an Assistant, and
+    // whose reserve boundary lands on an Assistant opener.
+    //   [User, Assistant(big), ToolCall, ToolResult, Assistant(opener), User(recent)]
+    use crate::feat::compaction_worker::algorithm::adjust_cut_to_boundary;
+    use crate::feat::session::chat_entry::ChangeSource;
+
+    let big_padding = "w".repeat(600);
+    let mut entries = vec![
+        ChatEntry::user("start"),
+        ChatEntry::assistant(format!("big {big_padding}")),
+        ChatEntry::tool_call("tc-1", "bash", "ls"),
+        ChatEntry::tool_result("tc-1", "bash", "file.txt", ToolResultStatus::Success),
+        ChatEntry::assistant("recent opener"),
+        ChatEntry::user("recent turn"),
+    ];
+
+    // When compaction computes its cut boundary.
+    // With a small reserve, the cut lands on the Assistant opener (index 4);
+    // Pass 3 must advance it to the User at index 5 so the kept region is valid.
+    let cut = adjust_cut_to_boundary(&entries, 4);
+    assert_eq!(
+        cut, 5,
+        "cut must advance past the Assistant opener to the User"
+    );
+
+    // Force-exclude every entry on the compacted side (indices < cut).
+    for entry in entries.iter_mut().take(cut) {
+        entry.apply_context_override(
+            crate::protocol::ContextOverride::ForcedExclude,
+            ChangeSource::Internal {
+                label: "compaction".to_owned(),
+            },
+        );
+    }
+
+    // Simulate excluding the compaction summary itself: build the kept region
+    // (indices >= cut) WITHOUT inserting any summary entry.
+    let kept: Vec<ChatEntry> = entries.iter().skip(cut).cloned().collect();
+
+    // Then the kept region converts to a structurally valid message sequence.
+    let messages = entries_to_messages(&kept);
+    assert!(
+        !messages.is_empty(),
+        "kept region must produce at least one message"
+    );
+    assert_messages_are_structurally_valid(&messages);
+}

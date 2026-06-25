@@ -340,8 +340,8 @@ fn entry_prefix_and_content(kind: &ChatEntryKind) -> (&'static str, String) {
                 ),
             )
         }
-        // Table entries are not shown in the pinned panel summary.
-        ChatEntryKind::Compaction { .. } => ("", String::new()),
+        // Table entries and annotations are not shown in the pinned panel summary.
+        ChatEntryKind::Compaction { .. } | ChatEntryKind::Annotation { .. } => ("", String::new()),
         // Thinking entries are not shown in the pinned panel summary.
         ChatEntryKind::Thinking(text) => ("", truncate_str(text, 40)),
 

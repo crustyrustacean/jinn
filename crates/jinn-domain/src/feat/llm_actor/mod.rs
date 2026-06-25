@@ -302,6 +302,9 @@ async fn process_stream_events(
                     })
                     .await;
                 }
+                StreamEvent::Citations(citations) => {
+                    accum.citations.extend(citations);
+                }
                 StreamEvent::Done { stop_reason, usage } => {
                     handle_done_event(bus, sid, &mut accum, stop_reason, usage, dispatched_at)
                         .await;
@@ -339,8 +342,7 @@ async fn process_stream_events(
     emit_stream_error(
         bus,
         sid,
-        "LLM stream ended unexpectedly. The connection may have been interrupted."
-            .to_owned(),
+        "LLM stream ended unexpectedly. The connection may have been interrupted.".to_owned(),
         dispatched_at,
     )
     .await;
@@ -351,6 +353,7 @@ struct StreamAccumulator {
     text: String,
     thinking: String,
     tool_calls: Vec<ToolCall>,
+    citations: Vec<jinn_provider::UrlCitation>,
     token_index: usize,
     model_id: String,
     parser: Box<dyn reasoning_parser::ReasoningParser>,
@@ -363,6 +366,7 @@ impl StreamAccumulator {
             text: String::new(),
             thinking: String::new(),
             tool_calls: Vec::new(),
+            citations: Vec::new(),
             token_index: 0,
             model_id: model_id.to_owned(),
             parser,
@@ -510,6 +514,16 @@ async fn handle_done_event(
         tool_call_count = accum.tool_calls.len(),
         "stream Done"
     );
+    if !accum.citations.is_empty() {
+        let citations = std::mem::take(&mut accum.citations);
+        bus.publish(
+            crate::feat::session::protocol::citations_received::CitationsReceived {
+                session_id: sid.clone(),
+                citations,
+            },
+        )
+        .await;
+    }
     let cost = usage.as_ref().and_then(|u| u.cost);
     let provider_completion_tokens = usage.as_ref().and_then(|u| u.completion_tokens);
     if stop_reason == StopReason::ToolUse {
@@ -746,10 +760,7 @@ async fn run_stream(
         }
     };
 
-    let stream = match service
-        .chat_stream_with_tools(messages, tools)
-        .await
-    {
+    let stream = match service.chat_stream_with_tools(messages, tools).await {
         Ok(s) => s,
         Err(e) => {
             tracing::error!(err = ?e, "failed to start LLM stream");
@@ -784,7 +795,6 @@ fn build_streaming_service(
         Box::new(PushEntryOnRetry::new(bus.clone(), sid.clone())),
     ))
 }
-
 
 #[cfg(test)]
 mod test_fakes {
@@ -1407,5 +1417,47 @@ mod tests {
             .iter()
             .any(|sc| sc.reason == StreamCompletedReason::Finished);
         assert!(found, "Done should complete the stream");
+    }
+
+    #[tokio::test]
+    async fn process_stream_events_publishes_citations_on_done_when_accumulated() {
+        // Given a stream carrying url_citation annotations then Done.
+        use jinn_provider::{StopReason, StreamEvent, UrlCitation};
+        let harness = TestHarness::new().await;
+        let recorder = harness
+            .spawn_recorder::<crate::feat::session::protocol::citations_received::CitationsReceived>()
+            .await;
+        let stream = scripted_stream(vec![
+            StreamEvent::Citations(vec![UrlCitation {
+                url: "https://example.com/a".to_owned(),
+                title: "Source A".to_owned(),
+                content: None,
+                start_index: None,
+                end_index: None,
+            }]),
+            StreamEvent::Done {
+                stop_reason: StopReason::EndTurn,
+                usage: None,
+            },
+        ]);
+        let sid = SessionId::new();
+
+        // When processing the stream to completion.
+        process_stream_events(
+            stream,
+            &harness.bus(),
+            &sid,
+            "test-model",
+            jiff::Timestamp::now(),
+        )
+        .await;
+
+        // Then the stream completes (no CitationsReceived asserted separately below).
+        // And exactly one CitationsReceived was published on the bus.
+        let events = await_recorded(&recorder, 1, std::time::Duration::from_secs(2)).await;
+        assert_eq!(events.len(), 1, "one CitationsReceived published");
+        assert_eq!(events[0].citations.len(), 1);
+        assert_eq!(events[0].citations[0].url, "https://example.com/a");
+        assert_eq!(events[0].session_id, sid);
     }
 }
