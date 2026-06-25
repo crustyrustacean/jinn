@@ -80,7 +80,15 @@ impl SessionPersistenceActor {
         let output_tokens = resolve_output_tokens(self.counter, event).await;
 
         // Mutate session state under the write lock, capturing what changed.
-        let state_change = self.apply_stream_completion(event, output_tokens);
+        // A `None` return means the completion was from a superseded stream
+        // generation and was dropped — emit nothing.
+        let Some(state_change) = self.apply_stream_completion(event, output_tokens) else {
+            tracing::debug!(
+                session_id = %event.session_id,
+                "StreamCompleted dropped (stale generation); skipping downstream events"
+            );
+            return;
+        };
 
         // Emit ContextOverrideChanged for entries swept by dangling-tool-call
         // exclusion or pending worker mutations. Outside the write lock.
@@ -135,10 +143,30 @@ impl SessionPersistenceActor {
         &self,
         event: &StreamCompleted,
         output_tokens: Option<u32>,
-    ) -> StreamCompletionStateChange {
+    ) -> Option<StreamCompletionStateChange> {
         let mut changed_overrides: Vec<ChatEntryId> = Vec::new();
         let mut state = self.state.write();
         let session = state.session_mut_or_create(&event.session_id);
+
+        // Stale-generation guard: reject terminal events from an aborted prior
+        // stream (e.g. a retry re-dispatched while the old task was still
+        // alive). A completion whose `dispatched_at` predates the current
+        // generation is dropped silently.
+        if let Some(active) = session.core.ephemeral.stream_dispatched_at
+            && event.dispatched_at < active
+        {
+            tracing::warn!(
+                session_id = %event.session_id,
+                event_dispatched_at = %event.dispatched_at,
+                active_dispatched_at = %active,
+                reason = ?event.reason,
+                "dropping stale StreamCompleted from superseded stream generation"
+            );
+            return None;
+        }
+        // This generation is now consumed.
+        session.core.ephemeral.stream_dispatched_at = None;
+
         let old_phase = session.phase();
 
         apply_completion_entries(session, event, output_tokens);
@@ -187,11 +215,11 @@ impl SessionPersistenceActor {
             }
         }
 
-        StreamCompletionStateChange {
+        Some(StreamCompletionStateChange {
             old_phase,
             new_phase: session.phase(),
             changed_overrides,
-        }
+        })
     }
 
     /// Broadcasts [`ContextOverrideChanged`] for each entry whose override changed
@@ -2167,6 +2195,51 @@ mod tests {
         assert!(
             !audit.contains_name("HistoryAppended"),
             "empty citations must not emit HistoryAppended"
+        );
+    }
+
+    #[tokio::test]
+    async fn stale_generation_stream_completed_is_dropped() {
+        // Given a streaming session with a current-generation dispatch timestamp.
+        let (actor, _audit) = test_actor_recording().await;
+        let session_id = {
+            let mut state = actor.state.write();
+            let session = state.active_session_mut();
+            session.begin_streaming();
+            let now = jiff::Timestamp::now();
+            session.core.ephemeral.stream_dispatched_at = Some(now);
+            state.session.active_session_id().clone()
+        };
+
+        // When a StreamCompleted arrives carrying an OLDER dispatched_at
+        // (simulating an aborted prior stream's late terminal event).
+        let backdated = jiff::Timestamp::now()
+            .checked_sub(jiff::Span::new().seconds(30))
+            .unwrap();
+        let event = StreamCompleted {
+            model_used: None,
+            session_id: session_id.clone(),
+            reason: StreamCompletedReason::Error,
+            assistant_content: None,
+            tool_calls: None,
+            cost: None,
+            provider_completion_tokens: None,
+            thinking_content: None,
+            dispatched_at: backdated,
+        };
+        actor.on_stream_completed(&event).await;
+
+        // Then the session is STILL Streaming (the stale event was dropped)
+        // and the generation guard was not consumed.
+        let guard = actor.state.read();
+        let session = guard.session.get(&session_id).expect("session exists");
+        assert!(
+            matches!(session.phase(), PhaseKind::Streaming),
+            "stale-generation StreamCompleted must not transition the session"
+        );
+        assert!(
+            session.core.ephemeral.stream_dispatched_at.is_some(),
+            "generation guard must remain set for stale events"
         );
     }
 }

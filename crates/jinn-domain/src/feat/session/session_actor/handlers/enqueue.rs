@@ -263,7 +263,7 @@ impl SessionPersistenceActor {
 
         // Resolve model under write lock (round-robin mutates index).
         // Sending → Streaming + record outgoing token count.
-        let (provider_id, model_used, reasoning_effort, old_phase, new_phase) = {
+        let (provider_id, model_used, reasoning_effort, old_phase, new_phase, dispatched_at) = {
             let mut state = self.state.write();
             let session = state.session_mut_or_create(session_id);
             let reasoning_effort = {
@@ -278,10 +278,12 @@ impl SessionPersistenceActor {
                 (Some(resolved.clone()), Some(resolved))
             };
             let old_phase = session.phase();
+            let dispatched_at = jiff::Timestamp::now();
             session.begin_streaming();
+            session.core.ephemeral.stream_dispatched_at = Some(dispatched_at);
             session.push_token_record(TokenRecord {
                 model_used: model_used.clone(),
-                timestamp: jiff::Timestamp::now(),
+                timestamp: dispatched_at,
                 tokens_sent: assembled.estimated_tokens(),
                 tokens_received: 0,
                 cost: None,
@@ -292,9 +294,9 @@ impl SessionPersistenceActor {
                 reasoning_effort,
                 old_phase,
                 session.phase(),
+                dispatched_at,
             )
         };
-
         let estimated_tokens = assembled.estimated_tokens();
 
         super::super::helpers::emit_phase_changed(self.bus(), session_id, old_phase, new_phase)
@@ -308,7 +310,7 @@ impl SessionPersistenceActor {
             provider_id,
             estimated_tokens,
             tool_definitions: assembled.tool_definitions,
-            dispatched_at: jiff::Timestamp::now(),
+            dispatched_at,
         })
         .await;
 
