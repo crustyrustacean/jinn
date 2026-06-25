@@ -97,6 +97,77 @@ pub fn handle_select_prev(state: &mut AppState) -> IntentResult {
     IntentResult::empty()
 }
 
+/// Resolve the anchor history index for a compaction jump.
+///
+/// Uses the current selection's history index. When nothing is selected
+/// (or the selection sits on a collapsed ignored block, which resolves to
+/// `None`), falls back to `history.len()` — a sentinel one past the newest
+/// entry. This keeps the forward/backward scans exclusive of the anchor
+/// while still letting a first press land on the newest (for `[c`) compaction.
+///
+/// Returns `None` when the history is empty (no-op for the caller).
+fn compaction_jump_anchor(session: &ChatSessionState) -> Option<usize> {
+    let history = session.history();
+    if history.is_empty() {
+        return None;
+    }
+    Some(session.selected_history_index().unwrap_or(history.len()))
+}
+
+/// Jump the cursor to the next (newer) compaction summary entry.
+///
+/// Anchors on the current selection; when nothing is selected, the anchor
+/// is the sentinel past the newest entry (see `compaction_jump_anchor`).
+/// Scans forward — exclusive of the anchor — for the first compaction entry.
+/// Clamps (no wrap): a silent no-op if no compaction exists below the
+/// compaction entry. Clamps (no wrap): a silent no-op if no compaction
+/// exists below the anchor. The viewport auto-follows the new cursor.
+pub fn handle_jump_next_compaction(state: &mut AppState) -> IntentResult {
+    let target_id = {
+        let session = state.active_session();
+        let Some(anchor) = compaction_jump_anchor(session) else {
+            return IntentResult::empty();
+        };
+        session
+            .history()
+            .get(anchor + 1..)
+            .and_then(|tail| tail.iter().find(|e| e.is_compaction()))
+            .map(|e| e.id.clone())
+    };
+
+    if let Some(id) = target_id {
+        state.active_session_mut().set_selected_cursor_id(id);
+    }
+    IntentResult::empty()
+}
+
+/// Jump the cursor to the previous (older) compaction summary entry.
+///
+/// Anchors on the current selection; when nothing is selected, the anchor
+/// is the sentinel past the newest entry (see `compaction_jump_anchor`).
+/// Scans backward — exclusive of the anchor — for the first compaction entry.
+/// Clamps (no wrap): a silent no-op if no compaction exists above the
+/// compaction entry. Clamps (no wrap): a silent no-op if no compaction
+/// exists above the anchor. The viewport auto-follows the new cursor.
+pub fn handle_jump_prev_compaction(state: &mut AppState) -> IntentResult {
+    let target_id = {
+        let session = state.active_session();
+        let Some(anchor) = compaction_jump_anchor(session) else {
+            return IntentResult::empty();
+        };
+        session
+            .history()
+            .get(..anchor)
+            .and_then(|head| head.iter().rfind(|e| e.is_compaction()))
+            .map(|e| e.id.clone())
+    };
+
+    if let Some(id) = target_id {
+        state.active_session_mut().set_selected_cursor_id(id);
+    }
+    IntentResult::empty()
+}
+
 /// Toggles the pin state of the currently selected chat entry.
 ///
 /// If the entry is pinned, sends an `UnpinChatEntry` command.
@@ -2007,5 +2078,246 @@ mod tests {
                 .contains(&block1_start_id),
             "first collapsed block should not be expanded"
         );
+    }
+}
+
+/// Tests for `]c` / `[c` compaction-jump handlers.
+#[cfg(test)]
+mod jump_compaction_tests {
+    #![allow(
+        clippy::expect_used,
+        clippy::panic,
+        clippy::unreachable,
+        clippy::indexing_slicing,
+        reason = "test code"
+    )]
+    use crate::common::app_state::AppState;
+    use crate::feat::session::chat_entry::{ChatEntry, ChatEntryId, ChatEntryKind};
+    use crate::protocol::ContextOverride;
+    use crate::protocol::EntryTiming;
+
+    use super::*;
+
+    /// Build a compaction summary entry with a distinctive summary.
+    fn compaction_entry(summary: &str) -> ChatEntry {
+        ChatEntry {
+            id: ChatEntryId::new(),
+            timing: EntryTiming::instant_now(),
+            kind: ChatEntryKind::Compaction {
+                summary: summary.to_owned(),
+                tokens_before: 100,
+                tokens_after: 50,
+                entries_compacted: 5,
+                model_used: "test/model".to_owned(),
+            },
+            pin_position: None,
+            context_override: ContextOverride::Default,
+            context_history: Vec::new(),
+        }
+    }
+
+    /// Canonical history: user(0), compaction-A(1), user(2), compaction-B(3).
+    /// Returns the IDs of compaction A (older) and B (newer).
+    fn build_two_compaction_history(state: &mut AppState) -> (ChatEntryId, ChatEntryId) {
+        state
+            .active_session_mut()
+            .push_entry(ChatEntry::user("first"));
+        state.active_session_mut().push_entry(compaction_entry("A"));
+        let a_id = state.active_session().history()[1].id.clone();
+        state
+            .active_session_mut()
+            .push_entry(ChatEntry::user("middle"));
+        state.active_session_mut().push_entry(compaction_entry("B"));
+        let b_id = state.active_session().history()[3].id.clone();
+        (a_id, b_id)
+    }
+
+    /// Select the entry at a history index by cloning its ID into the cursor.
+    fn select_at(state: &mut AppState, hist_idx: usize) {
+        let id = state.active_session().history()[hist_idx].id.clone();
+        state.active_session_mut().set_selected_cursor_id(id);
+    }
+
+    #[rstest::rstest]
+    fn jump_next_moves_to_next_compaction() {
+        // Given history user,A,user,B with the cursor on compaction A.
+        let mut state = AppState::default();
+        let (a_id, b_id) = build_two_compaction_history(&mut state);
+        select_at(&mut state, 1);
+        assert_eq!(state.active_session().selected_cursor_id(), Some(&a_id));
+
+        // When handling jump to next compaction.
+        let _result = handle_jump_next_compaction(&mut state);
+
+        // Then the cursor moves to compaction B.
+        assert_eq!(state.active_session().selected_cursor_id(), Some(&b_id));
+    }
+
+    #[rstest::rstest]
+    fn jump_prev_moves_to_prev_compaction() {
+        // Given history user,A,user,B with the cursor on compaction B.
+        let mut state = AppState::default();
+        let (a_id, b_id) = build_two_compaction_history(&mut state);
+        select_at(&mut state, 3);
+        assert_eq!(state.active_session().selected_cursor_id(), Some(&b_id));
+
+        // When handling jump to previous compaction.
+        let _result = handle_jump_prev_compaction(&mut state);
+
+        // Then the cursor moves to compaction A.
+        assert_eq!(state.active_session().selected_cursor_id(), Some(&a_id));
+    }
+
+    #[rstest::rstest]
+    fn jump_next_noop_at_last_compaction() {
+        // Given the cursor on the last compaction B.
+        let mut state = AppState::default();
+        let (_a_id, b_id) = build_two_compaction_history(&mut state);
+        select_at(&mut state, 3);
+
+        // When handling jump to next compaction.
+        let result = handle_jump_next_compaction(&mut state);
+
+        // Then the cursor is unchanged (no wrap) and no commands emitted.
+        assert_eq!(state.active_session().selected_cursor_id(), Some(&b_id));
+        assert!(result.message_names.is_empty());
+    }
+
+    #[rstest::rstest]
+    fn jump_prev_noop_at_first_compaction() {
+        // Given the cursor on the first compaction A.
+        let mut state = AppState::default();
+        let (a_id, _b_id) = build_two_compaction_history(&mut state);
+        select_at(&mut state, 1);
+
+        // When handling jump to previous compaction.
+        let result = handle_jump_prev_compaction(&mut state);
+
+        // Then the cursor is unchanged (no wrap) and no commands emitted.
+        assert_eq!(state.active_session().selected_cursor_id(), Some(&a_id));
+        assert!(result.message_names.is_empty());
+    }
+
+    #[rstest::rstest]
+    fn jump_next_noop_when_no_selection() {
+        // Given the canonical history with no active selection.
+        let mut state = AppState::default();
+        build_two_compaction_history(&mut state);
+        state.active_session_mut().clear_selection();
+        assert!(state.active_session().selected_cursor_id().is_none());
+
+        // When handling jump to next compaction (anchor = last entry).
+        let result = handle_jump_next_compaction(&mut state);
+
+        // Then it is a no-op: nothing newer than the last entry exists.
+        assert!(state.active_session().selected_cursor_id().is_none());
+        assert!(result.message_names.is_empty());
+    }
+
+    #[rstest::rstest]
+    fn jump_prev_anchors_on_last_entry_when_no_selection() {
+        // Given the canonical history with no active selection.
+        let mut state = AppState::default();
+        let (_a_id, b_id) = build_two_compaction_history(&mut state);
+        state.active_session_mut().clear_selection();
+        assert!(state.active_session().selected_cursor_id().is_none());
+
+        // When handling jump to previous compaction.
+        let _result = handle_jump_prev_compaction(&mut state);
+
+        // Then the anchor is the last entry, so [c lands on compaction B.
+        assert_eq!(state.active_session().selected_cursor_id(), Some(&b_id));
+    }
+
+    #[rstest::rstest]
+    fn jump_next_noop_when_no_compactions() {
+        // Given a history with no compactions.
+        let mut state = AppState::default();
+        state.active_session_mut().push_entry(ChatEntry::user("a"));
+        state
+            .active_session_mut()
+            .push_entry(ChatEntry::assistant("b"));
+        select_at(&mut state, 0);
+        let before = state.active_session().selected_cursor_id().cloned();
+
+        // When handling jump to next compaction.
+        let result = handle_jump_next_compaction(&mut state);
+
+        // Then it is a no-op.
+        assert_eq!(state.active_session().selected_cursor_id(), before.as_ref());
+        assert!(result.message_names.is_empty());
+    }
+
+    #[rstest::rstest]
+    fn jump_prev_noop_when_no_compactions() {
+        // Given a history with no compactions.
+        let mut state = AppState::default();
+        state.active_session_mut().push_entry(ChatEntry::user("a"));
+        state
+            .active_session_mut()
+            .push_entry(ChatEntry::assistant("b"));
+        select_at(&mut state, 1);
+        let before = state.active_session().selected_cursor_id().cloned();
+
+        // When handling jump to previous compaction.
+        let result = handle_jump_prev_compaction(&mut state);
+
+        // Then it is a no-op.
+        assert_eq!(state.active_session().selected_cursor_id(), before.as_ref());
+        assert!(result.message_names.is_empty());
+    }
+
+    #[rstest::rstest]
+    fn jump_next_noop_when_history_empty() {
+        // Given an empty session.
+        let mut state = AppState::default();
+
+        // When handling jump to next compaction.
+        let result = handle_jump_next_compaction(&mut state);
+
+        // Then it is a no-op without panic.
+        assert!(state.active_session().selected_cursor_id().is_none());
+        assert!(result.message_names.is_empty());
+    }
+
+    #[rstest::rstest]
+    fn jump_prev_noop_when_history_empty() {
+        // Given an empty session.
+        let mut state = AppState::default();
+
+        // When handling jump to previous compaction.
+        let result = handle_jump_prev_compaction(&mut state);
+
+        // Then it is a no-op without panic.
+        assert!(state.active_session().selected_cursor_id().is_none());
+        assert!(result.message_names.is_empty());
+    }
+
+    #[rstest::rstest]
+    fn jump_next_returns_no_commands() {
+        // Given history with a compaction, cursor on compaction A.
+        let mut state = AppState::default();
+        build_two_compaction_history(&mut state);
+        select_at(&mut state, 1);
+
+        // When handling jump to next compaction.
+        let result = handle_jump_next_compaction(&mut state);
+
+        // Then no commands or events are emitted.
+        assert!(result.message_names.is_empty());
+    }
+
+    #[rstest::rstest]
+    fn jump_prev_returns_no_commands() {
+        // Given history with a compaction, cursor on compaction B.
+        let mut state = AppState::default();
+        build_two_compaction_history(&mut state);
+        select_at(&mut state, 3);
+
+        // When handling jump to previous compaction.
+        let result = handle_jump_prev_compaction(&mut state);
+
+        // Then no commands or events are emitted.
+        assert!(result.message_names.is_empty());
     }
 }
