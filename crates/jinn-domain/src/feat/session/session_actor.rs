@@ -36,7 +36,7 @@ use crate::feat::context::protocol::command::{
 };
 use crate::feat::context::protocol::event::{ChatEntryPinChanged, PersonasLoaded};
 use crate::feat::context::strategy::token_estimator::TiktokenCounter;
-use crate::feat::provider::protocol::command::{ResetStreamForRetry, SendMessage};
+use crate::feat::provider::protocol::command::SendMessage;
 use crate::feat::provider::protocol::event::{
     ModelsRefreshed, PromptTemplatesLoaded, StreamCompleted, StreamToken,
 };
@@ -124,7 +124,6 @@ impl Actor for SessionPersistenceActor {
         bus.subscribe::<SetChatInputEnabled, _>(&actor_ref).await;
         bus.subscribe::<PushChatEntry, _>(&actor_ref).await;
         bus.subscribe::<SendMessage, _>(&actor_ref).await;
-        bus.subscribe::<ResetStreamForRetry, _>(&actor_ref).await;
 
         // Lifecycle command subscriptions.
         bus.subscribe::<RunSessionSetup, _>(&actor_ref).await;
@@ -253,13 +252,6 @@ impl Message<SendMessage> for SessionPersistenceActor {
     type Reply = ();
     async fn handle(&mut self, msg: SendMessage, _ctx: &mut Context<Self, Self::Reply>) {
         self.handle_send_message(&msg).await;
-    }
-}
-
-impl Message<ResetStreamForRetry> for SessionPersistenceActor {
-    type Reply = ();
-    async fn handle(&mut self, msg: ResetStreamForRetry, _ctx: &mut Context<Self, Self::Reply>) {
-        self.on_reset_stream_for_retry(&msg);
     }
 }
 

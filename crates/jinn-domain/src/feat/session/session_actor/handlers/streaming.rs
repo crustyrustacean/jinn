@@ -9,7 +9,6 @@ use std::collections::VecDeque;
 use crate::common::actor_deps::BusPublish;
 use crate::feat::context::protocol::event::ContextOverrideChanged;
 use crate::feat::context::strategy::token_estimator::{TiktokenCounter, TokenCounter};
-use crate::feat::provider::protocol::command::ResetStreamForRetry;
 use crate::feat::provider::protocol::event::{StreamCompleted, StreamCompletedReason, StreamToken};
 use crate::feat::session::chat_session::ChatSessionState;
 use crate::feat::session::queue_item::QueueItem;
@@ -54,28 +53,6 @@ impl SessionPersistenceActor {
             if let Err(e) = session.append_stream_token(&event.token, event.dispatched_at) {
                 tracing::error!(err = ?e, "failed to append stream token");
             }
-        }
-    }
-
-    /// Discards partial streaming entries so a stalled stream can be retried cleanly.
-    ///
-    /// Removes in-progress assistant/thinking entries from history and clears all
-    /// streaming indices while staying in the `Streaming` phase. The retried stream's
-    /// first token creates fresh entries. Committed history is untouched.
-    /// No-op if the session does not exist.
-    pub(in crate::feat::session::session_actor) fn on_reset_stream_for_retry(
-        &self,
-        msg: &ResetStreamForRetry,
-    ) {
-        let mut state = self.state.write();
-        let session = state.session_mut(&msg.session_id);
-        let removed = session.reset_streaming_entries_for_retry();
-        if removed > 0 {
-            tracing::info!(
-                session_id = ?msg.session_id,
-                removed_entries = removed,
-                "Reset partial streaming entries for stall retry"
-            );
         }
     }
 

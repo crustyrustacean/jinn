@@ -49,14 +49,24 @@ pub use crate::feat::web_fetch_actor::{WebFetchBackend, WebFetchConfig};
 /// prevents the shipped template from drifting from the struct.
 pub(crate) const DEFAULT_CONFIG: &str = include_str!("default_jinn.toml");
 
-/// Default max seconds between stream events before a stall is declared.
-pub(crate) const DEFAULT_STREAM_IDLE_TIMEOUT_SECS: u64 = 60;
 
-/// Serde default function for [`UserPreferences::stream_idle_timeout_secs`].
-pub(crate) fn default_stream_idle_timeout_secs() -> u64 {
-    DEFAULT_STREAM_IDLE_TIMEOUT_SECS
+/// Default seconds without a chat-history change before a session is
+/// considered hung. Covers HTTP handshake hangs, keepalive-only connections,
+/// and stalled tool batches — anything that stops mutating the visible history.
+pub(crate) const DEFAULT_HISTORY_STALL_TIMEOUT_SECS: u64 = 300;
+
+/// Default maximum stall retries before the watchdog gives up and cancels the turn.
+pub(crate) const DEFAULT_STALL_RETRY_MAX_RETRIES: u32 = 3;
+
+/// Serde default function for [`UserPreferences::history_stall_timeout_secs`].
+pub(crate) fn default_history_stall_timeout_secs() -> u64 {
+    DEFAULT_HISTORY_STALL_TIMEOUT_SECS
 }
 
+/// Serde default function for [`UserPreferences::stall_retry_max_retries`].
+pub(crate) fn default_stall_retry_max_retries() -> u32 {
+    DEFAULT_STALL_RETRY_MAX_RETRIES
+}
 /// Default execution timeout (seconds) applied to all builtin tools except
 /// `bash`, which keeps its own `bash.default_timeout_secs`. The shorter of
 /// this and `bash.default_timeout_secs` wins for bash commands.
@@ -141,20 +151,25 @@ pub struct UserPreferences {
     /// Reasoning effort configuration for reasoning-capable models.
     #[serde(default)]
     pub reasoning: ReasoningConfig,
-    /// Maximum seconds between stream events before the stream is considered
-    /// stalled. The idle timer resets on every event (token, reasoning, or
-    /// tool delta), so long-running generations that keep producing tokens are
-    /// never falsely tripped. On stall, the request is retried with backoff
-    /// (see `[request_retry]`) using a separate stall counter.
-    #[serde(default = "default_stream_idle_timeout_secs")]
-    pub stream_idle_timeout_secs: u64,
     /// Default execution timeout (seconds) for all builtin tools (except
     /// `bash`, which keeps its own `bash.default_timeout_secs`). Acts as a
     /// safety ceiling so a hung tool never stalls the turn indefinitely.
     /// The shorter of this and `bash.default_timeout_secs` wins for bash.
     #[serde(default = "default_tool_default_timeout_secs")]
     pub tool_default_timeout_secs: u64,
+
+    /// Maximum seconds without a chat-history change (new entry, appended
+    /// token, appended thinking token) before a session in `Sending` or
+    /// `Streaming` is considered hung and retried.
+    #[serde(default = "default_history_stall_timeout_secs")]
+    pub history_stall_timeout_secs: u64,
+
+    /// Maximum stall retries before the watchdog gives up and cancels the turn.
+    /// Independent of `[request_retry]` max_retries.
+    #[serde(default = "default_stall_retry_max_retries")]
+    pub stall_retry_max_retries: u32,
 }
+
 
 impl Default for UserPreferences {
     fn default() -> Self {
@@ -189,8 +204,9 @@ impl Default for UserPreferences {
             auto_prune: AutoPruneConfig::default(),
             bash: BashConfig::default(),
             reasoning: ReasoningConfig::default(),
-            stream_idle_timeout_secs: default_stream_idle_timeout_secs(),
             tool_default_timeout_secs: default_tool_default_timeout_secs(),
+            history_stall_timeout_secs: default_history_stall_timeout_secs(),
+            stall_retry_max_retries: default_stall_retry_max_retries(),
         }
     }
 }
@@ -579,8 +595,9 @@ mod tests {
             bash: BashConfig::default(),
             projects: vec![],
             reasoning: ReasoningConfig::default(),
-            stream_idle_timeout_secs: default_stream_idle_timeout_secs(),
             tool_default_timeout_secs: default_tool_default_timeout_secs(),
+            history_stall_timeout_secs: default_history_stall_timeout_secs(),
+            stall_retry_max_retries: default_stall_retry_max_retries(),
         };
 
         // When saving and reloading.
@@ -638,8 +655,9 @@ mod tests {
             bash: BashConfig::default(),
             projects: vec![],
             reasoning: ReasoningConfig::default(),
-            stream_idle_timeout_secs: default_stream_idle_timeout_secs(),
             tool_default_timeout_secs: default_tool_default_timeout_secs(),
+            history_stall_timeout_secs: default_history_stall_timeout_secs(),
+            stall_retry_max_retries: default_stall_retry_max_retries(),
         };
 
         // When saving.
@@ -670,8 +688,9 @@ mod tests {
             bash: BashConfig::default(),
             projects: vec![],
             reasoning: ReasoningConfig::default(),
-            stream_idle_timeout_secs: default_stream_idle_timeout_secs(),
             tool_default_timeout_secs: default_tool_default_timeout_secs(),
+            history_stall_timeout_secs: default_history_stall_timeout_secs(),
+            stall_retry_max_retries: default_stall_retry_max_retries(),
         };
 
         // When saving and reloading.
@@ -970,8 +989,9 @@ mod tests {
             bash: BashConfig::default(),
             projects: vec![],
             reasoning: ReasoningConfig::default(),
-            stream_idle_timeout_secs: default_stream_idle_timeout_secs(),
             tool_default_timeout_secs: default_tool_default_timeout_secs(),
+            history_stall_timeout_secs: default_history_stall_timeout_secs(),
+            stall_retry_max_retries: default_stall_retry_max_retries(),
         };
 
         save_preferences_to(&prefs, &path).expect("save");
