@@ -508,6 +508,7 @@ impl From<PersistableCore> for SessionCore {
             updated_at: core.updated_at,
             created_at: core.created_at,
             last_history_activity_at: jiff::Timestamp::now(),
+            last_provider_activity_at: jiff::Timestamp::now(),
             history: ChatHistory::new(),
             profile: core.profile,
             cwd: core.cwd,
@@ -545,6 +546,7 @@ impl TryFrom<&ChatSessionState> for NewSessionRow {
                     updated_at,
                     created_at,
                     last_history_activity_at: _last_history_activity_at, // runtime-only, not persisted
+                    last_provider_activity_at: _last_provider_activity_at, // runtime-only, not persisted
                     history: _history, // persisted via entries + session_history tables below
                     profile: _profile, // persisted via metadata blob
                     cwd: _cwd,         // persisted via metadata blob

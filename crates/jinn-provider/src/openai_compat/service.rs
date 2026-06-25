@@ -225,6 +225,12 @@ fn create_tool_stream(response: reqwest::Response, provider_name: &str) -> ToolS
                         stream_events
                     }
                     Err(e) => {
+                        tracing::info!(
+                            provider = %name,
+                            chunk_index = ci,
+                            error = %e,
+                            "STREAM CHUNK error - connection likely reset"
+                        );
                         vec![Err(Report::new(LlmServiceError::Provider)
                             .attach(format!("{name} stream error"))
                             .attach(e.to_string()))]

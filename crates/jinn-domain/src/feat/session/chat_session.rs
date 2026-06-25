@@ -136,6 +136,15 @@ pub struct SessionCoreEphemeral {
     /// OWNER: session-actor.
     #[serde(skip)]
     pub busy_count: usize,
+    /// `dispatched_at` of the currently in-flight stream generation.
+    ///
+    /// Set when a turn is dispatched (`begin_streaming`) and compared on
+    /// `StreamCompleted` to reject stale terminal events from an aborted prior
+    /// stream (e.g. a retry re-dispatched while the old task was still alive).
+    /// A completion whose `dispatched_at` is older than this value belongs to a
+    /// superseded generation and is dropped. OWNER: session-actor.
+    #[serde(skip)]
+    pub stream_dispatched_at: Option<Timestamp>,
 
     /// Accumulated context-override mutations held back until their deduplicated
     /// token total crosses the accumulation threshold.
@@ -211,6 +220,17 @@ pub struct SessionCore {
     /// OWNER: session-actor.
     #[serde(skip)]
     pub last_history_activity_at: Timestamp,
+    /// Wall-clock timestamp of the most recent **provider output** (assistant
+    /// text, thinking text, or tool-call deltas from the model) — the genuine
+    /// "the provider is responsive" signal. Unlike `last_history_activity_at`,
+    /// this is bumped only by provider-output methods, not by retry markers or
+    /// phase transitions. The stall watchdog resets a session's retry budget
+    /// when this advances between ticks, so a responsive provider that suffers
+    /// intermittent contention stalls is not prematurely cancelled.
+    /// Runtime-only turn state — not persisted.
+    /// OWNER: session-actor.
+    #[serde(skip)]
+    pub last_provider_activity_at: Timestamp,
     /// When this session was created. Set once at construction, never mutated.
     pub created_at: Timestamp,
     /// All messages in this conversation.
@@ -306,6 +326,7 @@ impl Default for SessionCore {
             updated_at: Timestamp::now(),
             created_at: Timestamp::now(),
             last_history_activity_at: Timestamp::now(),
+            last_provider_activity_at: Timestamp::now(),
             history: ChatHistory::new(),
             profile: SessionProfile::default(),
             cwd: std::path::PathBuf::from("."),
@@ -938,6 +959,7 @@ impl ChatSessionState {
         }
         self.ensure_assistant_entry(dispatched_at);
         self.core.last_history_activity_at = Timestamp::now();
+        self.core.last_provider_activity_at = Timestamp::now();
         let index = self
             .core
             .ephemeral
@@ -1022,6 +1044,7 @@ impl ChatSessionState {
             .streaming_thinking_entry_index()
             .ok_or(StreamingError::NoThinkingEntry)?;
         self.core.last_history_activity_at = Timestamp::now();
+        self.core.last_provider_activity_at = Timestamp::now();
         if let ChatEntry {
             kind: ChatEntryKind::Thinking(ref mut text),
             ..
@@ -1203,6 +1226,7 @@ impl ChatSessionState {
         dispatched_at: jiff::Timestamp,
     ) {
         self.ensure_assistant_entry(dispatched_at);
+        self.core.last_provider_activity_at = Timestamp::now();
         let mut entry = ChatEntry::tool_call(id, name, "");
         entry.timing = EntryTiming::streamed(dispatched_at);
         entry.timing.set_first_token();
@@ -1258,6 +1282,7 @@ impl ChatSessionState {
         {
             arguments.push_str(partial_json);
         }
+        self.core.last_provider_activity_at = Timestamp::now();
         Ok(())
     }
 
@@ -1277,6 +1302,7 @@ impl ChatSessionState {
                     arguments: arguments.to_owned(),
                 };
                 entry.timing.finish();
+                self.core.last_provider_activity_at = Timestamp::now();
                 return;
             }
         }

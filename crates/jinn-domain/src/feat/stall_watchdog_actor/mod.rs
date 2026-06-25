@@ -64,7 +64,7 @@ pub struct StallWatchdogActor {
     deps: ActorDeps,
     state: State,
     /// Per-session stall-retry attempt count, tracking how many retries are
-    /// in flight since the last observed history activity.
+    /// in flight since the last observed provider activity.
     attempts: HashMap<SessionId, u32>,
     /// Timestamp of the most recent `RetryStalledSession` publish per session.
     /// Used to enforce exponential backoff between consecutive retries: a
@@ -75,6 +75,12 @@ pub struct StallWatchdogActor {
     /// Used to detect turn boundaries: when a session leaves the active phases,
     /// its retry budget is reset (the turn completed or was canceled).
     tracked: HashSet<SessionId>,
+    /// Last observed `last_provider_activity_at` per session. When the
+    /// session's timestamp advances between ticks, genuine provider output
+    /// arrived — the budget is reset and backoff cleared. Unlike
+    /// `last_history_activity_at` (also bumped by retry markers / phase
+    /// transitions), this field only advances on real model output.
+    last_provider_activity: HashMap<SessionId, Timestamp>,
 }
 
 /// Dependencies for spawning a [`StallWatchdogActor`].
@@ -110,6 +116,7 @@ impl Actor for StallWatchdogActor {
             attempts: HashMap::new(),
             last_retry_at: HashMap::new(),
             tracked: HashSet::new(),
+            last_provider_activity: HashMap::new(),
         })
     }
 }
@@ -165,6 +172,8 @@ impl StallWatchdogActor {
         // perpetually hung provider.
         let mut stalled: Vec<(SessionId, bool)> = Vec::new();
         let mut active_now: Vec<SessionId> = Vec::new();
+        // `last_provider_activity_at` advances are detected inline (resetting the
+        // budget) so the stall decision in the same pass sees a cleared budget.
         {
             let guard = self.state.read();
             for (id, session) in guard.session.iter() {
@@ -173,6 +182,26 @@ impl StallWatchdogActor {
                     continue;
                 }
                 active_now.push(id.clone());
+
+                let provider_ts = session.core.last_provider_activity_at;
+                let prev = self.last_provider_activity.get(id).copied();
+                let recovered = matches!(
+                    (prev, provider_ts),
+                    (Some(prev), provider_ts) if provider_ts > prev
+                );
+                self.last_provider_activity.insert(id.clone(), provider_ts);
+
+                // Activity-based budget reset: a session that produced genuine
+                // provider output since the last tick is responsive — clear its
+                // retry budget and backoff so intermittent stalls (e.g. brief
+                // executor contention) don't accumulate toward a hard cancel
+                // across recoveries. Done inline so the stall decision below
+                // sees the reset budget.
+                if recovered {
+                    self.attempts.remove(id);
+                    self.last_retry_at.remove(id);
+                    continue;
+                }
 
                 let last = session.core.last_history_activity_at;
                 let elapsed_secs = match now.since(last) {
@@ -206,7 +235,6 @@ impl StallWatchdogActor {
             if !self.tracked.contains(id) {
                 self.attempts.remove(id);
                 self.last_retry_at.remove(id);
-                self.tracked.insert(id.clone());
                 self.tracked.insert(id.clone());
             }
         }
@@ -268,6 +296,7 @@ impl StallWatchdogActor {
             attempts: HashMap::new(),
             last_retry_at: HashMap::new(),
             tracked: HashSet::new(),
+            last_provider_activity: HashMap::new(),
         }
     }
 
