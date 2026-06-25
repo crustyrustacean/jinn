@@ -29,11 +29,20 @@ impl SessionPersistenceActor {
         let session_id = session_id.clone();
         let session_id_log = session_id.clone();
 
+        // The write lock is held only for the cheap `touch()` mutation, then
+        // dropped before cloning the (potentially large) history. Cloning under
+        // a held write lock would starve every other session's stream handlers,
+        // which wait on `state.write()` and backpressure the LLM stream consumer.
         let session = tokio::task::spawn_blocking(move || {
-            let mut guard = state.write();
-            let session = guard.session.get_mut(&session_id)?;
-            session.touch();
-            Some(session.clone())
+            {
+                let mut guard = state.write();
+                let Some(session) = guard.session.get_mut(&session_id) else {
+                    return None;
+                };
+                session.touch();
+            }
+            let guard = state.read();
+            Some(guard.session.get(&session_id)?.clone())
         })
         .await
         .unwrap_or_else(|e| {
@@ -461,6 +470,54 @@ mod tests {
         assert!(
             store.last_saved_session(&session_id).is_some(),
             "interacted session should be persisted"
+        );
+    }
+
+    #[tokio::test]
+    async fn save_active_session_releases_write_lock_before_clone() {
+        // Given an interacted session with a large history.
+        let (actor, store, _audit) = test_actor_with_store_recording(vec![]).await;
+        let session_id = actor.state.read().session.active_session_id().clone();
+        {
+            let mut state = actor.state.write();
+            let session = state.active_session_mut();
+            session.mark_interacted();
+            // A large history makes the clone window wide enough to probe.
+            for i in 0..5000 {
+                session.push_entry(crate::protocol::ChatEntry::user(format!("msg {i}")));
+            }
+        }
+
+        // When saving while a probe continuously attempts a read lock.
+        // The probe records how many attempts were blocked by a writer.
+        let probe_state = actor.state.clone();
+        let probe = tokio::task::spawn_blocking(move || {
+            let mut blocked = 0usize;
+            let mut ok = 0usize;
+            // Loop until the save's clone window has passed; bounded by total count.
+            for _ in 0..100_000 {
+                match probe_state.try_read() {
+                    Some(_guard) => ok += 1,
+                    None => blocked += 1,
+                }
+            }
+            (ok, blocked)
+        });
+
+        actor.save_active_session(&session_id).await;
+        let (ok, blocked) = probe.await.expect("probe panicked");
+
+        // Then the session was saved (touch() ran under the write lock).
+        assert!(
+            store.last_saved_session(&session_id).is_some(),
+            "interacted session should be persisted"
+        );
+        // And the probe acquired a read lock many times, proving the write lock
+        // is not held across the large history clone. A handful of transient
+        // blocks (for touch()) is acceptable; thousands would indicate the bug.
+        assert!(
+            ok > 10_000,
+            "readers starved during save: ok={ok}, blocked={blocked}"
         );
     }
 
