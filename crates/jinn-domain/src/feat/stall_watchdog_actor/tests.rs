@@ -424,3 +424,61 @@ async fn watchdog_allows_retry_after_backoff_window_elapses() {
         "a second retry must be allowed once the backoff window has elapsed"
     );
 }
+
+/// A session that stalls, produces genuine provider output (the provider
+/// `last_provider_activity_at` advances between ticks), then stalls again must
+/// get a fresh retry budget — the prior attempt must not count against it.
+/// This is the responsive-provider recovery case: intermittent stalls
+/// caused by contention should not accumulate toward a hard cancel.
+#[tokio::test]
+async fn stall_budget_resets_when_provider_activity_resumes() {
+    // Given a stalled session that already consumed one retry (budget = 1).
+    let mut wh = WatchdogHarness::new().await;
+    {
+        let mut s = wh.state.write();
+        let session = s.session_mut(&wh.session_id);
+        session.begin_sending();
+        session.core.last_history_activity_at = Timestamp::now()
+            .checked_sub(Duration::from_mins(1))
+            .unwrap();
+        // Initialize the provider-activity baseline so the first scan records it.
+        session.core.last_provider_activity_at = Timestamp::now()
+            .checked_sub(Duration::from_mins(1))
+            .unwrap();
+    }
+    wh.watchdog.scan_once().await;
+    let first = await_recorded(&wh.retry_recorder, 1, Duration::from_millis(500)).await;
+    assert_eq!(first.len(), 1, "first stall should retry within budget");
+
+    // When the provider produced genuine output between scans — advance
+    // `last_provider_activity_at` to a more recent value than the baseline.
+    // This scan detects recovery and clears the budget (no action taken).
+    {
+        let mut s = wh.state.write();
+        let session = s.session_mut(&wh.session_id);
+        session.core.last_provider_activity_at = Timestamp::now();
+        session.core.last_history_activity_at = Timestamp::now();
+    }
+    wh.watchdog.scan_once().await;
+
+    // Then the session stalls again (history ages out). Because the budget was
+    // reset on recovery, this stall must retry — not cancel from the exhausted budget.
+    {
+        let mut s = wh.state.write();
+        let session = s.session_mut(&wh.session_id);
+        session.core.last_history_activity_at = Timestamp::now()
+            .checked_sub(Duration::from_mins(1))
+            .unwrap();
+    }
+    wh.watchdog.scan_once().await;
+    let second = await_recorded(&wh.retry_recorder, 1, Duration::from_millis(500)).await;
+    assert!(
+        second.iter().any(|r| r.session_id == wh.session_id),
+        "budget must reset when provider activity resumes — second stall should retry, not cancel"
+    );
+    let cancels = await_recorded(&wh.cancel_recorder, 1, Duration::from_millis(100)).await;
+    assert!(
+        cancels.iter().all(|c| c.session_id != wh.session_id),
+        "must not cancel a responsive session that recovered then re-stalled"
+    );
+}

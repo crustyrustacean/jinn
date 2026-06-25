@@ -313,61 +313,68 @@ async fn process_stream_events(
                     return;
                 }
                 StreamEvent::Error { message, .. } => {
-                    tracing::info!(
-                        session_id = ?sid,
-                        events_seen,
-                        tool_calls_buffered = accum.tool_calls.len(),
-                        error = %message,
-                        "LLM stream error event - terminal"
-                    );
-                    tracing::error!(
-                        session_id = ?sid,
-                        error = %message,
-                        "LLM stream error event"
-                    );
-                    emit_stream_error(
+                    emit_terminal_error(
                         bus,
                         sid,
+                        &mut accum,
+                        events_seen,
                         format!("LLM stream error: {message}"),
                         dispatched_at,
+                        "LLM stream error event",
                     )
                     .await;
                     return;
                 }
             },
             Err(e) => {
-                tracing::info!(
-                    session_id = ?sid,
+                emit_terminal_error(
+                    bus,
+                    sid,
+                    &mut accum,
                     events_seen,
-                    tool_calls_buffered = accum.tool_calls.len(),
-                    error = ?e,
-                    "LLM stream chunk error - terminal"
-                );
-                emit_stream_error(bus, sid, format!("LLM stream error: {e:?}"), dispatched_at)
-                    .await;
+                    format!("LLM stream error: {e:?}"),
+                    dispatched_at,
+                    "LLM stream chunk error",
+                )
+                .await;
                 return;
             }
         }
     }
 
     // Stream ended without a terminal event (Done/Error).
+    emit_terminal_error(
+        bus,
+        sid,
+        &mut accum,
+        events_seen,
+        "LLM stream ended unexpectedly. The connection may have been interrupted.".to_owned(),
+        dispatched_at,
+        "LLM stream ended without a terminal event (Done/Error)",
+    )
+    .await;
+}
+
+/// Emit an `emit_stream_error` for a terminal stream failure, with matched
+/// `info!` (diagnostic) and `error!` (operator) log lines.
+async fn emit_terminal_error(
+    bus: &BusService,
+    sid: &SessionId,
+    accum: &mut StreamAccumulator,
+    events_seen: usize,
+    message: String,
+    dispatched_at: jiff::Timestamp,
+    log_label: &str,
+) {
     tracing::info!(
         session_id = ?sid,
         events_seen,
         tool_calls_buffered = accum.tool_calls.len(),
-        "LLM stream ended without a terminal event - connection likely interrupted"
+        error = %message,
+        "{log_label} - terminal"
     );
-    tracing::error!(
-        session_id = ?sid,
-        "LLM stream ended without a terminal event (Done/Error)"
-    );
-    emit_stream_error(
-        bus,
-        sid,
-        "LLM stream ended unexpectedly. The connection may have been interrupted.".to_owned(),
-        dispatched_at,
-    )
-    .await;
+    tracing::error!(session_id = ?sid, error = %message, "{log_label}");
+    emit_stream_error(bus, sid, message, dispatched_at).await;
 }
 
 /// Accumulates streamed text, reasoning, and tool calls during an LLM stream.

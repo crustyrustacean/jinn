@@ -36,13 +36,9 @@ impl SessionPersistenceActor {
         let session = tokio::task::spawn_blocking(move || {
             {
                 let mut guard = state.write();
-                let Some(session) = guard.session.get_mut(&session_id) else {
-                    return None;
-                };
-                session.touch();
+                guard.session.get_mut(&session_id)?.touch();
             }
-            let guard = state.read();
-            Some(guard.session.get(&session_id)?.clone())
+            Some(state.read().session.get(&session_id)?.clone())
         })
         .await
         .unwrap_or_else(|e| {

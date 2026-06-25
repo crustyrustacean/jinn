@@ -81,7 +81,7 @@ max_delay_secs = 60
 # pushed, and the turn is re-dispatched with exponential backoff.
 # Covers HTTP-handshake hangs, keepalive-only connections, and stalled
 # tool batches alike — anything that stops mutating the visible history.
-history_stall_timeout_secs = 300
+history_stall_timeout_secs = 60
 
 # Maximum number of stall retries before the watchdog gives up and cancels
 # the session, returning control to the user. Independent of
