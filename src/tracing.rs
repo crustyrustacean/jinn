@@ -6,7 +6,13 @@
 //! terminal and a file. The file path is resolved at CLI parse time from the
 //! `--log-file` flag, defaulting to the XDG `state_dir` (see `AppPaths::log_path`).
 
-use std::{env, fs::File, path::PathBuf, sync::Arc};
+use std::{
+    env,
+    fs::{File, OpenOptions},
+    io::Write,
+    path::PathBuf,
+    sync::Arc,
+};
 
 use clap_verbosity_flag::{Verbosity, WarnLevel};
 use error_stack::{Report, ResultExt};
@@ -35,6 +41,51 @@ pub enum TracingMode {
         /// Resolved path to the log file (e.g. `~/.local/state/jinn/jinn.log`).
         log_path: PathBuf,
     },
+}
+
+/// Derives the dedicated panic-log path as a sibling of the main `log_path`.
+///
+/// `jinn.log` -> `jinn-panic.log` in the same directory. If `log_path` has no
+/// parent directory, the panic log falls back to `jinn-panic.log` in the CWD.
+#[must_use]
+fn panic_log_path(log_path: &std::path::Path) -> PathBuf {
+    match log_path.parent() {
+        Some(dir) => dir.join("jinn-panic.log"),
+        None => PathBuf::from("jinn-panic.log"),
+    }
+}
+
+/// Appends one durable panic record to the panic-log file and flushes.
+///
+/// Each line is `RFC3339 UTC | panic at file:line:col | message`. Extracted as a
+/// free function so the append logic is unit-testable without installing a global
+/// hook.
+fn write_panic_record(path: &std::path::Path, message: &str, location: Option<(&str, u32, u32)>) {
+    let location_str = match location {
+        Some((file, line, col)) => format!("{file}:{line}:{col}"),
+        None => "<unknown>".to_owned(),
+    };
+    let ts = jiff::Timestamp::now();
+    let line = format!("{ts} | panic at {location_str} | {message}");
+    if let Ok(mut file) = OpenOptions::new().create(true).append(true).open(path) {
+        let _ = writeln!(file, "{line}");
+        let _ = file.flush();
+    }
+}
+
+/// Installs the global panic hook.
+///
+/// Appends each panic's message + source location to the dedicated panic-log at
+/// `panic_path`, then chains to the previously-installed hook so default stderr
+/// output (or any earlier hook) is preserved. Extracted from `init` so the chaining
+/// behavior is unit-testable without standing up the full tracing subscriber.
+fn install_panic_hook(panic_path: PathBuf) {
+    let previous_hook = std::panic::take_hook();
+    std::panic::set_hook(Box::new(move |info: &std::panic::PanicHookInfo<'_>| {
+        let location = info.location().map(|l| (l.file(), l.line(), l.column()));
+        write_panic_record(&panic_path, &info.to_string(), location);
+        previous_hook(info);
+    }));
 }
 
 /// Initializes the global tracing subscriber.
@@ -67,11 +118,11 @@ pub fn init(
     };
 
     let log_path = match &mode {
-        TracingMode::Tui { log_path } => log_path,
-        TracingMode::Headless { log_path } => log_path,
+        TracingMode::Tui { log_path } => log_path.clone(),
+        TracingMode::Headless { log_path } => log_path.clone(),
     };
 
-    let logfile = open_log_file(log_path)?;
+    let logfile = open_log_file(&log_path)?;
 
     match mode {
         TracingMode::Tui { .. } => {
@@ -104,6 +155,11 @@ pub fn init(
         }
     }
 
+    // Install the global panic hook: appends each panic's message + source
+    // location to a dedicated `jinn-panic.log` alongside the main log, then
+    // chains to the previous hook so default stderr output is preserved.
+    install_panic_hook(panic_log_path(&log_path));
+
     tracing::info!("");
     tracing::info!("--- new session started ---");
     tracing::info!("");
@@ -125,4 +181,88 @@ fn open_log_file(path: &std::path::Path) -> Result<File, Report<TracingInitError
         .open(path)
         .change_context(TracingInitError)
         .attach_with(|| format!("failed to open file '{}' for tracing", path.display()))
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use std::path::Path;
+
+    #[test]
+    fn panic_log_path_is_sibling_of_log_path() {
+        // Given a resolved log path /x/jinn.log.
+        let log_path = Path::new("/x/jinn.log");
+
+        // When deriving the panic-log path.
+        let panic_path = panic_log_path(log_path);
+
+        // Then it is jinn-panic.log in the same directory.
+        assert_eq!(panic_path, PathBuf::from("/x/jinn-panic.log"));
+    }
+
+    #[test]
+    fn panic_log_path_falls_back_to_cwd_when_no_parent() {
+        // Given a log path with no parent directory.
+        let log_path = Path::new("jinn.log");
+
+        // When deriving the panic-log path.
+        let panic_path = panic_log_path(log_path);
+
+        // Then it falls back to jinn-panic.log in the CWD.
+        assert_eq!(panic_path, PathBuf::from("jinn-panic.log"));
+    }
+
+    #[test]
+    fn write_panic_record_appends_message_and_location() {
+        // Given a temp directory as the panic-log location.
+        let dir = tempfile::tempdir().expect("temp dir");
+        let panic_path = dir.path().join("jinn-panic.log");
+
+        // When writing a panic record.
+        write_panic_record(&panic_path, "boom in actor", Some(("src/llm.rs", 42, 7)));
+
+        // Then the file contains a line with the message and the location.
+        let content = std::fs::read_to_string(&panic_path).expect("read panic log");
+        assert!(
+            content.contains("boom in actor"),
+            "expected the panic message in the file, got: {content}"
+        );
+        assert!(
+            content.contains("src/llm.rs:42:7"),
+            "expected the location in the file, got: {content}"
+        );
+    }
+
+    #[test]
+    fn install_panic_hook_chains_to_previous_hook() {
+        // Given a sentinel previous hook that sets a flag.
+        use std::sync::{
+            Arc,
+            atomic::{AtomicBool, Ordering},
+        };
+        let called = Arc::new(AtomicBool::new(false));
+        let called_clone = called.clone();
+        std::panic::set_hook(Box::new(move |_| {
+            called_clone.store(true, Ordering::SeqCst);
+        }));
+
+        // When installing our hook (which chains to the sentinel) and then
+        // triggering a real panic in a child thread.
+        let dir = tempfile::tempdir().expect("create temp dir");
+        let panic_path = dir.path().join("jinn-panic.log");
+        install_panic_hook(panic_path.clone());
+        let _ = std::thread::spawn(|| panic!("chain test")).join();
+
+        // Then the sentinel hook was invoked (chaining works).
+        assert!(
+            called.load(Ordering::SeqCst),
+            "expected the previous hook to be called via chaining"
+        );
+        // And the panic log was written.
+        let content = std::fs::read_to_string(&panic_path).expect("read panic log");
+        assert!(content.contains("chain test"));
+
+        // Restore the default hook to avoid leaking our hook into other tests.
+        let _ = std::panic::take_hook();
+    }
 }
