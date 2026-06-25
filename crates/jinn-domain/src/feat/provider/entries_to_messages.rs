@@ -144,6 +144,8 @@ pub fn entries_to_messages(entries: &[ChatEntry]) -> Vec<LlmMessage> {
             ChatEntryKind::Compaction { summary, .. } => {
                 messages.push(compaction_to_user_message(summary));
             }
+            // Annotations are display-only and never enter LLM context.
+            ChatEntryKind::Annotation { .. } => {}
         }
     }
 

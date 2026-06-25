@@ -68,6 +68,8 @@ pub fn estimate_entry_tokens(estimator: &dyn TokenEstimator, entry: &ChatEntry) 
         ChatEntryKind::Thinking(text) => estimator.estimate(&format!("[Thinking] {text}")),
         // Transient entries produce LlmMessage::User with [Transient] prefix when in context.
         ChatEntryKind::Transient(text) => estimator.estimate(&format!("[Transient] {text}")),
+        // Annotations are display-only and excluded from context (0 tokens).
+        ChatEntryKind::Annotation { .. } => 0,
     }
 }
 

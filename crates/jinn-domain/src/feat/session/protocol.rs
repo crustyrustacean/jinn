@@ -1,6 +1,7 @@
 //! Session protocol - session identity and lifecycle types.
 
 pub mod archive_session;
+pub mod citations_received;
 pub mod close_session;
 pub mod history_appended;
 pub mod history_snapshot_ready;
