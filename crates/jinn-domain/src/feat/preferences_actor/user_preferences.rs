@@ -49,7 +49,6 @@ pub use crate::feat::web_fetch_actor::{WebFetchBackend, WebFetchConfig};
 /// prevents the shipped template from drifting from the struct.
 pub(crate) const DEFAULT_CONFIG: &str = include_str!("default_jinn.toml");
 
-
 /// Default seconds without a chat-history change before a session is
 /// considered hung. Covers HTTP handshake hangs, keepalive-only connections,
 /// and stalled tool batches — anything that stops mutating the visible history.
@@ -169,7 +168,6 @@ pub struct UserPreferences {
     #[serde(default = "default_stall_retry_max_retries")]
     pub stall_retry_max_retries: u32,
 }
-
 
 impl Default for UserPreferences {
     fn default() -> Self {

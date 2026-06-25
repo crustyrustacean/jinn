@@ -54,6 +54,28 @@ pub struct StreamUsage {
     pub cost: Option<f64>,
 }
 
+/// A single web-search source citation from OpenRouter.
+///
+/// Carries the fields of a `url_citation` annotation attached to an assistant
+/// message. `content` and the index range are frequently omitted by the
+/// provider, hence `Option` with `#[serde(default)]`.
+#[derive(Debug, Clone, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
+pub struct UrlCitation {
+    /// The source URL.
+    pub url: String,
+    /// A human-readable title for the source.
+    pub title: String,
+    /// Snippet text, when the provider includes it.
+    #[serde(default)]
+    pub content: Option<String>,
+    /// Start of the cited character span in the assistant text, if reported.
+    #[serde(default)]
+    pub start_index: Option<u32>,
+    /// End of the cited character span in the assistant text, if reported.
+    #[serde(default)]
+    pub end_index: Option<u32>,
+}
+
 /// A streaming event from an LLM chat response.
 ///
 /// Produced by [`LlmService::chat_stream_with_tools`](super::LlmService::chat_stream_with_tools).
@@ -105,6 +127,11 @@ pub enum StreamEvent {
         /// The human-readable error message from the provider.
         message: String,
     },
+    /// Accumulated source citations from server-side tooling (e.g. the
+    /// OpenRouter `openrouter:web_search` tool, surfaced as `url_citation`
+    /// annotations). Emitted once, immediately before [`Done`](StreamEvent::Done),
+    /// carrying every citation gathered across the stream.
+    Citations(Vec<UrlCitation>),
 }
 
 #[cfg(test)]

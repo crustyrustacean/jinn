@@ -268,6 +268,17 @@ pub enum ChatEntryKind {
         /// Which model was used to generate the summary.
         model_used: String,
     },
+    /// Source citations attached to an assistant message (e.g. OpenRouter
+    /// `url_citation` annotations).
+    ///
+    /// Display-only: rendered in the chat log as a grouped source list but
+    /// excluded from LLM context assembly (`entries_to_messages`), token
+    /// estimation, and compaction serialization. Persisted across session reload
+    /// so citations survive a reopen.
+    Annotation {
+        /// The citations captured for this turn (one entry per search).
+        citations: Vec<jinn_provider::UrlCitation>,
+    },
 }
 
 impl ChatEntry {
@@ -312,6 +323,8 @@ impl ChatEntry {
             ChatEntryKind::Actor { text, .. } => Some(text.as_str()),
             ChatEntryKind::ToolCall { arguments, .. } => Some(arguments.as_str()),
             ChatEntryKind::ToolResult { content, .. } => Some(content.as_str()),
+            // Annotations are display-only: no prompt contribution.
+            ChatEntryKind::Annotation { .. } => None,
         }
     }
 
@@ -464,6 +477,22 @@ impl ChatEntry {
                 truncation: None,
                 pin_position: None,
             },
+            pin_position: None,
+            context_override: ContextOverride::Default,
+            context_history: Vec::new(),
+        }
+    }
+
+    /// Create a new annotation entry holding source citations.
+    ///
+    /// Annotations are display-only: rendered in the chat log but excluded from
+    /// LLM context assembly, token estimation, and compaction.
+    #[must_use]
+    pub fn annotation(citations: Vec<jinn_provider::UrlCitation>) -> Self {
+        Self {
+            id: ChatEntryId::new(),
+            timing: super::entry_timing::EntryTiming::instant_now(),
+            kind: ChatEntryKind::Annotation { citations },
             pin_position: None,
             context_override: ContextOverride::Default,
             context_history: Vec::new(),
@@ -782,6 +811,7 @@ impl ChatEntry {
 
             ChatEntryKind::Transient(..) => "transient",
             ChatEntryKind::Compaction { .. } => "compaction",
+            ChatEntryKind::Annotation { .. } => "annotation",
         }
     }
 
@@ -810,6 +840,11 @@ impl ChatEntry {
             }
 
             ChatEntryKind::Compaction { summary, .. } => summary.clone(),
+            ChatEntryKind::Annotation { citations } => citations
+                .iter()
+                .map(|c| c.title.clone())
+                .collect::<Vec<_>>()
+                .join(", "),
         }
     }
 
@@ -864,6 +899,13 @@ impl ChatEntry {
                 tokens_after.hash(&mut hasher);
                 entries_compacted.hash(&mut hasher);
                 model_used.hash(&mut hasher);
+            }
+            ChatEntryKind::Annotation { citations } => {
+                citations.len().hash(&mut hasher);
+                for c in citations {
+                    c.url.hash(&mut hasher);
+                    c.title.hash(&mut hasher);
+                }
             }
         }
         hasher.finish()
@@ -1021,6 +1063,11 @@ impl Serialize for ChatEntryKind {
                         model_used: model_used.clone(),
                     },
                 )?;
+                map.end()
+            }
+            ChatEntryKind::Annotation { citations } => {
+                let mut map = serializer.serialize_map(Some(1))?;
+                map.serialize_entry("Annotation", citations)?;
                 map.end()
             }
         }
@@ -1192,6 +1239,10 @@ impl<'de> Deserialize<'de> for ChatEntryKind {
                             model_used: data.model_used,
                         })
                     }
+                    "Annotation" => {
+                        let citations: Vec<jinn_provider::UrlCitation> = map.next_value()?;
+                        Ok(ChatEntryKind::Annotation { citations })
+                    }
                     other => Err(de::Error::unknown_variant(
                         other,
                         &[
@@ -1205,6 +1256,7 @@ impl<'de> Deserialize<'de> for ChatEntryKind {
                             "Thinking",
                             "Transient",
                             "Compaction",
+                            "Annotation",
                         ],
                     )),
                 }
@@ -1224,7 +1276,8 @@ impl ChatEntryKind {
     /// Kinds included by default: User, Assistant, ToolCall, ToolResult,
     /// Kinds included by default: User, Assistant, ToolCall, ToolResult, Compaction.
     ///
-    /// Kinds excluded by default: Error, Thinking, Transient, System, Actor.
+    /// Kinds excluded by default: Error, Thinking, Transient, System, Actor,
+    /// Annotation.
     #[must_use]
     pub fn is_included_by_default(&self) -> bool {
         matches!(
