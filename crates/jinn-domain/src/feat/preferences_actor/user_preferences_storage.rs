@@ -13,7 +13,8 @@ use parking_lot::RwLock;
 use super::user_preferences::{UserPreferences, UserPreferencesError, preferences_path};
 #[cfg(test)]
 use super::user_preferences::{
-    default_history_stall_timeout_secs, default_stall_retry_max_retries,
+    default_history_stall_timeout_secs, default_stall_retry_base_delay_secs,
+    default_stall_retry_max_delay_secs, default_stall_retry_max_retries,
     default_tool_default_timeout_secs,
 };
 
@@ -285,6 +286,8 @@ mod tests {
             tool_default_timeout_secs: default_tool_default_timeout_secs(),
             history_stall_timeout_secs: default_history_stall_timeout_secs(),
             stall_retry_max_retries: default_stall_retry_max_retries(),
+            stall_retry_base_delay_secs: default_stall_retry_base_delay_secs(),
+            stall_retry_max_delay_secs: default_stall_retry_max_delay_secs(),
         };
 
         // When saving and reloading.
@@ -346,6 +349,8 @@ mod tests {
             tool_default_timeout_secs: default_tool_default_timeout_secs(),
             history_stall_timeout_secs: default_history_stall_timeout_secs(),
             stall_retry_max_retries: default_stall_retry_max_retries(),
+            stall_retry_base_delay_secs: default_stall_retry_base_delay_secs(),
+            stall_retry_max_delay_secs: default_stall_retry_max_delay_secs(),
         };
 
         // When saving and reloading.
@@ -386,6 +391,8 @@ mod tests {
             tool_default_timeout_secs: default_tool_default_timeout_secs(),
             history_stall_timeout_secs: default_history_stall_timeout_secs(),
             stall_retry_max_retries: default_stall_retry_max_retries(),
+            stall_retry_base_delay_secs: default_stall_retry_base_delay_secs(),
+            stall_retry_max_delay_secs: default_stall_retry_max_delay_secs(),
         };
         service.save(&prefs).expect("save");
 
@@ -422,6 +429,8 @@ mod tests {
             tool_default_timeout_secs: default_tool_default_timeout_secs(),
             history_stall_timeout_secs: default_history_stall_timeout_secs(),
             stall_retry_max_retries: default_stall_retry_max_retries(),
+            stall_retry_base_delay_secs: default_stall_retry_base_delay_secs(),
+            stall_retry_max_delay_secs: default_stall_retry_max_delay_secs(),
         };
         service.save(&prefs).expect("save");
 
@@ -445,6 +454,8 @@ mod tests {
             tool_default_timeout_secs: default_tool_default_timeout_secs(),
             history_stall_timeout_secs: default_history_stall_timeout_secs(),
             stall_retry_max_retries: default_stall_retry_max_retries(),
+            stall_retry_base_delay_secs: default_stall_retry_base_delay_secs(),
+            stall_retry_max_delay_secs: default_stall_retry_max_delay_secs(),
         };
         service.save(&updated).expect("save updated");
 
@@ -477,6 +488,8 @@ mod tests {
             tool_default_timeout_secs: default_tool_default_timeout_secs(),
             history_stall_timeout_secs: default_history_stall_timeout_secs(),
             stall_retry_max_retries: default_stall_retry_max_retries(),
+            stall_retry_base_delay_secs: default_stall_retry_base_delay_secs(),
+            stall_retry_max_delay_secs: default_stall_retry_max_delay_secs(),
         };
         service.save(&prefs).expect("save");
 

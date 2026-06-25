@@ -88,6 +88,14 @@ history_stall_timeout_secs = 300
 # `[request_retry]` max_retries.
 stall_retry_max_retries = 3
 
+# Base and maximum delay (seconds) for stall-retry exponential backoff.
+# After a stall is detected the watchdog waits at least `base_delay * 2^attempt`
+# (full jitter, capped at `max_delay_secs`) before retrying the same session, so a
+# misbehaving provider that answers-and-stalls rapidly is not hammered. Tighter
+# than `[request_retry]` because the stall window itself is the bulk of the wait.
+stall_retry_base_delay_secs = 2
+stall_retry_max_delay_secs = 30
+
 # Default execution timeout (seconds) for all builtin tools except `bash`
 # (which keeps its own `bash.default_timeout_secs`). Acts as a safety ceiling
 # so a hung tool never stalls the turn indefinitely. For `bash` commands the

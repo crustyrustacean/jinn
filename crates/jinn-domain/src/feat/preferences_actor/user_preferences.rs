@@ -57,6 +57,14 @@ pub(crate) const DEFAULT_HISTORY_STALL_TIMEOUT_SECS: u64 = 300;
 /// Default maximum stall retries before the watchdog gives up and cancels the turn.
 pub(crate) const DEFAULT_STALL_RETRY_MAX_RETRIES: u32 = 3;
 
+/// Default base delay (seconds) for stall-retry exponential backoff. Tighter
+/// than `[request_retry]` base_delay because the stall window itself provides
+/// the bulk of the wait between attempts.
+pub(crate) const DEFAULT_STALL_RETRY_BASE_DELAY_SECS: u64 = 2;
+
+/// Default maximum cap (seconds) for stall-retry exponential backoff.
+pub(crate) const DEFAULT_STALL_RETRY_MAX_DELAY_SECS: u64 = 30;
+
 /// Serde default function for [`UserPreferences::history_stall_timeout_secs`].
 pub(crate) fn default_history_stall_timeout_secs() -> u64 {
     DEFAULT_HISTORY_STALL_TIMEOUT_SECS
@@ -65,6 +73,16 @@ pub(crate) fn default_history_stall_timeout_secs() -> u64 {
 /// Serde default function for [`UserPreferences::stall_retry_max_retries`].
 pub(crate) fn default_stall_retry_max_retries() -> u32 {
     DEFAULT_STALL_RETRY_MAX_RETRIES
+}
+
+/// Serde default function for [`UserPreferences::stall_retry_base_delay_secs`].
+pub(crate) fn default_stall_retry_base_delay_secs() -> u64 {
+    DEFAULT_STALL_RETRY_BASE_DELAY_SECS
+}
+
+/// Serde default function for [`UserPreferences::stall_retry_max_delay_secs`].
+pub(crate) fn default_stall_retry_max_delay_secs() -> u64 {
+    DEFAULT_STALL_RETRY_MAX_DELAY_SECS
 }
 /// Default execution timeout (seconds) applied to all builtin tools except
 /// `bash`, which keeps its own `bash.default_timeout_secs`. The shorter of
@@ -167,6 +185,17 @@ pub struct UserPreferences {
     /// Independent of `[request_retry]` max_retries.
     #[serde(default = "default_stall_retry_max_retries")]
     pub stall_retry_max_retries: u32,
+
+    /// Base delay (seconds) for stall-retry exponential backoff. The watchdog
+    /// waits at least this long (scaled by `2^attempt` with full jitter, capped
+    /// by `stall_retry_max_delay_secs`) between consecutive retries of the same
+    /// stalled session. Mirrors the `[request_retry]` backoff shape.
+    #[serde(default = "default_stall_retry_base_delay_secs")]
+    pub stall_retry_base_delay_secs: u64,
+
+    /// Maximum cap (seconds) for stall-retry exponential backoff.
+    #[serde(default = "default_stall_retry_max_delay_secs")]
+    pub stall_retry_max_delay_secs: u64,
 }
 
 impl Default for UserPreferences {
@@ -205,6 +234,8 @@ impl Default for UserPreferences {
             tool_default_timeout_secs: default_tool_default_timeout_secs(),
             history_stall_timeout_secs: default_history_stall_timeout_secs(),
             stall_retry_max_retries: default_stall_retry_max_retries(),
+            stall_retry_base_delay_secs: default_stall_retry_base_delay_secs(),
+            stall_retry_max_delay_secs: default_stall_retry_max_delay_secs(),
         }
     }
 }
@@ -596,6 +627,8 @@ mod tests {
             tool_default_timeout_secs: default_tool_default_timeout_secs(),
             history_stall_timeout_secs: default_history_stall_timeout_secs(),
             stall_retry_max_retries: default_stall_retry_max_retries(),
+            stall_retry_base_delay_secs: default_stall_retry_base_delay_secs(),
+            stall_retry_max_delay_secs: default_stall_retry_max_delay_secs(),
         };
 
         // When saving and reloading.
@@ -656,6 +689,8 @@ mod tests {
             tool_default_timeout_secs: default_tool_default_timeout_secs(),
             history_stall_timeout_secs: default_history_stall_timeout_secs(),
             stall_retry_max_retries: default_stall_retry_max_retries(),
+            stall_retry_base_delay_secs: default_stall_retry_base_delay_secs(),
+            stall_retry_max_delay_secs: default_stall_retry_max_delay_secs(),
         };
 
         // When saving.
@@ -689,6 +724,8 @@ mod tests {
             tool_default_timeout_secs: default_tool_default_timeout_secs(),
             history_stall_timeout_secs: default_history_stall_timeout_secs(),
             stall_retry_max_retries: default_stall_retry_max_retries(),
+            stall_retry_base_delay_secs: default_stall_retry_base_delay_secs(),
+            stall_retry_max_delay_secs: default_stall_retry_max_delay_secs(),
         };
 
         // When saving and reloading.
@@ -990,6 +1027,8 @@ mod tests {
             tool_default_timeout_secs: default_tool_default_timeout_secs(),
             history_stall_timeout_secs: default_history_stall_timeout_secs(),
             stall_retry_max_retries: default_stall_retry_max_retries(),
+            stall_retry_base_delay_secs: default_stall_retry_base_delay_secs(),
+            stall_retry_max_delay_secs: default_stall_retry_max_delay_secs(),
         };
 
         save_preferences_to(&prefs, &path).expect("save");
