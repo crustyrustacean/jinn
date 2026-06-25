@@ -12,6 +12,7 @@ use crate::feat::context::strategy::token_estimator::{TiktokenCounter, TokenCoun
 use crate::feat::provider::protocol::command::ResetStreamForRetry;
 use crate::feat::provider::protocol::event::{StreamCompleted, StreamCompletedReason, StreamToken};
 use crate::feat::session::chat_session::ChatSessionState;
+use crate::feat::session::protocol::citations_received::CitationsReceived;
 use crate::feat::session::queue_item::QueueItem;
 use crate::feat::tools_actor::tool_types::ToolCall;
 use crate::protocol::{ChatEntry, ChatEntryId, ChatEntryKind, SessionId};
@@ -122,6 +123,26 @@ impl SessionPersistenceActor {
         if should_save {
             self.save_active_session(&event.session_id).await;
         }
+    }
+
+    /// Handles `CitationsReceived`: appends a single display-only `Annotation`
+    /// entry recording the turn's `url_citation` sources, then persists.
+    pub(in crate::feat::session::session_actor) async fn on_citations_received(
+        &self,
+        event: &CitationsReceived,
+    ) {
+        if event.citations.is_empty() {
+            return;
+        }
+
+        {
+            let mut state = self.state.write();
+            let session = state.session_mut_or_create(&event.session_id);
+            session.push_entry(ChatEntry::annotation(event.citations.clone()));
+        }
+
+        super::super::helpers::emit_history_appended(self.bus(), &event.session_id).await;
+        self.save_active_session(&event.session_id).await;
     }
 
     /// Applies all stream-completion state mutations under the write lock.
@@ -350,6 +371,7 @@ mod tests {
         StreamCompleted, StreamCompletedReason, StreamToken,
     };
     use crate::feat::session::phase_machine::PhaseKind;
+    use crate::feat::session::protocol::citations_received::CitationsReceived;
     use crate::feat::session::token_stats::TokenRecord;
     use crate::protocol::{ChangeSource, ChatEntry, ChatEntryKind};
 
@@ -2077,5 +2099,97 @@ mod tests {
 
         // Then only the user message text is produced.
         assert_eq!(text.as_deref(), Some("only user"));
+    }
+
+    #[tokio::test]
+    async fn on_citations_received_appends_annotation_entry() {
+        // Given a recording session actor.
+        let (actor, _audit) = test_actor_recording().await;
+        let session_id = actor.state.read().session.active_session_id().clone();
+        let event = CitationsReceived {
+            session_id: session_id.clone(),
+            citations: vec![jinn_provider::UrlCitation {
+                url: "https://example.com/a".to_owned(),
+                title: "Source A".to_owned(),
+                content: None,
+                start_index: None,
+                end_index: None,
+            }],
+        };
+
+        // When handling CitationsReceived.
+        actor.on_citations_received(&event).await;
+
+        // Then the session has one Annotation entry carrying the citation.
+        let state = actor.state.read();
+        let annotations: Vec<_> = state
+            .session
+            .active_session()
+            .history()
+            .iter()
+            .filter(|e| matches!(e.kind, ChatEntryKind::Annotation { .. }))
+            .collect();
+        assert_eq!(
+            annotations.len(),
+            1,
+            "expected exactly one annotation entry"
+        );
+    }
+
+    #[tokio::test]
+    async fn on_citations_received_emits_history_appended() {
+        // Given a recording session actor.
+        let (actor, audit) = test_actor_recording().await;
+        let session_id = actor.state.read().session.active_session_id().clone();
+        let event = CitationsReceived {
+            session_id,
+            citations: vec![jinn_provider::UrlCitation {
+                url: "https://example.com/a".to_owned(),
+                title: "Source A".to_owned(),
+                content: None,
+                start_index: None,
+                end_index: None,
+            }],
+        };
+
+        // When handling CitationsReceived.
+        actor.on_citations_received(&event).await;
+
+        // Then HistoryAppended was broadcast.
+        assert!(
+            audit.contains_name("HistoryAppended"),
+            "expected HistoryAppended after citations received"
+        );
+    }
+
+    #[tokio::test]
+    async fn on_citations_received_empty_citations_creates_nothing() {
+        // Given a recording session actor.
+        let (actor, audit) = test_actor_recording().await;
+        let session_id = actor.state.read().session.active_session_id().clone();
+        let event = CitationsReceived {
+            session_id,
+            citations: Vec::new(),
+        };
+
+        // When handling CitationsReceived with empty citations.
+        actor.on_citations_received(&event).await;
+
+        // Then no annotation entry was added.
+        let count = actor
+            .state
+            .read()
+            .session
+            .active_session()
+            .history()
+            .iter()
+            .filter(|e| matches!(e.kind, ChatEntryKind::Annotation { .. }))
+            .count();
+        assert_eq!(count, 0, "empty citations must create no entry");
+        // And no HistoryAppended was broadcast.
+        assert!(
+            !audit.contains_name("HistoryAppended"),
+            "empty citations must not emit HistoryAppended"
+        );
     }
 }
