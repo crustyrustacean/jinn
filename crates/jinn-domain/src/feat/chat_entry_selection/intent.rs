@@ -99,11 +99,15 @@ pub fn handle_select_prev(state: &mut AppState) -> IntentResult {
 
 /// Resolve the anchor history index for a compaction jump.
 ///
-/// Uses the current selection's history index. When nothing is selected
-/// (or the selection sits on a collapsed ignored block, which resolves to
-/// `None`), falls back to `history.len()` — a sentinel one past the newest
-/// entry. This keeps the forward/backward scans exclusive of the anchor
-/// while still letting a first press land on the newest (for `[c`) compaction.
+/// Uses the current selection's history index. When the selection sits on a
+/// [`CollapsedIgnoredBlock`], `selected_history_index` returns `None`, so the
+/// block's concrete `start` index is used instead — the jump originates from
+/// the block's first entry rather than the end of history.
+///
+/// When nothing is selected at all (no cursor id), falls back to
+/// `history.len()` — a sentinel one past the newest entry. This keeps the
+/// forward/backward scans exclusive of the anchor while still letting a first
+/// press land on the newest (for `[c`) compaction.
 ///
 /// Returns `None` when the history is empty (no-op for the caller).
 fn compaction_jump_anchor(session: &ChatSessionState) -> Option<usize> {
@@ -111,7 +115,16 @@ fn compaction_jump_anchor(session: &ChatSessionState) -> Option<usize> {
     if history.is_empty() {
         return None;
     }
-    Some(session.selected_history_index().unwrap_or(history.len()))
+    if let Some(idx) = session.selected_history_index() {
+        return Some(idx);
+    }
+    // selected_history_index is None: either nothing is selected, or the
+    // selection is on a collapsed block. For a collapsed block, anchor on its
+    // first entry so the jump is relative to the block's position, not the end.
+    if let Some(VisualItem::CollapsedIgnoredBlock { start, .. }) = session.selected_visual_item() {
+        return Some(start);
+    }
+    Some(history.len())
 }
 
 /// Jump the cursor to the next (newer) compaction summary entry.
@@ -2317,5 +2330,129 @@ mod jump_compaction_tests {
 
         // Then no commands or events are emitted.
         assert!(result.message_names.is_empty());
+    }
+
+    /// Build a history where a collapsed ignored block sits BETWEEN two
+    /// compactions, then select that collapsed block.
+    ///
+    /// Layout (history indices, 11 entries total):
+    ///   0      user "first"
+    ///   1      compaction A            <- older compaction
+    ///   2..=6  5 ignored entries        <- collapse into one CollapsedIgnoredBlock
+    ///   7      compaction B            <- newer compaction
+    ///   8..=10 3 trailing user entries (keep the ignored block out of the
+    ///                                     proximity-protected tail so it collapses)
+    ///
+    /// Returns (a_id, b_id, collapsed_vi_idx).
+    fn build_collapsed_block_between_compactions(
+        state: &mut AppState,
+    ) -> (ChatEntryId, ChatEntryId, usize) {
+        use crate::feat::session::chat_entry::ChangeSource;
+        use crate::feat::ui::chat_log::visual_item::{
+            DEFAULT_MIN_COLLAPSE_COUNT, PROXIMITY_COUNT, VisualItem, build_visual_items,
+        };
+
+        state
+            .active_session_mut()
+            .push_entry(ChatEntry::user("first"));
+        state.active_session_mut().push_entry(compaction_entry("A"));
+        let a_id = state.active_session().history()[1].id.clone();
+        // Five ignored entries — must exceed DEFAULT_MIN_COLLAPSE_COUNT to collapse,
+        // and must sit entirely before the proximity-protected tail.
+        for _ in 0..DEFAULT_MIN_COLLAPSE_COUNT + 2 {
+            let mut entry = ChatEntry::user("ignored");
+            entry.apply_context_override(
+                crate::protocol::ContextOverride::ForcedExclude,
+                ChangeSource::Internal {
+                    label: "test".into(),
+                },
+            );
+            state.active_session_mut().push_entry(entry);
+        }
+        state.active_session_mut().push_entry(compaction_entry("B"));
+        let b_id = state
+            .active_session()
+            .history()
+            .last()
+            .expect("at least compaction B")
+            .id
+            .clone();
+        // Trailing entries push the proximity-protected tail past the ignored block
+        // so it collapses (PROXIMITY_COUNT entries are always shown).
+        for n in 0..PROXIMITY_COUNT {
+            state
+                .active_session_mut()
+                .push_entry(ChatEntry::user(format!("trailing-{n}")));
+        }
+
+        let items = build_visual_items(
+            state.active_session().history(),
+            &state.active_session().ui.shown_ignored_blocks,
+            PROXIMITY_COUNT,
+            DEFAULT_MIN_COLLAPSE_COUNT,
+        );
+        let collapsed_vi_idx = items
+            .iter()
+            .position(|i| matches!(i, VisualItem::CollapsedIgnoredBlock { .. }))
+            .expect("should have a collapsed block");
+        state.active_session_mut().set_visual_items(items);
+        state
+            .active_session_mut()
+            .set_selected_entry_index(collapsed_vi_idx);
+
+        (a_id, b_id, collapsed_vi_idx)
+    }
+
+    #[rstest::rstest]
+    fn jump_next_from_collapsed_block_lands_on_newer_compaction() {
+        // Given the cursor on a collapsed ignored block sitting between compaction A
+        // (older) and compaction B (newer).
+        // Regression: `]c` previously no-op'd because selected_history_index() is
+        // None on a collapsed block, anchoring at history.len() (past the end).
+        let mut state = AppState::default();
+        let (_a_id, b_id, _vi_idx) = build_collapsed_block_between_compactions(&mut state);
+        assert!(
+            state.active_session().is_selected_collapsed_block(),
+            "cursor must be on a collapsed block for this test"
+        );
+
+        // When handling jump to next compaction.
+        let _result = handle_jump_next_compaction(&mut state);
+
+        // Then the cursor lands on compaction B (the newer one), not a no-op.
+        assert_eq!(
+            state.active_session().selected_cursor_id(),
+            Some(&b_id),
+            "]c from a collapsed block must land on the next newer compaction"
+        );
+    }
+
+    #[rstest::rstest]
+    fn jump_prev_from_collapsed_block_lands_on_older_compaction() {
+        // Given the cursor on a collapsed ignored block sitting between compaction A
+        // (older) and compaction B (newer).
+        // Regression: `[c` previously jumped to the NEWEST compaction (B) because
+        // the None anchor fell back to history.len(), scanning the whole history.
+        let mut state = AppState::default();
+        let (a_id, b_id, _vi_idx) = build_collapsed_block_between_compactions(&mut state);
+        assert!(
+            state.active_session().is_selected_collapsed_block(),
+            "cursor must be on a collapsed block for this test"
+        );
+
+        // When handling jump to previous compaction.
+        let _result = handle_jump_prev_compaction(&mut state);
+
+        // Then the cursor lands on compaction A (the older one), NOT compaction B.
+        assert_eq!(
+            state.active_session().selected_cursor_id(),
+            Some(&a_id),
+            "[c from a collapsed block must land on the previous older compaction, not the newest"
+        );
+        assert_ne!(
+            state.active_session().selected_cursor_id(),
+            Some(&b_id),
+            "[c from a collapsed block must not jump forward to compaction B"
+        );
     }
 }
