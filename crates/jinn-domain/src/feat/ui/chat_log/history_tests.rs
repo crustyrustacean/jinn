@@ -28,6 +28,27 @@ fn normal_state() -> AppState {
     s
 }
 
+/// Build a compaction entry with the given summary (struct literal — no
+/// `ChatEntry::compaction(...)` constructor exists).
+fn compaction_entry(summary: &str) -> ChatEntry {
+    use crate::feat::session::chat_entry::{ChatEntryId, ChatEntryKind};
+    use crate::protocol::{ContextOverride, EntryTiming};
+    ChatEntry {
+        id: ChatEntryId::new(),
+        timing: EntryTiming::instant_now(),
+        kind: ChatEntryKind::Compaction {
+            summary: summary.to_owned(),
+            tokens_before: 100,
+            tokens_after: 50,
+            entries_compacted: 5,
+            model_used: "test/model".to_owned(),
+        },
+        pin_position: None,
+        context_override: ContextOverride::Default,
+        context_history: Vec::new(),
+    }
+}
+
 #[rstest::rstest]
 fn name_returns_chat_log() {
     // Given a ChatLogElement.
@@ -1124,6 +1145,64 @@ fn render_transient_entry_has_muted_text_color() {
     assert_eq!(
         transient_cell.fg, state.frontend.theme.primary_text,
         "transient entry should use theme text color (from markdown renderer)"
+    );
+}
+
+#[rstest::rstest]
+fn render_auto_scrolls_jumped_compaction_into_view() {
+    // Given a history taller than a 6-line viewport, with a compaction as the
+    // FIRST entry and many user entries below it. The default viewport shows the
+    // bottom (newest) entries, so the compaction is scrolled off the top.
+    use crate::feat::chat_entry_selection::intent::handle_jump_prev_compaction;
+
+    let mut element = ChatLogElement::new();
+    let mut state = normal_state();
+    state
+        .active_session_mut()
+        .push_entry(compaction_entry("top-compaction"));
+    let compaction_id = state.active_session().history()[0].id.clone();
+    for n in 0..12 {
+        state
+            .active_session_mut()
+            .push_entry(ChatEntry::user(format!("msg-{n}")));
+    }
+
+    let (mut terminal, area) = setup_term(40, 6);
+
+    // Initial render: viewport defaults to the newest entries, so the compaction
+    // (history index 0) is NOT in the visible range.
+    terminal
+        .draw(|frame| {
+            let ctx = RenderCtx::new(&state);
+            element.render(frame, area, &ctx);
+        })
+        .unwrap();
+    let range_before = state.active_session().visible_entry_range();
+    assert!(
+        !range_before.contains(&0),
+        "compaction at index 0 should be off-screen before the jump; range = {range_before:?}"
+    );
+
+    // When jumping to the previous compaction from the last entry (no selection
+    // -> anchor on last entry; the prev jump lands on the only compaction at index 0).
+    handle_jump_prev_compaction(&mut state);
+    assert_eq!(
+        state.active_session().selected_cursor_id(),
+        Some(&compaction_id),
+        "prev jump must land on the compaction entry"
+    );
+
+    // Re-render: the viewport must auto-scroll so the jumped-to compaction is now visible.
+    terminal
+        .draw(|frame| {
+            let ctx = RenderCtx::new(&state);
+            element.render(frame, area, &ctx);
+        })
+        .unwrap();
+    let range_after = state.active_session().visible_entry_range();
+    assert!(
+        range_after.contains(&0),
+        "compaction at index 0 must be scrolled into view after the jump; range = {range_after:?}"
     );
 }
 
