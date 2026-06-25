@@ -262,8 +262,10 @@ async fn process_stream_events(
     dispatched_at: jiff::Timestamp,
 ) {
     let mut accum = StreamAccumulator::new(model_id);
+    let mut events_seen = 0usize;
 
     while let Some(item) = stream.next().await {
+        events_seen += 1;
         match item {
             Ok(event) => match event {
                 StreamEvent::Text(token) => {
@@ -311,6 +313,13 @@ async fn process_stream_events(
                     return;
                 }
                 StreamEvent::Error { message, .. } => {
+                    tracing::info!(
+                        session_id = ?sid,
+                        events_seen,
+                        tool_calls_buffered = accum.tool_calls.len(),
+                        error = %message,
+                        "LLM stream error event - terminal"
+                    );
                     tracing::error!(
                         session_id = ?sid,
                         error = %message,
@@ -327,6 +336,13 @@ async fn process_stream_events(
                 }
             },
             Err(e) => {
+                tracing::info!(
+                    session_id = ?sid,
+                    events_seen,
+                    tool_calls_buffered = accum.tool_calls.len(),
+                    error = ?e,
+                    "LLM stream chunk error - terminal"
+                );
                 emit_stream_error(bus, sid, format!("LLM stream error: {e:?}"), dispatched_at)
                     .await;
                 return;
@@ -335,6 +351,12 @@ async fn process_stream_events(
     }
 
     // Stream ended without a terminal event (Done/Error).
+    tracing::info!(
+        session_id = ?sid,
+        events_seen,
+        tool_calls_buffered = accum.tool_calls.len(),
+        "LLM stream ended without a terminal event - connection likely interrupted"
+    );
     tracing::error!(
         session_id = ?sid,
         "LLM stream ended without a terminal event (Done/Error)"
