@@ -658,6 +658,12 @@ impl IntentHandler {
             Intent::ChatEntrySelectPrev => {
                 feat::chat_entry_selection::intent::handle_select_prev(state)
             }
+            Intent::ChatEntryJumpNextCompaction => {
+                feat::chat_entry_selection::intent::handle_jump_next_compaction(state)
+            }
+            Intent::ChatEntryJumpPrevCompaction => {
+                feat::chat_entry_selection::intent::handle_jump_prev_compaction(state)
+            }
             Intent::ChatEntryPinSelected => {
                 feat::chat_entry_selection::intent::handle_pin_selected(state)
             }
