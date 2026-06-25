@@ -1075,8 +1075,7 @@ fn annotation_produces_no_message() {
     }]);
 
     // When converting to LLM messages.
-    let messages =
-        crate::feat::provider::entries_to_messages::entries_to_messages(&[entry]);
+    let messages = crate::feat::provider::entries_to_messages::entries_to_messages(&[entry]);
 
     // Then no messages are produced.
     assert!(messages.is_empty());

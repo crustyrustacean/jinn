@@ -446,7 +446,6 @@ impl Message<CitationsReceived> for SessionPersistenceActor {
     }
 }
 
-
 impl Message<ModelsRefreshed> for SessionPersistenceActor {
     type Reply = ();
     async fn handle(&mut self, msg: ModelsRefreshed, _ctx: &mut Context<Self, Self::Reply>) {

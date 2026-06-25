@@ -840,9 +840,11 @@ impl ChatEntry {
             }
 
             ChatEntryKind::Compaction { summary, .. } => summary.clone(),
-            ChatEntryKind::Annotation { citations } => {
-                citations.iter().map(|c| c.title.clone()).collect::<Vec<_>>().join(", ")
-            }
+            ChatEntryKind::Annotation { citations } => citations
+                .iter()
+                .map(|c| c.title.clone())
+                .collect::<Vec<_>>()
+                .join(", "),
         }
     }
 
@@ -1238,8 +1240,7 @@ impl<'de> Deserialize<'de> for ChatEntryKind {
                         })
                     }
                     "Annotation" => {
-                        let citations: Vec<jinn_provider::UrlCitation> =
-                            map.next_value()?;
+                        let citations: Vec<jinn_provider::UrlCitation> = map.next_value()?;
                         Ok(ChatEntryKind::Annotation { citations })
                     }
                     other => Err(de::Error::unknown_variant(
