@@ -13,7 +13,8 @@ use crate::protocol::{ChatEntry, ChatEntryKind};
 /// - `[Assistant]: <text>`
 /// - `[Actor: <source>]: <text>`
 ///
-/// Tool calls, tool results, System, Error, Thinking, Transient, Skill, and Compaction
+/// Tool calls, tool results, System, Error, Thinking, Transient, Skill, Annotation, and Compaction
+/// entries are skipped - they are not relevant to the summarization prompt.
 /// entries are skipped - they are not relevant to the summarization prompt.
 pub fn serialize_entries_for_compaction(entries: &[ChatEntry]) -> String {
     let mut lines = Vec::new();
@@ -35,6 +36,7 @@ pub fn serialize_entries_for_compaction(entries: &[ChatEntry]) -> String {
             | ChatEntryKind::Thinking(_)
             | ChatEntryKind::Transient(_)
             | ChatEntryKind::Compaction { .. }
+            | ChatEntryKind::Annotation { .. }
             | ChatEntryKind::ToolCall { .. }
             | ChatEntryKind::ToolResult { .. } => {}
         }
