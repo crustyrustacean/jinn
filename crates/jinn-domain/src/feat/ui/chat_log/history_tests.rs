@@ -1126,3 +1126,57 @@ fn render_transient_entry_has_muted_text_color() {
         "transient entry should use theme text color (from markdown renderer)"
     );
 }
+
+/// Collect every rendered cell symbol into a single string (row-major),
+/// so substring assertions can scan the whole viewport.
+fn buffer_text(buffer: &ratatui::buffer::Buffer) -> String {
+    let area = buffer.area;
+    let mut out = String::new();
+    for y in 0..area.height {
+        for x in 0..area.width {
+            out.push_str(buffer.cell((x, y)).map_or("", |c| c.symbol()));
+        }
+        out.push('\n');
+    }
+    out
+}
+
+#[rstest::rstest]
+fn render_annotation_entry_shows_source_title_and_url() {
+    // Given a ChatLogElement with an annotation entry carrying one citation.
+    use jinn_provider::UrlCitation;
+    let mut element = ChatLogElement::new();
+    let state = {
+        let mut s = AppState::default();
+        s.active_session_mut()
+            .push_entry(ChatEntry::annotation(vec![UrlCitation {
+                url: "https://example.com/a".to_owned(),
+                title: "Source A".to_owned(),
+                content: None,
+                start_index: None,
+                end_index: None,
+            }]));
+        s
+    };
+
+    let (mut terminal, area) = setup_term(60, 10);
+
+    // When rendering.
+    terminal
+        .draw(|frame| {
+            let ctx = RenderCtx::new(&state);
+            element.render(frame, area, &ctx);
+        })
+        .unwrap();
+
+    // Then both the citation title and its URL appear in the rendered output.
+    let text = buffer_text(terminal.backend().buffer());
+    assert!(
+        text.contains("Source A"),
+        "citation title should render: {text:?}"
+    );
+    assert!(
+        text.contains("https://example.com/a"),
+        "citation url should render: {text:?}"
+    );
+}
