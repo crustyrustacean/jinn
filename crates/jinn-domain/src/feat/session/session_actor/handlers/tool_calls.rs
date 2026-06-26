@@ -211,6 +211,11 @@ impl SessionPersistenceActor {
 
         let estimated_tokens = assembled.estimated_tokens();
 
+        tracing::info!(
+            session_id = %session_id,
+            model = ?model_used,
+            "emitting SendToLlmProvider"
+        );
         self.publish(SendToLlmProvider {
             model_used,
             reasoning_effort,
@@ -236,7 +241,7 @@ impl SessionPersistenceActor {
         &self,
         event: &ToolBatchCompleted,
     ) {
-        tracing::trace!(
+        tracing::info!(
             session_id = ?event.session_id,
             result_count = event.results.len(),
             "on_tool_batch_completed"
@@ -251,7 +256,7 @@ impl SessionPersistenceActor {
             let state = self.state.read();
             let session = state.session(&event.session_id);
             if !matches!(session.phase(), PhaseKind::Sending) {
-                tracing::debug!(
+                tracing::warn!(
                     session_id = ?event.session_id,
                     phase = ?session.phase(),
                     "dropping stale ToolBatchCompleted: session not in Sending"

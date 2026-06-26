@@ -460,7 +460,7 @@ impl ToolOrchestratorActor {
         tool_calls: Vec<ToolCall>,
         dispatched_at: Timestamp,
     ) {
-        tracing::debug!(
+        tracing::info!(
             session_id = %session_id,
             tools = ?tool_calls.iter().map(|t| t.name.clone()).collect::<Vec<_>>(),
             "handle_execute_tool_batch"
@@ -724,9 +724,11 @@ impl ToolOrchestratorActor {
     /// When all calls in a batch have completed, emits [`ToolBatchCompleted`]
     async fn handle_tool_execution_completed(&mut self, session_id: SessionId, result: ToolResult) {
         let Some(batch) = self.pending.get_mut(&session_id) else {
-            tracing::trace!(
+            tracing::warn!(
                 session_id = ?session_id,
-                "handle_tool_execution_completed — no pending batch, ignoring"
+                tool = %result.name,
+                tool_call_id = %result.tool_call_id,
+                "handle_tool_execution_completed — no pending batch, dropping result"
             );
             return;
         };
@@ -734,8 +736,9 @@ impl ToolOrchestratorActor {
         batch.remaining -= 1;
         batch.results.push(result);
 
-        tracing::trace!(
+        tracing::info!(
             session_id = ?session_id,
+            tool = %batch.results.last().map_or("?", |r| r.name.as_str()),
             remaining = batch.remaining,
             "handle_tool_execution_completed"
         );
@@ -747,7 +750,7 @@ impl ToolOrchestratorActor {
                 .map(|b| b.results)
                 .unwrap_or_default();
 
-            tracing::trace!(
+            tracing::info!(
                 session_id = ?session_id,
                 result_count = results.len(),
                 "emitting ToolBatchCompleted"
