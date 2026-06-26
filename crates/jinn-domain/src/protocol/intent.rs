@@ -210,6 +210,10 @@ pub enum Intent {
     ChatEntryJumpNextCompaction,
     /// Jump the cursor to the previous (older) compaction summary entry.
     ChatEntryJumpPrevCompaction,
+    /// Jump the cursor to the next (newer) user message.
+    ChatEntryJumpNextUserEntry,
+    /// Jump the cursor to the previous (older) user message.
+    ChatEntryJumpPrevUserEntry,
     /// Pin the currently selected chat entry.
     ChatEntryPinSelected,
     /// Toggle expand/collapse of the selected tool entry (tool call or tool result).
@@ -426,8 +430,10 @@ impl std::fmt::Display for Intent {
 
             Intent::ChatEntrySelectNext => write!(f, "select next entry"),
             Intent::ChatEntrySelectPrev => write!(f, "select prev entry"),
-            Intent::ChatEntryJumpNextCompaction => write!(f, "jump to next compaction"),
-            Intent::ChatEntryJumpPrevCompaction => write!(f, "jump to previous compaction"),
+            Intent::ChatEntryJumpNextCompaction => write!(f, "next compaction"),
+            Intent::ChatEntryJumpPrevCompaction => write!(f, "previous compaction"),
+            Intent::ChatEntryJumpNextUserEntry => write!(f, "next user message"),
+            Intent::ChatEntryJumpPrevUserEntry => write!(f, "previous user message"),
             Intent::ChatEntryPinSelected => write!(f, "pin entry"),
             Intent::ExpandToolEntry => write!(f, "expand tool entry"),
             Intent::ToggleAuditPopup => write!(f, "toggle audit popup"),

@@ -752,7 +752,6 @@ impl ChatEntry {
         })
     }
 
-    /// Whether this entry kind can be pinned to the context.
     /// Whether this entry is a compaction summary.
     ///
     /// Compaction entries act as delimiters in the chat history. They are
@@ -760,6 +759,12 @@ impl ChatEntry {
     #[must_use]
     pub fn is_compaction(&self) -> bool {
         matches!(self.kind, ChatEntryKind::Compaction { .. })
+    }
+
+    /// Whether this entry is a user message.
+    #[must_use]
+    pub fn is_user(&self) -> bool {
+        matches!(self.kind, ChatEntryKind::User { .. })
     }
 
     /// Whether this entry is an Assistant entry with empty text.
