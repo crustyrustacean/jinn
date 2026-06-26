@@ -1153,7 +1153,7 @@ fn render_auto_scrolls_jumped_compaction_into_view() {
     // Given a history taller than a 6-line viewport, with a compaction as the
     // FIRST entry and many user entries below it. The default viewport shows the
     // bottom (newest) entries, so the compaction is scrolled off the top.
-    use crate::feat::chat_entry_selection::intent::handle_jump_prev_compaction;
+    use crate::feat::chat_entry_selection::intent::handle_jump_prev_entry;
 
     let mut element = ChatLogElement::new();
     let mut state = normal_state();
@@ -1185,7 +1185,7 @@ fn render_auto_scrolls_jumped_compaction_into_view() {
 
     // When jumping to the previous compaction from the last entry (no selection
     // -> anchor on last entry; the prev jump lands on the only compaction at index 0).
-    handle_jump_prev_compaction(&mut state);
+    handle_jump_prev_entry(&mut state, |entry| entry.is_compaction());
     assert_eq!(
         state.active_session().selected_cursor_id(),
         Some(&compaction_id),

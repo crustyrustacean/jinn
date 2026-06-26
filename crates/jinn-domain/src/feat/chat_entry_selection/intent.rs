@@ -1,5 +1,6 @@
 //! Chat entry selection intent handlers - navigate and pin entries.
 
+use crate::ChatEntry;
 use crate::common::app_state::AppState;
 use crate::feat::context::protocol::command::{PinChatEntry, UnpinChatEntry};
 use crate::feat::session::ChatSessionState;
@@ -134,7 +135,10 @@ fn compaction_jump_anchor(session: &ChatSessionState) -> Option<usize> {
 /// Scans forward — exclusive of the anchor — for the first compaction entry.
 /// Clamps (no wrap): a silent no-op if no compaction exists beyond the
 /// anchor. The viewport auto-follows the new cursor.
-pub fn handle_jump_next_compaction(state: &mut AppState) -> IntentResult {
+pub fn handle_jump_next_entry<F>(state: &mut AppState, cb: F) -> IntentResult
+where
+    F: Fn(&ChatEntry) -> bool,
+{
     let target_id = {
         let session = state.active_session();
         let Some(anchor) = compaction_jump_anchor(session) else {
@@ -143,7 +147,7 @@ pub fn handle_jump_next_compaction(state: &mut AppState) -> IntentResult {
         session
             .history()
             .get(anchor + 1..)
-            .and_then(|tail| tail.iter().find(|e| e.is_compaction()))
+            .and_then(|tail| tail.iter().find(|&e| cb(e)))
             .map(|e| e.id.clone())
     };
 
@@ -160,7 +164,10 @@ pub fn handle_jump_next_compaction(state: &mut AppState) -> IntentResult {
 /// Scans backward — exclusive of the anchor — for the first compaction entry.
 /// Clamps (no wrap): a silent no-op if no compaction exists beyond the
 /// anchor. The viewport auto-follows the new cursor.
-pub fn handle_jump_prev_compaction(state: &mut AppState) -> IntentResult {
+pub fn handle_jump_prev_entry<F>(state: &mut AppState, cb: F) -> IntentResult
+where
+    F: Fn(&ChatEntry) -> bool,
+{
     let target_id = {
         let session = state.active_session();
         let Some(anchor) = compaction_jump_anchor(session) else {
@@ -169,7 +176,7 @@ pub fn handle_jump_prev_compaction(state: &mut AppState) -> IntentResult {
         session
             .history()
             .get(..anchor)
-            .and_then(|head| head.iter().rfind(|e| e.is_compaction()))
+            .and_then(|head| head.iter().rfind(|&e| cb(e)))
             .map(|e| e.id.clone())
     };
 
@@ -2158,7 +2165,7 @@ mod jump_compaction_tests {
         assert_eq!(state.active_session().selected_cursor_id(), Some(&a_id));
 
         // When handling jump to next compaction.
-        let _result = handle_jump_next_compaction(&mut state);
+        let _result = handle_jump_next_entry(&mut state, |entry| entry.is_compaction());
 
         // Then the cursor moves to compaction B.
         assert_eq!(state.active_session().selected_cursor_id(), Some(&b_id));
@@ -2173,7 +2180,7 @@ mod jump_compaction_tests {
         assert_eq!(state.active_session().selected_cursor_id(), Some(&b_id));
 
         // When handling jump to previous compaction.
-        let _result = handle_jump_prev_compaction(&mut state);
+        let _result = handle_jump_prev_entry(&mut state, |entry| entry.is_compaction());
 
         // Then the cursor moves to compaction A.
         assert_eq!(state.active_session().selected_cursor_id(), Some(&a_id));
@@ -2187,7 +2194,7 @@ mod jump_compaction_tests {
         select_at(&mut state, 3);
 
         // When handling jump to next compaction.
-        let result = handle_jump_next_compaction(&mut state);
+        let result = handle_jump_next_entry(&mut state, |entry| entry.is_compaction());
 
         // Then the cursor is unchanged (no wrap) and no commands emitted.
         assert_eq!(state.active_session().selected_cursor_id(), Some(&b_id));
@@ -2202,7 +2209,7 @@ mod jump_compaction_tests {
         select_at(&mut state, 1);
 
         // When handling jump to previous compaction.
-        let result = handle_jump_prev_compaction(&mut state);
+        let result = handle_jump_prev_entry(&mut state, |entry| entry.is_compaction());
 
         // Then the cursor is unchanged (no wrap) and no commands emitted.
         assert_eq!(state.active_session().selected_cursor_id(), Some(&a_id));
@@ -2218,7 +2225,7 @@ mod jump_compaction_tests {
         assert!(state.active_session().selected_cursor_id().is_none());
 
         // When handling jump to next compaction (anchor = last entry).
-        let result = handle_jump_next_compaction(&mut state);
+        let result = handle_jump_next_entry(&mut state, |entry| entry.is_compaction());
 
         // Then it is a no-op: nothing newer than the last entry exists.
         assert!(state.active_session().selected_cursor_id().is_none());
@@ -2234,7 +2241,7 @@ mod jump_compaction_tests {
         assert!(state.active_session().selected_cursor_id().is_none());
 
         // When handling jump to previous compaction.
-        let _result = handle_jump_prev_compaction(&mut state);
+        let _result = handle_jump_prev_entry(&mut state, |entry| entry.is_compaction());
 
         // Then the anchor is the last entry, so [c lands on compaction B.
         assert_eq!(state.active_session().selected_cursor_id(), Some(&b_id));
@@ -2252,7 +2259,7 @@ mod jump_compaction_tests {
         let before = state.active_session().selected_cursor_id().cloned();
 
         // When handling jump to next compaction.
-        let result = handle_jump_next_compaction(&mut state);
+        let result = handle_jump_next_entry(&mut state, |entry| entry.is_compaction());
 
         // Then it is a no-op.
         assert_eq!(state.active_session().selected_cursor_id(), before.as_ref());
@@ -2271,7 +2278,7 @@ mod jump_compaction_tests {
         let before = state.active_session().selected_cursor_id().cloned();
 
         // When handling jump to previous compaction.
-        let result = handle_jump_prev_compaction(&mut state);
+        let result = handle_jump_prev_entry(&mut state, |entry| entry.is_compaction());
 
         // Then it is a no-op.
         assert_eq!(state.active_session().selected_cursor_id(), before.as_ref());
@@ -2284,7 +2291,7 @@ mod jump_compaction_tests {
         let mut state = AppState::default();
 
         // When handling jump to next compaction.
-        let result = handle_jump_next_compaction(&mut state);
+        let result = handle_jump_next_entry(&mut state, |entry| entry.is_compaction());
 
         // Then it is a no-op without panic.
         assert!(state.active_session().selected_cursor_id().is_none());
@@ -2297,7 +2304,7 @@ mod jump_compaction_tests {
         let mut state = AppState::default();
 
         // When handling jump to previous compaction.
-        let result = handle_jump_prev_compaction(&mut state);
+        let result = handle_jump_prev_entry(&mut state, |entry| entry.is_compaction());
 
         // Then it is a no-op without panic.
         assert!(state.active_session().selected_cursor_id().is_none());
@@ -2312,7 +2319,7 @@ mod jump_compaction_tests {
         select_at(&mut state, 1);
 
         // When handling jump to next compaction.
-        let result = handle_jump_next_compaction(&mut state);
+        let result = handle_jump_next_entry(&mut state, |entry| entry.is_compaction());
 
         // Then no commands or events are emitted.
         assert!(result.message_names.is_empty());
@@ -2326,7 +2333,7 @@ mod jump_compaction_tests {
         select_at(&mut state, 3);
 
         // When handling jump to previous compaction.
-        let result = handle_jump_prev_compaction(&mut state);
+        let result = handle_jump_prev_entry(&mut state, |entry| entry.is_compaction());
 
         // Then no commands or events are emitted.
         assert!(result.message_names.is_empty());
@@ -2417,7 +2424,7 @@ mod jump_compaction_tests {
         );
 
         // When handling jump to next compaction.
-        let _result = handle_jump_next_compaction(&mut state);
+        let _result = handle_jump_next_entry(&mut state, |entry| entry.is_compaction());
 
         // Then the cursor lands on compaction B (the newer one), not a no-op.
         assert_eq!(
@@ -2441,7 +2448,7 @@ mod jump_compaction_tests {
         );
 
         // When handling jump to previous compaction.
-        let _result = handle_jump_prev_compaction(&mut state);
+        let _result = handle_jump_prev_entry(&mut state, |entry| entry.is_compaction());
 
         // Then the cursor lands on compaction A (the older one), NOT compaction B.
         assert_eq!(
