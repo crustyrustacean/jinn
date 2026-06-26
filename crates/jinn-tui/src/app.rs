@@ -118,14 +118,14 @@ impl TuiApp {
                             return;
                         }
                         let Some(protocol_key) = crate::convert::from_crossterm(key) else {
-                            tracing::info!(
+                            tracing::debug!(
                                 crossterm_code = ?key.code,
                                 crossterm_mods = ?key.modifiers,
                                 "key converted to None"
                             );
                             return;
                         };
-                        tracing::info!(
+                        tracing::trace!(
                             key = ?protocol_key.key,
                             mods = ?protocol_key.modifiers,
                             scope = ?self.which_key.scope(),
