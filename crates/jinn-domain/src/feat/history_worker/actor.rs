@@ -71,7 +71,7 @@ impl<H: HistoryWorker + Clone> BusPublish for HistoryWorkerActor<H> {
 
 impl<H: HistoryWorker + Clone> HistoryWorkerActor<H> {
     pub(crate) async fn handle_snapshot_ready(&mut self, event: &HistorySnapshotReady) {
-        tracing::info!(
+        tracing::debug!(
             worker = self.worker.name(),
             session_id = %event.session_id,
             "HistorySnapshotReady received"
