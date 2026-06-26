@@ -1,7 +1,7 @@
 # Maintainer: Jayson Lennon <jayson@jaysonlennon.dev>
 
 pkgname=jinn
-pkgver=0.80.2
+pkgver=0.80.3
 pkgrel=1
 pkgdesc='Agentic LLM agent harness'
 url='https://github.com/jayson-lennon/jinn'
