@@ -235,7 +235,7 @@ fn collect_matching_pairs(
         // entries still count toward keep_last positioning.
         let text = entry.text();
         let matched = rule.regex.is_match(&text);
-        tracing::info!(
+        tracing::debug!(
             entry_id = %entry.id,
             text = %text,
             matched,
@@ -249,7 +249,7 @@ fn collect_matching_pairs(
         // If none found (pending/orphaned), skip — incomplete pairs don't
         // count toward keep_last positioning.
         if let Some(result_id) = find_matching_result(history, i, &tool_call_id) {
-            tracing::info!(
+            tracing::debug!(
                 call_id = %entry.id,
                 result_id = %result_id,
                 "matched pair"
@@ -277,7 +277,7 @@ fn build_prune_mutations(
     for rule in rules {
         let matched_pairs = collect_matching_pairs(history, rule);
 
-        tracing::info!(
+        tracing::debug!(
             rule = %rule.regex,
             matched_count = matched_pairs.len(),
             keep_last = rule.keep_last,
@@ -309,7 +309,7 @@ fn build_prune_mutations(
                 .any(|e| e.id == *result_id && e.is_protected_from_prune());
 
             if !call_protected {
-                tracing::info!(
+                tracing::debug!(
                     rule = %rule_ident,
                     pair_index = idx,
                     entry_id = %call_id,
@@ -324,7 +324,7 @@ fn build_prune_mutations(
                 });
             }
             if !result_protected {
-                tracing::info!(
+                tracing::debug!(
                     rule = %rule_ident,
                     pair_index = idx,
                     entry_id = %result_id,
@@ -361,7 +361,7 @@ impl HistoryWorker for RegexAutoPruneWorker {
     ) -> Vec<HistoryMutation> {
         let mutations = build_prune_mutations(&history, &self.rules, self.name());
 
-        tracing::info!(total_mutations = mutations.len(), "regex worker done");
+        tracing::debug!(total_mutations = mutations.len(), "regex worker done");
         mutations
     }
 }
