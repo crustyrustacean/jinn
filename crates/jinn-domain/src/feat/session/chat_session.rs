@@ -179,6 +179,16 @@ pub struct SessionCoreEphemeral {
     /// OWNER: context-files scan actor.
     #[serde(skip)]
     pub discovered_context_files: Vec<crate::feat::context::env_context::ContextFile>,
+
+    /// Buffered `ToolBatchCompleted` results that arrived while the session
+    /// was still `Streaming` (i.e. the `StreamCompleted(ToolUse)` event that
+    /// transitions `Streaming → Sending` was still in flight on the bus).
+    ///
+    /// Drained by `on_stream_completed` once the matching `StreamCompleted(ToolUse)`
+    /// transitions the session to `Sending`, so the continuation is dispatched
+    /// instead of the batch being dropped as stale. OWNER: session-actor.
+    #[serde(skip)]
+    pub pending_tool_batch: Option<Vec<crate::feat::tools_actor::tool_types::ToolResult>>,
 }
 
 // Core session state - owned by session-actor and context-actor.
