@@ -72,6 +72,14 @@ impl TestHarness {
             .expect("register recorder");
         recorder
     }
+
+    /// Register a custom actor's recipient for type `M` on the bus.
+    pub async fn register<M: Clone + Send + 'static>(&self, recipient: kameo::actor::Recipient<M>) {
+        self.bus_ref
+            .ask(Register(recipient))
+            .await
+            .expect("register recipient");
+    }
     /// Build a [`Services`] with the harness bus wired into a test instance.
     ///
     /// This creates a `Services::new_fake()` and replaces its bus with the harness bus,
