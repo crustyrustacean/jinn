@@ -167,10 +167,12 @@ pub fn init() -> Keymap<KeyEvent, Scope, Intent, KeyCategory> {
             // Yank (copy) selected entry to clipboard
             .bind("y", Intent::YankSelectedEntry, KeyCategory::ChatHistory)
             // Jump to next/previous compaction summary entry
-            .describe_group_with_category("]", "compaction", KeyCategory::ChatHistory)
-            .describe_group_with_category("[", "compaction", KeyCategory::ChatHistory)
+            .describe_group_with_category("]", "next", KeyCategory::ChatHistory)
+            .describe_group_with_category("[", "previous", KeyCategory::ChatHistory)
             .bind("]c", Intent::ChatEntryJumpNextCompaction, KeyCategory::ChatHistory)
             .bind("[c", Intent::ChatEntryJumpPrevCompaction, KeyCategory::ChatHistory)
+            .bind("]u", Intent::ChatEntryJumpNextUserEntry, KeyCategory::ChatHistory)
+            .bind("[u", Intent::ChatEntryJumpPrevUserEntry, KeyCategory::ChatHistory)
             // Session creation
             .bind("n", Intent::SessionNew, KeyCategory::General)
             .bind("N", Intent::SessionNewWithLifecycle, KeyCategory::General)
