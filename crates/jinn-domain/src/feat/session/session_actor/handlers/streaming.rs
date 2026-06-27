@@ -108,6 +108,30 @@ impl SessionPersistenceActor {
         if should_save {
             self.save_active_session(&event.session_id).await;
         }
+
+        // Drain a buffered `ToolBatchCompleted` that raced ahead of this
+        // `StreamCompleted(ToolUse)`. The buffer is populated by
+        // `on_tool_batch_completed` when the batch arrives while the session
+        // is still `Streaming`. Now that the phase has advanced to `Sending`,
+        // the continuation can be dispatched.
+        let drained_batch = event.reason == StreamCompletedReason::ToolUse && {
+            let mut state = self.state.write();
+            state
+                .session_mut_or_create(&event.session_id)
+                .core
+                .ephemeral
+                .pending_tool_batch
+                .take()
+                .is_some()
+        };
+
+        if drained_batch {
+            tracing::info!(
+                session_id = %event.session_id,
+                "draining buffered ToolBatchCompleted after StreamCompleted(ToolUse)"
+            );
+            self.continue_tool_loop(&event.session_id).await;
+        }
     }
 
     /// Handles `CitationsReceived`: appends a single display-only `Annotation`
