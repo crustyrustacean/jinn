@@ -556,23 +556,28 @@ async fn handle_done_event(
     let cost = usage.as_ref().and_then(|u| u.cost);
     let provider_completion_tokens = usage.as_ref().and_then(|u| u.completion_tokens);
     if stop_reason == StopReason::ToolUse {
+        // Publish StreamCompleted(ToolUse) BEFORE ExecuteToolBatch so the
+        // session actor transitions Streaming → Sending first. Otherwise
+        // ToolBatchCompleted can race ahead, requiring the buffering path.
+        // If ExecuteToolBatch's publish backpressures, we still receive the
+        // StreamCompleted and can recover via the watchdog buffer-drain.
         let tool_calls = std::mem::take(&mut accum.tool_calls);
-        bus.publish(ExecuteToolBatch {
-            session_id: sid.clone(),
-            tool_calls: tool_calls.clone(),
-            dispatched_at,
-        })
-        .await;
         publish_stream_completed(
             bus,
             sid,
             accum,
             StreamCompletedReason::ToolUse,
-            Some(tool_calls),
+            Some(tool_calls.clone()),
             cost,
             provider_completion_tokens,
             dispatched_at,
         )
+        .await;
+        bus.publish(ExecuteToolBatch {
+            session_id: sid.clone(),
+            tool_calls,
+            dispatched_at,
+        })
         .await;
     } else {
         publish_stream_completed(
@@ -1488,5 +1493,102 @@ mod tests {
         assert_eq!(events[0].citations.len(), 1);
         assert_eq!(events[0].citations[0].url, "https://example.com/a");
         assert_eq!(events[0].session_id, sid);
+    }
+
+    // --- Phase 1: publish order reversal ---------------------------------
+    //
+    // A single actor that records the arrival order of `StreamCompleted` and
+    // `ExecuteToolBatch` into a shared `Arc<Mutex<Vec<String>>>`. Because kameo's
+    // bus delivers each message as a separate mailbox message, the order of
+    // `publish` calls in `handle_done_event` is preserved in arrival order.
+    struct OrderLog(std::sync::Mutex<Vec<&'static str>>);
+
+    impl kameo::Actor for OrderLog {
+        type Args = ();
+        type Error = kameo::error::Infallible;
+        async fn on_start(
+            _args: Self::Args,
+            _actor_ref: kameo::actor::ActorRef<Self>,
+        ) -> Result<Self, Self::Error> {
+            Ok(Self(std::sync::Mutex::new(Vec::new())))
+        }
+    }
+
+    impl kameo::prelude::Message<StreamCompleted> for OrderLog {
+        type Reply = ();
+        async fn handle(
+            &mut self,
+            _msg: StreamCompleted,
+            _ctx: &mut kameo::prelude::Context<Self, Self::Reply>,
+        ) {
+            self.0.lock().unwrap().push("StreamCompleted");
+        }
+    }
+
+    impl kameo::prelude::Message<ExecuteToolBatch> for OrderLog {
+        type Reply = ();
+        async fn handle(
+            &mut self,
+            _msg: ExecuteToolBatch,
+            _ctx: &mut kameo::prelude::Context<Self, Self::Reply>,
+        ) {
+            self.0.lock().unwrap().push("ExecuteToolBatch");
+        }
+    }
+    struct GetOrder;
+    impl kameo::prelude::Message<GetOrder> for OrderLog {
+        type Reply = Vec<&'static str>;
+        async fn handle(
+            &mut self,
+            _msg: GetOrder,
+            _ctx: &mut kameo::prelude::Context<Self, Self::Reply>,
+        ) -> Self::Reply {
+            self.0.lock().unwrap().clone()
+        }
+    }
+
+    #[tokio::test]
+    async fn handle_done_event_publishes_stream_completed_before_execute_tool_batch() {
+        // Given a bus with an OrderLog recording both message types.
+        use kameo::actor::Spawn;
+        let harness = TestHarness::new().await;
+        let bus = harness.bus();
+        let order_actor = OrderLog::spawn(());
+        harness
+            .register(order_actor.clone().recipient::<StreamCompleted>())
+            .await;
+        harness
+            .register(order_actor.clone().recipient::<ExecuteToolBatch>())
+            .await;
+
+        // And an accumulator carrying one tool call.
+        let mut accum = StreamAccumulator::new("test-model");
+        accum.tool_calls.push(ToolCall {
+            id: "tc-1".to_owned(),
+            name: "read".to_owned(),
+            arguments: "{}".to_owned(),
+        });
+        let sid = SessionId::new();
+
+        // When handling the Done event for a tool-use turn.
+        handle_done_event(
+            &bus,
+            &sid,
+            &mut accum,
+            StopReason::ToolUse,
+            None,
+            jiff::Timestamp::now(),
+        )
+        .await;
+
+        // Then StreamCompleted arrives before ExecuteToolBatch.
+        let recorded = loop {
+            let v: Vec<&'static str> = order_actor.ask(GetOrder).await.expect("get order");
+            if v.len() == 2 {
+                break v;
+            }
+            tokio::time::sleep(std::time::Duration::from_millis(10)).await;
+        };
+        assert_eq!(recorded, vec!["StreamCompleted", "ExecuteToolBatch"]);
     }
 }

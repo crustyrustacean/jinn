@@ -482,3 +482,42 @@ async fn stall_budget_resets_when_provider_activity_resumes() {
         "must not cancel a responsive session that recovered then re-stalled"
     );
 }
+
+#[tokio::test]
+async fn watchdog_detects_stall_when_provider_activity_stale() {
+    // Given a session that produced provider output on an earlier tick (so the
+    // watchdog has recorded a `last_provider_activity` baseline) but is now
+    // hard-stuck — no further provider output and stale history activity.
+    let mut wh = WatchdogHarness::new().await;
+    {
+        let mut s = wh.state.write();
+        let session = s.session_mut(&wh.session_id);
+        session.begin_streaming();
+        // Simulate a prior token arriving (advances provider activity).
+        session.core.last_provider_activity_at = Timestamp::now()
+            .checked_sub(Duration::from_secs(30))
+            .unwrap();
+    }
+
+    // First scan: the watchdog records the provider-activity baseline.
+    // Force history staleness so the stall window is exceeded.
+    wh.watchdog.scan_once().await;
+    {
+        let mut s = wh.state.write();
+        let session = s.session_mut(&wh.session_id);
+        session.core.last_history_activity_at = Timestamp::now()
+            .checked_sub(Duration::from_mins(1))
+            .unwrap();
+        // Provider activity unchanged from the baseline above — NOT recovered.
+    }
+
+    // When the watchdog scans again with no provider-activity advance.
+    wh.watchdog.scan_once().await;
+    let retries = await_recorded(&wh.retry_recorder, 1, Duration::from_millis(500)).await;
+
+    // Then the session is detected as stalled despite having been active earlier.
+    assert!(
+        retries.iter().any(|r| r.session_id == wh.session_id),
+        "a session with stale provider activity must reach the stall check, not be skipped by recovered→continue"
+    );
+}
