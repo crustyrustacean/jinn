@@ -659,10 +659,24 @@ impl IntentHandler {
                 feat::chat_entry_selection::intent::handle_select_prev(state)
             }
             Intent::ChatEntryJumpNextCompaction => {
-                feat::chat_entry_selection::intent::handle_jump_next_compaction(state)
+                feat::chat_entry_selection::intent::handle_jump_next_entry(state, |entry| {
+                    entry.is_compaction()
+                })
             }
             Intent::ChatEntryJumpPrevCompaction => {
-                feat::chat_entry_selection::intent::handle_jump_prev_compaction(state)
+                feat::chat_entry_selection::intent::handle_jump_prev_entry(state, |entry| {
+                    entry.is_compaction()
+                })
+            }
+            Intent::ChatEntryJumpNextUserEntry => {
+                feat::chat_entry_selection::intent::handle_jump_next_entry(state, |entry| {
+                    entry.is_user()
+                })
+            }
+            Intent::ChatEntryJumpPrevUserEntry => {
+                feat::chat_entry_selection::intent::handle_jump_prev_entry(state, |entry| {
+                    entry.is_user()
+                })
             }
             Intent::ChatEntryPinSelected => {
                 feat::chat_entry_selection::intent::handle_pin_selected(state)
