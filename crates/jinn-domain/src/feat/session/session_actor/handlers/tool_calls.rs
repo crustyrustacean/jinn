@@ -247,65 +247,88 @@ impl SessionPersistenceActor {
             "on_tool_batch_completed"
         );
 
-        // Drop stale batches that arrive after a cancel. Legitimate tool
-        // execution only ever runs in `Sending`; any other phase means the
-        // turn was canceled (phase is `Idle`) or a cross-turn race landed it
-        // elsewhere — in all cases the result is stale and must not restart
-        // the loop. Must precede the `tool_loop_disabled` branch.
+        // Buffer-or-process: a legitimate `ToolBatchCompleted` arrives when the
+        // session is `Sending` (tools run between stream turns). If it arrives
+        // while still `Streaming`, the matching `StreamCompleted(ToolUse)` is
+        // in flight on the bus and hasn't transitioned the phase yet — buffer
+        // the results and let `on_stream_completed` drain them once the phase
+        // advances. Any other phase (e.g. `Idle` after cancel) is a stale
+        // straggler that must not restart the loop. Must precede the
+        // `tool_loop_disabled` branch.
         {
-            let state = self.state.read();
-            let session = state.session(&event.session_id);
-            if !matches!(session.phase(), PhaseKind::Sending) {
-                tracing::warn!(
-                    session_id = ?event.session_id,
-                    phase = ?session.phase(),
-                    "dropping stale ToolBatchCompleted: session not in Sending"
-                );
-                return;
+            let mut state = self.state.write();
+            let session = state.session_mut_or_create(&event.session_id);
+            match session.phase() {
+                PhaseKind::Sending => { /* normal path — proceed below */ }
+                PhaseKind::Streaming => {
+                    tracing::info!(
+                        session_id = ?event.session_id,
+                        result_count = event.results.len(),
+                        "buffering early ToolBatchCompleted: StreamCompleted(ToolUse) still in flight"
+                    );
+                    session.core.ephemeral.pending_tool_batch = Some(event.results.clone());
+                    return;
+                }
+                other => {
+                    tracing::warn!(
+                        session_id = ?event.session_id,
+                        phase = ?other,
+                        "dropping stale ToolBatchCompleted: session not in Sending"
+                    );
+                    return;
+                }
             }
         }
 
+        self.continue_tool_loop(&event.session_id).await;
+    }
+
+    /// Continues the tool loop after a batch completes: applies pending
+    /// mutations, checks `tool_loop_disabled`, and dispatches the next
+    /// `SendToLlmProvider` (or finishes sending if the loop is disabled).
+    ///
+    /// Called from both `on_tool_batch_completed` (normal path, phase already
+    /// `Sending`) and `on_stream_completed` (draining a buffered batch that
+    /// raced ahead of `StreamCompleted(ToolUse)`).
+    pub(in crate::feat::session::session_actor) async fn continue_tool_loop(
+        &self,
+        session_id: &crate::protocol::SessionId,
+    ) {
         // If tool loop is disabled, end the turn instead of continuing.
         // This is used by judge verdict tools to prevent infinite tool-call loops.
         // finish_sending_via_machine delegates to on_tool_batch_completed() which
         // reads and clears the tool_loop_disabled flag from the machine.
         let tool_loop_disabled = {
             let state = self.state.read();
-            let session = state.session(&event.session_id);
+            let session = state.session(session_id);
             session.is_tool_loop_disabled()
         };
 
         if tool_loop_disabled {
             let (old_phase, new_phase) = {
                 let mut state = self.state.write();
-                let session = state.session_mut_or_create(&event.session_id);
+                let session = state.session_mut_or_create(session_id);
                 let old_phase = session.phase();
                 session.finish_sending_via_machine();
                 (old_phase, session.phase())
             };
-            super::super::helpers::emit_phase_changed(
-                self.bus(),
-                &event.session_id,
-                old_phase,
-                new_phase,
-            )
-            .await;
+            super::super::helpers::emit_phase_changed(self.bus(), session_id, old_phase, new_phase)
+                .await;
             return;
         }
 
-        self.apply_pending_mutations_and_steering(&event.session_id)
-            .await;
+        self.apply_pending_mutations_and_steering(session_id).await;
 
         let assembly_overrides = {
             let state = self.state.read();
-            let session = state.session(&event.session_id);
+            let session = state.session(session_id);
             session
                 .is_automated()
                 .then(|| session.core.assembly_overrides.clone())
                 .flatten()
         };
 
-        self.assemble_and_send_continuation(&event.session_id, assembly_overrides.as_ref())
+        self.assemble_and_send_continuation(session_id, assembly_overrides.as_ref())
             .await;
     }
 }
@@ -451,6 +474,92 @@ mod tests {
         let state = actor.state.read();
         let session = state.session.get(&session_id).expect("session exists");
         assert!(matches!(session.phase(), PhaseKind::Streaming));
+    }
+
+    #[tokio::test]
+    async fn tool_batch_completed_buffers_when_session_is_streaming() {
+        // Given a session in Streaming phase (StreamCompleted(ToolUse) not yet processed).
+        let (actor, audit) = test_actor_recording().await;
+        let session_id = {
+            let mut state = actor.state.write();
+            let session = state.active_session_mut();
+            session.begin_streaming();
+            state.session.active_session_id().clone()
+        };
+
+        let event = ToolBatchCompleted {
+            session_id: session_id.clone(),
+            results: vec![ToolResult {
+                tool_call_id: "tc-1".to_owned(),
+                name: "read".to_owned(),
+                content: "file".to_owned(),
+                success: true,
+                full_content: None,
+                truncation: None,
+                pin_position: None,
+            }],
+        };
+        actor.on_tool_batch_completed(&event).await;
+
+        // Then no continuation is dispatched yet (buffered, not dropped).
+        assert!(
+            !audit.contains_name("SendToLlmProvider"),
+            "ToolBatchCompleted during Streaming must not dispatch a continuation"
+        );
+        // And the results are buffered pending the matching StreamCompleted(ToolUse).
+        let state = actor.state.read();
+        let session = state.session.get(&session_id).expect("session exists");
+        assert!(
+            session.core.ephemeral.pending_tool_batch.is_some(),
+            "results should be buffered while still Streaming"
+        );
+    }
+
+    #[tokio::test]
+    async fn stream_completed_tool_use_drains_buffered_tool_batch() {
+        // Given a Streaming session with a buffered ToolBatchCompleted.
+        let (actor, audit) = test_actor_recording().await;
+        let session_id = {
+            let mut state = actor.state.write();
+            let session = state.active_session_mut();
+            session.begin_streaming();
+            session.core.ephemeral.pending_tool_batch = Some(vec![ToolResult {
+                tool_call_id: "tc-1".to_owned(),
+                name: "read".to_owned(),
+                content: "file".to_owned(),
+                success: true,
+                full_content: None,
+                truncation: None,
+                pin_position: None,
+            }]);
+            state.session.active_session_id().clone()
+        };
+
+        // When StreamCompleted(ToolUse) arrives, transitioning Streaming → Sending.
+        let event = StreamCompleted {
+            session_id: session_id.clone(),
+            reason: StreamCompletedReason::ToolUse,
+            tool_calls: Some(vec![]),
+            assistant_content: None,
+            thinking_content: None,
+            model_used: None,
+            dispatched_at: jiff::Timestamp::now(),
+            cost: None,
+            provider_completion_tokens: None,
+        };
+        actor.on_stream_completed(&event).await;
+
+        // Then the buffered batch is drained and the continuation dispatched.
+        assert!(
+            audit.contains_name("SendToLlmProvider"),
+            "drained buffered ToolBatchCompleted should dispatch a continuation"
+        );
+        let state = actor.state.read();
+        let session = state.session.get(&session_id).expect("session exists");
+        assert!(
+            session.core.ephemeral.pending_tool_batch.is_none(),
+            "buffer should be drained after StreamCompleted(ToolUse)"
+        );
     }
 
     #[tokio::test]
