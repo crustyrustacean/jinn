@@ -2266,4 +2266,38 @@ mod tests {
             "generation guard must remain set for stale events"
         );
     }
+
+    #[tokio::test]
+    async fn on_stream_completed_tooluse_without_buffered_batch_does_not_dispatch() {
+        // Given a session mid-stream with no buffered tool batch.
+        let (actor, audit) = test_actor_recording().await;
+        let session_id = {
+            let mut state = actor.state.write();
+            let session = state.active_session_mut();
+            session.push_entry(ChatEntry::user("hello"));
+            session.begin_streaming();
+            state.session.active_session_id().clone()
+        };
+
+        // When a ToolUse stream completes with no pending batch buffered.
+        let event = StreamCompleted {
+            model_used: None,
+            session_id: session_id.clone(),
+            reason: StreamCompletedReason::ToolUse,
+            assistant_content: Some("let me check".to_owned()),
+            tool_calls: None,
+            cost: None,
+            provider_completion_tokens: None,
+            thinking_content: None,
+            dispatched_at: jiff::Timestamp::now(),
+        };
+        actor.on_stream_completed(&event).await;
+
+        // Then no SendToLlmProvider is emitted — the continuation must wait
+        // for the ExecuteToolBatch round-trip.
+        assert!(
+            !audit.contains_name("SendToLlmProvider"),
+            "ToolUse completion without a buffered batch must not dispatch a continuation"
+        );
+    }
 }

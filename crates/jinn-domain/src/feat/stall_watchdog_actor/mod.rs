@@ -136,44 +136,25 @@ impl BusPublish for StallWatchdogActor {
 }
 
 impl StallWatchdogActor {
-    /// Exponential backoff with full jitter (AWS style), mirroring the shape of
-    /// `jinn_provider::retry::RetryingLlmService::compute_delay`: returns
-    /// `base_delay * 2^attempt` capped at `max_delay`, then jittered down to
-    /// `[0, capped]` so concurrent stalls don’t thunder.
-    #[must_use]
-    fn compute_stall_backoff(base_delay: Duration, max_delay: Duration, attempt: u32) -> Duration {
-        let base_secs = base_delay.as_secs_f64();
-        let exponential = base_secs * 2_f64.powi(i32::try_from(attempt).unwrap_or(i32::MAX));
-        let capped = exponential.min(max_delay.as_secs_f64());
-        if capped <= 0.0 {
-            return Duration::ZERO;
-        }
-        let final_delay = rand::random_range(0.0..capped);
-        let millis = (final_delay * 1000.0) as u64;
-        Duration::from_millis(millis)
-    }
-    /// One scan pass: inspect every active-turn session and act on stalls.
-    async fn scan(&mut self) {
-        let prefs = self.deps.services.user_preferences_storage.read();
-        let timeout_secs = prefs.history_stall_timeout_secs;
-        let max_retries = prefs.stall_retry_max_retries;
-        let base_delay = Duration::from_secs(prefs.stall_retry_base_delay_secs);
-        let max_delay = Duration::from_secs(prefs.stall_retry_max_delay_secs);
-        drop(prefs);
-
-        let now = Timestamp::now();
-
-        // First pass (read lock): decide which active-turn sessions are stalled.
-        // A session's stall-retry counter is reset only at a turn boundary —
-        // when it leaves the active phases (reaches `Idle`), meaning the turn
-        // genuinely completed. Resetting on timestamp jitter would defeat the
-        // budget: every retry re-seeds `last_history_activity_at`, which would
-        // otherwise look like recovery and grant infinite retries to a
-        // perpetually hung provider.
+    /// First-pass scan: decide which active-turn sessions are stalled.
+    ///
+    /// A session's stall-retry counter is reset only at a turn boundary —
+    /// when it leaves the active phases (reaches `Idle`), meaning the turn
+    /// genuinely completed. Resetting on timestamp jitter would defeat the
+    /// budget: every retry re-seeds `last_history_activity_at`, which would
+    /// otherwise look like recovery and grant infinite retries to a
+    /// perpetually hung provider.
+    ///
+    /// `last_provider_activity_at` advances are detected inline (resetting the
+    /// budget) so the stall decision in the same pass sees a cleared budget.
+    fn collect_stalled(
+        &mut self,
+        now: Timestamp,
+        timeout_secs: u64,
+        max_retries: u32,
+    ) -> (Vec<(SessionId, bool)>, Vec<SessionId>) {
         let mut stalled: Vec<(SessionId, bool)> = Vec::new();
         let mut active_now: Vec<SessionId> = Vec::new();
-        // `last_provider_activity_at` advances are detected inline (resetting the
-        // budget) so the stall decision in the same pass sees a cleared budget.
         {
             let guard = self.state.read();
             for (id, session) in guard.session.iter() {
@@ -215,10 +196,14 @@ impl StallWatchdogActor {
                 }
             }
         }
+        (stalled, active_now)
+    }
 
-        // Turn-boundary reset: any previously-tracked session no longer in an
-        // active phase has completed (or been canceled) — clear its budget so
-        // the next turn starts fresh.
+    /// Turn-boundary reset: any previously-tracked session no longer in an
+    /// active phase has completed (or been canceled) — clear its budget so
+    /// the next turn starts fresh. Newly active sessions (a fresh turn) also
+    /// start with a clean budget.
+    fn reconcile_tracked(&mut self, active_now: &[SessionId]) {
         let finished: Vec<SessionId> = self
             .tracked
             .iter()
@@ -230,15 +215,25 @@ impl StallWatchdogActor {
             self.last_retry_at.remove(id);
         }
         self.tracked.retain(|id| active_now.contains(id));
-        // Newly active sessions (a fresh turn) start with a clean budget.
-        for id in &active_now {
+        for id in active_now {
             if !self.tracked.contains(id) {
                 self.attempts.remove(id);
                 self.last_retry_at.remove(id);
                 self.tracked.insert(id.clone());
             }
         }
+    }
 
+    /// Second pass: emit retries (gated by exponential backoff) or hard
+    /// cancels for each stalled session.
+    async fn act_on_stalled(
+        &mut self,
+        stalled: Vec<(SessionId, bool)>,
+        now: Timestamp,
+        max_retries: u32,
+        base_delay: Duration,
+        max_delay: Duration,
+    ) {
         for (session_id, under_budget) in stalled {
             if under_budget {
                 // Exponential-backoff gate: if we already retried this session,
@@ -283,6 +278,51 @@ impl StallWatchdogActor {
                 self.last_retry_at.remove(&session_id);
                 self.publish(CancelStream { session_id }).await;
             }
+        }
+    }
+}
+
+impl StallWatchdogActor {
+    /// Exponential backoff with full jitter (AWS style), mirroring the shape of
+    /// `jinn_provider::retry::RetryingLlmService::compute_delay`: returns
+    /// `base_delay * 2^attempt` capped at `max_delay`, then jittered down to
+    /// `[0, capped]` so concurrent stalls don’t thunder.
+    #[must_use]
+    fn compute_stall_backoff(base_delay: Duration, max_delay: Duration, attempt: u32) -> Duration {
+        let base_secs = base_delay.as_secs_f64();
+        let exponential = base_secs * 2_f64.powi(i32::try_from(attempt).unwrap_or(i32::MAX));
+        let capped = exponential.min(max_delay.as_secs_f64());
+        if capped <= 0.0 {
+            return Duration::ZERO;
+        }
+        let final_delay = rand::random_range(0.0..capped);
+        let millis = (final_delay * 1000.0) as u64;
+        Duration::from_millis(millis)
+    }
+    /// One scan pass: inspect every active-turn session and act on stalls.
+    async fn scan(&mut self) {
+        let prefs = self.deps.services.user_preferences_storage.read();
+        let timeout_secs = prefs.history_stall_timeout_secs;
+        let max_retries = prefs.stall_retry_max_retries;
+        let base_delay = Duration::from_secs(prefs.stall_retry_base_delay_secs);
+        let max_delay = Duration::from_secs(prefs.stall_retry_max_delay_secs);
+        drop(prefs);
+
+        let now = Timestamp::now();
+
+        let (stalled, active_now) = self.collect_stalled(now, timeout_secs, max_retries);
+        self.reconcile_tracked(&active_now);
+
+        let stalled_count = stalled.len();
+        self.act_on_stalled(stalled, now, max_retries, base_delay, max_delay)
+            .await;
+
+        if !active_now.is_empty() {
+            tracing::info!(
+                active = active_now.len(),
+                stalled = stalled_count,
+                "stall watchdog tick"
+            );
         }
     }
 
