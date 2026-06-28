@@ -43,6 +43,24 @@ impl TestHarness {
         Self { bus, bus_ref }
     }
 
+    /// Create a new harness with a `BestEffort` delivery bus.
+    ///
+    /// Production uses `BestEffort`, which drops messages on `MailboxFull` (the bus
+    /// silently swallows them — it only checks `ActorNotRunning`). Use this variant
+    /// to faithfully reproduce drop-driven wedges that the default `Guaranteed`
+    /// harness cannot trigger.
+    #[expect(
+        clippy::unused_async,
+        reason = "API symmetry with `new`; spawn requires runtime context"
+    )]
+    pub async fn new_best_effort() -> Self {
+        let bus =
+            kameo_actors::message_bus::MessageBus::new(kameo_actors::DeliveryStrategy::BestEffort);
+        let bus_ref = Spawn::spawn(bus);
+        let bus = BusService::new(bus_ref.clone());
+        Self { bus, bus_ref }
+    }
+
     /// The wrapped `BusService` — pass to actor deps.
     pub fn bus(&self) -> BusService {
         self.bus.clone()
@@ -59,6 +77,25 @@ impl TestHarness {
     /// Spawn a kameo actor and wait for startup (bus registration complete).
     pub async fn spawn_actor<A: kameo::Actor>(&self, args: A::Args) -> ActorRef<A> {
         let actor = A::spawn(args);
+        actor.wait_for_startup().await;
+        actor
+    }
+
+    /// Spawn a kameo actor with a custom mailbox (e.g. unbounded) and wait for
+    /// startup. Mirrors `spawn_actor` but lets the caller opt out of the default
+    /// bounded(64) mailbox.
+    pub async fn spawn_actor_with_mailbox<A: kameo::Actor>(
+        &self,
+        args: A::Args,
+        mailbox: (
+            kameo::mailbox::MailboxSender<A>,
+            kameo::mailbox::MailboxReceiver<A>,
+        ),
+    ) -> ActorRef<A>
+    where
+        A::Args: Clone + Sync,
+    {
+        let actor = Spawn::spawn_with_mailbox(args, mailbox);
         actor.wait_for_startup().await;
         actor
     }

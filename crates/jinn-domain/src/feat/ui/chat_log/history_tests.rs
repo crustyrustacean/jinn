@@ -1185,7 +1185,10 @@ fn render_auto_scrolls_jumped_compaction_into_view() {
 
     // When jumping to the previous compaction from the last entry (no selection
     // -> anchor on last entry; the prev jump lands on the only compaction at index 0).
-    handle_jump_prev_entry(&mut state, |entry| entry.is_compaction());
+    handle_jump_prev_entry(
+        &mut state,
+        crate::feat::session::chat_entry::ChatEntry::is_compaction,
+    );
     assert_eq!(
         state.active_session().selected_cursor_id(),
         Some(&compaction_id),

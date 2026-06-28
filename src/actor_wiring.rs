@@ -383,6 +383,17 @@ impl ActorSystemBuilder {
 
         // Session persistence actor — must spawn before ToolOrchestratorActor so
         // ToolsRegistered subscription is ready when tools register builtins in on_start.
+        //
+        // Unbounded mailbox: the session actor is the single sink for every streaming
+        // event (StreamToken, StreamCompleted, ToolBatchCompleted, …) from a provider
+        // burst. The default bounded(64) mailbox can momentarily fill at the [DONE]
+        // peak of a large reasoning turn, and because the bus uses BestEffort
+        // (try_send) delivery, the terminal `StreamCompleted(ToolUse)` gets silently
+        // dropped on `MailboxFull` — permanently wedging the session (the phase never
+        // advances out of Streaming). An unbounded mailbox means try_send always
+        // succeeds, so the critical control message can never be dropped. There is no
+        // deadlock risk: nothing downstream awaits the session actor's mailbox
+        // capacity (publishers use fire-and-forget tell under BestEffort).
         let token_counter = TiktokenCounter::o200k_base();
         // Shared entry-token cache for history workers — created here so the
         // session actor's accumulation gate can read it too.
@@ -402,7 +413,7 @@ impl ActorSystemBuilder {
                 },
             )
             .restart_policy(kameo::supervision::RestartPolicy::Never)
-            .spawn()
+            .spawn_with_mailbox(kameo::mailbox::unbounded())
             .await;
         _session.wait_for_startup().await;
 
