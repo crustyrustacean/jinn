@@ -676,6 +676,31 @@ mod tests {
 
     #[rstest::rstest]
     #[tokio::test]
+    async fn unpin_keeps_cursor_when_a_different_entry_is_removed() {
+        // Given 3 pinned entries [A, B, C] with B selected.
+        let (actor, state, _audit) = create_actor().await;
+        let ids = push_pinned_entries(&state, 3);
+        let session_id = state.read().session.active_session_id().clone();
+        let selected = ids[1].clone();
+        state.write().frontend.pins.select_by_id(selected.clone());
+
+        // When unpinning A (a different, non-selected entry).
+        actor
+            .handle_unpin_chat_entry(&UnpinChatEntry {
+                session_id,
+                entry_id: ids[0].clone(),
+            })
+            .await;
+
+        // Then the cursor stays on B (its ID is still present).
+        assert_eq!(
+            state.read().frontend.pins.selected_id().cloned(),
+            Some(selected)
+        );
+    }
+
+    #[rstest::rstest]
+    #[tokio::test]
     async fn unpin_clamps_cursor_to_new_last_when_last_removed() {
         // Given 3 pinned entries [A, B, C] with C selected.
         let (actor, state, _audit) = create_actor().await;
