@@ -454,6 +454,111 @@ mod tests {
     }
 
     #[tokio::test]
+    async fn stream_completed_survives_token_burst_on_unbounded_mailbox() {
+        // Regression guard for the unbounded-mailbox fix. Production log
+        // evidence showed that a >64-token burst at a `[DONE]` peak could fill the
+        // session actor's bounded(64) mailbox, and the bus's BestEffort delivery
+        // (try_send) silently dropped the terminal `StreamCompleted(ToolUse)` on
+        // MailboxFull — wedging the session in Streaming forever (FIFO violation:
+        // a message published first was dropped while one published 1.7ms later was
+        // delivered). The session actor now spawns with an unbounded mailbox.
+        //
+        // This test locks in the production-shaped path under load: a BestEffort
+        // bus, an unbounded session mailbox, a >64 token burst immediately
+        // followed by the terminal event while a batch is buffered. It asserts the
+        // terminal is delivered (buffer drains → SendToLlmProvider) and that the
+        // Guaranteed→unbounded combination does NOT deadlock (the core argument
+        // against switching the bus itself to Guaranteed). The drop race itself is
+        // timing-dependent and not deterministically reproducible here; this guard
+        // ensures the wiring stays correct and the burst path stays livelock-free.
+        use crate::common::app_state::AppState;
+        use crate::common::bus::test_harness::{TestHarness, await_recorded};
+        use crate::common::state::State;
+        use crate::feat::context::strategy::token_estimator::TiktokenCounter;
+        use crate::feat::provider::protocol::command::SendToLlmProvider;
+        use crate::feat::provider::protocol::event::StreamToken;
+        use crate::feat::session::session_actor::{
+            SessionPersistenceActor, SessionPersistenceActorDeps,
+        };
+        use crate::feat::session_lifecycle::builtin::BuiltinRegistry;
+        use std::time::Duration;
+
+        let harness = TestHarness::new_best_effort().await;
+        let recorder = harness.spawn_recorder::<SendToLlmProvider>().await;
+        let state = State::new(AppState::default());
+        let session_id = state.read().session.active_session_id().clone();
+        let dispatched_at = jiff::Timestamp::now();
+        {
+            let mut s = state.write();
+            let session = s.active_session_mut();
+            session.begin_streaming();
+            // Simulate an already-finished tool batch racing ahead of
+            // StreamCompleted(ToolUse) — exactly the wedge precondition.
+            session.core.ephemeral.pending_tool_batch = Some(vec![ToolResult {
+                tool_call_id: "tc-1".to_owned(),
+                name: "bash".to_owned(),
+                content: "ok".to_owned(),
+                success: true,
+                full_content: None,
+                truncation: None,
+                pin_position: None,
+            }]);
+        }
+
+        let actor_ref = harness
+            .spawn_actor_with_mailbox::<SessionPersistenceActor>(
+                SessionPersistenceActorDeps {
+                    deps: harness.actor_deps().await,
+                    state,
+                    counter: TiktokenCounter::o200k_base(),
+                    token_cache:
+                        crate::feat::auto_prune_worker::HistoryWorkerChatEntryTokenCache::default(),
+                    builtin_registry: BuiltinRegistry::new(),
+                    shell: "/bin/sh".to_owned(),
+                },
+                kameo::mailbox::unbounded(),
+            )
+            .await;
+
+        // When a >64-token burst is published, immediately followed by the
+        // terminal StreamCompleted(ToolUse).
+        for i in 0..200 {
+            harness
+                .publish(StreamToken {
+                    session_id: session_id.clone(),
+                    index: i,
+                    token: "x".to_owned(),
+                    is_thinking: false,
+                    dispatched_at,
+                })
+                .await;
+        }
+        harness
+            .publish(StreamCompleted {
+                session_id: session_id.clone(),
+                reason: StreamCompletedReason::ToolUse,
+                assistant_content: None,
+                tool_calls: Some(vec![]),
+                cost: None,
+                provider_completion_tokens: None,
+                thinking_content: None,
+                model_used: None,
+                dispatched_at,
+            })
+            .await;
+
+        // Then the terminal was delivered: the buffered batch drained and a
+        // continuation (SendToLlmProvider) was dispatched. A dropped terminal
+        // would leave the session wedged in Streaming with no dispatch.
+        let sent = await_recorded::<SendToLlmProvider>(&recorder, 1, Duration::from_secs(2)).await;
+        assert!(
+            sent.iter().any(|m| m.session_id == session_id),
+            "StreamCompleted(ToolUse) must survive a >64 token burst on an unbounded mailbox"
+        );
+        drop(actor_ref);
+    }
+
+    #[tokio::test]
     async fn on_tool_batch_completed_transitions_session_to_sending() {
         let (actor, _audit) = test_actor_recording().await;
         let session_id = {
