@@ -2165,7 +2165,10 @@ mod jump_compaction_tests {
         assert_eq!(state.active_session().selected_cursor_id(), Some(&a_id));
 
         // When handling jump to next compaction.
-        let _result = handle_jump_next_entry(&mut state, |entry| entry.is_compaction());
+        let _result = handle_jump_next_entry(
+            &mut state,
+            crate::feat::session::chat_entry::ChatEntry::is_compaction,
+        );
 
         // Then the cursor moves to compaction B.
         assert_eq!(state.active_session().selected_cursor_id(), Some(&b_id));
@@ -2180,7 +2183,10 @@ mod jump_compaction_tests {
         assert_eq!(state.active_session().selected_cursor_id(), Some(&b_id));
 
         // When handling jump to previous compaction.
-        let _result = handle_jump_prev_entry(&mut state, |entry| entry.is_compaction());
+        let _result = handle_jump_prev_entry(
+            &mut state,
+            crate::feat::session::chat_entry::ChatEntry::is_compaction,
+        );
 
         // Then the cursor moves to compaction A.
         assert_eq!(state.active_session().selected_cursor_id(), Some(&a_id));
@@ -2194,7 +2200,10 @@ mod jump_compaction_tests {
         select_at(&mut state, 3);
 
         // When handling jump to next compaction.
-        let result = handle_jump_next_entry(&mut state, |entry| entry.is_compaction());
+        let result = handle_jump_next_entry(
+            &mut state,
+            crate::feat::session::chat_entry::ChatEntry::is_compaction,
+        );
 
         // Then the cursor is unchanged (no wrap) and no commands emitted.
         assert_eq!(state.active_session().selected_cursor_id(), Some(&b_id));
@@ -2209,7 +2218,10 @@ mod jump_compaction_tests {
         select_at(&mut state, 1);
 
         // When handling jump to previous compaction.
-        let result = handle_jump_prev_entry(&mut state, |entry| entry.is_compaction());
+        let result = handle_jump_prev_entry(
+            &mut state,
+            crate::feat::session::chat_entry::ChatEntry::is_compaction,
+        );
 
         // Then the cursor is unchanged (no wrap) and no commands emitted.
         assert_eq!(state.active_session().selected_cursor_id(), Some(&a_id));
@@ -2225,7 +2237,10 @@ mod jump_compaction_tests {
         assert!(state.active_session().selected_cursor_id().is_none());
 
         // When handling jump to next compaction (anchor = last entry).
-        let result = handle_jump_next_entry(&mut state, |entry| entry.is_compaction());
+        let result = handle_jump_next_entry(
+            &mut state,
+            crate::feat::session::chat_entry::ChatEntry::is_compaction,
+        );
 
         // Then it is a no-op: nothing newer than the last entry exists.
         assert!(state.active_session().selected_cursor_id().is_none());
@@ -2241,7 +2256,10 @@ mod jump_compaction_tests {
         assert!(state.active_session().selected_cursor_id().is_none());
 
         // When handling jump to previous compaction.
-        let _result = handle_jump_prev_entry(&mut state, |entry| entry.is_compaction());
+        let _result = handle_jump_prev_entry(
+            &mut state,
+            crate::feat::session::chat_entry::ChatEntry::is_compaction,
+        );
 
         // Then the anchor is the last entry, so [c lands on compaction B.
         assert_eq!(state.active_session().selected_cursor_id(), Some(&b_id));
@@ -2259,7 +2277,10 @@ mod jump_compaction_tests {
         let before = state.active_session().selected_cursor_id().cloned();
 
         // When handling jump to next compaction.
-        let result = handle_jump_next_entry(&mut state, |entry| entry.is_compaction());
+        let result = handle_jump_next_entry(
+            &mut state,
+            crate::feat::session::chat_entry::ChatEntry::is_compaction,
+        );
 
         // Then it is a no-op.
         assert_eq!(state.active_session().selected_cursor_id(), before.as_ref());
@@ -2278,7 +2299,10 @@ mod jump_compaction_tests {
         let before = state.active_session().selected_cursor_id().cloned();
 
         // When handling jump to previous compaction.
-        let result = handle_jump_prev_entry(&mut state, |entry| entry.is_compaction());
+        let result = handle_jump_prev_entry(
+            &mut state,
+            crate::feat::session::chat_entry::ChatEntry::is_compaction,
+        );
 
         // Then it is a no-op.
         assert_eq!(state.active_session().selected_cursor_id(), before.as_ref());
@@ -2291,7 +2315,10 @@ mod jump_compaction_tests {
         let mut state = AppState::default();
 
         // When handling jump to next compaction.
-        let result = handle_jump_next_entry(&mut state, |entry| entry.is_compaction());
+        let result = handle_jump_next_entry(
+            &mut state,
+            crate::feat::session::chat_entry::ChatEntry::is_compaction,
+        );
 
         // Then it is a no-op without panic.
         assert!(state.active_session().selected_cursor_id().is_none());
@@ -2304,7 +2331,10 @@ mod jump_compaction_tests {
         let mut state = AppState::default();
 
         // When handling jump to previous compaction.
-        let result = handle_jump_prev_entry(&mut state, |entry| entry.is_compaction());
+        let result = handle_jump_prev_entry(
+            &mut state,
+            crate::feat::session::chat_entry::ChatEntry::is_compaction,
+        );
 
         // Then it is a no-op without panic.
         assert!(state.active_session().selected_cursor_id().is_none());
@@ -2319,7 +2349,10 @@ mod jump_compaction_tests {
         select_at(&mut state, 1);
 
         // When handling jump to next compaction.
-        let result = handle_jump_next_entry(&mut state, |entry| entry.is_compaction());
+        let result = handle_jump_next_entry(
+            &mut state,
+            crate::feat::session::chat_entry::ChatEntry::is_compaction,
+        );
 
         // Then no commands or events are emitted.
         assert!(result.message_names.is_empty());
@@ -2333,7 +2366,10 @@ mod jump_compaction_tests {
         select_at(&mut state, 3);
 
         // When handling jump to previous compaction.
-        let result = handle_jump_prev_entry(&mut state, |entry| entry.is_compaction());
+        let result = handle_jump_prev_entry(
+            &mut state,
+            crate::feat::session::chat_entry::ChatEntry::is_compaction,
+        );
 
         // Then no commands or events are emitted.
         assert!(result.message_names.is_empty());
@@ -2424,7 +2460,10 @@ mod jump_compaction_tests {
         );
 
         // When handling jump to next compaction.
-        let _result = handle_jump_next_entry(&mut state, |entry| entry.is_compaction());
+        let _result = handle_jump_next_entry(
+            &mut state,
+            crate::feat::session::chat_entry::ChatEntry::is_compaction,
+        );
 
         // Then the cursor lands on compaction B (the newer one), not a no-op.
         assert_eq!(
@@ -2448,7 +2487,10 @@ mod jump_compaction_tests {
         );
 
         // When handling jump to previous compaction.
-        let _result = handle_jump_prev_entry(&mut state, |entry| entry.is_compaction());
+        let _result = handle_jump_prev_entry(
+            &mut state,
+            crate::feat::session::chat_entry::ChatEntry::is_compaction,
+        );
 
         // Then the cursor lands on compaction A (the older one), NOT compaction B.
         assert_eq!(
