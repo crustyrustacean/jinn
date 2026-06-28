@@ -259,7 +259,7 @@ the renderer reads it on the next tick.
 
 **Actors handle all async operations.** They communicate through the actor host's pub/sub routing. Events are broadcast to all subscribers; commands route to exactly one. Actors may emit events or commands back onto the bus in response.
 
-**AppState is divided into owner-named sub-structs** (frontend, domain, etc.). Cross-boundary writes are a code review red flag.
+AppState contains many sub-structs, each owned by exactly one actor that is its sole writer. This applies to frontend too — it's a container of many sub-structs (pins, pickers, scope stack, theme, etc.), each owned by a different actor. Ownership is per-sub-struct, not per-top-level-struct: a domain actor writing frontend.pins it owns is correct; the IntentHandler writing frontend.pins while another actor owns it is the red flag. A cross-boundary write is mutating a sub-struct you don't own, regardless of which top-level struct it lives under.
 
 ## 4. Tests
 
@@ -534,19 +534,19 @@ When implementing features, locate each concern by convention rather than hardco
 
 When modifying any of the Rust touchpoints below, also update the matching Lua / docs entries. Full rationale and per-row detail in `docs/plugins.md` §10.
 
-| When you change... | Also update... |
-| --- | --- |
-| Match arm in `translate_command` (`src/plugin_wiring.rs`) | `res/plugins/meta/plugin_ctx.lua` (verb alias + payload class); `docs/plugins.md` §7 verb catalog |
-| `Lua*` struct fields in `plugin_wiring.rs` | `res/plugins/meta/plugin_ctx.lua` matching payload class |
-| `LuaChatEntryKind` variants in `plugin_wiring.rs` | `res/plugins/meta/plugin_ctx.lua` `ChatEntryKind` class |
-| `build_async_ctx` / `build_sync_ctx` field additions | `res/plugins/meta/plugin_ctx.lua` base `PluginCtx` class; `docs/plugins.md` §6 ctx fields table |
-| New hook name in `PluginDispatchActor::handle_event` | `res/plugins/meta/plugin_ctx.lua` new `OnXxxCtx` subclass + template entry; `docs/plugins.md` §3 hook lifecycle |
-| Hook ctx_json fields added at a fire site | `res/plugins/meta/plugin_ctx.lua` matching `OnXxxCtx` subclass |
-| `PluginMeta` / `PluginKind` / discovery in `loader.rs` | `docs/plugins.md` §1 + §2 |
-| `PluginCommand` struct in `crates/jinn-plugin/src/lib.rs` | `src/plugin_wiring.rs::handle_plugin_command`; `docs/plugins.md` §7 |
-| `PluginData` semantics (`crates/jinn-plugin/src/plugin_data.rs`) | `docs/plugins.md` §8 |
-| `PluginDispatchActor` event subscriptions | `docs/plugins.md` §3 hook lifecycle |
-| `AttachedPlugin` struct | `docs/plugins.md` §4 per-session Lua states |
+| When you change...                                               | Also update...                                                                                                  |
+| ---------------------------------------------------------------- | --------------------------------------------------------------------------------------------------------------- |
+| Match arm in `translate_command` (`src/plugin_wiring.rs`)        | `res/plugins/meta/plugin_ctx.lua` (verb alias + payload class); `docs/plugins.md` §7 verb catalog               |
+| `Lua*` struct fields in `plugin_wiring.rs`                       | `res/plugins/meta/plugin_ctx.lua` matching payload class                                                        |
+| `LuaChatEntryKind` variants in `plugin_wiring.rs`                | `res/plugins/meta/plugin_ctx.lua` `ChatEntryKind` class                                                         |
+| `build_async_ctx` / `build_sync_ctx` field additions             | `res/plugins/meta/plugin_ctx.lua` base `PluginCtx` class; `docs/plugins.md` §6 ctx fields table                 |
+| New hook name in `PluginDispatchActor::handle_event`             | `res/plugins/meta/plugin_ctx.lua` new `OnXxxCtx` subclass + template entry; `docs/plugins.md` §3 hook lifecycle |
+| Hook ctx_json fields added at a fire site                        | `res/plugins/meta/plugin_ctx.lua` matching `OnXxxCtx` subclass                                                  |
+| `PluginMeta` / `PluginKind` / discovery in `loader.rs`           | `docs/plugins.md` §1 + §2                                                                                       |
+| `PluginCommand` struct in `crates/jinn-plugin/src/lib.rs`        | `src/plugin_wiring.rs::handle_plugin_command`; `docs/plugins.md` §7                                             |
+| `PluginData` semantics (`crates/jinn-plugin/src/plugin_data.rs`) | `docs/plugins.md` §8                                                                                            |
+| `PluginDispatchActor` event subscriptions                        | `docs/plugins.md` §3 hook lifecycle                                                                             |
+| `AttachedPlugin` struct                                          | `docs/plugins.md` §4 per-session Lua states                                                                     |
 
 **Rule of thumb**: any change that affects what a Lua plugin can emit, receive, or be loaded by requires reading `docs/plugins.md` first. The doc is the source of truth for the propagation contract.
 
@@ -558,15 +558,15 @@ Read the `justfile` to determine what additional tooling is related to this proj
 
 Skills refer to commands by **role**; the table below resolves each role to this project's actual command.
 
-| Role | Command | Description |
-|------|---------|-------------|
-| `vcs` | Fossil | This project uses Fossil for version control (`fossil status`, `fossil diff`, `fossil timeline`, ...). |
-| `check` | `just check` | `cargo check --workspace` — fast compilation without codegen. |
-| `test` | `just test` | `cargo test --workspace` + e2e tests — **all tests must pass before committing**. |
-| `lint` | `just lint` | Lint checks. |
-| `format` | `just fmt-fix` | Apply formatting fixes. |
-| `commit` | `fossil commit -m "<message>"` | Commit changes. |
-| `sync-trunk` | `fossil merge trunk` | Sync latest changes with your branch (resolve conflicts, re-test, commit). |
+| Role         | Command                        | Description                                                                                            |
+| ------------ | ------------------------------ | ------------------------------------------------------------------------------------------------------ |
+| `vcs`        | Fossil                         | This project uses Fossil for version control (`fossil status`, `fossil diff`, `fossil timeline`, ...). |
+| `check`      | `just check`                   | `cargo check --workspace` — fast compilation without codegen.                                          |
+| `test`       | `just test`                    | `cargo test --workspace` + e2e tests — **all tests must pass before committing**.                      |
+| `lint`       | `just lint`                    | Lint checks.                                                                                           |
+| `format`     | `just fmt-fix`                 | Apply formatting fixes.                                                                                |
+| `commit`     | `fossil commit -m "<message>"` | Commit changes.                                                                                        |
+| `sync-trunk` | `fossil merge trunk`           | Sync latest changes with your branch (resolve conflicts, re-test, commit).                             |
 
 ### Plan Directory
 
@@ -584,3 +584,4 @@ The task list (managed via `todo_*` tools) tracks progress. The spec is an immut
 - Environment variables should only be accessed at program initialization and then saved into a struct as needed. Environment variables are a global namespace and should be avoided outside of program startup.
 - Use `where` clause for all generics.
 - Prefer `match` over `if` where appropriate.
+- DO NOT USE CODE COMMENTS TO WRITE ABOUT "SPEC DIVERGENCES" OR "DIVERGENCES". Code comments in the codebase is not the place to discuss planning information. PLANS ARE NOT PERSISTED.
