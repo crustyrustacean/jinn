@@ -10,10 +10,6 @@ use super::hash::{format_hashline_region, get_visible_lines};
 
 /// Context lines around the changed region in anchor blocks.
 const ANCHOR_CONTEXT_LINES: usize = 2;
-
-/// Maximum number of lines in an anchor block before omitting.
-const ANCHOR_MAX_OUTPUT_LINES: usize = 12;
-
 /// Byte budget for anchor blocks (50KB).
 const ANCHOR_TEXT_BUDGET_BYTES: usize = 50 * 1024;
 
@@ -51,8 +47,10 @@ pub enum AnchorBlock {
 
 /// Computes the post-edit line range covering changed lines plus context.
 ///
-/// Returns `None` if the range (with context) exceeds the output budget,
-/// signalling that the LLM should re-read instead.
+/// Returns `None` if either changed-line input is `None`, the file is empty,
+/// or the context-adjusted bounds invert (`end < start`). Span size alone no
+/// longer forces `None` — large ranges produce a block up to the byte budget
+/// enforced in [`build_anchor_block`].
 pub fn compute_affected_line_range(
     first_changed_line: Option<usize>,
     last_changed_line: Option<usize>,
@@ -71,11 +69,6 @@ pub fn compute_affected_line_range(
     if end < start {
         return None;
     }
-
-    if end - start + 1 > ANCHOR_MAX_OUTPUT_LINES {
-        return None;
-    }
-
     Some(AffectedRange { start, end })
 }
 
@@ -210,12 +203,14 @@ mod tests {
     }
 
     #[rstest::rstest]
-    fn compute_affected_range_returns_none_for_large_span() {
-        // Given a change spanning 15 lines (15 + 4 context = 19 > 12).
+    fn compute_affected_range_returns_span_for_large_change() {
+        // Given a change spanning 15 lines in a 20-line file.
         let range = compute_affected_line_range(Some(1), Some(15), 20);
 
-        // Then it returns None (span too large).
-        assert!(range.is_none());
+        // Then the range spans 1-17 (15 lines + 2 trailing context, clamped).
+        let r = range.expect("large change should still produce a range");
+        assert_eq!(r.start, 1); // 1 - 2 = saturating_sub -> 1
+        assert_eq!(r.end, 17); // 15 + 2 = 17, within 20
     }
 
     #[rstest::rstest]
@@ -249,15 +244,35 @@ mod tests {
     }
 
     #[rstest::rstest]
-    fn build_anchor_block_omits_for_large_span() {
-        // Given a 20-line result with changes spanning 15 lines.
+    fn build_anchor_block_produces_block_for_large_span() {
+        // Given a 20-line result with changes spanning 15 lines (~140 bytes, under 50KB).
         #[expect(clippy::format_collect, reason = "format in map is intentional")]
         let content: String = (1..=20).map(|i| format!("line {i}\n")).collect();
 
         // When building the anchor block.
         let block = build_anchor_block(&content, Some(1), Some(15));
 
-        // Then it omits anchors.
+        // Then it produces a Block covering 1-17 (not omitted).
+        match &block {
+            AnchorBlock::Block { text, start, end } => {
+                assert_eq!(*start, 1);
+                assert_eq!(*end, 17);
+                assert!(text.starts_with("--- Anchors 1-17 ---"));
+            }
+            _ => panic!("expected Block, got {block:?}"),
+        }
+    }
+    #[rstest::rstest]
+    fn build_anchor_block_omits_on_byte_budget_overflow() {
+        // Given a result whose formatted block exceeds the 50KB byte budget:
+        // 800 lines of ~100-byte content, all marked changed.
+        let line = format!("{}\n", "x".repeat(100));
+        let content = line.repeat(800);
+
+        // When building the anchor block.
+        let block = build_anchor_block(&content, Some(1), Some(800));
+
+        // Then it omits anchors (byte budget exceeded).
         assert!(matches!(block, AnchorBlock::Omitted));
     }
 
