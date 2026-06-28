@@ -163,11 +163,22 @@ async fn run_parent() {
 
     let current_exe = std::env::current_exe().expect("current_exe for child spawning");
 
-    // Cap concurrency at available parallelism so we don't boot 50 actor systems
-    // at once on an 8-core laptop.
-    let jobs = std::thread::available_parallelism()
-        .map(|n| n.get())
-        .unwrap_or(4);
+    // Cap concurrency conservatively. Each child process boots a full actor
+    // system that spawns multiple `spawn_blocking` tasks (SQLite, tokenizer,
+    // file scans). At high concurrency the tokio blocking-thread pool
+    // saturates and startup actors exceed the tests' bounded wait deadlines,
+    // producing non-deterministic failures unrelated to the code under test.
+    // Empirically the cliff is at ~2/3 of available parallelism; we cap at
+    // half to leave headroom for blocking-thread demand. Override with
+    // JINN_E2E_JOBS for debugging.
+    let jobs = std::env::var("JINN_E2E_JOBS")
+        .ok()
+        .and_then(|s| s.parse().ok())
+        .unwrap_or_else(|| {
+            std::thread::available_parallelism()
+                .map(|n| (n.get() / 2).max(1))
+                .unwrap_or(4)
+        });
 
     let total = scenarios.len();
     eprintln!("[e2e] running {total} scenario(s) across up to {jobs} child process(es)");
