@@ -44,8 +44,23 @@ impl SessionPersistenceActor {
     ) {
         {
             let mut state = self.state.write();
+            let is_active = state.session.active_session_id() == &payload.session_id;
+            let old_index = if is_active {
+                state
+                    .frontend
+                    .pins
+                    .selection_index(&state.sorted_pinned_ids())
+            } else {
+                0
+            };
+
             let session = state.session_mut_or_create(&payload.session_id);
             session.unpin_entry(&payload.entry_id);
+
+            if is_active {
+                let new_sorted = state.sorted_pinned_ids();
+                state.frontend.pins.clamp_to_nearest(&new_sorted, old_index);
+            }
         }
         self.publish(ChatEntryPinChanged {
             session_id: payload.session_id.clone(),
@@ -204,8 +219,7 @@ mod tests {
     use crate::feat::context::protocol::event::PersonasLoaded;
     use crate::feat::persona::Persona;
     use crate::feat::tools_actor::tool_types::ToolDefinition;
-    use crate::protocol::PinPosition;
-    use crate::protocol::SessionId;
+    use crate::protocol::{ChatEntryId, PinPosition, SessionId};
 
     fn make_persona(name: &str) -> Persona {
         Persona {
@@ -593,6 +607,139 @@ mod tests {
         assert!(
             audit.contains_name("ChatEntryPinChanged"),
             "expected ChatEntryPinChanged event"
+        );
+    }
+
+    /// Pushes `n` pinned entries (all `Top`, so display order = insertion order)
+    /// into the active session and returns their IDs in insertion order.
+    fn push_pinned_entries(state: &State, n: usize) -> Vec<ChatEntryId> {
+        let mut guard = state.write();
+        let session = guard.active_session_mut();
+        (0..n)
+            .map(|i| {
+                let mut entry = crate::protocol::ChatEntry::user(format!("entry {i}"));
+                entry.pin_position = Some(PinPosition::Top);
+                let id = entry.id.clone();
+                session.push_entry(entry);
+                id
+            })
+            .collect()
+    }
+
+    #[rstest::rstest]
+    #[tokio::test]
+    async fn unpin_keeps_cursor_position_when_first_removed() {
+        // Given 3 pinned entries [A, B, C] with A selected.
+        let (actor, state, _audit) = create_actor().await;
+        let ids = push_pinned_entries(&state, 3);
+        let session_id = state.read().session.active_session_id().clone();
+        state.write().frontend.pins.select_by_id(ids[0].clone());
+
+        // When unpinning A.
+        actor
+            .handle_unpin_chat_entry(&UnpinChatEntry {
+                session_id,
+                entry_id: ids[0].clone(),
+            })
+            .await;
+
+        // Then the cursor lands on B (now at index 0).
+        assert_eq!(
+            state.read().frontend.pins.selected_id().cloned(),
+            Some(ids[1].clone())
+        );
+    }
+
+    #[rstest::rstest]
+    #[tokio::test]
+    async fn unpin_keeps_cursor_position_when_middle_removed() {
+        // Given 3 pinned entries [A, B, C] with B selected.
+        let (actor, state, _audit) = create_actor().await;
+        let ids = push_pinned_entries(&state, 3);
+        let session_id = state.read().session.active_session_id().clone();
+        state.write().frontend.pins.select_by_id(ids[1].clone());
+
+        // When unpinning B.
+        actor
+            .handle_unpin_chat_entry(&UnpinChatEntry {
+                session_id,
+                entry_id: ids[1].clone(),
+            })
+            .await;
+
+        // Then the cursor lands on C (now at index 1).
+        assert_eq!(
+            state.read().frontend.pins.selected_id().cloned(),
+            Some(ids[2].clone())
+        );
+    }
+
+    #[rstest::rstest]
+    #[tokio::test]
+    async fn unpin_clamps_cursor_to_new_last_when_last_removed() {
+        // Given 3 pinned entries [A, B, C] with C selected.
+        let (actor, state, _audit) = create_actor().await;
+        let ids = push_pinned_entries(&state, 3);
+        let session_id = state.read().session.active_session_id().clone();
+        state.write().frontend.pins.select_by_id(ids[2].clone());
+
+        // When unpinning C.
+        actor
+            .handle_unpin_chat_entry(&UnpinChatEntry {
+                session_id,
+                entry_id: ids[2].clone(),
+            })
+            .await;
+
+        // Then the cursor clamps to B (the new last entry).
+        assert_eq!(
+            state.read().frontend.pins.selected_id().cloned(),
+            Some(ids[1].clone())
+        );
+    }
+
+    #[rstest::rstest]
+    #[tokio::test]
+    async fn unpin_clears_cursor_when_only_pin_removed() {
+        // Given 1 pinned entry [A] with A selected.
+        let (actor, state, _audit) = create_actor().await;
+        let ids = push_pinned_entries(&state, 1);
+        let session_id = state.read().session.active_session_id().clone();
+        state.write().frontend.pins.select_by_id(ids[0].clone());
+
+        // When unpinning A.
+        actor
+            .handle_unpin_chat_entry(&UnpinChatEntry {
+                session_id,
+                entry_id: ids[0].clone(),
+            })
+            .await;
+
+        // Then the cursor is cleared.
+        assert!(state.read().frontend.pins.selected_id().is_none());
+    }
+
+    #[rstest::rstest]
+    #[tokio::test]
+    async fn unpin_for_non_active_session_leaves_cursor_unchanged() {
+        // Given 3 pinned entries [A, B, C] with B selected, and an unrelated session.
+        let (actor, state, _audit) = create_actor().await;
+        let ids = push_pinned_entries(&state, 3);
+        let selected = ids[1].clone();
+        state.write().frontend.pins.select_by_id(selected.clone());
+
+        // When unpinning B under a non-active session id.
+        actor
+            .handle_unpin_chat_entry(&UnpinChatEntry {
+                session_id: SessionId::new(),
+                entry_id: ids[1].clone(),
+            })
+            .await;
+
+        // Then the cursor is unchanged.
+        assert_eq!(
+            state.read().frontend.pins.selected_id().cloned(),
+            Some(selected)
         );
     }
 
