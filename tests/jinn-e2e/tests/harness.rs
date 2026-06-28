@@ -138,3 +138,19 @@ pub fn seed_prompt_template(temp_root: &Path, name: &str, body: &str) {
     std::fs::write(dir.join(format!("{name}.md")), content)
         .unwrap_or_else(|e| panic!("write prompt {name}: {e}"));
 }
+
+/// Readiness predicate for [`World::wait_until`]: resolves once the named
+/// prompt template is present in the active session's discovered store, i.e.
+/// `prompt_scan_actor` has finished its startup scan for this session's cwd.
+pub fn prompt_template_ready_predicate(
+    name: &str,
+) -> impl Fn(&jinn_domain::AppState) -> Option<()> + '_ {
+    move |s| {
+        s.session
+            .active_session()
+            .discovered_prompt_templates()
+            .find_by_name(name)
+            .is_some()
+            .then_some(())
+    }
+}

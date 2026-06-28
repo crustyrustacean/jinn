@@ -164,7 +164,10 @@ async fn given_attach_plugin(world: &mut JudgeWorld, plugin_name: String) {
         session_id: world.active_session_id(),
         plugin_name,
     });
-    // Give the dispatch actor time to load the plugin and fire on_attach.
+    // on_attach is dispatched via tokio::spawn inside handle_attach and is not
+    // awaited, so no AppState observable reflects its completion. A short
+    // bounded sleep lets the detached on_attach (Lua state init) settle before
+    // subsequent steps drive a turn. See plan.md divergence note.
     tokio::time::sleep(Duration::from_millis(50)).await;
 }
 

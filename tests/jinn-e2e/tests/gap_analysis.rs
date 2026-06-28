@@ -26,7 +26,10 @@ use jinn_domain::{
 };
 use jinn_tui::TuiApp;
 
-use crate::harness::{build_tuiapp_in_temp, copy_plugin_to_temp, seed_prompt_template};
+use crate::harness::{
+    build_tuiapp_in_temp, copy_plugin_to_temp, prompt_template_ready_predicate,
+    seed_prompt_template,
+};
 
 /// Cucumber world for gap-analysis-plugin scenarios.
 ///
@@ -234,10 +237,16 @@ fn given_active_provider_set(world: &mut GapAnalysisWorld) {
 }
 
 #[cucumber::given(expr = "the app has a prompt template {string} with body {string}")]
-fn given_prompt_template(_world: &mut GapAnalysisWorld, _name: String, _body: String) {
+async fn given_prompt_template(world: &mut GapAnalysisWorld, name: String, _body: String) {
     // The template is seeded in the world ctor (before build) so
-    // prompt_scan_actor populates the store at startup. This step is a
-    // readability anchor only.
+    // prompt_scan_actor populates the store at startup. This step waits for
+    // that scan to complete so subsequent turns can expand `#name`.
+    let held = world
+        .wait_until(prompt_template_ready_predicate(&name))
+        .await;
+    if held.is_none() {
+        panic!("prompt template {name:?} never discovered within deadline");
+    }
 }
 
 #[cucumber::given(expr = "the app attaches the plugin {string}")]
@@ -246,7 +255,10 @@ async fn given_attach_plugin(world: &mut GapAnalysisWorld, plugin_name: String) 
         session_id: world.active_session_id(),
         plugin_name,
     });
-    // Give the dispatch actor time to load the plugin and fire on_attach.
+    // on_attach is dispatched via tokio::spawn inside handle_attach and is not
+    // awaited, so no AppState observable reflects its completion. A short
+    // bounded sleep lets the detached on_attach (Lua state init) settle before
+    // subsequent steps drive a turn. See plan.md divergence note.
     tokio::time::sleep(Duration::from_millis(50)).await;
 }
 
@@ -337,8 +349,6 @@ async fn then_gains_expanded_entry(world: &mut GapAnalysisWorld, _name: String) 
     expr = "the origin session history has no user entry containing the literal {string} token"
 )]
 async fn then_no_literal_token(world: &mut GapAnalysisWorld, token: String) {
-    // Wait a beat for the turn to fully settle before asserting absence.
-    tokio::time::sleep(Duration::from_millis(200)).await;
     let offending = world
         .tuiapp
         .core
@@ -363,8 +373,6 @@ async fn then_no_literal_token(world: &mut GapAnalysisWorld, token: String) {
 
 #[cucumber::then(expr = "the origin session history has no expanded {string} entry")]
 async fn then_no_expanded_entry(world: &mut GapAnalysisWorld, _name: String) {
-    // Wait a beat so a late enqueue (failure case) would be observable.
-    tokio::time::sleep(Duration::from_millis(200)).await;
     let entries = expanded_gap_entries(&world.tuiapp.core.state.read());
     if !entries.is_empty() {
         let dump = history_dump(world);
