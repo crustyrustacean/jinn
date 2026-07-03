@@ -1,0 +1,29 @@
+[package]
+name = "jinn-discord"
+version.workspace = true
+edition.workspace = true
+publish = false
+description = """
+Discord bot frontend for jinn.
+
+Drives a running jinn instance from Discord via the actor bus. Each session
+lives in a forum thread; `/new` runs a lifecycle setup and plain messages get
+the final assistant reply back. This crate owns the poise gateway task and
+slash-command handlers; the domain pieces (config, thread-map DAO, message
+splitter, bridge actor) live in `jinn-domain`'s `feat/discord`.
+"""
+
+[dependencies]
+jinn-domain = { workspace = true }
+
+# External deps
+serenity = { workspace = true }
+poise = { workspace = true }
+tokio = { workspace = true }
+tracing = { workspace = true }
+error-stack = { workspace = true }
+wherror = { workspace = true }
+derive_more = { workspace = true }
+
+[lints]
+workspace = true
