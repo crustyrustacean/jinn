@@ -20,9 +20,9 @@ pub use bridge_actor::{DiscordBridgeActor, DiscordBridgeActorDeps};
 pub use config::DiscordConfig;
 pub use message_split::split_message;
 pub use protocol::{BridgeEvent, ThreadId};
-pub use reply::{read_final_reply, FinalReply};
+pub use reply::{FinalReply, read_final_reply};
 pub use repo_basename::repo_basename;
-pub use route::{route_decision, RouteDecision};
+pub use route::{RouteDecision, route_decision};
 pub use thread_map::{DiscordThreadMap, DiscordThreadMapError, ThreadMapping};
 
 #[cfg(test)]
