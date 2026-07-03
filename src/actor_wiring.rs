@@ -94,7 +94,14 @@ impl ActorSystemBuilder {
         Self { args }
     }
     /// Spawn all actors via kameo, build the bus and bridge, and wait for readiness.
-    pub async fn build(self) -> (AppCore, Services, jinn_plugin::SyncPlugins) {
+    pub async fn build(
+        self,
+    ) -> (
+        AppCore,
+        Services,
+        jinn_plugin::SyncPlugins,
+        Option<tokio::sync::mpsc::Receiver<jinn_domain::feat::discord::BridgeEvent>>,
+    ) {
         let ActorSystemBuilderArgs {
             handle,
             llm_service,
@@ -1116,6 +1123,28 @@ impl ActorSystemBuilder {
         .spawn()
         .await;
 
+        // ── Discord bot bridge actor ───────────────────────────────────────
+        // Conditionally spawned when `[discord] enabled = true` in jinn.toml.
+        // The bridge forwards bus events (turn-finished, setup-completed) onto a
+        // bounded channel that the poise gateway task drains. The gateway itself
+        // is spawned AFTER build() returns in app.rs (so it never blocks readiness).
+        let discord_cfg = user_preferences_storage.read().discord.clone();
+        let discord_bridge_rx = if discord_cfg.enabled {
+            let (tx, rx) = tokio::sync::mpsc::channel(64);
+            let _discord_bridge = jinn_domain::feat::discord::DiscordBridgeActor::supervise(
+                &root,
+                jinn_domain::feat::discord::DiscordBridgeActorDeps {
+                    deps: actor_deps.clone(),
+                    tx,
+                },
+            )
+            .restart_policy(kameo::supervision::RestartPolicy::Never)
+            .spawn()
+            .await;
+            Some(rx)
+        } else {
+            None
+        };
         // Signal system readiness and trigger init chain.
         {
             let bus_ref = services.bus.actor_ref();
@@ -1156,7 +1185,7 @@ impl ActorSystemBuilder {
             bridge: services.bridge.clone(),
         };
 
-        (core, services, sync_plugins)
+        (core, services, sync_plugins, discord_bridge_rx)
     }
 }
 

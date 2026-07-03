@@ -1961,6 +1961,7 @@ dependencies = [
  "error-stack",
  "jiff",
  "jinn-cli",
+ "jinn-discord",
  "jinn-domain",
  "jinn-plugin",
  "jinn-tui",
