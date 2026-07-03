@@ -123,7 +123,7 @@ mod tests {
         // When running migrations.
         run_migrations(&pool).await.unwrap();
 
-        // Then the _migrations table has 21 entries.
+        // Then the _migrations table has 22 entries.
         let rows: Vec<(i32, String)> = pool
             .with_conn(|conn| {
                 let mut stmt =
@@ -138,7 +138,7 @@ mod tests {
             .await
             .unwrap();
 
-        assert_eq!(rows.len(), 21);
+        assert_eq!(rows.len(), 22);
         assert_eq!(rows[0].0, 0);
         assert_eq!(rows[0].1, "create_initial_schema");
         assert_eq!(rows[1].0, 1);
@@ -173,6 +173,8 @@ mod tests {
         assert_eq!(rows[19].1, "rewrite_metadata_blob_profile_model");
         assert_eq!(rows[20].0, 20);
         assert_eq!(rows[20].1, "drop_zombie_columns_backfill_metadata");
+        assert_eq!(rows[21].0, 21);
+        assert_eq!(rows[21].1, "add_discord_thread_table");
     }
 
     #[tokio::test]
@@ -194,15 +196,15 @@ mod tests {
             })
             .await
             .unwrap();
-        assert_eq!(count, 21);
+        assert_eq!(count, 22);
     }
 
     /// Verifies that each migration guard uses `<` not `<=`.
     ///
-    /// For each version N (0..=19), we build a database at exactly version N
+    /// For each version N (0..=20), we build a database at exactly version N
     /// by calling individual migration functions, then re-run `run_migrations`.
-    /// It must succeed (applying only v(N+1) through v20) and produce exactly
-    /// 21 migration rows.
+    /// It must succeed (applying only v(N+1) through v21) and produce exactly
+    /// 22 migration rows.
     ///
     /// If `current < N` were mutated to `current <= N`, vN would re-run when
     /// current == N. Most migrations would fail (duplicate table/column),
@@ -210,7 +212,7 @@ mod tests {
     /// causing the count assertion to fail.
     #[tokio::test]
     async fn migration_guards_do_not_reapply_completed_version() {
-        for target_version in 0..=19_i32 {
+        for target_version in 0..=20_i32 {
             let pool = apply_migrations_up_to(target_version).await;
 
             // Re-running should succeed - applying only versions > target_version.
@@ -218,7 +220,7 @@ mod tests {
                 panic!("re-run at target_version={target_version} should succeed: {e:?}")
             });
 
-            // Verify no duplicate rows: exactly 21 migration rows total.
+            // Verify no duplicate rows: exactly 22 migration rows total.
             let count: i64 = pool
                 .with_conn(|conn| {
                     conn.query_row("SELECT COUNT(*) AS count FROM _migrations", [], |r| {
@@ -229,8 +231,8 @@ mod tests {
                 .await
                 .unwrap();
             assert_eq!(
-                count, 21,
-                "at target_version={target_version}: expected 21 migration rows, no duplicates"
+                count, 22,
+                "at target_version={target_version}: expected 22 migration rows, no duplicates"
             );
         }
     }
@@ -263,6 +265,7 @@ mod tests {
         assert!(names.contains(&"session_history"));
         assert!(names.contains(&"sessions"));
         assert!(names.contains(&"token_ledger"));
+        assert!(names.contains(&"discord_thread"));
     }
 
     #[tokio::test]
