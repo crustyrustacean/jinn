@@ -36,7 +36,8 @@ pub async fn new(ctx: BotContext<'_>) -> Result<(), BotError> {
     // 2. Present numbered list.
     let mut list = String::from("Available projects:\n");
     for (i, p) in projects.iter().enumerate() {
-        list.push_str(&format!("{}. {}\n", i + 1, p.path.display()));
+        use std::fmt::Write as _;
+        let _ = writeln!(list, "{}. {}", i + 1, p.path.display());
     }
     list.push_str("\nReply with a number.");
     ctx.say(list).await?;
@@ -45,11 +46,7 @@ pub async fn new(ctx: BotContext<'_>) -> Result<(), BotError> {
     let channel = ctx.channel_id();
     let author = ctx.author().id;
     let sctx = ctx.serenity_context();
-    let pick = serenity::MessageCollector::new(sctx)
-        .channel_id(channel)
-        .author_id(author)
-        .timeout(Duration::from_secs(120))
-        .await;
+    let pick = collect_reply(sctx, channel, author).await;
     let Some(pick) = pick else {
         ctx.say("Timed out waiting for project selection.").await?;
         return Ok(());
@@ -62,15 +59,14 @@ pub async fn new(ctx: BotContext<'_>) -> Result<(), BotError> {
             return Ok(());
         }
     };
-    let chosen = &projects[idx];
+    let Some(chosen) = projects.get(idx) else {
+        ctx.say("Invalid selection. Run `/new` again.").await?;
+        return Ok(());
+    };
 
     // 4. Ask for branch name.
     ctx.say("Enter branch name:").await?;
-    let branch_msg = serenity::MessageCollector::new(sctx)
-        .channel_id(channel)
-        .author_id(author)
-        .timeout(Duration::from_secs(120))
-        .await;
+    let branch_msg = collect_reply(sctx, channel, author).await;
     let Some(branch_msg) = branch_msg else {
         ctx.say("Timed out waiting for branch name.").await?;
         return Ok(());
@@ -85,7 +81,8 @@ pub async fn new(ctx: BotContext<'_>) -> Result<(), BotError> {
     //    is required to use the bot — enforced by config validation, but we
     //    guard here too so a misconfigured instance fails gracefully.
     let Some(lifecycle) = data.config.lifecycle.clone() else {
-        ctx.say("No `lifecycle` configured under `[discord]` in jinn.toml.").await?;
+        ctx.say("No `lifecycle` configured under `[discord]` in jinn.toml.")
+            .await?;
         return Ok(());
     };
     let repo = repo_basename(&chosen.path.to_string_lossy()).to_owned();
@@ -113,11 +110,15 @@ pub async fn new(ctx: BotContext<'_>) -> Result<(), BotError> {
     let guild_id = ctx.guild_id().map(|g| g.get().to_string());
     let now = std::time::SystemTime::now()
         .duration_since(std::time::UNIX_EPOCH)
-        .map(|d| d.as_secs() as i64)
-        .unwrap_or(0);
+        .map_or(0, |d| d.as_secs() as i64);
     if let Err(e) = data
         .thread_map
-        .set(&thread_id, &new_session_id.to_string(), guild_id.as_deref(), now)
+        .set(
+            &thread_id,
+            &new_session_id.to_string(),
+            guild_id.as_deref(),
+            now,
+        )
         .await
     {
         tracing::warn!(error = ?e, "failed to record thread→session mapping");
@@ -130,4 +131,22 @@ pub async fn new(ctx: BotContext<'_>) -> Result<(), BotError> {
     ))
     .await?;
     Ok(())
+}
+
+/// Collect one message from the user who invoked the command, within a
+/// 2-minute window.
+#[expect(
+    clippy::duration_suboptimal_units,
+    reason = "from_mins is unstable; from_secs is the stable alternative"
+)]
+async fn collect_reply(
+    sctx: &serenity::Context,
+    channel: serenity::ChannelId,
+    author: serenity::UserId,
+) -> Option<serenity::Message> {
+    serenity::MessageCollector::new(sctx)
+        .channel_id(channel)
+        .author_id(author)
+        .timeout(Duration::from_secs(2 * 60))
+        .await
 }

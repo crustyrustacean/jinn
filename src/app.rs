@@ -260,7 +260,9 @@ impl App {
                         jinn_discord::gateway::BotData {
                             state: core.state.clone(),
                             bridge: core.bridge.clone(),
-                            thread_map: jinn_domain::feat::discord::DiscordThreadMap::new(session_pool.clone()),
+                            thread_map: jinn_domain::feat::discord::DiscordThreadMap::new(
+                                session_pool.clone(),
+                            ),
                             config: std::sync::Arc::new(
                                 user_preferences_storage.read().discord.clone(),
                             ),

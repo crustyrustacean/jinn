@@ -79,19 +79,20 @@ pub async fn build_tuiapp_in_temp(
 
     let handle = tokio::runtime::Handle::current();
 
-    let (core, services, sync_plugins, _discord_rx) = ActorSystemBuilder::new(ActorSystemBuilderArgs {
-        handle,
-        llm_service,
-        provider_registry,
-        api_keys: resolved_api_keys,
-        config_storage,
-        session_store,
-        user_preferences_storage,
-        app_state_storage,
-        paths,
-    })
-    .build()
-    .await;
+    let (core, services, sync_plugins, _discord_rx) =
+        ActorSystemBuilder::new(ActorSystemBuilderArgs {
+            handle,
+            llm_service,
+            provider_registry,
+            api_keys: resolved_api_keys,
+            config_storage,
+            session_store,
+            user_preferences_storage,
+            app_state_storage,
+            paths,
+        })
+        .build()
+        .await;
 
     launch_for_test(core, services, sync_plugins)
 }

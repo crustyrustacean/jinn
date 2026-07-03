@@ -11,12 +11,10 @@ use std::sync::Arc;
 
 use derive_more::Debug;
 use error_stack::Report;
-use jinn_domain::feat::chat_input::protocol::command::{
-    EnqueueUserMessage, SubmitSteeringMessage,
-};
+use jinn_domain::feat::chat_input::protocol::command::{EnqueueUserMessage, SubmitSteeringMessage};
 use jinn_domain::feat::discord::{
-    read_final_reply, route_decision, split_message, BridgeEvent, DiscordConfig,
-    DiscordThreadMap, FinalReply, RouteDecision,
+    BridgeEvent, DiscordConfig, DiscordThreadMap, FinalReply, RouteDecision, read_final_reply,
+    route_decision, split_message,
 };
 use jinn_domain::feat::session::chat_entry::ChatEntry;
 use jinn_domain::feat::session::protocol::session_load_requested::SessionLoadRequested;
@@ -75,8 +73,8 @@ pub async fn run(
         return Err(Report::new(SpawnError));
     }
 
-    let intents = serenity::GatewayIntents::non_privileged()
-        | serenity::GatewayIntents::MESSAGE_CONTENT;
+    let intents =
+        serenity::GatewayIntents::non_privileged() | serenity::GatewayIntents::MESSAGE_CONTENT;
 
     let drain_data = data.clone();
     let framework = poise::Framework::builder()
@@ -85,9 +83,7 @@ pub async fn run(
             // Plain-message handler: route an inbound Discord message to the
             // jinn session bound to its thread (resuming/un-archiving first),
             // then enqueue or steer depending on the current phase.
-            event_handler: |ctx, event, _framework, data| {
-                Box::pin(on_event(ctx, event, data))
-            },
+            event_handler: |ctx, event, _framework, data| Box::pin(on_event(ctx, event, data)),
             on_error: |error| {
                 Box::pin(async move {
                     tracing::error!(?error, "poise framework error");
@@ -184,7 +180,7 @@ async fn drain_loop(
 fn read_reply(data: &BotData, session_id: &jinn_domain::SessionId) -> Option<FinalReply> {
     let state = data.state.read();
     let session = state.session(session_id);
-    read_final_reply(&session.history())
+    read_final_reply(session.history())
 }
 
 /// Look up the Discord thread bound to a jinn session (reverse mapping).
@@ -265,21 +261,18 @@ async fn handle_inbound_message(
     data: &BotData,
 ) -> Result<(), BotError> {
     let thread_id = msg.channel_id.get().to_string();
-    let session_id = match data
+    let Some(session_id) = data
         .thread_map
         .get_session_by_thread(&thread_id)
         .await
         .map_err(|e| format!("thread map lookup: {e:?}"))?
-    {
-        Some(id) => id,
-        None => {
-            msg.reply(
-                ctx,
-                "No session bound to this thread — run `/new` to start one.",
-            )
-            .await?;
-            return Ok(());
-        }
+    else {
+        msg.reply(
+            ctx,
+            "No session bound to this thread — run `/new` to start one.",
+        )
+        .await?;
+        return Ok(());
     };
 
     let session_id: jinn_domain::SessionId = session_id.into();
