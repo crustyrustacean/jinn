@@ -178,7 +178,7 @@ daow = "0.1.0"
 rusqlite = { version = "0.40", features = ["bundled"] }
 
 # Discord bot
-serenity = { version = "0.12", default-features = false, features = ["client", "gateway", "rustls_backend", "model", "cache"] }
+serenity = { version = "0.12", default-features = false, features = ["client", "gateway", "rustls_backend", "model", "cache", "collector"] }
 poise = "0.6"
 # Testing (e2e)
 cucumber = "0.23"
