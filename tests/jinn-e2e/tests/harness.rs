@@ -79,7 +79,7 @@ pub async fn build_tuiapp_in_temp(
 
     let handle = tokio::runtime::Handle::current();
 
-    let (core, services, sync_plugins) = ActorSystemBuilder::new(ActorSystemBuilderArgs {
+    let (core, services, sync_plugins, _discord_rx) = ActorSystemBuilder::new(ActorSystemBuilderArgs {
         handle,
         llm_service,
         provider_registry,
