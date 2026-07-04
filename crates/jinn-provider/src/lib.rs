@@ -28,7 +28,7 @@ pub use fake::{FakeLlmServiceFactory, ScriptedResponse, TOOL_LOOP_TRIGGER};
 pub use llm_message::LlmMessage;
 pub use no_providers::{NO_PROVIDER_ID, NoProvidersAvailableFactory};
 pub use openai_compat::{OpenAiCompatibleFactory, OpenAiCompatibleService, ProviderConfig};
-pub use reasoning::{ReasoningConfig, ReasoningEffort};
+pub use reasoning::ReasoningEffort;
 pub use sample::SampleLlmServiceFactory;
 pub use service::{ChatStream, LlmService, LlmServiceError, LlmServiceFactory, ToolStream};
 pub use stream_event::{StopReason, StreamEvent, StreamUsage, UrlCitation};
