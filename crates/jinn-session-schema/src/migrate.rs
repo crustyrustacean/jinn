@@ -125,6 +125,10 @@ pub(crate) fn run_pending(
         migrate_v20(conn)?;
         record_version(conn, 20, "drop_zombie_columns_backfill_metadata")?;
     }
+    if current < 21 {
+        migrate_v21(conn)?;
+        record_version(conn, 21, "add_discord_thread_table")?;
+    }
     Ok(())
 }
 
@@ -822,6 +826,27 @@ fn rebuild_sessions_without_zombies(
     Ok(())
 }
 
+/// v21: Add the `discord_thread` mapping table.
+///
+/// The Discord bot frontend persists a 1:1 mapping between a Discord forum
+/// thread and a jinn session id, so a thread can resume its session across
+/// bot restarts (and auto-un-archive on inbound message). This table is
+/// owned entirely by the discord layer; its columns are independent of the
+/// session schema.
+pub fn migrate_v21(conn: &mut rusqlite::Connection) -> Result<(), Report<SchemaMigrationError>> {
+    conn.execute_batch(
+        "CREATE TABLE discord_thread (\
+         thread_id  TEXT PRIMARY KEY,\
+         session_id TEXT NOT NULL,\
+         guild_id   TEXT,\
+         created_at INTEGER NOT NULL)",
+    )
+    .change_context(SchemaMigrationError)
+    .attach("v21: create discord_thread mapping table")?;
+
+    Ok(())
+}
+
 /// A legacy `sessions` row whose `metadata` is NULL — the pre-v8 shape that
 /// the backfill reconstructs a [`crate::PersistableCoreV20`] blob from.
 struct LegacyRow {
@@ -998,6 +1023,10 @@ pub fn apply_migrations_inner(conn: &mut rusqlite::Connection, target: i32) {
         migrate_v20(conn).expect("v20");
         record_version(conn, 20, "drop_zombie_columns_backfill_metadata").expect("record v20");
     }
+    if target >= 21 {
+        migrate_v21(conn).expect("v21");
+        record_version(conn, 21, "add_discord_thread_table").expect("record v21");
+    }
 }
 
 /// Test-only: applies migrations up to (and including) `target` on a held
@@ -1023,6 +1052,6 @@ pub fn apply_up_to_no_fk(conn: &mut rusqlite::Connection, target: i32) {
 pub mod testing {
     pub use super::{
         apply_migrations_inner, bootstrap_tracking_table, migrate_v10, migrate_v15, migrate_v16,
-        migrate_v17, migrate_v18, migrate_v19, record_version,
+        migrate_v17, migrate_v18, migrate_v19, migrate_v21, record_version,
     };
 }

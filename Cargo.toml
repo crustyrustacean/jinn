@@ -31,6 +31,7 @@ path = "src/lib.rs"
 jinn-cli = { workspace = true }
 jinn-tui = { workspace = true }
 jinn-domain = { workspace = true }
+jinn-discord = { workspace = true }
 jinn-plugin = { workspace = true }
 
 jinn-web-fetch = { workspace = true, features = ["headless-chrome"] }
@@ -67,6 +68,7 @@ tokio = { workspace = true, features = ["full"] }
 
 # Internal
 jinn-domain = { path = "crates/jinn-domain" }
+jinn-discord = { path = "crates/jinn-discord" }
 jinn-common = { path = "crates/jinn-common" }
 jinn-core-types = { path = "crates/jinn-core-types" }
 jinn-session-schema = { path = "crates/jinn-session-schema" }
@@ -177,6 +179,9 @@ comfy-table = "7"
 daow = "0.1.0"
 rusqlite = { version = "0.40", features = ["bundled"] }
 
+# Discord bot
+serenity = { version = "0.12", default-features = false, features = ["client", "gateway", "rustls_backend", "model", "cache", "collector"] }
+poise = "0.6"
 # Testing (e2e)
 cucumber = "0.23"
 

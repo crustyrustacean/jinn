@@ -164,6 +164,9 @@ pub struct UserPreferences {
     /// Bash tool configuration.
     #[serde(default)]
     pub bash: BashConfig,
+    /// Discord bot configuration. Off by default.
+    #[serde(default)]
+    pub discord: crate::feat::discord::DiscordConfig,
     /// Default execution timeout (seconds) for all builtin tools (except
     /// `bash`, which keeps its own `bash.default_timeout_secs`). Acts as a
     /// safety ceiling so a hung tool never stalls the turn indefinitely.
@@ -226,6 +229,7 @@ impl Default for UserPreferences {
             minimap: MinimapConfig::default(),
             auto_prune: AutoPruneConfig::default(),
             bash: BashConfig::default(),
+            discord: crate::feat::discord::DiscordConfig::default(),
             tool_default_timeout_secs: default_tool_default_timeout_secs(),
             history_stall_timeout_secs: default_history_stall_timeout_secs(),
             stall_retry_max_retries: default_stall_retry_max_retries(),
@@ -601,6 +605,7 @@ mod tests {
             auto_prune: AutoPruneConfig::default(),
             bash: BashConfig::default(),
             projects: vec![],
+            discord: crate::feat::discord::DiscordConfig::default(),
             tool_default_timeout_secs: default_tool_default_timeout_secs(),
             history_stall_timeout_secs: default_history_stall_timeout_secs(),
             stall_retry_max_retries: default_stall_retry_max_retries(),
@@ -662,6 +667,7 @@ mod tests {
             auto_prune: AutoPruneConfig::default(),
             bash: BashConfig::default(),
             projects: vec![],
+            discord: crate::feat::discord::DiscordConfig::default(),
             tool_default_timeout_secs: default_tool_default_timeout_secs(),
             history_stall_timeout_secs: default_history_stall_timeout_secs(),
             stall_retry_max_retries: default_stall_retry_max_retries(),
@@ -696,6 +702,7 @@ mod tests {
             auto_prune: AutoPruneConfig::default(),
             bash: BashConfig::default(),
             projects: vec![],
+            discord: crate::feat::discord::DiscordConfig::default(),
             tool_default_timeout_secs: default_tool_default_timeout_secs(),
             history_stall_timeout_secs: default_history_stall_timeout_secs(),
             stall_retry_max_retries: default_stall_retry_max_retries(),
@@ -998,6 +1005,7 @@ mod tests {
             auto_prune: AutoPruneConfig::default(),
             bash: BashConfig::default(),
             projects: vec![],
+            discord: crate::feat::discord::DiscordConfig::default(),
             tool_default_timeout_secs: default_tool_default_timeout_secs(),
             history_stall_timeout_secs: default_history_stall_timeout_secs(),
             stall_retry_max_retries: default_stall_retry_max_retries(),

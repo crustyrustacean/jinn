@@ -160,6 +160,15 @@ impl SqliteSessionStore {
 
         Ok(Self { pool })
     }
+
+    /// Returns a handle to the underlying connection pool.
+    ///
+    /// Used by sibling subsystems that share the same `sessions.db` but own
+    /// their own tables (e.g. the Discord bot's `discord_thread` mapping).
+    #[must_use]
+    pub fn pool(&self) -> &Pool {
+        &self.pool
+    }
 }
 
 impl std::fmt::Debug for SqliteSessionStore {
