@@ -17,6 +17,8 @@ use jinn_domain::feat::discord::{
     route_decision, split_message,
 };
 use jinn_domain::feat::session::chat_entry::ChatEntry;
+use jinn_domain::feat::session::chat_session::ChatSessionState;
+use jinn_domain::feat::session::phase_machine::PhaseKind;
 use jinn_domain::feat::session::protocol::session_load_requested::SessionLoadRequested;
 use jinn_domain::{Bridge, State};
 use poise::serenity_prelude as serenity;
@@ -76,6 +78,16 @@ pub async fn run(
     let intents =
         serenity::GatewayIntents::non_privileged() | serenity::GatewayIntents::MESSAGE_CONTENT;
 
+    // Pre-parse the configured guild id so the setup callback can register
+    // slash commands to that guild (instant propagation) rather than globally
+    // (up to 1h). poise does not auto-register; without this /new is unreachable.
+    let guild_id = data
+        .config
+        .guild_id
+        .as_deref()
+        .and_then(|s| s.trim().parse::<u64>().ok())
+        .map(serenity::GuildId::new);
+
     let drain_data = data.clone();
     let framework = poise::Framework::builder()
         .options(poise::FrameworkOptions {
@@ -91,7 +103,7 @@ pub async fn run(
             },
             ..Default::default()
         })
-        .setup(move |ctx, _ready, _framework| {
+        .setup(move |ctx, _ready, framework| {
             let data = data.clone();
             Box::pin(async move {
                 // Spawn the bridge-event drain loop. It owns its own BotData clone
@@ -99,7 +111,17 @@ pub async fn run(
                 // without touching the command path.
                 let http = ctx.http.clone();
                 let drain_data = drain_data.clone();
-                tokio::spawn(drain_loop(drain_data, http, rx));
+                tokio::spawn(drain_loop(drain_data, http.clone(), rx));
+
+                // Register slash commands so /new is reachable in the client.
+                let commands = &framework.options().commands;
+                let register_result = match guild_id {
+                    Some(gid) => poise::builtins::register_in_guild(&http, commands, gid).await,
+                    None => poise::builtins::register_globally(&http, commands).await,
+                };
+                if let Err(e) = register_result {
+                    tracing::warn!(error = ?e, "failed to register slash commands");
+                }
                 Ok(data)
             })
         })
@@ -179,7 +201,10 @@ async fn drain_loop(
 /// Read the final assistant/error reply for a session from shared state.
 fn read_reply(data: &BotData, session_id: &jinn_domain::SessionId) -> Option<FinalReply> {
     let state = data.state.read();
-    let session = state.session(session_id);
+    // Fallible lookup: the session may have been concurrently closed/archived
+    // between the TurnFinished event and this read. Returning None makes the
+    // drain loop skip the reply rather than panic and tear down the bot.
+    let session = state.try_session(session_id)?;
     read_final_reply(session.history())
 }
 
@@ -288,7 +313,13 @@ async fn handle_inbound_message(
 
     let phase = {
         let state = data.state.read();
-        state.session(&session_id).phase()
+        // The SessionLoadRequested we just fired is async — the session may
+        // not be present in State yet. Default to Idle so the message
+        // enqueues normally; the session actor processes it once loaded. The
+        // next inbound message will route correctly if a turn is in flight.
+        state
+            .try_session(&session_id)
+            .map_or(PhaseKind::Idle, ChatSessionState::phase)
     };
 
     match route_decision(phase) {
