@@ -269,12 +269,12 @@ mod tests {
         // Given no session effort but a global default of High.
         let services = TestServices::builder().build();
         {
-            let mut prefs = services.user_preferences_storage.read();
-            prefs.reasoning.default_effort = Some(crate::ReasoningEffort::High);
+            let mut app_state = services.app_state_storage.read();
+            app_state.reasoning_effort = Some(crate::ReasoningEffort::High);
             services
-                .user_preferences_storage
-                .save(&prefs)
-                .expect("save prefs");
+                .app_state_storage
+                .save(&app_state)
+                .expect("save app state");
         }
         let mut state = AppState::default();
 

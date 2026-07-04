@@ -111,8 +111,20 @@ impl DiscordBridgeActor {
     /// bus dispatch loop we drop with a warning. The next `Idle`/setup event
     /// will still arrive and trigger a fresh read from `State`.
     fn forward(&self, event: BridgeEvent) {
+        tracing::info!(event = %event_discriminant(&event), "discord bridge forwarding");
         if self.tx.try_send(event).is_err() {
             tracing::warn!("discord bridge channel full — event dropped");
         }
+    }
+}
+
+/// Short label identifying a [`BridgeEvent`] variant for log lines.
+///
+/// The events themselves may carry large payloads (session ids are fine,
+/// but keeping a single helper avoids per-arm `Display` requirements).
+fn event_discriminant(event: &BridgeEvent) -> &'static str {
+    match event {
+        BridgeEvent::SetupCompleted { .. } => "SetupCompleted",
+        BridgeEvent::TurnFinished { .. } => "TurnFinished",
     }
 }
