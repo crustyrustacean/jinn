@@ -99,7 +99,7 @@ pub fn handle_session_close(state: &mut AppState) -> crate::protocol::IntentResu
 
             // Seed effort from the global default, mirroring model selection:
             // the new session owns its own copy from creation onward.
-            let reasoning_effort = state.frontend.preferences.reasoning.default_effort;
+            let reasoning_effort = state.frontend.app_state.reasoning_effort;
 
             let mut profile =
                 crate::feat::session::profile::SessionProfile::from_model_selection(model);

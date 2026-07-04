@@ -246,6 +246,7 @@ mod tests {
             theme_name: None,
             persona_name: None,
             sidebar_width: Some(40),
+            reasoning_effort: None,
         };
 
         // When saving and reloading.
@@ -292,6 +293,7 @@ mod tests {
             theme_name: Some("gruvbox-dark".to_owned()),
             persona_name: None,
             sidebar_width: None,
+            reasoning_effort: None,
         };
 
         // When saving and reloading.
@@ -316,6 +318,7 @@ mod tests {
             theme_name: None,
             persona_name: None,
             sidebar_width: None,
+            reasoning_effort: None,
         };
         service.save(&state).expect("save");
 
@@ -341,6 +344,7 @@ mod tests {
             theme_name: None,
             persona_name: None,
             sidebar_width: None,
+            reasoning_effort: None,
         };
         service.save(&state).expect("save");
 
@@ -350,6 +354,7 @@ mod tests {
             theme_name: None,
             persona_name: None,
             sidebar_width: None,
+            reasoning_effort: None,
         };
         service.save(&updated).expect("save updated");
 
@@ -371,6 +376,7 @@ mod tests {
             theme_name: None,
             persona_name: None,
             sidebar_width: None,
+            reasoning_effort: None,
         };
         service.save(&state).expect("save");
 

@@ -247,7 +247,7 @@ mod tests {
     use crate::feat::preferences_actor::RequestRetryConfig;
     use crate::feat::preferences_actor::user_preferences::{
         AutoPruneConfig, BashConfig, CompactionConfig, CwdSelectorConfig, MinimapConfig,
-        OpenrouterWebSearchConfig, ReasoningConfig, WebFetchConfig,
+        OpenrouterWebSearchConfig, WebFetchConfig,
     };
     use crate::feat::project::ProjectConfig;
 
@@ -282,7 +282,6 @@ mod tests {
             auto_prune: AutoPruneConfig::default(),
             bash: BashConfig::default(),
             projects: vec![],
-            reasoning: ReasoningConfig::default(),
             tool_default_timeout_secs: default_tool_default_timeout_secs(),
             history_stall_timeout_secs: default_history_stall_timeout_secs(),
             stall_retry_max_retries: default_stall_retry_max_retries(),
@@ -298,7 +297,6 @@ mod tests {
         assert_eq!(reloaded.tool_entry_max_lines, Some(42));
     }
 
-    #[rstest::rstest]
     #[rstest::rstest]
     fn filesystem_load_returns_default_when_missing() {
         // Given a temp directory with no file.
@@ -345,7 +343,6 @@ mod tests {
             projects: vec![ProjectConfig {
                 path: PathBuf::from("/tmp/proj-a"),
             }],
-            reasoning: ReasoningConfig::default(),
             tool_default_timeout_secs: default_tool_default_timeout_secs(),
             history_stall_timeout_secs: default_history_stall_timeout_secs(),
             stall_retry_max_retries: default_stall_retry_max_retries(),
@@ -387,7 +384,6 @@ mod tests {
             auto_prune: AutoPruneConfig::default(),
             bash: BashConfig::default(),
             projects: vec![],
-            reasoning: ReasoningConfig::default(),
             tool_default_timeout_secs: default_tool_default_timeout_secs(),
             history_stall_timeout_secs: default_history_stall_timeout_secs(),
             stall_retry_max_retries: default_stall_retry_max_retries(),
@@ -425,7 +421,6 @@ mod tests {
             auto_prune: AutoPruneConfig::default(),
             bash: BashConfig::default(),
             projects: vec![],
-            reasoning: ReasoningConfig::default(),
             tool_default_timeout_secs: default_tool_default_timeout_secs(),
             history_stall_timeout_secs: default_history_stall_timeout_secs(),
             stall_retry_max_retries: default_stall_retry_max_retries(),
@@ -450,7 +445,6 @@ mod tests {
             auto_prune: AutoPruneConfig::default(),
             bash: BashConfig::default(),
             projects: vec![],
-            reasoning: ReasoningConfig::default(),
             tool_default_timeout_secs: default_tool_default_timeout_secs(),
             history_stall_timeout_secs: default_history_stall_timeout_secs(),
             stall_retry_max_retries: default_stall_retry_max_retries(),
@@ -484,7 +478,6 @@ mod tests {
             auto_prune: AutoPruneConfig::default(),
             bash: BashConfig::default(),
             projects: vec![],
-            reasoning: ReasoningConfig::default(),
             tool_default_timeout_secs: default_tool_default_timeout_secs(),
             history_stall_timeout_secs: default_history_stall_timeout_secs(),
             stall_retry_max_retries: default_stall_retry_max_retries(),
