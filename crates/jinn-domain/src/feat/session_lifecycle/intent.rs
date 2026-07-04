@@ -101,7 +101,7 @@ pub fn handle_session_lifecycle_setup(
         .as_ref()
         .map_or_else(|| "coding-assistant".to_owned(), |p| p.name.clone());
 
-    let reasoning_effort = state.frontend.preferences.reasoning.default_effort;
+    let reasoning_effort = state.frontend.app_state.reasoning_effort;
 
     let mut new_session = ChatSessionState::new_with_profile(SessionProfile::new(
         model,
@@ -1118,7 +1118,7 @@ mod tests {
     fn lifecycle_setup_seeds_reasoning_effort_from_global_default() {
         // Given a global default effort of High.
         let mut state = AppState::default();
-        state.frontend.preferences.reasoning.default_effort = Some(crate::ReasoningEffort::High);
+        state.frontend.app_state.reasoning_effort = Some(crate::ReasoningEffort::High);
 
         // When creating a new session via lifecycle setup.
         let _result = handle_session_lifecycle_setup(&mut state, "", &[], None);
@@ -1135,7 +1135,7 @@ mod tests {
     fn lifecycle_setup_seeds_none_reasoning_effort_when_global_unset() {
         // Given no global default effort.
         let mut state = AppState::default();
-        state.frontend.preferences.reasoning.default_effort = None;
+        state.frontend.app_state.reasoning_effort = None;
 
         // When creating a new session via lifecycle setup.
         let _result = handle_session_lifecycle_setup(&mut state, "", &[], None);

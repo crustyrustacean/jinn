@@ -23,9 +23,6 @@ pub enum PreferenceUpdate {
     AddProject(PathBuf),
     /// Remove a project directory from the curated list by path. No-op if absent.
     RemoveProject(PathBuf),
-    /// Set the global default reasoning effort.
-    /// `None` means "let the provider decide".
-    SetDefaultReasoningEffort(Option<crate::ReasoningEffort>),
 }
 
 impl PreferenceUpdate {
@@ -43,9 +40,6 @@ impl PreferenceUpdate {
             }
             Self::RemoveProject(path) => {
                 prefs.projects.retain(|c| &c.path != path);
-            }
-            Self::SetDefaultReasoningEffort(v) => {
-                prefs.reasoning.default_effort.clone_from(v);
             }
         }
     }
@@ -185,34 +179,5 @@ mod tests {
 
         // Then the existing project is retained unchanged.
         assert_eq!(prefs.projects.len(), 1);
-    }
-
-    #[rstest::rstest]
-    fn set_default_reasoning_effort_some_applies_to_preferences() {
-        // Given default preferences (no reasoning effort set).
-        let mut prefs = UserPreferences::default();
-
-        // When applying SetDefaultReasoningEffort with a value.
-        PreferenceUpdate::SetDefaultReasoningEffort(Some(crate::ReasoningEffort::High))
-            .apply(&mut prefs);
-
-        // Then the global default effort is set to High.
-        assert_eq!(
-            prefs.reasoning.default_effort,
-            Some(crate::ReasoningEffort::High)
-        );
-    }
-
-    #[rstest::rstest]
-    fn set_default_reasoning_effort_none_clears_existing() {
-        // Given preferences with an existing global default effort.
-        let mut prefs = UserPreferences::default();
-        prefs.reasoning.default_effort = Some(crate::ReasoningEffort::High);
-
-        // When applying SetDefaultReasoningEffort(None).
-        PreferenceUpdate::SetDefaultReasoningEffort(None).apply(&mut prefs);
-
-        // Then the global default effort is cleared.
-        assert!(prefs.reasoning.default_effort.is_none());
     }
 }
