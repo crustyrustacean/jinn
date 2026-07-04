@@ -2,6 +2,8 @@
 
 use serde::{Deserialize, Serialize};
 
+use crate::ReasoningEffort;
+
 use crate::feat::preferences_actor::app_state_file::AppStateFile;
 use crate::feat::session::model_selection::ModelSelection;
 
@@ -18,6 +20,8 @@ pub enum AppStateUpdate {
     SetPersona(Option<String>),
     /// Set the sidebar width.
     SetSidebarWidth(Option<u16>),
+    /// Set the last-selected reasoning effort.
+    SetReasoningEffort(Option<ReasoningEffort>),
 }
 
 impl AppStateUpdate {
@@ -29,6 +33,9 @@ impl AppStateUpdate {
             Self::SetPersona(v) => v.clone_into(&mut state.persona_name),
             Self::SetSidebarWidth(v) => {
                 state.sidebar_width = *v;
+            }
+            Self::SetReasoningEffort(v) => {
+                state.reasoning_effort = *v;
             }
         }
     }
@@ -125,7 +132,33 @@ mod tests {
         // When applying SetPersona with a name.
         AppStateUpdate::SetPersona(Some("default".to_owned())).apply(&mut state);
 
-        // Then persona_name is set.
         assert_eq!(state.persona_name.as_deref(), Some("default"));
+    }
+
+    #[rstest::rstest]
+    fn set_reasoning_effort_some_applies_to_state() {
+        // Given default app-state.
+        let mut state = AppStateFile::default();
+
+        // When applying SetReasoningEffort with a value.
+        AppStateUpdate::SetReasoningEffort(Some(crate::ReasoningEffort::High)).apply(&mut state);
+
+        // Then reasoning_effort is set.
+        assert_eq!(state.reasoning_effort, Some(crate::ReasoningEffort::High));
+    }
+
+    #[rstest::rstest]
+    fn set_reasoning_effort_none_clears_existing() {
+        // Given app-state with an existing reasoning effort.
+        let mut state = AppStateFile {
+            reasoning_effort: Some(crate::ReasoningEffort::High),
+            ..AppStateFile::default()
+        };
+
+        // When applying SetReasoningEffort(None).
+        AppStateUpdate::SetReasoningEffort(None).apply(&mut state);
+
+        // Then reasoning_effort is cleared.
+        assert!(state.reasoning_effort.is_none());
     }
 }
