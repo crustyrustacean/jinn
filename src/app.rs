@@ -153,14 +153,16 @@ impl App {
 
         // Create the session store - uses --db-path if provided, otherwise
         // the platform default.
-        let session_store = {
+        let (session_store, session_pool) = {
             let store = self.runtime.block_on(async {
                 match cli.db_path_opt() {
                     Some(path) => SqliteSessionStore::open_or_create(path).await,
                     None => SqliteSessionStore::new().await,
                 }
             });
-            SessionStoreService::new(Arc::new(store.change_context(AppError)?))
+            let store = store.change_context(AppError)?;
+            let pool = store.pool().clone();
+            (SessionStoreService::new(Arc::new(store)), pool)
         };
 
         // Dispatch `config` subcommands BEFORE the early preferences parse.
@@ -235,7 +237,7 @@ impl App {
                 return Ok(());
             }
             Commands::Tui => {
-                let (core, services, _plugins) = self.runtime.block_on(async {
+                let (core, services, _plugins, discord_rx) = self.runtime.block_on(async {
                     actor_wiring::ActorSystemBuilder::new(actor_wiring::ActorSystemBuilderArgs {
                         handle: self.handle(),
                         llm_service: llm_service.clone(),
@@ -250,6 +252,29 @@ impl App {
                     .build()
                     .await
                 });
+
+                // Spawn the Discord bot gateway task when enabled. Runs detached
+                // alongside the TUI; drives the same actor system over the bus.
+                if let Some(rx) = discord_rx {
+                    self.handle().spawn(jinn_discord::gateway::run(
+                        jinn_discord::gateway::BotData {
+                            state: core.state.clone(),
+                            bridge: core.bridge.clone(),
+                            thread_map: jinn_domain::feat::discord::DiscordThreadMap::new(
+                                session_pool.clone(),
+                            ),
+                            config: std::sync::Arc::new(
+                                user_preferences_storage.read().discord.clone(),
+                            ),
+                        },
+                        std::env::var("DISCORD_BOT_TOKEN")
+                            .ok()
+                            .or_else(|| user_preferences_storage.read().discord.bot_token.clone())
+                            .unwrap_or_default(),
+                        rx,
+                    ));
+                }
+
                 let app = jinn_tui::launch(core, services, _plugins).change_context(AppError)?;
                 let runner = Runner::Tui(Box::new(app));
                 self.run_and_shutdown(runner, &session_store)?;
@@ -257,7 +282,7 @@ impl App {
             #[cfg(debug_assertions)]
             Commands::Headless { command, .. } => {
                 let store_for_shutdown = session_store.clone();
-                let (core, _services, _plugins) = self.runtime.block_on(async {
+                let (core, _services, _plugins, _discord_rx) = self.runtime.block_on(async {
                     actor_wiring::ActorSystemBuilder::new(actor_wiring::ActorSystemBuilderArgs {
                         handle: self.handle(),
                         llm_service: llm_service.clone(),
