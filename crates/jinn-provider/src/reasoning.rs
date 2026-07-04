@@ -66,19 +66,6 @@ impl ReasoningEffort {
     }
 }
 
-/// Global reasoning preference persisted in `jinn.toml`.
-///
-/// `default_effort: None` means "don't send an effort field; let the provider
-/// decide" — for OpenRouter this still requests reasoning tokens via
-/// `{ "enabled": true }` to preserve thinking-token capture.
-#[derive(Debug, Clone, Default, PartialEq, Eq, Serialize, Deserialize)]
-pub struct ReasoningConfig {
-    /// The effort level applied to new sessions that don't override it.
-    /// `None` (the default) means "inherit the provider default".
-    #[serde(default)]
-    pub default_effort: Option<ReasoningEffort>,
-}
-
 #[cfg(test)]
 mod tests {
     #![allow(
@@ -152,41 +139,5 @@ mod tests {
         // When calling as_str().
         // Then it returns the same string serde would emit.
         assert_eq!(effort.as_str(), expected);
-    }
-
-    #[test]
-    fn reasoning_config_default_has_no_default_effort() {
-        // Given a default ReasoningConfig.
-        // When inspecting it.
-        // Then default_effort is None.
-        assert_eq!(ReasoningConfig::default().default_effort, None);
-    }
-
-    #[test]
-    fn reasoning_config_with_effort_roundtrips() {
-        // Given a config with a default effort.
-        let config = ReasoningConfig {
-            default_effort: Some(ReasoningEffort::High),
-        };
-
-        // When roundtripping through JSON.
-        let restored: ReasoningConfig =
-            serde_json::from_str(&serde_json::to_string(&config).expect("serialize"))
-                .expect("deserialize");
-
-        // Then the default effort is preserved.
-        assert_eq!(restored.default_effort, Some(ReasoningEffort::High));
-    }
-
-    #[test]
-    fn reasoning_config_without_default_effort_field_deserializes_to_none() {
-        // Given a JSON object with no default_effort field (forward-compat).
-        let json = "{}";
-
-        // When deserializing.
-        let config: ReasoningConfig = serde_json::from_str(json).expect("deserialize");
-
-        // Then default_effort is None.
-        assert_eq!(config.default_effort, None);
     }
 }
