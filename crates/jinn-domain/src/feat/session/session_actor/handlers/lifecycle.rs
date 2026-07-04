@@ -1029,10 +1029,9 @@ impl SessionPersistenceActor {
         );
 
         let app_state = self.services.app_state_storage.read();
-        let prefs = self.services.user_preferences_storage.read();
         let fresh_session = {
             let model = app_state.last_model.unwrap_or_default();
-            let reasoning_effort = prefs.reasoning.default_effort;
+            let reasoning_effort = app_state.reasoning_effort;
 
             let mut profile =
                 crate::feat::session::profile::SessionProfile::from_model_selection(model);
@@ -1734,12 +1733,12 @@ mod tests {
         // Given a global default effort of High (saved to the preferences store).
         let (actor, _audit) = test_actor_recording().await;
         {
-            let mut prefs = actor.services.user_preferences_storage.read();
-            prefs.reasoning.default_effort = Some(crate::ReasoningEffort::High);
+            let mut app_state = actor.services.app_state_storage.read();
+            app_state.reasoning_effort = Some(crate::ReasoningEffort::High);
             actor
                 .services
-                .user_preferences_storage
-                .save(&prefs)
+                .app_state_storage
+                .save(&app_state)
                 .expect("save global default");
         }
         let target_id = actor.state.read().session.active_session_id().clone();

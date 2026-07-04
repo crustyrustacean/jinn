@@ -50,6 +50,12 @@ pub struct AppStateFile {
     /// Sidebar width in columns. `None` means use the built-in default (30 columns).
     #[serde(default)]
     pub sidebar_width: Option<u16>,
+    /// The last-selected reasoning effort, mirrored from the picker.
+    ///
+    /// Seeds new sessions at creation; each session then owns its own
+    /// `profile.reasoning_effort`. `None` means "let the provider decide".
+    #[serde(default)]
+    pub reasoning_effort: Option<crate::ReasoningEffort>,
 }
 
 /// Loads app state from a specific path.
@@ -132,6 +138,7 @@ mod tests {
         assert!(state.theme_name.is_none());
         assert!(state.persona_name.is_none());
         assert!(state.sidebar_width.is_none());
+        assert!(state.reasoning_effort.is_none());
     }
 
     #[rstest::rstest]
@@ -142,6 +149,7 @@ mod tests {
             theme_name: Some("gruvbox-dark".to_owned()),
             persona_name: Some("coder".to_owned()),
             sidebar_width: Some(40),
+            reasoning_effort: Some(crate::ReasoningEffort::High),
         };
 
         // When serializing and deserializing.
@@ -220,7 +228,28 @@ theme_name = "gruvbox-dark"
             theme_name: Some("gruvbox-dark".to_owned()),
             persona_name: None,
             sidebar_width: None,
+            reasoning_effort: None,
         };
         assert_eq!(state, expected);
+    }
+
+    #[rstest::rstest]
+    fn legacy_json_without_reasoning_effort_deserializes_to_none() {
+        // Given a state file from an older version that lacks reasoning_effort.
+        let dir = TempDir::new().expect("temp dir");
+        let path = dir.path().join("state.toml");
+        std::fs::write(
+            &path,
+            r##"last_model = "ollama/llama3"
+theme_name = "gruvbox-dark"
+"##,
+        )
+        .expect("write");
+
+        // When loading.
+        let state = load_app_state_from(&path).expect("load");
+
+        // Then reasoning_effort is None (provider decides).
+        assert!(state.reasoning_effort.is_none());
     }
 }

@@ -722,7 +722,7 @@ fn close_last_session_seeds_new_session_reasoning_effort_from_global() {
     // Given a single session with a global default effort of High.
     let mut state = AppState::default();
     state.frontend.scope_stack.push(FocusScope::SidebarSessions);
-    state.frontend.preferences.reasoning.default_effort = Some(crate::ReasoningEffort::High);
+    state.frontend.app_state.reasoning_effort = Some(crate::ReasoningEffort::High);
     state.frontend.sessions_section.selected_index = Some(0);
 
     // When closing the last session (forces a replacement).

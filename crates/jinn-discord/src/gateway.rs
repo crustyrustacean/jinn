@@ -9,16 +9,15 @@
 
 use std::sync::Arc;
 
+use crate::session_route::{InboundOutcome, classify_inbound};
 use derive_more::Debug;
 use error_stack::Report;
 use jinn_domain::feat::chat_input::protocol::command::{EnqueueUserMessage, SubmitSteeringMessage};
 use jinn_domain::feat::discord::{
-    BridgeEvent, DiscordConfig, DiscordThreadMap, FinalReply, RouteDecision, read_final_reply,
-    route_decision, split_message,
+    BridgeEvent, DiscordConfig, DiscordThreadMap, FinalReply, read_final_reply, split_message,
 };
 use jinn_domain::feat::session::chat_entry::ChatEntry;
 use jinn_domain::feat::session::chat_session::ChatSessionState;
-use jinn_domain::feat::session::phase_machine::PhaseKind;
 use jinn_domain::feat::session::protocol::session_load_requested::SessionLoadRequested;
 use jinn_domain::{Bridge, State};
 use poise::serenity_prelude as serenity;
@@ -177,20 +176,32 @@ async fn drain_loop(
             },
             BridgeEvent::TurnFinished { session_id } => {
                 match resolve_thread(&data, &session_id).await {
-                    Ok(Some(channel_id)) => match read_reply(&data, &session_id) {
-                        Some(reply) => {
-                            if let Err(e) = post_reply(&http, channel_id, &reply).await {
-                                tracing::warn!(error = ?e, "failed to post final reply");
+                    Ok(Some(channel_id)) => {
+                        let reply = read_reply(&data, &session_id);
+                        tracing::info!(
+                            %session_id,
+                            reply_found = reply.is_some(),
+                            "drain: TurnFinished"
+                        );
+                        match reply {
+                            Some(reply) => {
+                                if let Err(e) = post_reply(&http, channel_id, &reply).await {
+                                    tracing::warn!(error = ?e, "failed to post final reply");
+                                }
+                            }
+                            None => {
+                                tracing::debug!(%session_id, "turn finished but no final reply found");
                             }
                         }
-                        None => {
-                            tracing::debug!(%session_id, "turn finished but no final reply found");
-                        }
-                    },
+                    }
                     Ok(None) => {
+                        tracing::info!(%session_id, reply_found = false, "drain: TurnFinished (no thread bound)");
                         tracing::debug!(%session_id, "no thread bound to session; dropping reply");
                     }
-                    Err(e) => tracing::warn!(error = %e, "thread lookup failed for final reply"),
+                    Err(e) => {
+                        tracing::info!(%session_id, reply_found = false, "drain: TurnFinished (thread lookup failed)");
+                        tracing::warn!(error = %e, "thread lookup failed for final reply");
+                    }
                 }
             }
         }
@@ -275,11 +286,19 @@ async fn on_event(
 
 /// Route an inbound Discord message to the jinn session bound to its channel.
 ///
-/// If a session is bound:
-/// 1. Fire `SessionLoadRequested` to (re-)load + un-archive it.
-/// 2. Read the session's phase, route to enqueue (Idle) or steer (mid-turn).
+/// The routing decision is delegated to [`classify_inbound`] so it is unit-
+/// testable without Discord types. This function is the thin adapter that maps
+/// the decision to bus publishes and Discord replies.
 ///
-/// If no session is bound, reply with a hint to run `/new`.
+/// Decision summary:
+/// - No thread→session mapping → silent no-op (no reply, no publish). `/new`
+///   is the only entry point, and the wizard reads its replies from its own
+///   `MessageCollector`, so silence here avoids racing the wizard.
+/// - Bound + session present → enqueue (idle) or steer (mid-turn) immediately.
+/// - Bound + session missing → publish `SessionLoadRequested` and ask the user
+///   to resend. We never enqueue against a missing session: the enqueue
+///   handler's `session_mut_or_create` would create a throwaway that the
+///   subsequent load overwrites, dropping the message.
 async fn handle_inbound_message(
     ctx: &serenity::Context,
     msg: &serenity::Message,
@@ -292,53 +311,54 @@ async fn handle_inbound_message(
         .await
         .map_err(|e| format!("thread map lookup: {e:?}"))?
     else {
-        msg.reply(
-            ctx,
-            "No session bound to this thread — run `/new` to start one.",
-        )
-        .await?;
+        // Unbound channel: silent no-op. See `classify_inbound::UnboundNoOp`.
         return Ok(());
     };
 
     let session_id: jinn_domain::SessionId = session_id.into();
 
-    // (Re-)load + un-archive the session on every message. Cheap no-op if
-    // already loaded; restores archived sessions transparently.
-    publish(
-        &data.bridge,
-        SessionLoadRequested {
-            session_id: session_id.clone(),
-        },
-    );
-
+    // Read the phase under a short-lived read lock, then drop the lock before
+    // any publish. Holding the lock across a `Bridge::send` can deadlock if the
+    // bus dispatch path re-enters `State`.
     let phase = {
         let state = data.state.read();
-        // The SessionLoadRequested we just fired is async — the session may
-        // not be present in State yet. Default to Idle so the message
-        // enqueues normally; the session actor processes it once loaded. The
-        // next inbound message will route correctly if a turn is in flight.
-        state
-            .try_session(&session_id)
-            .map_or(PhaseKind::Idle, ChatSessionState::phase)
+        state.try_session(&session_id).map(ChatSessionState::phase)
     };
 
-    match route_decision(phase) {
-        RouteDecision::Enqueue => publish(
-            &data.bridge,
-            EnqueueUserMessage {
-                session_id: session_id.clone(),
-                entry: ChatEntry::user(msg.content.clone()),
-            },
-        ),
-        RouteDecision::Steer => publish(
-            &data.bridge,
-            SubmitSteeringMessage {
-                session_id: session_id.clone(),
-                text: msg.content.clone(),
-            },
-        ),
+    match classify_inbound(true, phase) {
+        InboundOutcome::UnboundNoOp => Ok(()),
+        InboundOutcome::Enqueue => {
+            publish(
+                &data.bridge,
+                EnqueueUserMessage {
+                    session_id: session_id.clone(),
+                    entry: ChatEntry::user(msg.content.clone()),
+                },
+            );
+            Ok(())
+        }
+        InboundOutcome::Steer => {
+            publish(
+                &data.bridge,
+                SubmitSteeringMessage {
+                    session_id: session_id.clone(),
+                    text: msg.content.clone(),
+                },
+            );
+            Ok(())
+        }
+        InboundOutcome::LoadMissing => {
+            publish(
+                &data.bridge,
+                SessionLoadRequested {
+                    session_id: session_id.clone(),
+                },
+            );
+            msg.reply(ctx, "Session restoring — please resend your message.")
+                .await?;
+            Ok(())
+        }
     }
-    Ok(())
 }
 
 /// Publish a typed bus message via a bridge closure.

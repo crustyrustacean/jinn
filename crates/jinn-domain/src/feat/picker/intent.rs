@@ -452,8 +452,8 @@ fn confirm_persona(state: &mut AppState) -> IntentResult {
 ///
 /// Dual-write mirroring [`confirm_persona`]: sets the active session's
 /// `reasoning_effort` override in-memory, persists it immediately via
-/// [`MarkSessionInteracted`], and updates the global default via
-/// [`UpdatePreferences`] so new sessions inherit the choice.
+/// [`MarkSessionInteracted`], and updates the last-used seed via
+/// [`UpdateAppState`] so new sessions inherit the choice.
 fn confirm_reasoning_effort(state: &mut AppState) -> IntentResult {
     let Some(entry) = state.frontend.reasoning_effort_picker().selected_item() else {
         return IntentResult::empty();
@@ -467,8 +467,8 @@ fn confirm_reasoning_effort(state: &mut AppState) -> IntentResult {
 
     IntentResult::empty()
         .message(MarkSessionInteracted { session_id })
-        .message(UpdatePreferences {
-            updates: vec![PreferenceUpdate::SetDefaultReasoningEffort(Some(effort))],
+        .message(UpdateAppState {
+            updates: vec![AppStateUpdate::SetReasoningEffort(Some(effort))],
         })
 }
 
@@ -1665,7 +1665,7 @@ mod tests {
             result
                 .message_names
                 .iter()
-                .any(|n| n.ends_with("UpdatePreferences")),
+                .any(|n| n.ends_with("UpdateAppState")),
             "confirm should still seed the global for future sessions"
         );
         // But session B's resolved effort is unchanged — the global no longer leaks.
@@ -1755,7 +1755,7 @@ mod tests {
     }
 
     #[rstest::rstest]
-    fn confirm_reasoning_effort_emits_update_preferences() {
+    fn confirm_reasoning_effort_emits_update_app_state() {
         // If the global default write were never emitted, new sessions would
         // not inherit the chosen effort.
         use crate::feat::reasoning::{ReasoningEffort, ReasoningEffortEntry};
@@ -1782,13 +1782,21 @@ mod tests {
         // When confirming.
         let result = confirm_reasoning_effort(&mut state);
 
-        // Then an UpdatePreferences message is emitted (global default write).
+        // Then an UpdateAppState message is emitted (global seed write).
         assert!(
             result
                 .message_names
                 .iter()
+                .any(|n| n.ends_with("UpdateAppState")),
+            "confirm should emit UpdateAppState to persist the global seed"
+        );
+        // And NOT UpdatePreferences (old path, now removed).
+        assert!(
+            !result
+                .message_names
+                .iter()
                 .any(|n| n.ends_with("UpdatePreferences")),
-            "confirm should emit UpdatePreferences to persist the global default"
+            "confirm should no longer emit UpdatePreferences"
         );
     }
 

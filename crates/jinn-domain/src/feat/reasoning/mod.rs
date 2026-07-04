@@ -1,20 +1,20 @@
 //! Reasoning effort — how hard a reasoning-capable model thinks before answering.
 //!
-//! This module re-exports the [`ReasoningEffort`] / [`ReasoningConfig`] types
+//! This module re-exports the [`ReasoningEffort`] type
 //! (defined in `jinn-provider`, the lowest crate in the dependency chain) and
 //! provides [`resolve_effort`], which surfaces a session's own effort.
 //!
-//! Effort is **session-owned**, mirroring model and persona selection: the global
-//! `[reasoning] default_effort` from `jinn.toml`/preferences is consulted **only at
-//! session creation** to seed each session's `profile.reasoning_effort`. After
-//! that, the session's own value is the sole source of truth at request and
-//! render time — it is never re-resolved against the live global (which would
-//! leak one session's picker choice into every other override-free session).
+//! Effort is **session-owned**, mirroring model and persona selection: the last-used
+//! `reasoning_effort` from `state.toml` is consulted **only at session creation** to
+//! seed each session's `profile.reasoning_effort`. After that, the session's own value
+//! is the sole source of truth at request and render time — it is never re-resolved
+//! against the live global (which would leak one session's picker choice into every
+//! other override-free session).
 //!
 //! The types live in `jinn-provider` so the OpenAI-compatible request builder
 //! can emit them without `jinn-domain` reaching down into provider internals.
 
-pub use jinn_provider::{ReasoningConfig, ReasoningEffort};
+pub use jinn_provider::ReasoningEffort;
 
 pub mod picker_entry;
 pub mod picker_render;

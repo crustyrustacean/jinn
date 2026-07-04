@@ -52,10 +52,10 @@ pub struct SessionProfile {
     pub disabled_skills: HashSet<String>,
     /// Reasoning effort for this session.
     ///
-    /// Session-owned: seeded from the global `[reasoning] default_effort` at
-    /// creation, then owned by the session. Never re-resolved against the live
-    /// global (see `resolve_effort`). `None` means "send no effort field; let
-    /// the provider decide". Legacy sessions deserialize to `None`.
+    /// Session-owned: seeded from the last-used `reasoning_effort` in
+    /// `state.toml` at creation, then owned by the session. Never re-resolved
+    /// against the live global (see `resolve_effort`). `None` means "send no
+    /// effort field; let the provider decide". Legacy sessions deserialize to `None`.
     #[serde(default)]
     pub reasoning_effort: Option<crate::ReasoningEffort>,
 }
