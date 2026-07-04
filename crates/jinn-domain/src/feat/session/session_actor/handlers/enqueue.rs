@@ -854,12 +854,12 @@ mod tests {
             guard.session.active_session_id().clone()
         };
         {
-            let mut prefs = actor.services.user_preferences_storage.read();
-            prefs.reasoning.default_effort = Some(crate::ReasoningEffort::High);
+            let mut app_state = actor.services.app_state_storage.read();
+            app_state.reasoning_effort = Some(crate::ReasoningEffort::High);
             actor
                 .services
-                .user_preferences_storage
-                .save(&prefs)
+                .app_state_storage
+                .save(&app_state)
                 .expect("save global default");
         }
 
@@ -893,12 +893,12 @@ mod tests {
             guard.session.active_session_id().clone()
         };
         {
-            let mut prefs = actor.services.user_preferences_storage.read();
-            prefs.reasoning.default_effort = Some(crate::ReasoningEffort::High);
+            let mut app_state = actor.services.app_state_storage.read();
+            app_state.reasoning_effort = Some(crate::ReasoningEffort::High);
             actor
                 .services
-                .user_preferences_storage
-                .save(&prefs)
+                .app_state_storage
+                .save(&app_state)
                 .expect("save global default");
         }
 
