@@ -12,6 +12,7 @@ use crate::feat::context::strategy::token_estimator::{TiktokenCounter, TokenCoun
 use crate::feat::provider::protocol::event::{StreamCompleted, StreamCompletedReason, StreamToken};
 use crate::feat::session::chat_session::ChatSessionState;
 use crate::feat::session::protocol::citations_received::CitationsReceived;
+use crate::feat::session::protocol::session_phase_changed::SessionPhaseChanged;
 use crate::feat::session::queue_item::QueueItem;
 use crate::feat::tools_actor::tool_types::ToolCall;
 use crate::protocol::{ChatEntry, ChatEntryId, ChatEntryKind, SessionId};
@@ -102,6 +103,28 @@ impl SessionPersistenceActor {
             state_change.new_phase,
         )
         .await;
+
+        // Cancel-consumed-by-frontend: the synchronous ESC-cancel path
+        // (`cancel_stream_and_drain` in the intent handler) transitions the phase
+        // `Streaming → Idle` directly in the shared `State` without emitting a
+        // bus event. By the time this `StreamCompleted(Canceled)` arrives, the
+        // phase is already `Idle`, so `emit_phase_changed` above correctly
+        // skipped the `Idle → Idle` no-op. But subscribers (discord bridge, queue
+        // actor, plugins) still need a turn-end signal — and history is now
+        // complete with the `Error("Cancelled")` entry pushed by
+        // `apply_completion_entries`. Force-publish so they learn the turn ended.
+        if state_change.reason == StreamCompletedReason::Canceled
+            && state_change.old_phase == PhaseKind::Idle
+            && state_change.new_phase == PhaseKind::Idle
+        {
+            self.bus()
+                .publish(SessionPhaseChanged {
+                    session_id: event.session_id.clone(),
+                    old_phase: PhaseKind::Idle,
+                    new_phase: PhaseKind::Idle,
+                })
+                .await;
+        }
         super::super::helpers::emit_history_appended(self.bus(), &event.session_id).await;
 
         // Persist session after stream finishes.
@@ -242,6 +265,7 @@ impl SessionPersistenceActor {
         Some(StreamCompletionStateChange {
             old_phase,
             new_phase: session.phase(),
+            reason: event.reason,
             changed_overrides,
         })
     }
@@ -262,9 +286,19 @@ impl SessionPersistenceActor {
 /// Before/after phase and changed-entry IDs captured while mutating session state
 /// under the write lock during stream completion. Consumed by the caller to emit
 /// events outside the lock.
+///
+/// Carries the completion `reason` so the caller can detect the cancel-consumed-
+/// by-frontend case: the synchronous ESC-cancel path (`cancel_stream_and_drain`)
+/// transitions the phase `Streaming → Idle` directly in the shared `State` without
+/// emitting a bus event. When the provider's `StreamCompleted(Canceled)` then
+/// arrives, the phase is already `Idle`, so `emit_phase_changed` would skip the
+/// `Idle → Idle` no-op and subscribers (discord bridge, queue actor, plugins)
+/// would never learn the turn ended. The caller detects this case via `reason`
+/// and force-publishes so the turn-end signal reaches the bus.
 struct StreamCompletionStateChange {
     old_phase: PhaseKind,
     new_phase: PhaseKind,
+    reason: StreamCompletedReason,
     changed_overrides: Vec<ChatEntryId>,
 }
 
@@ -401,6 +435,7 @@ mod tests {
     };
     use crate::feat::session::phase_machine::PhaseKind;
     use crate::feat::session::protocol::citations_received::CitationsReceived;
+    use crate::feat::session::protocol::session_phase_changed::SessionPhaseChanged;
     use crate::feat::session::token_stats::TokenRecord;
     use crate::protocol::{ChangeSource, ChatEntry, ChatEntryKind};
 
@@ -618,6 +653,49 @@ mod tests {
         assert!(
             audit.contains_name("HistoryAppended"),
             "expected HistoryAppended event after stream canceled"
+        );
+    }
+
+    #[tokio::test]
+    async fn on_stream_completed_canceled_after_sync_cancel_publishes_phase_change() {
+        // The ESC-confirm path transitions the phase `Streaming → Idle` directly
+        // in the shared `State` (`cancel_stream_and_drain`) without emitting a
+        // bus event. When the provider's `StreamCompleted(Canceled)` then
+        // arrives, the phase is already `Idle`. Subscribers still need a turn-
+        // end signal, so `on_stream_completed` must force-publish a
+        // `SessionPhaseChanged` — and history is complete with the
+        // `Error("Cancelled")` entry by then.
+        let (actor, audit) = test_actor_recording().await;
+        let session_id = {
+            let mut state = actor.state.write();
+            let session = state.active_session_mut();
+            session.push_entry(ChatEntry::user("hello"));
+            session.begin_streaming();
+            // Synchronous cancel: phase → Idle, no bus event.
+            session.cancel_stream_and_drain();
+            assert_eq!(session.phase(), PhaseKind::Idle);
+            state.session.active_session_id().clone()
+        };
+
+        let event = StreamCompleted {
+            model_used: None,
+            session_id: session_id.clone(),
+            reason: StreamCompletedReason::Canceled,
+            assistant_content: None,
+            tool_calls: None,
+            cost: None,
+            provider_completion_tokens: None,
+            thinking_content: None,
+            dispatched_at: jiff::Timestamp::now(),
+        };
+        actor.on_stream_completed(&event).await;
+
+        // Then a SessionPhaseChanged was published despite the Idle→Idle no-op.
+        let phase_events = audit.of_type::<SessionPhaseChanged>();
+        assert!(
+            phase_events.iter().any(|e| e.new_phase == PhaseKind::Idle),
+            "expected SessionPhaseChanged(Idle) after cancel consumed by frontend; got: {:?}",
+            audit.names()
         );
     }
 
