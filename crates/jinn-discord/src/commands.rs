@@ -7,6 +7,7 @@
 use std::time::Duration;
 
 use jinn_domain::feat::discord::repo_basename;
+use jinn_domain::feat::session::protocol::archive_session::ArchiveSession;
 use jinn_domain::protocol::Intent;
 use jinn_domain::{Bridge, SessionId};
 use poise::serenity_prelude as serenity;
@@ -181,6 +182,32 @@ fn build_teardown_publish(
 ) -> Option<jinn_domain::BridgeClosure> {
     let msg = jinn_domain::feat::session_lifecycle::intent::build_run_session_teardown(state, session_id)?;
     Some(Bridge::publish_closure(msg))
+}
+
+/// Archive the session bound to this thread without running teardown.
+///
+/// Looks up the thread→session mapping and publishes `ArchiveSession`, which
+/// marks the session archived in SQLite and removes it from memory. The ✅
+/// confirmation is posted by the drain loop when the `SessionArchived` event
+/// arrives.
+///
+/// Replies with an error message when no session is bound to the thread.
+#[poise::command(slash_command)]
+pub async fn archive(ctx: BotContext<'_>) -> Result<(), BotError> {
+    let data = ctx.data().clone();
+    let thread_id = ctx.channel_id().get().to_string();
+
+    let Some(session_id_str) = resolve_bound_session(&data, &thread_id).await? else {
+        ctx.say("No session bound to this thread. Use `/new` first.")
+            .await?;
+        return Ok(());
+    };
+    let session_id = SessionId::from(session_id_str);
+
+    data.bridge
+        .send(Bridge::publish_closure(ArchiveSession { session_id: session_id.clone() }))?;
+    ctx.say(format!("Archiving session `{session_id}`…")).await?;
+    Ok(())
 }
 
 /// Resolve the jinn session bound to a Discord thread, if any.
