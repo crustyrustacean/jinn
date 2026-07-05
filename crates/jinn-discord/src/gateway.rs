@@ -218,7 +218,9 @@ async fn drain_loop(
                     Ok(None) => {
                         tracing::debug!(%session_id, "no thread bound to session; dropping teardown result");
                     }
-                    Err(e) => tracing::warn!(error = %e, "thread lookup failed for teardown result"),
+                    Err(e) => {
+                        tracing::warn!(error = %e, "thread lookup failed for teardown result");
+                    }
                 }
             }
             BridgeEvent::Archived { session_id } => {
