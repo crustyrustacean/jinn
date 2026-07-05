@@ -21,8 +21,9 @@ use tokio::sync::mpsc;
 
 use crate::common::actor_deps::ActorDeps;
 use crate::feat::session::phase_machine::PhaseKind;
+use crate::feat::session::protocol::session_archived::SessionArchived;
 use crate::feat::session::protocol::session_phase_changed::SessionPhaseChanged;
-use crate::feat::session_lifecycle::protocol::event::SessionSetupCompleted;
+use crate::feat::session_lifecycle::protocol::event::{SessionSetupCompleted, SessionTeardownFinished};
 
 use super::protocol::BridgeEvent;
 
@@ -54,7 +55,7 @@ impl Actor for DiscordBridgeActor {
             .subscribe(actor_ref.clone().recipient::<SessionPhaseChanged>())
             .await;
         args.deps
-            .subscribe(actor_ref.recipient::<SessionSetupCompleted>())
+            .subscribe(actor_ref.clone().recipient::<SessionSetupCompleted>())
             .await;
 
         Ok(Self { tx: args.tx })
@@ -74,6 +75,22 @@ impl Message<SessionSetupCompleted> for DiscordBridgeActor {
 
     async fn handle(&mut self, msg: SessionSetupCompleted, _ctx: &mut Context<Self, Self::Reply>) {
         self.handle_session_setup_completed(&msg);
+    }
+}
+
+impl Message<SessionTeardownFinished> for DiscordBridgeActor {
+    type Reply = ();
+
+    async fn handle(&mut self, msg: SessionTeardownFinished, _ctx: &mut Context<Self, Self::Reply>) {
+        self.handle_session_teardown_finished(&msg);
+    }
+}
+
+impl Message<SessionArchived> for DiscordBridgeActor {
+    type Reply = ();
+
+    async fn handle(&mut self, msg: SessionArchived, _ctx: &mut Context<Self, Self::Reply>) {
+        self.handle_session_archived(&msg);
     }
 }
 
@@ -105,6 +122,22 @@ impl DiscordBridgeActor {
         });
     }
 
+    /// Forward every teardown completion (success or failure — the gateway
+    /// formats the message from `error`).
+    pub(super) fn handle_session_teardown_finished(&self, payload: &SessionTeardownFinished) {
+        self.forward(BridgeEvent::TeardownFinished {
+            session_id: payload.session_id.clone(),
+            error: payload.error.clone(),
+        });
+    }
+
+    /// Forward every archive completion to the gateway.
+    pub(super) fn handle_session_archived(&self, payload: &SessionArchived) {
+        self.forward(BridgeEvent::Archived {
+            session_id: payload.session_id.clone(),
+        });
+    }
+
     /// Push one event onto the channel.
     ///
     /// A full channel means the gateway task is behind; rather than block the
@@ -126,5 +159,7 @@ fn event_discriminant(event: &BridgeEvent) -> &'static str {
     match event {
         BridgeEvent::SetupCompleted { .. } => "SetupCompleted",
         BridgeEvent::TurnFinished { .. } => "TurnFinished",
+        BridgeEvent::TeardownFinished { .. } => "TeardownFinished",
+        BridgeEvent::Archived { .. } => "Archived",
     }
 }
