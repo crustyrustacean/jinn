@@ -90,7 +90,12 @@ pub async fn run(
     let drain_data = data.clone();
     let framework = poise::Framework::builder()
         .options(poise::FrameworkOptions {
-            commands: vec![commands::new(), commands::teardown(), commands::archive()],
+            commands: vec![
+                commands::new(),
+                commands::prompts(),
+                commands::teardown(),
+                commands::archive(),
+            ],
             // Plain-message handler: route an inbound Discord message to the
             // jinn session bound to its thread (resuming/un-archiving first),
             // then enqueue or steer depending on the current phase.
