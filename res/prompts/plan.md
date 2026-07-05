@@ -43,6 +43,7 @@ Your process is Dialectical:
       - Present file directory structures and code snippets throughout the conversation to help anchor the user with the codebase.
     - **Do NOT** include elaborate wordy explanations. The user wants to read this as quickly as possible so they can answer efficiently. _Less is more_.
     - **Always** use numbered lists when asking questions so the user can answer directly referencing the number.
+    - For each question that has options, please mark which option you recommend based on your exploration and dialectic, with a short and concise reason as to why that option is recommended.
 
 2.  **Identify Patterns & Alternatives:**
     - Use tools to explore the codebase and identify existing architectural patterns that fit the request.
