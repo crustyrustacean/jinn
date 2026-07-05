@@ -159,8 +159,11 @@ async fn dao_set_rebinds_existing_thread_to_new_session() {
 use crate::feat::discord::bridge_actor::DiscordBridgeActor;
 use crate::feat::discord::protocol::BridgeEvent;
 use crate::feat::session::phase_machine::PhaseKind;
+use crate::feat::session::protocol::session_archived::SessionArchived;
 use crate::feat::session::protocol::session_phase_changed::SessionPhaseChanged;
-use crate::feat::session_lifecycle::protocol::event::SessionSetupCompleted;
+use crate::feat::session_lifecycle::protocol::event::{
+    SessionSetupCompleted, SessionTeardownFinished,
+};
 use crate::protocol::SessionId;
 use std::path::PathBuf;
 use tokio::sync::mpsc;
@@ -243,6 +246,52 @@ async fn setup_completed_forwards_cwd_and_error() {
             assert_eq!(error.as_deref(), Some("boom"));
         }
         other => panic!("expected SetupCompleted, got {other:?}"),
+    }
+    assert!(rx.try_recv().is_err(), "no extra events");
+}
+
+#[tokio::test]
+async fn teardown_finished_forwards_error_and_session() {
+    // Given a bridge actor.
+    let (actor, mut rx) = make_actor();
+    let sid = session_id();
+
+    // When receiving a failed SessionTeardownFinished.
+    actor.handle_session_teardown_finished(&SessionTeardownFinished {
+        session_id: sid.clone(),
+        error: Some("boom".to_owned()),
+    });
+
+    // Then exactly one TeardownFinished was forwarded, carrying the payload.
+    let event = rx.recv().await.expect("event forwarded");
+    match event {
+        BridgeEvent::TeardownFinished { session_id, error } => {
+            assert_eq!(session_id, sid);
+            assert_eq!(error.as_deref(), Some("boom"));
+        }
+        other => panic!("expected TeardownFinished, got {other:?}"),
+    }
+    assert!(rx.try_recv().is_err(), "no extra events");
+}
+
+#[tokio::test]
+async fn archived_forwards_session_id() {
+    // Given a bridge actor.
+    let (actor, mut rx) = make_actor();
+    let sid = session_id();
+
+    // When receiving a SessionArchived.
+    actor.handle_session_archived(&SessionArchived {
+        session_id: sid.clone(),
+    });
+
+    // Then exactly one Archived was forwarded, carrying the session id.
+    let event = rx.recv().await.expect("event forwarded");
+    match event {
+        BridgeEvent::Archived { session_id } => {
+            assert_eq!(session_id, sid);
+        }
+        other => panic!("expected Archived, got {other:?}"),
     }
     assert!(rx.try_recv().is_err(), "no extra events");
 }

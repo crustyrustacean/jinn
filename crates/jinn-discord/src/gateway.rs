@@ -90,7 +90,12 @@ pub async fn run(
     let drain_data = data.clone();
     let framework = poise::Framework::builder()
         .options(poise::FrameworkOptions {
-            commands: vec![commands::new(), commands::prompts()],
+            commands: vec![
+                commands::new(),
+                commands::prompts(),
+                commands::teardown(),
+                commands::archive(),
+            ],
             // Plain-message handler: route an inbound Discord message to the
             // jinn session bound to its thread (resuming/un-archiving first),
             // then enqueue or steer depending on the current phase.
@@ -202,6 +207,38 @@ async fn drain_loop(
                         tracing::info!(%session_id, reply_found = false, "drain: TurnFinished (thread lookup failed)");
                         tracing::warn!(error = %e, "thread lookup failed for final reply");
                     }
+                }
+            }
+            BridgeEvent::TeardownFinished { session_id, error } => {
+                match resolve_thread(&data, &session_id).await {
+                    Ok(Some(channel_id)) => {
+                        let msg = match &error {
+                            Some(e) => format!("❌ Teardown failed: {e}"),
+                            None => "✅ Teardown complete".to_owned(),
+                        };
+                        if let Err(e) = post_message(&http, channel_id, &msg).await {
+                            tracing::warn!(error = ?e, "failed to post teardown result");
+                        }
+                    }
+                    Ok(None) => {
+                        tracing::debug!(%session_id, "no thread bound to session; dropping teardown result");
+                    }
+                    Err(e) => {
+                        tracing::warn!(error = %e, "thread lookup failed for teardown result");
+                    }
+                }
+            }
+            BridgeEvent::Archived { session_id } => {
+                match resolve_thread(&data, &session_id).await {
+                    Ok(Some(channel_id)) => {
+                        if let Err(e) = post_message(&http, channel_id, "✅ Archived").await {
+                            tracing::warn!(error = ?e, "failed to post archive result");
+                        }
+                    }
+                    Ok(None) => {
+                        tracing::debug!(%session_id, "no thread bound to session; dropping archive result");
+                    }
+                    Err(e) => tracing::warn!(error = %e, "thread lookup failed for archive result"),
                 }
             }
         }

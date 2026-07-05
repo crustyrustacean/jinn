@@ -14,7 +14,9 @@ use crate::feat::session::chat_session::LifecycleScriptState;
 use crate::feat::session::profile::SessionProfile;
 use crate::feat::session::session_actor::setup_running_msg;
 use crate::feat::session_lifecycle::command_template::{CommandTemplate, parse_quoted_args};
-use crate::feat::session_lifecycle::protocol::command::{PersistSession, RunSessionSetup};
+use crate::feat::session_lifecycle::protocol::command::{
+    PersistSession, RunSessionSetup, RunSessionTeardown,
+};
 use crate::feat::session_lifecycle::protocol::event::SessionCreated;
 use crate::feat::ui::sidebar::sessions::close::validate_session_close;
 use crate::feat::ui::sidebar::sessions::state::sorted_open_sessions;
@@ -340,6 +342,57 @@ pub fn handle_session_rerun_setup(state: &mut AppState) -> IntentResult {
             args: lifecycle_args,
             lifecycle_command: Some(setup_cmd.clone()),
         })
+}
+
+/// Resolve and render the teardown command for a session by ID.
+///
+/// Reads the session's `lifecycle_name` + `lifecycle_args`, looks up the named
+/// lifecycle in `frontend.preferences`, takes its `teardown` command, and renders
+/// it (replaying the stored args). Returns `None` when the session doesn't exist,
+/// has no lifecycle name, or the named lifecycle has no teardown command.
+///
+/// This is the session-ID-keyed counterpart of the sidebar teardown handler —
+/// UI-coupled callers resolve the selected session's ID, then delegate here.
+pub fn build_run_session_teardown(
+    state: &AppState,
+    session_id: &SessionId,
+) -> Option<RunSessionTeardown> {
+    use crate::feat::session_lifecycle::builtin::LifecycleCommand;
+
+    let (teardown_command, lifecycle_args) = {
+        let session = state.session.get(session_id)?;
+        let lifecycle_name = session.lifecycle_name().map(String::from);
+        let args = session.lifecycle_args().to_vec();
+        let teardown = lifecycle_name.as_deref().and_then(|name| {
+            state
+                .frontend
+                .preferences
+                .session_lifecycles
+                .iter()
+                .find(|l| l.name == name)
+                .and_then(|l| l.teardown.clone())
+        });
+        (teardown, args)
+    };
+
+    let teardown_cmd = teardown_command.as_ref()?;
+    let rendered = match teardown_cmd {
+        LifecycleCommand::Shell(cmd) => {
+            let template = CommandTemplate::parse(cmd);
+            if lifecycle_args.is_empty() {
+                cmd.clone()
+            } else {
+                template.render(&lifecycle_args)
+            }
+        }
+        LifecycleCommand::Builtin(id) => id.to_string(),
+    };
+
+    Some(RunSessionTeardown {
+        session_id: session_id.clone(),
+        command: rendered,
+        args: lifecycle_args,
+    })
 }
 
 /// Look up a lifecycle by name in the user preferences.
@@ -1439,5 +1492,114 @@ mod tests {
         assert!(state.frontend.pending_session_cwd.is_none());
         // And the active session's CWD is unchanged (no side-channel mutation).
         assert_eq!(state.active_session().cwd(), active_cwd);
+    }
+
+    #[rstest::rstest]
+    fn build_run_session_teardown_renders_command_with_args() {
+        // Given a session with a lifecycle that has a teardown command.
+        let mut state = AppState::default();
+        state
+            .frontend
+            .preferences
+            .session_lifecycles
+            .push(SessionLifecycle {
+                name: "fossil branch".to_owned(),
+                description: None,
+                setup: None,
+                teardown: Some(
+                    crate::feat::session_lifecycle::builtin::LifecycleCommand::Shell(
+                        "cleanup.sh $1".to_owned(),
+                    ),
+                ),
+            });
+        let session_id = state.session.active_session_id().clone();
+        state
+            .active_session_mut()
+            .set_lifecycle_name(Some("fossil branch".to_owned()));
+        state
+            .active_session_mut()
+            .set_lifecycle_args(vec!["my-branch".to_owned()]);
+
+        // When building the teardown command.
+        let msg = build_run_session_teardown(&state, &session_id);
+
+        // Then a rendered RunSessionTeardown is returned.
+        let msg = msg.expect("teardown command should be built");
+        assert_eq!(msg.session_id, session_id);
+        assert_eq!(msg.command, "cleanup.sh my-branch");
+        assert_eq!(msg.args, vec!["my-branch".to_owned()]);
+    }
+
+    #[rstest::rstest]
+    fn build_run_session_teardown_returns_none_without_teardown_command() {
+        // Given a session whose lifecycle has no teardown command.
+        let mut state = AppState::default();
+        state
+            .frontend
+            .preferences
+            .session_lifecycles
+            .push(SessionLifecycle {
+                name: "blank".to_owned(),
+                description: None,
+                setup: None,
+                teardown: None,
+            });
+        let session_id = state.session.active_session_id().clone();
+        state
+            .active_session_mut()
+            .set_lifecycle_name(Some("blank".to_owned()));
+
+        // When building the teardown command.
+        let msg = build_run_session_teardown(&state, &session_id);
+
+        // Then None is returned.
+        assert!(msg.is_none());
+    }
+
+    #[rstest::rstest]
+    fn build_run_session_teardown_returns_none_without_lifecycle_name() {
+        // Given a session with no lifecycle name.
+        let state = AppState::default();
+        let session_id = state.session.active_session_id().clone();
+
+        // When building the teardown command.
+        let msg = build_run_session_teardown(&state, &session_id);
+
+        // Then None is returned.
+        assert!(msg.is_none());
+    }
+
+    #[rstest::rstest]
+    fn build_run_session_teardown_renders_positional_arg_from_stored_args() {
+        // Given a lifecycle teardown with $1 and a session storing the arg.
+        let mut state = AppState::default();
+        state
+            .frontend
+            .preferences
+            .session_lifecycles
+            .push(SessionLifecycle {
+                name: "fossil branch".to_owned(),
+                description: None,
+                setup: None,
+                teardown: Some(
+                    crate::feat::session_lifecycle::builtin::LifecycleCommand::Shell(
+                        "cleanup.sh $1".to_owned(),
+                    ),
+                ),
+            });
+        let session_id = state.session.active_session_id().clone();
+        state
+            .active_session_mut()
+            .set_lifecycle_name(Some("fossil branch".to_owned()));
+        state
+            .active_session_mut()
+            .set_lifecycle_args(vec!["feature-x".to_owned()]);
+
+        // When building the teardown command.
+        let msg = build_run_session_teardown(&state, &session_id);
+
+        // Then the $1 positional is rendered with the stored arg.
+        let msg = msg.expect("teardown command should be built");
+        assert_eq!(msg.command, "cleanup.sh feature-x");
     }
 }

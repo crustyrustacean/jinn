@@ -1,15 +1,18 @@
 //! Slash commands for the Discord bot.
 //!
 //! [`new`] starts a session via the configured lifecycle wizard; [`prompts`]
-//! lists the prompt templates available to the current thread's session.
-//! Plain messages are handled in [`crate::gateway`] via the poise event
+//! lists the prompt templates available to the current thread's session;
+//! [`teardown`] and [`archive`] operate on the session bound to the invoking
+//! thread. Plain messages are handled in [`crate::gateway`] via the poise event
 //! handler, not here.
 
 use std::time::Duration;
 
 use jinn_domain::feat::context::prompt_template::PromptTemplateStore;
 use jinn_domain::feat::discord::repo_basename;
+use jinn_domain::feat::session::protocol::archive_session::ArchiveSession;
 use jinn_domain::protocol::Intent;
+use jinn_domain::{Bridge, SessionId};
 use poise::serenity_prelude as serenity;
 
 use crate::gateway::{BotContext, BotError};
@@ -139,6 +142,99 @@ pub async fn new(ctx: BotContext<'_>) -> Result<(), BotError> {
     .await?;
     Ok(())
 }
+
+/// Re-run the lifecycle teardown script for the session bound to this thread.
+///
+/// Looks up the thread→session mapping, renders the bound session's teardown
+/// command (replaying its stored lifecycle args), and publishes
+/// `RunSessionTeardown`. The ✅/❌ result is posted by the drain loop when the
+/// `SessionTeardownFinished` event arrives.
+///
+/// Replies with an error message when no session is bound to the thread, or
+/// when the session has no teardown command configured.
+#[poise::command(slash_command)]
+pub async fn teardown(ctx: BotContext<'_>) -> Result<(), BotError> {
+    let data = ctx.data().clone();
+    let thread_id = ctx.channel_id().get().to_string();
+
+    let Some(session_id_str) = resolve_bound_session(&data, &thread_id).await? else {
+        ctx.say("No session bound to this thread. Use `/new` first.")
+            .await?;
+        return Ok(());
+    };
+    let session_id = SessionId::from(session_id_str);
+
+    // Resolve + render under a short-lived read guard so it never spans an await.
+    let Some(publish) = build_teardown_publish(&data.state.read(), &session_id) else {
+        ctx.say("This session has no teardown command configured.")
+            .await?;
+        return Ok(());
+    };
+
+    data.bridge.send(publish)?;
+    ctx.say(format!("Running teardown for session `{session_id}`…"))
+        .await?;
+    Ok(())
+}
+
+/// Resolve + render the teardown command for `session_id` and wrap it as a
+/// publish closure. Returns `None` when the session has no teardown command.
+fn build_teardown_publish(
+    state: &jinn_domain::StateReadGuard<'_>,
+    session_id: &SessionId,
+) -> Option<jinn_domain::BridgeClosure> {
+    let msg = jinn_domain::feat::session_lifecycle::intent::build_run_session_teardown(
+        state, session_id,
+    )?;
+    Some(Bridge::publish_closure(msg))
+}
+
+/// Archive the session bound to this thread without running teardown.
+///
+/// Looks up the thread→session mapping and publishes `ArchiveSession`, which
+/// marks the session archived in SQLite and removes it from memory. The ✅
+/// confirmation is posted by the drain loop when the `SessionArchived` event
+/// arrives.
+///
+/// Replies with an error message when no session is bound to the thread.
+#[poise::command(slash_command)]
+pub async fn archive(ctx: BotContext<'_>) -> Result<(), BotError> {
+    let data = ctx.data().clone();
+    let thread_id = ctx.channel_id().get().to_string();
+
+    let Some(session_id_str) = resolve_bound_session(&data, &thread_id).await? else {
+        ctx.say("No session bound to this thread. Use `/new` first.")
+            .await?;
+        return Ok(());
+    };
+    let session_id = SessionId::from(session_id_str);
+
+    data.bridge.send(Bridge::publish_closure(ArchiveSession {
+        session_id: session_id.clone(),
+    }))?;
+    ctx.say(format!("Archiving session `{session_id}`…"))
+        .await?;
+    Ok(())
+}
+
+/// Resolve the jinn session bound to a Discord thread, if any.
+///
+/// Returns `Ok(None)` when the thread has no bound session (the caller replies
+/// with a helpful message). Errors only on a DAO read failure.
+///
+/// # Errors
+///
+/// Returns [`BotError`] if the thread-map lookup fails.
+async fn resolve_bound_session(
+    data: &crate::gateway::BotData,
+    thread_id: &str,
+) -> Result<Option<String>, BotError> {
+    data.thread_map
+        .get_session_by_thread(thread_id)
+        .await
+        .map_err(|e| Box::from(format!("thread lookup failed: {e:?}")) as BotError)
+}
+
 /// Outcome of a single locked read of a session's prompt store.
 ///
 /// Captured under one read lock so the three outcomes are decided from a
