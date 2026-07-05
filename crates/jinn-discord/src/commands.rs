@@ -139,6 +139,19 @@ pub async fn new(ctx: BotContext<'_>) -> Result<(), BotError> {
     .await?;
     Ok(())
 }
+/// Outcome of a single locked read of a session's prompt store.
+///
+/// Captured under one read lock so the three outcomes are decided from a
+/// consistent state snapshot — never split across two lock passes.
+enum Lookup {
+    /// The session has a non-empty store; here is the rendered cheat-sheet.
+    List(String),
+    /// The session exists but its prompt store is empty.
+    Empty,
+    /// The session is absent from state (mid-restore race).
+    Missing,
+}
+
 /// List the prompt templates available to this thread's session.
 ///
 /// Resolves the channel → session mapping via the thread map, reads the
@@ -158,28 +171,27 @@ pub async fn prompts(ctx: BotContext<'_>) -> Result<(), BotError> {
     let reply = match data.thread_map.get_session_by_thread(&thread_id).await {
         Ok(Some(id)) => {
             let session_id: jinn_domain::SessionId = id.into();
-            // 2. Read the session's prompt store under a short-lived read lock.
-            //    Extract the rendered text before dropping the guard so no lock
-            //    is held across the await on ctx.send below.
-            let body = {
+            // 2. Read the session's prompt store under a single short-lived
+            //    read lock. The decision (list / empty / missing) is captured
+            //    as a `Lookup` so the guard is dropped before the await on
+            //    ctx.send below — and so the three outcomes are decided from
+            //    one consistent state snapshot rather than two lock passes.
+            let lookup = {
                 let state = data.state.read();
                 match state.try_session(&session_id) {
-                    Some(session) => render_prompts_list(session.discovered_prompt_templates()),
-                    None => None,
+                    Some(session) => {
+                        match render_prompts_list(session.discovered_prompt_templates()) {
+                            Some(text) => Lookup::List(text),
+                            None => Lookup::Empty,
+                        }
+                    }
+                    None => Lookup::Missing,
                 }
             };
-            match body {
-                Some(text) => ephemeral(text),
-                None => {
-                    // Distinguish "session missing (mid-restore)" from
-                    // "session present but empty store".
-                    let session_present = data.state.read().try_session(&session_id).is_some();
-                    if session_present {
-                        ephemeral("No prompts configured for this session.")
-                    } else {
-                        ephemeral("Session restoring — please try again shortly.")
-                    }
-                }
+            match lookup {
+                Lookup::List(text) => ephemeral(text),
+                Lookup::Empty => ephemeral("No prompts configured for this session."),
+                Lookup::Missing => ephemeral("Session restoring — please try again shortly."),
             }
         }
         Ok(None) => ephemeral("No active session in this thread — run `/new` first."),
@@ -215,23 +227,41 @@ async fn collect_reply(
         .await
 }
 
+/// Soft cap on the rendered cheat-sheet length, leaving headroom under
+/// Discord's 2000-character message body limit. Prompts beyond this are
+/// truncated with a count rather than causing `ctx.send` to error.
+const PROMPT_LIST_SOFT_LIMIT: usize = 1900;
+
 /// Renders a prompt-template store as a human-readable cheat-sheet of
 /// `#name` tokens and their descriptions.
 ///
 /// Returns `None` when the store is empty so the caller can emit a distinct
 /// "no prompts configured" message. The store's slice order is preserved
-/// so the listing is stable and deterministic.
+/// so the listing is stable and deterministic. If the full list would
+/// approach Discord's message-length limit, rendering stops early and a
+/// trailing count of omitted prompts is appended.
 fn render_prompts_list(store: &PromptTemplateStore) -> Option<String> {
     let templates = store.templates();
     if templates.is_empty() {
         return None;
     }
     let mut out = String::from("Available prompts (use `#name` in a message):\n");
-    {
-        use std::fmt::Write as _;
-        for t in templates {
-            let _ = writeln!(out, "`#{}` — {}", t.name, t.description);
+    let mut shown = 0;
+    for t in templates {
+        let line = format!("`#{}` — {}\n", t.name, t.description);
+        if out.len() + line.len() > PROMPT_LIST_SOFT_LIMIT {
+            break;
         }
+        out.push_str(&line);
+        shown += 1;
+    }
+    let remaining = templates.len() - shown;
+    if remaining > 0 {
+        use std::fmt::Write as _;
+        let _ = write!(
+            out,
+            "\n… and {remaining} more not shown (message length limit)."
+        );
     }
     Some(out)
 }
@@ -306,5 +336,41 @@ mod tests {
         let second = out.find("#second").expect("second present");
         let third = out.find("#third").expect("third present");
         assert!(first < second && second < third, "order wrong: {out:?}");
+    }
+
+    #[test]
+    #[expect(clippy::expect_used, reason = "non-empty store is constructed above")]
+    fn render_prompts_list_truncates_when_exceeding_soft_limit() {
+        // Given a store whose rendered output would exceed Discord's
+        // 2000-char limit — many prompts with long descriptions.
+        let mut templates = Vec::new();
+        for i in 0..200 {
+            templates.push(template(
+                &format!("prompt-{i:03}"),
+                "lorem ipsum dolor sit amet, consectetur adipiscing elit, sed do",
+            ));
+        }
+        let store = PromptTemplateStore::from_vec(templates);
+
+        // When rendering.
+        let out = render_prompts_list(&store).expect("non-empty store renders");
+
+        // Then the output stays under the hard limit.
+        assert!(
+            out.len() <= 2000,
+            "rendered output exceeded Discord limit: {} bytes",
+            out.len()
+        );
+        // And a truncation notice with a non-zero omitted count appears.
+        assert!(
+            out.contains("more not shown"),
+            "missing truncation notice: {out:?}"
+        );
+        // And the very first prompt is still rendered (truncation is from
+        // the tail, not the head).
+        assert!(
+            out.contains("`#prompt-000`"),
+            "head prompt was truncated: {out:?}"
+        );
     }
 }
