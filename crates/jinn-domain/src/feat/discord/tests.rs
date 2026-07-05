@@ -161,7 +161,9 @@ use crate::feat::discord::protocol::BridgeEvent;
 use crate::feat::session::phase_machine::PhaseKind;
 use crate::feat::session::protocol::session_archived::SessionArchived;
 use crate::feat::session::protocol::session_phase_changed::SessionPhaseChanged;
-use crate::feat::session_lifecycle::protocol::event::{SessionSetupCompleted, SessionTeardownFinished};
+use crate::feat::session_lifecycle::protocol::event::{
+    SessionSetupCompleted, SessionTeardownFinished,
+};
 use crate::protocol::SessionId;
 use std::path::PathBuf;
 use tokio::sync::mpsc;

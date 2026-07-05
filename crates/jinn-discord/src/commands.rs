@@ -180,7 +180,9 @@ fn build_teardown_publish(
     state: &jinn_domain::StateReadGuard<'_>,
     session_id: &SessionId,
 ) -> Option<jinn_domain::BridgeClosure> {
-    let msg = jinn_domain::feat::session_lifecycle::intent::build_run_session_teardown(state, session_id)?;
+    let msg = jinn_domain::feat::session_lifecycle::intent::build_run_session_teardown(
+        state, session_id,
+    )?;
     Some(Bridge::publish_closure(msg))
 }
 
@@ -204,9 +206,11 @@ pub async fn archive(ctx: BotContext<'_>) -> Result<(), BotError> {
     };
     let session_id = SessionId::from(session_id_str);
 
-    data.bridge
-        .send(Bridge::publish_closure(ArchiveSession { session_id: session_id.clone() }))?;
-    ctx.say(format!("Archiving session `{session_id}`…")).await?;
+    data.bridge.send(Bridge::publish_closure(ArchiveSession {
+        session_id: session_id.clone(),
+    }))?;
+    ctx.say(format!("Archiving session `{session_id}`…"))
+        .await?;
     Ok(())
 }
 
