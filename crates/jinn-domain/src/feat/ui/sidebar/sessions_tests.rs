@@ -1066,6 +1066,51 @@ fn teardown_only_is_noop_without_lifecycle_teardown() {
     assert!(result.message_names.is_empty());
 }
 
+#[rstest::rstest]
+fn teardown_only_is_noop_when_session_busy() {
+    // Given a session with a teardown command that is currently busy.
+    let mut state = AppState::default();
+    state.frontend.preferences.session_lifecycles.push(
+        crate::feat::preferences_actor::user_preferences::SessionLifecycle {
+            name: "fossil branch".to_owned(),
+            description: None,
+            setup: Some(
+                crate::feat::session_lifecycle::builtin::LifecycleCommand::Shell(
+                    "echo setup".to_owned(),
+                ),
+            ),
+            teardown: Some(
+                crate::feat::session_lifecycle::builtin::LifecycleCommand::Shell(
+                    "cleanup.sh $1".to_owned(),
+                ),
+            ),
+        },
+    );
+    state
+        .active_session_mut()
+        .set_lifecycle_name(Some("fossil branch".to_owned()));
+    state
+        .active_session_mut()
+        .set_lifecycle_args(vec!["my-branch".to_owned()]);
+    // Mark the session busy so close validation rejects it.
+    state.active_session_mut().begin_busy();
+    state.frontend.sessions_section.selected_index = Some(0);
+    state
+        .frontend
+        .scope_stack
+        .push(crate::common::app_state::FocusScope::SidebarSessions);
+
+    // When handling SidebarSessionTeardown via IntentHandler.
+    let result = crate::feat::intent::IntentHandler::handle(
+        &crate::Intent::SidebarSessionTeardown,
+        &mut state,
+        None,
+    );
+
+    // Then no commands are emitted (validation gates on busy state).
+    assert!(result.message_names.is_empty());
+}
+
 // ---------------------------------------------------------------------------
 // Pure render helper tests
 // ---------------------------------------------------------------------------

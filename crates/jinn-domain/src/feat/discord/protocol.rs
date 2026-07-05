@@ -45,4 +45,25 @@ pub enum BridgeEvent {
         /// Error message if setup failed.
         error: Option<String>,
     },
+    /// A lifecycle teardown completed (success or failure).
+    ///
+    /// Emitted by the session-persistence actor after running the teardown script.
+    /// The gateway formats a ✅/❌ message from `error` and posts it to the
+    /// thread bound to `session_id`.
+    TeardownFinished {
+        /// The session that was being torn down.
+        session_id: crate::SessionId,
+        /// Error message if teardown failed.
+        error: Option<String>,
+    },
+    /// A session was archived in persistent storage.
+    ///
+    /// Emitted by the session-persistence actor after marking the session
+    /// archived in SQLite. The gateway posts a ✅ message to the bound thread.
+    /// (`SessionArchived` itself carries no error field; archive never fails
+    /// beyond DB write errors, which are logged at the actor.)
+    Archived {
+        /// The session that was archived.
+        session_id: crate::SessionId,
+    },
 }
