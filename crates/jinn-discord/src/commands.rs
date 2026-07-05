@@ -1,11 +1,13 @@
 //! Slash commands for the Discord bot.
 //!
-//! Currently just [`new`] — the session-creation wizard that runs a configured
-//! lifecycle setup. Plain messages are handled in [`crate::gateway`] via the
-//! poise event handler, not here.
+//! [`new`] starts a session via the configured lifecycle wizard; [`prompts`]
+//! lists the prompt templates available to the current thread's session.
+//! Plain messages are handled in [`crate::gateway`] via the poise event
+//! handler, not here.
 
 use std::time::Duration;
 
+use jinn_domain::feat::context::prompt_template::PromptTemplateStore;
 use jinn_domain::feat::discord::repo_basename;
 use jinn_domain::protocol::Intent;
 use poise::serenity_prelude as serenity;
@@ -137,6 +139,63 @@ pub async fn new(ctx: BotContext<'_>) -> Result<(), BotError> {
     .await?;
     Ok(())
 }
+/// List the prompt templates available to this thread's session.
+///
+/// Resolves the channel → session mapping via the thread map, reads the
+/// session's already-merged prompt-template store, and replies privately
+/// (ephemerally) with each prompt's `#name` and description. Composition is
+/// unchanged — the user still types `#name` into a normal message. No rescan
+/// is triggered; the store is whatever the session loaded at startup.
+#[poise::command(slash_command)]
+pub async fn prompts(ctx: BotContext<'_>) -> Result<(), BotError> {
+    let data = ctx.data();
+    let channel_id = ctx.channel_id();
+
+    // 1. Resolve channel → session via the thread map (same lookup as the
+    //    inbound message handler). Unbound channels get an ephemeral hint
+    //    rather than the silent no-op used on the message path.
+    let thread_id = channel_id.get().to_string();
+    let reply = match data.thread_map.get_session_by_thread(&thread_id).await {
+        Ok(Some(id)) => {
+            let session_id: jinn_domain::SessionId = id.into();
+            // 2. Read the session's prompt store under a short-lived read lock.
+            //    Extract the rendered text before dropping the guard so no lock
+            //    is held across the await on ctx.send below.
+            let body = {
+                let state = data.state.read();
+                match state.try_session(&session_id) {
+                    Some(session) => render_prompts_list(session.discovered_prompt_templates()),
+                    None => None,
+                }
+            };
+            match body {
+                Some(text) => ephemeral(text),
+                None => {
+                    // Distinguish "session missing (mid-restore)" from
+                    // "session present but empty store".
+                    let session_present = data.state.read().try_session(&session_id).is_some();
+                    if session_present {
+                        ephemeral("No prompts configured for this session.")
+                    } else {
+                        ephemeral("Session restoring — please try again shortly.")
+                    }
+                }
+            }
+        }
+        Ok(None) => ephemeral("No active session in this thread — run `/new` first."),
+        Err(e) => ephemeral(format!("Failed to look up session: {e:?}")),
+    };
+
+    ctx.send(reply).await?;
+    Ok(())
+}
+
+/// Build an ephemeral `CreateReply` carrying the given content.
+fn ephemeral(content: impl Into<String>) -> poise::CreateReply {
+    poise::CreateReply::default()
+        .content(content)
+        .ephemeral(true)
+}
 
 /// Collect one message from the user who invoked the command, within a
 /// 2-minute window.
@@ -154,4 +213,98 @@ async fn collect_reply(
         .author_id(author)
         .timeout(Duration::from_secs(2 * 60))
         .await
+}
+
+/// Renders a prompt-template store as a human-readable cheat-sheet of
+/// `#name` tokens and their descriptions.
+///
+/// Returns `None` when the store is empty so the caller can emit a distinct
+/// "no prompts configured" message. The store's slice order is preserved
+/// so the listing is stable and deterministic.
+fn render_prompts_list(store: &PromptTemplateStore) -> Option<String> {
+    let templates = store.templates();
+    if templates.is_empty() {
+        return None;
+    }
+    let mut out = String::from("Available prompts (use `#name` in a message):\n");
+    {
+        use std::fmt::Write as _;
+        for t in templates {
+            let _ = writeln!(out, "`#{}` — {}", t.name, t.description);
+        }
+    }
+    Some(out)
+}
+
+#[cfg(test)]
+mod tests {
+    use super::render_prompts_list;
+    use jinn_domain::feat::context::prompt_template::PromptTemplateStore;
+    use jinn_domain::protocol::PromptTemplate;
+
+    fn template(name: &str, description: &str) -> PromptTemplate {
+        PromptTemplate {
+            name: name.to_owned(),
+            description: description.to_owned(),
+            body: String::new(),
+        }
+    }
+
+    #[test]
+    #[expect(clippy::expect_used, reason = "non-empty store is constructed above")]
+    fn render_prompts_list_formats_name_and_description() {
+        // Given a store with two prompts.
+        let store = PromptTemplateStore::from_vec(vec![
+            template("code-review", "Perform a thorough code review"),
+            template("summarize", "Summarize the conversation"),
+        ]);
+
+        // When rendering.
+        let out = render_prompts_list(&store).expect("non-empty store renders");
+
+        // Then each prompt appears as `#name` — description.
+        assert!(
+            out.contains("`#code-review` — Perform a thorough code review"),
+            "missing code-review line: {out:?}"
+        );
+        assert!(
+            out.contains("`#summarize` — Summarize the conversation"),
+            "missing summarize line: {out:?}"
+        );
+    }
+
+    #[test]
+    fn render_prompts_list_empty_store_returns_none() {
+        // Given an empty store.
+        let store = PromptTemplateStore::from_vec(vec![]);
+
+        // When rendering.
+        let out = render_prompts_list(&store);
+
+        // Then no text is produced.
+        assert!(out.is_none());
+    }
+
+    #[test]
+    #[expect(
+        clippy::expect_used,
+        reason = "store order and presence are the behavior under test"
+    )]
+    fn render_prompts_list_preserves_store_order() {
+        // Given a store with a known insertion order.
+        let store = PromptTemplateStore::from_vec(vec![
+            template("first", "alpha"),
+            template("second", "beta"),
+            template("third", "gamma"),
+        ]);
+
+        // When rendering.
+        let out = render_prompts_list(&store).expect("non-empty store renders");
+
+        // Then the prompt lines appear in input order.
+        let first = out.find("#first").expect("first present");
+        let second = out.find("#second").expect("second present");
+        let third = out.find("#third").expect("third present");
+        assert!(first < second && second < third, "order wrong: {out:?}");
+    }
 }
