@@ -590,6 +590,9 @@ default_timeout_secs = 180
         let prefs = load_preferences_from(&path).expect("load must succeed");
 
         // Then the [bash] section is ignored (forward-compat) and defaults apply.
-        assert_eq!(prefs.tool_default_timeout_secs, default_tool_default_timeout_secs());
+        assert_eq!(
+            prefs.tool_default_timeout_secs,
+            default_tool_default_timeout_secs()
+        );
     }
 }

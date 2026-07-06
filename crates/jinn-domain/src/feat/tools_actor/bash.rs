@@ -5,7 +5,6 @@
 //! and flushed every 500ms (or when the buffer exceeds 4KB) to reduce
 //! event volume and prevent dropped keystrokes from terminal overload.
 
-
 use futures::StreamExt;
 
 use std::fmt::Write as _;
@@ -705,7 +704,6 @@ mod tests {
     }
 
     #[rstest::rstest]
-
     #[tokio::test]
     async fn execute_no_timeout_when_default_is_none_and_no_per_call() {
         // Given no timeout in the context.
@@ -1122,14 +1120,12 @@ mod tests {
         // Then the schema contains the max_duration_secs key.
         assert!(
             params.contains("max_duration_secs"),
-            "expected schema to contain max_duration_secs, got: {}",
-            params
+            "expected schema to contain max_duration_secs, got: {params}",
         );
         // And does NOT contain the old timeout key.
         assert!(
             !params.contains("\"timeout\""),
-            "expected schema to NOT contain a \"timeout\" key, got: {}",
-            params
+            "expected schema to NOT contain a \"timeout\" key, got: {params}",
         );
     }
 
@@ -1154,16 +1150,21 @@ mod tests {
             .prompt_guidelines
             .iter()
             .any(|g| g.contains("Proactively") && g.contains("max_duration_secs"));
-        assert!(proactive, "missing proactive guideline: {:?}", def.prompt_guidelines);
+        assert!(
+            proactive,
+            "missing proactive guideline: {:?}",
+            def.prompt_guidelines
+        );
 
         // And a reactive bullet (mentions retrying after a kill).
         let reactive = def
             .prompt_guidelines
             .iter()
             .any(|g| g.contains("killed") && g.contains("max_duration_secs"));
-        assert!(reactive, "missing reactive guideline: {:?}", def.prompt_guidelines);
+        assert!(
+            reactive,
+            "missing reactive guideline: {:?}",
+            def.prompt_guidelines
+        );
     }
 }
-
-
-
