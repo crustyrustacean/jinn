@@ -108,7 +108,9 @@ fn discord_is_connected(dashboard: &crate::feat::dashboard::DashboardState) -> b
 
 /// Push an error `ChatEntry` into the active session's history.
 fn push_error(state: &mut AppState, message: &str) {
-    state.active_session_mut().push_entry(ChatEntry::error(message));
+    state
+        .active_session_mut()
+        .push_entry(ChatEntry::error(message));
 }
 
 #[cfg(test)]
@@ -127,18 +129,22 @@ mod tests {
     /// discord enabled + connected, and a configured forum_channel.
     fn happy_state() -> AppState {
         let mut state = AppState::default();
-        state.active_session_mut().set_title("My session".to_string());
-        state.frontend.preferences.discord.enabled = true;
-        state.frontend.preferences.discord.forum_channel = Some("123".to_string());
         state
-            .frontend
-            .dashboard
-            .mark_running("discord", None);
+            .active_session_mut()
+            .set_title("My session".to_owned());
+        state.frontend.preferences.discord.enabled = true;
+        state.frontend.preferences.discord.forum_channel = Some("123".to_owned());
+        state.frontend.dashboard.mark_running("discord", None);
         state
     }
 
     fn last_entry_kind(state: &AppState) -> &ChatEntryKind {
-        &state.active_session().history().last().expect("an entry").kind
+        &state
+            .active_session()
+            .history()
+            .last()
+            .expect("an entry")
+            .kind
     }
 
     #[rstest::rstest]
@@ -167,7 +173,7 @@ mod tests {
         // Given a session with no title (default) but all else fine.
         let mut state = AppState::default();
         state.frontend.preferences.discord.enabled = true;
-        state.frontend.preferences.discord.forum_channel = Some("123".to_string());
+        state.frontend.preferences.discord.forum_channel = Some("123".to_owned());
         state.frontend.dashboard.mark_running("discord", None);
 
         // When handling ToDiscordThread.

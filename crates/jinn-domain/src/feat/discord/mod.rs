@@ -9,26 +9,21 @@
 
 pub mod bridge_actor;
 pub mod config;
+pub mod feedback_actor;
 pub mod message_split;
 pub mod protocol;
 pub mod reply;
 pub mod repo_basename;
 pub mod route;
 pub mod thread_map;
-pub mod feedback_actor;
 pub mod to_thread_intent;
 
 pub use bridge_actor::{DiscordBridgeActor, DiscordBridgeActorDeps};
 pub use config::DiscordConfig;
 pub use message_split::split_message;
 pub use protocol::{
-    BridgeEvent,
-    CreateThreadForSession,
-    CreateThreadReason,
-    DiscordThreadCreateFailed,
-    DiscordThreadCreated,
-    GatewayRequest,
-    ThreadId,
+    BridgeEvent, CreateThreadForSession, CreateThreadReason, DiscordThreadCreateFailed,
+    DiscordThreadCreated, GatewayRequest, ThreadId,
 };
 pub use reply::{FinalReply, read_final_reply};
 pub use repo_basename::repo_basename;

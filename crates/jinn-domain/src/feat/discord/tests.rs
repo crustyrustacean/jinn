@@ -308,7 +308,7 @@ async fn archived_forwards_session_id() {
 use crate::common::actor_deps::ActorDeps;
 use crate::common::bus::test_harness::TestHarness;
 use crate::feat::discord::{
-    bridge_actor::DiscordBridgeActorDeps, CreateThreadForSession, GatewayRequest,
+    CreateThreadForSession, GatewayRequest, bridge_actor::DiscordBridgeActorDeps,
 };
 async fn spawn_on_bus_with_rx() -> (
     TestHarness,
@@ -456,12 +456,8 @@ async fn bus_subscription_forwards_create_thread_for_session() {
     // Then exactly one GatewayRequest::CreateThreadForSession was forwarded,
     // carrying the payload.
     let request = gw_rx.recv().await.expect("request forwarded");
-    let GatewayRequest::CreateThreadForSession { session_id, title } =
-        request;
+    let GatewayRequest::CreateThreadForSession { session_id, title } = request;
     assert_eq!(session_id, sid);
     assert_eq!(title, "my thread");
-    assert!(
-        matches!(gw_rx.try_recv(), Ok(None)),
-        "no extra requests"
-    );
+    assert!(matches!(gw_rx.try_recv(), Ok(None)), "no extra requests");
 }

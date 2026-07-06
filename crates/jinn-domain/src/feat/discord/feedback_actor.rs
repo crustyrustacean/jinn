@@ -18,13 +18,13 @@
 
 use kameo::prelude::{Actor, ActorRef, Context, Message};
 
+use crate::SessionId;
 use crate::common::actor_deps::ActorDeps;
 use crate::common::state::State;
 use crate::feat::discord::protocol::{
     CreateThreadReason, DiscordThreadCreateFailed, DiscordThreadCreated,
 };
 use crate::feat::session::chat_entry::ChatEntry;
-use crate::SessionId;
 
 /// The feedback actor.
 pub struct DiscordFeedbackActor {
@@ -59,11 +59,7 @@ impl Actor for DiscordFeedbackActor {
 impl Message<DiscordThreadCreated> for DiscordFeedbackActor {
     type Reply = ();
 
-    async fn handle(
-        &mut self,
-        msg: DiscordThreadCreated,
-        _ctx: &mut Context<Self, Self::Reply>,
-    ) {
+    async fn handle(&mut self, msg: DiscordThreadCreated, _ctx: &mut Context<Self, Self::Reply>) {
         self.handle_created(&msg);
     }
 }
@@ -120,8 +116,7 @@ fn reason_message(reason: &CreateThreadReason) -> String {
                 .to_owned()
         }
         CreateThreadReason::NoForumChannel => {
-            "Can't continue in Discord: no `forum_channel` configured in `[discord]`."
-                .to_owned()
+            "Can't continue in Discord: no `forum_channel` configured in `[discord]`.".to_owned()
         }
         CreateThreadReason::CreateFailed(detail) => {
             format!("Couldn't create the Discord thread: {detail}")
@@ -136,6 +131,7 @@ fn reason_message(reason: &CreateThreadReason) -> String {
 
 #[cfg(test)]
 mod tests {
+    #![allow(clippy::expect_used, clippy::panic, reason = "test code")]
     use super::*;
     use crate::common::app_state::AppState;
     use crate::feat::discord::protocol::CreateThreadReason;
