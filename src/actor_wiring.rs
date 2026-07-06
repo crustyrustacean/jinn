@@ -131,6 +131,7 @@ impl ActorSystemBuilder {
         Services,
         jinn_plugin::SyncPlugins,
         Option<kanal::AsyncReceiver<jinn_domain::feat::discord::BridgeEvent>>,
+        Option<kanal::AsyncReceiver<jinn_domain::feat::discord::GatewayRequest>>,
         kanal::Sender<jinn_domain::feat::dashboard::status_actor::DiscordStatusUpdate>,
     ) {
         let ActorSystemBuilderArgs {
@@ -1375,9 +1376,12 @@ jinn_domain::feat::preferences_actor::app_state_sync_actor::AppStateSyncActor::s
         // bounded channel that the poise gateway task drains. The gateway itself
         // is spawned AFTER build() returns in app.rs (so it never blocks readiness).
         let discord_cfg = user_preferences_storage.read().discord.clone();
-        let discord_bridge_rx = if discord_cfg.enabled {
+        let (discord_bridge_rx, discord_gateway_rx) = if discord_cfg.enabled {
             let (tx, rx) = kanal::bounded::<jinn_domain::feat::discord::BridgeEvent>(64);
             let async_rx = rx.to_async();
+            let (gw_tx, gw_rx) =
+                kanal::bounded::<jinn_domain::feat::discord::GatewayRequest>(16);
+            let gw_async_rx = gw_rx.to_async();
             let _discord_bridge = spawn_tracked!(
                 &services.bus,
                 "discord-bridge",
@@ -1387,15 +1391,16 @@ jinn_domain::feat::preferences_actor::app_state_sync_actor::AppStateSyncActor::s
                     jinn_domain::feat::discord::DiscordBridgeActorDeps {
                         deps: actor_deps.clone(),
                         tx,
+                        gateway_tx: gw_tx,
                     },
                 )
                 .restart_policy(kameo::supervision::RestartPolicy::Never)
                 .spawn()
                 .await
             );
-            Some(async_rx)
+            (Some(async_rx), Some(gw_async_rx))
         } else {
-            None
+            (None, None)
         };
         // Signal system readiness and trigger init chain.
         {
@@ -1442,6 +1447,7 @@ jinn_domain::feat::preferences_actor::app_state_sync_actor::AppStateSyncActor::s
             services,
             sync_plugins,
             discord_bridge_rx,
+            discord_gateway_rx,
             discord_status_tx,
         )
     }

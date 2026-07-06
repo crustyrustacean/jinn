@@ -26,7 +26,7 @@ use crate::feat::session_lifecycle::protocol::event::{
     SessionSetupCompleted, SessionTeardownFinished,
 };
 
-use super::protocol::BridgeEvent;
+use super::protocol::{BridgeEvent, CreateThreadForSession, GatewayRequest};
 
 /// The bridge actor.
 ///
@@ -36,6 +36,9 @@ use super::protocol::BridgeEvent;
 pub struct DiscordBridgeActor {
     /// Forwards bus events onto this channel as [`BridgeEvent`]s.
     tx: kanal::Sender<BridgeEvent>,
+    /// Forwards `CreateThreadForSession` bus commands onto this channel as
+    /// [`GatewayRequest`]s — the reverse direction (domain → gateway do-something).
+    gateway_tx: kanal::Sender<GatewayRequest>,
 }
 
 /// Dependencies for [`DiscordBridgeActor`].
@@ -45,6 +48,8 @@ pub struct DiscordBridgeActorDeps {
     pub deps: ActorDeps,
     /// Sender half of the bounded (64) bridge channel.
     pub tx: kanal::Sender<BridgeEvent>,
+    /// Sender half of the bounded (16) gateway-request channel.
+    pub gateway_tx: kanal::Sender<GatewayRequest>,
 }
 
 impl Actor for DiscordBridgeActor {
@@ -62,10 +67,16 @@ impl Actor for DiscordBridgeActor {
             .subscribe(actor_ref.clone().recipient::<SessionTeardownFinished>())
             .await;
         args.deps
-            .subscribe(actor_ref.recipient::<SessionArchived>())
+            .subscribe(actor_ref.clone().recipient::<SessionArchived>())
+            .await;
+        args.deps
+            .subscribe(actor_ref.recipient::<CreateThreadForSession>())
             .await;
 
-        Ok(Self { tx: args.tx })
+        Ok(Self {
+            tx: args.tx,
+            gateway_tx: args.gateway_tx,
+        })
     }
 }
 
@@ -105,11 +116,27 @@ impl Message<SessionArchived> for DiscordBridgeActor {
     }
 }
 
+impl Message<CreateThreadForSession> for DiscordBridgeActor {
+    type Reply = ();
+
+    async fn handle(
+        &mut self,
+        msg: CreateThreadForSession,
+        _ctx: &mut Context<Self, Self::Reply>,
+    ) {
+        self.forward_gateway_request(GatewayRequest::CreateThreadForSession {
+            session_id: msg.session_id,
+            title: msg.title,
+        });
+    }
+}
+
 impl DiscordBridgeActor {
     /// Constructs an actor instance directly (for tests that bypass `on_start`).
     #[cfg(test)]
     pub(crate) fn new(tx: kanal::Sender<BridgeEvent>) -> Self {
-        Self { tx }
+        let (gateway_tx, _gateway_rx) = kanal::bounded(1);
+        Self { tx, gateway_tx }
     }
 
     /// Forward phase changes to the gateway **only** when the new phase is
@@ -158,6 +185,18 @@ impl DiscordBridgeActor {
         tracing::info!(event = %event_discriminant(&event), "discord bridge forwarding");
         if !matches!(self.tx.try_send(event), Ok(true)) {
             tracing::warn!("discord bridge channel full — event dropped");
+        }
+    }
+
+    /// Push one gateway request onto the request channel.
+    ///
+    /// Same drop-on-full semantics as [`forward`](Self::forward) — a full
+    /// channel means the gateway task is behind, so we drop with a warning
+    /// rather than block the bus dispatch loop.
+    fn forward_gateway_request(&self, request: GatewayRequest) {
+        tracing::info!("discord bridge forwarding gateway request");
+        if !matches!(self.gateway_tx.try_send(request), Ok(true)) {
+            tracing::warn!("discord gateway request channel full — request dropped");
         }
     }
 }

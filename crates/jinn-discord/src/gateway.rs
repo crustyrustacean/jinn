@@ -15,7 +15,8 @@ use error_stack::Report;
 use jinn_domain::feat::chat_input::protocol::command::{EnqueueUserMessage, SubmitSteeringMessage};
 use jinn_domain::feat::dashboard::status_actor::DiscordStatusUpdate;
 use jinn_domain::feat::discord::{
-    BridgeEvent, DiscordConfig, DiscordThreadMap, FinalReply, read_final_reply, split_message,
+    BridgeEvent, DiscordConfig, DiscordThreadMap, FinalReply, GatewayRequest,
+    read_final_reply, split_message,
 };
 use jinn_domain::feat::session::chat_entry::ChatEntry;
 use jinn_domain::feat::session::chat_session::ChatSessionState;
@@ -69,6 +70,7 @@ pub async fn run(
     data: BotData,
     token: String,
     rx: kanal::AsyncReceiver<BridgeEvent>,
+    gw_rx: kanal::AsyncReceiver<GatewayRequest>,
     status_tx: kanal::Sender<DiscordStatusUpdate>,
 ) -> Result<(), Report<SpawnError>> {
     if token.trim().is_empty() {
@@ -126,6 +128,11 @@ pub async fn run(
                 let status_tx = status_tx.clone();
                 let drain_data = drain_data.clone();
                 tokio::spawn(drain_loop(drain_data, http.clone(), rx));
+                // Drain the request channel: domain → gateway do-something
+                // requests (currently only CreateThreadForSession). Real
+                // handling is wired in Phase 3; the receiver is held here so
+                // the task outlives `run`.
+                tokio::spawn(request_loop(gw_rx));
 
                 // The bot is online — the setup callback fires after the
                 // gateway's `ready` event, so this is the right place to
@@ -163,6 +170,23 @@ pub async fn run(
         Report::new(SpawnError)
     })?;
     Ok(())
+}
+
+/// Consume [`GatewayRequest`]s from the bridge actor (reverse direction:
+/// domain → gateway do-something).
+///
+/// Real handling wired in Phase 3; currently a no-op drain so the sender
+/// half never blocks.
+async fn request_loop(gw_rx: kanal::AsyncReceiver<GatewayRequest>) {
+    loop {
+        match gw_rx.recv().await {
+            Ok(req) => tracing::info!(?req, "discord gateway received request"),
+            Err(_) => {
+                tracing::debug!("discord gateway request channel closed; exiting");
+                break;
+            }
+        }
+    }
 }
 
 /// Consume [`BridgeEvent`]s from the bridge actor and post replies to Discord.
