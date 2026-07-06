@@ -295,3 +295,136 @@ async fn archived_forwards_session_id() {
     }
     assert!(rx.try_recv().is_err(), "no extra events");
 }
+
+// ── Bus-spawned subscription integration tests ────────────────────
+//
+// The unit tests above call the handle_* forwarders directly via the
+// `new(tx)` constructor. They prove the forwarding logic works but NOT
+// that `on_start` actually subscribes to each event type on the bus.
+// A missing `subscribe` call (the bug this feature fixes) would pass
+// every one of those tests. The tests below spawn the actor via `on_start`
+// against a real bus and publish events on it, so they fail if any
+// subscription is dropped.
+
+use crate::common::actor_deps::ActorDeps;
+use crate::common::bus::test_harness::TestHarness;
+use crate::feat::discord::bridge_actor::DiscordBridgeActorDeps;
+async fn spawn_on_bus_with_rx() -> (TestHarness, mpsc::Receiver<BridgeEvent>) {
+    let harness = TestHarness::new().await;
+    let (tx, rx) = mpsc::channel(64);
+    let deps = ActorDeps {
+        services: harness.services().await,
+    };
+    let _actor = harness
+        .spawn_actor::<DiscordBridgeActor>(DiscordBridgeActorDeps { deps, tx })
+        .await;
+    (harness, rx)
+}
+
+#[tokio::test]
+async fn bus_subscription_forwards_turn_finished() {
+    // Given a bridge actor spawned via on_start against a real bus.
+    let (harness, mut rx) = spawn_on_bus_with_rx().await;
+    let sid = session_id();
+
+    // When publishing a SessionPhaseChanged → Idle on the bus.
+    harness
+        .publish(SessionPhaseChanged {
+            session_id: sid.clone(),
+            old_phase: PhaseKind::Streaming,
+            new_phase: PhaseKind::Idle,
+        })
+        .await;
+
+    // Then exactly one TurnFinished was forwarded.
+    let event = rx.recv().await.expect("event forwarded");
+    match event {
+        BridgeEvent::TurnFinished { session_id } => {
+            assert_eq!(session_id, sid);
+        }
+        other => panic!("expected TurnFinished, got {other:?}"),
+    }
+    assert!(rx.try_recv().is_err(), "no extra events");
+}
+
+#[tokio::test]
+async fn bus_subscription_forwards_setup_completed() {
+    // Given a bridge actor spawned via on_start against a real bus.
+    let (harness, mut rx) = spawn_on_bus_with_rx().await;
+    let sid = session_id();
+
+    // When publishing a SessionSetupCompleted on the bus.
+    harness
+        .publish(SessionSetupCompleted {
+            session_id: sid.clone(),
+            cwd: PathBuf::from("/repo"),
+            error: Some("boom".to_owned()),
+        })
+        .await;
+
+    // Then exactly one SetupCompleted was forwarded, carrying the payload.
+    let event = rx.recv().await.expect("event forwarded");
+    match event {
+        BridgeEvent::SetupCompleted {
+            session_id,
+            cwd,
+            error,
+        } => {
+            assert_eq!(session_id, sid);
+            assert_eq!(cwd, PathBuf::from("/repo"));
+            assert_eq!(error.as_deref(), Some("boom"));
+        }
+        other => panic!("expected SetupCompleted, got {other:?}"),
+    }
+    assert!(rx.try_recv().is_err(), "no extra events");
+}
+
+#[tokio::test]
+async fn bus_subscription_forwards_teardown_finished() {
+    // Given a bridge actor spawned via on_start against a real bus.
+    let (harness, mut rx) = spawn_on_bus_with_rx().await;
+    let sid = session_id();
+
+    // When publishing a failed SessionTeardownFinished on the bus.
+    harness
+        .publish(SessionTeardownFinished {
+            session_id: sid.clone(),
+            error: Some("boom".to_owned()),
+        })
+        .await;
+
+    // Then exactly one TeardownFinished was forwarded, carrying the payload.
+    let event = rx.recv().await.expect("event forwarded");
+    match event {
+        BridgeEvent::TeardownFinished { session_id, error } => {
+            assert_eq!(session_id, sid);
+            assert_eq!(error.as_deref(), Some("boom"));
+        }
+        other => panic!("expected TeardownFinished, got {other:?}"),
+    }
+    assert!(rx.try_recv().is_err(), "no extra events");
+}
+
+#[tokio::test]
+async fn bus_subscription_forwards_archived() {
+    // Given a bridge actor spawned via on_start against a real bus.
+    let (harness, mut rx) = spawn_on_bus_with_rx().await;
+    let sid = session_id();
+
+    // When publishing a SessionArchived on the bus.
+    harness
+        .publish(SessionArchived {
+            session_id: sid.clone(),
+        })
+        .await;
+
+    // Then exactly one Archived was forwarded, carrying the session id.
+    let event = rx.recv().await.expect("event forwarded");
+    match event {
+        BridgeEvent::Archived { session_id } => {
+            assert_eq!(session_id, sid);
+        }
+        other => panic!("expected Archived, got {other:?}"),
+    }
+    assert!(rx.try_recv().is_err(), "no extra events");
+}
