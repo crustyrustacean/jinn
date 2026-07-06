@@ -316,6 +316,12 @@ impl ActorSystemBuilder {
             .restart_policy(kameo::supervision::RestartPolicy::Never)
             .spawn()
             .await;
+        // Wait for the dashboard actor's subscriptions to be fully wired
+        // before spawning any other actors. Without this, the bus events
+        // (ActorStarting/ActorStarted) from subsequently spawned actors
+        // can be missed — leaving their dashboard entries stuck on
+        // "Starting" because ActorStarted was never received.
+        _discord_status.wait_for_startup().await;
 
         // ── Infrastructure actors ──────────────────────────────────────────
 

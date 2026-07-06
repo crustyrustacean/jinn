@@ -62,6 +62,7 @@ impl DiscordStatusUpdate {
 }
 
 const DISCORD_ACTOR_NAME: &str = "discord";
+const DISCORD_DESCRIPTION: &str = "Discord gateway bot [Task]";
 
 /// The dashboard status actor.
 ///
@@ -147,25 +148,38 @@ impl DiscordStatusActor {
     /// background drain loop without an actor message round-trip.
     fn apply_discord_update(dashboard: &mut DashboardState, update: &DiscordStatusUpdate) {
         let message = update.full_message();
-        let lifecycle = match update {
-            DiscordStatusUpdate::Connecting | DiscordStatusUpdate::Disconnected => None,
+        let (lifecycle, with_description) = match update {
+            DiscordStatusUpdate::Connecting => {
+                // Ensure the discord entry exists with a description even
+                // before Connected/Error arrives. The gateway task is not
+                // a kameo actor, so it doesn't emit ActorStarting.
+                (Some(crate::feat::dashboard::ActorLifecycle::Starting), true)
+            }
+            // Disconnected only updates the status message — the lifecycle
+            // (Starting/Running/Dead) is driven by the other update variants.
+            DiscordStatusUpdate::Disconnected => (None, false),
             DiscordStatusUpdate::Connected => {
                 // The gateway task is not a kameo actor, so it doesn't emit
                 // ActorStarted. Mark it running here.
-                Some(crate::feat::dashboard::ActorLifecycle::Running)
+                (Some(crate::feat::dashboard::ActorLifecycle::Running), true)
             }
-            DiscordStatusUpdate::Error { .. } => Some(crate::feat::dashboard::ActorLifecycle::Dead),
+            DiscordStatusUpdate::Error { .. } => {
+                (Some(crate::feat::dashboard::ActorLifecycle::Dead), false)
+            }
         };
 
         if let Some(lifecycle) = lifecycle {
+            let description = with_description.then(|| DISCORD_DESCRIPTION.to_owned());
             match lifecycle {
+                crate::feat::dashboard::ActorLifecycle::Starting => {
+                    dashboard.mark_starting(DISCORD_ACTOR_NAME, description);
+                }
                 crate::feat::dashboard::ActorLifecycle::Running => {
-                    dashboard.mark_running(DISCORD_ACTOR_NAME, None);
+                    dashboard.mark_running(DISCORD_ACTOR_NAME, description);
                 }
                 crate::feat::dashboard::ActorLifecycle::Dead => {
                     dashboard.mark_dead(DISCORD_ACTOR_NAME);
                 }
-                _ => {}
             }
         }
         dashboard.set_status_message(DISCORD_ACTOR_NAME, Some(message));
