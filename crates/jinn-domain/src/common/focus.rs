@@ -133,6 +133,21 @@ impl ScopeStack {
         self.stack.last().expect("stack always has base")
     }
 
+    /// Returns the base (bottom) scope.
+    ///
+    /// Use this instead of [`current`](Self::current) when you need the
+    /// underlying tab context (Chat vs Dashboard) regardless of any overlays
+    /// pushed on top (e.g., the quake bar).
+    ///
+    /// # Panics
+    ///
+    /// Panics if the stack is empty (should never happen as the base is always present).
+    #[must_use]
+    pub fn base(&self) -> &FocusScope {
+        #[expect(clippy::expect_used, reason = "ScopeStack invariant: always has base")]
+        self.stack.first().expect("stack always has base")
+    }
+
     /// Returns the scope one level below the top (the "return target").
     ///
     /// Returns `None` if only the base scope is on the stack.

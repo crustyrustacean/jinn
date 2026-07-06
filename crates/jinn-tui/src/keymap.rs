@@ -1230,3 +1230,61 @@ mod tests {
         );
     }
 }
+
+#[cfg(test)]
+mod leak_check {
+    use crate::keymap::init;
+    use crate::scope::Scope;
+    use ratatui_which_key::Keymap as WKKeymap;
+
+    #[test]
+    fn dashboard_scope_has_no_chathistory_or_sidebar_bindings() {
+        let keymap: WKKeymap<
+            jinn_domain::KeyEvent,
+            Scope,
+            jinn_domain::Intent,
+            crate::keymap::KeyCategory,
+        > = init();
+        let groups = keymap.bindings_for_scope(Scope::Dashboard);
+        let all_desc: Vec<&str> = groups
+            .iter()
+            .flat_map(|g| g.bindings.iter().map(|b| b.description.as_str()))
+            .collect();
+        assert!(
+            !all_desc
+                .iter()
+                .any(|d| d.contains("next") || d.contains("previous")),
+            "ChatHistory groups leaked into Dashboard: {all_desc:?}"
+        );
+        assert!(
+            !all_desc.iter().any(|d| d.contains("plugin")),
+            "Sidebar groups leaked into Dashboard: {all_desc:?}"
+        );
+    }
+    #[test]
+    fn normal_scope_still_shows_chathistory_and_sidebar_groups() {
+        // Regression: the library fix must not remove ChatHistory groups from
+        // Normal scope where they legitimately belong. The `p` key in Normal
+        // scope is a leaf (ChatEntryPinSelected → "pin entry"), not the
+        // "plugin" branch, so we only assert the bracket groups here.
+        let keymap: WKKeymap<
+            jinn_domain::KeyEvent,
+            Scope,
+            jinn_domain::Intent,
+            crate::keymap::KeyCategory,
+        > = init();
+        let groups = keymap.bindings_for_scope(Scope::Normal);
+        let all_desc: Vec<&str> = groups
+            .iter()
+            .flat_map(|g| g.bindings.iter().map(|b| b.description.as_str()))
+            .collect();
+        assert!(
+            all_desc.iter().any(|d| d.contains("next")),
+            "next group should appear in Normal scope; got {all_desc:?}"
+        );
+        assert!(
+            all_desc.iter().any(|d| d.contains("previous")),
+            "previous group should appear in Normal scope; got {all_desc:?}"
+        );
+    }
+}

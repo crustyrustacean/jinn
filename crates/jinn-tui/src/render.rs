@@ -88,7 +88,7 @@ fn apply_pre_render_mutation(app: &mut TuiApp, area: Rect) {
         pre_layout.sidebar,
     );
     if matches!(
-        wstate.frontend.scope_stack.current(),
+        wstate.frontend.scope_stack.base(),
         jinn_domain::FocusScope::Dashboard,
     ) {
         wstate
@@ -118,7 +118,7 @@ fn render_base_layers(
     tab_bar::render_tab_bar(frame, layout.tab_bar, ctx);
 
     let is_dashboard = matches!(
-        ctx.state.frontend.scope_stack.current(),
+        ctx.state.frontend.scope_stack.base(),
         jinn_domain::FocusScope::Dashboard,
     );
 
@@ -194,7 +194,13 @@ fn render_active_overlay(
             Some(jinn_domain::feat::project_add_input::render::project_add_input_popup_rect(area))
         }
         FocusScope::QuakeBar => {
-            jinn_domain::feat::quake_bar::render::render_quake_bar(frame, area, ctx);
+            let quake_area = ratatui::layout::Rect {
+                x: area.x,
+                y: area.y + 1,
+                width: area.width,
+                height: area.height.saturating_sub(1),
+            };
+            jinn_domain::feat::quake_bar::render::render_quake_bar(frame, quake_area, ctx);
             None
         }
         _ => None,
