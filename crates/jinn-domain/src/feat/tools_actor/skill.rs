@@ -188,7 +188,6 @@ mod tests {
         ToolContext {
             cwd: PathBuf::from("/tmp"),
             timeout: None,
-            bash_default_timeout: None,
             state: None,
             session_id: None,
             app_paths: crate::common::app_paths::AppPaths::default(),
@@ -244,7 +243,6 @@ mod tests {
         let ctx = ToolContext {
             cwd: PathBuf::from("/tmp"),
             timeout: None,
-            bash_default_timeout: None,
             state: Some(state),
             session_id: Some(session_id),
             app_paths: crate::common::app_paths::AppPaths::default(),
@@ -319,7 +317,6 @@ mod tests {
         let ctx = ToolContext {
             cwd: PathBuf::from("/tmp"),
             timeout: None,
-            bash_default_timeout: None,
             state: Some(state),
             session_id: Some(session_id),
             app_paths: crate::common::app_paths::AppPaths::default(),
@@ -403,7 +400,6 @@ mod tests {
         let ctx = ToolContext {
             cwd: PathBuf::from("/tmp"),
             timeout: None,
-            bash_default_timeout: None,
             state: Some(state),
             session_id: Some(session_id),
             app_paths: crate::common::app_paths::AppPaths::default(),
@@ -470,7 +466,6 @@ mod tests {
         let ctx = ToolContext {
             cwd: PathBuf::from("/tmp"),
             timeout: None,
-            bash_default_timeout: None,
             state: Some(state),
             session_id: Some(session_id),
             app_paths: crate::common::app_paths::AppPaths::default(),
@@ -534,7 +529,6 @@ mod tests {
         let ctx = ToolContext {
             cwd: PathBuf::from("/tmp"),
             timeout: None,
-            bash_default_timeout: None,
             state: Some(state),
             session_id: Some(session_id),
             app_paths: crate::common::app_paths::AppPaths::default(),
@@ -591,7 +585,6 @@ mod tests {
         let ctx = ToolContext {
             cwd: PathBuf::from("/tmp"),
             timeout: None,
-            bash_default_timeout: None,
             state: Some(state),
             session_id: Some(session_id),
             app_paths: crate::common::app_paths::AppPaths::default(),
