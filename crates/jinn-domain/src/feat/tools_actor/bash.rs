@@ -130,16 +130,18 @@ pub fn definition(config: &BashConfig) -> ToolDefinition {
     }
 }
 
-/// Parses the arguments from the tool call JSON.
-fn parse_args(raw: &str) -> Result<(String, Option<u64>), serde_json::Error> {
+/// Parses the command from the tool call JSON.
+///
+/// Only extracts `command` — the `max_duration_secs` override is peeked by the dispatcher's
+/// [`extract_max_duration`](super::extract_max_duration) reserved-field helper.
+fn parse_args(raw: &str) -> Result<String, serde_json::Error> {
     let v: serde_json::Value = serde_json::from_str(raw)?;
     let command = v
         .get("command")
         .and_then(|v| v.as_str())
         .unwrap_or("")
         .to_owned();
-    let timeout = v.get("timeout").and_then(serde_json::Value::as_u64);
-    Ok((command, timeout))
+    Ok(command)
 }
 
 /// Maximum bytes to buffer before truncating accumulated streaming output.
@@ -457,8 +459,8 @@ fn spawn_shell_command(command: &str, cwd: &std::path::Path) -> std::io::Result<
 /// Executes the `bash` built-in tool with streaming output.
 pub fn execute(call: ToolCall, ctx: ToolContext) -> BoxedToolFuture {
     Box::pin(async move {
-        let (command, per_call_timeout) = match parse_args(&call.arguments) {
-            Ok(v) => v,
+        let command = match parse_args(&call.arguments) {
+            Ok(c) => c,
             Err(e) => {
                 return error_tool_result(
                     call.id,
@@ -532,32 +534,7 @@ pub fn execute(call: ToolCall, ctx: ToolContext) -> BoxedToolFuture {
             &call.id,
         );
 
-        // Apply timeout to the entire read+wait sequence.
-        let exit_result: Result<std::process::ExitStatus, std::io::Error> = match per_call_timeout
-            .map(std::time::Duration::from_secs)
-            .or(ctx.bash_default_timeout)
-        {
-            Some(dur) => match tokio::time::timeout(dur, read_fut).await {
-                Ok(Ok(status)) => Ok(status),
-                Ok(Err(e)) => {
-                    return error_tool_result(
-                        call.id,
-                        call.name,
-                        format!("failed to wait for process: {e}"),
-                    );
-                }
-                Err(_) => {
-                    // Timeout - kill the process.
-                    let _ = child.kill().await;
-                    return error_tool_result(
-                        call.id,
-                        call.name,
-                        format!("command timed out after {}s", dur.as_secs()),
-                    );
-                }
-            },
-            None => read_fut.await,
-        };
+        let exit_result: Result<std::process::ExitStatus, std::io::Error> = read_fut.await;
 
         format_exit_result(
             &exit_result,
@@ -760,68 +737,6 @@ mod tests {
     }
 
     #[rstest::rstest]
-    #[tokio::test]
-    async fn execute_supports_per_call_timeout() {
-        // Given a bash tool call with a 1-second timeout and a command that sleeps for 10 seconds.
-        let call = ToolCall {
-            id: "call_7".to_owned(),
-            name: "bash".to_owned(),
-            arguments: serde_json::json!({
-                "command": "sleep 10",
-                "timeout": 1
-            })
-            .to_string(),
-        };
-
-        // When executing the bash tool.
-        let result = execute(call, test_ctx()).await;
-
-        // Then the result indicates timeout.
-        assert!(!result.success);
-        assert!(result.content.contains("timed out"));
-    }
-
-    #[tokio::test]
-    async fn execute_uses_bash_default_timeout_when_no_per_call() {
-        // Given a ToolContext with a 1-second bash_default_timeout and no per-call timeout.
-        let mut ctx = test_ctx();
-        ctx.bash_default_timeout = Some(std::time::Duration::from_secs(1));
-        let call = ToolCall {
-            id: "call_default_to".to_owned(),
-            name: "bash".to_owned(),
-            arguments: serde_json::json!({"command": "sleep 10"}).to_string(),
-        };
-
-        // When executing.
-        let result = execute(call, ctx).await;
-
-        // Then the bash default timeout fires.
-        assert!(!result.success);
-        assert!(result.content.contains("timed out"));
-    }
-
-    #[tokio::test]
-    async fn execute_per_call_timeout_overrides_bash_default() {
-        // Given a short per-call timeout and a longer bash_default_timeout.
-        let mut ctx = test_ctx();
-        ctx.bash_default_timeout = Some(std::time::Duration::from_secs(10));
-        let call = ToolCall {
-            id: "call_override".to_owned(),
-            name: "bash".to_owned(),
-            arguments: serde_json::json!({
-                "command": "sleep 5",
-                "timeout": 1
-            })
-            .to_string(),
-        };
-
-        // When executing.
-        let result = execute(call, ctx).await;
-
-        // Then the per-call (1s) wins over the default (10s).
-        assert!(!result.success);
-        assert!(result.content.contains("timed out"));
-    }
 
     #[tokio::test]
     async fn execute_no_timeout_when_default_is_none_and_no_per_call() {

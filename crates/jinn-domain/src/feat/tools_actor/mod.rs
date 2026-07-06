@@ -597,7 +597,6 @@ impl ToolOrchestratorActor {
     ) -> tokio::task::JoinHandle<()> {
         let bus = self.bus().clone();
         let tool_ctx = self.build_tool_context(&session_id, dispatched_at);
-        let timeout = tool_ctx.timeout;
 
         let call_id = tool_call.id.clone();
         let call_name = tool_call.name.clone();
@@ -606,7 +605,7 @@ impl ToolOrchestratorActor {
             use futures::FutureExt as _;
             use std::panic::AssertUnwindSafe;
             let result = match AssertUnwindSafe(run_builtin_with_timeout(
-                tool_call, tool_ctx, execute_fn, timeout,
+                tool_call, tool_ctx, execute_fn,
             ))
             .catch_unwind()
             .await
@@ -781,25 +780,57 @@ fn panicked_tool_result(tool_call_id: &str, name: &str) -> ToolResult {
     }
 }
 
-/// Runs a builtin tool, racing it against its configured timeout.
-/// Runs a builtin tool, racing it against its configured timeout.
+/// Peeks the reserved `max_duration_secs` field from a tool call's JSON arguments.
 ///
-/// On timeout the returned `ToolResult` carries a failure message instead of panicking.
+/// `max_duration_secs` is a reserved argument name the dispatcher always peeks for,
+/// analogous to a reserved HTTP header. Any tool can support a per-call timeout override
+/// by documenting the field in its schema — zero code change required to add it to a new tool.
+///
+/// Falls back to the legacy `timeout` key so existing chat history and persisted tool calls
+/// that emit `"timeout": N` keep working.
+///
+/// Returns `None` when neither key is present or the JSON fails to parse (the global
+/// timeout from `tool_ctx` is used as the fallback in that case).
+fn extract_max_duration(arguments: &str) -> Option<u64> {
+    let v: serde_json::Value = serde_json::from_str(arguments).unwrap_or_default();
+    v.get("max_duration_secs")
+        .and_then(serde_json::Value::as_u64)
+        .or_else(|| v.get("timeout").and_then(serde_json::Value::as_u64))
+}
+
+/// Runs a builtin tool, racing it against its effective timeout.
+///
+/// The effective timeout is the per-call `max_duration_secs` override (peeked from the
+/// tool call's arguments via [`extract_max_duration`]) if present, otherwise the global
+/// timeout passed in `timeout` (sourced from `tool_default_timeout_secs`). A sentinel
+/// value of `0` disables the timeout entirely for that call.
+///
+/// On timeout the returned `ToolResult` carries a failure message that names
+/// `max_duration_secs` and shows an example call so the model can retry with a larger budget.
 async fn run_builtin_with_timeout(
     tool_call: ToolCall,
     tool_ctx: ToolContext,
     execute_fn: fn(ToolCall, ToolContext) -> BoxedToolFuture,
-    timeout: Option<std::time::Duration>,
 ) -> ToolResult {
     let call_id = tool_call.id.clone();
     let call_name = tool_call.name.clone();
-    match timeout {
+    let effective = match extract_max_duration(&tool_call.arguments) {
+        Some(0) => None,
+        Some(secs) => Some(std::time::Duration::from_secs(secs)),
+        None => tool_ctx.timeout,
+    };
+    match effective {
         Some(dur) => match tokio::time::timeout(dur, execute_fn(tool_call, tool_ctx)).await {
             Ok(r) => r,
             Err(_) => ToolResult {
                 tool_call_id: call_id,
                 name: call_name,
-                content: format!("tool execution timed out after {dur:?}"),
+                content: format!(
+                    "command exceeded the max_duration_secs budget and was killed after {}s; \
+                    to retry, raise max_duration_secs \\
+                    \"{{\\\"command\\\":\\\"<cmd>\\\",\\\"max_duration_secs\\\":600}}\"",
+                    dur.as_secs()
+                ),
                 success: false,
                 full_content: None,
                 truncation: None,
@@ -1056,17 +1087,20 @@ mod timeout_tests {
         // When running with the timeout.
         let result = run_builtin_with_timeout(
             make_call(),
-            empty_ctx(),
+            {
+                let mut c = empty_ctx();
+                c.timeout = Some(Duration::from_millis(50));
+                c
+            },
             slow_execute,
-            Some(Duration::from_millis(50)),
         )
         .await;
 
         // Then the result is a failure with a timeout message.
         assert!(!result.success, "expected failure on timeout");
         assert!(
-            result.content.contains("timed out"),
-            "expected timeout message, got: {}",
+            result.content.contains("max_duration_secs"),
+            "expected kill message naming max_duration_secs, got: {}",
             result.content
         );
     }
@@ -1077,9 +1111,12 @@ mod timeout_tests {
         // When running with the timeout.
         let result = run_builtin_with_timeout(
             make_call(),
-            empty_ctx(),
+            {
+                let mut c = empty_ctx();
+                c.timeout = Some(Duration::from_millis(500));
+                c
+            },
             fast_execute,
-            Some(Duration::from_millis(500)),
         )
         .await;
 
@@ -1102,6 +1139,99 @@ mod timeout_tests {
             Duration::from_secs(prefs.tool_default_timeout_secs),
             Duration::from_secs(7)
         );
+    }
+
+    #[test]
+    fn extract_max_duration_reads_max_duration_secs_field() {
+        // Given args with max_duration_secs.
+        // When extracting.
+        let d = super::extract_max_duration(r#"{"max_duration_secs":42}"#);
+
+        // Then the value is returned.
+        assert_eq!(d, Some(42));
+    }
+
+    #[test]
+    fn extract_max_duration_falls_back_to_legacy_timeout_key() {
+        // Given args with only the legacy timeout key.
+        // When extracting.
+        let d = super::extract_max_duration(r#"{"timeout":7}"#);
+
+        // Then the legacy value is returned.
+        assert_eq!(d, Some(7));
+    }
+
+    #[test]
+    fn extract_max_duration_prefers_new_key_when_both_present() {
+        // Given args with both max_duration_secs and legacy timeout.
+        // When extracting.
+        let d = super::extract_max_duration(r#"{"max_duration_secs":30,"timeout":5}"#);
+        // Then max_duration_secs wins.
+        assert_eq!(d, Some(30));
+    }
+
+    #[test]
+    fn extract_max_duration_returns_none_when_no_field() {
+        // Given args with neither key.
+        // When extracting.
+        let d = super::extract_max_duration(r#"{"command":"ls"}"#);
+
+        // Then None is returned (caller falls back to global).
+        assert_eq!(d, None);
+    }
+
+    #[test]
+    fn extract_max_duration_tolerates_malformed_json() {
+        // Given malformed args.
+        // When extracting.
+        let d = super::extract_max_duration("not json");
+
+        // Then None is returned (no panic, falls back to global).
+        assert_eq!(d, None);
+    }
+
+    #[tokio::test]
+    async fn override_in_args_overrides_global_timeout() {
+        // Given a 50ms override in args and a long global timeout.
+        let mut call = make_call();
+        call.arguments = r#"{"max_duration_secs":1}"#.to_owned();
+        let mut ctx = empty_ctx();
+        ctx.timeout = Some(Duration::from_secs(10));
+
+        // When running a tool that sleeps 500ms with a 1s override.
+        // (use a 1s override but sleep 500ms => completes under override)
+        let result = run_builtin_with_timeout(call, ctx, slow_execute).await;
+
+        // Then it succeeds (override was long enough).
+        assert!(result.success);
+    }
+
+    #[tokio::test]
+    async fn zero_override_disables_timeout() {
+        // Given a 0 override (disable sentinel) and no global timeout.
+        let mut call = make_call();
+        call.arguments = r#"{"max_duration_secs":0}"#.to_owned();
+
+        // When running a tool that sleeps 500ms with timeout disabled.
+        let result = run_builtin_with_timeout(call, empty_ctx(), slow_execute).await;
+
+        // Then it succeeds (no timeout enforced).
+        assert!(result.success);
+    }
+
+    #[tokio::test]
+    async fn no_override_uses_global_timeout() {
+        // Given no override in args and a 50ms global timeout.
+        let call = make_call(); // arguments = "{}"
+        let mut ctx = empty_ctx();
+        ctx.timeout = Some(Duration::from_millis(50));
+
+        // When running a tool that sleeps 500ms.
+        let result = run_builtin_with_timeout(call, ctx, slow_execute).await;
+
+        // Then the global timeout fires.
+        assert!(!result.success);
+        assert!(result.content.contains("max_duration_secs"));
     }
 }
 
