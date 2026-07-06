@@ -96,11 +96,11 @@ stall_retry_max_retries = 3
 stall_retry_base_delay_secs = 2
 stall_retry_max_delay_secs = 30
 
-# Default execution timeout (seconds) for all builtin tools except `bash`
-# (which keeps its own `bash.default_timeout_secs`). Acts as a safety ceiling
-# so a hung tool never stalls the turn indefinitely. For `bash` commands the
-# shorter of this and `bash.default_timeout_secs` fires first.
-tool_default_timeout_secs = 120
+# Default execution timeout (seconds) for all builtin tool calls.
+# Acts as a safety ceiling so a hung tool never stalls the turn
+# indefinitely. Bash calls can override this per-call via the
+# `max_duration_secs` tool argument.
+tool_default_timeout_secs = 300
 
 # web-fetch tool.
 [web_fetch]
@@ -127,11 +127,6 @@ backend = "headless-chrome"
 # - "native"
 # - "auto"
 engine = "exa"
-
-# Bash tool
-[bash]
-# Default timeout (in seconds) for bash tool invocations.
-default_timeout_secs = 180
 
 
 # Discord bot frontend.

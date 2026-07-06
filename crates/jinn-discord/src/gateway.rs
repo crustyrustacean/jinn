@@ -68,7 +68,7 @@ pub struct BotData {
 pub async fn run(
     data: BotData,
     token: String,
-    rx: tokio::sync::mpsc::Receiver<BridgeEvent>,
+    rx: kanal::AsyncReceiver<BridgeEvent>,
     status_tx: kanal::Sender<DiscordStatusUpdate>,
 ) -> Result<(), Report<SpawnError>> {
     if token.trim().is_empty() {
@@ -175,90 +175,98 @@ pub async fn run(
 async fn drain_loop(
     data: BotData,
     http: Arc<serenity::Http>,
-    mut rx: tokio::sync::mpsc::Receiver<BridgeEvent>,
+    rx: kanal::AsyncReceiver<BridgeEvent>,
 ) {
-    while let Some(event) = rx.recv().await {
-        match event {
-            BridgeEvent::SetupCompleted {
-                session_id,
-                cwd,
-                error,
-            } => match resolve_thread(&data, &session_id).await {
-                Ok(Some(channel_id)) => {
-                    let msg = match &error {
-                        Some(e) => format!("❌ Setup failed: {e}"),
-                        None => format!("✅ Setup complete ({})", cwd.display()),
-                    };
-                    if let Err(e) = post_message(&http, channel_id, &msg).await {
-                        tracing::warn!(error = ?e, "failed to post setup result");
-                    }
-                }
-                Ok(None) => {
-                    tracing::debug!(%session_id, "no thread bound to session; dropping setup result");
-                }
-                Err(e) => tracing::warn!(error = %e, "thread lookup failed for setup result"),
-            },
-            BridgeEvent::TurnFinished { session_id } => {
-                match resolve_thread(&data, &session_id).await {
-                    Ok(Some(channel_id)) => {
-                        let reply = read_reply(&data, &session_id);
-                        tracing::info!(
-                            %session_id,
-                            reply_found = reply.is_some(),
-                            "drain: TurnFinished"
-                        );
-                        match reply {
-                            Some(reply) => {
-                                if let Err(e) = post_reply(&http, channel_id, &reply).await {
-                                    tracing::warn!(error = ?e, "failed to post final reply");
-                                }
-                            }
-                            None => {
-                                tracing::debug!(%session_id, "turn finished but no final reply found");
-                            }
-                        }
-                    }
-                    Ok(None) => {
-                        tracing::info!(%session_id, reply_found = false, "drain: TurnFinished (no thread bound)");
-                        tracing::debug!(%session_id, "no thread bound to session; dropping reply");
-                    }
-                    Err(e) => {
-                        tracing::info!(%session_id, reply_found = false, "drain: TurnFinished (thread lookup failed)");
-                        tracing::warn!(error = %e, "thread lookup failed for final reply");
-                    }
-                }
-            }
-            BridgeEvent::TeardownFinished { session_id, error } => {
-                match resolve_thread(&data, &session_id).await {
+    loop {
+        match rx.recv().await {
+            Ok(event) => match event {
+                BridgeEvent::SetupCompleted {
+                    session_id,
+                    cwd,
+                    error,
+                } => match resolve_thread(&data, &session_id).await {
                     Ok(Some(channel_id)) => {
                         let msg = match &error {
-                            Some(e) => format!("❌ Teardown failed: {e}"),
-                            None => "✅ Teardown complete".to_owned(),
+                            Some(e) => format!("❌ Setup failed: {e}"),
+                            None => format!("✅ Setup complete ({})", cwd.display()),
                         };
                         if let Err(e) = post_message(&http, channel_id, &msg).await {
-                            tracing::warn!(error = ?e, "failed to post teardown result");
+                            tracing::warn!(error = ?e, "failed to post setup result");
                         }
                     }
                     Ok(None) => {
-                        tracing::debug!(%session_id, "no thread bound to session; dropping teardown result");
+                        tracing::debug!(%session_id, "no thread bound to session; dropping setup result");
                     }
-                    Err(e) => {
-                        tracing::warn!(error = %e, "thread lookup failed for teardown result");
-                    }
-                }
-            }
-            BridgeEvent::Archived { session_id } => {
-                match resolve_thread(&data, &session_id).await {
-                    Ok(Some(channel_id)) => {
-                        if let Err(e) = post_message(&http, channel_id, "✅ Archived").await {
-                            tracing::warn!(error = ?e, "failed to post archive result");
+                    Err(e) => tracing::warn!(error = %e, "thread lookup failed for setup result"),
+                },
+                BridgeEvent::TurnFinished { session_id } => {
+                    match resolve_thread(&data, &session_id).await {
+                        Ok(Some(channel_id)) => {
+                            let reply = read_reply(&data, &session_id);
+                            tracing::info!(
+                                %session_id,
+                                reply_found = reply.is_some(),
+                                "drain: TurnFinished"
+                            );
+                            match reply {
+                                Some(reply) => {
+                                    if let Err(e) = post_reply(&http, channel_id, &reply).await {
+                                        tracing::warn!(error = ?e, "failed to post final reply");
+                                    }
+                                }
+                                None => {
+                                    tracing::debug!(%session_id, "turn finished but no final reply found");
+                                }
+                            }
+                        }
+                        Ok(None) => {
+                            tracing::info!(%session_id, reply_found = false, "drain: TurnFinished (no thread bound)");
+                            tracing::debug!(%session_id, "no thread bound to session; dropping reply");
+                        }
+                        Err(e) => {
+                            tracing::info!(%session_id, reply_found = false, "drain: TurnFinished (thread lookup failed)");
+                            tracing::warn!(error = %e, "thread lookup failed for final reply");
                         }
                     }
-                    Ok(None) => {
-                        tracing::debug!(%session_id, "no thread bound to session; dropping archive result");
-                    }
-                    Err(e) => tracing::warn!(error = %e, "thread lookup failed for archive result"),
                 }
+                BridgeEvent::TeardownFinished { session_id, error } => {
+                    match resolve_thread(&data, &session_id).await {
+                        Ok(Some(channel_id)) => {
+                            let msg = match &error {
+                                Some(e) => format!("❌ Teardown failed: {e}"),
+                                None => "✅ Teardown complete".to_owned(),
+                            };
+                            if let Err(e) = post_message(&http, channel_id, &msg).await {
+                                tracing::warn!(error = ?e, "failed to post teardown result");
+                            }
+                        }
+                        Ok(None) => {
+                            tracing::debug!(%session_id, "no thread bound to session; dropping teardown result");
+                        }
+                        Err(e) => {
+                            tracing::warn!(error = %e, "thread lookup failed for teardown result");
+                        }
+                    }
+                }
+                BridgeEvent::Archived { session_id } => {
+                    match resolve_thread(&data, &session_id).await {
+                        Ok(Some(channel_id)) => {
+                            if let Err(e) = post_message(&http, channel_id, "✅ Archived").await {
+                                tracing::warn!(error = ?e, "failed to post archive result");
+                            }
+                        }
+                        Ok(None) => {
+                            tracing::debug!(%session_id, "no thread bound to session; dropping archive result");
+                        }
+                        Err(e) => {
+                            tracing::warn!(error = %e, "thread lookup failed for archive result");
+                        }
+                    }
+                }
+            },
+            Err(_) => {
+                tracing::debug!("discord bridge channel closed; drain loop exiting");
+                break;
             }
         }
     }

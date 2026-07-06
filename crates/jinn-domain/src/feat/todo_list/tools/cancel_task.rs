@@ -152,7 +152,6 @@ mod tests {
         ToolContext {
             cwd: std::path::PathBuf::from("."),
             timeout: None,
-            bash_default_timeout: None,
             state,
             session_id,
             app_paths: crate::common::app_paths::AppPaths::default(),
