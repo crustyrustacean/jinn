@@ -226,7 +226,13 @@ pub fn register(_registry: &mut AppUiRegistry) {}
 
 #[cfg(test)]
 mod tests {
-    #![allow(clippy::expect_used, clippy::panic, clippy::unreachable, clippy::indexing_slicing, reason = "test code")]
+    #![allow(
+        clippy::expect_used,
+        clippy::panic,
+        clippy::unreachable,
+        clippy::indexing_slicing,
+        reason = "test code"
+    )]
     use super::*;
 
     fn entry<'a>(state: &'a DashboardState, name: &str) -> &'a DashboardEntry {

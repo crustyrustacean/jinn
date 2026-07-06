@@ -13,6 +13,7 @@ use crate::session_route::{InboundOutcome, classify_inbound};
 use derive_more::Debug;
 use error_stack::Report;
 use jinn_domain::feat::chat_input::protocol::command::{EnqueueUserMessage, SubmitSteeringMessage};
+use jinn_domain::feat::dashboard::status_actor::DiscordStatusUpdate;
 use jinn_domain::feat::discord::{
     BridgeEvent, DiscordConfig, DiscordThreadMap, FinalReply, read_final_reply, split_message,
 };
@@ -68,9 +69,13 @@ pub async fn run(
     data: BotData,
     token: String,
     rx: tokio::sync::mpsc::Receiver<BridgeEvent>,
+    status_tx: kanal::Sender<DiscordStatusUpdate>,
 ) -> Result<(), Report<SpawnError>> {
     if token.trim().is_empty() {
         tracing::error!("discord bot enabled but no token configured");
+        let _ = status_tx.send(DiscordStatusUpdate::Error {
+            message: "no token configured".to_owned(),
+        });
         return Err(Report::new(SpawnError));
     }
 
@@ -86,6 +91,10 @@ pub async fn run(
         .as_deref()
         .and_then(|s| s.trim().parse::<u64>().ok())
         .map(serenity::GuildId::new);
+
+    let _ = status_tx.send(DiscordStatusUpdate::Connecting);
+
+    let build_status_tx = status_tx.clone();
 
     let drain_data = data.clone();
     let framework = poise::Framework::builder()
@@ -114,8 +123,14 @@ pub async fn run(
                 // plus the poise http handle so it can post replies back to Discord
                 // without touching the command path.
                 let http = ctx.http.clone();
+                let status_tx = status_tx.clone();
                 let drain_data = drain_data.clone();
                 tokio::spawn(drain_loop(drain_data, http.clone(), rx));
+
+                // The bot is online — the setup callback fires after the
+                // gateway's `ready` event, so this is the right place to
+                // signal that the connection succeeded.
+                let _ = status_tx.send(DiscordStatusUpdate::Connected);
 
                 // Register slash commands so /new is reachable in the client.
                 let commands = &framework.options().commands;
@@ -136,11 +151,15 @@ pub async fn run(
         .await
         .map_err(|e| {
             tracing::error!(error = ?e, "failed to build discord client");
+            let _ = build_status_tx.send(DiscordStatusUpdate::Error {
+                message: format!("client build failed: {e}"),
+            });
             Report::new(SpawnError)
         })?;
 
     client.start().await.map_err(|e| {
         tracing::error!(error = ?e, "discord gateway exited with error");
+        let _ = build_status_tx.send(DiscordStatusUpdate::Disconnected);
         Report::new(SpawnError)
     })?;
     Ok(())

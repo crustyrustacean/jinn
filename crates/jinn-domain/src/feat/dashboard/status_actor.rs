@@ -15,9 +15,7 @@
 use kameo::actor::ActorRef;
 use kameo::prelude::{Actor, Context, Message};
 
-use crate::common::actor::protocol::event::{
-    ActorShutdownCompleted, ActorStarted, ActorStarting,
-};
+use crate::common::actor::protocol::event::{ActorShutdownCompleted, ActorStarted, ActorStarting};
 use crate::common::actor_deps::ActorDeps;
 use crate::common::state::State;
 use crate::feat::dashboard::DashboardState;
@@ -157,9 +155,7 @@ impl DiscordStatusActor {
                 Some(crate::feat::dashboard::ActorLifecycle::Running)
             }
             DiscordStatusUpdate::Disconnected => None,
-            DiscordStatusUpdate::Error { .. } => {
-                Some(crate::feat::dashboard::ActorLifecycle::Dead)
-            }
+            DiscordStatusUpdate::Error { .. } => Some(crate::feat::dashboard::ActorLifecycle::Dead),
         };
 
         if let Some(lifecycle) = lifecycle {
@@ -179,10 +175,7 @@ impl DiscordStatusActor {
 
 /// Background drain loop: reads discord status updates from the kanal channel
 /// and writes them into the dashboard.
-async fn drain_status_channel(
-    rx: kanal::AsyncReceiver<DiscordStatusUpdate>,
-    state: State,
-) {
+async fn drain_status_channel(rx: kanal::AsyncReceiver<DiscordStatusUpdate>, state: State) {
     while let Ok(update) = rx.recv().await {
         let mut guard = state.write();
         DiscordStatusActor::apply_discord_update(&mut guard.frontend.dashboard, &update);
