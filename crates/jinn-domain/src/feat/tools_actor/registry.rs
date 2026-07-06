@@ -3,7 +3,6 @@
 //! Wires each tool module into a list of (definition, execute) pairs
 //! for registration by the tool orchestrator at activation.
 
-use crate::feat::preferences_actor::user_preferences::BashConfig;
 use crate::feat::tools_actor::tool_types::{ToolCall, ToolContext, ToolDefinition};
 
 use super::{
@@ -17,16 +16,16 @@ pub type BuiltinToolEntry = (ToolDefinition, fn(ToolCall, ToolContext) -> BoxedT
 
 /// Returns the built-in tool definitions and their execute functions.
 ///
-/// `bash_config` flows into `bash::definition` so the resolved default timeout
+/// `default_timeout_secs` flows into `bash::definition` so the resolved global timeout
 /// is surfaced in the schema the model sees.
-pub fn builtin_tools(bash_config: &BashConfig) -> Vec<BuiltinToolEntry> {
+pub fn builtin_tools(default_timeout_secs: u64) -> Vec<BuiltinToolEntry> {
     let mut entries = vec![
         (
             get_time::definition(),
             get_time::execute as fn(ToolCall, ToolContext) -> BoxedToolFuture,
         ),
         (
-            bash::definition(bash_config),
+            bash::definition(default_timeout_secs),
             bash::execute as fn(ToolCall, ToolContext) -> BoxedToolFuture,
         ),
         (
