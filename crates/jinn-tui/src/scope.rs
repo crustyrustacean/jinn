@@ -55,6 +55,8 @@ pub enum Scope {
     RenameSessionInput,
     /// CWD input mode - typing a directory path.
     CwdInput,
+    /// Dashboard tab — service status overview.
+    Dashboard,
     /// Project-add input mode - typing a directory path to register a project.
     ProjectAddInput,
     /// Pruner accumulation threshold input mode - numeric input for the KV-cache gate.
@@ -89,6 +91,7 @@ impl std::fmt::Display for Scope {
             Self::PickerTaskList => write!(f, "Picker(task-list)"),
             Self::PickerProject => write!(f, "Picker(project)"),
             Self::Input => write!(f, "Input"),
+            Self::Dashboard => write!(f, "Dashboard"),
             Self::ArgInput => write!(f, "ArgInput"),
             Self::TokenBudgetInput => write!(f, "TokenBudgetInput"),
             Self::SidebarResize => write!(f, "SidebarResize"),
@@ -125,6 +128,7 @@ impl std::str::FromStr for Scope {
             "Picker(task-list)" => Ok(Self::PickerTaskList),
             "Picker(project)" => Ok(Self::PickerProject),
             "Input" => Ok(Self::Input),
+            "Dashboard" => Ok(Self::Dashboard),
             "ArgInput" => Ok(Self::ArgInput),
             "TokenBudgetInput" => Ok(Self::TokenBudgetInput),
             "RenameSessionInput" => Ok(Self::RenameSessionInput),
@@ -156,6 +160,20 @@ mod tests {
         assert_eq!(
             Scope::from_str(&s),
             Ok(Scope::PickerReasoningEffort),
+            "Display/FromStr should round-trip"
+        );
+    }
+
+    #[test]
+    fn dashboard_scope_round_trips() {
+        // Given the Dashboard scope variant.
+        // When formatting then parsing back.
+        // Then the round-trip preserves the variant.
+        let s = Scope::Dashboard.to_string();
+        assert_eq!(s, "Dashboard");
+        assert_eq!(
+            Scope::from_str(&s),
+            Ok(Scope::Dashboard),
             "Display/FromStr should round-trip"
         );
     }

@@ -385,5 +385,6 @@ pub fn scope_for_focus(focus: &jinn_domain::FocusScope) -> Scope {
         FocusScope::SidebarResize => Scope::SidebarResize,
 
         FocusScope::Normal => Scope::Normal,
+        FocusScope::Dashboard => Scope::Dashboard,
     }
 }

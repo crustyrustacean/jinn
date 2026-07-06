@@ -126,6 +126,7 @@ pub fn init() -> Keymap<KeyEvent, Scope, Intent, KeyCategory> {
             // Navigation - scrolling and tab switching
             .bind("k", Intent::ChatEntrySelectPrev, KeyCategory::Navigation)
             .bind("j", Intent::ChatEntrySelectNext, KeyCategory::Navigation)
+            .bind("<Tab>", Intent::SwitchTab, KeyCategory::Navigation)
 
             .bind("<c-u>", Intent::ScrollUp, KeyCategory::Navigation)
             .bind("<c-d>", Intent::ScrollDown, KeyCategory::Navigation)
@@ -355,6 +356,19 @@ pub fn init() -> Keymap<KeyEvent, Scope, Intent, KeyCategory> {
              .bind("<c-n>", Intent::OpenProjectAddInput, KeyCategory::General)
              .bind("<c-d>", Intent::ProjectRemoveHighlighted, KeyCategory::General);
         });
+
+    // Dashboard scope - service status overview.
+    keymap.scope(Scope::Dashboard, |b| {
+        b
+        .bind("<Tab>", Intent::SwitchTab, KeyCategory::General)
+        .bind("j", Intent::DashboardSelectDown, KeyCategory::Navigation)
+        .bind("k", Intent::DashboardSelectUp, KeyCategory::Navigation)
+        .bind("g", Intent::DashboardSelectFirst, KeyCategory::Navigation)
+        .bind("G", Intent::DashboardSelectLast, KeyCategory::Navigation)
+        .bind("q", Intent::Quit, KeyCategory::General)
+        .bind("<esc>", Intent::SwitchTab, KeyCategory::General)
+        .bind("?", Intent::ToggleWhichkey, KeyCategory::General);
+    });
 
     // ArgInput scope - typing positional args for a lifecycle command.
     keymap.scope(Scope::ArgInput, |b| {
