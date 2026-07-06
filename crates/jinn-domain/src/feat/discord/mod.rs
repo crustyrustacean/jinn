@@ -19,7 +19,15 @@ pub mod thread_map;
 pub use bridge_actor::{DiscordBridgeActor, DiscordBridgeActorDeps};
 pub use config::DiscordConfig;
 pub use message_split::split_message;
-pub use protocol::{BridgeEvent, ThreadId};
+pub use protocol::{
+    BridgeEvent,
+    CreateThreadForSession,
+    CreateThreadReason,
+    DiscordThreadCreateFailed,
+    DiscordThreadCreated,
+    GatewayRequest,
+    ThreadId,
+};
 pub use reply::{FinalReply, read_final_reply};
 pub use repo_basename::repo_basename;
 pub use route::{RouteDecision, route_decision};

@@ -35,4 +35,12 @@ pub struct DiscordConfig {
     /// setup. If absent, commands are registered globally.
     #[serde(default)]
     pub guild_id: Option<String>,
+
+    /// Id (numeric, as a string) of the `GUILD_FORUM` channel where the bot
+    /// creates forum threads when a user lifts an in-flight session into
+    /// Discord via the `gdc` ("to-thread") command. If absent, `gdc` is
+    /// rejected with an in-chat error. The bot must have `Manage Threads` and
+    /// view access to this channel.
+    #[serde(default)]
+    pub forum_channel: Option<String>,
 }
