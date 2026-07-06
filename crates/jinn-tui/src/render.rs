@@ -3,9 +3,11 @@
 pub mod app_layout;
 pub mod chat_tab;
 pub mod clipboard;
+pub mod dashboard_tab;
 pub mod picker;
 pub mod selection_highlight;
 pub mod status_bar;
+pub mod tab_bar;
 
 pub mod too_small;
 pub mod which_key;
@@ -85,6 +87,15 @@ fn apply_pre_render_mutation(app: &mut TuiApp, area: Rect) {
         area,
         pre_layout.sidebar,
     );
+    if matches!(
+        wstate.frontend.scope_stack.base(),
+        jinn_domain::FocusScope::Dashboard,
+    ) {
+        wstate
+            .frontend
+            .dashboard
+            .clamp_scroll(pre_layout.content.height);
+    }
 }
 
 /// Renders the always-visible layers: border, sidebar, chat tab, session preview,
@@ -104,21 +115,39 @@ fn render_base_layers(
     sidebar_focused: bool,
     rects: &mut Vec<Rect>,
 ) {
-    chat_tab::border::render_border(frame, layout.border, ctx);
-    chat_tab::sidebar::render_sidebar(sidebar, frame, layout.sidebar, sidebar_focused, ctx, rects);
-    chat_tab::render_chat_tab(ui_registry, frame, layout, ctx, rects);
-    jinn_domain::feat::ui::sidebar::sessions::render_session_preview_for_state(
-        frame,
-        layout.sidebar,
-        frame_area,
-        ctx,
+    tab_bar::render_tab_bar(frame, layout.tab_bar, ctx);
+
+    let is_dashboard = matches!(
+        ctx.state.frontend.scope_stack.base(),
+        jinn_domain::FocusScope::Dashboard,
     );
-    jinn_domain::feat::ui::sidebar::task_list_section::preview::render_task_list_preview_for_state(
-        frame,
-        layout.sidebar,
-        frame_area,
-        ctx,
-    );
+
+    if is_dashboard {
+        dashboard_tab::render_dashboard(frame, layout.content, ctx);
+    } else {
+        chat_tab::border::render_border(frame, layout.border, ctx);
+        chat_tab::sidebar::render_sidebar(
+            sidebar,
+            frame,
+            layout.sidebar,
+            sidebar_focused,
+            ctx,
+            rects,
+        );
+        chat_tab::render_chat_tab(ui_registry, frame, layout, ctx, rects);
+        jinn_domain::feat::ui::sidebar::sessions::render_session_preview_for_state(
+            frame,
+            layout.sidebar,
+            frame_area,
+            ctx,
+        );
+        jinn_domain::feat::ui::sidebar::task_list_section::preview::render_task_list_preview_for_state(
+            frame,
+            layout.sidebar,
+            frame_area,
+            ctx,
+        );
+    }
     status_bar::render_status_bar(ui_registry, frame, layout.status_bar, ctx);
     which_key::render_which_key(frame, which_key, ctx);
 }
@@ -165,7 +194,13 @@ fn render_active_overlay(
             Some(jinn_domain::feat::project_add_input::render::project_add_input_popup_rect(area))
         }
         FocusScope::QuakeBar => {
-            jinn_domain::feat::quake_bar::render::render_quake_bar(frame, area, ctx);
+            let quake_area = ratatui::layout::Rect {
+                x: area.x,
+                y: area.y + 1,
+                width: area.width,
+                height: area.height.saturating_sub(1),
+            };
+            jinn_domain::feat::quake_bar::render::render_quake_bar(frame, quake_area, ctx);
             None
         }
         _ => None,

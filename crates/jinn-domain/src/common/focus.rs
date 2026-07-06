@@ -34,6 +34,9 @@ pub enum FocusScope {
     /// Pruner accumulation threshold popup - numeric input for the KV-cache gate.
     PrunerAccumulationInput,
 
+    /// Dashboard tab — service status overview (base scope, full-width).
+    Dashboard,
+
     /// Quake bar - global overlay console. Captures all keystrokes while open.
     QuakeBar,
 
@@ -47,6 +50,7 @@ impl FocusScope {
     pub fn mode(&self) -> Mode {
         match self {
             Self::Normal
+            | Self::Dashboard
             | Self::SidebarPersona
             | Self::SidebarPins
             | Self::SidebarSessions
@@ -68,6 +72,7 @@ impl std::fmt::Display for FocusScope {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         match self {
             Self::Normal => write!(f, "Normal"),
+            Self::Dashboard => write!(f, "Dashboard"),
             Self::Input => write!(f, "Input"),
             Self::SidebarPersona => write!(f, "SidebarPersona"),
             Self::SidebarPins => write!(f, "SidebarPins"),
@@ -126,6 +131,21 @@ impl ScopeStack {
     pub fn current(&self) -> &FocusScope {
         #[expect(clippy::expect_used, reason = "ScopeStack invariant: always has base")]
         self.stack.last().expect("stack always has base")
+    }
+
+    /// Returns the base (bottom) scope.
+    ///
+    /// Use this instead of [`current`](Self::current) when you need the
+    /// underlying tab context (Chat vs Dashboard) regardless of any overlays
+    /// pushed on top (e.g., the quake bar).
+    ///
+    /// # Panics
+    ///
+    /// Panics if the stack is empty (should never happen as the base is always present).
+    #[must_use]
+    pub fn base(&self) -> &FocusScope {
+        #[expect(clippy::expect_used, reason = "ScopeStack invariant: always has base")]
+        self.stack.first().expect("stack always has base")
     }
 
     /// Returns the scope one level below the top (the "return target").
