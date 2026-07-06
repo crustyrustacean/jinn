@@ -36,3 +36,9 @@ pub struct ActorShutdownCompleted {
 pub struct AllActorsSpawned;
 
 impl crate::common::bus::BusMessage for AllActorsSpawned {}
+
+impl crate::common::bus::BusMessage for ActorStarting {}
+
+impl crate::common::bus::BusMessage for ActorStarted {}
+
+impl crate::common::bus::BusMessage for ActorShutdownCompleted {}

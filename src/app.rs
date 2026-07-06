@@ -237,21 +237,24 @@ impl App {
                 return Ok(());
             }
             Commands::Tui => {
-                let (core, services, _plugins, discord_rx) = self.runtime.block_on(async {
-                    actor_wiring::ActorSystemBuilder::new(actor_wiring::ActorSystemBuilderArgs {
-                        handle: self.handle(),
-                        llm_service: llm_service.clone(),
-                        provider_registry: provider_registry.clone(),
-                        api_keys: resolved_api_keys.clone(),
-                        config_storage: config_storage.clone(),
-                        session_store: session_store.clone(),
-                        user_preferences_storage: user_preferences_storage.clone(),
-                        app_state_storage: app_state_storage.clone(),
-                        paths: jinn_domain::AppPaths::default(),
-                    })
-                    .build()
-                    .await
-                });
+                let (core, services, _plugins, discord_rx, discord_status_tx) =
+                    self.runtime.block_on(async {
+                        actor_wiring::ActorSystemBuilder::new(
+                            actor_wiring::ActorSystemBuilderArgs {
+                                handle: self.handle(),
+                                llm_service: llm_service.clone(),
+                                provider_registry: provider_registry.clone(),
+                                api_keys: resolved_api_keys.clone(),
+                                config_storage: config_storage.clone(),
+                                session_store: session_store.clone(),
+                                user_preferences_storage: user_preferences_storage.clone(),
+                                app_state_storage: app_state_storage.clone(),
+                                paths: jinn_domain::AppPaths::default(),
+                            },
+                        )
+                        .build()
+                        .await
+                    });
 
                 // Spawn the Discord bot gateway task when enabled. Runs detached
                 // alongside the TUI; drives the same actor system over the bus.
@@ -272,6 +275,7 @@ impl App {
                             .or_else(|| user_preferences_storage.read().discord.bot_token.clone())
                             .unwrap_or_default(),
                         rx,
+                        discord_status_tx,
                     ));
                 }
 
@@ -282,21 +286,24 @@ impl App {
             #[cfg(debug_assertions)]
             Commands::Headless { command, .. } => {
                 let store_for_shutdown = session_store.clone();
-                let (core, _services, _plugins, _discord_rx) = self.runtime.block_on(async {
-                    actor_wiring::ActorSystemBuilder::new(actor_wiring::ActorSystemBuilderArgs {
-                        handle: self.handle(),
-                        llm_service: llm_service.clone(),
-                        provider_registry,
-                        api_keys: resolved_api_keys,
-                        config_storage,
-                        session_store,
-                        user_preferences_storage: user_preferences_storage.clone(),
-                        app_state_storage: app_state_storage.clone(),
-                        paths: jinn_domain::AppPaths::default(),
-                    })
-                    .build()
-                    .await
-                });
+                let (core, _services, _plugins, _discord_rx, _discord_status_tx) =
+                    self.runtime.block_on(async {
+                        actor_wiring::ActorSystemBuilder::new(
+                            actor_wiring::ActorSystemBuilderArgs {
+                                handle: self.handle(),
+                                llm_service: llm_service.clone(),
+                                provider_registry,
+                                api_keys: resolved_api_keys,
+                                config_storage,
+                                session_store,
+                                user_preferences_storage: user_preferences_storage.clone(),
+                                app_state_storage: app_state_storage.clone(),
+                                paths: jinn_domain::AppPaths::default(),
+                            },
+                        )
+                        .build()
+                        .await
+                    });
 
                 jinn_tui::load_compaction_prompt(
                     &core.state,

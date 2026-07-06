@@ -126,6 +126,7 @@ pub fn init() -> Keymap<KeyEvent, Scope, Intent, KeyCategory> {
             // Navigation - scrolling and tab switching
             .bind("k", Intent::ChatEntrySelectPrev, KeyCategory::Navigation)
             .bind("j", Intent::ChatEntrySelectNext, KeyCategory::Navigation)
+            .bind("<Tab>", Intent::SwitchTab, KeyCategory::Navigation)
 
             .bind("<c-u>", Intent::ScrollUp, KeyCategory::Navigation)
             .bind("<c-d>", Intent::ScrollDown, KeyCategory::Navigation)
@@ -355,6 +356,19 @@ pub fn init() -> Keymap<KeyEvent, Scope, Intent, KeyCategory> {
              .bind("<c-n>", Intent::OpenProjectAddInput, KeyCategory::General)
              .bind("<c-d>", Intent::ProjectRemoveHighlighted, KeyCategory::General);
         });
+
+    // Dashboard scope - service status overview.
+    keymap.scope(Scope::Dashboard, |b| {
+        b
+        .bind("<Tab>", Intent::SwitchTab, KeyCategory::General)
+        .bind("j", Intent::DashboardSelectDown, KeyCategory::Navigation)
+        .bind("k", Intent::DashboardSelectUp, KeyCategory::Navigation)
+        .bind("g", Intent::DashboardSelectFirst, KeyCategory::Navigation)
+        .bind("G", Intent::DashboardSelectLast, KeyCategory::Navigation)
+        .bind("q", Intent::Quit, KeyCategory::General)
+        .bind("<esc>", Intent::SwitchTab, KeyCategory::General)
+        .bind("?", Intent::ToggleWhichkey, KeyCategory::General);
+    });
 
     // ArgInput scope - typing positional args for a lifecycle command.
     keymap.scope(Scope::ArgInput, |b| {
@@ -1213,6 +1227,64 @@ mod tests {
         assert!(
             matches!(intent, Intent::InsertChar { ch: ']' }),
             "] in Input scope must insert a literal ], not start the jump chord; got {intent:?}",
+        );
+    }
+}
+
+#[cfg(test)]
+mod leak_check {
+    use crate::keymap::init;
+    use crate::scope::Scope;
+    use ratatui_which_key::Keymap as WKKeymap;
+
+    #[test]
+    fn dashboard_scope_has_no_chathistory_or_sidebar_bindings() {
+        let keymap: WKKeymap<
+            jinn_domain::KeyEvent,
+            Scope,
+            jinn_domain::Intent,
+            crate::keymap::KeyCategory,
+        > = init();
+        let groups = keymap.bindings_for_scope(Scope::Dashboard);
+        let all_desc: Vec<&str> = groups
+            .iter()
+            .flat_map(|g| g.bindings.iter().map(|b| b.description.as_str()))
+            .collect();
+        assert!(
+            !all_desc
+                .iter()
+                .any(|d| d.contains("next") || d.contains("previous")),
+            "ChatHistory groups leaked into Dashboard: {all_desc:?}"
+        );
+        assert!(
+            !all_desc.iter().any(|d| d.contains("plugin")),
+            "Sidebar groups leaked into Dashboard: {all_desc:?}"
+        );
+    }
+    #[test]
+    fn normal_scope_still_shows_chathistory_and_sidebar_groups() {
+        // Regression: the library fix must not remove ChatHistory groups from
+        // Normal scope where they legitimately belong. The `p` key in Normal
+        // scope is a leaf (ChatEntryPinSelected → "pin entry"), not the
+        // "plugin" branch, so we only assert the bracket groups here.
+        let keymap: WKKeymap<
+            jinn_domain::KeyEvent,
+            Scope,
+            jinn_domain::Intent,
+            crate::keymap::KeyCategory,
+        > = init();
+        let groups = keymap.bindings_for_scope(Scope::Normal);
+        let all_desc: Vec<&str> = groups
+            .iter()
+            .flat_map(|g| g.bindings.iter().map(|b| b.description.as_str()))
+            .collect();
+        assert!(
+            all_desc.iter().any(|d| d.contains("next")),
+            "next group should appear in Normal scope; got {all_desc:?}"
+        );
+        assert!(
+            all_desc.iter().any(|d| d.contains("previous")),
+            "previous group should appear in Normal scope; got {all_desc:?}"
         );
     }
 }

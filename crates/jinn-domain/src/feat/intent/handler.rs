@@ -825,6 +825,34 @@ impl IntentHandler {
             Intent::ChangeCwd { root } => {
                 crate::feat::navigation::intent::handle_change_cwd(state, *root)
             }
+
+            // ── Dashboard tab ──
+            Intent::SwitchTab => {
+                let new_base = match state.frontend.scope_stack.current() {
+                    crate::common::app_state::FocusScope::Dashboard => {
+                        crate::common::app_state::FocusScope::Normal
+                    }
+                    _ => crate::common::app_state::FocusScope::Dashboard,
+                };
+                state.frontend.scope_stack.swap_base(new_base);
+                IntentResult::empty()
+            }
+            Intent::DashboardSelectUp => {
+                state.frontend.dashboard.select_prev();
+                IntentResult::empty()
+            }
+            Intent::DashboardSelectDown => {
+                state.frontend.dashboard.select_next();
+                IntentResult::empty()
+            }
+            Intent::DashboardSelectFirst => {
+                state.frontend.dashboard.select_first();
+                IntentResult::empty()
+            }
+            Intent::DashboardSelectLast => {
+                state.frontend.dashboard.select_last();
+                IntentResult::empty()
+            }
         }
     }
 }
@@ -1800,7 +1828,7 @@ mod intercept_scope_tests {
         clippy::indexing_slicing,
         reason = "test code"
     )]
-    use crate::common::app_state::AppState;
+    use crate::common::app_state::{AppState, FocusScope};
     use crate::feat::intent::IntentHandler;
     use crate::feat::plugin_dispatch::{HookContext, PluginSyncHooks};
     use crate::protocol::Intent;
@@ -1888,6 +1916,80 @@ mod intercept_scope_tests {
         );
     }
 
+    #[test]
+    fn switch_tab_to_dashboard_when_in_normal_scope() {
+        // Given Normal scope (default).
+        let mut state = AppState::default();
+
+        // When handling SwitchTab.
+        let _ = IntentHandler::handle(&Intent::SwitchTab, &mut state, None);
+
+        // Then base scope becomes Dashboard.
+        assert_eq!(
+            state.frontend.scope_stack.current(),
+            &FocusScope::Dashboard,
+            "switching tab from Normal should move to Dashboard"
+        );
+    }
+
+    #[test]
+    fn switch_tab_back_to_normal_when_in_dashboard_scope() {
+        // Given Dashboard scope.
+        let mut state = AppState::default();
+        state.frontend.scope_stack.swap_base(FocusScope::Dashboard);
+
+        // When handling SwitchTab.
+        let _ = IntentHandler::handle(&Intent::SwitchTab, &mut state, None);
+
+        // Then base scope becomes Normal.
+        assert_eq!(
+            state.frontend.scope_stack.current(),
+            &FocusScope::Normal,
+            "switching tab from Dashboard should move to Normal"
+        );
+    }
+
+    #[test]
+    fn dashboard_select_down_moves_selection() {
+        // Given Dashboard scope with three entries and selection at 0.
+        let mut state = AppState::default();
+        state.frontend.scope_stack.swap_base(FocusScope::Dashboard);
+        state.frontend.dashboard.mark_starting("alpha", None);
+        state.frontend.dashboard.mark_starting("beta", None);
+        state.frontend.dashboard.mark_starting("gamma", None);
+        assert_eq!(state.frontend.dashboard.selected_index(), 0);
+
+        // When handling DashboardSelectDown.
+        let _ = IntentHandler::handle(&Intent::DashboardSelectDown, &mut state, None);
+
+        // Then the selection advances to index 1.
+        assert_eq!(
+            state.frontend.dashboard.selected_index(),
+            1,
+            "select_down should advance selection"
+        );
+    }
+
+    #[test]
+    fn dashboard_select_first_moves_to_index_zero() {
+        // Given Dashboard scope with entries and selection at the end.
+        let mut state = AppState::default();
+        state.frontend.scope_stack.swap_base(FocusScope::Dashboard);
+        state.frontend.dashboard.mark_starting("alpha", None);
+        state.frontend.dashboard.mark_starting("beta", None);
+        state.frontend.dashboard.select_last();
+        assert_eq!(state.frontend.dashboard.selected_index(), 1);
+
+        // When handling DashboardSelectFirst.
+        let _ = IntentHandler::handle(&Intent::DashboardSelectFirst, &mut state, None);
+
+        // Then selection returns to index 0.
+        assert_eq!(
+            state.frontend.dashboard.selected_index(),
+            0,
+            "select_first should move to the top"
+        );
+    }
     #[cfg(test)]
     mod intercept_ctx_tests {
         #![allow(

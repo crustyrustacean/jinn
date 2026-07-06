@@ -6,6 +6,7 @@ pub mod chat_input;
 pub mod compaction_worker;
 pub mod context;
 pub mod cwd_input;
+pub mod dashboard;
 pub mod discord;
 pub mod discovery;
 pub mod discovery_coordinator;

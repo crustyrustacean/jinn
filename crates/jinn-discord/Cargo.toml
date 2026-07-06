@@ -25,6 +25,7 @@ tracing = { workspace = true }
 error-stack = { workspace = true }
 wherror = { workspace = true }
 derive_more = { workspace = true }
+kanal = { workspace = true }
 
 [lints]
 workspace = true
