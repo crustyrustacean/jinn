@@ -5,7 +5,7 @@
 //! and flushed every 500ms (or when the buffer exceeds 4KB) to reduce
 //! event volume and prevent dropped keystrokes from terminal overload.
 
-use futures::StreamExt;
+use tokio::sync::mpsc;
 
 use std::fmt::Write as _;
 use std::process::Stdio;
@@ -264,12 +264,12 @@ fn format_exit_result(
     }
 }
 
-/// Reads lines from an async buffered reader and sends them through a kanal channel.
+/// Reads lines from an async buffered reader and sends them through an mpsc channel.
 ///
 /// Designed for merging stdout and stderr from a child process into a single
 /// stream. The spawned task exits when the reader reaches EOF or the channel
 /// is closed.
-fn spawn_line_reader<R>(reader: R, tx: kanal::AsyncSender<String>) -> tokio::task::JoinHandle<()>
+fn spawn_line_reader<R>(reader: R, tx: mpsc::UnboundedSender<String>) -> tokio::task::JoinHandle<()>
 where
     R: tokio::io::AsyncBufRead + Unpin + Send + 'static,
 {
@@ -277,7 +277,9 @@ where
         use tokio::io::AsyncBufReadExt;
         let mut lines = reader.lines();
         while let Ok(Some(line)) = lines.next_line().await {
-            if tx.send(line).await.is_err() {
+            // Unbounded sender never blocks; send() fails only when all
+            // receivers have been dropped (cancellation).
+            if tx.send(line).is_err() {
                 break;
             }
         }
@@ -353,9 +355,16 @@ async fn read_child_output_and_wait(
     session_id: Option<&SessionId>,
     tool_call_id: &str,
 ) -> Result<std::process::ExitStatus, std::io::Error> {
-    let (sync_tx, sync_rx) = kanal::unbounded::<String>();
-    let tx = sync_tx.to_async();
-    let rx = sync_rx.to_async();
+    // WHY tokio::sync::mpsc HERE, NOT kanal:
+    // kanal's `ReceiveStream` used inside `tokio::select!` has a known
+    // memory-corruption / double-free bug (kanal #63, #50) triggered when the
+    // future is cancelled mid-select. The tool dispatcher drops this future on
+    // timeout kill (`run_builtin_with_timeout`), which corrupted the heap and
+    // aborted the process ("free(): double free detected in tcache 2").
+    // `tokio::mpsc::UnboundedReceiver::recv()` is cancel-safe inside
+    // `select!`, so a mid-stream drop is safe. Do not "consistency-clean" this
+    // back to kanal.
+    let (tx, mut rx) = mpsc::unbounded_channel::<String>();
 
     let stdout_handle = spawn_line_reader(tokio::io::BufReader::new(stdout), tx.clone());
     let stderr_handle = spawn_line_reader(tokio::io::BufReader::new(stderr), tx);
@@ -364,10 +373,12 @@ async fn read_child_output_and_wait(
     let mut timer = tokio::time::interval(STREAM_FLUSH_INTERVAL);
     timer.tick().await; // Consume the immediate first tick.
 
-    let mut stream = rx.stream();
     loop {
         tokio::select! {
-            line = stream.next() => match line {
+            // `recv()` is cancel-safe: dropping this future mid-await does not
+            // lose a message or corrupt state. `None` means all senders were
+            // dropped (both readers finished).
+            line = rx.recv() => match line {
                 Some(line) => {
                     batcher.push_line(&line, accumulated);
                     if batcher.should_flush() {
@@ -771,6 +782,62 @@ mod tests {
         assert!(
             stdout.trim().is_empty(),
             "expected no 'sleep 60' processes, but found: {stdout}"
+        );
+    }
+
+    /// Regression for the `tcache 2` double-free crash. The bash tool drains
+    /// its stdout/stderr merge channel inside a `tokio::select!`; when the
+    /// tool dispatcher kills a long-running command on timeout, it drops the
+    /// bash future mid-`select!`. Under kanal this corrupted the heap and
+    /// aborted the process. With the cancel-safe `tokio::sync::mpsc::recv()`
+    /// the mid-stream drop must be crash-free even under repeated cancellation.
+    ///
+    /// Runs a continuously-emitting command (`yes`) under a tight timeout so the
+    /// future is dropped while output is streaming; repeats to exercise the
+    /// cancel path repeatedly. If any iteration corrupted the allocator, glibc
+    /// would have aborted the test runner before the loop finished.
+    #[cfg(unix)]
+    #[rstest::rstest]
+    #[tokio::test]
+    async fn streaming_cancel_under_repeated_timeout_is_crash_free() {
+        // Given a continuously-emitting command under a tight per-call timeout.
+        const ITERATIONS: u32 = 6;
+        const TIGHT: Duration = Duration::from_millis(200);
+        let ctx = test_ctx();
+
+        // When repeatedly dropping the bash future mid-stream via timeout.
+        for i in 0..ITERATIONS {
+            let call = ToolCall {
+                id: format!("call_cancel_{i}"),
+                name: "bash".to_owned(),
+                arguments: serde_json::json!({ "command": "yes" }).to_string(),
+            };
+            // `yes` emits faster than the channel drains, so the timeout
+            // virtually always fires while the select is parked mid-stream.
+            let result = tokio::time::timeout(TIGHT, execute(call, ctx.clone())).await;
+
+            // Then each iteration times out (future dropped mid-stream) without aborting.
+            assert!(
+                result.is_err(),
+                "iteration {i}: expected timeout (mid-stream drop), got {:?}",
+                result.as_ref().map(|r| &r.content)
+            );
+        }
+
+        // Give the kernel a moment to reap the killed `yes` processes.
+        tokio::time::sleep(Duration::from_millis(150)).await;
+
+        // And no orphaned `yes` process survived the kill-on-drop guard.
+        let output = tokio::process::Command::new("pgrep")
+            .arg("-x")
+            .arg("yes")
+            .output()
+            .await
+            .expect("pgrep should run");
+        let stdout = String::from_utf8_lossy(&output.stdout);
+        assert!(
+            stdout.trim().is_empty(),
+            "expected no 'yes' processes after cancellation, but found: {stdout}"
         );
     }
 
