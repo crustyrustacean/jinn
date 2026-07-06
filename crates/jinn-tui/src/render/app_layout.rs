@@ -8,7 +8,7 @@ pub const MIN_SIDEBAR_WIDTH: u16 = 15;
 /// Minimum terminal width.
 pub const MIN_WIDTH: u16 = 40;
 /// Minimum terminal height.
-pub const MIN_HEIGHT: u16 = 14;
+pub const MIN_HEIGHT: u16 = 15;
 
 /// Top-level application layout areas.
 pub struct AppLayout {
@@ -20,6 +20,8 @@ pub struct AppLayout {
     pub sidebar: Rect,
     /// The vertical border between minimap and sidebar (1 column wide).
     pub border: Rect,
+    /// The tab bar area (1 row at the very top of the main column).
+    pub tab_bar: Rect,
     // Sub-areas of the main column:
     /// The content area (chat log + indicator + queue + bottom line).
     pub content: Rect,
@@ -74,7 +76,8 @@ impl AppLayout {
         };
 
         let input_height = (1 + input_lines.max(1)).min(max_input_height);
-        let [content, input, status_bar] = Layout::vertical([
+        let [tab_bar, content, input, status_bar] = Layout::vertical([
+            Constraint::Length(1),
             Constraint::Min(1),
             Constraint::Length(input_height),
             Constraint::Length(2),
@@ -110,6 +113,7 @@ impl AppLayout {
             minimap,
             sidebar,
             border,
+            tab_bar,
             content,
             input,
             status_bar,
@@ -129,8 +133,8 @@ mod tests {
 
     #[rstest::rstest]
     fn meets_min_size() {
-        // Given a 40x14 area.
-        let area = Rect::new(0, 0, 40, 14);
+        // Given a 40x15 area.
+        let area = Rect::new(0, 0, 40, 15);
 
         // When checking meets_min_size.
         let result = AppLayout::meets_min_size(area);

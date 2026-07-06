@@ -148,13 +148,12 @@ impl DiscordStatusActor {
     fn apply_discord_update(dashboard: &mut DashboardState, update: &DiscordStatusUpdate) {
         let message = update.full_message();
         let lifecycle = match update {
-            DiscordStatusUpdate::Connecting => None,
+            DiscordStatusUpdate::Connecting | DiscordStatusUpdate::Disconnected => None,
             DiscordStatusUpdate::Connected => {
                 // The gateway task is not a kameo actor, so it doesn't emit
                 // ActorStarted. Mark it running here.
                 Some(crate::feat::dashboard::ActorLifecycle::Running)
             }
-            DiscordStatusUpdate::Disconnected => None,
             DiscordStatusUpdate::Error { .. } => Some(crate::feat::dashboard::ActorLifecycle::Dead),
         };
 

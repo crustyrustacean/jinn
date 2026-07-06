@@ -317,7 +317,6 @@ impl ActorSystemBuilder {
             .spawn()
             .await;
 
-
         // ── Infrastructure actors ──────────────────────────────────────────
 
         // System-ready actor: signals main thread when all actors started.
