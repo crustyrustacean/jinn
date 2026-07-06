@@ -260,13 +260,13 @@ impl Actor for ToolOrchestratorActor {
             .openrouter_web_search
             .clone();
 
-        let bash_config = args
+        let default_timeout_secs = args
             .deps
             .services
             .user_preferences_storage
             .read()
-            .bash
-            .clone();
+            .tool_default_timeout_secs;
+
 
         let mut actor = Self {
             deps: args.deps,
@@ -275,7 +275,7 @@ impl Actor for ToolOrchestratorActor {
             state: args.state,
             services: args.services,
         };
-        let all_builtins = registry::builtin_tools(&bash_config);
+        let all_builtins = registry::builtin_tools(default_timeout_secs);
         let builtins: Vec<_> = if let Some(ref filter) = args.builtin_filter {
             all_builtins
                 .into_iter()
@@ -534,10 +534,6 @@ impl ToolOrchestratorActor {
         ToolContext {
             cwd,
             timeout: Some(timeout),
-            bash_default_timeout: prefs
-                .bash
-                .default_timeout_secs
-                .map(std::time::Duration::from_secs),
             state: Some(self.state.clone()),
             session_id: Some(session_id.clone()),
             app_paths: self.services.paths.clone(),
@@ -1039,7 +1035,6 @@ mod timeout_tests {
         ToolContext {
             cwd: PathBuf::from("/tmp"),
             timeout: None,
-            bash_default_timeout: None,
             state: None,
             session_id: None,
             app_paths: AppPaths::new_in(std::path::Path::new("/tmp")),
@@ -1270,7 +1265,6 @@ mod panic_safety_tests {
             super::ToolContext {
                 cwd: std::path::PathBuf::from("/tmp"),
                 timeout: None,
-                bash_default_timeout: None,
                 state: None,
                 session_id: None,
                 app_paths: crate::common::app_paths::AppPaths::new_in(std::path::Path::new("/tmp")),

@@ -5,42 +5,9 @@
 //! and flushed every 500ms (or when the buffer exceeds 4KB) to reduce
 //! event volume and prevent dropped keystrokes from terminal overload.
 
-use serde::{Deserialize, Serialize};
 
 use futures::StreamExt;
 
-/// Default bash tool timeout in seconds (3 minutes).
-const DEFAULT_BASH_DEFAULT_TIMEOUT_SECS: u64 = 180;
-
-// serde default fns must return the field type (Option<u64>) even when always Some.
-#[expect(
-    clippy::unnecessary_wraps,
-    reason = "trait contract requires Result return"
-)]
-fn default_bash_default_timeout_secs() -> Option<u64> {
-    Some(DEFAULT_BASH_DEFAULT_TIMEOUT_SECS)
-}
-
-/// Bash tool configuration.
-///
-/// Serialized as `[bash]` in `jinn.toml`.
-/// Controls the default execution timeout for the `bash` builtin tool.
-/// The model can override per-call via the `timeout` JSON argument.
-#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
-pub struct BashConfig {
-    /// Default timeout in seconds for bash commands. Default: 180 (3 minutes).
-    /// Set to `None` to disable the default timeout.
-    #[serde(default = "default_bash_default_timeout_secs")]
-    pub default_timeout_secs: Option<u64>,
-}
-
-impl Default for BashConfig {
-    fn default() -> Self {
-        Self {
-            default_timeout_secs: Some(DEFAULT_BASH_DEFAULT_TIMEOUT_SECS),
-        }
-    }
-}
 use std::fmt::Write as _;
 use std::process::Stdio;
 use std::time::Duration;
@@ -97,13 +64,8 @@ impl std::ops::DerefMut for KillOnDrop {
     }
 }
 
-/// Returns the tool definition for the `bash` built-in tool.
-///
-/// The resolved `default_timeout_secs` from `config` is injected into the
-/// schema descriptions so the model can see what default it is operating under.
-pub fn definition(config: &BashConfig) -> ToolDefinition {
-    let default_secs = config.default_timeout_secs.unwrap_or(0);
-    let default_secs_str = default_secs.to_string();
+pub fn definition(default_timeout_secs: u64) -> ToolDefinition {
+    let default_secs_str = default_timeout_secs.to_string();
     ToolDefinition {
         name: "bash".to_owned(),
         description: format!(
@@ -564,7 +526,6 @@ mod tests {
         ToolContext {
             cwd: PathBuf::from("/tmp"),
             timeout: None,
-            bash_default_timeout: None,
             state: None,
             session_id: None,
             app_paths: crate::common::app_paths::AppPaths::default(),
@@ -670,7 +631,6 @@ mod tests {
         let ctx = ToolContext {
             cwd: dir.path().to_owned(),
             timeout: None,
-            bash_default_timeout: None,
             state: None,
             session_id: None,
             app_paths: crate::common::app_paths::AppPaths::default(),
@@ -741,8 +701,8 @@ mod tests {
 
     #[tokio::test]
     async fn execute_no_timeout_when_default_is_none_and_no_per_call() {
-        // Given no per-call timeout and bash_default_timeout = None.
-        let ctx = test_ctx(); // bash_default_timeout: None
+        // Given no timeout in the context.
+        let ctx = test_ctx(); // timeout: None
         let call = ToolCall {
             id: "call_no_to".to_owned(),
             name: "bash".to_owned(),
@@ -1132,132 +1092,20 @@ mod tests {
         assert!(!batcher.should_flush());
     }
 
-    #[rstest::rstest]
-    fn definition_includes_default_timeout_secs_in_schema() {
-        // Given the default BashConfig.
-        let config = BashConfig::default();
+    #[test]
+    fn definition_schema_injects_default_timeout_secs() {
+        // Given the global default of 300s.
+        // When building the definition.
+        let def = definition(300);
 
-        // When building the tool definition.
-        let def = definition(&config);
-
-        // Then the tool description mentions the default.
+        // Then the description mentions 300s.
         assert!(
-            def.description.contains("180"),
-            "description must mention 180, got: {}",
+            def.description.contains("300s"),
+            "expected description to mention 300s, got: {}",
             def.description
         );
-
-        // And the timeout field description mentions the default.
-        let params = &def.parameters;
-        let timeout_desc = params
-            .get("properties")
-            .and_then(|p| p.get("timeout"))
-            .and_then(|t| t.get("description"))
-            .and_then(|d| d.as_str())
-            .expect("timeout description present");
-        assert!(
-            timeout_desc.contains("180"),
-            "timeout description must mention 180, got: {timeout_desc}"
-        );
-    }
-
-    #[rstest::rstest]
-    fn definition_includes_custom_timeout_in_schema() {
-        // Given a BashConfig with a custom default.
-        let config = BashConfig {
-            default_timeout_secs: Some(60),
-        };
-
-        // When building the tool definition.
-        let def = definition(&config);
-
-        // Then the timeout field description mentions the custom default.
-        let timeout_desc = def
-            .parameters
-            .get("properties")
-            .and_then(|p| p.get("timeout"))
-            .and_then(|t| t.get("description"))
-            .and_then(|d| d.as_str())
-            .expect("timeout description present");
-        assert!(
-            timeout_desc.contains("60"),
-            "timeout description must mention 60, got: {timeout_desc}"
-        );
-    }
-
-    #[rstest::rstest]
-    fn definition_handles_none_timeout_gracefully() {
-        // Given a BashConfig with no default timeout.
-        let config = BashConfig {
-            default_timeout_secs: None,
-        };
-
-        // When building the tool definition.
-        let def = definition(&config);
-
-        // Then it succeeds and the timeout field still has a description.
-        let timeout_desc = def
-            .parameters
-            .get("properties")
-            .and_then(|p| p.get("timeout"))
-            .and_then(|t| t.get("description"))
-            .and_then(|d| d.as_str())
-            .expect("timeout description present");
-        assert!(
-            !timeout_desc.is_empty(),
-            "timeout description must not be empty"
-        );
     }
 }
 
-#[test]
-fn bash_config_default_is_180_secs() {
-    // Given the default BashConfig.
-    let cfg = BashConfig::default();
 
-    // Then the default timeout is 180 seconds.
-    assert_eq!(
-        cfg.default_timeout_secs,
-        Some(180),
-        "BashConfig::default() must produce a 3-minute default timeout",
-    );
-}
 
-#[test]
-#[expect(clippy::expect_used, reason = "test code")]
-fn bash_config_toml_roundtrip_explicit_value() {
-    // Given a TOML fragment with an explicit override.
-    let toml_str = "
-            default_timeout_secs = 60
-        ";
-
-    // When parsed.
-    let cfg: BashConfig = toml::from_str(toml_str).expect("parse");
-
-    // Then the override round-trips.
-    assert_eq!(cfg.default_timeout_secs, Some(60));
-
-    // And serializing back preserves the value.
-    let reserialized = toml::to_string(&cfg).expect("serialize");
-    assert!(
-        reserialized.contains("default_timeout_secs = 60"),
-        "reserialized TOML must preserve the value; got: {reserialized}",
-    );
-}
-
-#[test]
-#[expect(clippy::expect_used, reason = "test code")]
-fn bash_config_toml_empty_table_falls_back_to_default() {
-    // Given an empty [bash] table in TOML.
-    let toml_str = "";
-
-    // When parsed.
-    let cfg: BashConfig = toml::from_str(toml_str).expect("parse");
-
-    // Then the serde default fn fires and produces 180.
-    assert_eq!(
-        cfg.default_timeout_secs,
-        Some(180),
-        "missing field should resolve via serde default fn",
-    );
-}

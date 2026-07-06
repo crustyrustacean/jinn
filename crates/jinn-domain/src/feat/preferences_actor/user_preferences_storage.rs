@@ -246,7 +246,7 @@ mod tests {
     use crate::common::app_info::PREFS_FILE_NAME;
     use crate::feat::preferences_actor::RequestRetryConfig;
     use crate::feat::preferences_actor::user_preferences::{
-        AutoPruneConfig, BashConfig, CompactionConfig, CwdSelectorConfig, MinimapConfig,
+        AutoPruneConfig, CompactionConfig, CwdSelectorConfig, MinimapConfig,
         OpenrouterWebSearchConfig, WebFetchConfig,
     };
     use crate::feat::project::ProjectConfig;
@@ -280,7 +280,6 @@ mod tests {
             cwd_selector: CwdSelectorConfig::default(),
             minimap: MinimapConfig::default(),
             auto_prune: AutoPruneConfig::default(),
-            bash: BashConfig::default(),
             projects: vec![],
             discord: crate::feat::discord::DiscordConfig::default(),
             tool_default_timeout_secs: default_tool_default_timeout_secs(),
@@ -340,7 +339,6 @@ mod tests {
             cwd_selector: CwdSelectorConfig::default(),
             minimap: MinimapConfig::default(),
             auto_prune: AutoPruneConfig::default(),
-            bash: BashConfig::default(),
             projects: vec![ProjectConfig {
                 path: PathBuf::from("/tmp/proj-a"),
             }],
@@ -384,7 +382,6 @@ mod tests {
             cwd_selector: CwdSelectorConfig::default(),
             minimap: MinimapConfig::default(),
             auto_prune: AutoPruneConfig::default(),
-            bash: BashConfig::default(),
             projects: vec![],
             discord: crate::feat::discord::DiscordConfig::default(),
             tool_default_timeout_secs: default_tool_default_timeout_secs(),
@@ -422,7 +419,6 @@ mod tests {
             cwd_selector: CwdSelectorConfig::default(),
             minimap: MinimapConfig::default(),
             auto_prune: AutoPruneConfig::default(),
-            bash: BashConfig::default(),
             projects: vec![],
             discord: crate::feat::discord::DiscordConfig::default(),
             tool_default_timeout_secs: default_tool_default_timeout_secs(),
@@ -447,7 +443,6 @@ mod tests {
             cwd_selector: CwdSelectorConfig::default(),
             minimap: MinimapConfig::default(),
             auto_prune: AutoPruneConfig::default(),
-            bash: BashConfig::default(),
             projects: vec![],
             discord: crate::feat::discord::DiscordConfig::default(),
             tool_default_timeout_secs: default_tool_default_timeout_secs(),
@@ -481,7 +476,6 @@ mod tests {
             cwd_selector: CwdSelectorConfig::default(),
             minimap: MinimapConfig::default(),
             auto_prune: AutoPruneConfig::default(),
-            bash: BashConfig::default(),
             projects: vec![],
             discord: crate::feat::discord::DiscordConfig::default(),
             tool_default_timeout_secs: default_tool_default_timeout_secs(),
@@ -574,5 +568,28 @@ mod tests {
         // When read() is called.
         // Then it panics (verified by #[should_panic] above).
         let _ = service.read();
+    }
+
+    #[rstest::rstest]
+    fn load_toml_with_legacy_bash_section_does_not_error() {
+        // Given a TOML file with a legacy [bash] section (removed config).
+        use crate::feat::preferences_actor::user_preferences::load_preferences_from;
+        let dir = tempfile::TempDir::new().expect("temp dir");
+        let path = dir.path().join(PREFS_FILE_NAME);
+        std::fs::write(
+            &path,
+            r#"last_model = "ollama/llama3"
+
+[bash]
+default_timeout_secs = 180
+"#,
+        )
+        .expect("write");
+
+        // When loading.
+        let prefs = load_preferences_from(&path).expect("load must succeed");
+
+        // Then the [bash] section is ignored (forward-compat) and defaults apply.
+        assert_eq!(prefs.tool_default_timeout_secs, default_tool_default_timeout_secs());
     }
 }
