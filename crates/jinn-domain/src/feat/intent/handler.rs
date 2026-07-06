@@ -853,8 +853,9 @@ impl IntentHandler {
                 state.frontend.dashboard.select_last();
                 IntentResult::empty()
             }
-            // Placeholder until Phase 4 wires the real handler.
-            Intent::ToDiscordThread => IntentResult::empty(),
+            Intent::ToDiscordThread => {
+                feat::discord::to_thread_intent::handle_to_discord_thread(state)
+            }
         }
     }
 }

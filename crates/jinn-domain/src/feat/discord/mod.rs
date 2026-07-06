@@ -15,6 +15,7 @@ pub mod reply;
 pub mod repo_basename;
 pub mod route;
 pub mod thread_map;
+pub mod to_thread_intent;
 
 pub use bridge_actor::{DiscordBridgeActor, DiscordBridgeActorDeps};
 pub use config::DiscordConfig;
