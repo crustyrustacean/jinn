@@ -106,7 +106,7 @@ kameo_actors = "0.5"
 # UI
 ratatui = { version = "0.30.0", features = ["unstable-rendered-line-info"] }
 crossterm = { version = "0.29", features = ["event-stream"] }
-ratatui-which-key = { version = "0.13.1", path = "../../ratatui-which-key" }
+ratatui-which-key = "0.14.0"
 ratatui-spatial-splits = "0.2.0"
 throbber-widgets-tui = "0.11"
 
