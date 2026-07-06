@@ -58,6 +58,12 @@ impl Actor for DiscordBridgeActor {
         args.deps
             .subscribe(actor_ref.clone().recipient::<SessionSetupCompleted>())
             .await;
+        args.deps
+            .subscribe(actor_ref.clone().recipient::<SessionTeardownFinished>())
+            .await;
+        args.deps
+            .subscribe(actor_ref.recipient::<SessionArchived>())
+            .await;
 
         Ok(Self { tx: args.tx })
     }
