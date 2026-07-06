@@ -138,6 +138,7 @@ pub fn init() -> Keymap<KeyEvent, Scope, Intent, KeyCategory> {
             .describe_group_with_category("g", "general", KeyCategory::General)
             .describe_group_with_category("gm", "model", KeyCategory::Model)
             .describe_group_with_category("gc", "context", KeyCategory::Context)
+            .describe_group_with_category("gd", "discord", KeyCategory::General)
             .bind("<leader>sl", Intent::OpenPicker { kind: PickerKind::SessionLifecycle }, KeyCategory::General)
             .bind("<leader>sc", Intent::OpenPicker { kind: PickerKind::CompactionModel }, KeyCategory::Model)
             .describe_group_with_category("<leader>c", "change", KeyCategory::General)
@@ -147,6 +148,7 @@ pub fn init() -> Keymap<KeyEvent, Scope, Intent, KeyCategory> {
             .bind("gmr", Intent::RefreshModels, KeyCategory::Model)
             .bind("gcr", Intent::RescanPromptTemplates, KeyCategory::Context)
             .bind("gcp", Intent::OpenPrunerAccumulationInput, KeyCategory::Context)
+            .bind("gdc", Intent::ToDiscordThread, KeyCategory::General)
             .bind("<c-l>", Intent::SidebarFocus, KeyCategory::Navigation)
             .bind("<M-s>", Intent::SidebarFocusSessions, KeyCategory::Navigation)
             // Sidebar resize
@@ -1021,6 +1023,39 @@ mod tests {
                 "<leader>sr must resolve to OpenPicker{{ReasoningEffort}}; got {action:?}",
             ),
             other => panic!("<leader>sr must be a leaf, got branch: {other:?}"),
+        }
+    }
+    #[rstest::rstest]
+    fn gdc_resolves_to_to_discord_thread() {
+        // Given the default keymap.
+        use jinn_domain::{Key, KeyEvent, Modifiers};
+        use ratatui_which_key::NodeResult;
+        let keymap = init();
+
+        // When navigating the gdc sequence (g → d → c).
+        let path = [
+            KeyEvent {
+                key: Key::Char('g'),
+                modifiers: Modifiers::none(),
+            },
+            KeyEvent {
+                key: Key::Char('d'),
+                modifiers: Modifiers::none(),
+            },
+            KeyEvent {
+                key: Key::Char('c'),
+                modifiers: Modifiers::none(),
+            },
+        ];
+        let result = keymap.navigate(&path, &Scope::Normal).expect("path exists");
+
+        // Then it resolves to Intent::ToDiscordThread.
+        match result {
+            NodeResult::Leaf { action } => assert!(
+                matches!(action, Intent::ToDiscordThread),
+                "gdc must resolve to ToDiscordThread; got {action:?}",
+            ),
+            other => panic!("gdc must be a leaf, got branch: {other:?}"),
         }
     }
 
