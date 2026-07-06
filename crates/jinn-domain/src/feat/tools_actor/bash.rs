@@ -7,6 +7,8 @@
 
 use serde::{Deserialize, Serialize};
 
+use futures::StreamExt;
+
 /// Default bash tool timeout in seconds (3 minutes).
 const DEFAULT_BASH_DEFAULT_TIMEOUT_SECS: u64 = 180;
 
@@ -292,15 +294,12 @@ fn format_exit_result(
     }
 }
 
-/// Reads lines from an async buffered reader and sends them through an mpsc channel.
+/// Reads lines from an async buffered reader and sends them through a kanal channel.
 ///
 /// Designed for merging stdout and stderr from a child process into a single
 /// stream. The spawned task exits when the reader reaches EOF or the channel
 /// is closed.
-fn spawn_line_reader<R>(
-    reader: R,
-    tx: tokio::sync::mpsc::UnboundedSender<String>,
-) -> tokio::task::JoinHandle<()>
+fn spawn_line_reader<R>(reader: R, tx: kanal::AsyncSender<String>) -> tokio::task::JoinHandle<()>
 where
     R: tokio::io::AsyncBufRead + Unpin + Send + 'static,
 {
@@ -308,7 +307,7 @@ where
         use tokio::io::AsyncBufReadExt;
         let mut lines = reader.lines();
         while let Ok(Some(line)) = lines.next_line().await {
-            if tx.send(line).is_err() {
+            if tx.send(line).await.is_err() {
                 break;
             }
         }
@@ -384,19 +383,21 @@ async fn read_child_output_and_wait(
     session_id: Option<&SessionId>,
     tool_call_id: &str,
 ) -> Result<std::process::ExitStatus, std::io::Error> {
-    let (tx, mut rx) = tokio::sync::mpsc::unbounded_channel::<String>();
+    let (sync_tx, sync_rx) = kanal::unbounded::<String>();
+    let tx = sync_tx.to_async();
+    let rx = sync_rx.to_async();
 
     let stdout_handle = spawn_line_reader(tokio::io::BufReader::new(stdout), tx.clone());
-    let stderr_handle = spawn_line_reader(tokio::io::BufReader::new(stderr), tx.clone());
-    drop(tx);
+    let stderr_handle = spawn_line_reader(tokio::io::BufReader::new(stderr), tx);
 
     let mut batcher = StreamingBatcher::new();
     let mut timer = tokio::time::interval(STREAM_FLUSH_INTERVAL);
     timer.tick().await; // Consume the immediate first tick.
 
+    let mut stream = rx.stream();
     loop {
         tokio::select! {
-            line = rx.recv() => match line {
+            line = stream.next() => match line {
                 Some(line) => {
                     batcher.push_line(&line, accumulated);
                     if batcher.should_flush() {
