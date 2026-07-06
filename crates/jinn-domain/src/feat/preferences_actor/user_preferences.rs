@@ -35,7 +35,6 @@ pub use crate::feat::llm_actor::RequestRetryConfig;
 pub use crate::feat::project::ProjectConfig;
 pub use crate::feat::session_lifecycle::SessionLifecycle;
 pub use crate::feat::tools_actor::OpenrouterWebSearchConfig;
-pub use crate::feat::tools_actor::bash::BashConfig;
 pub use crate::feat::ui::MinimapConfig;
 pub use crate::feat::web_fetch_actor::{WebFetchBackend, WebFetchConfig};
 
@@ -161,16 +160,13 @@ pub struct UserPreferences {
     /// Auto-prune configuration.
     #[serde(default)]
     pub auto_prune: AutoPruneConfig,
-    /// Bash tool configuration.
-    #[serde(default)]
-    pub bash: BashConfig,
     /// Discord bot configuration. Off by default.
     #[serde(default)]
     pub discord: crate::feat::discord::DiscordConfig,
-    /// Default execution timeout (seconds) for all builtin tools (except
-    /// `bash`, which keeps its own `bash.default_timeout_secs`). Acts as a
-    /// safety ceiling so a hung tool never stalls the turn indefinitely.
-    /// The shorter of this and `bash.default_timeout_secs` wins for bash.
+    /// Default execution timeout (seconds) for all tool calls.
+    ///
+    /// The model can override per-call via the reserved `max_duration_secs` argument
+    /// (supported by `bash`); a value of `0` disables the timeout for that call.
     #[serde(default = "default_tool_default_timeout_secs")]
     pub tool_default_timeout_secs: u64,
 
@@ -228,7 +224,6 @@ impl Default for UserPreferences {
             cwd_selector: CwdSelectorConfig::default(),
             minimap: MinimapConfig::default(),
             auto_prune: AutoPruneConfig::default(),
-            bash: BashConfig::default(),
             discord: crate::feat::discord::DiscordConfig::default(),
             tool_default_timeout_secs: default_tool_default_timeout_secs(),
             history_stall_timeout_secs: default_history_stall_timeout_secs(),
@@ -603,7 +598,6 @@ mod tests {
             cwd_selector: CwdSelectorConfig::default(),
             minimap: MinimapConfig::default(),
             auto_prune: AutoPruneConfig::default(),
-            bash: BashConfig::default(),
             projects: vec![],
             discord: crate::feat::discord::DiscordConfig::default(),
             tool_default_timeout_secs: default_tool_default_timeout_secs(),
@@ -665,7 +659,6 @@ mod tests {
             cwd_selector: CwdSelectorConfig::default(),
             minimap: MinimapConfig::default(),
             auto_prune: AutoPruneConfig::default(),
-            bash: BashConfig::default(),
             projects: vec![],
             discord: crate::feat::discord::DiscordConfig::default(),
             tool_default_timeout_secs: default_tool_default_timeout_secs(),
@@ -700,7 +693,6 @@ mod tests {
             cwd_selector: CwdSelectorConfig::default(),
             minimap: MinimapConfig::default(),
             auto_prune: AutoPruneConfig::default(),
-            bash: BashConfig::default(),
             projects: vec![],
             discord: crate::feat::discord::DiscordConfig::default(),
             tool_default_timeout_secs: default_tool_default_timeout_secs(),
@@ -1003,7 +995,6 @@ mod tests {
             cwd_selector: CwdSelectorConfig::default(),
             minimap: MinimapConfig::default(),
             auto_prune: AutoPruneConfig::default(),
-            bash: BashConfig::default(),
             projects: vec![],
             discord: crate::feat::discord::DiscordConfig::default(),
             tool_default_timeout_secs: default_tool_default_timeout_secs(),

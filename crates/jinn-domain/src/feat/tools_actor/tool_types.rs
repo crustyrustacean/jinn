@@ -27,11 +27,6 @@ pub struct ToolContext {
     pub cwd: PathBuf,
     /// Optional execution timeout.
     pub timeout: Option<Duration>,
-    /// Default timeout for the bash tool, sourced from `BashConfig`.
-    ///
-    /// Only consumed by `bash::execute` as the fallback when the model
-    /// does not set a per-call `timeout`. Other tools do not read this field.
-    pub bash_default_timeout: Option<Duration>,
     /// Shared application state (only available for tools that need it).
     pub state: Option<State>,
     /// Session ID (only available for tools that need it).
@@ -59,7 +54,6 @@ impl fmt::Debug for ToolContext {
         f.debug_struct("ToolContext")
             .field("cwd", &self.cwd)
             .field("timeout", &self.timeout)
-            .field("bash_default_timeout", &self.bash_default_timeout)
             .field("session_id", &self.session_id)
             .finish_non_exhaustive()
     }
@@ -85,7 +79,6 @@ mod tests {
         let ctx = ToolContext {
             cwd: PathBuf::from("/tmp/test"),
             timeout: Some(std::time::Duration::from_secs(30)),
-            bash_default_timeout: None,
             state: None,
             session_id: Some(crate::protocol::SessionId::new()),
             app_paths: crate::common::app_paths::AppPaths::default(),

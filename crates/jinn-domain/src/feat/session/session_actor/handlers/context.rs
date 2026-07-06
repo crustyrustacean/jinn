@@ -251,9 +251,7 @@ mod tests {
         let (actor, state, _audit) = create_actor().await;
 
         // Build a ToolsRegistered with all builtin tools.
-        let all_tools = crate::feat::tools_actor::registry::builtin_tools(
-            &crate::feat::preferences_actor::user_preferences::BashConfig::default(),
-        );
+        let all_tools = crate::feat::tools_actor::registry::builtin_tools(300);
         let definitions: Vec<_> = all_tools.iter().map(|(def, _)| def.clone()).collect();
         let payload = ToolsRegistered {
             provider: "builtin".to_owned(),
