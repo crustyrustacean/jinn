@@ -40,7 +40,6 @@ tokio = { workspace = true }
 tokio-util = { workspace = true }
 kameo = { workspace = true }
 kameo_actors = { workspace = true }
-kanal = { workspace = true }
 async-trait = { workspace = true }
 wherror = { workspace = true }
 error-stack = { workspace = true }

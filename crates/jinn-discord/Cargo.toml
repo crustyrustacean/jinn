@@ -20,7 +20,6 @@ jinn-domain = { workspace = true }
 serenity = { workspace = true }
 poise = { workspace = true }
 tokio = { workspace = true }
-kanal = { workspace = true }
 tracing = { workspace = true }
 error-stack = { workspace = true }
 wherror = { workspace = true }
