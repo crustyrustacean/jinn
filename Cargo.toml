@@ -42,6 +42,7 @@ kameo = { workspace = true }
 kameo_actors = { workspace = true }
 async-trait = { workspace = true }
 wherror = { workspace = true }
+kanal = { workspace = true }
 error-stack = { workspace = true }
 serde_json = { workspace = true }
 serde = { workspace = true, features = ["derive"] }
