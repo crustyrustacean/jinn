@@ -5,6 +5,7 @@ use parking_lot::RwLock;
 use crate::common::focus::{FocusScope, ScopeStack};
 use crate::common::tui_signals::TuiSignals;
 use crate::feat::cwd_input::state::CwdInputState;
+use crate::feat::dashboard::DashboardState;
 use crate::feat::preferences_actor::UserPreferences;
 use crate::feat::preferences_actor::app_state_file::AppStateFile;
 use crate::feat::project_add_input::state::ProjectAddInputState;
@@ -171,6 +172,10 @@ pub struct FrontendState {
     /// OWNER: `input` written by IntentHandler; `log` written by QuakeBarActor.
     pub quake_bar: QuakeBarState,
 
+    /// Dashboard tab state - actor lifecycle + service status list.
+    /// OWNER: DiscordStatusActor (sole writer).
+    pub dashboard: DashboardState,
+
     pub sidebar_width: u16,
 }
 
@@ -204,6 +209,7 @@ impl Default for FrontendState {
             project_add_input: ProjectAddInputState::default(),
             pending_session_cwd: None,
             quake_bar: QuakeBarState::default(),
+            dashboard: DashboardState::default(),
 
             sidebar_width: 30,
         }
