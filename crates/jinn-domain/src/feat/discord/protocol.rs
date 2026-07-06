@@ -67,3 +67,88 @@ pub enum BridgeEvent {
         session_id: crate::SessionId,
     },
 }
+
+// ── to-thread (reverse: jinn → Discord) ────────────────────────────
+
+/// Why a `CreateThreadForSession` request could not be fulfilled.
+///
+/// Carried by [`DiscordThreadCreateFailed`] so the feedback actor can render
+/// a specific in-chat error message.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub enum CreateThreadReason {
+    /// The session is already bound to a Discord thread — re-`gdc` is rejected
+    /// (never rebind, never orphan the existing thread).
+    AlreadyBound,
+    /// `[discord] forum_channel` is unset or unparseable.
+    NoForumChannel,
+    /// Discord rejected the thread creation (permissions, rate-limit, etc.).
+    CreateFailed(String),
+    /// The thread was created but the local thread↔session mapping write failed;
+    /// the thread exists on Discord but is unbound.
+    MappingWriteFailed,
+}
+
+/// Bus command: lift the active jinn session into a new Discord forum thread.
+///
+/// Published by the intent handler (on `gdc`); the [`DiscordBridgeActor`] turns
+/// it into a [`GatewayRequest`] on the request channel. The gateway owns the
+/// serenity `Http`, so Discord-mutating work is funneled through it.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct CreateThreadForSession {
+    /// The session to continue in Discord (bound to the new thread).
+    pub session_id: crate::SessionId,
+    /// Title for the new Discord thread (the session's `title()`).
+    pub title: String,
+}
+
+impl crate::common::bus::BusMessage for CreateThreadForSession {}
+
+/// The gateway created the Discord thread and bound it to the session.
+///
+/// Subscribed to by the feedback actor, which appends a
+/// `ChatEntry::system` confirmation to the session's history.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct DiscordThreadCreated {
+    /// The session that now has a Discord thread.
+    pub session_id: crate::SessionId,
+    /// The title the thread was created with (echoed for the confirmation msg).
+    pub title: String,
+}
+
+impl crate::common::bus::BusMessage for DiscordThreadCreated {}
+
+/// The gateway could not create / bind the Discord thread.
+///
+/// Subscribed to by the feedback actor, which appends a `ChatEntry::error`
+/// to the session's history. No thread is created on `AlreadyBound` /
+/// `NoForumChannel`; a thread may exist on Discord but be unbound on
+/// `MappingWriteFailed`.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct DiscordThreadCreateFailed {
+    /// The session whose `gdc` failed.
+    pub session_id: crate::SessionId,
+    /// Why it failed.
+    pub reason: CreateThreadReason,
+}
+
+impl crate::common::bus::BusMessage for DiscordThreadCreateFailed {}
+
+/// A request from the jinn command path to the poise gateway task.
+///
+/// The gateway is the sole owner of the serenity `Http`, so any
+/// Discord-mutating action is funneled through this enum over a second kanal
+/// channel (the mirror image of the [`BridgeEvent`] channel — events flow
+/// domain → gateway, requests flow domain → gateway too but carry *commands*
+/// the gateway must *do* rather than *react to*).
+#[derive(Debug, Clone)]
+pub enum GatewayRequest {
+    /// Create a forum thread under the configured `forum_channel`, named `title`,
+    /// bound to `session_id`. Result reported via bus events
+    /// ([`DiscordThreadCreated`] / [`DiscordThreadCreateFailed`]).
+    CreateThreadForSession {
+        /// The session to bind.
+        session_id: crate::SessionId,
+        /// The new thread's title.
+        title: String,
+    },
+}

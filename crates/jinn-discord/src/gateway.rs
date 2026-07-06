@@ -15,7 +15,9 @@ use error_stack::Report;
 use jinn_domain::feat::chat_input::protocol::command::{EnqueueUserMessage, SubmitSteeringMessage};
 use jinn_domain::feat::dashboard::status_actor::DiscordStatusUpdate;
 use jinn_domain::feat::discord::{
-    BridgeEvent, DiscordConfig, DiscordThreadMap, FinalReply, read_final_reply, split_message,
+    BridgeEvent, CreateThreadReason, DiscordConfig, DiscordThreadCreateFailed,
+    DiscordThreadCreated, DiscordThreadMap, FinalReply, GatewayRequest, read_final_reply,
+    split_message,
 };
 use jinn_domain::feat::session::chat_entry::ChatEntry;
 use jinn_domain::feat::session::chat_session::ChatSessionState;
@@ -25,6 +27,7 @@ use poise::serenity_prelude as serenity;
 use wherror::Error;
 
 use crate::commands;
+use crate::feat::discord::to_thread::{refusal_reason, to_thread_decision};
 
 /// Error spawning the Discord gateway.
 ///
@@ -69,6 +72,7 @@ pub async fn run(
     data: BotData,
     token: String,
     rx: kanal::AsyncReceiver<BridgeEvent>,
+    gw_rx: kanal::AsyncReceiver<GatewayRequest>,
     status_tx: kanal::Sender<DiscordStatusUpdate>,
 ) -> Result<(), Report<SpawnError>> {
     if token.trim().is_empty() {
@@ -126,6 +130,11 @@ pub async fn run(
                 let status_tx = status_tx.clone();
                 let drain_data = drain_data.clone();
                 tokio::spawn(drain_loop(drain_data, http.clone(), rx));
+                // Drain the request channel: domain → gateway do-something
+                // requests (currently only CreateThreadForSession). The loop
+                // creates the Discord thread, records the mapping, and reports
+                // the result back onto the bus.
+                tokio::spawn(request_loop(data.clone(), http.clone(), gw_rx));
 
                 // The bot is online — the setup callback fires after the
                 // gateway's `ready` event, so this is the right place to
@@ -163,6 +172,132 @@ pub async fn run(
         Report::new(SpawnError)
     })?;
     Ok(())
+}
+
+/// Consume [`GatewayRequest`]s from the bridge actor and execute them.
+///
+/// Reverse direction of [`drain_loop`]: where the drain loop reacts to
+/// domain events by posting to Discord, this loop reacts to domain *requests*
+/// by *creating* things on Discord (forum threads, for now) and reporting
+/// the result back onto the bus.
+async fn request_loop(
+    data: BotData,
+    http: Arc<serenity::Http>,
+    gw_rx: kanal::AsyncReceiver<GatewayRequest>,
+) {
+    loop {
+        match gw_rx.recv().await {
+            Ok(GatewayRequest::CreateThreadForSession { session_id, title }) => {
+                handle_create_thread(&data, &http, session_id, title).await;
+            }
+            Err(_) => {
+                tracing::debug!("discord gateway request channel closed; exiting");
+                break;
+            }
+        }
+    }
+    tracing::info!("discord gateway request loop exiting");
+}
+
+/// Handle a single `CreateThreadForSession` request end to end.
+///
+/// Pure decision (already-bound?) is delegated to [`to_thread_decision`] so it
+/// stays unit-testable; this fn is the thin serenity/DB adapter that maps the
+/// decision + side effects to bus result events.
+async fn handle_create_thread(
+    data: &BotData,
+    http: &serenity::Http,
+    session_id: jinn_domain::SessionId,
+    title: String,
+) {
+    // 1. Already-bound guard: refuse to rebind, never orphan an existing thread.
+    let existing_binding = match data
+        .thread_map
+        .get_thread_by_session(&session_id.to_string())
+        .await
+    {
+        Ok(Some(_)) => true,
+        Ok(None) => false,
+        Err(e) => {
+            tracing::warn!(error = ?e, %session_id, "thread-map lookup failed; reporting failure");
+            report_failure(
+                &data.bridge,
+                session_id,
+                CreateThreadReason::CreateFailed("thread-map lookup failed".to_owned()),
+            );
+            return;
+        }
+    };
+    if let Some(reason) = refusal_reason(&to_thread_decision(existing_binding)) {
+        tracing::info!(%session_id, ?reason, "to-thread rejected");
+        report_failure(&data.bridge, session_id, reason);
+        return;
+    }
+
+    // 2. Parse the configured forum channel.
+    let Some(forum_channel_id) = data
+        .config
+        .forum_channel
+        .as_deref()
+        .and_then(|s| s.trim().parse::<u64>().ok())
+        .map(serenity::ChannelId::new)
+    else {
+        tracing::warn!(%session_id, "forum_channel unset or unparseable");
+        report_failure(&data.bridge, session_id, CreateThreadReason::NoForumChannel);
+        return;
+    };
+
+    // 3. Create the forum post. Forum threads require an initial message.
+    let created = forum_channel_id
+        .create_forum_post(
+            http,
+            serenity::builder::CreateForumPost::new(
+                title.clone(),
+                serenity::builder::CreateMessage::new().content("Continuing a jinn session here."),
+            ),
+        )
+        .await;
+    let channel = match created {
+        Ok(channel) => channel,
+        Err(e) => {
+            tracing::warn!(error = ?e, %session_id, "discord forum thread creation failed");
+            report_failure(
+                &data.bridge,
+                session_id,
+                CreateThreadReason::CreateFailed(e.to_string()),
+            );
+            return;
+        }
+    };
+
+    // 4. Record the thread→session mapping. guild_id is unknown on the reverse
+    //    path (we never saw a poise ctx), matching the /new fallback of None.
+    let thread_id = channel.id.get().to_string();
+    let now = std::time::SystemTime::now()
+        .duration_since(std::time::UNIX_EPOCH)
+        .map_or(0, |d| d.as_secs() as i64);
+    if let Err(e) = data
+        .thread_map
+        .set(&thread_id, &session_id.to_string(), None, now)
+        .await
+    {
+        tracing::warn!(error = ?e, %session_id, "mapping write failed (thread exists but unbound)");
+        report_failure(
+            &data.bridge,
+            session_id,
+            CreateThreadReason::MappingWriteFailed,
+        );
+        return;
+    }
+
+    // 5. Success — tell the feedback actor to confirm in chat.
+    tracing::info!(%session_id, thread_id, "created discord thread for session");
+    publish(&data.bridge, DiscordThreadCreated { session_id, title });
+}
+
+/// Publish a `DiscordThreadCreateFailed` event for the session.
+fn report_failure(bridge: &Bridge, session_id: jinn_domain::SessionId, reason: CreateThreadReason) {
+    publish(bridge, DiscordThreadCreateFailed { session_id, reason });
 }
 
 /// Consume [`BridgeEvent`]s from the bridge actor and post replies to Discord.

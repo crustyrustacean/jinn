@@ -354,6 +354,15 @@ pub enum Intent {
     DashboardSelectFirst,
     /// Move dashboard selection to the last row.
     DashboardSelectLast,
+
+    // ── Discord ──────────────────────────────────────────────────
+    /// Continue the active session in a new Discord forum thread ("to-thread").
+    ///
+    /// Binds the current jinn session to a freshly created Discord thread under
+    /// the configured `[discord] forum_channel`. Rejected (in-chat error, no
+    /// thread created) when the session has no title, discord is disabled /
+    /// disconnected, or `forum_channel` is unset.
+    ToDiscordThread,
 }
 
 impl std::fmt::Display for Intent {
@@ -506,6 +515,7 @@ impl std::fmt::Display for Intent {
             Intent::DashboardSelectDown => write!(f, "dashboard select down"),
             Intent::DashboardSelectFirst => write!(f, "dashboard select first"),
             Intent::DashboardSelectLast => write!(f, "dashboard select last"),
+            Intent::ToDiscordThread => write!(f, "to discord thread"),
         }
     }
 }
