@@ -822,9 +822,7 @@ async fn run_builtin_with_timeout(
                 tool_call_id: call_id,
                 name: call_name,
                 content: format!(
-                    "command exceeded the max_duration_secs budget and was killed after {}s; \
-                    to retry, raise max_duration_secs \\
-                    \"{{\\\"command\\\":\\\"<cmd>\\\",\\\"max_duration_secs\\\":600}}\"",
+                    "command exceeded the max_duration_secs budget and was killed after {}s; to retry, raise max_duration_secs (example: {{\"command\":\"<cmd>\",\"max_duration_secs\":600}})",
                     dur.as_secs()
                 ),
                 success: false,
@@ -1096,6 +1094,12 @@ mod timeout_tests {
         assert!(
             result.content.contains("max_duration_secs"),
             "expected kill message naming max_duration_secs, got: {}",
+            result.content
+        );
+        // And contains an example call so the model knows how to retry.
+        assert!(
+            result.content.contains("\"max_duration_secs\":600"),
+            "expected kill message to show an example call, got: {}",
             result.content
         );
     }
