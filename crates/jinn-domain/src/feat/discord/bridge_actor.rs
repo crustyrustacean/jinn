@@ -119,11 +119,7 @@ impl Message<SessionArchived> for DiscordBridgeActor {
 impl Message<CreateThreadForSession> for DiscordBridgeActor {
     type Reply = ();
 
-    async fn handle(
-        &mut self,
-        msg: CreateThreadForSession,
-        _ctx: &mut Context<Self, Self::Reply>,
-    ) {
+    async fn handle(&mut self, msg: CreateThreadForSession, _ctx: &mut Context<Self, Self::Reply>) {
         self.forward_gateway_request(GatewayRequest::CreateThreadForSession {
             session_id: msg.session_id,
             title: msg.title,

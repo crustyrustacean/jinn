@@ -1379,8 +1379,7 @@ jinn_domain::feat::preferences_actor::app_state_sync_actor::AppStateSyncActor::s
         let (discord_bridge_rx, discord_gateway_rx) = if discord_cfg.enabled {
             let (tx, rx) = kanal::bounded::<jinn_domain::feat::discord::BridgeEvent>(64);
             let async_rx = rx.to_async();
-            let (gw_tx, gw_rx) =
-                kanal::bounded::<jinn_domain::feat::discord::GatewayRequest>(16);
+            let (gw_tx, gw_rx) = kanal::bounded::<jinn_domain::feat::discord::GatewayRequest>(16);
             let gw_async_rx = gw_rx.to_async();
             let _discord_bridge = spawn_tracked!(
                 &services.bus,

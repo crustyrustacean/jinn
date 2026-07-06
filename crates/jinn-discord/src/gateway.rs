@@ -15,9 +15,9 @@ use error_stack::Report;
 use jinn_domain::feat::chat_input::protocol::command::{EnqueueUserMessage, SubmitSteeringMessage};
 use jinn_domain::feat::dashboard::status_actor::DiscordStatusUpdate;
 use jinn_domain::feat::discord::{
-    BridgeEvent, CreateThreadReason, DiscordConfig, DiscordThreadCreated,
-    DiscordThreadCreateFailed, DiscordThreadMap, FinalReply, GatewayRequest,
-    read_final_reply, split_message,
+    BridgeEvent, CreateThreadReason, DiscordConfig, DiscordThreadCreateFailed,
+    DiscordThreadCreated, DiscordThreadMap, FinalReply, GatewayRequest, read_final_reply,
+    split_message,
 };
 use jinn_domain::feat::session::chat_entry::ChatEntry;
 use jinn_domain::feat::session::chat_session::ChatSessionState;
@@ -253,8 +253,7 @@ async fn handle_create_thread(
             http,
             serenity::builder::CreateForumPost::new(
                 title.clone(),
-                serenity::builder::CreateMessage::new()
-                    .content("Continuing a jinn session here."),
+                serenity::builder::CreateMessage::new().content("Continuing a jinn session here."),
             ),
         )
         .await;
@@ -283,31 +282,22 @@ async fn handle_create_thread(
         .await
     {
         tracing::warn!(error = ?e, %session_id, "mapping write failed (thread exists but unbound)");
-        report_failure(&data.bridge, session_id, CreateThreadReason::MappingWriteFailed);
+        report_failure(
+            &data.bridge,
+            session_id,
+            CreateThreadReason::MappingWriteFailed,
+        );
         return;
     }
 
     // 5. Success — tell the feedback actor to confirm in chat.
     tracing::info!(%session_id, thread_id, "created discord thread for session");
-    publish(
-        &data.bridge,
-        DiscordThreadCreated {
-            session_id,
-            title,
-        },
-    );
+    publish(&data.bridge, DiscordThreadCreated { session_id, title });
 }
 
 /// Publish a `DiscordThreadCreateFailed` event for the session.
-fn report_failure(
-    bridge: &Bridge,
-    session_id: jinn_domain::SessionId,
-    reason: CreateThreadReason,
-) {
-    publish(
-        bridge,
-        DiscordThreadCreateFailed { session_id, reason },
-    );
+fn report_failure(bridge: &Bridge, session_id: jinn_domain::SessionId, reason: CreateThreadReason) {
+    publish(bridge, DiscordThreadCreateFailed { session_id, reason });
 }
 
 /// Consume [`BridgeEvent`]s from the bridge actor and post replies to Discord.
