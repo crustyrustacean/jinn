@@ -342,6 +342,18 @@ pub enum Intent {
         /// Optional per-session scope; `None` means active session at fire time.
         session_id: Option<SessionId>,
     },
+
+    // ── Dashboard tab ──────────────────────────────────────────────
+    /// Switch between Chat and Dashboard tabs.
+    SwitchTab,
+    /// Move dashboard selection up one row.
+    DashboardSelectUp,
+    /// Move dashboard selection down one row.
+    DashboardSelectDown,
+    /// Move dashboard selection to the first row.
+    DashboardSelectFirst,
+    /// Move dashboard selection to the last row.
+    DashboardSelectLast,
 }
 
 impl std::fmt::Display for Intent {
@@ -489,6 +501,11 @@ impl std::fmt::Display for Intent {
             Intent::TaskListPreviewScrollUp => write!(f, "task list preview scroll up"),
             Intent::TaskListPreviewScrollDown => write!(f, "task list preview scroll down"),
             Intent::TriggerPlugin { description, .. } => write!(f, "{description}"),
+            Intent::SwitchTab => write!(f, "switch tab"),
+            Intent::DashboardSelectUp => write!(f, "dashboard select up"),
+            Intent::DashboardSelectDown => write!(f, "dashboard select down"),
+            Intent::DashboardSelectFirst => write!(f, "dashboard select first"),
+            Intent::DashboardSelectLast => write!(f, "dashboard select last"),
         }
     }
 }
