@@ -7,6 +7,7 @@
 //! See `.plans/discord/plan.md` for the full architecture.
 
 pub mod commands;
+pub mod feat;
 pub mod gateway;
 pub mod session_route;
 

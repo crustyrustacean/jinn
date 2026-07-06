@@ -237,7 +237,7 @@ impl App {
                 return Ok(());
             }
             Commands::Tui => {
-                let (core, services, _plugins, discord_rx, discord_status_tx) =
+                let (core, services, _plugins, discord_rx, discord_gw_rx, discord_status_tx) =
                     self.runtime.block_on(async {
                         actor_wiring::ActorSystemBuilder::new(
                             actor_wiring::ActorSystemBuilderArgs {
@@ -275,6 +275,7 @@ impl App {
                             .or_else(|| user_preferences_storage.read().discord.bot_token.clone())
                             .unwrap_or_default(),
                         rx,
+                        discord_gw_rx.expect("gw_rx present when bridge_rx is"),
                         discord_status_tx,
                     ));
                 }
@@ -286,7 +287,7 @@ impl App {
             #[cfg(debug_assertions)]
             Commands::Headless { command, .. } => {
                 let store_for_shutdown = session_store.clone();
-                let (core, _services, _plugins, _discord_rx, _discord_status_tx) =
+                let (core, _services, _plugins, _discord_rx, _discord_gw_rx, _discord_status_tx) =
                     self.runtime.block_on(async {
                         actor_wiring::ActorSystemBuilder::new(
                             actor_wiring::ActorSystemBuilderArgs {

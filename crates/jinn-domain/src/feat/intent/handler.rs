@@ -853,6 +853,9 @@ impl IntentHandler {
                 state.frontend.dashboard.select_last();
                 IntentResult::empty()
             }
+            Intent::ToDiscordThread => {
+                feat::discord::to_thread_intent::handle_to_discord_thread(state)
+            }
         }
     }
 }

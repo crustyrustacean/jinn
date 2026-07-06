@@ -26,5 +26,8 @@ wherror = { workspace = true }
 derive_more = { workspace = true }
 kanal = { workspace = true }
 
+[dev-dependencies]
+rstest = { workspace = true }
+
 [lints]
 workspace = true

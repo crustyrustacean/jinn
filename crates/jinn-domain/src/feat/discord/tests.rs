@@ -307,23 +307,34 @@ async fn archived_forwards_session_id() {
 
 use crate::common::actor_deps::ActorDeps;
 use crate::common::bus::test_harness::TestHarness;
-use crate::feat::discord::bridge_actor::DiscordBridgeActorDeps;
-async fn spawn_on_bus_with_rx() -> (TestHarness, kanal::AsyncReceiver<BridgeEvent>) {
+use crate::feat::discord::{
+    CreateThreadForSession, GatewayRequest, bridge_actor::DiscordBridgeActorDeps,
+};
+async fn spawn_on_bus_with_rx() -> (
+    TestHarness,
+    kanal::AsyncReceiver<BridgeEvent>,
+    kanal::AsyncReceiver<GatewayRequest>,
+) {
     let harness = TestHarness::new().await;
     let (tx, rx) = kanal::bounded(64);
     let deps = ActorDeps {
         services: harness.services().await,
     };
+    let (gw_tx, gw_rx) = kanal::bounded(16);
     let _actor = harness
-        .spawn_actor::<DiscordBridgeActor>(DiscordBridgeActorDeps { deps, tx })
+        .spawn_actor::<DiscordBridgeActor>(DiscordBridgeActorDeps {
+            deps,
+            tx,
+            gateway_tx: gw_tx,
+        })
         .await;
-    (harness, rx.to_async())
+    (harness, rx.to_async(), gw_rx.to_async())
 }
 
 #[tokio::test]
 async fn bus_subscription_forwards_turn_finished() {
     // Given a bridge actor spawned via on_start against a real bus.
-    let (harness, rx) = spawn_on_bus_with_rx().await;
+    let (harness, rx, _gw_rx) = spawn_on_bus_with_rx().await;
     let sid = session_id();
 
     // When publishing a SessionPhaseChanged → Idle on the bus.
@@ -349,7 +360,7 @@ async fn bus_subscription_forwards_turn_finished() {
 #[tokio::test]
 async fn bus_subscription_forwards_setup_completed() {
     // Given a bridge actor spawned via on_start against a real bus.
-    let (harness, rx) = spawn_on_bus_with_rx().await;
+    let (harness, rx, _gw_rx) = spawn_on_bus_with_rx().await;
     let sid = session_id();
 
     // When publishing a SessionSetupCompleted on the bus.
@@ -381,7 +392,7 @@ async fn bus_subscription_forwards_setup_completed() {
 #[tokio::test]
 async fn bus_subscription_forwards_teardown_finished() {
     // Given a bridge actor spawned via on_start against a real bus.
-    let (harness, rx) = spawn_on_bus_with_rx().await;
+    let (harness, rx, _gw_rx) = spawn_on_bus_with_rx().await;
     let sid = session_id();
 
     // When publishing a failed SessionTeardownFinished on the bus.
@@ -407,7 +418,7 @@ async fn bus_subscription_forwards_teardown_finished() {
 #[tokio::test]
 async fn bus_subscription_forwards_archived() {
     // Given a bridge actor spawned via on_start against a real bus.
-    let (harness, rx) = spawn_on_bus_with_rx().await;
+    let (harness, rx, _gw_rx) = spawn_on_bus_with_rx().await;
     let sid = session_id();
 
     // When publishing a SessionArchived on the bus.
@@ -426,4 +437,27 @@ async fn bus_subscription_forwards_archived() {
         other => panic!("expected Archived, got {other:?}"),
     }
     assert!(matches!(rx.try_recv(), Ok(None)), "no extra events");
+}
+
+#[tokio::test]
+async fn bus_subscription_forwards_create_thread_for_session() {
+    // Given a bridge actor spawned via on_start against a real bus.
+    let (harness, _rx, gw_rx) = spawn_on_bus_with_rx().await;
+    let sid = session_id();
+
+    // When publishing CreateThreadForSession on the bus.
+    harness
+        .publish(CreateThreadForSession {
+            session_id: sid.clone(),
+            title: "my thread".to_owned(),
+        })
+        .await;
+
+    // Then exactly one GatewayRequest::CreateThreadForSession was forwarded,
+    // carrying the payload.
+    let request = gw_rx.recv().await.expect("request forwarded");
+    let GatewayRequest::CreateThreadForSession { session_id, title } = request;
+    assert_eq!(session_id, sid);
+    assert_eq!(title, "my thread");
+    assert!(matches!(gw_rx.try_recv(), Ok(None)), "no extra requests");
 }
