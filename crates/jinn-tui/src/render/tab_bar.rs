@@ -16,7 +16,7 @@ const TAB_LABELS: [&str; 2] = ["Chat", "Dashboard"];
 /// Returns `true` when the dashboard tab is the active one.
 fn is_dashboard_active(ctx: &RenderCtx) -> bool {
     matches!(
-        ctx.state.frontend.scope_stack.current(),
+        ctx.state.frontend.scope_stack.base(),
         jinn_domain::FocusScope::Dashboard
     )
 }
@@ -115,6 +115,47 @@ mod tests {
             cell.bg,
             Color::Reset,
             "dashboard tab should be highlighted in Dashboard scope"
+        );
+    }
+
+    #[tokio::test]
+    async fn dashboard_tab_stays_highlighted_when_quake_bar_open() {
+        let mut app = build_app_with_scope(FocusScope::Dashboard).await;
+        app.core
+            .state
+            .write()
+            .frontend
+            .scope_stack
+            .push(FocusScope::QuakeBar);
+        let (mut terminal, _area) = setup_term(80, 24);
+
+        // When rendering.
+        terminal.draw(|frame| app.render(frame)).unwrap();
+
+        // Then the dashboard tab is still highlighted (uses base scope, not top).
+        let layout = crate::render::app_layout::AppLayout::new(
+            ratatui::layout::Rect::new(0, 0, 80, 24),
+            1,
+            12,
+            30,
+        );
+        let buffer = terminal.backend().buffer();
+        let dash_x = layout.tab_bar.x + 1 + " Chat ".len() as u16 + 1;
+        let chat_cell = buffer
+            .cell((layout.tab_bar.x + 1, layout.tab_bar.y))
+            .expect("chat tab cell");
+        let dash_cell = buffer
+            .cell((dash_x, layout.tab_bar.y))
+            .expect("dashboard tab cell");
+        assert_eq!(
+            chat_cell.bg,
+            Color::Reset,
+            "chat tab should NOT be highlighted when base is Dashboard"
+        );
+        assert_ne!(
+            dash_cell.bg,
+            Color::Reset,
+            "dashboard tab should stay highlighted when quake bar is open"
         );
     }
 }
