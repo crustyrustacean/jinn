@@ -82,10 +82,11 @@ pub(crate) fn default_stall_retry_base_delay_secs() -> u64 {
 pub(crate) fn default_stall_retry_max_delay_secs() -> u64 {
     DEFAULT_STALL_RETRY_MAX_DELAY_SECS
 }
-/// Default execution timeout (seconds) applied to all builtin tools except
-/// `bash`, which keeps its own `bash.default_timeout_secs`. The shorter of
-/// this and `bash.default_timeout_secs` wins for bash commands.
-pub(crate) const DEFAULT_TOOL_DEFAULT_TIMEOUT_SECS: u64 = 120;
+/// Default execution timeout (seconds) for all tool calls.
+///
+/// The model can override per-call via the reserved `max_duration_secs` argument
+/// (supported by `bash`); a value of `0` disables the timeout for that call.
+pub(crate) const DEFAULT_TOOL_DEFAULT_TIMEOUT_SECS: u64 = 300;
 
 /// Serde default function for [`UserPreferences::tool_default_timeout_secs`].
 pub(crate) fn default_tool_default_timeout_secs() -> u64 {
@@ -450,6 +451,15 @@ mod tests {
     use tempfile::TempDir;
 
     use super::*;
+
+    #[rstest::rstest]
+    fn default_tool_timeout_is_300_seconds() {
+        // Given the global default timeout constant.
+        // Then it is 300 seconds.
+        assert_eq!(DEFAULT_TOOL_DEFAULT_TIMEOUT_SECS, 300);
+        // And the serde default function agrees.
+        assert_eq!(default_tool_default_timeout_secs(), 300);
+    }
 
     #[rstest::rstest]
     fn default_preferences_has_defaults_for_optional_fields() {
