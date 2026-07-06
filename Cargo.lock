@@ -2032,6 +2032,7 @@ dependencies = [
  "jinn-domain",
  "kanal",
  "poise",
+ "rstest",
  "serenity",
  "tokio",
  "tracing",
