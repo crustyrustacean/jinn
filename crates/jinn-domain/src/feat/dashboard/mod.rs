@@ -85,6 +85,35 @@ impl DashboardState {
         self.scroll_offset
     }
 
+    /// Clamps `scroll_offset` so the selected entry is always visible within
+    /// a viewport of `viewport_height` rows.
+    pub fn clamp_scroll(&mut self, viewport_height: u16) {
+        if viewport_height == 0 {
+            return;
+        }
+        let count = self.order.len() as u16;
+        if count == 0 {
+            self.scroll_offset = 0;
+            return;
+        }
+        let sel = u16::try_from(self.selected_index).unwrap_or(u16::MAX);
+        let bottom = self
+            .scroll_offset
+            .saturating_add(viewport_height)
+            .saturating_sub(1);
+        match sel {
+            s if s < self.scroll_offset => {
+                self.scroll_offset = s;
+            }
+            s if s > bottom => {
+                self.scroll_offset = s.saturating_sub(viewport_height).saturating_add(1);
+            }
+            _ => {}
+        }
+        let max_offset = count.saturating_sub(viewport_height);
+        self.scroll_offset = self.scroll_offset.min(max_offset);
+    }
+
     /// Returns all tracked actors in insertion order.
     #[must_use]
     pub fn actors(&self) -> Vec<&DashboardEntry> {

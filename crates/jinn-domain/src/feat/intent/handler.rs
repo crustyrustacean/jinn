@@ -829,7 +829,9 @@ impl IntentHandler {
             // ── Dashboard tab ──
             Intent::SwitchTab => {
                 let new_base = match state.frontend.scope_stack.current() {
-                    crate::common::app_state::FocusScope::Dashboard => crate::common::app_state::FocusScope::Normal,
+                    crate::common::app_state::FocusScope::Dashboard => {
+                        crate::common::app_state::FocusScope::Normal
+                    }
                     _ => crate::common::app_state::FocusScope::Dashboard,
                 };
                 state.frontend.scope_stack.swap_base(new_base);
@@ -1914,7 +1916,6 @@ mod intercept_scope_tests {
         );
     }
 
-
     #[test]
     fn switch_tab_to_dashboard_when_in_normal_scope() {
         // Given Normal scope (default).
@@ -2048,5 +2049,5 @@ mod intercept_scope_tests {
                 "the plugin ctx must carry the pre-reset buffer text",
             );
         }
-        }
     }
+}
