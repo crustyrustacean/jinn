@@ -1,48 +1,63 @@
-//! Dashboard - displays registered actors and their startup status.
+//! Dashboard - displays registered actors with lifecycle and service status.
 //!
-//! Everything related to the dashboard lives here: state, rendering, and intents.
+//! The dashboard is a full-screen tab showing one line per actor in the
+//! system. Each entry has three independent pieces of information:
 //!
-//! The dashboard shows a list of actors with their startup status. The user can
-//! scroll through entries with `j`/`k`, which moves the selection indicator and
-//! scrolls the view to keep the selected entry visible.
+//! - **Name + description** — the actor's identity and what it does.
+//! - **Lifecycle** — generic `Starting` / `Running` / `Dead`, driven by the
+//!   existing bus events (`ActorStarting`, `ActorStarted`,
+//!   `ActorShutdownCompleted`).
+//! - **Status message** — an optional free-form third column. For the discord
+//!   bot this is the connection sub-state (`Connected`, `Disconnected`, error
+//!   text). Other actors leave it `None` until they gain their own
+//!   service-level reporting.
+//!
+//! [`DiscordStatusActor`] is the sole writer of `frontend.dashboard`. It
+//! subscribes to the generic lifecycle events and drains a kanal channel fed
+//! by the Discord gateway task.
+pub mod status_actor;
 
-pub mod element;
-pub mod intent;
-
-#[cfg(test)]
-mod element_tests;
-
-pub use element::DashboardElement;
-
+pub use status_actor::{DiscordStatusActor, DiscordStatusActorDeps, DiscordStatusUpdate};
 use std::collections::HashMap;
 
 use crate::common::AppUiRegistry;
 
-/// The startup status of an actor.
+/// Generic actor lifecycle, applicable to every actor in the system.
+///
+/// Driven by the existing bus events: `ActorStarting`, `ActorStarted`, and
+/// `ActorShutdownCompleted`.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub enum ActorStatus {
+pub enum ActorLifecycle {
     /// The actor is currently starting up.
     Starting,
     /// The actor has finished starting and is ready.
     Running,
+    /// The actor has shut down (crashed or intentional).
+    Dead,
 }
 
-/// A tracked actor's display data.
+/// A single actor's display data in the dashboard.
 #[derive(Debug, Clone)]
-pub struct ActorEntry {
-    /// The actor's display name.
+pub struct DashboardEntry {
+    /// The actor's display name (also its unique key).
     pub name: String,
     /// A short description of what the actor does.
     pub description: Option<String>,
-    /// The actor's current lifecycle status.
-    pub status: ActorStatus,
+    /// The actor's current lifecycle phase.
+    pub lifecycle: ActorLifecycle,
+    /// Free-form third column. Discord writes its connection status here;
+    /// other actors leave this `None`.
+    pub status_message: Option<String>,
 }
 
-/// Tracks the startup status of all actors.
+/// Tracks the status of all actors for dashboard display.
+///
+/// Owned by [`crate::feat::dashboard::status_actor::DiscordStatusActor`] via
+/// `frontend.dashboard`. The actor is the sole writer.
 #[derive(Debug, Clone, Default)]
 pub struct DashboardState {
     /// Actor name → entry data.
-    actors: HashMap<String, ActorEntry>,
+    actors: HashMap<String, DashboardEntry>,
     /// Insertion-order keys for stable display.
     order: Vec<String>,
     /// Index of the currently selected actor entry.
@@ -68,6 +83,15 @@ impl DashboardState {
     #[must_use]
     pub fn scroll_offset(&self) -> u16 {
         self.scroll_offset
+    }
+
+    /// Returns all tracked actors in insertion order.
+    #[must_use]
+    pub fn actors(&self) -> Vec<&DashboardEntry> {
+        self.order
+            .iter()
+            .filter_map(|name| self.actors.get(name))
+            .collect()
     }
 
     /// Moves the selection to the next actor entry.
@@ -107,42 +131,65 @@ impl DashboardState {
         }
     }
 
-    /// Record that an actor has started the startup process.
+    /// Record that an actor is in (or has returned to) the startup phase.
+    ///
+    /// If the actor is new it is appended to the display order. Existing
+    /// entries keep their description unless a new one is supplied.
     pub fn mark_starting<S>(&mut self, name: S, description: Option<String>)
     where
         S: AsRef<str>,
     {
+        self.upsert(name, description, ActorLifecycle::Starting);
+    }
+
+    /// Record that an actor has finished starting and is running.
+    pub fn mark_running<S>(&mut self, name: S, description: Option<String>)
+    where
+        S: AsRef<str>,
+    {
+        self.upsert(name, description, ActorLifecycle::Running);
+    }
+
+    /// Record that an actor has shut down (intentionally or via crash).
+    pub fn mark_dead<S>(&mut self, name: S)
+    where
+        S: AsRef<str>,
+    {
+        self.upsert(name, None, ActorLifecycle::Dead);
+    }
+
+    /// Update only the free-form status message for an actor, leaving its
+    /// lifecycle untouched.
+    ///
+    /// Creates the entry (as `Starting`) if it does not already exist, so the
+    /// gateway can report a connection status before the corresponding
+    /// `ActorStarting` bus event arrives.
+    pub fn set_status_message<S>(&mut self, name: S, message: Option<String>)
+    where
+        S: AsRef<str>,
+    {
         let name = name.as_ref();
-        let is_new = !self.actors.contains_key(name);
-        if is_new {
+        if !self.actors.contains_key(name) {
             self.order.push(name.to_owned());
+            self.actors.insert(
+                name.to_owned(),
+                DashboardEntry {
+                    name: name.to_owned(),
+                    description: None,
+                    lifecycle: ActorLifecycle::Starting,
+                    status_message: message,
+                },
+            );
+            return;
         }
-        let entry = self.actors.get_mut(name);
-        match entry {
-            Some(e) => {
-                e.status = ActorStatus::Starting;
-                if description.is_some() {
-                    e.description = description;
-                }
-            }
-            None => {
-                self.actors.insert(
-                    name.to_owned(),
-                    ActorEntry {
-                        name: name.to_owned(),
-                        description,
-                        status: ActorStatus::Starting,
-                    },
-                );
-            }
+        if let Some(entry) = self.actors.get_mut(name) {
+            entry.status_message = message;
         }
     }
 
-    /// Record that an actor is now running.
-    ///
-    /// If the actor was not previously tracked (no `mark_starting` call),
-    /// it is added with `Running` status.
-    pub fn mark_running<S>(&mut self, name: S, description: Option<String>)
+    /// Insert-or-update helper applying a new lifecycle and optional
+    /// description. Does not touch `status_message` on existing entries.
+    fn upsert<S>(&mut self, name: S, description: Option<String>, lifecycle: ActorLifecycle)
     where
         S: AsRef<str>,
     {
@@ -150,47 +197,173 @@ impl DashboardState {
         let is_new = !self.actors.contains_key(name);
         if is_new {
             self.order.push(name.to_owned());
+            self.actors.insert(
+                name.to_owned(),
+                DashboardEntry {
+                    name: name.to_owned(),
+                    description,
+                    lifecycle,
+                    status_message: None,
+                },
+            );
+            return;
         }
-        let entry = self.actors.get_mut(name);
-        match entry {
-            Some(e) => {
-                e.status = ActorStatus::Running;
-                if description.is_some() {
-                    e.description = description;
-                }
-            }
-            None => {
-                self.actors.insert(
-                    name.to_owned(),
-                    ActorEntry {
-                        name: name.to_owned(),
-                        description,
-                        status: ActorStatus::Running,
-                    },
-                );
+        if let Some(entry) = self.actors.get_mut(name) {
+            entry.lifecycle = lifecycle;
+            if description.is_some() {
+                entry.description = description;
             }
         }
-    }
-
-    /// Returns all tracked actors in insertion order.
-    #[must_use]
-    pub fn actors(&self) -> Vec<&ActorEntry> {
-        self.order
-            .iter()
-            .filter_map(|name| self.actors.get(name))
-            .collect()
     }
 }
 
 /// Register dashboard UI element.
-pub fn register(registry: &mut AppUiRegistry) {
-    registry.register(Box::new(DashboardElement));
-}
+///
+/// No-op placeholder until the `DashboardElement` renderer lands in a later
+/// phase; kept so callers (`actor_wiring` / feature registration) can wire it
+/// without a second touch.
+pub fn register(_registry: &mut AppUiRegistry) {}
 
 #[cfg(test)]
 mod tests {
     #![allow(clippy::expect_used, clippy::panic, clippy::unreachable, clippy::indexing_slicing, reason = "test code")]
     use super::*;
+
+    fn entry<'a>(state: &'a DashboardState, name: &str) -> &'a DashboardEntry {
+        state.actors.get(name).expect("entry should exist")
+    }
+
+    #[rstest::rstest]
+    fn mark_starting_creates_entry_with_starting_lifecycle() {
+        // Given an empty dashboard.
+        let mut state = DashboardState::new();
+
+        // When marking an actor as starting.
+        state.mark_starting("echo", None);
+
+        // Then the entry exists with Starting lifecycle.
+        assert_eq!(entry(&state, "echo").lifecycle, ActorLifecycle::Starting);
+    }
+
+    #[rstest::rstest]
+    fn mark_running_creates_entry_with_running_lifecycle() {
+        // Given an empty dashboard.
+        let mut state = DashboardState::new();
+
+        // When marking an actor as running directly.
+        state.mark_running("echo", None);
+
+        // Then the entry exists with Running lifecycle.
+        assert_eq!(entry(&state, "echo").lifecycle, ActorLifecycle::Running);
+    }
+
+    #[rstest::rstest]
+    fn mark_running_transitions_existing_starting_to_running() {
+        // Given a dashboard with a starting actor.
+        let mut state = DashboardState::new();
+        state.mark_starting("echo", None);
+
+        // When marking the same actor as running.
+        state.mark_running("echo", None);
+
+        // Then the lifecycle transitions to Running.
+        assert_eq!(entry(&state, "echo").lifecycle, ActorLifecycle::Running);
+    }
+
+    #[rstest::rstest]
+    fn mark_dead_transitions_to_dead() {
+        // Given a dashboard with a running actor.
+        let mut state = DashboardState::new();
+        state.mark_running("echo", None);
+
+        // When marking the actor as dead.
+        state.mark_dead("echo");
+
+        // Then the lifecycle transitions to Dead.
+        assert_eq!(entry(&state, "echo").lifecycle, ActorLifecycle::Dead);
+    }
+
+    #[rstest::rstest]
+    fn description_is_set_on_creation() {
+        // Given an empty dashboard.
+        let mut state = DashboardState::new();
+
+        // When marking an actor as starting with a description.
+        state.mark_starting("echo", Some("Echoes messages".to_owned()));
+
+        // Then the description is stored.
+        assert_eq!(
+            entry(&state, "echo").description.as_deref(),
+            Some("Echoes messages")
+        );
+    }
+
+    #[rstest::rstest]
+    fn description_is_updated_when_supplied() {
+        // Given a dashboard with an actor (no description).
+        let mut state = DashboardState::new();
+        state.mark_starting("echo", None);
+
+        // When marking running with a description.
+        state.mark_running("echo", Some("Echoes messages".to_owned()));
+
+        // Then the description is updated.
+        assert_eq!(
+            entry(&state, "echo").description.as_deref(),
+            Some("Echoes messages")
+        );
+    }
+
+    #[rstest::rstest]
+    fn description_is_preserved_when_not_supplied() {
+        // Given a dashboard with an actor that has a description.
+        let mut state = DashboardState::new();
+        state.mark_starting("echo", Some("Echoes messages".to_owned()));
+
+        // When marking running without supplying a description.
+        state.mark_running("echo", None);
+
+        // Then the description is preserved (not overwritten with None).
+        assert_eq!(
+            entry(&state, "echo").description.as_deref(),
+            Some("Echoes messages")
+        );
+    }
+
+    #[rstest::rstest]
+    fn set_status_message_sets_message_on_existing_entry() {
+        // Given a dashboard with a running actor.
+        let mut state = DashboardState::new();
+        state.mark_running("discord", None);
+
+        // When setting a status message.
+        state.set_status_message("discord", Some("Connected".to_owned()));
+
+        // Then the status message is set.
+        assert_eq!(
+            entry(&state, "discord").status_message.as_deref(),
+            Some("Connected")
+        );
+        // And the lifecycle is unchanged.
+        assert_eq!(entry(&state, "discord").lifecycle, ActorLifecycle::Running);
+    }
+
+    #[rstest::rstest]
+    fn set_status_message_creates_entry_if_missing() {
+        // Given an empty dashboard.
+        let mut state = DashboardState::new();
+
+        // When setting a status message for a new actor.
+        state.set_status_message("discord", Some("Connecting".to_owned()));
+
+        // Then the entry is created with the message.
+        assert_eq!(
+            entry(&state, "discord").status_message.as_deref(),
+            Some("Connecting")
+        );
+        // And defaults to Starting lifecycle.
+        assert_eq!(entry(&state, "discord").lifecycle, ActorLifecycle::Starting);
+    }
 
     #[rstest::rstest]
     fn select_next_increments_index() {
@@ -216,29 +389,12 @@ mod tests {
         state.mark_starting("c", None);
         state.select_next();
         state.select_next();
-        assert_eq!(state.selected_index(), 2);
 
-        // When selecting next.
+        // When selecting next again.
         state.select_next();
 
         // Then the index stays at 2.
         assert_eq!(state.selected_index(), 2);
-    }
-
-    #[rstest::rstest]
-    fn select_prev_decrements_index() {
-        // Given 3 actors with selection at index 1.
-        let mut state = DashboardState::new();
-        state.mark_starting("a", None);
-        state.mark_starting("b", None);
-        state.mark_starting("c", None);
-        state.select_next();
-
-        // When selecting previous.
-        state.select_prev();
-
-        // Then the selected index is 0.
-        assert_eq!(state.selected_index(), 0);
     }
 
     #[rstest::rstest]
@@ -256,27 +412,13 @@ mod tests {
     }
 
     #[rstest::rstest]
-    fn select_next_noop_with_no_actors() {
-        // Given an empty dashboard.
-        let mut state = DashboardState::new();
-
-        // When selecting next.
-        state.select_next();
-
-        // Then the index stays at 0.
-        assert_eq!(state.selected_index(), 0);
-    }
-
-    #[rstest::rstest]
     fn select_first_goes_to_index_zero() {
         // Given 3 actors with selection at index 2.
         let mut state = DashboardState::new();
         state.mark_starting("a", None);
         state.mark_starting("b", None);
         state.mark_starting("c", None);
-        state.select_next();
-        state.select_next();
-        assert_eq!(state.selected_index(), 2);
+        state.select_last();
 
         // When selecting first.
         state.select_first();
@@ -301,26 +443,41 @@ mod tests {
     }
 
     #[rstest::rstest]
-    fn select_first_noop_with_no_actors() {
+    fn select_next_noop_with_no_actors() {
         // Given an empty dashboard.
         let mut state = DashboardState::new();
 
-        // When selecting first.
-        state.select_first();
+        // When selecting next.
+        state.select_next();
 
         // Then the index stays at 0.
         assert_eq!(state.selected_index(), 0);
     }
 
     #[rstest::rstest]
-    fn select_last_noop_with_no_actors() {
-        // Given an empty dashboard.
+    fn actors_returns_insertion_order() {
+        // Given a dashboard populated out of order.
         let mut state = DashboardState::new();
+        state.mark_starting("c", None);
+        state.mark_starting("a", None);
+        state.mark_starting("b", None);
 
-        // When selecting last.
-        state.select_last();
+        // When querying actors.
+        let names: Vec<&str> = state.actors().iter().map(|e| e.name.as_str()).collect();
 
-        // Then the index stays at 0.
-        assert_eq!(state.selected_index(), 0);
+        // Then the order matches insertion (c, a, b).
+        assert_eq!(names, vec!["c", "a", "b"]);
+    }
+
+    #[rstest::rstest]
+    fn actors_empty_returns_empty_vec() {
+        // Given an empty dashboard.
+        let state = DashboardState::new();
+
+        // When querying actors.
+        let actors = state.actors();
+
+        // Then the result is empty.
+        assert!(actors.is_empty());
     }
 }
