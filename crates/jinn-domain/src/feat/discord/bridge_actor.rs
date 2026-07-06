@@ -17,7 +17,6 @@
 //! intermediate tool calls — it only acts on turn boundaries and setup results.
 
 use kameo::prelude::{Actor, ActorRef, Context, Message};
-use tokio::sync::mpsc;
 
 use crate::common::actor_deps::ActorDeps;
 use crate::feat::session::phase_machine::PhaseKind;
@@ -36,7 +35,7 @@ use super::protocol::BridgeEvent;
 /// reaction is a pure forward.
 pub struct DiscordBridgeActor {
     /// Forwards bus events onto this channel as [`BridgeEvent`]s.
-    tx: mpsc::Sender<BridgeEvent>,
+    tx: kanal::Sender<BridgeEvent>,
 }
 
 /// Dependencies for [`DiscordBridgeActor`].
@@ -45,7 +44,7 @@ pub struct DiscordBridgeActorDeps {
     /// Universal actor dependencies (bus, services, etc.).
     pub deps: ActorDeps,
     /// Sender half of the bounded (64) bridge channel.
-    pub tx: mpsc::Sender<BridgeEvent>,
+    pub tx: kanal::Sender<BridgeEvent>,
 }
 
 impl Actor for DiscordBridgeActor {
@@ -103,7 +102,7 @@ impl Message<SessionArchived> for DiscordBridgeActor {
 impl DiscordBridgeActor {
     /// Constructs an actor instance directly (for tests that bypass `on_start`).
     #[cfg(test)]
-    pub(crate) fn new(tx: mpsc::Sender<BridgeEvent>) -> Self {
+    pub(crate) fn new(tx: kanal::Sender<BridgeEvent>) -> Self {
         Self { tx }
     }
 
@@ -151,7 +150,7 @@ impl DiscordBridgeActor {
     /// will still arrive and trigger a fresh read from `State`.
     fn forward(&self, event: BridgeEvent) {
         tracing::info!(event = %event_discriminant(&event), "discord bridge forwarding");
-        if self.tx.try_send(event).is_err() {
+        if !matches!(self.tx.try_send(event), Ok(true)) {
             tracing::warn!("discord bridge channel full — event dropped");
         }
     }

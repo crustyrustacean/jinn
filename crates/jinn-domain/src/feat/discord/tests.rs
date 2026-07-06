@@ -166,21 +166,20 @@ use crate::feat::session_lifecycle::protocol::event::{
 };
 use crate::protocol::SessionId;
 use std::path::PathBuf;
-use tokio::sync::mpsc;
 
 fn session_id() -> SessionId {
     SessionId::new()
 }
 
-fn make_actor() -> (DiscordBridgeActor, mpsc::Receiver<BridgeEvent>) {
-    let (tx, rx) = mpsc::channel(64);
-    (DiscordBridgeActor::new(tx), rx)
+fn make_actor() -> (DiscordBridgeActor, kanal::AsyncReceiver<BridgeEvent>) {
+    let (tx, rx) = kanal::bounded(64);
+    (DiscordBridgeActor::new(tx), rx.to_async())
 }
 
 #[tokio::test]
 async fn idle_transition_forwards_one_turn_finished() {
     // Given a bridge actor.
-    let (actor, mut rx) = make_actor();
+    let (actor, rx) = make_actor();
     let sid = session_id();
 
     // When receiving a SessionPhaseChanged → Idle.
@@ -198,13 +197,13 @@ async fn idle_transition_forwards_one_turn_finished() {
         }
         other => panic!("expected TurnFinished, got {other:?}"),
     }
-    assert!(rx.try_recv().is_err(), "no extra events");
+    assert!(matches!(rx.try_recv(), Ok(None)), "no extra events");
 }
 
 #[tokio::test]
 async fn streaming_transition_is_dropped() {
     // Given a bridge actor.
-    let (actor, mut rx) = make_actor();
+    let (actor, rx) = make_actor();
 
     // When receiving a non-Idle phase transition.
     actor.handle_session_phase_changed(&SessionPhaseChanged {
@@ -215,7 +214,7 @@ async fn streaming_transition_is_dropped() {
 
     // Then no event was forwarded.
     assert!(
-        rx.try_recv().is_err(),
+        matches!(rx.try_recv(), Ok(None)),
         "non-Idle transition must not forward"
     );
 }
@@ -223,7 +222,7 @@ async fn streaming_transition_is_dropped() {
 #[tokio::test]
 async fn setup_completed_forwards_cwd_and_error() {
     // Given a bridge actor.
-    let (actor, mut rx) = make_actor();
+    let (actor, rx) = make_actor();
     let sid = session_id();
 
     // When receiving a SessionSetupCompleted.
@@ -247,13 +246,13 @@ async fn setup_completed_forwards_cwd_and_error() {
         }
         other => panic!("expected SetupCompleted, got {other:?}"),
     }
-    assert!(rx.try_recv().is_err(), "no extra events");
+    assert!(matches!(rx.try_recv(), Ok(None)), "no extra events");
 }
 
 #[tokio::test]
 async fn teardown_finished_forwards_error_and_session() {
     // Given a bridge actor.
-    let (actor, mut rx) = make_actor();
+    let (actor, rx) = make_actor();
     let sid = session_id();
 
     // When receiving a failed SessionTeardownFinished.
@@ -271,13 +270,13 @@ async fn teardown_finished_forwards_error_and_session() {
         }
         other => panic!("expected TeardownFinished, got {other:?}"),
     }
-    assert!(rx.try_recv().is_err(), "no extra events");
+    assert!(matches!(rx.try_recv(), Ok(None)), "no extra events");
 }
 
 #[tokio::test]
 async fn archived_forwards_session_id() {
     // Given a bridge actor.
-    let (actor, mut rx) = make_actor();
+    let (actor, rx) = make_actor();
     let sid = session_id();
 
     // When receiving a SessionArchived.
@@ -293,5 +292,5 @@ async fn archived_forwards_session_id() {
         }
         other => panic!("expected Archived, got {other:?}"),
     }
-    assert!(rx.try_recv().is_err(), "no extra events");
+    assert!(matches!(rx.try_recv(), Ok(None)), "no extra events");
 }
