@@ -180,11 +180,11 @@ impl DashboardState {
     }
 
     /// Record that an actor has shut down (intentionally or via crash).
-    pub fn mark_dead<S>(&mut self, name: S)
+    pub fn mark_dead<S>(&mut self, name: S, description: Option<String>)
     where
         S: AsRef<str>,
     {
-        self.upsert(name, None, ActorLifecycle::Dead);
+        self.upsert(name, description, ActorLifecycle::Dead);
     }
 
     /// Update only the free-form status message for an actor, leaving its
@@ -312,7 +312,7 @@ mod tests {
         state.mark_running("echo", None);
 
         // When marking the actor as dead.
-        state.mark_dead("echo");
+        state.mark_dead("echo", None);
 
         // Then the lifecycle transitions to Dead.
         assert_eq!(entry(&state, "echo").lifecycle, ActorLifecycle::Dead);

@@ -137,7 +137,7 @@ impl Message<ActorShutdownCompleted> for DiscordStatusActor {
 
     async fn handle(&mut self, msg: ActorShutdownCompleted, _ctx: &mut Context<Self, Self::Reply>) {
         let mut state = self.state.write();
-        state.frontend.dashboard.mark_dead(&msg.name);
+        state.frontend.dashboard.mark_dead(&msg.name, None);
     }
 }
 
@@ -164,7 +164,10 @@ impl DiscordStatusActor {
                 (Some(crate::feat::dashboard::ActorLifecycle::Running), true)
             }
             DiscordStatusUpdate::Error { .. } => {
-                (Some(crate::feat::dashboard::ActorLifecycle::Dead), false)
+                // The description is a constant for the discord entry;
+                // attach it on creation even when Error arrives first
+                // (e.g. missing token).
+                (Some(crate::feat::dashboard::ActorLifecycle::Dead), true)
             }
         };
 
@@ -178,7 +181,7 @@ impl DiscordStatusActor {
                     dashboard.mark_running(DISCORD_ACTOR_NAME, description);
                 }
                 crate::feat::dashboard::ActorLifecycle::Dead => {
-                    dashboard.mark_dead(DISCORD_ACTOR_NAME);
+                    dashboard.mark_dead(DISCORD_ACTOR_NAME, description);
                 }
             }
         }
@@ -210,14 +213,17 @@ mod tests {
     use crate::feat::dashboard::ActorLifecycle;
     use kameo::actor::Spawn;
 
-    fn dashboard_entry(state: &State, name: &str) -> Option<(ActorLifecycle, Option<String>)> {
+    fn dashboard_entry(
+        state: &State,
+        name: &str,
+    ) -> Option<(ActorLifecycle, Option<String>, Option<String>)> {
         let g = state.read();
         g.frontend
             .dashboard
             .actors()
             .iter()
             .find(|e| e.name == name)
-            .map(|e| (e.lifecycle, e.status_message.clone()))
+            .map(|e| (e.lifecycle, e.status_message.clone(), e.description.clone()))
     }
 
     async fn spawn_actor(harness: &TestHarness, state: State) -> ActorRef<DiscordStatusActor> {
@@ -248,7 +254,7 @@ mod tests {
 
         // Then the dashboard shows the actor as Starting.
         tokio::time::sleep(std::time::Duration::from_millis(50)).await;
-        let (lifecycle, _) = dashboard_entry(&state, "llm").expect("entry should exist");
+        let (lifecycle, _, _) = dashboard_entry(&state, "llm").expect("entry should exist");
         assert_eq!(lifecycle, ActorLifecycle::Starting);
     }
 
@@ -269,7 +275,7 @@ mod tests {
 
         // Then the dashboard shows the actor as Running.
         tokio::time::sleep(std::time::Duration::from_millis(50)).await;
-        let (lifecycle, _) = dashboard_entry(&state, "llm").expect("entry should exist");
+        let (lifecycle, _, _) = dashboard_entry(&state, "llm").expect("entry should exist");
         assert_eq!(lifecycle, ActorLifecycle::Running);
     }
 
@@ -296,7 +302,7 @@ mod tests {
 
         // Then the dashboard shows the actor as Dead.
         tokio::time::sleep(std::time::Duration::from_millis(50)).await;
-        let (lifecycle, _) = dashboard_entry(&state, "llm").expect("entry should exist");
+        let (lifecycle, _, _) = dashboard_entry(&state, "llm").expect("entry should exist");
         assert_eq!(lifecycle, ActorLifecycle::Dead);
     }
 
@@ -318,7 +324,7 @@ mod tests {
 
         // Then the dashboard shows the status message.
         tokio::time::sleep(std::time::Duration::from_millis(50)).await;
-        let (_, message) = dashboard_entry(&state, "discord").expect("entry should exist");
+        let (_, message, _) = dashboard_entry(&state, "discord").expect("entry should exist");
         assert_eq!(message.as_deref(), Some("Connecting"));
     }
 
@@ -340,7 +346,8 @@ mod tests {
 
         // Then the dashboard shows Running + Connected.
         tokio::time::sleep(std::time::Duration::from_millis(50)).await;
-        let (lifecycle, message) = dashboard_entry(&state, "discord").expect("entry should exist");
+        let (lifecycle, message, _) =
+            dashboard_entry(&state, "discord").expect("entry should exist");
         assert_eq!(lifecycle, ActorLifecycle::Running);
         assert_eq!(message.as_deref(), Some("Connected"));
     }
@@ -365,7 +372,8 @@ mod tests {
 
         // Then the dashboard shows Dead + the error message.
         tokio::time::sleep(std::time::Duration::from_millis(50)).await;
-        let (lifecycle, message) = dashboard_entry(&state, "discord").expect("entry should exist");
+        let (lifecycle, message, _) =
+            dashboard_entry(&state, "discord").expect("entry should exist");
         assert_eq!(lifecycle, ActorLifecycle::Dead);
         assert_eq!(message.as_deref(), Some("Error: 401: invalid token"));
     }
@@ -390,7 +398,32 @@ mod tests {
 
         // Then the status message updates to Disconnected.
         tokio::time::sleep(std::time::Duration::from_millis(50)).await;
-        let (_, message) = dashboard_entry(&state, "discord").expect("entry should exist");
+        let (_, message, _) = dashboard_entry(&state, "discord").expect("entry should exist");
         assert_eq!(message.as_deref(), Some("Disconnected"));
+    }
+
+    #[tokio::test]
+    async fn error_update_first_still_sets_description() {
+        // Given a DiscordStatusActor (simulating missing-token: Error arrives
+        // before any Connecting/Connected update).
+        let harness = TestHarness::new().await;
+        let state = State::new(AppState::default());
+        let (tx, rx) = kanal::unbounded::<DiscordStatusUpdate>();
+        let actor = DiscordStatusActor::spawn(DiscordStatusActorDeps {
+            deps: harness.actor_deps().await,
+            state: state.clone(),
+            status_rx: rx.to_async(),
+        });
+        actor.wait_for_startup().await;
+
+        // When sending an Error update as the very first message.
+        let _ = tx.send(DiscordStatusUpdate::Error {
+            message: "no token configured".to_owned(),
+        });
+
+        // Then the entry is created with the discord description.
+        tokio::time::sleep(std::time::Duration::from_millis(50)).await;
+        let (_, _, description) = dashboard_entry(&state, "discord").expect("entry should exist");
+        assert_eq!(description.as_deref(), Some("Discord gateway bot [Task]"));
     }
 }
