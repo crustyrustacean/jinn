@@ -100,7 +100,7 @@ impl ActorSystemBuilder {
         AppCore,
         Services,
         jinn_plugin::SyncPlugins,
-        Option<tokio::sync::mpsc::Receiver<jinn_domain::feat::discord::BridgeEvent>>,
+        Option<kanal::AsyncReceiver<jinn_domain::feat::discord::BridgeEvent>>,
     ) {
         let ActorSystemBuilderArgs {
             handle,
@@ -1130,7 +1130,8 @@ impl ActorSystemBuilder {
         // is spawned AFTER build() returns in app.rs (so it never blocks readiness).
         let discord_cfg = user_preferences_storage.read().discord.clone();
         let discord_bridge_rx = if discord_cfg.enabled {
-            let (tx, rx) = tokio::sync::mpsc::channel(64);
+            let (tx, rx) = kanal::bounded::<jinn_domain::feat::discord::BridgeEvent>(64);
+            let async_rx = rx.to_async();
             let _discord_bridge = jinn_domain::feat::discord::DiscordBridgeActor::supervise(
                 &root,
                 jinn_domain::feat::discord::DiscordBridgeActorDeps {
@@ -1141,7 +1142,7 @@ impl ActorSystemBuilder {
             .restart_policy(kameo::supervision::RestartPolicy::Never)
             .spawn()
             .await;
-            Some(rx)
+            Some(async_rx)
         } else {
             None
         };
