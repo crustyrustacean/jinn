@@ -267,7 +267,6 @@ impl Actor for ToolOrchestratorActor {
             .read()
             .tool_default_timeout_secs;
 
-
         let mut actor = Self {
             deps: args.deps,
             tools: HashMap::new(),
@@ -600,15 +599,14 @@ impl ToolOrchestratorActor {
         tokio::spawn(async move {
             use futures::FutureExt as _;
             use std::panic::AssertUnwindSafe;
-            let result = match AssertUnwindSafe(run_builtin_with_timeout(
-                tool_call, tool_ctx, execute_fn,
-            ))
-            .catch_unwind()
-            .await
-            {
-                Ok(r) => r,
-                Err(_) => panicked_tool_result(&call_id, &call_name),
-            };
+            let result =
+                match AssertUnwindSafe(run_builtin_with_timeout(tool_call, tool_ctx, execute_fn))
+                    .catch_unwind()
+                    .await
+                {
+                    Ok(r) => r,
+                    Err(_) => panicked_tool_result(&call_id, &call_name),
+                };
             bus.publish(ToolExecutionCompleted { session_id, result })
                 .await;
         })
