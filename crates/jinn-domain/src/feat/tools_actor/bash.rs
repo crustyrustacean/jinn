@@ -69,13 +69,20 @@ pub fn definition(default_timeout_secs: u64) -> ToolDefinition {
     ToolDefinition {
         name: "bash".to_owned(),
         description: format!(
-            "Execute a bash command in the current working directory. \
-            Returns stdout and stderr. Output is truncated to last 2000 lines or 50KB \
-            (whichever is hit first). Default timeout is {default_secs_str}s; \
-            override per call via the `timeout` parameter."
+            "Execute a bash command in the current working directory. \\
+            Returns stdout and stderr. Output is truncated to last 2000 lines or 50KB \\
+            (whichever is hit first). \\
+            \\
+            TIMEOUT: the default is {default_secs_str}s. \\
+            Pass `max_duration_secs` as a tool-call argument to override — NOT the shell `timeout` command. \\
+            Example: {{\"command\": \"cargo test\", \"max_duration_secs\": 600}}. \\
+            Set `max_duration_secs: 0` to disable the timeout for that call."
         ),
         prompt_snippet: Some("Execute bash commands (ls, grep, find, etc.)".to_owned()),
-        prompt_guidelines: vec!["Use bash for file operations like ls, rg, find".to_owned()],
+        prompt_guidelines: vec![
+            "Proactively set max_duration_secs for commands that may run long (builds, tests, network requests, large compiles). Do NOT use the shell `timeout` command — pass max_duration_secs as a tool-call argument.".to_owned(),
+            "If a command is killed by the timeout, retry the same command with a larger max_duration_secs value.".to_owned(),
+        ],
         parameters: serde_json::json!({
             "type": "object",
             "properties": {
@@ -83,9 +90,9 @@ pub fn definition(default_timeout_secs: u64) -> ToolDefinition {
                     "type": "string",
                     "description": "Bash command to execute"
                 },
-                "timeout": {
+                "max_duration_secs": {
                     "type": "number",
-                    "description": format!("Timeout in seconds. Overrides the default of {default_secs_str}s.")
+                    "description": format!("Maximum duration in seconds before the command is killed. Overrides the default of {default_secs_str}s. Set to 0 to disable the timeout for this call. Pass as a tool-call argument — NOT the shell `timeout` command. Example: {{\"command\": \"cargo test\", \"max_duration_secs\": 600}}.")
                 }
             },
             "required": ["command"]
@@ -1104,6 +1111,57 @@ mod tests {
             "expected description to mention 300s, got: {}",
             def.description
         );
+    }
+
+    #[test]
+    fn definition_schema_exposes_max_duration_secs_not_timeout() {
+        // Given the bash tool definition.
+        let def = definition(300);
+        let params = def.parameters.to_string();
+
+        // Then the schema contains the max_duration_secs key.
+        assert!(
+            params.contains("max_duration_secs"),
+            "expected schema to contain max_duration_secs, got: {}",
+            params
+        );
+        // And does NOT contain the old timeout key.
+        assert!(
+            !params.contains("\"timeout\""),
+            "expected schema to NOT contain a \"timeout\" key, got: {}",
+            params
+        );
+    }
+
+    #[test]
+    fn definition_description_names_max_duration_secs_and_shows_example() {
+        // Given the bash tool definition.
+        let def = definition(300);
+
+        // Then the description names max_duration_secs.
+        assert!(def.description.contains("max_duration_secs"));
+        // And contains an inline example call.
+        assert!(def.description.contains("\"max_duration_secs\": 600"));
+    }
+
+    #[test]
+    fn definition_guidelines_have_proactive_and_reactive_bullets() {
+        // Given the bash tool definition.
+        let def = definition(300);
+
+        // Then guidelines contain a proactive bullet (mentions setting max_duration_secs for slow commands).
+        let proactive = def
+            .prompt_guidelines
+            .iter()
+            .any(|g| g.contains("Proactively") && g.contains("max_duration_secs"));
+        assert!(proactive, "missing proactive guideline: {:?}", def.prompt_guidelines);
+
+        // And a reactive bullet (mentions retrying after a kill).
+        let reactive = def
+            .prompt_guidelines
+            .iter()
+            .any(|g| g.contains("killed") && g.contains("max_duration_secs"));
+        assert!(reactive, "missing reactive guideline: {:?}", def.prompt_guidelines);
     }
 }
 
