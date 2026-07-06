@@ -1398,6 +1398,25 @@ jinn_domain::feat::preferences_actor::app_state_sync_actor::AppStateSyncActor::s
                 .spawn()
                 .await
             );
+
+            // Feedback actor: writes the gdc (to-thread) outcome back into
+            // the session's chat history. Stateless forwarder → Never restart.
+            let _discord_feedback = spawn_tracked!(
+                &services.bus,
+                "discord-feedback",
+                "DiscordFeedbackActor",
+                jinn_domain::feat::discord::feedback_actor::DiscordFeedbackActor::supervise(
+                    &root,
+                    jinn_domain::feat::discord::feedback_actor::DiscordFeedbackActorDeps {
+                        deps: actor_deps.clone(),
+                        state: state.clone(),
+                    },
+                )
+                .restart_policy(kameo::supervision::RestartPolicy::Never)
+                .spawn()
+                .await
+            );
+
             (Some(async_rx), Some(gw_async_rx))
         } else {
             (None, None)
