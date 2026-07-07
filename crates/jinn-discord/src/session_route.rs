@@ -9,7 +9,23 @@
 
 use jinn_domain::feat::discord::route::{RouteDecision, route_decision};
 use jinn_domain::feat::session::phase_machine::PhaseKind;
+use poise::serenity_prelude::MessageType;
 
+/// Whether a Discord message of this type is a genuine user-authored text
+/// message that should be routed into a bound jinn session.
+///
+/// Returns `true` only for [`MessageType::Regular`] (plain typed text) and
+/// [`MessageType::InlineReply`] (a user reply, which carries real content).
+/// All system indicators (`PinsAdd`, `MemberJoin`, `ThreadCreated`, etc.) are
+/// dropped — they carry empty or metadata-only content and routing them
+/// produces empty user turns that LLM providers reject (e.g. ZAI error 1213).
+///
+/// Using `matches!` means future unknown `MessageType` variants naturally
+/// fall through to `false`, which is the safe default for unknown content.
+#[must_use]
+pub fn is_forwardable_message_type(kind: MessageType) -> bool {
+    matches!(kind, MessageType::Regular | MessageType::InlineReply)
+}
 /// The outcome of classifying an inbound Discord message against the bot's
 /// binding and session state.
 ///
@@ -66,8 +82,9 @@ pub fn classify_inbound(bound: bool, phase: Option<PhaseKind>) -> InboundOutcome
 
 #[cfg(test)]
 mod tests {
-    use super::{InboundOutcome, classify_inbound};
+    use super::{InboundOutcome, classify_inbound, is_forwardable_message_type};
     use jinn_domain::feat::session::phase_machine::PhaseKind;
+    use poise::serenity_prelude::MessageType;
 
     #[test]
     fn unbound_channel_is_no_op() {
@@ -121,5 +138,59 @@ mod tests {
         let outcome = classify_inbound(true, None);
         // Then it requests a load and asks the user to resend.
         assert_eq!(outcome, InboundOutcome::LoadMissing);
+    }
+
+    #[test]
+    fn regular_message_is_forwardable() {
+        // Given a plain typed text message.
+        // When checking forwardability.
+        let forwardable = is_forwardable_message_type(MessageType::Regular);
+        // Then it is forwarded into a session.
+        assert!(forwardable);
+    }
+
+    #[test]
+    fn inline_reply_is_forwardable() {
+        // Given a user inline reply (carries real content).
+        // When checking forwardability.
+        let forwardable = is_forwardable_message_type(MessageType::InlineReply);
+        // Then it is forwarded into a session.
+        assert!(forwardable);
+    }
+
+    #[test]
+    fn pins_add_is_not_forwardable() {
+        // Given a "pinned a message" system indicator (empty content).
+        // When checking forwardability.
+        let forwardable = is_forwardable_message_type(MessageType::PinsAdd);
+        // Then it is dropped — the regression anchor for ZAI error 1213.
+        assert!(!forwardable);
+    }
+
+    #[test]
+    fn member_join_is_not_forwardable() {
+        // Given a member-join system indicator.
+        // When checking forwardability.
+        let forwardable = is_forwardable_message_type(MessageType::MemberJoin);
+        // Then it is dropped.
+        assert!(!forwardable);
+    }
+
+    #[test]
+    fn thread_created_is_not_forwardable() {
+        // Given a thread-created system indicator.
+        // When checking forwardability.
+        let forwardable = is_forwardable_message_type(MessageType::ThreadCreated);
+        // Then it is dropped.
+        assert!(!forwardable);
+    }
+
+    #[test]
+    fn unknown_message_type_is_not_forwardable() {
+        // Given a message type serenity does not recognize.
+        // When checking forwardability.
+        let forwardable = is_forwardable_message_type(MessageType::Unknown(250));
+        // Then it is dropped — unknown content must never drive a turn.
+        assert!(!forwardable);
     }
 }
