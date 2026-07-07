@@ -1,14 +1,26 @@
 //! Sweep continuation for the ignore-selected intent.
 //!
-//! When the user holds `x`, each keypress applies the _captured_ context-override
-//! (not a toggle) to the next eligible entry, skipping pinned entries and collapsed
-//! ignored blocks. The sweep loop runs within a single keypress invocation so that
-//! obstacles are transparent — the user never sees a "skip" as a separate step.
+//! Holding `x` applies the _captured_ context-override (not a toggle) to
+//! exactly one eligible entry per keypress, advancing the cursor one step
+//! for the next press. The captured direction is carried across presses by a
+//! short (~100ms) memory window: as long as keypresses keep arriving inside
+//! the window, each one continues in the same direction (into or out of
+//! context) rather than re-toggling.
 //!
-//! Under the pure-toggle model, the captured target is always `ForcedInclude` or
-//! `ForcedExclude` — never `Default`. The sweep therefore drives every entry in one
-//! direction: into or out of context. Resetting to `Default` is `r`'s job, which does
-//! not use this sweep (it advances the cursor directly).
+//! Pre-existing obstacles — pinned entries and collapsed ignored blocks —
+//! are skipped transparently: the sweep advances past them within a single
+//! press without adjusting them, so the user never sees a "skip" as a
+//! separate step.
+//!
+//! If applying an override forms a NEW collapsed block that swallows the
+//! cursor (because the just-excluded entry now joins a run of neighbors),
+//! the sweep advances past that block once and stops — exactly one entry was
+//! adjusted this press. The memory stays armed so the next press picks up
+//! beyond the block.
+//!
+//! Under the pure-toggle model, the captured target is always `ForcedInclude`
+//! or `ForcedExclude` — never `Default`. Resetting to `Default` is `r`'s job,
+//! which does not use this sweep (it advances the cursor directly).
 use crate::common::app_state::AppState;
 use crate::feat::context::protocol::event::ContextOverrideChanged;
 use crate::feat::session::chat_entry::ChatEntry;
