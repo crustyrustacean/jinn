@@ -22,7 +22,7 @@ use crate::SessionId;
 use crate::common::actor_deps::ActorDeps;
 use crate::common::state::State;
 use crate::feat::discord::protocol::{
-    CreateThreadReason, DiscordThreadCreateFailed, DiscordThreadCreated,
+    CreateThreadReason, DiscordThreadCreateFailed, DiscordThreadCreated, ForumChannelError,
 };
 use crate::feat::session::chat_entry::ChatEntry;
 
@@ -115,8 +115,16 @@ fn reason_message(reason: &CreateThreadReason) -> String {
              thread — continue there."
                 .to_owned()
         }
-        CreateThreadReason::NoForumChannel => {
-            "Can't continue in Discord: no `forum_channel` configured in `[discord]`.".to_owned()
+        CreateThreadReason::ForumChannel(ForumChannelError::Missing) => concat!(
+            "Can't continue in Discord: no `forum_channel` is set in ",
+            "`[discord]`. Set it to the numeric channel id (snowflake) ",
+            "of a `GUILD_FORUM` channel the bot can manage."
+        )
+        .to_owned(),
+        CreateThreadReason::ForumChannel(ForumChannelError::Invalid { value }) => {
+            format!(
+                "Can't continue in Discord: `forum_channel` must be a numeric channel id (snowflake), but it's set to `{value}`. Copy the channel id in Discord (right-click → Copy Channel ID) and paste it into `[discord] forum_channel`."
+            )
         }
         CreateThreadReason::CreateFailed(detail) => {
             format!("Couldn't create the Discord thread: {detail}")
@@ -147,15 +155,53 @@ mod tests {
         (actor, session_id)
     }
 
-    /// `reason_message` renders a non-empty, distinct string per reason.
+    /// `reason_message` for `AlreadyBound` mentions continuing in the existing thread.
     #[test]
-    fn reason_message_covers_every_variant() {
-        let a = reason_message(&CreateThreadReason::AlreadyBound);
-        let b = reason_message(&CreateThreadReason::NoForumChannel);
-        let c = reason_message(&CreateThreadReason::CreateFailed("boom".to_owned()));
-        let d = reason_message(&CreateThreadReason::MappingWriteFailed);
-        assert!(!a.is_empty() && a != b && a != c && a != d);
-        assert!(c.contains("boom"));
+    fn reason_message_already_bound_is_descriptive() {
+        let msg = reason_message(&CreateThreadReason::AlreadyBound);
+        assert!(msg.contains("already in a Discord thread"));
+    }
+
+    /// `reason_message` for `ForumChannel(Missing)` explains how to set the field.
+    #[test]
+    fn reason_message_forum_channel_missing_explains_how_to_set() {
+        let msg = reason_message(&CreateThreadReason::ForumChannel(
+            ForumChannelError::Missing,
+        ));
+        assert!(msg.contains("no `forum_channel` is set"));
+        assert!(msg.contains("snowflake"));
+        assert!(msg.contains("GUILD_FORUM"));
+    }
+
+    /// `reason_message` for `ForumChannel(Invalid)` shows the bad value and what
+    /// a snowflake looks like.
+    #[test]
+    fn reason_message_forum_channel_invalid_shows_bad_value() {
+        let msg = reason_message(&CreateThreadReason::ForumChannel(
+            ForumChannelError::Invalid {
+                value: "sessions".to_owned(),
+            },
+        ));
+        assert!(
+            msg.contains("`sessions`"),
+            "expected the bad value in the message: {msg}"
+        );
+        assert!(msg.contains("snowflake"));
+        assert!(msg.contains("Copy Channel ID"));
+    }
+
+    /// `reason_message` for `CreateFailed` includes the Discord error detail.
+    #[test]
+    fn reason_message_create_failed_includes_detail() {
+        let msg = reason_message(&CreateThreadReason::CreateFailed("boom".to_owned()));
+        assert!(msg.contains("boom"));
+    }
+
+    /// `reason_message` for `MappingWriteFailed` describes the orphaned-thread state.
+    #[test]
+    fn reason_message_mapping_write_failed_describes_orphan() {
+        let msg = reason_message(&CreateThreadReason::MappingWriteFailed);
+        assert!(msg.contains("won't receive replies"));
     }
 
     /// A `Created` event pushes a system entry mentioning the title.

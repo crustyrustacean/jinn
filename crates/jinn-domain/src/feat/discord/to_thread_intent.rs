@@ -71,25 +71,6 @@ pub fn handle_to_discord_thread(state: &mut AppState) -> IntentResult {
         );
         return IntentResult::empty();
     }
-
-    // Precondition 4: a configured forum channel to create the thread in.
-    if state
-        .frontend
-        .preferences
-        .discord
-        .forum_channel
-        .as_deref()
-        .map(str::trim)
-        .is_none_or(str::is_empty)
-    {
-        push_error(
-            state,
-            "Can't continue in Discord: no `forum_channel` configured \
-             in `[discord]`.",
-        );
-        return IntentResult::empty();
-    }
-
     // All preconditions pass — request thread creation. The session id is
     // captured before emitting so a subsequent active-session change can't
     // race the binding.
@@ -126,14 +107,14 @@ mod tests {
     use crate::feat::session::chat_entry::ChatEntryKind;
 
     /// Build a state with the happy-path preconditions: a titled session,
-    /// discord enabled + connected, and a configured forum_channel.
+    /// discord enabled + connected. (The gateway owns `forum_channel`
+    /// validation, so the intent handler never reads it.)
     fn happy_state() -> AppState {
         let mut state = AppState::default();
         state
             .active_session_mut()
             .set_title("My session".to_owned());
         state.frontend.preferences.discord.enabled = true;
-        state.frontend.preferences.discord.forum_channel = Some("123".to_owned());
         state.frontend.dashboard.mark_running("discord", None);
         state
     }
@@ -173,7 +154,6 @@ mod tests {
         // Given a session with no title (default) but all else fine.
         let mut state = AppState::default();
         state.frontend.preferences.discord.enabled = true;
-        state.frontend.preferences.discord.forum_channel = Some("123".to_owned());
         state.frontend.dashboard.mark_running("discord", None);
 
         // When handling ToDiscordThread.
@@ -204,20 +184,6 @@ mod tests {
         // Given the discord dashboard entry is not Running.
         let mut state = happy_state();
         state.frontend.dashboard.mark_dead("discord", None);
-
-        // When handling ToDiscordThread.
-        let result = handle_to_discord_thread(&mut state);
-
-        // Then no command is emitted, and an error entry is pushed.
-        assert!(result.message_names.is_empty());
-        assert!(matches!(last_entry_kind(&state), ChatEntryKind::Error(_)));
-    }
-
-    #[rstest::rstest]
-    fn no_forum_channel_pushes_error_and_emits_nothing() {
-        // Given forum_channel is unset.
-        let mut state = happy_state();
-        state.frontend.preferences.discord.forum_channel = None;
 
         // When handling ToDiscordThread.
         let result = handle_to_discord_thread(&mut state);

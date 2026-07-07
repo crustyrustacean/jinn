@@ -79,13 +79,32 @@ pub enum CreateThreadReason {
     /// The session is already bound to a Discord thread — re-`gdc` is rejected
     /// (never rebind, never orphan the existing thread).
     AlreadyBound,
-    /// `[discord] forum_channel` is unset or unparseable.
-    NoForumChannel,
+    /// The configured `[discord] forum_channel` could not be resolved into a
+    /// Discord forum channel. Split into [`ForumChannelError::Missing`] (the
+    /// field is unset/empty) and [`ForumChannelError::Invalid`] (it was set
+    /// but doesn't parse as a numeric channel id / snowflake).
+    ForumChannel(ForumChannelError),
     /// Discord rejected the thread creation (permissions, rate-limit, etc.).
     CreateFailed(String),
     /// The thread was created but the local thread↔session mapping write failed;
     /// the thread exists on Discord but is unbound.
     MappingWriteFailed,
+}
+
+/// Why the configured `forum_channel` couldn't be used to create a thread.
+///
+/// The gateway is the sole judge of whether `forum_channel` is usable, so
+/// both cases surface here (never at the intent handler).
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub enum ForumChannelError {
+    /// `[discord] forum_channel` is unset or empty.
+    Missing,
+    /// The field was set but isn't a valid Discord channel snowflake (it
+    /// couldn't be parsed as a `u64`).
+    Invalid {
+        /// The raw, unparseable value exactly as configured.
+        value: String,
+    },
 }
 
 /// Bus command: lift the active jinn session into a new Discord forum thread.
@@ -121,7 +140,7 @@ impl crate::common::bus::BusMessage for DiscordThreadCreated {}
 ///
 /// Subscribed to by the feedback actor, which appends a `ChatEntry::error`
 /// to the session's history. No thread is created on `AlreadyBound` /
-/// `NoForumChannel`; a thread may exist on Discord but be unbound on
+/// `ForumChannel(_)`; a thread may exist on Discord but be unbound on
 /// `MappingWriteFailed`.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct DiscordThreadCreateFailed {
