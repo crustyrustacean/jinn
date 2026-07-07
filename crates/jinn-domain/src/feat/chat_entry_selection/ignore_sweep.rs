@@ -76,7 +76,6 @@ pub(crate) fn run_sweep(state: &mut AppState, target: ContextOverride) -> Intent
             return finalize_sweep(state, &session_id, changed_ids);
         }
 
-
         let Some(selected) = session.selected_entry() else {
             session.set_ignore_sweep(target);
             return finalize_sweep(state, &session_id, changed_ids);

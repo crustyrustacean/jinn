@@ -2131,7 +2131,9 @@ mod tests {
     /// Helper: push `count` in-context user entries and select the first.
     fn build_in_context_history(state: &mut AppState, count: usize) {
         for n in 0..count {
-            state.active_session_mut().push_entry(ChatEntry::user(format!("entry-{n}")));
+            state
+                .active_session_mut()
+                .push_entry(ChatEntry::user(format!("entry-{n}")));
         }
         // Default selection is the last entry; walk back to index 0.
         for _ in 0..count.saturating_sub(1) {
@@ -2245,7 +2247,8 @@ mod tests {
         handle_ignore_selected(&mut state); // entry 1
         // Then exactly 2 entries are excluded.
         assert_eq!(
-            count_excluded(&state), 2,
+            count_excluded(&state),
+            2,
             "two presses must exclude exactly two entries"
         );
 
@@ -2256,7 +2259,8 @@ mod tests {
         // Then exactly 3 entries are excluded — NOT ~47. This is the core
         // regression assertion: the sweep must not reach the proximity tail.
         assert_eq!(
-            count_excluded(&state), 3,
+            count_excluded(&state),
+            3,
             "third press must exclude exactly one more entry, not chain to bottom"
         );
         // And the cursor sits on a real entry near the top, not at the end.
