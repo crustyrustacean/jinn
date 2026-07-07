@@ -16,8 +16,8 @@ use jinn_domain::feat::chat_input::protocol::command::{EnqueueUserMessage, Submi
 use jinn_domain::feat::dashboard::status_actor::DiscordStatusUpdate;
 use jinn_domain::feat::discord::{
     BridgeEvent, CreateThreadReason, DiscordConfig, DiscordThreadCreateFailed,
-    DiscordThreadCreated, DiscordThreadMap, FinalReply, GatewayRequest, read_final_reply,
-    split_message,
+    DiscordThreadCreated, DiscordThreadMap, FinalReply, ForumChannelError, GatewayRequest,
+    read_final_reply, split_message,
 };
 use jinn_domain::feat::session::chat_entry::ChatEntry;
 use jinn_domain::feat::session::chat_session::ChatSessionState;
@@ -234,17 +234,35 @@ async fn handle_create_thread(
         return;
     }
 
-    // 2. Parse the configured forum channel.
-    let Some(forum_channel_id) = data
-        .config
-        .forum_channel
-        .as_deref()
-        .and_then(|s| s.trim().parse::<u64>().ok())
-        .map(serenity::ChannelId::new)
-    else {
-        tracing::warn!(%session_id, "forum_channel unset or unparseable");
-        report_failure(&data.bridge, session_id, CreateThreadReason::NoForumChannel);
-        return;
+    // 2. Resolve the configured forum channel into a Discord `ChannelId`. The
+    //    gateway is the sole judge of whether `forum_channel` is usable, so
+    //    both the missing and invalid cases are surfaced here with distinct
+    //    reasons (never at the intent handler).
+    let forum_channel_raw = data.config.forum_channel.as_deref().map(str::trim);
+    let forum_channel_id = match forum_channel_raw {
+        None | Some("") => {
+            tracing::warn!(%session_id, "forum_channel unset");
+            report_failure(
+                &data.bridge,
+                session_id,
+                CreateThreadReason::ForumChannel(ForumChannelError::Missing),
+            );
+            return;
+        }
+        Some(s) => match s.parse::<u64>() {
+            Ok(id) => serenity::ChannelId::new(id),
+            Err(_) => {
+                tracing::warn!(%session_id, raw = s, "forum_channel unparseable as a snowflake");
+                report_failure(
+                    &data.bridge,
+                    session_id,
+                    CreateThreadReason::ForumChannel(ForumChannelError::Invalid {
+                        value: s.to_owned(),
+                    }),
+                );
+                return;
+            }
+        },
     };
 
     // 3. Create the forum post. Forum threads require an initial message.

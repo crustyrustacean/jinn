@@ -23,7 +23,7 @@ pub use config::DiscordConfig;
 pub use message_split::split_message;
 pub use protocol::{
     BridgeEvent, CreateThreadForSession, CreateThreadReason, DiscordThreadCreateFailed,
-    DiscordThreadCreated, GatewayRequest, ThreadId,
+    DiscordThreadCreated, ForumChannelError, GatewayRequest, ThreadId,
 };
 pub use reply::{FinalReply, read_final_reply};
 pub use repo_basename::repo_basename;
