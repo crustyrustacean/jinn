@@ -2002,7 +2002,6 @@ mod tests {
     }
 
     #[rstest::rstest]
-    #[rstest::rstest]
     fn sweep_skips_multiple_collapsed_blocks() {
         // Given: 2 user, 10 ignored (block 1), 2 user, 10 ignored (block 2), 5 user.
         // Sweep starts on first user, skips collapsed blocks, processes in-between entries.
@@ -2066,12 +2065,50 @@ mod tests {
             ContextOverride::ForcedExclude
         );
 
-        // Second press - cursor on first collapsed block, skips it.
-        // Lands on entry "c" and applies ForcedExclude.
+        // Second press - cursor is on "b" (the entry after "a").
+        // Applying ForcedExclude to "b" merges entries 0-1 with the pre-existing
+        // ignored block (2-11) into a single collapsed block, so the cursor
+        // lands on the merged block and is advanced past it to "c".
+        // Only "b" is adjusted this press (1 keypress = 1 entry).
+        let _result = handle_ignore_selected(&mut state);
+        assert_eq!(
+            state.active_session().history()[1].context_override(),
+            ContextOverride::ForcedExclude,
+            "entry 'b' should be ForcedExclude after second press"
+        );
+        // Entry "c" must NOT be excluded yet (it is only reached on press 3).
+        assert_eq!(
+            state.active_session().history()[12].context_override(),
+            ContextOverride::Default,
+            "entry 'c' should still be Default after second press (no chain)"
+        );
+
+        // Third press - cursor on "c", applies ForcedExclude.
         let _result = handle_ignore_selected(&mut state);
 
-        // Entry "b" should NOT be mutated (it was before the block).
-        // The block entries should NOT be mutated (skipped).
+        // Entry "b" (index 1) should be ForcedExclude.
+        assert_eq!(
+            state.active_session().history()[1].context_override(),
+            ContextOverride::ForcedExclude,
+            "entry 'b' should be ForcedExclude"
+        );
+
+        // Entry "c" (index 12) should be processed on press 3.
+        assert_eq!(
+            state.active_session().history()[12].context_override(),
+            ContextOverride::ForcedExclude,
+            "entry 'c' should be ForcedExclude after third press"
+        );
+
+        // Guard against over-chaining: "d" (index 13) must still be Default.
+        // Before the fix, press 2 chained through "c", "d", and beyond.
+        assert_eq!(
+            state.active_session().history()[13].context_override(),
+            ContextOverride::Default,
+            "entry 'd' should still be Default (no over-chain)"
+        );
+
+        // The block entries (2..=11) should NOT be mutated (skipped).
         for i in 2..=11 {
             assert_eq!(
                 state.active_session().history()[i].context_override(),
@@ -2079,13 +2116,6 @@ mod tests {
                 "ignored entry {i} should still be ForcedExclude (untouched by sweep)"
             );
         }
-
-        // Entry "c" (index 12) should be processed.
-        assert_eq!(
-            state.active_session().history()[12].context_override(),
-            ContextOverride::ForcedExclude,
-            "entry 'c' should be ForcedExclude after sweep past first block"
-        );
 
         // The block should NOT be expanded.
         assert!(
@@ -2095,6 +2125,171 @@ mod tests {
                 .shown_ignored_blocks
                 .contains(&block1_start_id),
             "first collapsed block should not be expanded"
+        );
+    }
+
+    /// Helper: push `count` in-context user entries and select the first.
+    fn build_in_context_history(state: &mut AppState, count: usize) {
+        for n in 0..count {
+            state
+                .active_session_mut()
+                .push_entry(ChatEntry::user(format!("entry-{n}")));
+        }
+        // Default selection is the last entry; walk back to index 0.
+        for _ in 0..count.saturating_sub(1) {
+            state.active_session_mut().select_prev_entry();
+        }
+    }
+
+    /// Helper: count entries currently set to `ForcedExclude`.
+    fn count_excluded(state: &AppState) -> usize {
+        state
+            .active_session()
+            .history()
+            .iter()
+            .filter(|e| e.context_override() == ContextOverride::ForcedExclude)
+            .count()
+    }
+
+    #[rstest::rstest]
+    fn sweep_stops_one_entry_per_press_even_when_collapse_forms() {
+        // Given 10 in-context user entries with the cursor on the first.
+        // 10 entries is enough that a mid-press collapse forms (entries 0..2
+        // excluded -> collapse, well before the proximity-protected tail of
+        // the last 3).
+        let mut state = AppState::default();
+        build_in_context_history(&mut state, 10);
+        assert_eq!(state.active_session().selected_entry_index(), Some(0));
+
+        // When handling ignore selected three times (three presses within
+        // the 100ms memory window).
+        let _r1 = handle_ignore_selected(&mut state); // entry 0
+        let _r2 = handle_ignore_selected(&mut state); // entry 1 (may collapse 0-1)
+        let _r3 = handle_ignore_selected(&mut state); // entry 2 (collapse now forms)
+
+        // Then exactly 3 entries are ForcedExclude. Before the fix, press 3
+        // chained to the proximity tail, excluding ~7 entries (indices 0..6).
+        assert_eq!(
+            count_excluded(&state),
+            3,
+            "three presses must exclude exactly three entries (no chaining)"
+        );
+        // And entries 0..3 are the excluded ones.
+        for i in 0..3 {
+            assert_eq!(
+                state.active_session().history()[i].context_override(),
+                ContextOverride::ForcedExclude,
+                "entry {i} should be ForcedExclude"
+            );
+        }
+        // And entry 3 is untouched (guard: the chain did not overshoot).
+        assert_eq!(
+            state.active_session().history()[3].context_override(),
+            ContextOverride::Default,
+            "entry 3 must remain Default (no over-chain)"
+        );
+        // And the sweep memory is still armed for the next press.
+        assert_eq!(
+            state.active_session_mut().take_ignore_sweep(),
+            Some(ContextOverride::ForcedExclude),
+            "memory must carry the ForcedExclude direction past a collapse"
+        );
+    }
+
+    #[rstest::rstest]
+    fn sweep_advances_exactly_one_entry_across_multiple_presses() {
+        // Given 10 in-context user entries with the cursor on the first.
+        let mut state = AppState::default();
+        build_in_context_history(&mut state, 10);
+
+        // When handling ignore selected five times (five presses within the
+        // 100ms memory window). Each press must adjust exactly one entry.
+        let mut total_override_events = 0;
+        for _ in 0..5 {
+            let result = handle_ignore_selected(&mut state);
+            total_override_events += result
+                .message_names
+                .iter()
+                .filter(|n| n.contains("ContextOverrideChanged"))
+                .count();
+        }
+
+        // Then exactly 5 entries are ForcedExclude. Before the fix, the 3rd
+        // press chained to the proximity tail, excluding ~7 in one go.
+        assert_eq!(
+            count_excluded(&state),
+            5,
+            "five presses must exclude exactly five entries"
+        );
+        // And exactly one ContextOverrideChanged event was emitted per press.
+        assert_eq!(
+            total_override_events, 5,
+            "each press must emit exactly one ContextOverrideChanged event"
+        );
+        // And entry 5 is untouched (guard against over-chaining).
+        assert_eq!(
+            state.active_session().history()[5].context_override(),
+            ContextOverride::Default,
+            "entry 5 must remain Default (no over-chain)"
+        );
+    }
+
+    #[rstest::rstest]
+    fn sweep_does_not_chain_to_bottom_in_large_history() {
+        // Given 50 in-context user entries with the cursor on the first.
+        // A large history is where the bug was most visible: press 3 used to
+        // chain ~47 entries to the proximity tail in a single keypress.
+        let mut state = AppState::default();
+        build_in_context_history(&mut state, 50);
+
+        // When handling ignore selected twice.
+        handle_ignore_selected(&mut state); // entry 0
+        handle_ignore_selected(&mut state); // entry 1
+        // Then exactly 2 entries are excluded.
+        assert_eq!(
+            count_excluded(&state),
+            2,
+            "two presses must exclude exactly two entries"
+        );
+
+        // When handling ignore selected a third time (the press that forms
+        // a real collapse and would previously chain to the bottom).
+        handle_ignore_selected(&mut state); // entry 2
+
+        // Then exactly 3 entries are excluded — NOT ~47. This is the core
+        // regression assertion: the sweep must not reach the proximity tail.
+        assert_eq!(
+            count_excluded(&state),
+            3,
+            "third press must exclude exactly one more entry, not chain to bottom"
+        );
+        // And the cursor sits on a real entry near the top, not at the end.
+        let selected = state.active_session().selected_entry().expect("entry");
+        assert!(
+            selected.text().starts_with("entry-3"),
+            "cursor should be on entry-3, got: {:?}",
+            selected.text()
+        );
+    }
+
+    #[rstest::rstest]
+    fn sweep_memory_persists_after_collapse_forms() {
+        // Given 10 in-context user entries with the cursor on the first, with
+        // two entries already excluded so the next press forms a collapse.
+        let mut state = AppState::default();
+        build_in_context_history(&mut state, 10);
+        handle_ignore_selected(&mut state); // entry 0 -> ForcedExclude
+        handle_ignore_selected(&mut state); // entry 1 -> ForcedExclude
+
+        // When handling ignore selected a third time (forms a collapse).
+        handle_ignore_selected(&mut state); // entry 2 -> ForcedExclude + collapse
+
+        // Then the sweep memory is still armed with the captured direction,
+        // so the next press continues in ForcedExclude rather than re-toggling.
+        assert_eq!(
+            state.active_session_mut().take_ignore_sweep(),
+            Some(ContextOverride::ForcedExclude),
+            "memory must persist after a press that forms a collapse"
         );
     }
 }
