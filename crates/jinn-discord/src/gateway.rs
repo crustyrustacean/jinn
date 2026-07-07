@@ -9,7 +9,7 @@
 
 use std::sync::Arc;
 
-use crate::session_route::{InboundOutcome, classify_inbound};
+use crate::session_route::{InboundOutcome, classify_inbound, is_forwardable_message_type};
 use derive_more::Debug;
 use error_stack::Report;
 use jinn_domain::feat::chat_input::protocol::command::{EnqueueUserMessage, SubmitSteeringMessage};
@@ -495,6 +495,13 @@ async fn on_event(
     };
     // Ignore our own messages.
     if new_message.author.id == ctx.cache.current_user().id {
+        return Ok(());
+    }
+    // Ignore non-user message types (system indicators like pins, joins,
+    // thread-created) and other bots. Only genuine human text/reply messages
+    // route into sessions — system messages carry empty content and would
+    // produce empty user turns that LLM providers reject (e.g. ZAI error 1213).
+    if !is_forwardable_message_type(new_message.kind) || new_message.author.bot {
         return Ok(());
     }
     handle_inbound_message(ctx, new_message, data).await?;
