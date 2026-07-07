@@ -2002,7 +2002,6 @@ mod tests {
     }
 
     #[rstest::rstest]
-    #[rstest::rstest]
     fn sweep_skips_multiple_collapsed_blocks() {
         // Given: 2 user, 10 ignored (block 1), 2 user, 10 ignored (block 2), 5 user.
         // Sweep starts on first user, skips collapsed blocks, processes in-between entries.
@@ -2066,12 +2065,50 @@ mod tests {
             ContextOverride::ForcedExclude
         );
 
-        // Second press - cursor on first collapsed block, skips it.
-        // Lands on entry "c" and applies ForcedExclude.
+        // Second press - cursor is on "b" (the entry after "a").
+        // Applying ForcedExclude to "b" merges entries 0-1 with the pre-existing
+        // ignored block (2-11) into a single collapsed block, so the cursor
+        // lands on the merged block and is advanced past it to "c".
+        // Only "b" is adjusted this press (1 keypress = 1 entry).
+        let _result = handle_ignore_selected(&mut state);
+        assert_eq!(
+            state.active_session().history()[1].context_override(),
+            ContextOverride::ForcedExclude,
+            "entry 'b' should be ForcedExclude after second press"
+        );
+        // Entry "c" must NOT be excluded yet (it is only reached on press 3).
+        assert_eq!(
+            state.active_session().history()[12].context_override(),
+            ContextOverride::Default,
+            "entry 'c' should still be Default after second press (no chain)"
+        );
+
+        // Third press - cursor on "c", applies ForcedExclude.
         let _result = handle_ignore_selected(&mut state);
 
-        // Entry "b" should NOT be mutated (it was before the block).
-        // The block entries should NOT be mutated (skipped).
+        // Entry "b" (index 1) should be ForcedExclude.
+        assert_eq!(
+            state.active_session().history()[1].context_override(),
+            ContextOverride::ForcedExclude,
+            "entry 'b' should be ForcedExclude"
+        );
+
+        // Entry "c" (index 12) should be processed on press 3.
+        assert_eq!(
+            state.active_session().history()[12].context_override(),
+            ContextOverride::ForcedExclude,
+            "entry 'c' should be ForcedExclude after third press"
+        );
+
+        // Guard against over-chaining: "d" (index 13) must still be Default.
+        // Before the fix, press 2 chained through "c", "d", and beyond.
+        assert_eq!(
+            state.active_session().history()[13].context_override(),
+            ContextOverride::Default,
+            "entry 'd' should still be Default (no over-chain)"
+        );
+
+        // The block entries (2..=11) should NOT be mutated (skipped).
         for i in 2..=11 {
             assert_eq!(
                 state.active_session().history()[i].context_override(),
@@ -2079,13 +2116,6 @@ mod tests {
                 "ignored entry {i} should still be ForcedExclude (untouched by sweep)"
             );
         }
-
-        // Entry "c" (index 12) should be processed.
-        assert_eq!(
-            state.active_session().history()[12].context_override(),
-            ContextOverride::ForcedExclude,
-            "entry 'c' should be ForcedExclude after sweep past first block"
-        );
 
         // The block should NOT be expanded.
         assert!(

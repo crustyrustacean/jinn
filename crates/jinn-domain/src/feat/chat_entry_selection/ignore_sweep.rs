@@ -51,15 +51,19 @@ pub(crate) fn run_sweep(state: &mut AppState, target: ContextOverride) -> Intent
         }
         session.rebuild_visual_items();
 
-        // Rebuild may have moved the cursor onto a collapsed block.
+        // Applying the override may have collapsed the entry we just changed
+        // (together with neighbors) into a CollapsedIgnoredBlock, leaving the
+        // cursor on that block (`selected_entry()` -> None). This is a NEW
+        // collapse created by this press — NOT a pre-existing obstacle. We must
+        // advance past it exactly once and STOP, otherwise the loop would
+        // re-apply to the next entry in the same keypress and chain all the way
+        // to the bottom.
         if session.selected_entry().is_none() {
-            if !advance_selection_one(session) {
-                session.set_ignore_sweep(target);
-                return finalize_sweep(state, &session_id, changed_ids);
-            }
-            // Landed on another obstacle — loop will skip it.
-            continue;
+            advance_selection_one(session); // best-effort; at-bottom is also terminal
+            session.set_ignore_sweep(target);
+            return finalize_sweep(state, &session_id, changed_ids);
         }
+
 
         let Some(selected) = session.selected_entry() else {
             session.set_ignore_sweep(target);
