@@ -176,6 +176,8 @@ pub fn init() -> Keymap<KeyEvent, Scope, Intent, KeyCategory> {
             .bind("[c", Intent::ChatEntryJumpPrevCompaction, KeyCategory::ChatHistory)
             .bind("]u", Intent::ChatEntryJumpNextUserEntry, KeyCategory::ChatHistory)
             .bind("[u", Intent::ChatEntryJumpPrevUserEntry, KeyCategory::ChatHistory)
+            .bind("]p", Intent::ChatEntryJumpNextPinned, KeyCategory::ChatHistory)
+            .bind("[p", Intent::ChatEntryJumpPrevPinned, KeyCategory::ChatHistory)
             // Session creation
             .bind("n", Intent::SessionNew, KeyCategory::General)
             .bind("N", Intent::SessionNewWithLifecycle, KeyCategory::General)
@@ -1263,6 +1265,62 @@ mod tests {
             matches!(intent, Intent::InsertChar { ch: ']' }),
             "] in Input scope must insert a literal ], not start the jump chord; got {intent:?}",
         );
+    }
+
+    #[rstest::rstest]
+    fn bracket_p_chord_resolves_to_jump_pinned_intents() {
+        // Given the default keymap.
+        use jinn_domain::{Key, KeyEvent, Modifiers};
+        use ratatui_which_key::NodeResult;
+        let keymap = init();
+
+        // When navigating ]p (next pinned) in Normal scope.
+        let next_path = [
+            KeyEvent {
+                key: Key::Char(']'),
+                modifiers: Modifiers::none(),
+            },
+            KeyEvent {
+                key: Key::Char('p'),
+                modifiers: Modifiers::none(),
+            },
+        ];
+        let next_result = keymap
+            .navigate(&next_path, &Scope::Normal)
+            .expect("]p path exists");
+
+        // Then it resolves to ChatEntryJumpNextPinned.
+        match next_result {
+            NodeResult::Leaf { action } => assert!(
+                matches!(action, Intent::ChatEntryJumpNextPinned),
+                "]p must resolve to ChatEntryJumpNextPinned; got {action:?}",
+            ),
+            other => panic!("]p must be a leaf, got branch: {other:?}"),
+        }
+
+        // When navigating [p (previous pinned) in Normal scope.
+        let prev_path = [
+            KeyEvent {
+                key: Key::Char('['),
+                modifiers: Modifiers::none(),
+            },
+            KeyEvent {
+                key: Key::Char('p'),
+                modifiers: Modifiers::none(),
+            },
+        ];
+        let prev_result = keymap
+            .navigate(&prev_path, &Scope::Normal)
+            .expect("[p path exists");
+
+        // Then it resolves to ChatEntryJumpPrevPinned.
+        match prev_result {
+            NodeResult::Leaf { action } => assert!(
+                matches!(action, Intent::ChatEntryJumpPrevPinned),
+                "[p must resolve to ChatEntryJumpPrevPinned; got {action:?}",
+            ),
+            other => panic!("[p must be a leaf, got branch: {other:?}"),
+        }
     }
 }
 
