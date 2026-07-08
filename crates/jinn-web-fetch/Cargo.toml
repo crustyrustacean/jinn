@@ -21,6 +21,7 @@ anyhow = { version = "1", optional = true }
 
 [dev-dependencies]
 rstest = { workspace = true }
+serde_json = { workspace = true }
 mockito = { workspace = true }
 tokio = { workspace = true, features = ["full"] }
 

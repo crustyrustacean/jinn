@@ -249,14 +249,14 @@ mod tests {
             .await;
 
         let fetcher = HttpFetcher::new(HashMap::from([(
-            OutputFormat::Text,
-            Arc::new(crate::MarkdownExtractor) as Arc<dyn crate::Extractor>,
+            OutputFormat::MarkdownClean,
+            Arc::new(crate::CleanMarkdownExtractor) as Arc<dyn crate::Extractor>,
         )]));
         let result = fetcher
             .fetch(
                 &server.url(),
                 FetchOptions {
-                    format: OutputFormat::Text,
+                    format: OutputFormat::MarkdownClean,
                 },
             )
             .await;
@@ -342,7 +342,7 @@ mod tests {
             .fetch(
                 &server.url(),
                 FetchOptions {
-                    format: OutputFormat::Text,
+                    format: OutputFormat::Markdown,
                 },
             )
             .await;
