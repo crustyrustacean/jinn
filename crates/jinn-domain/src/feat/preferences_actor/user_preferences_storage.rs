@@ -247,7 +247,7 @@ mod tests {
     use crate::feat::preferences_actor::RequestRetryConfig;
     use crate::feat::preferences_actor::user_preferences::{
         AutoPruneConfig, CompactionConfig, CwdSelectorConfig, MinimapConfig,
-        OpenrouterWebSearchConfig, WebFetchConfig,
+        OpenrouterWebSearchConfig, WebFetchConfig, WebSearchConfig,
     };
     use crate::feat::project::ProjectConfig;
 
@@ -276,6 +276,7 @@ mod tests {
             compaction: CompactionConfig::default(),
             request_retry: RequestRetryConfig::default(),
             web_fetch: WebFetchConfig::default(),
+            web_search: WebSearchConfig::default(),
             openrouter_web_search: OpenrouterWebSearchConfig::default(),
             cwd_selector: CwdSelectorConfig::default(),
             minimap: MinimapConfig::default(),
@@ -335,6 +336,7 @@ mod tests {
             compaction: CompactionConfig::default(),
             request_retry: RequestRetryConfig::default(),
             web_fetch: WebFetchConfig::default(),
+            web_search: WebSearchConfig::default(),
             openrouter_web_search: OpenrouterWebSearchConfig::default(),
             cwd_selector: CwdSelectorConfig::default(),
             minimap: MinimapConfig::default(),
@@ -378,6 +380,7 @@ mod tests {
             compaction: CompactionConfig::default(),
             request_retry: RequestRetryConfig::default(),
             web_fetch: WebFetchConfig::default(),
+            web_search: WebSearchConfig::default(),
             openrouter_web_search: OpenrouterWebSearchConfig::default(),
             cwd_selector: CwdSelectorConfig::default(),
             minimap: MinimapConfig::default(),
@@ -415,6 +418,7 @@ mod tests {
             compaction: CompactionConfig::default(),
             request_retry: RequestRetryConfig::default(),
             web_fetch: WebFetchConfig::default(),
+            web_search: WebSearchConfig::default(),
             openrouter_web_search: OpenrouterWebSearchConfig::default(),
             cwd_selector: CwdSelectorConfig::default(),
             minimap: MinimapConfig::default(),
@@ -439,6 +443,7 @@ mod tests {
             compaction: CompactionConfig::default(),
             request_retry: RequestRetryConfig::default(),
             web_fetch: WebFetchConfig::default(),
+            web_search: WebSearchConfig::default(),
             openrouter_web_search: OpenrouterWebSearchConfig::default(),
             cwd_selector: CwdSelectorConfig::default(),
             minimap: MinimapConfig::default(),
@@ -472,6 +477,7 @@ mod tests {
             compaction: CompactionConfig::default(),
             request_retry: RequestRetryConfig::default(),
             web_fetch: WebFetchConfig::default(),
+            web_search: WebSearchConfig::default(),
             openrouter_web_search: OpenrouterWebSearchConfig::default(),
             cwd_selector: CwdSelectorConfig::default(),
             minimap: MinimapConfig::default(),

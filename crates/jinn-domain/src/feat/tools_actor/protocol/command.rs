@@ -82,9 +82,21 @@ pub struct CancelToolBatch {
     pub session_id: SessionId,
 }
 
+/// Execute a web-search tool call.
+///
+/// Sent by the tool orchestrator to the `WebSearchActor`.
+/// Carries the session ID and the tool call with the query string.
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct ExecuteWebSearch {
+    /// The session this execution belongs to.
+    pub session_id: SessionId,
+    /// The tool call containing the search query.
+    pub tool_call: ToolCall,
+}
 /// Execute a web-fetch tool call.
 ///
 /// Sent by the tool orchestrator to the `WebFetchActor`.
+///
 /// Carries the session ID and the tool call with URL + options.
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct ExecuteWebFetch {
@@ -99,3 +111,4 @@ impl crate::common::bus::BusMessage for ExecuteToolBatch {}
 impl crate::common::bus::BusMessage for ExecuteTool {}
 impl crate::common::bus::BusMessage for CancelToolBatch {}
 impl crate::common::bus::BusMessage for ExecuteWebFetch {}
+impl crate::common::bus::BusMessage for ExecuteWebSearch {}

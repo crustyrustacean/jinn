@@ -1,0 +1,21 @@
+[package]
+name = "jinn-web-search"
+version.workspace = true
+edition.workspace = true
+
+[dependencies]
+async-trait = { workspace = true }
+tracing = { workspace = true }
+wherror = { workspace = true }
+serde = { workspace = true, features = ["derive"] }
+reqwest = { workspace = true, features = ["gzip"] }
+url = "2"
+scraper = "0.27"
+
+[dev-dependencies]
+rstest = { workspace = true }
+mockito = { workspace = true }
+tokio = { workspace = true, features = ["full"] }
+
+[lints]
+workspace = true
