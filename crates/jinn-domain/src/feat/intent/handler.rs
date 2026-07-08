@@ -678,6 +678,16 @@ impl IntentHandler {
                     entry.is_user()
                 })
             }
+            Intent::ChatEntryJumpNextPinned => {
+                feat::chat_entry_selection::intent::handle_jump_next_entry(state, |entry| {
+                    entry.is_pinned()
+                })
+            }
+            Intent::ChatEntryJumpPrevPinned => {
+                feat::chat_entry_selection::intent::handle_jump_prev_entry(state, |entry| {
+                    entry.is_pinned()
+                })
+            }
             Intent::ChatEntryPinSelected => {
                 feat::chat_entry_selection::intent::handle_pin_selected(state)
             }

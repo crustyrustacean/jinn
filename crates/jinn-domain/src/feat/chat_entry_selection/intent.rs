@@ -2536,6 +2536,175 @@ mod jump_compaction_tests {
         assert!(result.message_names.is_empty());
     }
 
+    /// Build history user,A,user,B where A and B are pinned entries.
+    fn build_two_pinned_history(state: &mut AppState) -> (ChatEntryId, ChatEntryId) {
+        state
+            .active_session_mut()
+            .push_entry(ChatEntry::user("first"));
+        state
+            .active_session_mut()
+            .push_entry(ChatEntry::user("A").with_pin(PinPosition::Top));
+        let a_id = state.active_session().history()[1].id.clone();
+        state
+            .active_session_mut()
+            .push_entry(ChatEntry::user("middle"));
+        state
+            .active_session_mut()
+            .push_entry(ChatEntry::user("B").with_pin(PinPosition::Top));
+        let b_id = state.active_session().history()[3].id.clone();
+        (a_id, b_id)
+    }
+
+    #[rstest::rstest]
+    fn jump_next_moves_to_next_pinned() {
+        // Given history user,A,user,B with the cursor on pinned entry A.
+        let mut state = AppState::default();
+        let (a_id, b_id) = build_two_pinned_history(&mut state);
+        select_at(&mut state, 1);
+        assert_eq!(state.active_session().selected_cursor_id(), Some(&a_id));
+
+        // When handling jump to next pinned entry.
+        let _result = handle_jump_next_entry(
+            &mut state,
+            crate::feat::session::chat_entry::ChatEntry::is_pinned,
+        );
+
+        // Then the cursor moves to pinned entry B.
+        assert_eq!(state.active_session().selected_cursor_id(), Some(&b_id));
+    }
+
+    #[rstest::rstest]
+    fn jump_prev_moves_to_prev_pinned() {
+        // Given history user,A,user,B with the cursor on pinned entry B.
+        let mut state = AppState::default();
+        let (a_id, b_id) = build_two_pinned_history(&mut state);
+        select_at(&mut state, 3);
+        assert_eq!(state.active_session().selected_cursor_id(), Some(&b_id));
+
+        // When handling jump to previous pinned entry.
+        let _result = handle_jump_prev_entry(
+            &mut state,
+            crate::feat::session::chat_entry::ChatEntry::is_pinned,
+        );
+
+        // Then the cursor moves to pinned entry A.
+        assert_eq!(state.active_session().selected_cursor_id(), Some(&a_id));
+    }
+
+    #[rstest::rstest]
+    fn jump_next_noop_at_last_pinned() {
+        // Given the cursor on the last pinned entry B.
+        let mut state = AppState::default();
+        let (_a_id, b_id) = build_two_pinned_history(&mut state);
+        select_at(&mut state, 3);
+
+        // When handling jump to next pinned entry.
+        let result = handle_jump_next_entry(
+            &mut state,
+            crate::feat::session::chat_entry::ChatEntry::is_pinned,
+        );
+
+        // Then the cursor is unchanged (no wrap) and no commands emitted.
+        assert_eq!(state.active_session().selected_cursor_id(), Some(&b_id));
+        assert!(result.message_names.is_empty());
+    }
+
+    #[rstest::rstest]
+    fn jump_prev_noop_at_first_pinned() {
+        // Given the cursor on the first pinned entry A.
+        let mut state = AppState::default();
+        let (a_id, _b_id) = build_two_pinned_history(&mut state);
+        select_at(&mut state, 1);
+
+        // When handling jump to previous pinned entry.
+        let result = handle_jump_prev_entry(
+            &mut state,
+            crate::feat::session::chat_entry::ChatEntry::is_pinned,
+        );
+
+        // Then the cursor is unchanged (no wrap) and no commands emitted.
+        assert_eq!(state.active_session().selected_cursor_id(), Some(&a_id));
+        assert!(result.message_names.is_empty());
+    }
+
+    #[rstest::rstest]
+    fn jump_next_noop_when_no_pinned() {
+        // Given a history with no pinned entries.
+        let mut state = AppState::default();
+        state.active_session_mut().push_entry(ChatEntry::user("a"));
+        state
+            .active_session_mut()
+            .push_entry(ChatEntry::assistant("b"));
+        select_at(&mut state, 0);
+        let before = state.active_session().selected_cursor_id().cloned();
+
+        // When handling jump to next pinned entry.
+        let result = handle_jump_next_entry(
+            &mut state,
+            crate::feat::session::chat_entry::ChatEntry::is_pinned,
+        );
+
+        // Then it is a no-op.
+        assert_eq!(state.active_session().selected_cursor_id(), before.as_ref());
+        assert!(result.message_names.is_empty());
+    }
+
+    #[rstest::rstest]
+    fn jump_prev_noop_when_no_pinned() {
+        // Given a history with no pinned entries.
+        let mut state = AppState::default();
+        state.active_session_mut().push_entry(ChatEntry::user("a"));
+        state
+            .active_session_mut()
+            .push_entry(ChatEntry::assistant("b"));
+        select_at(&mut state, 1);
+        let before = state.active_session().selected_cursor_id().cloned();
+
+        // When handling jump to previous pinned entry.
+        let result = handle_jump_prev_entry(
+            &mut state,
+            crate::feat::session::chat_entry::ChatEntry::is_pinned,
+        );
+
+        // Then it is a no-op.
+        assert_eq!(state.active_session().selected_cursor_id(), before.as_ref());
+        assert!(result.message_names.is_empty());
+    }
+
+    #[rstest::rstest]
+    fn jump_prev_anchors_on_last_when_no_selection() {
+        // Given the canonical history with no active selection.
+        let mut state = AppState::default();
+        let (_a_id, b_id) = build_two_pinned_history(&mut state);
+        state.active_session_mut().clear_selection();
+        assert!(state.active_session().selected_cursor_id().is_none());
+
+        // When handling jump to previous pinned entry.
+        let _result = handle_jump_prev_entry(
+            &mut state,
+            crate::feat::session::chat_entry::ChatEntry::is_pinned,
+        );
+
+        // Then the anchor is the last entry, so [p lands on pinned entry B.
+        assert_eq!(state.active_session().selected_cursor_id(), Some(&b_id));
+    }
+
+    #[rstest::rstest]
+    fn jump_next_noop_when_history_empty_pinned() {
+        // Given an empty session.
+        let mut state = AppState::default();
+
+        // When handling jump to next pinned entry.
+        let result = handle_jump_next_entry(
+            &mut state,
+            crate::feat::session::chat_entry::ChatEntry::is_pinned,
+        );
+
+        // Then it is a no-op without panic.
+        assert!(state.active_session().selected_cursor_id().is_none());
+        assert!(result.message_names.is_empty());
+    }
+
     #[rstest::rstest]
     fn jump_next_returns_no_commands() {
         // Given history with a compaction, cursor on compaction A.
