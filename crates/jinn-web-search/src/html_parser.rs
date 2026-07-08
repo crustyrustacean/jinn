@@ -65,7 +65,12 @@ pub fn parse_results(html: &str, max: usize) -> Vec<SearchResult> {
             continue;
         }
 
-        let title = title_anchor.text().collect::<Vec<_>>().join("").trim().to_owned();
+        let title = title_anchor
+            .text()
+            .collect::<Vec<_>>()
+            .join("")
+            .trim()
+            .to_owned();
         if title.is_empty() {
             continue;
         }
@@ -124,7 +129,6 @@ pub fn decode_ddg_url(href: &str) -> String {
     }
 }
 
-
 #[cfg(test)]
 mod tests {
     #![allow(
@@ -143,7 +147,11 @@ mod tests {
         let results = parse_results(FIXTURE, 50);
 
         // Then 5 results are extracted (the `/search` link and nav-link are skipped).
-        assert_eq!(results.len(), 5, "5 valid results; nav/search links skipped");
+        assert_eq!(
+            results.len(),
+            5,
+            "5 valid results; nav/search links skipped"
+        );
     }
 
     #[test]
@@ -166,7 +174,11 @@ mod tests {
 
         // Then the first result's snippet is present (non-empty).
         assert!(!results[0].snippet.is_empty());
-        assert!(results[0].snippet.contains("reliable and efficient software"));
+        assert!(
+            results[0]
+                .snippet
+                .contains("reliable and efficient software")
+        );
     }
 
     #[test]

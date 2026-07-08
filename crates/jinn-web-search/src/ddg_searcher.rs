@@ -7,7 +7,7 @@
 
 use async_trait::async_trait;
 
-use crate::{html_parser, SearchError, SearchOptions, SearchResult, WebSearcher};
+use crate::{SearchError, SearchOptions, SearchResult, WebSearcher, html_parser};
 
 /// The Chrome User-Agent ddgr sends. DDG blocks requests without a browser UA.
 const USER_AGENT: &str = "Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 \
@@ -16,10 +16,7 @@ const USER_AGENT: &str = "Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 \
 /// Phrases that appear in DDG's anti-bot / unusual-traffic challenge page.
 /// When the response body contains any of these, [`SearchError::Blocked`] is
 /// returned rather than parsing zero results from a non-results page.
-const BLOCK_MARKERS: [&str; 2] = [
-    "anomaly.js",
-    "If this error persists",
-];
+const BLOCK_MARKERS: [&str; 2] = ["anomaly.js", "If this error persists"];
 
 /// DuckDuckGo HTML searcher.
 ///
@@ -308,7 +305,10 @@ mod tests {
         let searcher = DdgSearcher::with_endpoint(format!("{}/html", server.url()));
 
         // When searching.
-        let results = searcher.search("rust programming", &opts()).await.expect("ok");
+        let results = searcher
+            .search("rust programming", &opts())
+            .await
+            .expect("ok");
 
         // Then results are parsed (the fixture has 5 valid results).
         assert_eq!(results.len(), 5);

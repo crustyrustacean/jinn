@@ -188,8 +188,7 @@ async fn execute_search(
     // Apply the lower of the per-call override and the configured max.
     let max_results = args
         .max_results
-        .map(|m| m.min(config.max_results))
-        .unwrap_or(config.max_results);
+        .map_or(config.max_results, |m| m.min(config.max_results));
     let options = SearchOptions {
         max_results,
         region: config.region.clone(),
@@ -237,12 +236,13 @@ fn failure_result(tool_call: &ToolCall, message: String) -> ToolResult {
 ///    snippet
 /// ```
 fn format_results(results: &[jinn_web_search::SearchResult]) -> String {
+    use std::fmt::Write as _;
     let mut out = String::new();
     for (i, r) in results.iter().enumerate() {
         if i > 0 {
             out.push_str("\n\n");
         }
-        out.push_str(&format!("{}. {} — {}\n   {}", i + 1, r.title, r.url, r.snippet));
+        let _ = write!(out, "{}. {} — {}\n   {}", i + 1, r.title, r.url, r.snippet);
     }
     if results.is_empty() {
         out.push_str("No results found.");
@@ -411,7 +411,7 @@ mod actor_tests {
     use crate::feat::tools_actor::tool_types::ToolCall;
     use crate::protocol::SessionId;
     use async_trait::async_trait;
-    use jinn_web_search::{SearchOptions, SearchResult, SearchError, WebSearcher};
+    use jinn_web_search::{SearchError, SearchOptions, SearchResult, WebSearcher};
     use kameo::actor::Spawn;
     use std::sync::{Arc, Mutex};
 
@@ -473,8 +473,7 @@ mod actor_tests {
         });
 
         // Then a RegisterTools command was published.
-        let messages =
-            await_recorded(&recorder, 1, std::time::Duration::from_secs(1)).await;
+        let messages = await_recorded(&recorder, 1, std::time::Duration::from_secs(1)).await;
         assert_eq!(messages.len(), 1, "should send exactly one RegisterTools");
         assert_eq!(messages[0].provider, "web-search");
         assert_eq!(messages[0].definitions.len(), 1);
@@ -512,8 +511,7 @@ mod actor_tests {
             .await;
 
         // Then a ToolExecutionCompleted event was emitted with success.
-        let messages =
-            await_recorded(&recorder, 1, std::time::Duration::from_secs(2)).await;
+        let messages = await_recorded(&recorder, 1, std::time::Duration::from_secs(2)).await;
         assert_eq!(messages.len(), 1);
         assert!(messages[0].result.success);
         assert_eq!(messages[0].session_id, session_id);
@@ -550,8 +548,7 @@ mod actor_tests {
             .await;
 
         // Then a ToolExecutionCompleted event was emitted with failure.
-        let messages =
-            await_recorded(&recorder, 1, std::time::Duration::from_secs(2)).await;
+        let messages = await_recorded(&recorder, 1, std::time::Duration::from_secs(2)).await;
         assert_eq!(messages.len(), 1);
         assert!(!messages[0].result.success);
         assert!(messages[0].result.content.contains("invalid arguments"));
@@ -588,8 +585,7 @@ mod actor_tests {
             .await;
 
         // Then a ToolExecutionCompleted event was emitted with failure.
-        let messages =
-            await_recorded(&recorder, 1, std::time::Duration::from_secs(2)).await;
+        let messages = await_recorded(&recorder, 1, std::time::Duration::from_secs(2)).await;
         assert_eq!(messages.len(), 1);
         assert!(!messages[0].result.success);
         assert!(messages[0].result.content.contains("empty"));
@@ -626,11 +622,20 @@ mod actor_tests {
             .await;
 
         // Then the result is formatted as numbered text with title, url, snippet.
-        let messages =
-            await_recorded(&recorder, 1, std::time::Duration::from_secs(2)).await;
+        let messages = await_recorded(&recorder, 1, std::time::Duration::from_secs(2)).await;
         assert_eq!(messages.len(), 1);
         assert!(messages[0].result.success);
-        assert!(messages[0].result.content.contains("1. Rust Programming — https://rust-lang.org"));
-        assert!(messages[0].result.content.contains("2. Learn Rust — https://doc.rust-lang.org"));
+        assert!(
+            messages[0]
+                .result
+                .content
+                .contains("1. Rust Programming — https://rust-lang.org")
+        );
+        assert!(
+            messages[0]
+                .result
+                .content
+                .contains("2. Learn Rust — https://doc.rust-lang.org")
+        );
     }
 }
