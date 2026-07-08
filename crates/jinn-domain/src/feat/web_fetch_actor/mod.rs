@@ -229,8 +229,7 @@ async fn execute_fetch(web_fetcher: &Arc<dyn WebFetcher>, tool_call: &ToolCall) 
 fn web_fetch_tool_definition() -> ToolDefinition {
     ToolDefinition {
         name: "web-fetch".to_owned(),
-        description: "Fetch a web page and return its content. Supports multiple output \
-            formats (html, text, markdown). Use this to retrieve information from web pages."
+        description: "Fetch a web page and return its content. By default returns \n            boilerplate-stripped markdown (markdown-clean); request `html` for the raw \n            page source (e.g. when building or inspecting markup), or `markdown` for the \n            full page including nav/footer."
             .to_owned(),
         parameters: serde_json::json!({
             "type": "object",
@@ -245,8 +244,8 @@ fn web_fetch_tool_definition() -> ToolDefinition {
                     "properties": {
                         "format": {
                             "type": "string",
-                            "enum": ["html", "text", "markdown"],
-                            "description": "Output format. Defaults to 'text'."
+                            "enum": ["html", "markdown", "markdown-clean"],
+                            "description": "Output format. Defaults to 'markdown-clean' (boilerplate-stripped)."
                         }
                     }
                 }
@@ -346,6 +345,31 @@ mod tests {
         assert_eq!(messages[0].provider, "web-fetch");
         assert_eq!(messages[0].definitions.len(), 1);
         assert_eq!(messages[0].definitions[0].name, "web-fetch");
+    }
+
+    #[tokio::test]
+    async fn startup_web_fetch_tool_exposes_clean_format_enum() {
+        // Given a WebFetchActor.
+        let harness = TestHarness::new().await;
+        let recorder = harness.spawn_recorder::<RegisterTools>().await;
+        let _actor = WebFetchActor::spawn(WebFetchActorDeps {
+            deps: harness.actor_deps().await,
+            web_fetcher: mock_fetcher_with_success(),
+        });
+
+        // When the actor registers its tool.
+        let messages = await_recorded(&recorder, 1, std::time::Duration::from_secs(1)).await;
+
+        // Then the format enum is html, markdown, markdown-clean.
+        let params = &messages[0].definitions[0].parameters;
+        let formats = params["properties"]["options"]["properties"]["format"]["enum"]
+            .as_array()
+            .expect("format enum should be an array");
+        let formats: Vec<&str> = formats
+            .iter()
+            .map(|v| v.as_str().expect("enum value is a string"))
+            .collect();
+        assert_eq!(formats, vec!["html", "markdown", "markdown-clean"]);
     }
 
     #[tokio::test]

@@ -2368,6 +2368,7 @@ dependencies = [
  "reqwest",
  "rstest",
  "serde",
+ "serde_json",
  "tokio",
  "tracing",
  "url",
