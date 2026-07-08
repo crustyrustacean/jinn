@@ -32,7 +32,9 @@ use jinn_domain::init::system_ready_actor::{SystemReadyActor, SystemReadyActorDe
 
 use jinn_domain::feat::preferences_actor::user_preferences::WebFetchBackend;
 use jinn_domain::feat::web_fetch_actor::{WebFetchActor, WebFetchActorDeps};
+use jinn_domain::feat::web_search_actor::{WebSearchActor, WebSearchActorDeps};
 use jinn_web_fetch::{HttpFetcher, MarkdownExtractor, OutputFormat};
+use jinn_web_search::DdgSearcher;
 
 use jinn_domain::{AppCore, State};
 
@@ -688,6 +690,27 @@ jinn_domain::feat::preferences_actor::app_state_sync_actor::AppStateSyncActor::s
                 WebFetchActorDeps {
                     deps: actor_deps.clone(),
                     web_fetcher,
+                },
+            )
+            .restart_policy(kameo::supervision::RestartPolicy::Never)
+            .spawn()
+            .await
+        );
+
+        // Web search actor (provider-independent DuckDuckGo search).
+        let web_search_config = user_preferences_storage.read().web_search.clone();
+        let web_searcher: std::sync::Arc<dyn jinn_web_search::WebSearcher> =
+            std::sync::Arc::new(DdgSearcher::new());
+        let _web_search = spawn_tracked!(
+            &services.bus,
+            "web-search",
+            "WebSearchActor",
+            WebSearchActor::supervise(
+                &root,
+                WebSearchActorDeps {
+                    deps: actor_deps.clone(),
+                    web_searcher,
+                    config: web_search_config,
                 },
             )
             .restart_policy(kameo::supervision::RestartPolicy::Never)
