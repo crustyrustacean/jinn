@@ -33,6 +33,7 @@ use jinn_domain::init::system_ready_actor::{SystemReadyActor, SystemReadyActorDe
 use jinn_domain::feat::preferences_actor::user_preferences::WebFetchBackend;
 use jinn_domain::feat::web_fetch_actor::{WebFetchActor, WebFetchActorDeps};
 use jinn_domain::feat::web_search_actor::{WebSearchActor, WebSearchActorDeps};
+use jinn_domain::feat::citation_collector::citation_collector_actor::{CitationCollectorActor, CitationCollectorActorDeps};
 use jinn_web_fetch::{HttpFetcher, MarkdownExtractor, OutputFormat};
 use jinn_web_search::DdgSearcher;
 
@@ -711,6 +712,24 @@ jinn_domain::feat::preferences_actor::app_state_sync_actor::AppStateSyncActor::s
                     deps: actor_deps.clone(),
                     web_searcher,
                     config: web_search_config,
+                },
+            )
+            .restart_policy(kameo::supervision::RestartPolicy::Never)
+            .spawn()
+            .await
+        );
+
+        // Citation collector actor (surfaces web-search/web-fetch sources as a
+        // provider-independent `Sources` footer at turn end).
+        let _citation_collector = spawn_tracked!(
+            &services.bus,
+            "citation-collector",
+            "CitationCollectorActor",
+            CitationCollectorActor::supervise(
+                &root,
+                CitationCollectorActorDeps {
+                    deps: actor_deps.clone(),
+                    state: state.clone(),
                 },
             )
             .restart_policy(kameo::supervision::RestartPolicy::Never)
