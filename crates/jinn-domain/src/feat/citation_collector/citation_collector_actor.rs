@@ -133,11 +133,7 @@ impl Message<ExecuteWebSearch> for CitationCollectorActor {
 impl Message<ToolExecutionCompleted> for CitationCollectorActor {
     type Reply = ();
 
-    async fn handle(
-        &mut self,
-        msg: ToolExecutionCompleted,
-        _ctx: &mut Context<Self, Self::Reply>,
-    ) {
+    async fn handle(&mut self, msg: ToolExecutionCompleted, _ctx: &mut Context<Self, Self::Reply>) {
         self.resolve_pending(&msg);
     }
 }
@@ -235,8 +231,7 @@ impl CitationCollectorActor {
             .read()
             .try_session(&msg.session_id)
             .and_then(|session| session.history().last())
-            .map(|entry| matches!(entry.kind, ChatEntryKind::Assistant(_)))
-            .unwrap_or(false);
+            .is_some_and(|entry| matches!(entry.kind, ChatEntryKind::Assistant(_)));
 
         if !is_assistant {
             return;
@@ -313,9 +308,9 @@ mod actor_tests {
     )]
 
     use super::*;
+    use crate::common::app_state::AppState;
     use crate::common::services::{BusAudit, BusService, Services};
     use crate::common::state::State;
-    use crate::common::app_state::AppState;
     use crate::feat::session::chat_entry::ChatEntry;
     use crate::feat::tools_actor::tool_types::ToolResult;
 
@@ -498,7 +493,9 @@ mod actor_tests {
         // When the session later reaches a genuine assistant answer.
         {
             let mut state = actor.state.write();
-            state.session_mut_or_create(&s).push_entry(ChatEntry::assistant("recovered"));
+            state
+                .session_mut_or_create(&s)
+                .push_entry(ChatEntry::assistant("recovered"));
         }
         actor
             .handle_phase_changed(&SessionPhaseChanged {

@@ -30,10 +30,12 @@ use jinn_domain::init::env_init_actor::{EnvInitActor, EnvInitActorDeps};
 use jinn_domain::init::provider_init_actor::{ProviderInitActor, ProviderInitActorDeps};
 use jinn_domain::init::system_ready_actor::{SystemReadyActor, SystemReadyActorDeps};
 
+use jinn_domain::feat::citation_collector::citation_collector_actor::{
+    CitationCollectorActor, CitationCollectorActorDeps,
+};
 use jinn_domain::feat::preferences_actor::user_preferences::WebFetchBackend;
 use jinn_domain::feat::web_fetch_actor::{WebFetchActor, WebFetchActorDeps};
 use jinn_domain::feat::web_search_actor::{WebSearchActor, WebSearchActorDeps};
-use jinn_domain::feat::citation_collector::citation_collector_actor::{CitationCollectorActor, CitationCollectorActorDeps};
 use jinn_web_fetch::{HttpFetcher, MarkdownExtractor, OutputFormat};
 use jinn_web_search::DdgSearcher;
 
