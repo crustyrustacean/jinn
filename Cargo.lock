@@ -2066,6 +2066,7 @@ dependencies = [
  "jinn-plugin",
  "jinn-tui",
  "jinn-web-fetch",
+ "jinn-web-search",
  "kameo",
  "kameo_actors",
  "kanal",
