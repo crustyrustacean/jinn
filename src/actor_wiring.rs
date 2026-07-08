@@ -30,9 +30,14 @@ use jinn_domain::init::env_init_actor::{EnvInitActor, EnvInitActorDeps};
 use jinn_domain::init::provider_init_actor::{ProviderInitActor, ProviderInitActorDeps};
 use jinn_domain::init::system_ready_actor::{SystemReadyActor, SystemReadyActorDeps};
 
+use jinn_domain::feat::citation_collector::citation_collector_actor::{
+    CitationCollectorActor, CitationCollectorActorDeps,
+};
 use jinn_domain::feat::preferences_actor::user_preferences::WebFetchBackend;
 use jinn_domain::feat::web_fetch_actor::{WebFetchActor, WebFetchActorDeps};
+use jinn_domain::feat::web_search_actor::{WebSearchActor, WebSearchActorDeps};
 use jinn_web_fetch::{HttpFetcher, MarkdownExtractor, OutputFormat};
+use jinn_web_search::DdgSearcher;
 
 use jinn_domain::{AppCore, State};
 
@@ -688,6 +693,45 @@ jinn_domain::feat::preferences_actor::app_state_sync_actor::AppStateSyncActor::s
                 WebFetchActorDeps {
                     deps: actor_deps.clone(),
                     web_fetcher,
+                },
+            )
+            .restart_policy(kameo::supervision::RestartPolicy::Never)
+            .spawn()
+            .await
+        );
+
+        // Web search actor (provider-independent DuckDuckGo search).
+        let web_search_config = user_preferences_storage.read().web_search.clone();
+        let web_searcher: std::sync::Arc<dyn jinn_web_search::WebSearcher> =
+            std::sync::Arc::new(DdgSearcher::new());
+        let _web_search = spawn_tracked!(
+            &services.bus,
+            "web-search",
+            "WebSearchActor",
+            WebSearchActor::supervise(
+                &root,
+                WebSearchActorDeps {
+                    deps: actor_deps.clone(),
+                    web_searcher,
+                    config: web_search_config,
+                },
+            )
+            .restart_policy(kameo::supervision::RestartPolicy::Never)
+            .spawn()
+            .await
+        );
+
+        // Citation collector actor (surfaces web-search/web-fetch sources as a
+        // provider-independent `Sources` footer at turn end).
+        let _citation_collector = spawn_tracked!(
+            &services.bus,
+            "citation-collector",
+            "CitationCollectorActor",
+            CitationCollectorActor::supervise(
+                &root,
+                CitationCollectorActorDeps {
+                    deps: actor_deps.clone(),
+                    state: state.clone(),
                 },
             )
             .restart_policy(kameo::supervision::RestartPolicy::Never)

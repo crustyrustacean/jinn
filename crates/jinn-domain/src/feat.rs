@@ -3,6 +3,7 @@
 pub mod auto_prune_worker;
 pub mod chat_entry_selection;
 pub mod chat_input;
+pub mod citation_collector;
 pub mod compaction_worker;
 pub mod context;
 pub mod cwd_input;
@@ -41,3 +42,4 @@ pub mod token_count_actor;
 pub mod tools_actor;
 pub mod ui;
 pub mod web_fetch_actor;
+pub mod web_search_actor;

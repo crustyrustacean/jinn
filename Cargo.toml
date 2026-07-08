@@ -35,6 +35,7 @@ jinn-discord = { workspace = true }
 jinn-plugin = { workspace = true }
 
 jinn-web-fetch = { workspace = true, features = ["headless-chrome"] }
+jinn-web-search = { workspace = true }
 clap_complete = { workspace = true }
 tokio = { workspace = true }
 tokio-util = { workspace = true }
@@ -83,6 +84,7 @@ jinn-testutil = { path = "crates/jinn-testutil" }
 
 jinn-theme = { path = "crates/jinn-theme" }
 jinn-web-fetch = { path = "crates/jinn-web-fetch" }
+jinn-web-search = { path = "crates/jinn-web-search" }
 
 # Error handling
 wherror = "2.3.1"
@@ -144,6 +146,8 @@ textwrap = "0.16"
 tree-sitter = "0.26"
 tree-sitter-python = "0.25"
 fuzzy-matcher = "0.3"
+url = "2"
+form_urlencoded = "1"
 async-trait = "0.1"
 dialoguer = "0.12"
 arboard = "3"
@@ -154,6 +158,7 @@ libc = "0.2"
 rand = "0.9"
 mockito = "1.7"
 reqwest = { version = "0.12", default-features = false, features = ["rustls-tls"] }
+scraper = "0.27"
 anstyle-lossy = "1"
 anstyle = "1"
 tracing = "0.1"

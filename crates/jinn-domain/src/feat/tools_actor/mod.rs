@@ -86,7 +86,8 @@ use crate::common::services::bus_service::BusService;
 use crate::common::state::State;
 use crate::feat::session::chat_session::ChatSessionState;
 use crate::feat::tools_actor::protocol::command::{
-    CancelToolBatch, ExecuteToolBatch, ExecuteWebFetch, RegisterPluginTools, RegisterTools,
+    CancelToolBatch, ExecuteToolBatch, ExecuteWebFetch, ExecuteWebSearch, RegisterPluginTools,
+    RegisterTools,
 };
 use crate::feat::tools_actor::protocol::event::{
     ToolBatchCompleted, ToolExecutionCompleted, ToolsRegistered,
@@ -621,6 +622,13 @@ impl ToolOrchestratorActor {
         match tool_call.name.as_str() {
             "web-fetch" => {
                 self.publish(ExecuteWebFetch {
+                    session_id,
+                    tool_call,
+                })
+                .await;
+            }
+            "web-search" => {
+                self.publish(ExecuteWebSearch {
                     session_id,
                     tool_call,
                 })

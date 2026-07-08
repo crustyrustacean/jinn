@@ -118,6 +118,19 @@ tool_default_timeout_secs = 300
 # backend).
 backend = "headless-chrome"
 
+# Web search via DuckDuckGo (provider-independent). Unlike
+# [openrouter_web_search] below, this works with any provider (zai,
+# OpenRouter, etc.) because it scrapes DuckDuckGo's HTML endpoint directly.
+# Exposed to the model as the `web-search` tool.
+[web_search]
+# Maximum number of results returned per search.
+max_results = 10
+# DuckDuckGo region code. "wt-wt" = global; "us-en" = US English.
+region = "wt-wt"
+# Whether safe search is on.
+safe_search = true
+
+
 # OpenRouter web search. Only valid when using OpenRouter as the provider.
 [openrouter_web_search]
 # Search engine used by the openrouter_web_search tool. One of:

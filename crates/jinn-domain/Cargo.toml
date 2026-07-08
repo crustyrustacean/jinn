@@ -10,6 +10,8 @@ jinn-common = { workspace = true }
 jinn-core-types = { workspace = true }
 jinn-provider-config = { workspace = true }
 jinn-web-fetch = { workspace = true }
+jinn-web-search = { workspace = true }
+form_urlencoded = { workspace = true }
 jinn-selection-widget = { workspace = true }
 
 jinn-theme = { workspace = true }
