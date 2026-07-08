@@ -283,10 +283,9 @@ impl StallWatchdogActor {
 }
 
 impl StallWatchdogActor {
-    /// Exponential backoff with full jitter (AWS style), mirroring the shape of
+    /// Exponential backoff, mirroring the shape of
     /// `jinn_provider::retry::RetryingLlmService::compute_delay`: returns
-    /// `base_delay * 2^attempt` capped at `max_delay`, then jittered down to
-    /// `[0, capped]` so concurrent stalls don’t thunder.
+    /// `base_delay * 2^attempt` capped at `max_delay`.
     #[must_use]
     fn compute_stall_backoff(base_delay: Duration, max_delay: Duration, attempt: u32) -> Duration {
         let base_secs = base_delay.as_secs_f64();
@@ -295,9 +294,7 @@ impl StallWatchdogActor {
         if capped <= 0.0 {
             return Duration::ZERO;
         }
-        let final_delay = rand::random_range(0.0..capped);
-        let millis = (final_delay * 1000.0) as u64;
-        Duration::from_millis(millis)
+        Duration::from_secs_f64(capped)
     }
     /// One scan pass: inspect every active-turn session and act on stalls.
     async fn scan(&mut self) {
