@@ -83,6 +83,7 @@ jinn-testutil = { path = "crates/jinn-testutil" }
 
 jinn-theme = { path = "crates/jinn-theme" }
 jinn-web-fetch = { path = "crates/jinn-web-fetch" }
+jinn-web-search = { path = "crates/jinn-web-search" }
 
 # Error handling
 wherror = "2.3.1"
@@ -154,6 +155,7 @@ libc = "0.2"
 rand = "0.9"
 mockito = "1.7"
 reqwest = { version = "0.12", default-features = false, features = ["rustls-tls"] }
+scraper = "0.27"
 anstyle-lossy = "1"
 anstyle = "1"
 tracing = "0.1"
