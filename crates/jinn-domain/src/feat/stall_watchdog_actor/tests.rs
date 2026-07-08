@@ -341,7 +341,7 @@ async fn watchdog_detects_mid_tool_batch_stall() {
 #[tokio::test]
 async fn watchdog_suppresses_second_retry_within_backoff_window() {
     // Given a stalled session and a large backoff window (base=max=60s, so the
-    // jittered delay is always in [0, 60s]).
+    // delay is exactly 60s).
     let mut wh = WatchdogHarness::new().await;
     wh.set_backoff(60, 60);
     {
@@ -409,7 +409,7 @@ async fn watchdog_allows_retry_after_backoff_window_elapses() {
     }
 
     // Backdate the recorded retry time past the 60s backoff window so the
-    // gate observes elapsed > max possible jittered delay.
+    // gate observes elapsed > 60s.
     wh.watchdog
         .backdate_last_retry(&wh.session_id, Duration::from_secs(70));
 
