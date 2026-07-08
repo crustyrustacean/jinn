@@ -14,7 +14,7 @@ use async_trait::async_trait;
 use serde::{Deserialize, Serialize};
 use wherror::Error;
 
-pub use extractor::{Extractor, MarkdownExtractor};
+pub use extractor::{CleanMarkdownExtractor, Extractor, MarkdownExtractor};
 pub use http_fetcher::HttpFetcher;
 
 #[cfg(feature = "headless-chrome")]
@@ -22,15 +22,21 @@ pub use headless_chrome_fetcher::HeadlessChromeFetcher;
 
 /// Output format for fetched web page content.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize, Default, Hash)]
-#[serde(rename_all = "lowercase")]
+#[serde(rename_all = "kebab-case")]
 pub enum OutputFormat {
     /// Raw HTML source.
     Html,
-    /// Visible text content with HTML tags stripped.
-    #[default]
-    Text,
-    /// HTML converted to Markdown.
+    /// HTML converted to Markdown, with no boilerplate stripping.
+    ///
+    /// Includes the full page: nav, header, footer, and everything.
     Markdown,
+    /// HTML converted to Markdown with boilerplate stripped.
+    ///
+    /// Drops script, style, and structural chrome (footer, aside, form,
+    /// svg, math, iframe, template, noscript) while keeping nav and header
+    /// so links remain discoverable. The default output format.
+    #[default]
+    MarkdownClean,
 }
 
 /// Options for a web fetch request.
@@ -39,7 +45,7 @@ pub enum OutputFormat {
 /// added here without breaking the trait signature.
 #[derive(Debug, Clone, Default)]
 pub struct FetchOptions {
-    /// The desired output format. Defaults to [`OutputFormat::Text`].
+    /// The desired output format. Defaults to [`OutputFormat::MarkdownClean`].
     pub format: OutputFormat,
 }
 
@@ -113,4 +119,51 @@ pub trait WebFetcher: Send + Sync {
     /// Called during application shutdown. The default implementation is
     /// a no-op for stateless implementations.
     async fn shutdown(&self) {}
+}
+
+#[cfg(test)]
+mod tests {
+    #![allow(clippy::expect_used, reason = "test assertions")]
+
+    use super::OutputFormat;
+
+    #[rstest::rstest]
+    #[case(OutputFormat::Html, "html")]
+    #[case(OutputFormat::Markdown, "markdown")]
+    #[case(OutputFormat::MarkdownClean, "markdown-clean")]
+    fn output_format_serializes_to_kebab_case(
+        #[case] format: OutputFormat,
+        #[case] expected: &str,
+    ) {
+        // Given an OutputFormat variant.
+        // When serializing.
+        let serialized = serde_json::to_string(&format).expect("serialize");
+
+        // Then it matches the expected kebab-case string.
+        assert_eq!(serialized, format!("\"{expected}\""));
+    }
+
+    #[rstest::rstest]
+    #[case("html", OutputFormat::Html)]
+    #[case("markdown", OutputFormat::Markdown)]
+    #[case("markdown-clean", OutputFormat::MarkdownClean)]
+    fn output_format_deserializes_from_kebab_case(#[case] s: &str, #[case] expected: OutputFormat) {
+        // Given a kebab-case format string.
+        // When deserializing.
+        let deserialized: OutputFormat =
+            serde_json::from_str(&format!("\"{s}\"")).expect("deserialize");
+
+        // Then it matches the expected variant.
+        assert_eq!(deserialized, expected);
+    }
+
+    #[test]
+    fn output_format_default_is_markdown_clean() {
+        // Given no explicit format.
+        // When using the default.
+        let default = OutputFormat::default();
+
+        // Then it is MarkdownClean.
+        assert_eq!(default, OutputFormat::MarkdownClean);
+    }
 }
