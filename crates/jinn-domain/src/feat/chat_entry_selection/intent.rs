@@ -111,7 +111,7 @@ pub fn handle_select_prev(state: &mut AppState) -> IntentResult {
 /// press land on the newest (for `[c`) compaction.
 ///
 /// Returns `None` when the history is empty (no-op for the caller).
-fn compaction_jump_anchor(session: &ChatSessionState) -> Option<usize> {
+fn jump_anchor(session: &ChatSessionState) -> Option<usize> {
     let history = session.history();
     if history.is_empty() {
         return None;
@@ -131,7 +131,7 @@ fn compaction_jump_anchor(session: &ChatSessionState) -> Option<usize> {
 /// Jump the cursor to the next (newer) compaction summary entry.
 ///
 /// Anchors on the current selection; when nothing is selected, the anchor
-/// is the sentinel past the newest entry (see `compaction_jump_anchor`).
+/// is the sentinel past the newest entry (see `jump_anchor`).
 /// Scans forward — exclusive of the anchor — for the first compaction entry.
 /// Clamps (no wrap): a silent no-op if no compaction exists beyond the
 /// anchor. The viewport auto-follows the new cursor.
@@ -141,7 +141,7 @@ where
 {
     let target_id = {
         let session = state.active_session();
-        let Some(anchor) = compaction_jump_anchor(session) else {
+        let Some(anchor) = jump_anchor(session) else {
             return IntentResult::empty();
         };
         session
@@ -160,7 +160,7 @@ where
 /// Jump the cursor to the previous (older) compaction summary entry.
 ///
 /// Anchors on the current selection; when nothing is selected, the anchor
-/// is the sentinel past the newest entry (see `compaction_jump_anchor`).
+/// is the sentinel past the newest entry (see `jump_anchor`).
 /// Scans backward — exclusive of the anchor — for the first compaction entry.
 /// Clamps (no wrap): a silent no-op if no compaction exists beyond the
 /// anchor. The viewport auto-follows the new cursor.
@@ -170,7 +170,7 @@ where
 {
     let target_id = {
         let session = state.active_session();
-        let Some(anchor) = compaction_jump_anchor(session) else {
+        let Some(anchor) = jump_anchor(session) else {
             return IntentResult::empty();
         };
         session
