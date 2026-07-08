@@ -37,6 +37,7 @@ pub use crate::feat::session_lifecycle::SessionLifecycle;
 pub use crate::feat::tools_actor::OpenrouterWebSearchConfig;
 pub use crate::feat::ui::MinimapConfig;
 pub use crate::feat::web_fetch_actor::{WebFetchBackend, WebFetchConfig};
+pub use crate::feat::web_search_actor::WebSearchConfig;
 
 /// Canonical default `jinn.toml` embedded at compile time.
 ///
@@ -149,6 +150,9 @@ pub struct UserPreferences {
     /// Web fetch tool configuration.
     #[serde(default)]
     pub web_fetch: WebFetchConfig,
+    /// Web search tool configuration.
+    #[serde(default)]
+    pub web_search: WebSearchConfig,
     /// OpenRouter web search server tool configuration.
     #[serde(default)]
     pub openrouter_web_search: OpenrouterWebSearchConfig,
@@ -221,6 +225,7 @@ impl Default for UserPreferences {
             compaction: CompactionConfig::default(),
             request_retry: RequestRetryConfig::default(),
             web_fetch: WebFetchConfig::default(),
+            web_search: WebSearchConfig::default(),
             openrouter_web_search: OpenrouterWebSearchConfig::default(),
             cwd_selector: CwdSelectorConfig::default(),
             minimap: MinimapConfig::default(),
@@ -604,6 +609,7 @@ mod tests {
             compaction: CompactionConfig::default(),
             request_retry: RequestRetryConfig::default(),
             web_fetch: WebFetchConfig::default(),
+            web_search: WebSearchConfig::default(),
             openrouter_web_search: OpenrouterWebSearchConfig::default(),
             cwd_selector: CwdSelectorConfig::default(),
             minimap: MinimapConfig::default(),
@@ -665,6 +671,7 @@ mod tests {
             compaction: CompactionConfig::default(),
             request_retry: RequestRetryConfig::default(),
             web_fetch: WebFetchConfig::default(),
+            web_search: WebSearchConfig::default(),
             openrouter_web_search: OpenrouterWebSearchConfig::default(),
             cwd_selector: CwdSelectorConfig::default(),
             minimap: MinimapConfig::default(),
@@ -699,6 +706,7 @@ mod tests {
             compaction: CompactionConfig::default(),
             request_retry: RequestRetryConfig::default(),
             web_fetch: WebFetchConfig::default(),
+            web_search: WebSearchConfig::default(),
             openrouter_web_search: OpenrouterWebSearchConfig::default(),
             cwd_selector: CwdSelectorConfig::default(),
             minimap: MinimapConfig::default(),
@@ -1001,6 +1009,7 @@ mod tests {
             compaction: CompactionConfig::default(),
             request_retry: RequestRetryConfig::default(),
             web_fetch: WebFetchConfig::default(),
+            web_search: WebSearchConfig::default(),
             openrouter_web_search: OpenrouterWebSearchConfig::default(),
             cwd_selector: CwdSelectorConfig::default(),
             minimap: MinimapConfig::default(),
@@ -1061,6 +1070,16 @@ mod tests {
         assert!(prefs.openrouter_web_search.search_context_size.is_none());
         assert!(prefs.openrouter_web_search.allowed_domains.is_none());
         assert!(prefs.openrouter_web_search.excluded_domains.is_none());
+    }
+    #[rstest::rstest]
+    fn default_preferences_has_default_web_search_config() {
+        // Given default preferences.
+        let prefs = UserPreferences::default();
+
+        // Then web_search config uses defaults.
+        assert_eq!(prefs.web_search.max_results, 10);
+        assert_eq!(prefs.web_search.region, "wt-wt");
+        assert!(prefs.web_search.safe_search);
     }
     #[rstest::rstest]
     fn default_preferences_has_default_minimap_config() {

@@ -41,3 +41,4 @@ pub mod token_count_actor;
 pub mod tools_actor;
 pub mod ui;
 pub mod web_fetch_actor;
+pub mod web_search_actor;
