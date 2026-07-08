@@ -36,7 +36,7 @@ use jinn_domain::feat::citation_collector::citation_collector_actor::{
 use jinn_domain::feat::preferences_actor::user_preferences::WebFetchBackend;
 use jinn_domain::feat::web_fetch_actor::{WebFetchActor, WebFetchActorDeps};
 use jinn_domain::feat::web_search_actor::{WebSearchActor, WebSearchActorDeps};
-use jinn_web_fetch::{HttpFetcher, MarkdownExtractor, OutputFormat};
+use jinn_web_fetch::{CleanMarkdownExtractor, HttpFetcher, MarkdownExtractor, OutputFormat};
 use jinn_web_search::DdgSearcher;
 
 use jinn_domain::{AppCore, State};
@@ -667,8 +667,10 @@ jinn_domain::feat::preferences_actor::app_state_sync_actor::AppStateSyncActor::s
         let extractors = {
             let markdown: std::sync::Arc<dyn jinn_web_fetch::Extractor> =
                 std::sync::Arc::new(MarkdownExtractor);
+            let clean: std::sync::Arc<dyn jinn_web_fetch::Extractor> =
+                std::sync::Arc::new(CleanMarkdownExtractor);
             std::collections::HashMap::from([
-                (OutputFormat::Text, markdown.clone()),
+                (OutputFormat::MarkdownClean, clean),
                 (OutputFormat::Markdown, markdown),
             ])
         };
