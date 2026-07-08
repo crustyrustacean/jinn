@@ -86,7 +86,8 @@ use crate::common::services::bus_service::BusService;
 use crate::common::state::State;
 use crate::feat::session::chat_session::ChatSessionState;
 use crate::feat::tools_actor::protocol::command::{
-    CancelToolBatch, ExecuteToolBatch, ExecuteWebFetch, ExecuteWebSearch, RegisterPluginTools, RegisterTools,
+    CancelToolBatch, ExecuteToolBatch, ExecuteWebFetch, ExecuteWebSearch, RegisterPluginTools,
+    RegisterTools,
 };
 use crate::feat::tools_actor::protocol::event::{
     ToolBatchCompleted, ToolExecutionCompleted, ToolsRegistered,
