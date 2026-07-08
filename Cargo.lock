@@ -2157,6 +2157,7 @@ dependencies = [
  "jinn-testutil",
  "jinn-theme",
  "jinn-web-fetch",
+ "jinn-web-search",
  "kameo",
  "kameo_actors",
  "kanal",
