@@ -2127,7 +2127,6 @@ dependencies = [
  "kanal",
  "poise",
  "rstest",
- "serenity",
  "tokio",
  "tracing",
  "wherror",

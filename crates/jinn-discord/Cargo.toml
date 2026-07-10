@@ -17,7 +17,6 @@ splitter, bridge actor) live in `jinn-domain`'s `feat/discord`.
 jinn-domain = { workspace = true }
 
 # External deps
-serenity = { workspace = true }
 poise = { workspace = true }
 tokio = { workspace = true }
 tracing = { workspace = true }
