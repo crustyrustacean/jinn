@@ -15,6 +15,7 @@ use crate::feat::context::protocol::command::{
 use crate::feat::context::protocol::event::ChatEntryPinChanged;
 use crate::feat::persona::PersonaEntry;
 use crate::feat::provider::protocol::event::PromptTemplatesLoaded;
+use crate::feat::session::profile::DEFAULT_PERSONA_NAME;
 use crate::feat::tools_actor::protocol::event::ToolsRegistered;
 use crate::feat::ui::picker_states::PickerExt;
 
@@ -155,7 +156,7 @@ impl SessionPersistenceActor {
                     .filter(|p| payload.personas.iter().any(|sp| sp.name == p.name))
                     .map(|p| p.name.as_str())
             })
-            .unwrap_or("coding-assistant");
+            .unwrap_or(DEFAULT_PERSONA_NAME);
 
         let found = payload
             .personas

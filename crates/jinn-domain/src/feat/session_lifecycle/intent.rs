@@ -11,7 +11,7 @@ use crate::feat::chat_input::protocol::command::PushChatEntry;
 use crate::feat::preferences_actor::user_preferences::SessionLifecycle;
 use crate::feat::session::chat_session::ChatSessionState;
 use crate::feat::session::chat_session::LifecycleScriptState;
-use crate::feat::session::profile::SessionProfile;
+use crate::feat::session::profile::{DEFAULT_PERSONA_NAME, SessionProfile};
 use crate::feat::session::session_actor::setup_running_msg;
 use crate::feat::session_lifecycle::command_template::{CommandTemplate, parse_quoted_args};
 use crate::feat::session_lifecycle::protocol::command::{
@@ -101,7 +101,7 @@ pub fn handle_session_lifecycle_setup(
         .context
         .active_persona
         .as_ref()
-        .map_or_else(|| "coding-assistant".to_owned(), |p| p.name.clone());
+        .map_or_else(|| DEFAULT_PERSONA_NAME.to_owned(), |p| p.name.clone());
 
     let reasoning_effort = state.frontend.app_state.reasoning_effort;
 
