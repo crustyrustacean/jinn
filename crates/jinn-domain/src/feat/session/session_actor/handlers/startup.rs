@@ -36,6 +36,10 @@ impl SessionPersistenceActor {
             {
                 session.set_model(model.clone());
             }
+            // Seed frontend.app_state from persisted state so the persona scan
+            // (which fires on the same EnvironmentLoaded event) finds persona_name
+            // populated when on_personas_loaded resolves the active persona.
+            state.frontend.app_state = app_state.clone();
         }
 
         tracing::info!("DIAG on_environment_loaded model/strategy applied");
