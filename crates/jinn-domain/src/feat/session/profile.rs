@@ -12,7 +12,7 @@ use serde::{Deserialize, Serialize};
 use crate::feat::session::model_selection::ModelSelection;
 
 /// Default persona name used when none is explicitly set.
-const DEFAULT_PERSONA_NAME: &str = "coding-assistant";
+pub(crate) const DEFAULT_PERSONA_NAME: &str = "coding-assistant";
 
 /// Serde default for `persona_name` - ensures old serialized sessions deserialize correctly.
 fn default_persona_name() -> String {
