@@ -386,4 +386,60 @@ mod tests {
             ap.run_state
         );
     }
+
+    #[tokio::test]
+    async fn startup_seeds_persisted_persona_into_frontend_app_state() {
+        // Given an actor and saved app state with a persona_name.
+        let (actor, _store, _audit) = test_actor_with_store_recording(vec![]).await;
+        let state_file = crate::feat::preferences_actor::app_state_file::AppStateFile {
+            persona_name: Some("general".to_owned()),
+            ..Default::default()
+        };
+        actor
+            .services
+            .app_state_storage
+            .save(&state_file)
+            .expect("save state");
+
+        // When handling EnvironmentLoaded.
+        actor
+            .on_environment_loaded(&crate::feat::provider_infra::ProvidersConfig {
+                providers: vec![],
+                aliases: vec![],
+                default_provider: None,
+            })
+            .await;
+
+        // Then frontend.app_state.persona_name is seeded so the persona scan
+        // (which fires on the same EnvironmentLoaded event) can resolve it.
+        let state = actor.state.read();
+        assert_eq!(
+            state.frontend.app_state.persona_name.as_deref(),
+            Some("general"),
+            "startup should seed frontend.app_state from persisted state"
+        );
+    }
+
+    #[tokio::test]
+    async fn startup_seeds_none_persona_when_state_absent() {
+        // Given an actor with default (empty) app state storage.
+        let (actor, _store, _audit) = test_actor_with_store_recording(vec![]).await;
+
+        // When handling EnvironmentLoaded.
+        actor
+            .on_environment_loaded(&crate::feat::provider_infra::ProvidersConfig {
+                providers: vec![],
+                aliases: vec![],
+                default_provider: None,
+            })
+            .await;
+
+        // Then frontend.app_state.persona_name is None (falls back to
+        // DEFAULT_PERSONA_NAME downstream in on_personas_loaded, not here).
+        let state = actor.state.read();
+        assert_eq!(
+            state.frontend.app_state.persona_name, None,
+            "startup should not fabricate a persona name when none is persisted"
+        );
+    }
 }
