@@ -11,6 +11,7 @@ use crate::common::app_state::AppState;
 use crate::feat::context::env_context::build_env_context;
 use crate::feat::context::strategy::token_estimator::TokenCounter;
 use crate::feat::context::tool_prompt::build_tool_context_block;
+use crate::feat::session::profile::DEFAULT_PERSONA_NAME;
 use crate::feat::skills::format::format_skills_for_prompt;
 use crate::protocol::{
     ChatEntry, LlmMessage, PinPosition, SessionId, ToolDefinition, entries_to_messages,
@@ -100,7 +101,7 @@ pub fn assemble_prompt(
                 .context
                 .personas
                 .iter()
-                .find(|p| p.name == "coding-assistant")
+                .find(|p| p.name == DEFAULT_PERSONA_NAME)
         });
 
     let history = session.history();

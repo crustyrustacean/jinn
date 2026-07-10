@@ -15,6 +15,7 @@ use crate::feat::context::protocol::command::{
 use crate::feat::context::protocol::event::ChatEntryPinChanged;
 use crate::feat::persona::PersonaEntry;
 use crate::feat::provider::protocol::event::PromptTemplatesLoaded;
+use crate::feat::session::profile::DEFAULT_PERSONA_NAME;
 use crate::feat::tools_actor::protocol::event::ToolsRegistered;
 use crate::feat::ui::picker_states::PickerExt;
 
@@ -155,7 +156,7 @@ impl SessionPersistenceActor {
                     .filter(|p| payload.personas.iter().any(|sp| sp.name == p.name))
                     .map(|p| p.name.as_str())
             })
-            .unwrap_or("coding-assistant");
+            .unwrap_or(DEFAULT_PERSONA_NAME);
 
         let found = payload
             .personas
@@ -522,6 +523,36 @@ mod tests {
         // Then active_persona is None.
         let guard = state.read();
         assert!(guard.context.active_persona.is_none());
+    }
+
+    #[rstest::rstest]
+    #[tokio::test]
+    async fn on_personas_loaded_resolves_seeded_persona_name() {
+        // Given a session actor with a persisted persona_name in frontend.app_state
+        // (the value that on_environment_loaded seeds from state.toml at startup).
+        let (actor, state, _audit) = create_actor().await;
+        {
+            let mut guard = state.write();
+            guard.frontend.app_state.persona_name = Some("general".to_owned());
+        }
+        let payload = PersonasLoaded {
+            personas: vec![make_persona("coding-assistant"), make_persona("general")],
+            error: None,
+        };
+
+        // When receiving PersonasLoaded.
+        actor.on_personas_loaded(&payload);
+
+        // Then the seeded persona_name wins over the coding-assistant default.
+        let guard = state.read();
+        assert_eq!(
+            guard
+                .context
+                .active_persona
+                .as_ref()
+                .map(|p| p.name.as_str()),
+            Some("general")
+        );
     }
 
     #[rstest::rstest]
