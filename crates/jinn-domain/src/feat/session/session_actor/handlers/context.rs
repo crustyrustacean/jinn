@@ -527,6 +527,36 @@ mod tests {
 
     #[rstest::rstest]
     #[tokio::test]
+    async fn on_personas_loaded_resolves_seeded_persona_name() {
+        // Given a session actor with a persisted persona_name in frontend.app_state
+        // (the value that on_environment_loaded seeds from state.toml at startup).
+        let (actor, state, _audit) = create_actor().await;
+        {
+            let mut guard = state.write();
+            guard.frontend.app_state.persona_name = Some("general".to_owned());
+        }
+        let payload = PersonasLoaded {
+            personas: vec![make_persona("coding-assistant"), make_persona("general")],
+            error: None,
+        };
+
+        // When receiving PersonasLoaded.
+        actor.on_personas_loaded(&payload);
+
+        // Then the seeded persona_name wins over the coding-assistant default.
+        let guard = state.read();
+        assert_eq!(
+            guard
+                .context
+                .active_persona
+                .as_ref()
+                .map(|p| p.name.as_str()),
+            Some("general")
+        );
+    }
+
+    #[rstest::rstest]
+    #[tokio::test]
     async fn handle_pin_chat_entry_pins_and_emits() {
         // Given a session with a user entry.
         let (actor, state, audit) = create_actor().await;
