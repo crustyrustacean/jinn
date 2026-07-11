@@ -8,8 +8,8 @@ use std::path::{Path, PathBuf};
 
 use crate::feat::tools_actor::tool_types::{ToolCall, ToolContext, ToolDefinition, ToolResult};
 
-use super::input_bounds;
 use super::BoxedToolFuture;
+use super::input_bounds;
 
 /// Returns the tool definition for the `write` built-in tool.
 pub fn definition() -> ToolDefinition {

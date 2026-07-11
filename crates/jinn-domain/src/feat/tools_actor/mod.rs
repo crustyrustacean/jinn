@@ -65,6 +65,7 @@ pub mod bash;
 pub mod edit;
 pub mod get_time;
 pub mod grep;
+pub(crate) mod input_bounds;
 pub mod protocol;
 pub mod read;
 pub mod registry;
@@ -74,7 +75,6 @@ pub mod skill;
 pub mod tool_entry;
 pub mod tool_types;
 pub(crate) mod truncation;
-pub(crate) mod input_bounds;
 pub mod write;
 
 use std::collections::HashMap;
