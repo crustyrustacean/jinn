@@ -8,6 +8,7 @@ use std::path::{Path, PathBuf};
 
 use crate::feat::tools_actor::tool_types::{ToolCall, ToolContext, ToolDefinition, ToolResult};
 
+use super::input_bounds;
 use super::BoxedToolFuture;
 
 /// Returns the tool definition for the `write` built-in tool.
@@ -64,6 +65,28 @@ pub fn execute(call: ToolCall, ctx: ToolContext) -> BoxedToolFuture {
                 };
             }
         };
+
+        // Reject degenerate repetition (e.g. a model sampler loop) before any
+        // filesystem work.
+        {
+            let lines: Vec<&str> = content.split('\n').collect();
+            if input_bounds::check_repetition(&lines).is_err() {
+                return ToolResult {
+                    tool_call_id: call.id,
+                    name: call.name,
+                    content: format!(
+                        "[E_EDIT_DEGENERATE] `content` has a run of ≥{} identical \
+                         consecutive lines. This is usually a model decoding loop. \
+                         Re-issue the write without the repeated lines.",
+                        input_bounds::MAX_IDENTICAL_RUN,
+                    ),
+                    success: false,
+                    full_content: None,
+                    truncation: None,
+                    pin_position: None,
+                };
+            }
+        }
 
         let resolved = resolve_path(&path, &ctx.cwd);
 
@@ -990,5 +1013,65 @@ mod tests {
             "expected 'wrote 10 bytes' in '{}'",
             result.content
         );
+    }
+
+    #[rstest::rstest]
+    #[tokio::test]
+    async fn execute_rejects_content_with_long_repetition() {
+        // Given a temp dir that does not yet contain the target file.
+        let dir = tempfile::tempdir().expect("create temp dir");
+        let file_path = dir.path().join("out.txt");
+
+        // `content` with 50 identical consecutive lines — degenerate.
+        let content = std::iter::once("header\n")
+            .chain(std::iter::repeat_n("x\n", 50))
+            .collect::<String>();
+        let call = ToolCall {
+            id: "rep_50".to_owned(),
+            name: "write".to_owned(),
+            arguments: serde_json::json!({
+                "path": file_path.to_string_lossy(),
+                "content": content,
+            })
+            .to_string(),
+        };
+
+        // When executing.
+        let result = execute(call, test_ctx()).await;
+
+        // Then it is rejected as degenerate.
+        assert!(!result.success);
+        assert!(result.content.contains("E_EDIT_DEGENERATE"));
+        // And the file is not created.
+        assert!(!file_path.exists(), "file should not have been created");
+    }
+
+    #[rstest::rstest]
+    #[tokio::test]
+    async fn execute_accepts_content_with_49_repetition() {
+        // Given a temp dir.
+        let dir = tempfile::tempdir().expect("create temp dir");
+        let file_path = dir.path().join("out.txt");
+
+        // `content` with 49 identical consecutive lines — below threshold.
+        let content = std::iter::once("header\n")
+            .chain(std::iter::repeat_n("x\n", 49))
+            .collect::<String>();
+        let call = ToolCall {
+            id: "rep_49".to_owned(),
+            name: "write".to_owned(),
+            arguments: serde_json::json!({
+                "path": file_path.to_string_lossy(),
+                "content": content,
+            })
+            .to_string(),
+        };
+
+        // When executing.
+        let result = execute(call, test_ctx()).await;
+
+        // Then the write succeeds (49 lines, under the threshold).
+        assert!(result.success, "expected success, got: {}", result.content);
+        assert!(file_path.exists());
     }
 }
