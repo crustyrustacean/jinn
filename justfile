@@ -486,3 +486,12 @@ unshm-target:
     else
         echo "$SHM_DIR does not exist"
     fi
+
+# Build the Arch package in ./build (isolated from the source tree).
+# BUILDDIR keeps makepkg's src/ and pkg/ scratch dirs out of the repo's
+# real src/; PKGDEST lands the output tarball in ./build/ instead of root.
+# The PKGBUILD uses a local-checkout symlink (prepare()), so makepkg must
+# run from the repo root — only the scratch/output dirs are redirected.
+pkg:
+    @mkdir -p build
+    @BUILDDIR="$(pwd)/build" PKGDEST="$(pwd)/build" makepkg -f
