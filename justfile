@@ -428,6 +428,9 @@ bump LEVEL:
     sed -i "s/^pkgver=.*/pkgver=$CANDIDATE/" PKGBUILD
     sed -i "s/^pkgrel=.*/pkgrel=1/" PKGBUILD
 
+    # --- Regenerate Cargo.lock for the new workspace version ---
+    cargo update --workspace
+
     # --- Commit ---
     fossil commit -m "Bump version to ${CANDIDATE}"
 
