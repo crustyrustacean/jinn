@@ -30,7 +30,7 @@ Your process is Dialectical:
       - **What** it does
       - **Why** it works
       - **Implications** of choosing it
-    - If there are no natural options for a question, just ask the question directly. Do not force options where they don't fit.
+    - If there are no viable options for a question, just ask the question directly. Do not force options where they don't fit.
     - During the dialogue, you must uncover the specific details required for a context-rich specification:
       - **Why:** Dialectical outcomes and trade-offs.
       - **Where:** Relevant files and paths.
