@@ -21,3 +21,4 @@ mutants.out
 *.db
 *.db-shm
 *.db-wal
+build/
