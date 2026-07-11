@@ -15,8 +15,8 @@ use std::path::{Path, PathBuf};
 
 use crate::feat::tools_actor::tool_types::{ToolCall, ToolContext, ToolDefinition, ToolResult};
 
-use super::input_bounds;
 use super::BoxedToolFuture;
+use super::input_bounds;
 use engine::{LinesInput, RawEdit, apply_hashline_edits, resolve_edit_anchors, validate_anchors};
 use line_ending::{detect_line_ending, normalize_to_lf, restore_line_endings, strip_bom};
 use response::{build_anchor_block, format_noop_response, format_success_response};
