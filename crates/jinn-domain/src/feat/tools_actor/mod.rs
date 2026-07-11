@@ -65,6 +65,7 @@ pub mod bash;
 pub mod edit;
 pub mod get_time;
 pub mod grep;
+pub(crate) mod input_bounds;
 pub mod protocol;
 pub mod read;
 pub mod registry;
