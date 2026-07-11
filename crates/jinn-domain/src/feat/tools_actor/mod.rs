@@ -74,6 +74,7 @@ pub mod skill;
 pub mod tool_entry;
 pub mod tool_types;
 pub(crate) mod truncation;
+pub(crate) mod input_bounds;
 pub mod write;
 
 use std::collections::HashMap;
