@@ -15,6 +15,7 @@ use std::path::{Path, PathBuf};
 
 use crate::feat::tools_actor::tool_types::{ToolCall, ToolContext, ToolDefinition, ToolResult};
 
+use super::input_bounds;
 use super::BoxedToolFuture;
 use engine::{LinesInput, RawEdit, apply_hashline_edits, resolve_edit_anchors, validate_anchors};
 use line_ending::{detect_line_ending, normalize_to_lf, restore_line_endings, strip_bom};
@@ -159,6 +160,24 @@ pub fn execute(call: ToolCall, ctx: ToolContext) -> BoxedToolFuture {
             return err_result(&call, "No edits provided.".to_owned());
         }
 
+        // Reject degenerate repetition (e.g. a model sampler loop) before any
+        // filesystem work.
+        for (i, raw) in raw_edits.iter().enumerate() {
+            if let Some(LinesInput::Array(lines)) = &raw.lines
+                && input_bounds::check_repetition(lines).is_err()
+            {
+                return err_result(
+                    &call,
+                    format!(
+                        "[E_EDIT_DEGENERATE] edit {i} ({}) has a run of ≥{} identical \
+                         consecutive lines in its `lines` array. This is usually a model \
+                         decoding loop. Re-issue the edit without the repeated lines.",
+                        raw.op,
+                        input_bounds::MAX_IDENTICAL_RUN,
+                    ),
+                );
+            }
+        }
         let resolved = resolve_path(&path, &ctx.cwd);
 
         let raw_content = match tokio::fs::read_to_string(&resolved).await {
@@ -634,5 +653,143 @@ mod tests {
         // Then the result indicates failure.
         assert!(!result.success);
         assert!(result.content.contains("Unknown edit op"));
+    }
+
+    #[rstest::rstest]
+    #[tokio::test]
+    async fn execute_rejects_replace_with_long_repetition() {
+        // Given a temp file with content.
+        let dir = tempfile::tempdir().expect("create temp dir");
+        let file_path = dir.path().join("test.txt");
+        let original = "hello\nworld\n";
+        std::fs::write(&file_path, original).expect("write temp file");
+
+        // 50 identical replacement lines — degenerate.
+        let lines: Vec<String> = vec![",".to_owned(); 50];
+        let call = ToolCall {
+            id: "rep_50".to_owned(),
+            name: "edit".to_owned(),
+            arguments: serde_json::json!({
+                "path": file_path.to_string_lossy(),
+                "edits": [{"op": "replace", "pos": "1#xx", "lines": lines}]
+            })
+            .to_string(),
+        };
+
+        // When executing.
+        let result = execute(call, test_ctx()).await;
+
+        // Then it is rejected as degenerate.
+        assert!(!result.success);
+        assert!(result.content.contains("E_EDIT_DEGENERATE"));
+        // And the file is untouched.
+        assert_eq!(
+            std::fs::read_to_string(&file_path).expect("read file"),
+            original
+        );
+    }
+
+    #[rstest::rstest]
+    #[tokio::test]
+    async fn execute_accepts_replace_with_49_repetition() {
+        // Given a temp file with one line.
+        let dir = tempfile::tempdir().expect("create temp dir");
+        let file_path = dir.path().join("test.txt");
+        std::fs::write(&file_path, "hello\n").expect("write temp file");
+
+        // A valid anchor for line 1.
+        let pos = format!("1#{}", super::hash::compute_line_hash(1, "hello"));
+
+        // 49 identical replacement lines — below the threshold, so accepted.
+        let lines: Vec<String> = vec!["x".to_owned(); 49];
+        let call = ToolCall {
+            id: "rep_49".to_owned(),
+            name: "edit".to_owned(),
+            arguments: serde_json::json!({
+                "path": file_path.to_string_lossy(),
+                "edits": [{"op": "replace", "pos": pos, "lines": lines}]
+            })
+            .to_string(),
+        };
+
+        // When executing.
+        let result = execute(call, test_ctx()).await;
+
+        // Then the edit is applied (49 lines, under the threshold).
+        assert!(result.success, "expected success, got: {}", result.content);
+        let written = std::fs::read_to_string(&file_path).expect("read file");
+        assert_eq!(written.matches('x').count(), 49);
+    }
+
+    #[rstest::rstest]
+    #[tokio::test]
+    async fn execute_rejects_original_degenerate_pathology() {
+        // Given a temp file with content.
+        let dir = tempfile::tempdir().expect("create temp dir");
+        let file_path = dir.path().join("test.txt");
+        let original = "alpha\nbeta\ngamma\n";
+        std::fs::write(&file_path, original).expect("write temp file");
+
+        // Reconstruct the real pathology: 10 varied lines then ~994 commas.
+        let mut lines: Vec<String> = (0..10).map(|i| format!("line {i}")).collect();
+        lines.extend(vec![",".to_owned(); 994]);
+        let call = ToolCall {
+            id: "pathology".to_owned(),
+            name: "edit".to_owned(),
+            arguments: serde_json::json!({
+                "path": file_path.to_string_lossy(),
+                "edits": [{"op": "replace", "pos": "1#xx", "end": "2#yy", "lines": lines}]
+            })
+            .to_string(),
+        };
+
+        // When executing.
+        let result = execute(call, test_ctx()).await;
+
+        // Then it is rejected.
+        assert!(!result.success);
+        assert!(result.content.contains("E_EDIT_DEGENERATE"));
+        // And the file is untouched.
+        assert_eq!(
+            std::fs::read_to_string(&file_path).expect("read file"),
+            original
+        );
+    }
+
+    #[rstest::rstest]
+    #[tokio::test]
+    async fn execute_accepts_legit_multi_op_edit() {
+        // Given a temp file with three lines.
+        let dir = tempfile::tempdir().expect("create temp dir");
+        let file_path = dir.path().join("test.txt");
+        std::fs::write(&file_path, "alpha\nbeta\ngamma\n").expect("write temp file");
+
+        let p1 = format!("1#{}", super::hash::compute_line_hash(1, "alpha"));
+        let p3 = format!("3#{}", super::hash::compute_line_hash(3, "gamma"));
+
+        // Two ops with varied lines — no repetition, well-formed.
+        let call = ToolCall {
+            id: "multi_op".to_owned(),
+            name: "edit".to_owned(),
+            arguments: serde_json::json!({
+                "path": file_path.to_string_lossy(),
+                "edits": [
+                    {"op": "replace", "pos": p1, "lines": ["ALPHA", "second"]},
+                    {"op": "replace", "pos": p3, "lines": ["GAMMA"]}
+                ]
+            })
+            .to_string(),
+        };
+
+        // When executing.
+        let result = execute(call, test_ctx()).await;
+
+        // Then both ops apply and anchors are returned.
+        assert!(result.success, "expected success, got: {}", result.content);
+        assert!(result.content.contains("--- Anchors"));
+        assert_eq!(
+            std::fs::read_to_string(&file_path).expect("read file"),
+            "ALPHA\nsecond\nbeta\nGAMMA\n"
+        );
     }
 }
