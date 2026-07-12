@@ -289,10 +289,11 @@ fn push_entry(state: &State, session_id: &SessionId, entry: ChatEntry) {
 /// Render a human-readable message for each failure reason.
 fn reason_message(reason: &CreateThreadReason) -> String {
     match reason {
-        CreateThreadReason::AlreadyBound => {
-            "Can't continue in Discord: this session is already in a Discord \n             thread — continue there."
-                .to_owned()
-        }
+        CreateThreadReason::AlreadyBound => concat!(
+            "Can't continue in Discord: this session is already in a Discord ",
+            "thread — continue there."
+        )
+        .to_owned(),
         CreateThreadReason::ForumChannel(ForumChannelError::Missing) => concat!(
             "Can't continue in Discord: no `forum_channel` is set in ",
             "`[discord]`. Set it to the numeric channel id (snowflake) ",
@@ -307,10 +308,11 @@ fn reason_message(reason: &CreateThreadReason) -> String {
         CreateThreadReason::CreateFailed(detail) => {
             format!("Couldn't create the Discord thread: {detail}")
         }
-        CreateThreadReason::MappingWriteFailed => {
-            "Discord thread was created, but jinn couldn't record the binding — \n             the thread exists but won't receive replies. See the logs."
-                .to_owned()
-        }
+        CreateThreadReason::MappingWriteFailed => concat!(
+            "Discord thread was created, but jinn couldn't record the binding — ",
+            "the thread exists but won't receive replies. See the logs."
+        )
+        .to_owned(),
     }
 }
 
@@ -340,9 +342,7 @@ mod tests {
     #[test]
     fn reason_message_already_bound_is_descriptive() {
         let msg = reason_message(&CreateThreadReason::AlreadyBound);
-        // The literal wraps across a line break, so assert on each fragment.
-        assert!(msg.contains("already in a Discord"));
-        assert!(msg.contains("thread"));
+        assert!(msg.contains("already in a Discord thread"));
     }
 
     /// `reason_message` for `ForumChannel(Missing)` explains how to set the field.
