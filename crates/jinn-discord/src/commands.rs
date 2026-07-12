@@ -9,19 +9,22 @@
 use std::time::Duration;
 
 use jinn_domain::feat::context::prompt_template::PromptTemplateStore;
-use jinn_domain::feat::discord::repo_basename;
 use jinn_domain::feat::session::protocol::archive_session::ArchiveSession;
+use jinn_domain::feat::session_lifecycle::command_template::parse_quoted_args;
 use jinn_domain::protocol::Intent;
 use jinn_domain::{Bridge, SessionId};
 use poise::serenity_prelude as serenity;
 
+use crate::feat::discord::lifecycle_inputs::resolve_lifecycle_inputs;
 use crate::gateway::{BotContext, BotError};
 
 /// Start a new jinn session in this thread.
 ///
-/// Runs the configured lifecycle setup with two positional args: the branch
-/// name (from the user) and the repo basename (derived from the chosen
-/// project's path). The setup result is posted by the drain loop when the
+/// Runs the configured lifecycle setup with the args that lifecycle declares
+/// (any number of positional params via `$1`/`<name>`/`$@`). The user picks a
+/// project (sets the starting CWD), then the bot prompts once for the
+/// lifecycle's params, space-delimited, and re-prompts on a count mismatch.
+/// The setup result is posted by the drain loop when the
 /// `SessionSetupCompleted` event arrives.
 #[poise::command(slash_command)]
 pub async fn new(ctx: BotContext<'_>) -> Result<(), BotError> {
@@ -69,29 +72,61 @@ pub async fn new(ctx: BotContext<'_>) -> Result<(), BotError> {
         return Ok(());
     };
 
-    // 4. Ask for branch name.
-    ctx.say("Enter branch name:").await?;
-    let branch_msg = collect_reply(sctx, channel, author).await;
-    let Some(branch_msg) = branch_msg else {
-        ctx.say("Timed out waiting for branch name.").await?;
-        return Ok(());
-    };
-    let branch = branch_msg.content.trim().to_owned();
-    if branch.is_empty() {
-        ctx.say("Empty branch name. Run `/new` again.").await?;
-        return Ok(());
-    }
-
-    // 5. Run the lifecycle setup via the intent handler. The lifecycle name
-    //    is required to use the bot — enforced by config validation, but we
-    //    guard here too so a misconfigured instance fails gracefully.
+    // 4. Resolve the configured lifecycle. The lifecycle name is required
+    //    to use the bot — enforced by config validation, but we guard here
+    //    too so a misconfigured instance fails gracefully.
     let Some(lifecycle) = data.config.lifecycle.clone() else {
         ctx.say("No `lifecycle` configured under `[discord]` in jinn.toml.")
             .await?;
         return Ok(());
     };
-    let repo = repo_basename(&chosen.path.to_string_lossy()).to_owned();
-    let args = vec![branch, repo];
+
+    // 5. Resolve how many positional args the lifecycle needs and the prompt
+    //    text to show for them. Reading preferences under a short-lived read
+    //    guard so it never spans an await.
+    let spec = {
+        let lifecycles = data.state.read()
+            .frontend
+            .preferences
+            .session_lifecycles
+            .clone();
+        match resolve_lifecycle_inputs(&lifecycles, &lifecycle) {
+            Some(s) => s,
+            None => {
+                ctx.say(format!(
+                    "No session lifecycle named `{lifecycle}` is configured."
+                ))
+                .await?;
+                return Ok(());
+            }
+        }
+    };
+
+    // 6. Collect the lifecycle's positional args (space-delimited). Zero-param
+    //    lifecycles skip collection entirely. On a count mismatch the bot
+    //    responds and re-prompts; each attempt is bounded by collect_reply's
+    //    2-minute timeout.
+    let args: Vec<String> = if spec.param_count == 0 {
+        vec![]
+    } else {
+        ctx.say(&spec.prompt).await?;
+        loop {
+            let Some(reply) = collect_reply(sctx, channel, author).await else {
+                ctx.say("Timed out waiting for input. Run `/new` again.")
+                    .await?;
+                return Ok(());
+            };
+            let parsed = parse_quoted_args(reply.content.trim());
+            if parsed.len() >= spec.param_count {
+                break parsed;
+            }
+            ctx.say(format!(
+                "Expected {} arguments, got {}. {}",
+                spec.param_count, parsed.len(), spec.prompt
+            ))
+            .await?;
+        }
+    };
 
     let new_session_id = {
         let mut state = data.state.write();
@@ -114,7 +149,7 @@ pub async fn new(ctx: BotContext<'_>) -> Result<(), BotError> {
         state.session.active_session_id().clone()
     };
 
-    // 6. Record the thread→session mapping so future messages + the drain loop
+    // 7. Record the thread→session mapping so future messages + the drain loop
     //    can find the session.
     let thread_id = channel.get().to_string();
     let guild_id = ctx.guild_id().map(|g| g.get().to_string());
@@ -134,7 +169,7 @@ pub async fn new(ctx: BotContext<'_>) -> Result<(), BotError> {
         tracing::warn!(error = ?e, "failed to record thread→session mapping");
     }
 
-    // 7. The actual "Setup complete" message is posted by the drain loop when
+    // 8. The actual "Setup complete" message is posted by the drain loop when
     //    the SessionSetupCompleted event arrives. Acknowledge here only.
     ctx.say(format!(
         "Setting up session `{new_session_id}` (lifecycle `{lifecycle}`)..."
