@@ -683,6 +683,7 @@ jinn_domain::feat::preferences_actor::app_state_sync_actor::AppStateSyncActor::s
                 tracing::debug!("web-fetch: using HeadlessChromeFetcher backend");
                 std::sync::Arc::new(jinn_web_fetch::HeadlessChromeFetcher::new(
                     extractors.clone(),
+                    jinn_web_fetch::stealth::StealthSettings::default(),
                 ))
             }
         };

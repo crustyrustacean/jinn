@@ -31,6 +31,7 @@ use super::{
     HeadlessBrowser, HeadlessBrowserFactory, RenderedPage, build_launch_options,
     classify_browser_error, classify_render_error, extract_content, fetch_once,
 };
+use crate::stealth::StealthSettings;
 use crate::{Extractor, FetchError, FetchOptions, OutputFormat, WebFetcher};
 
 // ---------------------------------------------------------------------------
@@ -240,9 +241,10 @@ fn classify_wrapped_connection_closed_in_source_chain_yields_browser_crash() {
 
 #[test]
 fn launch_options_uses_ten_minute_idle_timeout() {
-    // Given the production launch options builder.
+    // Given the production launch options builder and default stealth settings.
+    let settings = StealthSettings::default();
     // When building.
-    let opts = build_launch_options();
+    let opts = build_launch_options(&settings);
 
     #[expect(
         clippy::duration_suboptimal_units,
