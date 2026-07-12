@@ -10,13 +10,11 @@ use std::time::Duration;
 
 use jinn_domain::feat::context::prompt_template::PromptTemplateStore;
 use jinn_domain::feat::session::protocol::archive_session::ArchiveSession;
-use jinn_domain::feat::session_lifecycle::command_template::parse_quoted_args;
 use jinn_domain::protocol::Intent;
 use jinn_domain::{Bridge, SessionId};
 use poise::serenity_prelude as serenity;
 
-use crate::feat::discord::lifecycle_inputs::resolve_lifecycle_inputs;
-use crate::gateway::{BotContext, BotError};
+use crate::gateway::{BotContext, BotData, BotError};
 
 /// Start a new jinn session in this thread.
 ///
@@ -72,60 +70,9 @@ pub async fn new(ctx: BotContext<'_>) -> Result<(), BotError> {
         return Ok(());
     };
 
-    // 4. Resolve the configured lifecycle. The lifecycle name is required
-    //    to use the bot — enforced by config validation, but we guard here
-    //    too so a misconfigured instance fails gracefully.
-    let Some(lifecycle) = data.config.lifecycle.clone() else {
-        ctx.say("No `lifecycle` configured under `[discord]` in jinn.toml.")
-            .await?;
+    let Some((lifecycle, args)) = collect_lifecycle_args(ctx, data, sctx, channel, author).await?
+    else {
         return Ok(());
-    };
-
-    // 5. Resolve how many positional args the lifecycle needs and the prompt
-    //    text to show for them. Reading preferences under a short-lived read
-    //    guard so it never spans an await.
-    let spec = {
-        let lifecycles = data.state.read()
-            .frontend
-            .preferences
-            .session_lifecycles
-            .clone();
-        match resolve_lifecycle_inputs(&lifecycles, &lifecycle) {
-            Some(s) => s,
-            None => {
-                ctx.say(format!(
-                    "No session lifecycle named `{lifecycle}` is configured."
-                ))
-                .await?;
-                return Ok(());
-            }
-        }
-    };
-
-    // 6. Collect the lifecycle's positional args (space-delimited). Zero-param
-    //    lifecycles skip collection entirely. On a count mismatch the bot
-    //    responds and re-prompts; each attempt is bounded by collect_reply's
-    //    2-minute timeout.
-    let args: Vec<String> = if spec.param_count == 0 {
-        vec![]
-    } else {
-        ctx.say(&spec.prompt).await?;
-        loop {
-            let Some(reply) = collect_reply(sctx, channel, author).await else {
-                ctx.say("Timed out waiting for input. Run `/new` again.")
-                    .await?;
-                return Ok(());
-            };
-            let parsed = parse_quoted_args(reply.content.trim());
-            if parsed.len() >= spec.param_count {
-                break parsed;
-            }
-            ctx.say(format!(
-                "Expected {} arguments, got {}. {}",
-                spec.param_count, parsed.len(), spec.prompt
-            ))
-            .await?;
-        }
     };
 
     let new_session_id = {
@@ -338,6 +285,78 @@ fn ephemeral(content: impl Into<String>) -> poise::CreateReply {
     poise::CreateReply::default()
         .content(content)
         .ephemeral(true)
+}
+
+/// Resolve the configured lifecycle and collect its positional args from the user.
+///
+/// Returns `Ok(Some(args))` to proceed, `Ok(None)` after responding with a reason
+/// (missing config, missing lifecycle, timeout), or `Err` on a Discord failure.
+///
+/// The lifecycle name is required to use the bot — enforced by config validation,
+/// but guarded here too so a misconfigured instance fails gracefully. Zero-param
+/// lifecycles skip collection entirely. On a count mismatch the bot responds and
+/// re-prompts; each attempt is bounded by [`collect_reply`]'s 2-minute timeout.
+async fn collect_lifecycle_args(
+    ctx: BotContext<'_>,
+    data: &BotData,
+    sctx: &serenity::Context,
+    channel: serenity::ChannelId,
+    author: serenity::UserId,
+) -> Result<Option<(String, Vec<String>)>, BotError> {
+    use crate::feat::discord::lifecycle_inputs::resolve_lifecycle_inputs;
+    use jinn_domain::feat::session_lifecycle::command_template::parse_quoted_args;
+
+    let Some(lifecycle) = data.config.lifecycle.clone() else {
+        ctx.say("No `lifecycle` configured under `[discord]` in jinn.toml.")
+            .await?;
+        return Ok(None);
+    };
+
+    // Resolve how many positional args the lifecycle needs and the prompt text
+    // to show for them. Reading preferences under a short-lived read guard so it
+    // never spans an await.
+    let spec = {
+        let lifecycles = data
+            .state
+            .read()
+            .frontend
+            .preferences
+            .session_lifecycles
+            .clone();
+        match resolve_lifecycle_inputs(&lifecycles, &lifecycle) {
+            Some(s) => s,
+            None => {
+                ctx.say(format!(
+                    "No session lifecycle named `{lifecycle}` is configured."
+                ))
+                .await?;
+                return Ok(None);
+            }
+        }
+    };
+
+    if spec.param_count == 0 {
+        return Ok(Some((lifecycle, vec![])));
+    }
+    ctx.say(&spec.prompt).await?;
+    loop {
+        let Some(reply) = collect_reply(sctx, channel, author).await else {
+            ctx.say("Timed out waiting for input. Run `/new` again.")
+                .await?;
+            return Ok(None);
+        };
+        let parsed = parse_quoted_args(reply.content.trim());
+        if parsed.len() >= spec.param_count {
+            return Ok(Some((lifecycle, parsed)));
+        }
+        ctx.say(format!(
+            "Expected {} arguments, got {}. {}",
+            spec.param_count,
+            parsed.len(),
+            spec.prompt
+        ))
+        .await?;
+    }
 }
 
 /// Collect one message from the user who invoked the command, within a
