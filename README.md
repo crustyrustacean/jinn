@@ -18,37 +18,6 @@ A TUI agent harness with multi-session support and Vim-style keybinds.
 - Customizable personas
 - Standard agent harness-y things like `AGENTS.md`, `~/.agents` skill discovery, custom prompts (including project-specific for all of these)
 
-## Installation
-
-Currently only Arch Linux package + build from source are supported for installation.
-
-### Arch Linux
-
-```sh
-git clone https://github.com/jayson-lennon/jinn.git
-cd jinn
-makepkg -si
-```
-
-### Build from source
-
-#### Requirements
-
-- Rust toolchain (stable)
-- SQLite (`sqlite`)
-- `clang`
-- `gcc-libs`
-- [`just`](https://github.com/casey/just)
-
-```sh
-git clone https://github.com/jayson-lennon/jinn.git
-cd jinn
-cargo build --release
-just install-defaults
-```
-
-The binary will be at `target/release/jinn` and you'll need to add it to your `$PATH`. The `just install-defaults` command will copy all of the required themes/prompts/plugins/etc to your `~/.config/jinn` directory.
-
 ## Usage
 
 ```sh
@@ -125,6 +94,77 @@ None. Bring your OS's sandboxing features.
 - Linux: [bubblewrap](https://github.com/containers/bubblewrap)
 - macOS: [App Sandbox](https://developer.apple.com/documentation/xcode/configuring-the-macos-app-sandbox)
 - Windows: [Windows Sandbox (WSB)](https://learn.microsoft.com/en-us/windows/security/application-security/application-isolation/windows-sandbox/)
+
+## Discord Integration
+
+jinn has basic Discord support. Add this to your `jinn.toml`:
+
+```toml
+[discord]
+enabled = true
+# Lifecycle script is REQUIRED for Discord integration.
+lifecycle = "<name of a lifecycle script>"
+guild_id = "<guild id>"
+forum_channel = "<snowflake channel id>"
+```
+
+Requirements to use:
+
+- Discord bot set up on your server
+- A forum channel to create sessions
+- A lifecycle script containing `<branch>` and `<repo>` (in that order)
+- Projects pre-configured in `jinn` (`<leader>so` to open the projects finder)
+
+Example lifecycle script:
+
+```toml
+[[session_lifecycle]]
+name = "fossil branch quickfix"
+description = "Open a new checkout + branch"
+setup_command = "mkdir <branch> && cd <branch> && fossil open ../<repo>.fossil && fossil commit -m 'Open <branch>' --branch <branch> --allow-empty && echo ./<branch>"
+teardown_command = "fossil merge trunk --force && fossil addremove && fossil commit -m 'Bring in latest trunk' && fossil update trunk && fossil merge <branch> && fossil addremove && fossil commit -m 'Merge <branch>' && fossil branch close <branch> && cd .. && rm -rfv <branch>"
+```
+
+Available Discord bot commands:
+
+- `/new` - Create a new session
+- `/teardown` - Run the lifecycle teardown script
+- `/archive` - Archive the session
+
+jinn commands:
+
+- `gdc` - Create discord thread from a jinn session. Use this if you started a session in jinn and want to continue it in Discord.
+
+## Installation
+
+Currently only Arch Linux package + build from source are supported for installation.
+
+### Arch Linux
+
+```sh
+git clone https://github.com/jayson-lennon/jinn.git
+cd jinn
+makepkg -si
+```
+
+### Build from source
+
+#### Requirements
+
+- Rust toolchain (stable)
+- SQLite (`sqlite`)
+- `clang`
+- `gcc-libs`
+- [`just`](https://github.com/casey/just)
+
+```sh
+git clone https://github.com/jayson-lennon/jinn.git
+cd jinn
+cargo build --release
+just install-defaults
+```
+
+The binary will be at `target/release/jinn` and you'll need to add it to your `$PATH`. The `just install-defaults` command will copy all of the required themes/prompts/plugins/etc to your `~/.config/jinn` directory.
 
 ## Major Roadmap Items
 
