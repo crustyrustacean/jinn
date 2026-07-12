@@ -14,7 +14,7 @@ members = ["crates/*", "vendor/*", "tests/jinn-e2e"]
 
 
 [workspace.package]
-version = "0.91.1"
+version = "0.92.0"
 edition = "2024"
 publish = false
 
