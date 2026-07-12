@@ -9,7 +9,6 @@
 
 pub mod bridge_actor;
 pub mod config;
-pub mod feedback_actor;
 pub mod message_split;
 pub mod protocol;
 pub mod reply;
