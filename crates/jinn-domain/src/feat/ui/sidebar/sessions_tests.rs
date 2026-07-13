@@ -1998,14 +1998,8 @@ fn state_with_plugins() -> AppState {
 
     // Attach two plugins to root session.
     let root_session = state.session.get_mut(&root_id).expect("root session");
-    root_session
-        .core
-        .attached_plugins
-        .push(AttachedPlugin::new("consensus"));
-    root_session
-        .core
-        .attached_plugins
-        .push(AttachedPlugin::new("judge_fail"));
+    root_session.attach_plugin(AttachedPlugin::new("consensus"));
+    root_session.attach_plugin(AttachedPlugin::new("judge_fail"));
 
     state
 }
@@ -2116,9 +2110,7 @@ fn state_with_session_and_plugins(plugin_count: usize) -> AppState {
     {
         let s = state.session.get_mut(&session).expect("active session");
         for i in 0..plugin_count {
-            s.core
-                .attached_plugins
-                .push(AttachedPlugin::new(format!("plugin-{i}")));
+            s.attach_plugin(AttachedPlugin::new(format!("plugin-{i}")));
         }
     }
     state
@@ -2147,9 +2139,7 @@ fn navigate_up_lands_on_plugin_entry() {
         let sessions: Vec<_> = state.session.iter().collect();
         let first_id = sessions[0].0.clone();
         let s = state.session.get_mut(&first_id).expect("first session");
-        s.core
-            .attached_plugins
-            .push(AttachedPlugin::new("my-plugin"));
+        s.attach_plugin(AttachedPlugin::new("my-plugin"));
     }
     // entries: [session0, pl, session1]
     // cursor on session1
@@ -2213,7 +2203,7 @@ fn sorted_open_sessions_excludes_automated_sessions() {
 
     let mut automated = ChatSessionState::new();
     automated.set_title("automated session".to_owned());
-    automated.core.is_automated = true;
+    automated.mark_automated();
     let automated_id = automated.session_id().clone();
     state.session.insert(automated);
 
@@ -2258,9 +2248,7 @@ fn state_with_managed_judge_session(streaming: bool) -> AppState {
         .session
         .get_mut(&root_id)
         .expect("root")
-        .core
-        .attached_plugins
-        .push(ap);
+        .attach_plugin(ap);
     state
 }
 

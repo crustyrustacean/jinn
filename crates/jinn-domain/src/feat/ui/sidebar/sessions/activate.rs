@@ -49,14 +49,7 @@ pub fn handle_session_activate(state: &mut AppState) -> IntentResult {
                 .parent_id
                 .as_ref()
                 .and_then(|pid| state.session.get(pid))
-                .and_then(|session| {
-                    session
-                        .core
-                        .attached_plugins
-                        .iter()
-                        .find(|p| p.instance_id.to_string() == entry.id.to_string())
-                        .and_then(|p| p.managed_session_id.clone())
-                });
+                .and_then(|session| session.plugin_managed_session_id(&entry.id.to_string()));
             if let Some(managed_id) = managed_id {
                 state.session.set_active(managed_id);
                 state.frontend.scope_stack.swap_base(FocusScope::Normal);
@@ -107,14 +100,7 @@ pub fn handle_session_activate_insert(state: &mut AppState) -> IntentResult {
                 .parent_id
                 .as_ref()
                 .and_then(|pid| state.session.get(pid))
-                .and_then(|session| {
-                    session
-                        .core
-                        .attached_plugins
-                        .iter()
-                        .find(|p| p.instance_id.to_string() == entry.id.to_string())
-                        .and_then(|p| p.managed_session_id.clone())
-                });
+                .and_then(|session| session.plugin_managed_session_id(&entry.id.to_string()));
             if let Some(managed_id) = managed_id {
                 state.session.set_active(managed_id);
                 state.frontend.scope_stack.swap_base(FocusScope::Normal);
@@ -190,10 +176,9 @@ mod tests {
             a.managed_session_id = Some(child_a.clone());
             let mut b = AttachedPlugin::new("judge");
             b.managed_session_id = Some(child_b.clone());
-            guard.core.attached_plugins.push(a);
-            guard.core.attached_plugins.push(b);
+            guard.attach_plugin(a);
+            guard.attach_plugin(b);
         }
-
         // Cursor points at the second plugin entry in the built tree.
         let sessions = sorted_open_sessions(&state);
         let plugin_idx = sessions

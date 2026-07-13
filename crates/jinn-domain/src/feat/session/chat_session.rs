@@ -8,6 +8,14 @@
 //! and [`SessionUi`] (IntentHandler) sub-structs to make cross-boundary
 //! writes visually obvious during code review.
 
+#![expect(
+    clippy::partial_pub_fields,
+    clippy::field_scoped_visibility_modifiers,
+    reason = "ChatSessionState uses scoped visibility on `core` to enforce the capsule wall: \
+        the field is private to the session subtree so cross-actor reach-throughs cannot compile, \
+        while `ui` stays pub for IntentHandler. Mixed pub/scoped visibility is intentional."
+)]
+
 use parking_lot::RwLock;
 use std::collections::{HashMap, HashSet};
 use std::ops::Range;
@@ -518,7 +526,7 @@ impl Default for SessionUi {
 pub struct ChatSessionState {
     /// Core domain state managed by session-actor and context-actor.
     #[serde(flatten)]
-    pub core: SessionCore,
+    pub(in crate::feat::session) core: SessionCore,
     /// UI state managed by IntentHandler.
     #[serde(skip)]
     pub ui: SessionUi,
@@ -830,6 +838,21 @@ impl ChatSessionState {
     #[must_use]
     pub fn is_automated(&self) -> bool {
         self.core.is_automated
+    }
+
+    /// Mark this session as program-initiated (automated).
+    pub fn mark_automated(&mut self) {
+        self.core.is_automated = true;
+    }
+
+    /// Whether this session should be persisted to disk.
+    pub fn persist(&self) -> bool {
+        self.core.persist
+    }
+
+    /// The assembly overrides for this session, if any.
+    pub fn assembly_overrides(&self) -> Option<&crate::feat::context::assemble::AssemblyOverrides> {
+        self.core.assembly_overrides.as_ref()
     }
 
     /// Mark this session as having been meaningfully interacted with by the user.
@@ -2639,6 +2662,16 @@ impl ChatSessionState {
         &self.core.last_history_activity_at
     }
 
+    /// Sets when this session last saw provider activity (streaming/turn).
+    pub fn set_last_provider_activity_at(&mut self, ts: Timestamp) {
+        self.core.last_provider_activity_at = ts;
+    }
+
+    /// Sets when this session last saw history activity (new entries appended).
+    pub fn set_last_history_activity_at(&mut self, ts: Timestamp) {
+        self.core.last_history_activity_at = ts;
+    }
+
     /// Sets this session's working directory.
     pub fn set_cwd(&mut self, cwd: std::path::PathBuf) {
         self.core.cwd = cwd;
@@ -2808,6 +2841,90 @@ impl ChatSessionState {
         self.core.attached_plugins.push(plugin);
     }
 
+    /// Remove all attached plugins whose `name` matches.
+    ///
+    /// Returns the instance IDs of the plugins that were removed.
+    pub fn detach_plugins_by_name(
+        &mut self,
+        plugin_name: &str,
+    ) -> Vec<jinn_core_types::PluginInstanceId> {
+        let mut removed = Vec::new();
+        self.core.attached_plugins.retain(|p| {
+            if p.name.as_str() == plugin_name {
+                removed.push(p.instance_id.clone());
+                false
+            } else {
+                true
+            }
+        });
+        removed
+    }
+    /// Set the enabled state of the attached plugin with the given instance ID.
+    ///
+    /// Returns the new enabled state, or `None` if no plugin matches.
+    pub fn set_plugin_enabled(
+        &mut self,
+        instance_id: &jinn_core_types::PluginInstanceId,
+        enabled: bool,
+    ) -> Option<bool> {
+        let plugin = self
+            .core
+            .attached_plugins
+            .iter_mut()
+            .find(|p| &p.instance_id == instance_id)?;
+        plugin.enabled = enabled;
+        Some(plugin.enabled)
+    }
+
+    /// Set the managed session ID of the attached plugin with the given instance ID.
+    ///
+    /// Returns `true` if a matching plugin was found and updated.
+    pub fn set_plugin_managed_session(
+        &mut self,
+        instance_id: &jinn_core_types::PluginInstanceId,
+        managed_session_id: crate::protocol::SessionId,
+    ) -> bool {
+        let Some(plugin) = self
+            .core
+            .attached_plugins
+            .iter_mut()
+            .find(|p| &p.instance_id == instance_id)
+        else {
+            return false;
+        };
+        plugin.managed_session_id = Some(managed_session_id);
+        true
+    }
+
+    /// Instance IDs of all currently enabled attached plugins.
+    pub fn enabled_plugin_instance_ids(&self) -> Vec<jinn_core_types::PluginInstanceId> {
+        self.core
+            .attached_plugins
+            .iter()
+            .filter(|p| p.enabled)
+            .map(|p| p.instance_id.clone())
+            .collect()
+    }
+
+    /// Returns the enabled state of the attached plugin with the given instance ID,
+    /// or `None` if no plugin matches.
+    pub fn plugin_enabled(&self, instance_id: &jinn_core_types::PluginInstanceId) -> Option<bool> {
+        self.core
+            .attached_plugins
+            .iter()
+            .find(|p| &p.instance_id == instance_id)
+            .map(|p| p.enabled)
+    }
+
+    /// Returns the managed session ID of the attached plugin whose instance ID's
+    /// string form matches `id_str`, or `None` if no plugin matches.
+    pub fn plugin_managed_session_id(&self, id_str: &str) -> Option<crate::protocol::SessionId> {
+        self.core
+            .attached_plugins
+            .iter()
+            .find(|p| p.instance_id.to_string() == id_str)
+            .and_then(|p| p.managed_session_id.clone())
+    }
     /// Set the session ID (used when inserting into a HashMap with an external key).
     pub fn set_session_id(&mut self, id: SessionId) {
         self.core.session_id = id;

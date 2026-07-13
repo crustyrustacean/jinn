@@ -213,20 +213,9 @@ impl PluginDispatchActor {
                 tracing::warn!(session_id = %session_id, "session not found for detach");
                 return;
             };
-            let removed: Vec<PluginInstanceId> = session
-                .core
-                .attached_plugins
-                .iter()
-                .filter(|p| p.name.as_str() == plugin_name.as_str())
-                .map(|p| p.instance_id.clone())
-                .collect();
-            session
-                .core
-                .attached_plugins
-                .retain(|p| p.name.as_str() != plugin_name.as_str());
+            let removed = session.detach_plugins_by_name(plugin_name.as_str());
             let remaining = session
-                .core
-                .attached_plugins
+                .attached_plugins()
                 .iter()
                 .map(|p| (p.instance_id.clone(), p.name.clone()))
                 .collect();
@@ -338,17 +327,11 @@ impl PluginDispatchActor {
                 tracing::warn!(session_id = %session_id, "session not found for toggle");
                 return;
             };
-            let Some(plugin) = session
-                .core
-                .attached_plugins
-                .iter_mut()
-                .find(|p| p.instance_id == instance_id)
-            else {
+            let Some(enabled) = session.set_plugin_enabled(&instance_id, false) else {
                 tracing::warn!(session_id = %session_id, plugin = %plugin_name, "plugin not attached");
                 return;
             };
-            plugin.enabled = false;
-            plugin.enabled
+            enabled
         };
 
         // No registry recreation on toggle — fire-time filtering handles enabled/disabled.
@@ -375,17 +358,11 @@ impl PluginDispatchActor {
                 tracing::warn!(session_id = %session_id, "session not found for enable");
                 return;
             };
-            let Some(plugin) = session
-                .core
-                .attached_plugins
-                .iter_mut()
-                .find(|p| p.instance_id == instance_id)
-            else {
+            let Some(enabled) = session.set_plugin_enabled(&instance_id, true) else {
                 tracing::warn!(session_id = %session_id, plugin = %plugin_name, "plugin not attached");
                 return;
             };
-            plugin.enabled = true;
-            plugin.enabled
+            enabled
         };
 
         self.publish(PluginToggled {
@@ -410,16 +387,9 @@ impl PluginDispatchActor {
             tracing::warn!(session_id = %session_id, "session not found for set_managed_session");
             return;
         };
-        let Some(plugin) = session
-            .core
-            .attached_plugins
-            .iter_mut()
-            .find(|p| p.instance_id == instance_id)
-        else {
+        if !session.set_plugin_managed_session(&instance_id, managed_session_id) {
             tracing::warn!(session_id = %session_id, plugin = %plugin_name, "plugin not attached");
-            return;
-        };
-        plugin.managed_session_id = Some(managed_session_id);
+        }
     }
 
     // ─── Lifecycle hook firings ────────────────────────────────────────────
@@ -461,14 +431,7 @@ impl PluginDispatchActor {
             state
                 .session
                 .get(session_id)
-                .map(|s| {
-                    s.core
-                        .attached_plugins
-                        .iter()
-                        .filter(|p| p.enabled)
-                        .map(|p| p.instance_id.clone())
-                        .collect::<Vec<_>>()
-                })
+                .map(crate::feat::session::chat_session::ChatSessionState::enabled_plugin_instance_ids)
                 .unwrap_or_default()
         };
 
@@ -509,13 +472,7 @@ impl PluginDispatchActor {
             "total": total,
             "is_complete": is_complete,
         });
-        let enabled_instances = session
-            .core
-            .attached_plugins
-            .iter()
-            .filter(|p| p.enabled)
-            .map(|p| p.instance_id.clone())
-            .collect::<Vec<_>>();
+        let enabled_instances = session.enabled_plugin_instance_ids();
         Some((ctx_json, enabled_instances))
     }
 
@@ -892,9 +849,8 @@ mod tests {
             .session
             .get(&session_id)
             .unwrap()
-            .core
-            .attached_plugins
-            .clone();
+            .attached_plugins()
+            .to_vec();
         assert_eq!(plugins.len(), 1);
         assert_eq!(plugins[0].name, "judge_fail");
         assert!(plugins[0].enabled);
@@ -932,9 +888,8 @@ mod tests {
             .session
             .get(&session_id)
             .unwrap()
-            .core
-            .attached_plugins
-            .clone();
+            .attached_plugins()
+            .to_vec();
         assert!(plugins.is_empty());
         assert!(actor.registry.get(&session_id).is_none());
         // And PluginDetached event was published.
@@ -959,8 +914,7 @@ mod tests {
             .session
             .get(&session_id)
             .unwrap()
-            .core
-            .attached_plugins
+            .attached_plugins()
             .first()
             .expect("plugin attached")
             .instance_id
@@ -982,9 +936,8 @@ mod tests {
             .session
             .get(&session_id)
             .unwrap()
-            .core
-            .attached_plugins
-            .clone();
+            .attached_plugins()
+            .to_vec();
         assert_eq!(plugins.len(), 1);
         assert!(!plugins[0].enabled);
     }
@@ -1022,9 +975,8 @@ mod tests {
             .session
             .get(&session_id)
             .unwrap()
-            .core
-            .attached_plugins
-            .clone();
+            .attached_plugins()
+            .to_vec();
         assert!(plugins.is_empty());
     }
 
@@ -1049,7 +1001,7 @@ mod tests {
         let (id_a, id_b) = {
             let s = actor.state.read();
             let s = s.session.get(&session_id).unwrap();
-            let plugins = &s.core.attached_plugins;
+            let plugins = s.attached_plugins();
             assert_eq!(plugins.len(), 2);
             (
                 plugins[0].instance_id.clone(),
@@ -1083,9 +1035,8 @@ mod tests {
             .session
             .get(&session_id)
             .unwrap()
-            .core
-            .attached_plugins
-            .clone();
+            .attached_plugins()
+            .to_vec();
         let by_id = plugins
             .iter()
             .map(|p| (p.instance_id.clone(), p.managed_session_id.clone()))
@@ -1112,7 +1063,7 @@ mod tests {
         let (id_a, id_b) = {
             let guard = actor.state.read();
             let s = guard.session.get(&session_id).expect("session");
-            let plugins = &s.core.attached_plugins;
+            let plugins = s.attached_plugins();
             (
                 plugins[0].instance_id.clone(),
                 plugins[1].instance_id.clone(),
@@ -1149,9 +1100,8 @@ mod tests {
             .session
             .get(&session_id)
             .expect("session")
-            .core
-            .attached_plugins
-            .clone();
+            .attached_plugins()
+            .to_vec();
         assert_eq!(plugins.len(), 2);
         let a = plugins.iter().find(|p| p.instance_id == id_a).expect("a");
         let b = plugins.iter().find(|p| p.instance_id == id_b).expect("b");
@@ -1175,8 +1125,7 @@ mod tests {
                 .session
                 .get(&session_id)
                 .expect("session")
-                .core
-                .attached_plugins[0]
+                .attached_plugins()[0]
                 .instance_id
                 .clone()
         };
@@ -1204,8 +1153,7 @@ mod tests {
             .session
             .get(&session_id)
             .expect("session")
-            .core
-            .attached_plugins[0]
+            .attached_plugins()[0]
             .enabled;
         assert!(enabled, "disable+enable must restore enabled");
     }
@@ -1230,9 +1178,8 @@ mod tests {
             .session
             .get(&session_id)
             .unwrap()
-            .core
-            .attached_plugins
-            .clone();
+            .attached_plugins()
+            .to_vec();
         assert!(plugins.is_empty());
     }
 }

@@ -167,7 +167,9 @@ impl SessionPersistenceActor {
             state.context.set_active_persona(Some(persona));
         } else {
             // Edge case: coding-assistant not found either.
-            state.context.set_active_persona(payload.personas.first().cloned());
+            state
+                .context
+                .set_active_persona(payload.personas.first().cloned());
         }
     }
 
