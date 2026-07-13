@@ -7,7 +7,6 @@
 pub mod app_state_actor;
 pub mod app_state_file;
 pub mod app_state_storage;
-pub mod app_state_sync_actor;
 #[expect(
     clippy::module_inception,
     reason = "preferences_actor/mod.rs is the public API, preferences_actor/ is implementation"

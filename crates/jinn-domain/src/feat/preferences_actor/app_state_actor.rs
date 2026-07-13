@@ -5,17 +5,24 @@
 //! applies all diffs, saves to disk, and emits an [`AppStateUpdated`]
 //! event with the full result.
 
+use std::path::PathBuf;
+
 use kameo::prelude::{Actor, ActorRef, Context, Message};
 
 use crate::common::actor_deps::{ActorDeps, BusPublish};
+use crate::common::state::State;
+use crate::feat::preferences_actor::app_state_file::AppStateFile;
 use crate::feat::preferences_actor::protocol::app_state_command::UpdateAppState;
 use crate::feat::preferences_actor::protocol::app_state_event::AppStateUpdated;
+use crate::feat::theme;
 
 /// Dependencies for spawning an [`AppStateActor`].
 #[derive(Clone)]
 pub struct AppStateActorDeps {
     /// Universal actor dependencies (bus, services, etc.).
     pub deps: ActorDeps,
+    /// Shared application state.
+    pub state: State,
 }
 
 /// The app-state actor.
@@ -25,6 +32,11 @@ pub struct AppStateActorDeps {
 /// downstream actors can sync their caches.
 pub struct AppStateActor {
     deps: ActorDeps,
+    /// Shared application state — writes frontend.app_state, sidebar_width,
+    /// theme, and context.active_persona inline after persist.
+    state: State,
+    themes_dir: PathBuf,
+    system_themes_dir: PathBuf,
 }
 
 impl Actor for AppStateActor {
@@ -36,7 +48,12 @@ impl Actor for AppStateActor {
             .subscribe(actor_ref.recipient::<UpdateAppState>())
             .await;
 
-        Ok(Self { deps: args.deps })
+        Ok(Self {
+            deps: args.deps.clone(),
+            state: args.state,
+            themes_dir: args.deps.services.paths.themes_dir(),
+            system_themes_dir: args.deps.services.paths.system_themes_dir(),
+        })
     }
 }
 
@@ -51,7 +68,47 @@ impl AppStateActor {
             tracing::warn!(err = ?e, "app-state-actor failed to save app state");
             return;
         }
+        // Write frontend/context fields inline (formerly AppStateSyncActor's job).
+        self.sync_state(&state);
         self.publish(AppStateUpdated { state }).await;
+    }
+
+    /// Syncs persisted state into the shared `AppState` frontend/context fields.
+    fn sync_state(&self, updated: &AppStateFile) {
+        let mut state = self.state.write();
+
+        // Cache the entire state for runtime access.
+        state.frontend.app_state = updated.clone();
+
+        state.frontend.sidebar_width = updated.sidebar_width.unwrap_or(30);
+
+        // Reload theme when theme_name changes.
+        match theme::resolve_theme(
+            updated.theme_name.as_deref(),
+            &self.themes_dir,
+            &self.system_themes_dir,
+        ) {
+            Ok(t) => {
+                state.frontend.theme = t;
+                state.invalidate_theme_caches();
+            }
+            Err(e) => {
+                tracing::warn!(err = ?e, "failed to reload theme, keeping current");
+            }
+        }
+
+        // Sync active_persona when persona_name changes.
+        if let Some(ref persona_name) = updated.persona_name {
+            let found = state
+                .context
+                .personas
+                .iter()
+                .find(|p| p.name == *persona_name)
+                .cloned();
+            if let Some(persona) = found {
+                state.context.active_persona = Some(persona);
+            }
+        }
     }
 }
 
@@ -106,6 +163,11 @@ mod tests {
             deps: ActorDeps {
                 services: services.clone(),
             },
+            state: crate::common::state::State::new(
+                crate::common::app_state::AppState::default(),
+            ),
+            themes_dir: std::path::PathBuf::new(),
+            system_themes_dir: std::path::PathBuf::new(),
         };
         (actor, audit, services)
     }
