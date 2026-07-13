@@ -4,18 +4,20 @@
 //! header value, Anubis challenge timeout, and optional binary path that the
 //! headless Chrome backend applies per tab to avoid cheap bot-detection tells.
 //!
-//! The user agent is matched to the host OS at compile time so the string never
-//! contradicts the platform the browser actually runs on.
+//! The user agent is built at runtime from OS-specific prefixes (chosen at
+//! compile time via `target_os`) and the detected Chrome major version, so the
+//! UA never contradicts the binary that is actually launched.
 
 use std::path::PathBuf;
 use std::time::Duration;
 
-/// The major Chrome version embedded in the derived user-agent strings.
+/// The Chrome major version used as a fallback when the installed binary's
+/// version cannot be probed via `<binary> --version`.
 ///
-/// Kept as a single source of truth so all three OS variants stay in sync.
-/// Update periodically against
+/// Kept current so the fallback UA stays realistic. Update periodically
+/// against
 /// <https://www.whatismybrowser.com/guides/the-latest-user-agent/chrome>.
-pub const CHROME_MAJOR: &str = "150.0.0.0";
+pub const CHROME_MAJOR: &str = "150";
 
 /// The `Accept-Language` value a real Chrome install sends.
 ///
@@ -23,28 +25,52 @@ pub const CHROME_MAJOR: &str = "150.0.0.0";
 /// the stealth path always sets it.
 pub const ACCEPT_LANGUAGE: &str = "en-US,en;q=0.9";
 
-/// A realistic, host-OS-matched Chrome user-agent string.
+/// The OS-specific UA prefix for the host platform.
 ///
-/// Rotation within a session is itself a tell, so one stable string is selected
-/// per build. A Linux host advertising Windows + SwiftShader is a contradiction
-/// detectors weight heavily; matching the real OS avoids that. The string is a
-/// `const` so no allocation is needed.
-#[must_use]
-pub fn derive_user_agent() -> &'static str {
-    USER_AGENT
-}
-
+/// Chosen at compile time via `target_os` so it never contradicts the
+/// platform the browser actually runs on. The Chrome major version is
+/// templated in at runtime (see [`build_user_agent`]).
+///
+/// A Linux host advertising Windows + SwiftShader is a contradiction
+/// detectors weight heavily; matching the real OS avoids that.
 #[cfg(target_os = "windows")]
-const USER_AGENT: &str = "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/150.0.0.0 Safari/537.36";
+const UA_PREFIX: &str =
+    "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/";
 
 #[cfg(target_os = "macos")]
-const USER_AGENT: &str = "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/150.0.0.0 Safari/537.36";
+const UA_PREFIX: &str = "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/";
 
 #[cfg(target_os = "linux")]
-const USER_AGENT: &str = "Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/150.0.0.0 Safari/537.36";
+const UA_PREFIX: &str =
+    "Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/";
 
 #[cfg(not(any(target_os = "windows", target_os = "macos", target_os = "linux")))]
-const USER_AGENT: &str = "Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/150.0.0.0 Safari/537.36";
+const UA_PREFIX: &str =
+    "Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/";
+
+/// The UA suffix appended after the major version. Since Chrome 101's
+/// UA-Client-Hints reduction, minor/build/patch are frozen to `0.0.0` in the
+/// `navigator.userAgent` string, so only the major varies.
+const UA_SUFFIX: &str = ".0.0.0 Safari/537.36";
+
+/// Builds a realistic, host-OS-matched Chrome user-agent string.
+///
+/// The OS prefix is fixed at compile time; `chrome_major` (e.g. `"138"`) is
+/// templated in at runtime so the UA matches the binary actually launched.
+/// Rotation within a session is itself a tell, so one string is built per
+/// session.
+#[must_use]
+pub fn build_user_agent(chrome_major: &str) -> String {
+    format!("{UA_PREFIX}{chrome_major}{UA_SUFFIX}")
+}
+
+/// The user-agent string built with the fallback [`CHROME_MAJOR`].
+///
+/// Convenience for sites that have not yet resolved a binary version.
+#[must_use]
+pub fn fallback_user_agent() -> String {
+    build_user_agent(CHROME_MAJOR)
+}
 
 /// The `platform` value paired with [`derive_user_agent`] for the CDP
 /// `SetUserAgentOverride` call.
@@ -94,7 +120,7 @@ impl Default for StealthSettings {
     fn default() -> Self {
         Self {
             enabled: true,
-            user_agent: derive_user_agent().to_owned(),
+            user_agent: fallback_user_agent(),
             platform: derive_platform().to_owned(),
             accept_language: ACCEPT_LANGUAGE.to_owned(),
             anubis_timeout: DEFAULT_ANUBIS_TIMEOUT,
@@ -126,10 +152,10 @@ mod tests {
     use super::*;
 
     #[test]
-    fn derived_user_agent_targets_current_host_os() {
+    fn build_user_agent_targets_current_host_os() {
         // Given the host's target_os.
-        // When deriving the user agent.
-        let ua = derive_user_agent();
+        // When building a user agent.
+        let ua = build_user_agent("138");
 
         // Then it is the Chrome variant for the current OS.
         #[cfg(target_os = "windows")]
@@ -138,25 +164,36 @@ mod tests {
         assert!(ua.contains("Macintosh; Intel Mac OS X 10_15_7"));
         #[cfg(target_os = "linux")]
         assert!(ua.contains("X11; Linux x86_64"));
-        // And it carries the current Chrome major version.
-        assert!(ua.contains(&format!("Chrome/{CHROME_MAJOR} ")));
     }
 
     #[test]
-    fn derived_user_agent_is_stable_across_calls() {
-        // Given two calls to derive_user_agent.
-        // When comparing.
-        // Then the same static string is returned (no rotation).
-        assert_eq!(derive_user_agent(), derive_user_agent());
+    fn build_user_agent_templates_the_major_version() {
+        // Given a detected major version of 138.
+        // When building the user agent.
+        let ua = build_user_agent("138");
+
+        // Then the major version appears in the string, with the frozen
+        // minor/build/patch suffix from Chrome's UA reduction.
+        assert!(ua.contains("Chrome/138.0.0.0"));
     }
 
     #[test]
-    fn default_settings_use_derived_ua_and_default_timeout() {
+    fn fallback_user_agent_uses_chrome_major_const() {
+        // Given the fallback path.
+        // When building the fallback user agent.
+        let ua = fallback_user_agent();
+
+        // Then it carries the hardcoded CHROME_MAJOR version.
+        assert!(ua.contains(&format!("Chrome/{CHROME_MAJOR}.0.0.0")));
+    }
+
+    #[test]
+    fn default_settings_use_fallback_ua_and_default_timeout() {
         // Given default stealth settings.
         let settings = StealthSettings::default();
 
-        // Then the UA matches the derived one and stealth is enabled.
-        assert_eq!(settings.user_agent, derive_user_agent());
+        // Then the UA matches the fallback one and stealth is enabled.
+        assert_eq!(settings.user_agent, fallback_user_agent());
         assert!(settings.enabled);
         // And the Anubis timeout is the documented default.
         assert_eq!(settings.anubis_timeout, Duration::from_secs(30));
@@ -175,13 +212,13 @@ mod tests {
     }
 
     #[test]
-    fn override_none_falls_back_to_derived_ua() {
+    fn override_none_falls_back_to_fallback_ua() {
         // Given no override.
         // When building settings.
         let settings = StealthSettings::with_user_agent_override(None);
 
-        // Then the derived UA is used.
-        assert_eq!(settings.user_agent, derive_user_agent());
+        // Then the fallback UA is used.
+        assert_eq!(settings.user_agent, fallback_user_agent());
     }
 
     #[test]

@@ -50,6 +50,16 @@ pub trait BinaryLocator {
 
     /// Whether the given path refers to an existing, runnable file.
     fn exists(&self, path: &std::path::Path) -> bool;
+
+    /// Detect the installed binary's major version via `<path> --version`.
+    ///
+    /// Returns the major version as a string (e.g. `"138"`) so it can be
+    /// templated into a realistic user-agent. Returns `None` when the binary
+    /// cannot be probed or its output cannot be parsed, so callers can fall
+    /// back to a hardcoded version.
+    fn version(&self, _path: &std::path::Path) -> Option<String> {
+        None
+    }
 }
 
 /// Resolves the configured browser binary to a concrete path.
@@ -67,8 +77,8 @@ pub trait BinaryLocator {
 pub fn resolve_browser_binary(
     config: BrowserBinary,
     locator: &dyn BinaryLocator,
-) -> Result<PathBuf, BinaryResolutionError> {
-    match config {
+) -> Result<ResolvedBrowser, BinaryResolutionError> {
+    let path = match config {
         BrowserBinary::Auto => find_chrome(locator).or(find_chromium(locator)),
         BrowserBinary::Chrome => find_chrome(locator),
         BrowserBinary::Chromium => find_chromium(locator),
@@ -77,7 +87,29 @@ pub fn resolve_browser_binary(
         BrowserBinary::Chrome => BinaryResolutionError::ChromeNotFound,
         BrowserBinary::Chromium => BinaryResolutionError::ChromiumNotFound,
         BrowserBinary::Auto => BinaryResolutionError::NoBinaryFound,
+    })?;
+
+    // Detect the installed binary's major version for a realistic user-agent.
+    // Failures fall back to `None`; callers use a hardcoded version.
+    let version_major = locator.version(&path);
+
+    Ok(ResolvedBrowser {
+        path,
+        version_major,
     })
+}
+
+/// A resolved browser binary: its path plus the detected major version.
+///
+/// The version is `None` when `<binary> --version` could not be probed or
+/// parsed; callers fall back to a hardcoded version. Both fields are
+/// communicated via bus events so the dashboard and the fetcher stay in sync.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct ResolvedBrowser {
+    /// The resolved executable path.
+    pub path: PathBuf,
+    /// The detected major version (e.g. `"138"`), or `None` when undetectable.
+    pub version_major: Option<String>,
 }
 
 fn find_chrome(locator: &dyn BinaryLocator) -> Option<PathBuf> {
@@ -109,6 +141,42 @@ impl BinaryLocator for SystemBinaryLocator {
     fn exists(&self, path: &std::path::Path) -> bool {
         path.exists()
     }
+
+    fn version(&self, path: &std::path::Path) -> Option<String> {
+        detect_version(path)
+    }
+}
+
+/// Runs `<path> --version` and extracts the major version number.
+///
+/// Chrome and Chromium both emit a line like `Google Chrome 138.0.7204.157`
+/// or `Chromium 138.0.7204.157`. The major version is the integer before
+/// the first dot. Returns `None` on any failure so callers fall back to
+/// a hardcoded version.
+fn detect_version(path: &std::path::Path) -> Option<String> {
+    let output = std::process::Command::new(path)
+        .arg("--version")
+        .output()
+        .ok()?;
+    let stdout = String::from_utf8_lossy(&output.stdout);
+    parse_major_version(&stdout)
+}
+
+/// Extracts the major version from a `--version` output line.
+///
+/// Looks for a `D.D.D.D` version token anywhere in the text and returns the
+/// digits before the first dot. Made a free function so tests can exercise
+/// the parser without spawning a process.
+fn parse_major_version(version_output: &str) -> Option<String> {
+    // Find the first dot-delimited numeric token.
+    let token = version_output.split_whitespace().find(|tok| {
+        tok.chars().filter(|&c| c == '.').count() == 3
+            && tok
+                .split('.')
+                .all(|n| !n.is_empty() && n.chars().all(|c| c.is_ascii_digit()))
+    })?;
+    let major = token.split('.').next()?;
+    (!major.is_empty()).then(|| major.to_owned())
 }
 
 fn env_path(var: &str) -> Option<PathBuf> {
@@ -252,7 +320,7 @@ mod tests {
         let resolved = resolve_browser_binary(BrowserBinary::Auto, &fs).expect("should resolve");
 
         // Then Chrome is preferred.
-        assert_eq!(resolved, PathBuf::from("/usr/bin/google-chrome"));
+        assert_eq!(resolved.path, PathBuf::from("/usr/bin/google-chrome"));
 
         // Given only Chromium present.
         let fs = FakeFs::new().chromium_at("/usr/bin/chromium");
@@ -261,7 +329,7 @@ mod tests {
         let resolved = resolve_browser_binary(BrowserBinary::Auto, &fs).expect("should resolve");
 
         // Then Chromium is used as fallback.
-        assert_eq!(resolved, PathBuf::from("/usr/bin/chromium"));
+        assert_eq!(resolved.path, PathBuf::from("/usr/bin/chromium"));
     }
 
     #[test]
@@ -311,6 +379,34 @@ mod tests {
         let resolved = resolve_browser_binary(BrowserBinary::Chrome, &fs).expect("should resolve");
 
         // Then the second candidate (first existing one) is returned.
-        assert_eq!(resolved, PathBuf::from("/usr/bin/google-chrome"));
+        assert_eq!(resolved.path, PathBuf::from("/usr/bin/google-chrome"));
+    }
+
+    #[test]
+    fn parse_major_version_extracts_chrome_version() {
+        // Given a Chrome --version line.
+        // When parsing.
+        let major = parse_major_version("Google Chrome 138.0.7204.157 \n");
+
+        // Then the major version is extracted.
+        assert_eq!(major.as_deref(), Some("138"));
+    }
+
+    #[test]
+    fn parse_major_version_extracts_chromium_version() {
+        // Given a Chromium --version line.
+        let major = parse_major_version("Chromium 140.0.7339.80");
+
+        // Then the major version is extracted.
+        assert_eq!(major.as_deref(), Some("140"));
+    }
+
+    #[test]
+    fn parse_major_version_returns_none_on_unparseable_output() {
+        // Given output with no version token.
+        let major = parse_major_version("some error message");
+
+        // Then parsing yields nothing to fall back from.
+        assert!(major.is_none());
     }
 }

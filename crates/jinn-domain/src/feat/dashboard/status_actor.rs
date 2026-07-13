@@ -163,7 +163,21 @@ impl Message<BrowserBinaryVerified> for DiscordStatusActor {
             BROWSER_BINARY_ENTRY,
             Some(BROWSER_BINARY_DESCRIPTION.to_owned()),
         );
-        dashboard.set_status_message(BROWSER_BINARY_ENTRY, Some(msg.path.display().to_string()));
+        // Surface the Chrome version actually in use alongside the path so the
+        // dashboard reflects the resolved user-agent. When the binary's version
+        // could not be probed, the fetcher falls back to CHROME_MAJOR — show
+        // that explicitly so the displayed version always matches the UA sent.
+        let version_label = match &msg.version_major {
+            Some(v) => format!("Chrome {v}"),
+            None => format!(
+                "Chrome {} (version undetected)",
+                jinn_web_fetch::stealth::CHROME_MAJOR
+            ),
+        };
+        dashboard.set_status_message(
+            BROWSER_BINARY_ENTRY,
+            Some(format!("{version_label} — {}", msg.path.display())),
+        );
     }
 }
 
@@ -478,6 +492,7 @@ mod tests {
         harness
             .publish(BrowserBinaryVerified {
                 path: std::path::PathBuf::from("/usr/bin/google-chrome"),
+                version_major: Some("138".to_owned()),
             })
             .await;
 
@@ -486,7 +501,37 @@ mod tests {
         let (lifecycle, message, _) =
             dashboard_entry(&state, "web-fetch-browser").expect("entry should exist");
         assert_eq!(lifecycle, ActorLifecycle::Running);
-        assert_eq!(message.as_deref(), Some("/usr/bin/google-chrome"));
+        assert_eq!(
+            message.as_deref(),
+            Some("Chrome 138 — /usr/bin/google-chrome")
+        );
+    }
+
+    #[tokio::test]
+    async fn browser_binary_verified_shows_fallback_when_version_undetected() {
+        // Given a DiscordStatusActor.
+        let harness = TestHarness::new().await;
+        let state = State::new(AppState::default());
+        spawn_actor(&harness, state.clone()).await;
+
+        // When publishing BrowserBinaryVerified with no detected version.
+        harness
+            .publish(BrowserBinaryVerified {
+                path: std::path::PathBuf::from("/usr/bin/chromium"),
+                version_major: None,
+            })
+            .await;
+
+        // Then the dashboard shows the fallback Chrome version so the displayed
+        // version matches the UA the fetcher actually sends.
+        tokio::time::sleep(std::time::Duration::from_millis(50)).await;
+        let (_, message, _) =
+            dashboard_entry(&state, "web-fetch-browser").expect("entry should exist");
+        let expected = format!(
+            "Chrome {} (version undetected) — /usr/bin/chromium",
+            jinn_web_fetch::stealth::CHROME_MAJOR
+        );
+        assert_eq!(message.as_deref(), Some(expected.as_str()));
     }
 
     #[tokio::test]
