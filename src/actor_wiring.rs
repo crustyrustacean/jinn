@@ -867,6 +867,7 @@ jinn_domain::feat::preferences_actor::preferences_actor::PreferencesActor::super
                 jinn_domain::feat::provider::provider_actor::ProviderActorDeps {
                     state: state.clone(),
                     deps: actor_deps.clone(),
+                    cap: jinn_domain::common::tcaps::mint::mint_provider_cap(),
                 },
             )
             .restart_policy(kameo::supervision::RestartPolicy::Never)

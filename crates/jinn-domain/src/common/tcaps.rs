@@ -8,3 +8,4 @@
 //! caps are constructed.
 
 pub mod mint;
+pub mod provider;
