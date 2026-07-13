@@ -46,10 +46,10 @@ pub fn handle_open_picker(state: &mut AppState, kind: PickerKind) -> IntentResul
             // Derive alloy mode from the active session's model selection:
             // an existing Alloy opens in alloy mode (with members pre-checked
             // by the loader), anything else opens in single mode.
-            state.provider.alloy_mode = matches!(
+            state.provider.set_alloy_mode(matches!(
                 state.active_session().profile().model,
                 ModelSelection::Alloy { .. }
-            );
+            ));
         }
         PickerKind::Session => {
             state.frontend.session_picker_mut().reset();
@@ -390,7 +390,7 @@ fn confirm_provider(state: &mut AppState) -> IntentResult {
 /// Alloy mode: the checked set union the highlight (deduped); one model -> `Single`,
 /// two or more -> `Alloy`.
 fn resolve_provider_selection(provider: &ProviderState, highlighted: String) -> ModelSelection {
-    if !provider.alloy_mode {
+    if !provider.is_alloy_mode() {
         return ModelSelection::Single(highlighted);
     }
     let mut models: Vec<String> = provider
@@ -426,12 +426,12 @@ fn confirm_persona(state: &mut AppState) -> IntentResult {
     // Find the matching persona and set it as active.
     let persona = state
         .context
-        .personas
+        .personas()
         .iter()
         .find(|p| p.name == persona_name)
         .cloned();
     if let Some(p) = persona {
-        state.context.active_persona = Some(p);
+        state.context.set_active_persona(Some(p));
     }
 
     // Also update the active session's persona binding.
@@ -849,7 +849,7 @@ pub fn handle_skill_toggle(state: &mut AppState) -> IntentResult {
 /// user can toggle several adjacent entries without losing their place.
 pub fn handle_model_toggle(state: &mut AppState) -> IntentResult {
     // No-op outside alloy mode: single mode never builds checkmarks.
-    if !state.provider.alloy_mode {
+    if !state.provider.is_alloy_mode() {
         return IntentResult::empty();
     }
     state.provider.provider_picker.with_selected_mut(|entry| {
@@ -869,9 +869,9 @@ pub fn handle_model_toggle(state: &mut AppState) -> IntentResult {
 /// cleared. Either way the list is re-sorted so checked entries float to the top.
 pub fn handle_toggle_alloy_mode(state: &mut AppState) -> IntentResult {
     // Flip first, then branch on the resulting (target) state.
-    state.provider.alloy_mode = !state.provider.alloy_mode;
+    let now_alloy = state.provider.toggle_alloy_mode();
 
-    if state.provider.alloy_mode {
+    if now_alloy {
         // Entered alloy mode: pre-check the current session model's entries,
         // so editing an existing alloy only requires swapping members.
         let model_selection = state.active_session().profile().model.clone();

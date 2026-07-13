@@ -166,10 +166,9 @@ impl PluginDispatchActor {
                 tracing::warn!(session_id = %session_id, "session not found for attach");
                 return;
             };
-            session.core.attached_plugins.push(new_instance);
+            session.attach_plugin(new_instance);
             session
-                .core
-                .attached_plugins
+                .attached_plugins()
                 .iter()
                 .map(|p| (p.instance_id.clone(), p.name.clone()))
                 .collect()
@@ -540,7 +539,7 @@ impl PluginDispatchActor {
             if let Some(parent) = state
                 .session
                 .get(session_id)
-                .and_then(|s| s.core.parent_session.clone())
+                .and_then(|s| s.parent_session().clone())
                 && let Some(obj) = ctx_json.as_object_mut()
             {
                 obj.insert(

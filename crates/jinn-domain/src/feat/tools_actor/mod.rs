@@ -671,7 +671,7 @@ impl ToolOrchestratorActor {
             let s = self.state.read();
             s.session
                 .get(&sid)
-                .and_then(|sess| sess.core.parent_session.clone())
+                .and_then(|sess| sess.parent_session().clone())
         };
 
         let call_id = tool_call.id.clone();

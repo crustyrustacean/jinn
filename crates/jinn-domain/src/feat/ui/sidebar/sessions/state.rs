@@ -268,7 +268,7 @@ fn insert_plugin_entries(state: &AppState, entries: &mut Vec<SessionEntry>) {
             continue;
         };
 
-        let plugins = session.core.attached_plugins.clone();
+        let plugins = session.attached_plugins().to_vec();
         if !plugins.is_empty() {
             insertions.push((subtree_end, session_id, plugins));
         }

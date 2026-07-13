@@ -19,7 +19,6 @@ use crate::feat::chat_input::protocol::command::EnqueueUserMessage;
 use crate::feat::context::assemble::AssemblyOverrides;
 use crate::feat::session::chat_entry::ChatEntry;
 use crate::feat::session::chat_session::ChatSessionState;
-use crate::feat::session::chat_session::SessionCoreEphemeral;
 use crate::feat::session::model_selection::ModelSelection;
 use crate::protocol::SessionId;
 use jinn_provider::ToolDefinition;
@@ -125,10 +124,7 @@ impl DomainNodeContext {
         inherit_tools: bool,
         tools: &[String],
     ) -> SessionId {
-        let mut session = ChatSessionState::default();
-        session.core.parent_session = Some(parent_session_id.clone());
-        session.core.is_automated = automated;
-        session.core.persist = persist;
+        let mut session = ChatSessionState::new_child(parent_session_id, automated, persist);
 
         // Inherit the parent session's model so the child can send to the LLM provider.
         if let Some(model) = self
@@ -297,18 +293,13 @@ impl DomainNodeContext {
             skip_context_files: true,
         };
 
-        // 3. Generate new session ID (clone must NOT share ID with source)
-        session.core.session_id = SessionId::new();
 
-        // 4. Mark as plugin session, reset ephemeral
-        session.core.is_automated = true;
-        session.core.ephemeral = SessionCoreEphemeral::default();
-        session.core.assembly_overrides = Some(overrides);
-        session.core.parent_session = Some(source_session_id.clone());
+        // 4. Mark as plugin session, reset ephemeral, attach overrides, set parent.
+        session.into_automated_clone(source_session_id, overrides);
 
         // 5. Resolve model
         let model = provider_id.map_or_else(
-            || session.core.profile.model.clone(),
+            || session.model().clone(),
             ModelSelection::from_single,
         );
         session.set_model(model);
@@ -371,13 +362,10 @@ impl DomainNodeContext {
             let s = guard.session.get(source_session_id).ok_or_else(|| {
                 Report::new(DomainContextError).attach("source session not found")
             })?;
-            s.core.profile.model.clone()
+            s.model().clone()
         };
 
-        // 2. Build a FRESH minimal session (default SessionCore, empty history).
-        let mut session = ChatSessionState::default();
-
-        // 3. History-less overrides: custom system prompt, no skills/context files.
+        // 2. History-less overrides: custom system prompt, no skills/context files.
         //    Tools branch on `disable_tool_loop`: an empty vec forces no tools and
         //    pairs with `set_tool_loop_disabled` (step 4a); `None` lets assembly
         //    inherit the full global catalog, same as a normal session.
@@ -389,14 +377,12 @@ impl DomainNodeContext {
             skip_context_files: true,
         };
 
-        // 4. New session ID; mark automated; inherit provider+model; record parent;
-        //    honor the caller's persistence intent.
-        session.core.session_id = SessionId::new();
-        session.core.is_automated = true;
-        session.core.persist = persist;
-        session.core.ephemeral = SessionCoreEphemeral::default();
-        session.core.assembly_overrides = Some(overrides);
-        session.core.parent_session = Some(source_session_id.clone());
+        // 3. Build a fresh history-less child with the assembly overrides.
+        let mut session = ChatSessionState::new_historyless_child(
+            source_session_id,
+            persist,
+            overrides,
+        );
         session.set_model(provider_model);
 
         // 4a. When the caller disables the tool loop, set the machine flag so a
