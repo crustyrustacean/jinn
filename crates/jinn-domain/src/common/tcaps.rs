@@ -13,3 +13,9 @@ pub mod frontend;
 pub mod mint;
 pub mod provider;
 pub mod session;
+
+pub use context::ContextCap;
+pub use discovered_plugins::DiscoveredPluginsCap;
+pub use frontend::FrontendCap;
+pub use provider::ProviderCap;
+pub use session::SessionCap;

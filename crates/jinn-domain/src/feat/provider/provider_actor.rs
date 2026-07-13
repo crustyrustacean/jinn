@@ -21,6 +21,7 @@ use std::convert::Infallible;
 use crate::common::actor_deps::{ActorDeps, BusPublish};
 use crate::common::state::State;
 use crate::common::tcaps::provider::{ModelCacheWrite, ProviderCap};
+use crate::common::tcaps::session::SessionCap;
 use crate::feat::provider::protocol::command::{
     LoadCompactionModelPickerEntries, LoadProviderPickerEntries, LoadReasoningEffortPickerEntries,
     ProviderSwitch,
@@ -46,6 +47,9 @@ pub struct ProviderActor {
     deps: ActorDeps,
     /// Authority to write [`ProviderState`] via [`State::with_provider`].
     cap: ProviderCap,
+    /// Authority to write the session model ([`SessionCap`]) — used by
+    /// `handle_provider_switch` to set the session's active model.
+    session_cap: SessionCap,
 }
 
 /// Dependencies for [`ProviderActor`].
@@ -55,8 +59,9 @@ pub struct ProviderActorDeps {
     pub state: State,
     /// Actor dependencies (services including bus).
     pub deps: ActorDeps,
-    /// Authority to write [`ProviderState`] via [`State::with_provider`].
     pub cap: ProviderCap,
+    /// Authority to write the session model.
+    pub session_cap: SessionCap,
 }
 
 impl Actor for ProviderActor {
@@ -79,6 +84,7 @@ impl Actor for ProviderActor {
             state: args.state,
             deps: args.deps,
             cap: args.cap,
+            session_cap: args.session_cap,
         })
     }
 }
@@ -163,12 +169,12 @@ impl BusPublish for ProviderActor {
 impl ProviderActor {
     /// ProviderSwitch: update session profile and emit ProviderSwitched event.
     fn handle_provider_switch(&self, payload: &ProviderSwitch) {
-        {
-            let mut state = self.state.write();
-            state
-                .session_mut_or_create(&payload.session_id)
+        self.state.with_session(&self.session_cap, |view| {
+            view.session
+                .map()
+                .get_or_create(&payload.session_id)
                 .set_model(payload.provider_id.clone());
-        }
+        });
     }
 
     /// ModelsRefreshed: update model cache and reload provider picker entries.
@@ -300,6 +306,7 @@ mod tests {
                 deps,
                 state: state.clone(),
                 cap: crate::common::tcaps::mint::mint_provider_cap(),
+                session_cap: crate::common::tcaps::mint::mint_session_cap(),
             })
             .await;
     }

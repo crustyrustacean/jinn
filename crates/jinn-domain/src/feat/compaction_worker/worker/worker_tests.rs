@@ -110,7 +110,7 @@ fn test_worker(summary_text: &str) -> CompactionWorker {
         )))
         .build();
     let handle = services.handle.clone();
-    CompactionWorker::new(services, handle, State::new(AppState::default()))
+    CompactionWorker::new(services, handle, State::new(AppState::default()), crate::common::tcaps::mint::mint_session_cap())
 }
 
 /// Create a `CompactionWorker` backed by a fake LLM, with state containing
@@ -138,7 +138,7 @@ fn test_worker_with_session(
         .build();
     let handle = services.handle.clone();
 
-    let worker = CompactionWorker::new(services, handle, state);
+    let worker = CompactionWorker::new(services, handle, state, crate::common::tcaps::mint::mint_session_cap());
 
     (worker, session_id)
 }
@@ -518,7 +518,7 @@ fn session_continues_after_background_compaction() {
         .expect("save test prefs");
     let handle = services.handle.clone();
 
-    let worker = CompactionWorker::new(services, handle, state);
+    let worker = CompactionWorker::new(services, handle, state, crate::common::tcaps::mint::mint_session_cap());
 
     // When evaluating compaction for the session.
     let rt = tokio::runtime::Runtime::new().expect("test runtime");
@@ -654,7 +654,7 @@ impl ThresholdTestEnv {
             .save(&prefs)
             .expect("save test prefs");
         let handle = services.handle.clone();
-        CompactionWorker::new(services, handle, self.state.clone())
+        CompactionWorker::new(services, handle, self.state.clone(), crate::common::tcaps::mint::mint_session_cap())
     }
 
     /// Run evaluate (auto-compaction path) and return mutations.
@@ -1146,7 +1146,7 @@ fn gate_passes_but_nothing_to_compact_with_empty_history() {
         .save(&prefs)
         .expect("save test prefs");
     let handle = services.handle.clone();
-    let worker = CompactionWorker::new(services, handle, state);
+    let worker = CompactionWorker::new(services, handle, state, crate::common::tcaps::mint::mint_session_cap());
 
     let rt = tokio::runtime::Runtime::new().expect("test runtime");
     let mutations = rt.block_on(async { worker.evaluate(&session_id, Arc::from([])).await });
@@ -1434,7 +1434,7 @@ fn error_clears_flag_and_allows_retry() {
         app.provider.model_cache = Some(model_cache_with("provider", "model-200k", 200_000));
     }
 
-    let worker = CompactionWorker::new(services, handle, state);
+    let worker = CompactionWorker::new(services, handle, state, crate::common::tcaps::mint::mint_session_cap());
 
     // When evaluating (LLM will fail).
     let rt = tokio::runtime::Runtime::new().expect("test runtime");
