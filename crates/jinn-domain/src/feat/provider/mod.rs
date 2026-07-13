@@ -65,6 +65,19 @@ impl Default for ProviderState {
     }
 }
 
+impl ProviderState {
+    /// Set whether the provider picker is in alloy-selection mode.
+    pub fn set_alloy_mode(&mut self, on: bool) {
+        self.alloy_mode = on;
+    }
+
+    /// Flip alloy-selection mode and return the new state.
+    pub fn toggle_alloy_mode(&mut self) -> bool {
+        self.alloy_mode = !self.alloy_mode;
+        self.alloy_mode
+    }
+}
+
 /// Register provider UI elements.
 pub fn register(registry: &mut AppUiRegistry) {
     registry.register(Box::new(StreamingIndicatorElement::new()));

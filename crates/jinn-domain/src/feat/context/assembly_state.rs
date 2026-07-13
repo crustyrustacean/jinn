@@ -72,4 +72,14 @@ impl ContextAssemblyState {
         }
         tools
     }
+
+    /// Set the active persona.
+    pub fn set_active_persona(&mut self, persona: Option<Persona>) {
+        self.active_persona = persona;
+    }
+
+    /// Replace the full persona list.
+    pub fn set_personas(&mut self, personas: Vec<Persona>) {
+        self.personas = personas;
+    }
 }
