@@ -15,6 +15,9 @@ pub mod mint;
 pub mod provider;
 pub mod session;
 
+#[cfg(test)]
+mod tests;
+
 pub use context::ContextCap;
 pub use discovered_plugins::DiscoveredPluginsCap;
 pub use frontend::FrontendCap;
