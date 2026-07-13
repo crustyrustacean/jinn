@@ -23,44 +23,52 @@ impl SessionPersistenceActor {
         payload: &SessionLoadCompleted,
     ) {
         let session_id = payload.session.session_id().clone();
-        let original_cwd;
+        let mut original_cwd = std::path::PathBuf::new();
 
         {
-            let mut state = self.state.write();
-            let loaded = payload.session.clone();
-
             // Restore model - fallback to config if not in payload (old session migration).
-            let model = if loaded.model_selection().is_no_provider() {
-                state
+            let model = if payload.session.model_selection().is_no_provider() {
+                self.state
+                    .read()
                     .frontend
                     .app_state
                     .last_model
                     .clone()
                     .unwrap_or_default()
             } else {
-                loaded.model_selection().clone()
+                payload.session.model_selection().clone()
             };
 
             // Insert loaded session into HashMap.
-            state.session.insert(loaded);
+            self.state.with_session(&self.cap, |view| {
+                let session_map = view.session.map();
+                session_map.insert(payload.session.clone());
+            });
 
-            // Clear stale visual-parent entries that bypass this session.
-            crate::feat::ui::sidebar::sessions::clear_visual_parents_on_load(
-                &mut state,
-                &session_id,
-            );
+            // TODO(tcaps): This writes to `frontend.sessions_section` (not session),
+            // so it cannot use SessionCap. Migrate to FrontendCap when frontend capsule is built.
+            {
+                let mut state = self.state.write();
+                crate::feat::ui::sidebar::sessions::clear_visual_parents_on_load(
+                    &mut state,
+                    &session_id,
+                );
+            }
 
-            #[expect(clippy::expect_used, reason = "just inserted into sessions map above")]
-            let session = state.session.get_mut(&session_id).expect("just inserted");
-            session.set_model(model);
-            // Mark loaded session as interacted - it came from disk (already persisted).
-            session.mark_interacted();
+            self.state.with_session(&self.cap, |view| {
+                let session_map = view.session.map();
+                #[expect(clippy::expect_used, reason = "just inserted into sessions map above")]
+                let session = session_map.get_mut(&session_id).expect("just inserted");
+                session.set_model(model);
+                // Mark loaded session as interacted - it came from disk (already persisted).
+                session.mark_interacted();
 
-            // Read cwd before releasing the lock (for async existence check).
-            original_cwd = session.cwd().to_owned();
+                // Read cwd before releasing the lock (for async existence check).
+                original_cwd = session.cwd().to_owned();
 
-            state.session.set_active(session_id.clone());
-            state.session.clear_load();
+                session_map.set_active(session_id.clone());
+                session_map.clear_load();
+            });
         }
 
         // Re-register attached plugins for the loaded session.
@@ -76,15 +84,16 @@ impl SessionPersistenceActor {
                 let state = self.state.read();
                 state.session.default_cwd().clone()
             };
-            let mut state = self.state.write();
-            #[expect(clippy::expect_used, reason = "just inserted into sessions map above")]
-            let session = state.session.get_mut(&session_id).expect("just inserted");
-            session.push_entry(ChatEntry::system(format!(
-                "Warning: working directory '{}' not found, falling back to '{}'",
-                original_cwd.display(),
-                default_cwd.display()
-            )));
-            session.set_cwd(default_cwd);
+            self.state.with_session(&self.cap, |view| {
+                #[expect(clippy::expect_used, reason = "just inserted into sessions map above")]
+                let session = view.session.map().get_mut(&session_id).expect("just inserted");
+                session.push_entry(ChatEntry::system(format!(
+                    "Warning: working directory '{}' not found, falling back to '{}'",
+                    original_cwd.display(),
+                    default_cwd.display()
+                )));
+                session.set_cwd(default_cwd);
+            });
         }
 
         // Notify other actors that the active session changed.
@@ -113,15 +122,16 @@ impl SessionPersistenceActor {
         &self,
         session_id: &crate::protocol::SessionId,
     ) {
-        let mut state = self.state.write();
-        let Some(session) = state.session.get_mut(session_id) else {
-            return;
-        };
-        for ap in &mut session.core.attached_plugins {
-            if matches!(ap.run_state, jinn_core_types::PluginRunState::Running) {
-                ap.run_state = jinn_core_types::PluginRunState::Idle;
+        self.state.with_session(&self.cap, |view| {
+            let Some(session) = view.session.map().get_mut(session_id) else {
+                return;
+            };
+            for ap in &mut session.core.attached_plugins {
+                if matches!(ap.run_state, jinn_core_types::PluginRunState::Running) {
+                    ap.run_state = jinn_core_types::PluginRunState::Idle;
+                }
             }
-        }
+        });
     }
 
     /// SessionForkRequested: fork the session in SQLite, then load the new session.
@@ -145,8 +155,7 @@ impl SessionPersistenceActor {
             Err(e) => {
                 tracing::warn!(err = ?e, "failed to fork session");
                 // Clear loading state.
-                let mut state = self.state.write();
-                state.session.clear_load();
+                self.state.with_session(&self.cap, |view| view.session.map().clear_load());
                 return;
             }
         };
@@ -171,13 +180,11 @@ impl SessionPersistenceActor {
             }
             Ok(None) => {
                 tracing::warn!("forked session not found after creation");
-                let mut state = self.state.write();
-                state.session.clear_load();
+                self.state.with_session(&self.cap, |view| view.session.map().clear_load());
             }
             Err(e) => {
                 tracing::warn!(err = ?e, "failed to load forked session");
-                let mut state = self.state.write();
-                state.session.clear_load();
+                self.state.with_session(&self.cap, |view| view.session.map().clear_load());
             }
         }
     }
