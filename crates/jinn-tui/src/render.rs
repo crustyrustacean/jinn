@@ -33,10 +33,7 @@ pub fn render(app: &mut TuiApp, frame: &mut Frame<'_>) {
     let state = app.core.state.read();
     let ctx = RenderCtx::new(&state).with_plugins(&app.plugins);
 
-    let is_dashboard = matches!(
-        state.frontend.scope_stack.base(),
-        FocusScope::Dashboard,
-    );
+    let is_dashboard = matches!(state.frontend.scope_stack.base(), FocusScope::Dashboard,);
     let layout = AppFrameLayout::new(
         area,
         state.active_chat_input().visual_line_count() as u16,
@@ -86,10 +83,7 @@ fn apply_pre_render_mutation(app: &mut TuiApp, area: Rect) {
     );
     match &pre_layout {
         AppFrameLayout::Dashboard(dash) => {
-            wstate
-                .frontend
-                .dashboard
-                .clamp_scroll(dash.content.height);
+            wstate.frontend.dashboard.clamp_scroll(dash.content.height);
         }
         AppFrameLayout::Chat(chat) => {
             let text_width = chat.main.width.saturating_sub(2) as usize;
