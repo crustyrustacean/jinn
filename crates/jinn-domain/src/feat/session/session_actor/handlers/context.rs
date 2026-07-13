@@ -445,7 +445,7 @@ mod tests {
         // Given a session actor with active persona "learning-tutor".
         let (actor, state, _audit) = create_actor().await;
         {
-            let mut guard = state.write_test();
+            let mut guard = state.write_test_no_cap();
             guard
                 .context
                 .set_active_persona(Some(make_persona("learning-tutor")));
@@ -476,7 +476,7 @@ mod tests {
         // Given a session actor where active persona "foo" was deleted from disk.
         let (actor, state, _audit) = create_actor().await;
         {
-            let mut guard = state.write_test();
+            let mut guard = state.write_test_no_cap();
             guard.context.set_active_persona(Some(make_persona("foo")));
         }
         let personas = vec![make_persona("coding-assistant")];
@@ -524,7 +524,7 @@ mod tests {
         // Given a session actor with some active persona.
         let (actor, state, _audit) = create_actor().await;
         {
-            let mut guard = state.write_test();
+            let mut guard = state.write_test_no_cap();
             guard.context.set_active_persona(Some(make_persona("foo")));
         }
         let payload = PersonasLoaded {
@@ -547,7 +547,7 @@ mod tests {
         // (the value that on_environment_loaded seeds from state.toml at startup).
         let (actor, state, _audit) = create_actor().await;
         {
-            let mut guard = state.write_test();
+            let mut guard = state.write_test_no_cap();
             guard.frontend.app_state.persona_name = Some("general".to_owned());
         }
         let payload = PersonasLoaded {
@@ -572,7 +572,7 @@ mod tests {
         // Given a session with a user entry.
         let (actor, state, audit) = create_actor().await;
         let entry_id = {
-            let mut guard = state.write_test();
+            let mut guard = state.write_test_no_cap();
             let session = guard.active_session_mut();
             let entry = crate::protocol::ChatEntry::user("hello");
             let id = entry.id.clone();
@@ -614,7 +614,7 @@ mod tests {
         // Given a session with a pinned entry.
         let (actor, state, audit) = create_actor().await;
         let entry_id = {
-            let mut guard = state.write_test();
+            let mut guard = state.write_test_no_cap();
             let session = guard.active_session_mut();
             let mut entry = crate::protocol::ChatEntry::user("hello");
             entry.pin_position = Some(PinPosition::Top);
@@ -653,7 +653,7 @@ mod tests {
     /// Pushes `n` pinned entries (all `Top`, so display order = insertion order)
     /// into the active session and returns their IDs in insertion order.
     fn push_pinned_entries(state: &State, n: usize) -> Vec<ChatEntryId> {
-        let mut guard = state.write_test();
+        let mut guard = state.write_test_no_cap();
         let session = guard.active_session_mut();
         (0..n)
             .map(|i| {
@@ -674,7 +674,7 @@ mod tests {
         let ids = push_pinned_entries(&state, 3);
         let session_id = state.read().session.active_session_id().clone();
         state
-            .write_test()
+            .write_test_no_cap()
             .frontend
             .pins
             .select_by_id(ids[0].clone());
@@ -702,7 +702,7 @@ mod tests {
         let ids = push_pinned_entries(&state, 3);
         let session_id = state.read().session.active_session_id().clone();
         state
-            .write_test()
+            .write_test_no_cap()
             .frontend
             .pins
             .select_by_id(ids[1].clone());
@@ -731,7 +731,7 @@ mod tests {
         let session_id = state.read().session.active_session_id().clone();
         let selected = ids[1].clone();
         state
-            .write_test()
+            .write_test_no_cap()
             .frontend
             .pins
             .select_by_id(selected.clone());
@@ -759,7 +759,7 @@ mod tests {
         let ids = push_pinned_entries(&state, 3);
         let session_id = state.read().session.active_session_id().clone();
         state
-            .write_test()
+            .write_test_no_cap()
             .frontend
             .pins
             .select_by_id(ids[2].clone());
@@ -787,7 +787,7 @@ mod tests {
         let ids = push_pinned_entries(&state, 1);
         let session_id = state.read().session.active_session_id().clone();
         state
-            .write_test()
+            .write_test_no_cap()
             .frontend
             .pins
             .select_by_id(ids[0].clone());
@@ -812,7 +812,7 @@ mod tests {
         let ids = push_pinned_entries(&state, 3);
         let selected = ids[1].clone();
         state
-            .write_test()
+            .write_test_no_cap()
             .frontend
             .pins
             .select_by_id(selected.clone());
@@ -838,7 +838,7 @@ mod tests {
         // Given a session actor with personas loaded.
         let (actor, state, _audit) = create_actor().await;
         {
-            let mut guard = state.write_test();
+            let mut guard = state.write_test_no_cap();
             guard.context.set_personas(vec![
                 make_persona("coding-assistant"),
                 make_persona("learning-tutor"),

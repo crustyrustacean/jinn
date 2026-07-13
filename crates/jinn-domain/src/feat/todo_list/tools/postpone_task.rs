@@ -211,7 +211,7 @@ mod tests {
             r.session.active_session_id().clone()
         };
         let (p1, t1, p2, t2) = {
-            let mut w = state.write_test();
+            let mut w = state.write_test_no_cap();
             let session = w.session_mut(&session_id);
             let p1 = session.task_list_mut().add_phase("Research");
             let t1 = session

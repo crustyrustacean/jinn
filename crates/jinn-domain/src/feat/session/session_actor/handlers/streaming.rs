@@ -449,7 +449,7 @@ mod tests {
     async fn on_stream_completed_error_stops_streaming() {
         let (actor, _audit) = test_actor_recording().await;
         let session_id = {
-            let mut state = actor.state.write_test();
+            let mut state = actor.state.write_test_no_cap();
             let session = state.active_session_mut();
             session.begin_streaming();
             state.session.active_session_id().clone()
@@ -477,7 +477,7 @@ mod tests {
     async fn on_stream_completed_error_reason_drains_queue_to_input_buffer() {
         let (actor, _audit) = test_actor_recording().await;
         let session_id = {
-            let mut state = actor.state.write_test();
+            let mut state = actor.state.write_test_no_cap();
             let session = state.active_session_mut();
             session.begin_streaming();
             session.enqueue(crate::feat::session::queue_item::QueueItem::UserMessage(
@@ -509,7 +509,7 @@ mod tests {
     async fn on_stream_completed_error_with_multiple_queued_messages_joins_with_newline() {
         let (actor, _audit) = test_actor_recording().await;
         let session_id = {
-            let mut state = actor.state.write_test();
+            let mut state = actor.state.write_test_no_cap();
             let session = state.active_session_mut();
             session.begin_streaming();
             session.enqueue(crate::feat::session::queue_item::QueueItem::UserMessage(
@@ -544,7 +544,7 @@ mod tests {
     async fn on_stream_completed_canceled_reason_drains_queue_to_input_buffer() {
         let (actor, _audit) = test_actor_recording().await;
         let session_id = {
-            let mut state = actor.state.write_test();
+            let mut state = actor.state.write_test_no_cap();
             let session = state.active_session_mut();
             session.begin_streaming();
             session.enqueue(crate::feat::session::queue_item::QueueItem::UserMessage(
@@ -576,7 +576,7 @@ mod tests {
     async fn on_stream_completed_finished_emits_history_appended() {
         let (actor, audit) = test_actor_recording().await;
         let session_id = {
-            let mut state = actor.state.write_test();
+            let mut state = actor.state.write_test_no_cap();
             let session = state.active_session_mut();
             session.push_entry(ChatEntry::user("hello"));
             session.begin_streaming();
@@ -606,7 +606,7 @@ mod tests {
     async fn on_stream_completed_error_emits_history_appended() {
         let (actor, audit) = test_actor_recording().await;
         let session_id = {
-            let mut state = actor.state.write_test();
+            let mut state = actor.state.write_test_no_cap();
             let session = state.active_session_mut();
             session.push_entry(ChatEntry::user("hello"));
             session.begin_streaming();
@@ -636,7 +636,7 @@ mod tests {
     async fn on_stream_completed_canceled_emits_history_appended() {
         let (actor, audit) = test_actor_recording().await;
         let session_id = {
-            let mut state = actor.state.write_test();
+            let mut state = actor.state.write_test_no_cap();
             let session = state.active_session_mut();
             session.push_entry(ChatEntry::user("hello"));
             session.begin_streaming();
@@ -673,7 +673,7 @@ mod tests {
         // `Error("Cancelled")` entry by then.
         let (actor, audit) = test_actor_recording().await;
         let session_id = {
-            let mut state = actor.state.write_test();
+            let mut state = actor.state.write_test_no_cap();
             let session = state.active_session_mut();
             session.push_entry(ChatEntry::user("hello"));
             session.begin_streaming();
@@ -709,7 +709,7 @@ mod tests {
     async fn on_stream_completed_canceled_force_excludes_dangling_tool_calls() {
         let (actor, _audit) = test_actor_recording().await;
         let session_id = {
-            let mut state = actor.state.write_test();
+            let mut state = actor.state.write_test_no_cap();
             let session = state.active_session_mut();
             session.push_entry(ChatEntry::user("run it"));
             session.push_entry(ChatEntry::assistant(""));
@@ -756,7 +756,7 @@ mod tests {
     async fn on_stream_token_appends_text_to_assistant_entry() {
         let (actor, _audit) = test_actor_recording().await;
         let session_id = {
-            let mut state = actor.state.write_test();
+            let mut state = actor.state.write_test_no_cap();
             let session = state.active_session_mut();
             session.begin_streaming();
             state.session.active_session_id().clone()
@@ -799,7 +799,7 @@ mod tests {
         };
 
         {
-            let mut state = actor.state.write_test();
+            let mut state = actor.state.write_test_no_cap();
             state.active_session_mut().begin_streaming();
         }
         actor.on_stream_token(&StreamToken {
@@ -823,7 +823,7 @@ mod tests {
     async fn on_stream_token_corrects_sending_phase_to_streaming() {
         let (actor, _audit) = test_actor_recording().await;
         let session_id = {
-            let mut state = actor.state.write_test();
+            let mut state = actor.state.write_test_no_cap();
             let session = state.active_session_mut();
             session.push_entry(ChatEntry::user("go"));
             session.begin_sending();
@@ -851,7 +851,7 @@ mod tests {
     async fn on_stream_completed_finished_persists_session() {
         let (actor, store, _audit) = test_actor_with_store_recording(vec![]).await;
         let session_id = {
-            let mut state = actor.state.write_test();
+            let mut state = actor.state.write_test_no_cap();
             let session = state.active_session_mut();
             session.push_entry(ChatEntry::user("hello"));
             session.mark_interacted();
@@ -884,7 +884,7 @@ mod tests {
         // Given an interacted session in streaming state.
         let (actor, store, _audit) = test_actor_with_store_recording(vec![]).await;
         let session_id = {
-            let mut state = actor.state.write_test();
+            let mut state = actor.state.write_test_no_cap();
             let session = state.active_session_mut();
             session.push_entry(ChatEntry::user("hello"));
             session.mark_interacted();
@@ -918,7 +918,7 @@ mod tests {
         // Given an interacted session in streaming state.
         let (actor, store, _audit) = test_actor_with_store_recording(vec![]).await;
         let session_id = {
-            let mut state = actor.state.write_test();
+            let mut state = actor.state.write_test_no_cap();
             let session = state.active_session_mut();
             session.push_entry(ChatEntry::user("hello"));
             session.mark_interacted();
@@ -951,7 +951,7 @@ mod tests {
     async fn on_stream_completed_does_not_count_tokens_on_error() {
         let (actor, _audit) = test_actor_recording().await;
         let session_id = {
-            let mut state = actor.state.write_test();
+            let mut state = actor.state.write_test_no_cap();
             let session = state.active_session_mut();
             session.push_token_record(TokenRecord {
                 model_used: None,
@@ -991,7 +991,7 @@ mod tests {
     async fn on_stream_completed_tool_use_preserves_assistant_entry() {
         let (actor, _audit) = test_actor_recording().await;
         let session_id = {
-            let mut state = actor.state.write_test();
+            let mut state = actor.state.write_test_no_cap();
             let session = state.active_session_mut();
             session.push_entry(ChatEntry::user("do something"));
             session.begin_streaming();
@@ -1038,7 +1038,7 @@ mod tests {
     async fn on_stream_completed_tool_use_counts_tool_call_arguments() {
         let (actor, _audit) = test_actor_recording().await;
         let session_id = {
-            let mut state = actor.state.write_test();
+            let mut state = actor.state.write_test_no_cap();
             let session = state.active_session_mut();
             session.push_token_record(TokenRecord {
                 model_used: None,
@@ -1083,7 +1083,7 @@ mod tests {
     async fn on_stream_completed_finished_preserves_assistant_entry() {
         let (actor, _audit) = test_actor_recording().await;
         let session_id = {
-            let mut state = actor.state.write_test();
+            let mut state = actor.state.write_test_no_cap();
             let session = state.active_session_mut();
             session.push_entry(ChatEntry::user("hello"));
             session.begin_streaming();
@@ -1126,7 +1126,7 @@ mod tests {
     async fn on_stream_completed_canceled_with_complete_tool_loop_does_not_exclude() {
         let (actor, _audit) = test_actor_recording().await;
         let session_id = {
-            let mut state = actor.state.write_test();
+            let mut state = actor.state.write_test_no_cap();
             let session = state.active_session_mut();
             session.push_entry(ChatEntry::user("run it"));
             session.push_entry(ChatEntry::assistant(""));
@@ -1170,7 +1170,7 @@ mod tests {
     async fn on_stream_completed_finished_without_auto_compaction_goes_to_idle() {
         let (actor, _audit) = test_actor_recording().await;
         let session_id = {
-            let mut state = actor.state.write_test();
+            let mut state = actor.state.write_test_no_cap();
             let session = state.active_session_mut();
             session.push_entry(ChatEntry::user("hello"));
             session.begin_streaming();
@@ -1203,7 +1203,7 @@ mod tests {
     async fn on_stream_completed_finished_applies_pending_mutations() {
         let (actor, audit) = test_actor_recording().await;
         let (entry_id, session_id) = {
-            let mut state = actor.state.write_test();
+            let mut state = actor.state.write_test_no_cap();
             let session = state.active_session_mut();
             session.push_entry(ChatEntry::user("hello"));
             let entry = ChatEntry::assistant("response");
@@ -1252,7 +1252,7 @@ mod tests {
     async fn on_stream_completed_error_applies_pending_mutations() {
         let (actor, _audit) = test_actor_recording().await;
         let (entry_id, session_id) = {
-            let mut state = actor.state.write_test();
+            let mut state = actor.state.write_test_no_cap();
             let session = state.active_session_mut();
             session.push_entry(ChatEntry::user("hello"));
             let entry = ChatEntry::assistant("partial");
@@ -1305,7 +1305,7 @@ mod tests {
         // Given a session in streaming state with pending mutations.
         let actor = test_actor().await;
         let (entry_id, session_id) = {
-            let mut state = actor.state.write_test();
+            let mut state = actor.state.write_test_no_cap();
             let session = state.active_session_mut();
             session.push_entry(ChatEntry::user("hello"));
             let entry = ChatEntry::assistant("partial");
@@ -1355,7 +1355,7 @@ mod tests {
     async fn on_stream_completed_tool_use_does_not_apply_mutations() {
         let (actor, _audit) = test_actor_recording().await;
         let (entry_id, session_id) = {
-            let mut state = actor.state.write_test();
+            let mut state = actor.state.write_test_no_cap();
             let session = state.active_session_mut();
             session.push_entry(ChatEntry::user("hello"));
             let entry = ChatEntry::assistant("checking");
@@ -1409,7 +1409,7 @@ mod tests {
     async fn on_stream_completed_provider_tokens_used_directly() {
         let (actor, _audit) = test_actor_recording().await;
         let session_id = {
-            let mut state = actor.state.write_test();
+            let mut state = actor.state.write_test_no_cap();
             let session = state.active_session_mut();
             session.push_token_record(TokenRecord {
                 timestamp: jiff::Timestamp::now(),
@@ -1444,7 +1444,7 @@ mod tests {
     async fn on_stream_completed_local_fallback_includes_thinking() {
         let (actor, _audit) = test_actor_recording().await;
         let session_id = {
-            let mut state = actor.state.write_test();
+            let mut state = actor.state.write_test_no_cap();
             let session = state.active_session_mut();
             session.push_token_record(TokenRecord {
                 timestamp: jiff::Timestamp::now(),
@@ -1483,7 +1483,7 @@ mod tests {
     async fn on_stream_completed_local_fallback_without_thinking_backward_compat() {
         let (actor, _audit) = test_actor_recording().await;
         let session_id = {
-            let mut state = actor.state.write_test();
+            let mut state = actor.state.write_test_no_cap();
             let session = state.active_session_mut();
             session.push_token_record(TokenRecord {
                 model_used: None,
@@ -1521,7 +1521,7 @@ mod tests {
     async fn on_stream_completed_provider_tokens_preferred_over_local() {
         let (actor, _audit) = test_actor_recording().await;
         let session_id = {
-            let mut state = actor.state.write_test();
+            let mut state = actor.state.write_test_no_cap();
             let session = state.active_session_mut();
             session.push_token_record(TokenRecord {
                 model_used: None,
@@ -1558,7 +1558,7 @@ mod tests {
     async fn on_stream_completed_takes_max_when_provider_undercounts() {
         let (actor, _audit) = test_actor_recording().await;
         let session_id = {
-            let mut state = actor.state.write_test();
+            let mut state = actor.state.write_test_no_cap();
             let session = state.active_session_mut();
             session.push_token_record(TokenRecord {
                 model_used: None,
@@ -1601,7 +1601,7 @@ mod tests {
     async fn on_stream_completed_takes_max_when_provider_overcounts() {
         let (actor, _audit) = test_actor_recording().await;
         let session_id = {
-            let mut state = actor.state.write_test();
+            let mut state = actor.state.write_test_no_cap();
             let session = state.active_session_mut();
             session.push_token_record(TokenRecord {
                 model_used: None,
@@ -1637,7 +1637,7 @@ mod tests {
         use crate::feat::context::strategy::token_estimator::TokenCounter;
         let (actor, _audit) = test_actor_recording().await;
         let session_id = {
-            let mut state = actor.state.write_test();
+            let mut state = actor.state.write_test_no_cap();
             let session = state.active_session_mut();
             session.push_token_record(TokenRecord {
                 model_used: None,
@@ -1679,7 +1679,7 @@ mod tests {
         let actor = test_actor().await;
         let dispatched = jiff::Timestamp::now();
         let session_id = {
-            let mut state = actor.state.write_test();
+            let mut state = actor.state.write_test_no_cap();
             let session = state.active_session_mut();
             session.begin_streaming();
             state.session.active_session_id().clone()
@@ -1722,7 +1722,7 @@ mod tests {
         let actor = test_actor().await;
         let dispatched = jiff::Timestamp::now();
         let session_id = {
-            let mut state = actor.state.write_test();
+            let mut state = actor.state.write_test_no_cap();
             let session = state.active_session_mut();
             session.begin_streaming();
             state.session.active_session_id().clone()
@@ -1765,7 +1765,7 @@ mod tests {
         let actor = test_actor().await;
         let dispatched = jiff::Timestamp::now();
         let session_id = {
-            let mut state = actor.state.write_test();
+            let mut state = actor.state.write_test_no_cap();
             let session = state.active_session_mut();
             session.begin_streaming();
             state.session.active_session_id().clone()
@@ -1817,7 +1817,7 @@ mod tests {
         let actor = test_actor().await;
         let dispatched = jiff::Timestamp::now();
         let session_id = {
-            let mut state = actor.state.write_test();
+            let mut state = actor.state.write_test_no_cap();
             let session = state.active_session_mut();
             session.begin_streaming();
             state.session.active_session_id().clone()
@@ -1864,7 +1864,7 @@ mod tests {
         let actor = test_actor().await;
         let dispatched = jiff::Timestamp::now();
         let session_id = {
-            let mut state = actor.state.write_test();
+            let mut state = actor.state.write_test_no_cap();
             let session = state.active_session_mut();
             session.begin_streaming();
             state.session.active_session_id().clone()
@@ -1931,7 +1931,7 @@ mod tests {
         let actor = test_actor().await;
         let dispatched = jiff::Timestamp::now();
         let session_id = {
-            let mut state = actor.state.write_test();
+            let mut state = actor.state.write_test_no_cap();
             let session = state.active_session_mut();
             session.begin_streaming();
             state.session.active_session_id().clone()
@@ -1983,7 +1983,7 @@ mod tests {
         let actor = test_actor().await;
         let dispatched = jiff::Timestamp::now();
         let session_id = {
-            let mut state = actor.state.write_test();
+            let mut state = actor.state.write_test_no_cap();
             let session = state.active_session_mut();
             session.begin_streaming();
             state.session.active_session_id().clone()
@@ -2042,7 +2042,7 @@ mod tests {
         let actor = test_actor().await;
         let dispatched = jiff::Timestamp::now();
         let session_id = {
-            let mut state = actor.state.write_test();
+            let mut state = actor.state.write_test_no_cap();
             let session = state.active_session_mut();
             session.begin_streaming();
             state.session.active_session_id().clone()
@@ -2311,7 +2311,7 @@ mod tests {
         // Given a streaming session with a current-generation dispatch timestamp.
         let (actor, _audit) = test_actor_recording().await;
         let session_id = {
-            let mut state = actor.state.write_test();
+            let mut state = actor.state.write_test_no_cap();
             let session = state.active_session_mut();
             session.begin_streaming();
             let now = jiff::Timestamp::now();
@@ -2356,7 +2356,7 @@ mod tests {
         // Given a session mid-stream with no buffered tool batch.
         let (actor, audit) = test_actor_recording().await;
         let session_id = {
-            let mut state = actor.state.write_test();
+            let mut state = actor.state.write_test_no_cap();
             let session = state.active_session_mut();
             session.push_entry(ChatEntry::user("hello"));
             session.begin_streaming();

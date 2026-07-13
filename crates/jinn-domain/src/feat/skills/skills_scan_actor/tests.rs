@@ -80,7 +80,7 @@ async fn scan_skills_command_writes_to_app_state() {
 
     let (harness, state, deps) = create_harness_with_paths(AppPaths::new_in(dir.path())).await;
     {
-        let mut guard = state.write_test();
+        let mut guard = state.write_test_no_cap();
         guard
             .session
             .active_session_mut()
@@ -113,7 +113,7 @@ async fn session_created_event_scans_skills() {
     let dir = skill_dir();
     let (harness, state, deps) = create_harness_with_paths(AppPaths::new_in(dir.path())).await;
     {
-        let mut guard = state.write_test();
+        let mut guard = state.write_test_no_cap();
         guard
             .session
             .active_session_mut()
@@ -168,7 +168,7 @@ async fn session_setup_completed_event_scans_skills() {
     let dir = skill_dir();
     let (harness, state, deps) = create_harness_with_paths(AppPaths::new_in(dir.path())).await;
     {
-        let mut guard = state.write_test();
+        let mut guard = state.write_test_no_cap();
         guard
             .session
             .active_session_mut()
@@ -202,7 +202,7 @@ async fn session_cwd_changed_event_scans_skills() {
     let dir = skill_dir();
     let (harness, state, deps) = create_harness_with_paths(AppPaths::new_in(dir.path())).await;
     {
-        let mut guard = state.write_test();
+        let mut guard = state.write_test_no_cap();
         guard
             .session
             .active_session_mut()
@@ -235,7 +235,7 @@ async fn environment_loaded_event_scans_active_session_skills() {
     let dir = skill_dir();
     let (harness, state, deps) = create_harness_with_paths(AppPaths::new_in(dir.path())).await;
     {
-        let mut guard = state.write_test();
+        let mut guard = state.write_test_no_cap();
         guard
             .session
             .active_session_mut()
@@ -272,7 +272,7 @@ async fn scan_skills_clears_skill_preview_cache() {
     let dir = tempfile::tempdir().expect("create temp dir");
     let (harness, state, deps) = create_harness_with_paths(AppPaths::new_in(dir.path())).await;
     {
-        let guard = state.write_test();
+        let guard = state.write_test_no_cap();
         guard.frontend.caches.skill_preview_cache.write().insert(
             "stale-skill".to_owned(),
             80,
@@ -363,7 +363,7 @@ async fn scan_skills_replacing_cwd_clears_previous_discovered_skills() {
     let state = State::new(AppState::default());
     let session_id = state.read().session.active_session_id().clone();
     {
-        let mut guard = state.write_test();
+        let mut guard = state.write_test_no_cap();
         guard
             .session
             .active_session_mut()
@@ -403,7 +403,7 @@ async fn scan_skills_replacing_cwd_clears_previous_discovered_skills() {
 
     // When the cwd changes to an empty dir and a second scan runs.
     {
-        let mut guard = state.write_test();
+        let mut guard = state.write_test_no_cap();
         guard
             .session
             .active_session_mut()
@@ -516,7 +516,7 @@ async fn scan_skills_discovers_ancestor_project_skill_from_nested_cwd() {
     let dir = tempfile::tempdir().expect("create temp dir for AppPaths");
     let state = State::new(AppState::default());
     {
-        let mut guard = state.write_test();
+        let mut guard = state.write_test_no_cap();
         guard.session.active_session_mut().set_cwd(subdir.clone());
     }
     let session_id = state.read().session.active_session_id().clone();
@@ -586,13 +586,13 @@ async fn scan_skills_routes_discovery_per_session_cwd() {
     // Session A: cwd = dir_a.
     let session_a = state.read().session.active_session_id().clone();
     {
-        let mut guard = state.write_test();
+        let mut guard = state.write_test_no_cap();
         guard.session.active_session_mut().set_cwd(dir_a.clone());
     }
     // Session B: create + set cwd = dir_b.
     let session_b = crate::SessionId::new();
     {
-        let mut guard = state.write_test();
+        let mut guard = state.write_test_no_cap();
         let s = guard.session.get_or_create(&session_b);
         s.set_cwd(dir_b.clone());
     }

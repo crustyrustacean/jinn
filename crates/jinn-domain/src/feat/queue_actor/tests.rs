@@ -66,7 +66,7 @@ async fn session_phase_changed_idle_pops_user_message_from_queue() {
     // Given a session with a queued user message in Idle phase.
     let th = QueueTestHarness::new().await;
     let session_id = {
-        let mut s = th.state.write_test();
+        let mut s = th.state.write_test_no_cap();
         let session = s.active_session_mut();
         session.enqueue(QueueItem::UserMessage(Box::new(ChatEntry::user(
             "queued message",
@@ -103,7 +103,7 @@ async fn session_phase_changed_non_idle_does_not_pop_queue() {
     // Given a session with a queued user message in non-Idle phase.
     let th = QueueTestHarness::new().await;
     let session_id = {
-        let mut s = th.state.write_test();
+        let mut s = th.state.write_test_no_cap();
         let session = s.active_session_mut();
         session.enqueue(QueueItem::UserMessage(Box::new(ChatEntry::user(
             "queued message",
@@ -166,7 +166,7 @@ async fn dispatch_user_message_emits_chat_entry_submitted() {
 
     // When dispatching a user message by publishing an Idle transition.
     {
-        let mut s = th.state.write_test();
+        let mut s = th.state.write_test_no_cap();
         s.active_session_mut()
             .enqueue(QueueItem::UserMessage(Box::new(ChatEntry::user("hello"))));
     }
@@ -193,7 +193,7 @@ async fn dispatch_user_message_sets_title_on_first_message() {
 
     // When dispatching a user message.
     {
-        let mut s = th.state.write_test();
+        let mut s = th.state.write_test_no_cap();
         s.active_session_mut()
             .enqueue(QueueItem::UserMessage(Box::new(ChatEntry::user(
                 "my new chat",
@@ -224,7 +224,7 @@ async fn dispatch_user_message_transitions_to_sending() {
 
     // When dispatching a user message.
     {
-        let mut s = th.state.write_test();
+        let mut s = th.state.write_test_no_cap();
         s.active_session_mut()
             .enqueue(QueueItem::UserMessage(Box::new(ChatEntry::user("hello"))));
     }
@@ -247,7 +247,7 @@ async fn dispatch_tool_continuation_emits_send_to_llm_provider() {
     // Given a session in Idle phase with history and a tool continuation queued.
     let th = QueueTestHarness::new().await;
     let session_id = {
-        let mut s = th.state.write_test();
+        let mut s = th.state.write_test_no_cap();
         let session = s.active_session_mut();
         session.push_entry(ChatEntry::user("previous message"));
         session.enqueue(QueueItem::ToolContinuation);
@@ -278,7 +278,7 @@ async fn dispatch_user_message_provider_id_is_none_when_no_provider() {
 
     // When dispatching a user message.
     {
-        let mut s = th.state.write_test();
+        let mut s = th.state.write_test_no_cap();
         s.active_session_mut()
             .enqueue(QueueItem::UserMessage(Box::new(ChatEntry::user("hello"))));
     }
@@ -304,7 +304,7 @@ async fn dispatch_user_message_provider_id_is_some_when_model_set() {
     // Given a session with an explicit model.
     let th = QueueTestHarness::new().await;
     let session_id = {
-        let mut s = th.state.write_test();
+        let mut s = th.state.write_test_no_cap();
         s.active_session_mut().set_model("my-model".to_owned());
         s.active_session_mut()
             .enqueue(QueueItem::UserMessage(Box::new(ChatEntry::user("hello"))));
@@ -334,7 +334,7 @@ async fn dispatch_tool_continuation_provider_id_is_none_when_no_provider() {
     // Given a session with the default model (NO_PROVIDER_ID) and history.
     let th = QueueTestHarness::new().await;
     let session_id = {
-        let mut s = th.state.write_test();
+        let mut s = th.state.write_test_no_cap();
         let session = s.active_session_mut();
         session.push_entry(ChatEntry::user("previous message"));
         session.enqueue(QueueItem::ToolContinuation);
@@ -364,7 +364,7 @@ async fn dispatch_tool_continuation_provider_id_is_some_when_model_set() {
     // Given a session with an explicit model and history.
     let th = QueueTestHarness::new().await;
     let session_id = {
-        let mut s = th.state.write_test();
+        let mut s = th.state.write_test_no_cap();
         let session = s.active_session_mut();
         session.push_entry(ChatEntry::user("previous message"));
         session.enqueue(QueueItem::ToolContinuation);
@@ -395,7 +395,7 @@ async fn dispatch_user_message_drains_steering_buffer_before_assembly() {
     // Given a session with a non-empty steering buffer and a queued user message.
     let th = QueueTestHarness::new().await;
     let session_id = {
-        let mut s = th.state.write_test();
+        let mut s = th.state.write_test_no_cap();
         let session = s.active_session_mut();
         session
             .steering_buffer_mut()
@@ -439,7 +439,7 @@ async fn dispatch_resume_drains_steering_buffer_before_assembly() {
     // Given a session with a non-empty steering buffer and a tool continuation queued.
     let th = QueueTestHarness::new().await;
     let session_id = {
-        let mut s = th.state.write_test();
+        let mut s = th.state.write_test_no_cap();
         let session = s.active_session_mut();
         session.push_entry(ChatEntry::user("previous"));
         session

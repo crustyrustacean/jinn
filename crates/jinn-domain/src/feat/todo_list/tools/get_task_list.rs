@@ -147,7 +147,7 @@ mod tests {
             r.session.active_session_id().clone()
         };
         {
-            let mut w = state.write_test();
+            let mut w = state.write_test_no_cap();
             let session = w.session_mut(&session_id);
             let pid = session.task_list_mut().add_phase("Build");
             session
@@ -178,7 +178,7 @@ mod tests {
             r.session.active_session_id().clone()
         };
         {
-            let mut w = state.write_test();
+            let mut w = state.write_test_no_cap();
             let session = w.session_mut(&session_id);
             let pid = session.task_list_mut().add_phase("Build");
             session

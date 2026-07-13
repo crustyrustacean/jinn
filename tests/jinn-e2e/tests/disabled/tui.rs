@@ -165,7 +165,7 @@ fn given_app_in_mode(world: &mut TuiWorld, mode: String) {
     let scope = match parse_mode(&mode) {
         jinn_domain::Mode::Normal => Scope::Normal,
         jinn_domain::Mode::Input => {
-            let mut state = world.app.core.state.write_test();
+            let mut state = world.app.core.state.write_test_no_cap();
             state
                 .frontend
                 .scope_stack
@@ -185,7 +185,7 @@ fn given_input_buffer_contains(world: &mut TuiWorld, text: String) {
         .app
         .core
         .state
-        .write_test()
+        .write_test_no_cap()
         .active_chat_input_mut()
         .replace_all(text.to_owned());
 }
@@ -197,7 +197,7 @@ fn given_active_provider_set(world: &mut TuiWorld) {
         .app
         .core
         .state
-        .write_test()
+        .write_test_no_cap()
         .active_session_mut()
         .set_model(ModelSelection::Single("test".to_owned()));
 }

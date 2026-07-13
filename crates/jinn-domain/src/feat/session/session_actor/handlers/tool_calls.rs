@@ -373,7 +373,7 @@ mod tests {
     async fn on_tool_batch_completed_emits_send_to_llm_provider() {
         let (actor, audit) = test_actor_recording().await;
         let session_id = {
-            let mut state = actor.state.write_test();
+            let mut state = actor.state.write_test_no_cap();
             let session = state.active_session_mut();
             session.push_entry(ChatEntry::user("list files"));
             session.push_entry(ChatEntry::assistant("checking"));
@@ -422,7 +422,7 @@ mod tests {
         let recorder = harness.spawn_recorder::<SendToLlmProvider>().await;
         let state = State::new(AppState::default());
         {
-            let mut s = state.write_test();
+            let mut s = state.write_test_no_cap();
             let session = s.active_session_mut();
             session.push_entry(ChatEntry::user("list files"));
             session.push_entry(ChatEntry::assistant("checking"));
@@ -507,7 +507,7 @@ mod tests {
         let session_id = state.read().session.active_session_id().clone();
         let dispatched_at = jiff::Timestamp::now();
         {
-            let mut s = state.write_test();
+            let mut s = state.write_test_no_cap();
             let session = s.active_session_mut();
             session.begin_streaming();
             // Simulate an already-finished tool batch racing ahead of
@@ -583,7 +583,7 @@ mod tests {
     async fn on_tool_batch_completed_transitions_session_to_sending() {
         let (actor, _audit) = test_actor_recording().await;
         let session_id = {
-            let mut state = actor.state.write_test();
+            let mut state = actor.state.write_test_no_cap();
             let session = state.active_session_mut();
             session.begin_streaming();
             session.finish_streaming(true, jiff::Timestamp::now());
@@ -607,7 +607,7 @@ mod tests {
         // Given a session in Streaming phase (StreamCompleted(ToolUse) not yet processed).
         let (actor, audit) = test_actor_recording().await;
         let session_id = {
-            let mut state = actor.state.write_test();
+            let mut state = actor.state.write_test_no_cap();
             let session = state.active_session_mut();
             session.begin_streaming();
             state.session.active_session_id().clone()
@@ -646,7 +646,7 @@ mod tests {
         // Given a Streaming session with a buffered ToolBatchCompleted.
         let (actor, audit) = test_actor_recording().await;
         let session_id = {
-            let mut state = actor.state.write_test();
+            let mut state = actor.state.write_test_no_cap();
             let session = state.active_session_mut();
             session.begin_streaming();
             session.core.ephemeral.pending_tool_batch = Some(vec![ToolResult {
@@ -692,7 +692,7 @@ mod tests {
     async fn on_stream_completed_tool_use_counts_tool_call_arguments() {
         let (actor, _audit) = test_actor_recording().await;
         let session_id = {
-            let mut state = actor.state.write_test();
+            let mut state = actor.state.write_test_no_cap();
             let session = state.active_session_mut();
             session.push_token_record(TokenRecord {
                 model_used: None,
@@ -737,7 +737,7 @@ mod tests {
     async fn on_tool_execution_completed_emits_history_appended() {
         let (actor, audit) = test_actor_recording().await;
         let session_id = {
-            let mut state = actor.state.write_test();
+            let mut state = actor.state.write_test_no_cap();
             let session = state.active_session_mut();
             session.push_entry(ChatEntry::user("run it"));
             session.push_entry(ChatEntry::tool_call(
@@ -774,7 +774,7 @@ mod tests {
         // Given a session driven to Idle via the cancel path.
         let (actor, audit) = test_actor_recording().await;
         let session_id = {
-            let mut state = actor.state.write_test();
+            let mut state = actor.state.write_test_no_cap();
             let session = state.active_session_mut();
             session.push_entry(ChatEntry::user("run it"));
             session.push_entry(ChatEntry::tool_call(
@@ -827,7 +827,7 @@ mod tests {
         // Given a session driven to Idle via the cancel path.
         let (actor, audit) = test_actor_recording().await;
         let session_id = {
-            let mut state = actor.state.write_test();
+            let mut state = actor.state.write_test_no_cap();
             let session = state.active_session_mut();
             session.push_entry(ChatEntry::user("run it"));
             session.push_entry(ChatEntry::tool_call(
@@ -878,7 +878,7 @@ mod tests {
     async fn on_tool_batch_completed_skips_send_when_tool_loop_disabled() {
         let (actor, audit) = test_actor_recording().await;
         let session_id = {
-            let mut state = actor.state.write_test();
+            let mut state = actor.state.write_test_no_cap();
             let session = state.active_session_mut();
             session.begin_streaming();
             session.finish_streaming(true, jiff::Timestamp::now());
@@ -915,7 +915,7 @@ mod tests {
         );
 
         drop(state);
-        let mut state = actor.state.write_test();
+        let mut state = actor.state.write_test_no_cap();
         let session = state.session_mut_or_create(&session_id);
         assert!(
             !session.take_tool_loop_disabled(),
@@ -927,7 +927,7 @@ mod tests {
     async fn on_tool_batch_completed_unaffected_without_tool_loop_disabled() {
         let (actor, audit) = test_actor_recording().await;
         let session_id = {
-            let mut state = actor.state.write_test();
+            let mut state = actor.state.write_test_no_cap();
             let session = state.active_session_mut();
             session.push_entry(ChatEntry::user("list files"));
             session.push_entry(ChatEntry::assistant("checking"));
@@ -963,7 +963,7 @@ mod tests {
     async fn on_tool_use_started_creates_tool_call_entry() {
         let (actor, _audit) = test_actor_recording().await;
         let session_id = {
-            let mut state = actor.state.write_test();
+            let mut state = actor.state.write_test_no_cap();
             let session = state.active_session_mut();
             session.begin_streaming();
             state.session.active_session_id().clone()
@@ -991,7 +991,7 @@ mod tests {
         // Given a session in streaming state.
         let actor = test_actor().await;
         let session_id = {
-            let mut state = actor.state.write_test();
+            let mut state = actor.state.write_test_no_cap();
             let session = state.active_session_mut();
             session.begin_streaming();
             state.session.active_session_id().clone()
@@ -1027,7 +1027,7 @@ mod tests {
     async fn on_tool_call_received_finalizes_arguments() {
         let (actor, _audit) = test_actor_recording().await;
         let session_id = {
-            let mut state = actor.state.write_test();
+            let mut state = actor.state.write_test_no_cap();
             let session = state.active_session_mut();
             session.begin_streaming();
             session.begin_tool_call(0, "tc-1", "bash", jiff::Timestamp::now());
@@ -1065,7 +1065,7 @@ mod tests {
     async fn on_tool_call_streaming_appends_delta() {
         let (actor, _audit) = test_actor_recording().await;
         let session_id = {
-            let mut state = actor.state.write_test();
+            let mut state = actor.state.write_test_no_cap();
             let session = state.active_session_mut();
             session.begin_streaming();
             session.begin_tool_call(0, "tc-1", "bash", jiff::Timestamp::now());
@@ -1099,7 +1099,7 @@ mod tests {
     async fn on_tool_execution_started_creates_pending_result() {
         let (actor, _audit) = test_actor_recording().await;
         let session_id = {
-            let mut state = actor.state.write_test();
+            let mut state = actor.state.write_test_no_cap();
             let session = state.active_session_mut();
             session.begin_sending();
             session.begin_streaming();
@@ -1126,7 +1126,7 @@ mod tests {
     async fn on_tool_execution_output_appends_to_pending_result() {
         let (actor, _audit) = test_actor_recording().await;
         let session_id = {
-            let mut state = actor.state.write_test();
+            let mut state = actor.state.write_test_no_cap();
             let session = state.active_session_mut();
             session.begin_sending();
             session.begin_streaming();
@@ -1161,7 +1161,7 @@ mod tests {
     async fn on_tool_batch_completed_applies_pending_mutations() {
         let (actor, audit) = test_actor_recording().await;
         let (entry_id, session_id) = {
-            let mut state = actor.state.write_test();
+            let mut state = actor.state.write_test_no_cap();
             let session = state.active_session_mut();
             session.push_entry(ChatEntry::user("list files"));
             let entry = ChatEntry::assistant("checking");
@@ -1221,7 +1221,7 @@ mod tests {
     async fn on_tool_batch_completed_empty_mutation_queue_is_noop() {
         let (actor, audit) = test_actor_recording().await;
         let session_id = {
-            let mut state = actor.state.write_test();
+            let mut state = actor.state.write_test_no_cap();
             let session = state.active_session_mut();
             session.push_entry(ChatEntry::user("list files"));
             session.push_entry(ChatEntry::assistant("checking"));
@@ -1257,7 +1257,7 @@ mod tests {
     async fn on_tool_batch_completed_drained_steering_entry_lands_after_tool_results() {
         let (actor, _audit) = test_actor_recording().await;
         let session_id = {
-            let mut state = actor.state.write_test();
+            let mut state = actor.state.write_test_no_cap();
             let session = state.active_session_mut();
             session.push_entry(ChatEntry::user("list files"));
             session.push_entry(ChatEntry::tool_call("tc-1", "bash", r#"{"command":"ls"}"#));

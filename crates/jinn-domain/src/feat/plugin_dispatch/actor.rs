@@ -745,7 +745,7 @@ mod tests {
 
     fn seed_completed_task_list(state: &State, session_id: &SessionId) {
         use crate::feat::todo_list::TaskPosition;
-        let mut write = state.write_test();
+        let mut write = state.write_test_no_cap();
         let session = write.session.get_mut(session_id).unwrap();
         let phase = session.task_list_mut().add_phase("Build");
         let task = session
@@ -757,7 +757,7 @@ mod tests {
 
     fn seed_pending_task_list(state: &State, session_id: &SessionId) {
         use crate::feat::todo_list::TaskPosition;
-        let mut write = state.write_test();
+        let mut write = state.write_test_no_cap();
         let session = write.session.get_mut(session_id).unwrap();
         let phase = session.task_list_mut().add_phase("Build");
         session

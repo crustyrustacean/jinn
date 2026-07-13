@@ -305,7 +305,7 @@ mod tests {
         // Given an app-state actor with two personas loaded.
         let (actor, _audit, _services) = create_actor().await;
         {
-            let mut guard = actor.state.write_test();
+            let mut guard = actor.state.write_test_no_cap();
             guard.context.set_personas(vec![
                 Persona {
                     name: "coder".to_owned(),

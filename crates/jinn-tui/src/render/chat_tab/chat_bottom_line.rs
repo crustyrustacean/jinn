@@ -53,7 +53,7 @@ mod tests {
         let mut app = crate::TuiApp::test_builder().build().await;
         app.core
             .state
-            .write_test()
+            .write_test_no_cap()
             .frontend
             .scope_stack
             .clear_overlays();
@@ -84,7 +84,7 @@ mod tests {
         let mut app = crate::TuiApp::test_builder().build().await;
         app.core
             .state
-            .write_test()
+            .write_test_no_cap()
             .frontend
             .scope_stack
             .push(FocusScope::Input);
@@ -114,7 +114,7 @@ mod tests {
         let mut app = crate::TuiApp::test_builder().build().await;
         app.core
             .state
-            .write_test()
+            .write_test_no_cap()
             .frontend
             .scope_stack
             .push(FocusScope::SidebarPersona);

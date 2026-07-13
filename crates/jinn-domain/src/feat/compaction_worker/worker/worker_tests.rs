@@ -132,7 +132,7 @@ fn test_worker_with_session(
 
     let state = State::new(AppState::default());
     {
-        let mut app = state.write_test();
+        let mut app = state.write_test_no_cap();
         app.session.insert(session);
     }
 
@@ -504,7 +504,7 @@ fn session_continues_after_background_compaction() {
 
     let state = State::new(AppState::default());
     {
-        let mut app = state.write_test();
+        let mut app = state.write_test_no_cap();
         app.session.insert(session);
         // Use a tiny reserve so compaction triggers with just 20 turns.
         app.frontend.preferences.compaction = CompactionConfig {
@@ -623,7 +623,7 @@ impl ThresholdTestEnv {
         let session_id = session.session_id().clone();
         let state = State::new(AppState::default());
         {
-            let mut app = state.write_test();
+            let mut app = state.write_test_no_cap();
             app.session.insert(session);
         }
         Self { state, session_id }
@@ -631,7 +631,7 @@ impl ThresholdTestEnv {
 
     /// Set the session's cached context_size (tiktoken count from last assembly).
     fn set_context_size(&self, size: Option<u32>) {
-        let mut app = self.state.write_test();
+        let mut app = self.state.write_test_no_cap();
         let session = app
             .session
             .get_mut(&self.session_id)
@@ -644,13 +644,13 @@ impl ThresholdTestEnv {
 
     /// Set the model cache with context_length entries.
     fn set_model_cache(&self, cache: ModelCache) {
-        let mut app = self.state.write_test();
+        let mut app = self.state.write_test_no_cap();
         app.provider.model_cache = Some(cache);
     }
 
     /// Set the compaction config.
     fn set_compaction_config(&self, config: CompactionConfig) {
-        let mut app = self.state.write_test();
+        let mut app = self.state.write_test_no_cap();
         app.frontend.preferences.compaction = config;
     }
 
@@ -1087,7 +1087,7 @@ fn gate_splits_provider_model_format() {
     let env = ThresholdTestEnv::new();
     // Session model is "ollama/llama3" - provider="ollama", model="llama3"
     {
-        let mut app = env.state.write_test();
+        let mut app = env.state.write_test_no_cap();
         let session = app.session.get_mut(&env.session_id).expect("session");
         session.set_model(ModelSelection::Single("ollama/llama3".to_owned()));
     }
@@ -1112,7 +1112,7 @@ fn gate_handles_nested_provider_path() {
     // Session model is "openrouter/anthropic/claude-sonnet"
     // provider = "openrouter", model = "anthropic/claude-sonnet"
     {
-        let mut app = env.state.write_test();
+        let mut app = env.state.write_test_no_cap();
         let session = app.session.get_mut(&env.session_id).expect("session");
         session.set_model(ModelSelection::Single(
             "openrouter/anthropic/claude-sonnet".to_owned(),
@@ -1148,7 +1148,7 @@ fn gate_passes_but_nothing_to_compact_with_empty_history() {
 
     let state = State::new(AppState::default());
     {
-        let mut app = state.write_test();
+        let mut app = state.write_test_no_cap();
         app.session.insert(session);
         app.provider.model_cache = Some(model_cache_with("provider", "model-200k", 200_000));
         app.frontend.preferences.compaction = threshold_config(0.7, 150_000);
@@ -1434,13 +1434,13 @@ fn error_clears_flag_and_allows_retry() {
     let session_id = session.session_id().clone();
     let state = State::new(AppState::default());
     {
-        let mut app = state.write_test();
+        let mut app = state.write_test_no_cap();
         app.session.insert(session);
     }
 
     // Set up threshold so evaluation proceeds past the gate.
     {
-        let mut app = state.write_test();
+        let mut app = state.write_test_no_cap();
         app.frontend.preferences.compaction = CompactionConfig {
             threshold: 0.5,
             ..CompactionConfig::default()
@@ -1452,7 +1452,7 @@ fn error_clears_flag_and_allows_retry() {
             .expect("save");
     }
     {
-        let mut app = state.write_test();
+        let mut app = state.write_test_no_cap();
         if let Some(session) = app.session.get_mut(&session_id) {
             session.set_context_size(150_000);
         }

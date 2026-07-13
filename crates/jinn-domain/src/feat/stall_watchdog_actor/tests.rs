@@ -84,7 +84,7 @@ async fn watchdog_detects_session_stuck_in_sending() {
     // Given a session in Sending whose history was last mutated long ago.
     let mut wh = WatchdogHarness::new().await;
     {
-        let mut s = wh.state.write_test();
+        let mut s = wh.state.write_test_no_cap();
         let session = s.session_mut(&wh.session_id);
         session.begin_sending();
         // Force the activity timestamp into the distant past so the 1s window
@@ -113,7 +113,7 @@ async fn watchdog_detects_streaming_session_with_no_history_change() {
     // Given a session in Streaming whose history is stale (keepalive-only feed).
     let mut wh = WatchdogHarness::new().await;
     {
-        let mut s = wh.state.write_test();
+        let mut s = wh.state.write_test_no_cap();
         let session = s.session_mut(&wh.session_id);
         session.push_entry(ChatEntry::user("go"));
         session.begin_streaming();
@@ -140,7 +140,7 @@ async fn watchdog_publishes_cancel_after_budget_exhausted() {
     // Given a stalled session and a budget of one retry.
     let mut wh = WatchdogHarness::new().await;
     {
-        let mut s = wh.state.write_test();
+        let mut s = wh.state.write_test_no_cap();
         let session = s.session_mut(&wh.session_id);
         session.begin_sending();
         session.set_last_history_activity_at(
@@ -157,7 +157,7 @@ async fn watchdog_publishes_cancel_after_budget_exhausted() {
     // Force staleness again so the retry's own re-seeding does not satisfy the
     // next tick (the floor mechanism records the post-retry timestamp).
     {
-        let mut s = wh.state.write_test();
+        let mut s = wh.state.write_test_no_cap();
         let session = s.session_mut(&wh.session_id);
         session.set_last_history_activity_at(
             Timestamp::now()
@@ -181,7 +181,7 @@ async fn counter_resets_at_turn_boundary_not_on_activity_jitter() {
     // Given a stalled session that already consumed one retry (budget = 1).
     let mut wh = WatchdogHarness::new().await;
     {
-        let mut s = wh.state.write_test();
+        let mut s = wh.state.write_test_no_cap();
         let session = s.session_mut(&wh.session_id);
         session.begin_sending();
         session.set_last_history_activity_at(
@@ -198,7 +198,7 @@ async fn counter_resets_at_turn_boundary_not_on_activity_jitter() {
     // session STAYS stalled (perpetually hung provider) — the re-seed must NOT
     // reset the budget. Force staleness again.
     {
-        let mut s = wh.state.write_test();
+        let mut s = wh.state.write_test_no_cap();
         let session = s.session_mut(&wh.session_id);
         session.set_last_history_activity_at(
             Timestamp::now()
@@ -226,7 +226,7 @@ async fn counter_resets_when_session_completes_a_turn() {
     // Given a session that stalled, was retried, then completed the turn (Idle).
     let mut wh = WatchdogHarness::new().await;
     {
-        let mut s = wh.state.write_test();
+        let mut s = wh.state.write_test_no_cap();
         let session = s.session_mut(&wh.session_id);
         session.begin_sending();
         session.set_last_history_activity_at(
@@ -239,7 +239,7 @@ async fn counter_resets_when_session_completes_a_turn() {
 
     // The retried turn actually completes → session returns to Idle.
     {
-        let mut s = wh.state.write_test();
+        let mut s = wh.state.write_test_no_cap();
         let session = s.session_mut(&wh.session_id);
         session.cancel_streaming(jiff::Timestamp::now());
     }
@@ -247,7 +247,7 @@ async fn counter_resets_when_session_completes_a_turn() {
 
     // When a NEW turn starts and stalls.
     {
-        let mut s = wh.state.write_test();
+        let mut s = wh.state.write_test_no_cap();
         let session = s.session_mut(&wh.session_id);
         session.begin_sending();
         session.set_last_history_activity_at(
@@ -282,7 +282,7 @@ async fn active_streaming_session_is_never_flagged() {
     // Given a Streaming session whose history was just mutated.
     let mut wh = WatchdogHarness::new().await;
     {
-        let mut s = wh.state.write_test();
+        let mut s = wh.state.write_test_no_cap();
         let session = s.session_mut(&wh.session_id);
         session.push_entry(ChatEntry::user("go"));
         session.begin_streaming();
@@ -305,7 +305,7 @@ async fn idle_session_is_never_scanned() {
     // Given an idle session with a very stale timestamp.
     let mut wh = WatchdogHarness::new().await;
     {
-        let mut s = wh.state.write_test();
+        let mut s = wh.state.write_test_no_cap();
         let session = s.session_mut(&wh.session_id);
         session.set_last_history_activity_at(
             Timestamp::now()
@@ -335,7 +335,7 @@ async fn watchdog_detects_mid_tool_batch_stall() {
     // was pushed, but no tool result ever lands and the timestamp has aged.
     let mut wh = WatchdogHarness::new().await;
     {
-        let mut s = wh.state.write_test();
+        let mut s = wh.state.write_test_no_cap();
         let session = s.session_mut(&wh.session_id);
         session.begin_streaming();
         session.push_entry(ChatEntry::system("tool call pending"));
@@ -365,7 +365,7 @@ async fn watchdog_suppresses_second_retry_within_backoff_window() {
     let mut wh = WatchdogHarness::new().await;
     wh.set_backoff(60, 60);
     {
-        let mut s = wh.state.write_test();
+        let mut s = wh.state.write_test_no_cap();
         let session = s.session_mut(&wh.session_id);
         session.begin_sending();
         session.set_last_history_activity_at(
@@ -382,7 +382,7 @@ async fn watchdog_suppresses_second_retry_within_backoff_window() {
 
     // Force staleness again (the retry re-seeds the timestamp).
     {
-        let mut s = wh.state.write_test();
+        let mut s = wh.state.write_test_no_cap();
         let session = s.session_mut(&wh.session_id);
         session.set_last_history_activity_at(
             Timestamp::now()
@@ -410,7 +410,7 @@ async fn watchdog_allows_retry_after_backoff_window_elapses() {
     let mut wh = WatchdogHarness::new().await;
     wh.set_backoff(60, 60);
     {
-        let mut s = wh.state.write_test();
+        let mut s = wh.state.write_test_no_cap();
         let session = s.session_mut(&wh.session_id);
         session.begin_sending();
         session.set_last_history_activity_at(
@@ -427,7 +427,7 @@ async fn watchdog_allows_retry_after_backoff_window_elapses() {
 
     // Force staleness again.
     {
-        let mut s = wh.state.write_test();
+        let mut s = wh.state.write_test_no_cap();
         let session = s.session_mut(&wh.session_id);
         session.set_last_history_activity_at(
             Timestamp::now()
@@ -463,7 +463,7 @@ async fn stall_budget_resets_when_provider_activity_resumes() {
     // Given a stalled session that already consumed one retry (budget = 1).
     let mut wh = WatchdogHarness::new().await;
     {
-        let mut s = wh.state.write_test();
+        let mut s = wh.state.write_test_no_cap();
         let session = s.session_mut(&wh.session_id);
         session.begin_sending();
         session.set_last_history_activity_at(
@@ -486,7 +486,7 @@ async fn stall_budget_resets_when_provider_activity_resumes() {
     // `last_provider_activity_at` to a more recent value than the baseline.
     // This scan detects recovery and clears the budget (no action taken).
     {
-        let mut s = wh.state.write_test();
+        let mut s = wh.state.write_test_no_cap();
         let session = s.session_mut(&wh.session_id);
         session.set_last_provider_activity_at(Timestamp::now());
         session.set_last_history_activity_at(Timestamp::now());
@@ -496,7 +496,7 @@ async fn stall_budget_resets_when_provider_activity_resumes() {
     // Then the session stalls again (history ages out). Because the budget was
     // reset on recovery, this stall must retry — not cancel from the exhausted budget.
     {
-        let mut s = wh.state.write_test();
+        let mut s = wh.state.write_test_no_cap();
         let session = s.session_mut(&wh.session_id);
         session.set_last_history_activity_at(
             Timestamp::now()
@@ -524,7 +524,7 @@ async fn watchdog_detects_stall_when_provider_activity_stale() {
     // hard-stuck — no further provider output and stale history activity.
     let mut wh = WatchdogHarness::new().await;
     {
-        let mut s = wh.state.write_test();
+        let mut s = wh.state.write_test_no_cap();
         let session = s.session_mut(&wh.session_id);
         session.begin_streaming();
         // Simulate a prior token arriving (advances provider activity).
@@ -539,7 +539,7 @@ async fn watchdog_detects_stall_when_provider_activity_stale() {
     // Force history staleness so the stall window is exceeded.
     wh.watchdog.scan_once().await;
     {
-        let mut s = wh.state.write_test();
+        let mut s = wh.state.write_test_no_cap();
         let session = s.session_mut(&wh.session_id);
         session.set_last_history_activity_at(
             Timestamp::now()

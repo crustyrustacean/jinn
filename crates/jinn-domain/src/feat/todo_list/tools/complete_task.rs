@@ -173,7 +173,7 @@ mod tests {
             r.session.active_session_id().clone()
         };
         let tid = {
-            let mut w = state.write_test();
+            let mut w = state.write_test_no_cap();
             let session = w.session_mut(&session_id);
             let pid = session.task_list_mut().add_phase("Build");
             session
@@ -266,7 +266,7 @@ mod tests {
             r.session.active_session_id().clone()
         };
         let (tid, second_id) = {
-            let mut w = state.write_test();
+            let mut w = state.write_test_no_cap();
             let session = w.session_mut(&session_id);
             let pid = session.task_list_mut().add_phase("Build");
             let first = session
@@ -312,7 +312,7 @@ mod tests {
             r.session.active_session_id().clone()
         };
         let tid = {
-            let mut w = state.write_test();
+            let mut w = state.write_test_no_cap();
             let session = w.session_mut(&session_id);
             let p1 = session.task_list_mut().add_phase("Build");
             let only = session
@@ -362,7 +362,7 @@ mod tests {
             r.session.active_session_id().clone()
         };
         let tid = {
-            let mut w = state.write_test();
+            let mut w = state.write_test_no_cap();
             let session = w.session_mut(&session_id);
             let pid = session.task_list_mut().add_phase("Build");
             session

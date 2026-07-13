@@ -264,7 +264,7 @@ mod tests {
         state: &State,
     ) -> (crate::SessionId, crate::Services) {
         {
-            let mut guard = state.write_test();
+            let mut guard = state.write_test_no_cap();
             guard
                 .session
                 .active_session_mut()
@@ -403,7 +403,7 @@ mod tests {
         let dir = tempfile::tempdir().expect("create temp dir for AppPaths");
         let state = State::new(AppState::default());
         {
-            let mut guard = state.write_test();
+            let mut guard = state.write_test_no_cap();
             guard.session.active_session_mut().set_cwd(project.clone());
         }
         let session_id = state.read().session.active_session_id().clone();
@@ -447,7 +447,7 @@ mod tests {
         let dir = tempfile::tempdir().expect("create temp dir for AppPaths");
         let state = State::new(AppState::default());
         {
-            let mut guard = state.write_test();
+            let mut guard = state.write_test_no_cap();
             guard.session.active_session_mut().set_cwd(subdir.clone());
         }
         let session_id = state.read().session.active_session_id().clone();

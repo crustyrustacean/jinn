@@ -171,7 +171,7 @@ async fn persist_reloads_open_project_picker_items() {
     let harness = TestHarness::new().await;
     let state = crate::common::state::State::new(crate::common::app_state::AppState::default());
     {
-        let mut guard = state.write_test();
+        let mut guard = state.write_test_no_cap();
         load_project_picker_entries(&mut guard.frontend);
         guard.frontend.scope_stack.push(FocusScope::Picker {
             kind: PickerKind::Project,
