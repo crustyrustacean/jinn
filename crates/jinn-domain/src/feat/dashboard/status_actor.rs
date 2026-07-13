@@ -116,7 +116,10 @@ impl Actor for DiscordStatusActor {
         let drain_cap = args.cap;
         tokio::spawn(drain_status_channel(args.status_rx, drain_state, drain_cap));
 
-        Ok(Self { state: args.state, cap: args.cap })
+        Ok(Self {
+            state: args.state,
+            cap: args.cap,
+        })
     }
 }
 
@@ -158,7 +161,8 @@ impl Message<BrowserBinaryVerified> for DiscordStatusActor {
             // The web-fetch entry's lifecycle is owned by the actor-lifecycle
             // subscription; we only write the Notes column here. Never call
             // mark_running/mark_dead — that would race the lifecycle handler.
-            ops.dashboard().set_status_message(WEB_FETCH_ENTRY, Some(backend_label(&msg)));
+            ops.dashboard()
+                .set_status_message(WEB_FETCH_ENTRY, Some(backend_label(&msg)));
         });
     }
 }
@@ -208,7 +212,10 @@ impl DiscordStatusActor {
     ///
     /// Separate from the kameo message path so it can be called from the
     /// background drain loop without an actor message round-trip.
-    pub(crate) fn apply_discord_update(dashboard: &mut DashboardState, update: &DiscordStatusUpdate) {
+    pub(crate) fn apply_discord_update(
+        dashboard: &mut DashboardState,
+        update: &DiscordStatusUpdate,
+    ) {
         let message = update.full_message();
         let (lifecycle, with_description) = match update {
             DiscordStatusUpdate::Connecting => {

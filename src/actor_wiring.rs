@@ -260,7 +260,8 @@ impl ActorSystemBuilder {
             state.with_discovered_plugins(
                 &jinn_domain::common::tcaps::mint::mint_discovered_plugins_cap(),
                 |view| {
-                    view.discovered_plugins.set(attachable_discovered_plugins(plugins));
+                    view.discovered_plugins
+                        .set(attachable_discovered_plugins(plugins));
                 },
             );
         }
