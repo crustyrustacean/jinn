@@ -510,6 +510,7 @@ mod tests {
         let actor_ref = harness
             .spawn_actor_with_mailbox::<SessionPersistenceActor>(
                 SessionPersistenceActorDeps {
+                    deps: harness.actor_deps().await,
                     state,
                     cap: crate::common::tcaps::mint::mint_session_cap(),
                     frontend_cap: crate::common::tcaps::mint::mint_frontend_cap(),
