@@ -27,11 +27,10 @@ impl SessionPersistenceActor {
         &self,
         payload: &PinChatEntry,
     ) {
-        {
-            let mut state = self.state.write();
-            let session = state.session_mut_or_create(&payload.session_id);
-            session.pin_entry(&payload.entry_id, payload.position);
-        }
+            self.state.with_session(&self.cap, |view| {
+                let session = view.session.map().get_or_create(&payload.session_id);
+                session.pin_entry(&payload.entry_id, payload.position);
+            });
         self.publish(ChatEntryPinChanged {
             session_id: payload.session_id.clone(),
         })
@@ -44,6 +43,7 @@ impl SessionPersistenceActor {
         payload: &UnpinChatEntry,
     ) {
         {
+            // TODO(tcaps): Cross-struct write (reads frontend.pins, writes session). Needs FrontendCap.
             let mut state = self.state.write();
             let is_active = state.session.active_session_id() == &payload.session_id;
             let old_index = if is_active {
@@ -73,6 +73,7 @@ impl SessionPersistenceActor {
         &self,
         evt: &ToolsRegistered,
     ) {
+        // TODO(tcaps): Writes to `context` (not session). Needs ContextCap.
         let mut state = self.state.write();
 
         match &evt.session_id {
@@ -139,6 +140,7 @@ impl SessionPersistenceActor {
             );
             return;
         }
+        // TODO(tcaps): Writes to `context` (not session). Needs ContextCap.
         let mut state = self.state.write();
         state.context.set_personas(payload.personas.clone());
 
@@ -199,6 +201,7 @@ impl SessionPersistenceActor {
 
         entries.sort_by_key(|e| e.name.to_lowercase());
 
+        // TODO(tcaps): Writes to `frontend.persona_picker` (not session). Needs FrontendCap.
         let mut state = self.state.write();
         state.frontend.persona_picker_mut().set_items(entries);
     }
