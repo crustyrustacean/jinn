@@ -36,9 +36,9 @@ use super::protocol::{
 
 /// The bridge actor.
 ///
-/// Holds a clone of the bus subscription handle (`ActorDeps`) and the sender
-/// half of the channel the gateway task drains. Stateless beyond that — every
-/// reaction is a pure forward.
+/// Holds a clone of the bus subscription handle (`ActorDeps`), the sender
+/// half of the channel the gateway task drains, and a clone of [`State`] for
+/// writing the `gdc` (to-thread) result `ChatEntry` inline on result events.
 pub struct DiscordBridgeActor {
     /// Forwards bus events onto this channel as [`BridgeEvent`]s.
     tx: kanal::Sender<BridgeEvent>,
