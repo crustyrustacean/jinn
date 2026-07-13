@@ -1,4 +1,4 @@
-//! The dashboard status actor — sole writer of `frontend.dashboard`.
+//! The dashboard status actor — owns `frontend.dashboard`.
 //!
 //! Combines two independent data sources into a single dashboard view:
 //!

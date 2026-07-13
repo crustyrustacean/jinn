@@ -6,7 +6,7 @@
 //!
 //! # State ownership
 //!
-//! This actor is the **sole writer** of the following `AppState` fields:
+//! This actor **owns** the following `AppState` fields:
 //! - session history (entries, tool calls, streaming state)
 //! - session input buffers
 //! - session phase (idle → sending → streaming → idle)
