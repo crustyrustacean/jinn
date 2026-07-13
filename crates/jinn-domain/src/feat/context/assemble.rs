@@ -93,13 +93,13 @@ pub fn assemble_prompt(
 
     let persona = state
         .context
-        .personas
+        .personas()
         .iter()
         .find(|p| p.name == session.persona_name())
         .or_else(|| {
             state
                 .context
-                .personas
+                .personas()
                 .iter()
                 .find(|p| p.name == DEFAULT_PERSONA_NAME)
         });
@@ -1040,7 +1040,7 @@ mod tests {
         let (state, session_id) = state_with_history(vec![ChatEntry::user("hello")]);
         {
             let mut guard = state.write();
-            guard.context.personas.push(crate::feat::persona::Persona {
+            guard.context.push_persona(crate::feat::persona::Persona {
                 name: "custom".to_owned(),
                 description: "Custom persona".to_owned(),
                 body: "You are a custom persona.".to_owned(),
@@ -1075,7 +1075,7 @@ mod tests {
         let (state, session_id) = state_with_history(vec![ChatEntry::user("hello")]);
         {
             let mut guard = state.write();
-            guard.context.personas.push(crate::feat::persona::Persona {
+            guard.context.push_persona(crate::feat::persona::Persona {
                 name: "coding-assistant".to_owned(),
                 description: "Default".to_owned(),
                 body: "You are a coding assistant.".to_owned(),

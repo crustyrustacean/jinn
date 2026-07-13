@@ -101,12 +101,12 @@ impl AppStateActor {
         if let Some(ref persona_name) = updated.persona_name {
             let found = state
                 .context
-                .personas
+                .personas()
                 .iter()
                 .find(|p| p.name == *persona_name)
                 .cloned();
             if let Some(persona) = found {
-                state.context.active_persona = Some(persona);
+                state.context.set_active_persona(Some(persona));
             }
         }
     }
@@ -284,7 +284,7 @@ mod tests {
         let (actor, _audit, _services) = create_actor().await;
         {
             let mut guard = actor.state.write();
-            guard.context.personas = vec![
+            guard.context.set_personas(vec![
                 Persona {
                     name: "coder".to_owned(),
                     description: String::new(),
@@ -297,7 +297,7 @@ mod tests {
                     body: String::new(),
                     file_path: std::path::PathBuf::new(),
                 },
-            ];
+            ]);
         }
 
         // When syncing AppStateFile with persona_name = "writer".
@@ -311,8 +311,7 @@ mod tests {
         let guard = actor.state.read();
         let active = guard
             .context
-            .active_persona
-            .as_ref()
+            .active_persona()
             .expect("should have active persona");
         assert_eq!(active.name, "writer");
     }

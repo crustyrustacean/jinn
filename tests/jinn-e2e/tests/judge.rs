@@ -252,8 +252,7 @@ async fn then_final_entry_transient(world: &mut JudgeWorld, expected: String) {
             .read()
             .session
             .active_session()
-            .core
-            .attached_plugins
+            .attached_plugins()
             .iter()
             .map(|p| format!("{}(enabled={})", p.name, p.enabled))
             .collect::<Vec<_>>()

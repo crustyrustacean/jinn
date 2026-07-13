@@ -46,10 +46,10 @@ pub fn handle_open_picker(state: &mut AppState, kind: PickerKind) -> IntentResul
             // Derive alloy mode from the active session's model selection:
             // an existing Alloy opens in alloy mode (with members pre-checked
             // by the loader), anything else opens in single mode.
-            state.provider.alloy_mode = matches!(
+            state.provider.set_alloy_mode(matches!(
                 state.active_session().profile().model,
                 ModelSelection::Alloy { .. }
-            );
+            ));
         }
         PickerKind::Session => {
             state.frontend.session_picker_mut().reset();
@@ -390,7 +390,7 @@ fn confirm_provider(state: &mut AppState) -> IntentResult {
 /// Alloy mode: the checked set union the highlight (deduped); one model -> `Single`,
 /// two or more -> `Alloy`.
 fn resolve_provider_selection(provider: &ProviderState, highlighted: String) -> ModelSelection {
-    if !provider.alloy_mode {
+    if !provider.is_alloy_mode() {
         return ModelSelection::Single(highlighted);
     }
     let mut models: Vec<String> = provider
@@ -426,12 +426,12 @@ fn confirm_persona(state: &mut AppState) -> IntentResult {
     // Find the matching persona and set it as active.
     let persona = state
         .context
-        .personas
+        .personas()
         .iter()
         .find(|p| p.name == persona_name)
         .cloned();
     if let Some(p) = persona {
-        state.context.active_persona = Some(p);
+        state.context.set_active_persona(Some(p));
     }
 
     // Also update the active session's persona binding.
@@ -849,7 +849,7 @@ pub fn handle_skill_toggle(state: &mut AppState) -> IntentResult {
 /// user can toggle several adjacent entries without losing their place.
 pub fn handle_model_toggle(state: &mut AppState) -> IntentResult {
     // No-op outside alloy mode: single mode never builds checkmarks.
-    if !state.provider.alloy_mode {
+    if !state.provider.is_alloy_mode() {
         return IntentResult::empty();
     }
     state.provider.provider_picker.with_selected_mut(|entry| {
@@ -869,9 +869,9 @@ pub fn handle_model_toggle(state: &mut AppState) -> IntentResult {
 /// cleared. Either way the list is re-sorted so checked entries float to the top.
 pub fn handle_toggle_alloy_mode(state: &mut AppState) -> IntentResult {
     // Flip first, then branch on the resulting (target) state.
-    state.provider.alloy_mode = !state.provider.alloy_mode;
+    let now_alloy = state.provider.toggle_alloy_mode();
 
-    if state.provider.alloy_mode {
+    if now_alloy {
         // Entered alloy mode: pre-check the current session model's entries,
         // so editing an existing alloy only requires swapping members.
         let model_selection = state.active_session().profile().model.clone();
@@ -1061,7 +1061,7 @@ mod tests {
             },
         ];
         state.provider.provider_picker.set_items(entries);
-        state.provider.alloy_mode = true;
+        state.provider.set_alloy_mode(true);
         // Cursor starts on the first entry (selection 0) after reset.
 
         // When toggling model selection.
@@ -1118,7 +1118,7 @@ mod tests {
             },
         ];
         state.provider.provider_picker.set_items(entries);
-        state.provider.alloy_mode = true;
+        state.provider.set_alloy_mode(true);
         // Cursor starts on the first entry (selection 0) after reset.
         assert_eq!(state.provider.provider_picker.selection(), 0);
         // When toggling model selection.
@@ -1161,7 +1161,7 @@ mod tests {
             theme: crate::feat::theme::default_theme(),
         }];
         state.provider.provider_picker.set_items(entries);
-        state.provider.alloy_mode = true;
+        state.provider.set_alloy_mode(true);
         state.provider.provider_picker.move_down(1);
 
         // When toggling model selection again.
@@ -1190,7 +1190,7 @@ mod tests {
 
         // Then alloy_mode is false (single mode).
         assert!(
-            !state.provider.alloy_mode,
+            !state.provider.is_alloy_mode(),
             "picker should open in single mode for a single-model session"
         );
     }
@@ -1214,7 +1214,7 @@ mod tests {
 
         // Then alloy_mode is true (alloy mode).
         assert!(
-            state.provider.alloy_mode,
+            state.provider.is_alloy_mode(),
             "picker should open in alloy mode for an alloy session"
         );
     }
@@ -1231,13 +1231,13 @@ mod tests {
         state.frontend.scope_stack.push(FocusScope::Picker {
             kind: PickerKind::Provider,
         });
-        state.provider.alloy_mode = false;
+        state.provider.set_alloy_mode(false);
 
         // When toggling alloy mode.
         handle_toggle_alloy_mode(&mut state);
 
         // Then alloy_mode is now true.
-        assert!(state.provider.alloy_mode, "mode should flip to alloy");
+        assert!(state.provider.is_alloy_mode(), "mode should flip to alloy");
     }
 
     #[rstest::rstest]
@@ -1252,13 +1252,16 @@ mod tests {
         state.frontend.scope_stack.push(FocusScope::Picker {
             kind: PickerKind::Provider,
         });
-        state.provider.alloy_mode = true;
+        state.provider.set_alloy_mode(true);
 
         // When toggling alloy mode.
         handle_toggle_alloy_mode(&mut state);
 
         // Then alloy_mode is now false.
-        assert!(!state.provider.alloy_mode, "mode should flip to single");
+        assert!(
+            !state.provider.is_alloy_mode(),
+            "mode should flip to single"
+        );
     }
 
     #[rstest::rstest]
@@ -1309,7 +1312,7 @@ mod tests {
             },
         ];
         state.provider.provider_picker.set_items(entries);
-        state.provider.alloy_mode = false;
+        state.provider.set_alloy_mode(false);
 
         // When toggling into alloy mode.
         handle_toggle_alloy_mode(&mut state);
@@ -1377,7 +1380,7 @@ mod tests {
             },
         ];
         state.provider.provider_picker.set_items(entries);
-        state.provider.alloy_mode = false;
+        state.provider.set_alloy_mode(false);
 
         // When toggling into alloy mode.
         handle_toggle_alloy_mode(&mut state);
@@ -1439,7 +1442,7 @@ mod tests {
             },
         ];
         state.provider.provider_picker.set_items(entries);
-        state.provider.alloy_mode = true;
+        state.provider.set_alloy_mode(true);
 
         // When toggling out of alloy mode.
         handle_toggle_alloy_mode(&mut state);
@@ -1500,7 +1503,7 @@ mod tests {
             },
         ];
         state.provider.provider_picker.set_items(entries);
-        state.provider.alloy_mode = true;
+        state.provider.set_alloy_mode(true);
 
         let result = confirm_provider(&mut state);
 
@@ -1529,7 +1532,7 @@ mod tests {
             .set_active(state.session.active_session_id().clone());
 
         // Add two personas to context.
-        state.context.personas = vec![
+        state.context.set_personas(vec![
             crate::feat::persona::Persona {
                 name: "coder".to_owned(),
                 description: String::new(),
@@ -1542,7 +1545,7 @@ mod tests {
                 body: "You are a writer.".to_owned(),
                 file_path: PathBuf::new(),
             },
-        ];
+        ]);
 
         // Set picker entries with "writer" as the selected item.
         let entries = vec![
@@ -1567,11 +1570,7 @@ mod tests {
 
         // Then the active persona is "writer", not "coder".
         assert_eq!(
-            state
-                .context
-                .active_persona
-                .as_ref()
-                .map(|p| p.name.as_str()),
+            state.context.active_persona().map(|p| p.name.as_str()),
             Some("writer"),
             "confirm_persona should set the correct persona"
         );
@@ -1813,12 +1812,14 @@ mod tests {
         state
             .session
             .set_active(state.session.active_session_id().clone());
-        state.context.personas = vec![crate::feat::persona::Persona {
-            name: "coder".to_owned(),
-            description: String::new(),
-            body: "You are a coder.".to_owned(),
-            file_path: PathBuf::new(),
-        }];
+        state
+            .context
+            .set_personas(vec![crate::feat::persona::Persona {
+                name: "coder".to_owned(),
+                description: String::new(),
+                body: "You are a coder.".to_owned(),
+                file_path: PathBuf::new(),
+            }]);
         let entry = PersonaEntry {
             name: "coder".to_owned(),
             description: String::new(),
@@ -2635,7 +2636,7 @@ mod tests {
     fn single_mode_resolve_returns_highlight_ignoring_checks() {
         // Given single mode with a stale check on model-0 and model-1 highlighted.
         let mut state = state_with_provider_picker(2);
-        state.provider.alloy_mode = false;
+        state.provider.set_alloy_mode(false);
         // Stale check on model-0 that single mode must ignore.
         state.provider.provider_picker.with_selected_mut(|e| {
             e.selected = true;
@@ -2653,7 +2654,7 @@ mod tests {
     fn single_mode_confirm_rejects_unavailable_highlight() {
         // Given single mode where the highlighted entry is unavailable.
         let mut state = state_with_provider_picker(1);
-        state.provider.alloy_mode = false;
+        state.provider.set_alloy_mode(false);
         state.provider.provider_picker.with_selected_mut(|e| {
             e.is_available = false;
         });
@@ -2675,7 +2676,7 @@ mod tests {
     fn single_mode_tab_is_noop() {
         // Given single mode.
         let mut state = state_with_provider_picker(2);
-        state.provider.alloy_mode = false;
+        state.provider.set_alloy_mode(false);
 
         // When toggling a model.
         handle_model_toggle(&mut state);
@@ -2694,7 +2695,7 @@ mod tests {
     fn alloy_mode_resolve_includes_highlight_and_checks() {
         // Given alloy mode with model-0 checked and model-2 highlighted.
         let mut state = state_with_provider_picker(3);
-        state.provider.alloy_mode = true;
+        state.provider.set_alloy_mode(true);
         // Check model-0.
         state.provider.provider_picker.move_up(PICKER_MAX_VISIBLE);
         state.provider.provider_picker.with_selected_mut(|e| {
@@ -2722,7 +2723,7 @@ mod tests {
     fn alloy_mode_resolve_dedups_already_checked_highlight() {
         // Given alloy mode with the highlighted entry (model-1) already checked.
         let mut state = state_with_provider_picker(2);
-        state.provider.alloy_mode = true;
+        state.provider.set_alloy_mode(true);
         state.provider.provider_picker.with_selected_mut(|e| {
             e.selected = true;
         });
@@ -2742,7 +2743,7 @@ mod tests {
     fn alloy_mode_resolve_one_model_collapses_to_single() {
         // Given alloy mode with nothing checked and the highlighted entry (model-1).
         let mut state = state_with_provider_picker(2);
-        state.provider.alloy_mode = true;
+        state.provider.set_alloy_mode(true);
 
         // When resolving the selection for the highlighted entry.
         let selection = resolve_provider_selection(&state.provider, "prov/model-1".to_owned());

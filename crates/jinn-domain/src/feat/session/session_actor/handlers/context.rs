@@ -140,7 +140,7 @@ impl SessionPersistenceActor {
             return;
         }
         let mut state = self.state.write();
-        state.context.personas.clone_from(&payload.personas);
+        state.context.set_personas(payload.personas.clone());
 
         let target_name = state
             .frontend
@@ -151,8 +151,7 @@ impl SessionPersistenceActor {
             .or_else(|| {
                 state
                     .context
-                    .active_persona
-                    .as_ref()
+                    .active_persona()
                     .filter(|p| payload.personas.iter().any(|sp| sp.name == p.name))
                     .map(|p| p.name.as_str())
             })
@@ -165,10 +164,12 @@ impl SessionPersistenceActor {
             .cloned();
 
         if let Some(persona) = found {
-            state.context.active_persona = Some(persona);
+            state.context.set_active_persona(Some(persona));
         } else {
             // Edge case: coding-assistant not found either.
-            state.context.active_persona = payload.personas.first().cloned();
+            state
+                .context
+                .set_active_persona(payload.personas.first().cloned());
         }
     }
 
@@ -180,12 +181,12 @@ impl SessionPersistenceActor {
         let state = self.state.read();
         let active_name = state
             .context
-            .active_persona
+            .active_persona()
             .as_ref()
             .map(|p| p.name.clone());
         let mut entries: Vec<PersonaEntry> = state
             .context
-            .personas
+            .personas()
             .iter()
             .map(|p| PersonaEntry {
                 name: p.name.clone(),
@@ -405,11 +406,7 @@ mod tests {
         // Then coding-assistant is selected by name, not position.
         let guard = state.read();
         assert_eq!(
-            guard
-                .context
-                .active_persona
-                .as_ref()
-                .map(|p| p.name.as_str()),
+            guard.context.active_persona().map(|p| p.name.as_str()),
             Some("coding-assistant")
         );
     }
@@ -421,7 +418,9 @@ mod tests {
         let (actor, state, _audit) = create_actor().await;
         {
             let mut guard = state.write();
-            guard.context.active_persona = Some(make_persona("learning-tutor"));
+            guard
+                .context
+                .set_active_persona(Some(make_persona("learning-tutor")));
         }
         let personas = vec![
             make_persona("coding-assistant"),
@@ -438,11 +437,7 @@ mod tests {
         // Then learning-tutor is kept (still exists in list).
         let guard = state.read();
         assert_eq!(
-            guard
-                .context
-                .active_persona
-                .as_ref()
-                .map(|p| p.name.as_str()),
+            guard.context.active_persona().map(|p| p.name.as_str()),
             Some("learning-tutor")
         );
     }
@@ -454,7 +449,7 @@ mod tests {
         let (actor, state, _audit) = create_actor().await;
         {
             let mut guard = state.write();
-            guard.context.active_persona = Some(make_persona("foo"));
+            guard.context.set_active_persona(Some(make_persona("foo")));
         }
         let personas = vec![make_persona("coding-assistant")];
         let payload = PersonasLoaded {
@@ -468,11 +463,7 @@ mod tests {
         // Then falls back to coding-assistant.
         let guard = state.read();
         assert_eq!(
-            guard
-                .context
-                .active_persona
-                .as_ref()
-                .map(|p| p.name.as_str()),
+            guard.context.active_persona().map(|p| p.name.as_str()),
             Some("coding-assistant")
         );
     }
@@ -494,11 +485,7 @@ mod tests {
         // Then first available is selected.
         let guard = state.read();
         assert_eq!(
-            guard
-                .context
-                .active_persona
-                .as_ref()
-                .map(|p| p.name.as_str()),
+            guard.context.active_persona().map(|p| p.name.as_str()),
             Some("learning-tutor")
         );
     }
@@ -510,7 +497,7 @@ mod tests {
         let (actor, state, _audit) = create_actor().await;
         {
             let mut guard = state.write();
-            guard.context.active_persona = Some(make_persona("foo"));
+            guard.context.set_active_persona(Some(make_persona("foo")));
         }
         let payload = PersonasLoaded {
             personas: vec![],
@@ -522,7 +509,7 @@ mod tests {
 
         // Then active_persona is None.
         let guard = state.read();
-        assert!(guard.context.active_persona.is_none());
+        assert!(guard.context.active_persona().is_none());
     }
 
     #[rstest::rstest]
@@ -546,11 +533,7 @@ mod tests {
         // Then the seeded persona_name wins over the coding-assistant default.
         let guard = state.read();
         assert_eq!(
-            guard
-                .context
-                .active_persona
-                .as_ref()
-                .map(|p| p.name.as_str()),
+            guard.context.active_persona().map(|p| p.name.as_str()),
             Some("general")
         );
     }
@@ -804,11 +787,13 @@ mod tests {
         let (actor, state, _audit) = create_actor().await;
         {
             let mut guard = state.write();
-            guard.context.personas = vec![
+            guard.context.set_personas(vec![
                 make_persona("coding-assistant"),
                 make_persona("learning-tutor"),
-            ];
-            guard.context.active_persona = Some(make_persona("learning-tutor"));
+            ]);
+            guard
+                .context
+                .set_active_persona(Some(make_persona("learning-tutor")));
         }
 
         // When loading persona picker entries.

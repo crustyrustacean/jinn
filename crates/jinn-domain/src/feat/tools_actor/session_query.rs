@@ -177,7 +177,6 @@ mod tests {
     use super::*;
     use crate::common::state::State;
     use crate::feat::session::chat_entry::{ChatEntry, ChatEntryKind};
-    use crate::feat::session::chat_history::ChatHistory;
     use crate::feat::session::chat_session::ChatSessionState;
     use serde_json::json;
 
@@ -196,8 +195,8 @@ mod tests {
         let state = State::new(crate::common::app_state::AppState::default());
         let session_id = SessionId::new();
         let mut session = ChatSessionState::default();
-        session.core.session_id = session_id.clone();
-        session.core.history = ChatHistory::from_vec(entries);
+        session.set_session_id(session_id.clone());
+        session.restore_history(entries);
         state.write().session.insert(session);
         (state, session_id)
     }
