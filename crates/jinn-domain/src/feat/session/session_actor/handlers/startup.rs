@@ -24,22 +24,24 @@ impl SessionPersistenceActor {
         let app_state = self.services.app_state_storage.read();
 
         {
-            let mut state = self.state.write();
-
             // Apply config defaults to the default session.
             // Only set the model if the session still has the no-provider sentinel.
             // Bench sessions are created with an explicit model before this handler
             // fires, so we must not overwrite them with the user's saved preference.
-            let session = state.active_session_mut();
-            if let Some(ref model) = app_state.last_model
-                && session.profile().model.is_no_provider()
-            {
-                session.set_model(model.clone());
-            }
+            self.state.with_session(&self.cap, |view| {
+                let session = view.session.map().active_session_mut();
+                if let Some(ref model) = app_state.last_model
+                    && session.profile().model.is_no_provider()
+                {
+                    session.set_model(model.clone());
+                }
+            });
+
             // Seed frontend.app_state from persisted state so the persona scan
             // (which fires on the same EnvironmentLoaded event) finds persona_name
             // populated when on_personas_loaded resolves the active persona.
-            state.frontend.app_state = app_state.clone();
+            self.state
+                .with_frontend_app_state(&self.frontend_cap, |ops| ops.set(app_state.clone()));
         }
 
         tracing::info!("DIAG on_environment_loaded model/strategy applied");
