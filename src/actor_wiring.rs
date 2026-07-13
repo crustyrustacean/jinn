@@ -257,7 +257,12 @@ impl ActorSystemBuilder {
             let plugins =
                 jinn_plugin::discover_plugins(&paths.plugins_dir(), &paths.system_plugins_dir());
             tracing::info!(count = plugins.len(), "discovered plugins");
-            state.write().discovered_plugins = attachable_discovered_plugins(plugins);
+            state.with_discovered_plugins(
+                &jinn_domain::common::tcaps::mint::mint_discovered_plugins_cap(),
+                |view| {
+                    view.discovered_plugins.set(attachable_discovered_plugins(plugins));
+                },
+            );
         }
 
         // Root supervision tree: every spawned actor becomes a supervised

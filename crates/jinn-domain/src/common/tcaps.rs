@@ -7,5 +7,6 @@
 //! live one-per-file under `tcaps/`; `mint.rs` is the single trust point where
 //! caps are constructed.
 
+pub mod discovered_plugins;
 pub mod mint;
 pub mod provider;
