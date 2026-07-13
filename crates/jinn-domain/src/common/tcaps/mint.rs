@@ -6,9 +6,15 @@
 //! Caps are ZSTs with private constructors scoped `pub(in crate::common::tcaps)`,
 //! so this module is the *only* code that can construct them.
 
+use crate::common::tcaps::discovered_plugins::DiscoveredPluginsCap;
 use crate::common::tcaps::provider::ProviderCap;
 
 /// Mint a [`ProviderCap`]. Called from actor wiring.
 pub fn mint_provider_cap() -> ProviderCap {
     ProviderCap::new()
+}
+
+/// Mint a [`DiscoveredPluginsCap`]. Called from actor wiring (startup-only write).
+pub fn mint_discovered_plugins_cap() -> DiscoveredPluginsCap {
+    DiscoveredPluginsCap::new()
 }
