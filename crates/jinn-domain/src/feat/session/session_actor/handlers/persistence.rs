@@ -26,6 +26,7 @@ impl SessionPersistenceActor {
         let store = &self.services.session_store;
 
         let state = self.state.clone();
+        let cap = self.cap;
         let session_id = session_id.clone();
         let session_id_log = session_id.clone();
 
@@ -35,10 +36,13 @@ impl SessionPersistenceActor {
         // which wait on `state.write()` and backpressure the LLM stream consumer.
         let session = tokio::task::spawn_blocking(move || {
             {
-                let mut guard = state.write();
-                guard.session.get_mut(&session_id)?.touch();
+                state.with_session(&cap, |view| {
+                    if let Some(session) = view.session.map().get_mut(&session_id) {
+                        session.touch();
+                    }
+                });
             }
-            Some(state.read().session.get(&session_id)?.clone())
+            state.read().session.get(&session_id).cloned()
         })
         .await
         .unwrap_or_else(|e| {
@@ -69,12 +73,11 @@ impl SessionPersistenceActor {
         &mut self,
         payload: &crate::feat::session::protocol::mark_session_interacted::MarkSessionInteracted,
     ) {
-        {
-            let mut state = self.state.write();
-            if let Some(session) = state.session.get_mut(&payload.session_id) {
+        self.state.with_session(&self.cap, |view| {
+            if let Some(session) = view.session.map().get_mut(&payload.session_id) {
                 session.mark_interacted();
             }
-        }
+        });
 
         self.publish(UserInteracted {
             session_id: payload.session_id.clone(),
@@ -100,12 +103,11 @@ impl SessionPersistenceActor {
         session: crate::feat::session::chat_session::ChatSessionState,
     ) {
         let session_id = session.session_id().clone();
-        {
-            let mut state = self.state.write();
-            state.session.insert(session.clone());
+        self.state.with_session(&self.cap, |view| {
+            view.session.map().insert(session.clone());
             // Remove the frozen node snapshot - the live session replaces it.
-            state.session.remove_frozen_node(&session_id);
-        }
+            view.session.map().remove_frozen_node(&session_id);
+        });
         self.publish(SessionLoadCompleted { session }).await;
     }
 
@@ -193,10 +195,11 @@ impl SessionPersistenceActor {
 
         // Insert all new frozen nodes.
         if !new_frozen_nodes.is_empty() {
-            let mut state = self.state.write();
-            for node in new_frozen_nodes {
-                state.session.insert_frozen_node(node);
-            }
+            self.state.with_session(&self.cap, |view| {
+                for node in new_frozen_nodes {
+                    view.session.map().insert_frozen_node(node);
+                }
+            });
         }
     }
 
@@ -281,10 +284,11 @@ impl SessionPersistenceActor {
 
         // Insert all new frozen nodes.
         if !new_frozen_nodes.is_empty() {
-            let mut state = self.state.write();
-            for node in new_frozen_nodes {
-                state.session.insert_frozen_node(node);
-            }
+            self.state.with_session(&self.cap, |view| {
+                for node in new_frozen_nodes {
+                    view.session.map().insert_frozen_node(node);
+                }
+            });
         }
     }
 
