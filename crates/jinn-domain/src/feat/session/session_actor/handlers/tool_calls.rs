@@ -23,11 +23,11 @@ impl SessionPersistenceActor {
         &self,
         event: &ToolUseStarted,
     ) {
-        let mut state = self.state.write();
-        let session = state.session_mut_or_create(&event.session_id);
-        session.begin_tool_call(event.index, &event.id, &event.name, event.dispatched_at);
+        self.state.with_session(&self.cap, |view| {
+            let session = view.session.map().get_or_create(&event.session_id);
+            session.begin_tool_call(event.index, &event.id, &event.name, event.dispatched_at);
+        });
     }
-
     /// Finalizes the tool call entry with complete arguments.
     ///
     /// The placeholder entry was created by `on_tool_use_started`. This updates
@@ -36,13 +36,14 @@ impl SessionPersistenceActor {
         &self,
         event: &ToolCallReceived,
     ) {
-        let mut state = self.state.write();
-        let session = state.session_mut_or_create(&event.session_id);
-        session.finalize_tool_call(
-            &event.tool_call.id,
-            &event.tool_call.name,
-            &event.tool_call.arguments,
-        );
+        self.state.with_session(&self.cap, |view| {
+            let session = view.session.map().get_or_create(&event.session_id);
+            session.finalize_tool_call(
+                &event.tool_call.id,
+                &event.tool_call.name,
+                &event.tool_call.arguments,
+            );
+        });
     }
 
     /// Appends a partial JSON delta to a streaming tool call.
@@ -50,42 +51,47 @@ impl SessionPersistenceActor {
         &self,
         event: &ToolCallStreaming,
     ) {
-        let mut state = self.state.write();
-        let session = state.session_mut_or_create(&event.session_id);
-        if let Err(e) = session.append_tool_call_delta(event.index, &event.partial_json) {
-            tracing::error!(err = ?e, "failed to append tool call delta");
-        }
+        self.state.with_session(&self.cap, |view| {
+            let session = view.session.map().get_or_create(&event.session_id);
+            if let Err(e) = session.append_tool_call_delta(event.index, &event.partial_json) {
+                tracing::error!(err = ?e, "failed to append tool call delta");
+            }
+        });
     }
-
     /// Pushes a tool result entry into the session history.
     pub(in crate::feat::session::session_actor) async fn on_tool_execution_completed(
         &self,
         event: &ToolExecutionCompleted,
     ) {
         {
-            let mut state = self.state.write();
-            let session = state.session_mut_or_create(&event.session_id);
-            // Drop stale results that arrive after a cancel. Legitimate tool
-            // execution only ever runs in `Sending`; a result landing in any
-            // other phase (e.g. `Idle` after cancel) is a straggler whose
-            // background task has not yet been aborted.
-            if !matches!(session.phase(), PhaseKind::Sending) {
-                tracing::debug!(
-                    session_id = %event.session_id,
-                    phase = ?session.phase(),
-                    "dropping stale ToolExecutionCompleted: session not in Sending"
+            let should_continue = self.state.with_session(&self.cap, |view| -> bool {
+                let session = view.session.map().get_or_create(&event.session_id);
+                // Drop stale results that arrive after a cancel. Legitimate tool
+                // execution only ever runs in `Sending`; a result landing in any
+                // other phase (e.g. `Idle` after cancel) is a straggler whose
+                // background task has not yet been aborted.
+                if !matches!(session.phase(), PhaseKind::Sending) {
+                    tracing::debug!(
+                        session_id = %event.session_id,
+                        phase = ?session.phase(),
+                        "dropping stale ToolExecutionCompleted: session not in Sending"
+                    );
+                    return false;
+                }
+                session.finalize_tool_result(
+                    &event.result.tool_call_id,
+                    &event.result.name,
+                    &event.result.content,
+                    event.result.success,
+                    event.result.full_content.clone(),
+                    event.result.truncation.clone(),
+                    event.result.pin_position.map(PinPosition::from),
                 );
+                true
+            });
+            if !should_continue {
                 return;
             }
-            session.finalize_tool_result(
-                &event.result.tool_call_id,
-                &event.result.name,
-                &event.result.content,
-                event.result.success,
-                event.result.full_content.clone(),
-                event.result.truncation.clone(),
-                event.result.pin_position.map(PinPosition::from),
-            );
         };
 
         super::super::helpers::emit_history_appended(self.bus(), &event.session_id).await;
@@ -97,37 +103,38 @@ impl SessionPersistenceActor {
         &self,
         event: &ToolExecutionStarted,
     ) {
-        let mut state = self.state.write();
-        let session = state.session_mut_or_create(&event.session_id);
-        session.begin_tool_result(&event.tool_call_id, &event.name, event.dispatched_at);
+        self.state.with_session(&self.cap, |view| {
+            let session = view.session.map().get_or_create(&event.session_id);
+            session.begin_tool_result(&event.tool_call_id, &event.name, event.dispatched_at);
+        });
     }
-
     /// Appends incremental output to a pending ToolResult entry.
     pub(in crate::feat::session::session_actor) fn on_tool_execution_output(
         &self,
         event: &ToolExecutionOutput,
     ) {
-        let mut state = self.state.write();
-        let session = state.session_mut_or_create(&event.session_id);
-        session.append_tool_result_output(&event.tool_call_id, &event.output);
+        self.state.with_session(&self.cap, |view| {
+            let session = view.session.map().get_or_create(&event.session_id);
+            session.append_tool_result_output(&event.tool_call_id, &event.output);
+        });
     }
-
     /// Drains pending history mutations and steering buffer entries, emitting
     /// ContextOverrideChanged events for any modified entries.
     async fn apply_pending_mutations_and_steering(&self, session_id: &crate::protocol::SessionId) {
         // Drain and apply pending history mutations.
         let changed = {
-            let mut state = self.state.write();
-            let session = state.session_mut_or_create(session_id);
-            let (count, changed) = session.drain_and_apply_pending_mutations();
-            if count > 0 {
-                tracing::debug!(
-                    session_id = %session_id,
-                    applied = count,
-                    "applied pending history mutations"
-                );
-            }
-            changed
+            self.state.with_session(&self.cap, |view| {
+                let session = view.session.map().get_or_create(session_id);
+                let (count, changed) = session.drain_and_apply_pending_mutations();
+                if count > 0 {
+                    tracing::debug!(
+                        session_id = %session_id,
+                        applied = count,
+                        "applied pending history mutations"
+                    );
+                }
+                changed
+            })
         };
         // Emit ContextOverrideChanged events outside the write lock.
         for entry_id in changed {
@@ -140,18 +147,19 @@ impl SessionPersistenceActor {
 
         // Drain any pending steering fragments into history.
         {
-            let mut state = self.state.write();
-            let session = state.session_mut_or_create(session_id);
-            if let Some(entry) = session.steering_buffer_mut().drain_into_entry() {
-                let entry_id = entry.id.clone();
-                let index = session.push_entry(entry);
-                tracing::debug!(
-                    session_id = %session_id,
-                    entry_id = %entry_id,
-                    history_index = index,
-                    "drained steering entry into history at tool-batch boundary"
-                );
-            }
+            self.state.with_session(&self.cap, |view| {
+                let session = view.session.map().get_or_create(session_id);
+                if let Some(entry) = session.steering_buffer_mut().drain_into_entry() {
+                    let entry_id = entry.id.clone();
+                    let index = session.push_entry(entry);
+                    tracing::debug!(
+                        session_id = %session_id,
+                        entry_id = %entry_id,
+                        history_index = index,
+                        "drained steering entry into history at tool-batch boundary"
+                    );
+                }
+            });
         }
     }
 
@@ -171,40 +179,41 @@ impl SessionPersistenceActor {
         // Resolve model under write lock (round-robin mutates index), push token
         // record, and transition phase — all in one lock acquisition.
         let (provider_id, model_used, reasoning_effort, old_phase, new_phase) = {
-            let mut state = self.state.write();
-            let session = state.session_mut_or_create(session_id);
-            let old_phase = session.phase();
-            session.begin_streaming();
+            self.state.with_session(&self.cap, |view| {
+                let session = view.session.map().get_or_create(session_id);
+                let old_phase = session.phase();
+                session.begin_streaming();
 
-            let reasoning_effort = {
-                let profile = session.profile();
-                crate::resolve_effort(profile.reasoning_effort)
-            };
-            let (provider_id, model_used) = {
-                let model = &mut session.profile_mut().model;
-                if model.is_no_provider() {
-                    (None, None)
-                } else {
-                    let resolved = model.resolve_model();
-                    (Some(resolved.clone()), Some(resolved))
-                }
-            };
+                let reasoning_effort = {
+                    let profile = session.profile();
+                    crate::resolve_effort(profile.reasoning_effort)
+                };
+                let (provider_id, model_used) = {
+                    let model = &mut session.profile_mut().model;
+                    if model.is_no_provider() {
+                        (None, None)
+                    } else {
+                        let resolved = model.resolve_model();
+                        (Some(resolved.clone()), Some(resolved))
+                    }
+                };
 
-            session.push_token_record(TokenRecord {
-                model_used: model_used.clone(),
-                timestamp: jiff::Timestamp::now(),
-                tokens_sent: assembled.estimated_tokens(),
-                tokens_received: 0,
-                cost: None,
-            });
+                session.push_token_record(TokenRecord {
+                    model_used: model_used.clone(),
+                    timestamp: jiff::Timestamp::now(),
+                    tokens_sent: assembled.estimated_tokens(),
+                    tokens_received: 0,
+                    cost: None,
+                });
 
-            (
-                provider_id,
-                model_used,
-                reasoning_effort,
-                old_phase,
-                session.phase(),
-            )
+                (
+                    provider_id,
+                    model_used,
+                    reasoning_effort,
+                    old_phase,
+                    session.phase(),
+                )
+            })
         };
         super::super::helpers::emit_phase_changed(self.bus(), session_id, old_phase, new_phase)
             .await;
@@ -256,27 +265,32 @@ impl SessionPersistenceActor {
         // straggler that must not restart the loop. Must precede the
         // `tool_loop_disabled` branch.
         {
-            let mut state = self.state.write();
-            let session = state.session_mut_or_create(&event.session_id);
-            match session.phase() {
-                PhaseKind::Sending => { /* normal path — proceed below */ }
-                PhaseKind::Streaming => {
-                    tracing::info!(
-                        session_id = ?event.session_id,
-                        result_count = event.results.len(),
-                        "buffering early ToolBatchCompleted: StreamCompleted(ToolUse) still in flight"
-                    );
-                    session.core.ephemeral.pending_tool_batch = Some(event.results.clone());
-                    return;
+            let should_continue = self.state.with_session(&self.cap, |view| -> bool {
+                let session = view.session.map().get_or_create(&event.session_id);
+                match session.phase() {
+                    PhaseKind::Sending => { /* normal path — proceed below */ }
+                    PhaseKind::Streaming => {
+                        tracing::info!(
+                            session_id = ?event.session_id,
+                            result_count = event.results.len(),
+                            "buffering early ToolBatchCompleted: StreamCompleted(ToolUse) still in flight"
+                        );
+                        session.core.ephemeral.pending_tool_batch = Some(event.results.clone());
+                        return false;
+                    }
+                    other => {
+                        tracing::warn!(
+                            session_id = ?event.session_id,
+                            phase = ?other,
+                            "dropping stale ToolBatchCompleted: session not in Sending"
+                        );
+                        return false;
+                    }
                 }
-                other => {
-                    tracing::warn!(
-                        session_id = ?event.session_id,
-                        phase = ?other,
-                        "dropping stale ToolBatchCompleted: session not in Sending"
-                    );
-                    return;
-                }
+                true
+            });
+            if !should_continue {
+                return;
             }
         }
 
@@ -306,11 +320,12 @@ impl SessionPersistenceActor {
 
         if tool_loop_disabled {
             let (old_phase, new_phase) = {
-                let mut state = self.state.write();
-                let session = state.session_mut_or_create(session_id);
-                let old_phase = session.phase();
-                session.finish_sending_via_machine();
-                (old_phase, session.phase())
+                self.state.with_session(&self.cap, |view| {
+                    let session = view.session.map().get_or_create(session_id);
+                    let old_phase = session.phase();
+                    session.finish_sending_via_machine();
+                    (old_phase, session.phase())
+                })
             };
             super::super::helpers::emit_phase_changed(self.bus(), session_id, old_phase, new_phase)
                 .await;
