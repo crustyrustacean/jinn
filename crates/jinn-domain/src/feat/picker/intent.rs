@@ -790,8 +790,8 @@ pub fn handle_project_lifecycle_confirm(state: &mut AppState) -> IntentResult {
 /// Applies the diff optimistically to `frontend.preferences.projects`,
 /// reloads the picker items so the list updates immediately, and emits
 /// `UpdatePreferences` so the `PreferencesActor` persists the change.
-/// The `PreferencesStateSyncActor` will overwrite `frontend.preferences` with
-/// the same data when the broadcast round-trips.
+/// The `PreferencesActor` will also write `frontend.preferences` inline
+/// after persisting, reconciling any divergence.
 pub fn handle_project_remove_highlighted(state: &mut AppState) -> IntentResult {
     let Some(entry) = state.frontend.project_picker().selected_item().cloned() else {
         return IntentResult::empty();
