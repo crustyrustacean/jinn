@@ -59,7 +59,6 @@ impl State {
     /// call this, then split-borrow disjoint fields of `AppState` for projection.
     /// It stays `pub(crate)` so only `common/tcaps/` (same crate) can reach it.
     /// `inner` itself remains private; this method is the only access path.
-    #[allow(dead_code, reason = "consumed by tcaps projection in Phase 2")]
     pub(crate) fn write_lock(&self) -> parking_lot::RwLockWriteGuard<'_, AppState> {
         self.inner.write()
     }
