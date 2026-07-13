@@ -164,9 +164,7 @@ mod tests {
             deps: ActorDeps {
                 services: services.clone(),
             },
-            state: crate::common::state::State::new(
-                crate::common::app_state::AppState::default(),
-            ),
+            state: crate::common::state::State::new(crate::common::app_state::AppState::default()),
             themes_dir: std::path::PathBuf::new(),
             system_themes_dir: std::path::PathBuf::new(),
         };
