@@ -693,9 +693,24 @@ jinn_domain::feat::preferences_actor::app_state_sync_actor::AppStateSyncActor::s
                 // EnvironmentLoaded; the double resolution is intentional and cheap.
                 match resolve_browser_binary(web_fetch_config.stealth.binary, &SystemBinaryLocator)
                 {
-                    Ok(path) => {
-                        tracing::info!(path = %path.display(), "web-fetch: browser binary resolved");
-                        stealth.binary_path = Some(path);
+                    Ok(resolved) => {
+                        tracing::info!(
+                            path = %resolved.path.display(),
+                            version = ?resolved.version_major,
+                            "web-fetch: browser binary resolved"
+                        );
+                        stealth.binary_path = Some(resolved.path);
+                        // When no explicit UA override was configured, build
+                        // one from the detected binary version so the UA
+                        // never contradicts the binary we actually launch.
+                        // Falls back to CHROME_MAJOR when probing failed.
+                        if web_fetch_config.stealth.user_agent.is_none() {
+                            let major = resolved
+                                .version_major
+                                .as_deref()
+                                .unwrap_or(jinn_web_fetch::stealth::CHROME_MAJOR);
+                            stealth.user_agent = jinn_web_fetch::stealth::build_user_agent(major);
+                        }
                     }
                     Err(err) => {
                         tracing::warn!(%err, "web-fetch: browser binary not resolved; falling back to headless_chrome default");

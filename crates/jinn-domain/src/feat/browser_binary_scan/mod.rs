@@ -110,9 +110,17 @@ impl Message<EnvironmentLoaded> for BrowserBinaryScanActor {
                 .await;
 
         match result {
-            Ok(Ok(path)) => {
-                tracing::info!(path = %path.display(), "browser binary verified");
-                self.publish(BrowserBinaryVerified { path }).await;
+            Ok(Ok(resolved)) => {
+                tracing::info!(
+                    path = %resolved.path.display(),
+                    version = ?resolved.version_major,
+                    "browser binary verified"
+                );
+                self.publish(BrowserBinaryVerified {
+                    path: resolved.path,
+                    version_major: resolved.version_major,
+                })
+                .await;
             }
             Ok(Err(err)) => {
                 tracing::warn!(%err, config = ?config, "browser binary missing");
@@ -131,6 +139,9 @@ impl Message<EnvironmentLoaded> for BrowserBinaryScanActor {
 pub struct BrowserBinaryVerified {
     /// The resolved executable path.
     pub path: std::path::PathBuf,
+    /// The detected major version of the installed binary (e.g. `"138"`),
+    /// or `None` when `<binary> --version` could not be probed/parsed.
+    pub version_major: Option<String>,
 }
 
 /// Emitted when the configured browser binary could not be resolved.
