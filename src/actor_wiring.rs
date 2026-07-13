@@ -326,6 +326,7 @@ impl ActorSystemBuilder {
                 jinn_domain::feat::dashboard::status_actor::DiscordStatusActorDeps {
                     deps: actor_deps.clone(),
                     state: state.clone(),
+                    cap: jinn_domain::common::tcaps::mint::mint_frontend_cap(),
                     status_rx: discord_status_rx.to_async(),
                 },
             )

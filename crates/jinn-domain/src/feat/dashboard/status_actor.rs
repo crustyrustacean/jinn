@@ -75,6 +75,7 @@ const DISCORD_DESCRIPTION: &str = "Discord gateway bot [Task]";
 /// discord connection status. Writes all updates into `frontend.dashboard`.
 pub struct DiscordStatusActor {
     state: State,
+    cap: crate::common::tcaps::frontend::FrontendCap,
 }
 
 /// Dependencies for [`DiscordStatusActor`].
@@ -84,6 +85,8 @@ pub struct DiscordStatusActorDeps {
     pub deps: ActorDeps,
     /// Shared application state — the dashboard sub-struct is written here.
     pub state: State,
+    /// Capability to write `frontend.dashboard`.
+    pub cap: crate::common::tcaps::frontend::FrontendCap,
     /// Receiver half of the kanal channel fed by the Discord gateway.
     pub status_rx: kanal::AsyncReceiver<DiscordStatusUpdate>,
 }
@@ -110,9 +113,10 @@ impl Actor for DiscordStatusActor {
         // The loop owns the receiver and a State clone; each update writes
         // directly to the dashboard.
         let drain_state = args.state.clone();
-        tokio::spawn(drain_status_channel(args.status_rx, drain_state));
+        let drain_cap = args.cap;
+        tokio::spawn(drain_status_channel(args.status_rx, drain_state, drain_cap));
 
-        Ok(Self { state: args.state })
+        Ok(Self { state: args.state, cap: args.cap })
     }
 }
 
@@ -120,11 +124,9 @@ impl Message<ActorStarting> for DiscordStatusActor {
     type Reply = ();
 
     async fn handle(&mut self, msg: ActorStarting, _ctx: &mut Context<Self, Self::Reply>) {
-        let mut state = self.state.write();
-        state
-            .frontend
-            .dashboard
-            .mark_starting(&msg.name, msg.description);
+        self.state.with_dashboard(&self.cap, |ops| {
+            ops.dashboard().mark_starting(&msg.name, msg.description);
+        });
     }
 }
 
@@ -132,11 +134,9 @@ impl Message<ActorStarted> for DiscordStatusActor {
     type Reply = ();
 
     async fn handle(&mut self, msg: ActorStarted, _ctx: &mut Context<Self, Self::Reply>) {
-        let mut state = self.state.write();
-        state
-            .frontend
-            .dashboard
-            .mark_running(&msg.name, msg.description);
+        self.state.with_dashboard(&self.cap, |ops| {
+            ops.dashboard().mark_running(&msg.name, msg.description);
+        });
     }
 }
 
@@ -144,8 +144,9 @@ impl Message<ActorShutdownCompleted> for DiscordStatusActor {
     type Reply = ();
 
     async fn handle(&mut self, msg: ActorShutdownCompleted, _ctx: &mut Context<Self, Self::Reply>) {
-        let mut state = self.state.write();
-        state.frontend.dashboard.mark_dead(&msg.name, None);
+        self.state.with_dashboard(&self.cap, |ops| {
+            ops.dashboard().mark_dead(&msg.name, None);
+        });
     }
 }
 
@@ -153,13 +154,12 @@ impl Message<BrowserBinaryVerified> for DiscordStatusActor {
     type Reply = ();
 
     async fn handle(&mut self, msg: BrowserBinaryVerified, _ctx: &mut Context<Self, Self::Reply>) {
-        let mut state = self.state.write();
-        let dashboard = &mut state.frontend.dashboard;
-
-        // The web-fetch entry's lifecycle is owned by the actor-lifecycle
-        // subscription; we only write the Notes column here. Never call
-        // mark_running/mark_dead — that would race the lifecycle handler.
-        dashboard.set_status_message(WEB_FETCH_ENTRY, Some(backend_label(&msg)));
+        self.state.with_dashboard(&self.cap, |ops| {
+            // The web-fetch entry's lifecycle is owned by the actor-lifecycle
+            // subscription; we only write the Notes column here. Never call
+            // mark_running/mark_dead — that would race the lifecycle handler.
+            ops.dashboard().set_status_message(WEB_FETCH_ENTRY, Some(backend_label(&msg)));
+        });
     }
 }
 
@@ -253,10 +253,15 @@ impl DiscordStatusActor {
 
 /// Background drain loop: reads discord status updates from the kanal channel
 /// and writes them into the dashboard.
-async fn drain_status_channel(rx: kanal::AsyncReceiver<DiscordStatusUpdate>, state: State) {
+async fn drain_status_channel(
+    rx: kanal::AsyncReceiver<DiscordStatusUpdate>,
+    state: State,
+    cap: crate::common::tcaps::frontend::FrontendCap,
+) {
     while let Ok(update) = rx.recv().await {
-        let mut guard = state.write();
-        DiscordStatusActor::apply_discord_update(&mut guard.frontend.dashboard, &update);
+        state.with_dashboard(&cap, |ops| {
+            DiscordStatusActor::apply_discord_update(ops.dashboard(), &update);
+        });
     }
 }
 
@@ -293,6 +298,7 @@ mod tests {
         let actor = DiscordStatusActor::spawn(DiscordStatusActorDeps {
             deps: harness.actor_deps().await,
             state,
+            cap: crate::common::tcaps::mint::mint_frontend_cap(),
             status_rx: status_rx.to_async(),
         });
         actor.wait_for_startup().await;
@@ -377,6 +383,7 @@ mod tests {
         let actor = DiscordStatusActor::spawn(DiscordStatusActorDeps {
             deps: harness.actor_deps().await,
             state: state.clone(),
+            cap: crate::common::tcaps::mint::mint_frontend_cap(),
             status_rx: rx.to_async(),
         });
         actor.wait_for_startup().await;
@@ -399,6 +406,7 @@ mod tests {
         let actor = DiscordStatusActor::spawn(DiscordStatusActorDeps {
             deps: harness.actor_deps().await,
             state: state.clone(),
+            cap: crate::common::tcaps::mint::mint_frontend_cap(),
             status_rx: rx.to_async(),
         });
         actor.wait_for_startup().await;
@@ -423,6 +431,7 @@ mod tests {
         let actor = DiscordStatusActor::spawn(DiscordStatusActorDeps {
             deps: harness.actor_deps().await,
             state: state.clone(),
+            cap: crate::common::tcaps::mint::mint_frontend_cap(),
             status_rx: rx.to_async(),
         });
         actor.wait_for_startup().await;
@@ -449,6 +458,7 @@ mod tests {
         let actor = DiscordStatusActor::spawn(DiscordStatusActorDeps {
             deps: harness.actor_deps().await,
             state: state.clone(),
+            cap: crate::common::tcaps::mint::mint_frontend_cap(),
             status_rx: rx.to_async(),
         });
         actor.wait_for_startup().await;
@@ -474,6 +484,7 @@ mod tests {
         let actor = DiscordStatusActor::spawn(DiscordStatusActorDeps {
             deps: harness.actor_deps().await,
             state: state.clone(),
+            cap: crate::common::tcaps::mint::mint_frontend_cap(),
             status_rx: rx.to_async(),
         });
         actor.wait_for_startup().await;
