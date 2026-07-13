@@ -37,6 +37,8 @@ pub struct PromptScanActorDeps {
     pub deps: ActorDeps,
     /// Shared application state.
     pub state: State,
+    /// Authority to write discovered prompt templates into sessions.
+    pub session_cap: crate::common::tcaps::session::SessionCap,
 }
 
 /// Scans and reloads prompt templates on `RescanPromptTemplates`.
@@ -50,6 +52,8 @@ pub struct PromptScanActor {
     deps: ActorDeps,
     /// Shared application state.
     state: State,
+    /// Authority to write discovered prompt templates into sessions.
+    session_cap: crate::common::tcaps::session::SessionCap,
 }
 
 impl BusPublish for PromptScanActor {
@@ -80,6 +84,7 @@ impl Actor for PromptScanActor {
         Ok(Self {
             deps,
             state: args.state,
+            session_cap: args.session_cap,
         })
     }
 }
@@ -185,10 +190,12 @@ impl PromptScanActor {
                 tracing::info!(count = store.len(), "rescanned prompt templates");
 
                 {
-                    let mut guard = self.state.write();
-                    if let Some(session) = guard.try_session_mut(session_id) {
-                        session.set_discovered_prompt_templates(store.clone());
-                    }
+                    let session_id = session_id.clone();
+                    self.state.with_session(&self.session_cap, |view| {
+                        if let Some(session) = view.session.map().get_mut(&session_id) {
+                            session.set_discovered_prompt_templates(store.clone());
+                        }
+                    });
                 }
 
                 self.publish(PromptTemplatesLoaded {
@@ -285,7 +292,7 @@ mod tests {
     ) -> (State, SessionId) {
         let state = State::new(AppState::default());
         {
-            let mut guard = state.write();
+            let mut guard = state.write_test();
             guard
                 .session
                 .active_session_mut()
@@ -319,6 +326,7 @@ mod tests {
             .spawn_actor::<PromptScanActor>(PromptScanActorDeps {
                 deps: harness.actor_deps().await,
                 state: state.clone(),
+                session_cap: crate::common::tcaps::mint::mint_session_cap(),
             })
             .await;
 
@@ -373,6 +381,7 @@ mod tests {
             .spawn_actor::<PromptScanActor>(PromptScanActorDeps {
                 deps: harness.actor_deps().await,
                 state: state.clone(),
+                session_cap: crate::common::tcaps::mint::mint_session_cap(),
             })
             .await;
 
@@ -414,6 +423,7 @@ mod tests {
             .spawn_actor::<PromptScanActor>(PromptScanActorDeps {
                 deps: harness.actor_deps().await,
                 state: state.clone(),
+                session_cap: crate::common::tcaps::mint::mint_session_cap(),
             })
             .await;
 
@@ -447,6 +457,7 @@ mod tests {
             .spawn_actor::<PromptScanActor>(PromptScanActorDeps {
                 deps: harness.actor_deps().await,
                 state: state.clone(),
+                session_cap: crate::common::tcaps::mint::mint_session_cap(),
             })
             .await;
 
@@ -479,6 +490,7 @@ mod tests {
             .spawn_actor::<PromptScanActor>(PromptScanActorDeps {
                 deps: harness.actor_deps().await,
                 state: state.clone(),
+                session_cap: crate::common::tcaps::mint::mint_session_cap(),
             })
             .await;
 
@@ -513,6 +525,7 @@ mod tests {
             .spawn_actor::<PromptScanActor>(PromptScanActorDeps {
                 deps: harness.actor_deps().await,
                 state: state.clone(),
+                session_cap: crate::common::tcaps::mint::mint_session_cap(),
             })
             .await;
 
@@ -546,6 +559,7 @@ mod tests {
             .spawn_actor::<PromptScanActor>(PromptScanActorDeps {
                 deps: harness.actor_deps().await,
                 state: state.clone(),
+                session_cap: crate::common::tcaps::mint::mint_session_cap(),
             })
             .await;
 

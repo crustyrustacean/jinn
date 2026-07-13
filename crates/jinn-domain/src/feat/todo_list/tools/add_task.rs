@@ -107,9 +107,11 @@ pub fn execute(call: ToolCall, ctx: ToolContext) -> BoxedToolFuture {
 
         let phase_id = PhaseId::from_string(phase_id_str);
 
-        let result = {
-            let mut w = state.write();
-            let session = w.session_mut(&session_id);
+        let Some(session_cap) = &ctx.session_cap else {
+            return tool_error(call, "no session capability");
+        };
+        let result = state.with_session(session_cap, |view| {
+            let session = view.session.map().get_unchecked_mut(&session_id);
             let list = session.task_list_mut();
             match list.add_task(&phase_id, &description, position) {
                 Ok(task_id) => {
@@ -121,7 +123,7 @@ pub fn execute(call: ToolCall, ctx: ToolContext) -> BoxedToolFuture {
                 }
                 Err(e) => Err(format!("Error: {e}")),
             }
-        };
+        });
 
         match result {
             Ok(content) => {
@@ -199,6 +201,7 @@ mod tests {
             max_output_bytes: None,
 
             dispatched_at: jiff::Timestamp::now(),
+            session_cap: Some(crate::common::tcaps::mint::mint_session_cap()),
         }
     }
 
@@ -210,7 +213,7 @@ mod tests {
             r.session.active_session_id().clone()
         };
         let (pid, tid) = {
-            let mut w = state.write();
+            let mut w = state.write_test();
             let session = w.session_mut(&session_id);
             let pid = session.task_list_mut().add_phase("Build");
             let tid = session

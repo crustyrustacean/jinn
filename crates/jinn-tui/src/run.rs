@@ -293,7 +293,7 @@ fn handle_suspend_action(
             if let Some(content) = content {
                 app.core
                     .state
-                    .write()
+                    .write(&app.intent_handler_cap)
                     .active_chat_input_mut()
                     .replace_all(content);
             }

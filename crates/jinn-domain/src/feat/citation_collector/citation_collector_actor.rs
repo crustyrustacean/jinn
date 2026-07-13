@@ -329,7 +329,7 @@ mod actor_tests {
 
     /// Seed a session's history with one entry.
     fn seed_history(actor: &CitationCollectorActor, sid: &SessionId, entry: ChatEntry) {
-        let mut state = actor.state.write();
+        let mut state = actor.state.write_test();
         let session = state.session_mut_or_create(sid);
         session.push_entry(entry);
     }
@@ -492,7 +492,7 @@ mod actor_tests {
 
         // When the session later reaches a genuine assistant answer.
         {
-            let mut state = actor.state.write();
+            let mut state = actor.state.write_test();
             state
                 .session_mut_or_create(&s)
                 .push_entry(ChatEntry::assistant("recovered"));

@@ -185,11 +185,18 @@ fn dfs_flatten(tree: &SessionTree) -> Vec<SessionEntry> {
 ///
 /// Panics if a session exists in the map but its parent does not.
 pub fn sorted_open_sessions(state: &AppState) -> Vec<SessionEntry> {
-    let active_id = state.session.active_session_id();
+    sorted_open_sessions_split(&state.session, &state.frontend)
+}
+
+/// Split-borrow variant of [`sorted_open_sessions`] for use inside tcaps views.
+pub fn sorted_open_sessions_split(
+    session: &crate::common::session_map::SessionMap,
+    frontend: &crate::feat::ui::frontend_state::FrontendState,
+) -> Vec<SessionEntry> {
+    let active_id = session.active_session_id();
 
     // Collect all loaded sessions into entries.
-    let entries: Vec<SessionEntry> = state
-        .session
+    let entries: Vec<SessionEntry> = session
         .iter()
         .filter(|(_, session)| {
             session.session_state() == crate::feat::session::chat_session::SessionState::Loaded
@@ -214,13 +221,13 @@ pub fn sorted_open_sessions(state: &AppState) -> Vec<SessionEntry> {
         })
         .collect();
 
-    let visual_parents = &state.frontend.sessions_section.visual_parents;
+    let visual_parents = &frontend.sessions_section.visual_parents;
     let tree = build_session_tree(entries, visual_parents);
 
     let mut result = dfs_flatten(&tree);
 
     // Post-DFS pass: insert plugin child entries under each session.
-    insert_plugin_entries(state, &mut result);
+    insert_plugin_entries_split(session, &mut result);
 
     result
 }
@@ -236,8 +243,10 @@ pub fn sorted_open_sessions(state: &AppState) -> Vec<SessionEntry> {
 /// plugin children appended need their own `is_last_child` unchanged (they remain
 /// last among *session* siblings). The plugin entries become their new children at
 /// depth + 1.
-#[expect(clippy::expect_used, reason = "infallible")]
-fn insert_plugin_entries(state: &AppState, entries: &mut Vec<SessionEntry>) {
+fn insert_plugin_entries_split(
+    session: &crate::common::session_map::SessionMap,
+    entries: &mut Vec<SessionEntry>,
+) {
     // Collect (insert_index, session_id, plugins) for each session with plugins.
     let mut insertions: Vec<(usize, SessionId, Vec<jinn_core_types::AttachedPlugin>)> = Vec::new();
 
@@ -263,7 +272,7 @@ fn insert_plugin_entries(state: &AppState, entries: &mut Vec<SessionEntry>) {
         };
 
         // Look up attached plugins for this session.
-        let Some(session) = state.session.get(&session_id) else {
+        let Some(session) = session.get(&session_id) else {
             i = subtree_end;
             continue;
         };
@@ -312,7 +321,7 @@ fn insert_plugin_entries(state: &AppState, entries: &mut Vec<SessionEntry>) {
             let is_idle = ap
                 .managed_session_id
                 .as_ref()
-                .and_then(|mid| state.session.get(mid))
+                .and_then(|mid| session.get(mid))
                 .is_none_or(|s| matches!(s.phase(), PhaseKind::Idle) && !s.is_busy());
             let plugin_entry = SessionEntry {
                 kind: SessionEntryKind::Plugin {
@@ -349,7 +358,9 @@ fn insert_plugin_entries(state: &AppState, entries: &mut Vec<SessionEntry>) {
                     && e.parent_id.as_ref() == Some(&parent_id)
                     && matches!(e.kind, SessionEntryKind::Session)
                 {
-                    entries.get_mut(k).expect("k < insert_idx").is_last_child = false;
+                    if let Some(e) = entries.get_mut(k) {
+                        e.is_last_child = false;
+                    }
                     break;
                 }
             }
@@ -367,18 +378,26 @@ fn insert_plugin_entries(state: &AppState, entries: &mut Vec<SessionEntry>) {
 /// point to the removed session as their effective ancestor, those entries
 /// are updated to point to the resolved ancestor instead.
 pub fn update_visual_parents_on_removal(state: &mut AppState, removed_id: &SessionId) {
+    update_visual_parents_on_removal_split(&mut state.session, &mut state.frontend, removed_id);
+}
+
+/// Split-borrow variant of [`update_visual_parents_on_removal`] for use inside tcaps views.
+pub fn update_visual_parents_on_removal_split(
+    session: &mut crate::common::session_map::SessionMap,
+    frontend: &mut crate::feat::ui::frontend_state::FrontendState,
+    removed_id: &SessionId,
+) {
     let effective_ancestor = {
         // Resolve the nearest loaded ancestor for the session being removed.
-        let Some(removed_session) = state.session.get(removed_id) else {
+        let Some(removed_session) = session.get(removed_id) else {
             return;
         };
 
         match removed_session.parent_session() {
             // Direct parent is loaded - use it.
-            Some(pid) if state.session.contains(pid) => Some(pid.clone()),
+            Some(pid) if session.contains(pid) => Some(pid.clone()),
             // Direct parent not loaded - check if it has a visual_parents entry.
-            Some(pid) => state
-                .frontend
+            Some(pid) => frontend
                 .sessions_section
                 .visual_parents
                 .get(pid)
@@ -386,16 +405,14 @@ pub fn update_visual_parents_on_removal(state: &mut AppState, removed_id: &Sessi
                 .or_else(|| {
                     // The parent's parent may not be in visual_parents,
                     // but the removed session itself might have been reparented.
-                    state
-                        .frontend
+                    frontend
                         .sessions_section
                         .visual_parents
                         .get(removed_id)
                         .cloned()
                 }),
             // No parent at all - check if the removed session itself has a visual parent.
-            None => state
-                .frontend
+            None => frontend
                 .sessions_section
                 .visual_parents
                 .get(removed_id)
@@ -403,11 +420,10 @@ pub fn update_visual_parents_on_removal(state: &mut AppState, removed_id: &Sessi
         }
     };
 
-    let visual_parents = &mut state.frontend.sessions_section.visual_parents;
+    let visual_parents = &mut frontend.sessions_section.visual_parents;
 
     // Find direct children of the removed session and reparent them.
-    let orphan_ids: Vec<SessionId> = state
-        .session
+    let orphan_ids: Vec<SessionId> = session
         .iter()
         .filter(|(_, s)| s.parent_session().as_ref() == Some(removed_id))
         .map(|(id, _)| id.clone())
@@ -452,8 +468,15 @@ pub fn update_visual_parents_on_removal(state: &mut AppState, removed_id: &Sessi
 /// Entries where the loaded session is the **key** are preserved - the loaded
 /// session may itself have a hidden parent that it needs to be reparented under.
 pub fn clear_visual_parents_on_load(state: &mut AppState, loaded_id: &SessionId) {
-    state
-        .frontend
+    clear_visual_parents_on_load_split(&mut state.frontend, loaded_id);
+}
+
+/// Split-borrow variant of [`clear_visual_parents_on_load`] for use inside tcaps views.
+pub fn clear_visual_parents_on_load_split(
+    frontend: &mut crate::feat::ui::frontend_state::FrontendState,
+    loaded_id: &SessionId,
+) {
+    frontend
         .sessions_section
         .visual_parents
         .retain(|_k, v| v != loaded_id);

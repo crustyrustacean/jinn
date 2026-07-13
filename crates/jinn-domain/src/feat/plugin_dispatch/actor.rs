@@ -214,26 +214,24 @@ impl PluginDispatchActor {
 
         // 1. Capture the instances being removed and remove them from
         //    session.core.attached_plugins.
-        let (removed_instances, remaining_instances): (
-            Vec<PluginInstanceId>,
-            Vec<(PluginInstanceId, String)>,
-        ) = {
-            let result: Option<(Vec<PluginInstanceId>, Vec<(PluginInstanceId, String)>)> =
-                self.state.with_session(&self.cap, |view| {
-                    let session = view.session.map();
-                    let Some(session) = session.get_mut(&session_id) else {
-                        tracing::warn!(session_id = %session_id, "session not found for detach");
-                        return None;
-                    };
-                    let removed = session.detach_plugins_by_name(plugin_name.as_str());
-                    let remaining = session
-                        .attached_plugins()
-                        .iter()
-                        .map(|p| (p.instance_id.clone(), p.name.clone()))
-                        .collect();
-                    Some((removed, remaining))
-                });
-            let Some((removed_instances, remaining_instances)) = result else { return };
+        let (removed_instances, remaining_instances) = {
+            let result = self.state.with_session(&self.cap, |view| {
+                let session = view.session.map();
+                let Some(session) = session.get_mut(&session_id) else {
+                    tracing::warn!(session_id = %session_id, "session not found for detach");
+                    return None;
+                };
+                let removed = session.detach_plugins_by_name(plugin_name.as_str());
+                let remaining = session
+                    .attached_plugins()
+                    .iter()
+                    .map(|p| (p.instance_id.clone(), p.name.clone()))
+                    .collect();
+                Some((removed, remaining))
+            });
+            let Some((removed_instances, remaining_instances)) = result else {
+                return;
+            };
             (removed_instances, remaining_instances)
         };
 
@@ -747,7 +745,7 @@ mod tests {
 
     fn seed_completed_task_list(state: &State, session_id: &SessionId) {
         use crate::feat::todo_list::TaskPosition;
-        let mut write = state.write();
+        let mut write = state.write_test();
         let session = write.session.get_mut(session_id).unwrap();
         let phase = session.task_list_mut().add_phase("Build");
         let task = session
@@ -759,7 +757,7 @@ mod tests {
 
     fn seed_pending_task_list(state: &State, session_id: &SessionId) {
         use crate::feat::todo_list::TaskPosition;
-        let mut write = state.write();
+        let mut write = state.write_test();
         let session = write.session.get_mut(session_id).unwrap();
         let phase = session.task_list_mut().add_phase("Build");
         session

@@ -113,7 +113,7 @@ mod tests {
     }
 
     fn write_dashboard(app: &crate::TuiApp, f: impl FnOnce(&mut DashboardState)) {
-        f(&mut app.core.state.write().frontend.dashboard);
+        f(&mut app.core.state.write_test().frontend.dashboard);
     }
 
     /// Collects the entire terminal buffer into a single string for substring
@@ -134,7 +134,7 @@ mod tests {
         let mut app = build_app().await;
         app.core
             .state
-            .write()
+            .write_test()
             .frontend
             .scope_stack
             .swap_base(jinn_domain::FocusScope::Dashboard);
@@ -161,7 +161,7 @@ mod tests {
         let mut app = build_app().await;
         app.core
             .state
-            .write()
+            .write_test()
             .frontend
             .scope_stack
             .swap_base(jinn_domain::FocusScope::Dashboard);
@@ -188,7 +188,7 @@ mod tests {
         let mut app = build_app().await;
         app.core
             .state
-            .write()
+            .write_test()
             .frontend
             .scope_stack
             .swap_base(jinn_domain::FocusScope::Dashboard);
@@ -211,7 +211,7 @@ mod tests {
         let mut app = build_app().await;
         app.core
             .state
-            .write()
+            .write_test()
             .frontend
             .scope_stack
             .swap_base(jinn_domain::FocusScope::Dashboard);
@@ -236,7 +236,7 @@ mod tests {
         let mut app = build_app().await;
         app.core
             .state
-            .write()
+            .write_test()
             .frontend
             .scope_stack
             .swap_base(jinn_domain::FocusScope::Dashboard);

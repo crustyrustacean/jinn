@@ -58,7 +58,12 @@ mod tests {
 
     async fn build_app_with_scope(scope: FocusScope) -> crate::TuiApp {
         let app = crate::TuiApp::test_builder().build().await;
-        app.core.state.write().frontend.scope_stack.swap_base(scope);
+        app.core
+            .state
+            .write_test()
+            .frontend
+            .scope_stack
+            .swap_base(scope);
         app
     }
 
@@ -123,7 +128,7 @@ mod tests {
         let mut app = build_app_with_scope(FocusScope::Dashboard).await;
         app.core
             .state
-            .write()
+            .write_test()
             .frontend
             .scope_stack
             .push(FocusScope::QuakeBar);

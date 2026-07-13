@@ -48,6 +48,8 @@ pub struct DiscordBridgeActor {
     /// Shared application state — writes the `gdc` (to-thread) result
     /// `ChatEntry` back into the targeted session's history.
     state: State,
+    /// Authority to push entries into sessions.
+    session_cap: crate::common::tcaps::session::SessionCap,
 }
 
 /// Dependencies for [`DiscordBridgeActor`].
@@ -61,6 +63,8 @@ pub struct DiscordBridgeActorDeps {
     pub gateway_tx: kanal::Sender<GatewayRequest>,
     /// Shared application state.
     pub state: State,
+    /// Authority to push entries into sessions.
+    pub session_cap: crate::common::tcaps::session::SessionCap,
 }
 
 impl Actor for DiscordBridgeActor {
@@ -97,6 +101,7 @@ impl Actor for DiscordBridgeActor {
             tx: args.tx,
             gateway_tx: args.gateway_tx,
             state: args.state,
+            session_cap: args.session_cap,
         })
     }
 }
@@ -171,12 +176,17 @@ impl Message<DiscordThreadCreateFailed> for DiscordBridgeActor {
 impl DiscordBridgeActor {
     /// Constructs an actor instance directly (for tests that bypass `on_start`).
     #[cfg(test)]
-    pub(crate) fn new(tx: kanal::Sender<BridgeEvent>, state: State) -> Self {
+    pub(crate) fn new(
+        tx: kanal::Sender<BridgeEvent>,
+        state: State,
+        session_cap: crate::common::tcaps::session::SessionCap,
+    ) -> Self {
         let (gateway_tx, _gateway_rx) = kanal::bounded(1);
         Self {
             tx,
             gateway_tx,
             state,
+            session_cap,
         }
     }
 
@@ -222,13 +232,13 @@ impl DiscordBridgeActor {
     /// Handle `DiscordThreadCreated`: push a system `ChatEntry` mentioning the title.
     pub(super) fn handle_created(&self, msg: &DiscordThreadCreated) {
         let entry = ChatEntry::system(format!("Continuing in Discord thread: {}", msg.title));
-        push_entry(&self.state, &msg.session_id, entry);
+        push_entry(&self.state, self.session_cap, &msg.session_id, entry);
     }
 
     /// Handle `DiscordThreadCreateFailed`: push an error `ChatEntry`.
     pub(super) fn handle_failed(&self, msg: &DiscordThreadCreateFailed) {
         let entry = ChatEntry::error(reason_message(&msg.reason));
-        push_entry(&self.state, &msg.session_id, entry);
+        push_entry(&self.state, self.session_cap, &msg.session_id, entry);
     }
 
     /// Push one event onto the channel.
@@ -271,19 +281,22 @@ fn event_discriminant(event: &BridgeEvent) -> &'static str {
 
 /// Push a `ChatEntry` into a session by id; drop silently if the session is
 /// gone (closed/archived concurrently since the `gdc` request was emitted).
-fn push_entry(state: &State, session_id: &SessionId, entry: ChatEntry) {
-    let mut guard = state.write();
-    match guard.try_session_mut(session_id) {
-        Some(session) => {
+fn push_entry(
+    state: &State,
+    session_cap: crate::common::tcaps::session::SessionCap,
+    session_id: &SessionId,
+    entry: ChatEntry,
+) {
+    state.with_session(&session_cap, |view| {
+        if let Some(session) = view.session.map().get_mut(session_id) {
             session.push_entry(entry);
-        }
-        None => {
+        } else {
             tracing::debug!(
                 %session_id,
                 "to-thread result arrived for a session that no longer exists; dropping",
             );
         }
-    }
+    });
 }
 
 /// Render a human-readable message for each failure reason.
@@ -333,8 +346,11 @@ mod tests {
         let state = State::new(AppState::default());
         let session_id = SessionId::new();
         // Seed the session so `try_session_mut` finds it.
-        state.write().session_mut_or_create(&session_id);
-        let actor = DiscordBridgeActor::new(tx, state);
+        state.with_session(&crate::common::tcaps::mint::mint_session_cap(), |v| {
+            v.session.map().get_or_create(&session_id);
+        });
+        let actor =
+            DiscordBridgeActor::new(tx, state, crate::common::tcaps::mint::mint_session_cap());
         (actor, session_id)
     }
 
@@ -432,7 +448,12 @@ mod tests {
         let session_id = SessionId::new();
 
         // When pushing an entry for a session that doesn't exist.
-        push_entry(&state, &session_id, ChatEntry::system("nope"));
+        push_entry(
+            &state,
+            crate::common::tcaps::mint::mint_session_cap(),
+            &session_id,
+            ChatEntry::system("nope"),
+        );
 
         // Then no panic occurred (reaching here is the assertion).
     }

@@ -113,6 +113,7 @@ mod tests {
             max_output_bytes: None,
 
             dispatched_at: jiff::Timestamp::now(),
+            session_cap: None,
         }
     }
 
@@ -146,7 +147,7 @@ mod tests {
             r.session.active_session_id().clone()
         };
         {
-            let mut w = state.write();
+            let mut w = state.write_test();
             let session = w.session_mut(&session_id);
             let pid = session.task_list_mut().add_phase("Build");
             session
@@ -177,7 +178,7 @@ mod tests {
             r.session.active_session_id().clone()
         };
         {
-            let mut w = state.write();
+            let mut w = state.write_test();
             let session = w.session_mut(&session_id);
             let pid = session.task_list_mut().add_phase("Build");
             session

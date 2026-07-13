@@ -207,7 +207,12 @@ mod tests {
         state.frontend.scope_stack.push(FocusScope::Picker {
             kind: PickerKind::Skill,
         });
-        reload_skill_picker_entries(&mut state);
+        {
+            let disabled = state.active_session().disabled_skills().clone();
+            let theme = state.frontend.theme.clone();
+            let discovered = state.active_session().discovered_skills().to_vec();
+            reload_skill_picker_entries(&mut state.frontend, &discovered, &disabled, &theme);
+        }
         state.frontend.skill_picker_mut().set_selection(0);
         assert!(state.frontend.caches.skill_preview_cache.read().is_empty());
 
@@ -266,7 +271,12 @@ mod tests {
         state.frontend.scope_stack.push(FocusScope::Picker {
             kind: PickerKind::Skill,
         });
-        reload_skill_picker_entries(&mut state);
+        {
+            let disabled = state.active_session().disabled_skills().clone();
+            let theme = state.frontend.theme.clone();
+            let discovered = state.active_session().discovered_skills().to_vec();
+            reload_skill_picker_entries(&mut state.frontend, &discovered, &disabled, &theme);
+        }
         state.frontend.skill_picker_mut().set_selection(0);
 
         let draw = |state: &AppState, area: Rect| {
@@ -327,7 +337,12 @@ mod tests {
         state.frontend.scope_stack.push(FocusScope::Picker {
             kind: PickerKind::Skill,
         });
-        reload_skill_picker_entries(&mut state);
+        {
+            let disabled = state.active_session().disabled_skills().clone();
+            let theme = state.frontend.theme.clone();
+            let discovered = state.active_session().discovered_skills().to_vec();
+            reload_skill_picker_entries(&mut state.frontend, &discovered, &disabled, &theme);
+        }
         state.frontend.skill_picker_mut().set_selection(0);
 
         let draw = |state: &AppState, area: Rect| {

@@ -115,15 +115,15 @@ impl QueueActor {
         let item = {
             self.state.with_session(&self.cap, |view| {
                 let session = view.session.map().get_or_create(session_id);
-            // Queue takes priority. Fall back to the steering buffer so a fragment
-            // submitted mid-turn dispatches itself when the turn completes with an
-            // empty queue — same semantics as a queued user message.
-            session.dequeue().or_else(|| {
-                session
-                    .steering_buffer_mut()
-                    .drain_into_entry()
-                    .map(|entry| QueueItem::UserMessage(Box::new(entry)))
-            })
+                // Queue takes priority. Fall back to the steering buffer so a fragment
+                // submitted mid-turn dispatches itself when the turn completes with an
+                // empty queue — same semantics as a queued user message.
+                session.dequeue().or_else(|| {
+                    session
+                        .steering_buffer_mut()
+                        .drain_into_entry()
+                        .map(|entry| QueueItem::UserMessage(Box::new(entry)))
+                })
             })
         };
 
@@ -150,29 +150,29 @@ impl QueueActor {
         let (old_phase, new_phase) = {
             self.state.with_session(&self.cap, |view| {
                 let session = view.session.map().get_or_create(session_id);
-            if session.title().is_none() {
-                let title = match &entry.kind {
-                    crate::protocol::ChatEntryKind::User { display, .. } => {
-                        display.lines().next().unwrap_or("").to_owned()
-                    }
-                    _ => String::new(),
-                };
-                session.set_title(title);
-            }
-            session.push_entry(entry.clone());
-            // Drain any pending steering fragments into history before assembly.
-            if let Some(steer_entry) = session.steering_buffer_mut().drain_into_entry() {
-                let entry_id = steer_entry.id.clone();
-                session.push_entry(steer_entry);
-                tracing::debug!(
-                    session_id = %session_id,
-                    entry_id = %entry_id,
-                    "drained steering entry into history at queue_actor::dispatch_user_message"
-                );
-            }
-            let old_phase = session.phase();
-            session.begin_sending();
-            (old_phase, session.phase())
+                if session.title().is_none() {
+                    let title = match &entry.kind {
+                        crate::protocol::ChatEntryKind::User { display, .. } => {
+                            display.lines().next().unwrap_or("").to_owned()
+                        }
+                        _ => String::new(),
+                    };
+                    session.set_title(title);
+                }
+                session.push_entry(entry.clone());
+                // Drain any pending steering fragments into history before assembly.
+                if let Some(steer_entry) = session.steering_buffer_mut().drain_into_entry() {
+                    let entry_id = steer_entry.id.clone();
+                    session.push_entry(steer_entry);
+                    tracing::debug!(
+                        session_id = %session_id,
+                        entry_id = %entry_id,
+                        "drained steering entry into history at queue_actor::dispatch_user_message"
+                    );
+                }
+                let old_phase = session.phase();
+                session.begin_sending();
+                (old_phase, session.phase())
             })
         };
 
@@ -192,14 +192,18 @@ impl QueueActor {
 
         let (provider_id, model_used, reasoning_effort) = {
             self.state.with_session(&self.cap, |view| {
-                let profile = view.session.map().get_unchecked_mut(session_id).profile_mut();
-            let reasoning_effort = crate::resolve_effort(profile.reasoning_effort);
-            if profile.model.is_no_provider() {
-                (None, None, reasoning_effort)
-            } else {
-                let resolved = profile.model.resolve_model();
-                (Some(resolved.clone()), Some(resolved), reasoning_effort)
-            }
+                let profile = view
+                    .session
+                    .map()
+                    .get_unchecked_mut(session_id)
+                    .profile_mut();
+                let reasoning_effort = crate::resolve_effort(profile.reasoning_effort);
+                if profile.model.is_no_provider() {
+                    (None, None, reasoning_effort)
+                } else {
+                    let resolved = profile.model.resolve_model();
+                    (Some(resolved.clone()), Some(resolved), reasoning_effort)
+                }
             })
         };
 
@@ -243,16 +247,16 @@ impl QueueActor {
         {
             self.state.with_session(&self.cap, |view| {
                 let session = view.session.map().get_or_create(session_id);
-            if let Some(entry) = session.steering_buffer_mut().drain_into_entry() {
-                let entry_id = entry.id.clone();
-                session.push_entry(entry);
-                tracing::debug!(
-                    session_id = %session_id,
-                    entry_id = %entry_id,
-                    label = %label,
-                    "drained steering entry into history at queue_actor::dispatch_resume"
-                );
-            }
+                if let Some(entry) = session.steering_buffer_mut().drain_into_entry() {
+                    let entry_id = entry.id.clone();
+                    session.push_entry(entry);
+                    tracing::debug!(
+                        session_id = %session_id,
+                        entry_id = %entry_id,
+                        label = %label,
+                        "drained steering entry into history at queue_actor::dispatch_resume"
+                    );
+                }
             });
         }
         let assembled = {
@@ -262,14 +266,18 @@ impl QueueActor {
 
         let (provider_id, model_used, reasoning_effort) = {
             self.state.with_session(&self.cap, |view| {
-                let profile = view.session.map().get_unchecked_mut(session_id).profile_mut();
-            let reasoning_effort = crate::resolve_effort(profile.reasoning_effort);
-            if profile.model.is_no_provider() {
-                (None, None, reasoning_effort)
-            } else {
-                let resolved = profile.model.resolve_model();
-                (Some(resolved.clone()), Some(resolved), reasoning_effort)
-            }
+                let profile = view
+                    .session
+                    .map()
+                    .get_unchecked_mut(session_id)
+                    .profile_mut();
+                let reasoning_effort = crate::resolve_effort(profile.reasoning_effort);
+                if profile.model.is_no_provider() {
+                    (None, None, reasoning_effort)
+                } else {
+                    let resolved = profile.model.resolve_model();
+                    (Some(resolved.clone()), Some(resolved), reasoning_effort)
+                }
             })
         };
 
@@ -339,7 +347,7 @@ mod tests {
         let (actor, audit) = create_actor().await;
         let sid = session_id();
         {
-            let mut state = actor.state.write();
+            let mut state = actor.state.write_test();
             let session = state.session_mut_or_create(&sid);
             session.enqueue(QueueItem::UserMessage(Box::new(ChatEntry::user("hello"))));
         }
@@ -369,7 +377,7 @@ mod tests {
         let (actor, audit) = create_actor().await;
         let sid = session_id();
         {
-            let mut state = actor.state.write();
+            let mut state = actor.state.write_test();
             let session = state.session_mut_or_create(&sid);
             session.enqueue(QueueItem::ToolContinuation);
         }
@@ -396,7 +404,7 @@ mod tests {
         let (actor, audit) = create_actor().await;
         let sid = session_id();
         {
-            let mut state = actor.state.write();
+            let mut state = actor.state.write_test();
             let session = state.session_mut_or_create(&sid);
             session.enqueue(QueueItem::UserMessage(Box::new(ChatEntry::user("hello"))));
         }
@@ -468,7 +476,7 @@ mod tests {
         let (actor, _audit) = create_actor().await;
         let sid = session_id();
         {
-            let mut state = actor.state.write();
+            let mut state = actor.state.write_test();
             let session = state.session_mut_or_create(&sid);
             session.set_title("original title".to_owned());
         }
@@ -521,7 +529,7 @@ mod tests {
         let (actor, audit) = create_actor().await;
         let sid = session_id();
         {
-            let mut state = actor.state.write();
+            let mut state = actor.state.write_test();
             let session = state.session_mut_or_create(&sid);
             session.profile_mut().model =
                 crate::feat::session::model_selection::ModelSelection::Single(
@@ -601,7 +609,7 @@ mod tests {
         let (actor, _audit) = create_actor().await;
         let sid = session_id();
         {
-            let mut state = actor.state.write();
+            let mut state = actor.state.write_test();
             let session = state.session_mut_or_create(&sid);
             session.steering_buffer_mut().push_fragment("system note");
         }
@@ -623,7 +631,7 @@ mod tests {
         let (actor, _audit) = create_actor().await;
         let sid = session_id();
         {
-            let mut state = actor.state.write();
+            let mut state = actor.state.write_test();
             let session = state.session_mut_or_create(&sid);
             session.steering_buffer_mut().push_fragment("system note");
         }
@@ -643,7 +651,7 @@ mod tests {
         let (actor, audit) = create_actor().await;
         let sid = session_id();
         {
-            let mut state = actor.state.write();
+            let mut state = actor.state.write_test();
             let session = state.session_mut_or_create(&sid);
             session.steering_buffer_mut().push_fragment("stay focused");
         }
@@ -681,7 +689,7 @@ mod tests {
         let (actor, _audit) = create_actor().await;
         let sid = session_id();
         {
-            let mut state = actor.state.write();
+            let mut state = actor.state.write_test();
             let session = state.session_mut_or_create(&sid);
             session.steering_buffer_mut().push_fragment("stay focused");
         }
@@ -709,7 +717,7 @@ mod tests {
         let (actor, audit) = create_actor().await;
         let sid = session_id();
         {
-            let mut state = actor.state.write();
+            let mut state = actor.state.write_test();
             let session = state.session_mut_or_create(&sid);
             session.steering_buffer_mut().push_fragment("stay focused");
         }
@@ -733,7 +741,7 @@ mod tests {
         let (actor, audit) = create_actor().await;
         let sid = session_id();
         {
-            let mut state = actor.state.write();
+            let mut state = actor.state.write_test();
             let session = state.session_mut_or_create(&sid);
             session.steering_buffer_mut().push_fragment("stay focused");
         }
@@ -786,7 +794,7 @@ mod tests {
         let (actor, audit) = create_actor().await;
         let sid = session_id();
         {
-            let mut state = actor.state.write();
+            let mut state = actor.state.write_test();
             let session = state.session_mut_or_create(&sid);
             session.enqueue(QueueItem::UserMessage(Box::new(ChatEntry::user(
                 "queued msg",
@@ -837,7 +845,7 @@ mod tests {
         let (actor, audit) = create_actor().await;
         let sid = session_id();
         {
-            let mut state = actor.state.write();
+            let mut state = actor.state.write_test();
             let session = state.session_mut_or_create(&sid);
             session.enqueue(QueueItem::UserMessage(Box::new(ChatEntry::user("hello"))));
         }

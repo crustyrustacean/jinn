@@ -76,7 +76,7 @@ pub async fn new(ctx: BotContext<'_>) -> Result<(), BotError> {
     };
 
     let new_session_id = {
-        let mut state = data.state.write();
+        let mut state = data.state.write(&data.intent_handler_cap);
         // Stash the chosen project's path so the lifecycle handler consumes it
         // as the new session's starting CWD (same convention as the project
         // picker). Without this the handler falls back to inheriting the

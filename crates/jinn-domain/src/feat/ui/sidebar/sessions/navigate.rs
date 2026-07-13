@@ -9,25 +9,31 @@ use super::MAX_VISIBLE_SESSIONS;
 /// Adjusts scroll offset to ensure the selected index is visible within the window.
 ///
 /// If no index is selected, does nothing.
-#[expect(
-    clippy::else_if_without_else,
-    reason = "no-op on fallthrough is intentional"
-)]
 pub fn scroll_to_cursor(state: &mut AppState) {
-    let Some(index) = state.frontend.sessions_section.selected_index else {
+    let total = sorted_open_sessions(state).len();
+    scroll_to_cursor_split(&mut state.frontend, total);
+}
+
+/// Split-borrow variant of [`scroll_to_cursor`].
+pub fn scroll_to_cursor_split(
+    frontend: &mut crate::feat::ui::frontend_state::FrontendState,
+    total: usize,
+) {
+    let Some(index) = frontend.sessions_section.selected_index else {
         return;
     };
-    let total = sorted_open_sessions(state).len();
     let visible = MAX_VISIBLE_SESSIONS.min(total);
     if visible == 0 {
         return;
     }
-    let offset = &mut state.frontend.sessions_section.scroll_offset;
+    let offset = &mut frontend.sessions_section.scroll_offset;
 
     if index < *offset {
         *offset = index;
     } else if index >= *offset + visible {
         *offset = index - visible + 1;
+    } else {
+        // index is already visible; no scroll needed.
     }
 
     // Clamp offset so the window doesn't extend past the end of the list.

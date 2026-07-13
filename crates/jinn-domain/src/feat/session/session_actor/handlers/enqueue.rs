@@ -72,19 +72,19 @@ impl SessionPersistenceActor {
             EnqueueAction::DispatchDirectly => {
                 super::super::helpers::emit_history_appended(self.bus(), &payload.session_id).await;
                 // Drain any pending steering fragments into history before assembly.
-                    self.state.with_session(&self.cap, |view| {
-                        let session = view.session.map().get_or_create(&payload.session_id);
-                        if let Some(entry) = session.steering_buffer_mut().drain_into_entry() {
-                            let entry_id = entry.id.clone();
-                            let index = session.push_entry(entry);
-                            tracing::debug!(
-                                session_id = %payload.session_id,
-                                entry_id = %entry_id,
-                                history_index = index,
-                                "drained steering entry into history at enqueue (Idle dispatch)"
-                            );
-                        }
-                    });
+                self.state.with_session(&self.cap, |view| {
+                    let session = view.session.map().get_or_create(&payload.session_id);
+                    if let Some(entry) = session.steering_buffer_mut().drain_into_entry() {
+                        let entry_id = entry.id.clone();
+                        let index = session.push_entry(entry);
+                        tracing::debug!(
+                            session_id = %payload.session_id,
+                            entry_id = %entry_id,
+                            history_index = index,
+                            "drained steering entry into history at enqueue (Idle dispatch)"
+                        );
+                    }
+                });
                 // Assemble the prompt directly and emit SendToLlmProvider.
                 let assembled = {
                     let guard = self.state.read();
@@ -121,7 +121,9 @@ impl SessionPersistenceActor {
 
                 let (provider_id, model_used, reasoning_effort) = {
                     self.state.with_session(&self.cap, |view| {
-                        let session = view.session.map().get_mut(&payload.session_id).expect("session");
+                        let Some(session) = view.session.map().get_mut(&payload.session_id) else {
+                            return (None, None, crate::resolve_effort(None));
+                        };
                         let profile = session.profile_mut();
                         let reasoning_effort = crate::resolve_effort(profile.reasoning_effort);
                         if profile.model.is_no_provider() {
@@ -382,10 +384,10 @@ impl SessionPersistenceActor {
             preview = %payload.entry.text().chars().take(60).collect::<String>(),
             "handle_push_chat_entry"
         );
-            self.state.with_session(&self.cap, |view| {
-                let session = view.session.map().get_or_create(&payload.session_id);
-                session.push_entry(payload.entry.clone());
-            });
+        self.state.with_session(&self.cap, |view| {
+            let session = view.session.map().get_or_create(&payload.session_id);
+            session.push_entry(payload.entry.clone());
+        });
 
         self.publish(ChatEntrySubmitted {
             session_id: payload.session_id.clone(),
@@ -449,7 +451,7 @@ mod tests {
         // Given an idle session.
         let (actor, state, audit) = create_actor().await;
         let session_id = {
-            let mut guard = state.write();
+            let mut guard = state.write_test();
             let _session = guard.active_session_mut();
             guard.session.active_session_id().clone()
         };
@@ -484,7 +486,7 @@ mod tests {
         // Given a new session with no title.
         let (actor, state, _audit) = create_actor().await;
         let session_id = {
-            let mut guard = state.write();
+            let mut guard = state.write_test();
             let _ = guard.active_session_mut();
             guard.session.active_session_id().clone()
         };
@@ -508,7 +510,7 @@ mod tests {
         // Given a session in Streaming phase (busy).
         let (actor, state, _audit) = create_actor().await;
         let session_id = {
-            let mut guard = state.write();
+            let mut guard = state.write_test();
             let session = guard.active_session_mut();
             session.begin_streaming();
             guard.session.active_session_id().clone()
@@ -537,7 +539,7 @@ mod tests {
         // Given a session with default model (NO_PROVIDER_ID).
         let (actor, state, audit) = create_actor().await;
         let session_id = {
-            let mut guard = state.write();
+            let mut guard = state.write_test();
             let _ = guard.active_session_mut();
             guard.session.active_session_id().clone()
         };
@@ -562,7 +564,7 @@ mod tests {
         // Given a session.
         let (actor, state, _audit) = create_actor().await;
         let session_id = {
-            let mut guard = state.write();
+            let mut guard = state.write_test();
             let _ = guard.active_session_mut();
             guard.session.active_session_id().clone()
         };
@@ -584,7 +586,7 @@ mod tests {
         // Given a session.
         let (actor, state, audit) = create_actor().await;
         let session_id = {
-            let mut guard = state.write();
+            let mut guard = state.write_test();
             let _ = guard.active_session_mut();
             guard.session.active_session_id().clone()
         };
@@ -646,7 +648,7 @@ mod tests {
         // Given an idle session with no attached plugins.
         let (actor, state, _audit) = create_actor().await;
         let session_id = {
-            let mut guard = state.write();
+            let mut guard = state.write_test();
             let _session = guard.active_session_mut();
             guard.session.active_session_id().clone()
         };
@@ -670,7 +672,7 @@ mod tests {
         // Given a session already in Streaming phase.
         let (actor, state, audit) = create_actor().await;
         let session_id = {
-            let mut guard = state.write();
+            let mut guard = state.write_test();
             let session = guard.active_session_mut();
             session.begin_streaming();
             guard.session.active_session_id().clone()
@@ -702,7 +704,7 @@ mod tests {
         // Given an idle session.
         let (actor, state, audit) = create_actor().await;
         let session_id = {
-            let mut guard = state.write();
+            let mut guard = state.write_test();
             let _ = guard.active_session_mut();
             guard.session.active_session_id().clone()
         };
@@ -749,7 +751,7 @@ mod tests {
         // Given an idle session with a non-empty steering buffer.
         let (actor, state, audit) = create_actor().await;
         let session_id = {
-            let mut guard = state.write();
+            let mut guard = state.write_test();
             let _ = guard.active_session_mut();
             let id = guard.session.active_session_id().clone();
             let session = guard.session_mut_or_create(&id);
@@ -808,7 +810,7 @@ mod tests {
         // Given an idle session with a non-empty steering buffer.
         let (actor, state, audit) = create_actor().await;
         let session_id = {
-            let mut guard = state.write();
+            let mut guard = state.write_test();
             let session = guard.active_session_mut();
             session
                 .steering_buffer_mut()
@@ -855,7 +857,7 @@ mod tests {
         // published effort is None (let the provider decide).
         let (actor, state, audit) = create_actor().await;
         let session_id = {
-            let mut guard = state.write();
+            let mut guard = state.write_test();
             let _ = guard.active_session_mut();
             guard.session.active_session_id().clone()
         };
@@ -893,7 +895,7 @@ mod tests {
         // must be ignored at request time).
         let (actor, state, audit) = create_actor().await;
         let session_id = {
-            let mut guard = state.write();
+            let mut guard = state.write_test();
             let session = guard.active_session_mut();
             session.profile_mut().reasoning_effort = Some(crate::ReasoningEffort::Low);
             guard.session.active_session_id().clone()

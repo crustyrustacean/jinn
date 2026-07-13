@@ -129,10 +129,10 @@ mod tests {
         let app = crate::TuiApp::test_builder().build().await;
         let mut entry = ChatEntry::user("hello");
         entry.apply_context_override(ContextOverride::ForcedExclude, ChangeSource::User);
-        app.core.state.write().frontend.audit_popup_visible = true;
+        app.core.state.write_test().frontend.audit_popup_visible = true;
         app.core
             .state
-            .write()
+            .write_test()
             .active_session_mut()
             .push_entry(entry);
         app
@@ -172,7 +172,7 @@ mod tests {
         // Pre-populate the line-range cache that render_chat_log normally fills.
         // The selected entry occupies wrapped-line 0..=0 (one line).
         {
-            let mut wstate = app.core.state.write();
+            let mut wstate = app.core.state.write_test();
             let session = wstate.active_session_mut();
             session.set_entry_line_ranges(vec![(0, 0)]);
             session.set_rendered_scroll_offset(0);
@@ -277,7 +277,7 @@ mod tests {
         let (mut terminal, _area) = setup_term(100, 24);
 
         {
-            let mut wstate = app.core.state.write();
+            let mut wstate = app.core.state.write_test();
             let session = wstate.active_session_mut();
             session.set_entry_line_ranges(vec![(0, 0)]);
             session.set_rendered_scroll_offset(0);
@@ -371,7 +371,7 @@ mod tests {
         // audit_popup_visible stays at default (false)
         app.core
             .state
-            .write()
+            .write_test()
             .active_session_mut()
             .push_entry(entry);
         let (mut terminal, _area) = setup_term(80, 24);
@@ -412,7 +412,7 @@ mod tests {
         let mut app = app_with_audit_visible().await;
         app.core
             .state
-            .write()
+            .write_test()
             .frontend
             .scope_stack
             .push(FocusScope::Picker {

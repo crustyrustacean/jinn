@@ -45,14 +45,15 @@ impl SessionPersistenceActor {
                 session_map.insert(payload.session.clone());
             });
 
-            // TODO(tcaps): This writes to `frontend.sessions_section` (not session),
-            // so it cannot use SessionCap. Migrate to FrontendCap when frontend capsule is built.
+            // Frontend write: clear visual_parents via FrontendCap.
             {
-                let mut state = self.state.write();
-                crate::feat::ui::sidebar::sessions::clear_visual_parents_on_load(
-                    &mut state,
-                    &session_id,
-                );
+                self.state.with_preferences(&self.frontend_cap, |ops| {
+                    let frontend = ops.frontend();
+                    frontend
+                        .sessions_section
+                        .visual_parents
+                        .retain(|_k, v| v != &session_id);
+                });
             }
 
             self.state.with_session(&self.cap, |view| {
@@ -64,7 +65,7 @@ impl SessionPersistenceActor {
                 session.mark_interacted();
 
                 // Read cwd before releasing the lock (for async existence check).
-                original_cwd = session.cwd().to_owned();
+                session.cwd().clone_into(&mut original_cwd);
 
                 session_map.set_active(session_id.clone());
                 session_map.clear_load();
@@ -86,7 +87,11 @@ impl SessionPersistenceActor {
             };
             self.state.with_session(&self.cap, |view| {
                 #[expect(clippy::expect_used, reason = "just inserted into sessions map above")]
-                let session = view.session.map().get_mut(&session_id).expect("just inserted");
+                let session = view
+                    .session
+                    .map()
+                    .get_mut(&session_id)
+                    .expect("just inserted");
                 session.push_entry(ChatEntry::system(format!(
                     "Warning: working directory '{}' not found, falling back to '{}'",
                     original_cwd.display(),
@@ -155,7 +160,8 @@ impl SessionPersistenceActor {
             Err(e) => {
                 tracing::warn!(err = ?e, "failed to fork session");
                 // Clear loading state.
-                self.state.with_session(&self.cap, |view| view.session.map().clear_load());
+                self.state
+                    .with_session(&self.cap, |view| view.session.map().clear_load());
                 return;
             }
         };
@@ -180,11 +186,13 @@ impl SessionPersistenceActor {
             }
             Ok(None) => {
                 tracing::warn!("forked session not found after creation");
-                self.state.with_session(&self.cap, |view| view.session.map().clear_load());
+                self.state
+                    .with_session(&self.cap, |view| view.session.map().clear_load());
             }
             Err(e) => {
                 tracing::warn!(err = ?e, "failed to load forked session");
-                self.state.with_session(&self.cap, |view| view.session.map().clear_load());
+                self.state
+                    .with_session(&self.cap, |view| view.session.map().clear_load());
             }
         }
     }

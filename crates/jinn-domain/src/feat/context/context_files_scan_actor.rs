@@ -38,6 +38,8 @@ pub struct ContextFilesScanActorDeps {
     pub deps: ActorDeps,
     /// Shared application state.
     pub state: State,
+    /// Authority to write discovered context files into sessions.
+    pub session_cap: crate::common::tcaps::session::SessionCap,
 }
 
 /// Scans and loads project context files (AGENTS.md/CLAUDE.md).
@@ -50,6 +52,8 @@ pub struct ContextFilesScanActor {
     deps: ActorDeps,
     /// Shared application state.
     state: State,
+    /// Authority to write discovered context files into sessions.
+    session_cap: crate::common::tcaps::session::SessionCap,
 }
 
 impl kameo::Actor for ContextFilesScanActor {
@@ -74,6 +78,7 @@ impl kameo::Actor for ContextFilesScanActor {
         Ok(Self {
             deps,
             state: args.state,
+            session_cap: args.session_cap,
         })
     }
 }
@@ -168,10 +173,12 @@ impl ContextFilesScanActor {
                 tracing::info!(count = files.len(), "scanned project context files");
 
                 {
-                    let mut guard = self.state.write();
-                    if let Some(session) = guard.try_session_mut(session_id) {
-                        session.set_discovered_context_files(files.clone());
-                    }
+                    let session_id = session_id.clone();
+                    self.state.with_session(&self.session_cap, |view| {
+                        if let Some(session) = view.session.map().get_mut(&session_id) {
+                            session.set_discovered_context_files(files.clone());
+                        }
+                    });
                 }
 
                 self.publish(ContextFilesLoaded {
@@ -257,7 +264,7 @@ mod tests {
         state: &State,
     ) -> (crate::SessionId, crate::Services) {
         {
-            let mut guard = state.write();
+            let mut guard = state.write_test();
             guard
                 .session
                 .active_session_mut()
@@ -297,6 +304,7 @@ mod tests {
         let actor = ContextFilesScanActor::spawn(ContextFilesScanActorDeps {
             deps: ActorDeps { services },
             state: state.clone(),
+            session_cap: crate::common::tcaps::mint::mint_session_cap(),
         });
         actor.wait_for_startup().await;
 
@@ -336,6 +344,7 @@ mod tests {
         let actor = ContextFilesScanActor::spawn(ContextFilesScanActorDeps {
             deps: ActorDeps { services },
             state,
+            session_cap: crate::common::tcaps::mint::mint_session_cap(),
         });
         actor.wait_for_startup().await;
 
@@ -365,6 +374,7 @@ mod tests {
         let actor = ContextFilesScanActor::spawn(ContextFilesScanActorDeps {
             deps: ActorDeps { services },
             state,
+            session_cap: crate::common::tcaps::mint::mint_session_cap(),
         });
         actor.wait_for_startup().await;
 
@@ -393,7 +403,7 @@ mod tests {
         let dir = tempfile::tempdir().expect("create temp dir for AppPaths");
         let state = State::new(AppState::default());
         {
-            let mut guard = state.write();
+            let mut guard = state.write_test();
             guard.session.active_session_mut().set_cwd(project.clone());
         }
         let session_id = state.read().session.active_session_id().clone();
@@ -409,6 +419,7 @@ mod tests {
         let actor = ContextFilesScanActor::spawn(ContextFilesScanActorDeps {
             deps: ActorDeps { services },
             state,
+            session_cap: crate::common::tcaps::mint::mint_session_cap(),
         });
         actor.wait_for_startup().await;
 
@@ -436,7 +447,7 @@ mod tests {
         let dir = tempfile::tempdir().expect("create temp dir for AppPaths");
         let state = State::new(AppState::default());
         {
-            let mut guard = state.write();
+            let mut guard = state.write_test();
             guard.session.active_session_mut().set_cwd(subdir.clone());
         }
         let session_id = state.read().session.active_session_id().clone();
@@ -452,6 +463,7 @@ mod tests {
         let actor = ContextFilesScanActor::spawn(ContextFilesScanActorDeps {
             deps: ActorDeps { services },
             state,
+            session_cap: crate::common::tcaps::mint::mint_session_cap(),
         });
         actor.wait_for_startup().await;
 
@@ -482,6 +494,7 @@ mod tests {
         let actor = ContextFilesScanActor::spawn(ContextFilesScanActorDeps {
             deps: ActorDeps { services },
             state: state.clone(),
+            session_cap: crate::common::tcaps::mint::mint_session_cap(),
         });
         actor.wait_for_startup().await;
 
@@ -521,6 +534,7 @@ mod tests {
         let actor = ContextFilesScanActor::spawn(ContextFilesScanActorDeps {
             deps: ActorDeps { services },
             state: state.clone(),
+            session_cap: crate::common::tcaps::mint::mint_session_cap(),
         });
         actor.wait_for_startup().await;
 
@@ -556,6 +570,7 @@ mod tests {
         let actor = ContextFilesScanActor::spawn(ContextFilesScanActorDeps {
             deps: ActorDeps { services },
             state: state.clone(),
+            session_cap: crate::common::tcaps::mint::mint_session_cap(),
         });
         actor.wait_for_startup().await;
 
@@ -590,6 +605,7 @@ mod tests {
         let actor = ContextFilesScanActor::spawn(ContextFilesScanActorDeps {
             deps: ActorDeps { services },
             state: state.clone(),
+            session_cap: crate::common::tcaps::mint::mint_session_cap(),
         });
         actor.wait_for_startup().await;
 
@@ -623,6 +639,7 @@ mod tests {
         let actor = ContextFilesScanActor::spawn(ContextFilesScanActorDeps {
             deps: ActorDeps { services },
             state: state.clone(),
+            session_cap: crate::common::tcaps::mint::mint_session_cap(),
         });
         actor.wait_for_startup().await;
 
