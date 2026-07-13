@@ -409,22 +409,12 @@ jinn_domain::feat::preferences_actor::preferences_actor::PreferencesActor::super
                 &root,
                 jinn_domain::feat::preferences_actor::app_state_actor::AppStateActorDeps {
                     deps: actor_deps.clone(),
+                    state: state.clone(),
                 },
             )
             .restart_policy(kameo::supervision::RestartPolicy::Never)
             .spawn()
             .await
-        );
-
-        // App state sync: updates AppState from AppStateUpdated events.
-        let _app_state_sync =
-            spawn_tracked!(&services.bus, "app-state-sync", "AppStateSyncActor",
-jinn_domain::feat::preferences_actor::app_state_sync_actor::AppStateSyncActor::supervise(&root,
-                    jinn_domain::feat::preferences_actor::app_state_sync_actor::AppStateSyncActorDeps {
-                        deps: actor_deps.clone(),
-                        state: state.clone(),
-                    },
-                ).restart_policy(kameo::supervision::RestartPolicy::Never).spawn().await
         );
 
         // Quake bar: owns the command log; sole subscriber of SubmitQuakeBarCommand.
