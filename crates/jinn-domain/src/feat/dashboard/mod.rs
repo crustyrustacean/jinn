@@ -12,7 +12,7 @@
 //!   text). Other actors leave it `None` until they gain their own
 //!   service-level reporting.
 //!
-//! [`DiscordStatusActor`] is the sole writer of `frontend.dashboard`. It
+//! [`DiscordStatusActor`] owns `frontend.dashboard`. It
 //! subscribes to the generic lifecycle events and drains a kanal channel fed
 //! by the Discord gateway task.
 pub mod status_actor;
@@ -53,7 +53,7 @@ pub struct DashboardEntry {
 /// Tracks the status of all actors for dashboard display.
 ///
 /// Owned by [`crate::feat::dashboard::status_actor::DiscordStatusActor`] via
-/// `frontend.dashboard`. The actor is the sole writer.
+/// `frontend.dashboard`. The actor owns this field.
 #[derive(Debug, Clone, Default)]
 pub struct DashboardState {
     /// Actor name → entry data.

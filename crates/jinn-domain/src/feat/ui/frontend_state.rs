@@ -1,4 +1,4 @@
-//! Frontend / UI state - owned by the IntentHandler (main thread).
+//! Frontend / UI state.
 
 use parking_lot::RwLock;
 
@@ -52,10 +52,15 @@ impl FrontendCaches {
     }
 }
 
-/// Frontend / UI state - owned by the IntentHandler (main thread).
+/// Frontend / UI state.
 ///
-/// Written to by `IntentHandler` and various UI elements (read-only).
-/// Actors should NOT write to these fields - they are for the frontend only.
+/// Each field is owned by exactly one actor (its authoritative writer) OR by
+/// the `IntentHandler` (the synchronous frontend mutator, exempt from the
+/// one-writer rule). The `IntentHandler` writes fields for immediate UI feedback;
+/// an actor that persists the field's underlying data is the authoritative
+/// writer that reconciles it. An actor writing a frontend field it owns is
+/// correct — see AGENTS.md §3 on actor state ownership and the "sync sibling"
+/// anti-pattern.
 #[derive(Debug)]
 pub struct FrontendState {
     /// Set to `true` when the user has requested to quit.
@@ -87,13 +92,13 @@ pub struct FrontendState {
     pub tui_signals: TuiSignals,
 
     /// Cached copy of user preferences from `jinn.toml`.
-    /// Updated exclusively by `PreferencesStateSyncActor` on `PreferencesUpdated` events.
-    /// This is a cache - the file is the authoritative source.
+    /// Updated by `PreferencesActor` inline after persisting to `jinn.toml` (authoritative),
+    /// and by the `IntentHandler` for immediate UI feedback (exempt).
     pub preferences: UserPreferences,
 
     /// Cached copy of app state from `state.toml`.
-    /// Updated exclusively by `AppStateSyncActor` on `AppStateUpdated` events.
-    /// This is a cache - the file is the authoritative source.
+    /// Updated by `AppStateActor` inline after persisting to `state.toml` (authoritative),
+    /// and by the `IntentHandler` for immediate UI feedback (exempt).
     pub app_state: AppStateFile,
 
     /// Focus scope stack - single source of truth for what the user is focused on.
@@ -101,7 +106,7 @@ pub struct FrontendState {
     pub scope_stack: ScopeStack,
 
     /// The current resolved theme (colors for the render pipeline).
-    /// OWNER: IntentHandler (theme picker preview), PreferencesStateSyncActor (on prefs change).
+    /// OWNER: IntentHandler (theme picker preview, exempt), AppStateActor (authoritative, on state.toml change).
     pub theme: Theme,
 
     /// Theme-sensitive caches. Invalidated when `theme` changes.
@@ -173,7 +178,7 @@ pub struct FrontendState {
     pub quake_bar: QuakeBarState,
 
     /// Dashboard tab state - actor lifecycle + service status list.
-    /// OWNER: DiscordStatusActor (sole writer).
+    /// OWNER: DiscordStatusActor.
     pub dashboard: DashboardState,
 
     pub sidebar_width: u16,
