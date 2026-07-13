@@ -54,12 +54,19 @@ pub fn launch(
     plugins: jinn_plugin::SyncPlugins,
 ) -> Result<TuiApp, Report<LaunchError>> {
     let paths = &services.paths;
+    let intent_handler_cap = jinn_domain::common::tcaps::mint::mint_intent_handler_cap();
     load_compaction_prompt(
         &core.state,
         &paths.prompts_dir(),
         &paths.system_prompts_dir(),
+        &intent_handler_cap,
     )?;
-    load_theme(&core.state, &paths.themes_dir(), &paths.system_themes_dir());
+    load_theme(
+        &core.state,
+        &paths.themes_dir(),
+        &paths.system_themes_dir(),
+        &intent_handler_cap,
+    );
 
     // Resolve mouse-selection config from environment.
     let mouse_selection = !matches!(std::env::var("JINN_MOUSE_SELECTION"), Ok(val) if val.eq_ignore_ascii_case("false") || val == "0");
@@ -93,6 +100,7 @@ pub fn launch(
             register_sections(&mut s);
             s
         },
+        intent_handler_cap,
     })
 }
 
@@ -108,11 +116,12 @@ pub fn load_compaction_prompt(
     state: &State,
     user_dir: &Path,
     system_dir: &Path,
+    cap: &jinn_domain::common::tcaps::IntentHandlerCap,
 ) -> Result<(), Report<LaunchError>> {
     let prompt =
         load_system_resource("_compaction.md", user_dir, system_dir).change_context(LaunchError)?;
     tracing::info!("loaded compaction prompt");
-    state.write().context.compaction_prompt = prompt;
+    state.write(cap).context.compaction_prompt = prompt;
     Ok(())
 }
 
@@ -121,7 +130,12 @@ pub fn load_compaction_prompt(
 /// Searches the user themes directory first, then the system themes directory.
 /// If the preferred theme cannot be loaded, falls back to the default theme.
 /// Failures are logged but not fatal.
-pub fn load_theme(state: &State, user_dir: &Path, system_dir: &Path) {
+pub fn load_theme(
+    state: &State,
+    user_dir: &Path,
+    system_dir: &Path,
+    cap: &jinn_domain::common::tcaps::IntentHandlerCap,
+) {
     let theme_name = {
         let guard = state.read();
         guard.frontend.app_state.theme_name.clone()
@@ -129,7 +143,7 @@ pub fn load_theme(state: &State, user_dir: &Path, system_dir: &Path) {
     match jinn_domain::feat::theme::resolve_theme(theme_name.as_deref(), user_dir, system_dir) {
         Ok(theme) => {
             tracing::info!(theme = ?theme_name, "loaded theme");
-            state.write().frontend.theme = theme;
+            state.write(cap).frontend.theme = theme;
         }
         Err(e) => {
             tracing::warn!(err = ?e, "failed to load theme, using default");
@@ -176,5 +190,6 @@ pub fn launch_for_test(
             register_sections(&mut s);
             s
         },
+        intent_handler_cap: jinn_domain::common::tcaps::mint::mint_intent_handler_cap(),
     }
 }

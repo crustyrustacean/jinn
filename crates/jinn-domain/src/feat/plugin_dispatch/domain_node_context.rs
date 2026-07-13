@@ -604,7 +604,7 @@ mod tests {
         // Give the source session some history; the one-shot must NOT inherit it.
         session.push_entry(ChatEntry::user("old user message from history"));
         session.push_entry(ChatEntry::assistant("old assistant message from history"));
-        ctx.state.write().session.insert(session);
+        ctx.state.write_test().session.insert(session);
         id
     }
 
@@ -763,7 +763,7 @@ mod tests {
         // Given a source session set as the active view.
         let (ctx, _audit) = make_ctx_with_audit();
         let source_id = seed_source_session(&ctx, "ollama/llama3");
-        ctx.state.write().session.set_active(source_id.clone());
+        ctx.state.write_test().session.set_active(source_id.clone());
 
         // When the one-shot runs (parking on its response channel).
         let fut = ctx.send_llm_request_oneshot(
@@ -1166,7 +1166,7 @@ mod tests {
         let mut parent = ChatSessionState::default();
         parent.set_session_id(parent_id.clone());
         parent.set_model(ModelSelection::Single("my-model".to_owned()));
-        ctx.state.write().session.insert(parent);
+        ctx.state.write_test().session.insert(parent);
 
         // When creating a child session.
         let child_id = ctx.create_child_session(&parent_id, true, true, true, &[]);
@@ -1213,7 +1213,7 @@ mod tests {
             server_tool_type: None,
         };
         ctx.state
-            .write()
+            .write_test()
             .context
             .session_tool_definitions
             .entry(parent_id.clone())
@@ -1253,7 +1253,7 @@ mod tests {
             server_tool_type: None,
         };
         {
-            let mut state = ctx.state.write();
+            let mut state = ctx.state.write_test();
             let catalog = &mut state.context.attachable_tool_catalog;
             catalog.insert("alpha".to_owned(), make_def("alpha"));
             catalog.insert("beta".to_owned(), make_def("beta"));

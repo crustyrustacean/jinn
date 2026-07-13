@@ -33,17 +33,17 @@ pub use close::{
 };
 pub use r#continue::handle_session_continue;
 
-pub use navigate::{navigate, receive_cursor, scroll_to_cursor};
+pub use navigate::{navigate, receive_cursor, scroll_to_cursor, scroll_to_cursor_split};
 pub use preview::{
     SessionPreviewCache, render_session_preview, render_session_preview_for_state,
     session_preview_popup_rect, sessions_section_content_height,
 };
-pub use reconcile::reconcile_after_session_removal;
+pub use reconcile::{reconcile_after_session_removal, reconcile_split};
 pub use render::SessionsSection;
 pub use state::SessionsSectionState;
-pub use state::clear_visual_parents_on_load;
 pub(crate) use state::sorted_open_sessions;
-pub use state::update_visual_parents_on_removal;
+pub use state::{clear_visual_parents_on_load, clear_visual_parents_on_load_split};
+pub use state::{update_visual_parents_on_removal, update_visual_parents_on_removal_split};
 pub use teardown::handle_session_teardown;
 
 // ---------------------------------------------------------------------------

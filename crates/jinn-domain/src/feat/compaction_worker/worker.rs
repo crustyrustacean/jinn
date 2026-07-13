@@ -82,7 +82,12 @@ pub struct CompactionWorker {
 
 impl CompactionWorker {
     /// Creates a new compaction worker.
-    pub fn new(services: Services, handle: Handle, state: State, cap: crate::common::tcaps::SessionCap) -> Self {
+    pub fn new(
+        services: Services,
+        handle: Handle,
+        state: State,
+        cap: crate::common::tcaps::SessionCap,
+    ) -> Self {
         Self {
             services,
             handle,

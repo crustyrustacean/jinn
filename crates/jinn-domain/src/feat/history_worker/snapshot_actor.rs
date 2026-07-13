@@ -125,7 +125,7 @@ mod tests {
         let id = session.session_id().clone();
         let state = State::new(AppState::default());
         {
-            let mut app = state.write();
+            let mut app = state.write_test();
             app.session.insert(session);
         }
         (state, id)

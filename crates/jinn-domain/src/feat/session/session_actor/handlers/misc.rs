@@ -81,10 +81,10 @@ impl SessionPersistenceActor {
             };
             let entries =
                 crate::feat::session::entries::load_session_entries_from_store(store, &theme).await;
-            // TODO(tcaps): This writes to `frontend.session_picker` (not session),
-            // so it cannot use SessionCap. Migrate to FrontendCap when frontend capsule is built.
-            let mut state = self.state.write();
-            state.frontend.session_picker_mut().set_items(entries);
+            self.state.with_preferences(&self.frontend_cap, |ops| {
+                let frontend = ops.frontend();
+                frontend.session_picker_mut().set_items(entries);
+            });
         }
     }
 
@@ -455,7 +455,7 @@ mod tests {
         // Given a default (10_000) accumulation threshold and one user entry.
         let (actor, _audit) = test_actor_recording().await;
         let session_id = {
-            let mut state = actor.state.write();
+            let mut state = actor.state.write_test();
             let session = state.active_session_mut();
             session.push_entry(ChatEntry::user("hello"));
             state.session.active_session_id().clone()
@@ -550,7 +550,7 @@ mod tests {
         // Given a default (10_000) accumulation threshold and two user entries.
         let (actor, _audit) = test_actor_recording().await;
         let session_id = {
-            let mut state = actor.state.write();
+            let mut state = actor.state.write_test();
             let session = state.active_session_mut();
             session.push_entry(ChatEntry::user("first"));
             session.push_entry(ChatEntry::user("second"));
@@ -624,7 +624,7 @@ mod tests {
     async fn handle_submit_history_mutations_emits_context_override_changed_on_change() {
         let (actor, audit) = test_actor_recording().await;
         let session_id = {
-            let mut state = actor.state.write();
+            let mut state = actor.state.write_test();
             let session = state.active_session_mut();
             session.push_entry(ChatEntry::user("hello"));
             state.session.active_session_id().clone()
@@ -661,7 +661,7 @@ mod tests {
     async fn handle_submit_history_mutations_does_not_emit_on_noop_mutation() {
         let (actor, audit) = test_actor_recording().await;
         let session_id = {
-            let mut state = actor.state.write();
+            let mut state = actor.state.write_test();
             let session = state.active_session_mut();
             session.push_entry(ChatEntry::user("hello"));
             let id = session.core.session_id.clone();
@@ -715,7 +715,7 @@ mod tests {
         // Given a session actor with a session that has history.
         let mut actor = test_actor().await;
         let session_id = {
-            let mut state = actor.state.write();
+            let mut state = actor.state.write_test();
             let session = state.active_session_mut();
             session.push_entry(crate::protocol::ChatEntry::user("hello"));
             session.push_entry(crate::protocol::ChatEntry::assistant("world"));
@@ -741,7 +741,7 @@ mod tests {
         // Given a session with one assistant entry and the default 10_000 threshold.
         let (actor, _audit) = test_actor_recording().await;
         let (session_id, entry_id) = {
-            let mut state = actor.state.write();
+            let mut state = actor.state.write_test();
             let session = state.active_session_mut();
             let entry = ChatEntry::assistant("response");
             let id = entry.id.clone();
@@ -784,7 +784,7 @@ mod tests {
         // Given a session with one assistant entry.
         let (actor, _audit) = test_actor_recording().await;
         let (session_id, entry_id) = {
-            let mut state = actor.state.write();
+            let mut state = actor.state.write_test();
             let session = state.active_session_mut();
             let entry = ChatEntry::assistant("response");
             let id = entry.id.clone();

@@ -9,6 +9,7 @@
 use crate::common::tcaps::context::ContextCap;
 use crate::common::tcaps::discovered_plugins::DiscoveredPluginsCap;
 use crate::common::tcaps::frontend::FrontendCap;
+use crate::common::tcaps::intent_handler::IntentHandlerCap;
 use crate::common::tcaps::provider::ProviderCap;
 use crate::common::tcaps::session::SessionCap;
 
@@ -35,4 +36,12 @@ pub fn mint_context_cap() -> ContextCap {
 /// Mint a [`SessionCap`]. Called from actor wiring.
 pub fn mint_session_cap() -> SessionCap {
     SessionCap::new()
+}
+/// Mint an [`IntentHandlerCap`]. Called from the platform layer (TUI app,
+/// headless runner, discord bridge) where [`IntentHandler::handle`] runs
+/// synchronously on the main thread. No actor receives this cap.
+///
+/// [`IntentHandler::handle`]: crate::feat::intent::IntentHandler::handle
+pub fn mint_intent_handler_cap() -> IntentHandlerCap {
+    IntentHandlerCap::new()
 }

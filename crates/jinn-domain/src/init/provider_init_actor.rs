@@ -9,6 +9,7 @@
 use crate::common::actor_deps::{ActorDeps, BusPublish};
 use crate::common::services::bus_service::BusService;
 use crate::common::state::State;
+use crate::common::tcaps::provider::ModelCacheWrite;
 use crate::feat::chat_input::protocol::command::PushChatEntry;
 use crate::feat::provider::protocol::command::ProviderSwitch;
 use crate::feat::provider::protocol::event::ModelCacheLoaded;
@@ -27,6 +28,8 @@ pub struct ProviderInitActor {
     deps: ActorDeps,
     /// Shared application state (to read active session ID).
     state: State,
+    /// Provider write capability.
+    provider_cap: crate::common::tcaps::provider::ProviderCap,
 }
 
 /// Dependencies for [`ProviderInitActor`].
@@ -36,6 +39,8 @@ pub struct ProviderInitActorDeps {
     pub deps: ActorDeps,
     /// Shared application state.
     pub state: State,
+    /// Provider write capability.
+    pub provider_cap: crate::common::tcaps::provider::ProviderCap,
 }
 
 impl Actor for ProviderInitActor {
@@ -49,6 +54,7 @@ impl Actor for ProviderInitActor {
         Ok(Self {
             deps: args.deps,
             state: args.state,
+            provider_cap: args.provider_cap,
         })
     }
 }
@@ -102,7 +108,9 @@ impl ProviderInitActor {
             self.deps.services.provider_registry.merge_cache(c);
             self.publish(ModelCacheLoaded { cache: c.clone() }).await;
         }
-        self.state.write().provider.model_cache = cache;
+        self.state.with_provider(&self.provider_cap, |view| {
+            view.provider.set_model_cache(cache);
+        });
 
         let app_state = self.deps.services.app_state_storage.read();
 
@@ -170,6 +178,7 @@ mod tests {
                 services: services.clone(),
             },
             state: state.clone(),
+            provider_cap: crate::common::tcaps::mint::mint_provider_cap(),
         };
         (actor, audit, services, state)
     }
@@ -339,7 +348,7 @@ mod tests {
 
         // Set an explicit model on the active session.
         state
-            .write()
+            .write_test()
             .active_session_mut()
             .set_model(ModelSelection::Single("bench-model".to_owned()));
 

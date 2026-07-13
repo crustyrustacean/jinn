@@ -339,7 +339,7 @@ mod tests {
     fn state_with_history(entries: Vec<ChatEntry>) -> (State, SessionId) {
         let state = State::new(AppState::default());
         let session_id = {
-            let mut guard = state.write();
+            let mut guard = state.write_test();
             let session = guard.active_session_mut();
             for entry in entries {
                 session.push_entry(entry);
@@ -354,7 +354,7 @@ mod tests {
         // Given a state with skills but no history.
         let (state, session_id) = state_with_history(vec![]);
         {
-            let mut guard = state.write();
+            let mut guard = state.write_test();
             guard
                 .active_session_mut()
                 .set_discovered_skills(vec![make_skill("test-skill")]);
@@ -557,7 +557,7 @@ mod tests {
         // Given a state with tool definitions.
         let (state, session_id) = state_with_history(vec![ChatEntry::user("use tools")]);
         {
-            let mut guard = state.write();
+            let mut guard = state.write_test();
             guard
                 .context
                 .global_tool_definitions
@@ -585,7 +585,7 @@ mod tests {
     }
 
     fn set_active_model(state: &State, model: &str) {
-        let mut guard = state.write();
+        let mut guard = state.write_test();
         guard
             .active_session_mut()
             .set_model(ModelSelection::Single(model.to_owned()));
@@ -597,7 +597,7 @@ mod tests {
         let (state, session_id) = state_with_history(vec![ChatEntry::user("search it")]);
         set_active_model(&state, "openrouter/openai/gpt-oss-120b");
         {
-            let mut guard = state.write();
+            let mut guard = state.write_test();
             guard
                 .context
                 .global_tool_definitions
@@ -623,7 +623,7 @@ mod tests {
         let (state, session_id) = state_with_history(vec![ChatEntry::user("search it")]);
         set_active_model(&state, "zai/glm-4.6");
         {
-            let mut guard = state.write();
+            let mut guard = state.write_test();
             guard
                 .context
                 .global_tool_definitions
@@ -648,7 +648,7 @@ mod tests {
         let (state, session_id) = state_with_history(vec![ChatEntry::user("do work")]);
         set_active_model(&state, "zai/glm-4.6");
         {
-            let mut guard = state.write();
+            let mut guard = state.write_test();
             guard
                 .context
                 .global_tool_definitions
@@ -669,7 +669,7 @@ mod tests {
         // Given a state with cached context files.
         let (state, session_id) = state_with_history(vec![]);
         {
-            let mut guard = state.write();
+            let mut guard = state.write_test();
             guard
                 .active_session_mut()
                 .set_discovered_context_files(vec![ContextFile {
@@ -698,7 +698,7 @@ mod tests {
         // Given a state with skills and context files.
         let (state, session_id) = state_with_history(vec![ChatEntry::user("hello")]);
         {
-            let mut guard = state.write();
+            let mut guard = state.write_test();
             guard
                 .active_session_mut()
                 .set_discovered_skills(vec![make_skill("test-skill")]);
@@ -734,7 +734,7 @@ mod tests {
         // Given a state with global tools.
         let (state, session_id) = state_with_history(vec![ChatEntry::user("use tools")]);
         {
-            let mut guard = state.write();
+            let mut guard = state.write_test();
             guard
                 .context
                 .global_tool_definitions
@@ -766,7 +766,7 @@ mod tests {
         // Given a state with skills.
         let (state, session_id) = state_with_history(vec![ChatEntry::user("hello")]);
         {
-            let mut guard = state.write();
+            let mut guard = state.write_test();
             guard
                 .active_session_mut()
                 .set_discovered_skills(vec![make_skill("test-skill")]);
@@ -794,7 +794,7 @@ mod tests {
         // Given a state with context files.
         let (state, session_id) = state_with_history(vec![ChatEntry::user("hello")]);
         {
-            let mut guard = state.write();
+            let mut guard = state.write_test();
             guard
                 .active_session_mut()
                 .set_discovered_context_files(vec![ContextFile {
@@ -828,7 +828,7 @@ mod tests {
         // Given a state with skills and tools.
         let (state, session_id) = state_with_history(vec![ChatEntry::user("hello")]);
         {
-            let mut guard = state.write();
+            let mut guard = state.write_test();
             guard
                 .active_session_mut()
                 .set_discovered_skills(vec![make_skill("test-skill")]);
@@ -859,7 +859,7 @@ mod tests {
         // Given a session with tools and some disabled.
         let (state, session_id) = state_with_history(vec![ChatEntry::user("use tools")]);
         {
-            let mut guard = state.write();
+            let mut guard = state.write_test();
             guard
                 .context
                 .global_tool_definitions
@@ -912,7 +912,7 @@ mod tests {
         // Given a session with tools and some disabled.
         let (state, session_id) = state_with_history(vec![ChatEntry::user("use tools")]);
         {
-            let mut guard = state.write();
+            let mut guard = state.write_test();
             guard
                 .context
                 .global_tool_definitions
@@ -956,7 +956,7 @@ mod tests {
         // Given a session with skills and some disabled.
         let (state, session_id) = state_with_history(vec![ChatEntry::user("use skills")]);
         {
-            let mut guard = state.write();
+            let mut guard = state.write_test();
             guard.active_session_mut().set_discovered_skills(vec![
                 make_skill("phased-task-loop"),
                 make_skill("web-coder"),
@@ -999,7 +999,7 @@ mod tests {
         // Given a session with disabled tools AND an override providing specific tools.
         let (state, session_id) = state_with_history(vec![ChatEntry::user("use tools")]);
         {
-            let mut guard = state.write();
+            let mut guard = state.write_test();
             guard
                 .context
                 .global_tool_definitions
@@ -1039,7 +1039,7 @@ mod tests {
         // Given a session with persona "custom" and a persona list containing "custom".
         let (state, session_id) = state_with_history(vec![ChatEntry::user("hello")]);
         {
-            let mut guard = state.write();
+            let mut guard = state.write_test();
             guard.context.push_persona(crate::feat::persona::Persona {
                 name: "custom".to_owned(),
                 description: "Custom persona".to_owned(),
@@ -1074,7 +1074,7 @@ mod tests {
         // Given a session with persona name "nonexistent" but "coding-assistant" is available.
         let (state, session_id) = state_with_history(vec![ChatEntry::user("hello")]);
         {
-            let mut guard = state.write();
+            let mut guard = state.write_test();
             guard.context.push_persona(crate::feat::persona::Persona {
                 name: "coding-assistant".to_owned(),
                 description: "Default".to_owned(),

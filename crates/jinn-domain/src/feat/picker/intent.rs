@@ -687,7 +687,15 @@ pub fn handle_tool_toggle(state: &mut AppState) -> IntentResult {
 ///
 /// Delegates to [`crate::feat::skills::reload::reload_skill_picker_entries`].
 fn load_skill_picker_entries(state: &mut AppState) {
-    crate::feat::skills::reload::reload_skill_picker_entries(state);
+    let disabled = state.active_session().disabled_skills().clone();
+    let theme = state.frontend.theme.clone();
+    let discovered = state.active_session().discovered_skills().to_vec();
+    crate::feat::skills::reload::reload_skill_picker_entries(
+        &mut state.frontend,
+        &discovered,
+        &disabled,
+        &theme,
+    );
 }
 
 /// Populates the task list picker entries from the active session's task list.
@@ -740,7 +748,9 @@ fn load_task_list_picker_entries(state: &mut AppState) {
 ///
 /// Entries are pre-computed display strings (tilde-compressed) so the picker
 /// never has to call `shorten_path` per-render.
-pub(crate) fn load_project_picker_entries(frontend: &mut crate::feat::ui::frontend_state::FrontendState) {
+pub(crate) fn load_project_picker_entries(
+    frontend: &mut crate::feat::ui::frontend_state::FrontendState,
+) {
     use crate::feat::project::picker_entry::{ProjectEntry, project_entries};
 
     let theme = frontend.theme.clone();

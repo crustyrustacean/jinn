@@ -46,8 +46,21 @@ impl State {
         }
     }
 
-    /// Acquire a write lock on the state.
-    pub fn write(&self) -> StateWriteGuard<'_> {
+    /// Acquire a write lock on the state. Requires the [`IntentHandlerCap`] —
+    /// the deliberate special-case owner. The IntentHandler is single-threaded
+    /// (runs synchronously on the platform layer's main thread) and delegates
+    /// to ~131 leaf handlers, so it keeps God-mode access. No concurrent actor
+    /// can reach this method because they don't hold the cap.
+    pub fn write(&self, _cap: &crate::common::tcaps::IntentHandlerCap) -> StateWriteGuard<'_> {
+        StateWriteGuard {
+            inner: self.inner.write(),
+        }
+    }
+
+    /// Test-only write access — bypasses the cap requirement so tests across
+    /// crates aren't burdened with threading a cap through every call site.
+    #[doc(hidden)]
+    pub fn write_test(&self) -> StateWriteGuard<'_> {
         StateWriteGuard {
             inner: self.inner.write(),
         }
@@ -130,7 +143,7 @@ mod tests {
 
         // When writing and pushing an entry.
         {
-            let mut guard = state.write();
+            let mut guard = state.write_test();
             guard
                 .active_session_mut()
                 .push_entry(ChatEntry::user("hello"));
@@ -151,7 +164,7 @@ mod tests {
 
         // Then both clones point to the same underlying data.
         {
-            let mut guard = clone.write();
+            let mut guard = clone.write_test();
             guard
                 .active_session_mut()
                 .push_entry(ChatEntry::user("shared"));

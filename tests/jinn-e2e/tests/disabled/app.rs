@@ -375,7 +375,7 @@ fn given_app_in_mode(world: &mut AppWorld, mode: String) {
     let scope = match parse_mode(&mode) {
         jinn_domain::Mode::Normal => Scope::Normal,
         jinn_domain::Mode::Input => {
-            let mut state = world.app.core.state.write();
+            let mut state = world.app.core.state.write_test();
             state
                 .frontend
                 .scope_stack
@@ -395,7 +395,7 @@ fn given_input_buffer_contains(world: &mut AppWorld, text: String) {
         .app
         .core
         .state
-        .write()
+        .write_test()
         .active_chat_input_mut()
         .replace_all(text.to_owned());
 }
@@ -407,7 +407,7 @@ fn given_active_provider_set(world: &mut AppWorld) {
         .app
         .core
         .state
-        .write()
+        .write_test()
         .active_session_mut()
         .set_model(ModelSelection::Single("test".to_owned()));
 }
@@ -415,7 +415,7 @@ fn given_active_provider_set(world: &mut AppWorld) {
 /// Pre-populates the active session with user and assistant messages.
 #[cucumber::given(expr = "the active session has {int} user messages and {int} assistant messages")]
 fn given_session_has_messages(world: &mut AppWorld, user_count: u64, assistant_count: u64) {
-    let mut state = world.app.core.state.write();
+    let mut state = world.app.core.state.write_test();
     for i in 0..user_count {
         state
             .active_session_mut()
@@ -435,7 +435,7 @@ fn given_session_is_streaming(world: &mut AppWorld) {
         .app
         .core
         .state
-        .write()
+        .write_test()
         .active_session_mut()
         .begin_streaming();
 }
@@ -447,7 +447,7 @@ fn given_session_is_sending(world: &mut AppWorld) {
         .app
         .core
         .state
-        .write()
+        .write_test()
         .active_session_mut()
         .begin_sending();
 }
@@ -459,7 +459,7 @@ fn given_system_entry(world: &mut AppWorld, text: String) {
         .app
         .core
         .state
-        .write()
+        .write_test()
         .active_session_mut()
         .push_entry(ChatEntry::system(&text));
 }
@@ -467,7 +467,7 @@ fn given_system_entry(world: &mut AppWorld, text: String) {
 /// Injects a prompt template into the app state's template store.
 #[cucumber::given(expr = "a prompt template {string} with body {string}")]
 fn given_prompt_template(world: &mut AppWorld, name: String, body: String) {
-    let mut state = world.app.core.state.write();
+    let mut state = world.app.core.state.write_test();
     let mut templates = state
         .active_session_mut()
         .discovered_prompt_templates()
@@ -488,7 +488,7 @@ fn given_prompt_template(world: &mut AppWorld, name: String, body: String) {
 #[cucumber::given(expr = "the active session has a pinned {word} entry with text {string}")]
 fn given_pinned_entry(world: &mut AppWorld, position: String, text: String) {
     let pin_pos = parse_pin_position(&position);
-    let mut state = world.app.core.state.write();
+    let mut state = world.app.core.state.write_test();
     let index = state
         .active_session_mut()
         .push_entry(ChatEntry::system(&text));
@@ -1308,7 +1308,7 @@ fn given_session_cwd_nonexistent(world: &mut AppWorld) {
         .app
         .core
         .state
-        .write()
+        .write_test()
         .active_session_mut()
         .set_cwd(std::path::PathBuf::from("/nonexistent/test/path/xyz"));
 }
