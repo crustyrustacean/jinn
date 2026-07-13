@@ -9,6 +9,7 @@
 use crate::common::tcaps::discovered_plugins::DiscoveredPluginsCap;
 use crate::common::tcaps::frontend::FrontendCap;
 use crate::common::tcaps::provider::ProviderCap;
+use crate::common::tcaps::session::SessionCap;
 
 /// Mint a [`ProviderCap`]. Called from actor wiring.
 pub fn mint_provider_cap() -> ProviderCap {
@@ -23,4 +24,9 @@ pub fn mint_discovered_plugins_cap() -> DiscoveredPluginsCap {
 /// Mint a [`FrontendCap`]. Called from actor wiring.
 pub fn mint_frontend_cap() -> FrontendCap {
     FrontendCap::new()
+}
+
+/// Mint a [`SessionCap`]. Called from actor wiring.
+pub fn mint_session_cap() -> SessionCap {
+    SessionCap::new()
 }
