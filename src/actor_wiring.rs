@@ -392,22 +392,12 @@ jinn_domain::feat::preferences_actor::preferences_actor::PreferencesActor::super
                     &root,
                     jinn_domain::feat::preferences_actor::preferences_actor::PreferencesActorDeps {
                         deps: actor_deps.clone(),
+                        state: state.clone(),
                     },
                 )
                 .restart_policy(kameo::supervision::RestartPolicy::Never)
                 .spawn()
                 .await
-        );
-
-        // Preferences state sync: updates AppState from PreferencesUpdated events.
-        let _preferences_sync =
-            spawn_tracked!(&services.bus, "preferences-state-sync", "PreferencesStateSyncActor",
-jinn_domain::feat::preferences_actor::preferences_state_sync_actor::PreferencesStateSyncActor::supervise(&root,
-                    jinn_domain::feat::preferences_actor::preferences_state_sync_actor::PreferencesStateSyncActorDeps {
-                        deps: actor_deps.clone(),
-                        state: state.clone(),
-                    },
-                ).restart_policy(kameo::supervision::RestartPolicy::Never).spawn().await
         );
 
         // App state actor: persists state changes to state.toml.
