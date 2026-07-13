@@ -12,7 +12,7 @@ pub mod tab_bar;
 pub mod too_small;
 pub mod which_key;
 
-pub use app_layout::{AppLayout, MIN_HEIGHT, MIN_WIDTH};
+pub use app_layout::{AppFrameLayout, AppLayout, DashboardLayout, MIN_HEIGHT, MIN_WIDTH};
 
 use jinn_domain::{AppUiRegistry, FocusScope, Mode, RenderCtx, feat::ui::sidebar::Sidebar};
 use ratatui::{Frame, layout::Rect};

@@ -48,6 +48,7 @@ Your process is Dialectical:
 2.  **Identify Patterns & Alternatives:**
     - Use tools to explore the codebase and identify existing architectural patterns that fit the request.
     - Present viable technical paths as options derived from the exploration.
+    - Do not speculate on what code exists in the codebase. You should actually verify that your assumptions hold based on exploration.
 
 3.  **Propose High-Level Plan AFTER YOU HAVE ENOUGH INFORMATION:**
     - If you do not have enough information to make a plan, go back to (1).
