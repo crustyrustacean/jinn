@@ -24,38 +24,39 @@ impl SessionPersistenceActor {
     /// Appends a streaming token to the session's assistant entry,
     /// or to the thinking entry if the token is flagged as reasoning.
     pub(in crate::feat::session::session_actor) fn on_stream_token(&self, event: &StreamToken) {
-        let mut state = self.state.write();
-        let session = state.session_mut_or_create(&event.session_id);
-        match session.phase() {
-            PhaseKind::Streaming => {}
-            PhaseKind::Sending => {
-                // Defensive: stream token arrived without phase transition.
-                session.begin_streaming();
+        self.state.with_session(&self.cap, |view| {
+            let session = view.session.map().get_or_create(&event.session_id);
+            match session.phase() {
+                PhaseKind::Streaming => {}
+                PhaseKind::Sending => {
+                    // Defensive: stream token arrived without phase transition.
+                    session.begin_streaming();
+                }
+                PhaseKind::Idle => {
+                    tracing::warn!(
+                        phase = ?session.phase(),
+                        "StreamToken received in unexpected phase"
+                    );
+                }
             }
-            PhaseKind::Idle => {
-                tracing::warn!(
-                    phase = ?session.phase(),
-                    "StreamToken received in unexpected phase"
-                );
+            if event.is_thinking {
+                if session.streaming_thinking_entry_index().is_none() {
+                    session.begin_thinking(event.dispatched_at);
+                }
+                if let Err(e) = session.append_thinking_token(&event.token) {
+                    tracing::error!(err = ?e, "failed to append thinking token");
+                }
+            } else {
+                // First non-thinking (content) token ends the reasoning phase:
+                // finalize the thinking entry's duration before the content begins.
+                if let Some(idx) = session.streaming_thinking_entry_index() {
+                    session.finish_thinking_entry(idx);
+                }
+                if let Err(e) = session.append_stream_token(&event.token, event.dispatched_at) {
+                    tracing::error!(err = ?e, "failed to append stream token");
+                }
             }
-        }
-        if event.is_thinking {
-            if session.streaming_thinking_entry_index().is_none() {
-                session.begin_thinking(event.dispatched_at);
-            }
-            if let Err(e) = session.append_thinking_token(&event.token) {
-                tracing::error!(err = ?e, "failed to append thinking token");
-            }
-        } else {
-            // First non-thinking (content) token ends the reasoning phase:
-            // finalize the thinking entry's duration before the content begins.
-            if let Some(idx) = session.streaming_thinking_entry_index() {
-                session.finish_thinking_entry(idx);
-            }
-            if let Err(e) = session.append_stream_token(&event.token, event.dispatched_at) {
-                tracing::error!(err = ?e, "failed to append stream token");
-            }
-        }
+        });
     }
 
     /// Marks the session's stream as finished, records output tokens, and drains
@@ -138,14 +139,16 @@ impl SessionPersistenceActor {
         // is still `Streaming`. Now that the phase has advanced to `Sending`,
         // the continuation can be dispatched.
         let drained_batch = event.reason == StreamCompletedReason::ToolUse && {
-            let mut state = self.state.write();
-            state
-                .session_mut_or_create(&event.session_id)
-                .core
-                .ephemeral
-                .pending_tool_batch
-                .take()
-                .is_some()
+            self.state.with_session(&self.cap, |view| {
+                view.session
+                    .map()
+                    .get_or_create(&event.session_id)
+                    .core
+                    .ephemeral
+                    .pending_tool_batch
+                    .take()
+                    .is_some()
+            })
         };
 
         if drained_batch {
@@ -168,9 +171,10 @@ impl SessionPersistenceActor {
         }
 
         {
-            let mut state = self.state.write();
-            let session = state.session_mut_or_create(&event.session_id);
-            session.push_entry(ChatEntry::annotation(event.citations.clone()));
+            self.state.with_session(&self.cap, |view| {
+                let session = view.session.map().get_or_create(&event.session_id);
+                session.push_entry(ChatEntry::annotation(event.citations.clone()));
+            });
         }
 
         super::super::helpers::emit_history_appended(self.bus(), &event.session_id).await;
@@ -192,81 +196,82 @@ impl SessionPersistenceActor {
         output_tokens: Option<u32>,
     ) -> Option<StreamCompletionStateChange> {
         let mut changed_overrides: Vec<ChatEntryId> = Vec::new();
-        let mut state = self.state.write();
-        let session = state.session_mut_or_create(&event.session_id);
+        self.state.with_session(&self.cap, |view| -> Option<StreamCompletionStateChange> {
+            let session = view.session.map().get_or_create(&event.session_id);
 
-        // Stale-generation guard: reject terminal events from an aborted prior
-        // stream (e.g. a retry re-dispatched while the old task was still
-        // alive). A completion whose `dispatched_at` predates the current
-        // generation is dropped silently.
-        if let Some(active) = session.core.ephemeral.stream_dispatched_at
-            && event.dispatched_at < active
-        {
-            tracing::warn!(
-                session_id = %event.session_id,
-                event_dispatched_at = %event.dispatched_at,
-                active_dispatched_at = %active,
-                reason = ?event.reason,
-                "dropping stale StreamCompleted from superseded stream generation"
-            );
-            return None;
-        }
-        // This generation is now consumed.
-        session.core.ephemeral.stream_dispatched_at = None;
-
-        let old_phase = session.phase();
-
-        apply_completion_entries(session, event, output_tokens);
-
-        let preserve_assistant = matches!(
-            event.reason,
-            StreamCompletedReason::Finished | StreamCompletedReason::ToolUse,
-        );
-        session.finish_streaming(preserve_assistant, event.dispatched_at);
-
-        // Hard cancel: force-exclude dangling tool calls left by the interrupted stream.
-        if event.reason == StreamCompletedReason::Canceled {
-            changed_overrides.extend(session.force_exclude_dangling_tool_calls());
-        }
-
-        // Apply pending history mutations for non-ToolUse completions.
-        // ToolUse defers to on_tool_batch_completed.
-        if event.reason != StreamCompletedReason::ToolUse {
-            let (count, changed) = session.drain_and_apply_pending_mutations();
-            changed_overrides.extend(changed);
-            if count > 0 {
-                tracing::debug!(
+            // Stale-generation guard: reject terminal events from an aborted prior
+            // stream (e.g. a retry re-dispatched while the old task was still
+            // alive). A completion whose `dispatched_at` predates the current
+            // generation is dropped silently.
+            if let Some(active) = session.core.ephemeral.stream_dispatched_at
+                && event.dispatched_at < active
+            {
+                tracing::warn!(
                     session_id = %event.session_id,
-                    count,
+                    event_dispatched_at = %event.dispatched_at,
+                    active_dispatched_at = %active,
                     reason = ?event.reason,
-                    "applied pending history mutations at stream completion"
+                    "dropping stale StreamCompleted from superseded stream generation"
                 );
+                return None;
             }
-        }
+            // This generation is now consumed.
+            session.core.ephemeral.stream_dispatched_at = None;
 
-        // Tool use means the conversation continues - always transition to sending
-        // so the tool loop runs.
-        if event.reason == StreamCompletedReason::ToolUse {
-            session.begin_sending();
-        }
+            let old_phase = session.phase();
 
-        // When returning to Idle on error/cancel, drain queued messages back to
-        // the input buffer so the user can review and retry.
-        if matches!(
-            event.reason,
-            StreamCompletedReason::Error | StreamCompletedReason::Canceled
-        ) {
-            let drained = session.drain_queue();
-            if let Some(text) = drained_queue_to_text(&drained) {
-                session.chat_input_mut().replace_all(text);
+            apply_completion_entries(session, event, output_tokens);
+
+            let preserve_assistant = matches!(
+                event.reason,
+                StreamCompletedReason::Finished | StreamCompletedReason::ToolUse,
+            );
+            session.finish_streaming(preserve_assistant, event.dispatched_at);
+
+            // Hard cancel: force-exclude dangling tool calls left by the interrupted stream.
+            if event.reason == StreamCompletedReason::Canceled {
+                changed_overrides.extend(session.force_exclude_dangling_tool_calls());
             }
-        }
 
-        Some(StreamCompletionStateChange {
-            old_phase,
-            new_phase: session.phase(),
-            reason: event.reason,
-            changed_overrides,
+            // Apply pending history mutations for non-ToolUse completions.
+            // ToolUse defers to on_tool_batch_completed.
+            if event.reason != StreamCompletedReason::ToolUse {
+                let (count, changed) = session.drain_and_apply_pending_mutations();
+                changed_overrides.extend(changed);
+                if count > 0 {
+                    tracing::debug!(
+                        session_id = %event.session_id,
+                        count,
+                        reason = ?event.reason,
+                        "applied pending history mutations at stream completion"
+                    );
+                }
+            }
+
+            // Tool use means the conversation continues - always transition to sending
+            // so the tool loop runs.
+            if event.reason == StreamCompletedReason::ToolUse {
+                session.begin_sending();
+            }
+
+            // When returning to Idle on error/cancel, drain queued messages back to
+            // the input buffer so the user can review and retry.
+            if matches!(
+                event.reason,
+                StreamCompletedReason::Error | StreamCompletedReason::Canceled
+            ) {
+                let drained = session.drain_queue();
+                if let Some(text) = drained_queue_to_text(&drained) {
+                    session.chat_input_mut().replace_all(text);
+                }
+            }
+
+            Some(StreamCompletionStateChange {
+                old_phase,
+                new_phase: session.phase(),
+                reason: event.reason,
+                changed_overrides,
+            })
         })
     }
 
