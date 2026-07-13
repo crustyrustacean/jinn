@@ -17,6 +17,7 @@ use kameo::prelude::{Actor, ActorRef, Context, Message};
 
 use crate::common::actor_deps::{ActorDeps, BusPublish};
 use crate::common::services::bus_service::BusService;
+use crate::common::state::State;
 use crate::feat::preferences_actor::protocol::command::UpdatePreferences;
 use crate::feat::preferences_actor::protocol::event::PreferencesUpdated;
 
@@ -28,6 +29,8 @@ use crate::feat::preferences_actor::protocol::event::PreferencesUpdated;
 pub struct PreferencesActor {
     /// Runtime deps (services + bus).
     deps: ActorDeps,
+    /// Shared application state — writes `frontend.preferences` inline after persist.
+    state: State,
 }
 
 /// Dependencies for [`PreferencesActor`].
@@ -35,6 +38,8 @@ pub struct PreferencesActor {
 pub struct PreferencesActorDeps {
     /// Runtime deps (services + bus).
     pub deps: ActorDeps,
+    /// Shared application state.
+    pub state: State,
 }
 
 impl Actor for PreferencesActor {
@@ -45,7 +50,10 @@ impl Actor for PreferencesActor {
         args.deps
             .subscribe(actor_ref.recipient::<UpdatePreferences>())
             .await;
-        Ok(Self { deps: args.deps })
+        Ok(Self {
+            deps: args.deps,
+            state: args.state,
+        })
     }
 }
 
@@ -74,6 +82,24 @@ impl PreferencesActor {
             tracing::warn!(err = ?e, "preferences-actor failed to save user preferences");
             return;
         }
+
+        // Write the persisted preferences into `frontend.preferences` inline, and
+        // reload the open project picker so adds/removes round-tripping through
+        // this actor are reflected immediately. The author of `frontend.preferences`
+        // is this actor — keep the writes in one state guard.
+        {
+            let mut state = self.state.write();
+            state.frontend.preferences = prefs.clone();
+            if matches!(
+                state.frontend.scope_stack.current(),
+                crate::common::focus::FocusScope::Picker {
+                    kind: crate::feat::picker::PickerKind::Project
+                }
+            ) {
+                crate::feat::picker::intent::load_project_picker_entries(&mut state);
+            }
+        }
+
         self.publish(PreferencesUpdated { preferences: prefs })
             .await;
     }

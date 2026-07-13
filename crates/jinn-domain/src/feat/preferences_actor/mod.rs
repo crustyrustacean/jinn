@@ -13,7 +13,6 @@ pub mod app_state_sync_actor;
     reason = "preferences_actor/mod.rs is the public API, preferences_actor/ is implementation"
 )]
 pub mod preferences_actor;
-pub mod preferences_state_sync_actor;
 pub mod protocol;
 pub mod user_preferences;
 pub mod user_preferences_storage;

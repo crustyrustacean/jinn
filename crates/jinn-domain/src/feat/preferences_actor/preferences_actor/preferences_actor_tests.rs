@@ -20,6 +20,7 @@ async fn set_compaction_model_overwrites_previous() {
     let _actor = harness
         .spawn_actor::<PreferencesActor>(PreferencesActorDeps {
             deps: harness.actor_deps().await,
+            state: crate::common::state::State::new(crate::common::app_state::AppState::default()),
         })
         .await;
     let recorder = harness.spawn_recorder::<PreferencesUpdated>().await;
@@ -62,6 +63,7 @@ async fn emits_preferences_updated_event() {
     let _actor = harness
         .spawn_actor::<PreferencesActor>(PreferencesActorDeps {
             deps: harness.actor_deps().await,
+            state: crate::common::state::State::new(crate::common::app_state::AppState::default()),
         })
         .await;
     let recorder = harness.spawn_recorder::<PreferencesUpdated>().await;
@@ -93,6 +95,7 @@ async fn empty_diffs_does_not_change_storage() {
     let _actor = harness
         .spawn_actor::<PreferencesActor>(PreferencesActorDeps {
             deps: harness.actor_deps().await,
+            state: crate::common::state::State::new(crate::common::app_state::AppState::default()),
         })
         .await;
     let recorder = harness.spawn_recorder::<PreferencesUpdated>().await;
