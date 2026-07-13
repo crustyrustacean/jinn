@@ -13,7 +13,6 @@ pub mod feedback_actor;
 pub mod message_split;
 pub mod protocol;
 pub mod reply;
-pub mod repo_basename;
 pub mod route;
 pub mod thread_map;
 pub mod to_thread_intent;
@@ -26,7 +25,6 @@ pub use protocol::{
     DiscordThreadCreated, ForumChannelError, GatewayRequest, ThreadId,
 };
 pub use reply::{FinalReply, read_final_reply};
-pub use repo_basename::repo_basename;
 pub use route::{RouteDecision, route_decision};
 pub use thread_map::{DiscordThreadMap, DiscordThreadMapError, ThreadMapping};
 
