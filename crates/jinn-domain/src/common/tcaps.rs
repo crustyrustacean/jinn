@@ -11,3 +11,4 @@ pub mod discovered_plugins;
 pub mod frontend;
 pub mod mint;
 pub mod provider;
+pub mod session;

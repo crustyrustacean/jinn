@@ -98,6 +98,7 @@ impl BusPublish for SessionPersistenceActor {
 pub struct SessionPersistenceActorDeps {
     pub deps: ActorDeps,
     pub state: State,
+    pub cap: crate::common::tcaps::session::SessionCap,
     pub counter: TiktokenCounter,
     /// Auto-pruner entry token cache for the accumulation gate.
     pub token_cache: crate::feat::auto_prune_worker::HistoryWorkerChatEntryTokenCache,
