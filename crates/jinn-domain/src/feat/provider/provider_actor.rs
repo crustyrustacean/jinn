@@ -6,7 +6,7 @@
 //!
 //! # State ownership
 //!
-//! This actor is the **sole writer** of the following `AppState` fields:
+//! This actor **owns** the following `AppState` fields:
 //! - `active_provider`
 //! - `model_cache`
 //! - `provider_picker` entries (via the loader)
