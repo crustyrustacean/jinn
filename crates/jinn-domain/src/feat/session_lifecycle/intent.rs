@@ -99,7 +99,7 @@ pub fn handle_session_lifecycle_setup(
 
     let persona_name = state
         .context
-        .active_persona
+        .active_persona()
         .as_ref()
         .map_or_else(|| DEFAULT_PERSONA_NAME.to_owned(), |p| p.name.clone());
 
