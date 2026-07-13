@@ -120,6 +120,70 @@ impl AppLayout {
         }
     }
 }
+/// Full-terminal dashboard layout: a 1-row tab bar on top, everything else is
+/// full-width content (no sidebar, border, minimap, input, or status bar).
+pub struct DashboardLayout {
+    /// The tab bar area (1 row at the very top).
+    pub tab_bar: Rect,
+    /// The content area (everything below the tab bar, full terminal width).
+    pub content: Rect,
+}
+
+impl DashboardLayout {
+    /// Computes the dashboard layout for the given terminal area.
+    ///
+    /// Structure:
+    /// ```text
+    /// tab_bar (1 row)
+    /// content (everything below, full width)
+    /// ```
+    #[must_use]
+    pub fn new(area: Rect) -> Self {
+        let [tab_bar, content] = Layout::vertical([Constraint::Length(1), Constraint::Min(1)]).areas(area);
+        Self { tab_bar, content }
+    }
+}
+
+/// The active application layout, selected by the base focus scope.
+///
+/// Chat mode uses the multi-column [`AppLayout`]; Dashboard mode uses the
+/// full-terminal [`DashboardLayout`]. Branching on this enum guarantees the
+/// dashboard path physically cannot render chat-only chrome (sidebar, status
+/// bar, input, border) — those fields simply do not exist on
+/// [`DashboardLayout`].
+///
+/// Named `AppFrameLayout` (not `Layout`) to avoid collision with ratatui's
+/// [`ratatui::layout::Layout`], which `AppLayout::new` and
+/// [`DashboardLayout::new`] call for `Layout::vertical` splits.
+pub enum AppFrameLayout {
+    /// Chat tab layout: main column + minimap + border + sidebar, with
+    /// content, input, and status-bar sub-areas.
+    Chat(AppLayout),
+    /// Dashboard tab layout: tab bar + full-width content only.
+    Dashboard(DashboardLayout),
+}
+
+impl AppFrameLayout {
+    /// Computes the layout for the given terminal area, branching on
+    /// `is_dashboard` (which is `scope_stack.base() == FocusScope::Dashboard`).
+    ///
+    /// `input_lines` and `sidebar_width` are ignored in Dashboard mode.
+    /// `max_input_height` is ignored in Dashboard mode.
+    #[must_use]
+    pub fn new(
+        area: Rect,
+        input_lines: u16,
+        max_input_height: u16,
+        sidebar_width: u16,
+        is_dashboard: bool,
+    ) -> Self {
+        if is_dashboard {
+            Self::Dashboard(DashboardLayout::new(area))
+        } else {
+            Self::Chat(AppLayout::new(area, input_lines, max_input_height, sidebar_width))
+        }
+    }
+}
 
 #[cfg(test)]
 mod tests {
