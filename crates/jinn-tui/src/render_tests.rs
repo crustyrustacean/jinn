@@ -268,7 +268,10 @@ const CHAT_BORDER_X_80: u16 = 49;
 
 /// Enters the Dashboard tab by swapping the base scope, then renders once,
 /// returning the terminal so the test can inspect its buffer.
-async fn render_in_dashboard(width: u16, height: u16) -> ratatui::Terminal<ratatui::backend::TestBackend> {
+async fn render_in_dashboard(
+    width: u16,
+    height: u16,
+) -> ratatui::Terminal<ratatui::backend::TestBackend> {
     let mut app = render_test_app().await;
     app.core
         .state
@@ -318,18 +321,22 @@ async fn dashboard_renders_no_status_bar() {
     let width = 80;
     let height = 24;
     let status_bar_glyphs = ["\u{21BB}", "\u{2191}", "\u{2193}"];
-    let mut found = String::new();
+    let mut found: Vec<String> = vec![];
     for y in 0..height {
         for x in 0..width {
             let sym = buffer.cell((x, y)).expect("cell").symbol();
             if status_bar_glyphs.contains(&sym) {
-                found.push_str(&format!("({x},{y})={sym} "));
+                found.push(format!("({x},{y})={sym}"));
             }
         }
     }
 
     // Then none of the status bar glyphs appear anywhere on the dashboard.
-    assert!(found.is_empty(), "status bar glyphs found in dashboard: {found}");
+    assert!(
+        found.is_empty(),
+        "status bar glyphs found in dashboard: {}",
+        found.join(", ")
+    );
 }
 
 #[rstest::rstest]
@@ -342,9 +349,7 @@ async fn dashboard_content_fills_full_width() {
     // When reading the rightmost column of the tab-bar row.
     // The tab bar renders "Chat" and "Dashboard" labels; the highlighted
     // "Dashboard" tab must reach the rightmost column (no sidebar reserved).
-    let rightmost = buffer
-        .cell((79, 0))
-        .expect("rightmost tab-bar cell");
+    let rightmost = buffer.cell((79, 0)).expect("rightmost tab-bar cell");
 
     // Then the rightmost column is the default background reset cell, confirming
     // the tab bar spans the full width (a status-bar glyph or sidebar content

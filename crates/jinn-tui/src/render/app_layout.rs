@@ -139,7 +139,8 @@ impl DashboardLayout {
     /// ```
     #[must_use]
     pub fn new(area: Rect) -> Self {
-        let [tab_bar, content] = Layout::vertical([Constraint::Length(1), Constraint::Min(1)]).areas(area);
+        let [tab_bar, content] =
+            Layout::vertical([Constraint::Length(1), Constraint::Min(1)]).areas(area);
         Self { tab_bar, content }
     }
 }
@@ -180,7 +181,12 @@ impl AppFrameLayout {
         if is_dashboard {
             Self::Dashboard(DashboardLayout::new(area))
         } else {
-            Self::Chat(AppLayout::new(area, input_lines, max_input_height, sidebar_width))
+            Self::Chat(AppLayout::new(
+                area,
+                input_lines,
+                max_input_height,
+                sidebar_width,
+            ))
         }
     }
 }
@@ -190,6 +196,7 @@ mod tests {
     #![allow(
         clippy::expect_used,
         clippy::indexing_slicing,
+        clippy::panic,
         reason = "test code, panics are acceptable"
     )]
     use super::*;
