@@ -259,7 +259,13 @@ the renderer reads it on the next tick.
 
 **Actors handle all async operations.** They communicate through the actor host's pub/sub routing. Events are broadcast to all subscribers; commands route to exactly one. Actors may emit events or commands back onto the bus in response.
 
-AppState contains many sub-structs, each owned by exactly one actor that is its sole writer. This applies to frontend too — it's a container of many sub-structs (pins, pickers, scope stack, theme, etc.), each owned by a different actor. Ownership is per-sub-struct, not per-top-level-struct: a domain actor writing frontend.pins it owns is correct; the IntentHandler writing frontend.pins while another actor owns it is the red flag. A cross-boundary write is mutating a sub-struct you don't own, regardless of which top-level struct it lives under.
+Each `AppState` field/sub-struct is written by **at most one actor** — its owner. "At most one" is an upper bound on co-writers, not a requirement that a dedicated writing actor exist. Writing state is ordinary inline work for whatever actor already owns that field's domain (it may also persist to disk, subscribe to the bus, forward to a channel, run business logic). Do not create an actor in order to write.
+
+The `IntentHandler` is **not an actor** and is exempt from this rule. It is the synchronous frontend mutator (user input → `AppState`). It may write any field, in frontend or elsewhere; it is never counted as a writer. An actor owning a field the `IntentHandler` also writes is not a conflict (e.g. optimistic IntentHandler write + authoritative actor write is fine).
+
+Ownership is per-field, not per-top-level-struct: a domain actor writing `frontend.pins` it owns is correct; the `IntentHandler` writing it too is also correct (exempt); a *second actor* writing it is the red flag. A cross-boundary write is mutating a field you don't own, regardless of which top-level struct it lives under.
+
+**Anti-pattern — the "sync sibling."** Do not split one domain boundary across two actors where one persists/forwards and a second "sync" actor subscribes to the first's event just to write `AppState`. If you keep an actor "pure" (no `State`) and spawn a sibling to do the write, the sibling is the bug — give the first actor a `State` clone and write inline. One boundary = one actor.
 
 ## 4. Tests
 

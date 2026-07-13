@@ -156,6 +156,8 @@ async fn dao_set_rebinds_existing_thread_to_new_session() {
 
 // ── DiscordBridgeActor forwarding ─────────────────────────────
 
+use crate::common::app_state::AppState;
+use crate::common::state::State;
 use crate::feat::discord::bridge_actor::DiscordBridgeActor;
 use crate::feat::discord::protocol::BridgeEvent;
 use crate::feat::session::phase_machine::PhaseKind;
@@ -173,7 +175,10 @@ fn session_id() -> SessionId {
 
 fn make_actor() -> (DiscordBridgeActor, kanal::AsyncReceiver<BridgeEvent>) {
     let (tx, rx) = kanal::bounded(64);
-    (DiscordBridgeActor::new(tx), rx.to_async())
+    (
+        DiscordBridgeActor::new(tx, State::new(AppState::default())),
+        rx.to_async(),
+    )
 }
 
 #[tokio::test]
@@ -326,6 +331,7 @@ async fn spawn_on_bus_with_rx() -> (
             deps,
             tx,
             gateway_tx: gw_tx,
+            state: State::new(AppState::default()),
         })
         .await;
     (harness, rx.to_async(), gw_rx.to_async())
