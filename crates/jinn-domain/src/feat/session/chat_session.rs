@@ -546,6 +546,66 @@ impl ChatSessionState {
         }
     }
 
+    /// Create a child session: a fresh (empty-history) session linked to a parent.
+    ///
+    /// Sets `parent_session`, `is_automated`, and `persist`. The caller is
+    /// responsible for inheriting the parent's model (via [`set_model`](Self::set_model))
+    /// if desired - this constructor does not perform any state reads.
+    #[must_use]
+    pub fn new_child(parent_session_id: &SessionId, automated: bool, persist: bool) -> Self {
+        Self {
+            core: SessionCore {
+                parent_session: Some(parent_session_id.clone()),
+                is_automated: automated,
+                persist,
+                ..SessionCore::default()
+            },
+            ui: SessionUi::default(),
+        }
+    }
+
+    /// Convert a cloned session into an automated child: new ID, fresh ephemeral
+    /// state, custom assembly overrides, and the given parent.
+    ///
+    /// Used by the plugin dispatch path when cloning a session for a one-shot
+    /// LLM request. The clone keeps its history and profile from the source;
+    /// only the identity, ephemeral state, overrides, and parent link change.
+    pub fn into_automated_clone(
+        &mut self,
+        source_session_id: &SessionId,
+        overrides: crate::feat::context::assemble::AssemblyOverrides,
+    ) {
+        self.core.session_id = SessionId::new();
+        self.core.is_automated = true;
+        self.core.ephemeral = SessionCoreEphemeral::default();
+        self.core.assembly_overrides = Some(overrides);
+        self.core.parent_session = Some(source_session_id.clone());
+    }
+
+    /// Create a fresh, history-less child session with custom assembly overrides.
+    ///
+    /// Unlike [`new_child`](Self::new_child), this constructor accepts
+    /// [`AssemblyOverrides`] so callers can supply a custom system prompt and
+    /// control skill/context-file inclusion. The session gets a new ID and empty
+    /// history. The caller sets the model (via [`set_model`](Self::set_model)).
+    #[must_use]
+    pub fn new_historyless_child(
+        parent_session_id: &SessionId,
+        persist: bool,
+        overrides: crate::feat::context::assemble::AssemblyOverrides,
+    ) -> Self {
+        Self {
+            core: SessionCore {
+                is_automated: true,
+                persist,
+                assembly_overrides: Some(overrides),
+                parent_session: Some(parent_session_id.clone()),
+                ..SessionCore::default()
+            },
+            ui: SessionUi::default(),
+        }
+    }
+
     /// Read-only access to this session's input box state.
     pub fn chat_input(&self) -> &ChatInputBoxState {
         &self.ui.chat_input
@@ -2569,6 +2629,16 @@ impl ChatSessionState {
         &self.core.cwd
     }
 
+    /// When this session last saw provider activity (model responses).
+    pub fn last_provider_activity_at(&self) -> &Timestamp {
+        &self.core.last_provider_activity_at
+    }
+
+    /// When this session last saw history activity (new entries appended).
+    pub fn last_history_activity_at(&self) -> &Timestamp {
+        &self.core.last_history_activity_at
+    }
+
     /// Sets this session's working directory.
     pub fn set_cwd(&mut self, cwd: std::path::PathBuf) {
         self.core.cwd = cwd;
@@ -2726,6 +2796,16 @@ impl ChatSessionState {
     /// This session's unique identifier.
     pub fn session_id(&self) -> &SessionId {
         &self.core.session_id
+    }
+
+    /// Read-only access to the plugins attached to this session.
+    pub fn attached_plugins(&self) -> &[jinn_core_types::AttachedPlugin] {
+        &self.core.attached_plugins
+    }
+
+    /// Attach a plugin to this session.
+    pub fn attach_plugin(&mut self, plugin: jinn_core_types::AttachedPlugin) {
+        self.core.attached_plugins.push(plugin);
     }
 
     /// Set the session ID (used when inserting into a HashMap with an external key).
