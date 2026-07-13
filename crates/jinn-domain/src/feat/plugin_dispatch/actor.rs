@@ -90,6 +90,7 @@ pub struct PluginDispatchActor {
     services: Services,
     /// Shared app state.
     state: State,
+    cap: crate::common::tcaps::SessionCap,
     /// Maps `session_id → SessionRegistryId` so we can destroy the per-session
     /// Lua state when the session has no attached plugins.
     registry: AttachedPluginRegistry,
@@ -106,6 +107,7 @@ pub struct PluginDispatchActorDeps {
     pub deps: ActorDeps,
     pub services: Services,
     pub state: State,
+    pub cap: crate::common::tcaps::SessionCap,
     pub startup_session_id: String,
     pub domain_ctx: Arc<DomainNodeContext>,
 }
@@ -132,6 +134,7 @@ impl kameo::Actor for PluginDispatchActor {
             deps: args.deps,
             services: args.services,
             state: args.state,
+            cap: args.cap,
             registry: AttachedPluginRegistry::default(),
             startup_session_id: args.startup_session_id,
             domain_ctx: args.domain_ctx,
@@ -161,17 +164,24 @@ impl PluginDispatchActor {
         let new_instance = AttachedPlugin::new(&plugin_name);
         let new_instance_id = new_instance.instance_id.clone();
         let instances: Vec<(PluginInstanceId, String)> = {
-            let state = &mut self.state.write().session;
-            let Some(session) = state.get_mut(&session_id) else {
-                tracing::warn!(session_id = %session_id, "session not found for attach");
-                return;
-            };
-            session.attach_plugin(new_instance);
-            session
-                .attached_plugins()
-                .iter()
-                .map(|p| (p.instance_id.clone(), p.name.clone()))
-                .collect()
+            let result: Option<Vec<(PluginInstanceId, String)>> =
+                self.state.with_session(&self.cap, |view| {
+                    let session = view.session.map();
+                    let Some(session) = session.get_mut(&session_id) else {
+                        tracing::warn!(session_id = %session_id, "session not found for attach");
+                        return None;
+                    };
+                    session.attach_plugin(new_instance);
+                    Some(
+                        session
+                            .attached_plugins()
+                            .iter()
+                            .map(|p| (p.instance_id.clone(), p.name.clone()))
+                            .collect(),
+                    )
+                });
+            let Some(instances) = result else { return };
+            instances
         };
 
         // 2. Destroy old registry (if any), create new with full instance list.
@@ -204,22 +214,25 @@ impl PluginDispatchActor {
 
         // 1. Capture the instances being removed and remove them from
         //    session.core.attached_plugins.
-        let (removed_instances, remaining_instances): (
-            Vec<PluginInstanceId>,
-            Vec<(PluginInstanceId, String)>,
-        ) = {
-            let state = &mut self.state.write().session;
-            let Some(session) = state.get_mut(&session_id) else {
-                tracing::warn!(session_id = %session_id, "session not found for detach");
+        let (removed_instances, remaining_instances) = {
+            let result = self.state.with_session(&self.cap, |view| {
+                let session = view.session.map();
+                let Some(session) = session.get_mut(&session_id) else {
+                    tracing::warn!(session_id = %session_id, "session not found for detach");
+                    return None;
+                };
+                let removed = session.detach_plugins_by_name(plugin_name.as_str());
+                let remaining = session
+                    .attached_plugins()
+                    .iter()
+                    .map(|p| (p.instance_id.clone(), p.name.clone()))
+                    .collect();
+                Some((removed, remaining))
+            });
+            let Some((removed_instances, remaining_instances)) = result else {
                 return;
             };
-            let removed = session.detach_plugins_by_name(plugin_name.as_str());
-            let remaining = session
-                .attached_plugins()
-                .iter()
-                .map(|p| (p.instance_id.clone(), p.name.clone()))
-                .collect();
-            (removed, remaining)
+            (removed_instances, remaining_instances)
         };
 
         // 2. Fire the `on_detach` lifecycle hook for each removed instance.
@@ -322,16 +335,21 @@ impl PluginDispatchActor {
         tracing::debug!(session_id = %session_id, plugin = %plugin_name, instance = %instance_id, "disabling plugin instance");
 
         let now_enabled = {
-            let state = &mut self.state.write().session;
-            let Some(session) = state.get_mut(&session_id) else {
-                tracing::warn!(session_id = %session_id, "session not found for toggle");
-                return;
-            };
-            let Some(enabled) = session.set_plugin_enabled(&instance_id, false) else {
-                tracing::warn!(session_id = %session_id, plugin = %plugin_name, "plugin not attached");
-                return;
-            };
-            enabled
+            let result: Option<bool> =
+                self.state.with_session(&self.cap, |view| {
+                    let session = view.session.map();
+                    let Some(session) = session.get_mut(&session_id) else {
+                        tracing::warn!(session_id = %session_id, "session not found for toggle");
+                        return None;
+                    };
+                    let Some(enabled) = session.set_plugin_enabled(&instance_id, false) else {
+                        tracing::warn!(session_id = %session_id, plugin = %plugin_name, "plugin not attached");
+                        return None;
+                    };
+                    Some(enabled)
+                });
+            let Some(now_enabled) = result else { return };
+            now_enabled
         };
 
         // No registry recreation on toggle — fire-time filtering handles enabled/disabled.
@@ -353,16 +371,21 @@ impl PluginDispatchActor {
         tracing::debug!(session_id = %session_id, plugin = %plugin_name, instance = %instance_id, "enabling plugin instance");
 
         let now_enabled = {
-            let state = &mut self.state.write().session;
-            let Some(session) = state.get_mut(&session_id) else {
-                tracing::warn!(session_id = %session_id, "session not found for enable");
-                return;
-            };
-            let Some(enabled) = session.set_plugin_enabled(&instance_id, true) else {
-                tracing::warn!(session_id = %session_id, plugin = %plugin_name, "plugin not attached");
-                return;
-            };
-            enabled
+            let result: Option<bool> =
+                self.state.with_session(&self.cap, |view| {
+                    let session = view.session.map();
+                    let Some(session) = session.get_mut(&session_id) else {
+                        tracing::warn!(session_id = %session_id, "session not found for enable");
+                        return None;
+                    };
+                    let Some(enabled) = session.set_plugin_enabled(&instance_id, true) else {
+                        tracing::warn!(session_id = %session_id, plugin = %plugin_name, "plugin not attached");
+                        return None;
+                    };
+                    Some(enabled)
+                });
+            let Some(now_enabled) = result else { return };
+            now_enabled
         };
 
         self.publish(PluginToggled {
@@ -382,14 +405,16 @@ impl PluginDispatchActor {
         } = cmd;
         tracing::debug!(session_id = %session_id, plugin = %plugin_name, managed = %managed_session_id, "setting managed session");
 
-        let state = &mut self.state.write().session;
-        let Some(session) = state.get_mut(&session_id) else {
-            tracing::warn!(session_id = %session_id, "session not found for set_managed_session");
-            return;
-        };
-        if !session.set_plugin_managed_session(&instance_id, managed_session_id) {
-            tracing::warn!(session_id = %session_id, plugin = %plugin_name, "plugin not attached");
-        }
+        self.state.with_session(&self.cap, |view| {
+            let session = view.session.map();
+            let Some(session) = session.get_mut(&session_id) else {
+                tracing::warn!(session_id = %session_id, "session not found for set_managed_session");
+                return;
+            };
+            if !session.set_plugin_managed_session(&instance_id, managed_session_id) {
+                tracing::warn!(session_id = %session_id, plugin = %plugin_name, "plugin not attached");
+            }
+        });
     }
 
     // ─── Lifecycle hook firings ────────────────────────────────────────────
@@ -708,6 +733,7 @@ mod tests {
             },
             services,
             state,
+            cap: crate::common::tcaps::mint::mint_session_cap(),
             registry: AttachedPluginRegistry::default(),
             startup_session_id: session_id.to_string(),
             domain_ctx,
@@ -719,7 +745,7 @@ mod tests {
 
     fn seed_completed_task_list(state: &State, session_id: &SessionId) {
         use crate::feat::todo_list::TaskPosition;
-        let mut write = state.write();
+        let mut write = state.write_test_no_cap();
         let session = write.session.get_mut(session_id).unwrap();
         let phase = session.task_list_mut().add_phase("Build");
         let task = session
@@ -731,7 +757,7 @@ mod tests {
 
     fn seed_pending_task_list(state: &State, session_id: &SessionId) {
         use crate::feat::todo_list::TaskPosition;
-        let mut write = state.write();
+        let mut write = state.write_test_no_cap();
         let session = write.session.get_mut(session_id).unwrap();
         let phase = session.task_list_mut().add_phase("Build");
         session

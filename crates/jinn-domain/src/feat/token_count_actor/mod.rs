@@ -24,6 +24,8 @@ pub struct TokenCountActorDeps {
     pub deps: ActorDeps,
     /// Shared application state.
     pub state: State,
+    /// Authority to write the entry token cache.
+    pub cap: crate::common::tcaps::frontend::FrontendCap,
 }
 
 /// The token count actor.
@@ -34,6 +36,7 @@ pub struct TokenCountActorDeps {
 pub struct TokenCountActor {
     state: State,
     counter: TiktokenCounter,
+    cap: crate::common::tcaps::frontend::FrontendCap,
 }
 
 /// Thin adapter that implements [`TokenEstimator`] by delegating to
@@ -67,6 +70,7 @@ impl kameo::Actor for TokenCountActor {
         Ok(Self {
             state: args.state,
             counter: TiktokenCounter::o200k_base(),
+            cap: args.cap,
         })
     }
 }
@@ -121,13 +125,10 @@ impl TokenCountActor {
         };
 
         if !new_counts.is_empty() {
-            let state = self.state.write();
-            state
-                .frontend
-                .caches
-                .entry_token_cache
-                .write()
-                .bulk_insert(new_counts);
+            self.state.with_entry_token_cache(&self.cap, |ops| {
+                use crate::common::tcaps::frontend::TokenCountWrite;
+                ops.bulk_insert(new_counts);
+            });
         }
     }
 
@@ -153,13 +154,10 @@ impl TokenCountActor {
         };
 
         if !new_counts.is_empty() {
-            let state = self.state.write();
-            state
-                .frontend
-                .caches
-                .entry_token_cache
-                .write()
-                .bulk_insert(new_counts);
+            self.state.with_entry_token_cache(&self.cap, |ops| {
+                use crate::common::tcaps::frontend::TokenCountWrite;
+                ops.bulk_insert(new_counts);
+            });
         }
     }
 
@@ -214,13 +212,10 @@ impl TokenCountActor {
         };
 
         if tokens > 0 {
-            let state = self.state.write();
-            state
-                .frontend
-                .caches
-                .entry_token_cache
-                .write()
-                .insert(entry_id.clone(), tokens);
+            self.state.with_entry_token_cache(&self.cap, |ops| {
+                use crate::common::tcaps::frontend::TokenCountWrite;
+                ops.insert(entry_id.clone(), tokens);
+            });
         }
     }
 }
@@ -250,6 +245,7 @@ mod tests {
         let actor = TokenCountActor {
             state: state.clone(),
             counter: TiktokenCounter::o200k_base(),
+            cap: crate::common::tcaps::mint::mint_frontend_cap(),
         };
 
         // When handling HistoryAppended.
@@ -289,6 +285,7 @@ mod tests {
         let actor = TokenCountActor {
             state: state.clone(),
             counter: TiktokenCounter::o200k_base(),
+            cap: crate::common::tcaps::mint::mint_frontend_cap(),
         };
 
         // When handling HistoryAppended.
@@ -313,6 +310,7 @@ mod tests {
         let actor = TokenCountActor {
             state: state.clone(),
             counter: TiktokenCounter::o200k_base(),
+            cap: crate::common::tcaps::mint::mint_frontend_cap(),
         };
 
         // When handling SessionLoadCompleted.
@@ -365,6 +363,7 @@ mod tests {
         let actor = TokenCountActor {
             state: state.clone(),
             counter: TiktokenCounter::o200k_base(),
+            cap: crate::common::tcaps::mint::mint_frontend_cap(),
         };
 
         // When handling ContextOverrideChanged.
@@ -397,6 +396,7 @@ mod tests {
         let actor = TokenCountActor {
             state: state.clone(),
             counter: TiktokenCounter::o200k_base(),
+            cap: crate::common::tcaps::mint::mint_frontend_cap(),
         };
 
         // When handling ContextOverrideChanged.
@@ -423,6 +423,7 @@ mod tests {
         let actor = TokenCountActor {
             state: state.clone(),
             counter: TiktokenCounter::o200k_base(),
+            cap: crate::common::tcaps::mint::mint_frontend_cap(),
         };
 
         // When handling ContextOverrideChanged.
@@ -449,6 +450,7 @@ mod tests {
         let actor = TokenCountActor {
             state: state.clone(),
             counter: TiktokenCounter::o200k_base(),
+            cap: crate::common::tcaps::mint::mint_frontend_cap(),
         };
 
         // When handling ContextOverrideChanged.
@@ -489,6 +491,7 @@ mod tests {
         let actor = TokenCountActor {
             state: state.clone(),
             counter: TiktokenCounter::o200k_base(),
+            cap: crate::common::tcaps::mint::mint_frontend_cap(),
         };
 
         // When handling HistoryAppended.

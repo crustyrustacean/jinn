@@ -9,6 +9,7 @@
 //! mutations of `AppState`, not part of prompt assembly.
 
 use crate::common::actor_deps::BusPublish;
+use crate::common::tcaps::context::PersonaWrite;
 use crate::feat::context::protocol::command::{
     LoadPersonaPickerEntries, PinChatEntry, UnpinChatEntry,
 };
@@ -17,9 +18,24 @@ use crate::feat::persona::PersonaEntry;
 use crate::feat::provider::protocol::event::PromptTemplatesLoaded;
 use crate::feat::session::profile::DEFAULT_PERSONA_NAME;
 use crate::feat::tools_actor::protocol::event::ToolsRegistered;
-use crate::feat::ui::picker_states::PickerExt;
 
 use super::super::SessionPersistenceActor;
+
+/// Compute sorted pinned-entry IDs from a session, matching
+/// `AppState::sorted_pinned_ids` but operating on a session directly so the
+/// pins handler can run inside a [`SessionPinsView`] without `&AppState`.
+fn sorted_pinned_ids_from_session(
+    session: &crate::feat::session::chat_session::ChatSessionState,
+) -> Vec<crate::feat::session::chat_entry::ChatEntryId> {
+    use crate::common::app_state::pin_sort_key;
+    use crate::feat::session::chat_entry::ChatEntryId;
+    let mut pinned = session.pinned_entries();
+    pinned.sort_by_key(|entry| pin_sort_key(entry.pin_position));
+    pinned
+        .iter()
+        .map(|e| e.id.clone())
+        .collect::<Vec<ChatEntryId>>()
+}
 
 impl SessionPersistenceActor {
     /// PinChatEntry: pin entry in session.
@@ -27,11 +43,10 @@ impl SessionPersistenceActor {
         &self,
         payload: &PinChatEntry,
     ) {
-        {
-            let mut state = self.state.write();
-            let session = state.session_mut_or_create(&payload.session_id);
+        self.state.with_session(&self.cap, |view| {
+            let session = view.session.map().get_or_create(&payload.session_id);
             session.pin_entry(&payload.entry_id, payload.position);
-        }
+        });
         self.publish(ChatEntryPinChanged {
             session_id: payload.session_id.clone(),
         })
@@ -44,24 +59,28 @@ impl SessionPersistenceActor {
         payload: &UnpinChatEntry,
     ) {
         {
-            let mut state = self.state.write();
-            let is_active = state.session.active_session_id() == &payload.session_id;
-            let old_index = if is_active {
-                state
-                    .frontend
-                    .pins
-                    .selection_index(&state.sorted_pinned_ids())
-            } else {
-                0
-            };
+            self.state
+                .with_session_pins(&self.cap, &self.frontend_cap, |view| {
+                    let is_active = view.session.map().active_session_id() == &payload.session_id;
+                    let old_index = if is_active {
+                        view.frontend
+                            .pins
+                            .selection_index(&sorted_pinned_ids_from_session(
+                                view.session.map().active_session(),
+                            ))
+                    } else {
+                        0
+                    };
 
-            let session = state.session_mut_or_create(&payload.session_id);
-            session.unpin_entry(&payload.entry_id);
+                    let session = view.session.map().get_or_create(&payload.session_id);
+                    session.unpin_entry(&payload.entry_id);
 
-            if is_active {
-                let new_sorted = state.sorted_pinned_ids();
-                state.frontend.pins.clamp_to_nearest(&new_sorted, old_index);
-            }
+                    if is_active {
+                        let new_sorted =
+                            sorted_pinned_ids_from_session(view.session.map().active_session());
+                        view.frontend.pins.clamp_to_nearest(&new_sorted, old_index);
+                    }
+                });
         }
         self.publish(ChatEntryPinChanged {
             session_id: payload.session_id.clone(),
@@ -69,32 +88,37 @@ impl SessionPersistenceActor {
         .await;
     }
 
+    /// ToolsRegistered: cache tool definitions in global or per-session map.
     pub(in crate::feat::session::session_actor) fn on_tools_registered(
         &self,
         evt: &ToolsRegistered,
     ) {
-        let mut state = self.state.write();
+        use crate::common::tcaps::context::{
+            GlobalToolDefinitionsWrite, SessionToolDefinitionsWrite,
+        };
 
         match &evt.session_id {
             // Global tools (builtins + global plugins) -> shared map.
             None => {
-                for def in &evt.definitions {
-                    state
-                        .context
-                        .global_tool_definitions
-                        .insert(def.name.clone(), def.clone());
-                }
+                self.state.with_context(&self.context_cap, |view| {
+                    let map = view.context.global_tool_definitions_mut();
+                    for def in &evt.definitions {
+                        map.insert(def.name.clone(), def.clone());
+                    }
+                });
             }
             // Attached plugin tools -> per-session map.
             Some(target_id) => {
-                let session_map = state
-                    .context
-                    .session_tool_definitions
-                    .entry(target_id.clone())
-                    .or_default();
-                for def in &evt.definitions {
-                    session_map.insert(def.name.clone(), def.clone());
-                }
+                self.state.with_context(&self.context_cap, |view| {
+                    let session_map = view
+                        .context
+                        .session_tool_definitions_mut()
+                        .entry(target_id.clone())
+                        .or_default();
+                    for def in &evt.definitions {
+                        session_map.insert(def.name.clone(), def.clone());
+                    }
+                });
             }
         }
     }
@@ -139,38 +163,39 @@ impl SessionPersistenceActor {
             );
             return;
         }
-        let mut state = self.state.write();
-        state.context.set_personas(payload.personas.clone());
 
-        let target_name = state
-            .frontend
-            .app_state
-            .persona_name
-            .as_deref()
-            .filter(|name| payload.personas.iter().any(|p| p.name == *name))
-            .or_else(|| {
-                state
-                    .context
-                    .active_persona()
-                    .filter(|p| payload.personas.iter().any(|sp| sp.name == p.name))
-                    .map(|p| p.name.as_str())
-            })
-            .unwrap_or(DEFAULT_PERSONA_NAME);
+        // Read frontend.app_state.persona_name (if set) before writing.
+        let seeded_persona_name = self.state.read().frontend.app_state.persona_name.clone();
 
-        let found = payload
-            .personas
-            .iter()
-            .find(|p| p.name == target_name)
-            .cloned();
+        self.state.with_context(&self.context_cap, |view| {
+            view.context.set_personas(payload.personas.clone());
 
-        if let Some(persona) = found {
-            state.context.set_active_persona(Some(persona));
-        } else {
-            // Edge case: coding-assistant not found either.
-            state
-                .context
-                .set_active_persona(payload.personas.first().cloned());
-        }
+            let active_persona_name = view.context.active_persona().map(|p| p.name.clone());
+
+            let target_name = seeded_persona_name
+                .as_deref()
+                .filter(|name| payload.personas.iter().any(|p| p.name == *name))
+                .or_else(|| {
+                    active_persona_name
+                        .as_deref()
+                        .filter(|name| payload.personas.iter().any(|sp| sp.name == *name))
+                })
+                .unwrap_or(DEFAULT_PERSONA_NAME);
+
+            let found = payload
+                .personas
+                .iter()
+                .find(|p| p.name == target_name)
+                .cloned();
+
+            if let Some(persona) = found {
+                view.context.set_active_persona(Some(persona));
+            } else {
+                // Edge case: coding-assistant not found either.
+                view.context
+                    .set_active_persona(payload.personas.first().cloned());
+            }
+        });
     }
 
     /// Loads persona picker entries into `AppState`.
@@ -199,8 +224,10 @@ impl SessionPersistenceActor {
 
         entries.sort_by_key(|e| e.name.to_lowercase());
 
-        let mut state = self.state.write();
-        state.frontend.persona_picker_mut().set_items(entries);
+        self.state
+            .with_persona_picker(&self.frontend_cap, |picker| {
+                picker.set_items(entries);
+            });
     }
 }
 
@@ -221,6 +248,7 @@ mod tests {
     use crate::feat::context::protocol::event::PersonasLoaded;
     use crate::feat::persona::Persona;
     use crate::feat::tools_actor::tool_types::ToolDefinition;
+    use crate::feat::ui::picker_states::PickerExt;
     use crate::protocol::{ChatEntryId, PinPosition, SessionId};
 
     fn make_persona(name: &str) -> Persona {
@@ -417,7 +445,7 @@ mod tests {
         // Given a session actor with active persona "learning-tutor".
         let (actor, state, _audit) = create_actor().await;
         {
-            let mut guard = state.write();
+            let mut guard = state.write_test_no_cap();
             guard
                 .context
                 .set_active_persona(Some(make_persona("learning-tutor")));
@@ -448,7 +476,7 @@ mod tests {
         // Given a session actor where active persona "foo" was deleted from disk.
         let (actor, state, _audit) = create_actor().await;
         {
-            let mut guard = state.write();
+            let mut guard = state.write_test_no_cap();
             guard.context.set_active_persona(Some(make_persona("foo")));
         }
         let personas = vec![make_persona("coding-assistant")];
@@ -496,7 +524,7 @@ mod tests {
         // Given a session actor with some active persona.
         let (actor, state, _audit) = create_actor().await;
         {
-            let mut guard = state.write();
+            let mut guard = state.write_test_no_cap();
             guard.context.set_active_persona(Some(make_persona("foo")));
         }
         let payload = PersonasLoaded {
@@ -519,7 +547,7 @@ mod tests {
         // (the value that on_environment_loaded seeds from state.toml at startup).
         let (actor, state, _audit) = create_actor().await;
         {
-            let mut guard = state.write();
+            let mut guard = state.write_test_no_cap();
             guard.frontend.app_state.persona_name = Some("general".to_owned());
         }
         let payload = PersonasLoaded {
@@ -544,7 +572,7 @@ mod tests {
         // Given a session with a user entry.
         let (actor, state, audit) = create_actor().await;
         let entry_id = {
-            let mut guard = state.write();
+            let mut guard = state.write_test_no_cap();
             let session = guard.active_session_mut();
             let entry = crate::protocol::ChatEntry::user("hello");
             let id = entry.id.clone();
@@ -586,7 +614,7 @@ mod tests {
         // Given a session with a pinned entry.
         let (actor, state, audit) = create_actor().await;
         let entry_id = {
-            let mut guard = state.write();
+            let mut guard = state.write_test_no_cap();
             let session = guard.active_session_mut();
             let mut entry = crate::protocol::ChatEntry::user("hello");
             entry.pin_position = Some(PinPosition::Top);
@@ -625,7 +653,7 @@ mod tests {
     /// Pushes `n` pinned entries (all `Top`, so display order = insertion order)
     /// into the active session and returns their IDs in insertion order.
     fn push_pinned_entries(state: &State, n: usize) -> Vec<ChatEntryId> {
-        let mut guard = state.write();
+        let mut guard = state.write_test_no_cap();
         let session = guard.active_session_mut();
         (0..n)
             .map(|i| {
@@ -645,7 +673,11 @@ mod tests {
         let (actor, state, _audit) = create_actor().await;
         let ids = push_pinned_entries(&state, 3);
         let session_id = state.read().session.active_session_id().clone();
-        state.write().frontend.pins.select_by_id(ids[0].clone());
+        state
+            .write_test_no_cap()
+            .frontend
+            .pins
+            .select_by_id(ids[0].clone());
 
         // When unpinning A.
         actor
@@ -669,7 +701,11 @@ mod tests {
         let (actor, state, _audit) = create_actor().await;
         let ids = push_pinned_entries(&state, 3);
         let session_id = state.read().session.active_session_id().clone();
-        state.write().frontend.pins.select_by_id(ids[1].clone());
+        state
+            .write_test_no_cap()
+            .frontend
+            .pins
+            .select_by_id(ids[1].clone());
 
         // When unpinning B.
         actor
@@ -694,7 +730,11 @@ mod tests {
         let ids = push_pinned_entries(&state, 3);
         let session_id = state.read().session.active_session_id().clone();
         let selected = ids[1].clone();
-        state.write().frontend.pins.select_by_id(selected.clone());
+        state
+            .write_test_no_cap()
+            .frontend
+            .pins
+            .select_by_id(selected.clone());
 
         // When unpinning A (a different, non-selected entry).
         actor
@@ -718,7 +758,11 @@ mod tests {
         let (actor, state, _audit) = create_actor().await;
         let ids = push_pinned_entries(&state, 3);
         let session_id = state.read().session.active_session_id().clone();
-        state.write().frontend.pins.select_by_id(ids[2].clone());
+        state
+            .write_test_no_cap()
+            .frontend
+            .pins
+            .select_by_id(ids[2].clone());
 
         // When unpinning C.
         actor
@@ -742,7 +786,11 @@ mod tests {
         let (actor, state, _audit) = create_actor().await;
         let ids = push_pinned_entries(&state, 1);
         let session_id = state.read().session.active_session_id().clone();
-        state.write().frontend.pins.select_by_id(ids[0].clone());
+        state
+            .write_test_no_cap()
+            .frontend
+            .pins
+            .select_by_id(ids[0].clone());
 
         // When unpinning A.
         actor
@@ -763,7 +811,11 @@ mod tests {
         let (actor, state, _audit) = create_actor().await;
         let ids = push_pinned_entries(&state, 3);
         let selected = ids[1].clone();
-        state.write().frontend.pins.select_by_id(selected.clone());
+        state
+            .write_test_no_cap()
+            .frontend
+            .pins
+            .select_by_id(selected.clone());
 
         // When unpinning B under a non-active session id.
         actor
@@ -786,7 +838,7 @@ mod tests {
         // Given a session actor with personas loaded.
         let (actor, state, _audit) = create_actor().await;
         {
-            let mut guard = state.write();
+            let mut guard = state.write_test_no_cap();
             guard.context.set_personas(vec![
                 make_persona("coding-assistant"),
                 make_persona("learning-tutor"),

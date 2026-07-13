@@ -15,6 +15,8 @@ use crate::feat::ui::sidebar::sessions;
 /// Actor that adjusts sidebar cursor state in response to session close.
 pub struct SidebarStateActor {
     state: State,
+    session_cap: crate::common::tcaps::session::SessionCap,
+    frontend_cap: crate::common::tcaps::frontend::FrontendCap,
 }
 
 /// Dependencies for [`SidebarStateActor`].
@@ -24,6 +26,10 @@ pub struct SidebarStateActorDeps {
     pub deps: ActorDeps,
     /// Shared application state.
     pub state: State,
+    /// Capability for session writes (active session reconciliation).
+    pub session_cap: crate::common::tcaps::session::SessionCap,
+    /// Capability for frontend writes (sidebar cursor state).
+    pub frontend_cap: crate::common::tcaps::frontend::FrontendCap,
 }
 
 impl kameo::Actor for SidebarStateActor {
@@ -35,7 +41,11 @@ impl kameo::Actor for SidebarStateActor {
             .subscribe(actor_ref.recipient::<SessionClosed>())
             .await;
 
-        Ok(Self { state: args.state })
+        Ok(Self {
+            state: args.state,
+            session_cap: args.session_cap,
+            frontend_cap: args.frontend_cap,
+        })
     }
 }
 
@@ -50,8 +60,10 @@ impl Message<SessionClosed> for SidebarStateActor {
 impl SidebarStateActor {
     /// Reconcile sidebar cursor and active session after a session is closed.
     fn handle_session_closed(&self, _payload: &SessionClosed) {
-        let mut state = self.state.write();
-        sessions::reconcile_after_session_removal(&mut state);
+        self.state
+            .with_session_sidebar(&self.session_cap, &self.frontend_cap, |view| {
+                sessions::reconcile_split(view.session.map(), view.frontend);
+            });
     }
 }
 
@@ -72,6 +84,8 @@ mod tests {
     fn test_actor() -> SidebarStateActor {
         SidebarStateActor {
             state: State::new(AppState::default()),
+            session_cap: crate::common::tcaps::mint::mint_session_cap(),
+            frontend_cap: crate::common::tcaps::mint::mint_frontend_cap(),
         }
     }
 
@@ -80,7 +94,7 @@ mod tests {
         // Given a sidebar actor with three sessions and cursor at index 2.
         let actor = test_actor();
         let removed_id = {
-            let mut state = actor.state.write();
+            let mut state = actor.state.write_test_no_cap();
             // Remove default session so we control exact count.
             let default_id = state.session.active_session_id().clone();
             state.session.remove_without_replacement(&default_id);
@@ -99,7 +113,7 @@ mod tests {
 
         // Simulate the session being removed (as the session actor would do).
         {
-            let mut state = actor.state.write();
+            let mut state = actor.state.write_test_no_cap();
             state.session.remove_without_replacement(&removed_id);
         }
 
@@ -119,7 +133,7 @@ mod tests {
         // Given a sidebar actor with one session and cursor at 0.
         let actor = test_actor();
         let removed_id = {
-            let mut state = actor.state.write();
+            let mut state = actor.state.write_test_no_cap();
             let id = state.session.active_session_id().clone();
             state.frontend.sessions_section.selected_index = Some(0);
             id
@@ -127,7 +141,7 @@ mod tests {
 
         // Simulate session close + new session creation (as session actor would do).
         {
-            let mut state = actor.state.write();
+            let mut state = actor.state.write_test_no_cap();
             state
                 .session
                 .remove_and_replace(&removed_id, ChatSessionState::new());
@@ -149,7 +163,7 @@ mod tests {
         // Given a sidebar actor with three sessions and cursor at index 0.
         let actor = test_actor();
         let removed_id = {
-            let mut state = actor.state.write();
+            let mut state = actor.state.write_test_no_cap();
             let s1 = ChatSessionState::new();
             let s2 = ChatSessionState::new();
             let s3 = ChatSessionState::new();
@@ -163,7 +177,7 @@ mod tests {
 
         // Simulate removal of the last session (cursor at 0 is still valid).
         {
-            let mut state = actor.state.write();
+            let mut state = actor.state.write_test_no_cap();
             state.session.remove_without_replacement(&removed_id);
         }
 

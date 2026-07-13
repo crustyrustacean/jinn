@@ -24,38 +24,39 @@ impl SessionPersistenceActor {
     /// Appends a streaming token to the session's assistant entry,
     /// or to the thinking entry if the token is flagged as reasoning.
     pub(in crate::feat::session::session_actor) fn on_stream_token(&self, event: &StreamToken) {
-        let mut state = self.state.write();
-        let session = state.session_mut_or_create(&event.session_id);
-        match session.phase() {
-            PhaseKind::Streaming => {}
-            PhaseKind::Sending => {
-                // Defensive: stream token arrived without phase transition.
-                session.begin_streaming();
+        self.state.with_session(&self.cap, |view| {
+            let session = view.session.map().get_or_create(&event.session_id);
+            match session.phase() {
+                PhaseKind::Streaming => {}
+                PhaseKind::Sending => {
+                    // Defensive: stream token arrived without phase transition.
+                    session.begin_streaming();
+                }
+                PhaseKind::Idle => {
+                    tracing::warn!(
+                        phase = ?session.phase(),
+                        "StreamToken received in unexpected phase"
+                    );
+                }
             }
-            PhaseKind::Idle => {
-                tracing::warn!(
-                    phase = ?session.phase(),
-                    "StreamToken received in unexpected phase"
-                );
+            if event.is_thinking {
+                if session.streaming_thinking_entry_index().is_none() {
+                    session.begin_thinking(event.dispatched_at);
+                }
+                if let Err(e) = session.append_thinking_token(&event.token) {
+                    tracing::error!(err = ?e, "failed to append thinking token");
+                }
+            } else {
+                // First non-thinking (content) token ends the reasoning phase:
+                // finalize the thinking entry's duration before the content begins.
+                if let Some(idx) = session.streaming_thinking_entry_index() {
+                    session.finish_thinking_entry(idx);
+                }
+                if let Err(e) = session.append_stream_token(&event.token, event.dispatched_at) {
+                    tracing::error!(err = ?e, "failed to append stream token");
+                }
             }
-        }
-        if event.is_thinking {
-            if session.streaming_thinking_entry_index().is_none() {
-                session.begin_thinking(event.dispatched_at);
-            }
-            if let Err(e) = session.append_thinking_token(&event.token) {
-                tracing::error!(err = ?e, "failed to append thinking token");
-            }
-        } else {
-            // First non-thinking (content) token ends the reasoning phase:
-            // finalize the thinking entry's duration before the content begins.
-            if let Some(idx) = session.streaming_thinking_entry_index() {
-                session.finish_thinking_entry(idx);
-            }
-            if let Err(e) = session.append_stream_token(&event.token, event.dispatched_at) {
-                tracing::error!(err = ?e, "failed to append stream token");
-            }
-        }
+        });
     }
 
     /// Marks the session's stream as finished, records output tokens, and drains
@@ -138,14 +139,16 @@ impl SessionPersistenceActor {
         // is still `Streaming`. Now that the phase has advanced to `Sending`,
         // the continuation can be dispatched.
         let drained_batch = event.reason == StreamCompletedReason::ToolUse && {
-            let mut state = self.state.write();
-            state
-                .session_mut_or_create(&event.session_id)
-                .core
-                .ephemeral
-                .pending_tool_batch
-                .take()
-                .is_some()
+            self.state.with_session(&self.cap, |view| {
+                view.session
+                    .map()
+                    .get_or_create(&event.session_id)
+                    .core
+                    .ephemeral
+                    .pending_tool_batch
+                    .take()
+                    .is_some()
+            })
         };
 
         if drained_batch {
@@ -168,9 +171,10 @@ impl SessionPersistenceActor {
         }
 
         {
-            let mut state = self.state.write();
-            let session = state.session_mut_or_create(&event.session_id);
-            session.push_entry(ChatEntry::annotation(event.citations.clone()));
+            self.state.with_session(&self.cap, |view| {
+                let session = view.session.map().get_or_create(&event.session_id);
+                session.push_entry(ChatEntry::annotation(event.citations.clone()));
+            });
         }
 
         super::super::helpers::emit_history_appended(self.bus(), &event.session_id).await;
@@ -192,82 +196,84 @@ impl SessionPersistenceActor {
         output_tokens: Option<u32>,
     ) -> Option<StreamCompletionStateChange> {
         let mut changed_overrides: Vec<ChatEntryId> = Vec::new();
-        let mut state = self.state.write();
-        let session = state.session_mut_or_create(&event.session_id);
+        self.state
+            .with_session(&self.cap, |view| -> Option<StreamCompletionStateChange> {
+                let session = view.session.map().get_or_create(&event.session_id);
 
-        // Stale-generation guard: reject terminal events from an aborted prior
-        // stream (e.g. a retry re-dispatched while the old task was still
-        // alive). A completion whose `dispatched_at` predates the current
-        // generation is dropped silently.
-        if let Some(active) = session.core.ephemeral.stream_dispatched_at
-            && event.dispatched_at < active
-        {
-            tracing::warn!(
-                session_id = %event.session_id,
-                event_dispatched_at = %event.dispatched_at,
-                active_dispatched_at = %active,
-                reason = ?event.reason,
-                "dropping stale StreamCompleted from superseded stream generation"
-            );
-            return None;
-        }
-        // This generation is now consumed.
-        session.core.ephemeral.stream_dispatched_at = None;
+                // Stale-generation guard: reject terminal events from an aborted prior
+                // stream (e.g. a retry re-dispatched while the old task was still
+                // alive). A completion whose `dispatched_at` predates the current
+                // generation is dropped silently.
+                if let Some(active) = session.core.ephemeral.stream_dispatched_at
+                    && event.dispatched_at < active
+                {
+                    tracing::warn!(
+                        session_id = %event.session_id,
+                        event_dispatched_at = %event.dispatched_at,
+                        active_dispatched_at = %active,
+                        reason = ?event.reason,
+                        "dropping stale StreamCompleted from superseded stream generation"
+                    );
+                    return None;
+                }
+                // This generation is now consumed.
+                session.core.ephemeral.stream_dispatched_at = None;
 
-        let old_phase = session.phase();
+                let old_phase = session.phase();
 
-        apply_completion_entries(session, event, output_tokens);
+                apply_completion_entries(session, event, output_tokens);
 
-        let preserve_assistant = matches!(
-            event.reason,
-            StreamCompletedReason::Finished | StreamCompletedReason::ToolUse,
-        );
-        session.finish_streaming(preserve_assistant, event.dispatched_at);
-
-        // Hard cancel: force-exclude dangling tool calls left by the interrupted stream.
-        if event.reason == StreamCompletedReason::Canceled {
-            changed_overrides.extend(session.force_exclude_dangling_tool_calls());
-        }
-
-        // Apply pending history mutations for non-ToolUse completions.
-        // ToolUse defers to on_tool_batch_completed.
-        if event.reason != StreamCompletedReason::ToolUse {
-            let (count, changed) = session.drain_and_apply_pending_mutations();
-            changed_overrides.extend(changed);
-            if count > 0 {
-                tracing::debug!(
-                    session_id = %event.session_id,
-                    count,
-                    reason = ?event.reason,
-                    "applied pending history mutations at stream completion"
+                let preserve_assistant = matches!(
+                    event.reason,
+                    StreamCompletedReason::Finished | StreamCompletedReason::ToolUse,
                 );
-            }
-        }
+                session.finish_streaming(preserve_assistant, event.dispatched_at);
 
-        // Tool use means the conversation continues - always transition to sending
-        // so the tool loop runs.
-        if event.reason == StreamCompletedReason::ToolUse {
-            session.begin_sending();
-        }
+                // Hard cancel: force-exclude dangling tool calls left by the interrupted stream.
+                if event.reason == StreamCompletedReason::Canceled {
+                    changed_overrides.extend(session.force_exclude_dangling_tool_calls());
+                }
 
-        // When returning to Idle on error/cancel, drain queued messages back to
-        // the input buffer so the user can review and retry.
-        if matches!(
-            event.reason,
-            StreamCompletedReason::Error | StreamCompletedReason::Canceled
-        ) {
-            let drained = session.drain_queue();
-            if let Some(text) = drained_queue_to_text(&drained) {
-                session.chat_input_mut().replace_all(text);
-            }
-        }
+                // Apply pending history mutations for non-ToolUse completions.
+                // ToolUse defers to on_tool_batch_completed.
+                if event.reason != StreamCompletedReason::ToolUse {
+                    let (count, changed) = session.drain_and_apply_pending_mutations();
+                    changed_overrides.extend(changed);
+                    if count > 0 {
+                        tracing::debug!(
+                            session_id = %event.session_id,
+                            count,
+                            reason = ?event.reason,
+                            "applied pending history mutations at stream completion"
+                        );
+                    }
+                }
 
-        Some(StreamCompletionStateChange {
-            old_phase,
-            new_phase: session.phase(),
-            reason: event.reason,
-            changed_overrides,
-        })
+                // Tool use means the conversation continues - always transition to sending
+                // so the tool loop runs.
+                if event.reason == StreamCompletedReason::ToolUse {
+                    session.begin_sending();
+                }
+
+                // When returning to Idle on error/cancel, drain queued messages back to
+                // the input buffer so the user can review and retry.
+                if matches!(
+                    event.reason,
+                    StreamCompletedReason::Error | StreamCompletedReason::Canceled
+                ) {
+                    let drained = session.drain_queue();
+                    if let Some(text) = drained_queue_to_text(&drained) {
+                        session.chat_input_mut().replace_all(text);
+                    }
+                }
+
+                Some(StreamCompletionStateChange {
+                    old_phase,
+                    new_phase: session.phase(),
+                    reason: event.reason,
+                    changed_overrides,
+                })
+            })
     }
 
     /// Broadcasts [`ContextOverrideChanged`] for each entry whose override changed
@@ -443,7 +449,7 @@ mod tests {
     async fn on_stream_completed_error_stops_streaming() {
         let (actor, _audit) = test_actor_recording().await;
         let session_id = {
-            let mut state = actor.state.write();
+            let mut state = actor.state.write_test_no_cap();
             let session = state.active_session_mut();
             session.begin_streaming();
             state.session.active_session_id().clone()
@@ -471,7 +477,7 @@ mod tests {
     async fn on_stream_completed_error_reason_drains_queue_to_input_buffer() {
         let (actor, _audit) = test_actor_recording().await;
         let session_id = {
-            let mut state = actor.state.write();
+            let mut state = actor.state.write_test_no_cap();
             let session = state.active_session_mut();
             session.begin_streaming();
             session.enqueue(crate::feat::session::queue_item::QueueItem::UserMessage(
@@ -503,7 +509,7 @@ mod tests {
     async fn on_stream_completed_error_with_multiple_queued_messages_joins_with_newline() {
         let (actor, _audit) = test_actor_recording().await;
         let session_id = {
-            let mut state = actor.state.write();
+            let mut state = actor.state.write_test_no_cap();
             let session = state.active_session_mut();
             session.begin_streaming();
             session.enqueue(crate::feat::session::queue_item::QueueItem::UserMessage(
@@ -538,7 +544,7 @@ mod tests {
     async fn on_stream_completed_canceled_reason_drains_queue_to_input_buffer() {
         let (actor, _audit) = test_actor_recording().await;
         let session_id = {
-            let mut state = actor.state.write();
+            let mut state = actor.state.write_test_no_cap();
             let session = state.active_session_mut();
             session.begin_streaming();
             session.enqueue(crate::feat::session::queue_item::QueueItem::UserMessage(
@@ -570,7 +576,7 @@ mod tests {
     async fn on_stream_completed_finished_emits_history_appended() {
         let (actor, audit) = test_actor_recording().await;
         let session_id = {
-            let mut state = actor.state.write();
+            let mut state = actor.state.write_test_no_cap();
             let session = state.active_session_mut();
             session.push_entry(ChatEntry::user("hello"));
             session.begin_streaming();
@@ -600,7 +606,7 @@ mod tests {
     async fn on_stream_completed_error_emits_history_appended() {
         let (actor, audit) = test_actor_recording().await;
         let session_id = {
-            let mut state = actor.state.write();
+            let mut state = actor.state.write_test_no_cap();
             let session = state.active_session_mut();
             session.push_entry(ChatEntry::user("hello"));
             session.begin_streaming();
@@ -630,7 +636,7 @@ mod tests {
     async fn on_stream_completed_canceled_emits_history_appended() {
         let (actor, audit) = test_actor_recording().await;
         let session_id = {
-            let mut state = actor.state.write();
+            let mut state = actor.state.write_test_no_cap();
             let session = state.active_session_mut();
             session.push_entry(ChatEntry::user("hello"));
             session.begin_streaming();
@@ -667,7 +673,7 @@ mod tests {
         // `Error("Cancelled")` entry by then.
         let (actor, audit) = test_actor_recording().await;
         let session_id = {
-            let mut state = actor.state.write();
+            let mut state = actor.state.write_test_no_cap();
             let session = state.active_session_mut();
             session.push_entry(ChatEntry::user("hello"));
             session.begin_streaming();
@@ -703,7 +709,7 @@ mod tests {
     async fn on_stream_completed_canceled_force_excludes_dangling_tool_calls() {
         let (actor, _audit) = test_actor_recording().await;
         let session_id = {
-            let mut state = actor.state.write();
+            let mut state = actor.state.write_test_no_cap();
             let session = state.active_session_mut();
             session.push_entry(ChatEntry::user("run it"));
             session.push_entry(ChatEntry::assistant(""));
@@ -750,7 +756,7 @@ mod tests {
     async fn on_stream_token_appends_text_to_assistant_entry() {
         let (actor, _audit) = test_actor_recording().await;
         let session_id = {
-            let mut state = actor.state.write();
+            let mut state = actor.state.write_test_no_cap();
             let session = state.active_session_mut();
             session.begin_streaming();
             state.session.active_session_id().clone()
@@ -793,7 +799,7 @@ mod tests {
         };
 
         {
-            let mut state = actor.state.write();
+            let mut state = actor.state.write_test_no_cap();
             state.active_session_mut().begin_streaming();
         }
         actor.on_stream_token(&StreamToken {
@@ -817,7 +823,7 @@ mod tests {
     async fn on_stream_token_corrects_sending_phase_to_streaming() {
         let (actor, _audit) = test_actor_recording().await;
         let session_id = {
-            let mut state = actor.state.write();
+            let mut state = actor.state.write_test_no_cap();
             let session = state.active_session_mut();
             session.push_entry(ChatEntry::user("go"));
             session.begin_sending();
@@ -845,7 +851,7 @@ mod tests {
     async fn on_stream_completed_finished_persists_session() {
         let (actor, store, _audit) = test_actor_with_store_recording(vec![]).await;
         let session_id = {
-            let mut state = actor.state.write();
+            let mut state = actor.state.write_test_no_cap();
             let session = state.active_session_mut();
             session.push_entry(ChatEntry::user("hello"));
             session.mark_interacted();
@@ -878,7 +884,7 @@ mod tests {
         // Given an interacted session in streaming state.
         let (actor, store, _audit) = test_actor_with_store_recording(vec![]).await;
         let session_id = {
-            let mut state = actor.state.write();
+            let mut state = actor.state.write_test_no_cap();
             let session = state.active_session_mut();
             session.push_entry(ChatEntry::user("hello"));
             session.mark_interacted();
@@ -912,7 +918,7 @@ mod tests {
         // Given an interacted session in streaming state.
         let (actor, store, _audit) = test_actor_with_store_recording(vec![]).await;
         let session_id = {
-            let mut state = actor.state.write();
+            let mut state = actor.state.write_test_no_cap();
             let session = state.active_session_mut();
             session.push_entry(ChatEntry::user("hello"));
             session.mark_interacted();
@@ -945,7 +951,7 @@ mod tests {
     async fn on_stream_completed_does_not_count_tokens_on_error() {
         let (actor, _audit) = test_actor_recording().await;
         let session_id = {
-            let mut state = actor.state.write();
+            let mut state = actor.state.write_test_no_cap();
             let session = state.active_session_mut();
             session.push_token_record(TokenRecord {
                 model_used: None,
@@ -985,7 +991,7 @@ mod tests {
     async fn on_stream_completed_tool_use_preserves_assistant_entry() {
         let (actor, _audit) = test_actor_recording().await;
         let session_id = {
-            let mut state = actor.state.write();
+            let mut state = actor.state.write_test_no_cap();
             let session = state.active_session_mut();
             session.push_entry(ChatEntry::user("do something"));
             session.begin_streaming();
@@ -1032,7 +1038,7 @@ mod tests {
     async fn on_stream_completed_tool_use_counts_tool_call_arguments() {
         let (actor, _audit) = test_actor_recording().await;
         let session_id = {
-            let mut state = actor.state.write();
+            let mut state = actor.state.write_test_no_cap();
             let session = state.active_session_mut();
             session.push_token_record(TokenRecord {
                 model_used: None,
@@ -1077,7 +1083,7 @@ mod tests {
     async fn on_stream_completed_finished_preserves_assistant_entry() {
         let (actor, _audit) = test_actor_recording().await;
         let session_id = {
-            let mut state = actor.state.write();
+            let mut state = actor.state.write_test_no_cap();
             let session = state.active_session_mut();
             session.push_entry(ChatEntry::user("hello"));
             session.begin_streaming();
@@ -1120,7 +1126,7 @@ mod tests {
     async fn on_stream_completed_canceled_with_complete_tool_loop_does_not_exclude() {
         let (actor, _audit) = test_actor_recording().await;
         let session_id = {
-            let mut state = actor.state.write();
+            let mut state = actor.state.write_test_no_cap();
             let session = state.active_session_mut();
             session.push_entry(ChatEntry::user("run it"));
             session.push_entry(ChatEntry::assistant(""));
@@ -1164,7 +1170,7 @@ mod tests {
     async fn on_stream_completed_finished_without_auto_compaction_goes_to_idle() {
         let (actor, _audit) = test_actor_recording().await;
         let session_id = {
-            let mut state = actor.state.write();
+            let mut state = actor.state.write_test_no_cap();
             let session = state.active_session_mut();
             session.push_entry(ChatEntry::user("hello"));
             session.begin_streaming();
@@ -1197,7 +1203,7 @@ mod tests {
     async fn on_stream_completed_finished_applies_pending_mutations() {
         let (actor, audit) = test_actor_recording().await;
         let (entry_id, session_id) = {
-            let mut state = actor.state.write();
+            let mut state = actor.state.write_test_no_cap();
             let session = state.active_session_mut();
             session.push_entry(ChatEntry::user("hello"));
             let entry = ChatEntry::assistant("response");
@@ -1246,7 +1252,7 @@ mod tests {
     async fn on_stream_completed_error_applies_pending_mutations() {
         let (actor, _audit) = test_actor_recording().await;
         let (entry_id, session_id) = {
-            let mut state = actor.state.write();
+            let mut state = actor.state.write_test_no_cap();
             let session = state.active_session_mut();
             session.push_entry(ChatEntry::user("hello"));
             let entry = ChatEntry::assistant("partial");
@@ -1299,7 +1305,7 @@ mod tests {
         // Given a session in streaming state with pending mutations.
         let actor = test_actor().await;
         let (entry_id, session_id) = {
-            let mut state = actor.state.write();
+            let mut state = actor.state.write_test_no_cap();
             let session = state.active_session_mut();
             session.push_entry(ChatEntry::user("hello"));
             let entry = ChatEntry::assistant("partial");
@@ -1349,7 +1355,7 @@ mod tests {
     async fn on_stream_completed_tool_use_does_not_apply_mutations() {
         let (actor, _audit) = test_actor_recording().await;
         let (entry_id, session_id) = {
-            let mut state = actor.state.write();
+            let mut state = actor.state.write_test_no_cap();
             let session = state.active_session_mut();
             session.push_entry(ChatEntry::user("hello"));
             let entry = ChatEntry::assistant("checking");
@@ -1403,7 +1409,7 @@ mod tests {
     async fn on_stream_completed_provider_tokens_used_directly() {
         let (actor, _audit) = test_actor_recording().await;
         let session_id = {
-            let mut state = actor.state.write();
+            let mut state = actor.state.write_test_no_cap();
             let session = state.active_session_mut();
             session.push_token_record(TokenRecord {
                 timestamp: jiff::Timestamp::now(),
@@ -1438,7 +1444,7 @@ mod tests {
     async fn on_stream_completed_local_fallback_includes_thinking() {
         let (actor, _audit) = test_actor_recording().await;
         let session_id = {
-            let mut state = actor.state.write();
+            let mut state = actor.state.write_test_no_cap();
             let session = state.active_session_mut();
             session.push_token_record(TokenRecord {
                 timestamp: jiff::Timestamp::now(),
@@ -1477,7 +1483,7 @@ mod tests {
     async fn on_stream_completed_local_fallback_without_thinking_backward_compat() {
         let (actor, _audit) = test_actor_recording().await;
         let session_id = {
-            let mut state = actor.state.write();
+            let mut state = actor.state.write_test_no_cap();
             let session = state.active_session_mut();
             session.push_token_record(TokenRecord {
                 model_used: None,
@@ -1515,7 +1521,7 @@ mod tests {
     async fn on_stream_completed_provider_tokens_preferred_over_local() {
         let (actor, _audit) = test_actor_recording().await;
         let session_id = {
-            let mut state = actor.state.write();
+            let mut state = actor.state.write_test_no_cap();
             let session = state.active_session_mut();
             session.push_token_record(TokenRecord {
                 model_used: None,
@@ -1552,7 +1558,7 @@ mod tests {
     async fn on_stream_completed_takes_max_when_provider_undercounts() {
         let (actor, _audit) = test_actor_recording().await;
         let session_id = {
-            let mut state = actor.state.write();
+            let mut state = actor.state.write_test_no_cap();
             let session = state.active_session_mut();
             session.push_token_record(TokenRecord {
                 model_used: None,
@@ -1595,7 +1601,7 @@ mod tests {
     async fn on_stream_completed_takes_max_when_provider_overcounts() {
         let (actor, _audit) = test_actor_recording().await;
         let session_id = {
-            let mut state = actor.state.write();
+            let mut state = actor.state.write_test_no_cap();
             let session = state.active_session_mut();
             session.push_token_record(TokenRecord {
                 model_used: None,
@@ -1631,7 +1637,7 @@ mod tests {
         use crate::feat::context::strategy::token_estimator::TokenCounter;
         let (actor, _audit) = test_actor_recording().await;
         let session_id = {
-            let mut state = actor.state.write();
+            let mut state = actor.state.write_test_no_cap();
             let session = state.active_session_mut();
             session.push_token_record(TokenRecord {
                 model_used: None,
@@ -1673,7 +1679,7 @@ mod tests {
         let actor = test_actor().await;
         let dispatched = jiff::Timestamp::now();
         let session_id = {
-            let mut state = actor.state.write();
+            let mut state = actor.state.write_test_no_cap();
             let session = state.active_session_mut();
             session.begin_streaming();
             state.session.active_session_id().clone()
@@ -1716,7 +1722,7 @@ mod tests {
         let actor = test_actor().await;
         let dispatched = jiff::Timestamp::now();
         let session_id = {
-            let mut state = actor.state.write();
+            let mut state = actor.state.write_test_no_cap();
             let session = state.active_session_mut();
             session.begin_streaming();
             state.session.active_session_id().clone()
@@ -1759,7 +1765,7 @@ mod tests {
         let actor = test_actor().await;
         let dispatched = jiff::Timestamp::now();
         let session_id = {
-            let mut state = actor.state.write();
+            let mut state = actor.state.write_test_no_cap();
             let session = state.active_session_mut();
             session.begin_streaming();
             state.session.active_session_id().clone()
@@ -1811,7 +1817,7 @@ mod tests {
         let actor = test_actor().await;
         let dispatched = jiff::Timestamp::now();
         let session_id = {
-            let mut state = actor.state.write();
+            let mut state = actor.state.write_test_no_cap();
             let session = state.active_session_mut();
             session.begin_streaming();
             state.session.active_session_id().clone()
@@ -1858,7 +1864,7 @@ mod tests {
         let actor = test_actor().await;
         let dispatched = jiff::Timestamp::now();
         let session_id = {
-            let mut state = actor.state.write();
+            let mut state = actor.state.write_test_no_cap();
             let session = state.active_session_mut();
             session.begin_streaming();
             state.session.active_session_id().clone()
@@ -1925,7 +1931,7 @@ mod tests {
         let actor = test_actor().await;
         let dispatched = jiff::Timestamp::now();
         let session_id = {
-            let mut state = actor.state.write();
+            let mut state = actor.state.write_test_no_cap();
             let session = state.active_session_mut();
             session.begin_streaming();
             state.session.active_session_id().clone()
@@ -1977,7 +1983,7 @@ mod tests {
         let actor = test_actor().await;
         let dispatched = jiff::Timestamp::now();
         let session_id = {
-            let mut state = actor.state.write();
+            let mut state = actor.state.write_test_no_cap();
             let session = state.active_session_mut();
             session.begin_streaming();
             state.session.active_session_id().clone()
@@ -2036,7 +2042,7 @@ mod tests {
         let actor = test_actor().await;
         let dispatched = jiff::Timestamp::now();
         let session_id = {
-            let mut state = actor.state.write();
+            let mut state = actor.state.write_test_no_cap();
             let session = state.active_session_mut();
             session.begin_streaming();
             state.session.active_session_id().clone()
@@ -2305,7 +2311,7 @@ mod tests {
         // Given a streaming session with a current-generation dispatch timestamp.
         let (actor, _audit) = test_actor_recording().await;
         let session_id = {
-            let mut state = actor.state.write();
+            let mut state = actor.state.write_test_no_cap();
             let session = state.active_session_mut();
             session.begin_streaming();
             let now = jiff::Timestamp::now();
@@ -2350,7 +2356,7 @@ mod tests {
         // Given a session mid-stream with no buffered tool batch.
         let (actor, audit) = test_actor_recording().await;
         let session_id = {
-            let mut state = actor.state.write();
+            let mut state = actor.state.write_test_no_cap();
             let session = state.active_session_mut();
             session.push_entry(ChatEntry::user("hello"));
             session.begin_streaming();

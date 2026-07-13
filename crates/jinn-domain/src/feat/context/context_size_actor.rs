@@ -30,6 +30,8 @@ pub struct ContextSizeActor {
     counter: TiktokenCounter,
     /// Bus for message routing.
     bus: BusService,
+    /// Authority to write assembled context size into sessions.
+    session_cap: crate::common::tcaps::session::SessionCap,
 }
 
 /// Dependencies for [`ContextSizeActor`].
@@ -41,6 +43,8 @@ pub struct ContextSizeActorDeps {
     pub state: State,
     /// Token counter for prompt assembly.
     pub counter: TiktokenCounter,
+    /// Authority to write assembled context size into sessions.
+    pub session_cap: crate::common::tcaps::session::SessionCap,
 }
 
 impl BusPublish for ContextSizeActor {
@@ -74,6 +78,7 @@ impl kameo::Actor for ContextSizeActor {
             state: args.state,
             counter: args.counter,
             bus: args.deps.services.bus.clone(),
+            session_cap: args.session_cap,
         })
     }
 }
@@ -145,10 +150,12 @@ impl ContextSizeActor {
 
         match result {
             Ok(assembled_tokens) => {
-                let mut state = self.state.write();
-                if let Some(session) = state.session.get_mut(&session_id) {
-                    session.set_context_size(assembled_tokens);
-                }
+                let session_id = session_id.clone();
+                self.state.with_session(&self.session_cap, |view| {
+                    if let Some(session) = view.session.map().get_mut(&session_id) {
+                        session.set_context_size(assembled_tokens);
+                    }
+                });
             }
             Err(join_err) => {
                 error!(error = %join_err, "context-size recalculate task failed");
@@ -178,6 +185,7 @@ mod tests {
             state: State::new(AppState::default()),
             counter: TiktokenCounter::o200k_base(),
             bus: harness.bus(),
+            session_cap: crate::common::tcaps::mint::mint_session_cap(),
         }
     }
 
@@ -186,7 +194,7 @@ mod tests {
         // Given an actor with a session that has history.
         let actor = test_actor().await;
         let session_id = {
-            let mut state = actor.state.write();
+            let mut state = actor.state.write_test_no_cap();
             state
                 .active_session_mut()
                 .push_entry(ChatEntry::user("hello world"));
@@ -229,7 +237,7 @@ mod tests {
 
         // When adding an entry and recalculating.
         {
-            let mut state = actor.state.write();
+            let mut state = actor.state.write_test_no_cap();
             state
                 .active_session_mut()
                 .push_entry(ChatEntry::user("a long message that adds tokens"));
@@ -280,7 +288,7 @@ mod tests {
         let second = ChatSessionState::new();
         let second_id = second.session_id().clone();
         {
-            let mut state = actor.state.write();
+            let mut state = actor.state.write_test_no_cap();
             state.session.insert(second);
             // Active session has history, second does not.
             state

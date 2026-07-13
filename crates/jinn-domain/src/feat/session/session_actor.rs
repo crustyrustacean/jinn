@@ -70,6 +70,9 @@ use crate::init::EnvironmentLoaded;
 /// Also persists session snapshots to disk when session state changes.
 pub struct SessionPersistenceActor {
     state: State,
+    cap: crate::common::tcaps::session::SessionCap,
+    frontend_cap: crate::common::tcaps::frontend::FrontendCap,
+    context_cap: crate::common::tcaps::context::ContextCap,
     /// Runtime services (user preferences storage for startup config loading).
     services: crate::common::services::Services,
     /// Token counter for recording token usage in the session ledger.
@@ -98,6 +101,9 @@ impl BusPublish for SessionPersistenceActor {
 pub struct SessionPersistenceActorDeps {
     pub deps: ActorDeps,
     pub state: State,
+    pub cap: crate::common::tcaps::session::SessionCap,
+    pub frontend_cap: crate::common::tcaps::frontend::FrontendCap,
+    pub context_cap: crate::common::tcaps::context::ContextCap,
     pub counter: TiktokenCounter,
     /// Auto-pruner entry token cache for the accumulation gate.
     pub token_cache: crate::feat::auto_prune_worker::HistoryWorkerChatEntryTokenCache,
@@ -171,6 +177,9 @@ impl Actor for SessionPersistenceActor {
 
         Ok(Self {
             state: args.state,
+            cap: args.cap,
+            frontend_cap: args.frontend_cap,
+            context_cap: args.context_cap,
             services: args.deps.services,
             counter: args.counter,
             token_cache: args.token_cache,

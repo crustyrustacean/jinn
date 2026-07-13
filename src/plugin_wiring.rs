@@ -220,7 +220,7 @@ mod tests {
                 ..SessionProfile::default()
             });
             session.set_session_id(source_id.clone());
-            state.write().session.insert(session);
+            state.write_test_no_cap().session.insert(session);
         }
         // Clone BEFORE move into DomainNodeContext — both handles share one Arc.
         let state_handle = state.clone();
@@ -432,7 +432,7 @@ mod tests {
                 prompt_guidelines: vec![],
                 server_tool_type: None,
             };
-            let mut s = state.write();
+            let mut s = state.write_test_no_cap();
             s.context
                 .attachable_tool_catalog
                 .insert("judgment_passed".to_owned(), make_def("judgment_passed"));

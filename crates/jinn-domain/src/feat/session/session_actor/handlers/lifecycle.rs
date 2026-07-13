@@ -113,9 +113,10 @@ impl SessionPersistenceActor {
         entry: ChatEntry,
     ) {
         {
-            let mut state = self.state.write();
-            let session = state.session_mut_or_create(session_id);
-            session.push_entry(entry.clone());
+            self.state.with_session(&self.cap, |view| {
+                let session = view.session.map().get_or_create(session_id);
+                session.push_entry(entry.clone());
+            });
         }
         self.publish(ChatEntrySubmitted {
             session_id: session_id.clone(),
@@ -135,10 +136,11 @@ impl SessionPersistenceActor {
     ) {
         // Mark session as busy.
         {
-            let mut state = self.state.write();
-            if let Some(session) = state.session.get_mut(&payload.session_id) {
-                session.begin_busy();
-            }
+            self.state.with_session(&self.cap, |view| {
+                if let Some(session) = view.session.map().get_mut(&payload.session_id) {
+                    session.begin_busy();
+                }
+            });
         }
 
         match payload.lifecycle_command {
@@ -149,10 +151,11 @@ impl SessionPersistenceActor {
                         .await;
                     // Complete busy.
                     {
-                        let mut state = self.state.write();
-                        if let Some(session) = state.session.get_mut(&payload.session_id) {
-                            session.complete_busy();
-                        }
+                        self.state.with_session(&self.cap, |view| {
+                            if let Some(session) = view.session.map().get_mut(&payload.session_id) {
+                                session.complete_busy();
+                            }
+                        });
                     }
                 }
                 crate::feat::session_lifecycle::builtin::LifecycleCommand::Shell(_) => {
@@ -186,10 +189,11 @@ impl SessionPersistenceActor {
                 // Failed to even start the command.
                 let error_msg = format!("Failed to start setup command: {e}");
                 {
-                    let mut state = self.state.write();
-                    if let Some(session) = state.session.get_mut(&payload.session_id) {
-                        session.complete_busy();
-                    }
+                    self.state.with_session(&self.cap, |view| {
+                        if let Some(session) = view.session.map().get_mut(&payload.session_id) {
+                            session.complete_busy();
+                        }
+                    });
                 }
                 let existing_cwd = self
                     .state
@@ -259,21 +263,23 @@ impl SessionPersistenceActor {
 
         // Complete busy.
         {
-            let mut state = self.state.write();
-            if let Some(session) = state.session.get_mut(&payload.session_id) {
-                session.complete_busy();
-            }
+            self.state.with_session(&self.cap, |view| {
+                if let Some(session) = view.session.map().get_mut(&payload.session_id) {
+                    session.complete_busy();
+                }
+            });
         }
 
         match (&payload.cwd, &payload.error) {
             (Some(cwd), None) => {
                 // Success.
                 {
-                    let mut state = self.state.write();
-                    if let Some(session) = state.session.get_mut(&payload.session_id) {
-                        session.set_cwd(cwd.clone());
-                        session.advance_lifecycle_after_setup();
-                    }
+                    self.state.with_session(&self.cap, |view| {
+                        if let Some(session) = view.session.map().get_mut(&payload.session_id) {
+                            session.set_cwd(cwd.clone());
+                            session.advance_lifecycle_after_setup();
+                        }
+                    });
                 }
 
                 self.publish(PushChatEntry {
@@ -322,14 +328,15 @@ impl SessionPersistenceActor {
                 // fires, and surface an informational note so the user knows no
                 // path was returned.
                 let existing_cwd = {
-                    let mut state = self.state.write();
-                    if let Some(session) = state.session.get_mut(&payload.session_id) {
-                        session.advance_lifecycle_after_setup();
-                    }
-                    state.session.get(&payload.session_id).map_or_else(
-                        || state.session.default_cwd().clone(),
-                        |s| s.cwd().to_path_buf(),
-                    )
+                    self.state.with_session(&self.cap, |view| {
+                        let map = view.session.map();
+                        if let Some(session) = map.get_mut(&payload.session_id) {
+                            session.advance_lifecycle_after_setup();
+                        }
+                        let map = view.session.map();
+                        map.get(&payload.session_id)
+                            .map_or_else(|| map.default_cwd().clone(), |s| s.cwd().to_path_buf())
+                    })
                 };
                 self.publish(PushChatEntry {
                     session_id: payload.session_id.clone(),
@@ -385,11 +392,12 @@ impl SessionPersistenceActor {
         match handler.setup(session_id, args) {
             Ok(cwd) => {
                 {
-                    let mut state = self.state.write();
-                    if let Some(session) = state.session.get_mut(session_id) {
-                        session.set_cwd(cwd.clone());
-                        session.advance_lifecycle_after_setup();
-                    }
+                    self.state.with_session(&self.cap, |view| {
+                        if let Some(session) = view.session.map().get_mut(session_id) {
+                            session.set_cwd(cwd.clone());
+                            session.advance_lifecycle_after_setup();
+                        }
+                    });
                 }
 
                 self.publish(PushChatEntry {
@@ -476,21 +484,25 @@ impl SessionPersistenceActor {
         match teardown_cmd {
             crate::feat::session_lifecycle::builtin::LifecycleCommand::Shell(shell_cmd) => {
                 // Mark session as busy.
-                let rendered = {
-                    let mut state = self.state.write();
-                    let Some(session) = state.session.get_mut(&payload.session_id) else {
-                        return;
+                let rendered =
+                    {
+                        let rendered = self.state.with_session(&self.cap, |view| -> Option<String> {
+                        let session = view.session.map().get_mut(&payload.session_id)?;
+                        session.begin_busy();
+                        use crate::feat::session_lifecycle::command_template::CommandTemplate;
+                        let template = CommandTemplate::parse(shell_cmd);
+                        let rendered = if lifecycle_args.is_empty() {
+                            shell_cmd.clone()
+                        } else {
+                            template.render(&lifecycle_args)
+                        };
+                        Some(rendered)
+                    });
+                        let Some(rendered) = rendered else {
+                            return;
+                        };
+                        rendered
                     };
-                    session.begin_busy();
-                    use crate::feat::session_lifecycle::command_template::CommandTemplate;
-                    let template = CommandTemplate::parse(shell_cmd);
-
-                    if lifecycle_args.is_empty() {
-                        shell_cmd.clone()
-                    } else {
-                        template.render(&lifecycle_args)
-                    }
-                };
 
                 // Push "running" entry.
 
@@ -612,10 +624,11 @@ impl SessionPersistenceActor {
         if handler.teardown(session_id, args) {
             // Advance lifecycle_script_state: SetupRan → TeardownRan.
             {
-                let mut state = self.state.write();
-                if let Some(session) = state.session.get_mut(session_id) {
-                    session.advance_lifecycle_after_teardown();
-                }
+                self.state.with_session(&self.cap, |view| {
+                    if let Some(session) = view.session.map().get_mut(session_id) {
+                        session.advance_lifecycle_after_teardown();
+                    }
+                });
             }
             self.save_active_session(session_id).await;
             true
@@ -681,20 +694,22 @@ impl SessionPersistenceActor {
                         // then return immediately. The spawned task signals completion
                         // via FinishSessionTeardown with close_after: true.
                         let rendered = {
-                            use crate::feat::session_lifecycle::command_template::CommandTemplate;
-
-                            let mut state = self.state.write();
-                            let Some(session) = state.session.get_mut(&payload.session_id) else {
+                            let rendered = self.state.with_session(&self.cap, |view| -> Option<String> {
+                                use crate::feat::session_lifecycle::command_template::CommandTemplate;
+                                let session = view.session.map().get_mut(&payload.session_id)?;
+                                session.begin_busy();
+                                let template = CommandTemplate::parse(&shell_cmd);
+                                let rendered = if lifecycle_args.is_empty() {
+                                    shell_cmd.clone()
+                                } else {
+                                    template.render(&lifecycle_args)
+                                };
+                                Some(rendered)
+                            });
+                            let Some(rendered) = rendered else {
                                 return;
                             };
-                            session.begin_busy();
-                            let template = CommandTemplate::parse(&shell_cmd);
-
-                            if lifecycle_args.is_empty() {
-                                shell_cmd.clone()
-                            } else {
-                                template.render(&lifecycle_args)
-                            }
+                            rendered
                         };
 
                         self.push_and_save(&payload.session_id, teardown_running_msg())
@@ -777,10 +792,11 @@ impl SessionPersistenceActor {
 
         // Step 2: Archive + persist.
         {
-            let mut state = self.state.write();
-            if let Some(session) = state.session.get_mut(&payload.session_id) {
-                session.set_session_state(SessionState::Archived);
-            }
+            self.state.with_session(&self.cap, |view| {
+                if let Some(session) = view.session.map().get_mut(&payload.session_id) {
+                    session.set_session_state(SessionState::Archived);
+                }
+            });
         }
         self.save_active_session(&payload.session_id).await;
 
@@ -790,7 +806,9 @@ impl SessionPersistenceActor {
             if let Some(session) = state.session.get(&payload.session_id) {
                 let frozen = crate::feat::session::snapshot_frozen_node(session);
                 drop(state);
-                self.state.write().session.insert_frozen_node(frozen);
+                self.state.with_session(&self.cap, |view| {
+                    view.session.map().insert_frozen_node(frozen);
+                });
             }
         }
 
@@ -828,11 +846,14 @@ impl SessionPersistenceActor {
 
         // Complete busy.
         {
-            let mut state = self.state.write();
-            let Some(session) = state.session.get_mut(&payload.session_id) else {
+            let result = self.state.with_session(&self.cap, |view| -> Option<()> {
+                let session = view.session.map().get_mut(&payload.session_id)?;
+                session.complete_busy();
+                Some(())
+            });
+            if result.is_none() {
                 return;
-            };
-            session.complete_busy();
+            }
         }
 
         if let Some(ref error_msg) = payload.error {
@@ -857,11 +878,14 @@ impl SessionPersistenceActor {
         if payload.close_after {
             // Close-with-teardown: advance lifecycle, then archive and remove.
             {
-                let mut state = self.state.write();
-                let Some(session) = state.session.get_mut(&payload.session_id) else {
+                let result = self.state.with_session(&self.cap, |view| -> Option<()> {
+                    let session = view.session.map().get_mut(&payload.session_id)?;
+                    session.advance_lifecycle_after_teardown();
+                    Some(())
+                });
+                if result.is_none() {
                     return;
-                };
-                session.advance_lifecycle_after_teardown();
+                }
             }
 
             // Persist the lifecycle state change.
@@ -869,10 +893,11 @@ impl SessionPersistenceActor {
 
             // Archive + remove.
             {
-                let mut state = self.state.write();
-                if let Some(session) = state.session.get_mut(&payload.session_id) {
-                    session.set_session_state(SessionState::Archived);
-                }
+                self.state.with_session(&self.cap, |view| {
+                    if let Some(session) = view.session.map().get_mut(&payload.session_id) {
+                        session.set_session_state(SessionState::Archived);
+                    }
+                });
             }
             self.save_active_session(&payload.session_id).await;
 
@@ -882,7 +907,9 @@ impl SessionPersistenceActor {
                 if let Some(session) = state.session.get(&payload.session_id) {
                     let frozen = crate::feat::session::snapshot_frozen_node(session);
                     drop(state);
-                    self.state.write().session.insert_frozen_node(frozen);
+                    self.state.with_session(&self.cap, |view| {
+                        view.session.map().insert_frozen_node(frozen);
+                    });
                 }
             }
 
@@ -905,11 +932,14 @@ impl SessionPersistenceActor {
         } else {
             // Teardown-only: advance lifecycle, persist, push success entry, emit.
             {
-                let mut state = self.state.write();
-                let Some(session) = state.session.get_mut(&payload.session_id) else {
+                let result = self.state.with_session(&self.cap, |view| -> Option<()> {
+                    let session = view.session.map().get_mut(&payload.session_id)?;
+                    session.advance_lifecycle_after_teardown();
+                    Some(())
+                });
+                if result.is_none() {
                     return;
-                };
-                session.advance_lifecycle_after_teardown();
+                }
             }
 
             // Persist the lifecycle state change.
@@ -977,10 +1007,11 @@ impl SessionPersistenceActor {
 
         // Step 1: Archive + persist.
         {
-            let mut state = self.state.write();
-            if let Some(session) = state.session.get_mut(&payload.session_id) {
-                session.set_session_state(SessionState::Archived);
-            }
+            self.state.with_session(&self.cap, |view| {
+                if let Some(session) = view.session.map().get_mut(&payload.session_id) {
+                    session.set_session_state(SessionState::Archived);
+                }
+            });
         }
         self.save_active_session(&payload.session_id).await;
 
@@ -990,7 +1021,9 @@ impl SessionPersistenceActor {
             if let Some(session) = state.session.get(&payload.session_id) {
                 let frozen = crate::feat::session::snapshot_frozen_node(session);
                 drop(state);
-                self.state.write().session.insert_frozen_node(frozen);
+                self.state.with_session(&self.cap, |view| {
+                    view.session.map().insert_frozen_node(frozen);
+                });
             }
         }
 
@@ -1020,16 +1053,8 @@ impl SessionPersistenceActor {
         &self,
         session_id: &crate::protocol::SessionId,
     ) {
-        let mut state = self.state.write();
-
-        // Update visual-parent index before removing the session
-        // (need it in memory to resolve its parent chain).
-        crate::feat::ui::sidebar::sessions::update_visual_parents_on_removal(
-            &mut state, session_id,
-        );
-
-        let app_state = self.services.app_state_storage.read();
         let fresh_session = {
+            let app_state = self.services.app_state_storage.read();
             let model = app_state.last_model.unwrap_or_default();
             let reasoning_effort = app_state.reasoning_effort;
 
@@ -1038,9 +1063,22 @@ impl SessionPersistenceActor {
             profile.reasoning_effort = reasoning_effort;
             ChatSessionState::new_with_profile(profile)
         };
-        state.session.remove_and_replace(session_id, fresh_session);
 
-        crate::feat::ui::sidebar::sessions::reconcile_after_session_removal(&mut state);
+        self.state
+            .with_session_sidebar(&self.cap, &self.frontend_cap, |view| {
+                crate::feat::ui::sidebar::sessions::update_visual_parents_on_removal_split(
+                    view.session.map(),
+                    view.frontend,
+                    session_id,
+                );
+                view.session
+                    .map()
+                    .remove_and_replace(session_id, fresh_session);
+                crate::feat::ui::sidebar::sessions::reconcile_split(
+                    view.session.map(),
+                    view.frontend,
+                );
+            });
     }
 
     /// PersistSession: persist the session immediately.
@@ -1064,10 +1102,11 @@ impl SessionPersistenceActor {
         payload: &SetSessionCwd,
     ) {
         {
-            let mut state = self.state.write();
-            if let Some(session) = state.session.get_mut(&payload.session_id) {
-                session.set_cwd(payload.cwd.clone());
-            }
+            self.state.with_session(&self.cap, |view| {
+                if let Some(session) = view.session.map().get_mut(&payload.session_id) {
+                    session.set_cwd(payload.cwd.clone());
+                }
+            });
         }
         self.publish(SessionCwdChanged {
             session_id: payload.session_id.clone(),
@@ -1212,7 +1251,7 @@ mod tests {
 
         let (mut actor, audit) = test_actor_recording().await;
         let (target_id, original_active) = {
-            let mut state = actor.state.write();
+            let mut state = actor.state.write_test_no_cap();
             let original_active = state.session.active_session_id().clone();
             let second = ChatSessionState::new();
             let second_id = second.session_id().clone();
@@ -1268,7 +1307,7 @@ mod tests {
 
         let mut actor = test_actor().await;
         let session_id = {
-            let mut state = actor.state.write();
+            let mut state = actor.state.write_test_no_cap();
             state.frontend.scope_stack.clear_overlays();
             state
                 .active_session_mut()
@@ -1309,7 +1348,7 @@ mod tests {
 
         let (mut actor, audit) = test_actor_recording().await;
         let session_id = {
-            let mut state = actor.state.write();
+            let mut state = actor.state.write_test_no_cap();
             state
                 .active_session_mut()
                 .set_lifecycle_name(Some("test".to_owned()));
@@ -1353,7 +1392,7 @@ mod tests {
 
         let (mut actor, audit) = test_actor_recording().await;
         let session_id = {
-            let mut state = actor.state.write();
+            let mut state = actor.state.write_test_no_cap();
             state
                 .active_session_mut()
                 .set_lifecycle_name(Some("test".to_owned()));
@@ -1398,7 +1437,7 @@ mod tests {
         let second = ChatSessionState::new();
         let second_id = second.session_id().clone();
         {
-            let mut state = actor.state.write();
+            let mut state = actor.state.write_test_no_cap();
             state.session.insert(second);
         }
 
@@ -1450,7 +1489,7 @@ mod tests {
         let second = ChatSessionState::new();
         let second_id = second.session_id().clone();
         {
-            let mut state = actor.state.write();
+            let mut state = actor.state.write_test_no_cap();
             state.session.insert(second);
             state.session.set_active(second_id.clone());
         }
@@ -1472,7 +1511,7 @@ mod tests {
         let second = ChatSessionState::new();
         let second_id = second.session_id().clone();
         {
-            let mut state = actor.state.write();
+            let mut state = actor.state.write_test_no_cap();
             state.session.insert(second);
         }
 
@@ -1559,7 +1598,7 @@ mod tests {
 
         let (mut actor, audit) = test_actor_recording().await;
         let session_id = {
-            let mut state = actor.state.write();
+            let mut state = actor.state.write_test_no_cap();
             state
                 .active_session_mut()
                 .set_lifecycle_name(Some("test".to_owned()));
@@ -1605,7 +1644,7 @@ mod tests {
 
         let (mut actor, audit) = test_actor_recording().await;
         let session_id = {
-            let mut state = actor.state.write();
+            let mut state = actor.state.write_test_no_cap();
             state
                 .active_session_mut()
                 .set_lifecycle_name(Some("test".to_owned()));
@@ -1652,7 +1691,7 @@ mod tests {
     async fn close_session_with_nothing_ran_skips_teardown_and_archives() {
         let (mut actor, audit) = test_actor_recording().await;
         let session_id = {
-            let mut state = actor.state.write();
+            let mut state = actor.state.write_test_no_cap();
             state
                 .active_session_mut()
                 .push_entry(ChatEntry::user("hello"));
@@ -1688,7 +1727,7 @@ mod tests {
         let second = ChatSessionState::new();
         let _second_id = second.session_id().clone();
         let target_id = {
-            let mut state = actor.state.write();
+            let mut state = actor.state.write_test_no_cap();
             state
                 .active_session_mut()
                 .push_entry(ChatEntry::user("hello"));
@@ -1767,7 +1806,7 @@ mod tests {
         let second = ChatSessionState::new();
         let _second_id = second.session_id().clone();
         let target_id = {
-            let mut state = actor.state.write();
+            let mut state = actor.state.write_test_no_cap();
             state.session.insert(second);
             state.session.active_session_id().clone()
         };
@@ -1798,7 +1837,7 @@ mod tests {
         let second = ChatSessionState::new();
         let _second_id = second.session_id().clone();
         let active_id = {
-            let mut state = actor.state.write();
+            let mut state = actor.state.write_test_no_cap();
             state
                 .active_session_mut()
                 .push_entry(ChatEntry::user("msg"));
@@ -1823,7 +1862,7 @@ mod tests {
     async fn archive_last_session_creates_new_one() {
         let actor = test_actor().await;
         let only_id = {
-            let mut state = actor.state.write();
+            let mut state = actor.state.write_test_no_cap();
             state
                 .active_session_mut()
                 .push_entry(ChatEntry::user("msg"));
@@ -1851,7 +1890,7 @@ mod tests {
 
         let mut actor = test_actor().await;
         let session_id = {
-            let mut state = actor.state.write();
+            let mut state = actor.state.write_test_no_cap();
             let session = state.active_session_mut();
             session.push_entry(ChatEntry::user("hello"));
             session.set_lifecycle_name(Some("test".to_owned()));
@@ -1897,7 +1936,7 @@ mod tests {
 
         let (mut actor, audit) = test_actor_recording().await;
         let session_id = {
-            let mut state = actor.state.write();
+            let mut state = actor.state.write_test_no_cap();
             let session = state.active_session_mut();
             session.push_entry(ChatEntry::user("hello"));
             session.set_lifecycle_name(Some("test".to_owned()));
@@ -1942,7 +1981,7 @@ mod tests {
         let (mut actor, audit) = test_actor_recording().await;
         let second_session = ChatSessionState::new();
         let session_id = {
-            let mut state = actor.state.write();
+            let mut state = actor.state.write_test_no_cap();
             state.session.insert(second_session);
             let session = state.active_session_mut();
             session.push_entry(ChatEntry::user("hello"));
@@ -2026,7 +2065,7 @@ mod tests {
 
         let mut actor = test_actor().await;
         let session_id = {
-            let mut state = actor.state.write();
+            let mut state = actor.state.write_test_no_cap();
             let session = state.active_session_mut();
             session.set_lifecycle_name(Some("test".to_owned()));
             session.advance_lifecycle_after_setup();
@@ -2075,7 +2114,7 @@ mod tests {
         let (mut actor, store, _audit) = test_actor_with_store_recording(vec![]).await;
         let second = ChatSessionState::new();
         let session_id = {
-            let mut state = actor.state.write();
+            let mut state = actor.state.write_test_no_cap();
             state.session.insert(second);
             let session = state.active_session_mut();
             session.push_entry(ChatEntry::user("hello"));
@@ -2283,7 +2322,7 @@ mod tests {
         let session_id = actor.state.read().session.active_session_id().clone();
         let inherited_cwd = std::path::PathBuf::from("/tmp/inherited-project");
         {
-            let mut state = actor.state.write();
+            let mut state = actor.state.write_test_no_cap();
             state
                 .session
                 .get_mut(&session_id)
@@ -2320,7 +2359,7 @@ mod tests {
         let session_id = actor.state.read().session.active_session_id().clone();
         let inherited_cwd = std::path::PathBuf::from("/tmp/inherited-project");
         {
-            let mut state = actor.state.write();
+            let mut state = actor.state.write_test_no_cap();
             state
                 .session
                 .get_mut(&session_id)
@@ -2357,7 +2396,7 @@ mod tests {
         let session_id = actor.state.read().session.active_session_id().clone();
         let inherited_cwd = std::path::PathBuf::from("/tmp/inherited-project");
         {
-            let mut state = actor.state.write();
+            let mut state = actor.state.write_test_no_cap();
             state
                 .session
                 .get_mut(&session_id)
@@ -2440,7 +2479,7 @@ mod tests {
         let (mut actor, audit) = test_actor_recording().await;
         let session_id = {
             use crate::feat::preferences_actor::user_preferences::SessionLifecycle;
-            let mut state = actor.state.write();
+            let mut state = actor.state.write_test_no_cap();
             let session_id = state.session.active_session_id().clone();
             // Configure the session (CWD + lifecycle state + name) before touching
             // the preferences, so the two `state` borrows don't overlap.

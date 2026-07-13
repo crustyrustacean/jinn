@@ -165,17 +165,18 @@ impl ActorSystemBuilder {
 
         // Create shared State FIRST — injected into multiple actors.
         let state = State::new(AppState::default());
+        let intent_handler_cap = jinn_domain::common::tcaps::mint::mint_intent_handler_cap();
 
         // Set preferences
         {
-            let mut guard = state.write();
+            let mut guard = state.write(&intent_handler_cap);
             guard.frontend.preferences = user_preferences_storage.read();
         }
 
         // Set app state (last_model, theme_name, persona_name, sidebar_width)
         {
             let app_state = app_state_storage.read();
-            let mut guard = state.write();
+            let mut guard = state.write(&intent_handler_cap);
             guard.frontend.app_state.last_model = app_state.last_model.clone();
             guard.frontend.app_state.theme_name = app_state.theme_name.clone();
             guard.frontend.app_state.persona_name = app_state.persona_name.clone();
@@ -185,7 +186,7 @@ impl ActorSystemBuilder {
         // Set default CWD for sessions (inherited from shell).
         {
             let cwd = std::env::current_dir().unwrap_or_else(|_| std::path::PathBuf::from("/"));
-            let mut guard = state.write();
+            let mut guard = state.write(&intent_handler_cap);
             guard.session.set_default_cwd(cwd.clone());
             guard.active_session_mut().set_cwd(cwd);
         }
@@ -257,7 +258,13 @@ impl ActorSystemBuilder {
             let plugins =
                 jinn_plugin::discover_plugins(&paths.plugins_dir(), &paths.system_plugins_dir());
             tracing::info!(count = plugins.len(), "discovered plugins");
-            state.write().discovered_plugins = attachable_discovered_plugins(plugins);
+            state.with_discovered_plugins(
+                &jinn_domain::common::tcaps::mint::mint_discovered_plugins_cap(),
+                |view| {
+                    view.discovered_plugins
+                        .set(attachable_discovered_plugins(plugins));
+                },
+            );
         }
 
         // Root supervision tree: every spawned actor becomes a supervised
@@ -321,6 +328,7 @@ impl ActorSystemBuilder {
                 jinn_domain::feat::dashboard::status_actor::DiscordStatusActorDeps {
                     deps: actor_deps.clone(),
                     state: state.clone(),
+                    cap: jinn_domain::common::tcaps::mint::mint_frontend_cap(),
                     status_rx: discord_status_rx.to_async(),
                 },
             )
@@ -383,6 +391,7 @@ impl ActorSystemBuilder {
                 ProviderInitActorDeps {
                     deps: actor_deps.clone(),
                     state: state.clone(),
+                    provider_cap: jinn_domain::common::tcaps::mint::mint_provider_cap(),
                 },
             )
             .restart_policy(kameo::supervision::RestartPolicy::Never)
@@ -398,6 +407,7 @@ jinn_domain::feat::preferences_actor::preferences_actor::PreferencesActor::super
                     jinn_domain::feat::preferences_actor::preferences_actor::PreferencesActorDeps {
                         deps: actor_deps.clone(),
                         state: state.clone(),
+                        cap: jinn_domain::common::tcaps::mint::mint_frontend_cap(),
                     },
                 )
                 .restart_policy(kameo::supervision::RestartPolicy::Never)
@@ -415,6 +425,8 @@ jinn_domain::feat::preferences_actor::preferences_actor::PreferencesActor::super
                 jinn_domain::feat::preferences_actor::app_state_actor::AppStateActorDeps {
                     deps: actor_deps.clone(),
                     state: state.clone(),
+                    context_cap: jinn_domain::common::tcaps::mint::mint_context_cap(),
+                    frontend_cap: jinn_domain::common::tcaps::mint::mint_frontend_cap(),
                 },
             )
             .restart_policy(kameo::supervision::RestartPolicy::Never)
@@ -432,6 +444,7 @@ jinn_domain::feat::preferences_actor::preferences_actor::PreferencesActor::super
                 jinn_domain::feat::quake_bar::quake_bar_actor::QuakeBarActorDeps {
                     deps: actor_deps.clone(),
                     state: state.clone(),
+                    cap: jinn_domain::common::tcaps::mint::mint_frontend_cap(),
                 },
             )
             .restart_policy(kameo::supervision::RestartPolicy::Never)
@@ -500,6 +513,9 @@ jinn_domain::feat::preferences_actor::preferences_actor::PreferencesActor::super
                 jinn_domain::feat::session::session_actor::SessionPersistenceActorDeps {
                     deps: actor_deps.clone(),
                     state: state.clone(),
+                    cap: jinn_domain::common::tcaps::mint::mint_session_cap(),
+                    frontend_cap: jinn_domain::common::tcaps::mint::mint_frontend_cap(),
+                    context_cap: jinn_domain::common::tcaps::mint::mint_context_cap(),
                     counter: token_counter,
                     token_cache: entry_token_cache.clone(),
                     builtin_registry:
@@ -523,6 +539,7 @@ jinn_domain::feat::preferences_actor::preferences_actor::PreferencesActor::super
                     deps: actor_deps.clone(),
                     state: state.clone(),
                     services: services.clone(),
+                    session_cap: jinn_domain::common::tcaps::mint::mint_session_cap(),
                     builtin_filter: None,
                 },
             )
@@ -624,7 +641,7 @@ jinn_domain::feat::preferences_actor::preferences_actor::PreferencesActor::super
                 // Mirror definitions into the attachable catalog so spawned
                 // child sessions can resolve named tools via `create_child_session`.
                 {
-                    let mut s = state.write();
+                    let mut s = state.write(&intent_handler_cap);
                     for def in &definitions {
                         s.context
                             .attachable_tool_catalog
@@ -767,6 +784,7 @@ jinn_domain::feat::preferences_actor::preferences_actor::PreferencesActor::super
                 jinn_domain::feat::context::prompt_scan_actor::PromptScanActorDeps {
                     deps: actor_deps.clone(),
                     state: state.clone(),
+                    session_cap: jinn_domain::common::tcaps::mint::mint_session_cap(),
                 },
             )
             .restart_policy(kameo::supervision::RestartPolicy::Never)
@@ -784,6 +802,7 @@ jinn_domain::feat::preferences_actor::preferences_actor::PreferencesActor::super
                 jinn_domain::feat::context::context_files_scan_actor::ContextFilesScanActorDeps {
                     deps: actor_deps.clone(),
                     state: state.clone(),
+                    session_cap: jinn_domain::common::tcaps::mint::mint_session_cap(),
                 },
             )
             .restart_policy(kameo::supervision::RestartPolicy::Never)
@@ -801,6 +820,8 @@ jinn_domain::feat::preferences_actor::preferences_actor::PreferencesActor::super
                 jinn_domain::feat::skills::skills_scan_actor::SkillsScanActorDeps {
                     deps: actor_deps.clone(),
                     state: state.clone(),
+                    session_cap: jinn_domain::common::tcaps::mint::mint_session_cap(),
+                    frontend_cap: jinn_domain::common::tcaps::mint::mint_frontend_cap(),
                 },
             )
             .restart_policy(kameo::supervision::RestartPolicy::Never)
@@ -867,6 +888,8 @@ jinn_domain::feat::preferences_actor::preferences_actor::PreferencesActor::super
                 jinn_domain::feat::provider::provider_actor::ProviderActorDeps {
                     state: state.clone(),
                     deps: actor_deps.clone(),
+                    cap: jinn_domain::common::tcaps::mint::mint_provider_cap(),
+                    session_cap: jinn_domain::common::tcaps::mint::mint_session_cap(),
                 },
             )
             .restart_policy(kameo::supervision::RestartPolicy::Never)
@@ -883,6 +906,7 @@ jinn_domain::feat::preferences_actor::preferences_actor::PreferencesActor::super
                 jinn_domain::feat::token_count_actor::TokenCountActorDeps {
                     deps: actor_deps.clone(),
                     state: state.clone(),
+                    cap: jinn_domain::common::tcaps::mint::mint_frontend_cap(),
                 },
             )
             .restart_policy(kameo::supervision::RestartPolicy::Never)
@@ -918,6 +942,7 @@ jinn_domain::feat::preferences_actor::preferences_actor::PreferencesActor::super
                     deps: actor_deps.clone(),
                     state: state.clone(),
                     counter: token_counter,
+                    cap: jinn_domain::common::tcaps::mint::mint_session_cap(),
                 },
             )
             .restart_policy(kameo::supervision::RestartPolicy::Never)
@@ -936,6 +961,7 @@ jinn_domain::feat::preferences_actor::preferences_actor::PreferencesActor::super
                     deps: actor_deps.clone(),
                     state: state.clone(),
                     counter: token_counter,
+                    session_cap: jinn_domain::common::tcaps::mint::mint_session_cap(),
                 },
             )
             .restart_policy(kameo::supervision::RestartPolicy::Never)
@@ -992,7 +1018,8 @@ jinn_domain::feat::preferences_actor::preferences_actor::PreferencesActor::super
                         worker: CompactionWorker::new(
                             services.clone(),
                             handle.clone(),
-                            state.clone()
+                            state.clone(),
+                            jinn_domain::common::tcaps::mint::mint_session_cap(),
                         ),
                     },
                 )
@@ -1019,7 +1046,8 @@ jinn_domain::feat::preferences_actor::preferences_actor::PreferencesActor::super
                         worker: CompactionWorker::new(
                             services.clone(),
                             handle.clone(),
-                            state.clone()
+                            state.clone(),
+                            jinn_domain::common::tcaps::mint::mint_session_cap(),
                         ),
                     },
                 )
@@ -1406,6 +1434,8 @@ jinn_domain::feat::preferences_actor::preferences_actor::PreferencesActor::super
                 jinn_domain::feat::ui::sidebar::sidebar_state_actor::SidebarStateActorDeps {
                     deps: actor_deps.clone(),
                     state: state.clone(),
+                    frontend_cap: jinn_domain::common::tcaps::mint::mint_frontend_cap(),
+                    session_cap: jinn_domain::common::tcaps::mint::mint_session_cap(),
                 },
             )
             .restart_policy(kameo::supervision::RestartPolicy::Never)
@@ -1423,6 +1453,7 @@ jinn_domain::feat::preferences_actor::preferences_actor::PreferencesActor::super
                     deps: actor_deps.clone(),
                     services: services.clone(),
                     state: state.clone(),
+                    cap: jinn_domain::common::tcaps::mint::mint_session_cap(),
                     startup_session_id: state.read().session.active_session_id().to_string(),
                     domain_ctx: shared_domain_ctx.clone(),
                 },
@@ -1454,6 +1485,7 @@ jinn_domain::feat::preferences_actor::preferences_actor::PreferencesActor::super
                         tx,
                         gateway_tx: gw_tx,
                         state: state.clone(),
+                        session_cap: jinn_domain::common::tcaps::mint::mint_session_cap(),
                     },
                 )
                 .restart_policy(kameo::supervision::RestartPolicy::Never)

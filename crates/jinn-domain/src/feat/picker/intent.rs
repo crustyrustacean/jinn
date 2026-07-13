@@ -101,7 +101,7 @@ pub fn handle_open_picker(state: &mut AppState, kind: PickerKind) -> IntentResul
             // must never leak into a new project-picker session.
             state.frontend.pending_session_cwd = None;
             state.frontend.project_picker_mut().reset();
-            load_project_picker_entries(state);
+            load_project_picker_entries(&mut state.frontend);
         }
     }
 
@@ -687,7 +687,15 @@ pub fn handle_tool_toggle(state: &mut AppState) -> IntentResult {
 ///
 /// Delegates to [`crate::feat::skills::reload::reload_skill_picker_entries`].
 fn load_skill_picker_entries(state: &mut AppState) {
-    crate::feat::skills::reload::reload_skill_picker_entries(state);
+    let disabled = state.active_session().disabled_skills().clone();
+    let theme = state.frontend.theme.clone();
+    let discovered = state.active_session().discovered_skills().to_vec();
+    crate::feat::skills::reload::reload_skill_picker_entries(
+        &mut state.frontend,
+        &discovered,
+        &disabled,
+        &theme,
+    );
 }
 
 /// Populates the task list picker entries from the active session's task list.
@@ -740,12 +748,14 @@ fn load_task_list_picker_entries(state: &mut AppState) {
 ///
 /// Entries are pre-computed display strings (tilde-compressed) so the picker
 /// never has to call `shorten_path` per-render.
-pub(crate) fn load_project_picker_entries(state: &mut AppState) {
+pub(crate) fn load_project_picker_entries(
+    frontend: &mut crate::feat::ui::frontend_state::FrontendState,
+) {
     use crate::feat::project::picker_entry::{ProjectEntry, project_entries};
 
-    let theme = state.frontend.theme.clone();
-    let entries: Vec<ProjectEntry> = project_entries(&state.frontend.preferences.projects, &theme);
-    state.frontend.project_picker_mut().set_items(entries);
+    let theme = frontend.theme.clone();
+    let entries: Vec<ProjectEntry> = project_entries(&frontend.preferences.projects, &theme);
+    frontend.project_picker_mut().set_items(entries);
 }
 
 /// Confirms the highlighted project: stashes its dir as the pending session
@@ -802,7 +812,7 @@ pub fn handle_project_remove_highlighted(state: &mut AppState) -> IntentResult {
         .preferences
         .projects
         .retain(|p| p.path != entry.path);
-    load_project_picker_entries(state);
+    load_project_picker_entries(&mut state.frontend);
 
     IntentResult::with_message(UpdatePreferences {
         updates: vec![PreferenceUpdate::RemoveProject(entry.path)],
@@ -2774,7 +2784,7 @@ mod tests {
             })
             .collect();
         state.frontend.preferences.projects = projects;
-        load_project_picker_entries(&mut state);
+        load_project_picker_entries(&mut state.frontend);
         // index 0 is selected by default after set_items + reset.
         state
     }

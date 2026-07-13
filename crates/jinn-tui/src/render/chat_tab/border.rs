@@ -53,7 +53,7 @@ mod tests {
         let mut app = crate::TuiApp::test_builder().build().await;
         app.core
             .state
-            .write()
+            .write_test_no_cap()
             .frontend
             .scope_stack
             .push(jinn_domain::FocusScope::SidebarPersona);
@@ -106,7 +106,7 @@ mod tests {
         let mut app = crate::TuiApp::test_builder().build().await;
         app.core
             .state
-            .write()
+            .write_test_no_cap()
             .frontend
             .scope_stack
             .push(jinn_domain::FocusScope::SidebarResize);

@@ -47,6 +47,9 @@ pub(crate) async fn test_actor() -> super::SessionPersistenceActor {
 
     super::SessionPersistenceActor {
         state: State::new(AppState::default()),
+        cap: crate::common::tcaps::mint::mint_session_cap(),
+        frontend_cap: crate::common::tcaps::mint::mint_frontend_cap(),
+        context_cap: crate::common::tcaps::mint::mint_context_cap(),
         services: crate::common::services::Services::new_fake().await,
         counter: TiktokenCounter::o200k_base(),
         token_cache: HistoryWorkerChatEntryTokenCache::default(),
@@ -72,6 +75,9 @@ pub(crate) async fn test_actor_recording() -> (
     (
         super::SessionPersistenceActor {
             state: State::new(AppState::default()),
+            cap: crate::common::tcaps::mint::mint_session_cap(),
+            frontend_cap: crate::common::tcaps::mint::mint_frontend_cap(),
+            context_cap: crate::common::tcaps::mint::mint_context_cap(),
             services,
             counter: TiktokenCounter::o200k_base(),
             token_cache: HistoryWorkerChatEntryTokenCache::default(),
@@ -229,6 +235,9 @@ pub(crate) async fn test_actor_with_store_recording(
     (
         super::SessionPersistenceActor {
             state: crate::common::state::State::new(crate::common::app_state::AppState::default()),
+            cap: crate::common::tcaps::mint::mint_session_cap(),
+            frontend_cap: crate::common::tcaps::mint::mint_frontend_cap(),
+            context_cap: crate::common::tcaps::mint::mint_context_cap(),
             services,
             counter: crate::feat::context::strategy::token_estimator::TiktokenCounter::o200k_base(),
             token_cache: crate::feat::auto_prune_worker::entry_token_cache::HistoryWorkerChatEntryTokenCache::default(),

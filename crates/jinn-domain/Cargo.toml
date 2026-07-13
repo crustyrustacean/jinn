@@ -74,6 +74,7 @@ rstest = { workspace = true }
 jinn-testutil = { workspace = true }
 tokio = { workspace = true, features = ["test-util"] }
 jinn-common = { workspace = true, features = ["testing"] }
+trybuild = "1"
 
 
 [build-dependencies]

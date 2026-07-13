@@ -152,7 +152,7 @@ fn given_active_provider_set(world: &mut JudgeWorld) {
         .tuiapp
         .core
         .state
-        .write()
+        .write_test_no_cap()
         .session
         .active_session_mut()
         .set_model(ModelSelection::Single("test/test".to_owned()));

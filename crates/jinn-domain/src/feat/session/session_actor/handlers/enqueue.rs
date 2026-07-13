@@ -34,46 +34,46 @@ impl SessionPersistenceActor {
         payload: &EnqueueUserMessage,
     ) {
         let (action, assembly_overrides) = {
-            let mut state = self.state.write();
-            let session = state.session_mut_or_create(&payload.session_id);
-            let assembly_overrides: Option<crate::feat::context::assemble::AssemblyOverrides> =
-                if session.is_automated() {
-                    session.core.assembly_overrides.clone()
-                } else {
-                    None
-                };
-            match session.phase() {
-                PhaseKind::Idle => {
-                    // Normal path: set title, push entry, begin_sending.
-                    if session.title().is_none() {
-                        let title = match &payload.entry.kind {
-                            ChatEntryKind::User { display, .. } => {
-                                display.lines().next().unwrap_or("").to_owned()
-                            }
-                            _ => String::new(),
-                        };
-                        session.set_title(title);
+            self.state.with_session(&self.cap, |view| {
+                let session = view.session.map().get_or_create(&payload.session_id);
+                let assembly_overrides: Option<crate::feat::context::assemble::AssemblyOverrides> =
+                    if session.is_automated() {
+                        session.core.assembly_overrides.clone()
+                    } else {
+                        None
+                    };
+                match session.phase() {
+                    PhaseKind::Idle => {
+                        // Normal path: set title, push entry, begin_sending.
+                        if session.title().is_none() {
+                            let title = match &payload.entry.kind {
+                                ChatEntryKind::User { display, .. } => {
+                                    display.lines().next().unwrap_or("").to_owned()
+                                }
+                                _ => String::new(),
+                            };
+                            session.set_title(title);
+                        }
+                        session.push_entry(payload.entry.clone());
+                        session.begin_sending();
+                        (EnqueueAction::DispatchDirectly, assembly_overrides)
                     }
-                    session.push_entry(payload.entry.clone());
-                    session.begin_sending();
-                    (EnqueueAction::DispatchDirectly, assembly_overrides)
+                    PhaseKind::Sending | PhaseKind::Streaming => {
+                        session.enqueue(crate::feat::session::queue_item::QueueItem::UserMessage(
+                            Box::new(payload.entry.clone()),
+                        ));
+                        (EnqueueAction::Queued, None)
+                    }
                 }
-                PhaseKind::Sending | PhaseKind::Streaming => {
-                    session.enqueue(crate::feat::session::queue_item::QueueItem::UserMessage(
-                        Box::new(payload.entry.clone()),
-                    ));
-                    (EnqueueAction::Queued, None)
-                }
-            }
+            })
         };
 
         match action {
             EnqueueAction::DispatchDirectly => {
                 super::super::helpers::emit_history_appended(self.bus(), &payload.session_id).await;
                 // Drain any pending steering fragments into history before assembly.
-                {
-                    let mut state = self.state.write();
-                    let session = state.session_mut_or_create(&payload.session_id);
+                self.state.with_session(&self.cap, |view| {
+                    let session = view.session.map().get_or_create(&payload.session_id);
                     if let Some(entry) = session.steering_buffer_mut().drain_into_entry() {
                         let entry_id = entry.id.clone();
                         let index = session.push_entry(entry);
@@ -84,7 +84,7 @@ impl SessionPersistenceActor {
                             "drained steering entry into history at enqueue (Idle dispatch)"
                         );
                     }
-                }
+                });
                 // Assemble the prompt directly and emit SendToLlmProvider.
                 let assembled = {
                     let guard = self.state.read();
@@ -97,19 +97,19 @@ impl SessionPersistenceActor {
                 };
 
                 let (old_phase, new_phase) = {
-                    let mut state = self.state.write();
-                    let session = state.session_mut_or_create(&payload.session_id);
-                    let old_phase = session.phase();
-                    session.begin_streaming();
-                    session.push_token_record(TokenRecord {
-                        model_used: None,
-                        timestamp: jiff::Timestamp::now(),
-                        tokens_sent: assembled.estimated_tokens(),
-                        tokens_received: 0,
-                        cost: None,
-                    });
-
-                    (old_phase, session.phase())
+                    self.state.with_session(&self.cap, |view| {
+                        let session = view.session.map().get_or_create(&payload.session_id);
+                        let old_phase = session.phase();
+                        session.begin_streaming();
+                        session.push_token_record(TokenRecord {
+                            model_used: None,
+                            timestamp: jiff::Timestamp::now(),
+                            tokens_sent: assembled.estimated_tokens(),
+                            tokens_received: 0,
+                            cost: None,
+                        });
+                        (old_phase, session.phase())
+                    })
                 };
                 super::super::helpers::emit_phase_changed(
                     self.bus(),
@@ -120,17 +120,20 @@ impl SessionPersistenceActor {
                 .await;
 
                 let (provider_id, model_used, reasoning_effort) = {
-                    let mut state = self.state.write();
-                    let session = state.session_mut(&payload.session_id);
-                    let profile = session.profile_mut();
-                    let reasoning_effort = crate::resolve_effort(profile.reasoning_effort);
-                    if profile.model.is_no_provider() {
-                        (None, None, reasoning_effort)
-                    } else {
-                        let resolved = profile.model.resolve_model();
-                        session.set_last_token_model(resolved.clone());
-                        (Some(resolved.clone()), Some(resolved), reasoning_effort)
-                    }
+                    self.state.with_session(&self.cap, |view| {
+                        let Some(session) = view.session.map().get_mut(&payload.session_id) else {
+                            return (None, None, crate::resolve_effort(None));
+                        };
+                        let profile = session.profile_mut();
+                        let reasoning_effort = crate::resolve_effort(profile.reasoning_effort);
+                        if profile.model.is_no_provider() {
+                            (None, None, reasoning_effort)
+                        } else {
+                            let resolved = profile.model.resolve_model();
+                            session.set_last_token_model(resolved.clone());
+                            (Some(resolved.clone()), Some(resolved), reasoning_effort)
+                        }
+                    })
                 };
 
                 let estimated_tokens = assembled.estimated_tokens();
@@ -191,12 +194,13 @@ impl SessionPersistenceActor {
         // Push UI-only resume marker and transition Idle → Sending.
         let marker = ChatEntry::system("\u{21bb} session resumed");
         let (old_phase, new_phase) = {
-            let mut state = self.state.write();
-            let session = state.session_mut_or_create(&payload.session_id);
-            session.push_entry(marker.clone());
-            let old_phase = session.phase();
-            session.begin_sending();
-            (old_phase, session.phase())
+            self.state.with_session(&self.cap, |view| {
+                let session = view.session.map().get_or_create(&payload.session_id);
+                session.push_entry(marker.clone());
+                let old_phase = session.phase();
+                session.begin_sending();
+                (old_phase, session.phase())
+            })
         };
 
         if old_phase != new_phase {
@@ -226,15 +230,16 @@ impl SessionPersistenceActor {
         session_id: &crate::SessionId,
     ) {
         let drained = {
-            let mut state = self.state.write();
-            let session = state.session_mut_or_create(session_id);
-            if let Some(entry) = session.steering_buffer_mut().drain_into_entry() {
-                let entry_id = entry.id.clone();
-                let index = session.push_entry(entry);
-                Some((entry_id, index))
-            } else {
-                None
-            }
+            self.state.with_session(&self.cap, |view| {
+                let session = view.session.map().get_or_create(session_id);
+                if let Some(entry) = session.steering_buffer_mut().drain_into_entry() {
+                    let entry_id = entry.id.clone();
+                    let index = session.push_entry(entry);
+                    Some((entry_id, index))
+                } else {
+                    None
+                }
+            })
         };
         if let Some((entry_id, index)) = drained {
             tracing::debug!(
@@ -264,38 +269,39 @@ impl SessionPersistenceActor {
         // Resolve model under write lock (round-robin mutates index).
         // Sending → Streaming + record outgoing token count.
         let (provider_id, model_used, reasoning_effort, old_phase, new_phase, dispatched_at) = {
-            let mut state = self.state.write();
-            let session = state.session_mut_or_create(session_id);
-            let reasoning_effort = {
-                let profile = session.profile();
-                crate::resolve_effort(profile.reasoning_effort)
-            };
-            let model = &mut session.profile_mut().model;
-            let (provider_id, model_used) = if model.is_no_provider() {
-                (None, None)
-            } else {
-                let resolved = model.resolve_model();
-                (Some(resolved.clone()), Some(resolved))
-            };
-            let old_phase = session.phase();
-            let dispatched_at = jiff::Timestamp::now();
-            session.begin_streaming();
-            session.core.ephemeral.stream_dispatched_at = Some(dispatched_at);
-            session.push_token_record(TokenRecord {
-                model_used: model_used.clone(),
-                timestamp: dispatched_at,
-                tokens_sent: assembled.estimated_tokens(),
-                tokens_received: 0,
-                cost: None,
-            });
-            (
-                provider_id,
-                model_used,
-                reasoning_effort,
-                old_phase,
-                session.phase(),
-                dispatched_at,
-            )
+            self.state.with_session(&self.cap, |view| {
+                let session = view.session.map().get_or_create(session_id);
+                let reasoning_effort = {
+                    let profile = session.profile();
+                    crate::resolve_effort(profile.reasoning_effort)
+                };
+                let model = &mut session.profile_mut().model;
+                let (provider_id, model_used) = if model.is_no_provider() {
+                    (None, None)
+                } else {
+                    let resolved = model.resolve_model();
+                    (Some(resolved.clone()), Some(resolved))
+                };
+                let old_phase = session.phase();
+                let dispatched_at = jiff::Timestamp::now();
+                session.begin_streaming();
+                session.core.ephemeral.stream_dispatched_at = Some(dispatched_at);
+                session.push_token_record(TokenRecord {
+                    model_used: model_used.clone(),
+                    timestamp: dispatched_at,
+                    tokens_sent: assembled.estimated_tokens(),
+                    tokens_received: 0,
+                    cost: None,
+                });
+                (
+                    provider_id,
+                    model_used,
+                    reasoning_effort,
+                    old_phase,
+                    session.phase(),
+                    dispatched_at,
+                )
+            })
         };
         let estimated_tokens = assembled.estimated_tokens();
 
@@ -322,9 +328,10 @@ impl SessionPersistenceActor {
         &self,
         payload: &SetChatInputText,
     ) {
-        let mut state = self.state.write();
-        let session = state.session_mut_or_create(&payload.session_id);
-        session.chat_input_mut().replace_all(payload.text.clone());
+        self.state.with_session(&self.cap, |view| {
+            let session = view.session.map().get_or_create(&payload.session_id);
+            session.chat_input_mut().replace_all(payload.text.clone());
+        });
     }
 
     /// SetChatInputEnabled: enable or disable editing for the session's input box.
@@ -332,9 +339,10 @@ impl SessionPersistenceActor {
         &self,
         payload: &SetChatInputEnabled,
     ) {
-        let mut state = self.state.write();
-        let session = state.session_mut_or_create(&payload.session_id);
-        session.chat_input_mut().set_enabled(payload.enabled);
+        self.state.with_session(&self.cap, |view| {
+            let session = view.session.map().get_or_create(&payload.session_id);
+            session.chat_input_mut().set_enabled(payload.enabled);
+        });
     }
 
     /// SubmitSteeringMessage: append a fragment to the session's steering buffer.
@@ -348,12 +356,13 @@ impl SessionPersistenceActor {
     ) {
         let fragment_len = payload.text.len();
         let new_depth = {
-            let mut state = self.state.write();
-            let session = state.session_mut_or_create(&payload.session_id);
-            session
-                .steering_buffer_mut()
-                .push_fragment(payload.text.clone());
-            session.steering_buffer().len()
+            self.state.with_session(&self.cap, |view| {
+                let session = view.session.map().get_or_create(&payload.session_id);
+                session
+                    .steering_buffer_mut()
+                    .push_fragment(payload.text.clone());
+                session.steering_buffer().len()
+            })
         };
         tracing::debug!(
             session_id = %payload.session_id,
@@ -375,11 +384,10 @@ impl SessionPersistenceActor {
             preview = %payload.entry.text().chars().take(60).collect::<String>(),
             "handle_push_chat_entry"
         );
-        {
-            let mut state = self.state.write();
-            let session = state.session_mut_or_create(&payload.session_id);
+        self.state.with_session(&self.cap, |view| {
+            let session = view.session.map().get_or_create(&payload.session_id);
             session.push_entry(payload.entry.clone());
-        };
+        });
 
         self.publish(ChatEntrySubmitted {
             session_id: payload.session_id.clone(),
@@ -443,7 +451,7 @@ mod tests {
         // Given an idle session.
         let (actor, state, audit) = create_actor().await;
         let session_id = {
-            let mut guard = state.write();
+            let mut guard = state.write_test_no_cap();
             let _session = guard.active_session_mut();
             guard.session.active_session_id().clone()
         };
@@ -478,7 +486,7 @@ mod tests {
         // Given a new session with no title.
         let (actor, state, _audit) = create_actor().await;
         let session_id = {
-            let mut guard = state.write();
+            let mut guard = state.write_test_no_cap();
             let _ = guard.active_session_mut();
             guard.session.active_session_id().clone()
         };
@@ -502,7 +510,7 @@ mod tests {
         // Given a session in Streaming phase (busy).
         let (actor, state, _audit) = create_actor().await;
         let session_id = {
-            let mut guard = state.write();
+            let mut guard = state.write_test_no_cap();
             let session = guard.active_session_mut();
             session.begin_streaming();
             guard.session.active_session_id().clone()
@@ -531,7 +539,7 @@ mod tests {
         // Given a session with default model (NO_PROVIDER_ID).
         let (actor, state, audit) = create_actor().await;
         let session_id = {
-            let mut guard = state.write();
+            let mut guard = state.write_test_no_cap();
             let _ = guard.active_session_mut();
             guard.session.active_session_id().clone()
         };
@@ -556,7 +564,7 @@ mod tests {
         // Given a session.
         let (actor, state, _audit) = create_actor().await;
         let session_id = {
-            let mut guard = state.write();
+            let mut guard = state.write_test_no_cap();
             let _ = guard.active_session_mut();
             guard.session.active_session_id().clone()
         };
@@ -578,7 +586,7 @@ mod tests {
         // Given a session.
         let (actor, state, audit) = create_actor().await;
         let session_id = {
-            let mut guard = state.write();
+            let mut guard = state.write_test_no_cap();
             let _ = guard.active_session_mut();
             guard.session.active_session_id().clone()
         };
@@ -640,7 +648,7 @@ mod tests {
         // Given an idle session with no attached plugins.
         let (actor, state, _audit) = create_actor().await;
         let session_id = {
-            let mut guard = state.write();
+            let mut guard = state.write_test_no_cap();
             let _session = guard.active_session_mut();
             guard.session.active_session_id().clone()
         };
@@ -664,7 +672,7 @@ mod tests {
         // Given a session already in Streaming phase.
         let (actor, state, audit) = create_actor().await;
         let session_id = {
-            let mut guard = state.write();
+            let mut guard = state.write_test_no_cap();
             let session = guard.active_session_mut();
             session.begin_streaming();
             guard.session.active_session_id().clone()
@@ -696,7 +704,7 @@ mod tests {
         // Given an idle session.
         let (actor, state, audit) = create_actor().await;
         let session_id = {
-            let mut guard = state.write();
+            let mut guard = state.write_test_no_cap();
             let _ = guard.active_session_mut();
             guard.session.active_session_id().clone()
         };
@@ -743,7 +751,7 @@ mod tests {
         // Given an idle session with a non-empty steering buffer.
         let (actor, state, audit) = create_actor().await;
         let session_id = {
-            let mut guard = state.write();
+            let mut guard = state.write_test_no_cap();
             let _ = guard.active_session_mut();
             let id = guard.session.active_session_id().clone();
             let session = guard.session_mut_or_create(&id);
@@ -802,7 +810,7 @@ mod tests {
         // Given an idle session with a non-empty steering buffer.
         let (actor, state, audit) = create_actor().await;
         let session_id = {
-            let mut guard = state.write();
+            let mut guard = state.write_test_no_cap();
             let session = guard.active_session_mut();
             session
                 .steering_buffer_mut()
@@ -849,7 +857,7 @@ mod tests {
         // published effort is None (let the provider decide).
         let (actor, state, audit) = create_actor().await;
         let session_id = {
-            let mut guard = state.write();
+            let mut guard = state.write_test_no_cap();
             let _ = guard.active_session_mut();
             guard.session.active_session_id().clone()
         };
@@ -887,7 +895,7 @@ mod tests {
         // must be ignored at request time).
         let (actor, state, audit) = create_actor().await;
         let session_id = {
-            let mut guard = state.write();
+            let mut guard = state.write_test_no_cap();
             let session = guard.active_session_mut();
             session.profile_mut().reasoning_effort = Some(crate::ReasoningEffort::Low);
             guard.session.active_session_id().clone()

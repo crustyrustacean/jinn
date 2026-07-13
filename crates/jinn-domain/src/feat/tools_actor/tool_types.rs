@@ -47,6 +47,9 @@ pub struct ToolContext {
     /// `SendToLlmProvider` through the tool execution chain so tool
     /// events can carry accurate timing.
     pub dispatched_at: jiff::Timestamp,
+    /// Authority to write session state (task lists, skill installs).
+    /// Only present for tools that mutate sessions.
+    pub session_cap: Option<crate::common::tcaps::session::SessionCap>,
 }
 
 impl fmt::Debug for ToolContext {
@@ -86,6 +89,7 @@ mod tests {
             max_output_lines: None,
             max_output_bytes: None,
             dispatched_at: jiff::Timestamp::now(),
+            session_cap: None,
         };
 
         // When debugging.

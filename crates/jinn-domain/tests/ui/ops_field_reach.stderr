@@ -1,0 +1,5 @@
+error[E0616]: field `0` of struct `ProviderOps` is private
+  --> tests/ui/ops_field_reach.rs:17:37
+   |
+17 |         let _leaked = view.provider.0;
+   |                                     ^ private field

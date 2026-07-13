@@ -21,6 +21,7 @@ async fn set_compaction_model_overwrites_previous() {
         .spawn_actor::<PreferencesActor>(PreferencesActorDeps {
             deps: harness.actor_deps().await,
             state: crate::common::state::State::new(crate::common::app_state::AppState::default()),
+            cap: crate::common::tcaps::mint::mint_frontend_cap(),
         })
         .await;
     let recorder = harness.spawn_recorder::<PreferencesUpdated>().await;
@@ -64,6 +65,7 @@ async fn emits_preferences_updated_event() {
         .spawn_actor::<PreferencesActor>(PreferencesActorDeps {
             deps: harness.actor_deps().await,
             state: crate::common::state::State::new(crate::common::app_state::AppState::default()),
+            cap: crate::common::tcaps::mint::mint_frontend_cap(),
         })
         .await;
     let recorder = harness.spawn_recorder::<PreferencesUpdated>().await;
@@ -96,6 +98,7 @@ async fn empty_diffs_does_not_change_storage() {
         .spawn_actor::<PreferencesActor>(PreferencesActorDeps {
             deps: harness.actor_deps().await,
             state: crate::common::state::State::new(crate::common::app_state::AppState::default()),
+            cap: crate::common::tcaps::mint::mint_frontend_cap(),
         })
         .await;
     let recorder = harness.spawn_recorder::<PreferencesUpdated>().await;
@@ -132,6 +135,7 @@ async fn persist_writes_frontend_preferences() {
         .spawn_actor::<PreferencesActor>(PreferencesActorDeps {
             deps: harness.actor_deps().await,
             state: state.clone(),
+            cap: crate::common::tcaps::mint::mint_frontend_cap(),
         })
         .await;
     let recorder = harness.spawn_recorder::<PreferencesUpdated>().await;
@@ -167,8 +171,8 @@ async fn persist_reloads_open_project_picker_items() {
     let harness = TestHarness::new().await;
     let state = crate::common::state::State::new(crate::common::app_state::AppState::default());
     {
-        let mut guard = state.write();
-        load_project_picker_entries(&mut guard);
+        let mut guard = state.write_test_no_cap();
+        load_project_picker_entries(&mut guard.frontend);
         guard.frontend.scope_stack.push(FocusScope::Picker {
             kind: PickerKind::Project,
         });
@@ -182,6 +186,7 @@ async fn persist_reloads_open_project_picker_items() {
         .spawn_actor::<PreferencesActor>(PreferencesActorDeps {
             deps: harness.actor_deps().await,
             state: state.clone(),
+            cap: crate::common::tcaps::mint::mint_frontend_cap(),
         })
         .await;
     let recorder = harness.spawn_recorder::<PreferencesUpdated>().await;

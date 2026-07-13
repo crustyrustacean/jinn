@@ -37,6 +37,10 @@ pub struct SkillsScanActorDeps {
     pub deps: ActorDeps,
     /// Shared application state.
     pub state: State,
+    /// Authority to write discovered skills into sessions.
+    pub session_cap: crate::common::tcaps::session::SessionCap,
+    /// Authority to write skill picker state in frontend.
+    pub frontend_cap: crate::common::tcaps::frontend::FrontendCap,
 }
 
 /// Scans and loads agent skills on `ScanSkills`.
@@ -51,6 +55,10 @@ pub struct SkillsScanActor {
     bus: BusService,
     /// Shared application state.
     state: State,
+    /// Authority to write discovered skills into sessions.
+    session_cap: crate::common::tcaps::session::SessionCap,
+    /// Authority to write skill picker state in frontend.
+    frontend_cap: crate::common::tcaps::frontend::FrontendCap,
 }
 
 impl BusPublish for SkillsScanActor {
@@ -76,6 +84,8 @@ impl Actor for SkillsScanActor {
             services: args.deps.services,
             bus,
             state: args.state,
+            session_cap: args.session_cap,
+            frontend_cap: args.frontend_cap,
         })
     }
 }
@@ -166,15 +176,33 @@ impl SkillsScanActor {
                 // Write skills to the session's ephemeral discovered set and
                 // reload picker entries from the active session.
                 {
-                    let mut guard = self.state.write();
-                    if let Some(session) = guard.try_session_mut(session_id) {
-                        session.set_discovered_skills(skills.clone());
-                    }
-                    // A rescan may discover changed bodies on disk; clear rendered
-                    // previews so stale markdown is never redisplayed.
-                    guard.frontend.caches.skill_preview_cache.write().clear();
-                    super::reload::reload_skill_picker_entries(&mut guard);
+                    let session_id = session_id.clone();
+                    self.state.with_session(&self.session_cap, |view| {
+                        if let Some(session) = view.session.map().get_mut(&session_id) {
+                            session.set_discovered_skills(skills.clone());
+                        }
+                    });
                 }
+
+                // Clear stale previews and reload the picker from the now-updated
+                // session data.
+                let (discovered, disabled, sample_theme) = {
+                    let r = self.state.read();
+                    let session = r.session.get(session_id);
+                    (
+                        session
+                            .map(|s| s.discovered_skills().to_vec())
+                            .unwrap_or_default(),
+                        session
+                            .map(|s| s.disabled_skills().clone())
+                            .unwrap_or_default(),
+                        r.frontend.theme.clone(),
+                    )
+                };
+                self.state.with_skills_frontend(&self.frontend_cap, |ops| {
+                    ops.clear_preview_cache();
+                    ops.reload_picker(&discovered, &disabled, &sample_theme);
+                });
 
                 self.publish(SkillsLoaded {
                     session_id: session_id.clone(),

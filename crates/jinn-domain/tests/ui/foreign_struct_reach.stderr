@@ -1,0 +1,7 @@
+error[E0609]: no field `context` on type `&mut ProviderView<'_>`
+  --> tests/ui/foreign_struct_reach.rs:16:23
+   |
+16 |         let _ = &view.context;
+   |                       ^^^^^^^ unknown field
+   |
+   = note: available fields are: `session`, `provider_frontend`, `provider`

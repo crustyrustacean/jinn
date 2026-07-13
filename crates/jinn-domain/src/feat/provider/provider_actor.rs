@@ -20,6 +20,8 @@ use std::convert::Infallible;
 
 use crate::common::actor_deps::{ActorDeps, BusPublish};
 use crate::common::state::State;
+use crate::common::tcaps::provider::{ModelCacheWrite, ProviderCap};
+use crate::common::tcaps::session::SessionCap;
 use crate::feat::provider::protocol::command::{
     LoadCompactionModelPickerEntries, LoadProviderPickerEntries, LoadReasoningEffortPickerEntries,
     ProviderSwitch,
@@ -43,6 +45,11 @@ pub struct ProviderActor {
     state: State,
     /// Runtime services (provider registry, API keys, LLM service factory).
     deps: ActorDeps,
+    /// Authority to write [`ProviderState`] via [`State::with_provider`].
+    cap: ProviderCap,
+    /// Authority to write the session model ([`SessionCap`]) — used by
+    /// `handle_provider_switch` to set the session's active model.
+    session_cap: SessionCap,
 }
 
 /// Dependencies for [`ProviderActor`].
@@ -52,6 +59,9 @@ pub struct ProviderActorDeps {
     pub state: State,
     /// Actor dependencies (services including bus).
     pub deps: ActorDeps,
+    pub cap: ProviderCap,
+    /// Authority to write the session model.
+    pub session_cap: SessionCap,
 }
 
 impl Actor for ProviderActor {
@@ -73,6 +83,8 @@ impl Actor for ProviderActor {
         Ok(Self {
             state: args.state,
             deps: args.deps,
+            cap: args.cap,
+            session_cap: args.session_cap,
         })
     }
 }
@@ -98,8 +110,9 @@ impl Message<LoadProviderPickerEntries> for ProviderActor {
         _msg: LoadProviderPickerEntries,
         _ctx: &mut MsgContext<Self, Self::Reply>,
     ) {
-        let mut state = self.state.write();
-        load_provider_picker_items(&self.deps.services, &mut state);
+        self.state.with_provider(&self.cap, |view| {
+            load_provider_picker_items(&self.deps.services, view);
+        });
     }
 }
 
@@ -111,8 +124,9 @@ impl Message<LoadCompactionModelPickerEntries> for ProviderActor {
         _msg: LoadCompactionModelPickerEntries,
         _ctx: &mut MsgContext<Self, Self::Reply>,
     ) {
-        let mut state = self.state.write();
-        load_compaction_model_picker_items(&self.deps.services, &mut state);
+        self.state.with_provider(&self.cap, |view| {
+            load_compaction_model_picker_items(&self.deps.services, view);
+        });
     }
 }
 
@@ -124,8 +138,9 @@ impl Message<LoadReasoningEffortPickerEntries> for ProviderActor {
         _msg: LoadReasoningEffortPickerEntries,
         _ctx: &mut MsgContext<Self, Self::Reply>,
     ) {
-        let mut state = self.state.write();
-        load_reasoning_effort_picker_items(&mut state);
+        self.state.with_provider(&self.cap, |view| {
+            load_reasoning_effort_picker_items(view);
+        });
     }
 }
 
@@ -154,12 +169,12 @@ impl BusPublish for ProviderActor {
 impl ProviderActor {
     /// ProviderSwitch: update session profile and emit ProviderSwitched event.
     fn handle_provider_switch(&self, payload: &ProviderSwitch) {
-        {
-            let mut state = self.state.write();
-            state
-                .session_mut_or_create(&payload.session_id)
+        self.state.with_session(&self.session_cap, |view| {
+            view.session
+                .map()
+                .get_or_create(&payload.session_id)
                 .set_model(payload.provider_id.clone());
-        }
+        });
     }
 
     /// ModelsRefreshed: update model cache and reload provider picker entries.
@@ -180,10 +195,11 @@ impl ProviderActor {
         merge_context_lengths_from_models_dev(&mut cache, &models_dev);
         // Merge remote models into the registry so create_factory() can find them.
         self.deps.services.provider_registry.merge_cache(&cache);
-        let mut state = self.state.write();
-        state.provider.model_cache = Some(cache);
-        // Also reload provider picker entries from updated model cache.
-        load_provider_picker_items(&self.deps.services, &mut state);
+        self.state.with_provider(&self.cap, |view| {
+            view.provider.set_model_cache(Some(cache));
+            // Also reload provider picker entries from updated model cache.
+            load_provider_picker_items(&self.deps.services, view);
+        });
     }
 
     /// ModelCacheLoaded: restore model cache from disk and reload picker entries.
@@ -200,9 +216,10 @@ impl ProviderActor {
         merge_context_lengths_from_models_dev(&mut cache, &models_dev);
         // Merge remote models into the registry so create_factory() can find them.
         self.deps.services.provider_registry.merge_cache(&cache);
-        let mut state = self.state.write();
-        state.provider.model_cache = Some(cache);
-        load_provider_picker_items(&self.deps.services, &mut state);
+        self.state.with_provider(&self.cap, |view| {
+            view.provider.set_model_cache(Some(cache));
+            load_provider_picker_items(&self.deps.services, view);
+        });
     }
 }
 
@@ -288,6 +305,8 @@ mod tests {
             .spawn_actor::<ProviderActor>(ProviderActorDeps {
                 deps,
                 state: state.clone(),
+                cap: crate::common::tcaps::mint::mint_provider_cap(),
+                session_cap: crate::common::tcaps::mint::mint_session_cap(),
             })
             .await;
     }

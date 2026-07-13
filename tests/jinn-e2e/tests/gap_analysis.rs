@@ -214,7 +214,7 @@ pub(crate) fn set_active_provider(world: &GapAnalysisWorld) {
         .tuiapp
         .core
         .state
-        .write()
+        .write_test_no_cap()
         .session
         .active_session_mut()
         .set_model(ModelSelection::Single("test/test".to_owned()));

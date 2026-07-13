@@ -39,9 +39,8 @@ impl SessionPersistenceActor {
         // if the session is genuinely still stalled. A token that landed between
         // the watchdog's publish and now makes this a no-op.
         let marker = ChatEntry::system("\u{21bb} LLM stream stalled, retrying\u{2026}");
-        let acted = {
-            let mut state = self.state.write();
-            let session = state.session_mut_or_create(&payload.session_id);
+        let acted = self.state.with_session(&self.cap, |view| {
+            let session = view.session.map().get_or_create(&payload.session_id);
             if matches!(session.phase(), PhaseKind::Sending | PhaseKind::Streaming) {
                 let elapsed_secs = now
                     .since(session.core.last_history_activity_at)
@@ -70,7 +69,7 @@ impl SessionPersistenceActor {
             } else {
                 false
             }
-        };
+        });
 
         if !acted {
             return;
@@ -109,7 +108,7 @@ mod tests {
     async fn stall_setup() -> (SessionPersistenceActor, BusAudit, RetryStalledSession) {
         let (actor, audit) = test_actor_recording().await;
         let session_id = {
-            let mut state = actor.state.write();
+            let mut state = actor.state.write_test_no_cap();
             let session = state.active_session_mut();
             session.begin_streaming();
             // A partial assistant entry created via the streaming path so it
@@ -181,7 +180,7 @@ mod tests {
         let (actor, _audit, payload) = stall_setup().await;
         let session_id = payload.session_id.clone();
         {
-            let mut state = actor.state.write();
+            let mut state = actor.state.write_test_no_cap();
             let session = state.active_session_mut();
             session.core.last_history_activity_at = jiff::Timestamp::now();
         }
@@ -208,7 +207,7 @@ mod tests {
         let (actor, _audit, payload) = stall_setup().await;
         let session_id = payload.session_id.clone();
         {
-            let mut state = actor.state.write();
+            let mut state = actor.state.write_test_no_cap();
             let session = state.active_session_mut();
             let now = jiff::Timestamp::now();
             session.begin_tool_call(0, "tc-partial", "bash", now);

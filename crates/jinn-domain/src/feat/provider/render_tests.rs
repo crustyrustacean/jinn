@@ -45,7 +45,8 @@ fn picker_state_with_ollama() -> (AppState, Services) {
 
 /// Helper to load provider entries into the picker state.
 fn load_picker_items(state: &mut AppState, services: &Services) {
-    load_provider_picker_items(services, state);
+    let mut view = crate::common::tcaps::provider::ProviderView::from_app_state_for_test(state);
+    load_provider_picker_items(services, &mut view);
 }
 
 #[rstest::rstest]

@@ -18,6 +18,8 @@ use crate::feat::quake_bar::command::SubmitQuakeBarCommand;
 pub struct QuakeBarActor {
     /// Shared application state.
     state: State,
+    /// Capability to write `frontend.quake_bar`.
+    cap: crate::common::tcaps::frontend::FrontendCap,
 }
 
 /// Dependencies for spawning a [`QuakeBarActor`].
@@ -27,6 +29,8 @@ pub struct QuakeBarActorDeps {
     pub deps: ActorDeps,
     /// Shared application state.
     pub state: State,
+    /// Capability to write `frontend.quake_bar`.
+    pub cap: crate::common::tcaps::frontend::FrontendCap,
 }
 
 impl Actor for QuakeBarActor {
@@ -37,7 +41,10 @@ impl Actor for QuakeBarActor {
         args.deps
             .subscribe(actor_ref.recipient::<SubmitQuakeBarCommand>())
             .await;
-        Ok(Self { state: args.state })
+        Ok(Self {
+            state: args.state,
+            cap: args.cap,
+        })
     }
 }
 
@@ -56,7 +63,9 @@ impl Message<SubmitQuakeBarCommand> for QuakeBarActor {
 impl QuakeBarActor {
     /// Appends the submitted text to the command log.
     fn apply_submit(&self, msg: SubmitQuakeBarCommand) {
-        self.state.write().frontend.quake_bar.log.push(msg.text);
+        use crate::common::tcaps::frontend::QuakeBarLogWrite;
+        self.state
+            .with_quake_bar(&self.cap, |ops| ops.push_log(msg.text));
     }
 }
 
@@ -80,6 +89,7 @@ mod tests {
         let state = State::new(AppState::default());
         let actor = QuakeBarActor {
             state: state.clone(),
+            cap: crate::common::tcaps::mint::mint_frontend_cap(),
         };
         (actor, state)
     }
