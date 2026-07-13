@@ -26,6 +26,69 @@ pub enum WebFetchBackend {
     HeadlessChrome,
 }
 
+/// Which browser binary the headless Chrome backend launches.
+///
+/// `Auto` prefers an installed branded Google Chrome (which carries the
+/// codecs and fingerprint of real Chrome) and falls back to the
+/// `headless_chrome` crate's bundled Chromium. `Chrome`/`Chromium` force a
+/// specific binary; the launch fails with a clear dashboard error if absent.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize, Default)]
+#[serde(rename_all = "kebab-case")]
+pub enum BrowserBinary {
+    /// Prefer installed Google Chrome; fall back to bundled Chromium.
+    #[default]
+    Auto,
+    /// Require an installed Google Chrome; error if missing.
+    Chrome,
+    /// Use the bundled/auto-discovered Chromium.
+    Chromium,
+}
+
+/// Stealth (anti-bot-detection) settings for the headless Chrome backend.
+///
+/// Serialized as `[web_fetch.stealth]` in `jinn.toml`. When `enabled`, the
+/// fetcher injects stealth JS, sends an OS-matched user agent with
+/// `Accept-Language`, suppresses `navigator.webdriver`, and waits out Anubis
+/// proof-of-work / Cloudflare interstitials.
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+pub struct WebFetchStealthConfig {
+    /// Master switch. Default: `true`.
+    #[serde(default = "default_stealth_enabled")]
+    pub enabled: bool,
+    /// Optional explicit user-agent override. When `None`, an OS-matched
+    /// Chrome user agent is derived at build time.
+    #[serde(default)]
+    pub user_agent: Option<String>,
+    /// Which browser binary to launch. Default: `"auto"`.
+    #[serde(default)]
+    pub binary: BrowserBinary,
+    /// Seconds to wait for an interstitial challenge (Anubis PoW, Cloudflare)
+    /// to clear before failing. Default: `30`.
+    #[serde(default = "default_anubis_timeout_secs")]
+    pub anubis_timeout_secs: u64,
+}
+
+#[expect(clippy::trivially_copy_pass_by_ref, reason = "serde fn signature")]
+fn default_stealth_enabled() -> bool {
+    true
+}
+
+#[expect(clippy::trivially_copy_pass_by_ref, reason = "serde fn signature")]
+fn default_anubis_timeout_secs() -> u64 {
+    30
+}
+
+impl Default for WebFetchStealthConfig {
+    fn default() -> Self {
+        Self {
+            enabled: true,
+            user_agent: None,
+            binary: BrowserBinary::Auto,
+            anubis_timeout_secs: 30,
+        }
+    }
+}
+
 /// Web fetch tool configuration.
 ///
 /// Serialized as `[web_fetch]` in `jinn.toml`.
@@ -35,13 +98,32 @@ pub struct WebFetchConfig {
     /// The backend to use for web fetching. Default: `"headless-chrome"`.
     #[serde(default)]
     pub backend: WebFetchBackend,
+    /// Stealth (anti-bot-detection) settings for the headless backend.
+    /// Ignored by the `http` backend.
+    #[serde(default)]
+    pub stealth: WebFetchStealthConfig,
 }
 
 impl Default for WebFetchConfig {
     fn default() -> Self {
         Self {
             backend: WebFetchBackend::HeadlessChrome,
+            stealth: WebFetchStealthConfig::default(),
         }
+    }
+}
+
+use jinn_web_fetch::stealth::StealthSettings;
+
+impl From<&WebFetchStealthConfig> for StealthSettings {
+    fn from(config: &WebFetchStealthConfig) -> Self {
+        let mut settings = StealthSettings::with_user_agent_override(config.user_agent.as_deref());
+        settings.enabled = config.enabled;
+        settings.anubis_timeout = std::time::Duration::from_secs(config.anubis_timeout_secs);
+        // binary_path is resolved later by the BrowserBinaryScanActor and
+        // injected into the settings the fetcher is constructed with; the
+        // config-to-settings conversion does not touch the filesystem.
+        settings
     }
 }
 
@@ -567,6 +649,7 @@ backend = "socks"
         let prefs = UserPreferences {
             web_fetch: WebFetchConfig {
                 backend: WebFetchBackend::HeadlessChrome,
+                ..WebFetchConfig::default()
             },
             ..UserPreferences::default()
         };

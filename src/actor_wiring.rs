@@ -36,7 +36,7 @@ use jinn_domain::feat::citation_collector::citation_collector_actor::{
 use jinn_domain::feat::preferences_actor::user_preferences::WebFetchBackend;
 use jinn_domain::feat::web_fetch_actor::{WebFetchActor, WebFetchActorDeps};
 use jinn_domain::feat::web_search_actor::{WebSearchActor, WebSearchActorDeps};
-use jinn_web_fetch::{CleanMarkdownExtractor, HttpFetcher, MarkdownExtractor, OutputFormat};
+use jinn_web_fetch::{CleanMarkdownExtractor, HttpFetcher, MarkdownExtractor, OutputFormat, stealth::StealthSettings};
 use jinn_web_search::DdgSearcher;
 
 use jinn_domain::{AppCore, State};
@@ -662,7 +662,8 @@ jinn_domain::feat::preferences_actor::app_state_sync_actor::AppStateSyncActor::s
         }
 
         // Web fetch actor.
-        let web_fetch_backend = user_preferences_storage.read().web_fetch.backend;
+        let web_fetch_config = user_preferences_storage.read().web_fetch.clone();
+        let web_fetch_backend = web_fetch_config.backend;
         tracing::info!(backend = ?web_fetch_backend, "constructing web fetcher");
         let extractors = {
             let markdown: std::sync::Arc<dyn jinn_web_fetch::Extractor> =
@@ -681,9 +682,11 @@ jinn_domain::feat::preferences_actor::app_state_sync_actor::AppStateSyncActor::s
             }
             WebFetchBackend::HeadlessChrome => {
                 tracing::debug!("web-fetch: using HeadlessChromeFetcher backend");
+                let stealth = StealthSettings::from(&web_fetch_config.stealth);
+                tracing::info!(?stealth, "web-fetch: resolved stealth settings");
                 std::sync::Arc::new(jinn_web_fetch::HeadlessChromeFetcher::new(
                     extractors.clone(),
-                    jinn_web_fetch::stealth::StealthSettings::default(),
+                    stealth,
                 ))
             }
         };
