@@ -437,6 +437,7 @@ jinn_domain::feat::preferences_actor::preferences_actor::PreferencesActor::super
                 jinn_domain::feat::quake_bar::quake_bar_actor::QuakeBarActorDeps {
                     deps: actor_deps.clone(),
                     state: state.clone(),
+                    cap: jinn_domain::common::tcaps::mint::mint_frontend_cap(),
                 },
             )
             .restart_policy(kameo::supervision::RestartPolicy::Never)

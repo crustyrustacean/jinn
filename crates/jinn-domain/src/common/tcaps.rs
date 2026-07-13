@@ -8,5 +8,6 @@
 //! caps are constructed.
 
 pub mod discovered_plugins;
+pub mod frontend;
 pub mod mint;
 pub mod provider;
