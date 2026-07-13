@@ -219,7 +219,7 @@ mod tests {
                 model: ModelSelection::Single(model.to_owned()),
                 ..SessionProfile::default()
             });
-            session.core.session_id = source_id.clone();
+            session.set_session_id(source_id.clone());
             state.write().session.insert(session);
         }
         // Clone BEFORE move into DomainNodeContext — both handles share one Arc.
@@ -255,7 +255,7 @@ mod tests {
                     .read()
                     .session
                     .iter()
-                    .find(|(_, s)| s.core.parent_session.as_ref() == Some(&source_id))
+                    .find(|(_, s)| s.parent_session().as_ref() == Some(&source_id))
                     .map(|(id, _)| id.clone())
                 {
                     return id;
@@ -363,7 +363,7 @@ mod tests {
             .get(&child_id)
             .expect("child session must be inserted");
         assert_eq!(
-            child.core.parent_session.as_ref(),
+            child.parent_session().as_ref(),
             Some(&parent_id),
             "child must be parented at the request's parent_session_id"
         );

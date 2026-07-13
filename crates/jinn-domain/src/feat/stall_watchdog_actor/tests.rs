@@ -89,9 +89,11 @@ async fn watchdog_detects_session_stuck_in_sending() {
         session.begin_sending();
         // Force the activity timestamp into the distant past so the 1s window
         // is exceeded immediately.
-        session.core.last_history_activity_at = Timestamp::now()
-            .checked_sub(Duration::from_mins(1))
-            .unwrap();
+        session.set_last_history_activity_at(
+            Timestamp::now()
+                .checked_sub(Duration::from_mins(1))
+                .unwrap(),
+        );
     }
 
     // When the watchdog scans.
@@ -115,9 +117,11 @@ async fn watchdog_detects_streaming_session_with_no_history_change() {
         let session = s.session_mut(&wh.session_id);
         session.push_entry(ChatEntry::user("go"));
         session.begin_streaming();
-        session.core.last_history_activity_at = Timestamp::now()
-            .checked_sub(Duration::from_mins(1))
-            .unwrap();
+        session.set_last_history_activity_at(
+            Timestamp::now()
+                .checked_sub(Duration::from_mins(1))
+                .unwrap(),
+        );
     }
 
     // When the watchdog scans.
@@ -139,9 +143,11 @@ async fn watchdog_publishes_cancel_after_budget_exhausted() {
         let mut s = wh.state.write();
         let session = s.session_mut(&wh.session_id);
         session.begin_sending();
-        session.core.last_history_activity_at = Timestamp::now()
-            .checked_sub(Duration::from_mins(1))
-            .unwrap();
+        session.set_last_history_activity_at(
+            Timestamp::now()
+                .checked_sub(Duration::from_mins(1))
+                .unwrap(),
+        );
     }
 
     // First scan: within budget → retry.
@@ -153,9 +159,11 @@ async fn watchdog_publishes_cancel_after_budget_exhausted() {
     {
         let mut s = wh.state.write();
         let session = s.session_mut(&wh.session_id);
-        session.core.last_history_activity_at = Timestamp::now()
-            .checked_sub(Duration::from_mins(1))
-            .unwrap();
+        session.set_last_history_activity_at(
+            Timestamp::now()
+                .checked_sub(Duration::from_mins(1))
+                .unwrap(),
+        );
     }
 
     // Second scan: budget exhausted → cancel.
@@ -176,9 +184,11 @@ async fn counter_resets_at_turn_boundary_not_on_activity_jitter() {
         let mut s = wh.state.write();
         let session = s.session_mut(&wh.session_id);
         session.begin_sending();
-        session.core.last_history_activity_at = Timestamp::now()
-            .checked_sub(Duration::from_mins(1))
-            .unwrap();
+        session.set_last_history_activity_at(
+            Timestamp::now()
+                .checked_sub(Duration::from_mins(1))
+                .unwrap(),
+        );
     }
     wh.watchdog.scan_once().await;
     let first = await_recorded(&wh.retry_recorder, 1, Duration::from_millis(500)).await;
@@ -190,9 +200,11 @@ async fn counter_resets_at_turn_boundary_not_on_activity_jitter() {
     {
         let mut s = wh.state.write();
         let session = s.session_mut(&wh.session_id);
-        session.core.last_history_activity_at = Timestamp::now()
-            .checked_sub(Duration::from_mins(1))
-            .unwrap();
+        session.set_last_history_activity_at(
+            Timestamp::now()
+                .checked_sub(Duration::from_mins(1))
+                .unwrap(),
+        );
     }
     wh.watchdog.scan_once().await;
     let cancels = await_recorded(&wh.cancel_recorder, 1, Duration::from_millis(500)).await;
@@ -217,9 +229,11 @@ async fn counter_resets_when_session_completes_a_turn() {
         let mut s = wh.state.write();
         let session = s.session_mut(&wh.session_id);
         session.begin_sending();
-        session.core.last_history_activity_at = Timestamp::now()
-            .checked_sub(Duration::from_mins(1))
-            .unwrap();
+        session.set_last_history_activity_at(
+            Timestamp::now()
+                .checked_sub(Duration::from_mins(1))
+                .unwrap(),
+        );
     }
     wh.watchdog.scan_once().await; // retry 1 (message left on the recorder)
 
@@ -227,7 +241,7 @@ async fn counter_resets_when_session_completes_a_turn() {
     {
         let mut s = wh.state.write();
         let session = s.session_mut(&wh.session_id);
-        let _ = session.core.ephemeral.machine.cancel();
+        session.cancel_streaming(jiff::Timestamp::now());
     }
     wh.watchdog.scan_once().await; // observes the turn boundary, clears budget
 
@@ -236,9 +250,11 @@ async fn counter_resets_when_session_completes_a_turn() {
         let mut s = wh.state.write();
         let session = s.session_mut(&wh.session_id);
         session.begin_sending();
-        session.core.last_history_activity_at = Timestamp::now()
-            .checked_sub(Duration::from_mins(1))
-            .unwrap();
+        session.set_last_history_activity_at(
+            Timestamp::now()
+                .checked_sub(Duration::from_mins(1))
+                .unwrap(),
+        );
     }
     wh.watchdog.scan_once().await;
     let retries = await_recorded(&wh.retry_recorder, 2, Duration::from_millis(500)).await;
@@ -270,7 +286,7 @@ async fn active_streaming_session_is_never_flagged() {
         let session = s.session_mut(&wh.session_id);
         session.push_entry(ChatEntry::user("go"));
         session.begin_streaming();
-        session.core.last_history_activity_at = Timestamp::now();
+        session.set_last_history_activity_at(Timestamp::now());
     }
 
     // When the watchdog scans.
@@ -291,9 +307,11 @@ async fn idle_session_is_never_scanned() {
     {
         let mut s = wh.state.write();
         let session = s.session_mut(&wh.session_id);
-        session.core.last_history_activity_at = Timestamp::now()
-            .checked_sub(Duration::from_mins(1))
-            .unwrap();
+        session.set_last_history_activity_at(
+            Timestamp::now()
+                .checked_sub(Duration::from_mins(1))
+                .unwrap(),
+        );
     }
 
     // When the watchdog scans.
@@ -322,9 +340,11 @@ async fn watchdog_detects_mid_tool_batch_stall() {
         session.begin_streaming();
         session.push_entry(ChatEntry::system("tool call pending"));
         // Simulate the tool batch stalling: no further history activity.
-        session.core.last_history_activity_at = Timestamp::now()
-            .checked_sub(Duration::from_mins(1))
-            .unwrap();
+        session.set_last_history_activity_at(
+            Timestamp::now()
+                .checked_sub(Duration::from_mins(1))
+                .unwrap(),
+        );
     }
 
     // When the watchdog scans.
@@ -348,9 +368,11 @@ async fn watchdog_suppresses_second_retry_within_backoff_window() {
         let mut s = wh.state.write();
         let session = s.session_mut(&wh.session_id);
         session.begin_sending();
-        session.core.last_history_activity_at = Timestamp::now()
-            .checked_sub(Duration::from_mins(1))
-            .unwrap();
+        session.set_last_history_activity_at(
+            Timestamp::now()
+                .checked_sub(Duration::from_mins(1))
+                .unwrap(),
+        );
     }
 
     // First scan: no prior retry → publish RetryStalledSession immediately.
@@ -362,9 +384,11 @@ async fn watchdog_suppresses_second_retry_within_backoff_window() {
     {
         let mut s = wh.state.write();
         let session = s.session_mut(&wh.session_id);
-        session.core.last_history_activity_at = Timestamp::now()
-            .checked_sub(Duration::from_mins(1))
-            .unwrap();
+        session.set_last_history_activity_at(
+            Timestamp::now()
+                .checked_sub(Duration::from_mins(1))
+                .unwrap(),
+        );
     }
 
     // Second scan immediately after: within backoff window → suppressed.
@@ -389,9 +413,11 @@ async fn watchdog_allows_retry_after_backoff_window_elapses() {
         let mut s = wh.state.write();
         let session = s.session_mut(&wh.session_id);
         session.begin_sending();
-        session.core.last_history_activity_at = Timestamp::now()
-            .checked_sub(Duration::from_mins(1))
-            .unwrap();
+        session.set_last_history_activity_at(
+            Timestamp::now()
+                .checked_sub(Duration::from_mins(1))
+                .unwrap(),
+        );
     }
 
     // First scan: retry published.
@@ -403,9 +429,11 @@ async fn watchdog_allows_retry_after_backoff_window_elapses() {
     {
         let mut s = wh.state.write();
         let session = s.session_mut(&wh.session_id);
-        session.core.last_history_activity_at = Timestamp::now()
-            .checked_sub(Duration::from_mins(1))
-            .unwrap();
+        session.set_last_history_activity_at(
+            Timestamp::now()
+                .checked_sub(Duration::from_mins(1))
+                .unwrap(),
+        );
     }
 
     // Backdate the recorded retry time past the 60s backoff window so the
@@ -438,13 +466,17 @@ async fn stall_budget_resets_when_provider_activity_resumes() {
         let mut s = wh.state.write();
         let session = s.session_mut(&wh.session_id);
         session.begin_sending();
-        session.core.last_history_activity_at = Timestamp::now()
-            .checked_sub(Duration::from_mins(1))
-            .unwrap();
+        session.set_last_history_activity_at(
+            Timestamp::now()
+                .checked_sub(Duration::from_mins(1))
+                .unwrap(),
+        );
         // Initialize the provider-activity baseline so the first scan records it.
-        session.core.last_provider_activity_at = Timestamp::now()
-            .checked_sub(Duration::from_mins(1))
-            .unwrap();
+        session.set_last_provider_activity_at(
+            Timestamp::now()
+                .checked_sub(Duration::from_mins(1))
+                .unwrap(),
+        );
     }
     wh.watchdog.scan_once().await;
     let first = await_recorded(&wh.retry_recorder, 1, Duration::from_millis(500)).await;
@@ -456,8 +488,8 @@ async fn stall_budget_resets_when_provider_activity_resumes() {
     {
         let mut s = wh.state.write();
         let session = s.session_mut(&wh.session_id);
-        session.core.last_provider_activity_at = Timestamp::now();
-        session.core.last_history_activity_at = Timestamp::now();
+        session.set_last_provider_activity_at(Timestamp::now());
+        session.set_last_history_activity_at(Timestamp::now());
     }
     wh.watchdog.scan_once().await;
 
@@ -466,9 +498,11 @@ async fn stall_budget_resets_when_provider_activity_resumes() {
     {
         let mut s = wh.state.write();
         let session = s.session_mut(&wh.session_id);
-        session.core.last_history_activity_at = Timestamp::now()
-            .checked_sub(Duration::from_mins(1))
-            .unwrap();
+        session.set_last_history_activity_at(
+            Timestamp::now()
+                .checked_sub(Duration::from_mins(1))
+                .unwrap(),
+        );
     }
     wh.watchdog.scan_once().await;
     let second = await_recorded(&wh.retry_recorder, 1, Duration::from_millis(500)).await;
@@ -494,9 +528,11 @@ async fn watchdog_detects_stall_when_provider_activity_stale() {
         let session = s.session_mut(&wh.session_id);
         session.begin_streaming();
         // Simulate a prior token arriving (advances provider activity).
-        session.core.last_provider_activity_at = Timestamp::now()
-            .checked_sub(Duration::from_secs(30))
-            .unwrap();
+        session.set_last_provider_activity_at(
+            Timestamp::now()
+                .checked_sub(Duration::from_secs(30))
+                .unwrap(),
+        );
     }
 
     // First scan: the watchdog records the provider-activity baseline.
@@ -505,9 +541,11 @@ async fn watchdog_detects_stall_when_provider_activity_stale() {
     {
         let mut s = wh.state.write();
         let session = s.session_mut(&wh.session_id);
-        session.core.last_history_activity_at = Timestamp::now()
-            .checked_sub(Duration::from_mins(1))
-            .unwrap();
+        session.set_last_history_activity_at(
+            Timestamp::now()
+                .checked_sub(Duration::from_mins(1))
+                .unwrap(),
+        );
         // Provider activity unchanged from the baseline above — NOT recovered.
     }
 

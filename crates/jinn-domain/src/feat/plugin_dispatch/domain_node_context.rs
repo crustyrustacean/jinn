@@ -19,7 +19,6 @@ use crate::feat::chat_input::protocol::command::EnqueueUserMessage;
 use crate::feat::context::assemble::AssemblyOverrides;
 use crate::feat::session::chat_entry::ChatEntry;
 use crate::feat::session::chat_session::ChatSessionState;
-use crate::feat::session::chat_session::SessionCoreEphemeral;
 use crate::feat::session::model_selection::ModelSelection;
 use crate::protocol::SessionId;
 use jinn_provider::ToolDefinition;
@@ -125,10 +124,7 @@ impl DomainNodeContext {
         inherit_tools: bool,
         tools: &[String],
     ) -> SessionId {
-        let mut session = ChatSessionState::default();
-        session.core.parent_session = Some(parent_session_id.clone());
-        session.core.is_automated = automated;
-        session.core.persist = persist;
+        let mut session = ChatSessionState::new_child(parent_session_id, automated, persist);
 
         // Inherit the parent session's model so the child can send to the LLM provider.
         if let Some(model) = self
@@ -297,20 +293,12 @@ impl DomainNodeContext {
             skip_context_files: true,
         };
 
-        // 3. Generate new session ID (clone must NOT share ID with source)
-        session.core.session_id = SessionId::new();
-
-        // 4. Mark as plugin session, reset ephemeral
-        session.core.is_automated = true;
-        session.core.ephemeral = SessionCoreEphemeral::default();
-        session.core.assembly_overrides = Some(overrides);
-        session.core.parent_session = Some(source_session_id.clone());
+        // 4. Mark as plugin session, reset ephemeral, attach overrides, set parent.
+        session.into_automated_clone(source_session_id, overrides);
 
         // 5. Resolve model
-        let model = provider_id.map_or_else(
-            || session.core.profile.model.clone(),
-            ModelSelection::from_single,
-        );
+        let model =
+            provider_id.map_or_else(|| session.model().clone(), ModelSelection::from_single);
         session.set_model(model);
 
         let session_id = session.session_id().clone();
@@ -371,13 +359,10 @@ impl DomainNodeContext {
             let s = guard.session.get(source_session_id).ok_or_else(|| {
                 Report::new(DomainContextError).attach("source session not found")
             })?;
-            s.core.profile.model.clone()
+            s.model().clone()
         };
 
-        // 2. Build a FRESH minimal session (default SessionCore, empty history).
-        let mut session = ChatSessionState::default();
-
-        // 3. History-less overrides: custom system prompt, no skills/context files.
+        // 2. History-less overrides: custom system prompt, no skills/context files.
         //    Tools branch on `disable_tool_loop`: an empty vec forces no tools and
         //    pairs with `set_tool_loop_disabled` (step 4a); `None` lets assembly
         //    inherit the full global catalog, same as a normal session.
@@ -389,14 +374,9 @@ impl DomainNodeContext {
             skip_context_files: true,
         };
 
-        // 4. New session ID; mark automated; inherit provider+model; record parent;
-        //    honor the caller's persistence intent.
-        session.core.session_id = SessionId::new();
-        session.core.is_automated = true;
-        session.core.persist = persist;
-        session.core.ephemeral = SessionCoreEphemeral::default();
-        session.core.assembly_overrides = Some(overrides);
-        session.core.parent_session = Some(source_session_id.clone());
+        // 3. Build a fresh history-less child with the assembly overrides.
+        let mut session =
+            ChatSessionState::new_historyless_child(source_session_id, persist, overrides);
         session.set_model(provider_model);
 
         // 4a. When the caller disables the tool loop, set the machine flag so a
@@ -614,7 +594,7 @@ mod tests {
             ..SessionProfile::default()
         });
         let id = SessionId::new();
-        session.core.session_id = id.clone();
+        session.set_session_id(id.clone());
         // Give the source session some history; the one-shot must NOT inherit it.
         session.push_entry(ChatEntry::user("old user message from history"));
         session.push_entry(ChatEntry::assistant("old assistant message from history"));
@@ -668,23 +648,18 @@ mod tests {
             .get(&new_session_id)
             .expect("new session inserted");
         assert_eq!(
-            new.core.profile.model,
+            new.model().clone(),
             ModelSelection::Single("ollama/llama3".to_owned())
         );
-        assert!(new.core.is_automated);
-        assert_eq!(new.core.parent_session.as_ref(), Some(&source_id));
+        assert!(new.is_automated());
+        assert_eq!(new.parent_session().as_ref(), Some(&source_id));
         assert_eq!(
-            new.core
-                .assembly_overrides
-                .as_ref()
-                .map(|o| &o.system_prompt),
+            new.assembly_overrides().map(|o| &o.system_prompt),
             Some(&Some("be concise".to_owned())),
             "system prompt override must be carried through",
         );
         assert_eq!(
-            new.core
-                .assembly_overrides
-                .as_ref()
+            new.assembly_overrides()
                 .map(|o| o.tool_definitions.as_deref()),
             Some(Some(&[][..])),
             "tool definitions override must be empty (None would inherit the full tool catalog)",
@@ -837,10 +812,10 @@ mod tests {
             .session
             .sessions()
             .values()
-            .find(|s| s.core.is_automated && s.core.parent_session.as_ref() == Some(&source_id))
+            .find(|s| s.is_automated() && s.parent_session().as_ref() == Some(&source_id))
             .expect("one-shot session created");
         assert!(
-            !new.core.persist,
+            !new.persist(),
             "persist=false request must produce a non-persistent session"
         );
     }
@@ -870,10 +845,10 @@ mod tests {
             .session
             .sessions()
             .values()
-            .find(|s| s.core.is_automated && s.core.parent_session.as_ref() == Some(&source_id))
+            .find(|s| s.is_automated() && s.parent_session().as_ref() == Some(&source_id))
             .expect("one-shot session created");
         assert!(
-            new.core.persist,
+            new.persist(),
             "persist=true request must produce a persistent session"
         );
     }
@@ -907,16 +882,14 @@ mod tests {
             .session
             .sessions()
             .values()
-            .find(|s| s.core.is_automated && s.core.parent_session.as_ref() == Some(&source_id))
+            .find(|s| s.is_automated() && s.parent_session().as_ref() == Some(&source_id))
             .expect("one-shot session created");
         assert!(
             new.is_tool_loop_disabled(),
             "disable_tool_loop=true must set the machine flag"
         );
         assert_eq!(
-            new.core
-                .assembly_overrides
-                .as_ref()
+            new.assembly_overrides()
                 .map(|o| o.tool_definitions.as_deref()),
             Some(Some(&[][..])),
             "disable_tool_loop=true must declare an empty tool set, not None"
@@ -951,17 +924,14 @@ mod tests {
             .session
             .sessions()
             .values()
-            .find(|s| s.core.is_automated && s.core.parent_session.as_ref() == Some(&source_id))
+            .find(|s| s.is_automated() && s.parent_session().as_ref() == Some(&source_id))
             .expect("one-shot session created");
         assert!(
             !new.is_tool_loop_disabled(),
             "disable_tool_loop=false must leave the machine flag cleared"
         );
         assert_eq!(
-            new.core
-                .assembly_overrides
-                .as_ref()
-                .map(|o| &o.tool_definitions),
+            new.assembly_overrides().map(|o| &o.tool_definitions),
             Some(&None),
             "disable_tool_loop=false must leave tool override as None (inherit catalog)"
         );
@@ -1128,9 +1098,9 @@ mod tests {
 
         // Then the pending entry is cleaned up (no leak).
         let still_pending = ctx.state.read().session.sessions().values().any(|s| {
-            s.core.is_automated
-                && s.core.parent_session.as_ref() == Some(&source_id)
-                && ctx.has_pending(&s.core.session_id)
+            s.is_automated()
+                && s.parent_session().as_ref() == Some(&source_id)
+                && ctx.has_pending(s.session_id())
         });
         assert!(
             !still_pending,
@@ -1163,9 +1133,9 @@ mod tests {
         // Then the child session has the correct flags.
         let state = ctx.state.read();
         let child = state.session.get(&child_id).expect("child session exists");
-        assert_eq!(child.core.parent_session.as_ref(), Some(&parent_id));
-        assert!(child.core.is_automated);
-        assert!(child.core.persist);
+        assert_eq!(child.parent_session().as_ref(), Some(&parent_id));
+        assert!(child.is_automated());
+        assert!(child.persist());
     }
 
     #[test]
@@ -1188,7 +1158,7 @@ mod tests {
         let ctx = make_ctx();
         let parent_id = SessionId::new();
         let mut parent = ChatSessionState::default();
-        parent.core.session_id = parent_id.clone();
+        parent.set_session_id(parent_id.clone());
         parent.set_model(ModelSelection::Single("my-model".to_owned()));
         ctx.state.write().session.insert(parent);
 

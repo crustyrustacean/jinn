@@ -166,12 +166,12 @@ mod tests {
         // Given a PersonaSection and state with an active persona.
         let section = PersonaSection;
         let mut state = AppState::default();
-        state.context.active_persona = Some(Persona {
+        state.context.set_active_persona(Some(Persona {
             name: "coding-assistant".to_owned(),
             description: "Expert coder".to_owned(),
             body: String::new(),
             file_path: std::path::PathBuf::from("test.md"),
-        });
+        }));
 
         // When asking for content height.
         let height = section.content_height(&{ RenderCtx::new(&state) });

@@ -36,7 +36,7 @@ pub fn load_provider_picker_items(services: &Services, state: &mut AppState) {
 
     // Pre-check entries matching the current model selection, but only when
     // the picker is in alloy mode. Single mode never builds checkmarks.
-    if state.provider.alloy_mode {
+    if state.provider.is_alloy_mode() {
         pre_check_active_models(&mut entries, &model_selection);
         promote_selected_to_top(&mut entries);
     }
@@ -334,7 +334,7 @@ mod tests {
             .active_session_mut()
             .set_model(ModelSelection::Single("ollama/llama3".to_owned()));
 
-        state.provider.alloy_mode = true;
+        state.provider.set_alloy_mode(true);
         // When loading provider picker items.
         load_provider_picker_items(&services, &mut state);
 
@@ -384,7 +384,7 @@ mod tests {
             strategy: AlloyStrategy::RoundRobin { index: 0 },
         });
 
-        state.provider.alloy_mode = true;
+        state.provider.set_alloy_mode(true);
         // When loading provider picker items.
         load_provider_picker_items(&services, &mut state);
 
@@ -440,7 +440,7 @@ mod tests {
             strategy: AlloyStrategy::RoundRobin { index: 0 },
         });
 
-        state.provider.alloy_mode = true;
+        state.provider.set_alloy_mode(true);
         // When loading picker items.
         load_provider_picker_items(&services, &mut state);
 

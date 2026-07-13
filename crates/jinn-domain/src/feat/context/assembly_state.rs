@@ -14,13 +14,19 @@ use crate::protocol::ToolDefinition;
 /// per-session on `ChatSession` ephemeral state, not here, so concurrent sessions with
 /// different cwds never clobber each other.
 #[derive(Debug, Default)]
+// Some fields are private (capsule-sealed); the rest remain `pub` until
+// Phase 2 caps their accessors too. Tracked in .plans/seal-capsule-walls/plan.md.
+#[expect(
+    clippy::partial_pub_fields,
+    reason = "remaining pub fields pending Phase 2 capsule sealing"
+)]
 pub struct ContextAssemblyState {
     /// Discovered personas from `~/.config/jinn/personas/`.
     /// OWNER: context-actor (replaces on PersonasLoaded event).
-    pub personas: Vec<Persona>,
+    personas: Vec<Persona>,
     /// The currently active persona (injected into system prompt).
     /// OWNER: context-actor (updated on PersonasLoaded, set on picker confirm).
-    pub active_persona: Option<Persona>,
+    active_persona: Option<Persona>,
     /// Global tool definitions available to all sessions.
     /// OWNER: tools-actor (populated on ToolsRegistered event), read by context-actor and llm-actor.
     pub global_tool_definitions: HashMap<String, ToolDefinition>,
@@ -71,5 +77,32 @@ impl ContextAssemblyState {
             }
         }
         tools
+    }
+
+    /// Set the active persona.
+    pub fn set_active_persona(&mut self, persona: Option<Persona>) {
+        self.active_persona = persona;
+    }
+
+    /// Replace the full persona list.
+    pub fn set_personas(&mut self, personas: Vec<Persona>) {
+        self.personas = personas;
+    }
+
+    /// Append a persona to the catalog.
+    pub fn push_persona(&mut self, persona: Persona) {
+        self.personas.push(persona);
+    }
+}
+
+impl ContextAssemblyState {
+    /// The currently active persona, if any.
+    pub fn active_persona(&self) -> Option<&Persona> {
+        self.active_persona.as_ref()
+    }
+
+    /// The full catalog of available personas.
+    pub fn personas(&self) -> &Vec<Persona> {
+        &self.personas
     }
 }
