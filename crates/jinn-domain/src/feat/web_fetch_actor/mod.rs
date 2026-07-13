@@ -68,12 +68,10 @@ pub struct WebFetchStealthConfig {
     pub anubis_timeout_secs: u64,
 }
 
-#[expect(clippy::trivially_copy_pass_by_ref, reason = "serde fn signature")]
 fn default_stealth_enabled() -> bool {
     true
 }
 
-#[expect(clippy::trivially_copy_pass_by_ref, reason = "serde fn signature")]
 fn default_anubis_timeout_secs() -> u64 {
     30
 }
@@ -657,5 +655,79 @@ backend = "socks"
         save_preferences_to(&prefs, &path).expect("save");
         let reloaded = load_preferences_from(&path).expect("load");
         assert_eq!(reloaded.web_fetch.backend, WebFetchBackend::HeadlessChrome);
+    }
+
+    #[rstest::rstest]
+    fn stealth_config_defaults_when_absent() {
+        // Given a jinn.toml with [web_fetch] but no [web_fetch.stealth] table.
+        let dir = TempDir::new().expect("temp dir");
+        let path = dir.path().join(PREFS_FILE_NAME);
+        std::fs::write(
+            &path,
+            r#"[web_fetch]
+backend = "headless-chrome"
+"#,
+        )
+        .expect("write");
+
+        // When loading.
+        let prefs = load_preferences_from(&path).expect("load");
+
+        // Then stealth defaults are applied.
+        let stealth = &prefs.web_fetch.stealth;
+        assert!(stealth.enabled);
+        assert_eq!(stealth.binary, super::BrowserBinary::Auto);
+        assert_eq!(stealth.anubis_timeout_secs, 30);
+        assert!(stealth.user_agent.is_none());
+    }
+
+    #[rstest::rstest]
+    fn stealth_config_round_trips_through_toml() {
+        // Given a configured stealth section.
+        let dir = TempDir::new().expect("temp dir");
+        let path = dir.path().join(PREFS_FILE_NAME);
+        let prefs = UserPreferences {
+            web_fetch: WebFetchConfig {
+                backend: WebFetchBackend::HeadlessChrome,
+                stealth: super::WebFetchStealthConfig {
+                    enabled: false,
+                    user_agent: Some("Custom/1.0".to_owned()),
+                    binary: super::BrowserBinary::Chrome,
+                    anubis_timeout_secs: 45,
+                },
+            },
+            ..UserPreferences::default()
+        };
+
+        // When saving then reloading.
+        save_preferences_to(&prefs, &path).expect("save");
+        let reloaded = load_preferences_from(&path).expect("load");
+
+        // Then every stealth field is preserved.
+        let stealth = &reloaded.web_fetch.stealth;
+        assert!(!stealth.enabled);
+        assert_eq!(stealth.user_agent.as_deref(), Some("Custom/1.0"));
+        assert_eq!(stealth.binary, super::BrowserBinary::Chrome);
+        assert_eq!(stealth.anubis_timeout_secs, 45);
+    }
+
+    #[rstest::rstest]
+    fn save_preserves_user_comments_in_stealth_section() {
+        // Given a jinn.toml with comments inside [web_fetch.stealth].
+        let original = "# my stealth notes\n[web_fetch]\nbackend = \"headless-chrome\"\n\n[web_fetch.stealth]\n# use real chrome\nbinary = \"chrome\"\n";
+        let dir = TempDir::new().expect("temp dir");
+        let path = dir.path().join(PREFS_FILE_NAME);
+        std::fs::write(&path, original).expect("write");
+
+        // When loading, changing enabled, and saving.
+        let mut prefs = load_preferences_from(&path).expect("load");
+        prefs.web_fetch.stealth.enabled = false;
+        save_preferences_to(&prefs, &path).expect("save");
+
+        // Then the user comments survive the load→patch→save cycle.
+        let written = std::fs::read_to_string(&path).expect("read");
+        assert!(written.contains("# my stealth notes"));
+        assert!(written.contains("# use real chrome"));
+        assert!(written.contains("enabled = false"));
     }
 }

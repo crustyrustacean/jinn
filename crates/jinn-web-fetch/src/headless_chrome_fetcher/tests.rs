@@ -15,12 +15,6 @@
     reason = "test fakes intentionally panic on poisoned locks or behavior underflow"
 )]
 
-//!
-//! The fetcher is tested via a fake [`HeadlessBrowserFactory`] that scripts a
-//! sequence of browser behaviors (success, connection death, render error).
-//! This drives the launch / eviction / retry state machine without spawning
-//! a real Chromium.
-
 use std::sync::atomic::{AtomicUsize, Ordering};
 use std::sync::{Arc, Mutex};
 use std::time::Duration;
@@ -252,6 +246,64 @@ fn launch_options_uses_ten_minute_idle_timeout() {
     )]
     let expected = Duration::from_secs(600);
     assert_eq!(opts.idle_browser_timeout, expected);
+}
+
+#[test]
+fn launch_options_includes_stealth_args_when_enabled() {
+    // Given stealth enabled.
+    let settings = StealthSettings::default();
+
+    // When building.
+    let opts = build_launch_options(&settings);
+
+    // Then the stealth suppressor flags are present.
+    let args: Vec<String> = opts
+        .args
+        .iter()
+        .map(|s| s.to_string_lossy().into_owned())
+        .collect();
+    assert!(
+        args.iter()
+            .any(|a| a == "--disable-blink-features=AutomationControlled")
+    );
+}
+
+#[test]
+fn launch_options_omits_stealth_args_when_disabled() {
+    // Given stealth disabled.
+    let settings = StealthSettings {
+        enabled: false,
+        ..StealthSettings::default()
+    };
+
+    // When building.
+    let opts = build_launch_options(&settings);
+
+    // Then no stealth flags are added.
+    let args: Vec<String> = opts
+        .args
+        .iter()
+        .map(|s| s.to_string_lossy().into_owned())
+        .collect();
+    assert!(
+        !args
+            .iter()
+            .any(|a| a == "--disable-blink-features=AutomationControlled")
+    );
+}
+
+#[test]
+fn launch_options_uses_configured_binary_path() {
+    // Given a configured binary path.
+    let mut settings = StealthSettings::default();
+    let custom = std::path::PathBuf::from("/usr/bin/google-chrome");
+    settings.binary_path = Some(custom.clone());
+
+    // When building.
+    let opts = build_launch_options(&settings);
+
+    // Then the binary path is set on LaunchOptions.
+    assert_eq!(opts.path.as_ref(), Some(&custom));
 }
 
 // ===========================================================================

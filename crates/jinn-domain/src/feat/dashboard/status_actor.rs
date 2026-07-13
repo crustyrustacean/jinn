@@ -18,7 +18,13 @@ use kameo::prelude::{Actor, Context, Message};
 use crate::common::actor::protocol::event::{ActorShutdownCompleted, ActorStarted, ActorStarting};
 use crate::common::actor_deps::ActorDeps;
 use crate::common::state::State;
+use crate::feat::browser_binary_scan::{BrowserBinaryMissing, BrowserBinaryVerified};
 use crate::feat::dashboard::DashboardState;
+
+/// Dashboard entry name for the browser binary verification.
+const BROWSER_BINARY_ENTRY: &str = "web-fetch-browser";
+/// Description shown for the browser binary dashboard entry.
+const BROWSER_BINARY_DESCRIPTION: &str = "Headless browser binary (stealth web fetcher)";
 
 /// Discord bot-specific connection status, reported by the gateway task.
 ///
@@ -95,7 +101,13 @@ impl Actor for DiscordStatusActor {
             .subscribe(actor_ref.clone().recipient::<ActorStarted>())
             .await;
         args.deps
-            .subscribe(actor_ref.recipient::<ActorShutdownCompleted>())
+            .subscribe(actor_ref.clone().recipient::<ActorShutdownCompleted>())
+            .await;
+        args.deps
+            .subscribe(actor_ref.clone().recipient::<BrowserBinaryVerified>())
+            .await;
+        args.deps
+            .subscribe(actor_ref.clone().recipient::<BrowserBinaryMissing>())
             .await;
 
         // Spawn the background drain loop for the discord status channel.
@@ -138,6 +150,34 @@ impl Message<ActorShutdownCompleted> for DiscordStatusActor {
     async fn handle(&mut self, msg: ActorShutdownCompleted, _ctx: &mut Context<Self, Self::Reply>) {
         let mut state = self.state.write();
         state.frontend.dashboard.mark_dead(&msg.name, None);
+    }
+}
+
+impl Message<BrowserBinaryVerified> for DiscordStatusActor {
+    type Reply = ();
+
+    async fn handle(&mut self, msg: BrowserBinaryVerified, _ctx: &mut Context<Self, Self::Reply>) {
+        let mut state = self.state.write();
+        let dashboard = &mut state.frontend.dashboard;
+        dashboard.mark_running(
+            BROWSER_BINARY_ENTRY,
+            Some(BROWSER_BINARY_DESCRIPTION.to_owned()),
+        );
+        dashboard.set_status_message(BROWSER_BINARY_ENTRY, Some(msg.path.display().to_string()));
+    }
+}
+
+impl Message<BrowserBinaryMissing> for DiscordStatusActor {
+    type Reply = ();
+
+    async fn handle(&mut self, msg: BrowserBinaryMissing, _ctx: &mut Context<Self, Self::Reply>) {
+        let mut state = self.state.write();
+        let dashboard = &mut state.frontend.dashboard;
+        dashboard.mark_dead(
+            BROWSER_BINARY_ENTRY,
+            Some(BROWSER_BINARY_DESCRIPTION.to_owned()),
+        );
+        dashboard.set_status_message(BROWSER_BINARY_ENTRY, Some(msg.reason));
     }
 }
 
@@ -425,5 +465,49 @@ mod tests {
         tokio::time::sleep(std::time::Duration::from_millis(50)).await;
         let (_, _, description) = dashboard_entry(&state, "discord").expect("entry should exist");
         assert_eq!(description.as_deref(), Some("Discord gateway bot [Task]"));
+    }
+
+    #[tokio::test]
+    async fn browser_binary_verified_creates_running_entry_with_path() {
+        // Given a DiscordStatusActor.
+        let harness = TestHarness::new().await;
+        let state = State::new(AppState::default());
+        spawn_actor(&harness, state.clone()).await;
+
+        // When publishing BrowserBinaryVerified.
+        harness
+            .publish(BrowserBinaryVerified {
+                path: std::path::PathBuf::from("/usr/bin/google-chrome"),
+            })
+            .await;
+
+        // Then the dashboard shows the browser entry as Running with the path.
+        tokio::time::sleep(std::time::Duration::from_millis(50)).await;
+        let (lifecycle, message, _) =
+            dashboard_entry(&state, "web-fetch-browser").expect("entry should exist");
+        assert_eq!(lifecycle, ActorLifecycle::Running);
+        assert_eq!(message.as_deref(), Some("/usr/bin/google-chrome"));
+    }
+
+    #[tokio::test]
+    async fn browser_binary_missing_creates_dead_entry_with_reason() {
+        // Given a DiscordStatusActor.
+        let harness = TestHarness::new().await;
+        let state = State::new(AppState::default());
+        spawn_actor(&harness, state.clone()).await;
+
+        // When publishing BrowserBinaryMissing.
+        harness
+            .publish(BrowserBinaryMissing {
+                reason: "ChromeNotFound".to_owned(),
+            })
+            .await;
+
+        // Then the dashboard shows the browser entry as Dead with the reason.
+        tokio::time::sleep(std::time::Duration::from_millis(50)).await;
+        let (lifecycle, message, _) =
+            dashboard_entry(&state, "web-fetch-browser").expect("entry should exist");
+        assert_eq!(lifecycle, ActorLifecycle::Dead);
+        assert_eq!(message.as_deref(), Some("ChromeNotFound"));
     }
 }

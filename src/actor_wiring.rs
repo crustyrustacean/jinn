@@ -30,17 +30,18 @@ use jinn_domain::init::env_init_actor::{EnvInitActor, EnvInitActorDeps};
 use jinn_domain::init::provider_init_actor::{ProviderInitActor, ProviderInitActorDeps};
 use jinn_domain::init::system_ready_actor::{SystemReadyActor, SystemReadyActorDeps};
 
+use jinn_domain::feat::browser_binary_scan::{
+    BrowserBinaryScanActor, BrowserBinaryScanActorDeps, SystemBinaryLocator, resolve_browser_binary,
+};
 use jinn_domain::feat::citation_collector::citation_collector_actor::{
     CitationCollectorActor, CitationCollectorActorDeps,
 };
 use jinn_domain::feat::preferences_actor::user_preferences::WebFetchBackend;
-use jinn_domain::feat::browser_binary_scan::{
-    BrowserBinaryScanActor, BrowserBinaryScanActorDeps, resolve_browser_binary,
-    SystemBinaryLocator,
-};
 use jinn_domain::feat::web_fetch_actor::{WebFetchActor, WebFetchActorDeps};
 use jinn_domain::feat::web_search_actor::{WebSearchActor, WebSearchActorDeps};
-use jinn_web_fetch::{CleanMarkdownExtractor, HttpFetcher, MarkdownExtractor, OutputFormat, stealth::StealthSettings};
+use jinn_web_fetch::{
+    CleanMarkdownExtractor, HttpFetcher, MarkdownExtractor, OutputFormat, stealth::StealthSettings,
+};
 use jinn_web_search::DdgSearcher;
 
 use jinn_domain::{AppCore, State};
@@ -690,7 +691,8 @@ jinn_domain::feat::preferences_actor::app_state_sync_actor::AppStateSyncActor::s
                 // Resolve the binary once at construction so LaunchOptions.path is
                 // set. The BrowserBinaryScanActor re-resolves for display on
                 // EnvironmentLoaded; the double resolution is intentional and cheap.
-                match resolve_browser_binary(web_fetch_config.stealth.binary, &SystemBinaryLocator) {
+                match resolve_browser_binary(web_fetch_config.stealth.binary, &SystemBinaryLocator)
+                {
                     Ok(path) => {
                         tracing::info!(path = %path.display(), "web-fetch: browser binary resolved");
                         stealth.binary_path = Some(path);
@@ -1495,10 +1497,10 @@ jinn_domain::feat::preferences_actor::app_state_sync_actor::AppStateSyncActor::s
             "BrowserBinaryScanActor",
             BrowserBinaryScanActor::supervise(
                 &root,
-                BrowserBinaryScanActorDeps {
-                    deps: actor_deps.clone(),
-                    config: web_fetch_config.stealth.binary,
-                },
+                BrowserBinaryScanActorDeps::new(
+                    actor_deps.clone(),
+                    web_fetch_config.stealth.binary,
+                ),
             )
             .restart_policy(kameo::supervision::RestartPolicy::Never)
             .spawn()

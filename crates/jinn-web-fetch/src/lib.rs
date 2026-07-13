@@ -4,11 +4,10 @@
 //! multiple output formats. Implementations are provided by separate modules
 //! (e.g., [`HttpFetcher`], `HeadlessChromeFetcher`).
 
+pub mod challenge;
 pub mod extractor;
 pub mod http_fetcher;
 pub mod stealth;
-pub mod challenge;
-
 
 #[cfg(feature = "headless-chrome")]
 pub mod headless_chrome_fetcher;
