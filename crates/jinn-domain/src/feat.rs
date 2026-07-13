@@ -7,6 +7,7 @@ pub mod citation_collector;
 pub mod compaction_worker;
 pub mod context;
 pub mod cwd_input;
+pub mod browser_binary_scan;
 pub mod dashboard;
 pub mod discord;
 pub mod discovery;

@@ -34,6 +34,10 @@ use jinn_domain::feat::citation_collector::citation_collector_actor::{
     CitationCollectorActor, CitationCollectorActorDeps,
 };
 use jinn_domain::feat::preferences_actor::user_preferences::WebFetchBackend;
+use jinn_domain::feat::browser_binary_scan::{
+    BrowserBinaryScanActor, BrowserBinaryScanActorDeps, resolve_browser_binary,
+    SystemBinaryLocator,
+};
 use jinn_domain::feat::web_fetch_actor::{WebFetchActor, WebFetchActorDeps};
 use jinn_domain::feat::web_search_actor::{WebSearchActor, WebSearchActorDeps};
 use jinn_web_fetch::{CleanMarkdownExtractor, HttpFetcher, MarkdownExtractor, OutputFormat, stealth::StealthSettings};
@@ -682,7 +686,19 @@ jinn_domain::feat::preferences_actor::app_state_sync_actor::AppStateSyncActor::s
             }
             WebFetchBackend::HeadlessChrome => {
                 tracing::debug!("web-fetch: using HeadlessChromeFetcher backend");
-                let stealth = StealthSettings::from(&web_fetch_config.stealth);
+                let mut stealth = StealthSettings::from(&web_fetch_config.stealth);
+                // Resolve the binary once at construction so LaunchOptions.path is
+                // set. The BrowserBinaryScanActor re-resolves for display on
+                // EnvironmentLoaded; the double resolution is intentional and cheap.
+                match resolve_browser_binary(web_fetch_config.stealth.binary, &SystemBinaryLocator) {
+                    Ok(path) => {
+                        tracing::info!(path = %path.display(), "web-fetch: browser binary resolved");
+                        stealth.binary_path = Some(path);
+                    }
+                    Err(err) => {
+                        tracing::warn!(%err, "web-fetch: browser binary not resolved; falling back to headless_chrome default");
+                    }
+                }
                 tracing::info!(?stealth, "web-fetch: resolved stealth settings");
                 std::sync::Arc::new(jinn_web_fetch::HeadlessChromeFetcher::new(
                     extractors.clone(),
@@ -1470,6 +1486,25 @@ jinn_domain::feat::preferences_actor::app_state_sync_actor::AppStateSyncActor::s
         } else {
             (None, None)
         };
+
+        // Browser binary scan: verifies the configured browser binary once at
+        // startup (subscribes to EnvironmentLoaded). Not a session-scoped scan.
+        let _browser_binary_scan = spawn_tracked!(
+            &services.bus,
+            "browser-binary-scan",
+            "BrowserBinaryScanActor",
+            BrowserBinaryScanActor::supervise(
+                &root,
+                BrowserBinaryScanActorDeps {
+                    deps: actor_deps.clone(),
+                    config: web_fetch_config.stealth.binary,
+                },
+            )
+            .restart_policy(kameo::supervision::RestartPolicy::Never)
+            .spawn()
+            .await
+        );
+
         // Signal system readiness and trigger init chain.
         {
             let bus_ref = services.bus.actor_ref();
