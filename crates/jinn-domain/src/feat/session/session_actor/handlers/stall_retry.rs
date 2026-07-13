@@ -108,7 +108,7 @@ mod tests {
     async fn stall_setup() -> (SessionPersistenceActor, BusAudit, RetryStalledSession) {
         let (actor, audit) = test_actor_recording().await;
         let session_id = {
-            let mut state = actor.state.write_test();
+            let mut state = actor.state.write_test_no_cap();
             let session = state.active_session_mut();
             session.begin_streaming();
             // A partial assistant entry created via the streaming path so it
@@ -180,7 +180,7 @@ mod tests {
         let (actor, _audit, payload) = stall_setup().await;
         let session_id = payload.session_id.clone();
         {
-            let mut state = actor.state.write_test();
+            let mut state = actor.state.write_test_no_cap();
             let session = state.active_session_mut();
             session.core.last_history_activity_at = jiff::Timestamp::now();
         }
@@ -207,7 +207,7 @@ mod tests {
         let (actor, _audit, payload) = stall_setup().await;
         let session_id = payload.session_id.clone();
         {
-            let mut state = actor.state.write_test();
+            let mut state = actor.state.write_test_no_cap();
             let session = state.active_session_mut();
             let now = jiff::Timestamp::now();
             session.begin_tool_call(0, "tc-partial", "bash", now);

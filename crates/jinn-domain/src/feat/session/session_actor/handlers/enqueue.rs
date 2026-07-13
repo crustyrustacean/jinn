@@ -451,7 +451,7 @@ mod tests {
         // Given an idle session.
         let (actor, state, audit) = create_actor().await;
         let session_id = {
-            let mut guard = state.write_test();
+            let mut guard = state.write_test_no_cap();
             let _session = guard.active_session_mut();
             guard.session.active_session_id().clone()
         };
@@ -486,7 +486,7 @@ mod tests {
         // Given a new session with no title.
         let (actor, state, _audit) = create_actor().await;
         let session_id = {
-            let mut guard = state.write_test();
+            let mut guard = state.write_test_no_cap();
             let _ = guard.active_session_mut();
             guard.session.active_session_id().clone()
         };
@@ -510,7 +510,7 @@ mod tests {
         // Given a session in Streaming phase (busy).
         let (actor, state, _audit) = create_actor().await;
         let session_id = {
-            let mut guard = state.write_test();
+            let mut guard = state.write_test_no_cap();
             let session = guard.active_session_mut();
             session.begin_streaming();
             guard.session.active_session_id().clone()
@@ -539,7 +539,7 @@ mod tests {
         // Given a session with default model (NO_PROVIDER_ID).
         let (actor, state, audit) = create_actor().await;
         let session_id = {
-            let mut guard = state.write_test();
+            let mut guard = state.write_test_no_cap();
             let _ = guard.active_session_mut();
             guard.session.active_session_id().clone()
         };
@@ -564,7 +564,7 @@ mod tests {
         // Given a session.
         let (actor, state, _audit) = create_actor().await;
         let session_id = {
-            let mut guard = state.write_test();
+            let mut guard = state.write_test_no_cap();
             let _ = guard.active_session_mut();
             guard.session.active_session_id().clone()
         };
@@ -586,7 +586,7 @@ mod tests {
         // Given a session.
         let (actor, state, audit) = create_actor().await;
         let session_id = {
-            let mut guard = state.write_test();
+            let mut guard = state.write_test_no_cap();
             let _ = guard.active_session_mut();
             guard.session.active_session_id().clone()
         };
@@ -648,7 +648,7 @@ mod tests {
         // Given an idle session with no attached plugins.
         let (actor, state, _audit) = create_actor().await;
         let session_id = {
-            let mut guard = state.write_test();
+            let mut guard = state.write_test_no_cap();
             let _session = guard.active_session_mut();
             guard.session.active_session_id().clone()
         };
@@ -672,7 +672,7 @@ mod tests {
         // Given a session already in Streaming phase.
         let (actor, state, audit) = create_actor().await;
         let session_id = {
-            let mut guard = state.write_test();
+            let mut guard = state.write_test_no_cap();
             let session = guard.active_session_mut();
             session.begin_streaming();
             guard.session.active_session_id().clone()
@@ -704,7 +704,7 @@ mod tests {
         // Given an idle session.
         let (actor, state, audit) = create_actor().await;
         let session_id = {
-            let mut guard = state.write_test();
+            let mut guard = state.write_test_no_cap();
             let _ = guard.active_session_mut();
             guard.session.active_session_id().clone()
         };
@@ -751,7 +751,7 @@ mod tests {
         // Given an idle session with a non-empty steering buffer.
         let (actor, state, audit) = create_actor().await;
         let session_id = {
-            let mut guard = state.write_test();
+            let mut guard = state.write_test_no_cap();
             let _ = guard.active_session_mut();
             let id = guard.session.active_session_id().clone();
             let session = guard.session_mut_or_create(&id);
@@ -810,7 +810,7 @@ mod tests {
         // Given an idle session with a non-empty steering buffer.
         let (actor, state, audit) = create_actor().await;
         let session_id = {
-            let mut guard = state.write_test();
+            let mut guard = state.write_test_no_cap();
             let session = guard.active_session_mut();
             session
                 .steering_buffer_mut()
@@ -857,7 +857,7 @@ mod tests {
         // published effort is None (let the provider decide).
         let (actor, state, audit) = create_actor().await;
         let session_id = {
-            let mut guard = state.write_test();
+            let mut guard = state.write_test_no_cap();
             let _ = guard.active_session_mut();
             guard.session.active_session_id().clone()
         };
@@ -895,7 +895,7 @@ mod tests {
         // must be ignored at request time).
         let (actor, state, audit) = create_actor().await;
         let session_id = {
-            let mut guard = state.write_test();
+            let mut guard = state.write_test_no_cap();
             let session = guard.active_session_mut();
             session.profile_mut().reasoning_effort = Some(crate::ReasoningEffort::Low);
             guard.session.active_session_id().clone()

@@ -288,7 +288,7 @@ mod tests {
 
         // Set an explicit model on the active session (simulating bench actor behavior).
         {
-            let mut state = actor.state.write_test();
+            let mut state = actor.state.write_test_no_cap();
             state
                 .active_session_mut()
                 .set_model(ModelSelection::Single("bench-model".to_owned()));

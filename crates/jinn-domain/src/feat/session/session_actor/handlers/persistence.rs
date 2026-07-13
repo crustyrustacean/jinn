@@ -33,7 +33,7 @@ impl SessionPersistenceActor {
         // The write lock is held only for the cheap `touch()` mutation, then
         // dropped before cloning the (potentially large) history. Cloning under
         // a held write lock would starve every other session's stream handlers,
-        // which wait on `state.write_test()` and backpressure the LLM stream consumer.
+        // which wait on `state.write_test_no_cap()` and backpressure the LLM stream consumer.
         let session = tokio::task::spawn_blocking(move || {
             {
                 state.with_session(&cap, |view| {
@@ -461,7 +461,7 @@ mod tests {
         let (actor, store, _audit) = test_actor_with_store_recording(vec![]).await;
         let session_id = actor.state.read().session.active_session_id().clone();
         {
-            let mut state = actor.state.write_test();
+            let mut state = actor.state.write_test_no_cap();
             state.active_session_mut().mark_interacted();
         }
 
@@ -479,7 +479,7 @@ mod tests {
         let (actor, store, _audit) = test_actor_with_store_recording(vec![]).await;
         let session_id = actor.state.read().session.active_session_id().clone();
         {
-            let mut state = actor.state.write_test();
+            let mut state = actor.state.write_test_no_cap();
             let session = state.active_session_mut();
             session.mark_interacted();
             // A large history makes the clone window wide enough to probe.

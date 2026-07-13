@@ -57,10 +57,13 @@ impl State {
         }
     }
 
-    /// Test-only write access — bypasses the cap requirement so tests across
+    /// TEST-ONLY write access — bypasses the cap requirement so tests across
     /// crates aren't burdened with threading a cap through every call site.
+    ///
+    /// Never call from production code. The name is deliberately grep-obvious
+    /// so misuse is visible in review and `rg`.
     #[doc(hidden)]
-    pub fn write_test(&self) -> StateWriteGuard<'_> {
+    pub fn write_test_no_cap(&self) -> StateWriteGuard<'_> {
         StateWriteGuard {
             inner: self.inner.write(),
         }
@@ -143,7 +146,7 @@ mod tests {
 
         // When writing and pushing an entry.
         {
-            let mut guard = state.write_test();
+            let mut guard = state.write_test_no_cap();
             guard
                 .active_session_mut()
                 .push_entry(ChatEntry::user("hello"));
@@ -164,7 +167,7 @@ mod tests {
 
         // Then both clones point to the same underlying data.
         {
-            let mut guard = clone.write_test();
+            let mut guard = clone.write_test_no_cap();
             guard
                 .active_session_mut()
                 .push_entry(ChatEntry::user("shared"));

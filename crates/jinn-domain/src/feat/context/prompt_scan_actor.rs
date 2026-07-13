@@ -292,7 +292,7 @@ mod tests {
     ) -> (State, SessionId) {
         let state = State::new(AppState::default());
         {
-            let mut guard = state.write_test();
+            let mut guard = state.write_test_no_cap();
             guard
                 .session
                 .active_session_mut()

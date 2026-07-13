@@ -516,7 +516,7 @@ fn plugin_preview_returns_session_when_managed_id_set() {
     let child_id = SessionId::new();
     let mut child = ChatSessionState::new();
     child.set_session_id(child_id.clone());
-    state.write_test().session.insert(child);
+    state.write_test_no_cap().session.insert(child);
 
     let parent_id = SessionId::new();
     let entry = plugin_entry("judge", parent_id, Some(child_id.clone()));

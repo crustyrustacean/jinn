@@ -1251,7 +1251,7 @@ mod tests {
 
         let (mut actor, audit) = test_actor_recording().await;
         let (target_id, original_active) = {
-            let mut state = actor.state.write_test();
+            let mut state = actor.state.write_test_no_cap();
             let original_active = state.session.active_session_id().clone();
             let second = ChatSessionState::new();
             let second_id = second.session_id().clone();
@@ -1307,7 +1307,7 @@ mod tests {
 
         let mut actor = test_actor().await;
         let session_id = {
-            let mut state = actor.state.write_test();
+            let mut state = actor.state.write_test_no_cap();
             state.frontend.scope_stack.clear_overlays();
             state
                 .active_session_mut()
@@ -1348,7 +1348,7 @@ mod tests {
 
         let (mut actor, audit) = test_actor_recording().await;
         let session_id = {
-            let mut state = actor.state.write_test();
+            let mut state = actor.state.write_test_no_cap();
             state
                 .active_session_mut()
                 .set_lifecycle_name(Some("test".to_owned()));
@@ -1392,7 +1392,7 @@ mod tests {
 
         let (mut actor, audit) = test_actor_recording().await;
         let session_id = {
-            let mut state = actor.state.write_test();
+            let mut state = actor.state.write_test_no_cap();
             state
                 .active_session_mut()
                 .set_lifecycle_name(Some("test".to_owned()));
@@ -1437,7 +1437,7 @@ mod tests {
         let second = ChatSessionState::new();
         let second_id = second.session_id().clone();
         {
-            let mut state = actor.state.write_test();
+            let mut state = actor.state.write_test_no_cap();
             state.session.insert(second);
         }
 
@@ -1489,7 +1489,7 @@ mod tests {
         let second = ChatSessionState::new();
         let second_id = second.session_id().clone();
         {
-            let mut state = actor.state.write_test();
+            let mut state = actor.state.write_test_no_cap();
             state.session.insert(second);
             state.session.set_active(second_id.clone());
         }
@@ -1511,7 +1511,7 @@ mod tests {
         let second = ChatSessionState::new();
         let second_id = second.session_id().clone();
         {
-            let mut state = actor.state.write_test();
+            let mut state = actor.state.write_test_no_cap();
             state.session.insert(second);
         }
 
@@ -1598,7 +1598,7 @@ mod tests {
 
         let (mut actor, audit) = test_actor_recording().await;
         let session_id = {
-            let mut state = actor.state.write_test();
+            let mut state = actor.state.write_test_no_cap();
             state
                 .active_session_mut()
                 .set_lifecycle_name(Some("test".to_owned()));
@@ -1644,7 +1644,7 @@ mod tests {
 
         let (mut actor, audit) = test_actor_recording().await;
         let session_id = {
-            let mut state = actor.state.write_test();
+            let mut state = actor.state.write_test_no_cap();
             state
                 .active_session_mut()
                 .set_lifecycle_name(Some("test".to_owned()));
@@ -1691,7 +1691,7 @@ mod tests {
     async fn close_session_with_nothing_ran_skips_teardown_and_archives() {
         let (mut actor, audit) = test_actor_recording().await;
         let session_id = {
-            let mut state = actor.state.write_test();
+            let mut state = actor.state.write_test_no_cap();
             state
                 .active_session_mut()
                 .push_entry(ChatEntry::user("hello"));
@@ -1727,7 +1727,7 @@ mod tests {
         let second = ChatSessionState::new();
         let _second_id = second.session_id().clone();
         let target_id = {
-            let mut state = actor.state.write_test();
+            let mut state = actor.state.write_test_no_cap();
             state
                 .active_session_mut()
                 .push_entry(ChatEntry::user("hello"));
@@ -1806,7 +1806,7 @@ mod tests {
         let second = ChatSessionState::new();
         let _second_id = second.session_id().clone();
         let target_id = {
-            let mut state = actor.state.write_test();
+            let mut state = actor.state.write_test_no_cap();
             state.session.insert(second);
             state.session.active_session_id().clone()
         };
@@ -1837,7 +1837,7 @@ mod tests {
         let second = ChatSessionState::new();
         let _second_id = second.session_id().clone();
         let active_id = {
-            let mut state = actor.state.write_test();
+            let mut state = actor.state.write_test_no_cap();
             state
                 .active_session_mut()
                 .push_entry(ChatEntry::user("msg"));
@@ -1862,7 +1862,7 @@ mod tests {
     async fn archive_last_session_creates_new_one() {
         let actor = test_actor().await;
         let only_id = {
-            let mut state = actor.state.write_test();
+            let mut state = actor.state.write_test_no_cap();
             state
                 .active_session_mut()
                 .push_entry(ChatEntry::user("msg"));
@@ -1890,7 +1890,7 @@ mod tests {
 
         let mut actor = test_actor().await;
         let session_id = {
-            let mut state = actor.state.write_test();
+            let mut state = actor.state.write_test_no_cap();
             let session = state.active_session_mut();
             session.push_entry(ChatEntry::user("hello"));
             session.set_lifecycle_name(Some("test".to_owned()));
@@ -1936,7 +1936,7 @@ mod tests {
 
         let (mut actor, audit) = test_actor_recording().await;
         let session_id = {
-            let mut state = actor.state.write_test();
+            let mut state = actor.state.write_test_no_cap();
             let session = state.active_session_mut();
             session.push_entry(ChatEntry::user("hello"));
             session.set_lifecycle_name(Some("test".to_owned()));
@@ -1981,7 +1981,7 @@ mod tests {
         let (mut actor, audit) = test_actor_recording().await;
         let second_session = ChatSessionState::new();
         let session_id = {
-            let mut state = actor.state.write_test();
+            let mut state = actor.state.write_test_no_cap();
             state.session.insert(second_session);
             let session = state.active_session_mut();
             session.push_entry(ChatEntry::user("hello"));
@@ -2065,7 +2065,7 @@ mod tests {
 
         let mut actor = test_actor().await;
         let session_id = {
-            let mut state = actor.state.write_test();
+            let mut state = actor.state.write_test_no_cap();
             let session = state.active_session_mut();
             session.set_lifecycle_name(Some("test".to_owned()));
             session.advance_lifecycle_after_setup();
@@ -2114,7 +2114,7 @@ mod tests {
         let (mut actor, store, _audit) = test_actor_with_store_recording(vec![]).await;
         let second = ChatSessionState::new();
         let session_id = {
-            let mut state = actor.state.write_test();
+            let mut state = actor.state.write_test_no_cap();
             state.session.insert(second);
             let session = state.active_session_mut();
             session.push_entry(ChatEntry::user("hello"));
@@ -2322,7 +2322,7 @@ mod tests {
         let session_id = actor.state.read().session.active_session_id().clone();
         let inherited_cwd = std::path::PathBuf::from("/tmp/inherited-project");
         {
-            let mut state = actor.state.write_test();
+            let mut state = actor.state.write_test_no_cap();
             state
                 .session
                 .get_mut(&session_id)
@@ -2359,7 +2359,7 @@ mod tests {
         let session_id = actor.state.read().session.active_session_id().clone();
         let inherited_cwd = std::path::PathBuf::from("/tmp/inherited-project");
         {
-            let mut state = actor.state.write_test();
+            let mut state = actor.state.write_test_no_cap();
             state
                 .session
                 .get_mut(&session_id)
@@ -2396,7 +2396,7 @@ mod tests {
         let session_id = actor.state.read().session.active_session_id().clone();
         let inherited_cwd = std::path::PathBuf::from("/tmp/inherited-project");
         {
-            let mut state = actor.state.write_test();
+            let mut state = actor.state.write_test_no_cap();
             state
                 .session
                 .get_mut(&session_id)
@@ -2479,7 +2479,7 @@ mod tests {
         let (mut actor, audit) = test_actor_recording().await;
         let session_id = {
             use crate::feat::preferences_actor::user_preferences::SessionLifecycle;
-            let mut state = actor.state.write_test();
+            let mut state = actor.state.write_test_no_cap();
             let session_id = state.session.active_session_id().clone();
             // Configure the session (CWD + lifecycle state + name) before touching
             // the preferences, so the two `state` borrows don't overlap.

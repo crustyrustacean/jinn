@@ -64,7 +64,7 @@ async fn picker_popup_rect_is_selectable() {
     // Switch to Picker mode with an active provider picker.
     app.core
         .state
-        .write_test()
+        .write_test_no_cap()
         .frontend
         .scope_stack
         .push(jinn_domain::FocusScope::Picker {
@@ -99,7 +99,7 @@ async fn content_area_rect_is_selectable() {
     // Switch to Picker mode with an active provider picker.
     app.core
         .state
-        .write_test()
+        .write_test_no_cap()
         .frontend
         .scope_stack
         .push(jinn_domain::FocusScope::Picker {
@@ -155,13 +155,13 @@ async fn minimap_arrow_is_yellow_when_normal_scope() {
     let mut app = render_test_app().await;
     app.core
         .state
-        .write_test()
+        .write_test_no_cap()
         .frontend
         .scope_stack
         .clear_overlays();
     app.core
         .state
-        .write_test()
+        .write_test_no_cap()
         .active_session_mut()
         .push_entry(ChatEntry::user("hello"));
     let (mut terminal, _area) = setup_term(80, 24);
@@ -189,13 +189,13 @@ async fn minimap_arrow_is_darkgray_when_input_scope() {
     let mut app = render_test_app().await;
     app.core
         .state
-        .write_test()
+        .write_test_no_cap()
         .frontend
         .scope_stack
         .push(FocusScope::Input);
     app.core
         .state
-        .write_test()
+        .write_test_no_cap()
         .active_session_mut()
         .push_entry(ChatEntry::user("hello"));
     let (mut terminal, _area) = setup_term(80, 24);
@@ -245,7 +245,7 @@ async fn cwd_input_popup_renders_and_is_selectable() {
     let mut app = render_test_app().await;
     app.core
         .state
-        .write_test()
+        .write_test_no_cap()
         .frontend
         .scope_stack
         .push(FocusScope::CwdInput);
@@ -280,7 +280,7 @@ async fn render_in_dashboard(
     let mut app = render_test_app().await;
     app.core
         .state
-        .write_test()
+        .write_test_no_cap()
         .frontend
         .scope_stack
         .swap_base(FocusScope::Dashboard);

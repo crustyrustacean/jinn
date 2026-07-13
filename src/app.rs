@@ -522,7 +522,7 @@ mod tests {
         let state = State::new(AppState::default());
 
         // Set the theme name in preferences.
-        state.write_test().frontend.app_state.theme_name = Some("custom".to_owned());
+        state.write_test_no_cap().frontend.app_state.theme_name = Some("custom".to_owned());
 
         // Capture the initial focus_accent color.
         let initial_focus = state.read().frontend.theme.focus_accent;
@@ -545,7 +545,7 @@ mod tests {
     fn load_theme_falls_back_gracefully_on_missing() {
         // Given a state with a theme name that doesn't exist.
         let state = State::new(AppState::default());
-        state.write_test().frontend.app_state.theme_name = Some("nonexistent".to_owned());
+        state.write_test_no_cap().frontend.app_state.theme_name = Some("nonexistent".to_owned());
 
         let empty = PathBuf::from("/nonexistent");
 

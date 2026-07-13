@@ -194,7 +194,7 @@ mod tests {
         // Given an actor with a session that has history.
         let actor = test_actor().await;
         let session_id = {
-            let mut state = actor.state.write_test();
+            let mut state = actor.state.write_test_no_cap();
             state
                 .active_session_mut()
                 .push_entry(ChatEntry::user("hello world"));
@@ -237,7 +237,7 @@ mod tests {
 
         // When adding an entry and recalculating.
         {
-            let mut state = actor.state.write_test();
+            let mut state = actor.state.write_test_no_cap();
             state
                 .active_session_mut()
                 .push_entry(ChatEntry::user("a long message that adds tokens"));
@@ -288,7 +288,7 @@ mod tests {
         let second = ChatSessionState::new();
         let second_id = second.session_id().clone();
         {
-            let mut state = actor.state.write_test();
+            let mut state = actor.state.write_test_no_cap();
             state.session.insert(second);
             // Active session has history, second does not.
             state

@@ -197,7 +197,7 @@ mod tests {
         let mut session = ChatSessionState::default();
         session.set_session_id(session_id.clone());
         session.restore_history(entries);
-        state.write_test().session.insert(session);
+        state.write_test_no_cap().session.insert(session);
         (state, session_id)
     }
 

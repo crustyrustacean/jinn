@@ -347,7 +347,7 @@ mod tests {
         let (actor, audit) = create_actor().await;
         let sid = session_id();
         {
-            let mut state = actor.state.write_test();
+            let mut state = actor.state.write_test_no_cap();
             let session = state.session_mut_or_create(&sid);
             session.enqueue(QueueItem::UserMessage(Box::new(ChatEntry::user("hello"))));
         }
@@ -377,7 +377,7 @@ mod tests {
         let (actor, audit) = create_actor().await;
         let sid = session_id();
         {
-            let mut state = actor.state.write_test();
+            let mut state = actor.state.write_test_no_cap();
             let session = state.session_mut_or_create(&sid);
             session.enqueue(QueueItem::ToolContinuation);
         }
@@ -404,7 +404,7 @@ mod tests {
         let (actor, audit) = create_actor().await;
         let sid = session_id();
         {
-            let mut state = actor.state.write_test();
+            let mut state = actor.state.write_test_no_cap();
             let session = state.session_mut_or_create(&sid);
             session.enqueue(QueueItem::UserMessage(Box::new(ChatEntry::user("hello"))));
         }
@@ -476,7 +476,7 @@ mod tests {
         let (actor, _audit) = create_actor().await;
         let sid = session_id();
         {
-            let mut state = actor.state.write_test();
+            let mut state = actor.state.write_test_no_cap();
             let session = state.session_mut_or_create(&sid);
             session.set_title("original title".to_owned());
         }
@@ -529,7 +529,7 @@ mod tests {
         let (actor, audit) = create_actor().await;
         let sid = session_id();
         {
-            let mut state = actor.state.write_test();
+            let mut state = actor.state.write_test_no_cap();
             let session = state.session_mut_or_create(&sid);
             session.profile_mut().model =
                 crate::feat::session::model_selection::ModelSelection::Single(
@@ -609,7 +609,7 @@ mod tests {
         let (actor, _audit) = create_actor().await;
         let sid = session_id();
         {
-            let mut state = actor.state.write_test();
+            let mut state = actor.state.write_test_no_cap();
             let session = state.session_mut_or_create(&sid);
             session.steering_buffer_mut().push_fragment("system note");
         }
@@ -631,7 +631,7 @@ mod tests {
         let (actor, _audit) = create_actor().await;
         let sid = session_id();
         {
-            let mut state = actor.state.write_test();
+            let mut state = actor.state.write_test_no_cap();
             let session = state.session_mut_or_create(&sid);
             session.steering_buffer_mut().push_fragment("system note");
         }
@@ -651,7 +651,7 @@ mod tests {
         let (actor, audit) = create_actor().await;
         let sid = session_id();
         {
-            let mut state = actor.state.write_test();
+            let mut state = actor.state.write_test_no_cap();
             let session = state.session_mut_or_create(&sid);
             session.steering_buffer_mut().push_fragment("stay focused");
         }
@@ -689,7 +689,7 @@ mod tests {
         let (actor, _audit) = create_actor().await;
         let sid = session_id();
         {
-            let mut state = actor.state.write_test();
+            let mut state = actor.state.write_test_no_cap();
             let session = state.session_mut_or_create(&sid);
             session.steering_buffer_mut().push_fragment("stay focused");
         }
@@ -717,7 +717,7 @@ mod tests {
         let (actor, audit) = create_actor().await;
         let sid = session_id();
         {
-            let mut state = actor.state.write_test();
+            let mut state = actor.state.write_test_no_cap();
             let session = state.session_mut_or_create(&sid);
             session.steering_buffer_mut().push_fragment("stay focused");
         }
@@ -741,7 +741,7 @@ mod tests {
         let (actor, audit) = create_actor().await;
         let sid = session_id();
         {
-            let mut state = actor.state.write_test();
+            let mut state = actor.state.write_test_no_cap();
             let session = state.session_mut_or_create(&sid);
             session.steering_buffer_mut().push_fragment("stay focused");
         }
@@ -794,7 +794,7 @@ mod tests {
         let (actor, audit) = create_actor().await;
         let sid = session_id();
         {
-            let mut state = actor.state.write_test();
+            let mut state = actor.state.write_test_no_cap();
             let session = state.session_mut_or_create(&sid);
             session.enqueue(QueueItem::UserMessage(Box::new(ChatEntry::user(
                 "queued msg",
@@ -845,7 +845,7 @@ mod tests {
         let (actor, audit) = create_actor().await;
         let sid = session_id();
         {
-            let mut state = actor.state.write_test();
+            let mut state = actor.state.write_test_no_cap();
             let session = state.session_mut_or_create(&sid);
             session.enqueue(QueueItem::UserMessage(Box::new(ChatEntry::user("hello"))));
         }
