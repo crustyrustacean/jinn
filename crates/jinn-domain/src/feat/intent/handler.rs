@@ -931,17 +931,17 @@ fn handle_sidebar_toggle_plugin(state: &mut AppState) -> IntentResult {
             // origin's attached_plugins and toggle based on its CURRENT
             // enabled state — enable if currently disabled, disable otherwise.
             let session_id = entry.parent_id.clone().unwrap_or_else(|| entry.id.clone());
-            let Some(plugin) = state.session.get(&session_id).and_then(|s| {
-                s.core
-                    .attached_plugins
+            let Some(enabled) = state.session.get(&session_id).and_then(|s| {
+                s.attached_plugins()
                     .iter()
                     .find(|p| p.instance_id.to_string() == entry.id.to_string())
+                    .map(|p| (p.instance_id.clone(), p.enabled))
             }) else {
                 return IntentResult::empty();
             };
-            let instance_id = plugin.instance_id.clone();
+            let instance_id = enabled.0;
             // Force-set the OPPOSITE of the current state.
-            if plugin.enabled {
+            if enabled.1 {
                 IntentResult::empty().message(TogglePlugin {
                     session_id,
                     plugin_name: entry.title.clone(),
@@ -1624,9 +1624,7 @@ mod tests {
         let session_id = state.session.active_session_id().clone();
         {
             let s = state.session.get_mut(&session_id).expect("active session");
-            s.core
-                .attached_plugins
-                .push(AttachedPlugin::new("test-plugin"));
+            s.attach_plugin(AttachedPlugin::new("test-plugin"));
         }
         // entries: [session, plugin]
         state.frontend.sessions_section.selected_index = Some(1);
