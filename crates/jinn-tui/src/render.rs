@@ -73,33 +73,39 @@ pub fn render(app: &mut TuiApp, frame: &mut Frame<'_>) {
 /// Sets wrap width and scroll offset before layout, using a write lock.
 fn apply_pre_render_mutation(app: &mut TuiApp, area: Rect) {
     let mut wstate = app.core.state.write();
-    let pre_layout = AppLayout::new(
+    let is_dashboard = matches!(
+        wstate.frontend.scope_stack.base(),
+        jinn_domain::FocusScope::Dashboard,
+    );
+    let pre_layout = AppFrameLayout::new(
         area,
         wstate.active_chat_input().visual_line_count() as u16,
         area.height / 2,
         wstate.frontend.sidebar_width,
+        is_dashboard,
     );
-    let text_width = pre_layout.main.width.saturating_sub(2) as usize;
-    wstate.active_chat_input_mut().set_wrap_width(text_width);
-    if wstate.frontend.scope_stack.current().mode() == Mode::Input {
-        let inner_height = pre_layout.input.height.saturating_sub(1) as usize;
-        wstate
-            .active_chat_input_mut()
-            .scroll_to_cursor(inner_height);
-    }
-    jinn_domain::feat::ui::sidebar::task_list_section::preview::write_preview_geometry(
-        &mut wstate,
-        area,
-        pre_layout.sidebar,
-    );
-    if matches!(
-        wstate.frontend.scope_stack.base(),
-        jinn_domain::FocusScope::Dashboard,
-    ) {
-        wstate
-            .frontend
-            .dashboard
-            .clamp_scroll(pre_layout.content.height);
+    match &pre_layout {
+        AppFrameLayout::Dashboard(dash) => {
+            wstate
+                .frontend
+                .dashboard
+                .clamp_scroll(dash.content.height);
+        }
+        AppFrameLayout::Chat(chat) => {
+            let text_width = chat.main.width.saturating_sub(2) as usize;
+            wstate.active_chat_input_mut().set_wrap_width(text_width);
+            if wstate.frontend.scope_stack.current().mode() == Mode::Input {
+                let inner_height = chat.input.height.saturating_sub(1) as usize;
+                wstate
+                    .active_chat_input_mut()
+                    .scroll_to_cursor(inner_height);
+            }
+            jinn_domain::feat::ui::sidebar::task_list_section::preview::write_preview_geometry(
+                &mut wstate,
+                area,
+                chat.sidebar,
+            );
+        }
     }
 }
 
