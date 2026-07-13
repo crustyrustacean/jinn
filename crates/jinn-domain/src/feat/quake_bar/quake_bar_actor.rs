@@ -41,7 +41,10 @@ impl Actor for QuakeBarActor {
         args.deps
             .subscribe(actor_ref.recipient::<SubmitQuakeBarCommand>())
             .await;
-        Ok(Self { state: args.state, cap: args.cap })
+        Ok(Self {
+            state: args.state,
+            cap: args.cap,
+        })
     }
 }
 
