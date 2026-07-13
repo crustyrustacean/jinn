@@ -230,4 +230,43 @@ mod tests {
         assert!(layout.status_bar.y > layout.input.y);
         assert_eq!(layout.status_bar.y + layout.status_bar.height, area.height);
     }
+
+    #[rstest::rstest]
+    fn dashboard_layout_uses_full_width() {
+        // Given an 80x24 area.
+        let area = Rect::new(0, 0, 80, 24);
+
+        // When computing the dashboard layout.
+        let layout = DashboardLayout::new(area);
+
+        // Then the tab bar is the top row, full width.
+        assert_eq!(layout.tab_bar, Rect::new(0, 0, 80, 1));
+        // And the content fills everything below, full width.
+        assert_eq!(layout.content, Rect::new(0, 1, 80, 23));
+    }
+
+    #[rstest::rstest]
+    fn frame_layout_dashboard_is_full_width_chat_is_chat_layout() {
+        // Given an 80x24 area and chat-mode params.
+        let area = Rect::new(0, 0, 80, 24);
+        let chat_via_frame = AppFrameLayout::new(area, 1, area.height / 2, 30, false);
+        let chat_direct = AppLayout::new(area, 1, area.height / 2, 30);
+
+        // When asking the chat layout from the frame, it matches the direct chat layout.
+        let AppFrameLayout::Chat(frame_chat) = chat_via_frame else {
+            panic!("expected Chat layout for is_dashboard=false");
+        };
+        assert_eq!(frame_chat.content, chat_direct.content);
+        assert_eq!(frame_chat.sidebar, chat_direct.sidebar);
+        assert_eq!(frame_chat.status_bar, chat_direct.status_bar);
+
+        // And the dashboard frame variant is full-width, not the chat layout.
+        let AppFrameLayout::Dashboard(dash) =
+            AppFrameLayout::new(area, 1, area.height / 2, 30, true)
+        else {
+            panic!("expected Dashboard layout for is_dashboard=true");
+        };
+        assert_eq!(dash.content.width, area.width);
+        assert_eq!(dash.tab_bar, Rect::new(0, 0, 80, 1));
+    }
 }
