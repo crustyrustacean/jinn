@@ -19,9 +19,7 @@ use crate::feat::web_fetch_actor::BrowserBinary;
 use crate::init::env_init_actor::EnvironmentLoaded;
 
 use super::binary_resolver::{BinaryFamily, BinaryLocator};
-use super::{
-    BrowserBinaryMissing, BrowserBinaryScanActor, BrowserBinaryScanActorDeps, BrowserBinaryVerified,
-};
+use super::{BrowserBinaryScanActor, BrowserBinaryScanActorDeps, BrowserBinaryVerified};
 
 /// A fake filesystem that reports Chrome present, Chromium present, both, or neither.
 #[derive(Default)]
@@ -35,9 +33,9 @@ impl BinaryLocator for FakeFs {
         match family {
             BinaryFamily::Chrome => self.chrome.iter().cloned().collect(),
             BinaryFamily::Chromium => self.chromium.iter().cloned().collect(),
+            BinaryFamily::Bundled => Vec::new(),
         }
     }
-
     fn exists(&self, _path: &std::path::Path) -> bool {
         // The fake's candidates list IS the set of existing paths.
         true
@@ -85,19 +83,23 @@ async fn environment_loaded_with_present_binary_emits_verified() {
     // When waiting for the event.
     let messages = await_recorded(&recorder, 1, std::time::Duration::from_secs(2)).await;
 
-    // Then a BrowserBinaryVerified event was emitted with the Chrome path.
+    // Then a BrowserBinaryVerified event was emitted for the Chrome family.
     assert_eq!(messages.len(), 1);
-    assert_eq!(messages[0].path, PathBuf::from("/usr/bin/google-chrome"));
+    assert_eq!(messages[0].family, BinaryFamily::Chrome);
+    assert_eq!(
+        messages[0].path.as_deref(),
+        Some(std::path::Path::new("/usr/bin/google-chrome"))
+    );
 }
 
 #[tokio::test]
-async fn environment_loaded_with_missing_binary_emits_missing() {
+async fn environment_loaded_with_no_binary_falls_back_to_bundled() {
     // Given an actor configured for Chrome where neither binary exists.
     let locator = Arc::new(FakeFs::default()) as Arc<dyn BinaryLocator + Send + Sync>;
     let (harness, _actor) = harness_with_locator(BrowserBinary::Chrome, locator).await;
 
-    // Subscribe to the missing event BEFORE publishing, then publish.
-    let recorder = harness.spawn_recorder::<BrowserBinaryMissing>().await;
+    // Subscribe to the verified event (resolution always yields Verified now).
+    let recorder = harness.spawn_recorder::<BrowserBinaryVerified>().await;
     harness
         .publish(EnvironmentLoaded {
             config: ProvidersConfig {
@@ -111,9 +113,11 @@ async fn environment_loaded_with_missing_binary_emits_missing() {
     // When waiting for the event.
     let messages = await_recorded(&recorder, 1, std::time::Duration::from_secs(2)).await;
 
-    // Then a BrowserBinaryMissing event was emitted.
+    // Then a Verified event was emitted for the Bundled family with a fallback note.
     assert_eq!(messages.len(), 1);
-    assert!(!messages[0].reason.is_empty());
+    assert_eq!(messages[0].family, BinaryFamily::Bundled);
+    assert!(messages[0].path.is_none());
+    assert!(messages[0].fallback_note.is_some());
 }
 
 #[tokio::test]
@@ -139,8 +143,6 @@ async fn auto_falls_back_to_chromium_when_chrome_absent() {
 
     // When waiting for the event.
     let messages = await_recorded(&recorder, 1, std::time::Duration::from_secs(2)).await;
-
-    // Then the verified event carries the Chromium path (fallback worked).
     assert_eq!(messages.len(), 1);
-    assert_eq!(messages[0].path, PathBuf::from("/usr/bin/chromium"));
+    assert_eq!(messages[0].family, BinaryFamily::Chromium);
 }

@@ -671,30 +671,29 @@ jinn_domain::feat::preferences_actor::preferences_actor::PreferencesActor::super
                 // Resolve the binary once at construction so LaunchOptions.path is
                 // set. The BrowserBinaryScanActor re-resolves for display on
                 // EnvironmentLoaded; the double resolution is intentional and cheap.
-                match resolve_browser_binary(web_fetch_config.stealth.binary, &SystemBinaryLocator)
-                {
-                    Ok(resolved) => {
-                        tracing::info!(
-                            path = %resolved.path.display(),
-                            version = ?resolved.version_major,
-                            "web-fetch: browser binary resolved"
-                        );
-                        stealth.binary_path = Some(resolved.path);
-                        // When no explicit UA override was configured, build
-                        // one from the detected binary version so the UA
-                        // never contradicts the binary we actually launch.
-                        // Falls back to CHROME_MAJOR when probing failed.
-                        if web_fetch_config.stealth.user_agent.is_none() {
-                            let major = resolved
-                                .version_major
-                                .as_deref()
-                                .unwrap_or(jinn_web_fetch::stealth::CHROME_MAJOR);
-                            stealth.user_agent = jinn_web_fetch::stealth::build_user_agent(major);
-                        }
-                    }
-                    Err(err) => {
-                        tracing::warn!(%err, "web-fetch: browser binary not resolved; falling back to headless_chrome default");
-                    }
+                let resolved =
+                    resolve_browser_binary(web_fetch_config.stealth.binary, &SystemBinaryLocator);
+                tracing::info!(
+                    family = ?resolved.family,
+                    path = ?resolved.path,
+                    version = ?resolved.version_major,
+                    note = ?resolved.fallback_note,
+                    "web-fetch: browser binary resolved"
+                );
+                // Only set an explicit path when a system binary was found;
+                // for Bundled the crate auto-discovers at launch.
+                stealth.binary_path = resolved.path.clone();
+                // When no explicit UA override was configured, build
+                // one from the detected binary version so the UA
+                // never contradicts the binary we actually launch.
+                // Falls back to CHROME_MAJOR when probing failed or the
+                // binary is bundled (no version detectable).
+                if web_fetch_config.stealth.user_agent.is_none() {
+                    let major = resolved
+                        .version_major
+                        .as_deref()
+                        .unwrap_or(jinn_web_fetch::stealth::CHROME_MAJOR);
+                    stealth.user_agent = jinn_web_fetch::stealth::build_user_agent(major);
                 }
                 tracing::info!(?stealth, "web-fetch: resolved stealth settings");
                 std::sync::Arc::new(jinn_web_fetch::HeadlessChromeFetcher::new(

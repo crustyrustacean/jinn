@@ -10,10 +10,8 @@
 //! `frontend.dashboard` is sole-owned by
 //! [`DiscordStatusActor`](crate::feat::dashboard::status_actor::DiscordStatusActor).
 //! To honour the per-sub-struct ownership rule, this actor does **not** write
-//! to the dashboard. It publishes [`BrowserBinaryVerified`] or
-//! [`BrowserBinaryMissing`]; the dashboard owner (or a dedicated subscriber)
-//! is the correct place to surface the status. This is a deliberate divergence
-//! from the original plan, annotated in the spec.
+//! to the dashboard. It publishes [`BrowserBinaryVerified`]; the dashboard
+//! owner is the correct place to surface the status.
 
 use std::sync::Arc;
 
@@ -30,7 +28,7 @@ use crate::init::env_init_actor::EnvironmentLoaded;
 pub mod binary_resolver;
 
 pub use binary_resolver::{
-    BinaryFamily, BinaryLocator, BinaryResolutionError, SystemBinaryLocator, resolve_browser_binary,
+    BinaryFamily, BinaryLocator, ResolvedBrowser, SystemBinaryLocator, resolve_browser_binary,
 };
 
 /// Dependencies for [`BrowserBinaryScanActor`].
@@ -110,22 +108,21 @@ impl Message<EnvironmentLoaded> for BrowserBinaryScanActor {
                 .await;
 
         match result {
-            Ok(Ok(resolved)) => {
+            Ok(resolved) => {
                 tracing::info!(
-                    path = %resolved.path.display(),
+                    family = ?resolved.family,
+                    path = ?resolved.path,
                     version = ?resolved.version_major,
-                    "browser binary verified"
+                    note = ?resolved.fallback_note,
+                    "browser binary resolved"
                 );
                 self.publish(BrowserBinaryVerified {
+                    family: resolved.family,
                     path: resolved.path,
                     version_major: resolved.version_major,
+                    fallback_note: resolved.fallback_note,
                 })
                 .await;
-            }
-            Ok(Err(err)) => {
-                tracing::warn!(%err, config = ?config, "browser binary missing");
-                let reason = err.to_string();
-                self.publish(BrowserBinaryMissing { reason }).await;
             }
             Err(join_err) => {
                 tracing::error!("browser binary scan task panicked: {join_err}");
@@ -134,25 +131,25 @@ impl Message<EnvironmentLoaded> for BrowserBinaryScanActor {
     }
 }
 
-/// Emitted when the configured browser binary was found and verified.
+/// Emitted when the configured browser binary has been resolved.
+///
+/// Resolution is infallible (Chrome → system Chromium → bundled); this event
+/// always fires. `family` identifies what will actually run, `path` is `None`
+/// for the bundled binary, and `fallback_note` explains any substitution.
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct BrowserBinaryVerified {
-    /// The resolved executable path.
-    pub path: std::path::PathBuf,
-    /// The detected major version of the installed binary (e.g. `"138"`),
-    /// or `None` when `<binary> --version` could not be probed/parsed.
+    /// The resolved binary family.
+    pub family: BinaryFamily,
+    /// The resolved executable path, or `None` for the bundled binary.
+    pub path: Option<std::path::PathBuf>,
+    /// The detected major version (e.g. `"138"`), or `None` when undetectable
+    /// or the binary is bundled.
     pub version_major: Option<String>,
-}
-
-/// Emitted when the configured browser binary could not be resolved.
-#[derive(Debug, Clone, Serialize, Deserialize)]
-pub struct BrowserBinaryMissing {
-    /// Human-readable reason (e.g. "ChromeNotFound").
-    pub reason: String,
+    /// Human-readable note when resolution fell back from the requested family.
+    pub fallback_note: Option<String>,
 }
 
 impl crate::common::bus::BusMessage for BrowserBinaryVerified {}
-impl crate::common::bus::BusMessage for BrowserBinaryMissing {}
 
 #[cfg(test)]
 mod tests;
