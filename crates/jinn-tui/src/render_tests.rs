@@ -261,3 +261,124 @@ async fn cwd_input_popup_renders_and_is_selectable() {
     assert!(probe.is_some(), "cwd input popup rect should be selectable");
     assert_eq!(probe.unwrap(), popup_rect);
 }
+
+/// Column index of the chat-mode vertical border for an 80-wide terminal
+/// with the default sidebar width (30). main(48) | minimap(1) | border(1) | sidebar(30).
+const CHAT_BORDER_X_80: u16 = 49;
+
+/// Enters the Dashboard tab by swapping the base scope, then renders once,
+/// returning the terminal so the test can inspect its buffer.
+async fn render_in_dashboard(width: u16, height: u16) -> ratatui::Terminal<ratatui::backend::TestBackend> {
+    let mut app = render_test_app().await;
+    app.core
+        .state
+        .write()
+        .frontend
+        .scope_stack
+        .swap_base(FocusScope::Dashboard);
+    let (mut terminal, _area) = setup_term(width, height);
+    terminal
+        .draw(|frame| {
+            app.render(frame);
+        })
+        .unwrap();
+    terminal
+}
+
+#[rstest::rstest]
+#[tokio::test]
+async fn dashboard_renders_no_vertical_border_or_sidebar_gap() {
+    // Given a TuiApp rendered in the Dashboard tab.
+    let terminal = render_in_dashboard(80, 24).await;
+
+    // When inspecting the column where the chat layout draws the sidebar border.
+    let layout = AppLayout::new(frame_area(80, 24), 1, 12, 30);
+    let buffer = terminal.backend().buffer();
+
+    // Then the border glyph (│) is absent at the chat border column for
+    // every content row — the dashboard owns the full width.
+    for y in layout.content.y..(layout.content.y + layout.content.height) {
+        let cell = buffer.cell((CHAT_BORDER_X_80, y)).expect("content cell");
+        assert_ne!(
+            cell.symbol(),
+            "\u{2502}",
+            "dashboard must not draw the chat sidebar border at column {CHAT_BORDER_X_80}",
+        );
+    }
+}
+
+#[rstest::rstest]
+#[tokio::test]
+async fn dashboard_renders_no_status_bar() {
+    // Given a TuiApp rendered in the Dashboard tab.
+    let terminal = render_in_dashboard(80, 24).await;
+    let buffer = terminal.backend().buffer();
+
+    // When scanning every cell for the status bar's signature glyphs.
+    let width = 80;
+    let height = 24;
+    let status_bar_glyphs = ["\u{21BB}", "\u{2191}", "\u{2193}"];
+    let mut found = String::new();
+    for y in 0..height {
+        for x in 0..width {
+            let sym = buffer.cell((x, y)).expect("cell").symbol();
+            if status_bar_glyphs.contains(&sym) {
+                found.push_str(&format!("({x},{y})={sym} "));
+            }
+        }
+    }
+
+    // Then none of the status bar glyphs appear anywhere on the dashboard.
+    assert!(found.is_empty(), "status bar glyphs found in dashboard: {found}");
+}
+
+#[rstest::rstest]
+#[tokio::test]
+async fn dashboard_content_fills_full_width() {
+    // Given a TuiApp rendered in the Dashboard tab.
+    let terminal = render_in_dashboard(80, 24).await;
+    let buffer = terminal.backend().buffer();
+
+    // When reading the rightmost column of the tab-bar row.
+    // The tab bar renders "Chat" and "Dashboard" labels; the highlighted
+    // "Dashboard" tab must reach the rightmost column (no sidebar reserved).
+    let rightmost = buffer
+        .cell((79, 0))
+        .expect("rightmost tab-bar cell");
+
+    // Then the rightmost column is the default background reset cell, confirming
+    // the tab bar spans the full width (a status-bar glyph or sidebar content
+    // would instead occupy it).
+    assert_eq!(
+        rightmost.symbol(),
+        " ",
+        "rightmost column should be reset/blank, not sidebar or border content",
+    );
+}
+
+#[rstest::rstest]
+#[tokio::test]
+async fn chat_layout_still_draws_vertical_border_for_sidebar() {
+    // Given a TuiApp rendered in the default Chat tab (sidebar width 30).
+    let mut app = render_test_app().await;
+    let (mut terminal, _area) = setup_term(80, 24);
+    terminal
+        .draw(|frame| {
+            app.render(frame);
+        })
+        .unwrap();
+
+    // When reading the cell at the chat border column on a content row.
+    let layout = AppLayout::new(frame_area(80, 24), 1, 12, 30);
+    let buffer = terminal.backend().buffer();
+    let cell = buffer
+        .cell((layout.border.x, layout.content.y + 1))
+        .expect("chat border cell");
+
+    // Then the vertical border glyph (│) is drawn — chat rendering is unchanged.
+    assert_eq!(
+        cell.symbol(),
+        "\u{2502}",
+        "chat tab must still render the sidebar border (regression guard)",
+    );
+}
