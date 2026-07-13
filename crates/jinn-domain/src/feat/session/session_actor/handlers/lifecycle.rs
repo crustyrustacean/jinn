@@ -695,7 +695,6 @@ impl SessionPersistenceActor {
                         // then return immediately. The spawned task signals completion
                         // via FinishSessionTeardown with close_after: true.
                         let rendered = {
-                            use crate::feat::session_lifecycle::command_template::CommandTemplate;
 
                             let rendered = self.state.with_session(&self.cap, |view| -> Option<String> {
                                 use crate::feat::session_lifecycle::command_template::CommandTemplate;

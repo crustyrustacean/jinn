@@ -405,6 +405,7 @@ jinn_domain::feat::preferences_actor::preferences_actor::PreferencesActor::super
                     jinn_domain::feat::preferences_actor::preferences_actor::PreferencesActorDeps {
                         deps: actor_deps.clone(),
                         state: state.clone(),
+                        cap: jinn_domain::common::tcaps::mint::mint_frontend_cap(),
                     },
                 )
                 .restart_policy(kameo::supervision::RestartPolicy::Never)
@@ -878,6 +879,7 @@ jinn_domain::feat::preferences_actor::preferences_actor::PreferencesActor::super
                     state: state.clone(),
                     deps: actor_deps.clone(),
                     cap: jinn_domain::common::tcaps::mint::mint_provider_cap(),
+                    session_cap: jinn_domain::common::tcaps::mint::mint_session_cap(),
                 },
             )
             .restart_policy(kameo::supervision::RestartPolicy::Never)
@@ -894,6 +896,7 @@ jinn_domain::feat::preferences_actor::preferences_actor::PreferencesActor::super
                 jinn_domain::feat::token_count_actor::TokenCountActorDeps {
                     deps: actor_deps.clone(),
                     state: state.clone(),
+                    cap: jinn_domain::common::tcaps::mint::mint_frontend_cap(),
                 },
             )
             .restart_policy(kameo::supervision::RestartPolicy::Never)
@@ -929,6 +932,7 @@ jinn_domain::feat::preferences_actor::preferences_actor::PreferencesActor::super
                     deps: actor_deps.clone(),
                     state: state.clone(),
                     counter: token_counter,
+                    cap: jinn_domain::common::tcaps::mint::mint_session_cap(),
                 },
             )
             .restart_policy(kameo::supervision::RestartPolicy::Never)
@@ -1003,7 +1007,8 @@ jinn_domain::feat::preferences_actor::preferences_actor::PreferencesActor::super
                         worker: CompactionWorker::new(
                             services.clone(),
                             handle.clone(),
-                            state.clone()
+                            state.clone(),
+                            jinn_domain::common::tcaps::mint::mint_session_cap(),
                         ),
                     },
                 )
@@ -1030,7 +1035,8 @@ jinn_domain::feat::preferences_actor::preferences_actor::PreferencesActor::super
                         worker: CompactionWorker::new(
                             services.clone(),
                             handle.clone(),
-                            state.clone()
+                            state.clone(),
+                            jinn_domain::common::tcaps::mint::mint_session_cap(),
                         ),
                     },
                 )
@@ -1434,6 +1440,7 @@ jinn_domain::feat::preferences_actor::preferences_actor::PreferencesActor::super
                     deps: actor_deps.clone(),
                     services: services.clone(),
                     state: state.clone(),
+                    cap: jinn_domain::common::tcaps::mint::mint_session_cap(),
                     startup_session_id: state.read().session.active_session_id().to_string(),
                     domain_ctx: shared_domain_ctx.clone(),
                 },

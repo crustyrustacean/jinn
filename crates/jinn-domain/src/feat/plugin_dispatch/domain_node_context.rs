@@ -86,7 +86,10 @@ pub struct DomainNodeContext {
     services: Services,
     /// Shared application state.
     state: State,
-    /// Maps session IDs to pending oneshot senders.
+    /// Write cap for session.
+    session_cap: crate::common::tcaps::SessionCap,
+    /// Write cap for context.
+    context_cap: crate::common::tcaps::ContextCap,
     ///
     /// The sender carries a `Result`: `Ok(text)` for a successful one-shot
     /// (assistant text) or `Err(message)` when the one-shot session ended in an
@@ -100,6 +103,8 @@ impl DomainNodeContext {
         Self {
             services,
             state,
+            session_cap: crate::common::tcaps::mint::mint_session_cap(),
+            context_cap: crate::common::tcaps::mint::mint_context_cap(),
             pending: Arc::new(Mutex::new(HashMap::new())),
         }
     }
@@ -147,7 +152,9 @@ impl DomainNodeContext {
             tools = ?tools,
             "create_child_session: child created"
         );
-        self.state.write().session.insert(session);
+        self.state.with_session(&self.session_cap, |view| {
+            view.session.map().insert(session);
+        });
 
         // Resolve the child's session-scoped tool set from the two sources.
         self.register_child_tools(parent_session_id, &session_id, inherit_tools, tools);
@@ -225,13 +232,14 @@ impl DomainNodeContext {
 
         // Write directly to state so tools are immediately visible
         // (works in tests without actor bus).
-        self.state
-            .write()
-            .context
-            .session_tool_definitions
-            .entry(child_id.clone())
-            .or_default()
-            .extend(child_map);
+        self.state.with_context(&self.context_cap, |view| {
+            use crate::common::tcaps::context::SessionToolDefinitionsWrite;
+            view.context
+                .session_tool_definitions_mut()
+                .entry(child_id.clone())
+                .or_default()
+                .extend(child_map);
+        });
     }
 
     /// Returns `true` if there is a pending oneshot for the given session ID.
@@ -305,10 +313,9 @@ impl DomainNodeContext {
 
         // 6. Insert into app state. Do NOT set_active — the cloned one-shot
         //    must stay invisible; the user's active chat view is unchanged.
-        {
-            let mut state = self.state.write();
-            state.session.insert(session);
-        }
+        self.state.with_session(&self.session_cap, |view| {
+            view.session.map().insert(session);
+        });
 
         // 7. Create oneshot, enqueue, await
         let (tx, rx) = oneshot::channel();
@@ -390,10 +397,9 @@ impl DomainNodeContext {
 
         // 5. Insert into app state. Do NOT set_active — the one-shot must
         //    stay invisible; the user's active chat view is unchanged.
-        {
-            let mut state = self.state.write();
-            state.session.insert(session);
-        }
+        self.state.with_session(&self.session_cap, |view| {
+            view.session.map().insert(session);
+        });
 
         // 6. Create oneshot, enqueue, await.
         let (tx, rx) = oneshot::channel();
