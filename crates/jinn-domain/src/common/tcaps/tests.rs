@@ -33,11 +33,7 @@ fn push_entry_routes_through_history_append() {
     // Given a State with one active session and a minted SessionCap.
     let state = State::new(AppState::default());
     let cap = mint::mint_session_cap();
-    let before = state
-        .read()
-        .active_session()
-        .history()
-        .len();
+    let before = state.read().active_session().history().len();
 
     // When appending an entry through the cap-gated projection.
     state.with_session(&cap, |view| {
@@ -46,11 +42,7 @@ fn push_entry_routes_through_history_append() {
     });
 
     // Then the active session's history grew by one.
-    let after = state
-        .read()
-        .active_session()
-        .history()
-        .len();
+    let after = state.read().active_session().history().len();
     assert_eq!(after, before + 1);
 }
 
@@ -64,9 +56,8 @@ fn provider_write_routes_through_provider_ops() {
     // When writing a model cache through the cap-gated ProviderOps.
     state.with_provider(&cap, |view| {
         use crate::common::tcaps::provider::ModelCacheWrite;
-        view.provider.set_model_cache(Some(
-            crate::feat::provider_infra::ModelCache::new(),
-        ));
+        view.provider
+            .set_model_cache(Some(crate::feat::provider_infra::ModelCache::new()));
     });
 
     // Then the provider's model cache is now set.
