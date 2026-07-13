@@ -208,7 +208,7 @@ impl DiscordStatusActor {
     ///
     /// Separate from the kameo message path so it can be called from the
     /// background drain loop without an actor message round-trip.
-    fn apply_discord_update(dashboard: &mut DashboardState, update: &DiscordStatusUpdate) {
+    pub(crate) fn apply_discord_update(dashboard: &mut DashboardState, update: &DiscordStatusUpdate) {
         let message = update.full_message();
         let (lifecycle, with_description) = match update {
             DiscordStatusUpdate::Connecting => {
