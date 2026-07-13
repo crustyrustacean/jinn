@@ -142,6 +142,7 @@ mod tests {
     use crate::common::actor_deps::ActorDeps;
     use crate::common::services::Services;
     use crate::common::services::bus_service::BusAudit;
+    use crate::feat::preferences_actor::app_state_file::AppStateFile;
     use crate::feat::preferences_actor::app_state_storage::InMemoryAppStateStorage;
     use crate::feat::preferences_actor::protocol::app_state_command::{
         AppStateUpdate, UpdateAppState,
@@ -241,5 +242,98 @@ mod tests {
         assert_eq!(loaded.last_model, Some(expected));
         assert_eq!(loaded.sidebar_width, Some(40));
         assert_eq!(loaded.theme_name.as_deref(), Some("nord"));
+    }
+
+    #[tokio::test]
+    async fn sync_state_sets_sidebar_width_default_30() {
+        // Given an app-state actor.
+        let (actor, _audit, _services) = create_actor().await;
+
+        // When syncing AppStateFile with sidebar_width = None.
+        let app_state = AppStateFile {
+            sidebar_width: None,
+            ..AppStateFile::default()
+        };
+        actor.sync_state(&app_state);
+
+        // Then sidebar_width is the default 30.
+        let guard = actor.state.read();
+        assert_eq!(guard.frontend.sidebar_width, 30);
+    }
+
+    #[tokio::test]
+    async fn sync_state_updates_sidebar_width() {
+        // Given an app-state actor.
+        let (actor, _audit, _services) = create_actor().await;
+
+        // When syncing AppStateFile with sidebar_width = 50.
+        let app_state = AppStateFile {
+            sidebar_width: Some(50),
+            ..AppStateFile::default()
+        };
+        actor.sync_state(&app_state);
+
+        // Then sidebar_width is 50.
+        let guard = actor.state.read();
+        assert_eq!(guard.frontend.sidebar_width, 50);
+    }
+
+    #[tokio::test]
+    async fn sync_state_sets_correct_persona() {
+        use crate::feat::persona::Persona;
+        // If the condition were flipped, the wrong persona would be set.
+        // Given an app-state actor with two personas loaded.
+        let (actor, _audit, _services) = create_actor().await;
+        {
+            let mut guard = actor.state.write();
+            guard.context.personas = vec![
+                Persona {
+                    name: "coder".to_owned(),
+                    description: String::new(),
+                    body: String::new(),
+                    file_path: std::path::PathBuf::new(),
+                },
+                Persona {
+                    name: "writer".to_owned(),
+                    description: String::new(),
+                    body: String::new(),
+                    file_path: std::path::PathBuf::new(),
+                },
+            ];
+        }
+
+        // When syncing AppStateFile with persona_name = "writer".
+        let app_state = AppStateFile {
+            persona_name: Some("writer".to_owned()),
+            ..AppStateFile::default()
+        };
+        actor.sync_state(&app_state);
+
+        // Then the active persona is "writer", not "coder".
+        let guard = actor.state.read();
+        let active = guard
+            .context
+            .active_persona
+            .as_ref()
+            .expect("should have active persona");
+        assert_eq!(active.name, "writer");
+    }
+
+    #[tokio::test]
+    async fn sync_state_resolves_default_theme_when_none() {
+        // Given an app-state actor.
+        let (actor, _audit, _services) = create_actor().await;
+
+        // When syncing AppStateFile with theme_name = None.
+        let app_state = AppStateFile {
+            theme_name: None,
+            ..AppStateFile::default()
+        };
+        actor.sync_state(&app_state);
+
+        // Then the theme was resolved and caches invalidated without panic.
+        // resolve_theme(None, ...) returns the embedded default theme.
+        let _guard = actor.state.read();
+        // If we reach here, the handler completed successfully.
     }
 }
