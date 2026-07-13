@@ -24,8 +24,9 @@ pub struct DiscordConfig {
 
     /// Name of the session lifecycle (from `[session_lifecycle]`) to run during
     /// `/new` setup. **Required** to use the bot — users who want no setup
-    /// script declare a trivial lifecycle (e.g. `echo`). The lifecycle
-    /// conventionally declares two params, `<branch>` and `<repo>`.
+    /// script declare a trivial lifecycle (e.g. `echo`). The lifecycle may
+    /// declare any number of params via `$1`/`<name>`/`$@`; the bot prompts the
+    /// user for them space-delimited and re-prompts on a count mismatch.
     #[serde(default)]
     pub lifecycle: Option<String>,
 
