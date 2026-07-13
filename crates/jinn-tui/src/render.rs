@@ -33,11 +33,16 @@ pub fn render(app: &mut TuiApp, frame: &mut Frame<'_>) {
     let state = app.core.state.read();
     let ctx = RenderCtx::new(&state).with_plugins(&app.plugins);
 
-    let layout = AppLayout::new(
+    let is_dashboard = matches!(
+        state.frontend.scope_stack.base(),
+        FocusScope::Dashboard,
+    );
+    let layout = AppFrameLayout::new(
         area,
         state.active_chat_input().visual_line_count() as u16,
         area.height / 2,
         state.frontend.sidebar_width,
+        is_dashboard,
     );
     let sidebar_focused = state.frontend.scope_stack.is_sidebar();
     let active_scope = state.frontend.scope_stack.current();
@@ -98,8 +103,10 @@ fn apply_pre_render_mutation(app: &mut TuiApp, area: Rect) {
     }
 }
 
-/// Renders the always-visible layers: border, sidebar, chat tab, session preview,
-/// status bar, and which-key popup.
+/// Renders the base layers for the active tab. In Chat mode: tab bar, border,
+/// sidebar, chat tab, session/task-list previews, and status bar. In Dashboard
+/// mode: tab bar and the full-width dashboard table only. The which-key popup
+/// renders in both modes.
 #[expect(
     clippy::too_many_arguments,
     reason = "all inputs are single-use render pass params"
@@ -110,45 +117,43 @@ fn render_base_layers(
     which_key: &mut WhichKeyInstance,
     frame: &mut Frame<'_>,
     ctx: &RenderCtx<'_>,
-    layout: &AppLayout,
+    layout: &AppFrameLayout,
     frame_area: Rect,
     sidebar_focused: bool,
     rects: &mut Vec<Rect>,
 ) {
-    tab_bar::render_tab_bar(frame, layout.tab_bar, ctx);
-
-    let is_dashboard = matches!(
-        ctx.state.frontend.scope_stack.base(),
-        jinn_domain::FocusScope::Dashboard,
-    );
-
-    if is_dashboard {
-        dashboard_tab::render_dashboard(frame, layout.content, ctx);
-    } else {
-        chat_tab::border::render_border(frame, layout.border, ctx);
-        chat_tab::sidebar::render_sidebar(
-            sidebar,
-            frame,
-            layout.sidebar,
-            sidebar_focused,
-            ctx,
-            rects,
-        );
-        chat_tab::render_chat_tab(ui_registry, frame, layout, ctx, rects);
-        jinn_domain::feat::ui::sidebar::sessions::render_session_preview_for_state(
-            frame,
-            layout.sidebar,
-            frame_area,
-            ctx,
-        );
-        jinn_domain::feat::ui::sidebar::task_list_section::preview::render_task_list_preview_for_state(
-            frame,
-            layout.sidebar,
-            frame_area,
-            ctx,
-        );
+    match layout {
+        AppFrameLayout::Dashboard(dash) => {
+            tab_bar::render_tab_bar(frame, dash.tab_bar, ctx);
+            dashboard_tab::render_dashboard(frame, dash.content, ctx);
+        }
+        AppFrameLayout::Chat(chat) => {
+            tab_bar::render_tab_bar(frame, chat.tab_bar, ctx);
+            chat_tab::border::render_border(frame, chat.border, ctx);
+            chat_tab::sidebar::render_sidebar(
+                sidebar,
+                frame,
+                chat.sidebar,
+                sidebar_focused,
+                ctx,
+                rects,
+            );
+            chat_tab::render_chat_tab(ui_registry, frame, chat, ctx, rects);
+            jinn_domain::feat::ui::sidebar::sessions::render_session_preview_for_state(
+                frame,
+                chat.sidebar,
+                frame_area,
+                ctx,
+            );
+            jinn_domain::feat::ui::sidebar::task_list_section::preview::render_task_list_preview_for_state(
+                frame,
+                chat.sidebar,
+                frame_area,
+                ctx,
+            );
+            status_bar::render_status_bar(ui_registry, frame, chat.status_bar, ctx);
+        }
     }
-    status_bar::render_status_bar(ui_registry, frame, layout.status_bar, ctx);
     which_key::render_which_key(frame, which_key, ctx);
 }
 
