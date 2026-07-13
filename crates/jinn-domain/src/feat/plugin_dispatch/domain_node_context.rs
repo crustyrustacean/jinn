@@ -763,7 +763,10 @@ mod tests {
         // Given a source session set as the active view.
         let (ctx, _audit) = make_ctx_with_audit();
         let source_id = seed_source_session(&ctx, "ollama/llama3");
-        ctx.state.write_test_no_cap().session.set_active(source_id.clone());
+        ctx.state
+            .write_test_no_cap()
+            .session
+            .set_active(source_id.clone());
 
         // When the one-shot runs (parking on its response channel).
         let fut = ctx.send_llm_request_oneshot(

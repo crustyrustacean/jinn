@@ -129,7 +129,11 @@ mod tests {
         let app = crate::TuiApp::test_builder().build().await;
         let mut entry = ChatEntry::user("hello");
         entry.apply_context_override(ContextOverride::ForcedExclude, ChangeSource::User);
-        app.core.state.write_test_no_cap().frontend.audit_popup_visible = true;
+        app.core
+            .state
+            .write_test_no_cap()
+            .frontend
+            .audit_popup_visible = true;
         app.core
             .state
             .write_test_no_cap()
