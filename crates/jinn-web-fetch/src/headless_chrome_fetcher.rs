@@ -29,6 +29,7 @@ use async_trait::async_trait;
 use headless_chrome::{Browser, LaunchOptions};
 use parking_lot::Mutex;
 
+use crate::stealth::StealthSettings;
 use crate::{Extractor, FetchError, FetchOptions, FetchOutput, OutputFormat, WebFetcher};
 
 /// How long a kept-warm browser survives while idle before headless_chrome
@@ -91,11 +92,29 @@ pub(crate) trait HeadlessBrowserFactory: Send + Sync {
 
 /// The [`LaunchOptions`] used for every Chromium launch.
 ///
-/// Exposed `pub(crate)` so the idle-timeout invariant is unit-testable.
-pub(crate) fn build_launch_options() -> LaunchOptions<'static> {
+/// Stealth launch flags are added when `settings.enabled` is true. The binary
+/// path from `settings.binary_path` is passed through so a system-installed
+/// branded Chrome (preferred) or Chromium can be selected; when `None`, the
+/// `headless_chrome` crate's own discovery is used.
+///
+/// Exposed `pub(crate)` so the idle-timeout and stealth-arg invariants are
+/// unit-testable.
+pub(crate) fn build_launch_options(settings: &StealthSettings) -> LaunchOptions<'static> {
+    // `--disable-blink-features=AutomationControlled` is the primary tell
+    // suppressor: it stops Chrome from setting navigator.webdriver and
+    // advertizing automation. The site-isolation flags avoid a secondary
+    // tell left by the default process model.
+    let mut args: Vec<&'static std::ffi::OsStr> = Vec::new();
+    if settings.enabled {
+        args.push("--disable-blink-features=AutomationControlled".as_ref());
+        args.push("--disable-features=IsolateOrigins,site-per-process".as_ref());
+    }
+
     LaunchOptions {
         headless: true,
         idle_browser_timeout: IDLE_BROWSER_TIMEOUT,
+        path: settings.binary_path.clone(),
+        args,
         ..Default::default()
     }
 }
@@ -107,6 +126,8 @@ pub(crate) fn build_launch_options() -> LaunchOptions<'static> {
 /// Production backend: wraps a real [`headless_chrome::Browser`].
 struct ChromeBrowser {
     browser: Browser,
+    /// Stealth settings applied per-tab in `render`.
+    stealth: StealthSettings,
 }
 
 impl HeadlessBrowser for ChromeBrowser {
@@ -116,12 +137,40 @@ impl HeadlessBrowser for ChromeBrowser {
             .new_tab()
             .map_err(|e| classify_browser_error(&e))?;
 
+        // Stealth: apply per-tab BEFORE navigation so the patches are in place
+        // before any page script runs. Order matters — enable_stealth_mode()
+        // sets a naive hardcoded UA via bypass_user_agent(); our explicit
+        // set_user_agent() call AFTER it overrides that with the correct
+        // OS-matched string and Accept-Language.
+        if self.stealth.enabled {
+            tracing::trace!("HeadlessChromeFetcher: applying stealth mode");
+            tab.enable_stealth_mode()
+                .map_err(|e| classify_browser_error(&e))?;
+            tab.set_user_agent(
+                &self.stealth.user_agent,
+                Some(&self.stealth.accept_language),
+                Some(&self.stealth.platform),
+            )
+            .map_err(|e| classify_browser_error(&e))?;
+        }
+
         tracing::trace!(url = %url, "HeadlessChromeFetcher: navigating to URL");
         tab.navigate_to(url)
             .map_err(|e| classify_browser_error(&e))?
             .wait_until_navigated()
             .map_err(|e| classify_browser_error(&e))?;
         tracing::trace!("HeadlessChromeFetcher: navigation complete");
+
+        // Challenge-aware wait: wait_until_navigated returns when the
+        // interstitial loads, not after the proof-of-work solves. Poll for
+        // clearance (redirect to real content) up to the configured timeout.
+        if self.stealth.enabled {
+            let timeout = self.stealth.anubis_timeout;
+            crate::challenge::wait_for_clearance(
+                || tab.get_content().map_err(|e| classify_browser_error(&e)),
+                timeout,
+            )?;
+        }
 
         tracing::trace!("HeadlessChromeFetcher: getting page HTML");
         let html = tab.get_content().map_err(|e| classify_browser_error(&e))?;
@@ -145,17 +194,34 @@ impl HeadlessBrowser for ChromeBrowser {
 }
 
 /// Production factory: launches a real Chromium via [`headless_chrome`].
-struct ChromeFactory;
+///
+/// Carries the [`StealthSettings`] so every launch applies the configured
+/// anti-detection flags and binary path.
+struct ChromeFactory {
+    stealth: StealthSettings,
+}
+
+impl ChromeFactory {
+    /// Creates a factory that launches with the given stealth settings.
+    #[must_use]
+    pub(crate) fn new(stealth: StealthSettings) -> Self {
+        Self { stealth }
+    }
+}
 
 impl HeadlessBrowserFactory for ChromeFactory {
     fn launch(&self) -> Result<Arc<dyn HeadlessBrowser>, FetchError> {
-        tracing::info!("HeadlessChromeFetcher: launching headless Chrome");
-        let browser = Browser::new(build_launch_options()).map_err(|e| {
+        tracing::info!(
+            stealth = self.stealth.enabled,
+            "HeadlessChromeFetcher: launching headless Chrome"
+        );
+        let stealth = self.stealth.clone();
+        let browser = Browser::new(build_launch_options(&self.stealth)).map_err(|e| {
             tracing::error!(err = %e, "HeadlessChromeFetcher: failed to launch browser");
             FetchError::BrowserLaunch
         })?;
         tracing::info!("HeadlessChromeFetcher: browser launched successfully");
-        Ok(Arc::new(ChromeBrowser { browser }))
+        Ok(Arc::new(ChromeBrowser { browser, stealth }))
     }
 
     fn name(&self) -> &'static str {
@@ -265,12 +331,16 @@ pub struct HeadlessChromeFetcher {
 }
 
 impl HeadlessChromeFetcher {
-    /// Creates a new fetcher with the given extractor map, without launching a browser.
+    /// Creates a new fetcher with the given extractor map and stealth settings,
+    /// without launching a browser.
     ///
     /// The browser will be launched on the first `fetch()` call.
     #[must_use]
-    pub fn new(extractors: HashMap<OutputFormat, Arc<dyn Extractor>>) -> Self {
-        Self::with_factory(extractors, Arc::new(ChromeFactory))
+    pub fn new(
+        extractors: HashMap<OutputFormat, Arc<dyn Extractor>>,
+        stealth: StealthSettings,
+    ) -> Self {
+        Self::with_factory(extractors, Arc::new(ChromeFactory::new(stealth)))
     }
 
     /// Test seam: creates a fetcher backed by a swappable browser factory.
@@ -453,7 +523,7 @@ impl WebFetcher for HeadlessChromeFetcher {
 
 impl Default for HeadlessChromeFetcher {
     fn default() -> Self {
-        Self::new(HashMap::new())
+        Self::new(HashMap::new(), StealthSettings::default())
     }
 }
 
