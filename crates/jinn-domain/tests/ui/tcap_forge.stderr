@@ -1,0 +1,10 @@
+error[E0624]: associated function `new` is private
+ --> tests/ui/tcap_forge.rs:9:32
+  |
+9 |     let _forged = ProviderCap::new();
+  |                                ^^^ private associated function
+  |
+ ::: src/common/tcaps/provider.rs
+  |
+  |     pub(in crate::common::tcaps) fn new() -> Self {
+  |     --------------------------------------------- private associated function defined here
