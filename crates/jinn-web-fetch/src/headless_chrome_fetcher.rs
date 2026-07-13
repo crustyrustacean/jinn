@@ -144,7 +144,8 @@ impl HeadlessBrowser for ChromeBrowser {
         // OS-matched string and Accept-Language.
         if self.stealth.enabled {
             tracing::trace!("HeadlessChromeFetcher: applying stealth mode");
-            tab.enable_stealth_mode().map_err(|e| classify_browser_error(&e))?;
+            tab.enable_stealth_mode()
+                .map_err(|e| classify_browser_error(&e))?;
             tab.set_user_agent(
                 &self.stealth.user_agent,
                 Some(&self.stealth.accept_language),
@@ -210,7 +211,10 @@ impl ChromeFactory {
 
 impl HeadlessBrowserFactory for ChromeFactory {
     fn launch(&self) -> Result<Arc<dyn HeadlessBrowser>, FetchError> {
-        tracing::info!(stealth = self.stealth.enabled, "HeadlessChromeFetcher: launching headless Chrome");
+        tracing::info!(
+            stealth = self.stealth.enabled,
+            "HeadlessChromeFetcher: launching headless Chrome"
+        );
         let stealth = self.stealth.clone();
         let browser = Browser::new(build_launch_options(&self.stealth)).map_err(|e| {
             tracing::error!(err = %e, "HeadlessChromeFetcher: failed to launch browser");
