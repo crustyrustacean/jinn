@@ -31,11 +31,10 @@ impl SessionPersistenceActor {
             build_models_refresh_table(event)
         };
 
-        {
-            let mut state = self.state.write();
-            let session = state.session_mut_or_create(&event.session_id);
+        self.state.with_session(&self.cap, |view| {
+            let session = view.session.map().get_or_create(&event.session_id);
             session.push_entry(ChatEntry::transient(content));
-        }
+        });
     }
 
     /// Pushes a transient entry listing discovered skills.
@@ -62,12 +61,11 @@ impl SessionPersistenceActor {
             build_skills_refresh_message(&event.skills)
         };
 
-        {
-            let mut state = self.state.write();
-            if let Some(session) = state.try_session_mut(&event.session_id) {
+        self.state.with_session(&self.cap, |view| {
+            if let Some(session) = view.session.map().get_mut(&event.session_id) {
                 session.push_entry(ChatEntry::transient(content));
             }
-        }
+        });
     }
 
     /// Loads session picker entries from the session store into `AppState`.
@@ -83,6 +81,8 @@ impl SessionPersistenceActor {
             };
             let entries =
                 crate::feat::session::entries::load_session_entries_from_store(store, &theme).await;
+            // TODO(tcaps): This writes to `frontend.session_picker` (not session),
+            // so it cannot use SessionCap. Migrate to FrontendCap when frontend capsule is built.
             let mut state = self.state.write();
             state.frontend.session_picker_mut().set_items(entries);
         }
@@ -154,47 +154,48 @@ impl SessionPersistenceActor {
 
         // Capture what changed (if anything) so events can be emitted after releasing the write lock.
         let (session_id, changed) = {
-            let mut state = self.state.write();
-            let session = state.session_mut_or_create(&payload.session_id);
+            self.state.with_session(&self.cap, |view| {
+                let session = view.session.map().get_or_create(&payload.session_id);
 
-            for mutation in payload.mutations.clone() {
-                if is_prune_override(&mutation) {
-                    // Pruner ForcedExclude: route into the accumulation buffer
-                    // so it counts toward the batch flush threshold.
-                    if let crate::feat::session::history_mutation::HistoryMutation::SetContextOverride { entry_id, value, source } = &mutation {
-                        let cost = token_costs.get(entry_id).copied().unwrap_or(0);
-                        session.core.ephemeral.accumulated_overrides
-                            .push(entry_id.clone(), *value, source.clone(), cost);
+                for mutation in payload.mutations.clone() {
+                    if is_prune_override(&mutation) {
+                        // Pruner ForcedExclude: route into the accumulation buffer
+                        // so it counts toward the batch flush threshold.
+                        if let crate::feat::session::history_mutation::HistoryMutation::SetContextOverride { entry_id, value, source } = &mutation {
+                            let cost = token_costs.get(entry_id).copied().unwrap_or(0);
+                            session.core.ephemeral.accumulated_overrides
+                                .push(entry_id.clone(), *value, source.clone(), cost);
+                        }
+                    } else {
+                        // All other mutations apply immediately:
+                        //   - compaction overrides (compaction is itself a context reduction),
+                        //   - shield ForcedInclude (protection, never a prune),
+                        //   - any non-context mutation.
+                        // Only prune ForcedExclude is subject to the accumulation gate.
+                        session.queue_mutations(vec![mutation]);
                     }
-                } else {
-                    // All other mutations apply immediately:
-                    //   - compaction overrides (compaction is itself a context reduction),
-                    //   - shield ForcedInclude (protection, never a prune),
-                    //   - any non-context mutation.
-                    // Only prune ForcedExclude is subject to the accumulation gate.
-                    session.queue_mutations(vec![mutation]);
                 }
-            }
 
-            // Flush the accumulator if its deduplicated token total crossed the threshold.
-            session.flush_accumulated_overrides_if_needed(threshold);
+                // Flush the accumulator if its deduplicated token total crossed the threshold.
+                session.flush_accumulated_overrides_if_needed(threshold);
 
-            tracing::debug!(
-                session_id = %payload.session_id,
-                queue_len = session.core.ephemeral.pending_mutations.len(),
-                accumulated = session.accumulated_overrides_total(),
-                threshold,
-                "routed history mutations from worker"
-            );
+                tracing::debug!(
+                    session_id = %payload.session_id,
+                    queue_len = session.core.ephemeral.pending_mutations.len(),
+                    accumulated = session.accumulated_overrides_total(),
+                    threshold,
+                    "routed history mutations from worker"
+                );
 
-            // If the session is idle (no active stream), drain immediately.
-            // Otherwise mutations wait for the next stream completion.
-            if matches!(session.phase(), PhaseKind::Idle) {
-                let (_count, changed) = session.drain_and_apply_pending_mutations();
-                (payload.session_id.clone(), changed)
-            } else {
-                (payload.session_id.clone(), Vec::new())
-            }
+                // If the session is idle (no active stream), drain immediately.
+                // Otherwise mutations wait for the next stream completion.
+                if matches!(session.phase(), PhaseKind::Idle) {
+                    let (_count, changed) = session.drain_and_apply_pending_mutations();
+                    (payload.session_id.clone(), changed)
+                } else {
+                    (payload.session_id.clone(), Vec::new())
+                }
+            })
         };
 
         // Emit ContextOverrideChanged events for any entry whose override actually changed.
@@ -216,16 +217,16 @@ impl SessionPersistenceActor {
         &mut self,
         payload: &ResetSessionHistory,
     ) {
-        let mut state = self.state.write();
-        let Some(session) = state.session.get_mut(&payload.session_id) else {
-            tracing::warn!(
-                session_id = %payload.session_id,
-                "ResetSessionHistory: session not found"
-            );
-            return;
-        };
-        session.clear_history();
-        drop(state);
+        self.state.with_session(&self.cap, |view| {
+            let Some(session) = view.session.map().get_mut(&payload.session_id) else {
+                tracing::warn!(
+                    session_id = %payload.session_id,
+                    "ResetSessionHistory: session not found"
+                );
+                return;
+            };
+            session.clear_history();
+        });
         tracing::debug!(session_id = %payload.session_id, "session history reset");
     }
 }
