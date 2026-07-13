@@ -36,6 +36,12 @@ use crate::PickerEntry;
 /// Written to exclusively by `ProviderActor` and `IntentHandler`.
 /// No other actor should mutate these fields.
 #[derive(Debug)]
+// Some fields are private (capsule-sealed); the rest remain `pub` until
+// Phase 2 caps their accessors too. Tracked in .plans/seal-capsule-walls/plan.md.
+#[expect(
+    clippy::partial_pub_fields,
+    reason = "remaining pub fields pending Phase 2 capsule sealing"
+)]
 pub struct ProviderState {
     /// Last known model cache from discovery.
     /// OWNER: provider-actor (updates from ModelsRefreshed / ModelCacheLoaded events).
@@ -52,7 +58,7 @@ pub struct ProviderState {
     /// When `false`, ENTER selects the highlighted model as a single model. When
     /// `true`, TAB toggles models into the alloy set and ENTER force-includes the
     /// highlight then commits (1 model -> Single, 2+ -> Alloy).
-    pub alloy_mode: bool,
+    alloy_mode: bool,
 }
 
 impl Default for ProviderState {

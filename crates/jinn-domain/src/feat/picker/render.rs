@@ -22,8 +22,7 @@ pub fn render_persona_picker(frame: &mut Frame<'_>, area: Rect, ctx: &RenderCtx)
         let gray = Style::default().fg(state.frontend.theme.muted_text);
         let active_name = state
             .context
-            .active_persona
-            .as_ref()
+            .active_persona()
             .map_or("none", |p| p.name.as_str());
         Line::from(vec![
             Span::styled("Active: ".to_owned(), gray),
