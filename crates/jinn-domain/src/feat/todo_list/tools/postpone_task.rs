@@ -105,21 +105,23 @@ pub fn execute(call: ToolCall, ctx: ToolContext) -> BoxedToolFuture {
 
         let source_id = TaskId::from_string(task_id_str);
 
-        let result = {
-            let mut w = state.write();
-            let session = w.session_mut(&session_id);
-            let list = session.task_list_mut();
-            match list.postpone_task(&source_id, position) {
-                Ok(new_task_id) => {
-                    let next_block = list.render_next_block();
-                    let rendered = list.render_text_with_blockers();
-                    Ok(format!(
-                        "{next_block}\nPostponed task [{source_id}] \u{2192} created copy [{new_task_id}].\n\n{rendered}"
-                    ))
-                }
-                Err(e) => Err(format!("Error: {e}")),
-            }
+        let Some(session_cap) = &ctx.session_cap else {
+            return tool_error(call, "no session capability");
         };
+        let result = state.with_session(session_cap, |view| {
+            let session = view.session.map().get_unchecked_mut(&session_id);
+                let list = session.task_list_mut();
+                match list.postpone_task(&source_id, position) {
+                    Ok(new_task_id) => {
+                        let next_block = list.render_next_block();
+                        let rendered = list.render_text_with_blockers();
+                        Ok(format!(
+                            "{next_block}\nPostponed task [{source_id}] \u{2192} created copy [{new_task_id}].\n\n{rendered}"
+                        ))
+                    }
+                    Err(e) => Err(format!("Error: {e}")),
+                }
+            });
 
         match result {
             Ok(content) => {
@@ -197,6 +199,7 @@ mod tests {
             max_output_bytes: None,
 
             dispatched_at: jiff::Timestamp::now(),
+            session_cap: Some(crate::common::tcaps::mint::mint_session_cap()),
         }
     }
 
@@ -208,7 +211,7 @@ mod tests {
             r.session.active_session_id().clone()
         };
         let (p1, t1, p2, t2) = {
-            let mut w = state.write();
+            let mut w = state.write_test_no_cap();
             let session = w.session_mut(&session_id);
             let p1 = session.task_list_mut().add_phase("Research");
             let t1 = session

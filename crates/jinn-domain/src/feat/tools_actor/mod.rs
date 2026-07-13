@@ -182,6 +182,8 @@ pub struct ToolOrchestratorActor {
     pending: HashMap<SessionId, PendingBatch>,
     /// Shared application state for reading session CWD.
     state: State,
+    /// Session write capability for todo-list and skill tools.
+    session_cap: crate::common::tcaps::session::SessionCap,
     /// Runtime services.
     services: Services,
 }
@@ -193,6 +195,8 @@ pub struct ToolOrchestratorActorDeps {
     pub deps: ActorDeps,
     /// Shared application state.
     pub state: State,
+    /// Session write capability for todo-list and skill tools.
+    pub session_cap: crate::common::tcaps::session::SessionCap,
     /// Runtime services.
     pub services: Services,
     /// Override which built-in tools to register. `None` means register all.
@@ -274,6 +278,7 @@ impl Actor for ToolOrchestratorActor {
             tools: HashMap::new(),
             pending: HashMap::new(),
             state: args.state,
+            session_cap: args.session_cap,
             services: args.services,
         };
         let all_builtins = registry::builtin_tools(default_timeout_secs);
@@ -542,6 +547,7 @@ impl ToolOrchestratorActor {
             max_output_lines,
             max_output_bytes,
             dispatched_at,
+            session_cap: Some(self.session_cap),
         }
     }
 
@@ -1047,6 +1053,7 @@ mod timeout_tests {
             max_output_lines: None,
             max_output_bytes: None,
             dispatched_at: jiff::Timestamp::now(),
+            session_cap: None,
         }
     }
 
@@ -1283,6 +1290,7 @@ mod panic_safety_tests {
                 max_output_lines: None,
                 max_output_bytes: None,
                 dispatched_at: jiff::Timestamp::now(),
+                session_cap: None,
             },
         ))
         .catch_unwind()

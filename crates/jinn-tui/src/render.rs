@@ -69,7 +69,7 @@ pub fn render(app: &mut TuiApp, frame: &mut Frame<'_>) {
 
 /// Sets wrap width and scroll offset before layout, using a write lock.
 fn apply_pre_render_mutation(app: &mut TuiApp, area: Rect) {
-    let mut wstate = app.core.state.write();
+    let mut wstate = app.core.state.write(&app.intent_handler_cap);
     let is_dashboard = matches!(
         wstate.frontend.scope_stack.base(),
         jinn_domain::FocusScope::Dashboard,

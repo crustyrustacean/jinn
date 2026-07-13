@@ -32,6 +32,8 @@ pub struct PreferencesActor {
     deps: ActorDeps,
     /// Shared application state — writes `frontend.preferences` inline after persist.
     state: State,
+    /// Write authority for `frontend.preferences`.
+    cap: crate::common::tcaps::FrontendCap,
 }
 
 /// Dependencies for [`PreferencesActor`].
@@ -41,6 +43,8 @@ pub struct PreferencesActorDeps {
     pub deps: ActorDeps,
     /// Shared application state.
     pub state: State,
+    /// Write authority for `frontend.preferences`.
+    pub cap: crate::common::tcaps::FrontendCap,
 }
 
 impl Actor for PreferencesActor {
@@ -54,6 +58,7 @@ impl Actor for PreferencesActor {
         Ok(Self {
             deps: args.deps,
             state: args.state,
+            cap: args.cap,
         })
     }
 }
@@ -89,16 +94,18 @@ impl PreferencesActor {
         // this actor are reflected immediately. The author of `frontend.preferences`
         // is this actor — keep the writes in one state guard.
         {
-            let mut state = self.state.write();
-            state.frontend.preferences = prefs.clone();
-            if matches!(
-                state.frontend.scope_stack.current(),
-                crate::common::focus::FocusScope::Picker {
-                    kind: crate::feat::picker::PickerKind::Project
+            self.state.with_preferences(&self.cap, |view| {
+                let frontend = view.frontend();
+                frontend.preferences = prefs.clone();
+                if matches!(
+                    frontend.scope_stack.current(),
+                    crate::common::focus::FocusScope::Picker {
+                        kind: crate::feat::picker::PickerKind::Project
+                    }
+                ) {
+                    crate::feat::picker::intent::load_project_picker_entries(frontend);
                 }
-            ) {
-                crate::feat::picker::intent::load_project_picker_entries(&mut state);
-            }
+            });
         }
 
         self.publish(PreferencesUpdated { preferences: prefs })

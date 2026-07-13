@@ -6,8 +6,7 @@
 //! ad-hoc cursor or active-session logic.
 
 use crate::common::app_state::AppState;
-use crate::feat::ui::sidebar::sessions::navigate::scroll_to_cursor;
-use crate::feat::ui::sidebar::sessions::state::sorted_open_sessions;
+use crate::feat::ui::sidebar::sessions::state::sorted_open_sessions_split;
 
 /// Reconcile sidebar cursor and active session after a session is removed.
 ///
@@ -19,23 +18,30 @@ use crate::feat::ui::sidebar::sessions::state::sorted_open_sessions;
 ///   sets it to whichever session is now under the cursor
 /// - Scrolls viewport to make the cursor visible
 pub fn reconcile_after_session_removal(state: &mut AppState) {
-    let sessions = sorted_open_sessions(state);
+    reconcile_split(&mut state.session, &mut state.frontend);
+}
+
+/// Split-borrow variant of [`reconcile_after_session_removal`] that takes the
+/// two sub-structs separately, for use inside tcaps views.
+pub fn reconcile_split(
+    session: &mut crate::common::session_map::SessionMap,
+    frontend: &mut crate::feat::ui::frontend_state::FrontendState,
+) {
+    let sessions = sorted_open_sessions_split(session, frontend);
     if sessions.is_empty() {
-        state.frontend.sessions_section.selected_index = Some(0);
+        frontend.sessions_section.selected_index = Some(0);
         return;
     }
 
-    let current = state.frontend.sessions_section.selected_index.unwrap_or(0);
+    let current = frontend.sessions_section.selected_index.unwrap_or(0);
     let clamped = current.min(sessions.len() - 1);
-    state.frontend.sessions_section.selected_index = Some(clamped);
+    frontend.sessions_section.selected_index = Some(clamped);
 
-    let active_id = state.session.active_session_id();
+    let active_id = session.active_session_id();
     let active_in_list = sessions.iter().any(|s| &s.id == active_id);
     if !active_in_list && let Some(s) = sessions.get(clamped) {
-        state.session.set_active(s.id.clone());
+        session.set_active(s.id.clone());
     }
-
-    scroll_to_cursor(state);
 }
 
 #[cfg(test)]
@@ -49,6 +55,7 @@ mod tests {
     )]
     use super::*;
     use crate::feat::session::chat_session::ChatSessionState;
+    use crate::feat::ui::sidebar::sessions::state::sorted_open_sessions;
 
     /// Helper: build state with N sessions, activate a specific one, set cursor.
     fn state_with_sessions(
@@ -61,12 +68,8 @@ mod tests {
         let default_id = state.session.active_session_id().clone();
         state.session.remove_without_replacement(&default_id);
 
-        let mut ids = Vec::new();
         for _ in 0..count {
-            let session = ChatSessionState::new();
-            let id = session.session_id().clone();
-            state.session.insert(session);
-            ids.push(id);
+            state.session.insert(ChatSessionState::new());
         }
 
         let sorted = sorted_open_sessions(&state);
@@ -94,7 +97,7 @@ mod tests {
 
         // Then cursor is clamped to index 1.
         assert_eq!(state.frontend.sessions_section.selected_index, Some(1));
-        // And active session is now the one at index 1 in the sorted list.
+        // Then active session is now the one at index 1 in the sorted list.
         let sorted = sorted_open_sessions(&state);
         assert_eq!(state.session.active_session_id(), &sorted[1].id);
     }
@@ -113,7 +116,7 @@ mod tests {
 
         // Then cursor stays at index 0.
         assert_eq!(state.frontend.sessions_section.selected_index, Some(0));
-        // And active session is now the one at index 0 in the new sorted list.
+        // Then active session is now the one at index 0 in the new sorted list.
         let sorted = sorted_open_sessions(&state);
         assert_eq!(state.session.active_session_id(), &sorted[0].id);
     }

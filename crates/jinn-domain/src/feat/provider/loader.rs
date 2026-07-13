@@ -1,12 +1,12 @@
 //! Provider picker loader - loads provider entries into picker state.
 
-use crate::common::app_state::AppState;
+use super::entries::{load_provider_entries, promote_selected_to_top, sorted_entries};
 use crate::common::services::Services;
+use crate::common::tcaps::provider::{
+    FrontendProviderPickerWrite, ModelCacheWrite, ProviderPickerWrite, ProviderView,
+};
 use crate::feat::provider_infra;
 use crate::feat::reasoning::{ReasoningEffort, ReasoningEffortEntry, resolve_effort};
-use crate::feat::ui::picker_states::PickerExt;
-
-use super::entries::{load_provider_entries, promote_selected_to_top, sorted_entries};
 use crate::feat::session::model_selection::ModelSelection;
 
 /// Sentinel provider ID for the "session default" compaction model entry.
@@ -20,28 +20,28 @@ pub(crate) const SESSION_DEFAULT_PROVIDER_ID: &str = "__session_default__";
 /// Reads from the provider registry and model cache, applies available-first
 /// sorting and active-provider promotion, then stores the entries via
 /// `SelectionState::set_items`.
-pub fn load_provider_picker_items(services: &Services, state: &mut AppState) {
+pub fn load_provider_picker_items(services: &Services, view: &mut ProviderView<'_>) {
     let registry = services.provider_registry.read();
     let api_keys = services.api_keys.read();
     let all = load_provider_entries(
         &registry,
         &api_keys,
-        state.provider.model_cache.as_ref(),
-        &state.frontend.theme,
+        view.provider.model_cache(),
+        view.provider_frontend.theme(),
     );
 
-    let model_selection = state.active_session().profile().model.clone();
+    let model_selection = view.session.active_session().profile().model.clone();
     let active_model = model_selection.display_str().to_owned();
     let mut entries = sorted_entries(&all, "", &active_model);
 
     // Pre-check entries matching the current model selection, but only when
     // the picker is in alloy mode. Single mode never builds checkmarks.
-    if state.provider.is_alloy_mode() {
+    if view.provider.is_alloy_mode() {
         pre_check_active_models(&mut entries, &model_selection);
         promote_selected_to_top(&mut entries);
     }
 
-    state.provider.provider_picker.set_items(entries);
+    view.provider.set_provider_picker_items(entries);
 }
 
 /// Sets `selected = true` on entries matching the current model selection.
@@ -71,7 +71,7 @@ pub(crate) fn pre_check_active_models(
 /// # Panics
 ///
 /// Panics if accessing the preferences subsystem fails.
-pub fn load_compaction_model_picker_items(services: &Services, state: &mut AppState) {
+pub fn load_compaction_model_picker_items(services: &Services, view: &mut ProviderView<'_>) {
     // Load preferences from service.
     let prefs = services.user_preferences_storage.read();
 
@@ -91,7 +91,7 @@ pub fn load_compaction_model_picker_items(services: &Services, state: &mut AppSt
         is_remote: false,
         is_active: sentinel_active,
         selected: false,
-        theme: state.frontend.theme.clone(),
+        theme: view.provider_frontend.theme().clone(),
     };
 
     // Load all provider entries using the existing infrastructure.
@@ -100,8 +100,8 @@ pub fn load_compaction_model_picker_items(services: &Services, state: &mut AppSt
     let all = load_provider_entries(
         &registry,
         &api_keys,
-        state.provider.model_cache.as_ref(),
-        &state.frontend.theme,
+        view.provider.model_cache(),
+        view.provider_frontend.theme(),
     );
 
     // Sort with the compaction model as the active provider.
@@ -113,10 +113,8 @@ pub fn load_compaction_model_picker_items(services: &Services, state: &mut AppSt
     // Prepend sentinel (always first).
     entries.insert(0, sentinel);
 
-    state
-        .frontend
-        .compaction_model_picker_mut()
-        .set_items(entries);
+    view.provider_frontend
+        .set_compaction_model_picker_items(entries);
 }
 
 /// Human-readable description for each effort variant.
@@ -154,9 +152,9 @@ const ALL_EFFORTS: [ReasoningEffort; 7] = [
 /// the variant resolved by [`resolve_effort`] from the session's own effort
 /// (seeded from the global at session creation). When the session has no effort
 /// set, no entry is active.
-pub fn load_reasoning_effort_picker_items(state: &mut AppState) {
+pub fn load_reasoning_effort_picker_items(view: &mut ProviderView<'_>) {
     // The session owns its effort (seeded from the global at creation).
-    let active = resolve_effort(state.active_session().profile().reasoning_effort);
+    let active = resolve_effort(view.session.active_session().profile().reasoning_effort);
 
     let entries = ALL_EFFORTS
         .iter()
@@ -167,15 +165,13 @@ pub fn load_reasoning_effort_picker_items(state: &mut AppState) {
                 name,
                 description: effort_description(effort).to_owned(),
                 is_active: active == Some(effort),
-                theme: state.frontend.theme.clone(),
+                theme: view.provider_frontend.theme().clone(),
             }
         })
         .collect::<Vec<_>>();
 
-    state
-        .frontend
-        .reasoning_effort_picker_mut()
-        .set_items(entries);
+    view.provider_frontend
+        .set_reasoning_effort_picker_items(entries);
 }
 
 #[cfg(test)]
@@ -190,8 +186,10 @@ mod tests {
     use super::*;
     use crate::common::app_state::AppState;
     use crate::common::services::test_services::TestServices;
+    use crate::common::tcaps::provider::ProviderView;
     use crate::feat::provider_infra::{ProviderEntry, ProvidersConfig};
     use crate::feat::session::model_selection::{AlloyStrategy, ModelSelection};
+    use crate::feat::ui::picker_states::PickerExt;
 
     #[rstest::rstest]
     fn load_compaction_model_picker_items_populates_picker() {
@@ -216,7 +214,10 @@ mod tests {
         let mut state = AppState::default();
 
         // When loading compaction model picker items.
-        load_compaction_model_picker_items(&services, &mut state);
+        load_compaction_model_picker_items(
+            &services,
+            &mut ProviderView::from_app_state_for_test(&mut state),
+        );
 
         // Then the picker has entries (sentinel + 1 provider = 2).
         let items = state.frontend.compaction_model_picker().items();
@@ -233,7 +234,7 @@ mod tests {
         let mut state = AppState::default();
 
         // When loading reasoning effort picker items.
-        load_reasoning_effort_picker_items(&mut state);
+        load_reasoning_effort_picker_items(&mut ProviderView::from_app_state_for_test(&mut state));
 
         // Then the picker has exactly 7 entries (one per variant).
         let items = state.frontend.reasoning_effort_picker().items();
@@ -248,7 +249,7 @@ mod tests {
             Some(crate::ReasoningEffort::Low);
 
         // When loading.
-        load_reasoning_effort_picker_items(&mut state);
+        load_reasoning_effort_picker_items(&mut ProviderView::from_app_state_for_test(&mut state));
 
         // Then only the Low entry is marked active.
         let items = state.frontend.reasoning_effort_picker().items();
@@ -279,7 +280,7 @@ mod tests {
         let mut state = AppState::default();
 
         // When loading.
-        load_reasoning_effort_picker_items(&mut state);
+        load_reasoning_effort_picker_items(&mut ProviderView::from_app_state_for_test(&mut state));
 
         // Then no entry is active — the picker reads only the session's own
         // effort, which is None here. The global seeds new sessions; it never
@@ -298,7 +299,7 @@ mod tests {
         let mut state = AppState::default();
 
         // When loading.
-        load_reasoning_effort_picker_items(&mut state);
+        load_reasoning_effort_picker_items(&mut ProviderView::from_app_state_for_test(&mut state));
 
         // Then no entry is active (resolve_effort returns None).
         let items = state.frontend.reasoning_effort_picker().items();
@@ -336,7 +337,10 @@ mod tests {
 
         state.provider.set_alloy_mode(true);
         // When loading provider picker items.
-        load_provider_picker_items(&services, &mut state);
+        load_provider_picker_items(
+            &services,
+            &mut ProviderView::from_app_state_for_test(&mut state),
+        );
 
         // Then the entry matching the session model has selected = true.
         let items = state.provider.provider_picker.items();
@@ -386,7 +390,10 @@ mod tests {
 
         state.provider.set_alloy_mode(true);
         // When loading provider picker items.
-        load_provider_picker_items(&services, &mut state);
+        load_provider_picker_items(
+            &services,
+            &mut ProviderView::from_app_state_for_test(&mut state),
+        );
 
         // Then both alloy members are selected.
         let items = state.provider.provider_picker.items();
@@ -442,7 +449,10 @@ mod tests {
 
         state.provider.set_alloy_mode(true);
         // When loading picker items.
-        load_provider_picker_items(&services, &mut state);
+        load_provider_picker_items(
+            &services,
+            &mut ProviderView::from_app_state_for_test(&mut state),
+        );
 
         // Then selected entries (llama3, mistral) appear before non-selected (gemma).
         let items = state.provider.provider_picker.items();

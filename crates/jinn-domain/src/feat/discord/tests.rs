@@ -176,7 +176,11 @@ fn session_id() -> SessionId {
 fn make_actor() -> (DiscordBridgeActor, kanal::AsyncReceiver<BridgeEvent>) {
     let (tx, rx) = kanal::bounded(64);
     (
-        DiscordBridgeActor::new(tx, State::new(AppState::default())),
+        DiscordBridgeActor::new(
+            tx,
+            State::new(AppState::default()),
+            crate::common::tcaps::mint::mint_session_cap(),
+        ),
         rx.to_async(),
     )
 }
@@ -332,6 +336,7 @@ async fn spawn_on_bus_with_rx() -> (
             tx,
             gateway_tx: gw_tx,
             state: State::new(AppState::default()),
+            session_cap: crate::common::tcaps::mint::mint_session_cap(),
         })
         .await;
     (harness, rx.to_async(), gw_rx.to_async())

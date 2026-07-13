@@ -65,6 +65,8 @@ pub struct CompactionWorker {
     handle: Handle,
     /// Shared application state (for reading session history).
     state: State,
+    /// Proof of authority to write session state (model round-robin advance).
+    cap: crate::common::tcaps::SessionCap,
     /// Whether an auto-compaction is currently in flight.
     ///
     /// Set before starting the LLM call, cleared when the compaction
@@ -80,11 +82,17 @@ pub struct CompactionWorker {
 
 impl CompactionWorker {
     /// Creates a new compaction worker.
-    pub fn new(services: Services, handle: Handle, state: State) -> Self {
+    pub fn new(
+        services: Services,
+        handle: Handle,
+        state: State,
+        cap: crate::common::tcaps::SessionCap,
+    ) -> Self {
         Self {
             services,
             handle,
             state,
+            cap,
             compaction_in_progress: Arc::new(AtomicBool::new(false)),
             pending_compaction_id: Arc::new(Mutex::new(None)),
         }
@@ -157,16 +165,23 @@ impl CompactionWorker {
         // Load preferences from service (outside state lock).
         let prefs = self.services.user_preferences_storage.read();
 
-        // Read session state.
-        let (config, model_name, history, compaction_prompt, retry_config) = {
-            let mut state = self.state.write();
-            let session = state.session_mut(&trigger.session_id);
+        // Write session state (resolve_model advances the alloy round-robin index).
+        let (model_name, history) = {
+            self.state.with_session(&self.cap, |view| {
+                let session = view.session.map().get_unchecked_mut(&trigger.session_id);
+                let model_name = session.profile_mut().model.resolve_model();
+                let history = session.history().to_vec();
+                (model_name, history)
+            })
+        };
+
+        // Read context (read-only, no cap needed).
+        let (config, compaction_prompt, retry_config) = {
+            let state = self.state.read();
             let config = prefs.compaction.clone();
-            let model_name = session.profile_mut().model.resolve_model();
-            let history = session.history().to_vec();
             let compaction_prompt = state.context.compaction_prompt.clone();
             let retry_config = prefs.request_retry.to_retry_config();
-            (config, model_name, history, compaction_prompt, retry_config)
+            (config, compaction_prompt, retry_config)
         };
 
         if history.is_empty() {

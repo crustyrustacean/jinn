@@ -53,8 +53,9 @@ pub struct BotData {
     pub bridge: Bridge,
     /// DAO over `sessions.db` for thread↔session mapping persistence.
     pub thread_map: DiscordThreadMap,
-    /// The bot configuration from `jinn.toml` `[discord]`.
     pub config: Arc<DiscordConfig>,
+    /// Capability for God-mode `State::write()` — held by the platform layer.
+    pub intent_handler_cap: jinn_domain::common::tcaps::IntentHandlerCap,
 }
 
 /// Runs the Discord gateway: starts poise, registers slash commands, and

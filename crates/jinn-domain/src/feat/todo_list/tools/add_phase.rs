@@ -95,17 +95,18 @@ pub fn execute(call: ToolCall, ctx: ToolContext) -> BoxedToolFuture {
             }
         };
 
-        let phase_id;
-        let next_block;
-        let rendered;
-        {
-            let mut w = state.write();
-            let session = w.session_mut(&session_id);
+        let Some(session_cap) = &ctx.session_cap else {
+            return tool_error(call, "no session capability");
+        };
+        let (phase_id, next_block, rendered) = state.with_session(session_cap, |view| {
+            let session = view.session.map().get_unchecked_mut(&session_id);
             let list = session.task_list_mut();
-            phase_id = list.add_phase(&description);
-            next_block = list.render_next_block();
-            rendered = list.render_text_with_blockers();
-        }
+            (
+                list.add_phase(&description),
+                list.render_next_block(),
+                list.render_text_with_blockers(),
+            )
+        });
 
         if let Some(bus) = &ctx.bus {
             bus.publish(
@@ -126,6 +127,18 @@ pub fn execute(call: ToolCall, ctx: ToolContext) -> BoxedToolFuture {
             pin_position: None,
         }
     })
+}
+
+fn tool_error(call: ToolCall, msg: &str) -> ToolResult {
+    ToolResult {
+        tool_call_id: call.id,
+        name: call.name,
+        content: format!("Error: {msg}"),
+        success: false,
+        full_content: None,
+        truncation: None,
+        pin_position: None,
+    }
 }
 
 #[cfg(test)]
@@ -157,8 +170,8 @@ mod tests {
             bus: None,
             max_output_lines: None,
             max_output_bytes: None,
-
             dispatched_at: jiff::Timestamp::now(),
+            session_cap: Some(crate::common::tcaps::mint::mint_session_cap()),
         }
     }
 
@@ -274,7 +287,7 @@ mod tests {
             r.session.active_session_id().clone()
         };
         {
-            let mut w = state.write();
+            let mut w = state.write_test_no_cap();
             let session = w.session_mut(&session_id);
             let p1 = session.task_list_mut().add_phase("First");
             session

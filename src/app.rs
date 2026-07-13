@@ -237,6 +237,8 @@ impl App {
                 return Ok(());
             }
             Commands::Tui => {
+                let intent_handler_cap =
+                    jinn_domain::common::tcaps::mint::mint_intent_handler_cap();
                 let (core, services, _plugins, discord_rx, discord_gw_rx, discord_status_tx) =
                     self.runtime.block_on(async {
                         actor_wiring::ActorSystemBuilder::new(
@@ -269,6 +271,7 @@ impl App {
                             config: std::sync::Arc::new(
                                 user_preferences_storage.read().discord.clone(),
                             ),
+                            intent_handler_cap,
                         },
                         std::env::var("DISCORD_BOT_TOKEN")
                             .ok()
@@ -286,6 +289,8 @@ impl App {
             }
             #[cfg(debug_assertions)]
             Commands::Headless { command, .. } => {
+                let intent_handler_cap =
+                    jinn_domain::common::tcaps::mint::mint_intent_handler_cap();
                 let store_for_shutdown = session_store.clone();
                 let (core, _services, _plugins, _discord_rx, _discord_gw_rx, _discord_status_tx) =
                     self.runtime.block_on(async {
@@ -310,12 +315,14 @@ impl App {
                     &core.state,
                     &_services.paths.prompts_dir(),
                     &_services.paths.system_prompts_dir(),
+                    &intent_handler_cap,
                 )
                 .change_context(AppError)?;
                 jinn_tui::load_theme(
                     &core.state,
                     &_services.paths.themes_dir(),
                     &_services.paths.system_themes_dir(),
+                    &intent_handler_cap,
                 );
                 let mut headless = HeadlessApp::new(core, _services);
                 match command {
@@ -472,9 +479,10 @@ mod tests {
 
         let state = State::new(AppState::default());
         let empty = PathBuf::from("/nonexistent");
+        let cap = jinn_domain::common::tcaps::mint::mint_intent_handler_cap();
 
         // When loading the compaction prompt.
-        load_compaction_prompt(&state, dir.path(), &empty).expect("load");
+        load_compaction_prompt(&state, dir.path(), &empty, &cap).expect("load");
 
         // Then the state contains the prompt text.
         let state = state.read();
@@ -488,9 +496,10 @@ mod tests {
         let system_dir = tempfile::tempdir().expect("temp dir");
 
         let state = State::new(AppState::default());
+        let cap = jinn_domain::common::tcaps::mint::mint_intent_handler_cap();
 
         // When loading the compaction prompt with no file present.
-        let result = load_compaction_prompt(&state, user_dir.path(), system_dir.path());
+        let result = load_compaction_prompt(&state, user_dir.path(), system_dir.path(), &cap);
 
         // Then an error is returned (hard-fail semantics).
         assert!(
@@ -513,14 +522,15 @@ mod tests {
         let state = State::new(AppState::default());
 
         // Set the theme name in preferences.
-        state.write().frontend.app_state.theme_name = Some("custom".to_owned());
+        state.write_test_no_cap().frontend.app_state.theme_name = Some("custom".to_owned());
 
         // Capture the initial focus_accent color.
         let initial_focus = state.read().frontend.theme.focus_accent;
 
         // When loading the theme.
         let empty = PathBuf::from("/nonexistent");
-        load_theme(&state, dir.path(), &empty);
+        let cap = jinn_domain::common::tcaps::mint::mint_intent_handler_cap();
+        load_theme(&state, dir.path(), &empty, &cap);
 
         // Then the theme in state was updated (focus_accent changed to magenta).
         // This kills: replace load_theme with ().
@@ -535,13 +545,14 @@ mod tests {
     fn load_theme_falls_back_gracefully_on_missing() {
         // Given a state with a theme name that doesn't exist.
         let state = State::new(AppState::default());
-        state.write().frontend.app_state.theme_name = Some("nonexistent".to_owned());
+        state.write_test_no_cap().frontend.app_state.theme_name = Some("nonexistent".to_owned());
 
         let empty = PathBuf::from("/nonexistent");
 
         // When loading the theme (no matching file).
         // Then it should not panic - the function logs a warning and returns.
-        load_theme(&state, &empty, &empty);
+        let cap = jinn_domain::common::tcaps::mint::mint_intent_handler_cap();
+        load_theme(&state, &empty, &empty, &cap);
     }
 
     #[tokio::test]

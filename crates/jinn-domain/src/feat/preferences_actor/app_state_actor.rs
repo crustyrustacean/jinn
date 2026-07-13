@@ -23,6 +23,8 @@ pub struct AppStateActorDeps {
     pub deps: ActorDeps,
     /// Shared application state.
     pub state: State,
+    pub frontend_cap: crate::common::tcaps::frontend::FrontendCap,
+    pub context_cap: crate::common::tcaps::context::ContextCap,
 }
 
 /// The app-state actor.
@@ -37,6 +39,8 @@ pub struct AppStateActor {
     state: State,
     themes_dir: PathBuf,
     system_themes_dir: PathBuf,
+    frontend_cap: crate::common::tcaps::frontend::FrontendCap,
+    context_cap: crate::common::tcaps::context::ContextCap,
 }
 
 impl Actor for AppStateActor {
@@ -53,6 +57,8 @@ impl Actor for AppStateActor {
             state: args.state,
             themes_dir: args.deps.services.paths.themes_dir(),
             system_themes_dir: args.deps.services.paths.system_themes_dir(),
+            frontend_cap: args.frontend_cap,
+            context_cap: args.context_cap,
         })
     }
 }
@@ -75,38 +81,52 @@ impl AppStateActor {
 
     /// Syncs persisted state into the shared `AppState` frontend/context fields.
     fn sync_state(&self, updated: &AppStateFile) {
-        let mut state = self.state.write();
+        use crate::common::tcaps::context::PersonaWrite;
 
-        // Cache the entire state for runtime access.
-        state.frontend.app_state = updated.clone();
-
-        state.frontend.sidebar_width = updated.sidebar_width.unwrap_or(30);
-
-        // Reload theme when theme_name changes.
-        match theme::resolve_theme(
+        let theme_result = theme::resolve_theme(
             updated.theme_name.as_deref(),
             &self.themes_dir,
             &self.system_themes_dir,
-        ) {
-            Ok(t) => {
-                state.frontend.theme = t;
-                state.invalidate_theme_caches();
-            }
+        );
+        let new_theme = match theme_result {
+            Ok(t) => Some(t),
             Err(e) => {
                 tracing::warn!(err = ?e, "failed to reload theme, keeping current");
+                None
             }
+        };
+
+        // Cache the entire state and update sidebar/theme/caches.
+        self.state.with_preferences(&self.frontend_cap, |ops| {
+            let frontend = ops.frontend();
+            frontend.app_state = updated.clone();
+            frontend.sidebar_width = updated.sidebar_width.unwrap_or(30);
+            if let Some(ref t) = new_theme {
+                frontend.theme = t.clone();
+            }
+        });
+
+        // Invalidate theme caches at the frontend level.
+        if new_theme.is_some() {
+            self.state.with_preferences(&self.frontend_cap, |ops| {
+                ops.frontend().caches.invalidate_all();
+            });
         }
 
         // Sync active_persona when persona_name changes.
         if let Some(ref persona_name) = updated.persona_name {
-            let found = state
+            let found = self
+                .state
+                .read()
                 .context
                 .personas()
                 .iter()
                 .find(|p| p.name == *persona_name)
                 .cloned();
             if let Some(persona) = found {
-                state.context.set_active_persona(Some(persona));
+                self.state.with_context(&self.context_cap, |view| {
+                    view.context.set_active_persona(Some(persona));
+                });
             }
         }
     }
@@ -167,6 +187,8 @@ mod tests {
             state: crate::common::state::State::new(crate::common::app_state::AppState::default()),
             themes_dir: std::path::PathBuf::new(),
             system_themes_dir: std::path::PathBuf::new(),
+            frontend_cap: crate::common::tcaps::mint::mint_frontend_cap(),
+            context_cap: crate::common::tcaps::mint::mint_context_cap(),
         };
         (actor, audit, services)
     }
@@ -283,7 +305,7 @@ mod tests {
         // Given an app-state actor with two personas loaded.
         let (actor, _audit, _services) = create_actor().await;
         {
-            let mut guard = actor.state.write();
+            let mut guard = actor.state.write_test_no_cap();
             guard.context.set_personas(vec![
                 Persona {
                     name: "coder".to_owned(),

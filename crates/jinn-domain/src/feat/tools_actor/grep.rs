@@ -239,6 +239,7 @@ mod tests {
             max_output_lines: None,
             max_output_bytes: None,
             dispatched_at: jiff::Timestamp::now(),
+            session_cap: None,
         }
     }
 
@@ -253,6 +254,7 @@ mod tests {
             max_output_lines: None,
             max_output_bytes: None,
             dispatched_at: jiff::Timestamp::now(),
+            session_cap: None,
         }
     }
 
