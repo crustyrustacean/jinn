@@ -66,6 +66,11 @@ impl Default for ProviderState {
 }
 
 impl ProviderState {
+    /// Whether the provider picker is in alloy-selection mode.
+    pub fn is_alloy_mode(&self) -> bool {
+        self.alloy_mode
+    }
+
     /// Set whether the provider picker is in alloy-selection mode.
     pub fn set_alloy_mode(&mut self, on: bool) {
         self.alloy_mode = on;

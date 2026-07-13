@@ -140,7 +140,7 @@ impl SessionPersistenceActor {
             return;
         }
         let mut state = self.state.write();
-        state.context.personas.clone_from(&payload.personas);
+        state.context.set_personas(payload.personas.clone());
 
         let target_name = state
             .frontend
@@ -151,8 +151,7 @@ impl SessionPersistenceActor {
             .or_else(|| {
                 state
                     .context
-                    .active_persona
-                    .as_ref()
+                    .active_persona()
                     .filter(|p| payload.personas.iter().any(|sp| sp.name == p.name))
                     .map(|p| p.name.as_str())
             })
@@ -165,10 +164,10 @@ impl SessionPersistenceActor {
             .cloned();
 
         if let Some(persona) = found {
-            state.context.active_persona = Some(persona);
+            state.context.set_active_persona(Some(persona));
         } else {
             // Edge case: coding-assistant not found either.
-            state.context.active_persona = payload.personas.first().cloned();
+            state.context.set_active_persona(payload.personas.first().cloned());
         }
     }
 

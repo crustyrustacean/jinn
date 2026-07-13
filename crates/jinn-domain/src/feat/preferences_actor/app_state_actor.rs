@@ -101,12 +101,12 @@ impl AppStateActor {
         if let Some(ref persona_name) = updated.persona_name {
             let found = state
                 .context
-                .personas
+                .personas()
                 .iter()
                 .find(|p| p.name == *persona_name)
                 .cloned();
             if let Some(persona) = found {
-                state.context.active_persona = Some(persona);
+                state.context.set_active_persona(Some(persona));
             }
         }
     }

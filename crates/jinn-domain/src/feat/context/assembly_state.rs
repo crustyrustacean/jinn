@@ -83,3 +83,15 @@ impl ContextAssemblyState {
         self.personas = personas;
     }
 }
+
+impl ContextAssemblyState {
+    /// The currently active persona, if any.
+    pub fn active_persona(&self) -> Option<&Persona> {
+        self.active_persona.as_ref()
+    }
+
+    /// The full catalog of available personas.
+    pub fn personas(&self) -> &Vec<Persona> {
+        &self.personas
+    }
+}

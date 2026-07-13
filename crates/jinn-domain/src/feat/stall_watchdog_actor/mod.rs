@@ -164,7 +164,7 @@ impl StallWatchdogActor {
                 }
                 active_now.push(id.clone());
 
-                let provider_ts = session.core.last_provider_activity_at;
+                let provider_ts = *session.last_provider_activity_at();
                 let prev = self.last_provider_activity.get(id).copied();
                 let recovered = matches!(
                     (prev, provider_ts),
@@ -184,7 +184,7 @@ impl StallWatchdogActor {
                     continue;
                 }
 
-                let last = session.core.last_history_activity_at;
+                let last = *session.last_history_activity_at();
                 let elapsed_secs = match now.since(last) {
                     Ok(span) => span.get_seconds(),
                     Err(_) => continue,
