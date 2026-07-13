@@ -7,8 +7,8 @@
 //! session's history so the user sees the outcome inline where they invoked
 //! `gdc`, not just in Discord.
 //!
-//! The actor owns a clone of [`State`] and is the sole writer of these
-//! confirmation/error entries. It uses the fallible `try_session_mut` accessor:
+//! The actor owns a clone of [`State`] and writes these
+//! confirmation/error entries inline. It uses the fallible `try_session_mut` accessor:
 //! a result event arriving for a session that was closed/archived in the
 //! meantime is dropped with a debug log rather than panicking.
 //!

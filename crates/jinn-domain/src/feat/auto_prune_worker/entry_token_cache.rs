@@ -129,8 +129,8 @@ use kameo::prelude::{Actor, ActorRef, Context, Message};
 ///
 /// Subscribes to [`SessionClosed`] and removes the closed session's inner
 /// map. Single instance, spawned once in `src/actor_wiring.rs`. Workers
-/// receive a clone of the cache; this actor receives a clone too and is
-/// the sole writer of eviction events.
+/// receive a clone of the cache; this actor receives a clone too and owns
+/// eviction events.
 pub struct HistoryWorkerChatEntryTokenCacheEvictionActor {
     cache: HistoryWorkerChatEntryTokenCache,
 }

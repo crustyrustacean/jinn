@@ -68,7 +68,7 @@ impl AppStateActor {
             tracing::warn!(err = ?e, "app-state-actor failed to save app state");
             return;
         }
-        // Write frontend/context fields inline (formerly AppStateSyncActor's job).
+        // Write frontend/context fields inline after persist.
         self.sync_state(&state);
         self.publish(AppStateUpdated { state }).await;
     }

@@ -3,13 +3,14 @@
 //! Subscribes to [`UpdatePreferences`] commands carrying batches of
 //! [`PreferenceUpdate`] diffs. On each command, loads current preferences,
 //! applies all diffs, saves to disk, and emits a [`PreferencesUpdated`]
-//! event with the full result.
+//! event with the full result. Also writes `frontend.preferences` inline
+//! after a successful save and reloads the open project picker.
 //!
 //! # State ownership
 //!
-//! This actor does **not** write `AppState.frontend.preferences` directly.
-//! That is the exclusive responsibility of `PreferencesStateSyncActor`,
-//! which subscribes to the `PreferencesUpdated` events emitted here.
+//! This actor owns `AppState.frontend.preferences` (authoritative writer).
+//! It writes the field inline after persisting to `jinn.toml` — see the
+//! "sync sibling" anti-pattern in AGENTS.md §3.
 
 use std::convert::Infallible;
 
