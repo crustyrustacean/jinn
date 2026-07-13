@@ -120,12 +120,83 @@ impl AppLayout {
         }
     }
 }
+/// Full-terminal dashboard layout: a 1-row tab bar on top, everything else is
+/// full-width content (no sidebar, border, minimap, input, or status bar).
+pub struct DashboardLayout {
+    /// The tab bar area (1 row at the very top).
+    pub tab_bar: Rect,
+    /// The content area (everything below the tab bar, full terminal width).
+    pub content: Rect,
+}
+
+impl DashboardLayout {
+    /// Computes the dashboard layout for the given terminal area.
+    ///
+    /// Structure:
+    /// ```text
+    /// tab_bar (1 row)
+    /// content (everything below, full width)
+    /// ```
+    #[must_use]
+    pub fn new(area: Rect) -> Self {
+        let [tab_bar, content] =
+            Layout::vertical([Constraint::Length(1), Constraint::Min(1)]).areas(area);
+        Self { tab_bar, content }
+    }
+}
+
+/// The active application layout, selected by the base focus scope.
+///
+/// Chat mode uses the multi-column [`AppLayout`]; Dashboard mode uses the
+/// full-terminal [`DashboardLayout`]. Branching on this enum guarantees the
+/// dashboard path physically cannot render chat-only chrome (sidebar, status
+/// bar, input, border) — those fields simply do not exist on
+/// [`DashboardLayout`].
+///
+/// Named `AppFrameLayout` (not `Layout`) to avoid collision with ratatui's
+/// [`ratatui::layout::Layout`], which `AppLayout::new` and
+/// [`DashboardLayout::new`] call for `Layout::vertical` splits.
+pub enum AppFrameLayout {
+    /// Chat tab layout: main column + minimap + border + sidebar, with
+    /// content, input, and status-bar sub-areas.
+    Chat(AppLayout),
+    /// Dashboard tab layout: tab bar + full-width content only.
+    Dashboard(DashboardLayout),
+}
+
+impl AppFrameLayout {
+    /// Computes the layout for the given terminal area, branching on
+    /// `is_dashboard` (which is `scope_stack.base() == FocusScope::Dashboard`).
+    ///
+    /// `input_lines` and `sidebar_width` are ignored in Dashboard mode.
+    /// `max_input_height` is ignored in Dashboard mode.
+    #[must_use]
+    pub fn new(
+        area: Rect,
+        input_lines: u16,
+        max_input_height: u16,
+        sidebar_width: u16,
+        is_dashboard: bool,
+    ) -> Self {
+        if is_dashboard {
+            Self::Dashboard(DashboardLayout::new(area))
+        } else {
+            Self::Chat(AppLayout::new(
+                area,
+                input_lines,
+                max_input_height,
+                sidebar_width,
+            ))
+        }
+    }
+}
 
 #[cfg(test)]
 mod tests {
     #![allow(
         clippy::expect_used,
         clippy::indexing_slicing,
+        clippy::panic,
         reason = "test code, panics are acceptable"
     )]
     use super::*;
@@ -165,5 +236,44 @@ mod tests {
         assert_eq!(layout.status_bar.height, 2);
         assert!(layout.status_bar.y > layout.input.y);
         assert_eq!(layout.status_bar.y + layout.status_bar.height, area.height);
+    }
+
+    #[rstest::rstest]
+    fn dashboard_layout_uses_full_width() {
+        // Given an 80x24 area.
+        let area = Rect::new(0, 0, 80, 24);
+
+        // When computing the dashboard layout.
+        let layout = DashboardLayout::new(area);
+
+        // Then the tab bar is the top row, full width.
+        assert_eq!(layout.tab_bar, Rect::new(0, 0, 80, 1));
+        // And the content fills everything below, full width.
+        assert_eq!(layout.content, Rect::new(0, 1, 80, 23));
+    }
+
+    #[rstest::rstest]
+    fn frame_layout_dashboard_is_full_width_chat_is_chat_layout() {
+        // Given an 80x24 area and chat-mode params.
+        let area = Rect::new(0, 0, 80, 24);
+        let chat_via_frame = AppFrameLayout::new(area, 1, area.height / 2, 30, false);
+        let chat_direct = AppLayout::new(area, 1, area.height / 2, 30);
+
+        // When asking the chat layout from the frame, it matches the direct chat layout.
+        let AppFrameLayout::Chat(frame_chat) = chat_via_frame else {
+            panic!("expected Chat layout for is_dashboard=false");
+        };
+        assert_eq!(frame_chat.content, chat_direct.content);
+        assert_eq!(frame_chat.sidebar, chat_direct.sidebar);
+        assert_eq!(frame_chat.status_bar, chat_direct.status_bar);
+
+        // And the dashboard frame variant is full-width, not the chat layout.
+        let AppFrameLayout::Dashboard(dash) =
+            AppFrameLayout::new(area, 1, area.height / 2, 30, true)
+        else {
+            panic!("expected Dashboard layout for is_dashboard=true");
+        };
+        assert_eq!(dash.content.width, area.width);
+        assert_eq!(dash.tab_bar, Rect::new(0, 0, 80, 1));
     }
 }
