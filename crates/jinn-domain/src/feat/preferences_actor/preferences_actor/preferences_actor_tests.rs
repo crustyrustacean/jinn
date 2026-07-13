@@ -122,3 +122,86 @@ async fn empty_diffs_does_not_change_storage() {
         .any(|e| e.preferences.compaction.model.as_deref() == Some("ollama/llama3"));
     assert!(found, "expected model to be preserved after empty update");
 }
+
+#[tokio::test]
+async fn persist_writes_frontend_preferences() {
+    // Given a preferences actor.
+    let harness = TestHarness::new().await;
+    let state = crate::common::state::State::new(crate::common::app_state::AppState::default());
+    let _actor = harness
+        .spawn_actor::<PreferencesActor>(PreferencesActorDeps {
+            deps: harness.actor_deps().await,
+            state: state.clone(),
+        })
+        .await;
+    let recorder = harness.spawn_recorder::<PreferencesUpdated>().await;
+
+    // When sending UpdatePreferences.
+    harness
+        .publish(UpdatePreferences {
+            updates: vec![PreferenceUpdate::SetCompactionModel(Some(
+                "ollama/llama3".into(),
+            ))],
+        })
+        .await;
+    // Wait for the actor to finish processing (event emitted after inline write).
+    let _ = await_recorded(&recorder, 1, Duration::from_secs(2)).await;
+
+    // Then frontend.preferences matches the persisted preferences.
+    let guard = state.read();
+    assert_eq!(
+        guard.frontend.preferences.compaction.model.as_deref(),
+        Some("ollama/llama3"),
+        "frontend.preferences must be written inline after persist"
+    );
+}
+
+#[tokio::test]
+async fn persist_reloads_open_project_picker_items() {
+    use crate::common::focus::FocusScope;
+    use crate::feat::picker::PickerKind;
+    use crate::feat::picker::intent::load_project_picker_entries;
+    use crate::feat::ui::picker_states::PickerExt;
+
+    // Given a state with the project picker open and zero entries.
+    let harness = TestHarness::new().await;
+    let state = crate::common::state::State::new(crate::common::app_state::AppState::default());
+    {
+        let mut guard = state.write();
+        load_project_picker_entries(&mut guard);
+        guard.frontend.scope_stack.push(FocusScope::Picker {
+            kind: PickerKind::Project,
+        });
+        assert_eq!(
+            guard.frontend.project_picker().items().len(),
+            0,
+            "picker starts empty with default preferences"
+        );
+    }
+    let _actor = harness
+        .spawn_actor::<PreferencesActor>(PreferencesActorDeps {
+            deps: harness.actor_deps().await,
+            state: state.clone(),
+        })
+        .await;
+    let recorder = harness.spawn_recorder::<PreferencesUpdated>().await;
+
+    // When preferences update adds two projects.
+    harness
+        .publish(UpdatePreferences {
+            updates: vec![
+                PreferenceUpdate::AddProject(std::path::PathBuf::from("/tmp/alpha")),
+                PreferenceUpdate::AddProject(std::path::PathBuf::from("/tmp/beta")),
+            ],
+        })
+        .await;
+    let _ = await_recorded(&recorder, 1, Duration::from_secs(2)).await;
+
+    // Then the open project picker's items are reloaded from the new prefs.
+    let guard = state.read();
+    assert_eq!(
+        guard.frontend.project_picker().items().len(),
+        2,
+        "open project picker should reload items after preferences update"
+    );
+}
