@@ -18,13 +18,12 @@ use kameo::prelude::{Actor, Context, Message};
 use crate::common::actor::protocol::event::{ActorShutdownCompleted, ActorStarted, ActorStarting};
 use crate::common::actor_deps::ActorDeps;
 use crate::common::state::State;
-use crate::feat::browser_binary_scan::{BrowserBinaryMissing, BrowserBinaryVerified};
+use crate::feat::browser_binary_scan::{BinaryFamily, BrowserBinaryVerified};
 use crate::feat::dashboard::DashboardState;
 
-/// Dashboard entry name for the browser binary verification.
-const BROWSER_BINARY_ENTRY: &str = "web-fetch-browser";
-/// Description shown for the browser binary dashboard entry.
-const BROWSER_BINARY_DESCRIPTION: &str = "Headless browser binary (stealth web fetcher)";
+/// Dashboard entry name for the web-fetch actor — the row whose Notes column
+/// surfaces the resolved browser backend (Chrome/Chromium/Bundled).
+const WEB_FETCH_ENTRY: &str = "web-fetch";
 
 /// Discord bot-specific connection status, reported by the gateway task.
 ///
@@ -106,9 +105,6 @@ impl Actor for DiscordStatusActor {
         args.deps
             .subscribe(actor_ref.clone().recipient::<BrowserBinaryVerified>())
             .await;
-        args.deps
-            .subscribe(actor_ref.clone().recipient::<BrowserBinaryMissing>())
-            .await;
 
         // Spawn the background drain loop for the discord status channel.
         // The loop owns the receiver and a State clone; each update writes
@@ -159,39 +155,51 @@ impl Message<BrowserBinaryVerified> for DiscordStatusActor {
     async fn handle(&mut self, msg: BrowserBinaryVerified, _ctx: &mut Context<Self, Self::Reply>) {
         let mut state = self.state.write();
         let dashboard = &mut state.frontend.dashboard;
-        dashboard.mark_running(
-            BROWSER_BINARY_ENTRY,
-            Some(BROWSER_BINARY_DESCRIPTION.to_owned()),
-        );
-        // Surface the Chrome version actually in use alongside the path so the
-        // dashboard reflects the resolved user-agent. When the binary's version
-        // could not be probed, the fetcher falls back to CHROME_MAJOR — show
-        // that explicitly so the displayed version always matches the UA sent.
-        let version_label = match &msg.version_major {
-            Some(v) => format!("Chrome {v}"),
-            None => format!(
-                "Chrome {} (version undetected)",
-                jinn_web_fetch::stealth::CHROME_MAJOR
-            ),
-        };
-        dashboard.set_status_message(
-            BROWSER_BINARY_ENTRY,
-            Some(format!("{version_label} — {}", msg.path.display())),
-        );
+
+        // The web-fetch entry's lifecycle is owned by the actor-lifecycle
+        // subscription; we only write the Notes column here. Never call
+        // mark_running/mark_dead — that would race the lifecycle handler.
+        dashboard.set_status_message(WEB_FETCH_ENTRY, Some(backend_label(&msg)));
     }
 }
 
-impl Message<BrowserBinaryMissing> for DiscordStatusActor {
-    type Reply = ();
+/// Builds the dashboard Notes string for a resolved browser binary.
+///
+/// Format: `"<family> <version>"` (or the bundled/undetected variants),
+/// optionally suffixed with `" — <path>"` when a path is known, and
+/// optionally prefixed with `"<note>: "` when resolution fell back.
+fn backend_label(msg: &BrowserBinaryVerified) -> String {
+    let label = match msg.family {
+        BinaryFamily::Chrome | BinaryFamily::Chromium => {
+            let family = family_display(msg.family);
+            match &msg.version_major {
+                Some(v) => format!("{family} {v}"),
+                None => format!(
+                    "{family} {} (version undetected)",
+                    jinn_web_fetch::stealth::CHROME_MAJOR
+                ),
+            }
+        }
+        BinaryFamily::Bundled => "Chromium (bundled, version undetected)".to_owned(),
+    };
 
-    async fn handle(&mut self, msg: BrowserBinaryMissing, _ctx: &mut Context<Self, Self::Reply>) {
-        let mut state = self.state.write();
-        let dashboard = &mut state.frontend.dashboard;
-        dashboard.mark_dead(
-            BROWSER_BINARY_ENTRY,
-            Some(BROWSER_BINARY_DESCRIPTION.to_owned()),
-        );
-        dashboard.set_status_message(BROWSER_BINARY_ENTRY, Some(msg.reason));
+    let with_path = match &msg.path {
+        Some(p) => format!("{label} — {}", p.display()),
+        None => label,
+    };
+
+    match &msg.fallback_note {
+        Some(note) => format!("{note}: {with_path}"),
+        None => with_path,
+    }
+}
+
+/// Returns the capitalized family name for display.
+fn family_display(family: BinaryFamily) -> &'static str {
+    match family {
+        BinaryFamily::Chrome => "Chrome",
+        BinaryFamily::Chromium => "Chromium",
+        BinaryFamily::Bundled => "Bundled",
     }
 }
 
@@ -482,7 +490,88 @@ mod tests {
     }
 
     #[tokio::test]
-    async fn browser_binary_verified_creates_running_entry_with_path() {
+    async fn browser_binary_verified_writes_chrome_label_to_web_fetch_notes() {
+        // Given a DiscordStatusActor.
+        let harness = TestHarness::new().await;
+        let state = State::new(AppState::default());
+        spawn_actor(&harness, state.clone()).await;
+
+        // When publishing BrowserBinaryVerified for a system Chrome.
+        harness
+            .publish(BrowserBinaryVerified {
+                family: BinaryFamily::Chrome,
+                path: Some(std::path::PathBuf::from("/usr/bin/google-chrome")),
+                version_major: Some("138".to_owned()),
+                fallback_note: None,
+            })
+            .await;
+
+        // Then the web-fetch row's Notes column carries the backend label.
+        tokio::time::sleep(std::time::Duration::from_millis(50)).await;
+        let (_, message, _) = dashboard_entry(&state, "web-fetch").expect("entry should exist");
+        assert_eq!(
+            message.as_deref(),
+            Some("Chrome 138 — /usr/bin/google-chrome")
+        );
+    }
+
+    #[tokio::test]
+    async fn browser_binary_verified_writes_bundled_label_to_web_fetch_notes() {
+        // Given a DiscordStatusActor.
+        let harness = TestHarness::new().await;
+        let state = State::new(AppState::default());
+        spawn_actor(&harness, state.clone()).await;
+
+        // When publishing BrowserBinaryVerified for the bundled binary.
+        harness
+            .publish(BrowserBinaryVerified {
+                family: BinaryFamily::Bundled,
+                path: None,
+                version_major: None,
+                fallback_note: Some("No system Chrome/Chromium — using bundled".to_owned()),
+            })
+            .await;
+
+        // Then the web-fetch row's Notes column shows the bundled label with note.
+        tokio::time::sleep(std::time::Duration::from_millis(50)).await;
+        let (_, message, _) = dashboard_entry(&state, "web-fetch").expect("entry should exist");
+        assert_eq!(
+            message.as_deref(),
+            Some(
+                "No system Chrome/Chromium — using bundled: Chromium (bundled, version undetected)"
+            )
+        );
+    }
+
+    #[tokio::test]
+    async fn browser_binary_verified_shows_fallback_version_when_undetected() {
+        // Given a DiscordStatusActor.
+        let harness = TestHarness::new().await;
+        let state = State::new(AppState::default());
+        spawn_actor(&harness, state.clone()).await;
+
+        // When publishing BrowserBinaryVerified for a system Chromium with no version.
+        harness
+            .publish(BrowserBinaryVerified {
+                family: BinaryFamily::Chromium,
+                path: Some(std::path::PathBuf::from("/usr/bin/chromium")),
+                version_major: None,
+                fallback_note: None,
+            })
+            .await;
+
+        // Then the displayed version falls back to CHROME_MAJOR so it matches the UA.
+        tokio::time::sleep(std::time::Duration::from_millis(50)).await;
+        let (_, message, _) = dashboard_entry(&state, "web-fetch").expect("entry should exist");
+        let expected = format!(
+            "Chromium {} (version undetected) — /usr/bin/chromium",
+            jinn_web_fetch::stealth::CHROME_MAJOR
+        );
+        assert_eq!(message.as_deref(), Some(expected.as_str()));
+    }
+
+    #[tokio::test]
+    async fn browser_binary_verified_does_not_create_phantom_entry() {
         // Given a DiscordStatusActor.
         let harness = TestHarness::new().await;
         let state = State::new(AppState::default());
@@ -491,68 +580,15 @@ mod tests {
         // When publishing BrowserBinaryVerified.
         harness
             .publish(BrowserBinaryVerified {
-                path: std::path::PathBuf::from("/usr/bin/google-chrome"),
-                version_major: Some("138".to_owned()),
-            })
-            .await;
-
-        // Then the dashboard shows the browser entry as Running with the path.
-        tokio::time::sleep(std::time::Duration::from_millis(50)).await;
-        let (lifecycle, message, _) =
-            dashboard_entry(&state, "web-fetch-browser").expect("entry should exist");
-        assert_eq!(lifecycle, ActorLifecycle::Running);
-        assert_eq!(
-            message.as_deref(),
-            Some("Chrome 138 — /usr/bin/google-chrome")
-        );
-    }
-
-    #[tokio::test]
-    async fn browser_binary_verified_shows_fallback_when_version_undetected() {
-        // Given a DiscordStatusActor.
-        let harness = TestHarness::new().await;
-        let state = State::new(AppState::default());
-        spawn_actor(&harness, state.clone()).await;
-
-        // When publishing BrowserBinaryVerified with no detected version.
-        harness
-            .publish(BrowserBinaryVerified {
-                path: std::path::PathBuf::from("/usr/bin/chromium"),
+                family: BinaryFamily::Bundled,
+                path: None,
                 version_major: None,
+                fallback_note: None,
             })
             .await;
 
-        // Then the dashboard shows the fallback Chrome version so the displayed
-        // version matches the UA the fetcher actually sends.
+        // Then no phantom web-fetch-browser entry is created.
         tokio::time::sleep(std::time::Duration::from_millis(50)).await;
-        let (_, message, _) =
-            dashboard_entry(&state, "web-fetch-browser").expect("entry should exist");
-        let expected = format!(
-            "Chrome {} (version undetected) — /usr/bin/chromium",
-            jinn_web_fetch::stealth::CHROME_MAJOR
-        );
-        assert_eq!(message.as_deref(), Some(expected.as_str()));
-    }
-
-    #[tokio::test]
-    async fn browser_binary_missing_creates_dead_entry_with_reason() {
-        // Given a DiscordStatusActor.
-        let harness = TestHarness::new().await;
-        let state = State::new(AppState::default());
-        spawn_actor(&harness, state.clone()).await;
-
-        // When publishing BrowserBinaryMissing.
-        harness
-            .publish(BrowserBinaryMissing {
-                reason: "ChromeNotFound".to_owned(),
-            })
-            .await;
-
-        // Then the dashboard shows the browser entry as Dead with the reason.
-        tokio::time::sleep(std::time::Duration::from_millis(50)).await;
-        let (lifecycle, message, _) =
-            dashboard_entry(&state, "web-fetch-browser").expect("entry should exist");
-        assert_eq!(lifecycle, ActorLifecycle::Dead);
-        assert_eq!(message.as_deref(), Some("ChromeNotFound"));
+        assert!(dashboard_entry(&state, "web-fetch-browser").is_none());
     }
 }

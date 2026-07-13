@@ -13,29 +13,22 @@ use std::path::PathBuf;
 
 use crate::feat::web_fetch_actor::BrowserBinary;
 
-/// Error raised when a configured browser binary cannot be found.
-#[derive(Debug, Clone, PartialEq, Eq, wherror::Error)]
-#[error(debug)]
-pub enum BinaryResolutionError {
-    /// `BrowserBinary::Auto` found neither Chrome nor Chromium on the system.
-    NoBinaryFound,
-    /// `BrowserBinary::Chrome` was requested but no Google Chrome was found.
-    ChromeNotFound,
-    /// `BrowserBinary::Chromium` was requested but no Chromium was found.
-    ChromiumNotFound,
-}
-
 /// A single candidate executable location plus the binary family it belongs to.
 ///
 /// The resolver tests each candidate in order; the first that exists and is
 /// executable wins. The family tag lets explicit `Chrome`/`Chromium` modes
 /// reject candidates of the wrong family even when a path resolves.
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
 pub enum BinaryFamily {
     /// Google Chrome (stable channel).
     Chrome,
     /// Chromium or Chromium-based build.
     Chromium,
+    /// The `headless_chrome` crate's auto-downloaded bundled binary.
+    ///
+    /// No concrete path is known at resolution time (the crate discovers it at
+    /// launch), so a `Bundled` resolution carries `path: None`.
+    Bundled,
 }
 
 /// A filesystem access seam for locating browser executables.
@@ -62,54 +55,105 @@ pub trait BinaryLocator {
     }
 }
 
-/// Resolves the configured browser binary to a concrete path.
+/// Resolves the configured browser binary.
 ///
-/// Returns the first existing candidate for the requested family, or an error
-/// describing which family was missing.
+/// Resolution is **infallible**: `Auto` always yields Chrome → system Chromium →
+/// bundled Chromium in that order. Explicit `Chrome`/`Chromium` modes resolve
+/// their family when present, otherwise fall back to bundled with a
+/// [`fallback_note`](ResolvedBrowser::fallback_note) explaining the substitution.
 ///
-/// # Errors
-///
-/// - [`BinaryResolutionError::ChromeNotFound`] when `Chrome` is requested but
-///   no Chrome candidate exists.
-/// - [`BinaryResolutionError::ChromiumNotFound`] when `Chromium` is requested
-///   but no Chromium candidate exists.
-/// - [`BinaryResolutionError::NoBinaryFound`] when `Auto` finds neither.
+/// This matches the fetcher's actual behaviour in `actor_wiring.rs`, which always
+/// constructs a working `HeadlessChromeFetcher` (the crate auto-downloads a
+/// Chromium when no explicit path is supplied). The dashboard therefore never
+/// reports a hard failure for a working system.
 pub fn resolve_browser_binary(
     config: BrowserBinary,
     locator: &dyn BinaryLocator,
-) -> Result<ResolvedBrowser, BinaryResolutionError> {
-    let path = match config {
-        BrowserBinary::Auto => find_chrome(locator).or(find_chromium(locator)),
-        BrowserBinary::Chrome => find_chrome(locator),
-        BrowserBinary::Chromium => find_chromium(locator),
+) -> ResolvedBrowser {
+    match config {
+        BrowserBinary::Auto => resolve_auto(locator),
+        BrowserBinary::Chrome => resolve_explicit_chrome(locator),
+        BrowserBinary::Chromium => resolve_explicit_chromium(locator),
     }
-    .ok_or(match config {
-        BrowserBinary::Chrome => BinaryResolutionError::ChromeNotFound,
-        BrowserBinary::Chromium => BinaryResolutionError::ChromiumNotFound,
-        BrowserBinary::Auto => BinaryResolutionError::NoBinaryFound,
-    })?;
-
-    // Detect the installed binary's major version for a realistic user-agent.
-    // Failures fall back to `None`; callers use a hardcoded version.
-    let version_major = locator.version(&path);
-
-    Ok(ResolvedBrowser {
-        path,
-        version_major,
-    })
 }
 
-/// A resolved browser binary: its path plus the detected major version.
+/// `Auto` resolution: prefer Chrome, then system Chromium, then bundled.
+fn resolve_auto(locator: &dyn BinaryLocator) -> ResolvedBrowser {
+    if let Some(path) = find_chrome(locator) {
+        return resolved_system_binary(BinaryFamily::Chrome, path, locator, None);
+    }
+    if let Some(path) = find_chromium(locator) {
+        return resolved_system_binary(
+            BinaryFamily::Chromium,
+            path,
+            locator,
+            Some("Chrome not found — using Chromium"),
+        );
+    }
+    bundled_with_note("No system Chrome/Chromium — using bundled")
+}
+
+/// Explicit `Chrome` mode: use Chrome if present, else bundled with a note.
+fn resolve_explicit_chrome(locator: &dyn BinaryLocator) -> ResolvedBrowser {
+    if let Some(path) = find_chrome(locator) {
+        return resolved_system_binary(BinaryFamily::Chrome, path, locator, None);
+    }
+    bundled_with_note("Chrome not found — using bundled")
+}
+
+/// Explicit `Chromium` mode: use Chromium if present, else bundled with a note.
+fn resolve_explicit_chromium(locator: &dyn BinaryLocator) -> ResolvedBrowser {
+    if let Some(path) = find_chromium(locator) {
+        return resolved_system_binary(BinaryFamily::Chromium, path, locator, None);
+    }
+    bundled_with_note("Chromium not found — using bundled")
+}
+
+/// Builds a `ResolvedBrowser` for a system binary (Chrome/Chromium), probing
+/// its major version via the locator seam.
+fn resolved_system_binary(
+    family: BinaryFamily,
+    path: PathBuf,
+    locator: &dyn BinaryLocator,
+    fallback_note: Option<&str>,
+) -> ResolvedBrowser {
+    let version_major = locator.version(&path);
+    ResolvedBrowser {
+        family,
+        path: Some(path),
+        version_major,
+        fallback_note: fallback_note.map(ToOwned::to_owned),
+    }
+}
+
+/// Builds a `ResolvedBrowser` for the bundled binary. No path or version is
+/// known at resolution time.
+fn bundled_with_note(note: &str) -> ResolvedBrowser {
+    ResolvedBrowser {
+        family: BinaryFamily::Bundled,
+        path: None,
+        version_major: None,
+        fallback_note: Some(note.to_owned()),
+    }
+}
+
+/// A resolved browser binary.
 ///
-/// The version is `None` when `<binary> --version` could not be probed or
-/// parsed; callers fall back to a hardcoded version. Both fields are
-/// communicated via bus events so the dashboard and the fetcher stay in sync.
+/// `path` is `None` for the bundled binary (no concrete path is known until
+/// launch). `version_major` is `None` when `<binary> --version` could not be
+/// probed or parsed, or when the binary is bundled. All fields are communicated
+/// via bus events so the dashboard and the fetcher stay in sync.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct ResolvedBrowser {
-    /// The resolved executable path.
-    pub path: PathBuf,
+    /// The resolved binary family.
+    pub family: BinaryFamily,
+    /// The resolved executable path, or `None` for the bundled binary.
+    pub path: Option<PathBuf>,
     /// The detected major version (e.g. `"138"`), or `None` when undetectable.
     pub version_major: Option<String>,
+    /// Human-readable note when resolution fell back from the requested family,
+    /// e.g. `"Chrome not found — using bundled"`. `None` for a direct match.
+    pub fallback_note: Option<String>,
 }
 
 fn find_chrome(locator: &dyn BinaryLocator) -> Option<PathBuf> {
@@ -135,6 +179,9 @@ impl BinaryLocator for SystemBinaryLocator {
         match family {
             BinaryFamily::Chrome => chrome_candidates(),
             BinaryFamily::Chromium => chromium_candidates(),
+            // The bundled binary has no discoverable path; resolution returns
+            // Bundled with `path: None` without consulting the locator.
+            BinaryFamily::Bundled => Vec::new(),
         }
     }
 
@@ -301,71 +348,103 @@ mod tests {
             match family {
                 BinaryFamily::Chrome => self.chrome.clone(),
                 BinaryFamily::Chromium => self.chromium.clone(),
+                BinaryFamily::Bundled => Vec::new(),
             }
         }
-
         fn exists(&self, path: &std::path::Path) -> bool {
             self.existing.contains(path)
         }
     }
 
     #[test]
-    fn auto_prefers_chrome_when_present_else_chromium() {
+    fn auto_prefers_chrome_when_present() {
         // Given Chrome and Chromium both present.
         let fs = FakeFs::new()
             .chrome_at("/usr/bin/google-chrome")
             .chromium_at("/usr/bin/chromium");
 
         // When resolving Auto.
-        let resolved = resolve_browser_binary(BrowserBinary::Auto, &fs).expect("should resolve");
+        let resolved = resolve_browser_binary(BrowserBinary::Auto, &fs);
 
         // Then Chrome is preferred.
-        assert_eq!(resolved.path, PathBuf::from("/usr/bin/google-chrome"));
+        assert_eq!(resolved.family, BinaryFamily::Chrome);
+        assert_eq!(
+            resolved.path.as_deref(),
+            Some(std::path::Path::new("/usr/bin/google-chrome"))
+        );
+        assert_eq!(resolved.fallback_note, None);
+    }
 
+    #[test]
+    fn auto_falls_back_to_chromium_when_chrome_absent() {
         // Given only Chromium present.
         let fs = FakeFs::new().chromium_at("/usr/bin/chromium");
 
         // When resolving Auto.
-        let resolved = resolve_browser_binary(BrowserBinary::Auto, &fs).expect("should resolve");
+        let resolved = resolve_browser_binary(BrowserBinary::Auto, &fs);
 
         // Then Chromium is used as fallback.
-        assert_eq!(resolved.path, PathBuf::from("/usr/bin/chromium"));
+        assert_eq!(resolved.family, BinaryFamily::Chromium);
+        assert_eq!(
+            resolved.path.as_deref(),
+            Some(std::path::Path::new("/usr/bin/chromium"))
+        );
+        assert_eq!(
+            resolved.fallback_note.as_deref(),
+            Some("Chrome not found — using Chromium")
+        );
     }
 
     #[test]
-    fn auto_returns_no_binary_found_when_neither_present() {
+    fn auto_falls_back_to_bundled_when_neither_present() {
         // Given an empty filesystem.
         let fs = FakeFs::new();
 
         // When resolving Auto.
-        let result = resolve_browser_binary(BrowserBinary::Auto, &fs);
+        let resolved = resolve_browser_binary(BrowserBinary::Auto, &fs);
 
-        // Then resolution fails with NoBinaryFound.
-        assert_eq!(result, Err(BinaryResolutionError::NoBinaryFound));
+        // Then resolution falls back to bundled Chromium.
+        assert_eq!(resolved.family, BinaryFamily::Bundled);
+        assert_eq!(resolved.path, None);
+        assert_eq!(resolved.version_major, None);
+        assert_eq!(
+            resolved.fallback_note.as_deref(),
+            Some("No system Chrome/Chromium — using bundled")
+        );
     }
 
     #[test]
-    fn explicit_chrome_missing_returns_chrome_not_found() {
+    fn explicit_chrome_missing_falls_back_to_bundled() {
         // Given a filesystem with only Chromium.
         let fs = FakeFs::new().chromium_at("/usr/bin/chromium");
 
         // When resolving explicit Chrome.
-        let result = resolve_browser_binary(BrowserBinary::Chrome, &fs);
+        let resolved = resolve_browser_binary(BrowserBinary::Chrome, &fs);
 
-        // Then resolution fails with ChromeNotFound.
-        assert_eq!(result, Err(BinaryResolutionError::ChromeNotFound));
+        // Then resolution falls back to bundled Chromium with a note.
+        assert_eq!(resolved.family, BinaryFamily::Bundled);
+        assert_eq!(resolved.path, None);
+        assert_eq!(
+            resolved.fallback_note.as_deref(),
+            Some("Chrome not found — using bundled")
+        );
     }
 
     #[test]
-    fn explicit_chromium_missing_returns_chromium_not_found() {
+    fn explicit_chromium_missing_falls_back_to_bundled() {
         // Given a filesystem with only Chrome.
         let fs = FakeFs::new().chrome_at("/usr/bin/google-chrome");
 
         // When resolving explicit Chromium.
-        let result = resolve_browser_binary(BrowserBinary::Chromium, &fs);
+        let resolved = resolve_browser_binary(BrowserBinary::Chromium, &fs);
 
-        // Then resolution fails with ChromiumNotFound.
-        assert_eq!(result, Err(BinaryResolutionError::ChromiumNotFound));
+        // Then resolution falls back to bundled Chromium with a note.
+        assert_eq!(resolved.family, BinaryFamily::Bundled);
+        assert_eq!(resolved.path, None);
+        assert_eq!(
+            resolved.fallback_note.as_deref(),
+            Some("Chromium not found — using bundled")
+        );
     }
 
     #[test]
@@ -376,10 +455,14 @@ mod tests {
             .chrome_at("/usr/bin/google-chrome");
 
         // When resolving Chrome.
-        let resolved = resolve_browser_binary(BrowserBinary::Chrome, &fs).expect("should resolve");
+        let resolved = resolve_browser_binary(BrowserBinary::Chrome, &fs);
 
         // Then the second candidate (first existing one) is returned.
-        assert_eq!(resolved.path, PathBuf::from("/usr/bin/google-chrome"));
+        assert_eq!(resolved.family, BinaryFamily::Chrome);
+        assert_eq!(
+            resolved.path.as_deref(),
+            Some(std::path::Path::new("/usr/bin/google-chrome"))
+        );
     }
 
     #[test]

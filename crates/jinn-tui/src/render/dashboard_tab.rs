@@ -1,7 +1,7 @@
 //! Dashboard tab rendering — full-width service list using ratatui `Table`.
 //!
 //! Four real columns via `Constraint` widths:
-//!   Name | Description | State | Status
+//!   Name | Description | State | Notes
 //!
 //! Selection + scroll are driven by [`TableState`] synced from
 //! [`DashboardState`] (selected index + scroll offset).
@@ -41,7 +41,7 @@ pub fn render_dashboard(frame: &mut Frame<'_>, area: Rect, ctx: &RenderCtx) {
         Cell::from("Name"),
         Cell::from("Description"),
         Cell::from("State"),
-        Cell::from("Status"),
+        Cell::from("Notes"),
     ])
     .style(Style::default().add_modifier(Modifier::BOLD));
 
