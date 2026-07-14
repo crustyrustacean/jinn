@@ -190,6 +190,11 @@ pub enum ChatEntryKind {
         display: String,
         /// Token-expanded text (sent to the LLM).
         expanded: String,
+        /// Non-text attachments (images, future media).
+        ///
+        /// Empty for plain-text messages. Old persisted entries without
+        /// this field deserialize to an empty vec (see `#[serde(default)]`).
+        attachments: Vec<jinn_provider::Attachment>,
     },
     /// A system-generated message (status updates, etc.).
     System(String),
@@ -295,6 +300,7 @@ impl ChatEntry {
             kind: ChatEntryKind::User {
                 display: t.clone(),
                 expanded: t,
+                attachments: Vec::new(),
             },
             pin_position: None,
             context_override: ContextOverride::Default,
@@ -344,6 +350,7 @@ impl ChatEntry {
             kind: ChatEntryKind::User {
                 display: display.into(),
                 expanded: expanded.into(),
+                attachments: Vec::new(),
             },
             pin_position: None,
             context_override: ContextOverride::Default,
@@ -925,11 +932,17 @@ impl Serialize for ChatEntryKind {
     {
         use serde::ser::SerializeMap;
         match self {
-            ChatEntryKind::User { display, expanded } => {
+            ChatEntryKind::User {
+                display,
+                expanded,
+                attachments,
+            } => {
                 #[derive(Serialize)]
                 struct UserData {
                     display: String,
                     expanded: String,
+                    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+                    attachments: Vec<jinn_provider::Attachment>,
                 }
                 let mut map = serializer.serialize_map(Some(1))?;
                 map.serialize_entry(
@@ -937,6 +950,7 @@ impl Serialize for ChatEntryKind {
                     &UserData {
                         display: display.clone(),
                         expanded: expanded.clone(),
+                        attachments: attachments.clone(),
                     },
                 )?;
                 map.end()
@@ -1111,11 +1125,14 @@ impl<'de> Deserialize<'de> for ChatEntryKind {
                         struct UserData {
                             display: String,
                             expanded: String,
+                            #[serde(default)]
+                            attachments: Vec<jinn_provider::Attachment>,
                         }
                         let data: UserData = map.next_value()?;
                         Ok(ChatEntryKind::User {
                             display: data.display,
                             expanded: data.expanded,
+                            attachments: data.attachments,
                         })
                     }
                     "System" => {
@@ -1388,5 +1405,28 @@ mod tests {
         assert!(loaded.context_history.is_empty());
         // The override itself is preserved.
         assert_eq!(loaded.context_override(), ContextOverride::ForcedExclude);
+    }
+    #[test]
+    fn user_entry_with_attachments_roundtrips() {
+        // Given a user entry with an image attachment.
+        let mut entry = ChatEntry::user("describe this");
+        entry.kind = ChatEntryKind::User {
+            display: "describe this".to_owned(),
+            expanded: "describe this".to_owned(),
+            attachments: vec![jinn_provider::Attachment::image("image/png", vec![1, 2, 3])],
+        };
+
+        // When serializing and deserializing.
+        let json = serde_json::to_string(&entry).expect("serialize");
+        let loaded: ChatEntry = serde_json::from_str(&json).expect("deserialize");
+
+        // Then the attachment roundtrips.
+        let ChatEntryKind::User { attachments, .. } = &loaded.kind else {
+            panic!("expected User kind")
+        };
+        assert_eq!(attachments.len(), 1);
+        assert!(attachments[0].is_image());
+        assert_eq!(attachments[0].media_type(), "image/png");
+        assert_eq!(attachments[0].data(), &[1, 2, 3]);
     }
 }

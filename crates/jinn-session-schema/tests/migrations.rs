@@ -41,12 +41,16 @@ fn fresh_database_has_all_tables_and_v21() {
         tables.contains(&"discord_thread".to_owned()),
         "discord_thread table missing: {tables:?}"
     );
+    assert!(
+        tables.contains(&"entry_blobs".to_owned()),
+        "entry_blobs table missing: {tables:?}"
+    );
 
-    // And the highest recorded migration version is 21.
+    // And the highest recorded migration version is 22.
     let version: i64 = conn
         .query_row("SELECT MAX(version) FROM _migrations", [], |row| row.get(0))
         .expect("query version");
-    assert_eq!(version, 21, "migration version");
+    assert_eq!(version, 22, "migration version");
 }
 
 /// Re-running `run_migrations` on a fully-migrated database is a no-op: the

@@ -79,7 +79,7 @@ impl LlmService for SampleLlmService {
             .iter()
             .rev()
             .find_map(|m| match m {
-                LlmMessage::User { content } => Some(content.trim().to_lowercase()),
+                LlmMessage::User { content, .. } => Some(content.trim().to_lowercase()),
                 _ => None,
             })
             .unwrap_or_default();
@@ -171,6 +171,7 @@ mod tests {
         let service = SampleLlmServiceFactory.create().expect("create service");
         let messages = vec![LlmMessage::User {
             content: "!response".to_owned(),
+            attachments: Vec::new(),
         }];
 
         // When streaming.
@@ -193,6 +194,7 @@ mod tests {
         let service = SampleLlmServiceFactory.create().expect("create service");
         let messages = vec![LlmMessage::User {
             content: "!think".to_owned(),
+            attachments: Vec::new(),
         }];
 
         // When streaming.
@@ -217,6 +219,7 @@ mod tests {
         let service = SampleLlmServiceFactory.create().expect("create service");
         let messages = vec![LlmMessage::User {
             content: "!think".to_owned(),
+            attachments: Vec::new(),
         }];
 
         // When streaming.
@@ -239,6 +242,7 @@ mod tests {
         let service = SampleLlmServiceFactory.create().expect("create service");
         let messages = vec![LlmMessage::User {
             content: "hello".to_owned(),
+            attachments: Vec::new(),
         }];
 
         // When streaming.
@@ -302,6 +306,7 @@ mod tests {
         // When sending "!Response" (mixed case) as a message.
         let messages = vec![LlmMessage::User {
             content: "!Response".to_owned(),
+            attachments: Vec::new(),
         }];
         let stream = service.chat_stream(messages).await.expect("chat_stream");
         let output: String = stream

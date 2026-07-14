@@ -20,6 +20,9 @@ pub enum LlmMessage {
     User {
         /// The text content of the message.
         content: String,
+        /// Non-text attachments (images, future media). Empty for plain-text messages.
+        #[serde(default)]
+        attachments: Vec<crate::Attachment>,
     },
     /// A message from the AI assistant.
     Assistant {
@@ -57,7 +60,8 @@ mod tests {
         assert_eq!(
             msg,
             LlmMessage::User {
-                content: "hello".into()
+                content: "hello".into(),
+                attachments: Vec::new()
             }
         );
     }
@@ -115,5 +119,21 @@ mod tests {
         let json = serde_json::to_string(&msg).expect("serialize");
         let back: LlmMessage = serde_json::from_str(&json).expect("deserialize");
         assert_eq!(back, msg);
+
+        #[rstest::rstest]
+        fn user_with_attachments_roundtrips() {
+            // Given a user message with an image attachment.
+            let msg = LlmMessage::User {
+                content: "describe this".to_owned(),
+                attachments: vec![crate::Attachment::image("image/png", vec![1, 2, 3])],
+            };
+
+            // When serializing and deserializing.
+            let json = serde_json::to_string(&msg).expect("serialize");
+            let back: LlmMessage = serde_json::from_str(&json).expect("deserialize");
+
+            // Then it roundtrips including the attachment.
+            assert_eq!(back, msg);
+        }
     }
 }

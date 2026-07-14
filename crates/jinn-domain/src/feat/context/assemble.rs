@@ -283,7 +283,7 @@ fn count_messages(messages: &[LlmMessage], counter: &dyn TokenCounter) -> u32 {
         .iter()
         .map(|msg| match msg {
             LlmMessage::System { content }
-            | LlmMessage::User { content }
+            | LlmMessage::User { content, .. }
             | LlmMessage::Assistant { content, .. }
             | LlmMessage::Tool { content, .. } => counter.count(content),
         })
@@ -421,7 +421,7 @@ mod tests {
         }
         let last = result.messages.last().expect("has last");
         match last {
-            LlmMessage::User { content } => {
+            LlmMessage::User { content, .. } => {
                 assert_eq!(content, "hello");
             }
             other => panic!("expected User as last, got {other:?}"),
@@ -453,7 +453,7 @@ mod tests {
         // Then the steering entry sits at the tail of the messages.
         let last = result.messages.last().expect("has last message");
         match last {
-            LlmMessage::User { content } => {
+            LlmMessage::User { content, .. } => {
                 assert_eq!(content, "stay at the foo part");
             }
             other => panic!("expected User (steering) at tail, got {other:?}"),
@@ -480,7 +480,7 @@ mod tests {
             .messages
             .iter()
             .map(|m| match m {
-                LlmMessage::User { content } => content.as_str(),
+                LlmMessage::User { content, .. } => content.as_str(),
                 _ => "",
             })
             .collect::<Vec<_>>();
@@ -510,7 +510,7 @@ mod tests {
         for msg in &result.messages {
             match msg {
                 LlmMessage::System { content }
-                | LlmMessage::User { content }
+                | LlmMessage::User { content, .. }
                 | LlmMessage::Assistant { content, .. }
                 | LlmMessage::Tool { content, .. } => {
                     assert!(
@@ -544,7 +544,7 @@ mod tests {
             .iter()
             .map(|m| match m {
                 LlmMessage::System { content }
-                | LlmMessage::User { content }
+                | LlmMessage::User { content, .. }
                 | LlmMessage::Assistant { content, .. }
                 | LlmMessage::Tool { content, .. } => counter.count(content),
             })
@@ -1159,7 +1159,7 @@ mod tests {
             .collect();
         assert!(
             user_msgs.iter().any(|m| {
-                if let LlmMessage::User { content } = m {
+                if let LlmMessage::User { content, .. } = m {
                     content == "pinned user"
                 } else {
                     false
@@ -1185,7 +1185,7 @@ mod tests {
 
         // Then the last message is the user message (bottom pins are inserted before it).
         let last = result.messages.last().expect("has messages");
-        if let LlmMessage::User { content } = last {
+        if let LlmMessage::User { content, .. } = last {
             assert_eq!(content, "the last msg");
         } else {
             panic!("expected User as last message, got {last:?}");
@@ -1227,7 +1227,7 @@ mod tests {
             .messages
             .iter()
             .filter(|m| {
-                if let LlmMessage::User { content } = m {
+                if let LlmMessage::User { content, .. } = m {
                     content == "top pinned user"
                 } else {
                     false

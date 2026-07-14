@@ -56,7 +56,10 @@ fn error_to_user_message(text: &str, context_override: ContextOverride) -> LlmMe
             format!("[Error] {text}")
         }
     };
-    LlmMessage::User { content }
+    LlmMessage::User {
+        content,
+        attachments: Vec::new(),
+    }
 }
 
 /// Formats a compaction summary as a user message wrapping the summary in XML tags.
@@ -65,6 +68,7 @@ fn compaction_to_user_message(summary: &str) -> LlmMessage {
         content: format!(
             "The conversation history before this point was compacted into the following summary:\n\n<summary>\n{summary}\n</summary>"
         ),
+        attachments: Vec::new(),
     }
 }
 pub fn entries_to_messages(entries: &[ChatEntry]) -> Vec<LlmMessage> {
@@ -81,6 +85,7 @@ pub fn entries_to_messages(entries: &[ChatEntry]) -> Vec<LlmMessage> {
             ChatEntryKind::User { expanded, .. } => {
                 messages.push(LlmMessage::User {
                     content: expanded.clone(),
+                    attachments: Vec::new(),
                 });
             }
             ChatEntryKind::Assistant(text) => {
@@ -122,6 +127,7 @@ pub fn entries_to_messages(entries: &[ChatEntry]) -> Vec<LlmMessage> {
             ChatEntryKind::Actor { source, text } => {
                 messages.push(LlmMessage::User {
                     content: format!("[Actor: {source}] {text}"),
+                    attachments: Vec::new(),
                 });
             }
             ChatEntryKind::Error(text) => {
@@ -132,6 +138,7 @@ pub fn entries_to_messages(entries: &[ChatEntry]) -> Vec<LlmMessage> {
             ChatEntryKind::Thinking(text) => {
                 messages.push(LlmMessage::User {
                     content: format!("[Thinking] {text}"),
+                    attachments: Vec::new(),
                 });
             }
             // Transient entries produce a User message with [Transient] prefix
@@ -139,6 +146,7 @@ pub fn entries_to_messages(entries: &[ChatEntry]) -> Vec<LlmMessage> {
             ChatEntryKind::Transient(text) => {
                 messages.push(LlmMessage::User {
                     content: format!("[Transient] {text}"),
+                    attachments: Vec::new(),
                 });
             }
             ChatEntryKind::Compaction { summary, .. } => {

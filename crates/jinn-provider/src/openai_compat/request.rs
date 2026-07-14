@@ -160,7 +160,7 @@ fn message_to_json(msg: &LlmMessage) -> serde_json::Value {
             "role": "system",
             "content": content,
         }),
-        LlmMessage::User { content } => serde_json::json!({
+        LlmMessage::User { content, .. } => serde_json::json!({
             "role": "user",
             "content": content,
         }),
@@ -236,6 +236,7 @@ mod tests {
         // Given messages and no tools.
         let messages = vec![LlmMessage::User {
             content: "hello".into(),
+            attachments: Vec::new(),
         }];
 
         // When building request.
@@ -252,6 +253,7 @@ mod tests {
         // Given messages and tool definitions.
         let messages = vec![LlmMessage::User {
             content: "what's the weather?".into(),
+            attachments: Vec::new(),
         }];
         let tools = vec![ToolDefinition {
             name: "get_weather".into(),
@@ -316,6 +318,7 @@ mod tests {
             },
             LlmMessage::User {
                 content: "hello".into(),
+                attachments: Vec::new(),
             },
         ];
 
@@ -337,6 +340,7 @@ mod tests {
         // Given a basic request.
         let messages = vec![LlmMessage::User {
             content: "hello".into(),
+            attachments: Vec::new(),
         }];
 
         // When building request.
@@ -368,9 +372,11 @@ mod tests {
         let messages = vec![
             LlmMessage::User {
                 content: "first".into(),
+                attachments: Vec::new(),
             },
             LlmMessage::User {
                 content: "second".into(),
+                attachments: Vec::new(),
             },
         ];
 
@@ -470,6 +476,7 @@ mod tests {
         let messages = vec![
             LlmMessage::User {
                 content: "hello".into(),
+                attachments: Vec::new(),
             },
             LlmMessage::Assistant {
                 content: "hi".into(),
@@ -477,6 +484,7 @@ mod tests {
             },
             LlmMessage::User {
                 content: "how are you?".into(),
+                attachments: Vec::new(),
             },
         ];
 
@@ -496,12 +504,15 @@ mod tests {
         let messages = vec![
             LlmMessage::User {
                 content: "first".into(),
+                attachments: Vec::new(),
             },
             LlmMessage::User {
                 content: "second".into(),
+                attachments: Vec::new(),
             },
             LlmMessage::User {
                 content: "third".into(),
+                attachments: Vec::new(),
             },
         ];
 
@@ -523,6 +534,7 @@ mod tests {
         let messages = vec![
             LlmMessage::User {
                 content: "run the tool".into(),
+                attachments: Vec::new(),
             },
             LlmMessage::Tool {
                 tool_call_id: "call_1".into(),
@@ -531,6 +543,7 @@ mod tests {
             },
             LlmMessage::User {
                 content: "now do another thing".into(),
+                attachments: Vec::new(),
             },
         ];
 
@@ -552,6 +565,7 @@ mod tests {
         let messages = vec![
             LlmMessage::User {
                 content: "check the weather".into(),
+                attachments: Vec::new(),
             },
             LlmMessage::Assistant {
                 content: "looking".into(),
@@ -563,6 +577,7 @@ mod tests {
             },
             LlmMessage::User {
                 content: "what about tomorrow?".into(),
+                attachments: Vec::new(),
             },
         ];
 
@@ -585,12 +600,14 @@ mod tests {
             },
             LlmMessage::User {
                 content: "hello".into(),
+                attachments: Vec::new(),
             },
             LlmMessage::System {
                 content: "Be concise.".into(),
             },
             LlmMessage::User {
                 content: "world".into(),
+                attachments: Vec::new(),
             },
         ];
 
@@ -620,6 +637,7 @@ mod tests {
         let messages = vec![
             LlmMessage::User {
                 content: "check the weather".into(),
+                attachments: Vec::new(),
             },
             LlmMessage::Assistant {
                 content: "Let me check.".into(),
@@ -640,6 +658,7 @@ mod tests {
             },
             LlmMessage::User {
                 content: "thanks".into(),
+                attachments: Vec::new(),
             },
         ];
 
@@ -660,6 +679,7 @@ mod tests {
         // Given a single user message.
         let messages = vec![LlmMessage::User {
             content: "hello".into(),
+            attachments: Vec::new(),
         }];
 
         // When building request.
@@ -689,9 +709,11 @@ mod tests {
         let messages = vec![
             LlmMessage::User {
                 content: String::new(),
+                attachments: Vec::new(),
             },
             LlmMessage::User {
                 content: "actual content".into(),
+                attachments: Vec::new(),
             },
         ];
 
@@ -713,12 +735,15 @@ mod tests {
         let messages = vec![
             LlmMessage::User {
                 content: "what files are here?".into(),
+                attachments: Vec::new(),
             },
             LlmMessage::User {
                 content: "[Actor: bash] ls\nfile1.txt\nfile2.txt".into(),
+                attachments: Vec::new(),
             },
             LlmMessage::User {
                 content: "[Error] connection timed out".into(),
+                attachments: Vec::new(),
             },
         ];
 

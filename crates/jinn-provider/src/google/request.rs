@@ -71,7 +71,7 @@ fn message_to_json(msg: &LlmMessage) -> serde_json::Value {
             // System messages handled separately - unreachable.
             serde_json::json!({"role": "user", "parts": []})
         }
-        LlmMessage::User { content } => serde_json::json!({
+        LlmMessage::User { content, .. } => serde_json::json!({
             "role": "user",
             "parts": [{"text": content}]
         }),
@@ -170,6 +170,7 @@ mod tests {
             },
             LlmMessage::User {
                 content: "hello".into(),
+                attachments: Vec::new(),
             },
         ];
 
@@ -184,6 +185,7 @@ mod tests {
     fn user_message_uses_user_role() {
         let json = message_to_json(&LlmMessage::User {
             content: "hi".into(),
+            attachments: Vec::new(),
         });
         assert_eq!(json["role"], "user");
     }
@@ -240,6 +242,7 @@ mod tests {
             },
             LlmMessage::User {
                 content: "hello".into(),
+                attachments: Vec::new(),
             },
         ];
 

@@ -4,6 +4,7 @@
 //! [`LlmServiceFactory`] for creating per-call service instances.
 //! Includes test doubles (fake, sample, no-providers) for use in tests.
 
+mod attachment;
 mod backend;
 mod fake;
 mod llm_message;
@@ -23,6 +24,7 @@ pub mod google;
 pub use anthropic::AnthropicFactory;
 pub use google::GoogleFactory;
 
+pub use attachment::Attachment;
 pub use backend::{Backend, BackendError};
 pub use fake::{FakeLlmServiceFactory, ScriptedResponse, TOOL_LOOP_TRIGGER};
 pub use llm_message::LlmMessage;
