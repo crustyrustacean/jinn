@@ -388,18 +388,16 @@ impl<I> Parser<I> for SingleFeatureParser {
 ///
 /// Verbosity is controlled by `RUST_LOG` (defaults to a `jinn`-focused filter).
 fn init_tracing() {
-    let env_filter = tracing_subscriber::EnvFilter::try_from_default_env()
-        .unwrap_or_else(|_| {
-            // Suppress kameo's chatty per-message spans; keep jinn + warnings.
-            tracing_subscriber::EnvFilter::new(
-                "warn,jinn=debug,jinn_domain=debug,e2e=debug,kameo=warn,kameo_actors=off",
-            )
-        });
+    let env_filter = tracing_subscriber::EnvFilter::try_from_default_env().unwrap_or_else(|_| {
+        // Suppress kameo's chatty per-message spans; keep jinn + warnings.
+        tracing_subscriber::EnvFilter::new(
+            "warn,jinn=debug,jinn_domain=debug,e2e=debug,kameo=warn,kameo_actors=off",
+        )
+    });
 
     if e2e_logging_enabled() {
         use std::fs::OpenOptions;
-        let log_path =
-            std::env::temp_dir().join(format!("jinn-e2e-{}.log", std::process::id()));
+        let log_path = std::env::temp_dir().join(format!("jinn-e2e-{}.log", std::process::id()));
         eprintln!("[e2e] tracing to {}", log_path.display());
         let file = OpenOptions::new()
             .create(true)
