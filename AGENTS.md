@@ -263,7 +263,7 @@ Each `AppState` field/sub-struct is written by **at most one actor** — its own
 
 The `IntentHandler` is **not an actor** and is exempt from this rule. It is the synchronous frontend mutator (user input → `AppState`). It may write any field, in frontend or elsewhere; it is never counted as a writer. An actor owning a field the `IntentHandler` also writes is not a conflict (e.g. optimistic IntentHandler write + authoritative actor write is fine).
 
-Ownership is per-field, not per-top-level-struct: a domain actor writing `frontend.pins` it owns is correct; the `IntentHandler` writing it too is also correct (exempt); a *second actor* writing it is the red flag. A cross-boundary write is mutating a field you don't own, regardless of which top-level struct it lives under.
+Ownership is per-field, not per-top-level-struct: a domain actor writing `frontend.pins` it owns is correct; the `IntentHandler` writing it too is also correct (exempt); a _second actor_ writing it is the red flag. A cross-boundary write is mutating a field you don't own, regardless of which top-level struct it lives under.
 
 **Anti-pattern — the "sync sibling."** Do not split one domain boundary across two actors where one persists/forwards and a second "sync" actor subscribes to the first's event just to write `AppState`. If you keep an actor "pure" (no `State`) and spawn a sibling to do the write, the sibling is the bug — give the first actor a `State` clone and write inline. One boundary = one actor.
 
@@ -564,15 +564,15 @@ Read the `justfile` to determine what additional tooling is related to this proj
 
 Skills refer to commands by **role**; the table below resolves each role to this project's actual command.
 
-| Role         | Command                        | Description                                                                                            |
-| ------------ | ------------------------------ | ------------------------------------------------------------------------------------------------------ |
-| `vcs`        | Fossil                         | This project uses Fossil for version control (`fossil status`, `fossil diff`, `fossil timeline`, ...). |
-| `check`      | `just check`                   | `cargo check --workspace` — fast compilation without codegen.                                          |
-| `test`       | `just test`                    | `cargo test --workspace` + e2e tests — **all tests must pass before committing**.                      |
-| `lint`       | `just lint`                    | Lint checks.                                                                                           |
-| `format`     | `just fmt-fix`                 | Apply formatting fixes.                                                                                |
-| `commit`     | `fossil commit -m "<message>"` | Commit changes.                                                                                        |
-| `sync-trunk` | `fossil merge trunk`           | Sync latest changes with your branch (resolve conflicts, re-test, commit).                             |
+| Role         | Command                                            | Description                                                                                            |
+| ------------ | -------------------------------------------------- | ------------------------------------------------------------------------------------------------------ |
+| `vcs`        | Fossil                                             | This project uses Fossil for version control (`fossil status`, `fossil diff`, `fossil timeline`, ...). |
+| `check`      | `just check`                                       | `cargo check --workspace` — fast compilation without codegen.                                          |
+| `test`       | `just test`                                        | `cargo test --workspace` + e2e tests — **all tests must pass before committing**.                      |
+| `lint`       | `just lint`                                        | Lint checks.                                                                                           |
+| `format`     | `just fmt-fix`                                     | Apply formatting fixes.                                                                                |
+| `commit`     | `fossil addremove && fossil commit -m "<message>"` | Commit changes.                                                                                        |
+| `sync-trunk` | `fossil merge trunk`                               | Sync latest changes with your branch (resolve conflicts, re-test, commit).                             |
 
 ### Plan Directory
 
