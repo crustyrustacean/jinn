@@ -16,6 +16,11 @@ use std::path::Path;
 pub struct ModelsDevData {
     /// Model ID → context length in tokens.
     pub context_lengths: HashMap<String, u32>,
+    /// Model ID → whether the model accepts image input.
+    ///
+    /// Derived from the models.dev `modalities.input` array containing
+    /// `"image"`. Used to gate multimodal sends before they reach the provider.
+    pub image_support: HashMap<String, bool>,
 }
 
 impl ModelsDevData {
@@ -74,6 +79,16 @@ impl ModelsDevData {
         self.context_lengths.get(model_id).copied()
     }
 
+    /// Looks up whether a model accepts image input.
+    ///
+    /// Returns `None` if the model is not in the reference data (unknown
+    /// model). The caller treats `None` as "allow" — the gate only rejects
+    /// models known to lack image support.
+    #[must_use]
+    pub fn supports_images(&self, model_id: &str) -> Option<bool> {
+        self.image_support.get(model_id).copied()
+    }
+
     /// Returns `true` if the lookup table is empty.
     #[must_use]
     pub fn is_empty(&self) -> bool {
@@ -94,6 +109,7 @@ impl ModelsDevData {
             serde_json::from_str(&content).map_err(|e| format!("invalid JSON: {e}"))?;
 
         let mut context_lengths = HashMap::new();
+        let mut image_support = HashMap::new();
 
         for (_provider_name, provider_data) in &providers {
             let Some(models) = provider_data.get("models").and_then(|m| m.as_object()) else {
@@ -111,10 +127,21 @@ impl ModelsDevData {
                     // Only insert if not already present (first provider wins).
                     context_lengths.entry(model_id.clone()).or_insert(ctx);
                 }
+
+                // Extract image support from modalities.input.
+                let has_image = model_data
+                    .get("modalities")
+                    .and_then(|m| m.get("input"))
+                    .and_then(serde_json::Value::as_array)
+                    .is_some_and(|inputs| inputs.iter().any(|v| v.as_str() == Some("image")));
+                image_support.entry(model_id.clone()).or_insert(has_image);
             }
         }
 
-        Ok(Self { context_lengths })
+        Ok(Self {
+            context_lengths,
+            image_support,
+        })
     }
 }
 
@@ -141,10 +168,12 @@ mod tests {
                 "models": {
                     "gpt-4o": {
                         "name": "GPT-4o",
+                        "modalities": { "input": ["text", "image"] },
                         "limit": { "context": 128000, "output": 16384 }
                     },
                     "gpt-3.5-turbo": {
                         "name": "GPT-3.5 Turbo",
+                        "modalities": { "input": ["text"] },
                         "limit": { "context": 16385, "output": 4096 }
                     }
                 }
@@ -350,5 +379,41 @@ mod tests {
             "is_empty should return false when data is loaded"
         );
         assert_eq!(data.get("gpt-4o"), Some(128_000));
+    }
+
+    #[rstest::rstest]
+    fn supports_images_true_for_vision_model() {
+        // Given a models.dev file with a vision-capable model.
+        let dir = tempfile::tempdir().expect("temp dir");
+        let user_path = write_json(dir.path(), "models.dev.json", minimal_models_dev_json());
+        let data = ModelsDevData::load(&user_path, Path::new("/nonexistent"));
+
+        // When looking up image support for gpt-4o.
+        // Then it returns Some(true).
+        assert_eq!(data.supports_images("gpt-4o"), Some(true));
+    }
+
+    #[rstest::rstest]
+    fn supports_images_false_for_text_only_model() {
+        // Given a models.dev file with a text-only model.
+        let dir = tempfile::tempdir().expect("temp dir");
+        let user_path = write_json(dir.path(), "models.dev.json", minimal_models_dev_json());
+        let data = ModelsDevData::load(&user_path, Path::new("/nonexistent"));
+
+        // When looking up image support for gpt-3.5-turbo.
+        // Then it returns Some(false).
+        assert_eq!(data.supports_images("gpt-3.5-turbo"), Some(false));
+    }
+
+    #[rstest::rstest]
+    fn supports_images_none_for_unknown_model() {
+        // Given a models.dev file.
+        let dir = tempfile::tempdir().expect("temp dir");
+        let user_path = write_json(dir.path(), "models.dev.json", minimal_models_dev_json());
+        let data = ModelsDevData::load(&user_path, Path::new("/nonexistent"));
+
+        // When looking up a model not in the reference data.
+        // Then None is returned (unknown model treated as "allow" by the gate).
+        assert_eq!(data.supports_images("my-custom-llama"), None);
     }
 }

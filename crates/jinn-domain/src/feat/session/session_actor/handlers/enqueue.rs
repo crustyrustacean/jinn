@@ -33,6 +33,16 @@ impl SessionPersistenceActor {
         &self,
         payload: &EnqueueUserMessage,
     ) {
+        // Vision-capability gate (Idle dispatch path only). Block image
+        // attachments on models known to lack image support before the entry is
+        // pushed or the phase is mutated. Unknown models are allowed through.
+        if self
+            .attachment_gate_blocks(&payload.session_id, &payload.entry)
+            .await
+        {
+            return;
+        }
+
         let (action, assembly_overrides) = {
             self.state.with_session(&self.cap, |view| {
                 let session = view.session.map().get_or_create(&payload.session_id);
@@ -160,6 +170,61 @@ impl SessionPersistenceActor {
             }
             EnqueueAction::Queued => {}
         }
+    }
+
+    /// Checks whether a user entry's image attachments are blocked by the active
+    /// model's capabilities. When blocked, pushes the user entry plus an
+    /// explanatory `Error` entry, emits `HistoryAppended`, persists, and returns
+    /// `true` so the caller skips its normal dispatch path.
+    ///
+    /// Runs only on the `Idle` dispatch path. Returns `false` (no-op) when the
+    /// entry carries no attachments, the model is vision-capable, or the model is
+    /// unknown to the reference data.
+    async fn attachment_gate_blocks(
+        &self,
+        session_id: &crate::SessionId,
+        entry: &ChatEntry,
+    ) -> bool {
+        let is_idle = {
+            let guard = self.state.read();
+            match guard.session.get(session_id) {
+                Some(s) => matches!(s.phase(), PhaseKind::Idle),
+                // Absent session is created fresh (Idle) by get_or_create below.
+                None => true,
+            }
+        };
+        if !is_idle {
+            return false;
+        }
+
+        let models_dev = crate::feat::provider_infra::ModelsDevData::load(
+            &self.services.paths.models_dev_user_path(),
+            &self.services.paths.models_dev_system_path(),
+        );
+        let model_id = {
+            let guard = self.state.read();
+            guard
+                .session
+                .get(session_id)
+                .and_then(|s| s.profile().model.last_model())
+                .map(str::to_owned)
+        };
+        let Some(error_entry) =
+            super::multimodal_gate::attachment_gate(model_id.as_deref(), entry, &models_dev)
+        else {
+            return false;
+        };
+
+        // Blocked: push the user entry and the error entry, then persist.
+        // The session stays Idle — no phase transition, no dispatch.
+        self.state.with_session(&self.cap, |view| {
+            let session = view.session.map().get_or_create(session_id);
+            session.push_entry(entry.clone());
+            session.push_entry(error_entry);
+        });
+        super::super::helpers::emit_history_appended(self.bus(), session_id).await;
+        self.save_active_session(session_id).await;
+        true
     }
 
     /// EnqueueResumeTurn: re-send current history without adding a new user entry.
