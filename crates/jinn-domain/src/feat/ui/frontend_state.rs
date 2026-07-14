@@ -182,6 +182,10 @@ pub struct FrontendState {
     pub dashboard: DashboardState,
 
     pub sidebar_width: u16,
+
+    /// `@path` file popup state.
+    /// OWNER: DirectoryListerActor (entries, loading, expected_request_id).
+    pub file_picker: crate::feat::file_lister::FilePickerState,
 }
 
 impl Default for FrontendState {
@@ -217,6 +221,7 @@ impl Default for FrontendState {
             dashboard: DashboardState::default(),
 
             sidebar_width: 30,
+            file_picker: crate::feat::file_lister::FilePickerState::default(),
         }
     }
 }

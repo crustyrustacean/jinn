@@ -39,7 +39,20 @@ impl SessionPersistenceActor {
         // raw text in `payload.entry` until expanded. Expansion is idempotent;
         // `push_entry` re-runs it harmlessly.
         let mut entry = payload.entry.clone();
-        self.expand_user_entry(&payload.session_id, &mut entry);
+        let pending_paths = self.expand_user_entry(&payload.session_id, &mut entry);
+
+        // Resolve `@path` image attachments: read bytes off the async runtime
+        // (`spawn_blocking`), classify each as native / needs-conversion /
+        // not-an-image, and fill `entry.kind.attachments`. Non-native images
+        // are transcoded to PNG via ImageMagick; any failure produces a
+        // visible `Error` entry and aborts dispatch. This runs *before* the
+        // vision-capability gate so the gate sees real attachments.
+        if !self
+            .resolve_image_attachments(&payload.session_id, pending_paths, &mut entry)
+            .await
+        {
+            return;
+        }
 
         // Vision-capability gate (Idle dispatch path only). Block image
         // attachments on models known to lack image support before the entry is
@@ -240,7 +253,11 @@ impl SessionPersistenceActor {
     ///
     /// If the session does not yet exist, expansion uses an empty template
     /// store (so `@path` scanning still runs, but `#token` lookup finds nothing).
-    fn expand_user_entry(&self, session_id: &crate::SessionId, entry: &mut ChatEntry) {
+    fn expand_user_entry(
+        &self,
+        session_id: &crate::SessionId,
+        entry: &mut ChatEntry,
+    ) -> Vec<std::path::PathBuf> {
         use crate::feat::context::prompt_template::PathResolveContext;
         use crate::feat::session::chat_session::expand_user_entry as expand;
         let (store, cwd) = {
@@ -248,12 +265,89 @@ impl SessionPersistenceActor {
             guard
                 .session
                 .get(session_id)
-                .map(|s| (s.discovered_prompt_templates().clone(), s.cwd().to_path_buf()))
+                .map(|s| {
+                    (
+                        s.discovered_prompt_templates().clone(),
+                        s.cwd().to_path_buf(),
+                    )
+                })
                 .unwrap_or_default()
         };
         let home = self.services.paths.home_dir().to_path_buf();
         let ctx = PathResolveContext::new(&cwd, &home);
-        expand(entry, &store, &ctx);
+        expand(entry, &store, &ctx)
+    }
+
+    /// Reads, classifies, and (if needed) converts `@path` image attachments
+    /// off the async runtime, filling `entry.kind.attachments`.
+    ///
+    /// Returns `true` when all paths resolved successfully (or there were
+    /// none), and `false` when a failure produced a visible `Error` entry and
+    /// the caller must abort dispatch.
+    ///
+    /// The blocking file read + classification + ImageMagick spawn all run
+    /// inside `spawn_blocking` so the async runtime is never stalled by a
+    /// slow disk or a slow conversion.
+    async fn resolve_image_attachments(
+        &self,
+        session_id: &crate::SessionId,
+        pending_paths: Vec<std::path::PathBuf>,
+        entry: &mut ChatEntry,
+    ) -> bool {
+        if pending_paths.is_empty() {
+            return true;
+        }
+        let converter = self.image_converter.clone();
+        let result = tokio::task::spawn_blocking(move || {
+            super::image_resolve::resolve_attachments_blocking(&pending_paths, &converter)
+        })
+        .await;
+        match result {
+            // Spawn panicked / cancelled — surface a generic error.
+            Err(join_err) => {
+                self.push_entry_and_block(
+                    session_id,
+                    entry.clone(),
+                    format!("Could not attach image: background task failed: {join_err}"),
+                )
+                .await;
+                false
+            }
+            Ok(Ok(attachments)) => {
+                if let ChatEntryKind::User {
+                    attachments: entry_attachments,
+                    ..
+                } = &mut entry.kind
+                {
+                    *entry_attachments = attachments;
+                }
+                true
+            }
+            Ok(Err(report)) => {
+                let message = super::image_resolve::format_attachment_error(&report);
+                self.push_entry_and_block(session_id, entry.clone(), message)
+                    .await;
+                false
+            }
+        }
+    }
+
+    /// Pushes `user_entry` then an `Error` entry carrying `message`, emits
+    /// `HistoryAppended`, persists, and leaves the session `Idle`. Mirrors the
+    /// vision-capability gate's blocking path.
+    async fn push_entry_and_block(
+        &self,
+        session_id: &crate::SessionId,
+        user_entry: ChatEntry,
+        message: String,
+    ) {
+        self.state.with_session(&self.cap, |view| {
+            let session = view.session.map().get_or_create(session_id);
+            session.push_entry(user_entry);
+            session.push_entry(ChatEntry::error(message));
+        });
+        super::super::helpers::emit_history_appended(self.bus(), session_id).await;
+        self.save_active_session(session_id).await;
     }
 
     /// EnqueueResumeTurn: re-send current history without adding a new user entry.

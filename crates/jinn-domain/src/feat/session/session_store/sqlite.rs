@@ -570,7 +570,7 @@ impl TryFrom<&ChatSessionState> for NewSessionRow {
                     history: _history, // persisted via entries + session_history tables below
                     profile: _profile, // persisted via metadata blob
                     cwd: _cwd,         // persisted via metadata blob
-                    home: _home, // runtime-only, set from services.paths.home_dir() at setup
+                    home: _home,       // runtime-only, set from services.paths.home_dir() at setup
                     token_ledger: _ledger, // persisted via token_ledger table below
                     parent_session,
 

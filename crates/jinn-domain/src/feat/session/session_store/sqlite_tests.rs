@@ -1140,10 +1140,21 @@ async fn user_entry_with_image_attachment_roundtrips_through_sqlite() {
     let png_path = dir.path().join("img.png");
     std::fs::write(&png_path, TINY_PNG).expect("write png");
     let display = format!("describe this @{}", png_path.to_string_lossy());
+    let expanded = format!("describe this (file://{})", png_path.to_string_lossy());
+    let mut entry = ChatEntry::user_expanded(display, expanded);
+    // Populate the attachment directly — this test verifies SQLite persistence
+    // of attachments, not the @path expansion pipeline (which resolves in the
+    // session actor).
+    if let ChatEntryKind::User { attachments, .. } = &mut entry.kind {
+        attachments.push(jinn_provider::Attachment::image(
+            "image/png",
+            TINY_PNG.to_vec(),
+        ));
+    }
     let mut session = ChatSessionState::new();
     session.set_session_id(session_id.clone());
     session.set_title("Image Session".to_owned());
-    session.push_entry(ChatEntry::user(&display));
+    session.push_entry(entry);
 
     // When saving and reloading the session.
     store.save(&session).await.expect("save");

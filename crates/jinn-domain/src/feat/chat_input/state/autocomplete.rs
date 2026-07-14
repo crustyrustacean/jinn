@@ -11,6 +11,16 @@ pub enum AutocompleteTrigger {
     Hash,
     /// Triggered by `/` at position 0 for slash-command completion.
     Slash,
+    /// Triggered by `@` for file-path completion (the `@path` popup).
+    ///
+    /// Lists files relative to the session CWD (or an absolute/tilde root) via
+    /// the async `DirectoryListerActor`. Matches are populated asynchronously
+    /// into `frontend.file_picker`, not from `matches`.
+    At,
+    /// Reserved seam for `@@` (the multi-file accumulator picker). No handler
+    /// is wired yet — typing `@@` produces two literal `@` characters. This
+    /// variant exists so the discriminator is in place for a future task.
+    AtAt,
 }
 
 /// Tracks an active autocomplete session.
@@ -77,6 +87,28 @@ impl AutocompleteState {
             .selected_index
             .saturating_add(1)
             .min(self.matches.len().saturating_sub(1));
+    }
+
+    /// Moves the selection up, bounded by `count` (the number of visible rows).
+    ///
+    /// Used by the `@path` popup, whose entries live in `frontend.file_picker`
+    /// rather than `matches`. `count` is the length of
+    /// [`FilePickerState::visible_entries`](crate::feat::file_lister::FilePickerState::visible_entries),
+    /// so the index never leaves the range the popup actually renders.
+    pub fn move_up_bounded(&mut self, count: usize) {
+        self.selected_index = self.selected_index.min(count.saturating_sub(1));
+        self.selected_index = self.selected_index.saturating_sub(1);
+    }
+
+    /// Moves the selection down, bounded by `count` (the number of visible rows).
+    ///
+    /// See [`move_up_bounded`]; the bound is the visible-entry count for the
+    /// `@path` popup.
+    pub fn move_down_bounded(&mut self, count: usize) {
+        self.selected_index = self
+            .selected_index
+            .saturating_add(1)
+            .min(count.saturating_sub(1));
     }
 
     /// Replaces the match list and clamps the selected index.

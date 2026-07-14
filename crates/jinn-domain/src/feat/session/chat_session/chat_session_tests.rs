@@ -124,18 +124,15 @@ fn push_entry_at_path_creates_attachment_and_file_uri() {
     // When pushing a user entry referencing the image via @path.
     let index = session.push_entry(ChatEntry::user(format!("describe @{abs}")));
 
-    // Then the entry carries one image attachment.
+    // Then the entry has no attachments yet — `push_entry` only rewrites
+    // text and collects pending paths. Attachment resolution happens in the
+    // session actor via `spawn_blocking`.
     let ChatEntryKind::User {
-        display,
-        expanded,
-        attachments,
-        ..
+        display, expanded, ..
     } = &session.history()[index].kind
     else {
         panic!("expected a user entry");
     };
-    assert_eq!(attachments.len(), 1);
-    assert!(attachments[0].is_image());
     // And display keeps the raw @path (UI unchanged).
     assert_eq!(display, &format!("describe @{abs}"));
     // And expanded rewrites @path to the file:// URI.

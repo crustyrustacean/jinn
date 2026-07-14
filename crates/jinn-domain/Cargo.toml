@@ -29,6 +29,7 @@ async-trait = { workspace = true }
 wherror = { workspace = true }
 error-stack = { workspace = true }
 dirs = { workspace = true }
+which = { workspace = true }
 tokio = { workspace = true }
 tokio-util = { workspace = true }
 tracing = { workspace = true }

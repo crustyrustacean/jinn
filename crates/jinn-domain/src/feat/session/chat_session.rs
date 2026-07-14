@@ -913,7 +913,11 @@ impl ChatSessionState {
     pub fn push_entry(&mut self, mut entry: ChatEntry) -> usize {
         self.core.last_history_activity_at = Timestamp::now();
         let ctx = PathResolveContext::new(&self.core.cwd, &self.core.home);
-        expand_user_entry(&mut entry, &self.core.ephemeral.discovered_prompt_templates, &ctx);
+        expand_user_entry(
+            &mut entry,
+            &self.core.ephemeral.discovered_prompt_templates,
+            &ctx,
+        );
         let was_at_last = self
             .ui
             .selected_cursor_id
@@ -940,7 +944,11 @@ impl ChatSessionState {
     /// produces identical output (no `@path` tokens survive the first pass).
     pub fn expand_entry(&self, entry: &mut ChatEntry) {
         let ctx = PathResolveContext::new(&self.core.cwd, &self.core.home);
-        expand_user_entry(entry, &self.core.ephemeral.discovered_prompt_templates, &ctx);
+        expand_user_entry(
+            entry,
+            &self.core.ephemeral.discovered_prompt_templates,
+            &ctx,
+        );
     }
 
     /// Insert an entry at a specific position in the history.
@@ -3281,22 +3289,26 @@ pub(crate) fn expand_user_entry(
     entry: &mut ChatEntry,
     store: &PromptTemplateStore,
     ctx: &PathResolveContext<'_>,
-) {
+) -> Vec<std::path::PathBuf> {
+    let mut pending_paths = Vec::new();
     if let ChatEntryKind::User {
-        display,
-        expanded,
-        attachments,
+        display, expanded, ..
     } = &mut entry.kind
     {
         // Pass 1: `#token` template expansion.
         let token_expanded = expand_tokens(display, store);
-        // Pass 2: `@path` image scanning — resolves paths against the session
-        // cwd/home, rewrites tokens to file:// URIs, and reads referenced
-        // images into attachments.
+        // Pass 2: `@path` token rewriting — resolves paths against the session
+        // cwd/home and rewrites each `@path` to a `file://` URI. This is a
+        // pure-text transform; reading image bytes / classifying / filling
+        // `attachments` happens in the async session actor (see
+        // `handle_enqueue_user_message`), so blocking I/O stays in
+        // `spawn_blocking`. The resolved paths are returned to the actor for
+        // the async byte-reading + conversion phase.
         let scanned = scan_at_paths(&token_expanded, ctx);
         *expanded = scanned.rewritten_text;
-        *attachments = scanned.attachments;
+        pending_paths = scanned.pending_paths;
     }
+    pending_paths
 }
 
 impl Default for ChatSessionState {
