@@ -1130,3 +1130,62 @@ impl daow::FromRow for MetadataRow {
         })
     }
 }
+
+#[rstest::rstest]
+#[tokio::test]
+async fn user_entry_with_image_attachment_roundtrips_through_sqlite() {
+    // Given a session with a user entry referencing a PNG on disk via @path.
+    let (dir, store) = make_store().await;
+    let session_id = SessionId::new();
+    let png_path = dir.path().join("img.png");
+    std::fs::write(&png_path, TINY_PNG).expect("write png");
+    let display = format!("describe this @{}", png_path.to_string_lossy());
+    let expanded = format!("describe this (file://{})", png_path.to_string_lossy());
+    let mut entry = ChatEntry::user_expanded(display, expanded);
+    // Populate the attachment directly — this test verifies SQLite persistence
+    // of attachments, not the @path expansion pipeline (which resolves in the
+    // session actor).
+    if let ChatEntryKind::User { attachments, .. } = &mut entry.kind {
+        attachments.push(jinn_provider::Attachment::image(
+            "image/png",
+            TINY_PNG.to_vec(),
+        ));
+    }
+    let mut session = ChatSessionState::new();
+    session.set_session_id(session_id.clone());
+    session.set_title("Image Session".to_owned());
+    session.push_entry(entry);
+
+    // When saving and reloading the session.
+    store.save(&session).await.expect("save");
+    let loaded = store
+        .load_session(&session_id)
+        .await
+        .expect("load_session")
+        .expect("session should exist");
+
+    // Then the reloaded user entry carries the image attachment read from disk.
+    let entry = &loaded.history()[0];
+    let ChatEntryKind::User {
+        attachments,
+        expanded,
+        ..
+    } = &entry.kind
+    else {
+        panic!("expected a User entry");
+    };
+    assert_eq!(attachments.len(), 1);
+    assert!(attachments[0].is_image());
+    assert_eq!(attachments[0].data(), TINY_PNG);
+    assert!(
+        expanded.contains(&format!("(file://{})", png_path.to_string_lossy())),
+        "expanded text should contain the file:// URI: {expanded}"
+    );
+}
+
+/// Minimal valid PNG (1×1) magic bytes for attachment roundtrip tests.
+const TINY_PNG: &[u8] = &[
+    0x89, 0x50, 0x4E, 0x47, 0x0D, 0x0A, 0x1A, 0x0A, 0x00, 0x00, 0x00, 0x0D, 0x49, 0x48, 0x44, 0x52,
+    0x00, 0x00, 0x00, 0x01, 0x00, 0x00, 0x00, 0x01, 0x08, 0x06, 0x00, 0x00, 0x00, 0x1F, 0x15, 0xC4,
+    0x89,
+];

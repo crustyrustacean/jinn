@@ -2191,6 +2191,7 @@ dependencies = [
  "unicode-width",
  "uuid",
  "wherror",
+ "which 7.0.3",
 ]
 
 [[package]]
@@ -2243,6 +2244,7 @@ name = "jinn-provider"
 version = "0.93.1"
 dependencies = [
  "async-trait",
+ "base64",
  "error-stack",
  "futures",
  "jiff",

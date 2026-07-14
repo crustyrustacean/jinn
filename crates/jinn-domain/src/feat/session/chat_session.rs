@@ -38,8 +38,9 @@ use crate::protocol::{
     ChangeSource, ChatEntry, ChatEntryId, ChatEntryKind, ContextOverride, PinPosition, SessionId,
 };
 
+use crate::feat::context::prompt_template::PathResolveContext;
 use crate::feat::context::prompt_template::PromptTemplateStore;
-use crate::feat::context::prompt_template::expand_tokens;
+use crate::feat::context::prompt_template::{expand_tokens, scan_at_paths};
 use crate::feat::session::entry_timing::EntryTiming;
 
 /// Error returned when a streaming operation fails.
@@ -261,6 +262,12 @@ pub struct SessionCore {
     /// OWNER: IntentHandler (set on session creation and cd commands)
     #[serde(default = "default_cwd")]
     pub cwd: std::path::PathBuf,
+    /// User home directory for resolving `@~/path` references in this session.
+    /// Runtime-only — not persisted (resolved fresh at session creation from
+    /// `services.paths.home_dir()`).
+    /// OWNER: IntentHandler / session creation.
+    #[serde(skip)]
+    pub home: std::path::PathBuf,
     /// Token usage ledger - one immutable record per request/response pair.
     /// OWNER: session-actor (records tokens on assembly and StreamCompleted).
     #[serde(default)]
@@ -348,6 +355,7 @@ impl Default for SessionCore {
             history: ChatHistory::new(),
             profile: SessionProfile::default(),
             cwd: std::path::PathBuf::from("."),
+            home: std::path::PathBuf::from("."),
             token_ledger: Vec::new(),
             parent_session: None,
             fork_ordinal: None,
@@ -904,7 +912,12 @@ impl ChatSessionState {
     /// code to use the `PushChatEntry` command (which also triggers persistence).
     pub fn push_entry(&mut self, mut entry: ChatEntry) -> usize {
         self.core.last_history_activity_at = Timestamp::now();
-        expand_user_entry(&mut entry, &self.core.ephemeral.discovered_prompt_templates);
+        let ctx = PathResolveContext::new(&self.core.cwd, &self.core.home);
+        expand_user_entry(
+            &mut entry,
+            &self.core.ephemeral.discovered_prompt_templates,
+            &ctx,
+        );
         let was_at_last = self
             .ui
             .selected_cursor_id
@@ -919,6 +932,23 @@ impl ChatSessionState {
             }
         }
         index
+    }
+
+    /// Expands `#token` templates and `@/abs/path` image references in a user
+    /// entry **without** pushing it onto the history.
+    ///
+    /// This is the same expansion `push_entry` applies, factored out so callers
+    /// that need to inspect the expanded entry (e.g. the multimodal capability
+    /// gate before dispatch) can run it ahead of `push_entry` without double
+    /// work. Expansion is idempotent: running it again inside `push_entry`
+    /// produces identical output (no `@path` tokens survive the first pass).
+    pub fn expand_entry(&self, entry: &mut ChatEntry) {
+        let ctx = PathResolveContext::new(&self.core.cwd, &self.core.home);
+        expand_user_entry(
+            entry,
+            &self.core.ephemeral.discovered_prompt_templates,
+            &ctx,
+        );
     }
 
     /// Insert an entry at a specific position in the history.
@@ -2677,6 +2707,11 @@ impl ChatSessionState {
         self.core.cwd = cwd;
     }
 
+    /// Sets this session's home directory for resolving `@~/path` references.
+    pub fn set_home(&mut self, home: std::path::PathBuf) {
+        self.core.home = home;
+    }
+
     /// Read-only access to the token ledger.
     pub fn token_ledger(&self) -> &[TokenRecord] {
         &self.core.token_ledger
@@ -3250,10 +3285,30 @@ impl ChatSessionState {
 ///
 /// This is the single expansion site for all user entries — see
 /// [`ChatSessionState::push_entry`].
-fn expand_user_entry(entry: &mut ChatEntry, store: &PromptTemplateStore) {
-    if let ChatEntryKind::User { display, expanded } = &mut entry.kind {
-        *expanded = expand_tokens(display, store);
+pub(crate) fn expand_user_entry(
+    entry: &mut ChatEntry,
+    store: &PromptTemplateStore,
+    ctx: &PathResolveContext<'_>,
+) -> Vec<std::path::PathBuf> {
+    let mut pending_paths = Vec::new();
+    if let ChatEntryKind::User {
+        display, expanded, ..
+    } = &mut entry.kind
+    {
+        // Pass 1: `#token` template expansion.
+        let token_expanded = expand_tokens(display, store);
+        // Pass 2: `@path` token rewriting — resolves paths against the session
+        // cwd/home and rewrites each `@path` to a `file://` URI. This is a
+        // pure-text transform; reading image bytes / classifying / filling
+        // `attachments` happens in the async session actor (see
+        // `handle_enqueue_user_message`), so blocking I/O stays in
+        // `spawn_blocking`. The resolved paths are returned to the actor for
+        // the async byte-reading + conversion phase.
+        let scanned = scan_at_paths(&token_expanded, ctx);
+        *expanded = scanned.rewritten_text;
+        pending_paths = scanned.pending_paths;
     }
+    pending_paths
 }
 
 impl Default for ChatSessionState {

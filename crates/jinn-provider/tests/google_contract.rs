@@ -41,6 +41,7 @@ async fn text_streaming_yields_text_events() {
         .chat_stream_with_tools(
             vec![LlmMessage::User {
                 content: "hi".into(),
+                attachments: Vec::new(),
             }],
             vec![],
         )
@@ -86,6 +87,7 @@ async fn tool_call_streaming_yields_tool_use_start() {
         .chat_stream_with_tools(
             vec![LlmMessage::User {
                 content: "call echo".into(),
+                attachments: Vec::new(),
             }],
             vec![ToolDefinition {
                 name: "echo".into(),
@@ -134,6 +136,7 @@ async fn tool_call_streaming_yields_input_delta() {
         .chat_stream_with_tools(
             vec![LlmMessage::User {
                 content: "call echo".into(),
+                attachments: Vec::new(),
             }],
             vec![ToolDefinition {
                 name: "echo".into(),
@@ -182,6 +185,7 @@ async fn tool_call_streaming_yields_tool_use_complete() {
         .chat_stream_with_tools(
             vec![LlmMessage::User {
                 content: "call echo".into(),
+                attachments: Vec::new(),
             }],
             vec![ToolDefinition {
                 name: "echo".into(),
@@ -230,6 +234,7 @@ async fn tool_call_streaming_yields_done_event() {
         .chat_stream_with_tools(
             vec![LlmMessage::User {
                 content: "call echo".into(),
+                attachments: Vec::new(),
             }],
             vec![ToolDefinition {
                 name: "echo".into(),
@@ -293,6 +298,7 @@ async fn error_response_401_returns_error() {
         .chat_stream_with_tools(
             vec![LlmMessage::User {
                 content: "hi".into(),
+                attachments: Vec::new(),
             }],
             vec![],
         )
@@ -329,6 +335,7 @@ async fn chat_stream_yields_text_tokens_only() {
     let stream = service
         .chat_stream(vec![LlmMessage::User {
             content: "hi".into(),
+            attachments: Vec::new(),
         }])
         .await
         .unwrap();

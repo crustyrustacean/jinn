@@ -521,6 +521,8 @@ jinn_domain::feat::preferences_actor::preferences_actor::PreferencesActor::super
                     builtin_registry:
                         jinn_domain::feat::session_lifecycle::builtin::BuiltinRegistry::new(),
                     shell: std::env::var("SHELL").unwrap_or_else(|_| "/bin/sh".to_owned()),
+                    image_converter:
+                        jinn_domain::feat::image_convert::ImageConverterService::system(),
                 },
             )
             .restart_policy(kameo::supervision::RestartPolicy::Never)
@@ -821,6 +823,24 @@ jinn_domain::feat::preferences_actor::preferences_actor::PreferencesActor::super
                     deps: actor_deps.clone(),
                     state: state.clone(),
                     session_cap: jinn_domain::common::tcaps::mint::mint_session_cap(),
+                    frontend_cap: jinn_domain::common::tcaps::mint::mint_frontend_cap(),
+                },
+            )
+            .restart_policy(kameo::supervision::RestartPolicy::Never)
+            .spawn()
+            .await
+        );
+
+        // Directory lister actor (`@path` file popup).
+        let _directory_lister = spawn_tracked!(
+            &services.bus,
+            "directory-lister",
+            "DirectoryListerActor",
+            jinn_domain::feat::file_lister::DirectoryListerActor::supervise(
+                &root,
+                jinn_domain::feat::file_lister::DirectoryListerActorDeps {
+                    deps: actor_deps.clone(),
+                    state: state.clone(),
                     frontend_cap: jinn_domain::common::tcaps::mint::mint_frontend_cap(),
                 },
             )

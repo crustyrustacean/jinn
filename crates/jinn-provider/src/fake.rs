@@ -230,7 +230,7 @@ impl FakeLlmService {
     /// Extracts the content of the last user message, if any.
     fn last_user_content(messages: &[LlmMessage]) -> Option<&str> {
         messages.iter().rev().find_map(|msg| match msg {
-            LlmMessage::User { content } => Some(content.as_str()),
+            LlmMessage::User { content, .. } => Some(content.as_str()),
             _ => None,
         })
     }
