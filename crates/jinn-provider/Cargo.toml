@@ -5,6 +5,7 @@ edition.workspace = true
 
 [dependencies]
 async-trait = { workspace = true }
+base64 = { workspace = true }
 error-stack = { workspace = true }
 futures = { workspace = true }
 jiff = { workspace = true }
