@@ -91,20 +91,21 @@ mod tests {
     use rusqlite::params;
     use tempfile::TempDir;
 
-    fn make_pool() -> Pool {
+    fn make_pool() -> (Pool, TempDir) {
         let dir = TempDir::new().expect("temp dir");
         let path = dir.path().join("test.db");
-        // Leak the temp dir so it outlives the test — migration tests don't
-        // need cleanup, and daow::Pool holds the path by value.
-        std::mem::forget(dir);
-        Pool::open(path.to_string_lossy().to_string().as_str()).expect("open pool")
+        // Return the TempDir alongside the Pool so the caller holds it
+        // for the test's lifetime. Dropping it would delete `test.db`, but
+        // by returning it the caller keeps the file alive until test end.
+        let pool = Pool::open(path.to_string_lossy().to_string().as_str()).expect("open pool");
+        (pool, dir)
     }
 
     /// Synchronously applies migrations up to (and including) `target`.
     ///
     /// Runs inside a `with_conn` closure with FK=OFF (matching `run_migrations`).
-    async fn apply_migrations_up_to(target: i32) -> Pool {
-        let pool = make_pool();
+    async fn apply_migrations_up_to(target: i32) -> (Pool, TempDir) {
+        let (pool, dir) = make_pool();
         pool.with_conn(move |conn| {
             bootstrap_tracking_table(conn).expect("bootstrap");
             apply_migrations_inner(conn, target);
@@ -112,13 +113,13 @@ mod tests {
         })
         .await
         .expect("apply_migrations_up_to");
-        pool
+        (pool, dir)
     }
 
     #[tokio::test]
     async fn run_migrations_creates_tracking_table() {
         // Given a fresh database.
-        let pool = make_pool();
+        let (pool, _dir) = make_pool();
 
         // When running migrations.
         run_migrations(&pool).await.unwrap();
@@ -180,7 +181,7 @@ mod tests {
     #[tokio::test]
     async fn re_running_migrations_is_noop() {
         // Given a database with migrations already applied.
-        let pool = make_pool();
+        let (pool, _dir) = make_pool();
         run_migrations(&pool).await.unwrap();
 
         // When running migrations again.
@@ -213,7 +214,7 @@ mod tests {
     #[tokio::test]
     async fn migration_guards_do_not_reapply_completed_version() {
         for target_version in 0..=20_i32 {
-            let pool = apply_migrations_up_to(target_version).await;
+            let (pool, _dir) = apply_migrations_up_to(target_version).await;
 
             // Re-running should succeed - applying only versions > target_version.
             run_migrations(&pool).await.unwrap_or_else(|e| {
@@ -240,7 +241,7 @@ mod tests {
     #[tokio::test]
     async fn fresh_database_has_all_tables() {
         // Given a fresh database.
-        let pool = make_pool();
+        let (pool, _dir) = make_pool();
 
         // When running migrations.
         run_migrations(&pool).await.unwrap();
@@ -271,7 +272,7 @@ mod tests {
     #[tokio::test]
     async fn migrate_v10_consolidates_strategy_state() {
         // Given a database with sessions containing mixed strategy state and profile.
-        let pool = apply_migrations_up_to(9).await;
+        let (pool, _dir) = apply_migrations_up_to(9).await;
         pool.with_conn(|conn| {
             conn.execute(
                 "INSERT INTO sessions (id, title, updated_at, created_at, cwd, profile, strategy_state, blobs, lifecycle_script_state) \
@@ -323,7 +324,7 @@ mod tests {
     #[tokio::test]
     async fn migrate_v10_inserts_default_when_no_compaction_key() {
         // Given a database with a session having no compaction key in strategy_state.
-        let pool = apply_migrations_up_to(9).await;
+        let (pool, _dir) = apply_migrations_up_to(9).await;
         pool.with_conn(|conn| {
             conn.execute(
                 "INSERT INTO sessions (id, title, updated_at, created_at, cwd, profile, strategy_state, blobs, lifecycle_script_state) \
@@ -367,7 +368,7 @@ mod tests {
     #[tokio::test]
     async fn migrate_v15_drops_strategy_state_column() {
         // Given a database built to v14 (strategy_state column still present) with a session in it.
-        let pool = apply_migrations_up_to(14).await;
+        let (pool, _dir) = apply_migrations_up_to(14).await;
         pool.with_conn(|conn| {
             conn.execute(
                 "INSERT INTO sessions (id, title, updated_at, created_at, cwd, profile, strategy_state, blobs, lifecycle_script_state) \
@@ -419,7 +420,7 @@ mod tests {
         // Given a v14 database with a session linked to an entry via session_history,
         // and the connection running with foreign_keys=ON — as the production
         // bootstrap connection does.
-        let pool = apply_migrations_up_to(14).await;
+        let (pool, _dir) = apply_migrations_up_to(14).await;
         pool.with_conn(|conn| {
             conn.pragma_update(None, "foreign_keys", "ON")?;
             seed_session_with_children(conn);
@@ -443,7 +444,7 @@ mod tests {
     async fn v15_rebuild_preserves_token_ledger_rows() {
         // Given a v14 database with a token_ledger row for a session,
         // and the connection running with foreign_keys=ON.
-        let pool = apply_migrations_up_to(14).await;
+        let (pool, _dir) = apply_migrations_up_to(14).await;
         pool.with_conn(|conn| {
             conn.pragma_update(None, "foreign_keys", "ON")?;
             seed_session_with_children(conn);
@@ -492,7 +493,7 @@ mod tests {
     #[tokio::test]
     async fn run_migrations_preserves_child_rows_and_leaves_fk_clean() {
         // Given a v14 database with FK=ON and a full session (junction + ledger).
-        let pool = apply_migrations_up_to(14).await;
+        let (pool, _dir) = apply_migrations_up_to(14).await;
         pool.with_conn(|conn| {
             conn.pragma_update(None, "foreign_keys", "ON")?;
             seed_session_with_children(conn);
@@ -538,7 +539,7 @@ mod tests {
     #[tokio::test]
     async fn migrate_v17_rewrites_bare_string_model_to_single() {
         // Given a database at v16 with a session having a bare-string model.
-        let pool = apply_migrations_up_to(16).await;
+        let (pool, _dir) = apply_migrations_up_to(16).await;
         pool.with_conn(|conn| {
             conn.execute(
                 "INSERT INTO sessions (id, title, updated_at, created_at, cwd, profile, blobs, lifecycle_script_state, is_automated, persist) \
@@ -586,7 +587,7 @@ mod tests {
     #[tokio::test]
     async fn migrate_v17_handles_no_provider_id() {
         // Given a database at v16 with a session having <none> as model.
-        let pool = apply_migrations_up_to(16).await;
+        let (pool, _dir) = apply_migrations_up_to(16).await;
         pool.with_conn(|conn| {
             conn.execute(
                 "INSERT INTO sessions (id, title, updated_at, created_at, cwd, profile, blobs, lifecycle_script_state, is_automated, persist) \
@@ -628,7 +629,7 @@ mod tests {
     #[tokio::test]
     async fn migrate_v17_is_idempotent() {
         // Given a database at v16 with a session.
-        let pool = apply_migrations_up_to(16).await;
+        let (pool, _dir) = apply_migrations_up_to(16).await;
         pool.with_conn(|conn| {
             conn.execute(
                 "INSERT INTO sessions (id, title, updated_at, created_at, cwd, profile, blobs, lifecycle_script_state, is_automated, persist) \
@@ -679,7 +680,7 @@ mod tests {
     #[tokio::test]
     async fn migrate_v17_adds_model_used_column() {
         // Given a database at v16 (no model_used column).
-        let pool = apply_migrations_up_to(16).await;
+        let (pool, _dir) = apply_migrations_up_to(16).await;
 
         // When running migration v17.
         pool.with_conn(|conn| {
@@ -700,7 +701,7 @@ mod tests {
     #[tokio::test]
     async fn migrate_v18_renames_timestamp_and_preserves_value() {
         // Given a database at v16 (timestamp column, before rename).
-        let pool = apply_migrations_up_to(15).await;
+        let (pool, _dir) = apply_migrations_up_to(15).await;
         pool.with_conn(|conn| {
             migrate_v16(conn).expect("v16");
             record_version(conn, 16, "add_persist_and_is_automated").expect("record v16");
@@ -779,7 +780,7 @@ mod tests {
 
     /// Builds a v18 database (the pre-v19 state) so v19 tests can run in isolation.
     async fn make_v18_pool() -> Pool {
-        let pool = apply_migrations_up_to(17).await;
+        let (pool, _dir) = apply_migrations_up_to(17).await;
         pool.with_conn(|conn| {
             migrate_v18(conn).expect("v18");
             record_version(conn, 18, "rename_entries_timestamp_to_timing").expect("record v18");
