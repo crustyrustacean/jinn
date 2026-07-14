@@ -147,6 +147,24 @@ fn visible_entries_narrows_by_last_segment() {
 }
 
 #[test]
+fn visible_entries_is_case_insensitive() {
+    // Given a picker with mixed-case entries.
+    let picker = FilePickerState::with_entries(vec![
+        file_entry("README.md"),
+        file_entry("readme.txt"),
+        file_entry("src"),
+    ]);
+
+    // When filtering with a lowercase prefix.
+    let visible = picker.visible_entries("read");
+
+    // Then both case variants match.
+    assert_eq!(visible.len(), 2);
+    assert_eq!(visible[0].name, "README.md");
+    assert_eq!(visible[1].name, "readme.txt");
+}
+
+#[test]
 fn visible_entries_uses_segment_after_last_slash() {
     // Given a picker and a filter that has already descended.
     let picker = FilePickerState::with_entries(vec![

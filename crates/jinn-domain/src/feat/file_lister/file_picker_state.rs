@@ -67,7 +67,7 @@ impl FilePickerState {
         let segment = filter.rsplit_once('/').map_or(filter, |(_, last)| last);
         self.entries
             .iter()
-            .filter(|e| e.name.starts_with(segment))
+            .filter(|e| e.name.to_lowercase().starts_with(&segment.to_lowercase()))
             .collect()
     }
 }
