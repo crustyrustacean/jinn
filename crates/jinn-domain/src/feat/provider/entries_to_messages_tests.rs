@@ -1264,3 +1264,31 @@ fn excluding_compaction_summary_yields_valid_message_sequence() {
     );
     assert_messages_are_structurally_valid(&messages);
 }
+
+#[rstest::rstest]
+fn entries_to_messages_passes_user_attachments_through() {
+    use jinn_provider::Attachment;
+
+    // Given a user entry with one image attachment.
+    let mut entry = ChatEntry::user("describe this");
+    if let crate::protocol::ChatEntryKind::User { attachments, .. } = &mut entry.kind {
+        attachments.push(Attachment::image("image/png", vec![1, 2, 3]));
+    }
+    let entries = vec![entry];
+
+    // When converting to messages.
+    let messages = entries_to_messages(&entries);
+
+    // Then the User message carries the attachment.
+    assert_eq!(messages.len(), 1);
+    let LlmMessage::User {
+        content,
+        attachments,
+    } = &messages[0]
+    else {
+        panic!("expected a User message");
+    };
+    assert_eq!(content, "describe this");
+    assert_eq!(attachments.len(), 1);
+    assert!(attachments[0].is_image());
+}

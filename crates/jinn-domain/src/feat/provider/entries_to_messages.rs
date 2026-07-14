@@ -82,10 +82,14 @@ pub fn entries_to_messages(entries: &[ChatEntry]) -> Vec<LlmMessage> {
             continue;
         }
         match &entry.kind {
-            ChatEntryKind::User { expanded, .. } => {
+            ChatEntryKind::User {
+                expanded,
+                attachments,
+                ..
+            } => {
                 messages.push(LlmMessage::User {
                     content: expanded.clone(),
-                    attachments: Vec::new(),
+                    attachments: attachments.clone(),
                 });
             }
             ChatEntryKind::Assistant(text) => {
