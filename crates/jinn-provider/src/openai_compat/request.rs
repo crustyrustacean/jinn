@@ -5,6 +5,7 @@
 
 use serde::Serialize;
 
+use crate::Attachment;
 use crate::LlmMessage;
 use crate::tool_types::ToolDefinition;
 
@@ -122,7 +123,7 @@ fn coalesce_messages(messages: &[&LlmMessage]) -> Vec<serde_json::Value> {
 
     for msg in messages {
         let json = message_to_json(msg);
-        let can_coalesce = matches!(msg, LlmMessage::User { .. })
+        let can_coalesce = matches!(msg, LlmMessage::User { attachments, .. } if attachments.is_empty())
             || matches!(
                 msg,
                 LlmMessage::Assistant {
@@ -160,10 +161,31 @@ fn message_to_json(msg: &LlmMessage) -> serde_json::Value {
             "role": "system",
             "content": content,
         }),
-        LlmMessage::User { content, .. } => serde_json::json!({
+        LlmMessage::User {
+            content,
+            attachments,
+        } if attachments.is_empty() => serde_json::json!({
             "role": "user",
             "content": content,
         }),
+        LlmMessage::User {
+            content,
+            attachments,
+        } => {
+            // Build a content array of image_url blocks followed by text.
+            let mut parts: Vec<serde_json::Value> =
+                attachments.iter().map(attachment_to_openai_block).collect();
+            if !content.is_empty() {
+                parts.push(serde_json::json!({
+                    "type": "text",
+                    "text": content,
+                }));
+            }
+            serde_json::json!({
+                "role": "user",
+                "content": parts,
+            })
+        }
         LlmMessage::Assistant {
             content,
             tool_calls: None,
@@ -203,6 +225,17 @@ fn tool_call_to_json(tc: &crate::tool_types::ToolCall) -> serde_json::Value {
             "name": tc.name,
             "arguments": tc.arguments,
         },
+    })
+}
+
+/// Renders an [`Attachment`] as an OpenAI image content part:
+/// `{ type: "image_url", image_url: { url: "data:..." } }`.
+fn attachment_to_openai_block(attachment: &Attachment) -> serde_json::Value {
+    serde_json::json!({
+        "type": "image_url",
+        "image_url": {
+            "url": attachment.data_url(),
+        }
     })
 }
 
@@ -836,5 +869,70 @@ mod tests {
         // And server tool has provider type.
         assert_eq!(server_json["type"], "openrouter:web_search");
         assert!(server_json.get("function").is_none());
+    }
+
+    #[rstest::rstest]
+    fn user_with_attachment_emits_image_url_block_and_text() {
+        // Given a User message with one image attachment and text.
+        let msg = LlmMessage::User {
+            content: "describe this".into(),
+            attachments: vec![Attachment::image("image/png", vec![1, 2, 3])],
+        };
+
+        // When converting to OpenAI JSON.
+        let json = message_to_json(&msg);
+
+        // Then content is an array with an image_url block followed by text.
+        let content = json["content"].as_array().expect("array");
+        assert_eq!(content.len(), 2);
+        assert_eq!(content[0]["type"], "image_url");
+        assert!(
+            content[0]["image_url"]["url"]
+                .as_str()
+                .unwrap()
+                .starts_with("data:image/png;base64,")
+        );
+        assert_eq!(content[1]["type"], "text");
+        assert_eq!(content[1]["text"], "describe this");
+    }
+
+    #[rstest::rstest]
+    fn user_without_attachment_keeps_plain_string_content() {
+        // Given a plain-text User message.
+        let msg = LlmMessage::User {
+            content: "hello".into(),
+            attachments: Vec::new(),
+        };
+
+        // When converting to OpenAI JSON.
+        let json = message_to_json(&msg);
+
+        // Then content stays a plain string (fast path unchanged).
+        assert_eq!(json["content"], "hello");
+    }
+
+    #[rstest::rstest]
+    fn user_with_attachment_is_not_coalesced() {
+        // Given two consecutive user messages where the second has an attachment.
+        let messages = vec![
+            LlmMessage::User {
+                content: "first".into(),
+                attachments: Vec::new(),
+            },
+            LlmMessage::User {
+                content: "second".into(),
+                attachments: vec![Attachment::image("image/png", vec![1])],
+            },
+        ];
+
+        // When building request.
+        let req = build_request("gpt-4", &messages, &[], &serde_json::Map::new());
+
+        // Then the two user messages are NOT coalesced (array content can't merge).
+        assert_eq!(req.messages.len(), 2);
+        assert_eq!(req.messages[0]["role"], "user");
+        assert_eq!(req.messages[1]["role"], "user");
+        assert_eq!(req.messages[0]["content"], "first");
+        assert!(req.messages[1]["content"].is_array());
     }
 }

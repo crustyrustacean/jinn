@@ -2243,6 +2243,7 @@ name = "jinn-provider"
 version = "0.93.1"
 dependencies = [
  "async-trait",
+ "base64",
  "error-stack",
  "futures",
  "jiff",

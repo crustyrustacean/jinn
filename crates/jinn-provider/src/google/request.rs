@@ -5,6 +5,7 @@
 
 use serde::Serialize;
 
+use crate::Attachment;
 use crate::LlmMessage;
 use crate::tool_types::ToolDefinition;
 
@@ -71,10 +72,28 @@ fn message_to_json(msg: &LlmMessage) -> serde_json::Value {
             // System messages handled separately - unreachable.
             serde_json::json!({"role": "user", "parts": []})
         }
-        LlmMessage::User { content, .. } => serde_json::json!({
+        LlmMessage::User {
+            content,
+            attachments,
+        } if attachments.is_empty() => serde_json::json!({
             "role": "user",
             "parts": [{"text": content}]
         }),
+        LlmMessage::User {
+            content,
+            attachments,
+        } => {
+            // Build parts of inline_data image parts followed by text.
+            let mut parts: Vec<serde_json::Value> =
+                attachments.iter().map(attachment_to_gemini_part).collect();
+            if !content.is_empty() {
+                parts.push(serde_json::json!({"text": content}));
+            }
+            serde_json::json!({
+                "role": "user",
+                "parts": parts,
+            })
+        }
         LlmMessage::Assistant {
             content,
             tool_calls: None,
@@ -153,6 +172,20 @@ fn tool_definition_to_json(def: &ToolDefinition) -> serde_json::Value {
             "type": "object",
             "properties": properties,
             "required": required,
+        }
+    })
+}
+
+/// Renders an [`Attachment`] as a Gemini inline_data part:
+/// `{ inline_data: { mime_type, data } }` (data is base64).
+fn attachment_to_gemini_part(attachment: &Attachment) -> serde_json::Value {
+    use base64::Engine as _;
+    let Attachment::Image { media_type, data } = attachment;
+    let encoded = base64::engine::general_purpose::STANDARD.encode(data);
+    serde_json::json!({
+        "inlineData": {
+            "mimeType": media_type,
+            "data": encoded,
         }
     })
 }
@@ -276,5 +309,41 @@ mod tests {
         assert_eq!(json["role"], "model");
         let parts = json["parts"].as_array().unwrap();
         assert!(parts[0].get("functionCall").is_some());
+    }
+
+    #[rstest::rstest]
+    fn user_with_attachment_emits_inline_data_and_text() {
+        // Given a User message with one image attachment and text.
+        let msg = LlmMessage::User {
+            content: "describe this".into(),
+            attachments: vec![Attachment::image("image/png", vec![1, 2, 3])],
+        };
+
+        // When converting to Gemini JSON.
+        let json = message_to_json(&msg);
+
+        // Then parts contains an inline_data part followed by a text part.
+        let parts = json["parts"].as_array().expect("array");
+        assert_eq!(parts.len(), 2);
+        assert_eq!(parts[0]["inlineData"]["mimeType"], "image/png");
+        assert_eq!(parts[0]["inlineData"]["data"], "AQID");
+        assert_eq!(parts[1]["text"], "describe this");
+    }
+
+    #[rstest::rstest]
+    fn user_without_attachment_keeps_plain_text_part() {
+        // Given a plain-text User message.
+        let msg = LlmMessage::User {
+            content: "hello".into(),
+            attachments: Vec::new(),
+        };
+
+        // When converting to Gemini JSON.
+        let json = message_to_json(&msg);
+
+        // Then parts is the single-text fast path (array of one text part).
+        let parts = json["parts"].as_array().expect("array");
+        assert_eq!(parts.len(), 1);
+        assert_eq!(parts[0]["text"], "hello");
     }
 }
