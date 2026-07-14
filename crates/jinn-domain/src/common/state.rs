@@ -73,9 +73,11 @@ impl State {
     ///
     /// This is the seam the TCaps projection layer hooks into: `with_*` methods
     /// call this, then split-borrow disjoint fields of `AppState` for projection.
-    /// It stays `pub(crate)` so only `common/tcaps/` (same crate) can reach it.
-    /// `inner` itself remains private; this method is the only access path.
-    pub(crate) fn write_lock(&self) -> parking_lot::RwLockWriteGuard<'_, AppState> {
+    /// It stays scoped to `crate::common` so only the tcaps projection layer (in
+    /// `common/tcaps/`) can reach it. Actors in `feat/` are outside `common/` and
+    /// cannot call it. `inner` itself remains private; this method is the only
+    /// write path for the tcaps projections.
+    pub(in crate::common) fn write_lock(&self) -> parking_lot::RwLockWriteGuard<'_, AppState> {
         self.inner.write()
     }
 
