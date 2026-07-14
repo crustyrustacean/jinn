@@ -56,6 +56,7 @@ pub(crate) async fn test_actor() -> super::SessionPersistenceActor {
         builtin_registry: crate::feat::session_lifecycle::builtin::BuiltinRegistry::new(),
         shell: "/bin/sh".to_owned(),
         lifecycle_child: None,
+        image_converter: test_image_converter(),
     }
 }
 
@@ -84,6 +85,7 @@ pub(crate) async fn test_actor_recording() -> (
             builtin_registry: crate::feat::session_lifecycle::builtin::BuiltinRegistry::new(),
             shell: "/bin/sh".to_owned(),
             lifecycle_child: None,
+            image_converter: test_image_converter(),
         },
         audit,
     )
@@ -244,8 +246,18 @@ pub(crate) async fn test_actor_with_store_recording(
             builtin_registry: crate::feat::session_lifecycle::builtin::BuiltinRegistry::new(),
             shell: "/bin/sh".to_owned(),
             lifecycle_child: None,
+            image_converter: test_image_converter(),
         },
         store,
         audit,
     )
+}
+
+/// Constructs an [`ImageConverterService`] for tests. Uses a no-op
+/// converter so tests don't spawn ImageMagick. Actors that test the
+/// conversion path inject their own converter.
+#[cfg(test)]
+pub(in crate::feat::session::session_actor) fn test_image_converter()
+-> crate::feat::image_convert::ImageConverterService {
+    crate::feat::image_convert::ImageConverterService::unavailable()
 }

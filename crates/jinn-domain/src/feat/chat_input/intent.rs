@@ -22,6 +22,7 @@ use crate::feat::chat_input::protocol::command::{EnqueueUserMessage, SubmitSteer
 use crate::feat::chat_input::slash_command::SlashCommand;
 use crate::feat::chat_input::state::autocomplete::AutocompleteState;
 use crate::feat::context::prompt_template::PromptTemplateStore;
+use crate::feat::file_lister::ListDirectory;
 use crate::feat::session::phase_machine::PhaseKind;
 use crate::feat::session::protocol::mark_session_interacted::MarkSessionInteracted;
 use crate::feat::ui::picker_states::PickerExt;
@@ -35,91 +36,141 @@ pub fn handle_insert_char(ch: char, state: &mut AppState) -> IntentResult {
     let is_autocomplete_active = state.active_chat_input().autocomplete().is_some();
 
     if is_autocomplete_active {
-        state.active_chat_input_mut().insert_grapheme_at_cursor(ch);
+        return handle_insert_while_autocomplete_active(ch, state);
+    }
 
-        let trigger = state
-            .active_chat_input()
-            .autocomplete()
-            .as_ref()
-            .map(AutocompleteState::trigger);
+    state.active_chat_input_mut().insert_grapheme_at_cursor(ch);
 
-        match (ch, trigger) {
-            (' ', _) => {
-                state.active_chat_input_mut().deactivate_autocomplete();
-            }
-            ('#', Some(AutocompleteTrigger::Hash)) => {
-                let Some(token_start) = state.active_chat_input().autocomplete_token_start() else {
-                    return IntentResult::empty();
-                };
-                let cursor_before_insert = state.active_chat_input().cursor_pos() - 1;
-                let filter: String = state
-                    .active_chat_input()
-                    .text()
-                    .graphemes(true)
-                    .enumerate()
-                    .skip_while(|(i, _)| *i < token_start + 1)
-                    .take_while(|(i, _)| *i < cursor_before_insert)
-                    .map(|(_, g)| g)
-                    .collect();
-                if let Some(template) = state
-                    .active_session()
-                    .discovered_prompt_templates()
-                    .find_by_name(&filter)
-                {
-                    let body = template.body.clone();
-                    state.active_chat_input_mut().expand_autocomplete(&body);
-                } else {
-                    state.active_chat_input_mut().deactivate_autocomplete();
-                }
-            }
-            _ => {
-                let filter = state
-                    .active_chat_input()
-                    .autocomplete_filter()
-                    .unwrap_or_default();
-                let matches = compute_updated_matches(
-                    state.active_session().discovered_prompt_templates(),
-                    trigger,
-                    &filter,
-                );
-                state
-                    .active_chat_input_mut()
-                    .update_autocomplete_matches(matches);
-            }
-        }
-    } else {
-        state.active_chat_input_mut().insert_grapheme_at_cursor(ch);
-
-        match ch {
-            '#' => {
-                let input = state.active_chat_input();
-                if is_valid_hash_trigger_position(input) {
-                    let token_start = input.cursor_pos() - 1;
-                    let matches =
-                        compute_matches(state.active_session().discovered_prompt_templates(), "");
-                    state.active_chat_input_mut().activate_autocomplete(
-                        token_start,
-                        AutocompleteTrigger::Hash,
-                        matches,
-                    );
-                }
-            }
-            '/' => {
-                let input = state.active_chat_input();
-                if is_valid_slash_trigger_position(input) {
-                    let token_start = input.cursor_pos() - 1;
-                    let matches = compute_slash_matches("");
-                    state.active_chat_input_mut().activate_autocomplete(
-                        token_start,
-                        AutocompleteTrigger::Slash,
-                        matches,
-                    );
-                }
-            }
-            _ => {}
+    // `@` triggers the file popup (if at a valid boundary).
+    if ch == '@' {
+        let input = state.active_chat_input();
+        if is_valid_at_trigger_position(input) {
+            let token_start = input.cursor_pos() - 1;
+            state.active_chat_input_mut().activate_autocomplete(
+                token_start,
+                AutocompleteTrigger::At,
+                Vec::new(),
+            );
+            return IntentResult::with_message(emit_list_directory(state, ""));
         }
     }
 
+    // `#` and `/` keep their existing static-list activation.
+    match ch {
+        '#' => {
+            let input = state.active_chat_input();
+            if is_valid_hash_trigger_position(input) {
+                let token_start = input.cursor_pos() - 1;
+                let matches =
+                    compute_matches(state.active_session().discovered_prompt_templates(), "");
+                state.active_chat_input_mut().activate_autocomplete(
+                    token_start,
+                    AutocompleteTrigger::Hash,
+                    matches,
+                );
+            }
+        }
+        '/' => {
+            let input = state.active_chat_input();
+            if is_valid_slash_trigger_position(input) {
+                let token_start = input.cursor_pos() - 1;
+                let matches = compute_slash_matches("");
+                state.active_chat_input_mut().activate_autocomplete(
+                    token_start,
+                    AutocompleteTrigger::Slash,
+                    matches,
+                );
+            }
+        }
+        _ => {}
+    }
+
+    IntentResult::empty()
+}
+
+/// Handles a character typed while autocomplete is active.
+///
+/// For `#`/`/` triggers, this refines the static match list. For the `@` file
+/// popup, a `/` descends into the deeper directory (emitting `ListDirectory`),
+/// a space deactivates, and any other character just extends the path filter
+/// (client-side entry filtering narrows the visible rows).
+fn handle_insert_while_autocomplete_active(ch: char, state: &mut AppState) -> IntentResult {
+    state.active_chat_input_mut().insert_grapheme_at_cursor(ch);
+
+    let trigger = state
+        .active_chat_input()
+        .autocomplete()
+        .as_ref()
+        .map(AutocompleteState::trigger);
+
+    // `@` file popup.
+    if trigger == Some(AutocompleteTrigger::At) {
+        // `@@` seam: typing `@` while an `At` popup is active forms `@@`,
+        // which is the reserved trigger for the future multi-file picker.
+        // Deactivate the `@` popup so `@@` stays literal with no handler.
+        if ch == '@' {
+            state.active_chat_input_mut().deactivate_autocomplete();
+            return IntentResult::empty();
+        }
+        if ch == ' ' {
+            state.active_chat_input_mut().deactivate_autocomplete();
+            return IntentResult::empty();
+        }
+        if ch == '/' {
+            let filter = state
+                .active_chat_input()
+                .autocomplete_filter()
+                .unwrap_or_default();
+            return IntentResult::with_message(emit_list_directory(state, &filter));
+        }
+        return IntentResult::empty();
+    }
+
+    // `#`/`/` static-list triggers.
+    match (ch, trigger) {
+        (' ', _) => {
+            state.active_chat_input_mut().deactivate_autocomplete();
+        }
+        ('#', Some(AutocompleteTrigger::Hash)) => {
+            let Some(token_start) = state.active_chat_input().autocomplete_token_start() else {
+                return IntentResult::empty();
+            };
+            let cursor_before_insert = state.active_chat_input().cursor_pos() - 1;
+            let filter: String = state
+                .active_chat_input()
+                .text()
+                .graphemes(true)
+                .enumerate()
+                .skip_while(|(i, _)| *i < token_start + 1)
+                .take_while(|(i, _)| *i < cursor_before_insert)
+                .map(|(_, g)| g)
+                .collect();
+            if let Some(template) = state
+                .active_session()
+                .discovered_prompt_templates()
+                .find_by_name(&filter)
+            {
+                let body = template.body.clone();
+                state.active_chat_input_mut().expand_autocomplete(&body);
+            } else {
+                state.active_chat_input_mut().deactivate_autocomplete();
+            }
+        }
+        _ => {
+            let filter = state
+                .active_chat_input()
+                .autocomplete_filter()
+                .unwrap_or_default();
+            let matches = compute_updated_matches(
+                state.active_session().discovered_prompt_templates(),
+                trigger,
+                &filter,
+            );
+            state
+                .active_chat_input_mut()
+                .update_autocomplete_matches(matches);
+        }
+    }
     IntentResult::empty()
 }
 
@@ -152,15 +203,27 @@ pub fn handle_delete_grapheme(state: &mut AppState) -> IntentResult {
         state
             .active_chat_input_mut()
             .delete_grapheme_before_cursor();
-        let filter = state
-            .active_chat_input()
-            .autocomplete_filter()
-            .unwrap_or_default();
+
         let trigger = state
             .active_chat_input()
             .autocomplete()
             .as_ref()
             .map(AutocompleteState::trigger);
+
+        // `@` popup: deleting may shorten the path enough to change the listed
+        // directory (e.g. deleting a `/`). Re-list.
+        if trigger == Some(AutocompleteTrigger::At) {
+            let filter = state
+                .active_chat_input()
+                .autocomplete_filter()
+                .unwrap_or_default();
+            return IntentResult::with_message(emit_list_directory(state, &filter));
+        }
+
+        let filter = state
+            .active_chat_input()
+            .autocomplete_filter()
+            .unwrap_or_default();
         let matches = compute_updated_matches(
             state.active_session().discovered_prompt_templates(),
             trigger,
@@ -176,6 +239,9 @@ pub fn handle_delete_grapheme(state: &mut AppState) -> IntentResult {
     }
 
     try_reactivate_autocomplete(state);
+    if let Some(cmd) = try_reactivate_at_autocomplete(state) {
+        return IntentResult::with_message(cmd);
+    }
     IntentResult::empty()
 }
 
@@ -393,33 +459,85 @@ fn execute_slash_command(
 
 /// Handles `AutocompleteConfirm` - confirms selection or falls back to tab switch.
 pub fn handle_autocomplete_confirm(state: &mut AppState) -> IntentResult {
-    if validator::validate_autocomplete_confirm(state).is_ok() {
-        if let Some(selected) = state.active_chat_input().autocomplete_selected() {
-            let name = selected.name.clone();
-            state.active_chat_input_mut().complete_autocomplete(&name);
-            let filter = state
-                .active_chat_input()
-                .autocomplete_filter()
-                .unwrap_or_default();
-            let trigger = state
-                .active_chat_input()
-                .autocomplete()
-                .as_ref()
-                .map(AutocompleteState::trigger);
-            let matches = compute_updated_matches(
-                state.active_session().discovered_prompt_templates(),
-                trigger,
-                &filter,
-            );
-            state
-                .active_chat_input_mut()
-                .update_autocomplete_matches(matches);
-        }
-        IntentResult::empty()
-    } else {
-        // No autocomplete active - no-op.
-        IntentResult::empty()
+    if validator::validate_autocomplete_confirm(state).is_err() {
+        return IntentResult::empty();
     }
+
+    // `@` popup confirm has dir-vs-file branching.
+    let is_at = state
+        .active_chat_input()
+        .autocomplete()
+        .as_ref()
+        .is_some_and(|ac| matches!(ac.trigger(), AutocompleteTrigger::At));
+    if is_at {
+        return confirm_at_popup(state);
+    }
+
+    // `#`/`/` confirm.
+    if let Some(selected) = state.active_chat_input().autocomplete_selected() {
+        let name = selected.name.clone();
+        state.active_chat_input_mut().complete_autocomplete(&name);
+        let filter = state
+            .active_chat_input()
+            .autocomplete_filter()
+            .unwrap_or_default();
+        let trigger = state
+            .active_chat_input()
+            .autocomplete()
+            .as_ref()
+            .map(AutocompleteState::trigger);
+        let matches = compute_updated_matches(
+            state.active_session().discovered_prompt_templates(),
+            trigger,
+            &filter,
+        );
+        state
+            .active_chat_input_mut()
+            .update_autocomplete_matches(matches);
+    }
+    IntentResult::empty()
+}
+
+/// Confirms the current `@` popup selection.
+///
+/// If the entry is a directory: inserts `name/`, keeps the popup active, and
+/// emits `ListDirectory` to descend.
+/// If the entry is a file: inserts `name` and deactivates the popup.
+fn confirm_at_popup(state: &mut AppState) -> IntentResult {
+    // Read everything we need from state up front, then drop the borrows before
+    // the mutable `complete_at_entry` call.
+    let (name, is_dir) = {
+        let filter = state
+            .active_chat_input()
+            .autocomplete_filter()
+            .unwrap_or_default();
+        let selected_index = state.active_chat_input().autocomplete_selected_index();
+        // Select from the SAME filtered set the popup renders, so a stale or
+        // out-of-range index never inserts an entry the user cannot see.
+        let Some(entry) = state
+            .frontend
+            .file_picker
+            .visible_entries(&filter)
+            .get(selected_index)
+            .copied()
+        else {
+            return IntentResult::empty();
+        };
+        (entry.name.clone(), entry.is_dir)
+    };
+    state
+        .active_chat_input_mut()
+        .complete_at_entry(&name, is_dir);
+    if is_dir {
+        // Popup stays active; the trailing `/` updates the filter, so emit
+        // a fresh ListDirectory for the deeper path.
+        let filter = state
+            .active_chat_input()
+            .autocomplete_filter()
+            .unwrap_or_default();
+        return IntentResult::with_message(emit_list_directory(state, &filter));
+    }
+    IntentResult::empty()
 }
 
 /// Handles `MoveCursorLeft` - moves cursor left, deactivates autocomplete if needed.
@@ -430,6 +548,9 @@ pub fn handle_move_cursor_left(state: &mut AppState) -> IntentResult {
         state.active_chat_input_mut().deactivate_autocomplete();
     }
     try_reactivate_autocomplete(state);
+    if let Some(cmd) = try_reactivate_at_autocomplete(state) {
+        return IntentResult::with_message(cmd);
+    }
     IntentResult::empty()
 }
 
@@ -441,6 +562,9 @@ pub fn handle_move_cursor_right(state: &mut AppState) -> IntentResult {
         state.active_chat_input_mut().deactivate_autocomplete();
     }
     try_reactivate_autocomplete(state);
+    if let Some(cmd) = try_reactivate_at_autocomplete(state) {
+        return IntentResult::with_message(cmd);
+    }
     IntentResult::empty()
 }
 
@@ -475,7 +599,14 @@ pub fn handle_move_cursor_word_right(state: &mut AppState) -> IntentResult {
 /// Handles `MoveCursorUp` - moves up in autocomplete or moves cursor up.
 pub fn handle_move_cursor_up(state: &mut AppState) -> IntentResult {
     if state.active_chat_input().autocomplete().is_some() {
-        state.active_chat_input_mut().autocomplete_move_up();
+        if is_at_popup(state) {
+            let count = at_visible_count(state);
+            state
+                .active_chat_input_mut()
+                .autocomplete_move_up_bounded(count);
+        } else {
+            state.active_chat_input_mut().autocomplete_move_up();
+        }
     } else {
         state.active_chat_input_mut().move_cursor_up();
     }
@@ -485,7 +616,14 @@ pub fn handle_move_cursor_up(state: &mut AppState) -> IntentResult {
 /// Handles `MoveCursorDown` - moves down in autocomplete or moves cursor down.
 pub fn handle_move_cursor_down(state: &mut AppState) -> IntentResult {
     if state.active_chat_input().autocomplete().is_some() {
-        state.active_chat_input_mut().autocomplete_move_down();
+        if is_at_popup(state) {
+            let count = at_visible_count(state);
+            state
+                .active_chat_input_mut()
+                .autocomplete_move_down_bounded(count);
+        } else {
+            state.active_chat_input_mut().autocomplete_move_down();
+        }
     } else {
         state.active_chat_input_mut().move_cursor_down();
     }
@@ -595,6 +733,26 @@ fn is_valid_hash_trigger_position(input: &ChatInputBoxState) -> bool {
 /// Valid only at position 0 (start of buffer).
 fn is_valid_slash_trigger_position(input: &ChatInputBoxState) -> bool {
     input.cursor_pos() == 1 && input.text().starts_with('/')
+}
+
+/// Checks whether the `@` at the cursor is in a valid position to trigger
+/// the `@path` file popup.
+///
+/// Mirrors the hash rule: start-of-buffer, or preceded by a space/newline.
+/// Additionally reserves the `@@` seam: if the grapheme before this `@` is
+/// another `@`, this returns false so `@@` stays literal (the future
+/// `AtAt` picker is not yet wired).
+fn is_valid_at_trigger_position(input: &ChatInputBoxState) -> bool {
+    let at_pos = input.cursor_pos() - 1;
+    if at_pos == 0 {
+        return true;
+    }
+    let prev = input.grapheme_at(at_pos - 1);
+    // `@@` seam: do not activate `At` on the second `@`.
+    if prev == Some("@") {
+        return false;
+    }
+    prev == Some(" ") || prev == Some("\n")
 }
 
 /// Returns true if the cursor has moved outside the autocomplete token region,
@@ -774,6 +932,59 @@ fn find_slash_token_at_cursor(input: &ChatInputBoxState) -> Option<(usize, Strin
     None
 }
 
+/// Scans the buffer to detect if the cursor sits inside an `@path` region.
+///
+/// Mirrors [`find_hash_token_at_cursor`] but for `@`. The token extends from
+/// the `@` to the next whitespace. The `@@` seam is reserved: an `@` preceded
+/// by another `@` is not a valid `At` trigger (so `@@` stays literal).
+fn find_at_token_at_cursor(input: &ChatInputBoxState) -> Option<(usize, String)> {
+    use unicode_segmentation::UnicodeSegmentation as _;
+
+    let cursor = input.cursor_pos();
+    let graphemes: Vec<&str> = input.text().graphemes(true).collect();
+    let len = graphemes.len();
+
+    // Scan leftward from the cursor to find an `@` at a valid trigger position.
+    let mut i = cursor;
+    loop {
+        if graphemes.get(i) == Some(&"@") {
+            let preceded_by_boundary = i == 0
+                || graphemes.get(i.wrapping_sub(1)) == Some(&" ")
+                || graphemes.get(i.wrapping_sub(1)) == Some(&"\n");
+            // `@@` seam: the second `@` is not an `At` trigger.
+            let is_at_at = graphemes.get(i.wrapping_sub(1)) == Some(&"@");
+            if !preceded_by_boundary || is_at_at {
+                return None;
+            }
+            // The token extends from i+1 to the next whitespace, `@`, or end.
+            let mut token_end = i + 1;
+            while token_end < len {
+                let g = graphemes.get(token_end);
+                if g.is_none_or(|c| c.trim().is_empty() || *c == "@") {
+                    break;
+                }
+                token_end += 1;
+            }
+            if cursor >= i && cursor <= token_end {
+                let filter: String = graphemes
+                    .get((i + 1)..cursor)
+                    .map(|s| s.join(""))
+                    .unwrap_or_default();
+                return Some((i, filter));
+            }
+            return None;
+        }
+        let g = graphemes.get(i);
+        if g.is_some_and(|c| c.trim().is_empty()) {
+            return None;
+        }
+        if i == 0 {
+            return None;
+        }
+        i -= 1;
+    }
+}
+
 /// Attempts to re-activate autocomplete if the cursor sits inside a token region.
 ///
 /// Checks for both `#token` and `/command` regions.
@@ -806,4 +1017,74 @@ fn try_reactivate_autocomplete(state: &mut AppState) {
         AutocompleteTrigger::Hash,
         matches,
     );
+}
+
+/// Attempts to re-activate the `@` file popup if the cursor sits in an `@path`
+/// region.
+///
+/// On success, emits a [`ListDirectory`] command so the actor lists the dir for
+/// the current filter (the popup reads `frontend.file_picker`).
+fn try_reactivate_at_autocomplete(state: &mut AppState) -> Option<ListDirectory> {
+    if state.active_chat_input().autocomplete().is_some() {
+        return None;
+    }
+    let (token_start, filter) = find_at_token_at_cursor(state.active_chat_input())?;
+    state.active_chat_input_mut().activate_autocomplete(
+        token_start,
+        AutocompleteTrigger::At,
+        Vec::new(),
+    );
+    Some(emit_list_directory(state, &filter))
+}
+
+/// Builds and emits a [`ListDirectory`] command for the given `@` filter,
+/// resolving it against the session cwd/home and bumping the staleness id.
+///
+/// Returns `None` if the active session is missing.
+fn emit_list_directory(state: &mut AppState, filter: &str) -> ListDirectory {
+    let session = state.active_session();
+    let cwd = session.cwd().to_path_buf();
+    let home = home_dir();
+    let dir = crate::feat::file_lister::resolve_list_dir(filter, &cwd, &home);
+    // Bump the expected request id so stale replies are dropped.
+    let request_id = state
+        .frontend
+        .file_picker
+        .expected_request_id
+        .wrapping_add(1);
+    state.frontend.file_picker.expected_request_id = request_id;
+    state.frontend.file_picker.loading = true;
+    let session_id = state.session.active_session_id().clone();
+    ListDirectory {
+        session_id,
+        path: dir,
+        request_id,
+    }
+}
+
+/// Returns the user's home directory. Falls back to cwd if $HOME is unset.
+fn home_dir() -> std::path::PathBuf {
+    std::env::var_os("HOME").map_or_else(
+        || std::env::current_dir().unwrap_or_default(),
+        std::path::PathBuf::from,
+    )
+}
+
+/// Returns true if the active autocomplete is the `@path` file popup.
+fn is_at_popup(state: &AppState) -> bool {
+    state
+        .active_chat_input()
+        .autocomplete()
+        .as_ref()
+        .is_some_and(|ac| matches!(ac.trigger(), AutocompleteTrigger::At))
+}
+
+/// Returns the number of entries the `@` popup currently shows (after the
+/// prefix filter), so arrow-key navigation is bounded by the visible set.
+fn at_visible_count(state: &AppState) -> usize {
+    let filter = state
+        .active_chat_input()
+        .autocomplete_filter()
+        .unwrap_or_default();
+    state.frontend.file_picker.visible_entries(&filter).len()
 }

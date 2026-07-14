@@ -1,7 +1,9 @@
 pub(super) mod context;
 pub(super) mod enqueue;
+pub(super) mod image_resolve;
 pub(super) mod lifecycle;
 pub(super) mod misc;
+pub(super) mod multimodal_gate;
 mod persistence;
 pub(super) mod session_load;
 pub(super) mod stall_retry;

@@ -116,7 +116,9 @@ mod tests {
 
         let entry = buf.drain_into_entry().expect("entry");
         match entry.kind {
-            ChatEntryKind::User { display, expanded } => {
+            ChatEntryKind::User {
+                display, expanded, ..
+            } => {
                 assert_eq!(display, "hello");
                 assert_eq!(expanded, "hello");
             }
@@ -133,7 +135,9 @@ mod tests {
 
         let entry = buf.drain_into_entry().expect("entry");
         match entry.kind {
-            ChatEntryKind::User { display, expanded } => {
+            ChatEntryKind::User {
+                display, expanded, ..
+            } => {
                 assert_eq!(display, "a\n\nb\n\nc");
                 assert_eq!(expanded, "a\n\nb\n\nc");
             }

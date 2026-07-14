@@ -5,6 +5,7 @@
 
 use serde::Serialize;
 
+use crate::Attachment;
 use crate::LlmMessage;
 use crate::tool_types::ToolDefinition;
 
@@ -87,10 +88,33 @@ fn message_to_json(msg: &LlmMessage) -> serde_json::Value {
             // System messages are handled separately - should never reach here.
             serde_json::json!({"role": "user", "content": []})
         }
-        LlmMessage::User { content } => serde_json::json!({
+        LlmMessage::User {
+            content,
+            attachments,
+        } if attachments.is_empty() => serde_json::json!({
             "role": "user",
             "content": content,
         }),
+        LlmMessage::User {
+            content,
+            attachments,
+        } => {
+            // Build a content array of image blocks followed by text.
+            let mut blocks: Vec<serde_json::Value> = attachments
+                .iter()
+                .map(attachment_to_anthropic_block)
+                .collect();
+            if !content.is_empty() {
+                blocks.push(serde_json::json!({
+                    "type": "text",
+                    "text": content,
+                }));
+            }
+            serde_json::json!({
+                "role": "user",
+                "content": blocks,
+            })
+        }
         LlmMessage::Assistant {
             content,
             tool_calls: None,
@@ -152,6 +176,22 @@ fn tool_definition_to_json(def: &ToolDefinition) -> serde_json::Value {
     })
 }
 
+/// Renders an [`Attachment`] as an Anthropic image content block:
+/// `{ type: "image", source: { type: "base64", media_type, data } }`.
+fn attachment_to_anthropic_block(attachment: &Attachment) -> serde_json::Value {
+    use base64::Engine as _;
+    let Attachment::Image { media_type, data } = attachment;
+    let encoded = base64::engine::general_purpose::STANDARD.encode(data);
+    serde_json::json!({
+        "type": "image",
+        "source": {
+            "type": "base64",
+            "media_type": media_type,
+            "data": encoded,
+        }
+    })
+}
+
 #[cfg(test)]
 mod tests {
     #![allow(clippy::expect_used, clippy::indexing_slicing, reason = "test code")]
@@ -166,6 +206,7 @@ mod tests {
             },
             LlmMessage::User {
                 content: "hello".into(),
+                attachments: Vec::new(),
             },
         ];
 
@@ -228,6 +269,7 @@ mod tests {
             },
             LlmMessage::User {
                 content: "hello".into(),
+                attachments: Vec::new(),
             },
         ];
 
@@ -257,5 +299,41 @@ mod tests {
         let json = tool_definition_to_json(&def);
         assert!(json.get("input_schema").is_some());
         assert!(json.get("parameters").is_none());
+    }
+
+    #[rstest::rstest]
+    fn user_with_attachment_emits_image_block_and_text() {
+        // Given a User message with one image attachment and text.
+        let msg = LlmMessage::User {
+            content: "describe this".into(),
+            attachments: vec![Attachment::image("image/png", vec![1, 2, 3])],
+        };
+
+        // When converting to Anthropic JSON.
+        let json = message_to_json(&msg);
+
+        // Then content is an array with an image block followed by a text block.
+        let content = json["content"].as_array().expect("array");
+        assert_eq!(content.len(), 2);
+        assert_eq!(content[0]["type"], "image");
+        assert_eq!(content[0]["source"]["type"], "base64");
+        assert_eq!(content[0]["source"]["media_type"], "image/png");
+        assert_eq!(content[1]["type"], "text");
+        assert_eq!(content[1]["text"], "describe this");
+    }
+
+    #[rstest::rstest]
+    fn user_without_attachment_keeps_plain_string_content() {
+        // Given a plain-text User message.
+        let msg = LlmMessage::User {
+            content: "hello".into(),
+            attachments: Vec::new(),
+        };
+
+        // When converting to Anthropic JSON.
+        let json = message_to_json(&msg);
+
+        // Then content stays a plain string (fast path unchanged).
+        assert_eq!(json["content"], "hello");
     }
 }

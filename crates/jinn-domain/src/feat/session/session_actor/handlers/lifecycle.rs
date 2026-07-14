@@ -273,10 +273,12 @@ impl SessionPersistenceActor {
         match (&payload.cwd, &payload.error) {
             (Some(cwd), None) => {
                 // Success.
+                let home = self.services.paths.home_dir().to_path_buf();
                 {
                     self.state.with_session(&self.cap, |view| {
                         if let Some(session) = view.session.map().get_mut(&payload.session_id) {
                             session.set_cwd(cwd.clone());
+                            session.set_home(home.clone());
                             session.advance_lifecycle_after_setup();
                         }
                     });
@@ -391,10 +393,12 @@ impl SessionPersistenceActor {
 
         match handler.setup(session_id, args) {
             Ok(cwd) => {
+                let home = self.services.paths.home_dir().to_path_buf();
                 {
                     self.state.with_session(&self.cap, |view| {
                         if let Some(session) = view.session.map().get_mut(session_id) {
                             session.set_cwd(cwd.clone());
+                            session.set_home(home.clone());
                             session.advance_lifecycle_after_setup();
                         }
                     });

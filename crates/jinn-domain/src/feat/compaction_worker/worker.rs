@@ -547,6 +547,7 @@ async fn generate_summary(
         },
         LlmMessage::User {
             content: user_content,
+            attachments: Vec::new(),
         },
     ];
 

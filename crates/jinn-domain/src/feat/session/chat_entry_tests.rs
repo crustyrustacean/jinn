@@ -43,6 +43,7 @@ fn user_entry_has_user_kind() {
         ChatEntryKind::User {
             display: "hello".to_owned(),
             expanded: "hello".to_owned(),
+            attachments: Vec::new(),
         }
     );
 }

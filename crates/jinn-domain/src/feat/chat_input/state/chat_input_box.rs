@@ -700,6 +700,13 @@ impl ChatInputBoxState {
         self.autocomplete.as_ref()?.selected_match()
     }
 
+    /// Returns the index of the currently-selected autocomplete row.
+    pub fn autocomplete_selected_index(&self) -> usize {
+        self.autocomplete
+            .as_ref()
+            .map_or(0, AutocompleteState::selected_index)
+    }
+
     /// Moves the autocomplete selection up (toward less relevant).
     pub fn autocomplete_move_up(&mut self) {
         if let Some(ac) = &mut self.autocomplete {
@@ -711,6 +718,20 @@ impl ChatInputBoxState {
     pub fn autocomplete_move_down(&mut self) {
         if let Some(ac) = &mut self.autocomplete {
             ac.move_down();
+        }
+    }
+
+    /// Moves the `@` popup selection up, bounded by `count` visible entries.
+    pub fn autocomplete_move_up_bounded(&mut self, count: usize) {
+        if let Some(ac) = &mut self.autocomplete {
+            ac.move_up_bounded(count);
+        }
+    }
+
+    /// Moves the `@` popup selection down, bounded by `count` visible entries.
+    pub fn autocomplete_move_down_bounded(&mut self, count: usize) {
+        if let Some(ac) = &mut self.autocomplete {
+            ac.move_down_bounded(count);
         }
     }
 
@@ -755,14 +776,60 @@ impl ChatInputBoxState {
             return;
         };
         let token_start = ac.token_start;
-        let prefix = match ac.trigger {
-            AutocompleteTrigger::Hash => '#',
-            AutocompleteTrigger::Slash => '/',
-        };
-        let replacement = format!("{prefix}{name}");
-        self.replace_grapheme_range(token_start, self.cursor_pos, &replacement);
+        match ac.trigger {
+            AutocompleteTrigger::Hash | AutocompleteTrigger::Slash => {
+                let prefix = match ac.trigger {
+                    AutocompleteTrigger::Hash => '#',
+                    AutocompleteTrigger::Slash => '/',
+                    AutocompleteTrigger::At | AutocompleteTrigger::AtAt => {
+                        // The `@` popup has its own completion path (`complete_at_entry`);
+                        // this function is only reached for `#`/`/`.
+                        return;
+                    }
+                };
+                let replacement = format!("{prefix}{name}");
+                self.replace_grapheme_range(token_start, self.cursor_pos, &replacement);
+            }
+            // `@` confirm is handled by the dedicated `complete_at_entry` flow
+            // (dir vs file branching) — this arm should not be reached for `At`.
+            AutocompleteTrigger::At | AutocompleteTrigger::AtAt => {}
+        }
         // Cursor is now after the replacement text.
         // Autocomplete stays active - the filter is now the exact name.
+    }
+    /// Completes an `@` popup entry (dir vs file branching).
+    ///
+    /// Returns `true` if the entry was a directory (popup stays active, `name/`
+    /// inserted with trailing slash so the next `ListDirectory` descends).
+    /// Returns `false` for a file (popup deactivates, `name` inserted).
+    ///
+    /// No-op if autocomplete is not active or not an `At`/`AtAt` trigger.
+    pub fn complete_at_entry(&mut self, name: &str, is_dir: bool) -> bool {
+        let Some(ac) = self.autocomplete.as_ref() else {
+            return false;
+        };
+        if !matches!(
+            ac.trigger,
+            AutocompleteTrigger::At | AutocompleteTrigger::AtAt
+        ) {
+            return false;
+        }
+        let token_start = ac.token_start;
+        if is_dir {
+            // Insert `@name/` (preserve the `@` trigger char) and keep the popup
+            // active. The trailing slash makes the next path-filter resolve to
+            // the deeper directory. We replace from `token_start` (the `@`) so
+            // the replacement must re-include the `@` prefix.
+            let replacement = format!("@{name}/");
+            self.replace_grapheme_range(token_start, self.cursor_pos, &replacement);
+            true
+        } else {
+            // Insert `@name` (preserve the `@` trigger char) and deactivate.
+            let replacement = format!("@{name}");
+            self.replace_grapheme_range(token_start, self.cursor_pos, &replacement);
+            self.autocomplete = None;
+            false
+        }
     }
 
     /// Expands a double-`#` token: replaces `#name#` with the template body.

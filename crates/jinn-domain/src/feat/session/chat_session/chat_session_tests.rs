@@ -53,7 +53,10 @@ fn push_entry_expands_known_prompt_token_in_user_entry() {
 
     // Then `display` keeps the raw token (UI unchanged) but the model-facing
     // `expanded` field carries the resolved body.
-    let ChatEntryKind::User { display, expanded } = &session.history()[index].kind else {
+    let ChatEntryKind::User {
+        display, expanded, ..
+    } = &session.history()[index].kind
+    else {
         panic!("expected a user entry");
     };
     assert_eq!(display, "#name");
@@ -72,7 +75,10 @@ fn push_entry_leaves_unknown_prompt_token_literal() {
     let index = session.push_entry(ChatEntry::user("#nope"));
 
     // Then both fields keep the raw token literal.
-    let ChatEntryKind::User { display, expanded } = &session.history()[index].kind else {
+    let ChatEntryKind::User {
+        display, expanded, ..
+    } = &session.history()[index].kind
+    else {
         panic!("expected a user entry");
     };
     assert_eq!(display, "#nope");
@@ -95,6 +101,63 @@ fn push_entry_does_not_expand_non_user_entries() {
         ),
         "assistant entry should not be touched by expansion"
     );
+}
+
+/// Minimal valid PNG (1×1 transparent) for attachment-path tests.
+const TINY_PNG: &[u8] = &[
+    0x89, 0x50, 0x4E, 0x47, 0x0D, 0x0A, 0x1A, 0x0A, 0x00, 0x00, 0x00, 0x0D, 0x49, 0x48, 0x44, 0x52,
+    0x00, 0x00, 0x00, 0x01, 0x00, 0x00, 0x00, 0x01, 0x08, 0x06, 0x00, 0x00, 0x00, 0x1F, 0x15, 0xC4,
+    0x89, 0x00, 0x00, 0x00, 0x0D, 0x49, 0x44, 0x41, 0x54, 0x78, 0x9C, 0x63, 0x00, 0x01, 0x00, 0x00,
+    0x05, 0x00, 0x01, 0x0D, 0x0A, 0x2D, 0xB4, 0x00, 0x00, 0x00, 0x00, 0x49, 0x45, 0x4E, 0x44, 0xAE,
+    0x42, 0x60, 0x82,
+];
+
+#[rstest::rstest]
+fn push_entry_at_path_creates_attachment_and_file_uri() {
+    // Given a session and a temp png file referenced via @path.
+    let dir = tempfile::tempdir().expect("temp dir");
+    let path = dir.path().join("img.png");
+    std::fs::write(&path, TINY_PNG).expect("write");
+    let abs = path.to_string_lossy().into_owned();
+    let mut session = ChatSessionState::new();
+
+    // When pushing a user entry referencing the image via @path.
+    let index = session.push_entry(ChatEntry::user(format!("describe @{abs}")));
+
+    // Then the entry has no attachments yet — `push_entry` only rewrites
+    // text and collects pending paths. Attachment resolution happens in the
+    // session actor via `spawn_blocking`.
+    let ChatEntryKind::User {
+        display, expanded, ..
+    } = &session.history()[index].kind
+    else {
+        panic!("expected a user entry");
+    };
+    // And display keeps the raw @path (UI unchanged).
+    assert_eq!(display, &format!("describe @{abs}"));
+    // And expanded rewrites @path to the file:// URI.
+    assert!(expanded.contains(&format!("(file://{abs})")));
+}
+
+#[rstest::rstest]
+fn push_entry_email_at_is_not_treated_as_attachment() {
+    // Given a session.
+    let mut session = ChatSessionState::new();
+
+    // When pushing a user entry containing an email address.
+    let index = session.push_entry(ChatEntry::user("contact foo@bar.com"));
+
+    // Then no attachments are created and the text is unchanged.
+    let ChatEntryKind::User {
+        expanded,
+        attachments,
+        ..
+    } = &session.history()[index].kind
+    else {
+        panic!("expected a user entry");
+    };
+    assert!(attachments.is_empty());
+    assert_eq!(expanded, "contact foo@bar.com");
 }
 
 #[rstest::rstest]
@@ -454,7 +517,8 @@ fn enqueue_message_adds_to_queue() {
         &session.queue()[0],
         crate::feat::session::queue_item::QueueItem::UserMessage(e) if e.kind == ChatEntryKind::User {
             display: "hello".to_owned(),
-            expanded: "hello".to_owned()
+            expanded: "hello".to_owned(),
+            attachments: Vec::new(),
         }
     ));
 }
@@ -483,7 +547,8 @@ fn dequeue_message_returns_first_in_order() {
         entry.kind,
         ChatEntryKind::User {
             display: "first".to_owned(),
-            expanded: "first".to_owned()
+            expanded: "first".to_owned(),
+            attachments: Vec::new(),
         }
     );
     assert_eq!(session.queue_len(), 1);
@@ -534,21 +599,24 @@ fn drain_returns_all_in_order() {
         entries[0].kind,
         ChatEntryKind::User {
             display: "a".to_owned(),
-            expanded: "a".to_owned()
+            expanded: "a".to_owned(),
+            attachments: Vec::new(),
         }
     );
     assert_eq!(
         entries[1].kind,
         ChatEntryKind::User {
             display: "b".to_owned(),
-            expanded: "b".to_owned()
+            expanded: "b".to_owned(),
+            attachments: Vec::new(),
         }
     );
     assert_eq!(
         entries[2].kind,
         ChatEntryKind::User {
             display: "c".to_owned(),
-            expanded: "c".to_owned()
+            expanded: "c".to_owned(),
+            attachments: Vec::new(),
         }
     );
 }
@@ -1478,7 +1546,8 @@ fn selected_entry_returns_entry_at_index() {
         entry.unwrap().kind,
         ChatEntryKind::User {
             display: "b".to_owned(),
-            expanded: "b".to_owned()
+            expanded: "b".to_owned(),
+            attachments: Vec::new(),
         }
     );
 }

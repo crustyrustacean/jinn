@@ -8,13 +8,14 @@
 //!
 //! Frontend is owned by IntentHandler (God-mode via [`State::write`]); the
 //! actors that also write here (preferences, dashboard, token-count, skills,
-//! quake-bar, status) receive [`FrontendCap`] at wiring for their narrow
-//! slice.
+//! quake-bar, status, directory-lister) receive [`FrontendCap`] at wiring for
+//! their narrow slice.
 
 use std::collections::HashSet;
 
 use crate::common::state::State;
 use crate::feat::dashboard::DashboardState;
+use crate::feat::file_lister::FilePickerState;
 use crate::feat::persona::PersonaEntry;
 use crate::feat::preferences_actor::app_state_file::AppStateFile;
 use crate::feat::session::entry_token_cache::EntryTokenCache;
@@ -62,6 +63,9 @@ pub struct SkillPickerOps<'a>(&'a mut FrontendState);
 
 /// Narrow write-handle to the persona picker for the session-actor context handler.
 pub struct PersonaPickerOps<'a>(&'a mut FrontendState);
+
+/// Narrow write-handle to `frontend.file_picker` for the directory-lister actor.
+pub struct FilePickerOps<'a>(&'a mut FilePickerState);
 
 /// Narrow write-handle to `frontend.app_state` for the session-actor startup handler.
 pub struct AppStateOps<'a>(&'a mut AppStateFile);
@@ -117,6 +121,13 @@ impl PersonaPickerOps<'_> {
     /// Replace the persona picker items.
     pub fn set_items(&mut self, items: Vec<PersonaEntry>) {
         self.0.persona_picker_mut().set_items(items);
+    }
+}
+
+impl FilePickerOps<'_> {
+    /// Mutable access to the file-picker state.
+    pub fn file_picker(&mut self) -> &mut FilePickerState {
+        self.0
     }
 }
 
@@ -219,5 +230,15 @@ impl State {
         let mut guard = self.write_lock();
         let app = &mut *guard;
         f(&mut AppStateOps(&mut app.frontend.app_state))
+    }
+
+    /// Write access to `frontend.file_picker`, scoped via [`FilePickerOps`].
+    pub fn with_file_picker<R, F>(&self, _cap: &FrontendCap, f: F) -> R
+    where
+        F: FnOnce(&mut FilePickerOps<'_>) -> R,
+    {
+        let mut guard = self.write_lock();
+        let app = &mut *guard;
+        f(&mut FilePickerOps(&mut app.frontend.file_picker))
     }
 }

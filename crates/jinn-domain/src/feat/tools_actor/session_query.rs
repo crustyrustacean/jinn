@@ -236,11 +236,13 @@ mod tests {
             make_entry(ChatEntryKind::User {
                 display: "Hello world".to_owned(),
                 expanded: "Hello world".to_owned(),
+                attachments: Vec::new(),
             }),
             make_entry(ChatEntryKind::Assistant("Goodbye moon".to_owned())),
             make_entry(ChatEntryKind::User {
                 display: "Hello again".to_owned(),
                 expanded: "Hello again".to_owned(),
+                attachments: Vec::new(),
             }),
         ];
         let (state, session_id) = make_state_with_history(entries);
