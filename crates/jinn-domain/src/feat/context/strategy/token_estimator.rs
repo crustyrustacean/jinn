@@ -33,7 +33,11 @@ pub fn estimate_entry_tokens(estimator: &dyn TokenEstimator, entry: &ChatEntry) 
     }
 
     match &entry.kind {
-        ChatEntryKind::User { expanded, .. } => estimator.estimate(expanded),
+        ChatEntryKind::User {
+            expanded,
+            attachments,
+            ..
+        } => estimator.estimate(expanded) + image_attachment_tokens(attachments),
         ChatEntryKind::Assistant(text)
         | ChatEntryKind::System(text)
         | ChatEntryKind::Compaction { summary: text, .. } => estimator.estimate(text),
@@ -71,6 +75,22 @@ pub fn estimate_entry_tokens(estimator: &dyn TokenEstimator, entry: &ChatEntry) 
         // Annotations are display-only and excluded from context (0 tokens).
         ChatEntryKind::Annotation { .. } => 0,
     }
+}
+
+/// Flat token cost attributed to each image attachment for budgeting.
+///
+/// Real per-provider image token math varies (Anthropic tile estimate,
+/// OpenAI tile-based, Gemini tiles); this flat heuristic keeps the budget
+/// honest enough that context assembly is not surprised by image cost.
+const IMAGE_ATTACHMENT_TOKENS: usize = 765;
+
+/// Returns the total flat token cost for the image attachments in a user entry.
+fn image_attachment_tokens(attachments: &[jinn_provider::Attachment]) -> usize {
+    attachments
+        .iter()
+        .filter(|a| a.is_image())
+        .map(|_| IMAGE_ATTACHMENT_TOKENS)
+        .sum()
 }
 
 /// Estimates the token cost of tool definitions as serialized JSON schemas.
@@ -239,5 +259,24 @@ mod tests {
             "ToolResult tokens should be sum of name + content, not product"
         );
         assert!(tokens > 0, "should have non-zero token estimate");
+    }
+
+    #[test]
+    fn estimate_entry_tokens_adds_image_cost_per_attachment() {
+        use jinn_provider::Attachment;
+
+        // Given a user entry with two image attachments.
+        let estimator = ByteLenEstimator;
+        let mut entry = ChatEntry::user("describe");
+        if let crate::protocol::ChatEntryKind::User { attachments, .. } = &mut entry.kind {
+            attachments.push(Attachment::image("image/png", vec![1]));
+            attachments.push(Attachment::image("image/png", vec![2]));
+        }
+
+        // When estimating tokens.
+        let tokens = estimate_entry_tokens(&estimator, &entry);
+
+        // Then the estimate is text cost + 2 × flat image cost.
+        assert_eq!(tokens, estimator.estimate("describe") + 765 + 765);
     }
 }
