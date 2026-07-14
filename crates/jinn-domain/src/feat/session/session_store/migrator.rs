@@ -97,8 +97,7 @@ mod tests {
         // Return the TempDir alongside the Pool so the caller holds it
         // for the test's lifetime. Dropping it would delete `test.db`, but
         // by returning it the caller keeps the file alive until test end.
-        let pool =
-            Pool::open(path.to_string_lossy().to_string().as_str()).expect("open pool");
+        let pool = Pool::open(path.to_string_lossy().to_string().as_str()).expect("open pool");
         (pool, dir)
     }
 
