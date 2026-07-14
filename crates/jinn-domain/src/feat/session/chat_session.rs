@@ -39,7 +39,7 @@ use crate::protocol::{
 };
 
 use crate::feat::context::prompt_template::PromptTemplateStore;
-use crate::feat::context::prompt_template::expand_tokens;
+use crate::feat::context::prompt_template::{expand_tokens, scan_at_paths};
 use crate::feat::session::entry_timing::EntryTiming;
 
 /// Error returned when a streaming operation fails.
@@ -3252,10 +3252,18 @@ impl ChatSessionState {
 /// [`ChatSessionState::push_entry`].
 fn expand_user_entry(entry: &mut ChatEntry, store: &PromptTemplateStore) {
     if let ChatEntryKind::User {
-        display, expanded, ..
+        display,
+        expanded,
+        attachments,
     } = &mut entry.kind
     {
-        *expanded = expand_tokens(display, store);
+        // Pass 1: `#token` template expansion.
+        let token_expanded = expand_tokens(display, store);
+        // Pass 2: `@/abs/path` image scanning — rewrites tokens to file:// URIs
+        // and reads referenced images into attachments.
+        let scanned = scan_at_paths(&token_expanded);
+        *expanded = scanned.rewritten_text;
+        *attachments = scanned.attachments;
     }
 }
 

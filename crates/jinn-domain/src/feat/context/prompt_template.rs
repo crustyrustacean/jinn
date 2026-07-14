@@ -8,12 +8,15 @@
 //! can travel across the actor boundary. This crate owns the loading, parsing,
 //! and storage logic.
 
+mod attachment_path;
 mod expand;
 mod loader;
 mod store;
 #[cfg(test)]
 mod store_tests;
 
+pub use attachment_path::ScanResult;
+pub use attachment_path::scan_at_paths;
 pub use expand::expand_tokens;
 pub use loader::PromptTemplateParseError;
 pub use loader::render_template_file;
