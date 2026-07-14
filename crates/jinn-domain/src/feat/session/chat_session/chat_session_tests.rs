@@ -103,6 +103,66 @@ fn push_entry_does_not_expand_non_user_entries() {
     );
 }
 
+/// Minimal valid PNG (1×1 transparent) for attachment-path tests.
+const TINY_PNG: &[u8] = &[
+    0x89, 0x50, 0x4E, 0x47, 0x0D, 0x0A, 0x1A, 0x0A, 0x00, 0x00, 0x00, 0x0D, 0x49, 0x48, 0x44, 0x52,
+    0x00, 0x00, 0x00, 0x01, 0x00, 0x00, 0x00, 0x01, 0x08, 0x06, 0x00, 0x00, 0x00, 0x1F, 0x15, 0xC4,
+    0x89, 0x00, 0x00, 0x00, 0x0D, 0x49, 0x44, 0x41, 0x54, 0x78, 0x9C, 0x63, 0x00, 0x01, 0x00, 0x00,
+    0x05, 0x00, 0x01, 0x0D, 0x0A, 0x2D, 0xB4, 0x00, 0x00, 0x00, 0x00, 0x49, 0x45, 0x4E, 0x44, 0xAE,
+    0x42, 0x60, 0x82,
+];
+
+#[rstest::rstest]
+fn push_entry_at_path_creates_attachment_and_file_uri() {
+    // Given a session and a temp png file referenced via @path.
+    let dir = tempfile::tempdir().expect("temp dir");
+    let path = dir.path().join("img.png");
+    std::fs::write(&path, TINY_PNG).expect("write");
+    let abs = path.to_string_lossy().into_owned();
+    let mut session = ChatSessionState::new();
+
+    // When pushing a user entry referencing the image via @path.
+    let index = session.push_entry(ChatEntry::user(format!("describe @{abs}")));
+
+    // Then the entry carries one image attachment.
+    let ChatEntryKind::User {
+        display,
+        expanded,
+        attachments,
+        ..
+    } = &session.history()[index].kind
+    else {
+        panic!("expected a user entry");
+    };
+    assert_eq!(attachments.len(), 1);
+    assert!(attachments[0].is_image());
+    // And display keeps the raw @path (UI unchanged).
+    assert_eq!(display, &format!("describe @{abs}"));
+    // And expanded rewrites @path to the file:// URI.
+    assert!(expanded.contains(&format!("(file://{abs})")));
+}
+
+#[rstest::rstest]
+fn push_entry_email_at_is_not_treated_as_attachment() {
+    // Given a session.
+    let mut session = ChatSessionState::new();
+
+    // When pushing a user entry containing an email address.
+    let index = session.push_entry(ChatEntry::user("contact foo@bar.com"));
+
+    // Then no attachments are created and the text is unchanged.
+    let ChatEntryKind::User {
+        expanded,
+        attachments,
+        ..
+    } = &session.history()[index].kind
+    else {
+        panic!("expected a user entry");
+    };
+    assert!(attachments.is_empty());
+    assert_eq!(expanded, "contact foo@bar.com");
+}
+
 #[rstest::rstest]
 fn first_stream_token_creates_assistant_entry() {
     // Given a session with one entry, streaming started.
