@@ -33,11 +33,19 @@ impl SessionPersistenceActor {
         &self,
         payload: &EnqueueUserMessage,
     ) {
+        // Expand `#token` templates and `@/abs/path` image references on the
+        // entry before any dispatch logic. This must happen *before* the vision
+        // capability gate so the gate sees real attachments — `@path` tokens are
+        // raw text in `payload.entry` until expanded. Expansion is idempotent;
+        // `push_entry` re-runs it harmlessly.
+        let mut entry = payload.entry.clone();
+        self.expand_user_entry(&payload.session_id, &mut entry);
+
         // Vision-capability gate (Idle dispatch path only). Block image
         // attachments on models known to lack image support before the entry is
         // pushed or the phase is mutated. Unknown models are allowed through.
         if self
-            .attachment_gate_blocks(&payload.session_id, &payload.entry)
+            .attachment_gate_blocks(&payload.session_id, &entry)
             .await
         {
             return;
@@ -56,7 +64,7 @@ impl SessionPersistenceActor {
                     PhaseKind::Idle => {
                         // Normal path: set title, push entry, begin_sending.
                         if session.title().is_none() {
-                            let title = match &payload.entry.kind {
+                            let title = match &entry.kind {
                                 ChatEntryKind::User { display, .. } => {
                                     display.lines().next().unwrap_or("").to_owned()
                                 }
@@ -64,13 +72,13 @@ impl SessionPersistenceActor {
                             };
                             session.set_title(title);
                         }
-                        session.push_entry(payload.entry.clone());
+                        session.push_entry(entry.clone());
                         session.begin_sending();
                         (EnqueueAction::DispatchDirectly, assembly_overrides)
                     }
                     PhaseKind::Sending | PhaseKind::Streaming => {
                         session.enqueue(crate::feat::session::queue_item::QueueItem::UserMessage(
-                            Box::new(payload.entry.clone()),
+                            Box::new(entry.clone()),
                         ));
                         (EnqueueAction::Queued, None)
                     }
@@ -225,6 +233,27 @@ impl SessionPersistenceActor {
         super::super::helpers::emit_history_appended(self.bus(), session_id).await;
         self.save_active_session(session_id).await;
         true
+    }
+
+    /// Expands `#token` templates and `@/abs/path` image references on `entry`
+    /// using the session's discovered prompt templates.
+    ///
+    /// If the session does not yet exist, expansion uses an empty template
+    /// store (so `@path` scanning still runs, but `#token` lookup finds nothing).
+    fn expand_user_entry(&self, session_id: &crate::SessionId, entry: &mut ChatEntry) {
+        use crate::feat::context::prompt_template::PathResolveContext;
+        use crate::feat::session::chat_session::expand_user_entry as expand;
+        let (store, cwd) = {
+            let guard = self.state.read();
+            guard
+                .session
+                .get(session_id)
+                .map(|s| (s.discovered_prompt_templates().clone(), s.cwd().to_path_buf()))
+                .unwrap_or_default()
+        };
+        let home = self.services.paths.home_dir().to_path_buf();
+        let ctx = PathResolveContext::new(&cwd, &home);
+        expand(entry, &store, &ctx);
     }
 
     /// EnqueueResumeTurn: re-send current history without adding a new user entry.
@@ -730,6 +759,121 @@ mod tests {
         let guard = state.read();
         let session = guard.session.get(&session_id).expect("session");
         assert_eq!(session.phase(), PhaseKind::Streaming);
+    }
+
+    // A minimal PNG (8x8) used by the multimodal enqueue tests below.
+    const MULTIMODAL_TINY_PNG: &[u8] = &[
+        0x89, 0x50, 0x4E, 0x47, 0x0D, 0x0A, 0x1A, 0x0A, // PNG signature
+        0x00, 0x00, 0x00, 0x0D, 0x49, 0x48, 0x44, 0x52, // IHDR chunk
+        0x00, 0x00, 0x00, 0x08, 0x00, 0x00, 0x00, 0x08, // 8x8
+        0x08, 0x06, 0x00, 0x00, 0x00, // RGBA, no compression
+    ];
+
+    /// Writes a models.dev JSON mapping the given model id to vision/text-only,
+    /// and sets it as the session's active model.
+    fn seed_models_dev(
+        actor: &super::super::super::SessionPersistenceActor,
+        model_id: &str,
+        supports_image: bool,
+    ) {
+        use crate::feat::session::model_selection::ModelSelection;
+        let path = actor.services.paths.models_dev_user_path();
+        if let Some(parent) = path.parent() {
+            std::fs::create_dir_all(parent).expect("create cache dir");
+        }
+        let input = if supports_image { "image" } else { "text" };
+        let json = serde_json::json!({
+            "acme": {
+                "models": {
+                    model_id: {
+                        "modalities": { "input": [input] }
+                    }
+                }
+            }
+        });
+        std::fs::write(&path, json.to_string()).expect("write models.dev.json");
+        // Set the session's active model to the seeded model id.
+        let mut guard = actor.state.write_test_no_cap();
+        guard
+            .active_session_mut()
+            .set_model(ModelSelection::Single(model_id.to_owned()));
+    }
+
+    #[tokio::test]
+    async fn at_path_image_to_text_only_model_is_blocked_with_error_entry() {
+        // Given an idle session whose active model is a known text-only model.
+        let (actor, state, audit) = create_actor().await;
+        let session_id = {
+            let mut guard = state.write_test_no_cap();
+            let _session = guard.active_session_mut();
+            guard.session.active_session_id().clone()
+        };
+        // Write the image to a temp file and seed the capability table.
+        let dir = tempfile::TempDir::new().expect("temp dir");
+        let png_path = dir.path().join("img.png");
+        std::fs::write(&png_path, MULTIMODAL_TINY_PNG).expect("write png");
+        seed_models_dev(&actor, "text-only-model", false);
+        let display = format!("describe this @{}", png_path.to_string_lossy());
+
+        // When enqueuing a user message with an @path image attachment.
+        actor
+            .handle_enqueue_user_message(&EnqueueUserMessage {
+                session_id: session_id.clone(),
+                entry: ChatEntry::user(&display),
+            })
+            .await;
+
+        // Then an Error entry appears in history and no SendToLlmProvider was emitted.
+        let guard = state.read();
+        let session = guard.session.get(&session_id).expect("session");
+        assert!(
+            session
+                .history()
+                .iter()
+                .any(|e| matches!(&e.kind, ChatEntryKind::Error(_))),
+            "expected an Error entry when an image is sent to a text-only model"
+        );
+        // And the session stayed Idle (never dispatched).
+        assert_eq!(session.phase(), PhaseKind::Idle);
+        drop(guard);
+        assert!(
+            !audit.contains_name("SendToLlmProvider"),
+            "text-only model must not receive the request"
+        );
+    }
+
+    #[tokio::test]
+    async fn at_path_image_to_vision_model_dispatches_with_attachment() {
+        // Given an idle session whose active model is vision-capable.
+        let (actor, state, audit) = create_actor().await;
+        let session_id = {
+            let mut guard = state.write_test_no_cap();
+            let _session = guard.active_session_mut();
+            guard.session.active_session_id().clone()
+        };
+        let dir = tempfile::TempDir::new().expect("temp dir");
+        let png_path = dir.path().join("photo.png");
+        std::fs::write(&png_path, MULTIMODAL_TINY_PNG).expect("write png");
+        seed_models_dev(&actor, "vision-model", true);
+        let display = format!("describe this @{}", png_path.to_string_lossy());
+
+        // When enqueuing a user message with an @path image attachment.
+        actor
+            .handle_enqueue_user_message(&EnqueueUserMessage {
+                session_id: session_id.clone(),
+                entry: ChatEntry::user(&display),
+            })
+            .await;
+
+        // Then SendToLlmProvider was emitted and the session is Streaming.
+        let guard = state.read();
+        let session = guard.session.get(&session_id).expect("session");
+        assert_eq!(session.phase(), PhaseKind::Streaming);
+        drop(guard);
+        assert!(
+            audit.contains_name("SendToLlmProvider"),
+            "vision model should receive the dispatch with the image"
+        );
     }
 
     #[tokio::test]

@@ -75,6 +75,29 @@ fn estimate_entry_tokens_for_user() {
 }
 
 #[rstest::rstest]
+fn estimate_entry_tokens_for_user_with_image_includes_flat_cost() {
+    use crate::feat::session::chat_entry::ChatEntryKind;
+    use jinn_provider::Attachment;
+
+    // Given a char ratio estimator and a user entry carrying one image attachment.
+    let estimator = CharRatioEstimator;
+    let mut entry = ChatEntry::user("hello world");
+    if let ChatEntryKind::User { attachments, .. } = &mut entry.kind {
+        attachments.push(Attachment::image("image/png", vec![1, 2, 3]));
+    }
+
+    // When estimating entry tokens.
+    let tokens = estimate_entry_tokens(&estimator, &entry);
+
+    // Then the estimate exceeds the text-only estimate by the flat image cost.
+    let text_only = estimator.estimate("hello world");
+    assert!(
+        tokens > text_only,
+        "image attachment should add token cost: got {tokens}, text-only {text_only}"
+    );
+}
+
+#[rstest::rstest]
 fn estimate_entry_tokens_for_tool_call() {
     // Given a char ratio estimator and a tool call entry.
     let estimator = CharRatioEstimator;
