@@ -531,6 +531,7 @@ impl From<PersistableCore> for SessionCore {
             history: ChatHistory::new(),
             profile: core.profile,
             cwd: core.cwd,
+            home: std::path::PathBuf::from("."),
             token_ledger: vec![],
             parent_session: core.parent_session,
             fork_ordinal: core.fork_ordinal,
@@ -569,6 +570,7 @@ impl TryFrom<&ChatSessionState> for NewSessionRow {
                     history: _history, // persisted via entries + session_history tables below
                     profile: _profile, // persisted via metadata blob
                     cwd: _cwd,         // persisted via metadata blob
+                    home: _home, // runtime-only, set from services.paths.home_dir() at setup
                     token_ledger: _ledger, // persisted via token_ledger table below
                     parent_session,
 
