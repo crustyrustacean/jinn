@@ -11,5 +11,5 @@ error[E0308]: mismatched types
 note: method defined here
   --> src/common/tcaps/provider.rs
    |
-   |     pub fn with_provider<R, F: FnOnce(&mut ProviderView<'_>) -> R>(
+   |     pub fn with_provider<R, F>(&self, _cap: &ProviderCap, f: F) -> R
    |            ^^^^^^^^^^^^^
