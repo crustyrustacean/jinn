@@ -89,6 +89,9 @@ pub struct SessionPersistenceActor {
     /// PID (for kill) and the inner reader's `AbortHandle` (so aborting it
     /// surfaces the existing "... was cancelled" branch in the outer wrapper).
     lifecycle_child: Option<crate::feat::session_lifecycle::command_runner::LifecycleCancelHandle>,
+    /// Image converter (ImageMagick) for transcoding non-native image
+    /// attachments. Wraps a trait object so tests inject fakes.
+    image_converter: crate::feat::image_convert::ImageConverterService,
 }
 
 impl BusPublish for SessionPersistenceActor {
@@ -109,6 +112,7 @@ pub struct SessionPersistenceActorDeps {
     pub token_cache: crate::feat::auto_prune_worker::HistoryWorkerChatEntryTokenCache,
     pub builtin_registry: crate::feat::session_lifecycle::builtin::BuiltinRegistry,
     pub shell: String,
+    pub image_converter: crate::feat::image_convert::ImageConverterService,
 }
 
 impl Actor for SessionPersistenceActor {
@@ -186,6 +190,7 @@ impl Actor for SessionPersistenceActor {
             builtin_registry: args.builtin_registry,
             shell: args.shell,
             lifecycle_child: None,
+            image_converter: args.image_converter,
         })
     }
 }

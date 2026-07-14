@@ -1813,3 +1813,553 @@ fn ctrl_clear_input_empty_is_noop_via_handler() {
         "scope remains Input"
     );
 }
+
+// =============================================================================
+// `@path` popup state tests.
+//
+// The user types `@` to open the file popup. The popup's entries live in
+// `frontend.file_picker` (populated by `DirectoryListerActor`), and the
+// selection lives in `AutocompleteState`. These tests exercise the popup's
+// state transitions directly through the intent handlers: trigger activation,
+// slash-descent, backspace, cursor moves, and confirm (dir vs file).
+//
+// Because the popup reads `frontend.file_picker` (async actor output), tests
+// that need populated entries set them manually via the helper below.
+// =============================================================================
+
+/// Activates the `@` popup at the cursor and optionally seeds
+// `frontend.file_picker` with a listing. Returns the AppState for chaining.
+fn at_popup_with_entries(entries: Vec<crate::feat::file_lister::FileEntry>) -> AppState {
+    let mut state = AppState::default();
+    // Type `@` at the start of the buffer to activate the popup.
+    let _ = crate::feat::chat_input::intent::handle_insert_char('@', &mut state);
+    state.frontend.file_picker = crate::feat::file_lister::FilePickerState::with_entries(entries);
+    state.frontend.file_picker.loading = false;
+    state
+}
+
+/// Activates the `@` popup with a seeded listing and positions the cursor
+// at the end of the given `filter` text (typed after the `@`).
+fn at_popup_with_filter_and_entries(
+    filter: &str,
+    entries: Vec<crate::feat::file_lister::FileEntry>,
+) -> AppState {
+    let mut state = AppState::default();
+    let _ = crate::feat::chat_input::intent::handle_insert_char('@', &mut state);
+    for ch in filter.chars() {
+        let _ = crate::feat::chat_input::intent::handle_insert_char(ch, &mut state);
+    }
+    state.frontend.file_picker = crate::feat::file_lister::FilePickerState::with_entries(entries);
+    state.frontend.file_picker.loading = false;
+    state
+}
+
+fn dir_entry(name: &str) -> crate::feat::file_lister::FileEntry {
+    crate::feat::file_lister::FileEntry {
+        name: name.to_owned(),
+        is_dir: true,
+    }
+}
+
+fn file_entry(name: &str) -> crate::feat::file_lister::FileEntry {
+    crate::feat::file_lister::FileEntry {
+        name: name.to_owned(),
+        is_dir: false,
+    }
+}
+
+fn emits_list_directory(result: &crate::protocol::IntentResult) -> bool {
+    result
+        .message_names
+        .iter()
+        .any(|name| name.contains("ListDirectory"))
+}
+
+// -----------------------------------------------------------------------------
+// Trigger activation.
+// -----------------------------------------------------------------------------
+
+#[rstest::rstest]
+fn at_at_start_of_buffer_activates_popup() {
+    // Given a default AppState.
+    let mut state = AppState::default();
+
+    // When handling InsertChar('@') at the start of the buffer.
+    let _ = crate::feat::chat_input::intent::handle_insert_char('@', &mut state);
+
+    // Then the autocomplete popup is active with the At trigger.
+    let ac = state.active_chat_input().autocomplete();
+    assert!(ac.is_some(), "@ at start should activate the popup");
+    assert_eq!(ac.as_ref().unwrap().trigger(), AutocompleteTrigger::At);
+}
+
+#[rstest::rstest]
+fn at_after_space_activates_popup() {
+    // Given a buffer with a space.
+    let mut state = AppState::default();
+    state.active_chat_input_mut().insert_text("hello ");
+
+    // When handling InsertChar('@').
+    let _ = crate::feat::chat_input::intent::handle_insert_char('@', &mut state);
+
+    // Then the popup activates.
+    assert!(
+        state.active_chat_input().autocomplete().is_some(),
+        "@ after a space should activate the popup"
+    );
+}
+
+#[rstest::rstest]
+fn at_after_newline_activates_popup() {
+    // Given a buffer ending in a newline.
+    let mut state = AppState::default();
+    state.active_chat_input_mut().insert_text("line1\n");
+
+    // When handling InsertChar('@').
+    let _ = crate::feat::chat_input::intent::handle_insert_char('@', &mut state);
+
+    // Then the popup activates.
+    assert!(
+        state.active_chat_input().autocomplete().is_some(),
+        "@ after a newline should activate the popup"
+    );
+}
+
+#[rstest::rstest]
+fn at_mid_word_does_not_activate_popup() {
+    // Given a buffer with text but no trailing boundary.
+    let mut state = AppState::default();
+    state.active_chat_input_mut().insert_text("foo");
+
+    // When handling InsertChar('@').
+    let _ = crate::feat::chat_input::intent::handle_insert_char('@', &mut state);
+
+    // Then the popup does NOT activate.
+    assert!(
+        state.active_chat_input().autocomplete().is_none(),
+        "foo@ (no boundary) should NOT activate the popup"
+    );
+}
+
+#[rstest::rstest]
+fn at_activation_emits_list_directory() {
+    // Given a default AppState.
+    let mut state = AppState::default();
+
+    // When handling InsertChar('@').
+    let result = crate::feat::chat_input::intent::handle_insert_char('@', &mut state);
+
+    // Then a ListDirectory command was emitted.
+    assert!(
+        emits_list_directory(&result),
+        "@ activation should emit a ListDirectory command"
+    );
+}
+
+// -----------------------------------------------------------------------------
+// `@@` seam: stays literal, no At activation.
+// -----------------------------------------------------------------------------
+
+#[rstest::rstest]
+fn at_at_stays_literal_no_popup() {
+    // Given a default AppState.
+    let mut state = AppState::default();
+
+    // When typing `@@`.
+    let _ = crate::feat::chat_input::intent::handle_insert_char('@', &mut state);
+    let _ = crate::feat::chat_input::intent::handle_insert_char('@', &mut state);
+
+    // Then the buffer is the literal `@@`.
+    assert_eq!(state.active_chat_input().text(), "@@");
+    // And the popup is NOT active (the seam is reserved, no handler fires).
+    assert!(
+        state.active_chat_input().autocomplete().is_none(),
+        "@@ should not activate the AtAt popup (seam reserved)"
+    );
+}
+
+// -----------------------------------------------------------------------------
+// Typing `/` in an active popup descends into the directory.
+// -----------------------------------------------------------------------------
+
+#[rstest::rstest]
+fn typing_slash_in_at_popup_inserts_slash() {
+    // Given an active @ popup with filter "foo".
+    let mut state = at_popup_with_filter_and_entries("foo", vec![dir_entry("foo")]);
+
+    // When typing '/'.
+    let _ = crate::feat::chat_input::intent::handle_insert_char('/', &mut state);
+
+    // Then the buffer contains `@foo/`.
+    assert_eq!(state.active_chat_input().text(), "@foo/");
+}
+
+#[rstest::rstest]
+fn typing_slash_in_at_popup_emits_list_directory() {
+    // Given an active @ popup with filter "foo".
+    let mut state = at_popup_with_filter_and_entries("foo", vec![dir_entry("foo")]);
+
+    // When typing '/'.
+    let result = crate::feat::chat_input::intent::handle_insert_char('/', &mut state);
+
+    // Then a ListDirectory command was emitted for the deeper path.
+    assert!(
+        emits_list_directory(&result),
+        "typing '/' should emit a ListDirectory for the deeper directory"
+    );
+}
+
+#[rstest::rstest]
+fn typing_slash_in_at_popup_keeps_popup_active() {
+    // Given an active @ popup with filter "foo".
+    let mut state = at_popup_with_filter_and_entries("foo", vec![dir_entry("foo")]);
+
+    // When typing '/'.
+    let _ = crate::feat::chat_input::intent::handle_insert_char('/', &mut state);
+
+    // Then the popup stays active.
+    assert!(
+        state.active_chat_input().autocomplete().is_some(),
+        "popup should remain active after typing '/'"
+    );
+}
+
+// -----------------------------------------------------------------------------
+// Backspace within and across the token boundary.
+// -----------------------------------------------------------------------------
+
+#[rstest::rstest]
+fn backspace_within_token_keeps_popup_active() {
+    // Given an active @ popup with filter "foo" (cursor at end).
+    let mut state = at_popup_with_filter_and_entries("foo", vec![dir_entry("foo")]);
+
+    // When backspacing once (@foo| -> @fo|).
+    let _ = crate::feat::chat_input::intent::handle_delete_grapheme(&mut state);
+
+    // Then the popup stays active.
+    assert!(
+        state.active_chat_input().autocomplete().is_some(),
+        "backspace within token should keep the popup active"
+    );
+    // And the filter is now "fo".
+    assert_eq!(
+        state
+            .active_chat_input()
+            .autocomplete_filter()
+            .unwrap_or_default(),
+        "fo"
+    );
+}
+
+#[rstest::rstest]
+fn backspace_within_token_updates_filter() {
+    // Given an active @ popup with filter "foo" (cursor at end).
+    let mut state = at_popup_with_filter_and_entries("foo", vec![dir_entry("foo")]);
+
+    // When backspacing twice (@foo| -> @f|).
+    let _ = crate::feat::chat_input::intent::handle_delete_grapheme(&mut state);
+    let _ = crate::feat::chat_input::intent::handle_delete_grapheme(&mut state);
+
+    // Then the filter is now "f".
+    assert_eq!(
+        state
+            .active_chat_input()
+            .autocomplete_filter()
+            .unwrap_or_default(),
+        "f"
+    );
+}
+
+#[rstest::rstest]
+fn backspace_to_at_keeps_popup_active() {
+    // Given an active @ popup with filter "foo".
+    let mut state = at_popup_with_filter_and_entries("foo", vec![dir_entry("foo")]);
+
+    // When backspacing back to the `@` (@foo| -> @|).
+    for _ in 0..3 {
+        let _ = crate::feat::chat_input::intent::handle_delete_grapheme(&mut state);
+    }
+
+    // Then the popup stays active: the cursor sits right after `@`, which is
+    // the same as having just typed `@` (consistent with the `#`/`/` triggers).
+    assert!(
+        state.active_chat_input().autocomplete().is_some(),
+        "cursor adjacent to @ should keep the popup active"
+    );
+}
+
+#[rstest::rstest]
+fn backspace_to_at_leaves_at_in_buffer() {
+    // Given an active @ popup with filter "foo".
+    let mut state = at_popup_with_filter_and_entries("foo", vec![dir_entry("foo")]);
+
+    // When backspacing back to the `@`.
+    for _ in 0..3 {
+        let _ = crate::feat::chat_input::intent::handle_delete_grapheme(&mut state);
+    }
+
+    // Then the buffer is just `@`.
+    assert_eq!(state.active_chat_input().text(), "@");
+}
+
+#[rstest::rstest]
+fn backspace_deleting_at_removes_it() {
+    // Given an active @ popup with filter "foo".
+    let mut state = at_popup_with_filter_and_entries("foo", vec![dir_entry("foo")]);
+
+    // When backspacing past the `@` (@foo| -> @| -> empty).
+    for _ in 0..4 {
+        let _ = crate::feat::chat_input::intent::handle_delete_grapheme(&mut state);
+    }
+
+    // Then the buffer is empty.
+    assert!(state.active_chat_input().text().is_empty());
+    // And the popup is not active.
+    assert!(state.active_chat_input().autocomplete().is_none());
+}
+
+// -----------------------------------------------------------------------------
+// Cursor movement within and across the token boundary.
+// -----------------------------------------------------------------------------
+
+#[rstest::rstest]
+fn cursor_left_within_token_keeps_popup_active() {
+    // Given an active @ popup with filter "foo" (cursor at end).
+    let mut state = at_popup_with_filter_and_entries("foo", vec![dir_entry("foo")]);
+
+    // When moving the cursor left once.
+    let _ = crate::feat::chat_input::intent::handle_move_cursor_left(&mut state);
+
+    // Then the popup stays active (still inside the token).
+    assert!(
+        state.active_chat_input().autocomplete().is_some(),
+        "cursor left within token should keep the popup active"
+    );
+}
+
+#[rstest::rstest]
+fn cursor_left_past_token_start_deactivates_popup() {
+    // Given a buffer `x @foo` with the @ popup active and the cursor after `foo`.
+    // The `@` is at a valid boundary (preceded by a space).
+    let mut state = AppState::default();
+    state.active_chat_input_mut().insert_text("x ");
+    let _ = crate::feat::chat_input::intent::handle_insert_char('@', &mut state);
+    state.frontend.file_picker =
+        crate::feat::file_lister::FilePickerState::with_entries(vec![dir_entry("foo")]);
+    state.frontend.file_picker.loading = false;
+    for ch in "foo".chars() {
+        let _ = crate::feat::chat_input::intent::handle_insert_char(ch, &mut state);
+    }
+
+    // When moving the cursor left until it sits in `x ` (before the `@`).
+    for _ in 0..5 {
+        let _ = crate::feat::chat_input::intent::handle_move_cursor_left(&mut state);
+    }
+
+    // Then the popup is deactivated.
+    assert!(
+        state.active_chat_input().autocomplete().is_none(),
+        "cursor left past token start should deactivate the popup"
+    );
+}
+
+#[rstest::rstest]
+fn cursor_right_within_token_keeps_popup_active() {
+    // Given an active @ popup where the cursor is at the start of the filter.
+    // Type `@foo`, then move the cursor left twice so it's between `@` and `foo`.
+    let mut state = at_popup_with_filter_and_entries("foo", vec![dir_entry("foo")]);
+    for _ in 0..3 {
+        let _ = crate::feat::chat_input::intent::handle_move_cursor_left(&mut state);
+    }
+    // Now move right once (into the filter).
+    let _ = crate::feat::chat_input::intent::handle_move_cursor_right(&mut state);
+
+    // Then the popup is active again (re-activated on cursor reentry).
+    assert!(
+        state.active_chat_input().autocomplete().is_some(),
+        "cursor right into token should keep/activate the popup"
+    );
+}
+
+#[rstest::rstest]
+fn cursor_right_past_token_end_deactivates_popup() {
+    // Given a buffer `@foo bar` with the @ popup active and the cursor after `foo`.
+    let mut state = AppState::default();
+    let _ = crate::feat::chat_input::intent::handle_insert_char('@', &mut state);
+    state.frontend.file_picker =
+        crate::feat::file_lister::FilePickerState::with_entries(vec![dir_entry("foo")]);
+    state.frontend.file_picker.loading = false;
+    for ch in "foo".chars() {
+        let _ = crate::feat::chat_input::intent::handle_insert_char(ch, &mut state);
+    }
+    // Type a space (deactivates the popup), then `bar`, then move the cursor
+    // left back into `foo` to reactivate, then right past the end.
+    state.active_chat_input_mut().insert_text(" bar");
+    // Reactivate by moving into the token, then move right past it.
+    for _ in 0..4 {
+        let _ = crate::feat::chat_input::intent::handle_move_cursor_left(&mut state);
+    }
+    // Now move right past the token end (over `foo` and the trailing space).
+    for _ in 0..4 {
+        let _ = crate::feat::chat_input::intent::handle_move_cursor_right(&mut state);
+    }
+
+    // Then the popup is deactivated.
+    assert!(
+        state.active_chat_input().autocomplete().is_none(),
+        "cursor right past token end should deactivate the popup"
+    );
+}
+
+// -----------------------------------------------------------------------------
+// Confirm: directory vs file branching.
+// -----------------------------------------------------------------------------
+
+#[rstest::rstest]
+fn confirm_directory_entry_inserts_name_with_slash() {
+    // Given an active @ popup with a directory selected at index 0.
+    let mut state = at_popup_with_entries(vec![dir_entry("src")]);
+
+    // When confirming the selection.
+    let _ = crate::feat::chat_input::intent::handle_autocomplete_confirm(&mut state);
+
+    // Then the buffer contains `@src/`.
+    assert_eq!(state.active_chat_input().text(), "@src/");
+}
+
+#[rstest::rstest]
+fn confirm_directory_entry_keeps_popup_active() {
+    // Given an active @ popup with a directory selected at index 0.
+    let mut state = at_popup_with_entries(vec![dir_entry("src")]);
+
+    // When confirming the selection.
+    let _ = crate::feat::chat_input::intent::handle_autocomplete_confirm(&mut state);
+
+    // Then the popup stays active.
+    assert!(
+        state.active_chat_input().autocomplete().is_some(),
+        "confirming a directory should keep the popup active"
+    );
+}
+
+#[rstest::rstest]
+fn confirm_directory_entry_emits_list_directory() {
+    // Given an active @ popup with a directory selected at index 0.
+    let mut state = at_popup_with_entries(vec![dir_entry("src")]);
+
+    // When confirming the selection.
+    let result = crate::feat::chat_input::intent::handle_autocomplete_confirm(&mut state);
+
+    // Then a ListDirectory command was emitted for the deeper path.
+    assert!(
+        emits_list_directory(&result),
+        "confirming a directory should emit a ListDirectory for the deeper path"
+    );
+}
+
+#[rstest::rstest]
+fn confirm_file_entry_inserts_name() {
+    // Given an active @ popup with a file selected at index 0.
+    let mut state = at_popup_with_entries(vec![file_entry("img.png")]);
+
+    // When confirming the selection.
+    let _ = crate::feat::chat_input::intent::handle_autocomplete_confirm(&mut state);
+
+    // Then the buffer contains `@img.png`.
+    assert_eq!(state.active_chat_input().text(), "@img.png");
+}
+
+#[rstest::rstest]
+fn confirm_file_entry_deactivates_popup() {
+    // Given an active @ popup with a file selected at index 0.
+    let mut state = at_popup_with_entries(vec![file_entry("img.png")]);
+
+    // When confirming the selection.
+    let _ = crate::feat::chat_input::intent::handle_autocomplete_confirm(&mut state);
+
+    // Then the popup is deactivated.
+    assert!(
+        state.active_chat_input().autocomplete().is_none(),
+        "confirming a file should deactivate the popup"
+    );
+}
+
+#[rstest::rstest]
+fn confirm_inserts_filtered_entry_not_full_list() {
+    // Given an active @ popup with [src, img.png] and a typed filter 's'.
+    // 'src' starts with 's'; 'img.png' does not. The filter narrows the
+    // visible rows to just [src], so index 0 is 'src'.
+    let mut state =
+        at_popup_with_filter_and_entries("s", vec![dir_entry("src"), file_entry("img.png")]);
+
+    // When confirming the selection at index 0.
+    let _ = crate::feat::chat_input::intent::handle_autocomplete_confirm(&mut state);
+
+    // Then 'src/' is inserted (the filtered entry), not 'img.png'.
+    assert_eq!(
+        state.active_chat_input().text(),
+        "@src/",
+        "confirm should insert the filtered-visible entry, not the full-list entry at that index"
+    );
+}
+
+#[rstest::rstest]
+fn confirm_with_no_filtered_entries_is_noop() {
+    // Given an active @ popup where the typed filter matches nothing.
+    let mut state = at_popup_with_filter_and_entries("zzz", vec![file_entry("src")]);
+
+    // When confirming the selection.
+    let _ = crate::feat::chat_input::intent::handle_autocomplete_confirm(&mut state);
+
+    // Then nothing is inserted (the buffer stays as typed).
+    assert_eq!(
+        state.active_chat_input().text(),
+        "@zzz",
+        "confirm with no visible entries should be a no-op"
+    );
+}
+
+#[rstest::rstest]
+fn arrow_down_moves_within_filtered_entries() {
+    // Given an active @ popup with [src, srv, static] all matching filter 's'.
+    let mut state = at_popup_with_filter_and_entries(
+        "s",
+        vec![dir_entry("src"), dir_entry("srv"), dir_entry("static")],
+    );
+    // Selection starts at index 0 (popup default for an empty-matches trigger).
+    assert_eq!(
+        state.active_chat_input().autocomplete_selected_index(),
+        0,
+        "selection should start at 0"
+    );
+
+    // When pressing arrow down.
+    let _ = crate::feat::chat_input::intent::handle_move_cursor_down(&mut state);
+
+    // Then the selection moves to index 1.
+    assert_eq!(
+        state.active_chat_input().autocomplete_selected_index(),
+        1,
+        "arrow down should move within the filtered entries"
+    );
+}
+
+#[rstest::rstest]
+fn arrow_down_clamps_at_filtered_entry_count() {
+    // Given an active @ popup with [src, img.png] where only 'src' matches 's'.
+    let mut state =
+        at_popup_with_filter_and_entries("s", vec![dir_entry("src"), file_entry("img.png")]);
+
+    // When pressing arrow down repeatedly.
+    for _ in 0..5 {
+        let _ = crate::feat::chat_input::intent::handle_move_cursor_down(&mut state);
+    }
+
+    // Then the selection clamps at the last filtered entry (index 0, since only
+    // 'src' is visible).
+    assert_eq!(
+        state.active_chat_input().autocomplete_selected_index(),
+        0,
+        "arrow down should clamp at the filtered entry count"
+    );
+}

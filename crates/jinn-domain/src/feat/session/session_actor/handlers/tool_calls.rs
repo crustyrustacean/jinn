@@ -444,6 +444,7 @@ mod tests {
                     crate::feat::auto_prune_worker::HistoryWorkerChatEntryTokenCache::default(),
                 builtin_registry: BuiltinRegistry::new(),
                 shell: "/bin/sh".to_owned(),
+                image_converter: crate::feat::image_convert::ImageConverterService::unavailable(),
             })
             .await;
         actor_ref.wait_for_startup().await;
@@ -536,6 +537,8 @@ mod tests {
                         crate::feat::auto_prune_worker::HistoryWorkerChatEntryTokenCache::default(),
                     builtin_registry: BuiltinRegistry::new(),
                     shell: "/bin/sh".to_owned(),
+                    image_converter: crate::feat::image_convert::ImageConverterService::unavailable(
+                    ),
                 },
                 kameo::mailbox::unbounded(),
             )
