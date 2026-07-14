@@ -1,4 +1,4 @@
-//! The migration runner and individual migrations (v0..=v20).
+//! The migration runner and individual migrations (v0..=v22).
 //!
 //! Ported verbatim from jinn-domain's `migrator.rs` so the schema crate is the
 //! single source of truth. Three mechanical changes from the original:
@@ -128,6 +128,10 @@ pub(crate) fn run_pending(
     if current < 21 {
         migrate_v21(conn)?;
         record_version(conn, 21, "add_discord_thread_table")?;
+    }
+    if current < 22 {
+        migrate_v22(conn)?;
+        record_version(conn, 22, "add_entry_blobs_table")?;
     }
     Ok(())
 }
@@ -847,6 +851,28 @@ pub fn migrate_v21(conn: &mut rusqlite::Connection) -> Result<(), Report<SchemaM
     Ok(())
 }
 
+/// v22: Add the `entry_blobs` table for multimodal attachments.
+///
+/// Each row stores one attachment blob (raw bytes + media type) keyed by
+/// `(entry_id, ordinal)`, where `ordinal` is the position of the attachment
+/// within its parent entry. The `entries.kind` JSON no longer needs to carry
+/// base64 image data, keeping the JSON column lean. Rows cascade with the
+/// parent entry via `ON DELETE CASCADE`.
+pub fn migrate_v22(conn: &mut rusqlite::Connection) -> Result<(), Report<SchemaMigrationError>> {
+    conn.execute_batch(
+        "CREATE TABLE entry_blobs (\
+         entry_id TEXT NOT NULL REFERENCES entries(id) ON DELETE CASCADE,\
+         ordinal INTEGER NOT NULL,\
+         media_type TEXT NOT NULL,\
+         data BLOB NOT NULL,\
+         PRIMARY KEY (entry_id, ordinal))",
+    )
+    .change_context(SchemaMigrationError)
+    .attach("v22: create entry_blobs table")?;
+
+    Ok(())
+}
+
 /// A legacy `sessions` row whose `metadata` is NULL — the pre-v8 shape that
 /// the backfill reconstructs a [`crate::PersistableCoreV20`] blob from.
 struct LegacyRow {
@@ -1027,6 +1053,10 @@ pub fn apply_migrations_inner(conn: &mut rusqlite::Connection, target: i32) {
         migrate_v21(conn).expect("v21");
         record_version(conn, 21, "add_discord_thread_table").expect("record v21");
     }
+    if target >= 22 {
+        migrate_v22(conn).expect("v22");
+        record_version(conn, 22, "add_entry_blobs_table").expect("record v22");
+    }
 }
 
 /// Test-only: applies migrations up to (and including) `target` on a held
@@ -1052,6 +1082,6 @@ pub fn apply_up_to_no_fk(conn: &mut rusqlite::Connection, target: i32) {
 pub mod testing {
     pub use super::{
         apply_migrations_inner, bootstrap_tracking_table, migrate_v10, migrate_v15, migrate_v16,
-        migrate_v17, migrate_v18, migrate_v19, migrate_v21, record_version,
+        migrate_v17, migrate_v18, migrate_v19, migrate_v21, migrate_v22, record_version,
     };
 }

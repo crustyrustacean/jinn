@@ -181,6 +181,7 @@ async fn tool_loop_emits_text_token() {
     let service = factory.create().expect("create service");
     let messages = vec![LlmMessage::User {
         content: "__tool_loop_test__".to_owned(),
+        attachments: Vec::new(),
     }];
     let stream = service
         .chat_stream_with_tools(messages, vec![])
@@ -211,6 +212,7 @@ async fn tool_loop_emits_tool_use_start() {
     let service = factory.create().expect("create service");
     let messages = vec![LlmMessage::User {
         content: "__tool_loop_test__".to_owned(),
+        attachments: Vec::new(),
     }];
     let stream = service
         .chat_stream_with_tools(messages, vec![])
@@ -244,6 +246,7 @@ async fn tool_loop_emits_tool_use_delta() {
     let service = factory.create().expect("create service");
     let messages = vec![LlmMessage::User {
         content: "__tool_loop_test__".to_owned(),
+        attachments: Vec::new(),
     }];
     let stream = service
         .chat_stream_with_tools(messages, vec![])
@@ -277,6 +280,7 @@ async fn tool_loop_emits_tool_use_complete() {
     let service = factory.create().expect("create service");
     let messages = vec![LlmMessage::User {
         content: "__tool_loop_test__".to_owned(),
+        attachments: Vec::new(),
     }];
     let stream = service
         .chat_stream_with_tools(messages, vec![])
@@ -310,6 +314,7 @@ async fn tool_loop_emits_done_with_tool_use() {
     let service = factory.create().expect("create service");
     let messages = vec![LlmMessage::User {
         content: "__tool_loop_test__".to_owned(),
+        attachments: Vec::new(),
     }];
     let stream = service
         .chat_stream_with_tools(messages, vec![])
@@ -346,6 +351,7 @@ async fn tool_loop_second_call_returns_text_only() {
     let service = factory.create().expect("create service");
     let messages = vec![LlmMessage::User {
         content: "__tool_loop_test__".to_owned(),
+        attachments: Vec::new(),
     }];
 
     // First call - consume the tool_use response.
@@ -391,6 +397,7 @@ async fn non_trigger_produces_default_events() {
     let service = factory.create().expect("create service");
     let messages = vec![LlmMessage::User {
         content: "regular message".to_owned(),
+        attachments: Vec::new(),
     }];
     let stream = service
         .chat_stream_with_tools(messages, vec![])
@@ -424,6 +431,7 @@ async fn non_trigger_does_not_enter_tool_loop() {
     let service = factory.create().expect("create service");
     let messages = vec![LlmMessage::User {
         content: "regular message".to_owned(),
+        attachments: Vec::new(),
     }];
     let stream = service
         .chat_stream_with_tools(messages, vec![])
@@ -496,6 +504,7 @@ async fn tool_loop_with_multiple_tool_calls_on_first_response() {
     let service = factory.create().expect("create service");
     let messages = vec![LlmMessage::User {
         content: "__tool_loop_test__".to_owned(),
+        attachments: Vec::new(),
     }];
     let stream = service
         .chat_stream_with_tools(messages, vec![])

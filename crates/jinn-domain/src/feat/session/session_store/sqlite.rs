@@ -29,6 +29,7 @@ use crate::feat::session::profile::SessionProfile;
 use crate::feat::session::session_summary::SessionSummary;
 use crate::feat::session::token_stats::TokenRecord;
 use crate::protocol::{ChatEntryId, ContextOverride, SessionId};
+use jinn_provider::Attachment;
 
 use super::migrator;
 use super::{SessionStore, SessionStoreError};
@@ -241,7 +242,16 @@ impl SessionStore for SqliteSessionStore {
             .change_context(SessionStoreError)
             .attach("failed to query entries")?;
 
-        let entries: Vec<ChatEntry> = joined.into_iter().map(entry_from_joined).collect();
+        // Load attachment blobs for these entries, grouped by entry_id.
+        let blobs_by_entry = load_entry_blobs(&self.pool, &session_id_str).await?;
+
+        let entries: Vec<ChatEntry> = joined
+            .into_iter()
+            .map(|j| {
+                let atts = blobs_by_entry.get(&j.entry_id).cloned().unwrap_or_default();
+                entry_from_joined(j, atts)
+            })
+            .collect();
 
         // Load token ledger.
         let ledger_rows: Vec<TokenLedgerRow> = self
@@ -737,6 +747,42 @@ fn persistable_entries(session: &ChatSessionState) -> Vec<PersistableEntry> {
         .collect()
 }
 
+/// Extracts a user entry's attachments, leaving the kind shape otherwise intact.
+///
+/// Non-user entries (and user entries with no attachments) return an empty vec.
+/// The attachments are persisted separately in `entry_blobs` so the `kind` JSON
+/// column stays lean — see [`serialize_lean_kind`].
+fn extract_attachments(kind: &ChatEntryKind) -> Vec<Attachment> {
+    match kind {
+        ChatEntryKind::User { attachments, .. } => attachments.clone(),
+        _ => Vec::new(),
+    }
+}
+
+/// Serializes a kind to JSON with any user attachments stripped out.
+///
+/// The persisted `kind` blob must not carry raw image bytes (base64), which
+/// would bloat the `entries.kind` column on every context re-read. Attachments
+/// live in the `entry_blobs` table and are rehydrated on load by
+/// [`hydrate_attachments`].
+fn serialize_lean_kind(kind: &ChatEntryKind) -> String {
+    match kind {
+        ChatEntryKind::User {
+            display,
+            expanded,
+            attachments,
+        } if !attachments.is_empty() => {
+            let lean = ChatEntryKind::User {
+                display: display.clone(),
+                expanded: expanded.clone(),
+                attachments: Vec::new(),
+            };
+            serde_json::to_string(&lean).unwrap_or_else(|_| "{}".to_owned())
+        }
+        _ => serde_json::to_string(kind).unwrap_or_else(|_| "{}".to_owned()),
+    }
+}
+
 /// Builds the list of persistable token ledger records.
 fn persistable_ledger(session: &ChatSessionState) -> Vec<PersistableTokenRecord> {
     session
@@ -746,7 +792,6 @@ fn persistable_ledger(session: &ChatSessionState) -> Vec<PersistableTokenRecord>
         .collect()
 }
 
-/// A pre-serialized entry ready for INSERT (all SQL params computed once).
 struct PersistableEntry {
     entry_id: String,
     timing: String,
@@ -756,13 +801,15 @@ struct PersistableEntry {
     pin_position: Option<String>,
     ignored: bool,
     context_override: String,
+    attachments: Vec<Attachment>,
 }
 
 impl PersistableEntry {
     /// Serializes an entry's fields into the SQL-ready form.
     fn build(entry: &ChatEntry, ordinal: usize) -> Self {
         let timing = serde_json::to_string(&entry.timing).unwrap_or_else(|_| "{}".to_owned());
-        let kind = serde_json::to_string(&entry.kind).unwrap_or_else(|_| "{}".to_owned());
+        let attachments = extract_attachments(&entry.kind);
+        let kind = serialize_lean_kind(&entry.kind);
         let context_history =
             serde_json::to_string(&entry.context_history).unwrap_or_else(|_| "[]".to_owned());
         let pin_position = entry.pin_position.map(|p| p.to_string());
@@ -777,10 +824,10 @@ impl PersistableEntry {
             pin_position,
             ignored: entry.ignored(),
             context_override,
+            attachments,
         }
     }
 }
-
 /// A pre-serialized token ledger row.
 struct PersistableTokenRecord {
     timestamp: String,
@@ -878,6 +925,26 @@ fn insert_entry_and_junction(
             entry.context_override,
         ],
     )?;
+
+    // Persist attachment blobs. The lean `kind` JSON carries no raw bytes;
+    // `entry_blobs` holds them keyed by ordinal within the entry.
+    // Replace any prior blobs for this entry (the entry is upserted above).
+    conn.execute(
+        "DELETE FROM entry_blobs WHERE entry_id = ?",
+        rusqlite::params![entry.entry_id],
+    )?;
+    for (ordinal, attachment) in entry.attachments.iter().enumerate() {
+        conn.execute(
+            "INSERT INTO entry_blobs (entry_id, ordinal, media_type, data) \
+             VALUES (?, ?, ?, ?)",
+            rusqlite::params![
+                entry.entry_id,
+                ordinal as i64,
+                attachment.media_type(),
+                attachment.data(),
+            ],
+        )?;
+    }
     Ok(())
 }
 
@@ -1099,11 +1166,22 @@ fn summary_from_row(row: SessionRow) -> SessionSummary {
 }
 
 /// Reconstructs a `ChatEntry` from a joined entry/junction row.
-fn entry_from_joined(joined: JoinedEntry) -> ChatEntry {
-    let kind: ChatEntryKind = serde_json::from_str(&joined.kind).unwrap_or_else(|e| {
+fn entry_from_joined(joined: JoinedEntry, attachments: Vec<Attachment>) -> ChatEntry {
+    let mut kind: ChatEntryKind = serde_json::from_str(&joined.kind).unwrap_or_else(|e| {
         tracing::warn!(entry_id = %joined.entry_id, error = %e, "failed to deserialize entry kind");
         ChatEntryKind::Error(format!("corrupt entry: {e}"))
     });
+    // Hydrate attachment blobs into the kind. Non-user kinds ignore the blobs.
+    if let ChatEntryKind::User {
+        display, expanded, ..
+    } = &kind
+    {
+        kind = ChatEntryKind::User {
+            display: display.clone(),
+            expanded: expanded.clone(),
+            attachments,
+        };
+    }
     let pin_position = joined.pin_position.as_deref().and_then(|s| match s {
         "TOP" => Some(crate::protocol::PinPosition::Top),
         "BOTTOM" => Some(crate::protocol::PinPosition::Bottom),
@@ -1170,6 +1248,64 @@ fn record_from_row(row: TokenLedgerRow) -> TokenRecord {
         tokens_received: row.tokens_received as u32,
         cost: row.cost,
     }
+}
+
+/// A raw `entry_blobs` row for attachment hydration.
+///
+/// Read by a manual `FromRow` that maps the column names of the blob query.
+struct EntryBlobRow {
+    entry_id: String,
+    ordinal: i64,
+    media_type: String,
+    data: Vec<u8>,
+}
+
+impl FromRow for EntryBlobRow {
+    fn from_row(row: &Row) -> daow::Result<Self> {
+        Ok(Self {
+            entry_id: row.get("entry_id")?,
+            ordinal: row.get("ordinal")?,
+            media_type: row.get("media_type")?,
+            data: row.get("data")?,
+        })
+    }
+}
+
+/// Loads every attachment blob for a session's entries, grouped by `entry_id`
+/// and ordered by `ordinal` within each entry.
+///
+/// Scoped to the session via a join on `session_history` so a forked session
+/// hydrates the blobs for the entries it shares with its parent.
+async fn load_entry_blobs(
+    pool: &Pool,
+    session_id: &str,
+) -> Result<HashMap<String, Vec<Attachment>>, Report<SessionStoreError>> {
+    let rows: Vec<EntryBlobRow> = pool
+        .query_all(
+            "SELECT entry_blobs.entry_id AS entry_id, entry_blobs.ordinal AS ordinal, \
+             entry_blobs.media_type AS media_type, entry_blobs.data AS data \
+             FROM entry_blobs \
+             INNER JOIN session_history ON entry_blobs.entry_id = session_history.entry_id \
+             WHERE session_history.session_id = ? \
+             ORDER BY session_history.ordinal ASC, entry_blobs.ordinal ASC",
+            vec![Box::new(session_id.to_owned())],
+        )
+        .await
+        .change_context(SessionStoreError)
+        .attach("failed to query entry blobs")?;
+    Ok(group_blobs_by_entry(rows))
+}
+
+/// Groups blob rows into ordered attachment vectors keyed by entry id.
+fn group_blobs_by_entry(mut rows: Vec<EntryBlobRow>) -> HashMap<String, Vec<Attachment>> {
+    rows.sort_by_key(|r| r.ordinal);
+    let mut map: HashMap<String, Vec<Attachment>> = HashMap::new();
+    for row in rows {
+        map.entry(row.entry_id)
+            .or_default()
+            .push(Attachment::image(row.media_type, row.data));
+    }
+    map
 }
 
 // ── Shutdown checkpoint ────────────────────���─────────────────────────────

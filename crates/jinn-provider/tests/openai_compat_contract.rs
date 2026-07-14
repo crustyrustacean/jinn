@@ -65,6 +65,7 @@ async fn text_streaming_yields_text_events() {
         .chat_stream_with_tools(
             vec![LlmMessage::User {
                 content: "hi".into(),
+                attachments: Vec::new(),
             }],
             vec![],
         )
@@ -111,6 +112,7 @@ async fn text_streaming_yields_done_event() {
         .chat_stream_with_tools(
             vec![LlmMessage::User {
                 content: "hi".into(),
+                attachments: Vec::new(),
             }],
             vec![],
         )
@@ -155,6 +157,7 @@ async fn tool_call_streaming_yields_tool_use_start() {
         .chat_stream_with_tools(
             vec![LlmMessage::User {
                 content: "call echo".into(),
+                attachments: Vec::new(),
             }],
             vec![ToolDefinition {
                 name: "echo".into(),
@@ -206,6 +209,7 @@ async fn tool_call_streaming_yields_input_delta() {
         .chat_stream_with_tools(
             vec![LlmMessage::User {
                 content: "call echo".into(),
+                attachments: Vec::new(),
             }],
             vec![ToolDefinition {
                 name: "echo".into(),
@@ -257,6 +261,7 @@ async fn tool_call_streaming_yields_tool_use_complete() {
         .chat_stream_with_tools(
             vec![LlmMessage::User {
                 content: "call echo".into(),
+                attachments: Vec::new(),
             }],
             vec![ToolDefinition {
                 name: "echo".into(),
@@ -308,6 +313,7 @@ async fn tool_call_streaming_yields_done_event() {
         .chat_stream_with_tools(
             vec![LlmMessage::User {
                 content: "call echo".into(),
+                attachments: Vec::new(),
             }],
             vec![ToolDefinition {
                 name: "echo".into(),
@@ -469,6 +475,7 @@ async fn extra_body_fields_included_in_request() {
         .chat_stream_with_tools(
             vec![LlmMessage::User {
                 content: "test".into(),
+                attachments: Vec::new(),
             }],
             vec![],
         )
@@ -507,6 +514,7 @@ async fn error_response_401_mapped_to_provider_error() {
         .chat_stream_with_tools(
             vec![LlmMessage::User {
                 content: "hi".into(),
+                attachments: Vec::new(),
             }],
             vec![],
         )
@@ -542,6 +550,7 @@ async fn reasoning_content_produces_reasoning_event() {
         .chat_stream_with_tools(
             vec![LlmMessage::User {
                 content: "think".into(),
+                attachments: Vec::new(),
             }],
             vec![],
         )
@@ -592,6 +601,7 @@ async fn base_url_override_routes_to_correct_host() {
         .chat_stream_with_tools(
             vec![LlmMessage::User {
                 content: "hi".into(),
+                attachments: Vec::new(),
             }],
             vec![],
         )
@@ -657,6 +667,7 @@ async fn chat_stream_yields_text_tokens_only() {
     let stream = service
         .chat_stream(vec![LlmMessage::User {
             content: "hi".into(),
+            attachments: Vec::new(),
         }])
         .await
         .unwrap();
@@ -710,6 +721,7 @@ async fn custom_headers_from_config_are_sent() {
         .chat_stream_with_tools(
             vec![LlmMessage::User {
                 content: "hi".into(),
+                attachments: Vec::new(),
             }],
             vec![],
         )
@@ -757,6 +769,7 @@ async fn openrouter_emits_nested_reasoning_effort_in_request() {
         .chat_stream_with_tools(
             vec![LlmMessage::User {
                 content: "test".into(),
+                attachments: Vec::new(),
             }],
             vec![],
         )
@@ -799,6 +812,7 @@ async fn non_openrouter_emits_flat_reasoning_effort_in_request() {
         .chat_stream_with_tools(
             vec![LlmMessage::User {
                 content: "test".into(),
+                attachments: Vec::new(),
             }],
             vec![],
         )

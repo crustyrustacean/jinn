@@ -3251,7 +3251,10 @@ impl ChatSessionState {
 /// This is the single expansion site for all user entries — see
 /// [`ChatSessionState::push_entry`].
 fn expand_user_entry(entry: &mut ChatEntry, store: &PromptTemplateStore) {
-    if let ChatEntryKind::User { display, expanded } = &mut entry.kind {
+    if let ChatEntryKind::User {
+        display, expanded, ..
+    } = &mut entry.kind
+    {
         *expanded = expand_tokens(display, store);
     }
 }

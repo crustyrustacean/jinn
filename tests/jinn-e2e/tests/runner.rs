@@ -301,13 +301,28 @@ fn enumerate_dir(dir: &Path, out: &mut Vec<ScenarioSpec>) {
 
 // ─── Child: single-scenario cucumber run ───────────────────────────────────
 
+/// Whether opt-in `/tmp` diagnostics (marker file + per-PID tracing log) are
+/// enabled.
+///
+/// Default is **off**: e2e runs leave nothing in `/tmp`. Set `JINN_E2E_LOG=1`
+/// to recreate the marker + log files used to diagnose hangs/crashes (cucumber's
+/// writer captures stderr per-scenario and only flushes on completion, so a
+/// hung scenario traps diagnostics; the file bypasses that capture).
+fn e2e_logging_enabled() -> bool {
+    match std::env::var("JINN_E2E_LOG") {
+        Ok(v) => !v.is_empty() && v != "0",
+        Err(_) => false,
+    }
+}
+
 /// Child mode: run cucumber with a filtering parser that emits only `spec`.
 ///
 /// `spec` is `"<feature_path>:<scenario_name>"`.
 async fn run_child(spec: &str) {
-    // Marker written directly to a file BEFORE tracing init, to prove run_child
-    // is reached even if the scenario hangs and cucumber buffers stderr.
-    {
+    // Opt-in marker: written directly to a file BEFORE tracing init to prove
+    // run_child is reached even if the scenario hangs and cucumber buffers
+    // stderr. Only created when JINN_E2E_LOG is set, to avoid spamming /tmp.
+    if e2e_logging_enabled() {
         let marker = std::env::temp_dir().join(format!("jinn-e2e-marker-{}", std::process::id()));
         let _ = std::fs::write(&marker, format!("run_child reached: {spec}\n"));
     }
@@ -365,31 +380,41 @@ impl<I> Parser<I> for SingleFeatureParser {
 
 /// Initializes a tracing subscriber for the child process.
 ///
-/// Controlled by `RUST_LOG` (defaults to `info` for this binary). Emits to
-/// stderr so it surfaces through the parent's inherited stdio.
+/// Output sink is controlled by `JINN_E2E_LOG`:
+/// - **Unset (default)**: trace to stderr, leaving nothing in `/tmp`.
+/// - **Set**: trace to a per-PID file under `/tmp`, used to diagnose hangs/crashes
+///   (cucumber's writer captures stderr/stdout per-scenario and only flushes on
+///   completion, so a hung scenario traps diagnostics; a file bypasses that).
+///
+/// Verbosity is controlled by `RUST_LOG` (defaults to a `jinn`-focused filter).
 fn init_tracing() {
-    // Write to a log file instead of stderr: cucumber's writer captures
-    // stderr/stdout per-scenario and only flushes on completion, so a hung
-    // scenario would trap all diagnostics. A file bypasses that capture.
-    use std::fs::OpenOptions;
-    let log_path = std::env::temp_dir().join(format!("jinn-e2e-{}.log", std::process::id()));
-    eprintln!("[e2e] tracing to {}", log_path.display());
-    let file = OpenOptions::new()
-        .create(true)
-        .write(true)
-        .truncate(true)
-        .open(&log_path)
-        .expect("open tracing log file");
-    let _ = tracing_subscriber::fmt()
-        .with_env_filter(
-            tracing_subscriber::EnvFilter::try_from_default_env().unwrap_or_else(|_| {
-                // Suppress kameo's chatty per-message spans; keep jinn + warnings.
-                tracing_subscriber::EnvFilter::new(
-                    "warn,jinn=debug,jinn_domain=debug,e2e=debug,kameo=warn,kameo_actors=off",
-                )
-            }),
+    let env_filter = tracing_subscriber::EnvFilter::try_from_default_env().unwrap_or_else(|_| {
+        // Suppress kameo's chatty per-message spans; keep jinn + warnings.
+        tracing_subscriber::EnvFilter::new(
+            "warn,jinn=debug,jinn_domain=debug,e2e=debug,kameo=warn,kameo_actors=off",
         )
-        .with_target(true)
-        .with_writer(file)
-        .try_init();
+    });
+
+    if e2e_logging_enabled() {
+        use std::fs::OpenOptions;
+        let log_path = std::env::temp_dir().join(format!("jinn-e2e-{}.log", std::process::id()));
+        eprintln!("[e2e] tracing to {}", log_path.display());
+        let file = OpenOptions::new()
+            .create(true)
+            .write(true)
+            .truncate(true)
+            .open(&log_path)
+            .expect("open tracing log file");
+        let _ = tracing_subscriber::fmt()
+            .with_env_filter(env_filter)
+            .with_target(true)
+            .with_writer(file)
+            .try_init();
+    } else {
+        let _ = tracing_subscriber::fmt()
+            .with_env_filter(env_filter)
+            .with_target(true)
+            .with_writer(std::io::stderr)
+            .try_init();
+    }
 }

@@ -24,7 +24,8 @@ fn entries_to_messages_converts_user_entries() {
     assert_eq!(
         messages[0],
         LlmMessage::User {
-            content: "hello".into()
+            content: "hello".into(),
+            attachments: Vec::new(),
         }
     );
 }
@@ -67,7 +68,8 @@ fn entries_to_messages_skips_system_and_actor() {
     assert_eq!(
         messages[0],
         LlmMessage::User {
-            content: "hello".into()
+            content: "hello".into(),
+            attachments: Vec::new(),
         }
     );
     assert_eq!(
@@ -244,6 +246,7 @@ fn pinned_actor_entry_produces_user_message() {
         messages[0],
         LlmMessage::User {
             content: "[Actor: echo] HELLO".into(),
+            attachments: Vec::new(),
         }
     );
 }
@@ -297,6 +300,7 @@ fn mixed_pinned_and_unpinned_entries() {
         messages[1],
         LlmMessage::User {
             content: "[Actor: b] pinned actor".into(),
+            attachments: Vec::new(),
         }
     );
 }
@@ -340,6 +344,7 @@ fn pinned_user_and_assistant_entries_unaffected() {
         messages[0],
         LlmMessage::User {
             content: "hello".into(),
+            attachments: Vec::new(),
         }
     );
     assert_eq!(
@@ -368,7 +373,8 @@ fn entries_to_messages_skips_thinking_entries() {
     assert_eq!(
         messages[0],
         LlmMessage::User {
-            content: "hello".into()
+            content: "hello".into(),
+            attachments: Vec::new(),
         }
     );
     assert_eq!(
@@ -397,7 +403,8 @@ fn transient_entries_are_skipped() {
     assert_eq!(
         messages[0],
         LlmMessage::User {
-            content: "hello".into()
+            content: "hello".into(),
+            attachments: Vec::new(),
         }
     );
     assert_eq!(
@@ -433,7 +440,7 @@ fn compaction_entry_produces_user_message_with_summary() {
     // Then a User message with the wrapped summary is produced.
     assert_eq!(messages.len(), 1);
     let content = match &messages[0] {
-        LlmMessage::User { content } => content.clone(),
+        LlmMessage::User { content, .. } => content.clone(),
         other => panic!("expected User, got {other:?}"),
     };
     assert!(content.contains("compacted into the following summary"));
@@ -483,7 +490,8 @@ fn ignored_pinned_entry_is_included() {
     assert_eq!(
         messages[0],
         LlmMessage::User {
-            content: "important".into()
+            content: "important".into(),
+            attachments: Vec::new(),
         }
     );
 }
@@ -506,7 +514,8 @@ fn ignored_entry_mixed_with_active_entries() {
     assert_eq!(
         messages[0],
         LlmMessage::User {
-            content: "second".into()
+            content: "second".into(),
+            attachments: Vec::new(),
         }
     );
     assert_eq!(
@@ -549,13 +558,14 @@ fn message_order_after_compaction() {
     assert_eq!(messages.len(), 3);
     // Compaction summary as User message.
     assert!(
-        matches!(&messages[0], LlmMessage::User { content } if content.contains("The user asked about X"))
+        matches!(&messages[0], LlmMessage::User { content, .. } if content.contains("The user asked about X"))
     );
     // Recent entries follow.
     assert_eq!(
         messages[1],
         LlmMessage::User {
-            content: "new question".into()
+            content: "new question".into(),
+            attachments: Vec::new(),
         }
     );
     assert_eq!(
@@ -596,7 +606,8 @@ fn error_entry_between_user_and_assistant() {
     assert_eq!(
         messages[0],
         LlmMessage::User {
-            content: "hello".into()
+            content: "hello".into(),
+            attachments: Vec::new(),
         }
     );
     assert_eq!(
@@ -643,7 +654,8 @@ fn error_entry_forced_include_produces_user_message() {
         LlmMessage::User {
             content:
                 "The user has shared the following output for you to address:\n\nimportant error"
-                    .into()
+                    .into(),
+            attachments: Vec::new(),
         }
     );
 }
@@ -666,7 +678,8 @@ fn pinned_error_with_default_override_produces_error_prefix() {
     assert_eq!(
         messages[0],
         LlmMessage::User {
-            content: "[Error] pinned error".into()
+            content: "[Error] pinned error".into(),
+            attachments: Vec::new(),
         }
     );
 }
@@ -684,7 +697,8 @@ fn pinned_thinking_entry_produces_user_message() {
     assert_eq!(
         messages[0],
         LlmMessage::User {
-            content: "[Thinking] reasoning".into()
+            content: "[Thinking] reasoning".into(),
+            attachments: Vec::new(),
         }
     );
 }
@@ -702,7 +716,8 @@ fn pinned_transient_entry_produces_user_message() {
     assert_eq!(
         messages[0],
         LlmMessage::User {
-            content: "[Transient] welcome".into()
+            content: "[Transient] welcome".into(),
+            attachments: Vec::new(),
         }
     );
 }
@@ -743,6 +758,7 @@ fn forced_include_actor_entry_produces_user_message() {
         messages[0],
         LlmMessage::User {
             content: "[Actor: src] text".into(),
+            attachments: Vec::new(),
         }
     );
 }

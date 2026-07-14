@@ -53,7 +53,10 @@ fn push_entry_expands_known_prompt_token_in_user_entry() {
 
     // Then `display` keeps the raw token (UI unchanged) but the model-facing
     // `expanded` field carries the resolved body.
-    let ChatEntryKind::User { display, expanded } = &session.history()[index].kind else {
+    let ChatEntryKind::User {
+        display, expanded, ..
+    } = &session.history()[index].kind
+    else {
         panic!("expected a user entry");
     };
     assert_eq!(display, "#name");
@@ -72,7 +75,10 @@ fn push_entry_leaves_unknown_prompt_token_literal() {
     let index = session.push_entry(ChatEntry::user("#nope"));
 
     // Then both fields keep the raw token literal.
-    let ChatEntryKind::User { display, expanded } = &session.history()[index].kind else {
+    let ChatEntryKind::User {
+        display, expanded, ..
+    } = &session.history()[index].kind
+    else {
         panic!("expected a user entry");
     };
     assert_eq!(display, "#nope");
@@ -454,7 +460,8 @@ fn enqueue_message_adds_to_queue() {
         &session.queue()[0],
         crate::feat::session::queue_item::QueueItem::UserMessage(e) if e.kind == ChatEntryKind::User {
             display: "hello".to_owned(),
-            expanded: "hello".to_owned()
+            expanded: "hello".to_owned(),
+            attachments: Vec::new(),
         }
     ));
 }
@@ -483,7 +490,8 @@ fn dequeue_message_returns_first_in_order() {
         entry.kind,
         ChatEntryKind::User {
             display: "first".to_owned(),
-            expanded: "first".to_owned()
+            expanded: "first".to_owned(),
+            attachments: Vec::new(),
         }
     );
     assert_eq!(session.queue_len(), 1);
@@ -534,21 +542,24 @@ fn drain_returns_all_in_order() {
         entries[0].kind,
         ChatEntryKind::User {
             display: "a".to_owned(),
-            expanded: "a".to_owned()
+            expanded: "a".to_owned(),
+            attachments: Vec::new(),
         }
     );
     assert_eq!(
         entries[1].kind,
         ChatEntryKind::User {
             display: "b".to_owned(),
-            expanded: "b".to_owned()
+            expanded: "b".to_owned(),
+            attachments: Vec::new(),
         }
     );
     assert_eq!(
         entries[2].kind,
         ChatEntryKind::User {
             display: "c".to_owned(),
-            expanded: "c".to_owned()
+            expanded: "c".to_owned(),
+            attachments: Vec::new(),
         }
     );
 }
@@ -1478,7 +1489,8 @@ fn selected_entry_returns_entry_at_index() {
         entry.unwrap().kind,
         ChatEntryKind::User {
             display: "b".to_owned(),
-            expanded: "b".to_owned()
+            expanded: "b".to_owned(),
+            attachments: Vec::new(),
         }
     );
 }

@@ -87,7 +87,7 @@ fn message_to_json(msg: &LlmMessage) -> serde_json::Value {
             // System messages are handled separately - should never reach here.
             serde_json::json!({"role": "user", "content": []})
         }
-        LlmMessage::User { content } => serde_json::json!({
+        LlmMessage::User { content, .. } => serde_json::json!({
             "role": "user",
             "content": content,
         }),
@@ -166,6 +166,7 @@ mod tests {
             },
             LlmMessage::User {
                 content: "hello".into(),
+                attachments: Vec::new(),
             },
         ];
 
@@ -228,6 +229,7 @@ mod tests {
             },
             LlmMessage::User {
                 content: "hello".into(),
+                attachments: Vec::new(),
             },
         ];
 
