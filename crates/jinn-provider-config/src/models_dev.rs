@@ -89,6 +89,28 @@ impl ModelsDevData {
         self.image_support.get(model_id).copied()
     }
 
+    /// Enrich a single model with models.dev reference data:
+    /// fills in a missing `context_length` and stamps the `Image` modality bit
+    /// when the model is confirmed image-capable.
+    ///
+    /// This is the single source of truth for models.dev enrichment, called by
+    /// both the fresh-discovery and disk-load paths. Keeping it here prevents the
+    /// two call sites from drifting (which previously left stale caches without
+    /// the modality bit). Image stamping is conservative: only a confirmed `true`
+    /// sets the bit; unknown models stay text-only. `insert` is idempotent, so
+    /// re-enriching an already-stamped model on cache load is safe.
+    pub fn enrich(&self, model: &mut jinn_provider::ModelInfo) {
+        use jinn_provider::Modality;
+        if model.context_length.is_none()
+            && let Some(ctx) = self.get(&model.id)
+        {
+            model.context_length = Some(ctx);
+        }
+        if self.supports_images(&model.id) == Some(true) {
+            model.input_modalities.insert(Modality::Image);
+        }
+    }
+
     /// Returns `true` if the lookup table is empty.
     #[must_use]
     pub fn is_empty(&self) -> bool {

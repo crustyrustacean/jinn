@@ -116,7 +116,7 @@ fn render_right_aligns_text() {
     let first = buffer.cell((0, 1)).expect("first cell");
     assert_eq!(first.symbol(), "\u{2191}");
     let last = buffer.cell((49, 1)).expect("last cell");
-    assert_eq!(last.symbol(), "3");
+    assert_eq!(last.symbol(), ">");
 }
 
 #[rstest::rstest]
@@ -456,6 +456,7 @@ fn render_shows_context_limit_with_usage_and_percentage() {
         vec![crate::feat::provider_infra::ModelInfo {
             id: "anthropic/claude-sonnet-4".to_owned(),
             context_length: Some(200_000),
+            input_modalities: crate::feat::provider_infra::InputModalities::text(),
         }],
     );
     state.provider.model_cache = Some(crate::feat::provider_infra::ModelCache {
@@ -501,6 +502,7 @@ fn render_falls_back_when_no_context_limit_in_cache() {
         vec![crate::feat::provider_infra::ModelInfo {
             id: "llama3".to_owned(),
             context_length: None,
+            input_modalities: crate::feat::provider_infra::InputModalities::text(),
         }],
     );
     state.provider.model_cache = Some(crate::feat::provider_infra::ModelCache {
@@ -576,6 +578,7 @@ fn render_shows_zero_percent_with_max_when_no_messages_sent() {
         vec![crate::feat::provider_infra::ModelInfo {
             id: "anthropic/claude-sonnet-4".to_owned(),
             context_length: Some(200_000),
+            input_modalities: crate::feat::provider_infra::InputModalities::text(),
         }],
     );
     state.provider.model_cache = Some(crate::feat::provider_infra::ModelCache {
@@ -613,6 +616,7 @@ fn render_shows_used_over_unknown_when_no_context_length() {
         vec![crate::feat::provider_infra::ModelInfo {
             id: "llama3".to_owned(),
             context_length: None,
+            input_modalities: crate::feat::provider_infra::InputModalities::text(),
         }],
     );
     state.provider.model_cache = Some(crate::feat::provider_infra::ModelCache {
@@ -1001,10 +1005,10 @@ fn render_appends_resolved_reasoning_effort_after_model() {
     let buffer = terminal.backend().buffer().clone();
     let row = buffer_row(&buffer, 1, 50);
 
-    // Then the model line shows [high] immediately after the model.
+    // Then the effort bracket precedes the modality indicator.
     assert!(
-        row.contains("(ollama)/llama3 [high]"),
-        "should contain [high] after model, got: {row}"
+        row.contains("(ollama)/llama3 [high] <t>"),
+        "should contain [high] then <t>, got: {row}"
     );
 }
 
@@ -1033,7 +1037,7 @@ fn render_session_override_beats_global_reasoning_effort() {
 
     // Then the override wins: shows [low], not [high].
     assert!(
-        row.contains("(ollama)/llama3 [low]"),
+        row.contains("(ollama)/llama3 [low] <t>"),
         "should show session override [low], got: {row}"
     );
     assert!(
@@ -1066,5 +1070,222 @@ fn render_omits_reasoning_effort_bracket_when_unresolved() {
     assert!(
         !row.contains('['),
         "should contain no bracket when effort unresolved, got: {row}"
+    );
+}
+
+/// Build a model cache with one model under `ollama` carrying the given modalities.
+fn cache_with_modalities(
+    modalities: crate::feat::provider_infra::InputModalities,
+) -> crate::feat::provider_infra::ModelCache {
+    use std::collections::HashMap;
+    let mut entries = HashMap::new();
+    entries.insert(
+        "ollama".to_owned(),
+        vec![crate::feat::provider_infra::ModelInfo {
+            id: "llama3".to_owned(),
+            context_length: None,
+            input_modalities: modalities,
+        }],
+    );
+    crate::feat::provider_infra::ModelCache {
+        entries,
+        last_updated_at: None,
+    }
+}
+
+fn render_model_row(state: &AppState) -> String {
+    use crate::common::ui_element::UiElement;
+    let mut element = StatusBarElement;
+    let (mut terminal, area) = setup_term(80, 2);
+    terminal
+        .draw(|frame| {
+            let ctx = RenderCtx::new(state);
+            element.render(frame, area, &ctx);
+        })
+        .unwrap();
+    buffer_row(terminal.backend().buffer(), 1, 80)
+}
+
+#[rstest::rstest]
+fn status_bar_shows_modality_indicator_for_image_model() {
+    // Given a selected image-capable model in the cache.
+    let mut state = AppState::default();
+    state
+        .active_session_mut()
+        .set_model(ModelSelection::Single("ollama/llama3".to_owned()));
+    let mut m = crate::feat::provider_infra::InputModalities::text();
+    m.insert(crate::feat::provider_infra::Modality::Image);
+    state.provider.model_cache = Some(cache_with_modalities(m));
+
+    // When rendering.
+    let row = render_model_row(&state);
+
+    // Then the indicator shows both text and image.
+    assert!(
+        row.contains("(ollama)/llama3 <ti>"),
+        "should show <ti> for image model, got: {row}"
+    );
+}
+
+#[rstest::rstest]
+fn status_bar_shows_text_only_indicator_for_text_model() {
+    // Given a selected text-only model in the cache.
+    let mut state = AppState::default();
+    state
+        .active_session_mut()
+        .set_model(ModelSelection::Single("ollama/llama3".to_owned()));
+    state.provider.model_cache = Some(cache_with_modalities(
+        crate::feat::provider_infra::InputModalities::text(),
+    ));
+
+    // When rendering.
+    let row = render_model_row(&state);
+
+    // Then the indicator shows text only.
+    assert!(
+        row.contains("(ollama)/llama3 <t>"),
+        "should show <t> for text-only model, got: {row}"
+    );
+}
+
+#[rstest::rstest]
+fn status_bar_shows_text_only_indicator_when_model_not_in_cache() {
+    // Given a selected model that is NOT recorded in the cache.
+    let mut state = AppState::default();
+    state
+        .active_session_mut()
+        .set_model(ModelSelection::Single("ollama/llama3".to_owned()));
+
+    // When rendering.
+    let row = render_model_row(&state);
+
+    // Then the indicator coerces to text-only (conservative default).
+    assert!(
+        row.contains("(ollama)/llama3 <t>"),
+        "should show <t> for not-in-cache model, got: {row}"
+    );
+    assert!(
+        !row.contains("<ti>"),
+        "should not advertise image for an unconfirmed model, got: {row}"
+    );
+}
+
+#[rstest::rstest]
+fn status_bar_shows_indicator_without_reasoning_effort_bracket() {
+    // Given an image model with no resolved reasoning effort.
+    let mut state = AppState::default();
+    state
+        .active_session_mut()
+        .set_model(ModelSelection::Single("ollama/llama3".to_owned()));
+    let mut m = crate::feat::provider_infra::InputModalities::text();
+    m.insert(crate::feat::provider_infra::Modality::Image);
+    state.provider.model_cache = Some(cache_with_modalities(m));
+
+    // When rendering.
+    let row = render_model_row(&state);
+
+    // Then the <ti> indicator appears with no effort bracket after it.
+    assert!(
+        row.contains("(ollama)/llama3 <ti>"),
+        "should show <ti> indicator, got: {row}"
+    );
+    assert!(
+        !row.contains('['),
+        "should show no effort bracket, got: {row}"
+    );
+}
+
+#[rstest::rstest]
+fn status_bar_shows_effort_bracket_then_modality_indicator() {
+    // Given an image-capable model with a resolved reasoning effort.
+    let mut state = AppState::default();
+    state
+        .active_session_mut()
+        .set_model(ModelSelection::Single("ollama/llama3".to_owned()));
+    state.active_session_mut().profile_mut().reasoning_effort = Some(crate::ReasoningEffort::High);
+    let mut m = crate::feat::provider_infra::InputModalities::text();
+    m.insert(crate::feat::provider_infra::Modality::Image);
+    state.provider.model_cache = Some(cache_with_modalities(m));
+
+    // When rendering.
+    let row = render_model_row(&state);
+
+    // Then the effort bracket precedes the modality indicator.
+    assert!(
+        row.contains("(ollama)/llama3 [high] <ti>"),
+        "should show [high] then <ti>, got: {row}"
+    );
+}
+
+#[rstest::rstest]
+fn status_bar_omits_indicator_when_no_model_selected() {
+    // Given no model selected (default state).
+    let state = AppState::default();
+
+    // When rendering.
+    let row = render_model_row(&state);
+
+    // Then no modality indicator appears.
+    assert!(
+        row.contains("no model selected"),
+        "should show no model selected, got: {row}"
+    );
+    assert!(
+        !row.contains("<t>") && !row.contains("<ti>"),
+        "should show no indicator when no model selected, got: {row}"
+    );
+}
+
+#[rstest::rstest]
+fn status_bar_alloy_indicator_reflects_last_dispatched_member() {
+    use crate::feat::session::token_stats::TokenRecord;
+    // Given an alloy where the last-dispatched member is image-capable.
+    let mut state = AppState::default();
+    state.active_session_mut().set_model(ModelSelection::Alloy {
+        models: vec!["ollama/llama3".to_owned(), "ollama/gpt-4o".to_owned()],
+        strategy: AlloyStrategy::RoundRobin { index: 0 },
+    });
+    // Last ledger record points at the image-capable member.
+    state.active_session_mut().push_token_record(TokenRecord {
+        model_used: Some("ollama/gpt-4o".to_owned()),
+        timestamp: jiff::Timestamp::now(),
+        tokens_sent: 0,
+        tokens_received: 0,
+        cost: None,
+    });
+    // Cache records gpt-4o as image-capable.
+    {
+        use std::collections::HashMap;
+        let mut m = crate::feat::provider_infra::InputModalities::text();
+        m.insert(crate::feat::provider_infra::Modality::Image);
+        let mut entries = HashMap::new();
+        entries.insert(
+            "ollama".to_owned(),
+            vec![
+                crate::feat::provider_infra::ModelInfo {
+                    id: "llama3".to_owned(),
+                    context_length: None,
+                    input_modalities: crate::feat::provider_infra::InputModalities::text(),
+                },
+                crate::feat::provider_infra::ModelInfo {
+                    id: "gpt-4o".to_owned(),
+                    context_length: None,
+                    input_modalities: m,
+                },
+            ],
+        );
+        state.provider.model_cache = Some(crate::feat::provider_infra::ModelCache {
+            entries,
+            last_updated_at: None,
+        });
+    }
+
+    // When rendering.
+    let row = render_model_row(&state);
+
+    // Then the indicator reflects the last-dispatched member (gpt-4o, image).
+    assert!(
+        row.contains("(ollama)/gpt-4o <ti>"),
+        "should show last-dispatched member modalities, got: {row}"
     );
 }

@@ -161,17 +161,8 @@ impl DiscoverActor {
             };
 
             match result {
-                Ok(models) => {
-                    // Apply models.dev context length fallback to models
-                    // that didn't get it from the provider API.
-                    let mut models = models;
-                    for model in &mut models {
-                        if model.context_length.is_none()
-                            && let Some(ctx) = models_dev.get(&model.id)
-                        {
-                            model.context_length = Some(ctx);
-                        }
-                    }
+                Ok(mut models) => {
+                    enrich_with_models_dev(&mut models, &models_dev);
                     tracing::info!(
                         provider = %entry.name,
                         count = models.len(),
@@ -204,6 +195,18 @@ impl DiscoverActor {
             errors,
         })
         .await;
+    }
+}
+
+/// Enrich freshly discovered models with models.dev data (context-length
+/// fallback + image modality stamping) by delegating to the shared
+/// [`ModelsDevData::enrich`] single source of truth.
+fn enrich_with_models_dev(
+    models: &mut [ModelInfo],
+    models_dev: &crate::feat::provider_infra::ModelsDevData,
+) {
+    for model in models {
+        models_dev.enrich(model);
     }
 }
 
@@ -251,5 +254,69 @@ mod tests {
             events[0].results.is_empty(),
             "no providers configured, so results are empty"
         );
+    }
+
+    fn image_model(id: &str) -> jinn_provider::ModelInfo {
+        jinn_provider::ModelInfo {
+            id: id.to_owned(),
+            context_length: None,
+            input_modalities: jinn_provider::InputModalities::text(),
+        }
+    }
+
+    fn dev_data(image_support: &[(&str, bool)]) -> crate::feat::provider_infra::ModelsDevData {
+        use std::collections::HashMap;
+        crate::feat::provider_infra::ModelsDevData {
+            context_lengths: HashMap::new(),
+            image_support: image_support
+                .iter()
+                .map(|(k, v)| ((*k).to_owned(), *v))
+                .collect(),
+        }
+    }
+
+    #[test]
+    fn enrich_stamps_image_bit_for_known_image_model() {
+        // Given a discovered model that models.dev lists as image-capable.
+        let mut models = vec![image_model("gpt-4o")];
+        let dev = dev_data(&[("gpt-4o", true)]);
+
+        // When enriching with models.dev data.
+        super::enrich_with_models_dev(&mut models, &dev);
+
+        // Then the model has both Text and Image modalities.
+        let m = &models[0];
+        assert!(m.input_modalities.contains(jinn_provider::Modality::Text));
+        assert!(m.input_modalities.contains(jinn_provider::Modality::Image));
+    }
+
+    #[test]
+    fn enrich_leaves_text_only_for_known_false_model() {
+        // Given a discovered model that models.dev lists as NOT image-capable.
+        let mut models = vec![image_model("gpt-3.5-turbo")];
+        let dev = dev_data(&[("gpt-3.5-turbo", false)]);
+
+        // When enriching with models.dev data.
+        super::enrich_with_models_dev(&mut models, &dev);
+
+        // Then the model stays text-only.
+        let m = &models[0];
+        assert!(m.input_modalities.contains(jinn_provider::Modality::Text));
+        assert!(!m.input_modalities.contains(jinn_provider::Modality::Image));
+    }
+
+    #[test]
+    fn enrich_leaves_text_only_for_unknown_model() {
+        // Given a discovered model that models.dev does not know.
+        let mut models = vec![image_model("my-custom-llama")];
+        let dev = dev_data(&[]);
+
+        // When enriching with models.dev data.
+        super::enrich_with_models_dev(&mut models, &dev);
+
+        // Then the model stays text-only (conservative default).
+        let m = &models[0];
+        assert!(m.input_modalities.contains(jinn_provider::Modality::Text));
+        assert!(!m.input_modalities.contains(jinn_provider::Modality::Image));
     }
 }

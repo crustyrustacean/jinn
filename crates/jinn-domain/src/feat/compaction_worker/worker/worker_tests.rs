@@ -601,7 +601,7 @@ fn threshold_uses_fresh_history_not_stale_context_size() {
 
 use crate::feat::history_worker::worker_trait::HistoryWorker;
 use crate::feat::provider_infra::ModelCache;
-use jinn_provider::ModelInfo;
+use jinn_provider::{InputModalities, ModelInfo};
 
 /// Builder for constructing a test environment with full control over
 /// context_size, model cache, compaction config, and history.
@@ -692,6 +692,7 @@ fn model_cache_with(provider: &str, model_id: &str, context_length: u32) -> Mode
         vec![ModelInfo {
             id: model_id.to_owned(),
             context_length: Some(context_length),
+            input_modalities: InputModalities::text(),
         }],
     );
     cache
@@ -705,6 +706,7 @@ fn model_cache_no_context_length(provider: &str, model_id: &str) -> ModelCache {
         vec![ModelInfo {
             id: model_id.to_owned(),
             context_length: None,
+            input_modalities: InputModalities::text(),
         }],
     );
     cache

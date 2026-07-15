@@ -14,7 +14,7 @@ use std::path::{Path, PathBuf};
 use error_stack::{Report, ResultExt as _};
 use jiff::Timestamp;
 use jinn_common::app_info::APP_NAME;
-use jinn_provider::ModelInfo;
+use jinn_provider::{InputModalities, ModelInfo};
 use serde::{Deserialize, Serialize};
 use wherror::Error;
 
@@ -78,6 +78,7 @@ where
                     .map(|id| ModelInfo {
                         id,
                         context_length: None,
+                        input_modalities: InputModalities::text(),
                     })
                     .collect();
                 (k, infos)
@@ -207,10 +208,12 @@ mod tests {
                 ModelInfo {
                     id: "llama3".to_owned(),
                     context_length: Some(8192),
+                    input_modalities: InputModalities::text(),
                 },
                 ModelInfo {
                     id: "mistral".to_owned(),
                     context_length: None,
+                    input_modalities: InputModalities::text(),
                 },
             ],
         );
@@ -254,6 +257,31 @@ mod tests {
     }
 
     #[rstest::rstest]
+    fn legacy_string_array_format_defaults_to_text_only() {
+        // Given a cache JSON file with old string-array format (no modality field).
+        let dir = tempfile::tempdir().expect("tempdir");
+        let path = dir.path().join("model_cache.json");
+        let json = r#"{ "entries": { "ollama": ["llama3", "mistral"] } }"#;
+        std::fs::write(&path, json).expect("write");
+
+        // When loading.
+        let cache = ModelCache::load(&path).expect("load").expect("some");
+
+        // Then every entry defaults to text-only modalities.
+        for info in &cache.entries["ollama"] {
+            assert!(
+                info.input_modalities
+                    .contains(jinn_provider::Modality::Text)
+            );
+            assert!(
+                !info
+                    .input_modalities
+                    .contains(jinn_provider::Modality::Image)
+            );
+        }
+    }
+
+    #[rstest::rstest]
     fn load_accepts_cache_without_timestamp() {
         // Given a cache JSON file without last_updated_at.
         let dir = tempfile::tempdir().expect("tempdir");
@@ -270,6 +298,30 @@ mod tests {
         assert_eq!(cache.entries["ollama"].len(), 1);
         assert_eq!(cache.entries["ollama"][0].context_length, Some(8192));
         assert!(cache.last_updated_at.is_none());
+    }
+
+    #[rstest::rstest]
+    fn cache_without_modality_field_defaults_to_text_only() {
+        // Given a cache JSON file whose entries omit input_modalities.
+        let dir = tempfile::tempdir().expect("tempdir");
+        let path = dir.path().join("model_cache.json");
+        let json = r#"{ "entries": { "ollama": [{"id": "llama3", "context_length": 8192}] } }"#;
+        std::fs::write(&path, json).expect("write");
+
+        // When loading.
+        let cache = ModelCache::load(&path).expect("load").expect("some");
+
+        // Then the entry defaults to text-only modalities (serde default).
+        let info = &cache.entries["ollama"][0];
+        assert!(
+            info.input_modalities
+                .contains(jinn_provider::Modality::Text)
+        );
+        assert!(
+            !info
+                .input_modalities
+                .contains(jinn_provider::Modality::Image)
+        );
     }
 
     #[rstest::rstest]

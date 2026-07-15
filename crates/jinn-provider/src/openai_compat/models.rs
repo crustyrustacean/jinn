@@ -6,6 +6,7 @@
 use error_stack::{Report, ResultExt as _};
 use reqwest::Client;
 
+use crate::InputModalities;
 use crate::ModelInfo;
 use crate::service::LlmServiceError;
 
@@ -79,6 +80,7 @@ pub async fn list_models(
         .map(|m| ModelInfo {
             id: m.id,
             context_length: m.context_length,
+            input_modalities: InputModalities::text(),
         })
         .collect())
 }
