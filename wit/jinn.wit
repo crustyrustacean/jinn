@@ -39,13 +39,13 @@ interface host {
     /// History-less one-shot LLM call. Inherits the session's provider+model.
     /// Awaits the host's future (suspends the component) and resumes with the
     /// response. Named via `task` so it can be cancelled by `cancel-task`.
-    request-llm-oneshot: func(
+    request-llm-oneshot: async func(
         req: llm-oneshot-req,
     ) -> result<llm-resp, request-error>;
 
     /// Create a new session as a child of `parent-session-id`. Awaits the host
     /// and resumes with the new session id. Used by the judge plugin.
-    create-session: func(
+    create-session: async func(
         req: create-session-req,
     ) -> result<create-session-resp, request-error>;
 
@@ -91,31 +91,30 @@ interface hooks {
     /// header-comment description + `M.keybinds` + `M.tools`.
     get-manifest: func() -> manifest;
 
-    // ── Lifecycle hooks (async) ──
 
     /// Fires once at app startup.
-    on-app-started: func(ctx: session-ctx);
+    on-app-started: async func(ctx: session-ctx);
 
     /// Fires when a new session is created.
-    on-session-created: func(ctx: session-ctx);
+    on-session-created: async func(ctx: session-ctx);
 
     /// Fires when this plugin instance is attached to a session. Use it to
     /// register this instance in shared global-data keys (e.g. increment a
     /// participant count). Only the newly-attached instance receives it.
-    on-attach: func(ctx: attach-ctx);
+    on-attach: async func(ctx: attach-ctx);
 
     /// Fires when this plugin instance is detached. Runs BEFORE the registry
     /// is rebuilt, so the instance can clean up shared global-data keys.
-    on-detach: func(ctx: attach-ctx);
+    on-detach: async func(ctx: attach-ctx);
 
     /// Fires when a session transitions to Idle (turn complete).
-    on-turn-end: func(ctx: turn-end-ctx);
+    on-turn-end: async func(ctx: turn-end-ctx);
 
     /// Fires when the user submits a message (session transitions to Sending).
-    on-user-submit: func(ctx: session-ctx);
+    on-user-submit: async func(ctx: session-ctx);
 
     /// Fires whenever a session's task list is mutated.
-    on-task-list-updated: func(ctx: task-list-ctx);
+    on-task-list-updated: async func(ctx: task-list-ctx);
 
     // ── Sync render hooks (run on the render thread) ──
     //
