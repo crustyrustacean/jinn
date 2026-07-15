@@ -283,7 +283,9 @@ mod tests {
     use crate::common::bus::test_harness::{TestHarness, await_recorded};
 
     use crate::common::state::State;
-    use crate::feat::provider_infra::{ModelCache, ModelInfo, ProviderEntry, ProvidersConfig};
+    use crate::feat::provider_infra::{
+        InputModalities, ModelCache, ModelInfo, ProviderEntry, ProvidersConfig,
+    };
 
     use super::{ModelCacheLoaded, ModelsRefreshed, ProviderActor, ProviderActorDeps};
     use crate::common::actor_deps::ActorDeps;
@@ -345,6 +347,7 @@ mod tests {
             vec![ModelInfo {
                 id: "llama3".to_owned(),
                 context_length: Some(8192),
+                input_modalities: InputModalities::text(),
             }],
         );
         cache.last_updated_at = Some(jiff::Timestamp::now());
@@ -388,6 +391,7 @@ mod tests {
             vec![ModelInfo {
                 id: "llama3".to_owned(),
                 context_length: None,
+                input_modalities: InputModalities::text(),
             }],
         );
         cache.last_updated_at = Some(ts);
@@ -440,6 +444,7 @@ mod tests {
             vec![ModelInfo {
                 id: "zai-1.5".to_owned(),
                 context_length: None,
+                input_modalities: InputModalities::text(),
             }],
         );
         let event = ModelsRefreshed {
@@ -505,6 +510,7 @@ mod tests {
             vec![ModelInfo {
                 id: "llama3".to_owned(),
                 context_length: Some(8192),
+                input_modalities: InputModalities::text(),
             }],
         );
         let event = ModelsRefreshed {
@@ -540,6 +546,7 @@ mod tests {
             vec![ModelInfo {
                 id: "llama3".to_owned(),
                 context_length: None,
+                input_modalities: InputModalities::text(),
             }],
         );
         let event = ModelsRefreshed {
@@ -575,6 +582,7 @@ mod tests {
             vec![ModelInfo {
                 id: "llama3".to_owned(),
                 context_length: None,
+                input_modalities: InputModalities::text(),
             }],
         );
         let event = ModelsRefreshed {
@@ -629,6 +637,7 @@ mod tests {
             vec![ModelInfo {
                 id: "zai-1.5".to_owned(),
                 context_length: None,
+                input_modalities: InputModalities::text(),
             }],
         );
         cache.last_updated_at = Some(jiff::Timestamp::now());
@@ -695,6 +704,7 @@ mod tests {
             vec![ModelInfo {
                 id: "llama3".to_owned(),
                 context_length: Some(8192),
+                input_modalities: InputModalities::text(),
             }],
         );
         cache.last_updated_at = Some(jiff::Timestamp::now());
@@ -727,6 +737,7 @@ mod tests {
             vec![ModelInfo {
                 id: "glm-5.1".to_owned(),
                 context_length: None,
+                input_modalities: InputModalities::text(),
             }],
         );
 
@@ -752,6 +763,7 @@ mod tests {
             vec![ModelInfo {
                 id: "gpt-4o".to_owned(),
                 context_length: Some(100_000),
+                input_modalities: InputModalities::text(),
             }],
         );
 
@@ -777,6 +789,7 @@ mod tests {
             vec![ModelInfo {
                 id: "my-custom-llama".to_owned(),
                 context_length: None,
+                input_modalities: InputModalities::text(),
             }],
         );
 
@@ -800,6 +813,7 @@ mod tests {
             vec![ModelInfo {
                 id: "model-a".to_owned(),
                 context_length: Some(100_000),
+                input_modalities: InputModalities::text(),
             }],
         );
         // Model B: API returned None, config will fill it.
@@ -808,6 +822,7 @@ mod tests {
             vec![ModelInfo {
                 id: "model-b".to_owned(),
                 context_length: None,
+                input_modalities: InputModalities::text(),
             }],
         );
         // Model C: API returned None, no config, models.dev should fill it.
@@ -816,6 +831,7 @@ mod tests {
             vec![ModelInfo {
                 id: "model-c".to_owned(),
                 context_length: None,
+                input_modalities: InputModalities::text(),
             }],
         );
         // Model D: API returned None, no config, not in models.dev.
@@ -824,6 +840,7 @@ mod tests {
             vec![ModelInfo {
                 id: "model-d".to_owned(),
                 context_length: None,
+                input_modalities: InputModalities::text(),
             }],
         );
 
@@ -861,6 +878,7 @@ mod tests {
             vec![ModelInfo {
                 id: "glm-5.1".to_owned(),
                 context_length: None,
+                input_modalities: InputModalities::text(),
             }],
         );
         cache.entries.insert(
@@ -868,6 +886,7 @@ mod tests {
             vec![ModelInfo {
                 id: "claude-sonnet-4-20250514".to_owned(),
                 context_length: None,
+                input_modalities: InputModalities::text(),
             }],
         );
 
