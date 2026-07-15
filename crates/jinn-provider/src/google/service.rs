@@ -251,6 +251,7 @@ mod tests {
         clippy::unwrap_in_result,
         reason = "test code, panics are acceptable"
     )]
+    use crate::InputModalities;
     use crate::ModelInfo;
 
     use super::*;
@@ -283,6 +284,7 @@ mod tests {
             ModelInfo {
                 id: "gemini-pro".to_owned(),
                 context_length: Some(32_000),
+                input_modalities: InputModalities::text(),
             }
         );
         mock.assert_async().await;

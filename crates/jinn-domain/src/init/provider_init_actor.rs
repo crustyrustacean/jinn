@@ -313,6 +313,7 @@ mod tests {
             vec![crate::feat::provider_infra::ModelInfo {
                 id: "llama3".to_owned(),
                 context_length: None,
+                input_modalities: crate::feat::provider_infra::InputModalities::text(),
             }],
         );
         cache.last_updated_at = Some(jiff::Timestamp::now());

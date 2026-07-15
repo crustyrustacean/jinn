@@ -464,6 +464,7 @@ fn create_factory_for_model_succeeds_for_known_provider() {
         vec![crate::ModelInfo {
             id: "mistral".to_owned(),
             context_length: None,
+            input_modalities: crate::InputModalities::text(),
         }],
     );
     let cache = crate::ModelCache {
@@ -529,6 +530,7 @@ fn create_factory_succeeds_for_merged_remote_model() {
         vec![crate::ModelInfo {
             id: "my-real-model".to_owned(),
             context_length: None,
+            input_modalities: crate::InputModalities::text(),
         }],
     );
     let cache = crate::ModelCache {
@@ -596,6 +598,7 @@ fn create_factory_succeeds_for_merged_model_with_slashes() {
         vec![crate::ModelInfo {
             id: "anthropic/claude-sonnet-4".to_owned(),
             context_length: None,
+            input_modalities: crate::InputModalities::text(),
         }],
     );
     let cache = crate::ModelCache {
@@ -673,6 +676,7 @@ fn merge_cache_adds_remote_entries() {
         vec![crate::ModelInfo {
             id: "mistral".to_owned(),
             context_length: None,
+            input_modalities: crate::InputModalities::text(),
         }],
     );
     let cache = crate::ModelCache {
@@ -704,6 +708,7 @@ fn merge_cache_static_wins_on_collision() {
         vec![crate::ModelInfo {
             id: "llama3".to_owned(),
             context_length: None,
+            input_modalities: crate::InputModalities::text(),
         }],
     );
     let cache = crate::ModelCache {
@@ -734,6 +739,7 @@ fn merge_cache_sets_is_remote_true() {
         vec![crate::ModelInfo {
             id: "deepseek-v3".to_owned(),
             context_length: None,
+            input_modalities: crate::InputModalities::text(),
         }],
     );
     let cache = crate::ModelCache {
@@ -768,6 +774,7 @@ fn merge_cache_ignores_unknown_provider() {
         vec![crate::ModelInfo {
             id: "model".to_owned(),
             context_length: None,
+            input_modalities: crate::InputModalities::text(),
         }],
     );
     let cache = crate::ModelCache {

@@ -237,6 +237,7 @@ fn static_entries_present_after_cache_merge() {
         vec![crate::feat::provider_infra::ModelInfo {
             id: "mistral".to_owned(),
             context_length: None,
+            input_modalities: crate::feat::provider_infra::InputModalities::text(),
         }],
     );
 
@@ -266,6 +267,7 @@ fn remote_entries_present_after_cache_merge() {
         vec![crate::feat::provider_infra::ModelInfo {
             id: "mistral".to_owned(),
             context_length: None,
+            input_modalities: crate::feat::provider_infra::InputModalities::text(),
         }],
     );
 
@@ -297,10 +299,12 @@ fn static_entry_not_duplicated_on_collision() {
             crate::feat::provider_infra::ModelInfo {
                 id: "llama3".to_owned(),
                 context_length: None,
+                input_modalities: crate::feat::provider_infra::InputModalities::text(),
             },
             crate::feat::provider_infra::ModelInfo {
                 id: "mistral".to_owned(),
                 context_length: None,
+                input_modalities: crate::feat::provider_infra::InputModalities::text(),
             },
         ],
     );
@@ -329,10 +333,12 @@ fn new_remote_entry_added_on_collision() {
             crate::feat::provider_infra::ModelInfo {
                 id: "llama3".to_owned(),
                 context_length: None,
+                input_modalities: crate::feat::provider_infra::InputModalities::text(),
             },
             crate::feat::provider_infra::ModelInfo {
                 id: "mistral".to_owned(),
                 context_length: None,
+                input_modalities: crate::feat::provider_infra::InputModalities::text(),
             },
         ],
     );
@@ -360,6 +366,7 @@ fn remote_entry_present_when_key_missing() {
         vec![crate::feat::provider_infra::ModelInfo {
             id: "claude-3".to_owned(),
             context_length: None,
+            input_modalities: crate::feat::provider_infra::InputModalities::text(),
         }],
     );
 
@@ -388,6 +395,7 @@ fn remote_entry_marked_unavailable_when_key_missing() {
         vec![crate::feat::provider_infra::ModelInfo {
             id: "claude-3".to_owned(),
             context_length: None,
+            input_modalities: crate::feat::provider_infra::InputModalities::text(),
         }],
     );
 
@@ -416,10 +424,12 @@ fn load_provider_entries_includes_all_remote_models() {
             crate::feat::provider_infra::ModelInfo {
                 id: "mistral".to_owned(),
                 context_length: None,
+                input_modalities: crate::feat::provider_infra::InputModalities::text(),
             },
             crate::feat::provider_infra::ModelInfo {
                 id: "codellama".to_owned(),
                 context_length: None,
+                input_modalities: crate::feat::provider_infra::InputModalities::text(),
             },
         ],
     );

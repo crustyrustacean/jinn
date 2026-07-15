@@ -7,6 +7,7 @@
 mod attachment;
 mod backend;
 mod fake;
+mod input_modalities;
 mod llm_message;
 mod no_providers;
 mod openai_compat;
@@ -27,6 +28,7 @@ pub use google::GoogleFactory;
 pub use attachment::Attachment;
 pub use backend::{Backend, BackendError};
 pub use fake::{FakeLlmServiceFactory, ScriptedResponse, TOOL_LOOP_TRIGGER};
+pub use input_modalities::{InputModalities, Modality};
 pub use llm_message::LlmMessage;
 pub use no_providers::{NO_PROVIDER_ID, NoProvidersAvailableFactory};
 pub use openai_compat::{OpenAiCompatibleFactory, OpenAiCompatibleService, ProviderConfig};
@@ -50,6 +52,11 @@ pub struct ModelInfo {
     pub id: String,
     /// Maximum context length in tokens, if the provider reports it.
     pub context_length: Option<u32>,
+    /// Input modalities the model accepts. Text is always present;
+    /// the image bit is stamped from models.dev during discovery.
+    /// Defaults to text-only for legacy caches lacking the field.
+    #[serde(default = "InputModalities::text")]
+    pub input_modalities: InputModalities,
 }
 
 #[cfg(test)]

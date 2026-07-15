@@ -7,6 +7,7 @@
 use crate::common::path_display::shorten_path;
 use crate::common::render_ctx::RenderCtx;
 use crate::common::ui_element::UiElement;
+use crate::feat::provider_infra::InputModalities;
 use crate::feat::session::{TokenStats, aggregate_tree_stats};
 use crate::feat::ui::status_bar::turn_counter;
 use crate::resolve_effort;
@@ -46,6 +47,22 @@ fn format_budget(count: usize) -> String {
     }
 }
 
+/// Resolve the active model's `ModelInfo` from the cache.
+///
+/// `active_model` must be the `provider/model-id` display form (i.e. the same
+/// string the status bar surfaces as the model name). Returns `None` when the
+/// cache is absent or the model is not recorded in it.
+fn resolve_model_info<'a>(
+    model_cache: Option<&'a crate::feat::provider_infra::ModelCache>,
+    active_model: &str,
+) -> Option<&'a crate::feat::provider_infra::ModelInfo> {
+    let cache = model_cache?;
+    let provider_name = active_model.split('/').next()?;
+    let models = cache.entries.get(provider_name)?;
+    let model_suffix = active_model.get((provider_name.len() + 1)..)?;
+    models.iter().find(|m| m.id == model_suffix)
+}
+
 /// Look up the context_length for the active model from the model cache.
 ///
 /// Returns `Some(context_length)` if the cache is populated and the active model
@@ -54,14 +71,19 @@ fn resolve_context_limit(
     model_cache: Option<&crate::feat::provider_infra::ModelCache>,
     active_model: &str,
 ) -> Option<u32> {
-    let cache = model_cache?;
-    let provider_name = active_model.split('/').next()?;
-    let models = cache.entries.get(provider_name)?;
-    let model_suffix = active_model.get((provider_name.len() + 1)..)?;
-    models
-        .iter()
-        .find(|m| m.id == model_suffix)
-        .and_then(|m| m.context_length)
+    let info = resolve_model_info(model_cache, active_model)?;
+    info.context_length
+}
+
+/// Resolve the active model's input modalities from the cache.
+///
+/// Returns the cached modalities when the model is recorded, otherwise `None`
+/// (so the caller can apply the conservative text-only default).
+fn resolve_modalities(
+    model_cache: Option<&crate::feat::provider_infra::ModelCache>,
+    active_model: &str,
+) -> Option<crate::feat::provider_infra::InputModalities> {
+    resolve_model_info(model_cache, active_model).map(|m| m.input_modalities)
 }
 
 impl UiElement for StatusBarElement {
@@ -209,7 +231,7 @@ fn build_model_string(
     state: &crate::common::app_state::AppState,
     active_model: &crate::feat::session::model_selection::ModelSelection,
 ) -> String {
-    let model = {
+    let (model, resolved_for_lookup) = {
         // For an Alloy, the bar surfaces the last-rotated member (which one
         // actually answered) from the token ledger, falling back to the first
         // member before any dispatch. For a Single selection the model _is_ the
@@ -231,16 +253,32 @@ fn build_model_string(
             .unwrap_or_else(|| active_model.display_str());
 
         if active_model.is_no_provider() {
-            "no model selected".to_owned()
-        } else if let Some((provider, m)) = resolved.split_once('/') {
-            format!("({provider})/{m}")
+            ("no model selected".to_owned(), None)
         } else {
-            resolved.to_owned()
+            let display = if let Some((provider, m)) = resolved.split_once('/') {
+                format!("({provider})/{m}")
+            } else {
+                resolved.to_owned()
+            };
+            (display, Some(resolved.to_owned()))
         }
     };
 
     let model = match active_model.as_alloy() {
         Some(alloy) => format!("[alloy {}] {model}", alloy.models.len()),
+        None => model,
+    };
+
+    // Append the modality indicator as `<t>` / `<ti>`, using the SAME resolved
+    // model the name surfaces (last-dispatched for alloys, else selection).
+    // Conservative: an unknown / not-in-cache model shows `<t>` (text is always
+    // available); "no model selected" shows nothing.
+    let modalities = resolved_for_lookup.map(|resolved| {
+        resolve_modalities(state.provider.model_cache.as_ref(), &resolved)
+            .unwrap_or_else(InputModalities::text)
+    });
+    let model = match modalities {
+        Some(m) => format!("{model} <{}>", m.display()),
         None => model,
     };
 

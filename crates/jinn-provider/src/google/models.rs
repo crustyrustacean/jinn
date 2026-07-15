@@ -5,6 +5,7 @@
 use error_stack::{Report, ResultExt as _};
 use reqwest::Client;
 
+use crate::InputModalities;
 use crate::ModelInfo;
 use crate::service::LlmServiceError;
 
@@ -77,6 +78,7 @@ pub(crate) async fn list_models_with_base_url(
         .map(|m| ModelInfo {
             id: m.name,
             context_length: m.input_token_limit,
+            input_modalities: InputModalities::text(),
         })
         .collect())
 }
@@ -90,6 +92,7 @@ mod tests {
         clippy::unwrap_in_result,
         reason = "test code, panics are acceptable"
     )]
+    use crate::InputModalities;
     use crate::ModelInfo;
 
     use super::*;
@@ -118,6 +121,7 @@ mod tests {
             ModelInfo {
                 id: "gemini-pro".to_owned(),
                 context_length: Some(32_000),
+                input_modalities: InputModalities::text(),
             }
         );
         mock.assert_async().await;
