@@ -14,7 +14,7 @@ use crate::feat::provider::protocol::event::ModelsRefreshed;
 use crate::feat::provider_infra::ModelCache;
 use error_stack::Report;
 use jinn_provider::{
-    Backend, LlmServiceError, Modality, ModelInfo, OpenAiCompatibleService, ProviderConfig,
+    Backend, LlmServiceError, ModelInfo, OpenAiCompatibleService, ProviderConfig,
     anthropic::AnthropicService, google::GoogleService,
 };
 use kameo::prelude::{Actor, ActorRef, Context, Message};
@@ -198,25 +198,15 @@ impl DiscoverActor {
     }
 }
 
-/// Enrich discovered models with models.dev data:
-/// context-length fallback and image modality stamping.
-///
-/// Image support is conservative: only a confirmed `true` from models.dev sets
-/// the `Image` bit. Unknown models stay text-only.
+/// Enrich freshly discovered models with models.dev data (context-length
+/// fallback + image modality stamping) by delegating to the shared
+/// [`ModelsDevData::enrich`] single source of truth.
 fn enrich_with_models_dev(
     models: &mut [ModelInfo],
     models_dev: &crate::feat::provider_infra::ModelsDevData,
 ) {
     for model in models {
-        if model.context_length.is_none()
-            && let Some(ctx) = models_dev.get(&model.id)
-        {
-            model.context_length = Some(ctx);
-        }
-
-        if models_dev.supports_images(&model.id) == Some(true) {
-            model.input_modalities.insert(Modality::Image);
-        }
+        models_dev.enrich(model);
     }
 }
 

@@ -192,7 +192,7 @@ impl ProviderActor {
             &self.deps.services.paths.models_dev_user_path(),
             &self.deps.services.paths.models_dev_system_path(),
         );
-        merge_context_lengths_from_models_dev(&mut cache, &models_dev);
+        merge_models_dev_data(&mut cache, &models_dev);
         // Merge remote models into the registry so create_factory() can find them.
         self.deps.services.provider_registry.merge_cache(&cache);
         self.state.with_provider(&self.cap, |view| {
@@ -213,7 +213,7 @@ impl ProviderActor {
             &self.deps.services.paths.models_dev_user_path(),
             &self.deps.services.paths.models_dev_system_path(),
         );
-        merge_context_lengths_from_models_dev(&mut cache, &models_dev);
+        merge_models_dev_data(&mut cache, &models_dev);
         // Merge remote models into the registry so create_factory() can find them.
         self.deps.services.provider_registry.merge_cache(&cache);
         self.state.with_provider(&self.cap, |view| {
@@ -248,23 +248,23 @@ fn merge_context_lengths_from_registry(
     }
 }
 
-/// Merge `context_length` from the models.dev reference data into the
-/// model cache, filling in `None` slots where neither the API nor
-/// `providers.toml` provided a value.
-///
-/// This is the lowest-priority merge: only `None` entries are filled,
-/// and existing values from the API or `providers.toml` are never overwritten.
-fn merge_context_lengths_from_models_dev(
+/// Merge `context_length` and input modalities from the models.dev reference
+// data into the model cache, filling in `None` slots where neither the API nor
+// `providers.toml` provided a value.
+//
+// This is the lowest-priority merge: only `None` entries are filled,
+// and existing values from the API or `providers.toml` are never overwritten.
+//
+// Modality stamping is unconditional (idempotent `insert`): a stale on-disk
+// cache that predates the modalities field gets re-enriched from models.dev
+// on every load, so the Image bit is never permanently lost across upgrades.
+fn merge_models_dev_data(
     cache: &mut crate::feat::provider_infra::ModelCache,
     models_dev: &crate::feat::provider_infra::ModelsDevData,
 ) {
     for models in cache.entries.values_mut() {
         for model in models.iter_mut() {
-            if model.context_length.is_none()
-                && let Some(ctx) = models_dev.get(&model.id)
-            {
-                model.context_length = Some(ctx);
-            }
+            models_dev.enrich(model);
         }
     }
 }
@@ -747,7 +747,7 @@ mod tests {
             .insert("glm-5.1".to_owned(), 200_000);
 
         // When merging.
-        super::merge_context_lengths_from_models_dev(&mut cache, &models_dev);
+        super::merge_models_dev_data(&mut cache, &models_dev);
 
         // Then the model now has context_length from models.dev.
         assert_eq!(cache.entries["zai"][0].context_length, Some(200_000));
@@ -773,7 +773,7 @@ mod tests {
             .insert("gpt-4o".to_owned(), 200_000);
 
         // When merging.
-        super::merge_context_lengths_from_models_dev(&mut cache, &models_dev);
+        super::merge_models_dev_data(&mut cache, &models_dev);
 
         // Then the existing value is preserved.
         assert_eq!(cache.entries["openai"][0].context_length, Some(100_000));
@@ -796,7 +796,7 @@ mod tests {
         let models_dev = crate::feat::provider_infra::ModelsDevData::new();
 
         // When merging with empty models.dev data.
-        super::merge_context_lengths_from_models_dev(&mut cache, &models_dev);
+        super::merge_models_dev_data(&mut cache, &models_dev);
 
         // Then it stays None.
         assert_eq!(cache.entries["local"][0].context_length, None);
@@ -859,7 +859,7 @@ mod tests {
             .insert("model-c".to_owned(), 300_000);
 
         // When merging from models.dev.
-        super::merge_context_lengths_from_models_dev(&mut cache, &models_dev);
+        super::merge_models_dev_data(&mut cache, &models_dev);
 
         // Then: A keeps API value, B keeps config value, C gets models.dev, D stays None.
         assert_eq!(cache.entries["provider-a"][0].context_length, Some(100_000));
@@ -899,13 +899,43 @@ mod tests {
             .insert("claude-sonnet-4-20250514".to_owned(), 200_000);
 
         // When merging.
-        super::merge_context_lengths_from_models_dev(&mut cache, &models_dev);
+        super::merge_models_dev_data(&mut cache, &models_dev);
 
         // Then both providers get filled.
         assert_eq!(cache.entries["zai"][0].context_length, Some(200_000));
         assert_eq!(cache.entries["anthropic"][0].context_length, Some(200_000));
     }
 
+    #[rstest::rstest]
+    #[tokio::test]
+    async fn merge_from_models_dev_stamps_image_bit_on_disk_loaded_cache() {
+        // Given a stale cache (as loaded from disk) whose model is image-capable
+        // in models.dev but carries only the text-only default.
+        let mut cache = ModelCache::new();
+        cache.entries.insert(
+            "openrouter".to_owned(),
+            vec![ModelInfo {
+                id: "xiaomi/mimo-v2.5".to_owned(),
+                context_length: None,
+                input_modalities: InputModalities::text(),
+            }],
+        );
+        let mut models_dev = crate::feat::provider_infra::ModelsDevData::new();
+        models_dev
+            .image_support
+            .insert("xiaomi/mimo-v2.5".to_owned(), true);
+
+        // When merging (the disk-load path re-enriches from models.dev).
+        super::merge_models_dev_data(&mut cache, &models_dev);
+
+        // Then the image bit is stamped despite the stale text-only cache.
+        assert!(
+            cache.entries["openrouter"][0]
+                .input_modalities
+                .contains(crate::feat::provider_infra::Modality::Image),
+            "disk-loaded cache should gain the image bit via re-enrichment"
+        );
+    }
     #[rstest::rstest]
     #[tokio::test]
     async fn handle_dispatches_provider_switch_command() {
