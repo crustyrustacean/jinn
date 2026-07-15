@@ -1,6 +1,6 @@
 //! Session plugin registry trait — abstraction over per-session Lua state lifecycle.
 //!
-//! `jinn-domain` cannot depend on `jinn-plugin` (circular dependency), so this
+//! `jinn-domain` cannot depend on `jinn-wasm-host` (circular dependency), so this
 //! trait provides the minimal interface for the `PluginDispatchActor` to manage
 //! per-session Lua states via the `Services` DI container.
 
@@ -70,7 +70,7 @@ pub struct SessionPluginRegistryError;
 
 /// Manage per-session plugin Lua states.
 ///
-/// Implemented by `jinn_plugin::AsyncPluginHandle`. The dispatcher uses this
+/// Implemented by `jinn_wasm_host::AsyncWasmHandle`. The dispatcher uses this
 /// trait to spin up isolated Lua states for each session's attached plugins
 /// and tear them down on detach.
 #[async_trait::async_trait]

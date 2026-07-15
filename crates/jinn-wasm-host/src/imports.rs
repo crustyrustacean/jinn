@@ -25,11 +25,14 @@
 //! the real domain services. Phase 2 establishes the callback types and the
 //! linker-registration entry point shape.
 
+use error_stack::ResultExt;
 use std::sync::Arc;
 
 use wasmtime::component::Linker;
 
-use crate::bindings::command::{Command, CreateSessionReq, CreateSessionResp, LlmOneshotReq, LlmResp};
+use crate::bindings::command::{
+    Command, CreateSessionReq, CreateSessionResp, LlmOneshotReq, LlmResp, RequestError,
+};
 use crate::store::InstanceCtx;
 
 /// Callback that services a plugin `emit(cmd)`.
@@ -47,7 +50,7 @@ pub type LlmOneshotCallback = Arc<
     dyn Fn(
             &InstanceCtx,
             &LlmOneshotReq,
-        ) -> futures::future::BoxFuture<'static, Result<LlmResp, String>>
+        ) -> futures::future::BoxFuture<'static, Result<LlmResp, RequestError>>
         + Send
         + Sync,
 >;
@@ -57,7 +60,7 @@ pub type CreateSessionCallback = Arc<
     dyn Fn(
             &InstanceCtx,
             &CreateSessionReq,
-        ) -> futures::future::BoxFuture<'static, Result<CreateSessionResp, String>>
+        ) -> futures::future::BoxFuture<'static, Result<CreateSessionResp, RequestError>>
         + Send
         + Sync,
 >;
@@ -95,12 +98,19 @@ pub struct HostImportError;
 /// # Errors
 ///
 /// Returns an error if the generated `add_to_linker` rejects the wiring.
-#[allow(clippy::missing_errors_doc)]
 pub fn register(
-    _linker: &mut Linker<crate::store::StoreState>,
+    linker: &mut Linker<crate::store::StoreState>,
     _imports: &HostImports,
 ) -> Result<(), error_stack::Report<HostImportError>> {
-    // TODO(Phase 3): crate::bindings::jinn::plugin::host::add_to_linker(...)
-    // once the Host trait is implemented on StoreState (carrying the callbacks).
+    // `add_to_linker` takes a non-capturing accessor returning the data that
+    // implements `Host`. `StoreState` implements `Host` directly and reads its
+    // callbacks from `state.imports` (populated at store construction). So the
+    // accessor is identity; `_imports` is consumed by the caller when building
+    // each `StoreState`.
+    crate::bindings::jinn::plugin::host::add_to_linker::<crate::store::StoreState, crate::store::StoreState>(linker, |state: &mut crate::store::StoreState| {
+        state
+    })
+    .map_err(|e| error_stack::Report::new(HostImportError).attach(e.to_string()))
+    .attach("registering host imports into linker")?;
     Ok(())
 }

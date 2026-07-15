@@ -32,19 +32,39 @@
 // consumed by the wiring layer in Phase 3. Until then, allow dead code.
 #![allow(dead_code)]
 
+pub mod async_thread;
 pub mod bag;
 pub mod bindings;
 pub mod discovery;
+pub mod handle;
 mod host_impl;
 mod engine;
 mod hooks;
 pub mod loader;
-mod imports;
-mod store;
+pub mod imports;
+pub mod store;
+pub mod command_dispatch;
+pub mod sync_plugins;
+pub mod sync_handle;
+mod val_convert;
+pub mod system;
 
 
 pub use bag::{GlobalBagStore, InstanceBagStore};
 pub use discovery::{PluginKind, PluginMeta, discover_plugins};
 pub use engine::{EngineConfig, WasmEngine};
 
-pub use store::{StoreKind, StoreSet};
+pub use store::{InstanceCtx, StoreKind, StoreSet};
+
+pub use imports::{
+    CancelTaskCallback, CreateSessionCallback, EmitCallback, HostImportError, HostImports,
+    LlmOneshotCallback,
+};
+
+pub use command_dispatch::dispatch as dispatch_command;
+
+pub use async_thread::AsyncPluginError;
+pub use handle::{AsyncWasmHandle, CreateSessionRegistryResult, WasmToolMetadata};
+pub use sync_handle::SyncWasmHandle;
+pub use sync_plugins::SyncWasmPlugins;
+pub use system::{CommandDispatcher, WasmPluginSystem, build as build_system};

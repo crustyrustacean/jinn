@@ -1,8 +1,8 @@
 //! Plugin fire trait — abstraction for firing async hooks from the domain layer.
 //!
-//! The domain layer can't depend on `jinn-plugin` (circular dependency), so
+//! The domain layer can't depend on `jinn-wasm-host` (circular dependency), so
 //! this trait provides the minimal interface for async hook firing.
-//! `jinn-plugin` provides the concrete implementation for `AsyncPluginHandle`.
+//! `jinn-wasm-host` provides the concrete implementation for `AsyncPluginHandle`.
 
 use error_stack::Report;
 use serde_json::Value;
@@ -17,7 +17,7 @@ pub struct PluginFireError;
 
 /// Fire async hooks on the plugin system.
 ///
-/// Implemented by `jinn_plugin::AsyncPluginHandle`.
+/// Implemented by `jinn_wasm_host::AsyncWasmHandle`.
 #[async_trait::async_trait]
 pub trait PluginFire: Send + Sync {
     /// Fire an async hook with raw JSON context (global plugins only).

@@ -103,6 +103,7 @@ pub struct StoreSet {
     instances: HashMap<InstanceKey, StoredInstance>,
     bags: InstanceBagStore,
     globals: GlobalBagStore,
+    imports: Option<crate::imports::HostImports>,
 }
 
 impl std::fmt::Debug for StoreSet {
@@ -131,7 +132,6 @@ impl StoreSet {
     /// Construct an empty store set bound to one engine + shared bag layer.
     ///
     /// `bags` / `globals` are shared across both store sets (cloned by `Arc`).
-    #[must_use]
     pub fn new(
         kind: StoreKind,
         engine: Engine,
@@ -144,7 +144,13 @@ impl StoreSet {
             instances: HashMap::new(),
             bags,
             globals,
+            imports: None,
         }
+    }
+    /// Attach the host-import callbacks (emit/request/cancel) that every
+    /// subsequently-loaded instance's `StoreState` will carry.
+    pub fn set_imports(&mut self, imports: crate::imports::HostImports) {
+        self.imports = Some(imports);
     }
 
     /// Which thread this set belongs to.
@@ -169,7 +175,7 @@ impl StoreSet {
     ) -> Result<(), error_stack::Report<StoreLoadError>> {
         let mut store = Store::new(
             &self.engine,
-            StoreState::new(ctx.clone(), &self.bags, &self.globals),
+            StoreState::new(ctx.clone(), &self.bags, &self.globals, self.imports.clone()),
         );
         let instance = linker
             .instantiate(&mut store, component.inner())
@@ -231,13 +237,22 @@ pub struct StoreState {
     pub imports: Option<crate::imports::HostImports>,
 }
 
+impl wasmtime::component::HasData for StoreState {
+    type Data<'a> = &'a mut StoreState;
+}
+
 impl StoreState {
-    fn new(ctx: InstanceCtx, bags: &InstanceBagStore, globals: &GlobalBagStore) -> Self {
+    fn new(
+        ctx: InstanceCtx,
+        bags: &InstanceBagStore,
+        globals: &GlobalBagStore,
+        imports: Option<crate::imports::HostImports>,
+    ) -> Self {
         Self {
             ctx,
             bags: bags.clone(),
             globals: globals.clone(),
-            imports: None,
+            imports,
         }
     }
 

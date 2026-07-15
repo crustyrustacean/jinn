@@ -51,7 +51,7 @@ pub struct LaunchError;
 pub fn launch(
     core: AppCore,
     services: jinn_domain::Services,
-    plugins: jinn_plugin::SyncPlugins,
+    plugins: jinn_wasm_host::SyncWasmPlugins,
 ) -> Result<TuiApp, Report<LaunchError>> {
     let paths = &services.paths;
     let intent_handler_cap = jinn_domain::common::tcaps::mint::mint_intent_handler_cap();
@@ -160,7 +160,7 @@ pub fn load_theme(
 pub fn launch_for_test(
     core: AppCore,
     services: jinn_domain::Services,
-    plugins: jinn_plugin::SyncPlugins,
+    plugins: jinn_wasm_host::SyncWasmPlugins,
 ) -> TuiApp {
     let mut ui_registry = AppUiRegistry::new();
     jinn_domain::register_all_ui_elements(&mut ui_registry);

@@ -1,8 +1,8 @@
 //! Plugin sync call trait — abstraction for blocking sync hook calls.
 //!
-//! The domain layer can't depend on `jinn-plugin` (circular dependency), so
+//! The domain layer can't depend on `jinn-wasm-host` (circular dependency), so
 //! this trait provides the minimal interface for sync hook calling.
-//! `jinn-plugin` provides the concrete implementation for `PluginSyncHandle`.
+//! `jinn-wasm-host` provides the concrete implementation for `PluginSyncHandle`.
 
 use error_stack::Report;
 use serde_json::Value;
@@ -17,7 +17,7 @@ pub struct PluginSyncCallError;
 
 /// Call plugin hooks synchronously, collecting return values.
 ///
-/// Implemented by `jinn_plugin::PluginSyncHandle`.
+/// Implemented by `jinn_wasm_host::SyncWasmHandle`.
 ///
 /// Blocks the calling thread until all hooks complete. Use from actor
 /// message handlers that need plugin return values before proceeding.
