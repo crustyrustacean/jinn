@@ -76,7 +76,7 @@ pub struct Services {
     pub plugins: crate::feat::plugin_dispatch::PluginFireService,
     /// Plugin system sync handle (blocking hook calls from actors).
     pub plugin_sync: crate::feat::plugin_dispatch::PluginSyncCallService,
-    /// Per-session plugin registry (manages isolated Lua states for attached plugins).
+    /// Per-session plugin registry (manages isolated WASM store sets for attached plugins).
     pub session_plugin_registry: crate::feat::plugin_dispatch::SessionPluginRegistryService,
     /// Test-only owned temp directory. `None` in production.
     ///

@@ -42,6 +42,7 @@ pub struct CachedManifest {
 /// One keybind declared by a plugin's manifest.
 #[derive(Debug, Clone)]
 pub struct ManifestKeybind {
+    pub plugin_name: String,
     pub scope: String,
     pub keys: String,
     /// The async hook name to fire when pressed (e.g. `"on-enrich"`).

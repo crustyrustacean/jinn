@@ -13,6 +13,7 @@
 wasmtime::component::bindgen!({
     path: "../../wit/jinn.wit",
     world: "plugin",
+    imports: { default: async | trappable },
 });
 
 /// Re-export the shared types so host code can write `crate::command::Command`
@@ -20,8 +21,11 @@ wasmtime::component::bindgen!({
 pub mod command {
     pub use super::jinn::plugin::types::{
         BadgeCtx, BadgeDirective, BadgeSegment, CreateSessionReq, CreateSessionResp,
+        DisablePluginCmd, EnablePluginCmd, EnqueueUserMessageCmd, FireAsyncHookCmd,
         InterceptOutcome, KeybindResult, KeybindTriggerCtx, LlmOneshotReq, LlmResp,
-        RequestError, SessionCtx, SubmitInterceptCtx, TaskListCtx, ToolDecl, TurnEndCtx,
+        PushChatEntryCmd, PushEntryKind, RequestError, ResetSessionCmd, SessionCtx,
+        SetChatInputCmd, SetChatInputEnabledCmd, SetManagedSessionCmd, SubmitInterceptCtx,
+        TaskListCtx, ToolDecl, TurnEndCtx,
     };
     /// The typed `command` variant — the 9-verb surface.
     pub use super::jinn::plugin::types::Command;

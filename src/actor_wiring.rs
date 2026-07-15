@@ -116,11 +116,11 @@ pub struct ActorSystemBuilder {
 /// Global plugins are loaded at startup and cannot be attached per-session,
 /// so they're excluded from the picker that issues `AttachPlugin`.
 fn attachable_discovered_plugins(
-    plugins: Vec<jinn_plugin::PluginMeta>,
+    plugins: Vec<jinn_wasm_host::PluginMeta>,
 ) -> Vec<jinn_domain::common::app_state::DiscoveredPlugin> {
     plugins
         .into_iter()
-        .filter(|p| p.kind == jinn_plugin::PluginKind::Attachable)
+        .filter(|p| p.kind == jinn_wasm_host::PluginKind::Attachable)
         .map(|p| jinn_domain::common::app_state::DiscoveredPlugin {
             name: p.name,
             description: p.description,
@@ -139,7 +139,7 @@ impl ActorSystemBuilder {
     ) -> (
         AppCore,
         Services,
-        jinn_plugin::SyncPlugins,
+        jinn_wasm_host::sync_plugins::SyncWasmPlugins,
         Option<kanal::AsyncReceiver<jinn_domain::feat::discord::BridgeEvent>>,
         Option<kanal::AsyncReceiver<jinn_domain::feat::discord::GatewayRequest>>,
         kanal::Sender<jinn_domain::feat::dashboard::status_actor::DiscordStatusUpdate>,
@@ -202,61 +202,147 @@ impl ActorSystemBuilder {
         };
         let bridge = jinn_domain::common::bridge::Bridge::new(bus.actor_ref().clone());
 
-        // ── Plugin system ─��──────────────────────────────────────────────────
+        // ── Plugin system (WASM) ────────────────────────────────────────
         // Constructed early — handles go into Services and TuiApp.
+        //
+        // The WASM host takes typed callbacks instead of Lua's string-verb
+        // dispatcher: `emit` translates a typed WIT `Command` into a domain
+        // `BridgeClosure` (see `jinn_wasm_host::command_dispatch`); the async
+        // request callbacks bridge WIT records to the existing one-shot /
+        // session-creation domain paths.
 
-        let plugin_command_dispatcher: jinn_plugin::CommandDispatcher =
-            crate::plugin_wiring::build_command_dispatcher(bridge.clone());
-        let handler_cell = domain_ctx_cell.clone();
-        let plugin_request_handler: jinn_plugin::RequestHandler = std::sync::Arc::new({
-            move |name: &str,
-                  data: &serde_json::Value,
-                  cancel: Option<tokio_util::sync::CancellationToken>| {
-                let cell = handler_cell.clone();
-                let name = name.to_string();
-                let data = data.clone();
-                std::boxed::Box::pin(async move {
-                    match cell.get() {
-                        Some(ctx) => {
-                            crate::plugin_wiring::handle_plugin_request(
-                                &name,
-                                &data,
-                                ctx,
-                                cancel.as_ref(),
-                            )
-                            .await
-                        }
-                        None => {
-                            tracing::warn!(
-                                name,
-                                "plugin request before domain_ctx ready; returning null"
-                            );
-                            serde_json::Value::Null
-                        }
+        let handler_cell_emit = domain_ctx_cell.clone();
+        let emit_cb: jinn_wasm_host::imports::EmitCallback = std::sync::Arc::new({
+            let bridge = bridge.clone();
+            move |plugin_name: &str,
+                  command: &jinn_wasm_host::bindings::command::Command,
+                  ctx: &jinn_wasm_host::store::InstanceCtx| {
+                match jinn_wasm_host::command_dispatch::dispatch(plugin_name, ctx, command.clone()) {
+                    Ok(Some(closure)) => {
+                        let _ = bridge.send(closure);
                     }
+                    Ok(None) => {
+                        tracing::debug!(plugin = plugin_name, "emit produced no closure");
+                    }
+                    Err(report) => {
+                        tracing::warn!(%report, plugin = plugin_name, "emit dispatch failed");
+                    }
+                }
+                let _ = &handler_cell_emit;
+            }
+        });
+
+        let handler_cell_llm = domain_ctx_cell.clone();
+        let llm_cb: jinn_wasm_host::imports::LlmOneshotCallback = std::sync::Arc::new({
+            move |_ctx: &jinn_wasm_host::store::InstanceCtx,
+                  req: &jinn_wasm_host::bindings::command::LlmOneshotReq| {
+                let cell = handler_cell_llm.clone();
+                let req = req.clone();
+                std::boxed::Box::pin(async move {
+                    let Some(domain_ctx) = cell.get() else {
+                        return Err(jinn_wasm_host::bindings::command::RequestError::Other("host unavailable".into()));
+                    };
+                    let session_id: jinn_domain::protocol::SessionId = req.session_id.clone().into();
+                    domain_ctx
+                        .send_llm_request_oneshot(
+                            &session_id,
+                            req.prompt.clone(),
+                            if req.system.is_empty() { None } else { Some(req.system.clone()) },
+                            req.persist,
+                            req.disable_tool_loop,
+                            u64::from(req.timeout_ms.unwrap_or(30_000)),
+                            None,
+                        )
+                        .await
+                        .map(|text| jinn_wasm_host::bindings::command::LlmResp { text })
+                        .map_err(|_| jinn_wasm_host::bindings::command::RequestError::Other("host unavailable".into()))
                 })
             }
         });
 
-        let plugin_build = jinn_plugin::PluginSystem::build(
+        let handler_cell_create = domain_ctx_cell.clone();
+        let create_cb: jinn_wasm_host::imports::CreateSessionCallback = std::sync::Arc::new({
+            move |_ctx: &jinn_wasm_host::store::InstanceCtx,
+                  req: &jinn_wasm_host::bindings::command::CreateSessionReq| {
+                let cell = handler_cell_create.clone();
+                let req = req.clone();
+                std::boxed::Box::pin(async move {
+                    let Some(domain_ctx) = cell.get() else {
+                        return Err(jinn_wasm_host::bindings::command::RequestError::Other("host unavailable".into()));
+                    };
+                    let parent_id: jinn_domain::protocol::SessionId =
+                        req.parent_session_id.clone().into();
+                    let session_id = domain_ctx.create_child_session(
+                        &parent_id,
+                        req.automated,
+                        req.persist,
+                        req.inherit_tools,
+                        &req.tools,
+                    );
+                    Ok(jinn_wasm_host::bindings::command::CreateSessionResp {
+                        session_id: session_id.to_string(),
+                    })
+                })
+            }
+        });
+
+        let cancel_cb: jinn_wasm_host::imports::CancelTaskCallback = std::sync::Arc::new(|_name: &str| {
+            // Named-task cancellation registry is part of the full runtime
+            // wiring (prompt_enrichment cancel-on-retap). The fire-path works
+            // without it; cancellation is a no-op until wired.
+        });
+
+        let host_imports = jinn_wasm_host::imports::HostImports {
+            emit: emit_cb,
+            llm_oneshot: llm_cb,
+            create_session: create_cb,
+            cancel_task: cancel_cb,
+        };
+
+        let wasm_system = match jinn_wasm_host::system::build(
             &paths.plugins_dir(),
             &paths.system_plugins_dir(),
             handle.clone(),
-            plugin_command_dispatcher,
-            plugin_request_handler,
-        );
+            host_imports,
+        ) {
+            Ok(sys) => sys,
+            Err(report) => {
+                tracing::error!(%report, "failed to build WASM plugin system; continuing with no plugins");
+                jinn_wasm_host::system::build(
+                    &paths.plugins_dir(),
+                    &paths.system_plugins_dir(),
+                    handle.clone(),
+                    jinn_wasm_host::imports::HostImports {
+                        emit: std::sync::Arc::new(|_, _, _| {}),
+                        llm_oneshot: std::sync::Arc::new(|_, _| {
+                            std::boxed::Box::pin(async {
+                                Err(jinn_wasm_host::bindings::command::RequestError::Other("host unavailable".into()))
+                            })
+                        }),
+                        create_session: std::sync::Arc::new(|_, _| {
+                            std::boxed::Box::pin(async {
+                                Err(jinn_wasm_host::bindings::command::RequestError::Other("host unavailable".into()))
+                            })
+                        }),
+                        cancel_task: std::sync::Arc::new(|_| {}),
+                    },
+                )
+                .unwrap_or_else(|_| {
+                    panic!("WASM plugin system failed to build even with empty host imports");
+                })
+            }
+        };
 
-        let sync_plugins = plugin_build.sync;
-        let async_plugins = plugin_build.async_handle;
-        let plugin_sync_handle = plugin_build.sync_handle;
-        let global_tool_metadata = plugin_build.global_tool_metadata;
+        let async_plugins = wasm_system.async_handle.clone();
+        let plugin_sync_handle = wasm_system.sync_handle.clone();
+        let sync_plugins = wasm_system.sync_plugins;
 
         // Store discovered plugin metadata in state for the plugin picker.
         // Only attachable plugins are exposed — global plugins are loaded at
         // startup and cannot be attached per-session.
         {
             let plugins =
-                jinn_plugin::discover_plugins(&paths.plugins_dir(), &paths.system_plugins_dir());
+                jinn_wasm_host::discover_plugins(&paths.plugins_dir(), &paths.system_plugins_dir());
             tracing::info!(count = plugins.len(), "discovered plugins");
             state.with_discovered_plugins(
                 &jinn_domain::common::tcaps::mint::mint_discovered_plugins_cap(),
@@ -551,119 +637,16 @@ jinn_domain::feat::preferences_actor::preferences_actor::PreferencesActor::super
         );
         _tools.wait_for_startup().await;
 
-        // Register global-scoped plugin tools with the tools actor.
-        // Global-scope plugin tools: registered globally (execution + visibility).
-        {
-            use jinn_domain::ToolDefinition;
-            use jinn_domain::feat::tools_actor::protocol::command::RegisterPluginTools;
-            use jinn_plugin::ToolScopeReexport;
-
-            let global_scope_tools: Vec<_> = global_tool_metadata
-                .clone()
-                .into_iter()
-                .filter(|meta| matches!(meta.scope, ToolScopeReexport::Global))
-                .collect();
-
-            let mut by_plugin: std::collections::HashMap<String, Vec<_>> =
-                std::collections::HashMap::new();
-            for meta in global_scope_tools {
-                by_plugin
-                    .entry(meta.plugin_name.clone())
-                    .or_default()
-                    .push(meta);
-            }
-            for (plugin_name, metas) in by_plugin {
-                let definitions: Vec<_> = metas
-                    .into_iter()
-                    .map(|meta| ToolDefinition {
-                        name: meta.name,
-                        description: meta.description,
-                        parameters: meta.parameters,
-                        prompt_snippet: None,
-                        prompt_guidelines: Vec::new(),
-                        server_tool_type: None,
-                    })
-                    .collect();
-                let msg = RegisterPluginTools {
-                    plugin_name,
-                    target: None,
-                    session_id: None,
-                    definitions,
-                    execution_only: false,
-                };
-                let closure = jinn_domain::common::bridge::Bridge::publish_closure(msg);
-                if let Err(e) = bridge.clone().send(closure) {
-                    tracing::warn!(error = %e, "failed to send global plugin tool registration");
-                }
-            }
-        }
-
-        // Attached-scope plugin tools: handlers are loaded globally at startup,
-        // and their definitions are cataloged for spawn-time resolution.
-        // Register execution-only here (no ToolsRegistered event, so nothing
-        // lands in global_tool_definitions), and mirror the same definitions
-        // into `attachable_tool_catalog` so `create_child_session` can resolve
-        // named tools for a spawned child. The origin session never sees these
-        // tools (visibility is granted only to the child by copying from the
-        // catalog into `session_tool_definitions[child]`).
-        // but their VISIBILITY must stay per-session (registered on attach
-        // via the dispatch actor). Register execution-only here (no
-        // ToolsRegistered event, so nothing lands in global_tool_definitions).
-        {
-            use jinn_domain::ToolDefinition;
-            use jinn_domain::feat::tools_actor::protocol::command::RegisterPluginTools;
-            use jinn_plugin::ToolScopeReexport;
-
-            let attached_scope_tools: Vec<_> = global_tool_metadata
-                .into_iter()
-                .filter(|meta| matches!(meta.scope, ToolScopeReexport::Attached))
-                .collect();
-
-            let mut by_plugin: std::collections::HashMap<String, Vec<_>> =
-                std::collections::HashMap::new();
-            for meta in attached_scope_tools {
-                by_plugin
-                    .entry(meta.plugin_name.clone())
-                    .or_default()
-                    .push(meta);
-            }
-            for (plugin_name, metas) in by_plugin {
-                let definitions: Vec<_> = metas
-                    .into_iter()
-                    .map(|meta| ToolDefinition {
-                        name: meta.name,
-                        description: meta.description,
-                        parameters: meta.parameters,
-                        prompt_snippet: None,
-                        prompt_guidelines: Vec::new(),
-                        server_tool_type: None,
-                    })
-                    .collect();
-
-                // Mirror definitions into the attachable catalog so spawned
-                // child sessions can resolve named tools via `create_child_session`.
-                {
-                    let mut s = state.write(&intent_handler_cap);
-                    for def in &definitions {
-                        s.context
-                            .attachable_tool_catalog
-                            .insert(def.name.clone(), def.clone());
-                    }
-                }
-
-                let msg = RegisterPluginTools {
-                    plugin_name,
-                    target: None,
-                    session_id: None,
-                    definitions,
-                    execution_only: true,
-                };
-                let closure = jinn_domain::common::bridge::Bridge::publish_closure(msg);
-                if let Err(e) = bridge.clone().send(closure) {
-                    tracing::warn!(error = %e, "failed to send attached plugin tool registration");
-                }
-            }
-        }
+        // Plugin-defined tool registration (global + attached scope).
+        //
+        // The WASM host extracts tool declarations from each component's
+        // `manifest()` export. That extraction (and the WasmJob variant for tool
+        // handler execution) is wired with the judge plugin port (Phase 5).
+        // Until then there are no plugin tools to register; these blocks are
+        // no-ops so the tools actor simply has no plugin tools.
+        //
+        // TODO(phase-5): replace with registration driven by
+        // `wasm_system.attachable_metas` + per-component manifest tool lists.
 
         // Web fetch actor.
         let web_fetch_config = user_preferences_storage.read().web_fetch.clone();
@@ -1596,7 +1579,7 @@ mod tests {
         reason = "test code"
     )]
     use super::*;
-    use jinn_plugin::{PluginKind, PluginMeta};
+    use jinn_wasm_host::{PluginKind, PluginMeta};
     use std::path::PathBuf;
 
     fn meta(name: &str, kind: PluginKind) -> PluginMeta {

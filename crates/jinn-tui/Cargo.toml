@@ -5,7 +5,7 @@ edition.workspace = true
 
 [dependencies]
 jinn-domain = { workspace = true }
-jinn-plugin = { workspace = true }
+jinn-wasm-host = { workspace = true }
 
 wherror = { workspace = true }
 error-stack = { workspace = true }

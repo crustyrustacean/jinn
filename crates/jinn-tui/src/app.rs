@@ -39,7 +39,7 @@ pub struct TuiApp {
     pub services: jinn_domain::Services,
     /// Plugin system for sync hook calls (render thread only, !Send).
     #[debug(skip)]
-    pub plugins: jinn_plugin::SyncPlugins,
+    pub plugins: jinn_wasm_host::SyncWasmPlugins,
     /// UI element registry.
     pub ui_registry: AppUiRegistry,
     /// Message channel for the event loop.

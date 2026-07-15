@@ -3,7 +3,7 @@
 //! Non-`Send` counterpart to [`super::PluginSyncCall`]. Where `PluginSyncCall`
 //! channels to the async VM (`Send + Sync`), this trait calls hooks directly on
 //! the render-thread Lua state via `SyncPlugins`. Implemented by
-//! `jinn_plugin::SyncPlugins`.
+//! `jinn_wasm_host::SyncWasmPlugins`.
 //!
 //! # Why a separate trait
 //!
@@ -11,7 +11,7 @@
 //! from the calling actor thread. Sync interception and badge rendering must run
 //! on the *render thread's* `sync_lua` state (the same Lua state that reads the
 //! toggle flag), with zero channel hops. That state holds a non-`Send` Lua VM
-//! (owned by `jinn-plugin`, which this crate never links directly), so this trait
+//! (owned by `jinn-wasm-host`, which this crate never links directly), so this trait
 //! is intentionally non-`Send`.
 
 use serde::de::DeserializeOwned;
@@ -25,7 +25,7 @@ pub use super::hook_context::{HookContext, ProvidesSessionId};
 /// from the render thread. Returns non-nil hook values as raw JSON; callers
 /// deserialize via [`call_hooks_typed`].
 ///
-/// Implemented by `jinn_plugin::SyncPlugins`.
+/// Implemented by `jinn_wasm_host::SyncWasmPlugins`.
 pub trait PluginSyncHooks {
     /// Call all hooks for the given name, returning non-nil results as JSON.
     fn call_hooks(&self, hook: &str, ctx: &HookContext) -> Vec<Value>;

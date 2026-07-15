@@ -32,7 +32,7 @@ jinn-cli = { workspace = true }
 jinn-tui = { workspace = true }
 jinn-domain = { workspace = true }
 jinn-discord = { workspace = true }
-jinn-plugin = { workspace = true }
+jinn-wasm-host = { workspace = true }
 
 jinn-web-fetch = { workspace = true, features = ["headless-chrome"] }
 jinn-web-search = { workspace = true }
@@ -74,6 +74,7 @@ jinn-common = { path = "crates/jinn-common" }
 jinn-core-types = { path = "crates/jinn-core-types" }
 jinn-session-schema = { path = "crates/jinn-session-schema" }
 jinn-plugin = { path = "crates/jinn-plugin" }
+jinn-wasm-host = { path = "crates/jinn-wasm-host" }
 jinn-provider-config = { path = "crates/jinn-provider-config" }
 ratatui-markdown = { path = "vendor/ratatui-markdown", features = ["markdown", "highlight", "highlight-lang-all", "highlight-pest", "mermaid"] }
 jinn-provider = { path = "crates/jinn-provider" }
