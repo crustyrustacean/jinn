@@ -115,6 +115,11 @@ throbber-widgets-tui = "0.11"
 # Lua
 mlua = { version = "0.10", features = ["lua54", "vendored", "serialize", "async"] }
 
+# WASM plugin runtime
+wasmtime = { version = "46", features = ["component-model", "async", "cranelift", "runtime"] }
+wit-bindgen = "0.41"
+postcard = { version = "1", features = ["use-std"] }
+
 # State
 parking_lot = "0.12"
 arc-swap = "1"
