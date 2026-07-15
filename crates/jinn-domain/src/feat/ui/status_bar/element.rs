@@ -269,24 +269,24 @@ fn build_model_string(
         None => model,
     };
 
-    // Append the modality indicator as `<t>` / `<ti>`, using the SAME resolved
-    // model the name surfaces (last-dispatched for alloys, else selection).
-    // Conservative: an unknown / not-in-cache model shows `<t>` (text is always
-    // available); "no model selected" shows nothing.
+    // Append the resolved reasoning effort as `[<mode>]`.
+    // Omitted entirely when no effort is resolved (no `[none]` noise).
+    let resolved_effort = resolve_effort(state.active_session().profile().reasoning_effort);
+    let model = match resolved_effort {
+        Some(effort) => format!("{model} [{}]", effort.as_str()),
+        None => model,
+    };
+
+    // Append the modality indicator as `<t>` / `<ti>` AFTER the effort bracket,
+    // using the SAME resolved model the name surfaces (last-dispatched for
+    // alloys, else selection). Conservative: an unknown / not-in-cache model
+    // shows `<t>` (text is always available); "no model selected" shows nothing.
     let modalities = resolved_for_lookup.map(|resolved| {
         resolve_modalities(state.provider.model_cache.as_ref(), &resolved)
             .unwrap_or_else(InputModalities::text)
     });
-    let model = match modalities {
+    match modalities {
         Some(m) => format!("{model} <{}>", m.display()),
-        None => model,
-    };
-
-    // Append the resolved reasoning effort as `[<mode>]`.
-    // Omitted entirely when no effort is resolved (no `[none]` noise).
-    let resolved_effort = resolve_effort(state.active_session().profile().reasoning_effort);
-    match resolved_effort {
-        Some(effort) => format!("{model} [{}]", effort.as_str()),
         None => model,
     }
 }

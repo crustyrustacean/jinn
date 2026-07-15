@@ -1005,10 +1005,10 @@ fn render_appends_resolved_reasoning_effort_after_model() {
     let buffer = terminal.backend().buffer().clone();
     let row = buffer_row(&buffer, 1, 50);
 
-    // Then the model line shows [high] immediately after the model.
+    // Then the effort bracket precedes the modality indicator.
     assert!(
-        row.contains("(ollama)/llama3 <t> [high]"),
-        "should contain [high] after model, got: {row}"
+        row.contains("(ollama)/llama3 [high] <t>"),
+        "should contain [high] then <t>, got: {row}"
     );
 }
 
@@ -1037,7 +1037,7 @@ fn render_session_override_beats_global_reasoning_effort() {
 
     // Then the override wins: shows [low], not [high].
     assert!(
-        row.contains("(ollama)/llama3 <t> [low]"),
+        row.contains("(ollama)/llama3 [low] <t>"),
         "should show session override [low], got: {row}"
     );
     assert!(
@@ -1192,6 +1192,28 @@ fn status_bar_shows_indicator_without_reasoning_effort_bracket() {
     assert!(
         !row.contains('['),
         "should show no effort bracket, got: {row}"
+    );
+}
+
+#[rstest::rstest]
+fn status_bar_shows_effort_bracket_then_modality_indicator() {
+    // Given an image-capable model with a resolved reasoning effort.
+    let mut state = AppState::default();
+    state
+        .active_session_mut()
+        .set_model(ModelSelection::Single("ollama/llama3".to_owned()));
+    state.active_session_mut().profile_mut().reasoning_effort = Some(crate::ReasoningEffort::High);
+    let mut m = crate::feat::provider_infra::InputModalities::text();
+    m.insert(crate::feat::provider_infra::Modality::Image);
+    state.provider.model_cache = Some(cache_with_modalities(m));
+
+    // When rendering.
+    let row = render_model_row(&state);
+
+    // Then the effort bracket precedes the modality indicator.
+    assert!(
+        row.contains("(ollama)/llama3 [high] <ti>"),
+        "should show [high] then <ti>, got: {row}"
     );
 }
 
