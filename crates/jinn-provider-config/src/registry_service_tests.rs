@@ -290,6 +290,7 @@ fn merge_cache_actually_adds_entries_to_registry() {
         vec![crate::ModelInfo {
             id: "mistral".to_owned(),
             context_length: None,
+            input_modalities: crate::InputModalities::text(),
         }],
     );
     let cache = crate::ModelCache {

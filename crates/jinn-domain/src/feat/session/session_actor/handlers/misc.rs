@@ -331,7 +331,7 @@ mod tests {
     };
     use crate::feat::ui::picker_states::PickerExt;
     use crate::protocol::{ChangeSource, ChatEntry, ChatEntryKind, SessionId};
-    use jinn_provider::ModelInfo;
+    use jinn_provider::{InputModalities, ModelInfo};
     use std::collections::HashMap;
 
     #[tokio::test]
@@ -345,6 +345,7 @@ mod tests {
             vec![ModelInfo {
                 id: "llama3".to_owned(),
                 context_length: Some(8192),
+                input_modalities: InputModalities::text(),
             }],
         );
         actor.on_models_refreshed(&ModelsRefreshed {
@@ -414,10 +415,12 @@ mod tests {
                 ModelInfo {
                     id: "llama3".to_owned(),
                     context_length: Some(8192),
+                    input_modalities: InputModalities::text(),
                 },
                 ModelInfo {
                     id: "phi3".to_owned(),
                     context_length: None,
+                    input_modalities: InputModalities::text(),
                 },
             ],
         );
