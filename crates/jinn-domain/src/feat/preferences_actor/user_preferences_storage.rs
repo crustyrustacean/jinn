@@ -10,13 +10,13 @@ use std::sync::Arc;
 use error_stack::{Report, ResultExt as _};
 use parking_lot::RwLock;
 
-use super::user_preferences::{UserPreferences, UserPreferencesError, preferences_path};
 #[cfg(test)]
 use super::user_preferences::{
     BrowserConfig, default_history_stall_timeout_secs, default_stall_retry_base_delay_secs,
     default_stall_retry_max_delay_secs, default_stall_retry_max_retries,
     default_tool_default_timeout_secs,
 };
+use super::user_preferences::{UserPreferences, UserPreferencesError, preferences_path};
 
 /// Trait for user preferences I/O.
 ///

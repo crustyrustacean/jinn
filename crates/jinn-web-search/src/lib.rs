@@ -14,7 +14,6 @@ pub mod html_parser;
 pub use browser_ddg_searcher::BrowserDdgSearcher;
 pub use ddg_searcher::DdgSearcher;
 
-
 use async_trait::async_trait;
 use wherror::Error;
 

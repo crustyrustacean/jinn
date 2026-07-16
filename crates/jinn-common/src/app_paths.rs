@@ -35,7 +35,6 @@ impl BrowserProfileMode {
     }
 }
 
-
 /// Application filesystem paths.
 ///
 /// Stores app-specific directories (not platform directories). For production,
@@ -566,10 +565,7 @@ mod tests {
         let headless = paths.browser_profile_dir_for_mode(BrowserProfileMode::Headless);
 
         // Then both land under data/jinn/browser-profile/<mode>.
-        assert_eq!(
-            headed,
-            root.path().join("data/jinn/browser-profile/headed")
-        );
+        assert_eq!(headed, root.path().join("data/jinn/browser-profile/headed"));
         assert_eq!(
             headless,
             root.path().join("data/jinn/browser-profile/headless")

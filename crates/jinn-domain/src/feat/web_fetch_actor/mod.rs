@@ -573,7 +573,6 @@ backend = "socks"
         let prefs = UserPreferences {
             web_fetch: WebFetchConfig {
                 backend: WebFetchBackend::HeadlessChrome,
-                ..WebFetchConfig::default()
             },
             ..UserPreferences::default()
         };

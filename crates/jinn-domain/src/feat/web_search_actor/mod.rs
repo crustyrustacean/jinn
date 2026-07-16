@@ -86,7 +86,6 @@ impl Default for WebSearchConfig {
 /// [`crate::feat::browser::BrowserBackend`].
 pub type WebSearchBackend = crate::feat::browser::BrowserBackend;
 
-
 /// The web search actor.
 ///
 /// Owns a [`WebSearcher`] backend and processes [`ExecuteWebSearch`] commands

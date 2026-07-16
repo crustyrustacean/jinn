@@ -262,7 +262,7 @@ mod tests {
             "/tmp/jinn-profiles",
         ]);
         assert_eq!(
-            cli.browser_profile.as_ref().map(std::path::PathBuf::as_path),
+            cli.browser_profile.as_deref(),
             Some(std::path::Path::new("/tmp/jinn-profiles"))
         );
     }
