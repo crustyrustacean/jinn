@@ -7,10 +7,13 @@
 //! about jinn's actor system. Actors in `jinn-domain` own an `Arc<dyn
 //! WebSearcher>` and call [`WebSearcher::search`].
 
+pub mod browser_ddg_searcher;
 pub mod ddg_searcher;
 pub mod html_parser;
 
+pub use browser_ddg_searcher::BrowserDdgSearcher;
 pub use ddg_searcher::DdgSearcher;
+
 
 use async_trait::async_trait;
 use wherror::Error;
