@@ -71,7 +71,12 @@ impl Message<AllActorsSpawned> for PluginLifecycleActor {
                 plugin_name: String::new(),
             },
         );
-        if let Err(e) = self.services.plugins.fire_async("on_app_started", &ctx).await {
+        if let Err(e) = self
+            .services
+            .plugins
+            .fire_async("on_app_started", &ctx)
+            .await
+        {
             tracing::warn!(err = %e, "on_app_started plugin hook failed");
         }
     }
@@ -90,7 +95,12 @@ impl Message<SessionCreated> for PluginLifecycleActor {
                 plugin_name: String::new(),
             },
         );
-        if let Err(e) = self.services.plugins.fire_async("on_session_created", &ctx).await {
+        if let Err(e) = self
+            .services
+            .plugins
+            .fire_async("on_session_created", &ctx)
+            .await
+        {
             tracing::warn!(err = %e, "on_session_created plugin hook failed");
         }
     }

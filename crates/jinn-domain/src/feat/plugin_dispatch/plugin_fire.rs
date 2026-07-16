@@ -32,8 +32,7 @@ pub trait PluginFire: Send + Sync {
     /// # Errors
     ///
     /// Returns an error if the plugin system is unavailable or a hook errors.
-    async fn fire_async(&self, hook: &str, ctx: &HookCtx)
-    -> Result<(), Report<PluginFireError>>;
+    async fn fire_async(&self, hook: &str, ctx: &HookCtx) -> Result<(), Report<PluginFireError>>;
 
     /// Fire an async hook with a typed context (global + session plugins).
     ///

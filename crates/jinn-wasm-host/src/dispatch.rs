@@ -22,11 +22,11 @@
 
 use serde_json::Value;
 
+use jinn_core_types::SessionId;
+use jinn_domain::feat::plugin_dispatch::HookCtx;
 use jinn_domain::feat::plugin_dispatch::plugin_ctx::{
     AttachHookCtx, SessionHookCtx, TaskListHookCtx, ToolHookCtx, TriggerHookCtx, TurnEndHookCtx,
 };
-use jinn_domain::feat::plugin_dispatch::HookCtx;
-use jinn_core_types::SessionId;
 
 use crate::bindings::jinn::plugin::types::{
     AttachCtx, BadgeCtx, BadgeDirective, BadgeSegment, InterceptOutcome, KeybindResult,
@@ -84,11 +84,7 @@ fn trigger_ctx_from(c: &TriggerHookCtx, plugin_name: &str, instance_id: &str) ->
     }
 }
 
-fn tool_ctx_from(
-    c: &ToolHookCtx,
-    plugin_name: &str,
-    instance_id: &str,
-) -> ToolCtx {
+fn tool_ctx_from(c: &ToolHookCtx, plugin_name: &str, instance_id: &str) -> ToolCtx {
     ToolCtx {
         session_id: c.session_id.to_string(),
         parent_session_id: c.parent_session_id.as_ref().map(|s| s.to_string()),
@@ -314,7 +310,10 @@ pub async fn dispatch_async_hook(
         // Plugin-defined async hook: routed through run-trigger(action, ctx).
         _ => {
             let HookCtx::Trigger(c) = ctx else {
-                tracing::warn!(hook, "plugin-defined hook fired with non-Trigger ctx; skipping");
+                tracing::warn!(
+                    hook,
+                    "plugin-defined hook fired with non-Trigger ctx; skipping"
+                );
                 return Ok(());
             };
             let action = hook.to_owned();
@@ -433,4 +432,3 @@ pub fn dispatch_sync_hook(
         _ => Ok(None),
     }
 }
-

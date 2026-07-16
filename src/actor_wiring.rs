@@ -179,10 +179,12 @@ async fn post_plugin_load_summary(
     let message = plugin_load_summary(&globals, &attachables);
 
     let session_id = state.read().session.active_session_id().clone();
-    bus.publish(jinn_domain::feat::chat_input::protocol::command::PushChatEntry {
-        session_id,
-        entry: jinn_domain::protocol::ChatEntry::system(message),
-    })
+    bus.publish(
+        jinn_domain::feat::chat_input::protocol::command::PushChatEntry {
+            session_id,
+            entry: jinn_domain::protocol::ChatEntry::system(message),
+        },
+    )
     .await;
 }
 
@@ -1759,7 +1761,10 @@ mod tests {
         let msg = plugin_load_summary(&globals, &attachables);
 
         // Then the empty kind reads "none".
-        assert_eq!(msg, "Loaded 1 plugins (1 global: welcome; 0 attachable: none)");
+        assert_eq!(
+            msg,
+            "Loaded 1 plugins (1 global: welcome; 0 attachable: none)"
+        );
     }
 
     #[test]
