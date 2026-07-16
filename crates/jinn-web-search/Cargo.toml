@@ -11,11 +11,12 @@ serde = { workspace = true, features = ["derive"] }
 reqwest = { workspace = true, features = ["gzip"] }
 url = "2"
 scraper = "0.27"
+jinn-web-fetch = { workspace = true, features = ["headless-chrome"] }
+tokio = { workspace = true }
 
 [dev-dependencies]
 rstest = { workspace = true }
 mockito = { workspace = true }
-tokio = { workspace = true, features = ["full"] }
 
 [lints]
 workspace = true
