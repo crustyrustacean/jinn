@@ -229,7 +229,13 @@ install-defaults:
     cp -r res/personas/*.md ~/.config/jinn/personas/
     mkdir -p ~/.config/jinn/prompts
     cp -r res/prompts/*.md ~/.config/jinn/prompts/
-    mkdir -p ~/.config/jinn/plugins
+    # Wipe the installed plugin kind dirs before copying, mirroring
+    # build-plugins' wipe strategy. A plain `cp -r` merges, so a kind
+    # change (e.g. attachable -> global) would leave a stale duplicate in
+    # the old kind dir — and discovery dedups by (name, kind), so both would
+    # load as separate plugins. Wiping guarantees the install matches res/.
+    rm -rf ~/.config/jinn/plugins/global ~/.config/jinn/plugins/attachable
+    mkdir -p ~/.config/jinn/plugins/global ~/.config/jinn/plugins/attachable
     cp -r res/plugins/* ~/.config/jinn/plugins/
     mkdir -p ~/.agents/skills
     cp -r res/skills/* ~/.agents/skills/
