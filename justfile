@@ -18,16 +18,24 @@ check:
 # workspaces (each has its own [workspace]) targeting wasm32-unknown-unknown.
 # `wasm-tools component new` wraps the core module into a Component Model
 # component validated against wit/jinn.wit.
+#
+# The plugin's `kind` (global vs attachable) is read from its source
+# `plugins/<name>/plugin.toml` — the single source of truth. The same toml
+# is copied into the install dir so discovery classifies it identically.
 build-plugins:
     #!/usr/bin/env bash
     set -euo pipefail
 
     mapfile -t PLUGINS < <(find plugins -maxdepth 1 -mindepth 1 -type d -printf '%f\n' | sort)
 
-    # kind by convention: welcome is global; the rest are attachable.
+    # Read the `kind` field from a plugin.toml. Falls back to "attachable"
+    # when the file or field is absent.
     kind_of() {
-        case "$1" in
-            welcome) echo global ;;
+        local toml="plugins/$1/plugin.toml"
+        local kind
+        kind=$(awk -F'=' '/^[[:space:]]*kind[[:space:]]*=/{gsub(/[[:space:]"]/,"",$2); print $2; exit}' "$toml" 2>/dev/null || true)
+        case "$kind" in
+            global) echo global ;;
             *) echo attachable ;;
         esac
     }
@@ -42,6 +50,13 @@ build-plugins:
         esac
     }
 
+    # Clean stale plugin install dirs from a previous layout so a kind
+    # change (e.g. attachable -> global) doesn't leave a duplicate behind.
+    # Each plugin is rebuilt into exactly one kind dir below; this wipe
+    # guarantees no orphan lingers in the other.
+    rm -rf res/plugins/global res/plugins/attachable
+    mkdir -p res/plugins/global res/plugins/attachable
+
     for name in "${PLUGINS[@]}"; do
         echo "==> Building $name"
         ( cd "plugins/$name" && cargo build --release --target wasm32-unknown-unknown )
@@ -52,7 +67,8 @@ build-plugins:
         dest="res/plugins/$kind/$dest_name"
         mkdir -p "$dest"
         wasm-tools component new "$core" -o "$dest/$dest_name.wasm"
-        echo "    -> $dest/$dest_name.wasm"
+        cp "plugins/$name/plugin.toml" "$dest/plugin.toml"
+        echo "    -> $dest/$dest_name.wasm (kind: $kind)"
     done
 
 clippy:
