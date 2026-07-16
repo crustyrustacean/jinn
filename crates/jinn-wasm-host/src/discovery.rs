@@ -190,7 +190,11 @@ fn find_wasm(dir: &Path) -> Option<PathBuf> {
 /// Returns `(name, description, kind)`. `kind` comes from the sidecar's `kind`
 /// field when present; otherwise falls back to `dir_kind` (the directory the
 /// plugin was discovered under).
-fn parse_sidecar(sidecar: &Path, dir_name: &str, dir_kind: PluginKind) -> (String, Option<String>, PluginKind) {
+fn parse_sidecar(
+    sidecar: &Path,
+    dir_name: &str,
+    dir_kind: PluginKind,
+) -> (String, Option<String>, PluginKind) {
     let toml_str = match std::fs::read_to_string(sidecar) {
         Ok(s) => s,
         Err(_) => return (dir_name.to_owned(), None, dir_kind),

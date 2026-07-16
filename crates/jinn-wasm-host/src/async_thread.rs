@@ -423,7 +423,11 @@ async fn load_session(
 /// resolve to their WIT-typed exports, and plugin-defined hooks fall through
 /// to `run-trigger`. Errors per-instance are logged and swallowed — a single
 /// failing plugin must not break the fire-and-forget fan-out.
-async fn fire_on_store(store: &mut LoadedStore, hook: &str, ctx: &jinn_domain::feat::plugin_dispatch::HookCtx) {
+async fn fire_on_store(
+    store: &mut LoadedStore,
+    hook: &str,
+    ctx: &jinn_domain::feat::plugin_dispatch::HookCtx,
+) {
     for inst in store.storeset.iter_mut() {
         tracing::debug!(hook, plugin = %inst.ctx().plugin_name, "firing async hook");
         if let Err(e) = crate::dispatch::dispatch_async_hook(inst, hook, ctx).await {
@@ -455,7 +459,11 @@ async fn fire_on_store_filtered(
 /// only collects results for the well-known sync-style hooks routed through
 /// the async path. Async hooks contribute nothing; the domain does not rely
 /// on return values from async hooks.
-async fn collect_from_store(store: &mut LoadedStore, hook: &str, ctx: &jinn_domain::feat::plugin_dispatch::HookCtx) -> Vec<Value> {
+async fn collect_from_store(
+    store: &mut LoadedStore,
+    hook: &str,
+    ctx: &jinn_domain::feat::plugin_dispatch::HookCtx,
+) -> Vec<Value> {
     fire_on_store(store, hook, ctx).await;
     Vec::new()
 }
@@ -486,7 +494,9 @@ fn collect_from_store_json(store: &mut LoadedStore, hook: &str, ctx_json: &Value
         match crate::dispatch::dispatch_sync_hook(inst, hook, ctx_json) {
             Ok(Some(v)) => out.push(v),
             Ok(None) => {}
-            Err(e) => tracing::warn!(error = %e, hook, plugin = %inst.ctx().plugin_name, "sync hook dispatch failed"),
+            Err(e) => {
+                tracing::warn!(error = %e, hook, plugin = %inst.ctx().plugin_name, "sync hook dispatch failed")
+            }
         }
     }
     out

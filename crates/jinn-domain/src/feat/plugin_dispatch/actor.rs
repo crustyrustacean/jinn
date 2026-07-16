@@ -35,14 +35,14 @@ use crate::common::state::State;
 use crate::PhaseKind;
 use crate::SessionId;
 use crate::feat::plugin_dispatch::DomainNodeContext;
+use crate::feat::plugin_dispatch::plugin_ctx::{
+    AttachHookCtx, HookCtx, SessionHookCtx, TaskListHookCtx, TriggerHookCtx,
+};
 use crate::feat::plugin_dispatch::protocol::command::{
     AttachPlugin, DetachPlugin, EnablePlugin, SetManagedSession, TogglePlugin,
 };
 use crate::feat::plugin_dispatch::protocol::event::{
     PluginAttached, PluginDetached, PluginToggled,
-};
-use crate::feat::plugin_dispatch::plugin_ctx::{
-    AttachHookCtx, HookCtx, SessionHookCtx, TaskListHookCtx, TriggerHookCtx,
 };
 use crate::feat::session::chat_entry::ChatEntryKind;
 use crate::feat::session::protocol::session_phase_changed::SessionPhaseChanged;
@@ -500,12 +500,14 @@ impl PluginDispatchActor {
         };
 
         let ctx = match new_phase {
-            PhaseKind::Idle => HookCtx::TurnEnd(crate::feat::plugin_dispatch::plugin_ctx::TurnEndHookCtx {
-                session_id: session_id.clone(),
-                parent_session_id: None,
-                instance_id: String::new(),
-                plugin_name: String::new(),
-            }),
+            PhaseKind::Idle => {
+                HookCtx::TurnEnd(crate::feat::plugin_dispatch::plugin_ctx::TurnEndHookCtx {
+                    session_id: session_id.clone(),
+                    parent_session_id: None,
+                    instance_id: String::new(),
+                    plugin_name: String::new(),
+                })
+            }
             PhaseKind::Sending => HookCtx::Session(SessionHookCtx {
                 session_id: session_id.clone(),
                 parent_session_id: None,
@@ -531,7 +533,6 @@ impl PluginDispatchActor {
             enabled_instances,
         );
     }
-
 
     /// Build the `on_task_list_updated` ctx payload and the list of attached+
     /// enabled plugin instance ids for `session_id`.
