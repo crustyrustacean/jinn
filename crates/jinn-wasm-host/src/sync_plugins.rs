@@ -2,24 +2,22 @@
 //!
 //! [`SyncWasmPlugins`] is `!Send` because `wasmtime::Store` is `!Send`. It lives
 //! on the render thread and calls sync hook exports (`on-chat-input-badges-render`,
-//! `on-keybind-trigger`, `on-submit-intercept`) directly, with zero channel hops.
-//! This mirrors the old `jinn_plugin::SyncPlugins` which owned a `!Send` Lua state.
+//! `on-keybind-trigger`, `on-submit-intercept`, `on-session-preview`) directly,
+//! with zero channel hops. This mirrors the old `jinn_plugin::SyncPlugins` which
+//! owned a `!Send` Lua state.
 //!
 //! The trait keeps the old `serde_json::Value` shape (`PluginSyncHooks`);
-//! internally each call builds a `Val::Record` from the ctx JSON, calls the
-//! export by name (runtime export lookup — absent exports skipped), and converts
-//! the result back to JSON.
+//! internally each call is routed through [`dispatch::dispatch_sync_hook`], which
+//! builds the typed WIT ctx record from the JSON, calls the typed `call_*` method,
+//! and converts the typed result back to JSON.
 
 use std::cell::RefCell;
 
 use serde_json::Value;
-use wasmtime::component::Val;
 
-use jinn_core_types::SessionId;
-use jinn_domain::feat::plugin_dispatch::{HookContext, PluginHookSite};
+use jinn_domain::feat::plugin_dispatch::HookContext;
 
-use crate::store::{InstanceCtx, StoreKind, StoreSet};
-use crate::val_convert::{json_to_val, val_to_json};
+use crate::store::{StoreKind, StoreSet};
 
 /// Error raised by a sync render-thread hook failure. Colocated with
 /// [`SyncWasmPlugins`] — the sole producer.
@@ -108,54 +106,19 @@ impl jinn_domain::feat::plugin_dispatch::PluginSyncHooks for SyncWasmPlugins {
             .iter_mut()
             .filter_map(|inst| {
                 let plugin_name = inst.ctx().plugin_name.clone();
-                inst.with(|store, instance| call_one_hook(store, instance, hook, ctx, &plugin_name))
+                match crate::dispatch::dispatch_sync_hook(inst, hook, ctx.value()) {
+                    Ok(Some(v)) => Some(v),
+                    Ok(None) => None,
+                    Err(e) => {
+                        tracing::error!(
+                            hook, plugin = %plugin_name, error = %e,
+                            "sync plugin hook failed"
+                        );
+                        None
+                    }
+                }
             })
             .collect()
     }
 }
 
-/// Call a single hook export by name, converting the result back to JSON.
-///
-/// Absent exports return `None` (optional-hook semantics). Hook traps are
-/// logged and dropped — a buggy plugin degrades rather than panicking the
-/// render thread.
-fn call_one_hook(
-    store: &mut wasmtime::Store<crate::store::StoreState>,
-    instance: &wasmtime::component::Instance,
-    hook: &str,
-    ctx: &HookContext,
-    plugin_name: &str,
-) -> Option<Value> {
-    let Some(func) = instance.get_func(&mut *store, hook) else {
-        return None;
-    };
-    let param = json_to_val(ctx.value());
-    let params = vec![param];
-    let mut results = vec![Val::Bool(false)];
-    match func.call(&mut *store, &params, &mut results) {
-        Ok(()) => {
-            let v = results.first().map(val_to_json).unwrap_or(Value::Null);
-            (!v.is_null()).then_some(v)
-        }
-        Err(e) => {
-            let report = error_stack::Report::new(SyncHookError)
-                .attach(e.to_string())
-                .attach(PluginHookSite {
-                    plugin: plugin_name.to_owned(),
-                    hook: hook.to_owned(),
-                });
-            tracing::error!(hook, error = ?report, "sync plugin hook failed");
-            None
-        }
-    }
-}
-
-/// Build a per-instance ctx from the plugin's identity.
-#[allow(dead_code)]
-fn instance_ctx(plugin_name: &str, session_id: Option<SessionId>) -> InstanceCtx {
-    InstanceCtx {
-        plugin_name: plugin_name.to_owned(),
-        instance_id: jinn_core_types::PluginInstanceId::new(),
-        session_id,
-    }
-}

@@ -33,7 +33,7 @@ use serde_json::Value;
 use crate::bindings::jinn::plugin::types::{
     AttachCtx, BadgeCtx, BadgeDirective, BadgeSegment, InterceptOutcome, KeybindResult,
     KeybindTriggerCtx, SessionCtx, SessionPreviewCtx, SubmitInterceptCtx, TaskListCtx,
-    ToolCtx, TriggerCtx, TurnEndCtx,
+    ThemeStyle, ToolCtx, TriggerCtx, TurnEndCtx,
 };
 
 // ─── JSON field readers ────────────────────────────────────────────────
@@ -137,7 +137,7 @@ pub fn build_badge_ctx(ctx: &Value) -> BadgeCtx {
         instance_id: instance_id_or_default(ctx),
         plugin_name: get_str(ctx, "plugin_name"),
         mode: get_str(ctx, "mode"),
-        theme_styles: Vec::new(),
+        theme_styles: theme_styles_list(ctx),
     }
 }
 
@@ -170,6 +170,22 @@ pub fn build_session_preview_ctx(ctx: &Value) -> SessionPreviewCtx {
         instance_id: instance_id_or_default(ctx),
         plugin_name: get_str(ctx, "plugin_name"),
     }
+}
+
+/// Extract the theme-style list from the ctx's `theme_styles` object.
+///
+/// The domain passes it as a JSON object `{name: name, ...}` (each field name
+/// is also its value). WIT wants `list<theme-style>` where each entry is
+/// `{name: string}`. Read the object keys; ignore malformed entries.
+fn theme_styles_list(ctx: &Value) -> Vec<ThemeStyle> {
+    ctx.get("theme_styles")
+        .and_then(Value::as_object)
+        .map(|m| {
+            m.keys()
+                .map(|name| ThemeStyle { name: name.clone() })
+                .collect()
+        })
+        .unwrap_or_default()
 }
 
 /// The domain does not always know the per-instance id at fire time (global
@@ -357,4 +373,58 @@ pub async fn dispatch_run_tool(
         .run_concurrent(async |a| guest.call_run_tool(a, name, args, ctx).await)
         .await??;
     Ok(())
+}
+
+// ─── Sync render-hook dispatch ──────────────────────────────────────────
+// The render thread calls hooks synchronously through `PluginSyncHooks`.
+// Each well-known sync hook resolves to its typed `call_*` method and returns
+// an `Option<Value>`: `None` means the plugin produced no directive (absent or
+// opted-out); `Some(v)` is the typed result converted to the JSON shape the
+// `PluginSyncHooks` trait expects.
+
+/// Dispatch a sync render hook by name, returning the typed result as JSON.
+//
+// Returns `Ok(None)` when the plugin produced no directive. Trap/errors are
+// returned as `Err` so the caller can log and degrade.
+pub fn dispatch_sync_hook(
+    inst: &mut crate::store::StoredInstance,
+    hook: &str,
+    ctx_json: &Value,
+) -> wasmtime::Result<Option<Value>> {
+    let guest = inst.typed_guest()?;
+    match hook {
+        "on_chat_input_badges_render" => {
+            let ctx = build_badge_ctx(ctx_json);
+            guest
+                .call_on_chat_input_badges_render(inst.store_mut(), &ctx)?
+                .map(badge_directive_to_json)
+                .map(Ok)
+                .transpose()
+        }
+        "on_keybind_trigger" => {
+            let ctx = build_keybind_trigger_ctx(ctx_json);
+            guest
+                .call_on_keybind_trigger(inst.store_mut(), &ctx)?
+                .map(keybind_result_to_json)
+                .map(Ok)
+                .transpose()
+        }
+        "on_submit_intercept" => {
+            let ctx = build_submit_intercept_ctx(ctx_json);
+            guest
+                .call_on_submit_intercept(inst.store_mut(), &ctx)?
+                .map(intercept_outcome_to_json)
+                .map(Ok)
+                .transpose()
+        }
+        "on_session_preview" => {
+            let ctx = build_session_preview_ctx(ctx_json);
+            guest
+                .call_on_session_preview(inst.store_mut(), &ctx)?
+                .map(|s| serde_json::json!({ "session_id": s }))
+                .map(Ok)
+                .transpose()
+        }
+        _ => Ok(None),
+    }
 }
