@@ -26,9 +26,10 @@ use crate::{
 /// browser mode) and the DDG base URL. Each search renders the DDG GET results page
 /// through the browser, checks for an anti-bot challenge, and parses the results.
 ///
-/// The shared browser's `render_page` is synchronous blocking work — callers must
-/// invoke `search` from a `spawn_blocking` context (never on a tokio worker thread).
-/// The `WebSearchActor` already wraps its searcher calls in `spawn_blocking`.
+/// The shared browser's `render_page` is synchronous blocking work — this
+/// searcher wraps it in `spawn_blocking` internally, so the blocking tab
+/// operations never run on a tokio worker thread. Callers can `.await`
+/// `search` directly, as the `WebSearchActor` does.
 pub struct BrowserDdgSearcher {
     browser: Arc<SharedBrowser>,
     /// The DDG HTML endpoint base, without trailing slash or query.
@@ -105,9 +106,8 @@ impl BrowserDdgSearcher {
     /// Renders `url` through the shared browser, mapping [`FetchError`] to
     /// [`SearchError`].
     ///
-    /// `SharedBrowser::render_page` is blocking and must run off the async runtime.
-    /// The actor layer wraps this in `spawn_blocking`; the `await` here only parks
-    /// the task until the blocking call completes.
+    /// `SharedBrowser::render_page` is blocking; this wraps it in
+    /// `spawn_blocking` so it never runs on a tokio worker thread.
     async fn render(&self, url: &str) -> Result<RenderedPage, SearchError> {
         let browser = Arc::clone(&self.browser);
         let url = url.to_owned();

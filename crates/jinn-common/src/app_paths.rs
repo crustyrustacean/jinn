@@ -16,7 +16,7 @@ use crate::app_info::APP_NAME;
 /// `headless` and `headed` each get their own profile subdir so a single
 /// warmed headed profile can be shared by both `web-fetch` and `web-search`
 /// without colliding on Chromium's singleton lock.
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
 pub enum BrowserProfileMode {
     /// Headless profile (no visible window).
     Headless,
@@ -553,5 +553,26 @@ mod tests {
         let log_path = paths.log_path();
         let filename = log_path.file_name().and_then(|s| s.to_str());
         assert_eq!(filename, Some("jinn.log"));
+    }
+
+    #[rstest::rstest]
+    fn browser_profile_dir_for_mode_lands_under_data_base() {
+        // Given an AppPaths rooted at a temp dir.
+        let root = tempfile::TempDir::new().expect("temp dir");
+        let paths = AppPaths::new_in(root.path());
+
+        // When resolving the headed profile dir.
+        let headed = paths.browser_profile_dir_for_mode(BrowserProfileMode::Headed);
+        let headless = paths.browser_profile_dir_for_mode(BrowserProfileMode::Headless);
+
+        // Then both land under data/jinn/browser-profile/<mode>.
+        assert_eq!(
+            headed,
+            root.path().join("data/jinn/browser-profile/headed")
+        );
+        assert_eq!(
+            headless,
+            root.path().join("data/jinn/browser-profile/headless")
+        );
     }
 }
