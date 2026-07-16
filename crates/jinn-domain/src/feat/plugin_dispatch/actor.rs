@@ -41,6 +41,9 @@ use crate::feat::plugin_dispatch::protocol::command::{
 use crate::feat::plugin_dispatch::protocol::event::{
     PluginAttached, PluginDetached, PluginToggled,
 };
+use crate::feat::plugin_dispatch::plugin_ctx::{
+    AttachHookCtx, HookCtx, SessionHookCtx, TaskListHookCtx, TriggerHookCtx,
+};
 use crate::feat::session::chat_entry::ChatEntryKind;
 use crate::feat::session::protocol::session_phase_changed::SessionPhaseChanged;
 use crate::feat::session::protocol::task_list_updated::TaskListUpdated;
@@ -193,7 +196,11 @@ impl PluginDispatchActor {
         self.spawn_fire_for_session(
             &session_id,
             "on_attach",
-            &serde_json::json!({ "session_id": session_id.to_string() }),
+            HookCtx::Attach(AttachHookCtx {
+                session_id: session_id.clone(),
+                instance_id: new_instance_id.to_string(),
+                plugin_name: plugin_name.clone(),
+            }),
             vec![new_instance_id.clone()],
         );
 
@@ -242,7 +249,11 @@ impl PluginDispatchActor {
             self.spawn_fire_for_session(
                 &session_id,
                 "on_detach",
-                &serde_json::json!({ "session_id": session_id.to_string() }),
+                HookCtx::Attach(AttachHookCtx {
+                    session_id: session_id.clone(),
+                    instance_id: instance_id.to_string(),
+                    plugin_name: plugin_name.clone(),
+                }),
                 vec![instance_id.clone()],
             );
         }
@@ -445,18 +456,24 @@ impl PluginDispatchActor {
 
     fn fire_on_app_started(&self) {
         let session_id = SessionId::from(self.startup_session_id.clone());
-        let ctx_json = serde_json::json!({
-            "session_id": self.startup_session_id,
+        let ctx = HookCtx::Session(SessionHookCtx {
+            session_id: session_id.clone(),
+            parent_session_id: None,
+            instance_id: String::new(),
+            plugin_name: String::new(),
         });
         tracing::debug!(session_id = %session_id, "firing on_app_started");
-        self.spawn_fire_for_session(&session_id, "on_app_started", &ctx_json, vec![]);
+        self.spawn_fire_for_session(&session_id, "on_app_started", ctx, vec![]);
     }
 
     fn fire_on_session_created(&self, session_id: &SessionId) {
-        let ctx_json = serde_json::json!({
-            "session_id": session_id.to_string(),
+        let ctx = HookCtx::Session(SessionHookCtx {
+            session_id: session_id.clone(),
+            parent_session_id: None,
+            instance_id: String::new(),
+            plugin_name: String::new(),
         });
-        self.spawn_fire_for_session(session_id, "on_session_created", &ctx_json, vec![]);
+        self.spawn_fire_for_session(session_id, "on_session_created", ctx, vec![]);
     }
 
     fn fire_on_phase_changed(&self, session_id: &SessionId, new_phase: PhaseKind) {
@@ -472,9 +489,6 @@ impl PluginDispatchActor {
             PhaseKind::Sending => "on_user_submit",
             PhaseKind::Streaming => return, // streaming is mid-turn; no hook
         };
-        let ctx_json = serde_json::json!({
-            "session_id": session_id.to_string(),
-        });
 
         let enabled_instances = {
             let state = self.state.read();
@@ -485,22 +499,39 @@ impl PluginDispatchActor {
                 .unwrap_or_default()
         };
 
-        self.spawn_fire_for_session(session_id, hook, &ctx_json, enabled_instances);
+        let ctx = match new_phase {
+            PhaseKind::Idle => HookCtx::TurnEnd(crate::feat::plugin_dispatch::plugin_ctx::TurnEndHookCtx {
+                session_id: session_id.clone(),
+                parent_session_id: None,
+                instance_id: String::new(),
+                plugin_name: String::new(),
+            }),
+            PhaseKind::Sending => HookCtx::Session(SessionHookCtx {
+                session_id: session_id.clone(),
+                parent_session_id: None,
+                instance_id: String::new(),
+                plugin_name: String::new(),
+            }),
+            PhaseKind::Streaming => return,
+        };
+
+        self.spawn_fire_for_session(session_id, hook, ctx, enabled_instances);
     }
 
     fn handle_task_list_updated(&self, msg: &TaskListUpdated) {
         tracing::debug!(session_id = %msg.session_id, "handle_task_list_updated received");
-        let Some((ctx_json, enabled_instances)) = self.build_task_list_ctx(&msg.session_id) else {
+        let Some((ctx, enabled_instances)) = self.build_task_list_ctx(&msg.session_id) else {
             tracing::warn!(session_id = %msg.session_id, "task_list_ctx build returned None");
             return;
         };
         self.spawn_fire_for_session(
             &msg.session_id,
             "on_task_list_updated",
-            &ctx_json,
+            ctx,
             enabled_instances,
         );
     }
+
 
     /// Build the `on_task_list_updated` ctx payload and the list of attached+
     /// enabled plugin instance ids for `session_id`.
@@ -509,7 +540,7 @@ impl PluginDispatchActor {
     fn build_task_list_ctx(
         &self,
         session_id: &SessionId,
-    ) -> Option<(Value, Vec<PluginInstanceId>)> {
+    ) -> Option<(HookCtx, Vec<PluginInstanceId>)> {
         let state = self.state.read();
         let session = state.session.get(session_id)?;
         let list = session.task_list();
@@ -517,16 +548,18 @@ impl PluginDispatchActor {
         // `active_phase()` is `None` for an empty list too, so guard against that:
         // an empty list is "nothing was done", not "completed".
         let is_complete = !list.is_empty() && list.active_phase().is_none();
-        let ctx_json = serde_json::json!({
-            "session_id": session_id.to_string(),
-            "task_list": list.render_text_with_blockers(),
-            "completed": completed,
-            "total": total,
-            "is_complete": is_complete,
+        let ctx = HookCtx::TaskList(TaskListHookCtx {
+            session_id: session_id.clone(),
+            instance_id: String::new(),
+            plugin_name: String::new(),
+            task_list: list.render_text_with_blockers(),
+            completed: completed.try_into().unwrap_or(u32::MAX),
+            total: total.try_into().unwrap_or(u32::MAX),
+            is_complete,
         });
         tracing::debug!(%session_id, is_complete, completed, total, empty = list.is_empty(), active_phase = list.active_phase().is_some(), "built task_list ctx");
         let enabled_instances = session.enabled_plugin_instance_ids();
-        Some((ctx_json, enabled_instances))
+        Some((ctx, enabled_instances))
     }
 
     /// Fire a hook for a session on a background task, so the actor loop is not
@@ -535,7 +568,7 @@ impl PluginDispatchActor {
         &self,
         session_id: &SessionId,
         hook: &str,
-        ctx_json: &Value,
+        ctx: HookCtx,
         enabled_instances: Vec<PluginInstanceId>,
     ) {
         let plugins = self.services.plugins.clone();
@@ -543,36 +576,31 @@ impl PluginDispatchActor {
         let hook = hook.to_owned();
         // Inject the parent session edge (if any) so hooks like the judge's
         // on_turn_end can reach the child's origin via ctx.parent_session_id.
-        let mut ctx_json = ctx_json.clone();
+        let mut ctx = ctx;
         {
             let state = self.state.read();
-            if let Some(parent) = state
+            let parent = state
                 .session
                 .get(session_id)
-                .and_then(|s| s.parent_session().clone())
-                && let Some(obj) = ctx_json.as_object_mut()
-            {
-                obj.insert(
-                    "parent_session_id".to_owned(),
-                    serde_json::Value::String(parent.to_string()),
-                );
+                .and_then(|s| s.parent_session().clone());
+            if let Some(parent) = parent {
+                ctx.set_parent_session_id(parent);
             }
         }
         tokio::spawn(async move {
             let result = match registry_id {
                 Some(rid) => {
                     plugins
-                        .fire_async_for_session_json(rid, &hook, &ctx_json, Some(enabled_instances))
+                        .fire_async_for_session(rid, &hook, &ctx, Some(enabled_instances))
                         .await
                 }
-                None => plugins.fire_async_json(&hook, &ctx_json).await,
+                None => plugins.fire_async(&hook, &ctx).await,
             };
             if let Err(e) = result {
                 tracing::error!(hook = %hook, err = ?e, "plugin hook failed");
             }
         });
     }
-
     /// Extract the text of the last assistant entry for a session.
     fn extract_last_assistant_text(&self, session_id: &SessionId) -> String {
         let guard = self.state.read();
@@ -621,17 +649,15 @@ impl PluginDispatchActor {
             }
         };
 
-        let mut ctx_json = serde_json::json!({
-            "session_id": payload.session_id.to_string(),
-            "hook": payload.hook,
+        let ctx = HookCtx::Trigger(TriggerHookCtx {
+            session_id: payload.session_id.clone(),
+            parent_session_id: None,
+            instance_id: String::new(),
+            plugin_name: String::new(),
+            text: payload.text.unwrap_or_default(),
         });
-        if let Some(text) = payload.text
-            && let Some(map) = ctx_json.as_object_mut()
-        {
-            map.insert("text".to_owned(), serde_json::Value::String(text));
-        }
 
-        self.spawn_fire_for_session(&payload.session_id, &payload.hook, &ctx_json, vec![]);
+        self.spawn_fire_for_session(&payload.session_id, &payload.hook, ctx, vec![]);
     }
 }
 
@@ -803,10 +829,12 @@ mod tests {
         // When building the on_task_list_updated ctx.
         let (ctx, _enabled) = actor.build_task_list_ctx(&session_id).unwrap();
 
-        // Then the ctx reports the list as complete.
-        assert_eq!(ctx["completed"], 1);
-        assert_eq!(ctx["total"], 1);
-        assert_eq!(ctx["is_complete"], true);
+        let crate::feat::plugin_dispatch::HookCtx::TaskList(c) = ctx else {
+            panic!("expected TaskList ctx");
+        };
+        assert_eq!(c.completed, 1);
+        assert_eq!(c.total, 1);
+        assert!(c.is_complete);
     }
 
     #[tokio::test]
@@ -818,10 +846,12 @@ mod tests {
         // When building the on_task_list_updated ctx.
         let (ctx, _enabled) = actor.build_task_list_ctx(&session_id).unwrap();
 
-        // Then the ctx reports the list as not complete.
-        assert_eq!(ctx["completed"], 0);
-        assert_eq!(ctx["total"], 1);
-        assert_eq!(ctx["is_complete"], false);
+        let crate::feat::plugin_dispatch::HookCtx::TaskList(c) = ctx else {
+            panic!("expected TaskList ctx");
+        };
+        assert_eq!(c.completed, 0);
+        assert_eq!(c.total, 1);
+        assert!(!c.is_complete);
     }
 
     #[tokio::test]
@@ -832,10 +862,12 @@ mod tests {
         // When building the on_task_list_updated ctx.
         let (ctx, _enabled) = actor.build_task_list_ctx(&session_id).unwrap();
 
-        // Then the ctx reports the list as not complete (empty ≠ complete).
-        assert_eq!(ctx["completed"], 0);
-        assert_eq!(ctx["total"], 0);
-        assert_eq!(ctx["is_complete"], false);
+        let crate::feat::plugin_dispatch::HookCtx::TaskList(c) = ctx else {
+            panic!("expected TaskList ctx");
+        };
+        assert_eq!(c.completed, 0);
+        assert_eq!(c.total, 0);
+        assert!(!c.is_complete);
     }
     fn test_tool_metadata(name: &str, scope: ToolScope) -> PluginToolMetadata {
         PluginToolMetadata {

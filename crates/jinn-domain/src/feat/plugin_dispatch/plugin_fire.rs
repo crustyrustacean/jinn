@@ -2,13 +2,15 @@
 //!
 //! The domain layer can't depend on `jinn-wasm-host` (circular dependency), so
 //! this trait provides the minimal interface for async hook firing.
-//! `jinn-wasm-host` provides the concrete implementation for `AsyncPluginHandle`.
+//! `jinn-wasm-host` provides the concrete implementation for `AsyncWasmHandle`.
 
 use error_stack::Report;
 use serde_json::Value;
 use wherror::Error;
 
-use jinn_core_types::SessionRegistryId;
+use jinn_core_types::{PluginInstanceId, SessionRegistryId};
+
+use super::plugin_ctx::HookCtx;
 
 /// Error raised by [`PluginFire`] implementations.
 #[derive(Debug, Error)]
@@ -17,10 +19,12 @@ pub struct PluginFireError;
 
 /// Fire async hooks on the plugin system.
 ///
-/// Implemented by `jinn_wasm_host::AsyncWasmHandle`.
+/// Implemented by `jinn_wasm_host::AsyncWasmHandle`. The hook *name* is a
+/// `&str` because plugin-defined triggers (`on_enrich`, …) are resolved by
+/// string at runtime; the *payload* is a typed [`HookCtx`].
 #[async_trait::async_trait]
 pub trait PluginFire: Send + Sync {
-    /// Fire an async hook with raw JSON context (global plugins only).
+    /// Fire an async hook with a typed context (global plugins only).
     ///
     /// All global hooks for the given name run on the background thread.
     /// Return values are discarded.
@@ -28,57 +32,38 @@ pub trait PluginFire: Send + Sync {
     /// # Errors
     ///
     /// Returns an error if the plugin system is unavailable or a hook errors.
-    async fn fire_async_json(&self, hook: &str, ctx: &Value)
+    async fn fire_async(&self, hook: &str, ctx: &HookCtx)
     -> Result<(), Report<PluginFireError>>;
 
-    /// Fire an async hook with raw JSON context (global + session plugins).
+    /// Fire an async hook with a typed context (global + session plugins).
     ///
-    /// Like [`fire_async_json`](Self::fire_async_json), but additionally fires
-    /// hooks from the named session's attached plugins after the global set.
+    /// Additionally fires hooks from the named session's attached plugins
+    /// (filtered by `enabled_instances` if provided) after the global set.
     ///
     /// # Errors
     ///
     /// Returns an error if the plugin system is unavailable or a hook errors.
-    async fn fire_async_for_session_json(
+    async fn fire_async_for_session(
         &self,
         session: SessionRegistryId,
         hook: &str,
-        ctx: &Value,
-        enabled_instances: Option<Vec<jinn_core_types::PluginInstanceId>>,
+        ctx: &HookCtx,
+        enabled_instances: Option<Vec<PluginInstanceId>>,
     ) -> Result<(), Report<PluginFireError>>;
-
-    /// Fire an async hook, collecting return values from all global plugins.
-    ///
-    /// # Errors
-    ///
-    /// Returns an error if the plugin system is unavailable or a hook errors.
-    async fn fire_async_collect_json(
-        &self,
-        hook: &str,
-        ctx: &Value,
-    ) -> Result<Vec<Value>, Report<PluginFireError>>;
-
-    /// Fire an async hook, collecting values from globals + a session's plugins.
-    ///
-    /// # Errors
-    ///
-    /// Returns an error if the plugin system is unavailable or a hook errors.
-    async fn fire_async_collect_for_session_json(
-        &self,
-        session: SessionRegistryId,
-        hook: &str,
-        ctx: &Value,
-    ) -> Result<Vec<Value>, Report<PluginFireError>>;
 
     /// Execute a plugin-defined tool handler on the background thread.
     ///
-    /// Routes to the correct Lua state (global or per-session),
-    /// finds the tool handler, calls it with arguments, returns the result string.
+    /// Routes to the correct instance (global or per-session), finds the tool
+    /// handler, calls it with `arguments`, and returns the result string.
+    ///
+    /// `arguments` stays `&Value` because tool-call arguments are the LLM's
+    /// JSON-schema-shaped output — genuinely schema-shaped JSON, not a
+    /// host-known shape.
     ///
     /// # Errors
     ///
-    /// Returns an error if the plugin system is unavailable, the tool handler is not found,
-    /// or the handler itself errors.
+    /// Returns an error if the plugin system is unavailable, the tool handler
+    /// is not found, or the handler itself errors.
     async fn execute_plugin_tool(
         &self,
         target: Option<SessionRegistryId>,
@@ -117,12 +102,12 @@ impl PluginFireService {
     /// # Errors
     ///
     /// Returns an error if the plugin system is unavailable or a hook errors.
-    pub async fn fire_async_json(
+    pub async fn fire_async(
         &self,
         hook: &str,
-        ctx: &Value,
+        ctx: &HookCtx,
     ) -> Result<(), Report<PluginFireError>> {
-        self.backend.fire_async_json(hook, ctx).await
+        self.backend.fire_async(hook, ctx).await
     }
 
     /// Fire an async hook (global + session plugins, return values discarded).
@@ -130,44 +115,15 @@ impl PluginFireService {
     /// # Errors
     ///
     /// Returns an error if the plugin system is unavailable or a hook errors.
-    pub async fn fire_async_for_session_json(
+    pub async fn fire_async_for_session(
         &self,
         session: SessionRegistryId,
         hook: &str,
-        ctx: &Value,
-        enabled_instances: Option<Vec<jinn_core_types::PluginInstanceId>>,
+        ctx: &HookCtx,
+        enabled_instances: Option<Vec<PluginInstanceId>>,
     ) -> Result<(), Report<PluginFireError>> {
         self.backend
-            .fire_async_for_session_json(session, hook, ctx, enabled_instances)
-            .await
-    }
-
-    /// Fire an async hook, collecting return values from all global plugins.
-    ///
-    /// # Errors
-    ///
-    /// Returns an error if the plugin system is unavailable or a hook errors.
-    pub async fn fire_async_collect_json(
-        &self,
-        hook: &str,
-        ctx: &Value,
-    ) -> Result<Vec<Value>, Report<PluginFireError>> {
-        self.backend.fire_async_collect_json(hook, ctx).await
-    }
-
-    /// Fire an async hook, collecting values from globals + a session's plugins.
-    ///
-    /// # Errors
-    ///
-    /// Returns an error if the plugin system is unavailable or a hook errors.
-    pub async fn fire_async_collect_for_session_json(
-        &self,
-        session: SessionRegistryId,
-        hook: &str,
-        ctx: &Value,
-    ) -> Result<Vec<Value>, Report<PluginFireError>> {
-        self.backend
-            .fire_async_collect_for_session_json(session, hook, ctx)
+            .fire_async_for_session(session, hook, ctx, enabled_instances)
             .await
     }
 
@@ -175,8 +131,8 @@ impl PluginFireService {
     ///
     /// # Errors
     ///
-    /// Returns an error if the plugin system is unavailable, the tool handler is not found,
-    /// or the handler itself errors.
+    /// Returns an error if the plugin system is unavailable, the tool handler
+    /// is not found, or the handler itself errors.
     pub async fn execute_plugin_tool(
         &self,
         target: Option<SessionRegistryId>,

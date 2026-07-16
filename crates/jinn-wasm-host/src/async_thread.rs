@@ -40,16 +40,10 @@ pub enum WasmJob {
     /// Fire all hooks for a name, discarding return values.
     Fire {
         hook: String,
-        ctx_json: Value,
+        ctx: jinn_domain::feat::plugin_dispatch::HookCtx,
         respond_to: oneshot::Sender<Result<(), Report<AsyncPluginError>>>,
         target_session: Option<SessionRegistryId>,
         enabled_instances: Option<Vec<PluginInstanceId>>,
-    },
-    Collect {
-        hook: String,
-        ctx_json: Value,
-        respond_to: oneshot::Sender<Result<Vec<Value>, Report<AsyncPluginError>>>,
-        target_session: Option<SessionRegistryId>,
     },
     /// Fire all hooks for a name, collecting return values (sync caller blocks).
     SyncCollect {
@@ -72,7 +66,8 @@ pub enum WasmJob {
         plugin_name: String,
         tool_name: String,
         arguments: String,
-        ctx_json: Value,
+        session_id: SessionId,
+        parent_session_id: Option<SessionId>,
         respond_to: oneshot::Sender<Result<String, Report<AsyncPluginError>>>,
     },
     /// Drop a per-session store set slot.
@@ -209,23 +204,14 @@ async fn execute_job(state: &mut ThreadState, job: WasmJob) {
     match job {
         WasmJob::Fire {
             hook,
-            ctx_json,
+            ctx,
             respond_to,
             target_session,
             enabled_instances,
         } => {
-            let result = fire_hooks(state, target_session, &hook, &ctx_json, enabled_instances)
+            let result = fire_hooks(state, target_session, &hook, &ctx, enabled_instances)
                 .await
                 .map(|_| ());
-            let _ = respond_to.send(result);
-        }
-        WasmJob::Collect {
-            hook,
-            ctx_json,
-            respond_to,
-            target_session,
-        } => {
-            let result = fire_hooks_collect(state, target_session, &hook, &ctx_json).await;
             let _ = respond_to.send(result);
         }
         WasmJob::LoadSession {
@@ -242,7 +228,8 @@ async fn execute_job(state: &mut ThreadState, job: WasmJob) {
             plugin_name,
             tool_name,
             arguments,
-            ctx_json,
+            session_id,
+            parent_session_id,
             respond_to,
         } => {
             let result = execute_tool(
@@ -251,7 +238,8 @@ async fn execute_job(state: &mut ThreadState, job: WasmJob) {
                 &plugin_name,
                 &tool_name,
                 &arguments,
-                &ctx_json,
+                &session_id,
+                parent_session_id.as_ref(),
             )
             .await;
             let _ = respond_to.send(result);
@@ -266,8 +254,7 @@ async fn execute_job(state: &mut ThreadState, job: WasmJob) {
             respond_to,
             target_session,
         } => {
-            // Same as Collect — the caller blocks via blocking_recv().
-            let result = fire_hooks_collect(state, target_session, &hook, &ctx_json).await;
+            let result = fire_hooks_collect_json(state, target_session, &hook, &ctx_json).await;
             let _ = respond_to.send(result);
         }
     }
@@ -282,7 +269,7 @@ async fn fire_hooks(
     state: &mut ThreadState,
     target_session: Option<SessionRegistryId>,
     hook: &str,
-    ctx: &Value,
+    ctx: &jinn_domain::feat::plugin_dispatch::HookCtx,
     enabled_instances: Option<Vec<PluginInstanceId>>,
 ) -> Result<(), Report<AsyncPluginError>> {
     tracing::debug!(
@@ -314,7 +301,7 @@ async fn fire_hooks_collect(
     state: &mut ThreadState,
     target_session: Option<SessionRegistryId>,
     hook: &str,
-    ctx: &Value,
+    ctx: &jinn_domain::feat::plugin_dispatch::HookCtx,
 ) -> Result<Vec<Value>, Report<AsyncPluginError>> {
     let mut results = collect_from_store(&mut state.global_store, hook, ctx).await;
     if let Some(rid) = target_session
@@ -335,7 +322,8 @@ async fn execute_tool(
     plugin_name: &str,
     tool_name: &str,
     arguments: &str,
-    ctx_json: &Value,
+    session_id: &SessionId,
+    parent_session_id: Option<&SessionId>,
 ) -> Result<String, Report<AsyncPluginError>> {
     let store = match target_session {
         Some(rid) => state
@@ -353,7 +341,7 @@ async fn execute_tool(
                 .attach("plugin instance not found")
                 .attach(plugin_name.to_owned())
         })?;
-    crate::dispatch::dispatch_run_tool(inst, tool_name, arguments, ctx_json)
+    crate::dispatch::dispatch_run_tool(inst, tool_name, arguments, session_id, parent_session_id)
         .await
         .map_err(|e| {
             tracing::warn!(error = %e, %plugin_name, %tool_name, "tool execution failed");
@@ -435,7 +423,7 @@ async fn load_session(
 /// resolve to their WIT-typed exports, and plugin-defined hooks fall through
 /// to `run-trigger`. Errors per-instance are logged and swallowed — a single
 /// failing plugin must not break the fire-and-forget fan-out.
-async fn fire_on_store(store: &mut LoadedStore, hook: &str, ctx: &Value) {
+async fn fire_on_store(store: &mut LoadedStore, hook: &str, ctx: &jinn_domain::feat::plugin_dispatch::HookCtx) {
     for inst in store.storeset.iter_mut() {
         tracing::debug!(hook, plugin = %inst.ctx().plugin_name, "firing async hook");
         if let Err(e) = crate::dispatch::dispatch_async_hook(inst, hook, ctx).await {
@@ -448,7 +436,7 @@ async fn fire_on_store(store: &mut LoadedStore, hook: &str, ctx: &Value) {
 async fn fire_on_store_filtered(
     store: &mut LoadedStore,
     hook: &str,
-    ctx: &Value,
+    ctx: &jinn_domain::feat::plugin_dispatch::HookCtx,
     enabled: &[PluginInstanceId],
 ) {
     for inst in store.storeset.iter_mut() {
@@ -467,10 +455,39 @@ async fn fire_on_store_filtered(
 /// only collects results for the well-known sync-style hooks routed through
 /// the async path. Async hooks contribute nothing; the domain does not rely
 /// on return values from async hooks.
-async fn collect_from_store(store: &mut LoadedStore, hook: &str, ctx: &Value) -> Vec<Value> {
-    // Fire every instance and accumulate nothing — async hooks return ().
-    // This exists to keep the `WasmJob::Collect` shape symmetric with the
-    // old Lua `fire_collect` path; it never accumulates from async hooks.
+async fn collect_from_store(store: &mut LoadedStore, hook: &str, ctx: &jinn_domain::feat::plugin_dispatch::HookCtx) -> Vec<Value> {
     fire_on_store(store, hook, ctx).await;
     Vec::new()
+}
+/// Fire a hook on all matching plugins, collecting return values (sync/JSON).
+///
+/// Used only by the `SyncCollect` job — the sync `PluginSyncCall` path which
+/// still speaks JSON at the trait seam. Calls `dispatch_sync_hook` so it can
+/// collect typed results from the sync render hooks.
+async fn fire_hooks_collect_json(
+    state: &mut ThreadState,
+    target_session: Option<SessionRegistryId>,
+    hook: &str,
+    ctx_json: &Value,
+) -> Result<Vec<Value>, Report<AsyncPluginError>> {
+    let mut results = collect_from_store_json(&mut state.global_store, hook, ctx_json);
+    if let Some(rid) = target_session
+        && let Some(session_store) = state.session_stores.get_mut(&rid)
+    {
+        results.extend(collect_from_store_json(session_store, hook, ctx_json));
+    }
+    Ok(results)
+}
+
+/// Collect sync hook return values from a store (JSON ctx in, JSON out).
+fn collect_from_store_json(store: &mut LoadedStore, hook: &str, ctx_json: &Value) -> Vec<Value> {
+    let mut out = Vec::new();
+    for inst in store.storeset.iter_mut() {
+        match crate::dispatch::dispatch_sync_hook(inst, hook, ctx_json) {
+            Ok(Some(v)) => out.push(v),
+            Ok(None) => {}
+            Err(e) => tracing::warn!(error = %e, hook, plugin = %inst.ctx().plugin_name, "sync hook dispatch failed"),
+        }
+    }
+    out
 }

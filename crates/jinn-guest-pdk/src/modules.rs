@@ -472,27 +472,66 @@ macro_rules! __jinn_pdk_plugin_body {
         ///
         /// `get_manifest` has no default — every plugin must declare itself.
         pub trait Plugin: Sized {
+            /// Declare this plugin's identity: name, description, kind, keybinds,
+            /// and tools. The only method with no default — every plugin must
+            /// declare itself. The host reads this at discovery time to build the
+            /// plugin registry and picker entries.
             fn get_manifest() -> crate::manifest::Manifest;
 
+            /// Fired once after the host finishes initial actor wiring, on the
+            /// startup session. Global plugins use this to post a greeting or
+            /// initialize host-owned state bags. Attachable plugins also receive
+            /// it (on their global instance).
             async fn on_app_started(_ctx: crate::jinn::plugin::types::SessionCtx) {}
+
+            /// Fired when a new chat session is created, on that session's id.
+            /// Both global and attachable plugins receive it. Useful for
+            /// per-session setup that doesn't depend on the plugin being
+            /// explicitly attached.
             async fn on_session_created(_ctx: crate::jinn::plugin::types::SessionCtx) {}
+
+            /// Fired when an attachable plugin instance is bound to a session
+            /// (via the plugin picker). Only attachable plugins receive it.
+            /// Use it to allocate per-session state, spawn managed sessions,
+            /// or read host-owned bags scoped to the new instance.
             async fn on_attach(_ctx: crate::jinn::plugin::types::AttachCtx) {}
+
+            /// Fired when an attachable plugin instance is unbound from a session
+            /// (via the picker, or when the session is destroyed). Clean up
+            /// per-session state and managed sessions here.
             async fn on_detach(_ctx: crate::jinn::plugin::types::AttachCtx) {}
+
+            /// Fired when a session's turn ends (phase transitions to Idle).
+            /// `ctx.parent_session_id` is `Some` for child/spawned sessions,
+            /// `None` for top-level. Plugins that should act only on the user's
+            /// session should early-return when it is set. This is the primary
+            /// hook for end-of-turn side effects (e.g. the judge spawns its
+            /// evaluation session here).
             async fn on_turn_end(_ctx: crate::jinn::plugin::types::TurnEndCtx) {}
+
+            /// Fired when the user submits a message, before the LLM turn
+            /// begins. The session is in the Sending phase. Use it to observe
+            /// or record the outgoing message.
             async fn on_user_submit(_ctx: crate::jinn::plugin::types::SessionCtx) {}
+
+            /// Fired whenever the task list changes (phase, task added,
+            /// completed, or removed). `ctx.is_complete` is true only when every
+            /// task is done and the list is non-empty. This is where the
+            /// gap-analysis plugin detects completion and enqueues its analysis.
             async fn on_task_list_updated(_ctx: crate::jinn::plugin::types::TaskListCtx) {}
 
-            /// Plugin-defined async trigger. `action` is the keybind's `action` string
-            /// (e.g. `"on_enrich"`); the host passes it through verbatim and never
-            /// hard-codes it. Override this and `match` on `action` to handle your
-            /// keybind-triggered async hooks.
+            /// Plugin-defined async trigger. `action` is the keybind's `action`
+            /// string (e.g. `"on_enrich"`); the host passes it through verbatim
+            /// and never hard-codes it. Override this and `match` on `action` to
+            /// handle your keybind-triggered async hooks.
             async fn run_trigger(_action: String, _ctx: crate::jinn::plugin::types::TriggerCtx) {}
 
-            /// Plugin-defined tool handler. `name` is the tool name (from the manifest);
-            /// `args` is the raw JSON the LLM supplied. Override and `match` on `name`.
+            /// Plugin-defined tool handler. `name` is the tool name (from the
+            /// manifest); `args` is the raw JSON the LLM supplied. Override and
+            /// `match` on `name`.
             ///
-            /// Returns the tool result content (text fed back to the LLM). Empty string
-            /// is a valid no-content response.
+            /// Returns the tool result content (text fed back to the LLM).
+            /// Empty string is a valid no-content response.
             async fn run_tool(
                 _name: String,
                 _args: String,
@@ -501,24 +540,43 @@ macro_rules! __jinn_pdk_plugin_body {
                 String::new()
             }
 
+            /// Sync render hook: decorate the chat-input box with a badge.
+            /// Fired on every render frame for the active session's input line.
+            /// Return `Some(BadgeDirective)` to draw a badge, or `None` to draw
+            /// nothing. Runs on the render thread — never block, never await.
             fn on_chat_input_badges_render(
                 _ctx: crate::jinn::plugin::types::BadgeCtx,
             ) -> Option<crate::jinn::plugin::types::BadgeDirective> {
                 None
             }
 
+            /// Sync render hook: veto or permit a keybind's action before it
+            /// runs. `ctx.action` names the hook being triggered; `ctx.keybound_plugin`
+            /// names the plugin that declared the keybind. Return `Some(KeybindResult::Skip)`
+            /// to cancel the keybind (e.g. when work is already in-flight, like
+            /// prompt-enrichment's re-trigger-to-cancel), or `None`/`Some(Run)`
+            /// to let it proceed. Runs on the render thread.
             fn on_keybind_trigger(
                 _ctx: crate::jinn::plugin::types::KeybindTriggerCtx,
             ) -> Option<crate::jinn::plugin::types::KeybindResult> {
                 None
             }
 
+            /// Sync render hook: provide a preview label for a session (shown in
+            /// the session switcher / list). Return `Some(String)` with the
+            /// short label, or `None` to fall back to the default. Runs on the
+            /// render thread.
             fn on_session_preview(
                 _ctx: crate::jinn::plugin::types::SessionPreviewCtx,
             ) -> Option<String> {
                 None
             }
 
+            /// Sync hook: intercept a user message submit before it reaches the
+            /// LLM. Return `Some(InterceptOutcome::Block)` to drop the message,
+            /// `Some(InterceptOutcome::Replace(commands))` to substitute a
+            /// different set of commands, or `None`/`Some(Pass)` to let it
+            /// through unchanged. Runs synchronously in the intent handler.
             fn on_submit_intercept(
                 _ctx: crate::jinn::plugin::types::SubmitInterceptCtx,
             ) -> Option<crate::jinn::plugin::types::InterceptOutcome> {
