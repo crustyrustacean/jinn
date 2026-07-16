@@ -98,6 +98,7 @@ impl SyncWasmPlugins {
         &mut self,
         plugins: &[crate::loader::CompiledPlugin],
         linker: &wasmtime::component::Linker<crate::store::StoreState>,
+        runtime: &tokio::runtime::Handle,
     ) -> Result<(), error_stack::Report<crate::loader::PluginLoadError>> {
         let mut keybinds = Vec::new();
         for plugin in plugins {
@@ -109,7 +110,11 @@ impl SyncWasmPlugins {
                 instance_id: crate::loader::synthetic_global_id(&plugin.meta.name),
                 session_id: None,
             };
-            match self.store.get_mut().load(&plugin.component, ctx, linker) {
+            match self
+                .store
+                .get_mut()
+                .load(&plugin.component, ctx, linker, runtime)
+            {
                 Err(e) => {
                     tracing::warn!(?e, name = %plugin.meta.name, "failed to load global plugin into sync store");
                 }

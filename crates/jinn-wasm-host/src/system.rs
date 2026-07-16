@@ -119,7 +119,7 @@ pub fn build(
             .filter(|p| p.meta.kind == PluginKind::Global)
             .cloned()
             .collect();
-        if let Err(e) = sp.load_globals(&global_plugins, &linker) {
+        if let Err(e) = sp.load_globals(&global_plugins, &linker, &runtime_handle) {
             tracing::warn!(%e, "failed to load global plugins into sync store");
         }
         sp
