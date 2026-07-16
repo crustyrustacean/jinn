@@ -39,6 +39,7 @@ use tokio::process::Command;
 
 use crate::gap_analysis::GapAnalysisWorld;
 use crate::judge::JudgeWorld;
+use crate::welcome::WelcomeWorld;
 
 /// Env var carrying the `"<feature_path>:<scenario_name>"` selector that
 /// switches a child process into single-scenario mode. An env var (rather
@@ -70,11 +71,12 @@ pub async fn run() {
 enum WorldKind {
     Judge,
     GapAnalysis,
+    Welcome,
 }
 
 impl WorldKind {
     /// All registered suites, in enumeration order.
-    const ALL: &'static [Self] = &[Self::Judge, Self::GapAnalysis];
+    const ALL: &'static [Self] = &[Self::Judge, Self::GapAnalysis, Self::Welcome];
 
     /// The subdirectory under `tests/features` holding this suite's `.feature`
     /// files.
@@ -82,6 +84,7 @@ impl WorldKind {
         match self {
             Self::Judge => "judge",
             Self::GapAnalysis => "gap-analysis",
+            Self::Welcome => "welcome",
         }
     }
 
@@ -137,6 +140,15 @@ impl WorldKind {
             }
             Self::GapAnalysis => {
                 GapAnalysisWorld::cucumber::<&str>()
+                    .with_parser(SingleFeatureParser {
+                        feature: Arc::new(feature),
+                    })
+                    .fail_on_skipped()
+                    .run_and_exit("ignored-by-single-feature-parser")
+                    .await;
+            }
+            Self::Welcome => {
+                WelcomeWorld::cucumber::<&str>()
                     .with_parser(SingleFeatureParser {
                         feature: Arc::new(feature),
                     })

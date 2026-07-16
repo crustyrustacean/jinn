@@ -98,24 +98,40 @@ pub async fn build_tuiapp_in_temp(
     launch_for_test(core, services, sync_plugins)
 }
 
-/// Copies a repo-bundled attachable plugin (`res/plugins/attachable/<name>/`)
-/// into the temp config tree so `attach(name)` resolves a real `init.lua`
-/// during the actor-system load.
+/// Copies a repo-bundled plugin into the temp config tree, routing it to the
+/// `global/` or `attachable/` subdir based on the `kind` declared in its
+/// sidecar `plugin.toml` (falling back to `attachable` if absent). This
+/// mirrors the runtime discovery rules, so a plugin copied here is found by
+/// `discover_plugins` exactly as it would be in production.
 ///
-/// Must be called **before** [`build_tuiapp_in_temp`] so the loader (which
-/// runs at actor-system startup) discovers the plugin.
+/// Source is resolved from the bundled `res/plugins/<kind>/<name>/` layout
+/// produced by `just build-plugins`. Must be called **before**
+/// [`build_tuiapp_in_temp`] so the loader (which runs at actor-system
+/// startup) discovers the plugin.
 pub fn copy_plugin_to_temp(temp_root: &Path, plugin_name: &str) {
     let manifest_dir = option_env!("CARGO_MANIFEST_DIR").unwrap_or(".").to_string();
     let repo_root = std::path::Path::new(&manifest_dir)
         .ancestors()
         .nth(2)
         .unwrap_or_else(|| panic!("could not resolve workspace root from {manifest_dir:?}"));
-    let src = repo_root.join("res/plugins/attachable").join(plugin_name);
+    // Resolve the bundled source dir: try global/, then attachable/. The
+    // build places each plugin in exactly one kind dir per its plugin.toml.
+    let global_src = repo_root.join("res/plugins/global").join(plugin_name);
+    let attachable_src = repo_root.join("res/plugins/attachable").join(plugin_name);
+    let (kind_dir, src) = if global_src.is_dir() {
+        ("global", global_src)
+    } else if attachable_src.is_dir() {
+        ("attachable", attachable_src)
+    } else {
+        panic!(
+            "plugin {plugin_name:?} not found under res/plugins/global or res/plugins/attachable"
+        );
+    };
     let dst_dir = temp_root
-        .join("config/jinn/plugins/attachable")
+        .join(format!("config/jinn/plugins/{kind_dir}"))
         .join(plugin_name);
     std::fs::create_dir_all(&dst_dir).unwrap_or_else(|e| panic!("mkdir {dst_dir:?}: {e}"));
-    // Copy the whole plugin dir (init.lua + any siblings).
+    // Copy the whole plugin dir (.wasm + sidecar + any siblings).
     let read = std::fs::read_dir(&src).unwrap_or_else(|e| panic!("read plugin dir {src:?}: {e}"));
     for entry in read {
         let entry = entry.expect("dir entry");
