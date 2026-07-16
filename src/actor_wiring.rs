@@ -132,6 +132,60 @@ fn attachable_discovered_plugins(
         .collect()
 }
 
+/// Join plugin names, falling back to "none" when the list is empty.
+fn names_or_none(names: &[&str]) -> String {
+    if names.is_empty() {
+        "none".to_owned()
+    } else {
+        names.join(", ")
+    }
+}
+
+/// Build the startup summary message from the global/attachable name lists.
+fn plugin_load_summary(globals: &[&str], attachables: &[&str]) -> String {
+    format!(
+        "Loaded {} plugins ({} global: {}; {} attachable: {})",
+        globals.len() + attachables.len(),
+        globals.len(),
+        names_or_none(globals),
+        attachables.len(),
+        names_or_none(attachables),
+    )
+}
+
+/// Post a system entry to the startup session summarizing the loaded
+/// plugins, e.g. `Loaded 4 plugins (2 global: welcome, prompt_enrichment;
+/// 2 attachable: gap-analysis, judge)`. Empty when no plugins loaded.
+async fn post_plugin_load_summary(
+    bus: &jinn_domain::common::services::bus_service::BusService,
+    state: &jinn_domain::common::state::State,
+    plugins: &[jinn_wasm_host::PluginMeta],
+) {
+    if plugins.is_empty() {
+        return;
+    }
+
+    let globals: Vec<&str> = plugins
+        .iter()
+        .filter(|p| matches!(p.kind, jinn_wasm_host::PluginKind::Global))
+        .map(|p| p.name.as_str())
+        .collect();
+    let attachables: Vec<&str> = plugins
+        .iter()
+        .filter(|p| matches!(p.kind, jinn_wasm_host::PluginKind::Attachable))
+        .map(|p| p.name.as_str())
+        .collect();
+
+    let message = plugin_load_summary(&globals, &attachables);
+
+    let session_id = state.read().session.active_session_id().clone();
+    bus.publish(jinn_domain::feat::chat_input::protocol::command::PushChatEntry {
+        session_id,
+        entry: jinn_domain::protocol::ChatEntry::system(message),
+    })
+    .await;
+}
+
 impl ActorSystemBuilder {
     #[must_use]
     pub fn new(args: ActorSystemBuilderArgs) -> Self {
@@ -361,21 +415,22 @@ impl ActorSystemBuilder {
         let plugin_sync_handle = wasm_system.sync_handle.clone();
         let sync_plugins = wasm_system.sync_plugins;
 
-        // Store discovered plugin metadata in state for the plugin picker.
-        // Only attachable plugins are exposed — global plugins are loaded at
-        // startup and cannot be attached per-session.
-        {
-            let plugins =
-                jinn_wasm_host::discover_plugins(&paths.plugins_dir(), &paths.system_plugins_dir());
-            tracing::info!(count = plugins.len(), "discovered plugins");
-            state.with_discovered_plugins(
-                &jinn_domain::common::tcaps::mint::mint_discovered_plugins_cap(),
-                |view| {
-                    view.discovered_plugins
-                        .set(attachable_discovered_plugins(plugins));
-                },
-            );
-        }
+        // Discover all plugins once: global plugins load at startup,
+        // attachable plugins attach per-session. The full list is also used
+        // below to post a startup confirmation entry once the session actor
+        // is ready to receive it.
+        let discovered_plugins =
+            jinn_wasm_host::discover_plugins(&paths.plugins_dir(), &paths.system_plugins_dir());
+        tracing::info!(count = discovered_plugins.len(), "discovered plugins");
+        // Only attachable plugins are exposed in the picker — global plugins
+        // cannot be attached per-session.
+        state.with_discovered_plugins(
+            &jinn_domain::common::tcaps::mint::mint_discovered_plugins_cap(),
+            |view| {
+                view.discovered_plugins
+                    .set(attachable_discovered_plugins(discovered_plugins.clone()));
+            },
+        );
 
         // Root supervision tree: every spawned actor becomes a supervised
         // child so that stopping the root cascades a graceful shutdown.
@@ -639,6 +694,11 @@ jinn_domain::feat::preferences_actor::preferences_actor::PreferencesActor::super
             .spawn_with_mailbox(kameo::mailbox::unbounded())
             .await;
         _session.wait_for_startup().await;
+
+        // Post a startup confirmation naming the loaded plugins. The session
+        // actor (sole `PushChatEntry` subscriber) is now ready, so publish a
+        // system entry to the startup session.
+        post_plugin_load_summary(&services.bus, &state, &discovered_plugins).await;
 
         // Tool orchestrator actor.
         let _tools = spawn_tracked!(
@@ -1671,6 +1731,35 @@ mod tests {
             description: Some(format!("desc for {name}")),
             kind,
         }
+    }
+
+    #[test]
+    fn plugin_load_summary_lists_counts_and_names() {
+        // Given two global and two attachable plugins.
+        let globals = ["welcome", "prompt_enrichment"];
+        let attachables = ["gap-analysis", "judge"];
+
+        // When building the summary message.
+        let msg = plugin_load_summary(&globals, &attachables);
+
+        // Then it contains counts and names split by kind.
+        assert_eq!(
+            msg,
+            "Loaded 4 plugins (2 global: welcome, prompt_enrichment; 2 attachable: gap-analysis, judge)"
+        );
+    }
+
+    #[test]
+    fn plugin_load_summary_shows_none_when_a_kind_is_empty() {
+        // Given globals only and no attachables.
+        let globals = ["welcome"];
+        let attachables: [&str; 0] = [];
+
+        // When building the summary message.
+        let msg = plugin_load_summary(&globals, &attachables);
+
+        // Then the empty kind reads "none".
+        assert_eq!(msg, "Loaded 1 plugins (1 global: welcome; 0 attachable: none)");
     }
 
     #[test]
