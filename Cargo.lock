@@ -2050,7 +2050,7 @@ dependencies = [
 
 [[package]]
 name = "jinn"
-version = "0.94.0"
+version = "0.95.0"
 dependencies = [
  "async-trait",
  "clap",
@@ -2087,7 +2087,7 @@ dependencies = [
 
 [[package]]
 name = "jinn-cli"
-version = "0.94.0"
+version = "0.95.0"
 dependencies = [
  "clap",
  "clap-verbosity-flag",
@@ -2096,7 +2096,7 @@ dependencies = [
 
 [[package]]
 name = "jinn-common"
-version = "0.94.0"
+version = "0.95.0"
 dependencies = [
  "dirs",
  "error-stack",
@@ -2109,7 +2109,7 @@ dependencies = [
 
 [[package]]
 name = "jinn-core-types"
-version = "0.94.0"
+version = "0.95.0"
 dependencies = [
  "rstest",
  "serde",
@@ -2119,7 +2119,7 @@ dependencies = [
 
 [[package]]
 name = "jinn-discord"
-version = "0.94.0"
+version = "0.95.0"
 dependencies = [
  "derive_more",
  "error-stack",
@@ -2134,7 +2134,7 @@ dependencies = [
 
 [[package]]
 name = "jinn-domain"
-version = "0.94.0"
+version = "0.95.0"
 dependencies = [
  "anstyle",
  "anstyle-lossy",
@@ -2196,7 +2196,7 @@ dependencies = [
 
 [[package]]
 name = "jinn-e2e"
-version = "0.94.0"
+version = "0.95.0"
 dependencies = [
  "crossterm",
  "cucumber",
@@ -2216,7 +2216,7 @@ dependencies = [
 
 [[package]]
 name = "jinn-plugin"
-version = "0.94.0"
+version = "0.95.0"
 dependencies = [
  "async-trait",
  "dashmap 6.2.1",
@@ -2241,7 +2241,7 @@ dependencies = [
 
 [[package]]
 name = "jinn-provider"
-version = "0.94.0"
+version = "0.95.0"
 dependencies = [
  "async-trait",
  "base64",
@@ -2263,7 +2263,7 @@ dependencies = [
 
 [[package]]
 name = "jinn-provider-config"
-version = "0.94.0"
+version = "0.95.0"
 dependencies = [
  "dirs",
  "error-stack",
@@ -2283,7 +2283,7 @@ dependencies = [
 
 [[package]]
 name = "jinn-selection-widget"
-version = "0.94.0"
+version = "0.95.0"
 dependencies = [
  "fuzzy-matcher",
  "jinn-testutil",
@@ -2306,14 +2306,14 @@ dependencies = [
 
 [[package]]
 name = "jinn-testutil"
-version = "0.94.0"
+version = "0.95.0"
 dependencies = [
  "ratatui",
 ]
 
 [[package]]
 name = "jinn-theme"
-version = "0.94.0"
+version = "0.95.0"
 dependencies = [
  "anstyle",
  "anstyle-lossy",
@@ -2329,7 +2329,7 @@ dependencies = [
 
 [[package]]
 name = "jinn-tui"
-version = "0.94.0"
+version = "0.95.0"
 dependencies = [
  "arboard",
  "crossterm",
@@ -2359,7 +2359,7 @@ dependencies = [
 
 [[package]]
 name = "jinn-web-fetch"
-version = "0.94.0"
+version = "0.95.0"
 dependencies = [
  "anyhow",
  "async-trait",
@@ -2379,7 +2379,7 @@ dependencies = [
 
 [[package]]
 name = "jinn-web-search"
-version = "0.94.0"
+version = "0.95.0"
 dependencies = [
  "async-trait",
  "jinn-web-fetch",
