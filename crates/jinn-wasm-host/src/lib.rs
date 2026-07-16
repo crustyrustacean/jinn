@@ -47,7 +47,6 @@ pub mod command_dispatch;
 pub mod dispatch;
 pub mod sync_plugins;
 pub mod sync_handle;
-mod val_convert;
 pub mod system;
 
 
