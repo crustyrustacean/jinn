@@ -13,7 +13,7 @@ use parking_lot::RwLock;
 use super::user_preferences::{UserPreferences, UserPreferencesError, preferences_path};
 #[cfg(test)]
 use super::user_preferences::{
-    default_history_stall_timeout_secs, default_stall_retry_base_delay_secs,
+    BrowserConfig, default_history_stall_timeout_secs, default_stall_retry_base_delay_secs,
     default_stall_retry_max_delay_secs, default_stall_retry_max_retries,
     default_tool_default_timeout_secs,
 };
@@ -277,6 +277,7 @@ mod tests {
             request_retry: RequestRetryConfig::default(),
             web_fetch: WebFetchConfig::default(),
             web_search: WebSearchConfig::default(),
+            browser: BrowserConfig::default(),
             openrouter_web_search: OpenrouterWebSearchConfig::default(),
             cwd_selector: CwdSelectorConfig::default(),
             minimap: MinimapConfig::default(),
@@ -337,6 +338,7 @@ mod tests {
             request_retry: RequestRetryConfig::default(),
             web_fetch: WebFetchConfig::default(),
             web_search: WebSearchConfig::default(),
+            browser: BrowserConfig::default(),
             openrouter_web_search: OpenrouterWebSearchConfig::default(),
             cwd_selector: CwdSelectorConfig::default(),
             minimap: MinimapConfig::default(),
@@ -381,6 +383,7 @@ mod tests {
             request_retry: RequestRetryConfig::default(),
             web_fetch: WebFetchConfig::default(),
             web_search: WebSearchConfig::default(),
+            browser: BrowserConfig::default(),
             openrouter_web_search: OpenrouterWebSearchConfig::default(),
             cwd_selector: CwdSelectorConfig::default(),
             minimap: MinimapConfig::default(),
@@ -419,6 +422,7 @@ mod tests {
             request_retry: RequestRetryConfig::default(),
             web_fetch: WebFetchConfig::default(),
             web_search: WebSearchConfig::default(),
+            browser: BrowserConfig::default(),
             openrouter_web_search: OpenrouterWebSearchConfig::default(),
             cwd_selector: CwdSelectorConfig::default(),
             minimap: MinimapConfig::default(),
@@ -444,6 +448,7 @@ mod tests {
             request_retry: RequestRetryConfig::default(),
             web_fetch: WebFetchConfig::default(),
             web_search: WebSearchConfig::default(),
+            browser: BrowserConfig::default(),
             openrouter_web_search: OpenrouterWebSearchConfig::default(),
             cwd_selector: CwdSelectorConfig::default(),
             minimap: MinimapConfig::default(),
@@ -478,6 +483,7 @@ mod tests {
             request_retry: RequestRetryConfig::default(),
             web_fetch: WebFetchConfig::default(),
             web_search: WebSearchConfig::default(),
+            browser: BrowserConfig::default(),
             openrouter_web_search: OpenrouterWebSearchConfig::default(),
             cwd_selector: CwdSelectorConfig::default(),
             minimap: MinimapConfig::default(),

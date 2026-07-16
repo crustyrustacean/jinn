@@ -33,6 +33,13 @@ use serde::{Deserialize, Serialize};
 /// Controls the behavior of the `web-search` tool.
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 pub struct WebSearchConfig {
+    /// Browser backend for web search. Default: `"http"`.
+    ///
+    /// `http` uses plain reqwest; `headless-chrome` and `headed-chrome` drive
+    /// the shared browser. Browser launch settings come from the shared
+    /// `[browser]` table.
+    #[serde(default = "default_web_search_backend")]
+    pub backend: WebSearchBackend,
     /// Maximum number of results to return per search. Default: `10`.
     #[serde(default = "default_max_results")]
     pub max_results: usize,
@@ -43,6 +50,10 @@ pub struct WebSearchConfig {
     /// Whether safe search is on. Default: `true`.
     #[serde(default = "default_safe_search")]
     pub safe_search: bool,
+}
+
+fn default_web_search_backend() -> WebSearchBackend {
+    WebSearchBackend::Http
 }
 
 fn default_max_results() -> usize {
@@ -60,12 +71,21 @@ fn default_safe_search() -> bool {
 impl Default for WebSearchConfig {
     fn default() -> Self {
         Self {
+            backend: default_web_search_backend(),
             max_results: default_max_results(),
             region: default_region(),
             safe_search: default_safe_search(),
         }
     }
 }
+
+/// Alias for the shared browser backend selector used by web search.
+///
+/// `web-search` selects `http` (default), `headless-chrome`, or
+/// `headed-chrome`. This mirrors `web-fetch`'s backend via the shared
+/// [`crate::feat::browser::BrowserBackend`].
+pub type WebSearchBackend = crate::feat::browser::BrowserBackend;
+
 
 /// The web search actor.
 ///
@@ -319,6 +339,7 @@ mod tests {
     fn config_round_trips_through_toml() {
         // Given a custom config.
         let config = WebSearchConfig {
+            backend: WebSearchBackend::HeadlessChrome,
             max_results: 5,
             region: "us-en".to_owned(),
             safe_search: false,

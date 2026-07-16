@@ -667,6 +667,7 @@ jinn_domain::feat::preferences_actor::preferences_actor::PreferencesActor::super
 
         // Web fetch actor.
         let web_fetch_config = user_preferences_storage.read().web_fetch.clone();
+        let browser_config = user_preferences_storage.read().browser.clone();
         let web_fetch_backend = web_fetch_config.backend;
         tracing::info!(backend = ?web_fetch_backend, "constructing web fetcher");
         let extractors = {
@@ -684,14 +685,16 @@ jinn_domain::feat::preferences_actor::preferences_actor::PreferencesActor::super
                 tracing::debug!("web-fetch: using HttpFetcher backend");
                 std::sync::Arc::new(HttpFetcher::new(extractors.clone()))
             }
-            WebFetchBackend::HeadlessChrome => {
-                tracing::debug!("web-fetch: using HeadlessChromeFetcher backend");
-                let mut stealth = StealthSettings::from(&web_fetch_config.stealth);
+            WebFetchBackend::HeadlessChrome | WebFetchBackend::HeadedChrome => {
+                let headed = matches!(web_fetch_backend, WebFetchBackend::HeadedChrome);
+                tracing::debug!(headed, "web-fetch: using browser backend");
+                let mut stealth = StealthSettings::from(&browser_config);
+                stealth.headed = headed;
                 // Resolve the binary once at construction so LaunchOptions.path is
                 // set. The BrowserBinaryScanActor re-resolves for display on
                 // EnvironmentLoaded; the double resolution is intentional and cheap.
                 let resolved =
-                    resolve_browser_binary(web_fetch_config.stealth.binary, &SystemBinaryLocator);
+                    resolve_browser_binary(browser_config.binary, &SystemBinaryLocator);
                 tracing::info!(
                     family = ?resolved.family,
                     path = ?resolved.path,
@@ -707,7 +710,7 @@ jinn_domain::feat::preferences_actor::preferences_actor::PreferencesActor::super
                 // never contradicts the binary we actually launch.
                 // Falls back to CHROME_MAJOR when probing failed or the
                 // binary is bundled (no version detectable).
-                if web_fetch_config.stealth.user_agent.is_none() {
+                if browser_config.user_agent.is_none() {
                     let major = resolved
                         .version_major
                         .as_deref()
@@ -1529,7 +1532,7 @@ jinn_domain::feat::preferences_actor::preferences_actor::PreferencesActor::super
                 &root,
                 BrowserBinaryScanActorDeps::new(
                     actor_deps.clone(),
-                    web_fetch_config.stealth.binary,
+                    browser_config.binary,
                 ),
             )
             .restart_policy(kameo::supervision::RestartPolicy::Never)

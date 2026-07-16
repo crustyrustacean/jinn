@@ -104,25 +104,55 @@ tool_default_timeout_secs = 300
 
 # web-fetch tool.
 [web_fetch]
-# HTTP backend used by the web_fetch tool. One of: "http" or "headless-chrome".
+# Backend used by the web_fetch tool. One of:
+#   "http"           - plain HTTP requests (fast, but frequently blocked).
+#   "headless-chrome" - shared headless Chromium (slower, renders JS, anti-detection).
+#   "headed-chrome"   - shared HEADED Chromium with a persistent, manually-warmable
+#                      profile. A real window appears so you can solve interstitial
+#                      challenges (Cloudflare/Turnstile) once; the cleared cookies
+#                      persist across restarts. Shared with web_search when it picks
+#                      the same mode.
 #
-# "http" can be used when most of your requests hit static or server rendered
+# "http" can be used when most of your requests hit static or server-rendered
 # pages. Note that many sites will block bot traffic and so the "http" backend
 # will fail regularly.
 #
-# The "headless-chrome" backend is significantly slower than the "http"
-# backend, but will have a higher success rate at making the request since it
-# uses a real browser with JavaScript support. Note that the Chrome backend is
-# started on-demand, so the first request will take a while and subsequent
-# requests will be quicker (although still a bit slower than the "http"
-# backend).
+# The browser backends are significantly slower than "http", but have a higher
+# success rate since they use a real browser with JavaScript support. The
+# browser is started on-demand, so the first request takes a while and
+# subsequent requests are quicker.
 backend = "headless-chrome"
+
+# Shared browser launch configuration. Consumed by both web-fetch and
+# web-search when their `backend` selects a browser ("headless-chrome" or
+# "headed-chrome"). Ignored entirely by the "http" backend.
+[browser]
+# Which binary to launch. One of:
+#   "auto"     - prefer installed Google Chrome, fall back to bundled Chromium.
+#   "chrome"   - require an installed Google Chrome; error if missing.
+#   "chromium" - use the bundled / auto-discovered Chromium.
+binary = "auto"
+
+# Optional explicit user-agent override. When commented out, an OS-matched
+# Chrome user agent is derived from the detected binary version at startup.
+# Applies to BOTH the browser backends AND the "http" backend (so web-search
+# over HTTP also sends a current, realistic user agent instead of a stale one).
+# user_agent = "Mozilla/5.0 ... Chrome/138.0.0.0 Safari/537.36"
+
+# Seconds to wait for an interstitial challenge (Anubis PoW, Cloudflare) to
+# clear before giving up. Only used by the browser backends.
+anubis_timeout_secs = 30
 
 # Web search via DuckDuckGo (provider-independent). Unlike
 # [openrouter_web_search] below, this works with any provider (zai,
 # OpenRouter, etc.) because it scrapes DuckDuckGo's HTML endpoint directly.
 # Exposed to the model as the `web-search` tool.
 [web_search]
+# Backend used by the web_search tool. Same options as [web_fetch].backend:
+#   "http" | "headless-chrome" | "headed-chrome"
+# Defaults to "http" (plain requests) since search needs no JS rendering by
+# default. Switch to a browser backend if DuckDuckGo starts blocking you.
+backend = "http"
 # Maximum number of results returned per search.
 max_results = 10
 # DuckDuckGo region code. "wt-wt" = global; "us-en" = US English.
