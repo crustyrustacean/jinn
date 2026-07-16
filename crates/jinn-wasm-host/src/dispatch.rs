@@ -136,8 +136,19 @@ fn theme_styles_list(ctx: &Value) -> Vec<ThemeStyle> {
         .unwrap_or_default()
 }
 
-// ─── Typed result → serde_json::Value (sync path) ───────────────────────
-// PluginSyncHooks returns Vec<Value>; convert the typed WIT results back.
+// ─── Typed result → serde_json::Value (SYNC path only) ───────────────
+//
+// This JSON layer exists ONLY on the sync seam (badges / keybind trigger /
+// submit intercept), which the typed-seam plan (Phase 6) explicitly scoped
+// as out-of-scope. The async seam (on_turn_end, on_attach, run_tool, etc.)
+// is fully typed — no JSON. The sync PluginSyncHooks trait still returns
+// Vec<Value> because the render-thread call sites (badges.rs, app.rs,
+// handler.rs) read results as JSON. Typing the sync seam is tracked
+// separately; until then, these helpers convert the typed WIT return types
+// back into the JSON the trait contract requires. `command_to_json` is
+// reachable only from InterceptOutcome::Replace here (and from the
+// DynamicCommand bus envelope in command_dispatch.rs — a domain-wide
+// name+Value design, not a WASM-boundary concern).
 
 pub fn badge_directive_to_json(d: BadgeDirective) -> Value {
     let segments: Vec<Value> = d

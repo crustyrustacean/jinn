@@ -13,6 +13,7 @@ mod gap_analysis;
 mod harness;
 mod judge;
 mod runner;
+mod welcome;
 
 #[tokio::main]
 async fn main() {
