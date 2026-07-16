@@ -185,6 +185,7 @@ impl StoreSet {
         component: &CompiledComponent,
         ctx: InstanceCtx,
         linker: &wasmtime::component::Linker<StoreState>,
+        runtime: &tokio::runtime::Handle,
     ) -> Result<
         crate::bindings::exports::jinn::plugin::hooks::Manifest,
         error_stack::Report<StoreLoadError>,
@@ -201,10 +202,15 @@ impl StoreSet {
             crate::bindings::exports::jinn::plugin::hooks::GuestIndices::new(&instance_pre)
                 .map_err(|e| error_stack::Report::new(StoreLoadError).attach(e.to_string()))
                 .attach("resolving typed hooks export indices")?;
-        let instance = linker
-            .instantiate(&mut store, component.inner())
-            .map_err(|e| error_stack::Report::new(StoreLoadError).attach(e.to_string()))
-            .attach("instantiating wasm component")?;
+        // Components with async exports require the `*_async` instantiation
+        // path. The caller's runtime is multi-threaded, so `block_in_place`
+        // lets us synchronously drive the async instantiation without nesting
+        // runtimes. Startup only — never called per-hook.
+        let instance = tokio::task::block_in_place(|| {
+            runtime.block_on(instance_pre.instantiate_async(&mut store))
+        })
+        .map_err(|e| error_stack::Report::new(StoreLoadError).attach(e.to_string()))
+        .attach("instantiating wasm component")?;
         let key = InstanceKey {
             plugin_name: ctx.plugin_name.clone(),
             instance_id: ctx.instance_id.clone(),

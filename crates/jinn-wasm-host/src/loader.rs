@@ -186,52 +186,8 @@ pub fn shared_bag_layer() -> (InstanceBagStore, GlobalBagStore) {
     (InstanceBagStore::new(), GlobalBagStore::new())
 }
 
-/// Instantiate every compiled global plugin into a store set.
+/// Instantiate the global plugins from a slice into an async store set.
 ///
-/// Global plugins use a synthetic per-plugin identity (no session attachment).
-/// The `linker` must already be wired to the bag layer + host-import callbacks.
-///
-/// # Errors
-///
-/// Returns an error if any component fails to instantiate.
-pub fn load_globals(
-    store: &mut LoadedStore,
-    plugins: &[CompiledPlugin],
-    linker: &Linker<crate::store::StoreState>,
-) -> Result<(), error_stack::Report<PluginLoadError>> {
-    for plugin in plugins {
-        if plugin.meta.kind != PluginKind::Global {
-            continue;
-        }
-        load_one(store, plugin, linker)?;
-    }
-    Ok(())
-}
-
-/// Instantiate the global plugins from the given slice into a store set.
-///
-/// Like [`load_globals`] but operates on an explicit slice rather than the
-/// full discovered set, so the async thread can load globals incrementally.
-///
-/// # Errors
-///
-/// Returns an error if any component fails to instantiate.
-pub fn load_globals_into(
-    store: &mut LoadedStore,
-    plugins: &[CompiledPlugin],
-    linker: &Linker<crate::store::StoreState>,
-) -> Result<(), error_stack::Report<PluginLoadError>> {
-    for plugin in plugins {
-        if plugin.meta.kind != PluginKind::Global {
-            continue;
-        }
-        load_one(store, plugin, linker)?;
-    }
-    Ok(())
-}
-
-/// Async variant of [`load_globals_into`] for store sets configured with
-/// async support (`StoreKind::Async`).
 pub async fn load_globals_into_async(
     store: &mut LoadedStore,
     plugins: &[CompiledPlugin],
@@ -262,33 +218,6 @@ async fn load_one_async(
         .load_async(&plugin.component, ctx, linker)
         .await
         .map_err(|e| error_stack::Report::new(PluginLoadError).attach(e.to_string()))?;
-    store.manifests.insert(
-        plugin.meta.name.clone(),
-        convert_manifest(&plugin.meta.name, manifest),
-    );
-    Ok(())
-}
-
-/// Instantiate one plugin into a store set under a given identity.
-///
-/// The instance identity is derived from the plugin metadata. For globals, a
-/// synthetic instance id + no session. (Attachable plugins are instantiated
-/// per-session by the registry actor in Phase 3, using the same path.)
-fn load_one(
-    store: &mut LoadedStore,
-    plugin: &CompiledPlugin,
-    linker: &Linker<crate::store::StoreState>,
-) -> Result<(), error_stack::Report<PluginLoadError>> {
-    let ctx = InstanceCtx {
-        plugin_name: plugin.meta.name.clone(),
-        instance_id: synthetic_global_id(&plugin.meta.name),
-        session_id: None,
-    };
-    let manifest = store
-        .storeset
-        .load(&plugin.component, ctx, linker)
-        .map_err(|e| error_stack::Report::new(PluginLoadError).attach(e.to_string()))?;
-    // Cache the manifest so the wiring layer can register keybinds + tools.
     store.manifests.insert(
         plugin.meta.name.clone(),
         convert_manifest(&plugin.meta.name, manifest),
