@@ -278,7 +278,8 @@ fn launch_options_omits_stealth_args_when_disabled() {
         .map(|s| s.to_string_lossy().into_owned())
         .collect();
     assert!(
-        !args.iter()
+        !args
+            .iter()
             .any(|a| a == "--disable-blink-features=AutomationControlled")
     );
 }
@@ -500,8 +501,7 @@ async fn two_fetchers_sharing_one_browser_launch_once() {
         RenderOutcome::Ok(ok_page("<p>b</p>", "https://b.example.com/")),
     ]]);
     let shared = Arc::new(SharedBrowser::with_factory(factory.as_backend()));
-    let fetcher_a =
-        super::HeadlessChromeFetcher::with_shared(shared.clone(), empty_extractors());
+    let fetcher_a = super::HeadlessChromeFetcher::with_shared(shared.clone(), empty_extractors());
     let fetcher_b = super::HeadlessChromeFetcher::with_shared(shared, empty_extractors());
 
     // When both fetchers fetch.

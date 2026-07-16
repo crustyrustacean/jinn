@@ -681,7 +681,11 @@ jinn_domain::feat::preferences_actor::preferences_actor::PreferencesActor::super
         let browser_config = user_preferences_storage.read().browser.clone();
         let web_fetch_backend = web_fetch_config.backend;
         let web_search_backend = web_search_config.backend;
-        tracing::info!(?web_fetch_backend, ?web_search_backend, "constructing web tools");
+        tracing::info!(
+            ?web_fetch_backend,
+            ?web_search_backend,
+            "constructing web tools"
+        );
 
         let extractors = {
             let markdown: std::sync::Arc<dyn jinn_web_fetch::Extractor> =
@@ -714,23 +718,24 @@ jinn_domain::feat::preferences_actor::preferences_actor::PreferencesActor::super
         });
 
         // Resolve the profile base dir: explicit CLI override wins, else AppPaths.
-        let profile_base: std::path::PathBuf = browser_profile_override
-            .unwrap_or_else(|| paths.browser_profile_base_dir());
+        let profile_base: std::path::PathBuf =
+            browser_profile_override.unwrap_or_else(|| paths.browser_profile_base_dir());
 
         // Build one SharedBrowser per active mode. A mode is active when either tool
         // selects it. The handle is cached so both tools sharing a mode reuse it.
-        use std::collections::HashMap;
         use jinn_domain::BrowserProfileMode;
-        let build_shared = |mode: BrowserProfileMode| -> std::sync::Arc<jinn_web_fetch::SharedBrowser> {
-            let headed = matches!(mode, BrowserProfileMode::Headed);
-            let mut stealth = StealthSettings::from(&browser_config);
-            stealth.headed = headed;
-            stealth.binary_path = resolved.path.clone();
-            stealth.user_agent = resolved_user_agent.clone();
-            stealth.profile_dir = Some(profile_base.join(mode.as_str()));
-            tracing::info!(?stealth, "web tools: building shared browser for mode");
-            std::sync::Arc::new(jinn_web_fetch::SharedBrowser::new(stealth))
-        };
+        use std::collections::HashMap;
+        let build_shared =
+            |mode: BrowserProfileMode| -> std::sync::Arc<jinn_web_fetch::SharedBrowser> {
+                let headed = matches!(mode, BrowserProfileMode::Headed);
+                let mut stealth = StealthSettings::from(&browser_config);
+                stealth.headed = headed;
+                stealth.binary_path = resolved.path.clone();
+                stealth.user_agent = resolved_user_agent.clone();
+                stealth.profile_dir = Some(profile_base.join(mode.as_str()));
+                tracing::info!(?stealth, "web tools: building shared browser for mode");
+                std::sync::Arc::new(jinn_web_fetch::SharedBrowser::new(stealth))
+            };
         let shared_for = |backend: WebFetchBackend| -> Option<BrowserProfileMode> {
             match backend {
                 WebFetchBackend::Http => None,
@@ -740,11 +745,14 @@ jinn_domain::feat::preferences_actor::preferences_actor::PreferencesActor::super
         };
         let fetch_mode = shared_for(web_fetch_backend);
         let search_mode = shared_for(web_search_backend);
-        let mut shared_by_mode:
-            HashMap<BrowserProfileMode, std::sync::Arc<jinn_web_fetch::SharedBrowser>> =
-            HashMap::new();
+        let mut shared_by_mode: HashMap<
+            BrowserProfileMode,
+            std::sync::Arc<jinn_web_fetch::SharedBrowser>,
+        > = HashMap::new();
         for mode in [fetch_mode, search_mode].into_iter().flatten() {
-            shared_by_mode.entry(mode).or_insert_with(|| build_shared(mode));
+            shared_by_mode
+                .entry(mode)
+                .or_insert_with(|| build_shared(mode));
         }
 
         // Construct the fetcher.
@@ -1584,10 +1592,7 @@ jinn_domain::feat::preferences_actor::preferences_actor::PreferencesActor::super
             "BrowserBinaryScanActor",
             BrowserBinaryScanActor::supervise(
                 &root,
-                BrowserBinaryScanActorDeps::new(
-                    actor_deps.clone(),
-                    browser_config.binary,
-                ),
+                BrowserBinaryScanActorDeps::new(actor_deps.clone(), browser_config.binary,),
             )
             .restart_policy(kameo::supervision::RestartPolicy::Never)
             .spawn()

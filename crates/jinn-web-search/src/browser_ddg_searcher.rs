@@ -16,9 +16,10 @@ use std::sync::Arc;
 use async_trait::async_trait;
 use jinn_web_fetch::{FetchError, RenderedPage, SharedBrowser};
 
-use crate::{
-    SearchError, SearchOptions, SearchResult, WebSearcher, ddg_searcher, html_parser,
-};
+use crate::{SearchError, SearchOptions, SearchResult, WebSearcher, ddg_searcher, html_parser};
+
+/// Fallback DDG HTML endpoint when a caller supplies an unparseable base URL.
+const FALLBACK_BASE_URL: &str = "https://html.duckduckgo.com/html";
 
 /// DuckDuckGo browser-backed searcher.
 ///
@@ -41,10 +42,7 @@ impl BrowserDdgSearcher {
     /// Creates a browser-backed searcher targeting the real DuckDuckGo endpoint.
     #[must_use]
     pub fn new(browser: Arc<SharedBrowser>) -> Self {
-        Self::with_base_url(
-            browser,
-            "https://html.duckduckgo.com/html".to_owned(),
-        )
+        Self::with_base_url(browser, "https://html.duckduckgo.com/html".to_owned())
     }
 
     /// Creates a browser-backed searcher with a custom base URL (tests).
@@ -63,12 +61,8 @@ impl BrowserDdgSearcher {
         let fields = ddg_searcher::DdgSearcher::form_fields(query, options);
         // Drop the empty `b` field: an empty `b=` query param is harmless but adds
         // noise, and ddgr's GET form omits it. `b` is only required on the POST body.
-        let pairs = fields
-            .into_iter()
-            .filter(|(key, _)| *key != "b");
-        let mut url = url::Url::parse(base_url).unwrap_or_else(|_| {
-            url::Url::parse("https://html.duckduckgo.com/html").expect("valid fallback URL")
-        });
+        let pairs = fields.into_iter().filter(|(key, _)| *key != "b");
+        let mut url = url::Url::parse(base_url).unwrap_or_else(|_| fallback_url().clone());
         {
             let mut q = url.query_pairs_mut();
             for (key, value) in pairs {
@@ -79,6 +73,16 @@ impl BrowserDdgSearcher {
     }
 }
 
+/// Returns the parsed fallback base URL, computing it once.
+///
+/// The fallback is a constant, always-valid URL. The parse is infallible in
+/// practice; the `expect` is localized to this one const-known-valid site.
+fn fallback_url() -> &'static url::Url {
+    use std::sync::OnceLock;
+    static URL: OnceLock<url::Url> = OnceLock::new();
+    #[expect(clippy::expect_used, reason = "FALLBACK_BASE_URL is a const valid URL")]
+    URL.get_or_init(|| url::Url::parse(FALLBACK_BASE_URL).expect("valid fallback URL"))
+}
 #[async_trait]
 impl WebSearcher for BrowserDdgSearcher {
     async fn search(
@@ -153,8 +157,11 @@ fn map_fetch_error(err: FetchError) -> SearchError {
 mod tests {
     #![allow(
         clippy::expect_used,
+        clippy::unwrap_in_result,
+        clippy::panic_in_result_fn,
         clippy::indexing_slicing,
         clippy::map_err_ignore,
+        clippy::redundant_closure,
         reason = "test assertions"
     )]
     use super::*;
@@ -216,15 +223,31 @@ mod tests {
         let options = opts();
 
         // When building the URL.
-        let url = BrowserDdgSearcher::build_url("rust lang", &options, "https://html.duckduckgo.com/html");
+        let url = BrowserDdgSearcher::build_url(
+            "rust lang",
+            &options,
+            "https://html.duckduckgo.com/html",
+        );
 
         // Then the query, region, and safe-search are encoded as GET params.
         let parsed = url::Url::parse(&url).expect("valid URL");
         let params: std::collections::HashMap<_, _> = parsed.query_pairs().collect();
-        assert_eq!(params.get("q").map(|v| v.to_string()), Some("rust lang".to_string()));
-        assert_eq!(params.get("kl").map(|v| v.to_string()), Some("wt-wt".to_string()));
-        assert_eq!(params.get("kp").map(|v| v.to_string()), Some("1".to_string()));
-        assert_eq!(params.get("k1").map(|v| v.to_string()), Some("-1".to_string()));
+        assert_eq!(
+            params.get("q").map(std::string::ToString::to_string),
+            Some("rust lang".to_owned())
+        );
+        assert_eq!(
+            params.get("kl").map(std::string::ToString::to_string),
+            Some("wt-wt".to_owned())
+        );
+        assert_eq!(
+            params.get("kp").map(std::string::ToString::to_string),
+            Some("1".to_owned())
+        );
+        assert_eq!(
+            params.get("k1").map(std::string::ToString::to_string),
+            Some("-1".to_owned())
+        );
         // The empty `b` field is omitted from GET URLs.
         assert!(!params.contains_key("b"));
     }
@@ -252,7 +275,10 @@ mod tests {
         let searcher = BrowserDdgSearcher::new(browser);
 
         // When searching.
-        let results = searcher.search("rust programming", &opts()).await.expect("ok");
+        let results = searcher
+            .search("rust programming", &opts())
+            .await
+            .expect("ok");
 
         // Then results are parsed (the fixture has 5 valid results).
         assert_eq!(results.len(), 5);

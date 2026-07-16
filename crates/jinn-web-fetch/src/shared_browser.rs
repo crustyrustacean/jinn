@@ -37,7 +37,7 @@ use anyhow::Error as AnyhowError;
 use headless_chrome::{Browser, LaunchOptions};
 use parking_lot::Mutex;
 
-use crate::{FetchError};
+use crate::FetchError;
 use crate::stealth::StealthSettings;
 
 /// How long a kept-warm browser survives while idle before headless_chrome
@@ -190,10 +190,7 @@ impl HeadlessBrowser for ChromeBrowser {
 
         tracing::trace!("SharedBrowser: getting page HTML");
         let html = tab.get_content().map_err(|e| classify_browser_error(&e))?;
-        tracing::debug!(
-            html_len = html.len(),
-            "SharedBrowser: HTML retrieved"
-        );
+        tracing::debug!(html_len = html.len(), "SharedBrowser: HTML retrieved");
 
         let final_url = tab.get_url();
         tracing::debug!(final_url = %final_url, "SharedBrowser: final URL");
@@ -422,6 +419,10 @@ impl SharedBrowser {
     /// Drops the cached browser handle, killing the Chromium process.
     ///
     /// Called during application shutdown. Safe to call multiple times.
+    #[expect(
+        clippy::unused_async,
+        reason = "async for shutdown-completion symmetry"
+    )]
     pub async fn shutdown(&self) {
         tracing::info!("SharedBrowser: shutting down");
         if let Some(browser) = self.slot.lock().take() {

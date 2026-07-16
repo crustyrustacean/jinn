@@ -56,7 +56,10 @@ impl DdgSearcher {
     /// UA instead of the stale default.
     #[must_use]
     pub fn with_user_agent(user_agent: &str) -> Self {
-        Self::with_endpoint_and_user_agent("https://html.duckduckgo.com/html".to_owned(), user_agent)
+        Self::with_endpoint_and_user_agent(
+            "https://html.duckduckgo.com/html".to_owned(),
+            user_agent,
+        )
     }
 
     /// Creates a searcher targeting a custom endpoint (used by tests to point
@@ -262,7 +265,7 @@ mod tests {
     async fn with_user_agent_sends_injected_ua_header() {
         // Given a mock server that matches on the injected UA header.
         let mut server = mockito::Server::new_async().await;
-        let _m = server
+        let mock = server
             .mock("POST", "/html")
             .match_header("user-agent", "MyCustomUA/9.9")
             .with_status(200)
@@ -280,7 +283,7 @@ mod tests {
 
         // Then the request matched (the injected UA was sent) and parsed empty.
         assert!(results.is_empty());
-        _m.assert_async().await;
+        mock.assert_async().await;
     }
 
     #[tokio::test]
