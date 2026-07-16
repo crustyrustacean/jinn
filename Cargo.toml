@@ -73,7 +73,6 @@ jinn-discord = { path = "crates/jinn-discord" }
 jinn-common = { path = "crates/jinn-common" }
 jinn-core-types = { path = "crates/jinn-core-types" }
 jinn-session-schema = { path = "crates/jinn-session-schema" }
-jinn-plugin = { path = "crates/jinn-plugin" }
 jinn-wasm-host = { path = "crates/jinn-wasm-host" }
 jinn-provider-config = { path = "crates/jinn-provider-config" }
 ratatui-markdown = { path = "vendor/ratatui-markdown", features = ["markdown", "highlight", "highlight-lang-all", "highlight-pest", "mermaid"] }
@@ -113,12 +112,9 @@ ratatui-which-key = "0.14.0"
 ratatui-spatial-splits = "0.2.0"
 throbber-widgets-tui = "0.11"
 
-# Lua
-mlua = { version = "0.10", features = ["lua54", "vendored", "serialize", "async"] }
-
 # WASM plugin runtime
 wasmtime = { version = "46", features = ["component-model", "async", "cranelift", "runtime"] }
-wit-bindgen = "0.41"
+wit-bindgen = "0.51"
 postcard = { version = "1", features = ["use-std"] }
 
 # State

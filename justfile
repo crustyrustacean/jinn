@@ -13,6 +13,48 @@ test:
 check:
     cargo check --workspace
 
+# Compile each plugin crate to a WASM component and install it under
+# res/plugins/{global,attachable}/<name>/. Plugins are standalone cargo
+# workspaces (each has its own [workspace]) targeting wasm32-unknown-unknown.
+# `wasm-tools component new` wraps the core module into a Component Model
+# component validated against wit/jinn.wit.
+build-plugins:
+    #!/usr/bin/env bash
+    set -euo pipefail
+
+    mapfile -t PLUGINS < <(find plugins -maxdepth 1 -mindepth 1 -type d -printf '%f\n' | sort)
+
+    # kind by convention: welcome is global; the rest are attachable.
+    kind_of() {
+        case "$1" in
+            welcome) echo global ;;
+            *) echo attachable ;;
+        esac
+    }
+
+    # Map crate dir name -> installed plugin dir name. Rust crate names use
+    # underscores, but plugin dir names follow the original Lua layout
+    # (e.g. gap-analysis), which the e2e harness matches on.
+    dest_name_of() {
+        case "$1" in
+            gap_analysis) echo gap-analysis ;;
+            *) echo "$1" ;;
+        esac
+    }
+
+    for name in "${PLUGINS[@]}"; do
+        echo "==> Building $name"
+        ( cd "plugins/$name" && cargo build --release --target wasm32-unknown-unknown )
+
+        core="plugins/$name/target/wasm32-unknown-unknown/release/$name.wasm"
+        kind=$(kind_of "$name")
+        dest_name=$(dest_name_of "$name")
+        dest="res/plugins/$kind/$dest_name"
+        mkdir -p "$dest"
+        wasm-tools component new "$core" -o "$dest/$dest_name.wasm"
+        echo "    -> $dest/$dest_name.wasm"
+    done
+
 clippy:
     cargo clippy --workspace --all-targets
 

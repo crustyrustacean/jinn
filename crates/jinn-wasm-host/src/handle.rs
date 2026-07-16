@@ -5,15 +5,12 @@
 //! happens on a dedicated background thread inside a `tokio::LocalSet` (see
 //! `async_thread.rs`).
 
-use std::sync::Arc;
 use std::time::Duration;
 
 use error_stack::{Report, ResultExt};
-use futures::stream::{FuturesOrdered, StreamExt as _};
 use jinn_core_types::SessionId;
 use serde_json::Value;
 use tokio::sync::oneshot;
-use wherror::Error;
 
 use crate::async_thread::{AsyncPluginError, AsyncThreadSender, WasmJob};
 use crate::bag::{GlobalBagStore, InstanceBagStore};
