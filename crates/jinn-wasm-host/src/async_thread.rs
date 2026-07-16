@@ -285,6 +285,14 @@ async fn fire_hooks(
     ctx: &Value,
     enabled_instances: Option<Vec<PluginInstanceId>>,
 ) -> Result<(), Report<AsyncPluginError>> {
+    tracing::debug!(
+        %hook,
+        global_count = state.global_store.storeset.len(),
+        session_count = state.session_stores.values().map(|s| s.storeset.len()).sum::<usize>(),
+        target = ?target_session,
+        enabled = ?enabled_instances.as_ref().map(Vec::len),
+        "fire_hooks"
+    );
     // Fire on global plugins.
     fire_on_store(&mut state.global_store, hook, ctx).await;
 
