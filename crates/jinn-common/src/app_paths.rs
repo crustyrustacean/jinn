@@ -11,6 +11,30 @@ use std::path::{Path, PathBuf};
 
 use crate::app_info::APP_NAME;
 
+/// Browser profile mode: one persistent profile per mode.
+///
+/// `headless` and `headed` each get their own profile subdir so a single
+/// warmed headed profile can be shared by both `web-fetch` and `web-search`
+/// without colliding on Chromium's singleton lock.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
+pub enum BrowserProfileMode {
+    /// Headless profile (no visible window).
+    Headless,
+    /// Headed profile (visible window, manually warmable).
+    Headed,
+}
+
+impl BrowserProfileMode {
+    /// Returns the subdirectory name for this mode.
+    #[must_use]
+    pub const fn as_str(self) -> &'static str {
+        match self {
+            Self::Headless => "headless",
+            Self::Headed => "headed",
+        }
+    }
+}
+
 /// Application filesystem paths.
 ///
 /// Stores app-specific directories (not platform directories). For production,
@@ -85,6 +109,23 @@ impl AppPaths {
     #[must_use]
     pub fn sessions_dir(&self) -> PathBuf {
         self.data_dir.join(APP_NAME)
+    }
+
+    /// Base directory for persistent browser profiles (`~/.local/share/jinn/browser-profile`).
+    ///
+    /// Per-mode profiles live under subdirs (`browser-profile/headless`,
+    /// `browser-profile/headed`) so a single warmed headed profile is shared by
+    /// both `web-fetch` and `web-search` when they select `headed-chrome`.
+    /// Use [`Self::browser_profile_dir_for_mode`] to resolve a concrete path.
+    #[must_use]
+    pub fn browser_profile_base_dir(&self) -> PathBuf {
+        self.data_dir.join(APP_NAME).join("browser-profile")
+    }
+
+    /// Persistent browser profile for a given mode (`headless` or `headed`).
+    #[must_use]
+    pub fn browser_profile_dir_for_mode(&self, mode: BrowserProfileMode) -> PathBuf {
+        self.browser_profile_base_dir().join(mode.as_str())
     }
 
     /// Prompt templates directory (`~/.config/jinn/prompts`).
@@ -511,5 +552,23 @@ mod tests {
         let log_path = paths.log_path();
         let filename = log_path.file_name().and_then(|s| s.to_str());
         assert_eq!(filename, Some("jinn.log"));
+    }
+
+    #[rstest::rstest]
+    fn browser_profile_dir_for_mode_lands_under_data_base() {
+        // Given an AppPaths rooted at a temp dir.
+        let root = tempfile::TempDir::new().expect("temp dir");
+        let paths = AppPaths::new_in(root.path());
+
+        // When resolving the headed profile dir.
+        let headed = paths.browser_profile_dir_for_mode(BrowserProfileMode::Headed);
+        let headless = paths.browser_profile_dir_for_mode(BrowserProfileMode::Headless);
+
+        // Then both land under data/jinn/browser-profile/<mode>.
+        assert_eq!(headed, root.path().join("data/jinn/browser-profile/headed"));
+        assert_eq!(
+            headless,
+            root.path().join("data/jinn/browser-profile/headless")
+        );
     }
 }

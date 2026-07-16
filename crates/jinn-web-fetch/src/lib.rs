@@ -11,6 +11,8 @@ pub mod stealth;
 
 #[cfg(feature = "headless-chrome")]
 pub mod headless_chrome_fetcher;
+#[cfg(feature = "headless-chrome")]
+pub mod shared_browser;
 
 use async_trait::async_trait;
 use serde::{Deserialize, Serialize};
@@ -21,6 +23,11 @@ pub use http_fetcher::HttpFetcher;
 
 #[cfg(feature = "headless-chrome")]
 pub use headless_chrome_fetcher::HeadlessChromeFetcher;
+#[cfg(feature = "headless-chrome")]
+pub use shared_browser::{
+    ChromeBrowser, ChromeFactory, HeadlessBrowser, HeadlessBrowserFactory, RenderedPage,
+    SharedBrowser,
+};
 
 /// Output format for fetched web page content.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize, Default, Hash)]

@@ -38,6 +38,9 @@ pub use crate::feat::tools_actor::OpenrouterWebSearchConfig;
 pub use crate::feat::ui::MinimapConfig;
 pub use crate::feat::web_fetch_actor::{WebFetchBackend, WebFetchConfig};
 pub use crate::feat::web_search_actor::WebSearchConfig;
+// BrowserConfig + BrowserBackend + BrowserBinary live in their own module;
+// re-exported here so the historical `user_preferences::*` import path works.
+pub use crate::feat::browser::{BrowserBackend, BrowserBinary, BrowserConfig};
 
 /// Canonical default `jinn.toml` embedded at compile time.
 ///
@@ -153,6 +156,11 @@ pub struct UserPreferences {
     /// Web search tool configuration.
     #[serde(default)]
     pub web_search: WebSearchConfig,
+    /// Shared browser launch configuration. Consumed by both `web-fetch`
+    /// and `web-search` when their `backend` selects a browser. Ignored
+    /// by the `http` backend.
+    #[serde(default)]
+    pub browser: BrowserConfig,
     /// OpenRouter web search server tool configuration.
     #[serde(default)]
     pub openrouter_web_search: OpenrouterWebSearchConfig,
@@ -226,6 +234,7 @@ impl Default for UserPreferences {
             request_retry: RequestRetryConfig::default(),
             web_fetch: WebFetchConfig::default(),
             web_search: WebSearchConfig::default(),
+            browser: BrowserConfig::default(),
             openrouter_web_search: OpenrouterWebSearchConfig::default(),
             cwd_selector: CwdSelectorConfig::default(),
             minimap: MinimapConfig::default(),
@@ -610,6 +619,7 @@ mod tests {
             request_retry: RequestRetryConfig::default(),
             web_fetch: WebFetchConfig::default(),
             web_search: WebSearchConfig::default(),
+            browser: BrowserConfig::default(),
             openrouter_web_search: OpenrouterWebSearchConfig::default(),
             cwd_selector: CwdSelectorConfig::default(),
             minimap: MinimapConfig::default(),
@@ -629,6 +639,28 @@ mod tests {
 
         // Then the round-tripped data matches.
         assert_eq!(reloaded.tool_entry_max_lines, Some(10));
+    }
+
+    #[rstest::rstest]
+    fn browser_config_round_trips_through_jinn_toml() {
+        // Given a non-default [browser] config.
+        let dir = TempDir::new().expect("temp dir");
+        let path = dir.path().join(PREFS_FILE_NAME);
+        let prefs = UserPreferences {
+            browser: BrowserConfig {
+                binary: BrowserBinary::Chromium,
+                user_agent: Some("test-agent/1.0".to_owned()),
+                anubis_timeout_secs: 60,
+            },
+            ..UserPreferences::default()
+        };
+
+        // When saving and reloading.
+        save_preferences_to(&prefs, &path).expect("save");
+        let reloaded = load_preferences_from(&path).expect("load");
+
+        // Then the [browser] fields round-trip exactly.
+        assert_eq!(reloaded.browser, prefs.browser);
     }
 
     #[rstest::rstest]
@@ -672,6 +704,7 @@ mod tests {
             request_retry: RequestRetryConfig::default(),
             web_fetch: WebFetchConfig::default(),
             web_search: WebSearchConfig::default(),
+            browser: BrowserConfig::default(),
             openrouter_web_search: OpenrouterWebSearchConfig::default(),
             cwd_selector: CwdSelectorConfig::default(),
             minimap: MinimapConfig::default(),
@@ -707,6 +740,7 @@ mod tests {
             request_retry: RequestRetryConfig::default(),
             web_fetch: WebFetchConfig::default(),
             web_search: WebSearchConfig::default(),
+            browser: BrowserConfig::default(),
             openrouter_web_search: OpenrouterWebSearchConfig::default(),
             cwd_selector: CwdSelectorConfig::default(),
             minimap: MinimapConfig::default(),
@@ -1010,6 +1044,7 @@ mod tests {
             request_retry: RequestRetryConfig::default(),
             web_fetch: WebFetchConfig::default(),
             web_search: WebSearchConfig::default(),
+            browser: BrowserConfig::default(),
             openrouter_web_search: OpenrouterWebSearchConfig::default(),
             cwd_selector: CwdSelectorConfig::default(),
             minimap: MinimapConfig::default(),

@@ -11,7 +11,7 @@
 
 use std::path::PathBuf;
 
-use crate::feat::web_fetch_actor::BrowserBinary;
+use crate::feat::browser::BrowserBinary;
 
 /// A single candidate executable location plus the binary family it belongs to.
 ///

@@ -252,6 +252,7 @@ impl App {
                                 user_preferences_storage: user_preferences_storage.clone(),
                                 app_state_storage: app_state_storage.clone(),
                                 paths: jinn_domain::AppPaths::default(),
+                                browser_profile_override: cli.browser_profile.clone(),
                             },
                         )
                         .build()
@@ -305,6 +306,7 @@ impl App {
                                 user_preferences_storage: user_preferences_storage.clone(),
                                 app_state_storage: app_state_storage.clone(),
                                 paths: jinn_domain::AppPaths::default(),
+                                browser_profile_override: cli.browser_profile.clone(),
                             },
                         )
                         .build()

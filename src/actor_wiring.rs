@@ -99,6 +99,10 @@ pub struct ActorSystemBuilderArgs {
     pub app_state_storage: jinn_domain::feat::preferences_actor::AppStateStorageService,
     /// Application paths.
     pub paths: jinn_domain::AppPaths,
+    /// Override for the persistent browser profile base directory.
+    /// When `Some`, per-mode profiles live under `<dir>/headless` and `<dir>/headed`.
+    /// When `None`, defaults to `AppPaths::browser_profile_base_dir()`.
+    pub browser_profile_override: Option<std::path::PathBuf>,
 }
 
 /// Builds the actor system: spawns all actors via kameo.
@@ -154,6 +158,7 @@ impl ActorSystemBuilder {
             user_preferences_storage,
             app_state_storage,
             paths,
+            browser_profile_override,
         } = self.args;
 
         // `DomainNodeContext` is needed by the plugin request handler (for `llm_oneshot`)
@@ -667,10 +672,23 @@ jinn_domain::feat::preferences_actor::preferences_actor::PreferencesActor::super
         // TODO(phase-5): replace with registration driven by
         // `wasm_system.attachable_metas` + per-component manifest tool lists.
 
-        // Web fetch actor.
+        // Web fetch + web search actors.
+        //
+        // Browser-backed tools share one process per MODE (headless/headed): if
+        // both tools select the same mode they attach to the same SharedBrowser
+        // and warm one profile together. Each mode gets its own persistent profile
+        // dir so a warmed headed profile survives restarts.
         let web_fetch_config = user_preferences_storage.read().web_fetch.clone();
+        let web_search_config = user_preferences_storage.read().web_search.clone();
+        let browser_config = user_preferences_storage.read().browser.clone();
         let web_fetch_backend = web_fetch_config.backend;
-        tracing::info!(backend = ?web_fetch_backend, "constructing web fetcher");
+        let web_search_backend = web_search_config.backend;
+        tracing::info!(
+            ?web_fetch_backend,
+            ?web_search_backend,
+            "constructing web tools"
+        );
+
         let extractors = {
             let markdown: std::sync::Arc<dyn jinn_web_fetch::Extractor> =
                 std::sync::Arc::new(MarkdownExtractor);
@@ -681,45 +699,79 @@ jinn_domain::feat::preferences_actor::preferences_actor::PreferencesActor::super
                 (OutputFormat::Markdown, markdown),
             ])
         };
-        let web_fetcher: std::sync::Arc<dyn jinn_web_fetch::WebFetcher> = match web_fetch_backend {
-            WebFetchBackend::Http => {
+
+        // Resolve the browser binary + UA once. Both modes (headless/headed) and
+        // the http search path all use this same UA so a browser-blocked site and
+        // a plain-http request look like the same client.
+        let resolved = resolve_browser_binary(browser_config.binary, &SystemBinaryLocator);
+        tracing::info!(
+            family = ?resolved.family,
+            path = ?resolved.path,
+            version = ?resolved.version_major,
+            note = ?resolved.fallback_note,
+            "web tools: browser binary resolved"
+        );
+        let resolved_user_agent = browser_config.user_agent.clone().unwrap_or_else(|| {
+            let major = resolved
+                .version_major
+                .as_deref()
+                .unwrap_or(jinn_web_fetch::stealth::CHROME_MAJOR);
+            jinn_web_fetch::stealth::build_user_agent(major)
+        });
+
+        // Resolve the profile base dir: explicit CLI override wins, else AppPaths.
+        let profile_base: std::path::PathBuf =
+            browser_profile_override.unwrap_or_else(|| paths.browser_profile_base_dir());
+
+        // Build one SharedBrowser per active mode. A mode is active when either tool
+        // selects it. The handle is cached so both tools sharing a mode reuse it.
+        use jinn_domain::BrowserProfileMode;
+        use std::collections::HashMap;
+        let build_shared =
+            |mode: BrowserProfileMode| -> std::sync::Arc<jinn_web_fetch::SharedBrowser> {
+                let headed = matches!(mode, BrowserProfileMode::Headed);
+                let mut stealth = StealthSettings::from(&browser_config);
+                stealth.headed = headed;
+                stealth.binary_path = resolved.path.clone();
+                stealth.user_agent = resolved_user_agent.clone();
+                stealth.profile_dir = Some(profile_base.join(mode.as_str()));
+                tracing::info!(?stealth, "web tools: building shared browser for mode");
+                std::sync::Arc::new(jinn_web_fetch::SharedBrowser::new(stealth))
+            };
+        let shared_for = |backend: WebFetchBackend| -> Option<BrowserProfileMode> {
+            match backend {
+                WebFetchBackend::Http => None,
+                WebFetchBackend::HeadlessChrome => Some(BrowserProfileMode::Headless),
+                WebFetchBackend::HeadedChrome => Some(BrowserProfileMode::Headed),
+            }
+        };
+        let fetch_mode = shared_for(web_fetch_backend);
+        let search_mode = shared_for(web_search_backend);
+        let mut shared_by_mode: HashMap<
+            BrowserProfileMode,
+            std::sync::Arc<jinn_web_fetch::SharedBrowser>,
+        > = HashMap::new();
+        for mode in [fetch_mode, search_mode].into_iter().flatten() {
+            shared_by_mode
+                .entry(mode)
+                .or_insert_with(|| build_shared(mode));
+        }
+
+        // Construct the fetcher.
+        let web_fetcher: std::sync::Arc<dyn jinn_web_fetch::WebFetcher> = match fetch_mode {
+            None => {
                 tracing::debug!("web-fetch: using HttpFetcher backend");
                 std::sync::Arc::new(HttpFetcher::new(extractors.clone()))
             }
-            WebFetchBackend::HeadlessChrome => {
-                tracing::debug!("web-fetch: using HeadlessChromeFetcher backend");
-                let mut stealth = StealthSettings::from(&web_fetch_config.stealth);
-                // Resolve the binary once at construction so LaunchOptions.path is
-                // set. The BrowserBinaryScanActor re-resolves for display on
-                // EnvironmentLoaded; the double resolution is intentional and cheap.
-                let resolved =
-                    resolve_browser_binary(web_fetch_config.stealth.binary, &SystemBinaryLocator);
-                tracing::info!(
-                    family = ?resolved.family,
-                    path = ?resolved.path,
-                    version = ?resolved.version_major,
-                    note = ?resolved.fallback_note,
-                    "web-fetch: browser binary resolved"
-                );
-                // Only set an explicit path when a system binary was found;
-                // for Bundled the crate auto-discovers at launch.
-                stealth.binary_path = resolved.path.clone();
-                // When no explicit UA override was configured, build
-                // one from the detected binary version so the UA
-                // never contradicts the binary we actually launch.
-                // Falls back to CHROME_MAJOR when probing failed or the
-                // binary is bundled (no version detectable).
-                if web_fetch_config.stealth.user_agent.is_none() {
-                    let major = resolved
-                        .version_major
-                        .as_deref()
-                        .unwrap_or(jinn_web_fetch::stealth::CHROME_MAJOR);
-                    stealth.user_agent = jinn_web_fetch::stealth::build_user_agent(major);
-                }
-                tracing::info!(?stealth, "web-fetch: resolved stealth settings");
-                std::sync::Arc::new(jinn_web_fetch::HeadlessChromeFetcher::new(
+            Some(mode) => {
+                tracing::debug!(?mode, "web-fetch: using shared browser backend");
+                let shared = shared_by_mode
+                    .get(&mode)
+                    .expect("shared browser built for active mode")
+                    .clone();
+                std::sync::Arc::new(jinn_web_fetch::HeadlessChromeFetcher::with_shared(
+                    shared,
                     extractors.clone(),
-                    stealth,
                 ))
             }
         };
@@ -739,10 +791,24 @@ jinn_domain::feat::preferences_actor::preferences_actor::PreferencesActor::super
             .await
         );
 
-        // Web search actor (provider-independent DuckDuckGo search).
-        let web_search_config = user_preferences_storage.read().web_search.clone();
-        let web_searcher: std::sync::Arc<dyn jinn_web_search::WebSearcher> =
-            std::sync::Arc::new(DdgSearcher::new());
+        // Construct the searcher.
+        let web_searcher: std::sync::Arc<dyn jinn_web_search::WebSearcher> = match search_mode {
+            None => {
+                tracing::debug!("web-search: using reqwest DdgSearcher backend");
+                std::sync::Arc::new(DdgSearcher::with_endpoint_and_user_agent(
+                    "https://html.duckduckgo.com/html".to_owned(),
+                    resolved_user_agent.as_str(),
+                ))
+            }
+            Some(mode) => {
+                tracing::debug!(?mode, "web-search: using browser-backed DdgSearcher");
+                let shared = shared_by_mode
+                    .get(&mode)
+                    .expect("shared browser built for active mode")
+                    .clone();
+                std::sync::Arc::new(jinn_web_search::BrowserDdgSearcher::new(shared))
+            }
+        };
         let _web_search = spawn_tracked!(
             &services.bus,
             "web-search",
@@ -1528,10 +1594,7 @@ jinn_domain::feat::preferences_actor::preferences_actor::PreferencesActor::super
             "BrowserBinaryScanActor",
             BrowserBinaryScanActor::supervise(
                 &root,
-                BrowserBinaryScanActorDeps::new(
-                    actor_deps.clone(),
-                    web_fetch_config.stealth.binary,
-                ),
+                BrowserBinaryScanActorDeps::new(actor_deps.clone(), browser_config.binary,),
             )
             .restart_policy(kameo::supervision::RestartPolicy::Never)
             .spawn()

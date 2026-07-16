@@ -90,6 +90,7 @@ pub async fn build_tuiapp_in_temp(
             user_preferences_storage,
             app_state_storage,
             paths,
+            browser_profile_override: None,
         })
         .build()
         .await;

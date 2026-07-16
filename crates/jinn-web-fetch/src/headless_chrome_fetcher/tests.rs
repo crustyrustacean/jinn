@@ -1,9 +1,10 @@
-//! Unit tests for `HeadlessChromeFetcher`.
+//! Unit tests for the headless Chrome fetcher and the shared browser.
 //!
-//! The fetcher is tested via a fake [`HeadlessBrowserFactory`] that scripts a
-//! sequence of browser behaviors (success, connection death, render error).
-//! This drives the launch / eviction / retry state machine without spawning
-//! a real Chromium.
+//! The fetcher is a thin adapter; the interesting behavior (launch, eviction,
+//! retry) lives in [`SharedBrowser`]. Both are tested via a fake
+//! [`HeadlessBrowserFactory`] that scripts a sequence of browser behaviors
+//! (success, connection death, render error). This drives the launch /
+//! eviction / retry state machine without spawning a real Chromium.
 //!
 // Fakes intentionally panic on poisoned locks or behavior underflow —
 // silent failure would mask broken test setup. These lints do not apply.
@@ -17,13 +18,10 @@
 
 use std::sync::atomic::{AtomicUsize, Ordering};
 use std::sync::{Arc, Mutex};
-use std::time::Duration;
 
-use parking_lot::Mutex as ParkingMutex;
-
-use super::{
-    HeadlessBrowser, HeadlessBrowserFactory, RenderedPage, build_launch_options,
-    classify_browser_error, classify_render_error, extract_content, fetch_once,
+use crate::shared_browser::{
+    HeadlessBrowser, HeadlessBrowserFactory, RenderedPage, SharedBrowser, build_launch_options,
+    classify_browser_error, classify_render_error,
 };
 use crate::stealth::StealthSettings;
 use crate::{Extractor, FetchError, FetchOptions, OutputFormat, WebFetcher};
@@ -95,7 +93,7 @@ impl FakeFactory {
         self.launch_count.load(Ordering::SeqCst)
     }
 
-    /// Coerces to a trait-object factory for use as a fetcher/fetch_once arg.
+    /// Coerces to a trait-object factory for use as a shared browser arg.
     fn as_backend(self: &Arc<Self>) -> Arc<dyn HeadlessBrowserFactory> {
         self.clone()
     }
@@ -146,12 +144,6 @@ fn html_options() -> FetchOptions {
     FetchOptions {
         format: OutputFormat::Html,
     }
-}
-
-type Slot = Arc<ParkingMutex<Option<Arc<dyn HeadlessBrowser>>>>;
-
-fn fresh_slot() -> Slot {
-    Arc::new(ParkingMutex::new(None))
 }
 
 // ===========================================================================
@@ -230,7 +222,7 @@ fn classify_wrapped_connection_closed_in_source_chain_yields_browser_crash() {
 }
 
 // ===========================================================================
-// build_launch_options
+// build_launch_options — headless/headed mode flags
 // ===========================================================================
 
 #[test]
@@ -244,7 +236,7 @@ fn launch_options_uses_ten_minute_idle_timeout() {
         clippy::duration_suboptimal_units,
         reason = "`Duration::from_mins` is unstable; expressed in seconds"
     )]
-    let expected = Duration::from_secs(600);
+    let expected = std::time::Duration::from_secs(600);
     assert_eq!(opts.idle_browser_timeout, expected);
 }
 
@@ -306,105 +298,62 @@ fn launch_options_uses_configured_binary_path() {
     assert_eq!(opts.path.as_ref(), Some(&custom));
 }
 
-// ===========================================================================
-// extract_content
-// ===========================================================================
-
 #[test]
-fn extract_html_format_passes_through_without_extractor() {
-    // Given rendered HTML and no registered extractor.
-    // When extracting for the Html format.
-    let out = extract_content("<p>hi</p>", &html_options(), &empty_extractors());
+fn launch_options_runs_headless_by_default() {
+    // Given default (headless) stealth settings.
+    let settings = StealthSettings::default();
 
-    // Then the raw HTML is returned unchanged.
-    assert_eq!(out, "<p>hi</p>");
-}
+    // When building.
+    let opts = build_launch_options(&settings);
 
-// ===========================================================================
-// fetch_once: launch / eviction / per-tab retention
-// ===========================================================================
-
-#[test]
-fn fetch_once_succeeds_on_first_browser() {
-    // Given an empty slot and a factory that launches a working browser.
-    let factory = FakeFactory::new(vec![vec![RenderOutcome::Ok(ok_page(
-        "<p>hi</p>",
-        "https://example.com/",
-    ))]]);
-    let slot = fresh_slot();
-
-    // When running one fetch attempt.
-    let result = fetch_once(
-        &slot,
-        &factory.as_backend(),
-        "https://example.com/",
-        &html_options(),
-        &empty_extractors(),
-    );
-
-    // Then the fetch succeeds with the rendered content.
-    assert_eq!(result.unwrap().content, "<p>hi</p>");
+    // Then headless is true and no persistent profile dir is set.
+    assert!(opts.headless);
+    assert!(opts.user_data_dir.is_none());
 }
 
 #[test]
-fn fetch_once_evicts_browser_on_connection_death() {
-    // Given a factory whose browser dies with ConnectionClosed.
-    let factory = FakeFactory::new(vec![vec![RenderOutcome::Crash]]);
-    let slot = fresh_slot();
+fn launch_options_runs_headed_when_headed_set() {
+    // Given headed stealth settings.
+    let settings = StealthSettings {
+        headed: true,
+        ..StealthSettings::default()
+    };
 
-    // When running one fetch attempt.
-    let _ = fetch_once(
-        &slot,
-        &factory.as_backend(),
-        "https://example.com/",
-        &html_options(),
-        &empty_extractors(),
-    );
+    // When building.
+    let opts = build_launch_options(&settings);
 
-    // Then the slot is evicted (ready for a relaunch).
-    assert!(
-        slot.lock().is_none(),
-        "slot should be evicted after a BrowserCrash"
-    );
+    // Then headless is false.
+    assert!(!opts.headless);
 }
 
 #[test]
-fn fetch_once_keeps_browser_on_per_tab_render_error() {
-    // Given a factory whose browser returns a per-tab render error.
-    let factory = FakeFactory::new(vec![vec![RenderOutcome::RenderError(
-        "navigation timed out".to_owned(),
-    )]]);
-    let slot = fresh_slot();
+fn launch_options_sets_user_data_dir_when_profile_given() {
+    // Given a persistent profile dir.
+    let dir = std::path::PathBuf::from("/tmp/jinn-profile/headed");
+    let settings = StealthSettings {
+        profile_dir: Some(dir.clone()),
+        ..StealthSettings::default()
+    };
 
-    // When running one fetch attempt.
-    let _ = fetch_once(
-        &slot,
-        &factory.as_backend(),
-        "https://example.com/",
-        &html_options(),
-        &empty_extractors(),
-    );
+    // When building.
+    let opts = build_launch_options(&settings);
 
-    // Then the browser is NOT evicted (per-tab failures must not kill the
-    // shared handle under concurrency).
-    assert!(
-        slot.lock().is_some(),
-        "slot must be retained after a per-tab Render error"
-    );
+    // Then the user data dir matches the configured profile.
+    assert_eq!(opts.user_data_dir.as_ref(), Some(&dir));
 }
 
 // ===========================================================================
-// fetch (full retry state machine via spawn_blocking)
+// SharedBrowser: launch / eviction / per-tab retention
 // ===========================================================================
 
-/// Builds a fetcher and returns it alongside its concrete factory so tests can
-/// assert on launch count.
+/// Builds a fetcher backed by a `SharedBrowser` with a fake factory, returning
+/// both so tests can assert on launch count.
 fn fetcher_and_factory(
     browsers: Vec<Vec<RenderOutcome>>,
 ) -> (super::HeadlessChromeFetcher, Arc<FakeFactory>) {
     let factory = FakeFactory::new(browsers);
-    let fetcher =
-        super::HeadlessChromeFetcher::with_factory(empty_extractors(), factory.as_backend());
+    let shared = Arc::new(SharedBrowser::with_factory(factory.as_backend()));
+    let fetcher = super::HeadlessChromeFetcher::with_shared(shared, empty_extractors());
     (fetcher, factory)
 }
 
@@ -537,4 +486,37 @@ async fn concurrent_crashes_trigger_single_relunch() {
     ra.unwrap().unwrap();
     rb.unwrap().unwrap();
     assert_eq!(factory.launch_count(), 2);
+}
+
+// ===========================================================================
+// Shared sharing: two fetchers on the same SharedBrowser launch once
+// ===========================================================================
+
+#[tokio::test]
+async fn two_fetchers_sharing_one_browser_launch_once() {
+    // Given a single SharedBrowser with a factory that can serve two renders,
+    // shared between two fetchers (simulates fetch + search on one mode).
+    let factory = FakeFactory::new(vec![vec![
+        RenderOutcome::Ok(ok_page("<p>a</p>", "https://a.example.com/")),
+        RenderOutcome::Ok(ok_page("<p>b</p>", "https://b.example.com/")),
+    ]]);
+    let shared = Arc::new(SharedBrowser::with_factory(factory.as_backend()));
+    let fetcher_a = super::HeadlessChromeFetcher::with_shared(shared.clone(), empty_extractors());
+    let fetcher_b = super::HeadlessChromeFetcher::with_shared(shared, empty_extractors());
+
+    // When both fetchers fetch.
+    let (a, b) = tokio::join!(
+        fetcher_a.fetch("https://a.example.com/", html_options()),
+        fetcher_b.fetch("https://b.example.com/", html_options()),
+    );
+
+    // Then both succeed (with one of the scripted contents) and the browser
+    // launched exactly once — proving the two tools share one process when
+    // given the same SharedBrowser. The two scripted pages are identical in
+    // shape, so we only assert each got a valid `<p>` block.
+    let a_content = a.unwrap().content;
+    let b_content = b.unwrap().content;
+    assert!(a_content.starts_with("<p>") && a_content.ends_with("</p>"));
+    assert!(b_content.starts_with("<p>") && b_content.ends_with("</p>"));
+    assert_eq!(factory.launch_count(), 1);
 }

@@ -14,8 +14,8 @@ use kameo::prelude::Spawn;
 use crate::common::actor_deps::ActorDeps;
 use crate::common::bus::test_harness::{TestHarness, await_recorded};
 use crate::common::services::test_services::TestServices;
+use crate::feat::browser::BrowserBinary;
 use crate::feat::provider_infra::ProvidersConfig;
-use crate::feat::web_fetch_actor::BrowserBinary;
 use crate::init::env_init_actor::EnvironmentLoaded;
 
 use super::binary_resolver::{BinaryFamily, BinaryLocator};
