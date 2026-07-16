@@ -88,7 +88,6 @@ impl StoredInstance {
     }
 
     /// Resolve the typed `hooks` exports for this instance.
-    #[must_use]
     pub fn typed_guest(
         &mut self,
     ) -> wasmtime::Result<crate::bindings::exports::jinn::plugin::hooks::Guest> {
@@ -129,7 +128,6 @@ impl std::fmt::Debug for StoreSet {
             .finish_non_exhaustive()
     }
 }
-
 
 /// Identity key for a loaded instance within a store.
 #[derive(Debug, Clone, PartialEq, Eq, Hash)]
@@ -187,15 +185,14 @@ impl StoreSet {
         component: &CompiledComponent,
         ctx: InstanceCtx,
         linker: &wasmtime::component::Linker<StoreState>,
-    ) -> Result<(), error_stack::Report<StoreLoadError>> {
+    ) -> Result<
+        crate::bindings::exports::jinn::plugin::hooks::Manifest,
+        error_stack::Report<StoreLoadError>,
+    > {
         let mut store = Store::new(
             &self.engine,
             StoreState::new(ctx.clone(), &self.bags, &self.globals, self.imports.clone()),
         );
-        // Build the typed-export indices from an `InstancePre` before
-        // instantiating. The `GuestIndices` resolve the `hooks` exports
-        // (well-known + `run-trigger`/`run-tool`); holding the `InstancePre`
-        // keeps them valid for the instance's lifetime.
         let instance_pre = linker
             .instantiate_pre(component.inner())
             .map_err(|e| error_stack::Report::new(StoreLoadError).attach(e.to_string()))
@@ -213,7 +210,7 @@ impl StoreSet {
             instance_id: ctx.instance_id.clone(),
         };
         self.instances.insert(
-            key,
+            key.clone(),
             StoredInstance {
                 ctx,
                 store,
@@ -222,7 +219,80 @@ impl StoreSet {
                 indices,
             },
         );
-        Ok(())
+        // Keybinds are not read here. The async host thread reads every
+        // plugin's manifest at startup; the wiring layer pushes those keybinds
+        // into this sync store via `set_keybinds`. The sync (render-thread)
+        // store only needs instances for firing sync render hooks.
+        let _ = self.instances.get_mut(&key).expect("just inserted");
+        let default_manifest = crate::bindings::exports::jinn::plugin::hooks::Manifest {
+            description: None,
+            keybinds: vec![],
+            tools: vec![],
+        };
+        Ok(default_manifest)
+    }
+
+    /// Async variant for store sets configured with async support
+    /// (`StoreKind::Async`). wasmtime requires `*_async` instantiation +
+    /// `call_*_async` when the engine config has async support enabled.
+    pub async fn load_async(
+        &mut self,
+        component: &CompiledComponent,
+        ctx: InstanceCtx,
+        linker: &wasmtime::component::Linker<StoreState>,
+    ) -> Result<
+        crate::bindings::exports::jinn::plugin::hooks::Manifest,
+        error_stack::Report<StoreLoadError>,
+    > {
+        let mut store = Store::new(
+            &self.engine,
+            StoreState::new(ctx.clone(), &self.bags, &self.globals, self.imports.clone()),
+        );
+        let instance_pre = linker
+            .instantiate_pre(component.inner())
+            .map_err(|e| error_stack::Report::new(StoreLoadError).attach(e.to_string()))
+            .attach("building instance pre for typed export indices")?;
+        let indices =
+            crate::bindings::exports::jinn::plugin::hooks::GuestIndices::new(&instance_pre)
+                .map_err(|e| error_stack::Report::new(StoreLoadError).attach(e.to_string()))
+                .attach("resolving typed hooks export indices")?;
+        let instance = linker
+            .instantiate_async(&mut store, component.inner())
+            .await
+            .map_err(|e| error_stack::Report::new(StoreLoadError).attach(e.to_string()))
+            .attach("instantiating wasm component (async)")?;
+        let key = InstanceKey {
+            plugin_name: ctx.plugin_name.clone(),
+            instance_id: ctx.instance_id.clone(),
+        };
+        self.instances.insert(
+            key.clone(),
+            StoredInstance {
+                ctx,
+                store,
+                instance,
+                instance_pre,
+                indices,
+            },
+        );
+        let inst = self.instances.get_mut(&key).expect("just inserted");
+        let guest = inst
+            .typed_guest()
+            .map_err(|e| error_stack::Report::new(StoreLoadError).attach(e.to_string()))
+            .attach("resolving typed guest for get-manifest")?;
+        // Sync export on an async-configured store: the generated sync
+        // `call_get_manifest` would panic, so invoke the typed func via
+        // `call_async` directly.
+        let manifest = {
+            let f = guest.func_get_manifest();
+            let (manifest,) = f
+                .call_async(inst.store_mut(), ())
+                .await
+                .map_err(|e| error_stack::Report::new(StoreLoadError).attach(e.to_string()))
+                .attach("calling get-manifest after instantiation")?;
+            manifest
+        };
+        Ok(manifest)
     }
 
     /// Borrow the instance for a given identity, if loaded in this store set.

@@ -174,7 +174,7 @@ impl Plugin for Judge {
 
     // ── Plugin-defined tools (single dispatch export) ───────────────────
 
-    async fn run_tool(name: String, args: String, ctx: ToolCtx) {
+    async fn run_tool(name: String, args: String, ctx: ToolCtx) -> String {
         match name.as_str() {
             "judgment_passed" => record_verdict(ctx, "passed".to_owned(), None),
             "judgment_failed" => {
@@ -183,8 +183,10 @@ impl Plugin for Judge {
             }
             _ => {}
         }
+        String::new()
     }
 }
+
 
 // ── Verdict posting + aggregation ───────────────────────────────────────────
 

@@ -68,10 +68,7 @@ fn global_plugin_bag_roundtrips() {
     store.set("welcome", b"greeted".to_vec());
 
     // Then it is retrievable by plugin name.
-    assert_eq!(
-        store.get("welcome").as_deref(),
-        Some(b"greeted".as_slice())
-    );
+    assert_eq!(store.get("welcome").as_deref(), Some(b"greeted".as_slice()));
 }
 
 #[test]

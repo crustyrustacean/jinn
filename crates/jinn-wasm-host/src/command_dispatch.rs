@@ -285,7 +285,14 @@ mod tests {
             inherit_tools: false,
             tools: vec![],
         };
-        let _ = (LlmResp { text: String::new() }, CreateSessionResp { session_id: "s-2".to_owned() });
+        let _ = (
+            LlmResp {
+                text: String::new(),
+            },
+            CreateSessionResp {
+                session_id: "s-2".to_owned(),
+            },
+        );
         let _ = RequestError::Cancelled;
     }
 }

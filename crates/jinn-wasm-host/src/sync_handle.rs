@@ -19,9 +19,6 @@ use crate::async_thread::{SyncThreadSender, WasmJob};
 
 use jinn_domain::feat::plugin_dispatch::PluginSyncCallError as DomainPluginSyncCallError;
 
-
-
-
 /// Handle for calling plugin hooks synchronously from actor threads.
 ///
 /// `Send + Sync + Clone`. Cheap to clone. Sends a `SyncCollect` job through
@@ -87,7 +84,7 @@ impl SyncWasmHandle {
             .attach(hook.to_owned())?
             .change_context(DomainPluginSyncCallError)
             .attach("sync hook fire errored on the background thread")
-}
+    }
 }
 
 impl jinn_domain::feat::plugin_dispatch::PluginSyncCall for SyncWasmHandle {

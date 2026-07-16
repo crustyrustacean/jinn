@@ -66,10 +66,17 @@ pub enum WasmJob {
         respond_to:
             oneshot::Sender<Result<Vec<crate::handle::WasmToolMetadata>, Report<AsyncPluginError>>>,
     },
-    /// Drop a per-session store set slot.
-    DestroySession {
-        registry_id: SessionRegistryId,
+    /// Execute a plugin-defined tool via `run-tool`. Returns the tool result string.
+    ExecuteTool {
+        target_session: Option<SessionRegistryId>,
+        plugin_name: String,
+        tool_name: String,
+        arguments: String,
+        ctx_json: Value,
+        respond_to: oneshot::Sender<Result<String, Report<AsyncPluginError>>>,
     },
+    /// Drop a per-session store set slot.
+    DestroySession { registry_id: SessionRegistryId },
 }
 
 /// Async channel sender for [`WasmJob`]. `Send`, cloneable.
@@ -93,6 +100,19 @@ struct ThreadState {
     session_stores: HashMap<SessionRegistryId, LoadedStore>,
     /// Which instances belong to which registry (for DestroySession).
     session_instances: HashMap<SessionRegistryId, Vec<(PluginInstanceId, String)>>,
+    /// Compiled attachable plugins, keyed by name — used to instantiate
+    /// per-session stores when a session registry is created.
+    attachable_components: HashMap<String, crate::loader::CompiledPlugin>,
+    /// Shared engine + linker for per-session instantiation.
+    engine: crate::engine::WasmEngine,
+    linker: wasmtime::component::Linker<crate::store::StoreState>,
+    /// Shared bag layer (Arc-backed; cheap clone).
+    bags: crate::bag::InstanceBagStore,
+    globals: crate::bag::GlobalBagStore,
+    /// Host-import callbacks (`emit`, `request-*`). Cloned into every store
+    /// so that `host::emit` / `host::request-llm-oneshot` reach the domain
+    /// bridge on the async thread, not just the sync render-thread store.
+    host_imports: crate::imports::HostImports,
 }
 
 impl AsyncThreadHandle {
@@ -104,8 +124,10 @@ impl AsyncThreadHandle {
         engine: WasmEngine,
         bags: InstanceBagStore,
         globals: GlobalBagStore,
-        _linker: wasmtime::component::Linker<crate::store::StoreState>,
+        linker: wasmtime::component::Linker<crate::store::StoreState>,
         _runtime_handle: tokio::runtime::Handle,
+        plugins: Vec<crate::loader::CompiledPlugin>,
+        host_imports: crate::imports::HostImports,
     ) -> (AsyncThreadSender, SyncThreadSender, AsyncThreadHandle) {
         let (tx, rx) = kanal::unbounded_async::<WasmJob>();
         let sync_tx = tx.clone_sync();
@@ -126,15 +148,45 @@ impl AsyncThreadHandle {
 
                 let local = tokio::task::LocalSet::new();
                 local.block_on(&rt, async move {
+                    let mut global_store = crate::loader::new_loaded_store(
+                        crate::store::StoreKind::Async,
+                        &engine,
+                        &bags,
+                        &globals,
+                    );
+                    global_store.storeset.set_imports(host_imports.clone());
+
+                    // Partition: globals load immediately into the global
+                    // store set; attachables are held compiled, instantiated
+                    // per-session when a registry is created.
+                    let mut attachable_components = HashMap::new();
+                    for plugin in &plugins {
+                        match plugin.meta.kind {
+                            crate::discovery::PluginKind::Global => {
+                                if let Err(e) = crate::loader::load_globals_into_async(
+                                    &mut global_store,
+                                    std::slice::from_ref(plugin),
+                                    &linker,
+                                ).await {
+                                    tracing::warn!(?e, plugin = %plugin.meta.name, "failed to load global plugin");
+                                }
+                            }
+                            crate::discovery::PluginKind::Attachable => {
+                                attachable_components.insert(plugin.meta.name.clone(), plugin.clone());
+                            }
+                        }
+                    }
+
                     let state = ThreadState {
-                        global_store: crate::loader::new_loaded_store(
-                            crate::store::StoreKind::Async,
-                            &engine,
-                            &bags,
-                            &globals,
-                        ),
+                        global_store,
                         session_stores: HashMap::new(),
                         session_instances: HashMap::new(),
+                        attachable_components,
+                        engine,
+                        linker,
+                        bags,
+                        globals,
+                        host_imports,
                     };
                     thread_loop(rx, state).await;
                 });
@@ -147,7 +199,7 @@ impl AsyncThreadHandle {
 
 /// Drive the background thread, executing each received [`WasmJob`] in turn.
 async fn thread_loop(rx: AsyncThreadReceiver, mut state: ThreadState) {
-    while let Some(job) = rx.recv().await.ok() {
+    while let Ok(job) = rx.recv().await {
         execute_job(&mut state, job).await;
     }
 }
@@ -179,13 +231,30 @@ async fn execute_job(state: &mut ThreadState, job: WasmJob) {
         WasmJob::LoadSession {
             registry_id,
             instances,
-            origin_session_id: _,
+            origin_session_id,
             respond_to,
         } => {
-            // Phase 3: instantiate attachable plugins into a per-session store
-            // set. For now, record the instance list and return empty tools.
-            state.session_instances.insert(registry_id, instances);
-            let _ = respond_to.send(Ok(Vec::new()));
+            let result = load_session(state, registry_id, instances, origin_session_id).await;
+            let _ = respond_to.send(result);
+        }
+        WasmJob::ExecuteTool {
+            target_session,
+            plugin_name,
+            tool_name,
+            arguments,
+            ctx_json,
+            respond_to,
+        } => {
+            let result = execute_tool(
+                state,
+                target_session,
+                &plugin_name,
+                &tool_name,
+                &arguments,
+                &ctx_json,
+            )
+            .await;
+            let _ = respond_to.send(result);
         }
         WasmJob::DestroySession { registry_id } => {
             state.session_stores.remove(&registry_id);
@@ -220,13 +289,13 @@ async fn fire_hooks(
     fire_on_store(&mut state.global_store, hook, ctx).await;
 
     // Fire on the session's plugins, if any.
-    if let Some(rid) = target_session {
-        if let Some(session_store) = state.session_stores.get_mut(&rid) {
-            if let Some(enabled) = &enabled_instances {
-                fire_on_store_filtered(session_store, hook, ctx, enabled).await;
-            } else {
-                fire_on_store(session_store, hook, ctx).await;
-            }
+    if let Some(rid) = target_session
+        && let Some(session_store) = state.session_stores.get_mut(&rid)
+    {
+        if let Some(enabled) = &enabled_instances {
+            fire_on_store_filtered(session_store, hook, ctx, enabled).await;
+        } else {
+            fire_on_store(session_store, hook, ctx).await;
         }
     }
     Ok(())
@@ -240,12 +309,116 @@ async fn fire_hooks_collect(
     ctx: &Value,
 ) -> Result<Vec<Value>, Report<AsyncPluginError>> {
     let mut results = collect_from_store(&mut state.global_store, hook, ctx).await;
-    if let Some(rid) = target_session {
-        if let Some(session_store) = state.session_stores.get_mut(&rid) {
-            results.extend(collect_from_store(session_store, hook, ctx).await);
-        }
+    if let Some(rid) = target_session
+        && let Some(session_store) = state.session_stores.get_mut(&rid)
+    {
+        results.extend(collect_from_store(session_store, hook, ctx).await);
     }
     Ok(results)
+}
+
+/// Execute a plugin tool by resolving the named instance then calling `run-tool`.
+///
+/// Looks up the instance by `plugin_name` in the session store (if `target_session`
+/// is set) or the global store. Returns the tool result string.
+async fn execute_tool(
+    state: &mut ThreadState,
+    target_session: Option<SessionRegistryId>,
+    plugin_name: &str,
+    tool_name: &str,
+    arguments: &str,
+    ctx_json: &Value,
+) -> Result<String, Report<AsyncPluginError>> {
+    let store = match target_session {
+        Some(rid) => state
+            .session_stores
+            .get_mut(&rid)
+            .ok_or_else(|| Report::new(AsyncPluginError).attach("session store not found"))?,
+        None => &mut state.global_store,
+    };
+    let inst = store
+        .storeset
+        .iter_mut()
+        .find(|i| i.ctx().plugin_name == plugin_name)
+        .ok_or_else(|| {
+            Report::new(AsyncPluginError)
+                .attach("plugin instance not found")
+                .attach(plugin_name.to_owned())
+        })?;
+    crate::dispatch::dispatch_run_tool(inst, tool_name, arguments, ctx_json)
+        .await
+        .map_err(|e| {
+            tracing::warn!(error = %e, %plugin_name, %tool_name, "tool execution failed");
+            Report::new(AsyncPluginError).attach("tool execution failed")
+        })
+}
+
+/// Instantiate the named attachable plugins into a fresh per-session store set.
+///
+/// Each `(instance_id, plugin_name)` pair resolves to a compiled attachable
+/// component; if unknown, it's skipped with a warning. Returns the tool
+/// metadata from every successfully instantiated plugin's manifest.
+async fn load_session(
+    state: &mut ThreadState,
+    registry_id: SessionRegistryId,
+    instances: Vec<(PluginInstanceId, String)>,
+    origin_session_id: SessionId,
+) -> Result<Vec<crate::handle::WasmToolMetadata>, Report<AsyncPluginError>> {
+    let mut session_store = crate::loader::new_loaded_store(
+        crate::store::StoreKind::Async,
+        &state.engine,
+        &state.bags,
+        &state.globals,
+    );
+    session_store
+        .storeset
+        .set_imports(state.host_imports.clone());
+    let mut tool_metadata = Vec::new();
+
+    for (instance_id, plugin_name) in &instances {
+        let Some(compiled) = state.attachable_components.get(plugin_name).cloned() else {
+            tracing::warn!(%plugin_name, "attachable plugin not compiled; skipping");
+            continue;
+        };
+        let ctx = crate::store::InstanceCtx {
+            plugin_name: plugin_name.clone(),
+            instance_id: instance_id.clone(),
+            session_id: Some(origin_session_id.clone()),
+        };
+        match session_store
+            .storeset
+            .load_async(&compiled.component, ctx, &state.linker)
+            .await
+        {
+            Err(e) => {
+                tracing::warn!(?e, %plugin_name, "failed to load attachable plugin into session store");
+                continue;
+            }
+            Ok(wit_manifest) => {
+                let manifest = crate::loader::convert_manifest(plugin_name, wit_manifest);
+                for tool in &manifest.tools {
+                    tool_metadata.push(crate::handle::WasmToolMetadata {
+                        name: tool.name.clone(),
+                        description: tool.description.clone(),
+                        parameters: serde_json::Value::Object(serde_json::Map::new()),
+                        plugin_name: plugin_name.clone(),
+                        scope: if tool.global {
+                            jinn_domain::feat::plugin_dispatch::ToolScope::Global
+                        } else {
+                            jinn_domain::feat::plugin_dispatch::ToolScope::Attached
+                        },
+                    });
+                }
+                session_store
+                    .manifests
+                    .insert(plugin_name.clone(), manifest);
+            }
+        }
+    }
+
+    state.session_stores.insert(registry_id, session_store);
+    state.session_instances.insert(registry_id, instances);
+    Ok(tool_metadata)
 }
 
 /// Fire a hook on every instance in a store set (fire-and-forget).
@@ -256,6 +429,7 @@ async fn fire_hooks_collect(
 /// failing plugin must not break the fire-and-forget fan-out.
 async fn fire_on_store(store: &mut LoadedStore, hook: &str, ctx: &Value) {
     for inst in store.storeset.iter_mut() {
+        tracing::debug!(hook, plugin = %inst.ctx().plugin_name, "firing async hook");
         if let Err(e) = crate::dispatch::dispatch_async_hook(inst, hook, ctx).await {
             tracing::warn!(error = %e, hook, plugin = %inst.ctx().plugin_name, "async hook dispatch failed");
         }

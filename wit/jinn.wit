@@ -133,7 +133,11 @@ interface hooks {
     // export arbitrary-named functions, tool calls funnel through this single
     // dispatch export. The host passes the tool `name` (from the manifest)
     // verbatim with the LLM-provided JSON args; the plugin matches internally.
-    run-tool: async func(name: string, args: string, ctx: tool-ctx);
+    //
+    // The returned `string` is the tool result content fed back to the LLM
+    // (analogous to built-in tool results). Empty string is a valid no-content
+    // response.
+    run-tool: async func(name: string, args: string, ctx: tool-ctx) -> string;
 
     // ── Sync render hooks (run on the render thread) ──
     //

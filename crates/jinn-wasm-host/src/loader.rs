@@ -20,7 +20,7 @@ use std::path::Path;
 use wasmtime::component::Linker;
 
 use crate::bag::{GlobalBagStore, InstanceBagStore};
-use crate::discovery::{discover_plugins, PluginKind, PluginMeta};
+use crate::discovery::{PluginKind, PluginMeta, discover_plugins};
 use crate::engine::{CompiledComponent, EngineConfig, WasmEngine};
 use crate::store::{InstanceCtx, StoreKind, StoreSet};
 
@@ -56,6 +56,45 @@ pub struct ManifestTool {
     pub name: String,
     pub description: String,
     pub global: bool,
+}
+
+/// Convert a WIT `Manifest` into the host-side `CachedManifest`.
+///
+/// The WIT record is produced by the plugin's `get-manifest()` export;
+/// this flattens it into the keybind/tool metadata the wiring layer reads.
+pub(crate) fn convert_manifest(
+    plugin_name: &str,
+    manifest: crate::bindings::exports::jinn::plugin::hooks::Manifest,
+) -> CachedManifest {
+    use crate::bindings::jinn::plugin::types::{Keybind, ToolDecl, ToolScope};
+
+    let keybinds = manifest
+        .keybinds
+        .into_iter()
+        .map(|kb: Keybind| ManifestKeybind {
+            plugin_name: plugin_name.to_owned(),
+            scope: kb.scope,
+            keys: kb.keys,
+            action: kb.action,
+            description: kb.description,
+        })
+        .collect();
+
+    let tools = manifest
+        .tools
+        .into_iter()
+        .map(|t: ToolDecl| ManifestTool {
+            name: t.name,
+            description: t.description,
+            global: matches!(t.scope, ToolScope::Global),
+        })
+        .collect();
+
+    CachedManifest {
+        keybinds,
+        tools,
+        description: manifest.description,
+    }
 }
 
 /// A plugin compiled and ready to instantiate, plus its discovery metadata.
@@ -95,20 +134,18 @@ fn compile_metas(
 ) -> Result<Vec<CompiledPlugin>, error_stack::Report<PluginLoadError>> {
     let mut compiled = Vec::with_capacity(metas.len());
     for meta in metas {
-        let bytes = std::fs::read(&meta.path)
-            .map_err(|e| {
-                error_stack::Report::new(PluginLoadError)
-                    .attach(e.to_string())
-                    .attach(meta.path.to_string_lossy().to_string())
-                    .attach("reading plugin .wasm")
-            })?;
-        let component = CompiledComponent::compile(engine, &bytes)
-            .map_err(|e| {
-                error_stack::Report::new(PluginLoadError)
-                    .attach(e.to_string())
-                    .attach(meta.name.clone())
-                    .attach("compiling plugin .wasm")
-            })?;
+        let bytes = std::fs::read(&meta.path).map_err(|e| {
+            error_stack::Report::new(PluginLoadError)
+                .attach(e.to_string())
+                .attach(meta.path.to_string_lossy().to_string())
+                .attach("reading plugin .wasm")
+        })?;
+        let component = CompiledComponent::compile(engine, &bytes).map_err(|e| {
+            error_stack::Report::new(PluginLoadError)
+                .attach(e.to_string())
+                .attach(meta.name.clone())
+                .attach("compiling plugin .wasm")
+        })?;
         compiled.push(CompiledPlugin {
             meta: meta.clone(),
             component,
@@ -171,6 +208,67 @@ pub fn load_globals(
     Ok(())
 }
 
+/// Instantiate the global plugins from the given slice into a store set.
+///
+/// Like [`load_globals`] but operates on an explicit slice rather than the
+/// full discovered set, so the async thread can load globals incrementally.
+///
+/// # Errors
+///
+/// Returns an error if any component fails to instantiate.
+pub fn load_globals_into(
+    store: &mut LoadedStore,
+    plugins: &[CompiledPlugin],
+    linker: &Linker<crate::store::StoreState>,
+) -> Result<(), error_stack::Report<PluginLoadError>> {
+    for plugin in plugins {
+        if plugin.meta.kind != PluginKind::Global {
+            continue;
+        }
+        load_one(store, plugin, linker)?;
+    }
+    Ok(())
+}
+
+/// Async variant of [`load_globals_into`] for store sets configured with
+/// async support (`StoreKind::Async`).
+pub async fn load_globals_into_async(
+    store: &mut LoadedStore,
+    plugins: &[CompiledPlugin],
+    linker: &Linker<crate::store::StoreState>,
+) -> Result<(), error_stack::Report<PluginLoadError>> {
+    for plugin in plugins {
+        if plugin.meta.kind != PluginKind::Global {
+            continue;
+        }
+        load_one_async(store, plugin, linker).await?;
+    }
+    Ok(())
+}
+
+/// Instantiate one plugin into a store set under a given identity (async).
+async fn load_one_async(
+    store: &mut LoadedStore,
+    plugin: &CompiledPlugin,
+    linker: &Linker<crate::store::StoreState>,
+) -> Result<(), error_stack::Report<PluginLoadError>> {
+    let ctx = InstanceCtx {
+        plugin_name: plugin.meta.name.clone(),
+        instance_id: synthetic_global_id(&plugin.meta.name),
+        session_id: None,
+    };
+    let manifest = store
+        .storeset
+        .load_async(&plugin.component, ctx, linker)
+        .await
+        .map_err(|e| error_stack::Report::new(PluginLoadError).attach(e.to_string()))?;
+    store.manifests.insert(
+        plugin.meta.name.clone(),
+        convert_manifest(&plugin.meta.name, manifest),
+    );
+    Ok(())
+}
+
 /// Instantiate one plugin into a store set under a given identity.
 ///
 /// The instance identity is derived from the plugin metadata. For globals, a
@@ -186,10 +284,16 @@ fn load_one(
         instance_id: synthetic_global_id(&plugin.meta.name),
         session_id: None,
     };
-    store
+    let manifest = store
         .storeset
         .load(&plugin.component, ctx, linker)
-        .map_err(|e| error_stack::Report::new(PluginLoadError).attach(e.to_string()))
+        .map_err(|e| error_stack::Report::new(PluginLoadError).attach(e.to_string()))?;
+    // Cache the manifest so the wiring layer can register keybinds + tools.
+    store.manifests.insert(
+        plugin.meta.name.clone(),
+        convert_manifest(&plugin.meta.name, manifest),
+    );
+    Ok(())
 }
 
 /// Synthesize a deterministic-ish instance id for a global plugin.
@@ -197,7 +301,7 @@ fn load_one(
 /// Global plugins have no session to derive identity from, so we mint a
 /// per-plugin-name id. It must be stable across the two store sets (sync +
 /// async) so both instances map to the same bag slot.
-fn synthetic_global_id(name: &str) -> jinn_core_types::PluginInstanceId {
+pub(crate) fn synthetic_global_id(name: &str) -> jinn_core_types::PluginInstanceId {
     // Use a hash-derived string so both the sync and async store sets key
     // the same bag slot for a given global plugin name. The id itself is
     // opaque to the host; it just needs to be stable + unique-per-name.

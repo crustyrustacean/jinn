@@ -217,7 +217,8 @@ impl ActorSystemBuilder {
             move |plugin_name: &str,
                   command: &jinn_wasm_host::bindings::command::Command,
                   ctx: &jinn_wasm_host::store::InstanceCtx| {
-                match jinn_wasm_host::command_dispatch::dispatch(plugin_name, ctx, command.clone()) {
+                match jinn_wasm_host::command_dispatch::dispatch(plugin_name, ctx, command.clone())
+                {
                     Ok(Some(closure)) => {
                         let _ = bridge.send(closure);
                     }
@@ -240,14 +241,21 @@ impl ActorSystemBuilder {
                 let req = req.clone();
                 std::boxed::Box::pin(async move {
                     let Some(domain_ctx) = cell.get() else {
-                        return Err(jinn_wasm_host::bindings::command::RequestError::Other("host unavailable".into()));
+                        return Err(jinn_wasm_host::bindings::command::RequestError::Other(
+                            "host unavailable".into(),
+                        ));
                     };
-                    let session_id: jinn_domain::protocol::SessionId = req.session_id.clone().into();
+                    let session_id: jinn_domain::protocol::SessionId =
+                        req.session_id.clone().into();
                     domain_ctx
                         .send_llm_request_oneshot(
                             &session_id,
                             req.prompt.clone(),
-                            if req.system.is_empty() { None } else { Some(req.system.clone()) },
+                            if req.system.is_empty() {
+                                None
+                            } else {
+                                Some(req.system.clone())
+                            },
                             req.persist,
                             req.disable_tool_loop,
                             u64::from(req.timeout_ms.unwrap_or(30_000)),
@@ -255,7 +263,11 @@ impl ActorSystemBuilder {
                         )
                         .await
                         .map(|text| jinn_wasm_host::bindings::command::LlmResp { text })
-                        .map_err(|_| jinn_wasm_host::bindings::command::RequestError::Other("host unavailable".into()))
+                        .map_err(|_| {
+                            jinn_wasm_host::bindings::command::RequestError::Other(
+                                "host unavailable".into(),
+                            )
+                        })
                 })
             }
         });
@@ -268,7 +280,9 @@ impl ActorSystemBuilder {
                 let req = req.clone();
                 std::boxed::Box::pin(async move {
                     let Some(domain_ctx) = cell.get() else {
-                        return Err(jinn_wasm_host::bindings::command::RequestError::Other("host unavailable".into()));
+                        return Err(jinn_wasm_host::bindings::command::RequestError::Other(
+                            "host unavailable".into(),
+                        ));
                     };
                     let parent_id: jinn_domain::protocol::SessionId =
                         req.parent_session_id.clone().into();
@@ -286,11 +300,12 @@ impl ActorSystemBuilder {
             }
         });
 
-        let cancel_cb: jinn_wasm_host::imports::CancelTaskCallback = std::sync::Arc::new(|_name: &str| {
-            // Named-task cancellation registry is part of the full runtime
-            // wiring (prompt_enrichment cancel-on-retap). The fire-path works
-            // without it; cancellation is a no-op until wired.
-        });
+        let cancel_cb: jinn_wasm_host::imports::CancelTaskCallback =
+            std::sync::Arc::new(|_name: &str| {
+                // Named-task cancellation registry is part of the full runtime
+                // wiring (prompt_enrichment cancel-on-retap). The fire-path works
+                // without it; cancellation is a no-op until wired.
+            });
 
         let host_imports = jinn_wasm_host::imports::HostImports {
             emit: emit_cb,
@@ -316,12 +331,16 @@ impl ActorSystemBuilder {
                         emit: std::sync::Arc::new(|_, _, _| {}),
                         llm_oneshot: std::sync::Arc::new(|_, _| {
                             std::boxed::Box::pin(async {
-                                Err(jinn_wasm_host::bindings::command::RequestError::Other("host unavailable".into()))
+                                Err(jinn_wasm_host::bindings::command::RequestError::Other(
+                                    "host unavailable".into(),
+                                ))
                             })
                         }),
                         create_session: std::sync::Arc::new(|_, _| {
                             std::boxed::Box::pin(async {
-                                Err(jinn_wasm_host::bindings::command::RequestError::Other("host unavailable".into()))
+                                Err(jinn_wasm_host::bindings::command::RequestError::Other(
+                                    "host unavailable".into(),
+                                ))
                             })
                         }),
                         cancel_task: std::sync::Arc::new(|_| {}),

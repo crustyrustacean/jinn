@@ -294,7 +294,12 @@ impl PluginDispatchActor {
                 //    not on attach. The call below is now a no-op, retained
                 //    as a hook-in point on the attach path.
                 if !result.tool_metadata.is_empty() {
-                    self.register_plugin_tools_with_actor(session_id, result.tool_metadata);
+                    self.register_plugin_tools_with_actor(
+                        session_id,
+                        result.registry_id,
+                        result.tool_metadata,
+                    )
+                    .await;
                 }
             }
             Err(e) => {
@@ -303,27 +308,46 @@ impl PluginDispatchActor {
         }
     }
 
-    /// Send plugin tool definitions to the tools actor for registration.
-    #[expect(
-        clippy::unused_self,
-        reason = "intentional no-op; retained as a call-site on the attach path for future hook-in and to keep regression tests valid"
-    )]
-    fn register_plugin_tools_with_actor(
-        &self,
+    /// Register plugin-defined tools for execution + catalog visibility.
+    ///
+    /// Two effects:
+    /// 1. Publish `RegisterPluginTools` with `target: registry_id` so the tools
+    ///    actor registers an execution handler (`ToolRegistration::Plugin`) keyed
+    ///    by tool name. When a child session calls the tool, the tools actor
+    ///    routes to the parent session's WASM store via this target.
+    /// 2. Populate `ContextAssemblyState.attachable_tool_catalog` so
+    ///    `create_child_session` can resolve named tools into the child's
+    ///    `session_tool_definitions` for LLM visibility.
+    async fn register_plugin_tools_with_actor(
+        &mut self,
         session_id: &SessionId,
+        registry_id: jinn_core_types::SessionRegistryId,
         tools: Vec<crate::feat::plugin_dispatch::PluginToolMetadata>,
     ) {
-        // No-op: attached-scoped plugin tools are no longer published to the
-        // origin session on attach. Their execution handlers are registered
-        // globally at startup (`execution_only: true` in `actor_wiring.rs`),
-        // and their definitions live in `attachable_tool_catalog`
-        // (`ContextAssemblyState`). Visibility is driven at spawn time:
-        // `create_session` resolves named tools from the catalog into the child
-        // session's `session_tool_definitions`. The origin never sees them.
-        //
-        // This method is retained as a call-site on the attach path for
-        // future hook-in and to keep existing regression tests valid.
-        let _ = (session_id, tools);
+        use crate::feat::tools_actor::protocol::command::RegisterPluginTools;
+
+        // Execution handler registration (execution_only: visibility is driven
+        // at child-session spawn time via the catalog below).
+        let definitions: Vec<jinn_provider::ToolDefinition> = tools
+            .iter()
+            .map(crate::feat::plugin_dispatch::PluginToolMetadata::to_tool_definition)
+            .collect();
+        if !definitions.is_empty() {
+            self.publish(RegisterPluginTools {
+                plugin_name: tools
+                    .first()
+                    .map(|t| t.plugin_name.clone())
+                    .unwrap_or_default(),
+                target: Some(registry_id),
+                session_id: Some(session_id.clone()),
+                definitions,
+                execution_only: true,
+            })
+            .await;
+        }
+
+        // Catalog for child-session tool resolution.
+        self.domain_ctx.register_attachable_tools(&tools);
     }
 
     async fn handle_toggle(&mut self, cmd: TogglePlugin) {
@@ -464,7 +488,9 @@ impl PluginDispatchActor {
     }
 
     fn handle_task_list_updated(&self, msg: &TaskListUpdated) {
+        tracing::debug!(session_id = %msg.session_id, "handle_task_list_updated received");
         let Some((ctx_json, enabled_instances)) = self.build_task_list_ctx(&msg.session_id) else {
+            tracing::warn!(session_id = %msg.session_id, "task_list_ctx build returned None");
             return;
         };
         self.spawn_fire_for_session(
@@ -497,6 +523,7 @@ impl PluginDispatchActor {
             "total": total,
             "is_complete": is_complete,
         });
+        tracing::debug!(%session_id, is_complete, completed, total, empty = list.is_empty(), active_phase = list.active_phase().is_some(), "built task_list ctx");
         let enabled_instances = session.enabled_plugin_instance_ids();
         Some((ctx_json, enabled_instances))
     }
@@ -822,36 +849,26 @@ mod tests {
     // ─── Register plugin tools ────────────────────────────────────────────
 
     #[tokio::test]
-    async fn register_plugin_tools_global_inside_attached_is_ignored() {
+    async fn register_plugin_tools_publishes_execution_handler_with_target() {
         // Given a plugin dispatch actor.
-        let (actor, audit, session_id) = make_actor().await;
-
-        // When registering a global-scope tool defined inside an attached plugin.
-        let tools = vec![test_tool_metadata("web_search", ToolScope::Global)];
-        actor.register_plugin_tools_with_actor(&session_id, tools);
-
-        // Then no RegisterPluginTools message is published — global tools are
-        // registered globally at startup, not on attach.
-        let msgs: Vec<RegisterPluginTools> = audit.of_type::<RegisterPluginTools>();
-        assert!(msgs.is_empty());
-    }
-
-    #[tokio::test]
-    async fn register_plugin_tools_attached_publishes_nothing() {
-        // Given a plugin dispatch actor.
-        let (actor, audit, session_id) = make_actor().await;
+        let (mut actor, audit, session_id) = make_actor().await;
+        let registry_id = SessionRegistryId::new();
 
         // When registering attached plugin tools.
         let tools = vec![test_tool_metadata("judge", ToolScope::Attached)];
-        actor.register_plugin_tools_with_actor(&session_id, tools);
+        actor
+            .register_plugin_tools_with_actor(&session_id, registry_id, tools)
+            .await;
 
-        // Then NO RegisterPluginTools message is published. Attached tools
-        // are registered execution-only at startup and cataloged in
-        // `ContextAssemblyState.attachable_tool_catalog`; the origin session
-        // never receives them. Child sessions resolve them by name at
-        // spawn time via `create_child_session`.
+        // Then a RegisterPluginTools message is published with the parent's
+        // registry_id as target and execution_only = true, so the tools actor
+        // registers an execution handler that routes calls to the parent store.
         let msgs: Vec<RegisterPluginTools> = audit.of_type::<RegisterPluginTools>();
-        assert!(msgs.is_empty());
+        assert_eq!(msgs.len(), 1);
+        assert_eq!(msgs[0].target, Some(registry_id));
+        assert!(msgs[0].execution_only);
+        assert_eq!(msgs[0].definitions.len(), 1);
+        assert_eq!(msgs[0].definitions[0].name, "judge");
     }
     // ─── Attach / Detach / Toggle ──────────────────────────────────────────
 

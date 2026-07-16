@@ -8,8 +8,8 @@
 //! `request-llm-oneshot`, the component's stack is parked until the LLM
 //! stream resolves, then it resumes).
 
-use std::sync::Arc;
 use error_stack::ResultExt;
+use std::sync::Arc;
 use wasmtime::Config;
 
 /// Error constructing the WASM engine.

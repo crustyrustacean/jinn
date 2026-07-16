@@ -20,6 +20,7 @@ use crate::store::StoreState;
 
 impl Host for StoreState {
     async fn emit(&mut self, cmd: Command) -> wasmtime::Result<()> {
+        tracing::debug!(plugin = %self.ctx.plugin_name, cmd = ?cmd, "host emit");
         if let Some(imports) = &self.imports {
             (imports.emit)(&self.ctx.plugin_name, &cmd, &self.ctx);
         }
@@ -34,10 +35,13 @@ impl Host for StoreState {
     }
 
     async fn get_plugin_data(&mut self) -> wasmtime::Result<Option<Vec<u8>>> {
-        Ok(self.bags.get_for_session_ctx(&self.ctx))
+        let v = self.bags.get_for_session_ctx(&self.ctx);
+        tracing::debug!(plugin = %self.ctx.plugin_name, session = ?self.ctx.session_id, bytes = ?v.as_deref(), "get_plugin_data");
+        Ok(v)
     }
 
     async fn set_plugin_data(&mut self, data: Vec<u8>) -> wasmtime::Result<()> {
+        tracing::debug!(plugin = %self.ctx.plugin_name, session = ?self.ctx.session_id, len = data.len(), "set_plugin_data");
         match &self.ctx.session_id {
             Some(sid) => self.bags.set_for_session(sid, &self.ctx.instance_id, data),
             None => self.bags.set(&self.ctx.plugin_name, data),
@@ -49,8 +53,11 @@ impl Host for StoreState {
         Ok(self.globals.get(&key))
     }
 
-    async fn set_global_data(&mut self, key: String, data: Option<Vec<u8>>)
-        -> wasmtime::Result<()> {
+    async fn set_global_data(
+        &mut self,
+        key: String,
+        data: Option<Vec<u8>>,
+    ) -> wasmtime::Result<()> {
         match data {
             Some(bytes) => self.globals.set(&key, bytes),
             None => {
@@ -68,8 +75,8 @@ impl HostWithStore<StoreState> for StoreState {
     ) -> wasmtime::Result<Result<LlmResp, RequestError>> {
         // Snapshot the immutable fields we need out of the store data so the
         // async future does not borrow the accessor (it can't span an `.await`).
-        let (imports, ctx) = accessor
-            .with(|mut access| (access.get().imports.clone(), access.get().ctx.clone()));
+        let (imports, ctx) =
+            accessor.with(|mut access| (access.get().imports.clone(), access.get().ctx.clone()));
         match imports {
             Some(imports) => Ok((imports.llm_oneshot)(&ctx, &req).await),
             None => Ok(Err(RequestError::Other("no host imports wired".into()))),
@@ -80,8 +87,8 @@ impl HostWithStore<StoreState> for StoreState {
         accessor: &wasmtime::component::Accessor<StoreState, StoreState>,
         req: CreateSessionReq,
     ) -> wasmtime::Result<Result<CreateSessionResp, RequestError>> {
-        let (imports, ctx) = accessor
-            .with(|mut access| (access.get().imports.clone(), access.get().ctx.clone()));
+        let (imports, ctx) =
+            accessor.with(|mut access| (access.get().imports.clone(), access.get().ctx.clone()));
         match imports {
             Some(imports) => Ok((imports.create_session)(&ctx, &req).await),
             None => Ok(Err(RequestError::Other("no host imports wired".into()))),

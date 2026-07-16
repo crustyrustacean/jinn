@@ -32,8 +32,8 @@ use serde_json::Value;
 
 use crate::bindings::jinn::plugin::types::{
     AttachCtx, BadgeCtx, BadgeDirective, BadgeSegment, InterceptOutcome, KeybindResult,
-    KeybindTriggerCtx, SessionCtx, SessionPreviewCtx, SubmitInterceptCtx, TaskListCtx,
-    ThemeStyle, ToolCtx, TriggerCtx, TurnEndCtx,
+    KeybindTriggerCtx, SessionCtx, SessionPreviewCtx, SubmitInterceptCtx, TaskListCtx, ThemeStyle,
+    ToolCtx, TriggerCtx, TurnEndCtx,
 };
 
 // ─── JSON field readers ────────────────────────────────────────────────
@@ -54,7 +54,10 @@ fn get_opt_str(ctx: &Value, key: &str) -> Option<String> {
 }
 
 fn get_u32(ctx: &Value, key: &str) -> u32 {
-    ctx.get(key).and_then(Value::as_u64).map(|u| u as u32).unwrap_or(0)
+    ctx.get(key)
+        .and_then(Value::as_u64)
+        .map(|u| u as u32)
+        .unwrap_or(0)
 }
 
 fn get_bool(ctx: &Value, key: &str) -> bool {
@@ -303,45 +306,65 @@ pub async fn dispatch_async_hook(
     ctx_json: &Value,
 ) -> wasmtime::Result<()> {
     let guest = inst.typed_guest()?;
+    // Inject the authoritative per-instance identity. The domain's shared ctx
+    // JSON omits plugin_name/instance_id (it fires one payload to all instances);
+    // each StoredInstance knows its own. Override whatever the JSON carried.
+    let inst_ctx = inst.ctx();
+    let plugin_name = inst_ctx.plugin_name.clone();
+    let instance_id = inst_ctx.instance_id.to_string();
     match hook {
         "on_app_started" => {
-            let ctx = build_session_ctx(ctx_json);
+            let mut ctx = build_session_ctx(ctx_json);
+            ctx.plugin_name = plugin_name.clone();
+            ctx.instance_id = instance_id.clone();
             inst.store_mut()
                 .run_concurrent(async |a| guest.call_on_app_started(a, ctx).await)
                 .await??;
         }
         "on_session_created" => {
-            let ctx = build_session_ctx(ctx_json);
+            let mut ctx = build_session_ctx(ctx_json);
+            ctx.plugin_name = plugin_name.clone();
+            ctx.instance_id = instance_id.clone();
             inst.store_mut()
                 .run_concurrent(async |a| guest.call_on_session_created(a, ctx).await)
                 .await??;
         }
         "on_user_submit" => {
-            let ctx = build_session_ctx(ctx_json);
+            let mut ctx = build_session_ctx(ctx_json);
+            ctx.plugin_name = plugin_name.clone();
+            ctx.instance_id = instance_id.clone();
             inst.store_mut()
                 .run_concurrent(async |a| guest.call_on_user_submit(a, ctx).await)
                 .await??;
         }
         "on_turn_end" => {
-            let ctx = build_turn_end_ctx(ctx_json);
+            let mut ctx = build_turn_end_ctx(ctx_json);
+            ctx.plugin_name = plugin_name.clone();
+            ctx.instance_id = instance_id.clone();
             inst.store_mut()
                 .run_concurrent(async |a| guest.call_on_turn_end(a, ctx).await)
                 .await??;
         }
         "on_attach" => {
-            let ctx = build_attach_ctx(ctx_json);
+            let mut ctx = build_attach_ctx(ctx_json);
+            ctx.plugin_name = plugin_name.clone();
+            ctx.instance_id = instance_id.clone();
             inst.store_mut()
                 .run_concurrent(async |a| guest.call_on_attach(a, ctx).await)
                 .await??;
         }
         "on_detach" => {
-            let ctx = build_attach_ctx(ctx_json);
+            let mut ctx = build_attach_ctx(ctx_json);
+            ctx.plugin_name = plugin_name.clone();
+            ctx.instance_id = instance_id.clone();
             inst.store_mut()
                 .run_concurrent(async |a| guest.call_on_detach(a, ctx).await)
                 .await??;
         }
         "on_task_list_updated" => {
-            let ctx = build_task_list_ctx(ctx_json);
+            let mut ctx = build_task_list_ctx(ctx_json);
+            ctx.plugin_name = plugin_name.clone();
+            ctx.instance_id = instance_id.clone();
             inst.store_mut()
                 .run_concurrent(async |a| guest.call_on_task_list_updated(a, ctx).await)
                 .await??;
@@ -349,7 +372,9 @@ pub async fn dispatch_async_hook(
         // Plugin-defined async hook: routed through run-trigger(action, ctx).
         _ => {
             let action = hook.to_owned();
-            let ctx = build_trigger_ctx(ctx_json);
+            let mut ctx = build_trigger_ctx(ctx_json);
+            ctx.plugin_name = plugin_name.clone();
+            ctx.instance_id = instance_id.clone();
             inst.store_mut()
                 .run_concurrent(async |a| guest.call_run_trigger(a, action, ctx).await)
                 .await??;
@@ -358,21 +383,23 @@ pub async fn dispatch_async_hook(
     Ok(())
 }
 
-/// Dispatch a plugin-defined async tool (`run-tool`).
+/// Dispatch a plugin-defined async tool (`run-tool`). Returns the tool's
+/// result string (fed back to the LLM).
 pub async fn dispatch_run_tool(
     inst: &mut crate::store::StoredInstance,
     name: &str,
     args: &str,
     ctx_json: &Value,
-) -> wasmtime::Result<()> {
+) -> wasmtime::Result<String> {
     let guest = inst.typed_guest()?;
     let name = name.to_owned();
     let args = args.to_owned();
+
+    tracing::debug!(%name, %args, "dispatch_run_tool: calling component run-tool");
     let ctx = build_tool_ctx(ctx_json);
     inst.store_mut()
         .run_concurrent(async |a| guest.call_run_tool(a, name, args, ctx).await)
-        .await??;
-    Ok(())
+        .await?
 }
 
 // ─── Sync render-hook dispatch ──────────────────────────────────────────
@@ -392,9 +419,15 @@ pub fn dispatch_sync_hook(
     ctx_json: &Value,
 ) -> wasmtime::Result<Option<Value>> {
     let guest = inst.typed_guest()?;
+    // Inject the authoritative per-instance identity (see dispatch_async_hook).
+    let inst_ctx = inst.ctx();
+    let plugin_name = inst_ctx.plugin_name.clone();
+    let instance_id = inst_ctx.instance_id.to_string();
     match hook {
         "on_chat_input_badges_render" => {
-            let ctx = build_badge_ctx(ctx_json);
+            let mut ctx = build_badge_ctx(ctx_json);
+            ctx.plugin_name = plugin_name.clone();
+            ctx.instance_id = instance_id.clone();
             guest
                 .call_on_chat_input_badges_render(inst.store_mut(), &ctx)?
                 .map(badge_directive_to_json)
@@ -402,7 +435,9 @@ pub fn dispatch_sync_hook(
                 .transpose()
         }
         "on_keybind_trigger" => {
-            let ctx = build_keybind_trigger_ctx(ctx_json);
+            let mut ctx = build_keybind_trigger_ctx(ctx_json);
+            ctx.plugin_name = plugin_name.clone();
+            ctx.instance_id = instance_id.clone();
             guest
                 .call_on_keybind_trigger(inst.store_mut(), &ctx)?
                 .map(keybind_result_to_json)
@@ -410,7 +445,9 @@ pub fn dispatch_sync_hook(
                 .transpose()
         }
         "on_submit_intercept" => {
-            let ctx = build_submit_intercept_ctx(ctx_json);
+            let mut ctx = build_submit_intercept_ctx(ctx_json);
+            ctx.plugin_name = plugin_name.clone();
+            ctx.instance_id = instance_id.clone();
             guest
                 .call_on_submit_intercept(inst.store_mut(), &ctx)?
                 .map(intercept_outcome_to_json)
@@ -418,7 +455,9 @@ pub fn dispatch_sync_hook(
                 .transpose()
         }
         "on_session_preview" => {
-            let ctx = build_session_preview_ctx(ctx_json);
+            let mut ctx = build_session_preview_ctx(ctx_json);
+            ctx.plugin_name = plugin_name.clone();
+            ctx.instance_id = instance_id.clone();
             guest
                 .call_on_session_preview(inst.store_mut(), &ctx)?
                 .map(|s| serde_json::json!({ "session_id": s }))

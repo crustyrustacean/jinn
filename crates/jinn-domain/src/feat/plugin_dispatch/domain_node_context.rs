@@ -15,8 +15,10 @@ use wherror::Error;
 
 use crate::common::services::Services;
 use crate::common::state::State;
+use crate::common::tcaps::context::AttachableToolCatalogWrite;
 use crate::feat::chat_input::protocol::command::EnqueueUserMessage;
 use crate::feat::context::assemble::AssemblyOverrides;
+use crate::feat::plugin_dispatch::session_plugin_registry::PluginToolMetadata;
 use crate::feat::session::chat_entry::ChatEntry;
 use crate::feat::session::chat_session::ChatSessionState;
 use crate::feat::session::model_selection::ModelSelection;
@@ -107,6 +109,26 @@ impl DomainNodeContext {
             context_cap: crate::common::tcaps::mint::mint_context_cap(),
             pending: Arc::new(Mutex::new(HashMap::new())),
         }
+    }
+
+    /// Register a set of attachable tool definitions into the global catalog.
+    ///
+    /// Each tool's definition is inserted into
+    /// `ContextAssemblyState.attachable_tool_catalog`, keyed by tool name.
+    /// `create_child_session` resolves names from this catalog into a child
+    /// session's `session_tool_definitions` at spawn time.
+    pub fn register_attachable_tools(&self, tools: &[PluginToolMetadata]) {
+        let names: Vec<String> = tools.iter().map(|t| t.name.clone()).collect();
+        self.state.with_context(&self.context_cap, |view| {
+            let catalog = view.context.attachable_tool_catalog_mut();
+            for tool in tools {
+                catalog.insert(tool.name.clone(), tool.to_tool_definition());
+            }
+        });
+        tracing::debug!(
+            tools = ?names,
+            "registered attached plugin tools into attachable tool catalog"
+        );
     }
 
     /// Create a child session parented at `parent_session_id`, with the given
