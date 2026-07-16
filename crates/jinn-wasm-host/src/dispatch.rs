@@ -51,6 +51,7 @@ fn turn_end_ctx_from(c: &TurnEndHookCtx, plugin_name: &str, instance_id: &str) -
         parent_session_id: c.parent_session_id.as_ref().map(|s| s.to_string()),
         instance_id: instance_id.to_owned(),
         plugin_name: plugin_name.to_owned(),
+        turn: c.turn,
     }
 }
 

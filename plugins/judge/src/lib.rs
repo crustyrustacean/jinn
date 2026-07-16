@@ -41,6 +41,18 @@ struct VerdictMap(BTreeMap<String, Verdict>);
 #[derive(Serialize, Deserialize, Default)]
 struct Instances(Vec<String>);
 
+/// Pending verdict children keyed by origin: maps child session id → (instance, turn).
+/// A child present here but absent from `VerdictMap` at aggregation time means it
+/// ended without issuing a verdict → forced fail.
+#[derive(Serialize, Deserialize, Default)]
+struct Pending(BTreeMap<String, PendingChild>);
+
+#[derive(Serialize, Deserialize)]
+struct PendingChild {
+    instance_id: String,
+    turn: u32,
+}
+
 // ── Shared-key helpers (namespaced by origin) ───────────────────────────────
 
 fn count_key(origin: &str) -> String { format!("judge:{origin}:count") }
@@ -48,6 +60,8 @@ fn verdicts_key(origin: &str) -> String { format!("judge:{origin}:verdicts") }
 fn completed_key(origin: &str) -> String { format!("judge:{origin}:completed") }
 fn turn_key(origin: &str) -> String { format!("judge:{origin}:turn") }
 fn instances_key(origin: &str) -> String { format!("judge:{origin}:instances") }
+fn pending_key(origin: &str) -> String { format!("judge:{origin}:pending") }
+fn judged_key(origin: &str) -> String { format!("judge:{origin}:judged") }
 
 // ── Plugin ──────────────────────────────────────────────────────────────────
 
@@ -92,6 +106,10 @@ impl Plugin for Judge {
             instances.0.push(ctx.instance_id.clone());
         }
         bag::set_global_data(&instances_key(origin), &instances);
+
+        // Re-attaching (manually, after a prior one-shot verdict disabled
+        // the instance) resets the judged guard so the next turn evaluates anew.
+        bag::set_global_data::<bool>(&judged_key(origin), &false);
     }
 
     async fn on_detach(ctx: AttachCtx) {
@@ -106,6 +124,8 @@ impl Plugin for Judge {
             bag::set_global_data::<()>(&completed_key(origin), &());
             bag::set_global_data::<()>(&turn_key(origin), &());
             bag::set_global_data::<()>(&instances_key(origin), &());
+            bag::set_global_data::<()>(&pending_key(origin), &());
+            bag::set_global_data::<()>(&judged_key(origin), &());
         } else {
             bag::set_global_data(&key, &count);
             let mut instances = bag::get_global_data::<Instances>(&instances_key(origin)).unwrap_or_default();
@@ -117,16 +137,50 @@ impl Plugin for Judge {
     // ── Turn end: spawn the child judge session ──────────────────────────
 
     async fn on_turn_end(ctx: TurnEndCtx) {
+        // Gate to origin sessions only. Child/automated sessions (e.g. the
+        // judge's own evaluation child) never re-spawn a judge. Without this
+        // guard a child that inherits the judge attachment would recurse, and
+        // the fail message enqueued by aggregation can otherwise race the
+        // DisablePlugin emit and re-trigger evaluation.
+        if ctx.parent_session_id.is_some() {
+            return;
+        }
+
         let origin = ctx.session_id.clone();
 
-        // Transient status indicator.
-        host::push_transient_entry(&origin, "⚖ Judge evaluating...");
+        // Guard against re-judging within the same turn. When a fail verdict
+        // enqueues a message it triggers a new origin turn; `DisablePlugin`
+        // is racing to disable this instance. If on_turn_end fires before the
+        // disable lands, this guard prevents a redundant re-evaluation of the
+        // just-emitted verdict message.
+        if bag::get_global_data::<bool>(&judged_key(&origin)).unwrap_or(false) {
+            return;
+        }
 
-        // Per-turn reset: bump turn counter and clear verdicts/completed.
-        let prev_turn = bag::get_global_data::<u32>(&turn_key(&origin)).unwrap_or(0);
-        bag::set_global_data(&turn_key(&origin), &(prev_turn + 1));
-        bag::set_global_data(&verdicts_key(&origin), &VerdictMap::default());
-        bag::set_global_data::<u32>(&completed_key(&origin), &0);
+        // Host-provided authoritative turn number (count of assistant entries).
+        // With N judge instances attached, on_turn_end fires N times per
+        // genuine turn — once per instance. Only the FIRST fire per turn
+        // performs the per-turn reset + force-fail; subsequent fires (same
+        // turn) skip straight to spawning their own child. This prevents the
+        // reset from clobbering verdicts/completed that sibling instances'
+        // children are concurrently populating.
+        let last_claimed = bag::get_global_data::<u32>(&turn_key(&origin)).unwrap_or(0);
+        let first_fire_this_turn = ctx.turn != last_claimed;
+        if first_fire_this_turn {
+            bag::set_global_data(&turn_key(&origin), &ctx.turn);
+
+            // Force-fail any children still pending from a prior turn that
+            // never issued a verdict (child ended/timed out without calling
+            // a verdict tool). No-verdict = fail; never silently pass.
+            force_fail_stale_children(&origin);
+
+            // Genuine new turn: reset shared state.
+            bag::set_global_data(&verdicts_key(&origin), &VerdictMap::default());
+            bag::set_global_data::<u32>(&completed_key(&origin), &0);
+
+            // Transient status indicator.
+            host::push_transient_entry(&origin, "⚖ Judge evaluating...");
+        }
 
         // Every turn: create a fresh transient child session. No reuse, no reset.
         let result = host::create_session(CreateSessionReq {
@@ -150,6 +204,17 @@ impl Plugin for Judge {
                 return;
             }
         };
+
+        // Track this child as pending so a no-verdict exit can be force-failed
+        // on the next origin turn.
+        {
+            let mut pending = bag::get_global_data::<Pending>(&pending_key(&origin)).unwrap_or_default();
+            pending.0.insert(
+                judge_id.clone(),
+                PendingChild { instance_id: ctx.instance_id.clone(), turn: ctx.turn },
+            );
+            bag::set_global_data(&pending_key(&origin), &pending);
+        }
 
         // Tell the domain layer about the managed session (sidebar navigation).
         host::emit(Command::SetManagedSession(SetManagedSessionCmd {
@@ -201,8 +266,15 @@ fn record_verdict(ctx: ToolCtx, verdict: String, message: Option<String>) {
 
     // Post this child's verdict.
     let mut verdicts = bag::get_global_data::<VerdictMap>(&verdicts_key(&origin)).unwrap_or_default();
-    verdicts.0.insert(me, Verdict { verdict: verdict.clone(), message: message.clone() });
+    verdicts.0.insert(me.clone(), Verdict { verdict: verdict.clone(), message: message.clone() });
     bag::set_global_data(&verdicts_key(&origin), &verdicts);
+
+    // This child issued a verdict: it's no longer pending.
+    {
+        let mut pending = bag::get_global_data::<Pending>(&pending_key(&origin)).unwrap_or_default();
+        pending.0.remove(&me);
+        bag::set_global_data(&pending_key(&origin), &pending);
+    }
 
     // Increment completed.
     let completed = bag::get_global_data::<u32>(&completed_key(&origin)).unwrap_or(0) + 1;
@@ -257,6 +329,58 @@ fn aggregate_and_emit(origin: &str, verdicts: &VerdictMap, ctx: &ToolCtx) {
     // Reset per-turn shared state for the next turn.
     bag::set_global_data::<VerdictMap>(&verdicts_key(origin), &VerdictMap::default());
     bag::set_global_data::<u32>(&completed_key(origin), &0);
+    bag::set_global_data::<Pending>(&pending_key(origin), &Pending::default());
+    // Mark this origin as judged so a re-judge (fail message triggering a new
+    // turn before DisablePlugin lands) is suppressed. Cleared on manual re-attach.
+    bag::set_global_data::<bool>(&judged_key(origin), &true);
+}
+
+/// Force-fail any children from a prior turn that never issued a verdict.
+///
+/// Called at the start of each origin `on_turn_end`. A child present in
+/// `pending` but absent from `verdicts` ended/timed out without calling a
+/// verdict tool. Each such child is recorded as an explicit fail so
+/// aggregation reflects it, and `completed` is advanced. This guarantees a
+/// no-verdict child can never silently stall or pass.
+fn force_fail_stale_children(origin: &str) {
+    let mut pending = bag::get_global_data::<Pending>(&pending_key(origin)).unwrap_or_default();
+    if pending.0.is_empty() {
+        return;
+    }
+    let count = bag::get_global_data::<u32>(&count_key(origin)).unwrap_or(0);
+    let mut verdicts = bag::get_global_data::<VerdictMap>(&verdicts_key(origin)).unwrap_or_default();
+    let mut added = 0u32;
+    // Children from any turn older than the current pending turn are stale.
+    // The current turn's children haven't had a chance to run yet.
+    let max_turn = pending.0.values().map(|c| c.turn).max().unwrap_or(0);
+    let stale: Vec<String> = pending.0.iter()
+        .filter(|(_, c)| c.turn < max_turn)
+        .map(|(id, _)| id.clone())
+        .collect();
+    for child_id in &stale {
+        verdicts.0.insert(child_id.clone(), Verdict {
+            verdict: "failed".to_owned(),
+            message: Some("judge session ended without a verdict".to_owned()),
+        });
+        pending.0.remove(child_id);
+        added += 1;
+    }
+    if added > 0 {
+        bag::set_global_data(&verdicts_key(origin), &verdicts);
+        let completed = bag::get_global_data::<u32>(&completed_key(origin)).unwrap_or(0) + added;
+        bag::set_global_data::<u32>(&completed_key(origin), &completed);
+        // If the force-fail pushed completed to the threshold, aggregate now.
+        if completed >= count && count > 0 {
+            let ctx = ToolCtx {
+                session_id: String::new(),
+                parent_session_id: Some(origin.to_owned()),
+                instance_id: String::new(),
+                plugin_name: "judge".to_owned(),
+            };
+            aggregate_and_emit(origin, &verdicts, &ctx);
+        }
+    }
+    bag::set_global_data(&pending_key(origin), &pending);
 }
 
 /// Parse `{"message": "..."}` from the LLM-supplied tool args JSON.
