@@ -22,7 +22,7 @@ use serde::{Deserialize, Serialize};
 use crate::common::actor_deps::{ActorDeps, BusPublish};
 use crate::common::services::Services;
 use crate::common::services::bus_service::BusService;
-use crate::feat::web_fetch_actor::BrowserBinary;
+use crate::feat::browser::BrowserBinary;
 use crate::init::env_init_actor::EnvironmentLoaded;
 
 pub mod binary_resolver;
