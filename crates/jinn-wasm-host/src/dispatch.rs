@@ -1,34 +1,32 @@
-//! Typed hook dispatch — the bridge between the domain's `serde_json::Value`
-//! ctx payloads and the WIT-typed component exports.
+//! Typed hook dispatch — the bridge between domain hook contexts and the
+//! WIT-typed component exports.
 //!
-//! ## Why this module exists
+//! ## Two paths
 //!
-//! The domain fires hooks by **string name** (`"on_turn_end"`, …) carrying a
-//! `serde_json::Value` ctx. WASM components, however, export **typed** functions
-//! resolved through the generated [`Guest`] accessor. Raw `get_func(name)` does
-//! not reach them — the exports are kebab-cased (`jinn:plugin/hooks@0.1.0#on-turn-end`)
-//! and async.
+//! - **Async dispatch** ([`dispatch_async_hook`]) — takes a typed
+//!   [`HookCtx`](jinn_domain::feat::plugin_dispatch::HookCtx) and maps each
+//!   variant to its WIT record before calling the typed component export.
+//!   No JSON crosses this boundary.
+//! - **Sync dispatch** ([`dispatch_sync_hook`]) — the render-thread sync hooks
+//!   still arrive as `serde_json::Value` through the `PluginSyncHooks` seam.
+//!   They are mapped to WIT records here, and their typed results are mapped
+//!   back to JSON for the TUI call sites.
 //!
-//! This module owns the two conversions that make the typed boundary work:
+//! ## Per-instance identity injection
 //!
-//! 1. **`ctx_json → typed record`** — per-hook builders that read the JSON keys
-//!    the domain writes (`session_id`, `parent_session_id`, `task_list`, …) and
-//!    construct the matching WIT record. Built once, used by both the async and
-//!    sync paths.
-//! 2. **`typed result → serde_json::Value`** — converts the typed return types
-//!    (`BadgeDirective`, `KeybindResult`, `InterceptOutcome`) back to the JSON
-//!    shape the `PluginSyncHooks` trait expects, so the TUI call sites are
-//!    unchanged.
-//!
-//! ## Async vs sync dispatch
-//!
-//! Async hooks (lifecycle + `run-trigger`/`run-tool`) are driven via
-//! `Store::run_concurrent`, which lends an [`Accessor`] to the typed
-//! `call_*` methods. Sync render hooks call the typed methods directly with the
-//! store context. Both resolve the same [`Guest`] accessor from
-//! [`StoredInstance::typed_guest`](crate::store::StoredInstance::typed_guest).
+//! The domain fires one ctx to all instances of a hook; it cannot know each
+//! instance's `plugin_name` / `instance_id` at fire time. Each `StoredInstance`
+//! knows its own identity, so the dispatch overrides those fields after
+//! building the WIT record — authoritative identity comes from the store, not
+//! the ctx.
 
 use serde_json::Value;
+
+use jinn_domain::feat::plugin_dispatch::plugin_ctx::{
+    AttachHookCtx, SessionHookCtx, TaskListHookCtx, ToolHookCtx, TriggerHookCtx, TurnEndHookCtx,
+};
+use jinn_domain::feat::plugin_dispatch::HookCtx;
+use jinn_core_types::SessionId;
 
 use crate::bindings::jinn::plugin::types::{
     AttachCtx, BadgeCtx, BadgeDirective, BadgeSegment, InterceptOutcome, KeybindResult,
@@ -36,11 +34,73 @@ use crate::bindings::jinn::plugin::types::{
     ToolCtx, TriggerCtx, TurnEndCtx,
 };
 
-// ─── JSON field readers ────────────────────────────────────────────────
-// The domain writes snake_case keys. These read them defensively — a missing
-// or wrong-typed field degrades to a default rather than panicking the
-// dispatch. Defensive parsing is intentional: the boundary survives a plugin
-// that omits a field.
+// ─── Domain ctx → WIT record (async path) ───────────────────────────────
+
+fn session_ctx_from(c: &SessionHookCtx, plugin_name: &str, instance_id: &str) -> SessionCtx {
+    SessionCtx {
+        session_id: c.session_id.to_string(),
+        parent_session_id: c.parent_session_id.as_ref().map(|s| s.to_string()),
+        instance_id: instance_id.to_owned(),
+        plugin_name: plugin_name.to_owned(),
+    }
+}
+
+fn turn_end_ctx_from(c: &TurnEndHookCtx, plugin_name: &str, instance_id: &str) -> TurnEndCtx {
+    TurnEndCtx {
+        session_id: c.session_id.to_string(),
+        parent_session_id: c.parent_session_id.as_ref().map(|s| s.to_string()),
+        instance_id: instance_id.to_owned(),
+        plugin_name: plugin_name.to_owned(),
+    }
+}
+
+fn attach_ctx_from(c: &AttachHookCtx, plugin_name: &str, instance_id: &str) -> AttachCtx {
+    AttachCtx {
+        session_id: c.session_id.to_string(),
+        instance_id: instance_id.to_owned(),
+        plugin_name: plugin_name.to_owned(),
+    }
+}
+
+fn task_list_ctx_from(c: &TaskListHookCtx, plugin_name: &str, instance_id: &str) -> TaskListCtx {
+    TaskListCtx {
+        session_id: c.session_id.to_string(),
+        instance_id: instance_id.to_owned(),
+        plugin_name: plugin_name.to_owned(),
+        task_list: c.task_list.clone(),
+        completed: c.completed,
+        total: c.total,
+        is_complete: c.is_complete,
+    }
+}
+
+fn trigger_ctx_from(c: &TriggerHookCtx, plugin_name: &str, instance_id: &str) -> TriggerCtx {
+    TriggerCtx {
+        session_id: c.session_id.to_string(),
+        parent_session_id: c.parent_session_id.as_ref().map(|s| s.to_string()),
+        instance_id: instance_id.to_owned(),
+        plugin_name: plugin_name.to_owned(),
+        text: c.text.clone(),
+    }
+}
+
+fn tool_ctx_from(
+    c: &ToolHookCtx,
+    plugin_name: &str,
+    instance_id: &str,
+) -> ToolCtx {
+    ToolCtx {
+        session_id: c.session_id.to_string(),
+        parent_session_id: c.parent_session_id.as_ref().map(|s| s.to_string()),
+        instance_id: instance_id.to_owned(),
+        plugin_name: plugin_name.to_owned(),
+    }
+}
+
+// ─── Sync path: JSON field readers ──────────────────────────────────────
+// The sync render hooks arrive as JSON through PluginSyncHooks. These read
+// the snake_case keys the domain writes. Defensive: missing fields degrade
+// to defaults rather than panicking the dispatch.
 
 fn get_str(ctx: &Value, key: &str) -> String {
     ctx.get(key)
@@ -64,122 +124,10 @@ fn get_bool(ctx: &Value, key: &str) -> bool {
     ctx.get(key).and_then(Value::as_bool).unwrap_or(false)
 }
 
-// ─── ctx_json → typed record builders ─────────────────────────────���────
-// One builder per hook ctx type. Each reads exactly the fields that hook's
-// WIT record declares (see wit/jinn.wit).
-
-/// Build a `SessionCtx` (used by `on-app-started`, `on-session-created`,
-/// `on-user-submit`).
-pub fn build_session_ctx(ctx: &Value) -> SessionCtx {
-    SessionCtx {
-        session_id: get_str(ctx, "session_id"),
-        parent_session_id: get_opt_str(ctx, "parent_session_id"),
-        instance_id: instance_id_or_default(ctx),
-        plugin_name: get_str(ctx, "plugin_name"),
-    }
+fn instance_id_or_default(ctx: &Value) -> String {
+    get_str(ctx, "instance_id")
 }
 
-/// Build a `TurnEndCtx` (used by `on-turn-end`).
-pub fn build_turn_end_ctx(ctx: &Value) -> TurnEndCtx {
-    TurnEndCtx {
-        session_id: get_str(ctx, "session_id"),
-        parent_session_id: get_opt_str(ctx, "parent_session_id"),
-        instance_id: instance_id_or_default(ctx),
-        plugin_name: get_str(ctx, "plugin_name"),
-    }
-}
-
-/// Build an `AttachCtx` (used by `on-attach` / `on-detach`).
-pub fn build_attach_ctx(ctx: &Value) -> AttachCtx {
-    AttachCtx {
-        session_id: get_str(ctx, "session_id"),
-        instance_id: instance_id_or_default(ctx),
-        plugin_name: get_str(ctx, "plugin_name"),
-    }
-}
-
-/// Build a `TaskListCtx` (used by `on-task-list-updated`).
-pub fn build_task_list_ctx(ctx: &Value) -> TaskListCtx {
-    TaskListCtx {
-        session_id: get_str(ctx, "session_id"),
-        instance_id: instance_id_or_default(ctx),
-        plugin_name: get_str(ctx, "plugin_name"),
-        task_list: get_str(ctx, "task_list"),
-        completed: get_u32(ctx, "completed"),
-        total: get_u32(ctx, "total"),
-        is_complete: get_bool(ctx, "is_complete"),
-    }
-}
-
-/// Build a `TriggerCtx` (used by `run-trigger`).
-pub fn build_trigger_ctx(ctx: &Value) -> TriggerCtx {
-    TriggerCtx {
-        session_id: get_str(ctx, "session_id"),
-        parent_session_id: get_opt_str(ctx, "parent_session_id"),
-        instance_id: instance_id_or_default(ctx),
-        plugin_name: get_str(ctx, "plugin_name"),
-        text: get_str(ctx, "text"),
-    }
-}
-
-/// Build a `ToolCtx` (used by `run-tool`).
-pub fn build_tool_ctx(ctx: &Value) -> ToolCtx {
-    ToolCtx {
-        session_id: get_str(ctx, "session_id"),
-        parent_session_id: get_opt_str(ctx, "parent_session_id"),
-        instance_id: instance_id_or_default(ctx),
-        plugin_name: get_str(ctx, "plugin_name"),
-    }
-}
-
-/// Build a `BadgeCtx` (used by `on-chat-input-badges-render`).
-pub fn build_badge_ctx(ctx: &Value) -> BadgeCtx {
-    BadgeCtx {
-        session_id: get_str(ctx, "session_id"),
-        active_session_id: get_str(ctx, "active_session_id"),
-        instance_id: instance_id_or_default(ctx),
-        plugin_name: get_str(ctx, "plugin_name"),
-        mode: get_str(ctx, "mode"),
-        theme_styles: theme_styles_list(ctx),
-    }
-}
-
-/// Build a `KeybindTriggerCtx` (used by `on-keybind-trigger`).
-pub fn build_keybind_trigger_ctx(ctx: &Value) -> KeybindTriggerCtx {
-    KeybindTriggerCtx {
-        session_id: get_str(ctx, "session_id"),
-        instance_id: instance_id_or_default(ctx),
-        plugin_name: get_str(ctx, "plugin_name"),
-        hook: get_str(ctx, "hook"),
-        text: get_str(ctx, "text"),
-        keybound_plugin: get_str(ctx, "keybound_plugin"),
-    }
-}
-
-/// Build a `SubmitInterceptCtx` (used by `on-submit-intercept`).
-pub fn build_submit_intercept_ctx(ctx: &Value) -> SubmitInterceptCtx {
-    SubmitInterceptCtx {
-        session_id: get_str(ctx, "session_id"),
-        instance_id: instance_id_or_default(ctx),
-        plugin_name: get_str(ctx, "plugin_name"),
-        input_text: get_str(ctx, "input_text"),
-    }
-}
-
-/// Build a `SessionPreviewCtx` (used by `on-session-preview`).
-pub fn build_session_preview_ctx(ctx: &Value) -> SessionPreviewCtx {
-    SessionPreviewCtx {
-        session_id: get_str(ctx, "session_id"),
-        instance_id: instance_id_or_default(ctx),
-        plugin_name: get_str(ctx, "plugin_name"),
-    }
-}
-
-/// Extract the theme-style list from the ctx's `theme_styles` object.
-///
-/// The domain passes it as a JSON object `{name: name, ...}` (each field name
-/// is also its value). WIT wants `list<theme-style>` where each entry is
-/// `{name: string}`. Read the object keys; ignore malformed entries.
 fn theme_styles_list(ctx: &Value) -> Vec<ThemeStyle> {
     ctx.get("theme_styles")
         .and_then(Value::as_object)
@@ -191,18 +139,9 @@ fn theme_styles_list(ctx: &Value) -> Vec<ThemeStyle> {
         .unwrap_or_default()
 }
 
-/// The domain does not always know the per-instance id at fire time (global
-/// plugins fire by name). Fall back to an empty string; the host-owned bag
-/// layer keys globals by plugin name when `session_id` is `None`.
-fn instance_id_or_default(ctx: &Value) -> String {
-    get_str(ctx, "instance_id")
-}
+// ─── Typed result → serde_json::Value (sync path) ───────────────────────
+// PluginSyncHooks returns Vec<Value>; convert the typed WIT results back.
 
-// ─── Typed result → serde_json::Value ───────────────────────────────���──
-// The `PluginSyncHooks` trait returns `Vec<Value>`; convert the typed WIT
-// results back. Only the sync render hooks produce values.
-
-/// Convert a typed `BadgeDirective` to the JSON shape the TUI expects.
 pub fn badge_directive_to_json(d: BadgeDirective) -> Value {
     let segments: Vec<Value> = d
         .segments
@@ -220,7 +159,6 @@ pub fn badge_directive_to_json(d: BadgeDirective) -> Value {
     })
 }
 
-/// Convert a typed `KeybindResult` to the JSON shape the TUI expects.
 pub fn keybind_result_to_json(r: KeybindResult) -> Value {
     match r {
         KeybindResult::Run => serde_json::json!({ "run_action": true }),
@@ -228,7 +166,6 @@ pub fn keybind_result_to_json(r: KeybindResult) -> Value {
     }
 }
 
-/// Convert a typed `InterceptOutcome` to the JSON shape the TUI expects.
 pub fn intercept_outcome_to_json(o: InterceptOutcome) -> Value {
     match o {
         InterceptOutcome::Pass => serde_json::json!({ "action": "pass" }),
@@ -294,89 +231,96 @@ pub fn segment(text: impl Into<String>, style: Option<String>) -> BadgeSegment {
     }
 }
 
-// ─── Async typed dispatch ──────────────────────────────────��───────────
-// Each dispatcher resolves the typed Guest, extracts the `Copy` `TypedFunc`
-// for the hook (None => optional-hook skip), then drives it under
-// `store.run_concurrent`, which lends an `Accessor` to `TypedFunc::call`.
+// ─── Async typed dispatch ───────────────────────────────────────────────
+// Each dispatcher resolves the typed Guest, matches the hook name against
+// its typed export, maps the HookCtx variant to the WIT record, injects
+// per-instance identity, then drives the call under store.run_concurrent.
 
 /// Dispatch a well-known async lifecycle hook. No-op if the export is absent.
 pub async fn dispatch_async_hook(
     inst: &mut crate::store::StoredInstance,
     hook: &str,
-    ctx_json: &Value,
+    ctx: &HookCtx,
 ) -> wasmtime::Result<()> {
     let guest = inst.typed_guest()?;
-    // Inject the authoritative per-instance identity. The domain's shared ctx
-    // JSON omits plugin_name/instance_id (it fires one payload to all instances);
-    // each StoredInstance knows its own. Override whatever the JSON carried.
     let inst_ctx = inst.ctx();
-    let plugin_name = inst_ctx.plugin_name.clone();
+    let plugin_name = inst_ctx.plugin_name.as_str();
     let instance_id = inst_ctx.instance_id.to_string();
+
     match hook {
         "on_app_started" => {
-            let mut ctx = build_session_ctx(ctx_json);
-            ctx.plugin_name = plugin_name.clone();
-            ctx.instance_id = instance_id.clone();
+            let HookCtx::Session(c) = ctx else {
+                return Ok(());
+            };
+            let wit = session_ctx_from(c, plugin_name, &instance_id);
             inst.store_mut()
-                .run_concurrent(async |a| guest.call_on_app_started(a, ctx).await)
+                .run_concurrent(async |a| guest.call_on_app_started(a, wit).await)
                 .await??;
         }
         "on_session_created" => {
-            let mut ctx = build_session_ctx(ctx_json);
-            ctx.plugin_name = plugin_name.clone();
-            ctx.instance_id = instance_id.clone();
+            let HookCtx::Session(c) = ctx else {
+                return Ok(());
+            };
+            let wit = session_ctx_from(c, plugin_name, &instance_id);
             inst.store_mut()
-                .run_concurrent(async |a| guest.call_on_session_created(a, ctx).await)
+                .run_concurrent(async |a| guest.call_on_session_created(a, wit).await)
                 .await??;
         }
         "on_user_submit" => {
-            let mut ctx = build_session_ctx(ctx_json);
-            ctx.plugin_name = plugin_name.clone();
-            ctx.instance_id = instance_id.clone();
+            let HookCtx::Session(c) = ctx else {
+                return Ok(());
+            };
+            let wit = session_ctx_from(c, plugin_name, &instance_id);
             inst.store_mut()
-                .run_concurrent(async |a| guest.call_on_user_submit(a, ctx).await)
+                .run_concurrent(async |a| guest.call_on_user_submit(a, wit).await)
                 .await??;
         }
         "on_turn_end" => {
-            let mut ctx = build_turn_end_ctx(ctx_json);
-            ctx.plugin_name = plugin_name.clone();
-            ctx.instance_id = instance_id.clone();
+            let HookCtx::TurnEnd(c) = ctx else {
+                return Ok(());
+            };
+            let wit = turn_end_ctx_from(c, plugin_name, &instance_id);
             inst.store_mut()
-                .run_concurrent(async |a| guest.call_on_turn_end(a, ctx).await)
+                .run_concurrent(async |a| guest.call_on_turn_end(a, wit).await)
                 .await??;
         }
         "on_attach" => {
-            let mut ctx = build_attach_ctx(ctx_json);
-            ctx.plugin_name = plugin_name.clone();
-            ctx.instance_id = instance_id.clone();
+            let HookCtx::Attach(c) = ctx else {
+                return Ok(());
+            };
+            let wit = attach_ctx_from(c, plugin_name, &instance_id);
             inst.store_mut()
-                .run_concurrent(async |a| guest.call_on_attach(a, ctx).await)
+                .run_concurrent(async |a| guest.call_on_attach(a, wit).await)
                 .await??;
         }
         "on_detach" => {
-            let mut ctx = build_attach_ctx(ctx_json);
-            ctx.plugin_name = plugin_name.clone();
-            ctx.instance_id = instance_id.clone();
+            let HookCtx::Attach(c) = ctx else {
+                return Ok(());
+            };
+            let wit = attach_ctx_from(c, plugin_name, &instance_id);
             inst.store_mut()
-                .run_concurrent(async |a| guest.call_on_detach(a, ctx).await)
+                .run_concurrent(async |a| guest.call_on_detach(a, wit).await)
                 .await??;
         }
         "on_task_list_updated" => {
-            let mut ctx = build_task_list_ctx(ctx_json);
-            ctx.plugin_name = plugin_name.clone();
-            ctx.instance_id = instance_id.clone();
+            let HookCtx::TaskList(c) = ctx else {
+                return Ok(());
+            };
+            let wit = task_list_ctx_from(c, plugin_name, &instance_id);
             inst.store_mut()
-                .run_concurrent(async |a| guest.call_on_task_list_updated(a, ctx).await)
+                .run_concurrent(async |a| guest.call_on_task_list_updated(a, wit).await)
                 .await??;
         }
         // Plugin-defined async hook: routed through run-trigger(action, ctx).
         _ => {
+            let HookCtx::Trigger(c) = ctx else {
+                tracing::warn!(hook, "plugin-defined hook fired with non-Trigger ctx; skipping");
+                return Ok(());
+            };
             let action = hook.to_owned();
-            let mut ctx = build_trigger_ctx(ctx_json);
-            ctx.plugin_name = plugin_name.clone();
-            ctx.instance_id = instance_id.clone();
+            let wit = trigger_ctx_from(c, plugin_name, &instance_id);
             inst.store_mut()
-                .run_concurrent(async |a| guest.call_run_trigger(a, action, ctx).await)
+                .run_concurrent(async |a| guest.call_run_trigger(a, action, wit).await)
                 .await??;
         }
     }
@@ -389,43 +333,49 @@ pub async fn dispatch_run_tool(
     inst: &mut crate::store::StoredInstance,
     name: &str,
     args: &str,
-    ctx_json: &Value,
+    session_id: &SessionId,
+    parent_session_id: Option<&SessionId>,
 ) -> wasmtime::Result<String> {
     let guest = inst.typed_guest()?;
     let name = name.to_owned();
     let args = args.to_owned();
+    let inst_ctx = inst.ctx();
+    let wit = ToolCtx {
+        session_id: session_id.to_string(),
+        parent_session_id: parent_session_id.map(|s| s.to_string()),
+        instance_id: inst_ctx.instance_id.to_string(),
+        plugin_name: inst_ctx.plugin_name.clone(),
+    };
 
     tracing::debug!(%name, %args, "dispatch_run_tool: calling component run-tool");
-    let ctx = build_tool_ctx(ctx_json);
     inst.store_mut()
-        .run_concurrent(async |a| guest.call_run_tool(a, name, args, ctx).await)
+        .run_concurrent(async |a| guest.call_run_tool(a, name, args, wit).await)
         .await?
 }
 
 // ─── Sync render-hook dispatch ──────────────────────────────────────────
-// The render thread calls hooks synchronously through `PluginSyncHooks`.
-// Each well-known sync hook resolves to its typed `call_*` method and returns
-// an `Option<Value>`: `None` means the plugin produced no directive (absent or
-// opted-out); `Some(v)` is the typed result converted to the JSON shape the
-// `PluginSyncHooks` trait expects.
+// The render thread calls hooks synchronously through PluginSyncHooks.
+// These still arrive as JSON and return typed results converted to JSON.
 
-/// Dispatch a sync render hook by name, returning the typed result as JSON.
-//
-// Returns `Ok(None)` when the plugin produced no directive. Trap/errors are
-// returned as `Err` so the caller can log and degrade.
 pub fn dispatch_sync_hook(
     inst: &mut crate::store::StoredInstance,
     hook: &str,
     ctx_json: &Value,
 ) -> wasmtime::Result<Option<Value>> {
     let guest = inst.typed_guest()?;
-    // Inject the authoritative per-instance identity (see dispatch_async_hook).
     let inst_ctx = inst.ctx();
     let plugin_name = inst_ctx.plugin_name.clone();
     let instance_id = inst_ctx.instance_id.to_string();
     match hook {
         "on_chat_input_badges_render" => {
-            let mut ctx = build_badge_ctx(ctx_json);
+            let mut ctx = BadgeCtx {
+                session_id: get_str(ctx_json, "session_id"),
+                active_session_id: get_str(ctx_json, "active_session_id"),
+                instance_id: instance_id.clone(),
+                plugin_name: plugin_name.clone(),
+                mode: get_str(ctx_json, "mode"),
+                theme_styles: theme_styles_list(ctx_json),
+            };
             ctx.plugin_name = plugin_name.clone();
             ctx.instance_id = instance_id.clone();
             guest
@@ -435,7 +385,14 @@ pub fn dispatch_sync_hook(
                 .transpose()
         }
         "on_keybind_trigger" => {
-            let mut ctx = build_keybind_trigger_ctx(ctx_json);
+            let mut ctx = KeybindTriggerCtx {
+                session_id: get_str(ctx_json, "session_id"),
+                instance_id: instance_id.clone(),
+                plugin_name: plugin_name.clone(),
+                hook: get_str(ctx_json, "hook"),
+                text: get_str(ctx_json, "text"),
+                keybound_plugin: get_str(ctx_json, "keybound_plugin"),
+            };
             ctx.plugin_name = plugin_name.clone();
             ctx.instance_id = instance_id.clone();
             guest
@@ -445,7 +402,12 @@ pub fn dispatch_sync_hook(
                 .transpose()
         }
         "on_submit_intercept" => {
-            let mut ctx = build_submit_intercept_ctx(ctx_json);
+            let mut ctx = SubmitInterceptCtx {
+                session_id: get_str(ctx_json, "session_id"),
+                instance_id: instance_id.clone(),
+                plugin_name: plugin_name.clone(),
+                input_text: get_str(ctx_json, "input_text"),
+            };
             ctx.plugin_name = plugin_name.clone();
             ctx.instance_id = instance_id.clone();
             guest
@@ -455,7 +417,11 @@ pub fn dispatch_sync_hook(
                 .transpose()
         }
         "on_session_preview" => {
-            let mut ctx = build_session_preview_ctx(ctx_json);
+            let mut ctx = SessionPreviewCtx {
+                session_id: get_str(ctx_json, "session_id"),
+                instance_id: instance_id.clone(),
+                plugin_name: plugin_name.clone(),
+            };
             ctx.plugin_name = plugin_name.clone();
             ctx.instance_id = instance_id.clone();
             guest
@@ -467,3 +433,4 @@ pub fn dispatch_sync_hook(
         _ => Ok(None),
     }
 }
+

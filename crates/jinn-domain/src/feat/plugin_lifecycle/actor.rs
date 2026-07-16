@@ -63,15 +63,15 @@ impl Message<AllActorsSpawned> for PluginLifecycleActor {
     type Reply = ();
 
     async fn handle(&mut self, _msg: AllActorsSpawned, _ctx: &mut Context<Self, Self::Reply>) {
-        let ctx = serde_json::json!({
-            "session_id": self.startup_session_id,
-        });
-        if let Err(e) = self
-            .services
-            .plugins
-            .fire_async_json("on_app_started", &ctx)
-            .await
-        {
+        let ctx = crate::feat::plugin_dispatch::HookCtx::Session(
+            crate::feat::plugin_dispatch::plugin_ctx::SessionHookCtx {
+                session_id: self.startup_session_id.clone().into(),
+                parent_session_id: None,
+                instance_id: String::new(),
+                plugin_name: String::new(),
+            },
+        );
+        if let Err(e) = self.services.plugins.fire_async("on_app_started", &ctx).await {
             tracing::warn!(err = %e, "on_app_started plugin hook failed");
         }
     }
@@ -82,15 +82,15 @@ impl Message<SessionCreated> for PluginLifecycleActor {
 
     async fn handle(&mut self, msg: SessionCreated, _ctx: &mut Context<Self, Self::Reply>) {
         tracing::debug!(session_id = %msg.session_id, "firing on_session_created plugin hook");
-        let ctx = serde_json::json!({
-            "session_id": msg.session_id.to_string(),
-        });
-        if let Err(e) = self
-            .services
-            .plugins
-            .fire_async_json("on_session_created", &ctx)
-            .await
-        {
+        let ctx = crate::feat::plugin_dispatch::HookCtx::Session(
+            crate::feat::plugin_dispatch::plugin_ctx::SessionHookCtx {
+                session_id: msg.session_id.clone(),
+                parent_session_id: None,
+                instance_id: String::new(),
+                plugin_name: String::new(),
+            },
+        );
+        if let Err(e) = self.services.plugins.fire_async("on_session_created", &ctx).await {
             tracing::warn!(err = %e, "on_session_created plugin hook failed");
         }
     }

@@ -76,7 +76,7 @@ impl AsyncWasmHandle {
     pub async fn fire_async(
         &self,
         hook: &str,
-        ctx: &Value,
+        ctx: &jinn_domain::feat::plugin_dispatch::HookCtx,
     ) -> Result<(), Report<AsyncPluginError>> {
         self.fire_async_for_session(None, hook, ctx, None).await
     }
@@ -95,14 +95,14 @@ impl AsyncWasmHandle {
         &self,
         target_session: Option<SessionRegistryId>,
         hook: &str,
-        ctx: &Value,
+        ctx: &jinn_domain::feat::plugin_dispatch::HookCtx,
         enabled_instances: Option<Vec<PluginInstanceId>>,
     ) -> Result<(), Report<AsyncPluginError>> {
         let (respond_to, rx) = oneshot::channel();
         self.tx
             .send(WasmJob::Fire {
                 hook: hook.to_owned(),
-                ctx_json: ctx.clone(),
+                ctx: ctx.clone(),
                 respond_to,
                 target_session,
                 enabled_instances,
@@ -120,52 +120,6 @@ impl AsyncWasmHandle {
             .map_err(|_| Report::new(AsyncPluginError).attach("wasm thread dropped responder"))
             .attach(hook.to_owned())??;
         Ok(())
-    }
-
-    /// Fire an async hook, collecting return values from all global plugins.
-    ///
-    /// # Errors
-    ///
-    /// Returns an error if the background thread is dead, the call times out,
-    /// or a hook traps.
-    pub async fn fire_async_collect(
-        &self,
-        hook: &str,
-        ctx: &Value,
-    ) -> Result<Vec<Value>, Report<AsyncPluginError>> {
-        self.fire_async_collect_for_session(None, hook, ctx).await
-    }
-
-    /// Fire an async hook, collecting values from globals + a session's plugins.
-    ///
-    /// # Errors
-    ///
-    /// Returns an error if the background thread is dead, the call times out,
-    /// or a hook traps.
-    pub async fn fire_async_collect_for_session(
-        &self,
-        target_session: Option<SessionRegistryId>,
-        hook: &str,
-        ctx: &Value,
-    ) -> Result<Vec<Value>, Report<AsyncPluginError>> {
-        let (respond_to, rx) = oneshot::channel();
-        self.tx
-            .send(WasmJob::Collect {
-                hook: hook.to_owned(),
-                ctx_json: ctx.clone(),
-                respond_to,
-                target_session,
-            })
-            .await
-            .change_context(AsyncPluginError)
-            .attach("failed to send Collect job to wasm thread")?;
-
-        let results: Vec<Value> = tokio::time::timeout(TIMEOUT, rx)
-            .await
-            .change_context(AsyncPluginError)
-            .attach("timed out waiting for wasm thread response (30s)")?
-            .map_err(|_| Report::new(AsyncPluginError).attach("wasm thread dropped responder"))??;
-        Ok(results)
     }
 
     /// Set a global plugin's data bag (replaces the entire value).
@@ -215,45 +169,24 @@ use jinn_domain::feat::plugin_dispatch::{
 
 #[async_trait::async_trait]
 impl PluginFire for AsyncWasmHandle {
-    async fn fire_async_json(
+    async fn fire_async(
         &self,
         hook: &str,
-        ctx: &Value,
+        ctx: &jinn_domain::feat::plugin_dispatch::HookCtx,
     ) -> Result<(), Report<PluginFireError>> {
         self.fire_async(hook, ctx)
             .await
             .map_err(|r| r.change_context(PluginFireError))
     }
 
-    async fn fire_async_for_session_json(
+    async fn fire_async_for_session(
         &self,
         session: SessionRegistryId,
         hook: &str,
-        ctx: &Value,
+        ctx: &jinn_domain::feat::plugin_dispatch::HookCtx,
         enabled_instances: Option<Vec<PluginInstanceId>>,
     ) -> Result<(), Report<PluginFireError>> {
         self.fire_async_for_session(Some(session), hook, ctx, enabled_instances)
-            .await
-            .map_err(|r| r.change_context(PluginFireError))
-    }
-
-    async fn fire_async_collect_json(
-        &self,
-        hook: &str,
-        ctx: &Value,
-    ) -> Result<Vec<Value>, Report<PluginFireError>> {
-        self.fire_async_collect(hook, ctx)
-            .await
-            .map_err(|r| r.change_context(PluginFireError))
-    }
-
-    async fn fire_async_collect_for_session_json(
-        &self,
-        session: SessionRegistryId,
-        hook: &str,
-        ctx: &Value,
-    ) -> Result<Vec<Value>, Report<PluginFireError>> {
-        self.fire_async_collect_for_session(Some(session), hook, ctx)
             .await
             .map_err(|r| r.change_context(PluginFireError))
     }
@@ -268,18 +201,14 @@ impl PluginFire for AsyncWasmHandle {
         arguments: &Value,
     ) -> Result<String, Report<PluginFireError>> {
         let (respond_to, rx) = oneshot::channel();
-        let ctx_json = serde_json::json!({
-            "session_id": session_id,
-            "parent_session_id": parent_session_id,
-            "plugin_name": plugin_name,
-        });
         self.tx
             .send(WasmJob::ExecuteTool {
                 target_session: target,
                 plugin_name: plugin_name.to_owned(),
                 tool_name: tool_name.to_owned(),
                 arguments: arguments.to_string(),
-                ctx_json,
+                session_id: session_id.clone(),
+                parent_session_id: parent_session_id.cloned(),
                 respond_to,
             })
             .await

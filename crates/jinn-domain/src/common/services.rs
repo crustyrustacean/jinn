@@ -252,42 +252,24 @@ pub struct NoopPluginSyncCall;
 /// Noop [`PluginFire`] for test defaults.
 #[async_trait::async_trait]
 impl PluginFire for NoopPluginFire {
-    async fn fire_async_json(
+    async fn fire_async(
         &self,
         hook: &str,
-        _ctx: &serde_json::Value,
+        _ctx: &crate::feat::plugin_dispatch::HookCtx,
     ) -> Result<(), Report<PluginFireError>> {
         tracing::debug!(hook, "noop plugin fire");
         Ok(())
     }
-    async fn fire_async_collect_json(
-        &self,
-        hook: &str,
-        _ctx: &serde_json::Value,
-    ) -> Result<Vec<serde_json::Value>, Report<PluginFireError>> {
-        tracing::debug!(hook, "noop plugin collect");
-        Ok(vec![])
-    }
 
-    async fn fire_async_for_session_json(
+    async fn fire_async_for_session(
         &self,
         _session: SessionRegistryId,
         hook: &str,
-        _ctx: &serde_json::Value,
+        _ctx: &crate::feat::plugin_dispatch::HookCtx,
         _enabled_instances: Option<Vec<jinn_core_types::PluginInstanceId>>,
     ) -> Result<(), Report<PluginFireError>> {
         tracing::debug!(hook, "noop plugin fire for session");
         Ok(())
-    }
-
-    async fn fire_async_collect_for_session_json(
-        &self,
-        _session: SessionRegistryId,
-        hook: &str,
-        _ctx: &serde_json::Value,
-    ) -> Result<Vec<serde_json::Value>, Report<PluginFireError>> {
-        tracing::debug!(hook, "noop plugin collect for session");
-        Ok(vec![])
     }
 
     async fn execute_plugin_tool(
