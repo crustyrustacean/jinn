@@ -257,6 +257,10 @@ interface types {
         parent-session-id: option<session-id>,
         instance-id: instance-id,
         plugin-name: string,
+        /// Monotonic turn number derived from the session's history
+        /// (count of assistant entries). Lets a plugin detect that
+        /// another instance already claimed this turn.
+        turn: u32,
     }
 
     /// Used by `on-task-list-updated`.

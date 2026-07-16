@@ -501,11 +501,21 @@ impl PluginDispatchActor {
 
         let ctx = match new_phase {
             PhaseKind::Idle => {
+                let turn = {
+                    let state = self.state.read();
+                    state.session.get(session_id).map_or(0, |s| {
+                        s.history()
+                            .iter()
+                            .filter(|e| matches!(&e.kind, ChatEntryKind::Assistant(_)))
+                            .count() as u32
+                    })
+                };
                 HookCtx::TurnEnd(crate::feat::plugin_dispatch::plugin_ctx::TurnEndHookCtx {
                     session_id: session_id.clone(),
                     parent_session_id: None,
                     instance_id: String::new(),
                     plugin_name: String::new(),
+                    turn,
                 })
             }
             PhaseKind::Sending => HookCtx::Session(SessionHookCtx {

@@ -41,6 +41,7 @@ pub struct TurnEndHookCtx {
     pub parent_session_id: Option<SessionId>,
     pub instance_id: String,
     pub plugin_name: String,
+    pub turn: u32,
 }
 
 /// Context for `on_attach` / `on_detach`.
