@@ -642,6 +642,28 @@ mod tests {
     }
 
     #[rstest::rstest]
+    fn browser_config_round_trips_through_jinn_toml() {
+        // Given a non-default [browser] config.
+        let dir = TempDir::new().expect("temp dir");
+        let path = dir.path().join(PREFS_FILE_NAME);
+        let prefs = UserPreferences {
+            browser: BrowserConfig {
+                binary: BrowserBinary::Chromium,
+                user_agent: Some("test-agent/1.0".to_owned()),
+                anubis_timeout_secs: 60,
+            },
+            ..UserPreferences::default()
+        };
+
+        // When saving and reloading.
+        save_preferences_to(&prefs, &path).expect("save");
+        let reloaded = load_preferences_from(&path).expect("load");
+
+        // Then the [browser] fields round-trip exactly.
+        assert_eq!(reloaded.browser, prefs.browser);
+    }
+
+    #[rstest::rstest]
     fn load_parses_toml_content() {
         let dir = TempDir::new().expect("temp dir");
         let path = dir.path().join(PREFS_FILE_NAME);
