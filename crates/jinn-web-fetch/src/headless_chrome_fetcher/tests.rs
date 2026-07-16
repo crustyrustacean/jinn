@@ -19,8 +19,6 @@
 use std::sync::atomic::{AtomicUsize, Ordering};
 use std::sync::{Arc, Mutex};
 
-use parking_lot::Mutex as ParkingMutex;
-
 use crate::shared_browser::{
     HeadlessBrowser, HeadlessBrowserFactory, RenderedPage, SharedBrowser, build_launch_options,
     classify_browser_error, classify_render_error,
