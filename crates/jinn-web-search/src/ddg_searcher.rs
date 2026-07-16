@@ -9,14 +9,18 @@ use async_trait::async_trait;
 
 use crate::{SearchError, SearchOptions, SearchResult, WebSearcher, html_parser};
 
-/// The Chrome User-Agent ddgr sends. DDG blocks requests without a browser UA.
-const USER_AGENT: &str = "Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 \
+/// The fallback Chrome User-Agent. DDG blocks requests without a browser UA.
+///
+/// Wiring should inject the UA resolved from `[browser]` config (matching the
+/// detected binary) via [`DdgSearcher::with_user_agent`]; this constant is only
+/// the fallback when no UA is supplied.
+const DEFAULT_USER_AGENT: &str = "Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 \
     (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36";
 
 /// Phrases that appear in DDG's anti-bot / unusual-traffic challenge page.
 /// When the response body contains any of these, [`SearchError::Blocked`] is
 /// returned rather than parsing zero results from a non-results page.
-const BLOCK_MARKERS: [&str; 2] = ["anomaly.js", "If this error persists"];
+pub(crate) const BLOCK_MARKERS: [&str; 2] = ["anomaly.js", "If this error persists"];
 
 /// DuckDuckGo HTML searcher.
 ///
@@ -31,7 +35,11 @@ pub struct DdgSearcher {
 }
 
 impl DdgSearcher {
-    /// Creates a searcher targeting the real DuckDuckGo endpoint.
+    /// Creates a searcher targeting the real DuckDuckGo endpoint with the
+    /// default UA.
+    ///
+    /// Prefer [`Self::with_user_agent`] in wiring so the UA matches the
+    /// detected browser binary rather than the stale default.
     ///
     /// # Errors
     ///
@@ -42,12 +50,30 @@ impl DdgSearcher {
         Self::with_endpoint("https://html.duckduckgo.com/html".to_owned())
     }
 
+    /// Creates a searcher targeting the real DuckDuckGo endpoint with an
+    /// injected user agent. Use this in wiring when the UA is resolved from
+    /// the `[browser]` config so search over HTTP sends a current, realistic
+    /// UA instead of the stale default.
+    #[must_use]
+    pub fn with_user_agent(user_agent: &str) -> Self {
+        Self::with_endpoint_and_user_agent(
+            "https://html.duckduckgo.com/html".to_owned(),
+            user_agent,
+        )
+    }
+
     /// Creates a searcher targeting a custom endpoint (used by tests to point
     /// at a `mockito` server).
     #[must_use]
     pub fn with_endpoint(endpoint: String) -> Self {
+        Self::with_endpoint_and_user_agent(endpoint, DEFAULT_USER_AGENT)
+    }
+
+    /// Creates a searcher targeting a custom endpoint with an injected UA.
+    #[must_use]
+    pub fn with_endpoint_and_user_agent(endpoint: String, user_agent: &str) -> Self {
         let client = reqwest::Client::builder()
-            .user_agent(USER_AGENT)
+            .user_agent(user_agent)
             .redirect(reqwest::redirect::Policy::limited(10))
             .timeout(std::time::Duration::from_secs(15))
             .build()
@@ -60,7 +86,7 @@ impl DdgSearcher {
     /// Returns an ordered list of `(key, value)` pairs. This is extracted into a
     /// method so the form-contents test can assert against it without a network
     /// round-trip.
-    fn form_fields<'a>(
+    pub(crate) fn form_fields<'a>(
         query: &'a str,
         options: &'a SearchOptions,
     ) -> Vec<(&'static str, std::borrow::Cow<'a, str>)> {
@@ -80,7 +106,7 @@ impl DdgSearcher {
     }
 
     /// Returns `true` if the response body looks like an anti-bot challenge.
-    fn is_blocked(body: &str) -> bool {
+    pub(crate) fn is_blocked(body: &str) -> bool {
         BLOCK_MARKERS.iter().any(|marker| body.contains(marker))
     }
 }
@@ -233,6 +259,31 @@ mod tests {
 
         // Then it is NOT a block.
         assert!(!blocked, "results fixture must not be flagged as blocked");
+    }
+
+    #[tokio::test]
+    async fn with_user_agent_sends_injected_ua_header() {
+        // Given a mock server that matches on the injected UA header.
+        let mut server = mockito::Server::new_async().await;
+        let mock = server
+            .mock("POST", "/html")
+            .match_header("user-agent", "MyCustomUA/9.9")
+            .with_status(200)
+            .with_header("content-type", "text/html")
+            .with_body("<html><body></body></html>")
+            .create_async()
+            .await;
+        let searcher = DdgSearcher::with_endpoint_and_user_agent(
+            format!("{}/html", server.url()),
+            "MyCustomUA/9.9",
+        );
+
+        // When searching.
+        let results = searcher.search("rust", &opts()).await.expect("ok");
+
+        // Then the request matched (the injected UA was sent) and parsed empty.
+        assert!(results.is_empty());
+        mock.assert_async().await;
     }
 
     #[tokio::test]

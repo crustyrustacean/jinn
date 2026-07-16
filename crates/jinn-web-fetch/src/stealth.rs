@@ -93,15 +93,30 @@ const PLATFORM: &str = "Linux";
 /// a few seconds on a modern CPU, so 30s is generous.
 const DEFAULT_ANUBIS_TIMEOUT: Duration = Duration::from_secs(30);
 
-/// Resolved stealth configuration for one headless browser session.
+/// Resolved stealth configuration for one browser session.
 ///
 /// Built once from user preferences (and an optional explicit UA override) and
 /// cloned cheaply into the factory and each tab's render path. All fields are
 /// immutable after construction.
+///
+/// The `headed` and `profile_dir` fields select the browser mode: `headed`
+/// launches a visible browser window; `profile_dir` makes the profile
+/// persistent across runs (cookies/clearances survive restart).
 #[derive(Debug, Clone)]
 pub struct StealthSettings {
     /// When `false`, no stealth is applied — the fetcher behaves as before.
     pub enabled: bool,
+    /// Whether to launch a visible (headed) browser window instead of a
+    /// headless one. Headed mode is warmable: the user can manually solve
+    /// interstitial challenges, and the persistent profile remembers them.
+    pub headed: bool,
+    /// Optional persistent profile directory passed as `--user-data-dir`.
+    ///
+    /// When `None`, the browser uses a throwaway temp profile (the current
+    /// default behavior). When `Some`, cookies and clearances persist across
+    /// runs. Only one process may own a given profile dir at a time
+    /// (Chromium's `SingletonLock`); see `SharedBrowser`.
+    pub profile_dir: Option<PathBuf>,
     /// The user-agent string sent in headers and exposed to `navigator.userAgent`.
     pub user_agent: String,
     /// The `navigator.platform` value paired with the user agent.
@@ -120,6 +135,8 @@ impl Default for StealthSettings {
     fn default() -> Self {
         Self {
             enabled: true,
+            headed: false,
+            profile_dir: None,
             user_agent: fallback_user_agent(),
             platform: derive_platform().to_owned(),
             accept_language: ACCEPT_LANGUAGE.to_owned(),

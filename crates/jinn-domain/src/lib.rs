@@ -24,7 +24,7 @@ pub mod protocol;
 // Re-export actor types that are still in use
 pub use common::actor::{ActorCounter, NoDirectMsg};
 // Re-export component types (state, UI)
-pub use common::app_paths::AppPaths;
+pub use common::app_paths::{AppPaths, BrowserProfileMode};
 pub use common::app_state::pin_sort_key;
 pub use common::app_state::{
     AppState, ContextAssemblyState, FocusScope, FrontendState, ProviderState, ScopeStack,

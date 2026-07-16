@@ -2382,6 +2382,7 @@ name = "jinn-web-search"
 version = "0.94.0"
 dependencies = [
  "async-trait",
+ "jinn-web-fetch",
  "mockito",
  "reqwest",
  "rstest",
