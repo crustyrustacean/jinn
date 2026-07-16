@@ -23,7 +23,6 @@
 //! render-thread store set, synchronously. Async hooks (lifecycle, LLM,
 //! plugin-defined) run on the async host-thread store set, via `call_async`.
 
-
 use wasmtime::AsContextMut;
 
 use crate::store::{StoreKind, StoreSet};
@@ -87,9 +86,7 @@ pub async fn fire_async_by_name(
         return Ok(None);
     };
 
-    let exists = inst.with(|store, instance| {
-        instance.get_func(&mut *store, hook_name).is_some()
-    });
+    let exists = inst.with(|store, instance| instance.get_func(&mut *store, hook_name).is_some());
     if !exists {
         return Ok(None);
     }

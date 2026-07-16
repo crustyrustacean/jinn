@@ -35,20 +35,19 @@
 pub mod async_thread;
 pub mod bag;
 pub mod bindings;
-pub mod discovery;
-pub mod handle;
-mod host_impl;
-mod engine;
-mod hooks;
-pub mod loader;
-pub mod imports;
-pub mod store;
 pub mod command_dispatch;
+pub mod discovery;
 pub mod dispatch;
-pub mod sync_plugins;
+mod engine;
+pub mod handle;
+mod hooks;
+mod host_impl;
+pub mod imports;
+pub mod loader;
+pub mod store;
 pub mod sync_handle;
+pub mod sync_plugins;
 pub mod system;
-
 
 pub use bag::{GlobalBagStore, InstanceBagStore};
 pub use discovery::{PluginKind, PluginMeta, discover_plugins};

@@ -40,8 +40,7 @@ use crate::store::InstanceCtx;
 /// Receives the typed WIT command and the instance identity, and dispatches
 /// it to the bus. Injected by the wiring layer; the host crate stays
 /// domain-agnostic.
-pub type EmitCallback =
-    Arc<dyn Fn(&str, &Command, &InstanceCtx) + Send + Sync>;
+pub type EmitCallback = Arc<dyn Fn(&str, &Command, &InstanceCtx) + Send + Sync>;
 
 /// Callback that services an async `request-llm-oneshot`.
 ///
@@ -77,7 +76,6 @@ pub struct HostImports {
     pub cancel_task: CancelTaskCallback,
 }
 
-
 impl std::fmt::Debug for HostImports {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         f.debug_struct("HostImports").finish_non_exhaustive()
@@ -107,9 +105,10 @@ pub fn register(
     // callbacks from `state.imports` (populated at store construction). So the
     // accessor is identity; `_imports` is consumed by the caller when building
     // each `StoreState`.
-    crate::bindings::jinn::plugin::host::add_to_linker::<crate::store::StoreState, crate::store::StoreState>(linker, |state: &mut crate::store::StoreState| {
-        state
-    })
+    crate::bindings::jinn::plugin::host::add_to_linker::<
+        crate::store::StoreState,
+        crate::store::StoreState,
+    >(linker, |state: &mut crate::store::StoreState| state)
     .map_err(|e| error_stack::Report::new(HostImportError).attach(e.to_string()))
     .attach("registering host imports into linker")?;
     Ok(())

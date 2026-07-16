@@ -80,10 +80,47 @@ impl SyncWasmPlugins {
     pub fn set_keybinds(&self, keybinds: Vec<crate::loader::ManifestKeybind>) {
         *self.keybinds.borrow_mut() = keybinds;
     }
-    /// Mutable access to the underlying store set (for the wiring layer to load
-    /// instances + attach host imports).
+    /// Attach the host-import callbacks (emit/request/cancel) that every
+    /// subsequently-loaded instance's `StoreState` will carry.
+    pub fn set_imports(&mut self, imports: crate::imports::HostImports) {
+        self.store.get_mut().set_imports(imports);
+    }
+
     pub fn store_mut(&mut self) -> &mut StoreSet {
         self.store.get_mut()
+    }
+
+    /// Load global plugins into the sync store and register their declared
+    /// keybinds from the manifests returned by `get-manifest()`.
+    ///
+    /// Called once at startup by the wiring layer after host imports are set.
+    pub fn load_globals(
+        &mut self,
+        plugins: &[crate::loader::CompiledPlugin],
+        linker: &wasmtime::component::Linker<crate::store::StoreState>,
+    ) -> Result<(), error_stack::Report<crate::loader::PluginLoadError>> {
+        let mut keybinds = Vec::new();
+        for plugin in plugins {
+            if plugin.meta.kind != crate::discovery::PluginKind::Global {
+                continue;
+            }
+            let ctx = crate::store::InstanceCtx {
+                plugin_name: plugin.meta.name.clone(),
+                instance_id: crate::loader::synthetic_global_id(&plugin.meta.name),
+                session_id: None,
+            };
+            match self.store.get_mut().load(&plugin.component, ctx, linker) {
+                Err(e) => {
+                    tracing::warn!(?e, name = %plugin.meta.name, "failed to load global plugin into sync store");
+                }
+                Ok(manifest) => {
+                    let cached = crate::loader::convert_manifest(&plugin.meta.name, manifest);
+                    keybinds.extend(cached.keybinds.clone());
+                }
+            }
+        }
+        self.set_keybinds(keybinds);
+        Ok(())
     }
 
     /// Number of loaded instances.
@@ -121,4 +158,3 @@ impl jinn_domain::feat::plugin_dispatch::PluginSyncHooks for SyncWasmPlugins {
             .collect()
     }
 }
-

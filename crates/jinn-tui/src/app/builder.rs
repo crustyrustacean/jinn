@@ -58,7 +58,9 @@ impl TuiAppBuilder {
             state: jinn_domain::State::new(state),
             bridge: services.bridge.clone(),
         };
-        let plugins = self.plugins.unwrap_or_else(jinn_wasm_host::SyncWasmPlugins::empty);
+        let plugins = self
+            .plugins
+            .unwrap_or_else(jinn_wasm_host::SyncWasmPlugins::empty);
 
         crate::launch::launch_for_test(core, services, plugins)
     }

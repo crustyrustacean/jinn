@@ -432,6 +432,8 @@ impl ToolOrchestratorActor {
         session_id: Option<SessionId>,
         execution_only: bool,
     ) {
+        tracing::info!(%plugin_name, target = ?target, execution_only, count = definitions.len(), "registering plugin tools");
+
         for def in definitions {
             let name = def.name.clone();
             self.tools.insert(

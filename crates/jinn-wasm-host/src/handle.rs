@@ -32,7 +32,12 @@ pub struct CreateSessionRegistryResult {
 pub struct WasmToolMetadata {
     pub name: String,
     pub description: String,
-    pub global: bool,
+    /// Full JSON Schema for parameters.
+    pub parameters: serde_json::Value,
+    /// Plugin that defines this tool.
+    pub plugin_name: String,
+    /// Whether this tool is global or session-attached.
+    pub scope: jinn_domain::feat::plugin_dispatch::ToolScope,
 }
 
 /// Handle for firing async hooks. Send, Sync, and Clone.
@@ -68,7 +73,11 @@ impl AsyncWasmHandle {
     ///
     /// Returns an error if the background thread is dead, the call times out,
     /// or a hook traps.
-    pub async fn fire_async(&self, hook: &str, ctx: &Value) -> Result<(), Report<AsyncPluginError>> {
+    pub async fn fire_async(
+        &self,
+        hook: &str,
+        ctx: &Value,
+    ) -> Result<(), Report<AsyncPluginError>> {
         self.fire_async_for_session(None, hook, ctx, None).await
     }
 
@@ -251,17 +260,41 @@ impl PluginFire for AsyncWasmHandle {
 
     async fn execute_plugin_tool(
         &self,
-        _target: Option<SessionRegistryId>,
-        _session_id: &SessionId,
-        _parent_session_id: Option<&SessionId>,
-        _plugin_name: &str,
-        _tool_name: &str,
-        _arguments: &Value,
+        target: Option<SessionRegistryId>,
+        session_id: &SessionId,
+        parent_session_id: Option<&SessionId>,
+        plugin_name: &str,
+        tool_name: &str,
+        arguments: &Value,
     ) -> Result<String, Report<PluginFireError>> {
-        // Tool execution requires a WasmJob variant that calls the component's
-        // exported tool handler. Added with the judge plugin port (Phase 5);
-        // the fire-path is the critical path for the other plugins.
-        Err(Report::new(PluginFireError).attach("wasm tool execution not yet wired"))
+        let (respond_to, rx) = oneshot::channel();
+        let ctx_json = serde_json::json!({
+            "session_id": session_id,
+            "parent_session_id": parent_session_id,
+            "plugin_name": plugin_name,
+        });
+        self.tx
+            .send(WasmJob::ExecuteTool {
+                target_session: target,
+                plugin_name: plugin_name.to_owned(),
+                tool_name: tool_name.to_owned(),
+                arguments: arguments.to_string(),
+                ctx_json,
+                respond_to,
+            })
+            .await
+            .change_context(PluginFireError)
+            .attach("failed to send ExecuteTool job to wasm thread")?;
+
+        match tokio::time::timeout(TIMEOUT, rx).await {
+            Err(_) => Err(Report::new(PluginFireError)
+                .attach("timed out waiting for wasm tool execution (30s)")),
+            Ok(Err(_recv)) => {
+                Err(Report::new(PluginFireError).attach("wasm thread dropped responder"))
+            }
+            Ok(Ok(Ok(result))) => Ok(result),
+            Ok(Ok(Err(report))) => Err(report.change_context(PluginFireError)),
+        }
     }
 
     fn name(&self) -> &'static str {
@@ -273,22 +306,72 @@ impl PluginFire for AsyncWasmHandle {
 impl SessionPluginRegistry for AsyncWasmHandle {
     async fn create_session_registry(
         &self,
-        _instances: Vec<(PluginInstanceId, String)>,
-        _origin_session_id: SessionId,
-    ) -> Result<jinn_domain::feat::plugin_dispatch::CreateSessionRegistryResult, Report<SessionPluginRegistryError>> {
-        // Per-session store instantiation requires a WasmJob variant that
-        // instantiates the named attachable components into the async store set.
-        // Added with the attachable-plugin lifecycle wiring (Phase 5).
-        Err(Report::new(SessionPluginRegistryError)
-            .attach("wasm session registry not yet wired"))
+        instances: Vec<(PluginInstanceId, String)>,
+        origin_session_id: SessionId,
+    ) -> Result<
+        jinn_domain::feat::plugin_dispatch::CreateSessionRegistryResult,
+        Report<SessionPluginRegistryError>,
+    > {
+        let registry_id = SessionRegistryId::new();
+        let (respond_to, rx) = oneshot::channel();
+        self.tx
+            .send(WasmJob::LoadSession {
+                registry_id,
+                instances: instances.clone(),
+                origin_session_id: origin_session_id.clone(),
+                respond_to,
+            })
+            .await
+            .change_context(SessionPluginRegistryError)
+            .attach("failed to send LoadSession job to wasm thread")?;
+
+        let tool_metadata = match tokio::time::timeout(TIMEOUT, rx).await {
+            // Outer Err: the 30s deadline elapsed.
+            Err(_) => {
+                return Err(Report::new(SessionPluginRegistryError)
+                    .attach("timed out waiting for wasm thread response (30s)"));
+            }
+            // oneshot sender dropped — thread died before responding.
+            Ok(Err(_recv)) => {
+                return Err(
+                    Report::new(SessionPluginRegistryError).attach("wasm thread dropped responder")
+                );
+            }
+            Ok(Ok(inner)) => match inner {
+                Ok(tools) => tools,
+                Err(report) => {
+                    return Err(report.change_context(SessionPluginRegistryError));
+                }
+            },
+        };
+
+        Ok(
+            jinn_domain::feat::plugin_dispatch::CreateSessionRegistryResult {
+                registry_id,
+                tool_metadata: tool_metadata
+                    .into_iter()
+                    .map(|t| jinn_domain::feat::plugin_dispatch::PluginToolMetadata {
+                        name: t.name,
+                        description: t.description,
+                        parameters: t.parameters,
+                        plugin_name: t.plugin_name,
+                        scope: t.scope,
+                    })
+                    .collect(),
+            },
+        )
     }
 
     async fn destroy_session_registry(
         &self,
-        _registry_id: SessionRegistryId,
+        registry_id: SessionRegistryId,
     ) -> Result<(), Report<SessionPluginRegistryError>> {
-        Err(Report::new(SessionPluginRegistryError)
-            .attach("wasm session registry not yet wired"))
+        self.tx
+            .send(WasmJob::DestroySession { registry_id })
+            .await
+            .change_context(SessionPluginRegistryError)
+            .attach("failed to send DestroySession job to wasm thread")?;
+        Ok(())
     }
 
     fn name(&self) -> &'static str {

@@ -19,6 +19,8 @@ wasmtime::component::bindgen!({
 /// Re-export the shared types so host code can write `crate::command::Command`
 /// rather than the long generated path.
 pub mod command {
+    /// The typed `command` variant — the 9-verb surface.
+    pub use super::jinn::plugin::types::Command;
     pub use super::jinn::plugin::types::{
         BadgeCtx, BadgeDirective, BadgeSegment, CreateSessionReq, CreateSessionResp,
         DisablePluginCmd, EnablePluginCmd, EnqueueUserMessageCmd, FireAsyncHookCmd,
@@ -27,6 +29,4 @@ pub mod command {
         SetChatInputCmd, SetChatInputEnabledCmd, SetManagedSessionCmd, SubmitInterceptCtx,
         TaskListCtx, ToolDecl, TurnEndCtx,
     };
-    /// The typed `command` variant — the 9-verb surface.
-    pub use super::jinn::plugin::types::Command;
 }

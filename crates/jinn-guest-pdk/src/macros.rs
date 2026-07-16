@@ -38,15 +38,17 @@ macro_rules! plugin {
 
         /// Convenience re-export. `use crate::prelude::*` in a plugin module.
         pub mod prelude {
+            pub use crate::bag::{
+                get_global_data, get_plugin_data, set_global_data, set_plugin_data,
+            };
+            pub use crate::exports::jinn::plugin::hooks::Guest;
             pub use crate::host;
             pub use crate::host::{CreateSessionOutcome, LlmOutcome};
-            pub use crate::bag::{get_global_data, get_plugin_data, set_global_data, set_plugin_data};
+            pub use crate::jinn::plugin::types::*;
             pub use crate::manifest::{
                 BadgeDirective, Keybind, Manifest, Segment, Style, Tool, ToolParam, ToolScope,
             };
             pub use crate::plugin::Plugin;
-            pub use crate::jinn::plugin::types::*;
-            pub use crate::exports::jinn::plugin::hooks::Guest;
             pub use $crate::serde::{Deserialize, Serialize};
         }
     };

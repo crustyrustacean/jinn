@@ -1,4 +1,10 @@
+#![allow(clippy::crate_in_macro_def)]
+
 //! jinn-guest-pdk — authoring toolkit for jinn WASM plugins.
+//
+// `crate::jinn::plugin::*` paths appear in macro bodies that expand in the
+// *plugin* crate (where `wit_bindgen::generate!` ran). Clippy flags these as
+// "crate references the macro call's crate", but the intent is correct.
 //!
 //! A jinn plugin is a WASM component targeting the `plugin` world (importing
 //! `host`, exporting `hooks`). Because `wit-bindgen`'s generated `Guest` trait

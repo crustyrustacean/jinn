@@ -3,15 +3,10 @@
 use std::fs;
 use std::path::Path;
 
-use jinn_wasm_host::discovery::{discover_plugins, PluginKind, PluginMeta};
+use jinn_wasm_host::discovery::{PluginKind, PluginMeta, discover_plugins};
 
 /// Create a plugin directory with an empty `.wasm` placeholder + optional sidecar.
-fn make_plugin(
-    base: &Path,
-    kind: &str,
-    name: &str,
-    sidecar: Option<&str>,
-) {
+fn make_plugin(base: &Path, kind: &str, name: &str, sidecar: Option<&str>) {
     let dir = base.join(kind).join(name);
     fs::create_dir_all(&dir).unwrap();
     fs::write(dir.join("plugin.wasm"), b"\0asm").unwrap();
@@ -77,8 +72,18 @@ fn user_plugin_overrides_system_within_kind() {
     // Given the same plugin name in system + user (both global).
     let user = tempfile::tempdir().unwrap();
     let system = tempfile::tempdir().unwrap();
-    make_plugin(system.path(), "global", "dup", Some("description = \"system\"\n"));
-    make_plugin(user.path(), "global", "dup", Some("description = \"user\"\n"));
+    make_plugin(
+        system.path(),
+        "global",
+        "dup",
+        Some("description = \"system\"\n"),
+    );
+    make_plugin(
+        user.path(),
+        "global",
+        "dup",
+        Some("description = \"user\"\n"),
+    );
 
     // When discovering.
     let plugins = discover_plugins(user.path(), system.path());
@@ -132,7 +137,11 @@ fn flat_fallback_scans_dir_as_global() {
     let plugins = discover_plugins(user.path(), system.path());
 
     // Then flat-fallback finds it as global.
-    assert!(plugins.iter().any(|p| p.name == "flat" && p.kind == PluginKind::Global));
+    assert!(
+        plugins
+            .iter()
+            .any(|p| p.name == "flat" && p.kind == PluginKind::Global)
+    );
 }
 
 #[test]

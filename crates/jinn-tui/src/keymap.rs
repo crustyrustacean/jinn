@@ -593,8 +593,6 @@ mod tests {
         // No panic, no bindings added => success.
     }
 
-
-
     #[test]
     fn backtick_in_input_scope_does_not_insert_literal_backtick() {
         // Given a keymap with the global <M-`> binding, queried in Input scope.

@@ -30,7 +30,7 @@ use crate::discovery::{PluginKind, PluginMeta};
 use crate::engine::{EngineConfig, WasmEngine};
 use crate::handle::AsyncWasmHandle;
 use crate::imports::{HostImports, register as register_imports};
-use crate::loader::{compile_discovered};
+use crate::loader::{CompiledPlugin, compile_discovered};
 
 pub use crate::async_thread::AsyncPluginError;
 pub use crate::loader::PluginLoadError;
@@ -89,11 +89,40 @@ pub fn build(
 
     // Build the shared Linker (imports registered once; reused by both stores).
     let linker = {
-        let mut linker = wasmtime::component::Linker::<crate::store::StoreState>::new(engine.inner());
+        let mut linker =
+            wasmtime::component::Linker::<crate::store::StoreState>::new(engine.inner());
         register_imports(&mut linker, &host_imports)
             .change_context(PluginLoadError)
             .attach("registering wasm host imports into linker")?;
         linker
+    };
+
+    // Collect attachable metadata before moving plugins into the thread.
+    let attachable_metas: Vec<PluginMeta> = plugins
+        .iter()
+        .filter(|p| p.meta.kind == PluginKind::Attachable)
+        .map(|p| p.meta.clone())
+        .collect();
+
+    // Load global plugins into the sync (render-thread) store first, before
+    // moving `plugins` + `linker` into the async background thread. The sync
+    // store needs its own clones to instantiate globals + read manifests.
+    let sync_plugins = {
+        let mut sp = crate::sync_plugins::SyncWasmPlugins::new(
+            engine.inner().clone(),
+            bags.clone(),
+            globals.clone(),
+        );
+        sp.set_imports(host_imports.clone());
+        let global_plugins: Vec<CompiledPlugin> = plugins
+            .iter()
+            .filter(|p| p.meta.kind == PluginKind::Global)
+            .cloned()
+            .collect();
+        if let Err(e) = sp.load_globals(&global_plugins, &linker) {
+            tracing::warn!(%e, "failed to load global plugins into sync store");
+        }
+        sp
     };
 
     // Spawn the async background thread. It owns the async StoreSet (!Send)
@@ -104,21 +133,12 @@ pub fn build(
         globals.clone(),
         linker,
         runtime_handle,
+        plugins,
+        host_imports.clone(),
     );
 
     let async_handle = AsyncWasmHandle::new(job_tx, bags.clone(), globals.clone());
     let sync_handle = crate::sync_handle::SyncWasmHandle::new(sync_tx);
-    let sync_plugins = crate::sync_plugins::SyncWasmPlugins::new(
-        engine.inner().clone(),
-        bags,
-        globals,
-    );
-
-    let attachable_metas: Vec<PluginMeta> = plugins
-        .iter()
-        .filter(|p| p.meta.kind == PluginKind::Attachable)
-        .map(|p| p.meta.clone())
-        .collect();
 
     Ok(WasmPluginSystem {
         async_handle,

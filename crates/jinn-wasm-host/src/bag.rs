@@ -23,7 +23,6 @@ use dashmap::DashMap;
 use jinn_core_types::{PluginInstanceId, SessionId};
 use parking_lot::RwLock;
 
-
 /// Composite key for the per-instance bag store.
 #[derive(Debug, Clone, PartialEq, Eq, Hash)]
 pub enum BagKey {
@@ -83,8 +82,7 @@ impl InstanceBagStore {
 
     /// Replace a global plugin's bag bytes.
     pub fn set(&self, plugin_name: &str, bytes: Vec<u8>) {
-        self.0
-            .insert(BagKey::Global(plugin_name.to_owned()), bytes);
+        self.0.insert(BagKey::Global(plugin_name.to_owned()), bytes);
     }
 
     /// Resolve the bag for the current instance context.
