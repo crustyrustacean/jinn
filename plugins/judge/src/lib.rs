@@ -240,25 +240,18 @@ fn aggregate_and_emit(origin: &str, verdicts: &VerdictMap, ctx: &ToolCtx) {
         host::enqueue_user_message(origin, &text);
     }
 
-    // Resolve lifecycle of EVERY participating instance:
-    //   pass → disable all (one-shot; user re-enables manually)
-    //   fail/tie → re-enable all (next turn re-runs every judge)
+    // Resolve lifecycle of EVERY participating instance.
+    // Both pass AND fail are one-shot: disable all instances so the
+    // verdict (especially the enqueued fail message) does not re-trigger
+    // a new origin turn that would re-judge the verdict itself. The user
+    // re-attaches manually to run another evaluation.
     let instances = bag::get_global_data::<Instances>(&instances_key(origin)).unwrap_or_default();
     for instance_id in &instances.0 {
-        let cmd = if passed {
-            Command::DisablePlugin(DisablePluginCmd {
-                session_id: origin.to_owned(),
-                plugin_name: ctx.plugin_name.clone(),
-                instance_id: instance_id.clone(),
-            })
-        } else {
-            Command::EnablePlugin(EnablePluginCmd {
-                session_id: origin.to_owned(),
-                plugin_name: ctx.plugin_name.clone(),
-                instance_id: instance_id.clone(),
-            })
-        };
-        host::emit(cmd);
+        host::emit(Command::DisablePlugin(DisablePluginCmd {
+            session_id: origin.to_owned(),
+            plugin_name: ctx.plugin_name.clone(),
+            instance_id: instance_id.clone(),
+        }));
     }
 
     // Reset per-turn shared state for the next turn.

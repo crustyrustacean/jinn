@@ -185,7 +185,6 @@ fn given_queue_verdict(world: &mut JudgeWorld, verdict: String, message: String)
     };
     world.queue_verdict(&v);
 }
-
 #[cucumber::when(expr = "the app submits an EnqueueUserMessage with text {string}")]
 async fn when_enqueue_user_message(world: &mut JudgeWorld, text: String) {
     let session_id = world.active_session_id();
@@ -309,5 +308,39 @@ async fn then_final_entry_fail_message(world: &mut JudgeWorld, expected: String)
         panic!(
             "no failed user message containing {expected:?}\nPhase: {phase:?}\nHistory:\n  {dump}"
         );
+    }
+}
+
+#[cucumber::then(expr = "the judge plugin instance is disabled")]
+async fn then_judge_instance_disabled(world: &mut JudgeWorld) {
+    // The fix changed re-enable-on-fail → disable-on-fail. A fail must
+    // disable the judge instance so its enqueued fail message does NOT
+    // trigger a new origin turn that re-judges the verdict itself (the
+    // auto-pass-after-fail bug).
+    let held = world
+        .wait_until(|s| {
+            s.session
+                .active_session()
+                .attached_plugins()
+                .iter()
+                .find(|p| p.name == "judge")
+                .is_some_and(|p| !p.enabled)
+                .then_some(())
+        })
+        .await;
+    if held.is_none() {
+        let plugins = world
+            .tuiapp
+            .core
+            .state
+            .read()
+            .session
+            .active_session()
+            .attached_plugins()
+            .iter()
+            .map(|p| format!("{}(enabled={})", p.name, p.enabled))
+            .collect::<Vec<_>>()
+            .join(", ");
+        panic!("judge plugin instance was not disabled\nAttached: {plugins}");
     }
 }

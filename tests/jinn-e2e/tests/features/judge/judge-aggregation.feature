@@ -59,3 +59,13 @@ Feature: Judge aggregation with majority vote
     And the app queues a scripted judgment "judgment_failed" with message "inaccurate"
     When the app submits an EnqueueUserMessage with text "hello"
     Then the origin session final entry is a failed user message containing "inaccurate"
+
+  Scenario: Fail is one-shot and disables the judge instance
+    Given a fresh app
+    And the active provider is set
+    And the app attaches the plugin "judge"
+    And the app queues a scripted origin turn with text "draft response"
+    And the app queues a scripted judgment "judgment_failed" with message "too short"
+    When the app submits an EnqueueUserMessage with text "hello"
+    Then the origin session final entry is a failed user message containing "too short"
+    And the judge plugin instance is disabled
