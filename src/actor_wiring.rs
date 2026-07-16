@@ -715,9 +715,10 @@ jinn_domain::feat::preferences_actor::preferences_actor::PreferencesActor::super
                     stealth.user_agent = jinn_web_fetch::stealth::build_user_agent(major);
                 }
                 tracing::info!(?stealth, "web-fetch: resolved stealth settings");
-                std::sync::Arc::new(jinn_web_fetch::HeadlessChromeFetcher::new(
+                let shared = std::sync::Arc::new(jinn_web_fetch::SharedBrowser::new(stealth));
+                std::sync::Arc::new(jinn_web_fetch::HeadlessChromeFetcher::with_shared(
+                    shared,
                     extractors.clone(),
-                    stealth,
                 ))
             }
         };
