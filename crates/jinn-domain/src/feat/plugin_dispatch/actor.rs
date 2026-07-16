@@ -448,6 +448,7 @@ impl PluginDispatchActor {
         let ctx_json = serde_json::json!({
             "session_id": self.startup_session_id,
         });
+        tracing::debug!(session_id = %session_id, "firing on_app_started");
         self.spawn_fire_for_session(&session_id, "on_app_started", &ctx_json, vec![]);
     }
 
