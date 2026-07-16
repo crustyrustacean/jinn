@@ -12,116 +12,42 @@
 
 use serde::{Deserialize, Serialize};
 
+use crate::feat::browser::BrowserBackend;
+
 /// Web fetch backend selection.
 ///
 /// Determines which fetching strategy is used for the `web-fetch` tool.
 /// Selected once at startup from `jinn.toml` and never changes at runtime.
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize, Default)]
-#[serde(rename_all = "kebab-case")]
-pub enum WebFetchBackend {
-    /// Plain HTTP requests via `reqwest`. No JavaScript rendering.
-    #[default]
-    Http,
-    /// Headless Chrome browser via `headless_chrome` crate. Renders JavaScript.
-    HeadlessChrome,
-}
-
-/// Which browser binary the headless Chrome backend launches.
 ///
-/// `Auto` prefers an installed branded Google Chrome (which carries the
-/// codecs and fingerprint of real Chrome) and falls back to the
-/// `headless_chrome` crate's bundled Chromium. `Chrome`/`Chromium` force a
-/// specific binary; the launch fails with a clear dashboard error if absent.
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize, Default)]
-#[serde(rename_all = "kebab-case")]
-pub enum BrowserBinary {
-    /// Prefer installed Google Chrome; fall back to bundled Chromium.
-    #[default]
-    Auto,
-    /// Require an installed Google Chrome; error if missing.
-    Chrome,
-    /// Use the bundled/auto-discovered Chromium.
-    Chromium,
-}
-
-/// Stealth (anti-bot-detection) settings for the headless Chrome backend.
-///
-/// Serialized as `[web_fetch.stealth]` in `jinn.toml`. When `enabled`, the
-/// fetcher injects stealth JS, sends an OS-matched user agent with
-/// `Accept-Language`, suppresses `navigator.webdriver`, and waits out Anubis
-/// proof-of-work / Cloudflare interstitials.
-#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
-pub struct WebFetchStealthConfig {
-    /// Master switch. Default: `true`.
-    #[serde(default = "default_stealth_enabled")]
-    pub enabled: bool,
-    /// Optional explicit user-agent override. When `None`, an OS-matched
-    /// Chrome user agent is derived at build time.
-    #[serde(default)]
-    pub user_agent: Option<String>,
-    /// Which browser binary to launch. Default: `"auto"`.
-    #[serde(default)]
-    pub binary: BrowserBinary,
-    /// Seconds to wait for an interstitial challenge (Anubis PoW, Cloudflare)
-    /// to clear before failing. Default: `30`.
-    #[serde(default = "default_anubis_timeout_secs")]
-    pub anubis_timeout_secs: u64,
-}
-
-fn default_stealth_enabled() -> bool {
-    true
-}
-
-fn default_anubis_timeout_secs() -> u64 {
-    30
-}
-
-impl Default for WebFetchStealthConfig {
-    fn default() -> Self {
-        Self {
-            enabled: true,
-            user_agent: None,
-            binary: BrowserBinary::Auto,
-            anubis_timeout_secs: 30,
-        }
-    }
-}
+/// This is the shared [`crate::feat::browser::BrowserBackend`]; the
+/// `http`/`headless-chrome`/`headed-chrome` variants are common to both
+/// `web-fetch` and `web-search`. `headless-chrome` is the default for
+/// `web-fetch` (see [`WebFetchConfig::default`]).
+pub type WebFetchBackend = crate::feat::browser::BrowserBackend;
 
 /// Web fetch tool configuration.
 ///
 /// Serialized as `[web_fetch]` in `jinn.toml`.
-/// Controls which backend the `web-fetch` tool uses.
+/// Controls which backend the `web-fetch` tool uses. Browser launch settings
+/// (binary, user agent, challenge timeout) live in the shared `[browser]`
+/// table and are not duplicated here.
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 pub struct WebFetchConfig {
     /// The backend to use for web fetching. Default: `"headless-chrome"`.
-    #[serde(default)]
+    #[serde(default = "default_web_fetch_backend")]
     pub backend: WebFetchBackend,
-    /// Stealth (anti-bot-detection) settings for the headless backend.
-    /// Ignored by the `http` backend.
-    #[serde(default)]
-    pub stealth: WebFetchStealthConfig,
+}
+
+/// The default `web-fetch` backend is headless Chrome.
+fn default_web_fetch_backend() -> WebFetchBackend {
+    BrowserBackend::HeadlessChrome
 }
 
 impl Default for WebFetchConfig {
     fn default() -> Self {
         Self {
-            backend: WebFetchBackend::HeadlessChrome,
-            stealth: WebFetchStealthConfig::default(),
+            backend: default_web_fetch_backend(),
         }
-    }
-}
-
-use jinn_web_fetch::stealth::StealthSettings;
-
-impl From<&WebFetchStealthConfig> for StealthSettings {
-    fn from(config: &WebFetchStealthConfig) -> Self {
-        let mut settings = StealthSettings::with_user_agent_override(config.user_agent.as_deref());
-        settings.enabled = config.enabled;
-        settings.anubis_timeout = std::time::Duration::from_secs(config.anubis_timeout_secs);
-        // binary_path is resolved later by the BrowserBinaryScanActor and
-        // injected into the settings the fetcher is constructed with; the
-        // config-to-settings conversion does not touch the filesystem.
-        settings
     }
 }
 
@@ -647,7 +573,6 @@ backend = "socks"
         let prefs = UserPreferences {
             web_fetch: WebFetchConfig {
                 backend: WebFetchBackend::HeadlessChrome,
-                ..WebFetchConfig::default()
             },
             ..UserPreferences::default()
         };
@@ -658,8 +583,8 @@ backend = "socks"
     }
 
     #[rstest::rstest]
-    fn stealth_config_defaults_when_absent() {
-        // Given a jinn.toml with [web_fetch] but no [web_fetch.stealth] table.
+    fn browser_config_defaults_when_absent() {
+        // Given a jinn.toml with [web_fetch] but no [browser] table.
         let dir = TempDir::new().expect("temp dir");
         let path = dir.path().join(PREFS_FILE_NAME);
         std::fs::write(
@@ -673,28 +598,23 @@ backend = "headless-chrome"
         // When loading.
         let prefs = load_preferences_from(&path).expect("load");
 
-        // Then stealth defaults are applied.
-        let stealth = &prefs.web_fetch.stealth;
-        assert!(stealth.enabled);
-        assert_eq!(stealth.binary, super::BrowserBinary::Auto);
-        assert_eq!(stealth.anubis_timeout_secs, 30);
-        assert!(stealth.user_agent.is_none());
+        // Then browser defaults are applied.
+        let browser = &prefs.browser;
+        assert_eq!(browser.binary, crate::feat::browser::BrowserBinary::Auto);
+        assert_eq!(browser.anubis_timeout_secs, 30);
+        assert!(browser.user_agent.is_none());
     }
 
     #[rstest::rstest]
-    fn stealth_config_round_trips_through_toml() {
-        // Given a configured stealth section.
+    fn browser_config_round_trips_through_toml() {
+        // Given a configured [browser] section.
         let dir = TempDir::new().expect("temp dir");
         let path = dir.path().join(PREFS_FILE_NAME);
         let prefs = UserPreferences {
-            web_fetch: WebFetchConfig {
-                backend: WebFetchBackend::HeadlessChrome,
-                stealth: super::WebFetchStealthConfig {
-                    enabled: false,
-                    user_agent: Some("Custom/1.0".to_owned()),
-                    binary: super::BrowserBinary::Chrome,
-                    anubis_timeout_secs: 45,
-                },
+            browser: crate::feat::browser::BrowserConfig {
+                binary: crate::feat::browser::BrowserBinary::Chrome,
+                user_agent: Some("Custom/1.0".to_owned()),
+                anubis_timeout_secs: 45,
             },
             ..UserPreferences::default()
         };
@@ -703,31 +623,30 @@ backend = "headless-chrome"
         save_preferences_to(&prefs, &path).expect("save");
         let reloaded = load_preferences_from(&path).expect("load");
 
-        // Then every stealth field is preserved.
-        let stealth = &reloaded.web_fetch.stealth;
-        assert!(!stealth.enabled);
-        assert_eq!(stealth.user_agent.as_deref(), Some("Custom/1.0"));
-        assert_eq!(stealth.binary, super::BrowserBinary::Chrome);
-        assert_eq!(stealth.anubis_timeout_secs, 45);
+        // Then every browser field is preserved.
+        let browser = &reloaded.browser;
+        assert_eq!(browser.user_agent.as_deref(), Some("Custom/1.0"));
+        assert_eq!(browser.binary, crate::feat::browser::BrowserBinary::Chrome);
+        assert_eq!(browser.anubis_timeout_secs, 45);
     }
 
     #[rstest::rstest]
-    fn save_preserves_user_comments_in_stealth_section() {
-        // Given a jinn.toml with comments inside [web_fetch.stealth].
-        let original = "# my stealth notes\n[web_fetch]\nbackend = \"headless-chrome\"\n\n[web_fetch.stealth]\n# use real chrome\nbinary = \"chrome\"\n";
+    fn save_preserves_user_comments_in_browser_section() {
+        // Given a jinn.toml with comments inside [browser].
+        let original = "# my browser notes\n[browser]\n# use real chrome\nbinary = \"chrome\"\n";
         let dir = TempDir::new().expect("temp dir");
         let path = dir.path().join(PREFS_FILE_NAME);
         std::fs::write(&path, original).expect("write");
 
-        // When loading, changing enabled, and saving.
+        // When loading, changing anubis_timeout_secs, and saving.
         let mut prefs = load_preferences_from(&path).expect("load");
-        prefs.web_fetch.stealth.enabled = false;
+        prefs.browser.anubis_timeout_secs = 60;
         save_preferences_to(&prefs, &path).expect("save");
 
         // Then the user comments survive the load→patch→save cycle.
         let written = std::fs::read_to_string(&path).expect("read");
-        assert!(written.contains("# my stealth notes"));
+        assert!(written.contains("# my browser notes"));
         assert!(written.contains("# use real chrome"));
-        assert!(written.contains("enabled = false"));
+        assert!(written.contains("anubis_timeout_secs = 60"));
     }
 }

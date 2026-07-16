@@ -34,6 +34,14 @@ pub struct Cli {
     #[arg(long, value_hint = clap::ValueHint::FilePath)]
     pub db_path: Option<PathBuf>,
 
+    /// Base directory for persistent browser profiles (headless/headed).
+    ///
+    /// Per-mode profiles live under `<dir>/headless` and `<dir>/headed`.
+    /// Defaults to the platform data directory
+    /// (`~/.local/share/jinn/browser-profile`).
+    #[arg(long, value_hint = clap::ValueHint::DirPath)]
+    pub browser_profile: Option<PathBuf>,
+
     /// The subcommand to run. If omitted, launches the TUI.
     #[command(subcommand)]
     pub command: Option<Commands>,
@@ -231,6 +239,31 @@ mod tests {
         assert_eq!(
             cli.db_path_opt().map(std::path::PathBuf::as_path),
             Some(std::path::Path::new("/tmp/test.db"))
+        );
+    }
+
+    // Given no --browser-profile argument.
+    // Then Cli.browser_profile is None (defaults to AppPaths).
+    #[test]
+    fn browser_profile_flag_defaults_to_none() {
+        let cli = Cli::parse_from(["jinn", "--db-path", "/tmp/test.db"]);
+        assert!(cli.browser_profile.is_none());
+    }
+
+    // Given a --browser-profile argument.
+    // Then Cli.browser_profile captures the override.
+    #[test]
+    fn browser_profile_flag_parses_to_path() {
+        let cli = Cli::parse_from([
+            "jinn",
+            "--db-path",
+            "/tmp/test.db",
+            "--browser-profile",
+            "/tmp/jinn-profiles",
+        ]);
+        assert_eq!(
+            cli.browser_profile.as_deref(),
+            Some(std::path::Path::new("/tmp/jinn-profiles"))
         );
     }
 }
