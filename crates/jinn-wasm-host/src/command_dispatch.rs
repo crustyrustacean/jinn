@@ -162,7 +162,7 @@ mod tests {
         Command, CreateSessionReq, CreateSessionResp, LlmOneshotReq, LlmResp, RequestError,
     };
     use crate::store::InstanceCtx;
-    use jinn_core_types::{PluginInstanceId, SessionId};
+    use jinn_core_types::PluginInstanceId;
 
     fn ctx() -> InstanceCtx {
         InstanceCtx {

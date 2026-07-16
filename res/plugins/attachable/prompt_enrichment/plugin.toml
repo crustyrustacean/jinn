@@ -1,0 +1,2 @@
+name = "prompt_enrichment"
+description = "Prompt enrichment — rewrite the draft via an LLM one-shot on <M-e>"

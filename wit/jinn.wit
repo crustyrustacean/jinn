@@ -83,7 +83,7 @@ interface hooks {
     use types.{manifest, session-ctx, attach-ctx, turn-end-ctx,
                task-list-ctx, badge-ctx, keybind-trigger-ctx,
                submit-intercept-ctx, badge-directive, intercept-outcome,
-               keybind-result, session-preview-ctx};
+               keybind-result, session-preview-ctx, trigger-ctx, tool-ctx};
 
     /// Declares the plugin's name, description, keybinds, and tools. Called
     /// once per instantiation to cache metadata. MUST be cheap and
@@ -115,6 +115,25 @@ interface hooks {
 
     /// Fires whenever a session's task list is mutated.
     on-task-list-updated: async func(ctx: task-list-ctx);
+
+    // ── Plugin-defined async triggers ──
+    //
+    // Unlike the well-known hooks above (each a named export), plugin-defined
+    // async hooks (declared by a keybind's `action` field, e.g. "on-enrich")
+    // cannot be individually exported — a WASM component only exports
+    // WIT-declared functions. They funnel through this single dispatch export.
+    // The host passes the keybind's `action` string through verbatim; it never
+    // hard-codes any trigger name. The plugin matches `action` internally.
+    run-trigger: async func(action: string, ctx: trigger-ctx);
+
+    // ── Plugin-defined tools ──
+    //
+    // Same model as `run-trigger`: a plugin's declared tools (manifest `tools`
+    // list) are discovered by name at runtime. Since a WASM component can't
+    // export arbitrary-named functions, tool calls funnel through this single
+    // dispatch export. The host passes the tool `name` (from the manifest)
+    // verbatim with the LLM-provided JSON args; the plugin matches internally.
+    run-tool: async func(name: string, args: string, ctx: tool-ctx);
 
     // ── Sync render hooks (run on the render thread) ──
     //
@@ -281,6 +300,26 @@ interface types {
         keybound-plugin: string,
     }
 
+    /// Used by `run-trigger` (plugin-defined async hooks like on-enrich).
+    /// `text` is the chat-input draft at trigger time; carried through the
+    /// sync `on-keybind-trigger` veto and into the async fire.
+    record trigger-ctx {
+        session-id: session-id,
+        parent-session-id: option<session-id>,
+        instance-id: instance-id,
+        plugin-name: string,
+        text: string,
+    }
+
+    /// Used by `run-tool` (plugin-defined tool handlers, e.g. judgment_passed).
+    /// `session-id` is the child/tool session's own id (unique per verdict);
+    /// `parent-session-id` is the origin the tool routes results back to.
+    record tool-ctx {
+        session-id: session-id,
+        parent-session-id: option<session-id>,
+        instance-id: instance-id,
+        plugin-name: string,
+    }
     /// Used by `on-submit-intercept`.
     record submit-intercept-ctx {
         session-id: session-id,

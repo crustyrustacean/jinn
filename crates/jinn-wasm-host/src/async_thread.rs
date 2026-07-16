@@ -18,8 +18,7 @@
 use std::collections::HashMap;
 use std::thread::JoinHandle;
 
-use error_stack::{Report, ResultExt};
-use futures::stream::{FuturesOrdered, StreamExt as _};
+use error_stack::Report;
 use jinn_core_types::{PluginInstanceId, SessionId, SessionRegistryId};
 use serde_json::Value;
 use tokio::sync::oneshot;
@@ -37,7 +36,7 @@ pub struct AsyncPluginError;
 /// Internal message sent to the background WASM thread.
 ///
 /// Mirrors the old `PluginJob`. Each variant carries an oneshot responder.
-pub(crate) enum WasmJob {
+pub enum WasmJob {
     /// Fire all hooks for a name, discarding return values.
     Fire {
         hook: String,
@@ -147,7 +146,7 @@ impl AsyncThreadHandle {
 }
 
 /// Drive the background thread, executing each received [`WasmJob`] in turn.
-async fn thread_loop(mut rx: AsyncThreadReceiver, mut state: ThreadState) {
+async fn thread_loop(rx: AsyncThreadReceiver, mut state: ThreadState) {
     while let Some(job) = rx.recv().await.ok() {
         execute_job(&mut state, job).await;
     }
@@ -214,19 +213,19 @@ async fn fire_hooks(
     state: &mut ThreadState,
     target_session: Option<SessionRegistryId>,
     hook: &str,
-    _ctx: &Value,
+    ctx: &Value,
     enabled_instances: Option<Vec<PluginInstanceId>>,
 ) -> Result<(), Report<AsyncPluginError>> {
     // Fire on global plugins.
-    fire_on_store(&mut state.global_store, hook).await;
+    fire_on_store(&mut state.global_store, hook, ctx).await;
 
     // Fire on the session's plugins, if any.
     if let Some(rid) = target_session {
         if let Some(session_store) = state.session_stores.get_mut(&rid) {
             if let Some(enabled) = &enabled_instances {
-                fire_on_store_filtered(session_store, hook, enabled).await;
+                fire_on_store_filtered(session_store, hook, ctx, enabled).await;
             } else {
-                fire_on_store(session_store, hook).await;
+                fire_on_store(session_store, hook, ctx).await;
             }
         }
     }
@@ -238,53 +237,58 @@ async fn fire_hooks_collect(
     state: &mut ThreadState,
     target_session: Option<SessionRegistryId>,
     hook: &str,
-    _ctx: &Value,
+    ctx: &Value,
 ) -> Result<Vec<Value>, Report<AsyncPluginError>> {
-    let mut results = collect_from_store(&mut state.global_store, hook).await;
+    let mut results = collect_from_store(&mut state.global_store, hook, ctx).await;
     if let Some(rid) = target_session {
         if let Some(session_store) = state.session_stores.get_mut(&rid) {
-            results.extend(collect_from_store(session_store, hook).await);
+            results.extend(collect_from_store(session_store, hook, ctx).await);
         }
     }
     Ok(results)
 }
 
 /// Fire a hook on every instance in a store set (fire-and-forget).
-async fn fire_on_store(store: &mut LoadedStore, hook: &str) {
-    // Runtime export lookup: call the export if present, skip if absent.
-    // Phase 3 will replace this placeholder body with the typed hook dispatch
-    // once the well-known hook → typed-binding mapping is wired.
+///
+/// Uses the typed dispatcher ([`dispatch_async_hook`]) so well-known hooks
+/// resolve to their WIT-typed exports, and plugin-defined hooks fall through
+/// to `run-trigger`. Errors per-instance are logged and swallowed — a single
+/// failing plugin must not break the fire-and-forget fan-out.
+async fn fire_on_store(store: &mut LoadedStore, hook: &str, ctx: &Value) {
     for inst in store.storeset.iter_mut() {
-        let exists = inst
-            .with(|store, instance| {
-                use wasmtime::AsContextMut;
-                instance.get_func(store.as_context_mut(), hook).is_some()
-            });
-        if !exists {
-            continue;
+        if let Err(e) = crate::dispatch::dispatch_async_hook(inst, hook, ctx).await {
+            tracing::warn!(error = %e, hook, plugin = %inst.ctx().plugin_name, "async hook dispatch failed");
         }
-        // Call the export asynchronously; ignore the result (fire-and-forget).
-        let _ = inst
-            .with_async(|store, instance| async {
-                let Some(func) = instance.get_func(&mut *store, hook) else {
-                    return Ok::<(), Report<AsyncPluginError>>(());
-                };
-                let mut results: Vec<wasmtime::component::Val> = Vec::new();
-                let _ = func.call_async(&mut *store, &[], &mut results).await;
-                Ok(())
-            })
-            .await;
     }
 }
 
 /// Fire a hook on instances matching the enabled set.
-async fn fire_on_store_filtered(store: &mut LoadedStore, hook: &str, enabled: &[PluginInstanceId]) {
-    let _ = (store, hook, enabled);
-    // TODO Phase 3: iterate only the enabled instances.
+async fn fire_on_store_filtered(
+    store: &mut LoadedStore,
+    hook: &str,
+    ctx: &Value,
+    enabled: &[PluginInstanceId],
+) {
+    for inst in store.storeset.iter_mut() {
+        if !enabled.iter().any(|id| id == &inst.ctx().instance_id) {
+            continue;
+        }
+        if let Err(e) = crate::dispatch::dispatch_async_hook(inst, hook, ctx).await {
+            tracing::warn!(error = %e, hook, plugin = %inst.ctx().plugin_name, "async hook dispatch failed");
+        }
+    }
 }
 
 /// Fire a hook and collect each instance's return value.
-async fn collect_from_store(store: &mut LoadedStore, hook: &str) -> Vec<Value> {
-    let _ = (store, hook);
+///
+/// The async hook exports are all fire-and-forget (no return value), so this
+/// only collects results for the well-known sync-style hooks routed through
+/// the async path. Async hooks contribute nothing; the domain does not rely
+/// on return values from async hooks.
+async fn collect_from_store(store: &mut LoadedStore, hook: &str, ctx: &Value) -> Vec<Value> {
+    // Fire every instance and accumulate nothing — async hooks return ().
+    // This exists to keep the `WasmJob::Collect` shape symmetric with the
+    // old Lua `fire_collect` path; it never accumulates from async hooks.
+    fire_on_store(store, hook, ctx).await;
     Vec::new()
 }

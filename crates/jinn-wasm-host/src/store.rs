@@ -58,31 +58,46 @@ pub struct InstanceCtx {
 
 /// A compiled instance kept alive with its owning `Store`.
 ///
-/// The `Store` and `Instance` are co-borrowed for every export call via
-/// [`StoredInstance::with`].
+/// The `Store`, `Instance`, and typed-export indices are co-owned and
+/// co-borrowed on every hook call via [`StoredInstance::with`] /
+/// [`StoredInstance::with_async`]. The `GuestIndices` resolve the typed
+/// `hooks` exports (well-known + `run-trigger`/`run-tool`) for dispatch;
+/// holding the `InstancePre` keeps those indices valid.
 pub struct StoredInstance {
     pub ctx: InstanceCtx,
     store: Store<StoreState>,
     instance: Instance,
+    instance_pre: wasmtime::component::InstancePre<StoreState>,
+    indices: crate::bindings::exports::jinn::plugin::hooks::GuestIndices,
 }
 
 impl StoredInstance {
-    /// Borrow the store + instance together for an export call.
-    ///
-    /// The closure receives `(&mut Store, &Instance)` — exactly what wasmtime
-    /// needs to look up and invoke an exported function.
+    /// Borrow the store + instance together for a sync export call.
     pub fn with<R>(&mut self, f: impl FnOnce(&mut Store<StoreState>, &Instance) -> R) -> R {
         f(&mut self.store, &self.instance)
     }
 
     /// Borrow store + instance for an async export call. The closure returns a
-    /// Future that borrows the store for the await duration — wasmtime's async
+    /// Future that borrows the store for the await duration.
     pub async fn with_async<'a, F, Fut, R>(&'a mut self, f: F) -> R
     where
         F: FnOnce(&'a mut Store<StoreState>, &'a Instance) -> Fut,
         Fut: std::future::Future<Output = R> + 'a,
     {
         f(&mut self.store, &self.instance).await
+    }
+
+    /// Resolve the typed `hooks` exports for this instance.
+    #[must_use]
+    pub fn typed_guest(
+        &mut self,
+    ) -> wasmtime::Result<crate::bindings::exports::jinn::plugin::hooks::Guest> {
+        self.indices.load(&mut self.store, &self.instance)
+    }
+
+    /// Borrow the underlying store mutably (for run_concurrent callers).
+    pub fn store_mut(&mut self) -> &mut Store<StoreState> {
+        &mut self.store
     }
 
     /// The instance identity.
@@ -177,6 +192,18 @@ impl StoreSet {
             &self.engine,
             StoreState::new(ctx.clone(), &self.bags, &self.globals, self.imports.clone()),
         );
+        // Build the typed-export indices from an `InstancePre` before
+        // instantiating. The `GuestIndices` resolve the `hooks` exports
+        // (well-known + `run-trigger`/`run-tool`); holding the `InstancePre`
+        // keeps them valid for the instance's lifetime.
+        let instance_pre = linker
+            .instantiate_pre(component.inner())
+            .map_err(|e| error_stack::Report::new(StoreLoadError).attach(e.to_string()))
+            .attach("building instance pre for typed export indices")?;
+        let indices =
+            crate::bindings::exports::jinn::plugin::hooks::GuestIndices::new(&instance_pre)
+                .map_err(|e| error_stack::Report::new(StoreLoadError).attach(e.to_string()))
+                .attach("resolving typed hooks export indices")?;
         let instance = linker
             .instantiate(&mut store, component.inner())
             .map_err(|e| error_stack::Report::new(StoreLoadError).attach(e.to_string()))
@@ -185,8 +212,16 @@ impl StoreSet {
             plugin_name: ctx.plugin_name.clone(),
             instance_id: ctx.instance_id.clone(),
         };
-        self.instances
-            .insert(key, StoredInstance { ctx, store, instance });
+        self.instances.insert(
+            key,
+            StoredInstance {
+                ctx,
+                store,
+                instance,
+                instance_pre,
+                indices,
+            },
+        );
         Ok(())
     }
 

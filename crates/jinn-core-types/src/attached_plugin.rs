@@ -1,15 +1,13 @@
 //! Per-session plugin attachment model.
 //!
-//! Replaces the old `AttachedWorkflow` machinery. Plugins attach to a session
-//! by name; the dispatcher (`PluginDispatchActor`) loads them into a per-session
-//! Lua state and fires their hooks at lifecycle events.
+//! Plugins attach to a session by name; the dispatcher (`PluginDispatchActor`)
+//! loads them into a per-session WASM store and fires their hooks at lifecycle
+//! events.
 //!
 //! Each attachment gets a stable [`PluginInstanceId`] so that two attachments
 //! of the *same* plugin (e.g. a panel of judges) are distinguishable everywhere
 //! identity matters: hook firing, plugin data scoping, and cross-instance
 //! coordination.
-//!
-//! See `crates/jinn-plugin/src/lib.rs` for the four access patterns.
 
 use serde::{Deserialize, Serialize};
 

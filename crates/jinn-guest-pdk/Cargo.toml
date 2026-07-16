@@ -1,0 +1,15 @@
+[package]
+name = "jinn-guest-pdk"
+version = "0.1.0"
+edition = "2021"
+
+[lib]
+crate-type = ["rlib"]
+
+[dependencies]
+wit-bindgen = { workspace = true, optional = true, features = ["async"] }
+serde = { workspace = true }
+postcard = { workspace = true }
+
+[features]
+default = ["wit-bindgen"]
