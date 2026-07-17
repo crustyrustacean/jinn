@@ -1,8 +1,7 @@
 //! `session_query` built-in tool — lets an LLM query another session's chat history.
 //!
-//! Used by judge plugins to inspect origin session conversations. Supports two
+//! Used by automated sessions to inspect other session conversations. Supports two
 //! actions: `get_recent` (last N entries) and `search` (text matching). Always
-//! registered as a built-in tool alongside `bash`, `read`, etc.
 
 use crate::common::state::State;
 use crate::feat::session::chat_entry::ChatEntryKind;

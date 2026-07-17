@@ -30,7 +30,6 @@
 //!     lifecycle_args: Vec<String>,
 //!     lifecycle_script_state: LifecycleScriptState,  // untagged-ish: "NothingRan" etc.
 //!     #[serde(default)] task_list: TaskList,
-//!     #[serde(default)] attached_plugins: Vec<AttachedPlugin>,
 //!     #[serde(default = "...")] persist: bool,
 //! }
 //! ```
@@ -90,9 +89,6 @@ pub struct PersistableCoreV20 {
     /// Legacy sessions never carried a task list. Default to empty.
     #[serde(default)]
     pub task_list: serde_json::Value,
-    /// Legacy sessions never carried attached plugins. Default to empty.
-    #[serde(default)]
-    pub attached_plugins: Vec<serde_json::Value>,
     pub persist: bool,
 }
 impl PersistableCoreV20 {
@@ -152,7 +148,6 @@ impl PersistableCoreV20 {
             lifecycle_args,
             lifecycle_script_state: legacy.lifecycle_script_state.clone(),
             task_list: serde_json::json!({"phases": []}),
-            attached_plugins: Vec::new(),
             persist: true,
         };
 

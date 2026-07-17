@@ -31,7 +31,7 @@ pub struct SessionsSectionState {
 
 #[derive(Clone)]
 pub struct SessionEntry {
-    /// Whether this entry represents a session or a plugin.
+    /// The kind of this entry.
     pub kind: SessionEntryKind,
     pub id: SessionId,
     pub title: String,

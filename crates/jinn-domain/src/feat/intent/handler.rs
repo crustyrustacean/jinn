@@ -717,7 +717,7 @@ impl IntentHandler {
 /// cursor movement, paste, submit, mode toggle). Used by the disabled-input guard.
 ///
 /// Navigation and other Normal-scope intents are NOT editing intents — they must
-/// still route (e.g. `<M-e>` enrichment cancel) when the input box is disabled.
+/// still route (e.g. model picker, sidebar navigation) when the input box is disabled.
 fn is_chat_input_editing(intent: &Intent) -> bool {
     matches!(
         intent,

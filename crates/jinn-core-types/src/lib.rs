@@ -2,8 +2,7 @@
 //!
 //! Residents here are pure value types (newtypes over primitives) with no
 //! dependency on domain logic, actors, or app state. They exist so that leaf
-//! crates — e.g. a future plugin engine — can reference a shared type without
-//! depending on `jinn-domain`.
+//! crates can reference a shared type without depending on `jinn-domain`.
 //!
 //! Types are added as-needed. This is not a dumping ground: only types that are
 //! both foundational and domain-agnostic belong here.
