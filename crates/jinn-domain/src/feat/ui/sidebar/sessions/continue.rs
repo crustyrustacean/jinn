@@ -22,7 +22,7 @@ use crate::protocol::IntentResult;
 /// No-op when:
 /// - the sidebar scope is not `Sessions`,
 /// - no session is selected,
-/// - the selection is a Plugin (not a Session).
+/// - the selection is not a Session.
 ///
 /// The target session's phase (Idle/Sending/Streaming) is checked
 /// downstream in `session_actor::handle_enqueue_resume_turn`; the
@@ -47,7 +47,7 @@ pub fn handle_session_continue(state: &mut AppState) -> IntentResult {
         return IntentResult::empty();
     };
 
-    // Plugin entries are not sessions — resuming a plugin is a no-op.
+    // Non-session entries are a no-op for resume.
     if !matches!(entry.kind, SessionEntryKind::Session) {
         return IntentResult::empty();
     }

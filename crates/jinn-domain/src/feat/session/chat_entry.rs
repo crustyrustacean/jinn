@@ -808,7 +808,7 @@ impl ChatEntry {
 
     /// Returns a static string identifying the entry kind.
     ///
-    /// Used by plugins to identify entry types without matching on the enum.
+    /// Used to identify entry types without matching on the enum.
     #[must_use]
     pub fn kind_str(&self) -> &'static str {
         match self.kind {

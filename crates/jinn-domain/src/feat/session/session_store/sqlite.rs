@@ -187,7 +187,7 @@ impl SessionStore for SqliteSessionStore {
     }
 
     async fn save(&self, session: &ChatSessionState) -> Result<(), Report<SessionStoreError>> {
-        // Non-persistent sessions (e.g. plugin one-shots) never touch the store.
+        // Non-persistent sessions (e.g. one-shots) never touch the store.
         if !session.core.persist {
             return Ok(());
         }

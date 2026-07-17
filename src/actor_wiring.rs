@@ -437,17 +437,6 @@ jinn_domain::feat::preferences_actor::preferences_actor::PreferencesActor::super
         );
         _tools.wait_for_startup().await;
 
-        // Plugin-defined tool registration (global + attached scope).
-        //
-        // The WASM host extracts tool declarations from each component's
-        // `manifest()` export. That extraction (and the WasmJob variant for tool
-        // handler execution) is wired with the judge plugin port (Phase 5).
-        // Until then there are no plugin tools to register; these blocks are
-        // no-ops so the tools actor simply has no plugin tools.
-        //
-        // TODO(phase-5): replace with registration driven by
-        // `wasm_system.attachable_metas` + per-component manifest tool lists.
-
         // Web fetch + web search actors.
         //
         // Browser-backed tools share one process per MODE (headless/headed): if

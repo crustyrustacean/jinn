@@ -11,7 +11,7 @@ pub enum SessionCloseError {
     WrongSection,
     /// No session is selected.
     NoSelection,
-    /// The selected entry is a plugin, not a session.
+    /// The selected entry is not a session.
     NotASession,
     /// The selected session is streaming or sending.
     SessionBusy,

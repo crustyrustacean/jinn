@@ -84,9 +84,9 @@ pub struct ChatInputBoxState {
     scroll_offset: usize,
     /// When `true`, the input box rejects all editing intents (typing,
     /// deletion, cursor movement, paste, submit). Set by the generic
-    /// `SetChatInputEnabled` command — any plugin or the host may disable
+    /// `SetChatInputEnabled` command — any actor or the host may disable
     /// input for a session (e.g. while a background request runs).
-    /// Normal-scope intents (navigation, `<M-e>`, etc.) are unaffected.
+    /// Normal-scope intents (navigation, model picker, etc.) are unaffected.
     disabled: bool,
 }
 

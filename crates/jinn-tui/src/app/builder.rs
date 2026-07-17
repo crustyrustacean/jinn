@@ -36,8 +36,7 @@ impl TuiAppBuilder {
     ///
     /// Delegates to [`crate::launch::launch_for_test`] so that the test path and
     /// the real launch path ([`crate::launch::launch`]) share a single keymap
-    /// bootstrap site. This is what prevents the test/prod divergence that
-    /// previously left plugin keybinds unbound in production.
+    /// bootstrap site. This is what prevents test/prod divergence in keymap binding.
     pub async fn build(self) -> TuiApp {
         let services = match self.services {
             Some(s) => s,

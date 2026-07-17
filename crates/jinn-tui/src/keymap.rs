@@ -30,8 +30,6 @@ pub enum KeyCategory {
     Input,
     /// Context strategy and prompt template management.
     Context,
-    /// Plugin-declared keybinds (e.g. enrich prompt on tap).
-    Plugin,
     /// Sidebar sections
     Sidebar,
     /// Chat history
@@ -216,7 +214,7 @@ pub fn init() -> Keymap<KeyEvent, Scope, Intent, KeyCategory> {
             // Session management actions
             .bind("x", Intent::SidebarSessionClose, KeyCategory::Sidebar)
             .bind("t", Intent::SidebarSessionTeardown, KeyCategory::Sidebar)
-            .describe_group_with_category("p", "plugin", KeyCategory::Sidebar)
+            .describe_group_with_category("p", "sessions", KeyCategory::Sidebar)
             .bind("<enter>", Intent::SidebarSessionConfirm, KeyCategory::Sidebar)
             .bind("n", Intent::SessionNew, KeyCategory::Sidebar)
             .bind("N", Intent::SessionNewWithLifecycle, KeyCategory::Sidebar)
@@ -526,7 +524,7 @@ mod tests {
         use crate::app::WhichKeyInstance;
         use jinn_domain::{Key, Modifiers};
 
-        // Given a fresh keymap with no plugin bindings.
+        // Given a fresh keymap with no custom bindings.
         let keymap = init();
         let mut wk = WhichKeyInstance::new(keymap, Scope::Normal);
 
@@ -1142,7 +1140,7 @@ mod leak_check {
         // Regression: the library fix must not remove ChatHistory groups from
         // Normal scope where they legitimately belong. The `p` key in Normal
         // scope is a leaf (ChatEntryPinSelected → "pin entry"), not the
-        // "plugin" branch, so we only assert the bracket groups here.
+        // sessions branch, so we only assert the bracket groups here.
         let keymap: WKKeymap<
             jinn_domain::KeyEvent,
             Scope,

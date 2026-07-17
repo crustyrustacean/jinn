@@ -44,7 +44,7 @@ impl BrowserProfileMode {
 #[derive(Debug, Clone)]
 #[expect(clippy::struct_field_names, reason = "names match domain terminology")]
 pub struct AppPaths {
-    /// `~/.config/jinn` - providers.toml, prompts/, personas/, plugins/, themes/, jinn.toml
+    /// `~/.config/jinn` - providers.toml, prompts/, personas/, themes/, jinn.toml
     config_dir: PathBuf,
     /// `~/.local/share/jinn` - sessions.db
     data_dir: PathBuf,

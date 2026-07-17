@@ -65,11 +65,6 @@ pub trait SessionToolDefinitionsWrite {
     ) -> &mut HashMap<SessionId, HashMap<String, ToolDefinition>>;
 }
 
-/// Write access to the attachable tool catalog.
-pub trait AttachableToolCatalogWrite {
-    fn attachable_tool_catalog_mut(&mut self) -> &mut HashMap<String, ToolDefinition>;
-}
-
 impl PersonaWrite for ContextOps<'_> {
     fn set_active_persona(&mut self, persona: Option<Persona>) {
         self.0.set_active_persona(persona);
@@ -95,13 +90,6 @@ impl SessionToolDefinitionsWrite for ContextOps<'_> {
         &mut self.0.session_tool_definitions
     }
 }
-
-impl AttachableToolCatalogWrite for ContextOps<'_> {
-    fn attachable_tool_catalog_mut(&mut self) -> &mut HashMap<String, ToolDefinition> {
-        &mut self.0.attachable_tool_catalog
-    }
-}
-
 // ── Projection method ────────────────────────────────────────────────────────
 
 impl State {

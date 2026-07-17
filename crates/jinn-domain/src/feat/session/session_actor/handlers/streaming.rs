@@ -111,7 +111,7 @@ impl SessionPersistenceActor {
         // bus event. By the time this `StreamCompleted(Canceled)` arrives, the
         // phase is already `Idle`, so `emit_phase_changed` above correctly
         // skipped the `Idle → Idle` no-op. But subscribers (discord bridge, queue
-        // actor, plugins) still need a turn-end signal — and history is now
+        // actor, history workers) still need a turn-end signal — and history is now
         // complete with the `Error("Cancelled")` entry pushed by
         // `apply_completion_entries`. Force-publish so they learn the turn ended.
         if state_change.reason == StreamCompletedReason::Canceled
@@ -296,9 +296,8 @@ impl SessionPersistenceActor {
 /// Carries the completion `reason` so the caller can detect the cancel-consumed-
 /// by-frontend case: the synchronous ESC-cancel path (`cancel_stream_and_drain`)
 /// transitions the phase `Streaming → Idle` directly in the shared `State` without
-/// emitting a bus event. When the provider's `StreamCompleted(Canceled)` then
 /// arrives, the phase is already `Idle`, so `emit_phase_changed` would skip the
-/// `Idle → Idle` no-op and subscribers (discord bridge, queue actor, plugins)
+/// `Idle → Idle` no-op, so subscribers (discord bridge, queue actor, history workers)
 /// would never learn the turn ended. The caller detects this case via `reason`
 /// and force-publishes so the turn-end signal reaches the bus.
 struct StreamCompletionStateChange {

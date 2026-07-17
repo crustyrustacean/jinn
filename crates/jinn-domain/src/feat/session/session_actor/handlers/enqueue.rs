@@ -833,7 +833,7 @@ mod tests {
 
     #[tokio::test]
     async fn before_turn_no_attachments_dispatches_normally() {
-        // Given an idle session with no attached plugins.
+        // Given an idle session with no attachments.
         let (actor, state, _audit) = create_actor().await;
         let session_id = {
             let mut guard = state.write_test_no_cap();
