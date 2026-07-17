@@ -45,7 +45,6 @@ use crate::feat::session::protocol::citations_received::CitationsReceived;
 use crate::feat::session::protocol::close_session::CloseSession;
 use crate::feat::session::protocol::load_session_picker_entries::LoadSessionPickerEntries;
 use crate::feat::session::protocol::mark_session_interacted::MarkSessionInteracted;
-use crate::feat::session::protocol::reset_session_history::ResetSessionHistory;
 use crate::feat::session::protocol::retry_stalled_session::RetryStalledSession;
 use crate::feat::session::protocol::session_fork_requested::SessionForkRequested;
 use crate::feat::session::protocol::session_load_requested::SessionLoadRequested;
@@ -150,7 +149,6 @@ impl Actor for SessionPersistenceActor {
         bus.subscribe::<ArchiveSession, _>(&actor_ref).await;
         bus.subscribe::<SubmitHistoryMutations, _>(&actor_ref).await;
         bus.subscribe::<MarkSessionInteracted, _>(&actor_ref).await;
-        bus.subscribe::<ResetSessionHistory, _>(&actor_ref).await;
         bus.subscribe::<RetryStalledSession, _>(&actor_ref).await;
 
         // Context-related subscriptions.
@@ -372,13 +370,6 @@ impl Message<SubmitHistoryMutations> for SessionPersistenceActor {
     type Reply = ();
     async fn handle(&mut self, msg: SubmitHistoryMutations, _ctx: &mut Context<Self, Self::Reply>) {
         self.handle_submit_history_mutations(&msg).await;
-    }
-}
-
-impl Message<ResetSessionHistory> for SessionPersistenceActor {
-    type Reply = ();
-    async fn handle(&mut self, msg: ResetSessionHistory, _ctx: &mut Context<Self, Self::Reply>) {
-        self.handle_reset_session_history(&msg);
     }
 }
 

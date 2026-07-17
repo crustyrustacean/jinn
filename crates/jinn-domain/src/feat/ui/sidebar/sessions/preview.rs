@@ -24,7 +24,6 @@ use crate::feat::theme::Theme;
 use crate::feat::ui::chat_log::entry_to_lines;
 use crate::feat::ui::chat_log::shared::RenderContext;
 use crate::feat::ui::sidebar::sessions::MAX_VISIBLE_SESSIONS;
-use crate::feat::ui::sidebar::sessions::state::SessionEntryKind;
 use crate::feat::ui::sidebar::sessions::state::sorted_open_sessions;
 use crate::protocol::SessionId;
 
@@ -100,20 +99,6 @@ pub fn sessions_section_content_height(state: &AppState) -> u16 {
     visible.max(1) + 1
 }
 
-/// Resolves the preview session for a plugin entry from its managed session.
-///
-/// Plugin entries carry the managed session ID directly (populated from
-/// `AttachedPlugin.managed_session_id` when building entries). No Lua hook
-/// call is needed. Returns `None` if the entry has no managed session or
-/// the session doesn't exist.
-pub(crate) fn resolve_plugin_preview<'a>(
-    entry: &crate::feat::ui::sidebar::sessions::state::SessionEntry,
-    ctx: &'a RenderCtx<'a>,
-) -> Option<&'a ChatSessionState> {
-    let session_id = entry.managed_session_id.as_ref()?;
-    ctx.state.session.get(session_id)
-}
-
 /// Renders the session preview popup when the sidebar sessions section is focused.
 ///
 /// Checks focus state, resolves the highlighted session, computes the popup
@@ -145,24 +130,9 @@ pub fn render_session_preview_for_state(
         return;
     };
 
-    // For plugin entries, ask the plugin which session to preview.
-    // For regular session entries, preview the session directly.
-    let session = match entry.kind {
-        SessionEntryKind::Plugin { .. } => {
-            let preview_session = resolve_plugin_preview(entry, ctx);
-            let Some(preview_session) = preview_session else {
-                return;
-            };
-            preview_session
-        }
-        SessionEntryKind::Session => {
-            let Some(s) = state.session.get(&entry.id) else {
-                return;
-            };
-            s
-        }
+    let Some(session) = state.session.get(&entry.id) else {
+        return;
     };
-
     let theme = &state.frontend.theme;
     let tool_max = state.frontend.preferences.tool_entry_max_lines;
 

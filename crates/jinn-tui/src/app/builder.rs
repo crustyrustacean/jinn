@@ -15,8 +15,6 @@ pub struct TuiAppBuilder {
     services: Option<jinn_domain::Services>,
     /// Optional app state override (defaults to default state).
     state: Option<jinn_domain::AppState>,
-    /// Optional plugins override (defaults to empty SyncPlugins).
-    plugins: Option<jinn_wasm_host::SyncWasmPlugins>,
 }
 
 impl TuiAppBuilder {
@@ -31,13 +29,6 @@ impl TuiAppBuilder {
     #[must_use]
     pub fn state(mut self, state: jinn_domain::AppState) -> Self {
         self.state = Some(state);
-        self
-    }
-
-    /// Override the default plugins.
-    #[must_use]
-    pub fn plugins(mut self, plugins: jinn_wasm_host::SyncWasmPlugins) -> Self {
-        self.plugins = Some(plugins);
         self
     }
 
@@ -58,10 +49,7 @@ impl TuiAppBuilder {
             state: jinn_domain::State::new(state),
             bridge: services.bridge.clone(),
         };
-        let plugins = self
-            .plugins
-            .unwrap_or_else(jinn_wasm_host::SyncWasmPlugins::empty);
 
-        crate::launch::launch_for_test(core, services, plugins)
+        crate::launch::launch_for_test(core, services)
     }
 }

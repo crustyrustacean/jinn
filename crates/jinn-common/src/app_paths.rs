@@ -220,19 +220,6 @@ impl AppPaths {
     pub fn system_prompts_dir(&self) -> PathBuf {
         self.system_data_dir.join("prompts")
     }
-
-    /// User plugins directory (`~/.config/jinn/plugins`).
-    #[must_use]
-    pub fn plugins_dir(&self) -> PathBuf {
-        self.config_dir.join(APP_NAME).join("plugins")
-    }
-
-    /// System plugins directory (`/usr/share/jinn/plugins`).
-    #[must_use]
-    pub fn system_plugins_dir(&self) -> PathBuf {
-        self.system_data_dir.join("plugins")
-    }
-
     /// System skills directory (`/usr/share/jinn/skills`).
     ///
     /// Installed by the system package. Used as a fallback source for

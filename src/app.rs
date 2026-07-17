@@ -239,7 +239,7 @@ impl App {
             Commands::Tui => {
                 let intent_handler_cap =
                     jinn_domain::common::tcaps::mint::mint_intent_handler_cap();
-                let (core, services, _plugins, discord_rx, discord_gw_rx, discord_status_tx) =
+                let (core, services, discord_rx, discord_gw_rx, discord_status_tx) =
                     self.runtime.block_on(async {
                         actor_wiring::ActorSystemBuilder::new(
                             actor_wiring::ActorSystemBuilderArgs {
@@ -284,7 +284,7 @@ impl App {
                     ));
                 }
 
-                let app = jinn_tui::launch(core, services, _plugins).change_context(AppError)?;
+                let app = jinn_tui::launch(core, services).change_context(AppError)?;
                 let runner = Runner::Tui(Box::new(app));
                 self.run_and_shutdown(runner, &session_store)?;
             }
@@ -293,7 +293,7 @@ impl App {
                 let intent_handler_cap =
                     jinn_domain::common::tcaps::mint::mint_intent_handler_cap();
                 let store_for_shutdown = session_store.clone();
-                let (core, _services, _plugins, _discord_rx, _discord_gw_rx, _discord_status_tx) =
+                let (core, _services, _discord_rx, _discord_gw_rx, _discord_status_tx) =
                     self.runtime.block_on(async {
                         actor_wiring::ActorSystemBuilder::new(
                             actor_wiring::ActorSystemBuilderArgs {

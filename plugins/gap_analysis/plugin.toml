@@ -1,3 +1,0 @@
-name = "gap-analysis"
-description = "Gap-analysis — runs #gap-analysis automatically once when the task list completes"
-kind = "attachable"

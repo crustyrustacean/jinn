@@ -43,19 +43,6 @@ pub struct AppState {
     pub provider: ProviderState,
     /// Frontend / UI state - owned by IntentHandler.
     pub frontend: FrontendState,
-
-    /// Discovered Lua plugins from both user and system plugin directories.
-    /// OWNER: startup (actor_wiring) writes once; picker intent handler reads.
-    pub discovered_plugins: Vec<DiscoveredPlugin>,
-}
-
-/// Metadata for a discovered Lua plugin.
-#[derive(Debug, Clone)]
-pub struct DiscoveredPlugin {
-    /// Plugin name (directory name).
-    pub name: String,
-    /// Human-readable description from header comment.
-    pub description: Option<String>,
 }
 
 impl AppState {
@@ -73,8 +60,6 @@ impl AppState {
             PickerKind::Theme => Some(self.frontend.theme_picker_mut()),
 
             PickerKind::SessionLifecycle => Some(self.frontend.session_lifecycle_picker_mut()),
-            PickerKind::Plugin => Some(self.frontend.plugin_picker_mut()),
-
             PickerKind::CompactionModel => Some(self.frontend.compaction_model_picker_mut()),
             PickerKind::ReasoningEffort => Some(self.frontend.reasoning_effort_picker_mut()),
             PickerKind::Tool => Some(self.frontend.tool_picker_mut()),
@@ -97,8 +82,6 @@ impl AppState {
             PickerKind::Theme => Some(self.frontend.theme_picker()),
 
             PickerKind::SessionLifecycle => Some(self.frontend.session_lifecycle_picker()),
-            PickerKind::Plugin => Some(self.frontend.plugin_picker()),
-
             PickerKind::CompactionModel => Some(self.frontend.compaction_model_picker()),
             PickerKind::ReasoningEffort => Some(self.frontend.reasoning_effort_picker()),
             PickerKind::Tool => Some(self.frontend.tool_picker()),

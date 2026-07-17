@@ -51,7 +51,6 @@ pub struct LaunchError;
 pub fn launch(
     core: AppCore,
     services: jinn_domain::Services,
-    plugins: jinn_wasm_host::SyncWasmPlugins,
 ) -> Result<TuiApp, Report<LaunchError>> {
     let paths = &services.paths;
     let intent_handler_cap = jinn_domain::common::tcaps::mint::mint_intent_handler_cap();
@@ -77,14 +76,12 @@ pub fn launch(
 
     // The single keymap-bootstrap site: base keymap, then every plugin keybind.
     // Production and tests reach this via the same path.
-    let mut keymap = keymap::init();
-    keymap::bind_plugin_keybinds(&mut keymap, &plugins);
+    let keymap = keymap::init();
     let which_key = WhichKeyInstance::new(keymap, Scope::Normal);
 
     Ok(TuiApp {
         core,
         services,
-        plugins,
         ui_registry,
         events: MsgHandler::new(),
         which_key,
@@ -157,24 +154,18 @@ pub fn load_theme(
 /// This is what [`crate::TuiAppBuilder`] delegates to so that tests still go
 /// through the single keymap-bootstrap site ([`keymap::bind_plugin_keybinds`])
 /// without requiring real on-disk prompt/theme files.
-pub fn launch_for_test(
-    core: AppCore,
-    services: jinn_domain::Services,
-    plugins: jinn_wasm_host::SyncWasmPlugins,
-) -> TuiApp {
+pub fn launch_for_test(core: AppCore, services: jinn_domain::Services) -> TuiApp {
     let mut ui_registry = AppUiRegistry::new();
     jinn_domain::register_all_ui_elements(&mut ui_registry);
 
     let initial_scope =
         crate::app::scope_for_focus(core.state.read().frontend.scope_stack.current());
 
-    let mut keymap = keymap::init();
-    keymap::bind_plugin_keybinds(&mut keymap, &plugins);
+    let keymap = keymap::init();
 
     TuiApp {
         core,
         services,
-        plugins,
         ui_registry,
         events: MsgHandler::new(),
         which_key: WhichKeyInstance::new(keymap, initial_scope),

@@ -1,3 +1,0 @@
-name = "judge"
-description = "Judge — evaluates assistant responses after each turn using a child LLM session"
-kind = "attachable"

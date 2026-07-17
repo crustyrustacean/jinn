@@ -2,7 +2,7 @@
 
 use crate::common::app_state::AppState;
 use crate::feat::session::phase_machine::PhaseKind;
-use crate::feat::ui::sidebar::sessions::state::{SessionEntryKind, sorted_open_sessions};
+use crate::feat::ui::sidebar::sessions::state::sorted_open_sessions;
 
 /// Why a session close can be rejected.
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -44,10 +44,6 @@ pub fn validate_session_close(state: &AppState) -> Result<(), SessionCloseError>
     let sessions = sorted_open_sessions(state);
     let entry = sessions.get(index).ok_or(SessionCloseError::NoSelection)?;
 
-    // Plugin entries cannot be closed/archived.
-    if matches!(entry.kind, SessionEntryKind::Plugin { .. }) {
-        return Err(SessionCloseError::NotASession);
-    }
     let session = state
         .session
         .get(&entry.id)

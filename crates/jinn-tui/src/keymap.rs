@@ -4,8 +4,6 @@
 //! Binds keys to [`Intent`] variants. Parameterized on
 //! [`KeyEvent`] so the keymap works in both TUI and headless modes.
 
-use std::str::FromStr;
-
 use crossterm::event::{self, MouseEventKind};
 use derive_more::Display;
 use jinn_domain::Intent;
@@ -116,7 +114,6 @@ pub fn init() -> Keymap<KeyEvent, Scope, Intent, KeyCategory> {
             .bind("<leader>st", Intent::OpenPicker { kind: PickerKind::Tool }, KeyCategory::General)
             .bind("<leader>sk", Intent::OpenPicker { kind: PickerKind::Skill }, KeyCategory::General)
             .bind("<leader>sh", Intent::OpenPicker { kind: PickerKind::Theme }, KeyCategory::General)
-            .bind("<leader>sp", Intent::OpenPicker { kind: PickerKind::Plugin }, KeyCategory::General)
             .bind("<leader>sr", Intent::OpenPicker { kind: PickerKind::ReasoningEffort }, KeyCategory::General)
             // Projects - curated directory list for quick session creation
             .bind("<leader>so", Intent::OpenPicker { kind: PickerKind::Project }, KeyCategory::General)
@@ -227,7 +224,6 @@ pub fn init() -> Keymap<KeyEvent, Scope, Intent, KeyCategory> {
             .bind("a", Intent::SidebarSessionArchive, KeyCategory::Sidebar)
             .bind("c", Intent::SidebarSessionContinue, KeyCategory::Sidebar)
             .bind("s", Intent::SidebarSessionRerunSetup, KeyCategory::Sidebar)
-            .bind("pt", Intent::SidebarTogglePlugin, KeyCategory::Sidebar)
 
             // i activates session and enters insert mode
             .bind("i", Intent::SidebarConfirmInsert, KeyCategory::Sidebar)
@@ -347,9 +343,6 @@ pub fn init() -> Keymap<KeyEvent, Scope, Intent, KeyCategory> {
              .bind("<pgup>", Intent::PreviewScrollUp, KeyCategory::Navigation)
              .bind("<pgdn>", Intent::PreviewScrollDown, KeyCategory::Navigation)
              .bind("<c-r>", Intent::RefreshSkills, KeyCategory::General);
-        })
-        .scope(Scope::PickerPlugin, |b| {
-            add_picker_base(b);
         })
         .scope(Scope::PickerTaskList, |b| {
             add_picker_base(b);
@@ -518,40 +511,6 @@ pub fn init() -> Keymap<KeyEvent, Scope, Intent, KeyCategory> {
     })
 }
 
-/// Registers keybinds declared by plugins into the keymap.
-///
-/// Each plugin's `keybinds` table entry produces an [`Intent::TriggerPlugin`] bound
-/// under [`KeyCategory::Plugin`]. Plugins that don't declare keybinds, or whose
-/// entries are malformed, are skipped (malformed entries are logged at warn by
-/// `SyncPlugins::declared_keybinds`).
-pub fn bind_plugin_keybinds(
-    keymap: &mut Keymap<KeyEvent, Scope, Intent, KeyCategory>,
-    plugins: &jinn_wasm_host::SyncWasmPlugins,
-) {
-    for kb in plugins.declared_keybinds() {
-        let Ok(scope) = Scope::from_str(&kb.scope) else {
-            tracing::warn!(
-                plugin = %kb.plugin_name,
-                keys = %kb.keys,
-                scope = %kb.scope,
-                "plugin keybind has unknown scope; skipping"
-            );
-            continue;
-        };
-        keymap.bind(
-            &kb.keys,
-            Intent::TriggerPlugin {
-                plugin_name: kb.plugin_name.clone(),
-                action: kb.action.clone(),
-                description: kb.description.clone(),
-                session_id: None,
-            },
-            KeyCategory::Plugin,
-            scope,
-        );
-    }
-}
-
 #[cfg(test)]
 mod tests {
     #![allow(clippy::expect_used, clippy::panic, reason = "test code")]
@@ -582,15 +541,6 @@ mod tests {
             matches!(intent, Some(jinn_domain::Intent::ChatEntryPinSelected)),
             "'p' in Normal scope should fire ChatEntryPinSelected; got {intent:?}",
         );
-    }
-
-    #[test]
-    fn bind_plugin_keybinds_no_plugins_is_noop() {
-        // No plugins loaded => no keybinds to bind; function must be a no-op.
-        let mut keymap = init();
-        let plugins = jinn_wasm_host::SyncWasmPlugins::empty();
-        bind_plugin_keybinds(&mut keymap, &plugins);
-        // No panic, no bindings added => success.
     }
 
     #[test]
@@ -1021,45 +971,6 @@ mod tests {
     }
 
     #[rstest::rstest]
-    fn leader_sp_resolves_to_plugin_picker_only() {
-        // Given the default keymap (persona moved off <leader>sp).
-        use jinn_domain::{Key, KeyEvent, Modifiers};
-        use ratatui_which_key::NodeResult;
-        let keymap = init();
-        let path = [
-            KeyEvent {
-                key: Key::Char(' '),
-                modifiers: Modifiers::none(),
-            },
-            KeyEvent {
-                key: Key::Char('s'),
-                modifiers: Modifiers::none(),
-            },
-            KeyEvent {
-                key: Key::Char('p'),
-                modifiers: Modifiers::none(),
-            },
-        ];
-
-        // When navigating the <leader>sp sequence.
-        let result = keymap.navigate(&path, &Scope::Normal).expect("path exists");
-
-        // Then it resolves to OpenPicker{Plugin} only (collision resolved).
-        match result {
-            NodeResult::Leaf { action } => assert!(
-                matches!(
-                    action,
-                    Intent::OpenPicker {
-                        kind: PickerKind::Plugin
-                    }
-                ),
-                "<leader>sp must resolve to OpenPicker{{Plugin}} only; got {action:?}",
-            ),
-            other => panic!("<leader>sp must be a leaf, got branch: {other:?}"),
-        }
-    }
-
-    #[rstest::rstest]
     fn bracket_c_chord_resolves_to_jump_compaction_intents() {
         // Given the default keymap.
         use jinn_domain::{Key, KeyEvent, Modifiers};
@@ -1224,10 +1135,6 @@ mod leak_check {
                 .iter()
                 .any(|d| d.contains("next") || d.contains("previous")),
             "ChatHistory groups leaked into Dashboard: {all_desc:?}"
-        );
-        assert!(
-            !all_desc.iter().any(|d| d.contains("plugin")),
-            "Sidebar groups leaked into Dashboard: {all_desc:?}"
         );
     }
     #[test]

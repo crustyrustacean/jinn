@@ -88,7 +88,6 @@ pub async fn new(ctx: BotContext<'_>) -> Result<(), BotError> {
                 args: args.clone(),
             },
             &mut state,
-            None,
         );
         for closure in result.messages {
             let _ = data.bridge.send(closure);
