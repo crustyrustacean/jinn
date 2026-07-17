@@ -26,8 +26,8 @@ impl crate::common::bus::BusMessage for SessionSetupCompleted {}
 /// A new chat session was created.
 ///
 /// Emitted by the intent handler when `handle_session_lifecycle_setup()` inserts
-/// a new session into the sessions map. Actor plugins subscribe to this event
-/// to run side effects (e.g., welcome messages).
+/// a new session into the sessions map. Other actors subscribe to this event
+/// to run side effects (e.g., lifecycle scripts).
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct SessionCreated {
     /// The newly created session's ID.

@@ -8,7 +8,6 @@
 use std::collections::HashSet;
 
 use crate::feat::persona::PersonaEntry;
-use crate::feat::plugin_dispatch::picker_entry::PluginPickerEntry;
 use crate::feat::reasoning::ReasoningEffortEntry;
 use crate::feat::session::picker_entry::SessionTreeEntry;
 use crate::feat::session_lifecycle::picker_entry::SessionLifecycleEntry;
@@ -64,10 +63,6 @@ pub struct PickerStates {
     /// Session lifecycle picker state (items, filter text, selection index).
     /// OWNER: IntentHandler (lifecycle picker navigation).
     pub session_lifecycle_picker: jinn_selection_widget::SelectionState<SessionLifecycleEntry>,
-
-    /// Plugin picker state (items, filter text, selection index).
-    /// OWNER: IntentHandler (plugin picker navigation, entries populated from `AppState.discovered_plugins`).
-    pub plugin_picker: jinn_selection_widget::SelectionState<PluginPickerEntry>,
 
     /// Compaction model picker state (items, filter text, selection index).
     /// OWNER: IntentHandler (compaction model picker navigation).
@@ -143,14 +138,6 @@ pub trait PickerExt {
     fn session_lifecycle_picker_mut(
         &mut self,
     ) -> &mut jinn_selection_widget::SelectionState<SessionLifecycleEntry>;
-
-    /// Read-only access to the plugin picker state.
-    fn plugin_picker(&self) -> &jinn_selection_widget::SelectionState<PluginPickerEntry>;
-
-    /// Mutable access to the plugin picker state.
-    fn plugin_picker_mut(
-        &mut self,
-    ) -> &mut jinn_selection_widget::SelectionState<PluginPickerEntry>;
 
     /// Read-only access to the compaction model picker state.
     fn compaction_model_picker(&self) -> &jinn_selection_widget::SelectionState<PickerEntry>;
@@ -271,17 +258,6 @@ impl PickerExt for super::frontend_state::FrontendState {
     ) -> &mut jinn_selection_widget::SelectionState<SessionLifecycleEntry> {
         &mut self.pickers.session_lifecycle_picker
     }
-
-    fn plugin_picker(&self) -> &jinn_selection_widget::SelectionState<PluginPickerEntry> {
-        &self.pickers.plugin_picker
-    }
-
-    fn plugin_picker_mut(
-        &mut self,
-    ) -> &mut jinn_selection_widget::SelectionState<PluginPickerEntry> {
-        &mut self.pickers.plugin_picker
-    }
-
     fn compaction_model_picker(&self) -> &jinn_selection_widget::SelectionState<PickerEntry> {
         &self.pickers.compaction_model_picker
     }

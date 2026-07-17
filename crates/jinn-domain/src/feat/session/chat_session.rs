@@ -307,16 +307,16 @@ pub struct SessionCore {
     /// OWNER: session-actor (advances only after script success).
     #[serde(default)]
     pub lifecycle_script_state: LifecycleScriptState,
-    /// Whether this session is program-initiated (plugin, subagent, judge, etc.),
+    /// Whether this session is program-initiated (subagent, judge, etc.),
     /// not a normal user conversation. When true, the session uses its
     /// `assembly_overrides` instead of global defaults and is hidden from the sidebar.
-    /// OWNER: session-actor / plugin-dispatch-actor (set on creation).
+    /// OWNER: session-actor (set on creation).
     #[serde(default)]
     pub is_automated: bool,
 
     /// Whether this session should be persisted to disk. Default true; set
-    /// false for transient automated sessions (e.g. plugin enrichment one-shots).
-    /// OWNER: plugin-dispatch-actor (set on creation).
+    /// false for transient automated sessions (e.g. one-shots).
+    /// OWNER: session-actor (set on creation).
     #[serde(default = "default_persist")]
     pub persist: bool,
 
@@ -327,17 +327,13 @@ pub struct SessionCore {
     pub has_interacted: bool,
     /// Assembly overrides for automated sessions. When set, these replace global
     /// defaults in `assemble_prompt`. Runtime-only - not persisted.
-    /// OWNER: session-actor / plugin-dispatch-actor (set before first message).
+    /// OWNER: session-actor (set before first message).
     #[serde(skip)]
     pub assembly_overrides: Option<crate::feat::context::assemble::AssemblyOverrides>,
     /// Phased task list for agent session planning.
     /// OWNER: tools-actor (mutated by task list tools).
     #[serde(default)]
     pub task_list: crate::feat::todo_list::TaskList,
-    /// Attached plugins - persistent per-session plugin attachments.
-    /// OWNER: plugin-dispatch-actor (attach/detach/toggle).
-    #[serde(default)]
-    pub attached_plugins: Vec<jinn_core_types::AttachedPlugin>,
     /// Runtime-only state - not persisted across restarts.
     #[serde(skip)]
     pub ephemeral: SessionCoreEphemeral,
@@ -370,7 +366,6 @@ impl Default for SessionCore {
 
             assembly_overrides: None,
             task_list: crate::feat::todo_list::TaskList::default(),
-            attached_plugins: Vec::new(),
             has_interacted: false,
             ephemeral: SessionCoreEphemeral::default(),
         }
@@ -583,7 +578,7 @@ impl ChatSessionState {
     /// Convert a cloned session into an automated child: new ID, fresh ephemeral
     /// state, custom assembly overrides, and the given parent.
     ///
-    /// Used by the plugin dispatch path when cloning a session for a one-shot
+    /// Used when cloning a session for a one-shot
     /// LLM request. The clone keeps its history and profile from the source;
     /// only the identity, ephemeral state, overrides, and parent link change.
     pub fn into_automated_clone(
@@ -653,11 +648,6 @@ impl ChatSessionState {
     /// Read-only access to the conversation history.
     pub fn history(&self) -> &[ChatEntry] {
         &self.core.history
-    }
-
-    /// Clear the chat history, removing all entries.
-    pub(in crate::feat::session) fn clear_history(&mut self) {
-        self.core.history.clear();
     }
 
     /// Mark entries at the given indices as ignored.
@@ -878,7 +868,7 @@ impl ChatSessionState {
     /// Whether this session should be persisted to disk.
     ///
     /// Returns `false` immediately when `persist == false` (explicitly marked
-    /// transient — e.g. a plugin enrichment one-shot). Otherwise returns `true`
+    /// transient — e.g. a one-shot). Otherwise returns `true`
     /// if any of:
     /// - The user has interacted with this session (`has_interacted`)
     /// - The session has a lifecycle (setup/teardown scripts)
@@ -2866,100 +2856,6 @@ impl ChatSessionState {
         &self.core.session_id
     }
 
-    /// Read-only access to the plugins attached to this session.
-    pub fn attached_plugins(&self) -> &[jinn_core_types::AttachedPlugin] {
-        &self.core.attached_plugins
-    }
-
-    /// Attach a plugin to this session.
-    pub fn attach_plugin(&mut self, plugin: jinn_core_types::AttachedPlugin) {
-        self.core.attached_plugins.push(plugin);
-    }
-
-    /// Remove all attached plugins whose `name` matches.
-    ///
-    /// Returns the instance IDs of the plugins that were removed.
-    pub fn detach_plugins_by_name(
-        &mut self,
-        plugin_name: &str,
-    ) -> Vec<jinn_core_types::PluginInstanceId> {
-        let mut removed = Vec::new();
-        self.core.attached_plugins.retain(|p| {
-            if p.name.as_str() == plugin_name {
-                removed.push(p.instance_id.clone());
-                false
-            } else {
-                true
-            }
-        });
-        removed
-    }
-    /// Set the enabled state of the attached plugin with the given instance ID.
-    ///
-    /// Returns the new enabled state, or `None` if no plugin matches.
-    pub fn set_plugin_enabled(
-        &mut self,
-        instance_id: &jinn_core_types::PluginInstanceId,
-        enabled: bool,
-    ) -> Option<bool> {
-        let plugin = self
-            .core
-            .attached_plugins
-            .iter_mut()
-            .find(|p| &p.instance_id == instance_id)?;
-        plugin.enabled = enabled;
-        Some(plugin.enabled)
-    }
-
-    /// Set the managed session ID of the attached plugin with the given instance ID.
-    ///
-    /// Returns `true` if a matching plugin was found and updated.
-    pub fn set_plugin_managed_session(
-        &mut self,
-        instance_id: &jinn_core_types::PluginInstanceId,
-        managed_session_id: crate::protocol::SessionId,
-    ) -> bool {
-        let Some(plugin) = self
-            .core
-            .attached_plugins
-            .iter_mut()
-            .find(|p| &p.instance_id == instance_id)
-        else {
-            return false;
-        };
-        plugin.managed_session_id = Some(managed_session_id);
-        true
-    }
-
-    /// Instance IDs of all currently enabled attached plugins.
-    pub fn enabled_plugin_instance_ids(&self) -> Vec<jinn_core_types::PluginInstanceId> {
-        self.core
-            .attached_plugins
-            .iter()
-            .filter(|p| p.enabled)
-            .map(|p| p.instance_id.clone())
-            .collect()
-    }
-
-    /// Returns the enabled state of the attached plugin with the given instance ID,
-    /// or `None` if no plugin matches.
-    pub fn plugin_enabled(&self, instance_id: &jinn_core_types::PluginInstanceId) -> Option<bool> {
-        self.core
-            .attached_plugins
-            .iter()
-            .find(|p| &p.instance_id == instance_id)
-            .map(|p| p.enabled)
-    }
-
-    /// Returns the managed session ID of the attached plugin whose instance ID's
-    /// string form matches `id_str`, or `None` if no plugin matches.
-    pub fn plugin_managed_session_id(&self, id_str: &str) -> Option<crate::protocol::SessionId> {
-        self.core
-            .attached_plugins
-            .iter()
-            .find(|p| p.instance_id.to_string() == id_str)
-            .and_then(|p| p.managed_session_id.clone())
-    }
     /// Set the session ID (used when inserting into a HashMap with an external key).
     pub fn set_session_id(&mut self, id: SessionId) {
         self.core.session_id = id;

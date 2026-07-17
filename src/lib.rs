@@ -4,7 +4,6 @@ pub mod actor_wiring;
 pub mod app;
 #[cfg(debug_assertions)]
 pub mod headless;
-pub mod plugin_wiring;
 pub mod runner;
 pub mod tracing;
 

@@ -17,14 +17,10 @@ use std::sync::Arc;
 use derive_more::Debug;
 use kameo::actor::Spawn;
 
-use crate::feat::plugin_dispatch::{
-    PluginFire, PluginFireError, PluginSyncCall, PluginSyncCallError,
-};
 use crate::feat::preferences_actor::{
     AppStateStorageService, InMemoryAppStateStorage, InMemoryUserPreferencesStorage,
     UserPreferencesStorageService,
 };
-use jinn_core_types::SessionRegistryId;
 
 pub use crate::feat::provider_infra;
 use crate::feat::provider_infra::{
@@ -32,7 +28,6 @@ use crate::feat::provider_infra::{
     ProviderRegistry, ProviderRegistryService, ProvidersConfig,
 };
 use crate::feat::session::SessionStoreService;
-use error_stack::Report;
 use tokio::runtime::Handle;
 
 pub mod test_services;
@@ -72,12 +67,6 @@ pub struct Services {
     pub user_preferences_storage: UserPreferencesStorageService,
     /// App state storage for persisting `state.toml`.
     pub app_state_storage: AppStateStorageService,
-    /// Plugin system async handle (fire-and-forget + collect).
-    pub plugins: crate::feat::plugin_dispatch::PluginFireService,
-    /// Plugin system sync handle (blocking hook calls from actors).
-    pub plugin_sync: crate::feat::plugin_dispatch::PluginSyncCallService,
-    /// Per-session plugin registry (manages isolated Lua states for attached plugins).
-    pub session_plugin_registry: crate::feat::plugin_dispatch::SessionPluginRegistryService,
     /// Test-only owned temp directory. `None` in production.
     ///
     /// Held here so the dir outlives the [`AppPaths`] that points at it
@@ -162,18 +151,6 @@ impl Services {
                 svc.reload().expect("test app state storage initial reload");
                 svc
             },
-            plugins: crate::feat::plugin_dispatch::PluginFireService::new(std::sync::Arc::new(
-                NoopPluginFire,
-            )
-                as std::sync::Arc<dyn PluginFire>),
-            plugin_sync: crate::feat::plugin_dispatch::PluginSyncCallService::new(
-                std::sync::Arc::new(NoopPluginSyncCall) as std::sync::Arc<dyn PluginSyncCall>,
-            ),
-            session_plugin_registry:
-                crate::feat::plugin_dispatch::SessionPluginRegistryService::new(
-                    std::sync::Arc::new(NoopSessionPluginRegistry)
-                        as std::sync::Arc<dyn crate::feat::plugin_dispatch::SessionPluginRegistry>,
-                ),
             tempdir: Some(tempdir),
             bus,
             bridge,
@@ -219,148 +196,10 @@ impl Services {
                 svc.reload().expect("test app state storage initial reload");
                 svc
             },
-            plugins: crate::feat::plugin_dispatch::PluginFireService::new(std::sync::Arc::new(
-                NoopPluginFire,
-            )
-                as std::sync::Arc<dyn PluginFire>),
-            plugin_sync: crate::feat::plugin_dispatch::PluginSyncCallService::new(
-                std::sync::Arc::new(NoopPluginSyncCall) as std::sync::Arc<dyn PluginSyncCall>,
-            ),
-            session_plugin_registry:
-                crate::feat::plugin_dispatch::SessionPluginRegistryService::new(
-                    std::sync::Arc::new(NoopSessionPluginRegistry)
-                        as std::sync::Arc<dyn crate::feat::plugin_dispatch::SessionPluginRegistry>,
-                ),
             tempdir: Some(tempdir),
             bus,
             bridge,
             root_supervisor,
         }
-    }
-}
-
-// ── Noop plugin implementations for test defaults ─────────────────────
-
-/// Noop [`PluginFire`] for test defaults.
-#[derive(Debug, Clone)]
-pub struct NoopPluginFire;
-
-/// Noop [`PluginSyncCall`] for test defaults.
-#[derive(Debug, Clone)]
-pub struct NoopPluginSyncCall;
-
-/// Noop [`PluginFire`] for test defaults.
-#[async_trait::async_trait]
-impl PluginFire for NoopPluginFire {
-    async fn fire_async_json(
-        &self,
-        hook: &str,
-        _ctx: &serde_json::Value,
-    ) -> Result<(), Report<PluginFireError>> {
-        tracing::debug!(hook, "noop plugin fire");
-        Ok(())
-    }
-    async fn fire_async_collect_json(
-        &self,
-        hook: &str,
-        _ctx: &serde_json::Value,
-    ) -> Result<Vec<serde_json::Value>, Report<PluginFireError>> {
-        tracing::debug!(hook, "noop plugin collect");
-        Ok(vec![])
-    }
-
-    async fn fire_async_for_session_json(
-        &self,
-        _session: SessionRegistryId,
-        hook: &str,
-        _ctx: &serde_json::Value,
-        _enabled_instances: Option<Vec<jinn_core_types::PluginInstanceId>>,
-    ) -> Result<(), Report<PluginFireError>> {
-        tracing::debug!(hook, "noop plugin fire for session");
-        Ok(())
-    }
-
-    async fn fire_async_collect_for_session_json(
-        &self,
-        _session: SessionRegistryId,
-        hook: &str,
-        _ctx: &serde_json::Value,
-    ) -> Result<Vec<serde_json::Value>, Report<PluginFireError>> {
-        tracing::debug!(hook, "noop plugin collect for session");
-        Ok(vec![])
-    }
-
-    async fn execute_plugin_tool(
-        &self,
-        _target: Option<SessionRegistryId>,
-        _session_id: &crate::protocol::SessionId,
-        _parent_session_id: Option<&crate::protocol::SessionId>,
-        _plugin_name: &str,
-        _tool_name: &str,
-        _arguments: &serde_json::Value,
-    ) -> Result<String, Report<PluginFireError>> {
-        tracing::debug!("noop plugin execute tool");
-        Ok(String::new())
-    }
-
-    fn name(&self) -> &'static str {
-        "NoopPluginFire"
-    }
-}
-
-/// Noop [`PluginSyncCall`] for test defaults.
-impl PluginSyncCall for NoopPluginSyncCall {
-    fn call_hooks_json(
-        &self,
-        hook: &str,
-        _ctx: &serde_json::Value,
-    ) -> Result<Vec<serde_json::Value>, Report<PluginSyncCallError>> {
-        tracing::debug!(hook, "noop plugin sync");
-        Ok(vec![])
-    }
-
-    fn call_hooks_for_session_json(
-        &self,
-        _session: SessionRegistryId,
-        hook: &str,
-        _ctx: &serde_json::Value,
-    ) -> Result<Vec<serde_json::Value>, Report<PluginSyncCallError>> {
-        tracing::debug!(hook, "noop plugin sync for session");
-        Ok(vec![])
-    }
-    fn name(&self) -> &'static str {
-        "NoopPluginSyncCall"
-    }
-}
-
-/// No-op implementation of [`SessionPluginRegistry`] for tests.
-#[derive(Debug, Default, Clone, Copy)]
-pub struct NoopSessionPluginRegistry;
-
-#[async_trait::async_trait]
-impl crate::feat::plugin_dispatch::SessionPluginRegistry for NoopSessionPluginRegistry {
-    async fn create_session_registry(
-        &self,
-        _instances: Vec<(jinn_core_types::PluginInstanceId, String)>,
-        _origin_session_id: crate::protocol::SessionId,
-    ) -> Result<
-        crate::feat::plugin_dispatch::CreateSessionRegistryResult,
-        Report<crate::feat::plugin_dispatch::SessionPluginRegistryError>,
-    > {
-        Ok(crate::feat::plugin_dispatch::CreateSessionRegistryResult {
-            registry_id: jinn_core_types::SessionRegistryId::new(),
-            tool_metadata: Vec::new(),
-        })
-    }
-
-    async fn destroy_session_registry(
-        &self,
-        _registry_id: jinn_core_types::SessionRegistryId,
-    ) -> Result<(), Report<crate::feat::plugin_dispatch::SessionPluginRegistryError>> {
-        Ok(())
-    }
-
-    fn name(&self) -> &'static str {
-        "NoopSessionPluginRegistry"
     }
 }

@@ -44,7 +44,7 @@ impl BrowserProfileMode {
 #[derive(Debug, Clone)]
 #[expect(clippy::struct_field_names, reason = "names match domain terminology")]
 pub struct AppPaths {
-    /// `~/.config/jinn` - providers.toml, prompts/, personas/, plugins/, themes/, jinn.toml
+    /// `~/.config/jinn` - providers.toml, prompts/, personas/, themes/, jinn.toml
     config_dir: PathBuf,
     /// `~/.local/share/jinn` - sessions.db
     data_dir: PathBuf,
@@ -220,19 +220,6 @@ impl AppPaths {
     pub fn system_prompts_dir(&self) -> PathBuf {
         self.system_data_dir.join("prompts")
     }
-
-    /// User plugins directory (`~/.config/jinn/plugins`).
-    #[must_use]
-    pub fn plugins_dir(&self) -> PathBuf {
-        self.config_dir.join(APP_NAME).join("plugins")
-    }
-
-    /// System plugins directory (`/usr/share/jinn/plugins`).
-    #[must_use]
-    pub fn system_plugins_dir(&self) -> PathBuf {
-        self.system_data_dir.join("plugins")
-    }
-
     /// System skills directory (`/usr/share/jinn/skills`).
     ///
     /// Installed by the system package. Used as a fallback source for

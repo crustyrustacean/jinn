@@ -70,11 +70,6 @@ impl ChatHistory {
         self.entries = entries;
     }
 
-    /// Clear all entries from the history.
-    pub(in crate::feat::session) fn clear(&mut self) {
-        self.entries.clear();
-    }
-
     /// Remove the entry at `index`, shifting subsequent entries down.
     ///
     /// Used by the stall-retry path to discard partial streaming entries.

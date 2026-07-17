@@ -98,7 +98,7 @@ impl SessionPersistenceActor {
         };
 
         match &evt.session_id {
-            // Global tools (builtins + global plugins) -> shared map.
+            // Global tools (builtins) -> shared map.
             None => {
                 self.state.with_context(&self.context_cap, |view| {
                     let map = view.context.global_tool_definitions_mut();
@@ -107,7 +107,7 @@ impl SessionPersistenceActor {
                     }
                 });
             }
-            // Attached plugin tools -> per-session map.
+            // Session-scoped tools -> per-session map.
             Some(target_id) => {
                 self.state.with_context(&self.context_cap, |view| {
                     let session_map = view
@@ -308,7 +308,7 @@ mod tests {
         // Build a ToolsRegistered targeting a different session.
         let other_session_id = SessionId::new();
         let payload = ToolsRegistered {
-            provider: "plugin:judge".to_owned(),
+            provider: "tester:alpha".to_owned(),
             definitions: vec![ToolDefinition {
                 name: "judgment_passed".to_owned(),
                 description: "Pass".to_owned(),
@@ -355,7 +355,7 @@ mod tests {
 
         // Build a ToolsRegistered targeting this session.
         let payload = ToolsRegistered {
-            provider: "plugin:judge".to_owned(),
+            provider: "tester:alpha".to_owned(),
             definitions: vec![ToolDefinition {
                 name: "judgment_passed".to_owned(),
                 description: "Pass".to_owned(),
@@ -388,7 +388,7 @@ mod tests {
 
         // Build a global ToolsRegistered (session_id: None).
         let payload = ToolsRegistered {
-            provider: "plugin:helper".to_owned(),
+            provider: "tester:beta".to_owned(),
             definitions: vec![ToolDefinition {
                 name: "global_helper".to_owned(),
                 description: "Help".to_owned(),

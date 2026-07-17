@@ -7,11 +7,11 @@ fossil-branch NAME:
     fossil commit -m "Open {{NAME}}" --branch {{NAME}} --allow-empty
 
 test:
-    cargo test --workspace --exclude jinn-e2e
-    cargo test --test e2e -p jinn-e2e
+    cargo test --workspace
 
 check:
     cargo check --workspace
+
 
 clippy:
     cargo clippy --workspace --all-targets
@@ -163,7 +163,7 @@ lint-testlength:
    if found:
        print(f"\n{found} inline test module(s) exceed {max_lines} lines")
 
-# Copy plugins, themes, personas, and prompts to user config directory
+# Copy themes, personas, and prompts to user config directory
 install-defaults:
     mkdir -p ~/.config/jinn/themes
     cp -r res/themes/*.toml ~/.config/jinn/themes/
@@ -171,14 +171,11 @@ install-defaults:
     cp -r res/personas/*.md ~/.config/jinn/personas/
     mkdir -p ~/.config/jinn/prompts
     cp -r res/prompts/*.md ~/.config/jinn/prompts/
-    mkdir -p ~/.config/jinn/plugins
-    cp -r res/plugins/* ~/.config/jinn/plugins/
     mkdir -p ~/.agents/skills
     cp -r res/skills/* ~/.agents/skills/
     @echo "Themes installed to ~/.config/jinn/themes/"
     @echo "Personas installed to ~/.config/jinn/personas/"
     @echo "Prompts installed to ~/.config/jinn/prompts/"
-    @echo "Plugins installed to ~/.config/jinn/plugins/"
     @echo "Skills installed to ~/.agents/skills/"
 
 # Report stale Fossil locks (hung processes + stale journal files)

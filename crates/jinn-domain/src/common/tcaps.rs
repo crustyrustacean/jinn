@@ -8,7 +8,6 @@
 //! caps are constructed.
 
 pub mod context;
-pub mod discovered_plugins;
 pub mod frontend;
 pub mod intent_handler;
 pub mod mint;
@@ -19,7 +18,6 @@ pub mod session;
 mod tests;
 
 pub use context::ContextCap;
-pub use discovered_plugins::DiscoveredPluginsCap;
 pub use frontend::FrontendCap;
 pub use intent_handler::IntentHandlerCap;
 pub use provider::ProviderCap;

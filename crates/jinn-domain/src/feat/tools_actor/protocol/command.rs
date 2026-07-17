@@ -47,31 +47,6 @@ pub struct ExecuteTool {
     pub dispatched_at: Timestamp,
 }
 
-/// Register tools provided by a Lua plugin.
-///
-/// Sent by the plugin dispatch actor when a plugin with tool definitions is loaded.
-/// Carries the plugin name, target scope (global or session-attached), and tool definitions.
-#[derive(Debug, Clone, Serialize, Deserialize)]
-pub struct RegisterPluginTools {
-    /// The name of the plugin providing these tools.
-    pub plugin_name: String,
-    /// `None` for global plugins (registered everywhere), `Some(id)` for session-attached plugins.
-    pub target: Option<jinn_core_types::SessionRegistryId>,
-    /// The session these tools are attached to.
-    /// `None` for global tools (broadcast to all sessions).
-    /// `Some(session_id)` for attached tools (only that session should store them).
-    pub session_id: Option<SessionId>,
-    /// The tool definitions being registered.
-    pub definitions: Vec<ToolDefinition>,
-    /// If true, register the executor in the tools map WITHOUT publishing a
-    /// visibility event. Used for attachable plugin tools whose handlers load
-    /// globally at startup: execution is global, visibility is per-session.
-    #[serde(default)]
-    pub execution_only: bool,
-}
-
-impl crate::common::bus::BusMessage for RegisterPluginTools {}
-
 /// Cancel all pending tool executions for a session.
 ///
 /// Sent by the LLM actor when a stream is cancelled while tool results

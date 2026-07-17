@@ -116,14 +116,6 @@ pub(crate) fn assemble_entry_line(
         SessionEntryKind::Session => {
             assemble_session_line(entry, is_selected, max_title_len, throbber_state, theme)
         }
-        SessionEntryKind::Plugin { enabled } => assemble_plugin_line(
-            enabled,
-            entry,
-            is_selected,
-            max_title_len,
-            throbber_state,
-            theme,
-        ),
     }
 }
 
@@ -151,61 +143,5 @@ fn assemble_session_line(
         spans.push(Span::styled(tree, Style::default().fg(theme.muted_text)));
     }
     spans.push(Span::styled(display_title, style));
-    Line::from(spans)
-}
-
-/// Renders a plugin entry line (lightning bolt icon + space + tree + dimmed title).
-///
-/// Plugin entries are informational children of a session. They show the
-/// plugin label with a lightning bolt icon prefix. Disabled plugins get an additional
-/// DIM modifier on the title.
-fn assemble_plugin_line(
-    enabled: bool,
-    entry: &SessionEntry,
-    is_selected: bool,
-    max_title_len: usize,
-    throbber_state: &ThrobberState,
-    theme: &Theme,
-) -> Line<'static> {
-    // Idle plugins show the lightning bolt; busy ones (their managed
-    // session is running, e.g. a judge LLM turn) show the animated braille
-    // spinner — symmetric with session-row behavior.
-    let icon = if entry.is_idle {
-        Span::styled("\u{26A1}", Style::default().fg(theme.muted_text))
-    } else {
-        indicator_span(entry.is_idle, throbber_state)
-    };
-    // No arrow for plugins — they are never active.
-    let no_arrow = Span::raw(" ");
-    let tree = tree_prefix(entry);
-    let tree_len = tree.graphemes(true).count();
-
-    let title_style = if enabled {
-        if is_selected {
-            Style::default()
-                .add_modifier(Modifier::REVERSED)
-                .fg(theme.muted_text)
-        } else {
-            Style::default().fg(theme.muted_text)
-        }
-    } else if is_selected {
-        Style::default()
-            .fg(theme.muted_text)
-            .add_modifier(Modifier::REVERSED | Modifier::DIM)
-    } else {
-        Style::default()
-            .fg(theme.muted_text)
-            .add_modifier(Modifier::DIM)
-    };
-
-    let prefix = if enabled { "" } else { "\u{2717} " };
-    let full_title = format!("{prefix}{}", entry.title);
-    let display_title = truncate_str(&full_title, max_title_len.saturating_sub(tree_len));
-
-    let mut spans = vec![icon, Span::raw(" "), no_arrow];
-    if !tree.is_empty() {
-        spans.push(Span::styled(tree, Style::default().fg(theme.muted_text)));
-    }
-    spans.push(Span::styled(display_title, title_style));
     Line::from(spans)
 }

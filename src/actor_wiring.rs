@@ -25,7 +25,6 @@ use jinn_domain::UserPreferencesStorageService;
 use jinn_domain::common::actor_deps::ActorDeps;
 use jinn_domain::feat::context::strategy::token_estimator::TiktokenCounter;
 
-use jinn_domain::feat::plugin_dispatch::{PluginDispatchActor, PluginDispatchActorDeps};
 use jinn_domain::init::env_init_actor::{EnvInitActor, EnvInitActorDeps};
 use jinn_domain::init::provider_init_actor::{ProviderInitActor, ProviderInitActorDeps};
 use jinn_domain::init::system_ready_actor::{SystemReadyActor, SystemReadyActorDeps};
@@ -114,24 +113,6 @@ pub struct ActorSystemBuilder {
     args: ActorSystemBuilderArgs,
 }
 
-/// Filters discovered plugins down to attachable ones and maps them into
-/// [`DiscoveredPlugin`] entries for the plugin picker.
-///
-/// Global plugins are loaded at startup and cannot be attached per-session,
-/// so they're excluded from the picker that issues `AttachPlugin`.
-fn attachable_discovered_plugins(
-    plugins: Vec<jinn_plugin::PluginMeta>,
-) -> Vec<jinn_domain::common::app_state::DiscoveredPlugin> {
-    plugins
-        .into_iter()
-        .filter(|p| p.kind == jinn_plugin::PluginKind::Attachable)
-        .map(|p| jinn_domain::common::app_state::DiscoveredPlugin {
-            name: p.name,
-            description: p.description,
-        })
-        .collect()
-}
-
 impl ActorSystemBuilder {
     #[must_use]
     pub fn new(args: ActorSystemBuilderArgs) -> Self {
@@ -143,7 +124,6 @@ impl ActorSystemBuilder {
     ) -> (
         AppCore,
         Services,
-        jinn_plugin::SyncPlugins,
         Option<kanal::AsyncReceiver<jinn_domain::feat::discord::BridgeEvent>>,
         Option<kanal::AsyncReceiver<jinn_domain::feat::discord::GatewayRequest>>,
         kanal::Sender<jinn_domain::feat::dashboard::status_actor::DiscordStatusUpdate>,
@@ -160,13 +140,6 @@ impl ActorSystemBuilder {
             paths,
             browser_profile_override,
         } = self.args;
-
-        // `DomainNodeContext` is needed by the plugin request handler (for `llm_oneshot`)
-        // but it can't be constructed until `services` is assembled.
-        // Bridge with a `OnceLock` filled in once `services` exists.
-        let domain_ctx_cell: std::sync::Arc<
-            std::sync::OnceLock<jinn_domain::feat::plugin_dispatch::DomainNodeContext>,
-        > = std::sync::Arc::new(std::sync::OnceLock::new());
 
         // Create shared State FIRST — injected into multiple actors.
         let state = State::new(AppState::default());
@@ -196,8 +169,7 @@ impl ActorSystemBuilder {
             guard.active_session_mut().set_cwd(cwd);
         }
 
-        // Create the kameo message bus and closure bridge first — the plugin
-        // command dispatcher needs a Bridge to route commands onto the bus.
+        // Create the kameo message bus and closure bridge.
         let bus = {
             let bus_actor = kameo_actors::message_bus::MessageBus::new(
                 kameo_actors::DeliveryStrategy::BestEffort,
@@ -207,73 +179,6 @@ impl ActorSystemBuilder {
         };
         let bridge = jinn_domain::common::bridge::Bridge::new(bus.actor_ref().clone());
 
-        // ── Plugin system ─��──────────────────────────────────────────────────
-        // Constructed early — handles go into Services and TuiApp.
-
-        let plugin_command_dispatcher: jinn_plugin::CommandDispatcher =
-            crate::plugin_wiring::build_command_dispatcher(bridge.clone());
-        let handler_cell = domain_ctx_cell.clone();
-        let plugin_request_handler: jinn_plugin::RequestHandler = std::sync::Arc::new({
-            move |name: &str,
-                  data: &serde_json::Value,
-                  cancel: Option<tokio_util::sync::CancellationToken>| {
-                let cell = handler_cell.clone();
-                let name = name.to_string();
-                let data = data.clone();
-                std::boxed::Box::pin(async move {
-                    match cell.get() {
-                        Some(ctx) => {
-                            crate::plugin_wiring::handle_plugin_request(
-                                &name,
-                                &data,
-                                ctx,
-                                cancel.as_ref(),
-                            )
-                            .await
-                        }
-                        None => {
-                            tracing::warn!(
-                                name,
-                                "plugin request before domain_ctx ready; returning null"
-                            );
-                            serde_json::Value::Null
-                        }
-                    }
-                })
-            }
-        });
-
-        let plugin_build = jinn_plugin::PluginSystem::build(
-            &paths.plugins_dir(),
-            &paths.system_plugins_dir(),
-            handle.clone(),
-            plugin_command_dispatcher,
-            plugin_request_handler,
-        );
-
-        let sync_plugins = plugin_build.sync;
-        let async_plugins = plugin_build.async_handle;
-        let plugin_sync_handle = plugin_build.sync_handle;
-        let global_tool_metadata = plugin_build.global_tool_metadata;
-
-        // Store discovered plugin metadata in state for the plugin picker.
-        // Only attachable plugins are exposed — global plugins are loaded at
-        // startup and cannot be attached per-session.
-        {
-            let plugins =
-                jinn_plugin::discover_plugins(&paths.plugins_dir(), &paths.system_plugins_dir());
-            tracing::info!(count = plugins.len(), "discovered plugins");
-            state.with_discovered_plugins(
-                &jinn_domain::common::tcaps::mint::mint_discovered_plugins_cap(),
-                |view| {
-                    view.discovered_plugins
-                        .set(attachable_discovered_plugins(plugins));
-                },
-            );
-        }
-
-        // Root supervision tree: every spawned actor becomes a supervised
-        // child so that stopping the root cascades a graceful shutdown.
         let root = jinn_domain::common::root_supervisor::RootSupervisor::spawn_root().await;
 
         let services = Services {
@@ -286,35 +191,11 @@ impl ActorSystemBuilder {
             session_store: session_store.clone(),
             user_preferences_storage: user_preferences_storage.clone(),
             app_state_storage: app_state_storage.clone(),
-            plugins: jinn_domain::feat::plugin_dispatch::PluginFireService::new(
-                std::sync::Arc::new(async_plugins.clone())
-                    as std::sync::Arc<dyn jinn_domain::feat::plugin_dispatch::PluginFire>,
-            ),
-            plugin_sync: jinn_domain::feat::plugin_dispatch::PluginSyncCallService::new(
-                std::sync::Arc::new(plugin_sync_handle)
-                    as std::sync::Arc<dyn jinn_domain::feat::plugin_dispatch::PluginSyncCall>,
-            ),
-            session_plugin_registry:
-                jinn_domain::feat::plugin_dispatch::SessionPluginRegistryService::new(
-                    std::sync::Arc::new(async_plugins.clone())
-                        as std::sync::Arc<
-                            dyn jinn_domain::feat::plugin_dispatch::SessionPluginRegistry,
-                        >,
-                ),
             tempdir: None,
             bus,
             bridge: bridge.clone(),
             root_supervisor: root.clone(),
         };
-
-        // Global-scoped plugin tools will be registered after the tools actor spawns.
-        // Now that `services` + `state` exist, build the shared `DomainNodeContext`
-        let shared_domain_ctx =
-            std::sync::Arc::new(jinn_domain::feat::plugin_dispatch::DomainNodeContext::new(
-                services.clone(),
-                state.clone(),
-            ));
-        let _ = domain_ctx_cell.set((*shared_domain_ctx).clone());
 
         let actor_deps = ActorDeps {
             services: services.clone(),
@@ -555,120 +436,6 @@ jinn_domain::feat::preferences_actor::preferences_actor::PreferencesActor::super
             .await
         );
         _tools.wait_for_startup().await;
-
-        // Register global-scoped plugin tools with the tools actor.
-        // Global-scope plugin tools: registered globally (execution + visibility).
-        {
-            use jinn_domain::ToolDefinition;
-            use jinn_domain::feat::tools_actor::protocol::command::RegisterPluginTools;
-            use jinn_plugin::ToolScopeReexport;
-
-            let global_scope_tools: Vec<_> = global_tool_metadata
-                .clone()
-                .into_iter()
-                .filter(|meta| matches!(meta.scope, ToolScopeReexport::Global))
-                .collect();
-
-            let mut by_plugin: std::collections::HashMap<String, Vec<_>> =
-                std::collections::HashMap::new();
-            for meta in global_scope_tools {
-                by_plugin
-                    .entry(meta.plugin_name.clone())
-                    .or_default()
-                    .push(meta);
-            }
-            for (plugin_name, metas) in by_plugin {
-                let definitions: Vec<_> = metas
-                    .into_iter()
-                    .map(|meta| ToolDefinition {
-                        name: meta.name,
-                        description: meta.description,
-                        parameters: meta.parameters,
-                        prompt_snippet: None,
-                        prompt_guidelines: Vec::new(),
-                        server_tool_type: None,
-                    })
-                    .collect();
-                let msg = RegisterPluginTools {
-                    plugin_name,
-                    target: None,
-                    session_id: None,
-                    definitions,
-                    execution_only: false,
-                };
-                let closure = jinn_domain::common::bridge::Bridge::publish_closure(msg);
-                if let Err(e) = bridge.clone().send(closure) {
-                    tracing::warn!(error = %e, "failed to send global plugin tool registration");
-                }
-            }
-        }
-
-        // Attached-scope plugin tools: handlers are loaded globally at startup,
-        // and their definitions are cataloged for spawn-time resolution.
-        // Register execution-only here (no ToolsRegistered event, so nothing
-        // lands in global_tool_definitions), and mirror the same definitions
-        // into `attachable_tool_catalog` so `create_child_session` can resolve
-        // named tools for a spawned child. The origin session never sees these
-        // tools (visibility is granted only to the child by copying from the
-        // catalog into `session_tool_definitions[child]`).
-        // but their VISIBILITY must stay per-session (registered on attach
-        // via the dispatch actor). Register execution-only here (no
-        // ToolsRegistered event, so nothing lands in global_tool_definitions).
-        {
-            use jinn_domain::ToolDefinition;
-            use jinn_domain::feat::tools_actor::protocol::command::RegisterPluginTools;
-            use jinn_plugin::ToolScopeReexport;
-
-            let attached_scope_tools: Vec<_> = global_tool_metadata
-                .into_iter()
-                .filter(|meta| matches!(meta.scope, ToolScopeReexport::Attached))
-                .collect();
-
-            let mut by_plugin: std::collections::HashMap<String, Vec<_>> =
-                std::collections::HashMap::new();
-            for meta in attached_scope_tools {
-                by_plugin
-                    .entry(meta.plugin_name.clone())
-                    .or_default()
-                    .push(meta);
-            }
-            for (plugin_name, metas) in by_plugin {
-                let definitions: Vec<_> = metas
-                    .into_iter()
-                    .map(|meta| ToolDefinition {
-                        name: meta.name,
-                        description: meta.description,
-                        parameters: meta.parameters,
-                        prompt_snippet: None,
-                        prompt_guidelines: Vec::new(),
-                        server_tool_type: None,
-                    })
-                    .collect();
-
-                // Mirror definitions into the attachable catalog so spawned
-                // child sessions can resolve named tools via `create_child_session`.
-                {
-                    let mut s = state.write(&intent_handler_cap);
-                    for def in &definitions {
-                        s.context
-                            .attachable_tool_catalog
-                            .insert(def.name.clone(), def.clone());
-                    }
-                }
-
-                let msg = RegisterPluginTools {
-                    plugin_name,
-                    target: None,
-                    session_id: None,
-                    definitions,
-                    execution_only: true,
-                };
-                let closure = jinn_domain::common::bridge::Bridge::publish_closure(msg);
-                if let Err(e) = bridge.clone().send(closure) {
-                    tracing::warn!(error = %e, "failed to send attached plugin tool registration");
-                }
-            }
-        }
 
         // Web fetch + web search actors.
         //
@@ -1529,27 +1296,6 @@ jinn_domain::feat::preferences_actor::preferences_actor::PreferencesActor::super
             .await
         );
 
-        let _plugin_dispatch = spawn_tracked!(
-            &services.bus,
-            "plugin-dispatch",
-            "PluginDispatchActor",
-            PluginDispatchActor::supervise(
-                &root,
-                PluginDispatchActorDeps {
-                    deps: actor_deps.clone(),
-                    services: services.clone(),
-                    state: state.clone(),
-                    cap: jinn_domain::common::tcaps::mint::mint_session_cap(),
-                    startup_session_id: state.read().session.active_session_id().to_string(),
-                    domain_ctx: shared_domain_ctx.clone(),
-                },
-            )
-            .restart_policy(kameo::supervision::RestartPolicy::Never)
-            .spawn()
-            .await
-        );
-
-        // ── Discord bot bridge actor ───────────────────────────────────────
         // Conditionally spawned when `[discord] enabled = true` in jinn.toml.
         // The bridge forwards bus events (turn-finished, setup-completed) onto a
         // bounded channel that the poise gateway task drains. The gateway itself
@@ -1642,80 +1388,9 @@ jinn_domain::feat::preferences_actor::preferences_actor::PreferencesActor::super
         (
             core,
             services,
-            sync_plugins,
             discord_bridge_rx,
             discord_gateway_rx,
             discord_status_tx,
         )
-    }
-}
-
-#[cfg(test)]
-mod tests {
-    #![allow(
-        clippy::expect_used,
-        clippy::panic,
-        clippy::indexing_slicing,
-        reason = "test code"
-    )]
-    use super::*;
-    use jinn_plugin::{PluginKind, PluginMeta};
-    use std::path::PathBuf;
-
-    fn meta(name: &str, kind: PluginKind) -> PluginMeta {
-        PluginMeta {
-            name: name.to_owned(),
-            path: PathBuf::new(),
-            description: Some(format!("desc for {name}")),
-            kind,
-        }
-    }
-
-    #[test]
-    fn global_plugin_excluded_from_discovered_plugins() {
-        // Given a mix of one global and one attachable plugin.
-        let plugins = vec![
-            meta("welcome", PluginKind::Global),
-            meta("judge", PluginKind::Attachable),
-        ];
-
-        // When filtering to attachable plugins.
-        let result = attachable_discovered_plugins(plugins);
-
-        // Then only the attachable plugin is kept.
-        assert_eq!(result.len(), 1);
-        assert_eq!(result[0].name, "judge");
-    }
-
-    #[test]
-    fn all_attachable_plugins_kept_global_dropped() {
-        // Given two attachable plugins and one global.
-        let plugins = vec![
-            meta("judge", PluginKind::Attachable),
-            meta("consensus", PluginKind::Attachable),
-            meta("welcome", PluginKind::Global),
-        ];
-
-        // When filtering to attachable plugins.
-        let result = attachable_discovered_plugins(plugins);
-
-        // Then both attachable plugins are kept and the global is dropped.
-        let names: Vec<&str> = result.iter().map(|p| p.name.as_str()).collect();
-        assert_eq!(names, vec!["judge", "consensus"]);
-    }
-
-    #[test]
-    fn empty_when_only_global_plugins_discovered() {
-        // Given only global plugins.
-        let plugins = vec![
-            meta("welcome", PluginKind::Global),
-            meta("prompt_enrichment", PluginKind::Global),
-        ];
-
-        // When filtering to attachable plugins.
-        let result = attachable_discovered_plugins(plugins);
-
-        // Then nothing remains to attach.
-        assert!(result.is_empty());
     }
 }

@@ -538,24 +538,21 @@ When implementing features, locate each concern by convention rather than hardco
 
 ### Plugin System Propagation
 
-When modifying any of the Rust touchpoints below, also update the matching Lua / docs entries. Full rationale and per-row detail in `docs/plugins.md` §10.
+Plugins are WASM components authored in Rust against the WIT contract in `wit/jinn.wit` (the `plugin` world). The contract is the single source of truth: host and guest bindings are both generated from it via `wit-bindgen`. When modifying any touchpoint below, also update the matching WIT contract / PDK entries.
 
-| When you change...                                               | Also update...                                                                                                  |
-| ---------------------------------------------------------------- | --------------------------------------------------------------------------------------------------------------- |
-| Match arm in `translate_command` (`src/plugin_wiring.rs`)        | `res/plugins/meta/plugin_ctx.lua` (verb alias + payload class); `docs/plugins.md` §7 verb catalog               |
-| `Lua*` struct fields in `plugin_wiring.rs`                       | `res/plugins/meta/plugin_ctx.lua` matching payload class                                                        |
-| `LuaChatEntryKind` variants in `plugin_wiring.rs`                | `res/plugins/meta/plugin_ctx.lua` `ChatEntryKind` class                                                         |
-| `build_async_ctx` / `build_sync_ctx` field additions             | `res/plugins/meta/plugin_ctx.lua` base `PluginCtx` class; `docs/plugins.md` §6 ctx fields table                 |
-| New hook name in `PluginDispatchActor::handle_event`             | `res/plugins/meta/plugin_ctx.lua` new `OnXxxCtx` subclass + template entry; `docs/plugins.md` §3 hook lifecycle |
-| Hook ctx_json fields added at a fire site                        | `res/plugins/meta/plugin_ctx.lua` matching `OnXxxCtx` subclass                                                  |
-| `PluginMeta` / `PluginKind` / discovery in `loader.rs`           | `docs/plugins.md` §1 + §2                                                                                       |
-| `PluginCommand` struct in `crates/jinn-plugin/src/lib.rs`        | `src/plugin_wiring.rs::handle_plugin_command`; `docs/plugins.md` §7                                             |
-| `PluginData` semantics (`crates/jinn-plugin/src/plugin_data.rs`) | `docs/plugins.md` §8                                                                                            |
-| `PluginDispatchActor` event subscriptions                        | `docs/plugins.md` §3 hook lifecycle                                                                             |
-| `AttachedPlugin` struct                                          | `docs/plugins.md` §4 per-session Lua states                                                                     |
+| When you change...                                              | Also update...                                                                                  |
+| --------------------------------------------------------------- | ----------------------------------------------------------------------------------------------- |
+| `command` variant arm in `wit/jinn.wit` `host.emit`              | `crates/jinn-guest-pdk/src/host.rs` ergonomic wrapper; regenerate bindings (`just build-plugins`) |
+| Hook ctx `record` fields in `wit/jinn.wit` `hooks`               | The matching `build_*_ctx` call site in `jinn-wasm-host` or domain; regenerate bindings          |
+| New hook name in `PluginDispatchActor::handle_event`             | New `on-xxx` export in `wit/jinn.wit` `hooks` interface + `Plugin` trait default in PDK         |
+| `manifest` record / `keybind` / `tool` definition fields         | `crates/jinn-guest-pdk/src/manifest.rs` types; regenerate bindings                              |
+| `PluginMeta` / `PluginKind` / discovery in `jinn-wasm-host/src/discovery.rs` | Sidecar `plugin.toml` schema (`name`, `description`, `kind`)                                  |
+| `command` dispatch in `jinn-wasm-host/src/command_dispatch.rs`   | `command` variant in `wit/jinn.wit`                                                             |
+| Bag codec default (postcard) / opt-in (JSON)                     | `crates/jinn-guest-pdk/src/bag.rs` feature flag                                                 |
+| `PluginDispatchActor` event subscriptions                        | `hooks` interface exports in `wit/jinn.wit`                                                      |
+| `AttachedPlugin` struct                                         | Per-session WASM store lifecycle in `jinn-wasm-host/src/store.rs`                               |
 
-**Rule of thumb**: any change that affects what a Lua plugin can emit, receive, or be loaded by requires reading `docs/plugins.md` first. The doc is the source of truth for the propagation contract.
-
+**Rule of thumb**: any change that affects what a plugin can emit, receive, or be loaded by requires editing `wit/jinn.wit` first and regenerating bindings. The WIT contract is the source of truth for the propagation contract. Plugin-defined hooks (e.g. `on_enrich`) are NOT in WIT — they are resolved by runtime export lookup (`store.get_func(name)`) against the keybind's `action` string.
 ## 7. Tooling
 
 Read the `justfile` to determine what additional tooling is related to this project. Prioritize running commands from the `justfile` instead of manual invocation.

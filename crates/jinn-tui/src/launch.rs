@@ -2,9 +2,8 @@
 //!
 //! Both the real launch path (the binary's `Commands::Tui` / `Commands::Bench`
 //! arms) and the test builder ([`crate::TuiAppBuilder`]) delegate to
-//! [`launch`], so keymap setup — including [`crate::keymap::bind_plugin_keybinds`]
-//! — happens in exactly one place. This is what prevents the test/prod
-//! divergence that previously left plugin keybinds unbound in production.
+//! [`launch`], so keymap setup happens in exactly one place. This is what
+//! prevents test/prod divergence in keymap binding.
 
 use std::path::Path;
 
@@ -33,13 +32,12 @@ use crate::{AppStatus, MsgHandler, TuiApp};
 pub struct LaunchError;
 
 /// Construct a fully-bootstrapped [`TuiApp`] from the supplied core, services,
-/// actor host, and plugins.
+/// actor host.
 ///
 /// Owns the full TUI bootstrap sequence:
 /// 1. Load prompt templates, the compaction prompt, and the theme into `core.state`.
 /// 2. Read `JINN_MOUSE_SELECTION` to resolve mouse-selection behavior.
-/// 3. Build the keymap via [`keymap::init`] and bind every declared plugin
-///    keybind via [`keymap::bind_plugin_keybinds`] — this is the single site
+/// 3. Build the keymap via [`keymap::init`] — this is the single site
 ///    that does so, shared by production and tests.
 /// 4. Register all UI elements and sidebar sections.
 /// 5. Assemble and return the [`TuiApp`].
@@ -51,7 +49,6 @@ pub struct LaunchError;
 pub fn launch(
     core: AppCore,
     services: jinn_domain::Services,
-    plugins: jinn_plugin::SyncPlugins,
 ) -> Result<TuiApp, Report<LaunchError>> {
     let paths = &services.paths;
     let intent_handler_cap = jinn_domain::common::tcaps::mint::mint_intent_handler_cap();
@@ -75,16 +72,14 @@ pub fn launch(
     let mut ui_registry = AppUiRegistry::new();
     jinn_domain::register_all_ui_elements(&mut ui_registry);
 
-    // The single keymap-bootstrap site: base keymap, then every plugin keybind.
-    // Production and tests reach this via the same path.
-    let mut keymap = keymap::init();
-    keymap::bind_plugin_keybinds(&mut keymap, &plugins);
+    // The single keymap-bootstrap site. Production and tests reach this
+    // via the same path.
+    let keymap = keymap::init();
     let which_key = WhichKeyInstance::new(keymap, Scope::Normal);
 
     Ok(TuiApp {
         core,
         services,
-        plugins,
         ui_registry,
         events: MsgHandler::new(),
         which_key,
@@ -155,26 +150,20 @@ pub fn load_theme(
 /// template loading, compaction prompt, theme) and uses a fake actor host.
 ///
 /// This is what [`crate::TuiAppBuilder`] delegates to so that tests still go
-/// through the single keymap-bootstrap site ([`keymap::bind_plugin_keybinds`])
-/// without requiring real on-disk prompt/theme files.
-pub fn launch_for_test(
-    core: AppCore,
-    services: jinn_domain::Services,
-    plugins: jinn_plugin::SyncPlugins,
-) -> TuiApp {
+/// through the single keymap-bootstrap site without requiring real on-disk
+/// prompt/theme files.
+pub fn launch_for_test(core: AppCore, services: jinn_domain::Services) -> TuiApp {
     let mut ui_registry = AppUiRegistry::new();
     jinn_domain::register_all_ui_elements(&mut ui_registry);
 
     let initial_scope =
         crate::app::scope_for_focus(core.state.read().frontend.scope_stack.current());
 
-    let mut keymap = keymap::init();
-    keymap::bind_plugin_keybinds(&mut keymap, &plugins);
+    let keymap = keymap::init();
 
     TuiApp {
         core,
         services,
-        plugins,
         ui_registry,
         events: MsgHandler::new(),
         which_key: WhichKeyInstance::new(keymap, initial_scope),

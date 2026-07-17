@@ -1,7 +1,6 @@
 //! Actor SDK for building jinn actors.
 //!
-//! Provides shared actor utilities: bus message types, scanning helpers,
-//! and protocol types for dynamic commands/events used by the plugin system.
+//! Provides shared actor utilities: bus message types and scanning helpers.
 
 pub mod actor_counter;
 pub mod actor_name;

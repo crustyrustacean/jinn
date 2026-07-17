@@ -15,8 +15,6 @@ pub struct TuiAppBuilder {
     services: Option<jinn_domain::Services>,
     /// Optional app state override (defaults to default state).
     state: Option<jinn_domain::AppState>,
-    /// Optional plugins override (defaults to empty SyncPlugins).
-    plugins: Option<jinn_plugin::SyncPlugins>,
 }
 
 impl TuiAppBuilder {
@@ -34,19 +32,11 @@ impl TuiAppBuilder {
         self
     }
 
-    /// Override the default plugins.
-    #[must_use]
-    pub fn plugins(mut self, plugins: jinn_plugin::SyncPlugins) -> Self {
-        self.plugins = Some(plugins);
-        self
-    }
-
     /// Build the `TuiApp` with the configured overrides.
     ///
     /// Delegates to [`crate::launch::launch_for_test`] so that the test path and
     /// the real launch path ([`crate::launch::launch`]) share a single keymap
-    /// bootstrap site. This is what prevents the test/prod divergence that
-    /// previously left plugin keybinds unbound in production.
+    /// bootstrap site. This is what prevents test/prod divergence in keymap binding.
     pub async fn build(self) -> TuiApp {
         let services = match self.services {
             Some(s) => s,
@@ -58,8 +48,7 @@ impl TuiAppBuilder {
             state: jinn_domain::State::new(state),
             bridge: services.bridge.clone(),
         };
-        let plugins = self.plugins.unwrap_or_else(jinn_plugin::SyncPlugins::empty);
 
-        crate::launch::launch_for_test(core, services, plugins)
+        crate::launch::launch_for_test(core, services)
     }
 }

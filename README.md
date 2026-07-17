@@ -169,7 +169,7 @@ The binary will be at `target/release/jinn` and you'll need to add it to your `$
 ## Major Roadmap Items
 
 - Plugins
-  - Plugins are a continual WIP. Various parts of `jinn` are being exposed over time to enable more sophisticated plugins.
+  - jinn plugins are authored in Rust and compiled to WASM components targeting the `plugin` world defined in `wit/jinn.wit` (the WIT contract). The host runtime (`jinn-wasm-host`) loads `.wasm` files from `res/plugins/{global,attachable}/`; plugins hook into lifecycle/render events with compile-time types. See the `jinn-guest-pdk` crate for the authoring toolkit.
 
 ## Contributing
 

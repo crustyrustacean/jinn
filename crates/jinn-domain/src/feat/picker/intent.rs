@@ -67,10 +67,6 @@ pub fn handle_open_picker(state: &mut AppState, kind: PickerKind) -> IntentResul
         PickerKind::SessionLifecycle => {
             state.frontend.session_lifecycle_picker_mut().reset();
         }
-        PickerKind::Plugin => {
-            state.frontend.plugin_picker_mut().reset();
-        }
-
         PickerKind::CompactionModel => {
             state.frontend.compaction_model_picker_mut().reset();
         }
@@ -119,12 +115,6 @@ pub fn handle_open_picker(state: &mut AppState, kind: PickerKind) -> IntentResul
             load_lifecycle_picker_entries(state);
             IntentResult::empty()
         }
-        PickerKind::Plugin => {
-            // Populate from discovered Lua plugins.
-            load_plugin_picker_entries(state);
-            IntentResult::empty()
-        }
-
         PickerKind::CompactionModel => IntentResult::with_message(
             crate::feat::provider::protocol::command::LoadCompactionModelPickerEntries,
         ),
@@ -133,23 +123,6 @@ pub fn handle_open_picker(state: &mut AppState, kind: PickerKind) -> IntentResul
             crate::feat::provider::protocol::command::LoadReasoningEffortPickerEntries,
         ),
     }
-}
-
-fn load_plugin_picker_entries(state: &mut AppState) {
-    use crate::feat::plugin_dispatch::picker_entry::PluginPickerEntry;
-    use crate::feat::theme::default_theme;
-
-    let mut entries = Vec::new();
-
-    for plugin in &state.discovered_plugins {
-        entries.push(PluginPickerEntry {
-            name: plugin.name.clone(),
-            description: plugin.description.clone(),
-            theme: default_theme(),
-        });
-    }
-
-    state.frontend.pickers.plugin_picker.set_items(entries);
 }
 
 /// Loads discovered themes into the theme picker.
@@ -299,7 +272,6 @@ pub fn handle_picker_confirm(state: &mut AppState) -> (IntentResult, Option<Inte
         Some(PickerKind::Persona) => (confirm_persona(state), None),
         Some(PickerKind::Theme) => (confirm_theme(state), None),
         Some(PickerKind::SessionLifecycle) => (confirm_session_lifecycle(state), None),
-        Some(PickerKind::Plugin) => (confirm_plugin(state), None),
         Some(PickerKind::Project) => (confirm_project(state), None),
         Some(PickerKind::ReasoningEffort) => (confirm_reasoning_effort(state), None),
 
@@ -602,26 +574,6 @@ fn confirm_session_lifecycle(state: &mut AppState) -> IntentResult {
         None,
     )
 }
-
-/// Confirms the selected plugin, starts it, and switches to the Plugin tab.
-fn confirm_plugin(state: &mut AppState) -> IntentResult {
-    let Some(entry) = state.frontend.plugin_picker().selected_item() else {
-        return IntentResult::empty();
-    };
-    let script = entry.name.clone();
-
-    // Pop picker overlay.
-    state.frontend.scope_stack.pop();
-
-    let session_id = state.session.active_session_id().clone();
-    IntentResult::with_message(
-        crate::feat::plugin_dispatch::protocol::command::AttachPlugin {
-            session_id,
-            plugin_name: script,
-        },
-    )
-}
-
 /// Marks each entry as enabled/disabled based on the session's `disabled_tools` set.
 fn load_tool_picker_entries(state: &mut AppState) {
     let active_session = state.active_session();
@@ -2091,113 +2043,6 @@ mod tests {
         assert_eq!(state.frontend.skill_picker().selection(), 1);
     }
 
-    fn setup_state_with_plugins() -> AppState {
-        use crate::common::app_state::DiscoveredPlugin;
-
-        let mut state = AppState::default();
-        let origin = ChatSessionState::new();
-        state.session.insert(origin);
-        state
-            .session
-            .set_active(state.session.active_session_id().clone());
-
-        state.discovered_plugins = vec![
-            DiscoveredPlugin {
-                name: "judge-fail".to_owned(),
-                description: Some("Runs judge on failure".to_owned()),
-            },
-            DiscoveredPlugin {
-                name: "consensus".to_owned(),
-                description: Some("Multi-model consensus".to_owned()),
-            },
-        ];
-
-        state
-    }
-
-    #[rstest::rstest]
-    fn load_plugin_picker_entries_populates_from_discovered_plugins() {
-        // Given state with two discovered plugins.
-        let mut state = setup_state_with_plugins();
-
-        // When loading plugin picker entries.
-        load_plugin_picker_entries(&mut state);
-
-        // Then the picker has two entries matching the plugins.
-        let items = state.frontend.plugin_picker().items();
-        assert_eq!(items.len(), 2);
-        assert_eq!(items[0].name, "judge-fail");
-        assert_eq!(
-            items[0].description,
-            Some("Runs judge on failure".to_owned())
-        );
-        assert_eq!(items[1].name, "consensus");
-        assert_eq!(
-            items[1].description,
-            Some("Multi-model consensus".to_owned())
-        );
-    }
-
-    #[rstest::rstest]
-    fn load_plugin_picker_entries_empty_when_no_plugins() {
-        // Given state with no discovered plugins.
-        let mut state = AppState::default();
-        let origin = ChatSessionState::new();
-        state.session.insert(origin);
-        state
-            .session
-            .set_active(state.session.active_session_id().clone());
-
-        // When loading plugin picker entries.
-        load_plugin_picker_entries(&mut state);
-
-        // Then the picker is empty.
-        let items = state.frontend.plugin_picker().items();
-        assert!(items.is_empty());
-    }
-
-    #[rstest::rstest]
-    fn confirm_plugin_emits_attach_plugin_with_lua_config() {
-        // Given a plugin picker populated with plugins.
-        let mut state = setup_state_with_plugins();
-        load_plugin_picker_entries(&mut state);
-        // Select the second entry (consensus).
-        state.frontend.plugin_picker_mut().move_down(1);
-        state.frontend.plugin_picker_mut().move_down(1);
-        // Push a picker scope so the pop has something to remove.
-        state.frontend.scope_stack.push(FocusScope::Picker {
-            kind: PickerKind::Plugin,
-        });
-
-        // When confirming.
-        let result = confirm_plugin(&mut state);
-
-        // Then an AttachPlugin command is emitted.
-        assert_eq!(result.message_names.len(), 1);
-        assert!(result.message_names[0].contains("AttachPlugin"));
-    }
-
-    #[rstest::rstest]
-    fn confirm_plugin_pops_picker_scope() {
-        // Given a plugin picker with a Picker scope on the stack.
-        let mut state = setup_state_with_plugins();
-        load_plugin_picker_entries(&mut state);
-        // Select an entry.
-        state.frontend.plugin_picker_mut().move_down(1);
-        state.frontend.scope_stack.push(FocusScope::Picker {
-            kind: PickerKind::Plugin,
-        });
-
-        // When confirming.
-        let _ = confirm_plugin(&mut state);
-
-        // Then the Picker scope was popped.
-        assert!(!matches!(
-            state.frontend.scope_stack.current(),
-            FocusScope::Picker { .. }
-        ));
-    }
-
     #[rstest::rstest]
     fn refresh_skills_posts_transient_message() {
         // Given state with skills and the skill picker active.
@@ -2489,123 +2334,6 @@ mod tests {
             "Esc from TaskList picker should restore SidebarTaskList scope, got: {:?}",
             state.frontend.scope_stack.current()
         );
-    }
-
-    fn setup_state_with_plugin_tools() -> AppState {
-        let mut state = AppState::default();
-        let origin = ChatSessionState::new();
-        state.session.insert(origin);
-        state
-            .session
-            .set_active(state.session.active_session_id().clone());
-
-        // Simulate plugin tools having been registered via ToolsRegistered event.
-        state.context.global_tool_definitions.insert(
-            "judgment_passed".to_owned(),
-            crate::protocol::ToolDefinition {
-                name: "judgment_passed".to_owned(),
-                description: "Call when response passes".to_owned(),
-                parameters: serde_json::json!({"type": "object", "properties": {}}),
-                prompt_snippet: None,
-                prompt_guidelines: vec![],
-                server_tool_type: None,
-            },
-        );
-        state.context.global_tool_definitions.insert(
-            "judgment_failed".to_owned(),
-            crate::protocol::ToolDefinition {
-                name: "judgment_failed".to_owned(),
-                description: "Call when response fails".to_owned(),
-                parameters: serde_json::json!({
-                    "type": "object",
-                    "properties": {
-                        "message": { "type": "string", "description": "Why it failed" }
-                    },
-                    "required": ["message"]
-                }),
-                prompt_snippet: None,
-                prompt_guidelines: vec![],
-                server_tool_type: None,
-            },
-        );
-
-        state
-    }
-
-    #[rstest::rstest]
-    fn load_tool_picker_entries_includes_plugin_tools() {
-        // Given state with plugin tool definitions in context.
-        let mut state = setup_state_with_plugin_tools();
-
-        // When loading tool picker entries.
-        load_tool_picker_entries(&mut state);
-
-        // Then plugin tools appear alongside any builtins.
-        let items = state.frontend.tool_picker().items();
-        let names: Vec<&str> = items.iter().map(|e| e.name.as_str()).collect();
-        assert!(
-            names.contains(&"judgment_passed"),
-            "plugin tool 'judgment_passed' should be in picker, got: {names:?}"
-        );
-        assert!(
-            names.contains(&"judgment_failed"),
-            "plugin tool 'judgment_failed' should be in picker, got: {names:?}"
-        );
-    }
-
-    #[rstest::rstest]
-    fn load_tool_picker_entries_marks_plugin_tools_enabled_by_default() {
-        // Given state with plugin tool definitions.
-        let mut state = setup_state_with_plugin_tools();
-
-        // When loading tool picker entries.
-        load_tool_picker_entries(&mut state);
-
-        // Then plugin tools are enabled (not in disabled_tools set).
-        let items = state.frontend.tool_picker().items();
-        let passed = items
-            .iter()
-            .find(|e| e.name == "judgment_passed")
-            .expect("entry");
-        assert!(
-            passed.enabled,
-            "judgment_passed should be enabled by default"
-        );
-        let failed = items
-            .iter()
-            .find(|e| e.name == "judgment_failed")
-            .expect("entry");
-        assert!(
-            failed.enabled,
-            "judgment_failed should be enabled by default"
-        );
-    }
-
-    #[rstest::rstest]
-    fn load_tool_picker_entries_disables_plugin_tool_when_in_disabled_set() {
-        // Given state with 'judgment_passed' in the disabled_tools set.
-        let mut state = setup_state_with_plugin_tools();
-        state
-            .active_session_mut()
-            .set_disabled_tools(std::collections::HashSet::from([
-                "judgment_passed".to_owned()
-            ]));
-
-        // When loading tool picker entries.
-        load_tool_picker_entries(&mut state);
-
-        // Then 'judgment_passed' is disabled but 'judgment_failed' is still enabled.
-        let items = state.frontend.tool_picker().items();
-        let passed = items
-            .iter()
-            .find(|e| e.name == "judgment_passed")
-            .expect("entry");
-        assert!(!passed.enabled, "judgment_passed should be disabled");
-        let failed = items
-            .iter()
-            .find(|e| e.name == "judgment_failed")
-            .expect("entry");
-        assert!(failed.enabled, "judgment_failed should still be enabled");
     }
 
     /// Builds a state with the provider picker open (Provider scope), `n` available

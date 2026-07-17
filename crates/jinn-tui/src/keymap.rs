@@ -4,8 +4,6 @@
 //! Binds keys to [`Intent`] variants. Parameterized on
 //! [`KeyEvent`] so the keymap works in both TUI and headless modes.
 
-use std::str::FromStr;
-
 use crossterm::event::{self, MouseEventKind};
 use derive_more::Display;
 use jinn_domain::Intent;
@@ -32,8 +30,6 @@ pub enum KeyCategory {
     Input,
     /// Context strategy and prompt template management.
     Context,
-    /// Plugin-declared keybinds (e.g. enrich prompt on tap).
-    Plugin,
     /// Sidebar sections
     Sidebar,
     /// Chat history
@@ -116,7 +112,6 @@ pub fn init() -> Keymap<KeyEvent, Scope, Intent, KeyCategory> {
             .bind("<leader>st", Intent::OpenPicker { kind: PickerKind::Tool }, KeyCategory::General)
             .bind("<leader>sk", Intent::OpenPicker { kind: PickerKind::Skill }, KeyCategory::General)
             .bind("<leader>sh", Intent::OpenPicker { kind: PickerKind::Theme }, KeyCategory::General)
-            .bind("<leader>sp", Intent::OpenPicker { kind: PickerKind::Plugin }, KeyCategory::General)
             .bind("<leader>sr", Intent::OpenPicker { kind: PickerKind::ReasoningEffort }, KeyCategory::General)
             // Projects - curated directory list for quick session creation
             .bind("<leader>so", Intent::OpenPicker { kind: PickerKind::Project }, KeyCategory::General)
@@ -219,7 +214,7 @@ pub fn init() -> Keymap<KeyEvent, Scope, Intent, KeyCategory> {
             // Session management actions
             .bind("x", Intent::SidebarSessionClose, KeyCategory::Sidebar)
             .bind("t", Intent::SidebarSessionTeardown, KeyCategory::Sidebar)
-            .describe_group_with_category("p", "plugin", KeyCategory::Sidebar)
+            .describe_group_with_category("p", "sessions", KeyCategory::Sidebar)
             .bind("<enter>", Intent::SidebarSessionConfirm, KeyCategory::Sidebar)
             .bind("n", Intent::SessionNew, KeyCategory::Sidebar)
             .bind("N", Intent::SessionNewWithLifecycle, KeyCategory::Sidebar)
@@ -227,7 +222,6 @@ pub fn init() -> Keymap<KeyEvent, Scope, Intent, KeyCategory> {
             .bind("a", Intent::SidebarSessionArchive, KeyCategory::Sidebar)
             .bind("c", Intent::SidebarSessionContinue, KeyCategory::Sidebar)
             .bind("s", Intent::SidebarSessionRerunSetup, KeyCategory::Sidebar)
-            .bind("pt", Intent::SidebarTogglePlugin, KeyCategory::Sidebar)
 
             // i activates session and enters insert mode
             .bind("i", Intent::SidebarConfirmInsert, KeyCategory::Sidebar)
@@ -347,9 +341,6 @@ pub fn init() -> Keymap<KeyEvent, Scope, Intent, KeyCategory> {
              .bind("<pgup>", Intent::PreviewScrollUp, KeyCategory::Navigation)
              .bind("<pgdn>", Intent::PreviewScrollDown, KeyCategory::Navigation)
              .bind("<c-r>", Intent::RefreshSkills, KeyCategory::General);
-        })
-        .scope(Scope::PickerPlugin, |b| {
-            add_picker_base(b);
         })
         .scope(Scope::PickerTaskList, |b| {
             add_picker_base(b);
@@ -518,40 +509,6 @@ pub fn init() -> Keymap<KeyEvent, Scope, Intent, KeyCategory> {
     })
 }
 
-/// Registers keybinds declared by plugins into the keymap.
-///
-/// Each plugin's `keybinds` table entry produces an [`Intent::TriggerPlugin`] bound
-/// under [`KeyCategory::Plugin`]. Plugins that don't declare keybinds, or whose
-/// entries are malformed, are skipped (malformed entries are logged at warn by
-/// `SyncPlugins::declared_keybinds`).
-pub fn bind_plugin_keybinds(
-    keymap: &mut Keymap<KeyEvent, Scope, Intent, KeyCategory>,
-    plugins: &jinn_plugin::SyncPlugins,
-) {
-    for kb in plugins.declared_keybinds() {
-        let Ok(scope) = Scope::from_str(&kb.scope) else {
-            tracing::warn!(
-                plugin = %kb.plugin_name,
-                keys = %kb.keys,
-                scope = %kb.scope,
-                "plugin keybind has unknown scope; skipping"
-            );
-            continue;
-        };
-        keymap.bind(
-            &kb.keys,
-            Intent::TriggerPlugin {
-                plugin_name: kb.plugin_name.clone(),
-                action: kb.action.clone(),
-                description: kb.description.clone(),
-                session_id: None,
-            },
-            KeyCategory::Plugin,
-            scope,
-        );
-    }
-}
-
 #[cfg(test)]
 mod tests {
     #![allow(clippy::expect_used, clippy::panic, reason = "test code")]
@@ -567,7 +524,7 @@ mod tests {
         use crate::app::WhichKeyInstance;
         use jinn_domain::{Key, Modifiers};
 
-        // Given a fresh keymap with no plugin bindings.
+        // Given a fresh keymap with no custom bindings.
         let keymap = init();
         let mut wk = WhichKeyInstance::new(keymap, Scope::Normal);
 
@@ -581,139 +538,6 @@ mod tests {
         assert!(
             matches!(intent, Some(jinn_domain::Intent::ChatEntryPinSelected)),
             "'p' in Normal scope should fire ChatEntryPinSelected; got {intent:?}",
-        );
-    }
-
-    #[test]
-    fn bind_plugin_keybinds_no_plugins_is_noop() {
-        // No plugins loaded => no keybinds to bind; function must be a no-op.
-        let mut keymap = init();
-        let plugins = jinn_plugin::SyncPlugins::empty();
-        bind_plugin_keybinds(&mut keymap, &plugins);
-        // No panic, no bindings added => success.
-    }
-
-    /// Integration test: load the real `prompt_enrichment` plugin from
-    /// `res/plugins` and assert its `<M-e>` keybind lands in the keymap under
-    /// the correct scope, with the plugin-declared description and the
-    /// `KeyCategory::Plugin` grouping. This is the regression guard for the two
-    /// bugs that blocked the plugin at runtime:
-    ///   (1) `bind_plugin_keybinds` not being called by the real launch path,
-    ///   (2) the plugin declaring `scope = "input"` while `Scope::from_str`
-    ///       requires the PascalCase `"Input"` (matching `Scope::Display`).
-    #[test]
-    fn bind_plugin_keybinds_loads_prompt_enrichment_binding() {
-        use jinn_plugin::{PluginSystem, PluginSystemBuildResult};
-        use std::path::Path;
-
-        // Locate the dev plugin tree (crate-relative).
-        let manifest_dir = Path::new(env!("CARGO_MANIFEST_DIR"));
-        let res_plugins = manifest_dir
-            .ancestors()
-            .nth(2) // workspace root
-            .expect("workspace root")
-            .join("res/plugins");
-        assert!(
-            res_plugins
-                .join("global/prompt_enrichment/init.lua")
-                .exists(),
-            "prompt_enrichment plugin missing at {}",
-            res_plugins.display()
-        );
-
-        let rt = tokio::runtime::Runtime::new().expect("runtime");
-        let PluginSystemBuildResult {
-            sync: sync_plugins, ..
-        } = PluginSystem::build(
-            &res_plugins,
-            Path::new("/nonexistent"),
-            rt.handle().clone(),
-            // command_dispatcher — unused by keybind binding.
-            std::sync::Arc::new(|_cmd| {}),
-            // request_handler — unused by keybind binding.
-            std::sync::Arc::new(|_n, _d, _cancel| Box::pin(async { serde_json::Value::Null })),
-        );
-        std::mem::forget(rt);
-
-        let mut keymap = init();
-        bind_plugin_keybinds(&mut keymap, &sync_plugins);
-
-        // The <M-e> binding must appear in the Input scope.
-        let input_bindings = keymap.get_bindings_for_scope(Scope::Input);
-        let me = input_bindings
-            .iter()
-            .find(|b| {
-                matches!(
-                    &b.key,
-                    KeyEvent { key: Key::Char('e'), modifiers } if modifiers.alt
-                )
-            })
-            .unwrap_or_else(|| {
-                panic!("<M-e> (Alt+e) not bound in Input scope. bindings = {input_bindings:?}")
-            });
-
-        assert_eq!(
-            me.category,
-            KeyCategory::Plugin,
-            "plugin keybinds must group under KeyCategory::Plugin"
-        );
-        assert_eq!(
-            me.description, "enrich prompt",
-            "which-key help derives its text from this description"
-        );
-    }
-
-    /// Decisive runtime-path test: drive the FULL handle_key path with a real
-    /// Alt+e key event in Input scope. This reproduces exactly what
-    /// `Msg::Input(Key(Alt+e))` does at runtime (app.rs:140). If this returns
-    /// None, the binding is unreachable via handle_key even though it exists in
-    /// the keymap tree (pointing to a scope-resolution or navigate() bug).
-    #[test]
-    fn handle_key_alt_e_in_input_scope_fires_trigger_plugin() {
-        use crate::app::WhichKeyInstance;
-        use jinn_domain::{Key, KeyEvent, Modifiers};
-        use jinn_plugin::{PluginSystem, PluginSystemBuildResult};
-        use std::path::Path;
-
-        let manifest_dir = Path::new(env!("CARGO_MANIFEST_DIR"));
-        let res_plugins = manifest_dir
-            .ancestors()
-            .nth(2)
-            .expect("workspace root")
-            .join("res/plugins");
-
-        let rt = tokio::runtime::Runtime::new().expect("runtime");
-        let PluginSystemBuildResult {
-            sync: sync_plugins, ..
-        } = PluginSystem::build(
-            &res_plugins,
-            Path::new("/nonexistent"),
-            rt.handle().clone(),
-            std::sync::Arc::new(|_cmd| {}),
-            std::sync::Arc::new(|_n, _d, _cancel| Box::pin(async { serde_json::Value::Null })),
-        );
-        std::mem::forget(rt);
-
-        let mut keymap = init();
-        bind_plugin_keybinds(&mut keymap, &sync_plugins);
-
-        let mut wk = WhichKeyInstance::new(keymap, Scope::Input);
-        let alt_e = KeyEvent {
-            key: Key::Char('e'),
-            modifiers: Modifiers {
-                ctrl: false,
-                alt: true,
-                shift: false,
-            },
-        };
-        let intent = wk.handle_key(alt_e);
-
-        let intent = intent.expect(
-            "Alt+e in Input scope must fire an intent; got None (binding exists in tree per prior test, so this is a scope/navigate bug)",
-        );
-        assert!(
-            matches!(intent, Intent::TriggerPlugin { .. }),
-            "Alt+e must resolve to Intent::TriggerPlugin, got {intent:?}",
         );
     }
 
@@ -1145,45 +969,6 @@ mod tests {
     }
 
     #[rstest::rstest]
-    fn leader_sp_resolves_to_plugin_picker_only() {
-        // Given the default keymap (persona moved off <leader>sp).
-        use jinn_domain::{Key, KeyEvent, Modifiers};
-        use ratatui_which_key::NodeResult;
-        let keymap = init();
-        let path = [
-            KeyEvent {
-                key: Key::Char(' '),
-                modifiers: Modifiers::none(),
-            },
-            KeyEvent {
-                key: Key::Char('s'),
-                modifiers: Modifiers::none(),
-            },
-            KeyEvent {
-                key: Key::Char('p'),
-                modifiers: Modifiers::none(),
-            },
-        ];
-
-        // When navigating the <leader>sp sequence.
-        let result = keymap.navigate(&path, &Scope::Normal).expect("path exists");
-
-        // Then it resolves to OpenPicker{Plugin} only (collision resolved).
-        match result {
-            NodeResult::Leaf { action } => assert!(
-                matches!(
-                    action,
-                    Intent::OpenPicker {
-                        kind: PickerKind::Plugin
-                    }
-                ),
-                "<leader>sp must resolve to OpenPicker{{Plugin}} only; got {action:?}",
-            ),
-            other => panic!("<leader>sp must be a leaf, got branch: {other:?}"),
-        }
-    }
-
-    #[rstest::rstest]
     fn bracket_c_chord_resolves_to_jump_compaction_intents() {
         // Given the default keymap.
         use jinn_domain::{Key, KeyEvent, Modifiers};
@@ -1349,17 +1134,13 @@ mod leak_check {
                 .any(|d| d.contains("next") || d.contains("previous")),
             "ChatHistory groups leaked into Dashboard: {all_desc:?}"
         );
-        assert!(
-            !all_desc.iter().any(|d| d.contains("plugin")),
-            "Sidebar groups leaked into Dashboard: {all_desc:?}"
-        );
     }
     #[test]
     fn normal_scope_still_shows_chathistory_and_sidebar_groups() {
         // Regression: the library fix must not remove ChatHistory groups from
         // Normal scope where they legitimately belong. The `p` key in Normal
         // scope is a leaf (ChatEntryPinSelected → "pin entry"), not the
-        // "plugin" branch, so we only assert the bracket groups here.
+        // sessions branch, so we only assert the bracket groups here.
         let keymap: WKKeymap<
             jinn_domain::KeyEvent,
             Scope,
