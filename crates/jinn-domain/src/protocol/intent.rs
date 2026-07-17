@@ -198,9 +198,6 @@ pub enum Intent {
     /// Re-run the lifecycle setup command for the sidebar-selected session.
     /// Only valid when the session's lifecycle_script_state is NothingRan.
     SidebarSessionRerunSetup,
-    /// Toggle the enabled/disabled state of the sidebar-selected plugin entry.
-    /// Only valid when the cursor is on a `SessionEntryKind::Plugin` entry.
-    SidebarTogglePlugin,
 
     /// Select the next chat entry.
     ChatEntrySelectNext,
@@ -332,21 +329,6 @@ pub enum Intent {
     /// Scroll the task list preview popup toward the bottom (newer tasks).
     TaskListPreviewScrollDown,
 
-    /// Trigger a plugin-declared action via a registered keybind.
-    ///
-    /// The `description` is rendered by ratatui-which-key via the `Display` impl.
-    /// `session_id` is `None` for global plugins (resolved to the active session at fire time).
-    TriggerPlugin {
-        /// Name of the plugin that declared the keybind.
-        plugin_name: String,
-        /// Action name the plugin registered for this keybind.
-        action: String,
-        /// Human-readable description shown in which-key help.
-        description: String,
-        /// Optional per-session scope; `None` means active session at fire time.
-        session_id: Option<SessionId>,
-    },
-
     // ── Dashboard tab ──────────────────────────────────────────────
     /// Switch between Chat and Dashboard tabs.
     SwitchTab,
@@ -451,7 +433,6 @@ impl std::fmt::Display for Intent {
             Intent::SessionNewWithLifecycle => write!(f, "new session with lifecycle"),
             Intent::SidebarSessionContinue => write!(f, "continue session"),
             Intent::SidebarSessionRerunSetup => write!(f, "rerun session setup"),
-            Intent::SidebarTogglePlugin => write!(f, "toggle plugin"),
 
             Intent::ChatEntrySelectNext => write!(f, "select next entry"),
             Intent::ChatEntrySelectPrev => write!(f, "select prev entry"),
@@ -515,7 +496,6 @@ impl std::fmt::Display for Intent {
             Intent::QuakeBarScrollDown => write!(f, "quake bar scroll down"),
             Intent::TaskListPreviewScrollUp => write!(f, "task list preview scroll up"),
             Intent::TaskListPreviewScrollDown => write!(f, "task list preview scroll down"),
-            Intent::TriggerPlugin { description, .. } => write!(f, "{description}"),
             Intent::SwitchTab => write!(f, "switch tab"),
             Intent::DashboardSelectUp => write!(f, "dashboard select up"),
             Intent::DashboardSelectDown => write!(f, "dashboard select down"),
@@ -590,30 +570,5 @@ impl IntentResult {
         self.messages.extend(other.messages);
         self.message_names.extend(other.message_names);
         self
-    }
-}
-
-#[cfg(test)]
-mod tests {
-    #![allow(
-        clippy::expect_used,
-        clippy::indexing_slicing,
-        clippy::panic,
-        clippy::unreachable,
-        clippy::string_slice,
-        clippy::uninlined_format_args,
-        reason = "test code"
-    )]
-    use super::*;
-
-    #[test]
-    fn trigger_plugin_display_returns_description() {
-        let intent = Intent::TriggerPlugin {
-            plugin_name: "prompt_enrichment".into(),
-            action: "on_enrich".into(),
-            description: "enrich prompt".into(),
-            session_id: None,
-        };
-        assert_eq!(intent.to_string(), "enrich prompt");
     }
 }

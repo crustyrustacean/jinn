@@ -432,8 +432,7 @@ fn session_new_works_when_sidebar_sessions_focused() {
     let _old_id = state.session.active_session_id().clone();
 
     // When handling SessionNew via IntentHandler.
-    let result =
-        crate::feat::intent::IntentHandler::handle(&crate::Intent::SessionNew, &mut state, None);
+    let result = crate::feat::intent::IntentHandler::handle(&crate::Intent::SessionNew, &mut state);
 
     // Then a new session is created.
     // And SessionCreated and ActiveSessionChanged are emitted.
@@ -460,7 +459,7 @@ fn session_new_works_when_not_in_sidebar() {
 
     // When handling SessionNew via IntentHandler.
     let _result =
-        crate::feat::intent::IntentHandler::handle(&crate::Intent::SessionNew, &mut state, None);
+        crate::feat::intent::IntentHandler::handle(&crate::Intent::SessionNew, &mut state);
 
     // Then a new session is created (no section restriction outside sidebar).
     assert_ne!(*state.session.active_session_id(), old_id);

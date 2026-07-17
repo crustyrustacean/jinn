@@ -7,69 +7,11 @@ fossil-branch NAME:
     fossil commit -m "Open {{NAME}}" --branch {{NAME}} --allow-empty
 
 test:
-    cargo test --workspace --exclude jinn-e2e
-    cargo test --test e2e -p jinn-e2e
+    cargo test --workspace
 
 check:
     cargo check --workspace
 
-# Compile each plugin crate to a WASM component and install it under
-# res/plugins/{global,attachable}/<name>/. Plugins are standalone cargo
-# workspaces (each has its own [workspace]) targeting wasm32-unknown-unknown.
-# `wasm-tools component new` wraps the core module into a Component Model
-# component validated against wit/jinn.wit.
-#
-# The plugin's `kind` (global vs attachable) is read from its source
-# `plugins/<name>/plugin.toml` — the single source of truth. The same toml
-# is copied into the install dir so discovery classifies it identically.
-build-plugins:
-    #!/usr/bin/env bash
-    set -euo pipefail
-
-    mapfile -t PLUGINS < <(find plugins -maxdepth 1 -mindepth 1 -type d -printf '%f\n' | sort)
-
-    # Read the `kind` field from a plugin.toml. Falls back to "attachable"
-    # when the file or field is absent.
-    kind_of() {
-        local toml="plugins/$1/plugin.toml"
-        local kind
-        kind=$(awk -F'=' '/^[[:space:]]*kind[[:space:]]*=/{gsub(/[[:space:]"]/,"",$2); print $2; exit}' "$toml" 2>/dev/null || true)
-        case "$kind" in
-            global) echo global ;;
-            *) echo attachable ;;
-        esac
-    }
-
-    # Map crate dir name -> installed plugin dir name. Rust crate names use
-    # underscores, but plugin dir names follow the original Lua layout
-    # (e.g. gap-analysis), which the e2e harness matches on.
-    dest_name_of() {
-        case "$1" in
-            gap_analysis) echo gap-analysis ;;
-            *) echo "$1" ;;
-        esac
-    }
-
-    # Clean stale plugin install dirs from a previous layout so a kind
-    # change (e.g. attachable -> global) doesn't leave a duplicate behind.
-    # Each plugin is rebuilt into exactly one kind dir below; this wipe
-    # guarantees no orphan lingers in the other.
-    rm -rf res/plugins/global res/plugins/attachable
-    mkdir -p res/plugins/global res/plugins/attachable
-
-    for name in "${PLUGINS[@]}"; do
-        echo "==> Building $name"
-        ( cd "plugins/$name" && cargo build --release --target wasm32-unknown-unknown )
-
-        core="plugins/$name/target/wasm32-unknown-unknown/release/$name.wasm"
-        kind=$(kind_of "$name")
-        dest_name=$(dest_name_of "$name")
-        dest="res/plugins/$kind/$dest_name"
-        mkdir -p "$dest"
-        wasm-tools component new "$core" -o "$dest/$dest_name.wasm"
-        cp "plugins/$name/plugin.toml" "$dest/plugin.toml"
-        echo "    -> $dest/$dest_name.wasm (kind: $kind)"
-    done
 
 clippy:
     cargo clippy --workspace --all-targets
@@ -221,7 +163,7 @@ lint-testlength:
    if found:
        print(f"\n{found} inline test module(s) exceed {max_lines} lines")
 
-# Copy plugins, themes, personas, and prompts to user config directory
+# Copy themes, personas, and prompts to user config directory
 install-defaults:
     mkdir -p ~/.config/jinn/themes
     cp -r res/themes/*.toml ~/.config/jinn/themes/
@@ -229,20 +171,11 @@ install-defaults:
     cp -r res/personas/*.md ~/.config/jinn/personas/
     mkdir -p ~/.config/jinn/prompts
     cp -r res/prompts/*.md ~/.config/jinn/prompts/
-    # Wipe the installed plugin kind dirs before copying, mirroring
-    # build-plugins' wipe strategy. A plain `cp -r` merges, so a kind
-    # change (e.g. attachable -> global) would leave a stale duplicate in
-    # the old kind dir — and discovery dedups by (name, kind), so both would
-    # load as separate plugins. Wiping guarantees the install matches res/.
-    rm -rf ~/.config/jinn/plugins/global ~/.config/jinn/plugins/attachable
-    mkdir -p ~/.config/jinn/plugins/global ~/.config/jinn/plugins/attachable
-    cp -r res/plugins/* ~/.config/jinn/plugins/
     mkdir -p ~/.agents/skills
     cp -r res/skills/* ~/.agents/skills/
     @echo "Themes installed to ~/.config/jinn/themes/"
     @echo "Personas installed to ~/.config/jinn/personas/"
     @echo "Prompts installed to ~/.config/jinn/prompts/"
-    @echo "Plugins installed to ~/.config/jinn/plugins/"
     @echo "Skills installed to ~/.agents/skills/"
 
 # Report stale Fossil locks (hung processes + stale journal files)

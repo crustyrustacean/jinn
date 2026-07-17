@@ -167,7 +167,7 @@ impl ScopeStack {
 
     /// Replaces the base scope with `new_base` and clears all overlays.
     ///
-    /// Use when transitioning between top-level contexts (e.g., Chat → Plugin)
+    /// Use when transitioning between top-level contexts (e.g., Chat → Picker)
     /// where the entire scope stack should be replaced, not just pushed onto.
     pub fn swap_base(&mut self, new_base: FocusScope) {
         self.stack.clear();

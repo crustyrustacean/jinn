@@ -111,7 +111,7 @@ impl HeadlessApp {
                 if let Some(intent) = which_key.handle_key(key) {
                     // Process the intent through the IntentHandler.
                     let mut state = self.core.state.write(&self.intent_handler_cap);
-                    let result = IntentHandler::handle(&intent, &mut state, None);
+                    let result = IntentHandler::handle(&intent, &mut state);
                     drop(state);
 
                     // Send resulting messages to bus.

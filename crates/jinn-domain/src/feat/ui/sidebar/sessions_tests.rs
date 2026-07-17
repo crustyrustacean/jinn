@@ -12,7 +12,6 @@ use crate::feat::session::chat_session::ChatSessionState;
 use crate::feat::ui::sidebar::section_trait::{
     EnterFrom, SectionNavResult, SidebarIntent, SidebarSection, SidebarSectionId,
 };
-use crate::feat::ui::sidebar::sessions::state::SessionEntryKind;
 use crate::feat::ui::sidebar::sessions::{
     SessionCloseError, SessionsSection, handle_session_activate, handle_session_close, navigate,
     receive_cursor, scroll_to_cursor, sorted_open_sessions, validate_session_close,
@@ -950,7 +949,6 @@ fn session_new_with_lifecycle_opens_picker_from_normal_mode() {
     let result = crate::feat::intent::IntentHandler::handle(
         &crate::Intent::SessionNewWithLifecycle,
         &mut state,
-        None,
     );
 
     // Then the picker scope is pushed with SessionLifecycle kind.
@@ -973,7 +971,6 @@ fn session_new_with_lifecycle_opens_picker_from_sidebar_sessions() {
     let result = crate::feat::intent::IntentHandler::handle(
         &crate::Intent::SessionNewWithLifecycle,
         &mut state,
-        None,
     );
 
     // Then the picker scope is pushed with SessionLifecycle kind.
@@ -1022,7 +1019,6 @@ fn teardown_only_emits_run_session_teardown() {
     let result = crate::feat::intent::IntentHandler::handle(
         &crate::Intent::SidebarSessionTeardown,
         &mut state,
-        None,
     );
 
     // Then a RunSessionTeardown command is emitted with the rendered teardown command.
@@ -1059,7 +1055,6 @@ fn teardown_only_is_noop_without_lifecycle_teardown() {
     let result = crate::feat::intent::IntentHandler::handle(
         &crate::Intent::SidebarSessionTeardown,
         &mut state,
-        None,
     );
 
     // Then no commands are emitted (no teardown command to run).
@@ -1104,7 +1099,6 @@ fn teardown_only_is_noop_when_session_busy() {
     let result = crate::feat::intent::IntentHandler::handle(
         &crate::Intent::SidebarSessionTeardown,
         &mut state,
-        None,
     );
 
     // Then no commands are emitted (validation gates on busy state).
@@ -1968,328 +1962,5 @@ fn clear_visual_parents_on_load_actually_removes_entries() {
     assert!(
         state.frontend.sessions_section.visual_parents.is_empty(),
         "visual_parents should be empty after clearing the loaded session's entries"
-    );
-}
-
-fn state_with_plugins() -> AppState {
-    use jinn_core_types::AttachedPlugin;
-
-    let mut state = AppState::default();
-
-    // Create root session.
-    let mut root = ChatSessionState::new();
-    root.set_title("main session".to_owned());
-    let root_id = root.session_id().clone();
-    state.session.insert(root);
-
-    // Create a child session under root.
-    let mut child = ChatSessionState::new();
-    child.set_title("child session".to_owned());
-    child.set_parent_session(root_id.clone());
-    let _child_id = child.session_id().clone();
-    state.session.insert(child);
-
-    // Remove the default session if different from root.
-    let default_id = state.session.active_session_id().clone();
-    if default_id != root_id {
-        state.session.remove(&default_id);
-    }
-    state.session.set_active(root_id.clone());
-
-    // Attach two plugins to root session.
-    let root_session = state.session.get_mut(&root_id).expect("root session");
-    root_session.attach_plugin(AttachedPlugin::new("consensus"));
-    root_session.attach_plugin(AttachedPlugin::new("judge_fail"));
-
-    state
-}
-
-#[rstest::rstest]
-fn sorted_open_sessions_includes_attached_plugins() {
-    // Given a session with two attached plugins.
-    let state = state_with_plugins();
-
-    // When collecting sorted sessions.
-    let sessions = sorted_open_sessions(&state);
-
-    // Then the session entry appears, followed by its child session, then two plugin entries.
-    let titles: Vec<&str> = sessions.iter().map(|s| s.title.as_str()).collect();
-    assert!(
-        titles.contains(&"main session"),
-        "root session should be present"
-    );
-    assert!(
-        titles.contains(&"child session"),
-        "child session should be present"
-    );
-    assert!(
-        titles.contains(&"consensus"),
-        "consensus plugin should be present"
-    );
-    assert!(
-        titles.contains(&"judge_fail"),
-        "judge_fail plugin should be present"
-    );
-
-    // And plugin entries have the Plugin kind.
-    let plugin_entries: Vec<_> = sessions
-        .iter()
-        .filter(|s| matches!(s.kind, SessionEntryKind::Plugin { .. }))
-        .collect();
-    assert_eq!(plugin_entries.len(), 2, "should have 2 plugin entries");
-
-    // And plugin entries are children of root session (depth = root depth + 1).
-    let root_entry = sessions
-        .iter()
-        .find(|s| s.title == "main session")
-        .expect("root");
-    let root_depth = root_entry.depth;
-    for pl in &plugin_entries {
-        assert_eq!(
-            pl.depth,
-            root_depth + 1,
-            "plugin should be one level deeper than its parent session"
-        );
-        assert_eq!(
-            pl.parent_id,
-            Some(root_entry.id.clone()),
-            "plugin parent should be root session"
-        );
-    }
-}
-
-#[rstest::rstest]
-fn sorted_open_sessions_no_plugins_when_none_attached() {
-    // Given a session with no attached plugins.
-    let state = AppState::default();
-
-    // When collecting sorted sessions.
-    let sessions = sorted_open_sessions(&state);
-
-    // Then there are no plugin entries.
-    let plugin_count = sessions
-        .iter()
-        .filter(|s| matches!(s.kind, SessionEntryKind::Plugin { .. }))
-        .count();
-    assert_eq!(plugin_count, 0, "should have no plugin entries");
-}
-
-#[rstest::rstest]
-fn sorted_open_sessions_plugins_after_real_children() {
-    // Given a session with a child session and two attached plugins.
-    let state = state_with_plugins();
-
-    // When collecting sorted sessions.
-    let sessions = sorted_open_sessions(&state);
-
-    // Then child session appears before plugin entries.
-    let child_pos = sessions
-        .iter()
-        .position(|s| s.title == "child session")
-        .expect("child");
-    let pl1_pos = sessions
-        .iter()
-        .position(|s| s.title == "consensus")
-        .expect("consensus");
-    let pl2_pos = sessions
-        .iter()
-        .position(|s| s.title == "judge_fail")
-        .expect("judge_fail");
-    assert!(
-        child_pos < pl1_pos,
-        "child session should appear before plugin entries"
-    );
-    assert!(pl1_pos < pl2_pos, "plugins should appear in order");
-}
-
-fn state_with_session_and_plugins(plugin_count: usize) -> AppState {
-    use jinn_core_types::AttachedPlugin;
-
-    let mut state = AppState::default();
-    let session = state.session.active_session_id().clone();
-    {
-        let s = state.session.get_mut(&session).expect("active session");
-        for i in 0..plugin_count {
-            s.attach_plugin(AttachedPlugin::new(format!("plugin-{i}")));
-        }
-    }
-    state
-}
-
-#[test]
-fn navigate_down_lands_on_plugin_entry() {
-    // Given a session with 2 plugin attachments, cursor at index 0.
-    let mut state = state_with_session_and_plugins(2);
-    state.frontend.sessions_section.selected_index = Some(0);
-
-    // When navigating down from the session entry.
-    // entries: [session0, pl-0, pl-1]
-    let result = navigate(&SidebarIntent::MoveDown, &mut state);
-
-    // Then the cursor lands on the first plugin entry.
-    assert_eq!(result, SectionNavResult::Moved);
-    assert_eq!(state.frontend.sessions_section.selected_index, Some(1));
-}
-
-#[test]
-fn navigate_up_lands_on_plugin_entry() {
-    use jinn_core_types::AttachedPlugin;
-    let mut state = state_with_sessions(2);
-    {
-        let sessions: Vec<_> = state.session.iter().collect();
-        let first_id = sessions[0].0.clone();
-        let s = state.session.get_mut(&first_id).expect("first session");
-        s.attach_plugin(AttachedPlugin::new("my-plugin"));
-    }
-    // entries: [session0, pl, session1]
-    // cursor on session1
-    let entries = sorted_open_sessions(&state);
-    let session1_idx = entries
-        .iter()
-        .rposition(|e| matches!(e.kind, SessionEntryKind::Session))
-        .expect("session1");
-    state.frontend.sessions_section.selected_index = Some(session1_idx);
-
-    // When navigating up from session1.
-    let result = navigate(&SidebarIntent::MoveUp, &mut state);
-
-    // Then the cursor lands on the plugin entry (not skipping it).
-    assert_eq!(result, SectionNavResult::Moved);
-    assert_eq!(
-        state.frontend.sessions_section.selected_index,
-        Some(session1_idx - 1)
-    );
-}
-
-#[test]
-fn activate_on_plugin_entry_is_noop() {
-    // Given a session with a plugin attachment, cursor on the plugin entry.
-    let mut state = state_with_session_and_plugins(1);
-    let original_active = state.session.active_session_id().clone();
-    // entries: [session0, pl-0]
-    state.frontend.sessions_section.selected_index = Some(1);
-
-    // When activating the plugin entry.
-    handle_session_activate(&mut state);
-
-    // Then the active session did not change.
-    assert_eq!(*state.session.active_session_id(), original_active);
-}
-
-#[test]
-fn close_on_plugin_entry_is_rejected() {
-    // Given a session with a plugin attachment, cursor on the plugin entry.
-    let mut state = state_with_session_and_plugins(1);
-    // entries: [session0, pl-0]
-    state.frontend.sessions_section.selected_index = Some(1);
-    state.frontend.close_session_prompt = true;
-
-    // When attempting to close the plugin entry.
-    let result = validate_session_close(&state);
-
-    // Then validation rejects it.
-    assert!(result.is_err());
-}
-
-#[test]
-fn sorted_open_sessions_excludes_automated_sessions() {
-    // Given a normal session and an automated (is_automated) session.
-    let mut state = AppState::default();
-
-    let mut normal = ChatSessionState::new();
-    normal.set_title("normal session".to_owned());
-    let normal_id = normal.session_id().clone();
-    state.session.insert(normal);
-
-    let mut automated = ChatSessionState::new();
-    automated.set_title("automated session".to_owned());
-    automated.mark_automated();
-    let automated_id = automated.session_id().clone();
-    state.session.insert(automated);
-
-    // When collecting sorted sessions.
-    let sessions = sorted_open_sessions(&state);
-
-    // Then only the normal session appears; the automated session is excluded.
-
-    assert!(
-        sessions.iter().any(|e| e.id == normal_id),
-        "normal session should appear in the sidebar"
-    );
-    assert!(
-        !sessions.iter().any(|e| e.id == automated_id),
-        "automated session must be hidden from the sidebar"
-    );
-}
-
-// ---------------------------------------------------------------------------
-// Plugin entry busy indicator — derives from the managed session's phase.
-// ---------------------------------------------------------------------------
-
-fn state_with_managed_judge_session(streaming: bool) -> AppState {
-    use jinn_core_types::AttachedPlugin;
-
-    let mut state = AppState::default();
-    let root_id = state.session.active_session_id().clone();
-
-    // Create a child "judge" session under root.
-    let mut judge = ChatSessionState::new();
-    judge.set_parent_session(root_id.clone());
-    let judge_id = judge.session_id().clone();
-    if streaming {
-        judge.begin_streaming();
-    }
-    state.session.insert(judge);
-
-    // Attach a plugin to root, linked to the judge session.
-    let mut ap = AttachedPlugin::new("judge");
-    ap.managed_session_id = Some(judge_id.clone());
-    state
-        .session
-        .get_mut(&root_id)
-        .expect("root")
-        .attach_plugin(ap);
-    state
-}
-
-#[test]
-fn plugin_entry_not_idle_when_managed_session_streaming() {
-    // Given a plugin whose managed session is in the Streaming phase.
-    let state = state_with_managed_judge_session(true);
-
-    // When collecting sorted sessions.
-    let sessions = sorted_open_sessions(&state);
-
-    // Then the plugin entry is busy (is_idle = false).
-    let plugin = sessions
-        .iter()
-        .find(|s| s.title == "judge")
-        .expect("plugin entry");
-    assert!(
-        !plugin.is_idle,
-        "plugin entry should be busy (spinner) when managed session is streaming"
-    );
-    assert!(
-        plugin.managed_session_id.is_some(),
-        "plugin entry should carry its managed session id"
-    );
-}
-
-#[test]
-fn plugin_entry_idle_when_managed_session_idle() {
-    // Given a plugin whose managed session is idle.
-    let state = state_with_managed_judge_session(false);
-
-    // When collecting sorted sessions.
-    let sessions = sorted_open_sessions(&state);
-
-    // Then the plugin entry is idle (is_idle = true).
-    let plugin = sessions
-        .iter()
-        .find(|s| s.title == "judge")
-        .expect("plugin entry");
-    assert!(
-        plugin.is_idle,
-        "plugin entry should be idle (bolt) when managed session is idle"
     );
 }

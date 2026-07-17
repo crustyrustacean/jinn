@@ -23,8 +23,6 @@ pub mod llm_actor;
 pub mod navigation;
 pub mod persona;
 pub mod picker;
-pub mod plugin_dispatch;
-pub mod plugin_lifecycle;
 pub mod preferences_actor;
 pub mod project;
 pub mod project_add_input;

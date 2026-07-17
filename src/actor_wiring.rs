@@ -25,7 +25,6 @@ use jinn_domain::UserPreferencesStorageService;
 use jinn_domain::common::actor_deps::ActorDeps;
 use jinn_domain::feat::context::strategy::token_estimator::TiktokenCounter;
 
-use jinn_domain::feat::plugin_dispatch::{PluginDispatchActor, PluginDispatchActorDeps};
 use jinn_domain::init::env_init_actor::{EnvInitActor, EnvInitActorDeps};
 use jinn_domain::init::provider_init_actor::{ProviderInitActor, ProviderInitActorDeps};
 use jinn_domain::init::system_ready_actor::{SystemReadyActor, SystemReadyActorDeps};
@@ -114,80 +113,6 @@ pub struct ActorSystemBuilder {
     args: ActorSystemBuilderArgs,
 }
 
-/// Filters discovered plugins down to attachable ones and maps them into
-/// [`DiscoveredPlugin`] entries for the plugin picker.
-///
-/// Global plugins are loaded at startup and cannot be attached per-session,
-/// so they're excluded from the picker that issues `AttachPlugin`.
-fn attachable_discovered_plugins(
-    plugins: Vec<jinn_wasm_host::PluginMeta>,
-) -> Vec<jinn_domain::common::app_state::DiscoveredPlugin> {
-    plugins
-        .into_iter()
-        .filter(|p| p.kind == jinn_wasm_host::PluginKind::Attachable)
-        .map(|p| jinn_domain::common::app_state::DiscoveredPlugin {
-            name: p.name,
-            description: p.description,
-        })
-        .collect()
-}
-
-/// Join plugin names, falling back to "none" when the list is empty.
-fn names_or_none(names: &[&str]) -> String {
-    if names.is_empty() {
-        "none".to_owned()
-    } else {
-        names.join(", ")
-    }
-}
-
-/// Build the startup summary message from the global/attachable name lists.
-fn plugin_load_summary(globals: &[&str], attachables: &[&str]) -> String {
-    format!(
-        "Loaded {} plugins ({} global: {}; {} attachable: {})",
-        globals.len() + attachables.len(),
-        globals.len(),
-        names_or_none(globals),
-        attachables.len(),
-        names_or_none(attachables),
-    )
-}
-
-/// Post a system entry to the startup session summarizing the loaded
-/// plugins, e.g. `Loaded 4 plugins (2 global: welcome, prompt_enrichment;
-/// 2 attachable: gap-analysis, judge)`. Empty when no plugins loaded.
-async fn post_plugin_load_summary(
-    bus: &jinn_domain::common::services::bus_service::BusService,
-    state: &jinn_domain::common::state::State,
-    plugins: &[jinn_wasm_host::PluginMeta],
-) {
-    if plugins.is_empty() {
-        return;
-    }
-
-    let globals: Vec<&str> = plugins
-        .iter()
-        .filter(|p| matches!(p.kind, jinn_wasm_host::PluginKind::Global))
-        .map(|p| p.name.as_str())
-        .collect();
-    let attachables: Vec<&str> = plugins
-        .iter()
-        .filter(|p| matches!(p.kind, jinn_wasm_host::PluginKind::Attachable))
-        .map(|p| p.name.as_str())
-        .collect();
-
-    let message = plugin_load_summary(&globals, &attachables);
-
-    let session_id = state.read().session.active_session_id().clone();
-    bus.publish(
-        jinn_domain::feat::chat_input::protocol::command::PushChatEntry {
-            session_id,
-            entry: jinn_domain::protocol::ChatEntry::system(message),
-        },
-    )
-    .await;
-}
-
 impl ActorSystemBuilder {
     #[must_use]
     pub fn new(args: ActorSystemBuilderArgs) -> Self {
@@ -199,7 +124,6 @@ impl ActorSystemBuilder {
     ) -> (
         AppCore,
         Services,
-        jinn_wasm_host::sync_plugins::SyncWasmPlugins,
         Option<kanal::AsyncReceiver<jinn_domain::feat::discord::BridgeEvent>>,
         Option<kanal::AsyncReceiver<jinn_domain::feat::discord::GatewayRequest>>,
         kanal::Sender<jinn_domain::feat::dashboard::status_actor::DiscordStatusUpdate>,
@@ -216,13 +140,6 @@ impl ActorSystemBuilder {
             paths,
             browser_profile_override,
         } = self.args;
-
-        // `DomainNodeContext` is needed by the plugin request handler (for `llm_oneshot`)
-        // but it can't be constructed until `services` is assembled.
-        // Bridge with a `OnceLock` filled in once `services` exists.
-        let domain_ctx_cell: std::sync::Arc<
-            std::sync::OnceLock<jinn_domain::feat::plugin_dispatch::DomainNodeContext>,
-        > = std::sync::Arc::new(std::sync::OnceLock::new());
 
         // Create shared State FIRST — injected into multiple actors.
         let state = State::new(AppState::default());
@@ -252,8 +169,7 @@ impl ActorSystemBuilder {
             guard.active_session_mut().set_cwd(cwd);
         }
 
-        // Create the kameo message bus and closure bridge first — the plugin
-        // command dispatcher needs a Bridge to route commands onto the bus.
+        // Create the kameo message bus and closure bridge.
         let bus = {
             let bus_actor = kameo_actors::message_bus::MessageBus::new(
                 kameo_actors::DeliveryStrategy::BestEffort,
@@ -263,179 +179,6 @@ impl ActorSystemBuilder {
         };
         let bridge = jinn_domain::common::bridge::Bridge::new(bus.actor_ref().clone());
 
-        // ── Plugin system (WASM) ────────────────────────────────────────
-        // Constructed early — handles go into Services and TuiApp.
-        //
-        // The WASM host takes typed callbacks instead of Lua's string-verb
-        // dispatcher: `emit` translates a typed WIT `Command` into a domain
-        // `BridgeClosure` (see `jinn_wasm_host::command_dispatch`); the async
-        // request callbacks bridge WIT records to the existing one-shot /
-        // session-creation domain paths.
-
-        let handler_cell_emit = domain_ctx_cell.clone();
-        let emit_cb: jinn_wasm_host::imports::EmitCallback = std::sync::Arc::new({
-            let bridge = bridge.clone();
-            move |plugin_name: &str,
-                  command: &jinn_wasm_host::bindings::command::Command,
-                  ctx: &jinn_wasm_host::store::InstanceCtx| {
-                match jinn_wasm_host::command_dispatch::dispatch(plugin_name, ctx, command.clone())
-                {
-                    Ok(Some(closure)) => {
-                        let _ = bridge.send(closure);
-                    }
-                    Ok(None) => {
-                        tracing::debug!(plugin = plugin_name, "emit produced no closure");
-                    }
-                    Err(report) => {
-                        tracing::warn!(%report, plugin = plugin_name, "emit dispatch failed");
-                    }
-                }
-                let _ = &handler_cell_emit;
-            }
-        });
-
-        let handler_cell_llm = domain_ctx_cell.clone();
-        let llm_cb: jinn_wasm_host::imports::LlmOneshotCallback = std::sync::Arc::new({
-            move |_ctx: &jinn_wasm_host::store::InstanceCtx,
-                  req: &jinn_wasm_host::bindings::command::LlmOneshotReq| {
-                let cell = handler_cell_llm.clone();
-                let req = req.clone();
-                std::boxed::Box::pin(async move {
-                    let Some(domain_ctx) = cell.get() else {
-                        return Err(jinn_wasm_host::bindings::command::RequestError::Other(
-                            "host unavailable".into(),
-                        ));
-                    };
-                    let session_id: jinn_domain::protocol::SessionId =
-                        req.session_id.clone().into();
-                    domain_ctx
-                        .send_llm_request_oneshot(
-                            &session_id,
-                            req.prompt.clone(),
-                            if req.system.is_empty() {
-                                None
-                            } else {
-                                Some(req.system.clone())
-                            },
-                            req.persist,
-                            req.disable_tool_loop,
-                            u64::from(req.timeout_ms.unwrap_or(30_000)),
-                            None,
-                        )
-                        .await
-                        .map(|text| jinn_wasm_host::bindings::command::LlmResp { text })
-                        .map_err(|_| {
-                            jinn_wasm_host::bindings::command::RequestError::Other(
-                                "host unavailable".into(),
-                            )
-                        })
-                })
-            }
-        });
-
-        let handler_cell_create = domain_ctx_cell.clone();
-        let create_cb: jinn_wasm_host::imports::CreateSessionCallback = std::sync::Arc::new({
-            move |_ctx: &jinn_wasm_host::store::InstanceCtx,
-                  req: &jinn_wasm_host::bindings::command::CreateSessionReq| {
-                let cell = handler_cell_create.clone();
-                let req = req.clone();
-                std::boxed::Box::pin(async move {
-                    let Some(domain_ctx) = cell.get() else {
-                        return Err(jinn_wasm_host::bindings::command::RequestError::Other(
-                            "host unavailable".into(),
-                        ));
-                    };
-                    let parent_id: jinn_domain::protocol::SessionId =
-                        req.parent_session_id.clone().into();
-                    let session_id = domain_ctx.create_child_session(
-                        &parent_id,
-                        req.automated,
-                        req.persist,
-                        req.inherit_tools,
-                        &req.tools,
-                    );
-                    Ok(jinn_wasm_host::bindings::command::CreateSessionResp {
-                        session_id: session_id.to_string(),
-                    })
-                })
-            }
-        });
-
-        let cancel_cb: jinn_wasm_host::imports::CancelTaskCallback =
-            std::sync::Arc::new(|_name: &str| {
-                // Named-task cancellation registry is part of the full runtime
-                // wiring (prompt_enrichment cancel-on-retap). The fire-path works
-                // without it; cancellation is a no-op until wired.
-            });
-
-        let host_imports = jinn_wasm_host::imports::HostImports {
-            emit: emit_cb,
-            llm_oneshot: llm_cb,
-            create_session: create_cb,
-            cancel_task: cancel_cb,
-        };
-
-        let wasm_system = match jinn_wasm_host::system::build(
-            &paths.plugins_dir(),
-            &paths.system_plugins_dir(),
-            handle.clone(),
-            host_imports,
-        ) {
-            Ok(sys) => sys,
-            Err(report) => {
-                tracing::error!(%report, "failed to build WASM plugin system; continuing with no plugins");
-                jinn_wasm_host::system::build(
-                    &paths.plugins_dir(),
-                    &paths.system_plugins_dir(),
-                    handle.clone(),
-                    jinn_wasm_host::imports::HostImports {
-                        emit: std::sync::Arc::new(|_, _, _| {}),
-                        llm_oneshot: std::sync::Arc::new(|_, _| {
-                            std::boxed::Box::pin(async {
-                                Err(jinn_wasm_host::bindings::command::RequestError::Other(
-                                    "host unavailable".into(),
-                                ))
-                            })
-                        }),
-                        create_session: std::sync::Arc::new(|_, _| {
-                            std::boxed::Box::pin(async {
-                                Err(jinn_wasm_host::bindings::command::RequestError::Other(
-                                    "host unavailable".into(),
-                                ))
-                            })
-                        }),
-                        cancel_task: std::sync::Arc::new(|_| {}),
-                    },
-                )
-                .unwrap_or_else(|_| {
-                    panic!("WASM plugin system failed to build even with empty host imports");
-                })
-            }
-        };
-
-        let async_plugins = wasm_system.async_handle.clone();
-        let plugin_sync_handle = wasm_system.sync_handle.clone();
-        let sync_plugins = wasm_system.sync_plugins;
-
-        // Discover all plugins once: global plugins load at startup,
-        // attachable plugins attach per-session. The full list is also used
-        // below to post a startup confirmation entry once the session actor
-        // is ready to receive it.
-        let discovered_plugins =
-            jinn_wasm_host::discover_plugins(&paths.plugins_dir(), &paths.system_plugins_dir());
-        tracing::info!(count = discovered_plugins.len(), "discovered plugins");
-        // Only attachable plugins are exposed in the picker — global plugins
-        // cannot be attached per-session.
-        state.with_discovered_plugins(
-            &jinn_domain::common::tcaps::mint::mint_discovered_plugins_cap(),
-            |view| {
-                view.discovered_plugins
-                    .set(attachable_discovered_plugins(discovered_plugins.clone()));
-            },
-        );
-
-        // Root supervision tree: every spawned actor becomes a supervised
-        // child so that stopping the root cascades a graceful shutdown.
         let root = jinn_domain::common::root_supervisor::RootSupervisor::spawn_root().await;
 
         let services = Services {
@@ -448,35 +191,11 @@ impl ActorSystemBuilder {
             session_store: session_store.clone(),
             user_preferences_storage: user_preferences_storage.clone(),
             app_state_storage: app_state_storage.clone(),
-            plugins: jinn_domain::feat::plugin_dispatch::PluginFireService::new(
-                std::sync::Arc::new(async_plugins.clone())
-                    as std::sync::Arc<dyn jinn_domain::feat::plugin_dispatch::PluginFire>,
-            ),
-            plugin_sync: jinn_domain::feat::plugin_dispatch::PluginSyncCallService::new(
-                std::sync::Arc::new(plugin_sync_handle)
-                    as std::sync::Arc<dyn jinn_domain::feat::plugin_dispatch::PluginSyncCall>,
-            ),
-            session_plugin_registry:
-                jinn_domain::feat::plugin_dispatch::SessionPluginRegistryService::new(
-                    std::sync::Arc::new(async_plugins.clone())
-                        as std::sync::Arc<
-                            dyn jinn_domain::feat::plugin_dispatch::SessionPluginRegistry,
-                        >,
-                ),
             tempdir: None,
             bus,
             bridge: bridge.clone(),
             root_supervisor: root.clone(),
         };
-
-        // Global-scoped plugin tools will be registered after the tools actor spawns.
-        // Now that `services` + `state` exist, build the shared `DomainNodeContext`
-        let shared_domain_ctx =
-            std::sync::Arc::new(jinn_domain::feat::plugin_dispatch::DomainNodeContext::new(
-                services.clone(),
-                state.clone(),
-            ));
-        let _ = domain_ctx_cell.set((*shared_domain_ctx).clone());
 
         let actor_deps = ActorDeps {
             services: services.clone(),
@@ -696,11 +415,6 @@ jinn_domain::feat::preferences_actor::preferences_actor::PreferencesActor::super
             .spawn_with_mailbox(kameo::mailbox::unbounded())
             .await;
         _session.wait_for_startup().await;
-
-        // Post a startup confirmation naming the loaded plugins. The session
-        // actor (sole `PushChatEntry` subscriber) is now ready, so publish a
-        // system entry to the startup session.
-        post_plugin_load_summary(&services.bus, &state, &discovered_plugins).await;
 
         // Tool orchestrator actor.
         let _tools = spawn_tracked!(
@@ -1593,27 +1307,6 @@ jinn_domain::feat::preferences_actor::preferences_actor::PreferencesActor::super
             .await
         );
 
-        let _plugin_dispatch = spawn_tracked!(
-            &services.bus,
-            "plugin-dispatch",
-            "PluginDispatchActor",
-            PluginDispatchActor::supervise(
-                &root,
-                PluginDispatchActorDeps {
-                    deps: actor_deps.clone(),
-                    services: services.clone(),
-                    state: state.clone(),
-                    cap: jinn_domain::common::tcaps::mint::mint_session_cap(),
-                    startup_session_id: state.read().session.active_session_id().to_string(),
-                    domain_ctx: shared_domain_ctx.clone(),
-                },
-            )
-            .restart_policy(kameo::supervision::RestartPolicy::Never)
-            .spawn()
-            .await
-        );
-
-        // ── Discord bot bridge actor ───────────────────────────────────────
         // Conditionally spawned when `[discord] enabled = true` in jinn.toml.
         // The bridge forwards bus events (turn-finished, setup-completed) onto a
         // bounded channel that the poise gateway task drains. The gateway itself
@@ -1706,112 +1399,9 @@ jinn_domain::feat::preferences_actor::preferences_actor::PreferencesActor::super
         (
             core,
             services,
-            sync_plugins,
             discord_bridge_rx,
             discord_gateway_rx,
             discord_status_tx,
         )
-    }
-}
-
-#[cfg(test)]
-mod tests {
-    #![allow(
-        clippy::expect_used,
-        clippy::panic,
-        clippy::indexing_slicing,
-        reason = "test code"
-    )]
-    use super::*;
-    use jinn_wasm_host::{PluginKind, PluginMeta};
-    use std::path::PathBuf;
-
-    fn meta(name: &str, kind: PluginKind) -> PluginMeta {
-        PluginMeta {
-            name: name.to_owned(),
-            path: PathBuf::new(),
-            description: Some(format!("desc for {name}")),
-            kind,
-        }
-    }
-
-    #[test]
-    fn plugin_load_summary_lists_counts_and_names() {
-        // Given two global and two attachable plugins.
-        let globals = ["welcome", "prompt_enrichment"];
-        let attachables = ["gap-analysis", "judge"];
-
-        // When building the summary message.
-        let msg = plugin_load_summary(&globals, &attachables);
-
-        // Then it contains counts and names split by kind.
-        assert_eq!(
-            msg,
-            "Loaded 4 plugins (2 global: welcome, prompt_enrichment; 2 attachable: gap-analysis, judge)"
-        );
-    }
-
-    #[test]
-    fn plugin_load_summary_shows_none_when_a_kind_is_empty() {
-        // Given globals only and no attachables.
-        let globals = ["welcome"];
-        let attachables: [&str; 0] = [];
-
-        // When building the summary message.
-        let msg = plugin_load_summary(&globals, &attachables);
-
-        // Then the empty kind reads "none".
-        assert_eq!(
-            msg,
-            "Loaded 1 plugins (1 global: welcome; 0 attachable: none)"
-        );
-    }
-
-    #[test]
-    fn global_plugin_excluded_from_discovered_plugins() {
-        // Given a mix of one global and one attachable plugin.
-        let plugins = vec![
-            meta("welcome", PluginKind::Global),
-            meta("judge", PluginKind::Attachable),
-        ];
-
-        // When filtering to attachable plugins.
-        let result = attachable_discovered_plugins(plugins);
-
-        // Then only the attachable plugin is kept.
-        assert_eq!(result.len(), 1);
-        assert_eq!(result[0].name, "judge");
-    }
-
-    #[test]
-    fn all_attachable_plugins_kept_global_dropped() {
-        // Given two attachable plugins and one global.
-        let plugins = vec![
-            meta("judge", PluginKind::Attachable),
-            meta("consensus", PluginKind::Attachable),
-            meta("welcome", PluginKind::Global),
-        ];
-
-        // When filtering to attachable plugins.
-        let result = attachable_discovered_plugins(plugins);
-
-        // Then both attachable plugins are kept and the global is dropped.
-        let names: Vec<&str> = result.iter().map(|p| p.name.as_str()).collect();
-        assert_eq!(names, vec!["judge", "consensus"]);
-    }
-
-    #[test]
-    fn empty_when_only_global_plugins_discovered() {
-        // Given only global plugins.
-        let plugins = vec![
-            meta("welcome", PluginKind::Global),
-            meta("prompt_enrichment", PluginKind::Global),
-        ];
-
-        // When filtering to attachable plugins.
-        let result = attachable_discovered_plugins(plugins);
-
-        // Then nothing remains to attach.
-        assert!(result.is_empty());
     }
 }

@@ -15,10 +15,6 @@ pub(super) fn render_picker(frame: &mut Frame<'_>, area: Rect, ctx: &RenderCtx) 
         Some(PickerKind::SessionLifecycle) => {
             render_session_lifecycle_picker(frame, area, ctx);
         }
-        Some(PickerKind::Plugin) => {
-            render_plugin_picker(frame, area, ctx);
-        }
-
         Some(PickerKind::CompactionModel) => {
             jinn_domain::feat::provider::render::render_compaction_model_picker(frame, area, ctx);
         }
@@ -66,11 +62,6 @@ fn render_theme_picker(frame: &mut Frame<'_>, area: Rect, ctx: &RenderCtx) {
 /// Renders the session lifecycle picker overlay (delegates to domain render).
 fn render_session_lifecycle_picker(frame: &mut Frame<'_>, area: Rect, ctx: &RenderCtx) {
     jinn_domain::feat::session_lifecycle::render::render_session_lifecycle_picker(frame, area, ctx);
-}
-
-/// Renders the plugin picker overlay (delegates to domain render).
-fn render_plugin_picker(frame: &mut Frame<'_>, area: Rect, ctx: &RenderCtx) {
-    jinn_domain::feat::picker::render::render_plugin_picker(frame, area, ctx);
 }
 
 /// Renders the arg input popup (delegates to domain render).
