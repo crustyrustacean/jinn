@@ -10,7 +10,6 @@ use crate::protocol::SessionId;
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum SessionEntryKind {
     Session,
-    Plugin { enabled: bool },
 }
 
 /// Sessions section cursor state - stored on `FrontendState`.
@@ -32,7 +31,7 @@ pub struct SessionsSectionState {
 
 #[derive(Clone)]
 pub struct SessionEntry {
-    /// Whether this entry represents a session or a plugin.
+    /// The kind of this entry.
     pub kind: SessionEntryKind,
     pub id: SessionId,
     pub title: String,
@@ -40,13 +39,6 @@ pub struct SessionEntry {
     pub created_at: jiff::Timestamp,
     pub is_idle: bool,
     pub last_entry_is_error: bool,
-
-    /// For plugin entries, the managed session this plugin controls
-    /// (e.g. a judge's child LLM session). Used by the sidebar preview
-    /// renderer to resolve which session to show when the cursor is on
-    /// a plugin entry. `None` for regular session entries and plugins
-    /// with no managed session.
-    pub managed_session_id: Option<SessionId>,
 
     /// Parent session ID - `None` for root sessions.
     pub parent_id: Option<SessionId>,
@@ -213,7 +205,6 @@ pub fn sorted_open_sessions_split(
                 .history()
                 .last()
                 .is_some_and(|e| matches!(&e.kind, crate::protocol::ChatEntryKind::Error(..))),
-            managed_session_id: None,
             parent_id: session.parent_session().clone(),
             depth: 0,
             ancestor_continuations: vec![],
@@ -224,148 +215,7 @@ pub fn sorted_open_sessions_split(
     let visual_parents = &frontend.sessions_section.visual_parents;
     let tree = build_session_tree(entries, visual_parents);
 
-    let mut result = dfs_flatten(&tree);
-
-    // Post-DFS pass: insert plugin child entries under each session.
-    insert_plugin_entries_split(session, &mut result);
-
-    result
-}
-/// Post-DFS pass that inserts plugin child entries under their parent sessions.
-///
-/// After the DFS builds the session tree, this function scans the result list
-/// and for each `Session` entry, looks up its `attached_plugins` from state.
-/// Plugin entries are inserted after the session's last real child (or immediately
-/// after the session if it has no children). Tree metadata (depth, continuations,
-/// `is_last_child`) is computed to maintain visual consistency.
-///
-/// Sessions that previously were the last child of *their* parent but now have
-/// plugin children appended need their own `is_last_child` unchanged (they remain
-/// last among *session* siblings). The plugin entries become their new children at
-/// depth + 1.
-fn insert_plugin_entries_split(
-    session: &crate::common::session_map::SessionMap,
-    entries: &mut Vec<SessionEntry>,
-) {
-    // Collect (insert_index, session_id, plugins) for each session with plugins.
-    let mut insertions: Vec<(usize, SessionId, Vec<jinn_core_types::AttachedPlugin>)> = Vec::new();
-
-    let mut i = 0;
-    while i < entries.len() {
-        let Some(entry) = entries.get(i) else { break };
-        if !matches!(entry.kind, SessionEntryKind::Session) {
-            i += 1;
-            continue;
-        }
-
-        let session_id = entry.id.clone();
-        let session_depth = entry.depth;
-
-        // Find where this session's subtree ends.
-        // The subtree includes the session itself and all descendants (depth > session_depth).
-        let subtree_end = match entries.get(i + 1..) {
-            Some(rest) => rest
-                .iter()
-                .position(|e| e.depth <= session_depth)
-                .map_or(entries.len(), |p| i + 1 + p),
-            None => entries.len(),
-        };
-
-        // Look up attached plugins for this session.
-        let Some(session) = session.get(&session_id) else {
-            i = subtree_end;
-            continue;
-        };
-
-        let plugins = session.attached_plugins().to_vec();
-        if !plugins.is_empty() {
-            insertions.push((subtree_end, session_id, plugins));
-        }
-
-        i = subtree_end;
-    }
-
-    // Insert plugin entries in reverse order so indices remain valid.
-    for (insert_idx, parent_id, plugins) in insertions.into_iter().rev() {
-        let parent_entry = entries
-            .iter()
-            .find(|e| matches!(e.kind, SessionEntryKind::Session) && e.id == parent_id);
-        let Some(parent) = parent_entry else { continue };
-        let parent_depth = parent.depth;
-        let parent_continuations = parent.ancestor_continuations.clone();
-        let parent_created_at = parent.created_at;
-
-        // Build the ancestor_continuations for plugin children: parent's continuations + whether parent has younger siblings.
-        // Since plugins are appended *after* all real children, the parent effectively
-        // has plugin children — but the continuation line depends on whether the parent
-        // is the last child of *its* parent.
-        let plugin_depth = parent_depth + 1;
-        let mut plugin_continuations = parent_continuations;
-        // The parent's is_last_child determines if we draw │ or space at the parent level.
-        // But we need to know if the parent has younger session siblings. If parent.is_last_child, no continuation.
-        // If not, draw │.
-        // However, the parent's own is_last_child may need re-evaluation if we add plugin children
-        // after the last real child. Actually, the parent's is_last_child refers to its position among
-        // its *session* siblings, which is unchanged by adding plugin children.
-        let parent_continues = !parent.is_last_child;
-        plugin_continuations.push(parent_continues);
-
-        let plugin_count = plugins.len();
-        for (j, ap) in plugins.into_iter().enumerate() {
-            let is_last = j == plugin_count - 1;
-            // A plugin entry is busy when its managed session is in an
-            // active phase (Sending/Streaming) or has a nonzero busy_count
-            // (e.g. the judge's child LLM running). Mirrors how regular
-            // session entries derive `is_idle`. No managed session, or a
-            // missing one, renders as idle (the ⚡ bolt).
-            let is_idle = ap
-                .managed_session_id
-                .as_ref()
-                .and_then(|mid| session.get(mid))
-                .is_none_or(|s| matches!(s.phase(), PhaseKind::Idle) && !s.is_busy());
-            let plugin_entry = SessionEntry {
-                kind: SessionEntryKind::Plugin {
-                    enabled: ap.enabled,
-                },
-                // Use the instance id as the entry id so duplicate attachments
-                // of the same plugin (e.g. two judges) get distinct sidebar
-                // entries. The activate path resolves the real managed
-                // session from this instance id.
-                id: SessionId::from(ap.instance_id.to_string()),
-                title: ap.label_or_name().to_owned(),
-                is_active: false,
-                created_at: parent_created_at,
-                is_idle,
-                last_entry_is_error: false,
-                managed_session_id: ap.managed_session_id.clone(),
-                parent_id: Some(parent_id.clone()),
-                depth: plugin_depth,
-                ancestor_continuations: plugin_continuations.clone(),
-                is_last_child: is_last,
-            };
-            entries.insert(insert_idx + j, plugin_entry);
-        }
-
-        // Fix is_last_child of the parent's last *real* child if the parent previously had children.
-        // The last real child might have had is_last_child = true, but now plugin entries come after it.
-        // We need to set it to false so it renders as ├─ instead of └─.
-        // Walk backwards from insert_idx to find the last entry that belongs to this parent's subtree
-        // and has depth == plugin_depth.
-        if insert_idx > 0 {
-            for k in (0..insert_idx).rev() {
-                if let Some(e) = entries.get(k)
-                    && e.depth == plugin_depth
-                    && e.parent_id.as_ref() == Some(&parent_id)
-                    && matches!(e.kind, SessionEntryKind::Session)
-                {
-                    if let Some(e) = entries.get_mut(k) {
-                        e.is_last_child = false;
-                    }
-                    break;
-                }
-            }
-        }
-    }
+    dfs_flatten(&tree)
 }
 
 /// Updates the visual-parent index when a session is about to be removed.

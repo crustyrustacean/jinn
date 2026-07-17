@@ -61,8 +61,6 @@ pub fn validate_picker_confirm(state: &AppState) -> Result<(), PickerConfirmErro
             .session_lifecycle_picker()
             .selected_item()
             .is_some(),
-        PickerKind::Plugin => state.frontend.plugin_picker().selected_item().is_some(),
-
         PickerKind::CompactionModel => state
             .frontend
             .compaction_model_picker()

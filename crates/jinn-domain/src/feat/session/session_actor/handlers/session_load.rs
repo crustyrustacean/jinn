@@ -72,11 +72,6 @@ impl SessionPersistenceActor {
             });
         }
 
-        // Re-register attached plugins for the loaded session.
-        // Must be called after the write lock above is released, since
-        // rehydrate_attached_plugins acquires its own write lock.
-        self.rehydrate_attached_plugins(&session_id);
-
         // Validate CWD - fallback to default if non-existent on disk.
         // This check is async (tokio::fs), so it runs outside the state lock.
         let cwd_exists = tokio::fs::try_exists(&original_cwd).await.unwrap_or(false);
@@ -113,30 +108,6 @@ impl SessionPersistenceActor {
 
         // Persist the restored session.
         self.save_active_session(&session_id).await;
-    }
-
-    /// Reset `Running` → `Idle` for attached plugins on loaded sessions.
-    ///
-    /// Crash/restart safety: a plugin that was `Running` when the process died
-    /// would otherwise be stuck in `Running` forever. The dispatcher will
-    /// re-attach and re-fire as needed on next lifecycle event.
-    ///
-    /// Call this after inserting a session into the SessionMap.
-    /// Acquires its own write lock — do NOT call inside another write-lock scope.
-    pub(in crate::feat::session::session_actor) fn rehydrate_attached_plugins(
-        &self,
-        session_id: &crate::protocol::SessionId,
-    ) {
-        self.state.with_session(&self.cap, |view| {
-            let Some(session) = view.session.map().get_mut(session_id) else {
-                return;
-            };
-            for ap in &mut session.core.attached_plugins {
-                if matches!(ap.run_state, jinn_core_types::PluginRunState::Running) {
-                    ap.run_state = jinn_core_types::PluginRunState::Idle;
-                }
-            }
-        });
     }
 
     /// SessionForkRequested: fork the session in SQLite, then load the new session.

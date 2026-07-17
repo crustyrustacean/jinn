@@ -31,7 +31,7 @@ pub fn render(app: &mut TuiApp, frame: &mut Frame<'_>) {
     apply_pre_render_mutation(app, area);
 
     let state = app.core.state.read();
-    let ctx = RenderCtx::new(&state).with_plugins(&app.plugins);
+    let ctx = RenderCtx::new(&state);
 
     let is_dashboard = matches!(state.frontend.scope_stack.base(), FocusScope::Dashboard,);
     let layout = AppFrameLayout::new(

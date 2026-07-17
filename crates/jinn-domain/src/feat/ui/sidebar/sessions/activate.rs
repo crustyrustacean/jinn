@@ -14,11 +14,9 @@ use crate::protocol::IntentResult;
 ///   are emitted: each session's discovered skills/prompts/context-files
 ///   are ephemeral and persist across activation changes, and were
 ///   hydrated when the session was created/loaded.
-/// - For plugin entries: if the plugin has a managed session, activates it. Otherwise no-op.
 pub fn handle_session_activate(state: &mut AppState) -> IntentResult {
     use crate::common::app_state::FocusScope;
     use crate::feat::ui::sidebar::section_trait::SidebarSectionId;
-    use crate::feat::ui::sidebar::sessions::state::SessionEntryKind;
 
     if !matches!(
         state.frontend.scope_stack.sidebar_section(),
@@ -34,29 +32,9 @@ pub fn handle_session_activate(state: &mut AppState) -> IntentResult {
         return IntentResult::empty();
     };
 
-    match entry.kind {
-        SessionEntryKind::Session => {
-            state.session.set_active(entry.id.clone());
-            state.frontend.scope_stack.swap_base(FocusScope::Normal);
-            IntentResult::empty()
-        }
-        SessionEntryKind::Plugin { .. } => {
-            // Resolve the instance via its parent (origin) session and the
-            // instance id carried in the entry id. The activate arm must
-            // navigate to THIS instance's managed session, not the first
-            // attachment with a matching name.
-            let managed_id = entry
-                .parent_id
-                .as_ref()
-                .and_then(|pid| state.session.get(pid))
-                .and_then(|session| session.plugin_managed_session_id(&entry.id.to_string()));
-            if let Some(managed_id) = managed_id {
-                state.session.set_active(managed_id);
-                state.frontend.scope_stack.swap_base(FocusScope::Normal);
-            }
-            IntentResult::empty()
-        }
-    }
+    state.session.set_active(entry.id.clone());
+    state.frontend.scope_stack.swap_base(FocusScope::Normal);
+    IntentResult::empty()
 }
 
 /// Activates the session under the cursor and enters Insert mode.
@@ -68,11 +46,9 @@ pub fn handle_session_activate(state: &mut AppState) -> IntentResult {
 /// correctly returns to Normal, with Input on top as the active mode.
 /// - For session entries: activates the session, swaps to Normal as the
 ///   base, then pushes Input.
-/// - For plugin entries: if the plugin has a managed session, activates it. Otherwise no-op.
 pub fn handle_session_activate_insert(state: &mut AppState) -> IntentResult {
     use crate::common::app_state::FocusScope;
     use crate::feat::ui::sidebar::section_trait::SidebarSectionId;
-    use crate::feat::ui::sidebar::sessions::state::SessionEntryKind;
 
     if !matches!(
         state.frontend.scope_stack.sidebar_section(),
@@ -88,27 +64,10 @@ pub fn handle_session_activate_insert(state: &mut AppState) -> IntentResult {
         return IntentResult::empty();
     };
 
-    match entry.kind {
-        SessionEntryKind::Session => {
-            state.session.set_active(entry.id.clone());
-            state.frontend.scope_stack.swap_base(FocusScope::Normal);
-            state.frontend.scope_stack.push(FocusScope::Input);
-            IntentResult::empty()
-        }
-        SessionEntryKind::Plugin { .. } => {
-            let managed_id = entry
-                .parent_id
-                .as_ref()
-                .and_then(|pid| state.session.get(pid))
-                .and_then(|session| session.plugin_managed_session_id(&entry.id.to_string()));
-            if let Some(managed_id) = managed_id {
-                state.session.set_active(managed_id);
-                state.frontend.scope_stack.swap_base(FocusScope::Normal);
-                state.frontend.scope_stack.push(FocusScope::Input);
-            }
-            IntentResult::empty()
-        }
-    }
+    state.session.set_active(entry.id.clone());
+    state.frontend.scope_stack.swap_base(FocusScope::Normal);
+    state.frontend.scope_stack.push(FocusScope::Input);
+    IntentResult::empty()
 }
 
 #[cfg(test)]
@@ -123,7 +82,6 @@ mod tests {
     use super::*;
     use crate::common::app_state::AppState;
     use crate::common::focus::FocusScope;
-    use crate::feat::ui::sidebar::sessions::state::SessionEntryKind;
 
     use crate::protocol::SessionId;
 
@@ -143,66 +101,6 @@ mod tests {
         state.frontend.sessions_section.selected_index = Some(target_idx);
         state.frontend.scope_stack.push(FocusScope::SidebarSessions);
         (state, second)
-    }
-
-    /// A session with two attached judge plugin instances, each holding its own
-    /// managed (child) session. Cursor points at the SECOND plugin entry so we
-    /// can verify activate resolves by instance id (not first-match-by-name).
-    fn state_with_two_judge_instances_cursor_on_second_plugin() -> (AppState, SessionId) {
-        use crate::feat::session::chat_session::ChatSessionState;
-        use jinn_core_types::AttachedPlugin;
-
-        let mut state = AppState::default();
-        let origin = state.session.active_session_id().clone();
-
-        // Two child sessions, one per judge instance.
-        let child_a = {
-            let s = ChatSessionState::default();
-            let id = s.session_id().clone();
-            state.session.insert(s);
-            id
-        };
-        let child_b = {
-            let s = ChatSessionState::default();
-            let id = s.session_id().clone();
-            state.session.insert(s);
-            id
-        };
-
-        // Attach two judge instances to the origin, each with its own managed session.
-        {
-            let guard = state.session.get_mut(&origin).expect("origin");
-            let mut a = AttachedPlugin::new("judge");
-            a.managed_session_id = Some(child_a.clone());
-            let mut b = AttachedPlugin::new("judge");
-            b.managed_session_id = Some(child_b.clone());
-            guard.attach_plugin(a);
-            guard.attach_plugin(b);
-        }
-        // Cursor points at the second plugin entry in the built tree.
-        let sessions = sorted_open_sessions(&state);
-        let plugin_idx = sessions
-            .iter()
-            .filter(|e| matches!(e.kind, SessionEntryKind::Plugin { .. }))
-            .nth(1)
-            .and_then(|e| sessions.iter().position(|x| x.id == e.id))
-            .expect("at least two plugin entries");
-        state.frontend.sessions_section.selected_index = Some(plugin_idx);
-        state.frontend.scope_stack.push(FocusScope::SidebarSessions);
-        (state, child_b)
-    }
-
-    #[rstest::rstest]
-    fn activate_second_judge_instance_resolves_its_own_managed_session() {
-        // Given a session with two judge instances, cursor on the second.
-        let (mut state, expected_child) = state_with_two_judge_instances_cursor_on_second_plugin();
-
-        // When activating.
-        let _result = handle_session_activate(&mut state);
-
-        // Then the active session is the SECOND instance's managed session,
-        // not the first (proves instance-targeted resolution).
-        assert_eq!(state.session.active_session_id(), &expected_child);
     }
 
     #[rstest::rstest]

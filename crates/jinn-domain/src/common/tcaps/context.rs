@@ -90,7 +90,6 @@ impl SessionToolDefinitionsWrite for ContextOps<'_> {
         &mut self.0.session_tool_definitions
     }
 }
-
 // ── Projection method ────────────────────────────────────────────────────────
 
 impl State {

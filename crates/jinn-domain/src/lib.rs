@@ -37,15 +37,9 @@ pub use common::state::{State, StateReadGuard, StateWriteGuard};
 pub use common::tui_signals::TuiSignals;
 pub use common::{AppUiRegistry, register_all_ui_elements};
 pub use feat::context::prompt_template::PromptTemplateStore;
-pub use feat::plugin_dispatch::{
-    BadgeDirective, BadgeSegment, InterceptOutcome, PluginSyncHooks, call_hooks_typed,
-};
 pub use feat::provider_infra::NO_PROVIDER_ID;
 
 // Re-export services types
-pub use common::services::NoopPluginFire;
-pub use common::services::NoopPluginSyncCall;
-pub use common::services::NoopSessionPluginRegistry;
 pub use common::services::Services;
 pub use common::services::bus_service::BusService;
 pub use common::services::test_services::TestServices;
@@ -96,8 +90,6 @@ pub use feat::persona::{Persona, PersonaEntry};
 // Re-export services submodules
 
 // Re-export protocol types at crate root
-pub use common::actor::protocol::dynamic_command::DynamicCommand;
-pub use common::actor::protocol::dynamic_event::DynamicEvent;
 pub use protocol::PickerEntry;
 pub use protocol::entries_to_messages;
 pub use protocol::{
@@ -138,4 +130,3 @@ pub use feat::tools_actor::protocol::event::{
 };
 pub use feat::tools_actor::registry::{BuiltinToolEntry, builtin_tools};
 pub use feat::tools_actor::tool_types::{ToolCall, ToolDefinition, ToolResult};
-pub use jinn_core_types::PluginInstanceId;

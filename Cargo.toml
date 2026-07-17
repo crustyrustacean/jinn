@@ -10,7 +10,7 @@ headless-chrome = ["jinn-web-fetch/headless-chrome"]
 
 
 [workspace]
-members = ["crates/*", "vendor/*", "tests/jinn-e2e"]
+members = ["crates/*", "vendor/*"]
 
 
 [workspace.package]
@@ -32,7 +32,6 @@ jinn-cli = { workspace = true }
 jinn-tui = { workspace = true }
 jinn-domain = { workspace = true }
 jinn-discord = { workspace = true }
-jinn-plugin = { workspace = true }
 
 jinn-web-fetch = { workspace = true, features = ["headless-chrome"] }
 jinn-web-search = { workspace = true }
@@ -73,7 +72,6 @@ jinn-discord = { path = "crates/jinn-discord" }
 jinn-common = { path = "crates/jinn-common" }
 jinn-core-types = { path = "crates/jinn-core-types" }
 jinn-session-schema = { path = "crates/jinn-session-schema" }
-jinn-plugin = { path = "crates/jinn-plugin" }
 jinn-provider-config = { path = "crates/jinn-provider-config" }
 ratatui-markdown = { path = "vendor/ratatui-markdown", features = ["markdown", "highlight", "highlight-lang-all", "highlight-pest", "mermaid"] }
 jinn-provider = { path = "crates/jinn-provider" }
@@ -112,8 +110,6 @@ ratatui-which-key = "0.14.0"
 ratatui-spatial-splits = "0.2.0"
 throbber-widgets-tui = "0.11"
 
-# Lua
-mlua = { version = "0.10", features = ["lua54", "vendored", "serialize", "async"] }
 
 # State
 parking_lot = "0.12"
@@ -190,12 +186,8 @@ rusqlite = { version = "0.40", features = ["bundled"] }
 
 # Discord bot
 poise = "0.6"
-# Testing (e2e)
-cucumber = "0.23"
-
 [workspace.lints.rust]
 missing_docs = "allow"
-
 [workspace.lints.clippy]
 pedantic = { level = "warn", priority = -1 }
 doc_markdown = "allow"

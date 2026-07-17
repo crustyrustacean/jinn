@@ -187,7 +187,7 @@ impl SessionStore for SqliteSessionStore {
     }
 
     async fn save(&self, session: &ChatSessionState) -> Result<(), Report<SessionStoreError>> {
-        // Non-persistent sessions (e.g. plugin one-shots) never touch the store.
+        // Non-persistent sessions (e.g. one-shots) never touch the store.
         if !session.core.persist {
             return Ok(());
         }
@@ -487,10 +487,6 @@ pub(crate) struct PersistableCore {
     /// OWNER: tools-actor (mutated by task list tools).
     #[serde(default)]
     task_list: crate::feat::todo_list::TaskList,
-    /// Attached plugins - persistent per-session plugin attachments.
-    /// OWNER: plugin-dispatch-actor (attach/detach/toggle).
-    #[serde(default)]
-    attached_plugins: Vec<jinn_core_types::AttachedPlugin>,
     /// Whether this session should be persisted to disk.
     /// Defaults to true for blobs written by older versions.
     #[serde(default = "crate::feat::session::chat_session::default_persist")]
@@ -513,7 +509,6 @@ impl From<&SessionCore> for PersistableCore {
             lifecycle_args: core.lifecycle_args.clone(),
             lifecycle_script_state: core.lifecycle_script_state,
             task_list: core.task_list.clone(),
-            attached_plugins: core.attached_plugins.clone(),
             persist: core.persist,
         }
     }
@@ -545,7 +540,6 @@ impl From<PersistableCore> for SessionCore {
             assembly_overrides: None, // runtime-only, never persisted
             has_interacted: false, // restored sessions get mark_interacted() in handle_session_load_completed
             task_list: core.task_list,
-            attached_plugins: core.attached_plugins,
             persist: core.persist,
         }
     }
@@ -587,7 +581,6 @@ impl TryFrom<&ChatSessionState> for NewSessionRow {
                     assembly_overrides: _assembly_overrides, // runtime-only, not persisted
                     has_interacted: _has_interacted, // deserialized from DB, restored by handle_session_load_completed
                     task_list: _task_list, // included in metadata blob via PersistableCore
-                    attached_plugins: _attached_plugins, // included in metadata blob via PersistableCore
                 },
             ui: _ui, // runtime-only UI state, not persisted
         } = session;

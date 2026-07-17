@@ -6,11 +6,6 @@ use error_stack::Report;
 use kameo::actor::Spawn;
 use tokio::runtime::{Handle, Runtime};
 
-use crate::common::services::{NoopPluginFire, NoopPluginSyncCall, NoopSessionPluginRegistry};
-use crate::feat::plugin_dispatch::{
-    PluginFire, PluginFireService, PluginSyncCall, PluginSyncCallService,
-};
-use crate::feat::plugin_dispatch::{SessionPluginRegistry, SessionPluginRegistryService};
 use crate::feat::preferences_actor::{
     AppStateStorageService, InMemoryAppStateStorage, InMemoryUserPreferencesStorage,
     UserPreferencesStorageService,
@@ -286,14 +281,6 @@ impl TestServices {
                 svc.reload().expect("test app state storage initial reload");
                 svc
             },
-            plugins: PluginFireService::new(Arc::new(NoopPluginFire) as Arc<dyn PluginFire>),
-            plugin_sync: PluginSyncCallService::new(
-                Arc::new(NoopPluginSyncCall) as Arc<dyn PluginSyncCall>
-            ),
-            session_plugin_registry: SessionPluginRegistryService::new(Arc::new(
-                NoopSessionPluginRegistry,
-            )
-                as Arc<dyn SessionPluginRegistry>),
             tempdir,
             bus,
             bridge,

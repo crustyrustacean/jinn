@@ -91,9 +91,7 @@ impl SessionPersistenceActor {
                     for mut session in loaded {
                         // Mark startup-loaded sessions as interacted - they came from disk.
                         session.mark_interacted();
-                        let session_id = session.session_id().clone();
                         self.load_and_insert(session).await;
-                        self.rehydrate_attached_plugins(&session_id);
                     }
 
                     // NOTE: We intentionally do NOT switch the active session.
@@ -319,73 +317,6 @@ mod tests {
             state.active_session().profile().model,
             ModelSelection::Single("bench-model".to_owned()),
             "explicitly set model should not be overwritten by saved preference"
-        );
-    }
-
-    #[tokio::test]
-    async fn startup_rehydrates_attached_plugins_for_loaded_sessions() {
-        // Given a session in the store with an attached plugin.
-        let mut store_session = ChatSessionState::new();
-        let ap = jinn_core_types::AttachedPlugin::new("test");
-        store_session.core.attached_plugins.push(ap);
-        let (actor, _audit, _store) = test_actor_with_store_recording(vec![store_session]).await;
-
-        // When handling EnvironmentLoaded (startup).
-        actor
-            .on_environment_loaded(&crate::feat::provider_infra::ProvidersConfig {
-                providers: vec![],
-                aliases: vec![],
-                default_provider: None,
-            })
-            .await;
-
-        // Then the attached plugin was loaded with the session.
-        let state = actor.state.read();
-        let session = state
-            .session
-            .iter()
-            .find(|(_, s)| !s.core.attached_plugins.is_empty());
-        assert!(
-            session.is_some(),
-            "session with attached plugin should be loaded after startup"
-        );
-    }
-
-    #[tokio::test]
-    async fn startup_resets_running_plugins_to_idle() {
-        let mut store_session = ChatSessionState::new();
-        let ap = jinn_core_types::AttachedPlugin::new("test");
-        // Force into Running state to simulate crash.
-        store_session
-            .core
-            .attached_plugins
-            .push(jinn_core_types::AttachedPlugin {
-                run_state: jinn_core_types::PluginRunState::Running,
-                ..ap
-            });
-        let session_id = store_session.session_id().clone();
-        let (actor, _audit, _store) = test_actor_with_store_recording(vec![store_session]).await;
-
-        // When handling EnvironmentLoaded (startup).
-        actor
-            .on_environment_loaded(&crate::feat::provider_infra::ProvidersConfig {
-                providers: vec![],
-                aliases: vec![],
-                default_provider: None,
-            })
-            .await;
-
-        // Then the plugin was reset from Running to Idle.
-        let state = actor.state.read();
-        let session = state
-            .session
-            .get(&session_id)
-            .expect("session should be loaded");
-        let ap = &session.core.attached_plugins[0];
-        assert!(
-            matches!(ap.run_state, jinn_core_types::PluginRunState::Idle),
-            "Running plugin should be reset to Idle on startup, got {:?}",
-            ap.run_state
         );
     }
 

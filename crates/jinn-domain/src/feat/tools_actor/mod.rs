@@ -87,8 +87,7 @@ use crate::common::services::bus_service::BusService;
 use crate::common::state::State;
 use crate::feat::session::chat_session::ChatSessionState;
 use crate::feat::tools_actor::protocol::command::{
-    CancelToolBatch, ExecuteToolBatch, ExecuteWebFetch, ExecuteWebSearch, RegisterPluginTools,
-    RegisterTools,
+    CancelToolBatch, ExecuteToolBatch, ExecuteWebFetch, ExecuteWebSearch, RegisterTools,
 };
 use crate::feat::tools_actor::protocol::event::{
     ToolBatchCompleted, ToolExecutionCompleted, ToolsRegistered,
@@ -96,7 +95,6 @@ use crate::feat::tools_actor::protocol::event::{
 use crate::feat::tools_actor::tool_types::{ToolCall, ToolContext, ToolDefinition, ToolResult};
 use crate::protocol::SessionId;
 use jiff::Timestamp;
-use jinn_core_types::SessionRegistryId;
 use jinn_provider::ServerToolType;
 use kameo::prelude::{Actor, ActorRef, Context, Message};
 
@@ -119,14 +117,6 @@ pub(crate) enum ToolRegistration {
         /// The name of the actor providing this tool.
         provider: String,
     },
-    Plugin {
-        /// The tool's JSON-schema definition.
-        definition: ToolDefinition,
-        /// `None` for global plugins, `Some(id)` for session-attached plugins.
-        target: Option<SessionRegistryId>,
-        /// The name of the plugin that owns this tool.
-        plugin_name: String,
-    },
 }
 
 impl std::fmt::Debug for ToolRegistration {
@@ -143,16 +133,6 @@ impl std::fmt::Debug for ToolRegistration {
                 .debug_struct("Actor")
                 .field("name", &definition.name)
                 .field("provider", provider)
-                .finish(),
-            Self::Plugin {
-                definition,
-                target,
-                plugin_name,
-            } => f
-                .debug_struct("Plugin")
-                .field("name", &definition.name)
-                .field("target", target)
-                .field("plugin_name", plugin_name)
                 .finish(),
         }
     }
@@ -252,7 +232,6 @@ impl Actor for ToolOrchestratorActor {
     async fn on_start(args: Self::Args, actor_ref: ActorRef<Self>) -> Result<Self, Self::Error> {
         let bus = &args.deps.services.bus;
         bus.subscribe::<RegisterTools, _>(&actor_ref).await;
-        bus.subscribe::<RegisterPluginTools, _>(&actor_ref).await;
         bus.subscribe::<ExecuteToolBatch, _>(&actor_ref).await;
         bus.subscribe::<CancelToolBatch, _>(&actor_ref).await;
         bus.subscribe::<ToolExecutionCompleted, _>(&actor_ref).await;
@@ -380,21 +359,6 @@ impl Message<ToolExecutionCompleted> for ToolOrchestratorActor {
     }
 }
 
-impl Message<RegisterPluginTools> for ToolOrchestratorActor {
-    type Reply = ();
-
-    async fn handle(&mut self, msg: RegisterPluginTools, _ctx: &mut Context<Self, Self::Reply>) {
-        self.handle_register_plugin_tools(
-            &msg.plugin_name,
-            msg.target.as_ref(),
-            &msg.definitions,
-            msg.session_id,
-            msg.execution_only,
-        )
-        .await;
-    }
-}
-
 impl BusPublish for ToolOrchestratorActor {
     fn bus(&self) -> &BusService {
         &self.deps.services.bus
@@ -421,42 +385,6 @@ impl ToolOrchestratorActor {
             session_id: None,
         })
         .await;
-    }
-
-    /// Registers tool definitions from a Lua plugin.
-    async fn handle_register_plugin_tools(
-        &mut self,
-        plugin_name: &str,
-        target: Option<&SessionRegistryId>,
-        definitions: &[ToolDefinition],
-        session_id: Option<SessionId>,
-        execution_only: bool,
-    ) {
-        for def in definitions {
-            let name = def.name.clone();
-            self.tools.insert(
-                name,
-                ToolRegistration::Plugin {
-                    definition: def.clone(),
-                    target: target.copied(),
-                    plugin_name: plugin_name.to_owned(),
-                },
-            );
-        }
-
-        // Visibility (Registry 1) is driven by ToolsRegistered, projected into
-        // session_tool_definitions by the session-actor context handler.
-        // execution_only: register the executor in Registry 2 without publishing a
-        // visibility event. Used for attachable plugin tools loaded globally at
-        // startup (per-session visibility is registered separately on attach).
-        if !execution_only {
-            self.publish(ToolsRegistered {
-                provider: format!("plugin:{plugin_name}"),
-                definitions: definitions.to_vec(),
-                session_id,
-            })
-            .await;
-        }
     }
 
     /// Dispatches each tool call and tracks the pending batch.
@@ -568,10 +496,8 @@ impl ToolOrchestratorActor {
             reg_type = match self.tools.get(&tool_call.name) {
                 Some(ToolRegistration::Builtin { .. }) => "builtin",
                 Some(ToolRegistration::Actor { .. }) => "actor",
-                Some(ToolRegistration::Plugin { .. }) => "plugin",
                 None => "unknown",
             },
-            "dispatch_tool_call"
         );
 
         match self.tools.get(&tool_call.name) {
@@ -581,11 +507,6 @@ impl ToolOrchestratorActor {
             Some(ToolRegistration::Actor { .. }) => {
                 self.dispatch_actor(session_id, tool_call).await
             }
-            Some(ToolRegistration::Plugin {
-                target,
-                plugin_name,
-                ..
-            }) => Some(self.dispatch_plugin(session_id, tool_call, *target, plugin_name.clone())),
             None => self.reject_unknown_tool(session_id, tool_call).await,
         }
     }
@@ -649,61 +570,6 @@ impl ToolOrchestratorActor {
             }
         }
         None
-    }
-
-    /// Spawns a plugin tool execution and publishes the result.
-    fn dispatch_plugin(
-        &self,
-        session_id: SessionId,
-        tool_call: ToolCall,
-        target: Option<SessionRegistryId>,
-        plugin_name: String,
-    ) -> tokio::task::JoinHandle<()> {
-        tracing::debug!(
-            session_id = %session_id,
-            tool = %tool_call.name,
-            target = ?target,
-            plugin = %plugin_name,
-            "dispatching plugin tool"
-        );
-        let bus = self.bus().clone();
-        let plugin_fire = self.services.plugins.clone();
-        let sid = session_id.clone();
-        let arguments: serde_json::Value =
-            serde_json::from_str(&tool_call.arguments).unwrap_or_default();
-        // Resolve the calling session's parent edge so plugin tool handlers
-        // can recover their origin via ctx.parent_session_id.
-        let parent_session_id = {
-            let s = self.state.read();
-            s.session
-                .get(&sid)
-                .and_then(|sess| sess.parent_session().clone())
-        };
-
-        let call_id = tool_call.id.clone();
-        let call_name = tool_call.name.clone();
-
-        tokio::spawn(async move {
-            use futures::FutureExt as _;
-            use std::panic::AssertUnwindSafe;
-            let result = match AssertUnwindSafe(run_plugin_tool(
-                plugin_fire,
-                target,
-                sid,
-                parent_session_id,
-                plugin_name,
-                tool_call,
-                arguments,
-            ))
-            .catch_unwind()
-            .await
-            {
-                Ok(r) => r,
-                Err(_) => panicked_tool_result(&call_id, &call_name),
-            };
-            bus.publish(ToolExecutionCompleted { session_id, result })
-                .await;
-        })
     }
 
     /// Publishes an error result for a tool with no registration.
@@ -845,51 +711,6 @@ async fn run_builtin_with_timeout(
             },
         },
         None => execute_fn(tool_call, tool_ctx).await,
-    }
-}
-
-/// Executes a plugin tool, mapping the result (or error) into a `ToolResult`.
-async fn run_plugin_tool(
-    plugin_fire: crate::feat::plugin_dispatch::PluginFireService,
-    target: Option<SessionRegistryId>,
-    sid: SessionId,
-    parent_session_id: Option<SessionId>,
-    plugin_name: String,
-    tool_call: ToolCall,
-    arguments: serde_json::Value,
-) -> ToolResult {
-    match plugin_fire
-        .execute_plugin_tool(
-            target,
-            &sid,
-            parent_session_id.as_ref(),
-            &plugin_name,
-            &tool_call.name,
-            &arguments,
-        )
-        .await
-    {
-        Ok(content) => ToolResult {
-            tool_call_id: tool_call.id.clone(),
-            name: tool_call.name.clone(),
-            content,
-            success: true,
-            full_content: None,
-            truncation: None,
-            pin_position: None,
-        },
-        Err(report) => {
-            tracing::warn!(?report, %plugin_name, "plugin tool execution failed");
-            ToolResult {
-                tool_call_id: tool_call.id.clone(),
-                name: tool_call.name.clone(),
-                content: format!("plugin tool error: {report:#}"),
-                success: false,
-                full_content: None,
-                truncation: None,
-                pin_position: None,
-            }
-        }
     }
 }
 
@@ -1308,22 +1129,22 @@ mod panic_safety_tests {
     }
 
     #[tokio::test]
-    async fn plugin_tool_panic_publishes_failed_execution_completed() {
-        // Given a plugin-like future that panics.
-        let plugin_future = async {
-            panic!("simulated plugin tool panic");
+    async fn arbitrary_future_panic_publishes_failed_execution_completed() {
+        // Given an arbitrary future that panics.
+        let panicking_future = async {
+            panic!("simulated future panic");
         };
 
-        // When the plugin future panics and is caught.
-        let result: ToolResult = match AssertUnwindSafe(plugin_future).catch_unwind().await {
+        // When the future panics and is caught.
+        let result: ToolResult = match AssertUnwindSafe(panicking_future).catch_unwind().await {
             Ok(r) => r,
-            Err(_) => panicked_tool_result("call_plugin", "plugin_tool"),
+            Err(_) => panicked_tool_result("call_future", "future_tool"),
         };
 
         // Then a failed ToolResult is produced (not a silent hang).
-        assert!(!result.success, "panicked plugin tool must report failure");
+        assert!(!result.success, "panicking future must report failure");
         assert_eq!(result.content, "tool execution panicked");
-        assert_eq!(result.tool_call_id, "call_plugin");
-        assert_eq!(result.name, "plugin_tool");
+        assert_eq!(result.tool_call_id, "call_future");
+        assert_eq!(result.name, "future_tool");
     }
 }

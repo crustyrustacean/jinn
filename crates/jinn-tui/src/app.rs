@@ -37,9 +37,6 @@ pub struct TuiApp {
     /// Runtime services.
     #[debug(skip)]
     pub services: jinn_domain::Services,
-    /// Plugin system for sync hook calls (render thread only, !Send).
-    #[debug(skip)]
-    pub plugins: jinn_plugin::SyncPlugins,
     /// UI element registry.
     pub ui_registry: AppUiRegistry,
     /// Message channel for the event loop.
@@ -217,12 +214,16 @@ impl TuiApp {
     /// 4. Sends commands to the core channel.
     /// 5. Handles TUI signals (which-key toggle, editor, pinned pane, etc.).
     /// 6. Updates the keymap scope based on the new mode.
+    #[expect(
+        clippy::needless_pass_by_value,
+        reason = "public entry point consumed inside via IntentHandler::handle"
+    )]
     pub fn route_intent(&mut self, intent: Intent) {
         // Step 1-3: Handle intent, collect results, release lock.
         let (messages, signals) = {
             let mut state = self.core.state.write(&self.intent_handler_cap);
 
-            let result = IntentHandler::handle(&intent, &mut state, Some(&self.plugins));
+            let result = IntentHandler::handle(&intent, &mut state);
 
             // Cancel selection when mode changes away from Picker.
             if matches!(intent, Intent::EnterNormalMode | Intent::NormalEscape) {
@@ -234,16 +235,6 @@ impl TuiApp {
             (result.messages, signals)
         };
 
-        if let jinn_domain::Intent::TriggerPlugin {
-            plugin_name,
-            action,
-            session_id,
-            ..
-        } = intent
-        {
-            self.handle_trigger_plugin(plugin_name, action, session_id);
-            return;
-        }
         // Send bus closures via bridge.
         for closure in messages {
             let _ = self.core.bridge.send(closure);
@@ -295,61 +286,6 @@ impl TuiApp {
         self.which_key.set_scope(new_scope);
     }
 
-    /// Resolves a TriggerPlugin intent: runs the sync pre-check hook (plugins may
-    /// veto), then fires the async hook via the bridge when allowed.
-    #[expect(clippy::needless_pass_by_value, reason = "destructured from message")]
-    fn handle_trigger_plugin(
-        &self,
-        plugin_name: String,
-        action: String,
-        session_id: Option<jinn_domain::SessionId>,
-    ) {
-        let (sid, text) = {
-            let state = self.core.state.read();
-            let sid = session_id.unwrap_or_else(|| state.session.active_session_id().clone());
-            let text = state.active_chat_input().text().to_owned();
-            (sid, text)
-        };
-        tracing::debug!(plugin = %plugin_name, action = %action, "route_intent: TriggerPlugin");
-        // Sync pre-check: plugins may veto the async action (e.g. cancel
-        // an in-flight request instead of starting a new one). Default: run.
-        let run_action = {
-            use jinn_domain::call_hooks_typed;
-            #[derive(serde::Deserialize)]
-            struct KeybindTriggerResult {
-                run_action: bool,
-            }
-            let ctx_json = serde_json::json!({
-                "hook": action,
-                "session_id": sid.to_string(),
-                "text": text,
-                "keybound_plugin": plugin_name,
-            });
-            call_hooks_typed::<KeybindTriggerResult>(
-                &self.plugins,
-                "on_keybind_trigger",
-                &ctx_json.into(),
-            )
-            .into_iter()
-            .last()
-            .is_none_or(|r| r.run_action)
-        };
-        if run_action {
-            let payload = serde_json::json!({
-                "hook": action,
-                "session_id": sid,
-                "text": text,
-            });
-            let closure =
-                jinn_domain::common::bridge::Bridge::publish_closure(jinn_domain::DynamicCommand {
-                    name: "plugin::fire_async".into(),
-                    payload,
-                });
-            let _ = self.core.bridge.send(closure);
-        }
-        tracing::info!(run_action, action = %action, "route_intent: TriggerPlugin decision");
-    }
-
     /// Renders the application for a single frame.
     pub fn render(&mut self, frame: &mut Frame<'_>) {
         render::render(self, frame);
@@ -365,8 +301,6 @@ pub fn scope_for_focus(focus: &jinn_domain::FocusScope) -> Scope {
             PickerKind::Persona => Scope::PickerPersona,
             PickerKind::Theme => Scope::PickerTheme,
             PickerKind::SessionLifecycle => Scope::PickerLifecycle,
-            PickerKind::Plugin => Scope::PickerPlugin,
-
             PickerKind::CompactionModel => Scope::PickerCompactionModel,
             PickerKind::ReasoningEffort => Scope::PickerReasoningEffort,
             PickerKind::Tool => Scope::PickerTool,

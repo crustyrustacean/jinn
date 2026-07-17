@@ -46,8 +46,8 @@ pub fn handle_sidebar_focus(state: &mut AppState) -> IntentResult {
 
 /// Handles `SidebarLeave` - returns to the appropriate base scope.
 ///
-/// Derives the return scope from current state: if a plugin is active,
-/// returns to Plugin mode; otherwise returns to Normal mode.
+/// Derives the return scope from current state, returning to Normal mode
+/// when nothing else is active.
 /// This ensures ESC always matches what's currently being rendered,
 /// regardless of what was showing when the sidebar was opened.
 pub fn handle_sidebar_leave(state: &mut AppState) -> IntentResult {
