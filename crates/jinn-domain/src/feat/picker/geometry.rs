@@ -42,7 +42,7 @@ pub fn measure_active_picker_results_height(state: &AppState, frame_area: Rect) 
 
     let height = match kind {
         PickerKind::Skill => skill_results_height(inner, popup_area),
-        _ => standard_results_height(inner, footer_rows_for(kind)),
+        _ => standard_results_height(inner, kind.footer_rows()),
     };
 
     height.max(1)
@@ -58,23 +58,12 @@ fn standard_results_height(inner: Rect, footer_rows: u16) -> u16 {
         .saturating_sub(footer_rows)
 }
 
-/// Footer rows reserved by each picker kind. The provider picker renders two
-/// footers (refresh + mode); all others render exactly one.
-fn footer_rows_for(kind: PickerKind) -> u16 {
-    match kind {
-        PickerKind::Provider => 2,
-        _ => 1,
-    }
-}
-
 /// Skill picker (`PreviewSelectionWidget`) results height, branching on the
 /// split layout the widget selects from `popup_area.width`.
 fn skill_results_height(inner: Rect, popup_area: Rect) -> u16 {
     // PreviewSelectionWidget reserves one footer row, then splits the rest
     // into a content area.
-    let content_height = inner
-        .height
-        .saturating_sub(footer_rows_for(PickerKind::Skill));
+    let content_height = inner.height.saturating_sub(PickerKind::Skill.footer_rows());
 
     if popup_area.width >= jinn_selection_widget::VERTICAL_SPLIT_MIN_WIDTH {
         // Side-by-side split: list pane spans the full content height minus
