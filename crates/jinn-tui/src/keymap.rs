@@ -1113,6 +1113,7 @@ mod tests {
 
 #[cfg(test)]
 mod leak_check {
+    #![allow(clippy::expect_used, clippy::panic, reason = "test code")]
     use crate::keymap::init;
     use crate::scope::Scope;
     use ratatui_which_key::Keymap as WKKeymap;
@@ -1176,7 +1177,11 @@ mod leak_check {
         // When pressing PageUp.
         let pgup = KeyEvent {
             key: Key::PageUp,
-            modifiers: Modifiers { ctrl: false, alt: false, shift: false },
+            modifiers: Modifiers {
+                ctrl: false,
+                alt: false,
+                shift: false,
+            },
         };
         let intent = wk.handle_key(pgup);
 
@@ -1200,7 +1205,11 @@ mod leak_check {
         // When pressing PageDown.
         let pgdn = KeyEvent {
             key: Key::PageDown,
-            modifiers: Modifiers { ctrl: false, alt: false, shift: false },
+            modifiers: Modifiers {
+                ctrl: false,
+                alt: false,
+                shift: false,
+            },
         };
         let intent = wk.handle_key(pgdn);
 
@@ -1224,7 +1233,11 @@ mod leak_check {
         // When pressing PageUp.
         let pgup = KeyEvent {
             key: Key::PageUp,
-            modifiers: Modifiers { ctrl: false, alt: false, shift: false },
+            modifiers: Modifiers {
+                ctrl: false,
+                alt: false,
+                shift: false,
+            },
         };
         let intent = wk.handle_key(pgup);
 

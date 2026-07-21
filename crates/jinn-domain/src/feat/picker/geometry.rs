@@ -38,9 +38,7 @@ pub fn measure_active_picker_results_height(state: &AppState, frame_area: Rect) 
     };
 
     let popup_area = jinn_selection_widget::compute_popup_rect(frame_area);
-    let inner = Block::default()
-        .borders(Borders::ALL)
-        .inner(popup_area);
+    let inner = Block::default().borders(Borders::ALL).inner(popup_area);
 
     let height = match kind {
         PickerKind::Skill => skill_results_height(inner, popup_area),
@@ -74,7 +72,9 @@ fn footer_rows_for(kind: PickerKind) -> u16 {
 fn skill_results_height(inner: Rect, popup_area: Rect) -> u16 {
     // PreviewSelectionWidget reserves one footer row, then splits the rest
     // into a content area.
-    let content_height = inner.height.saturating_sub(footer_rows_for(PickerKind::Skill));
+    let content_height = inner
+        .height
+        .saturating_sub(footer_rows_for(PickerKind::Skill));
 
     if popup_area.width >= jinn_selection_widget::VERTICAL_SPLIT_MIN_WIDTH {
         // Side-by-side split: list pane spans the full content height minus
@@ -93,11 +93,7 @@ fn skill_results_height(inner: Rect, popup_area: Rect) -> u16 {
 /// e.g. on the first keypress after opening a picker.
 pub fn active_viewport(state: &AppState) -> usize {
     let h = state.frontend.picker_results_viewport();
-    (if h == 0 {
-        PICKER_VIEWPORT_FALLBACK
-    } else {
-        h
-    }) as usize
+    (if h == 0 { PICKER_VIEWPORT_FALLBACK } else { h }) as usize
 }
 
 #[cfg(test)]
