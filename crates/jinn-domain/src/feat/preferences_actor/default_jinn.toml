@@ -191,22 +191,20 @@ safe_search = true
 # - "auto"
 engine = "exa"
 
-
 # Discord bot frontend.
 #
 # When enabled, the TUI process also starts a Discord bot that drives the same
 # running jinn instance. Each Discord thread maps 1:1 to a jinn session; the bot
-# runs the configured lifecycle on `/new` and replies with the final assistant
+# runs the lifecycle chosen on `/new` (from the [[session_lifecycle]] entries
+# above, plus an implicit "blank" option) and replies with the final assistant
 # message (or error) on each turn.
 #
-# To enable, uncomment and fill in a token (or set DISCORD_BOT_TOKEN), pick a
-# session_lifecycle name (declared in [[session_lifecycle]] above), and set
+# To enable, uncomment and fill in a token (or set DISCORD_BOT_TOKEN), and set
 # enabled = true.
 #
 # [discord]
 # enabled = false
 # bot_token = "..."
-# lifecycle = "git worktree"
 # guild_id = "1234567890"
 
 # <M-c>/<M-d> CWD selection
