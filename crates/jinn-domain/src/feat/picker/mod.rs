@@ -3,8 +3,8 @@
 //! Handles all picker intents (open, insert char, backspace, confirm, move,
 //! cursor movement), their validators, and rendering.
 
+pub mod geometry;
 pub mod intent;
-
 pub mod picker_kind;
 pub mod render;
 

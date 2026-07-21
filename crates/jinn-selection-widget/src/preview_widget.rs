@@ -16,13 +16,13 @@ use crate::{PickerItem, SelectionColors, SelectionState, compute_popup_rect};
 
 /// Popup width threshold for vertical (side-by-side) split.
 /// Below this, the layout switches to horizontal (stacked) split.
-const VERTICAL_SPLIT_MIN_WIDTH: u16 = 101;
+pub const VERTICAL_SPLIT_MIN_WIDTH: u16 = 101;
 
 /// Fraction of the list area allocated to the list in vertical split.
-const LIST_FRACTION: u16 = 20;
+pub const LIST_FRACTION: u16 = 20;
 
 /// Number of visible list rows in horizontal split mode.
-const HORIZONTAL_LIST_ROWS: u16 = 5;
+pub const HORIZONTAL_LIST_ROWS: u16 = 5;
 
 /// Horizontal separator character.
 const HORIZONTAL_SEPARATOR: char = '\u{2500}'; // ─
