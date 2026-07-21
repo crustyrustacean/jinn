@@ -26,10 +26,9 @@ use crate::feat::tools_actor::tool_entry::ToolEntry;
 use crate::feat::ui::picker_states::PickerExt;
 use crate::protocol::{ChatEntry, Intent, IntentResult, PickerKind};
 
+use super::geometry::active_viewport;
 use super::validator;
 
-/// Maximum number of visible result rows for picker scroll clamping.
-const PICKER_MAX_VISIBLE: usize = 100;
 
 /// Opens a picker of the given kind. Sets mode to Picker and optionally
 /// requests picker entries from the actor system.
@@ -286,8 +285,9 @@ pub fn handle_picker_confirm(state: &mut AppState) -> (IntentResult, Option<Inte
 /// Moves the selection up in the active picker.
 pub fn handle_move_up(state: &mut AppState) -> IntentResult {
     validator::validate_picker_move_up(state);
+    let viewport = active_viewport(state);
     if let Some(picker) = state.active_picker_ops() {
-        picker.move_up(PICKER_MAX_VISIBLE);
+        picker.move_up(viewport);
     }
     reset_preview_scroll(state);
     preview_theme_if_active(state);
@@ -297,8 +297,9 @@ pub fn handle_move_up(state: &mut AppState) -> IntentResult {
 /// Moves the selection down in the active picker.
 pub fn handle_move_down(state: &mut AppState) -> IntentResult {
     validator::validate_picker_move_down(state);
+    let viewport = active_viewport(state);
     if let Some(picker) = state.active_picker_ops() {
-        picker.move_down(PICKER_MAX_VISIBLE);
+        picker.move_down(viewport);
     }
     reset_preview_scroll(state);
     preview_theme_if_active(state);
@@ -628,10 +629,11 @@ pub fn handle_tool_toggle(state: &mut AppState) -> IntentResult {
     state.frontend.tool_picker_mut().with_selected_mut(|entry| {
         entry.enabled = !entry.enabled;
     });
+    let viewport = active_viewport(state);
     state
         .frontend
         .tool_picker_mut()
-        .move_down(PICKER_MAX_VISIBLE);
+        .move_down(viewport);
     IntentResult::empty()
 }
 
@@ -797,10 +799,11 @@ pub fn handle_skill_toggle(state: &mut AppState) -> IntentResult {
         .with_selected_mut(|entry| {
             entry.enabled = !entry.enabled;
         });
+    let viewport = active_viewport(state);
     state
         .frontend
         .skill_picker_mut()
-        .move_down(PICKER_MAX_VISIBLE);
+        .move_down(viewport);
     IntentResult::empty()
 }
 
@@ -2435,13 +2438,13 @@ mod tests {
         let mut state = state_with_provider_picker(3);
         state.provider.set_alloy_mode(true);
         // Check model-0.
-        state.provider.provider_picker.move_up(PICKER_MAX_VISIBLE);
+        state.provider.provider_picker.move_up(active_viewport(&state));
         state.provider.provider_picker.with_selected_mut(|e| {
             e.selected = true;
         });
         // Move to model-2 (down twice from model-0).
-        state.provider.provider_picker.move_down(PICKER_MAX_VISIBLE);
-        state.provider.provider_picker.move_down(PICKER_MAX_VISIBLE);
+        state.provider.provider_picker.move_down(active_viewport(&state));
+        state.provider.provider_picker.move_down(active_viewport(&state));
 
         // When resolving the selection for the highlighted entry.
         let selection = resolve_provider_selection(&state.provider, "prov/model-2".to_owned());
