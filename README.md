@@ -112,22 +112,43 @@ Requirements to use:
 
 - Discord bot set up on your server
 - A forum channel to create sessions
-- A lifecycle script containing `<branch>` and `<repo>` (in that order)
+- A lifecycle script
 - Projects pre-configured in `jinn` (`<leader>so` to open the projects finder)
 
-Example lifecycle script:
+Example lifecycle scripts:
 
 ```toml
+# Fossil repos. Project directory should be a parent folder of the repo:
+#
+# my_project/        <-- configured as the project directory in jinn
+#    repo.fossil
+#    checkouts_will_go_here_as_siblings/
+#       .fslckout
+#
 [[session_lifecycle]]
-name = "fossil branch quickfix"
+name = "fossil branch checkout"
 description = "Open a new checkout + branch"
 setup_command = "mkdir <branch> && cd <branch> && fossil open ../<repo>.fossil && fossil commit -m 'Open <branch>' --branch <branch> --allow-empty && echo ./<branch>"
 teardown_command = "fossil merge trunk --force && fossil addremove && fossil commit -m 'Bring in latest trunk' && fossil update trunk && fossil merge <branch> && fossil addremove && fossil commit -m 'Merge <branch>' && fossil branch close <branch> && cd .. && rm -rfv <branch>"
+
+# Git worktrees. Project directory should be a parent folder of the repo:
+#
+# my_project/        <-- configured as the project directory in jinn
+#    repo/           <-- your actual repo
+#       .git/
+#    worktrees_will_go_here_as_siblings/
+#       .git/
+#
+[[session_lifecycle]]
+name = "git worktree"
+description = "Open a git worktree + branch"
+setup_command = "cd <repo> && git worktree add -b <branch> ../<branch> && cd .. && echo $(pwd)/<branch>"
+teardown_command = """bash -c 'git add -A && (git diff --cached --quiet || git commit -q -m "auto-commit at teardown") && git merge main && cd ../<repo> && git merge --squash <branch> && (git diff --cached --quiet || git commit -q -m "Merge <branch>") && git worktree remove ../<branch> && git branch -D <branch>'"""
 ```
 
 Available Discord bot commands:
 
-- `/new` - Create a new session
+- `/new` - Create a new session. _Run this in a new forum thread to start_.
 - `/teardown` - Run the lifecycle teardown script
 - `/archive` - Archive the session
 
@@ -164,12 +185,7 @@ cargo build --release
 just install-defaults
 ```
 
-The binary will be at `target/release/jinn` and you'll need to add it to your `$PATH`. The `just install-defaults` command will copy all of the required themes/prompts/plugins/etc to your `~/.config/jinn` directory.
-
-## Major Roadmap Items
-
-- Plugins
-  - jinn plugins are authored in Rust and compiled to WASM components targeting the `plugin` world defined in `wit/jinn.wit` (the WIT contract). The host runtime (`jinn-wasm-host`) loads `.wasm` files from `res/plugins/{global,attachable}/`; plugins hook into lifecycle/render events with compile-time types. See the `jinn-guest-pdk` crate for the authoring toolkit.
+The binary will be at `target/release/jinn` and you'll need to add it to your `$PATH`. The `just install-defaults` command will copy all of the required themes/prompts/etc to your `~/.config/jinn` directory.
 
 ## Contributing
 
