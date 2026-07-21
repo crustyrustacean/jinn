@@ -124,6 +124,10 @@ pub enum Intent {
     PickerMoveUp,
     /// Move the picker selection down.
     PickerMoveDown,
+    /// Page the picker selection up by half the visible window.
+    PickerPageUp,
+    /// Page the picker selection down by half the visible window.
+    PickerPageDown,
     /// Move the picker filter cursor left.
     PickerMoveCursorLeft,
     /// Move the picker filter cursor right.
@@ -398,6 +402,8 @@ impl std::fmt::Display for Intent {
             Intent::PickerConfirm => write!(f, "picker confirm"),
             Intent::PickerMoveUp => write!(f, "picker move up"),
             Intent::PickerMoveDown => write!(f, "picker move down"),
+            Intent::PickerPageUp => write!(f, "picker page up"),
+            Intent::PickerPageDown => write!(f, "picker page down"),
             Intent::PickerMoveCursorLeft => write!(f, "picker cursor left"),
             Intent::PickerMoveCursorRight => write!(f, "picker cursor right"),
             Intent::ToolToggleSelected => write!(f, "toggle tool"),

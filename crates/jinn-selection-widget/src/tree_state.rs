@@ -222,6 +222,31 @@ where
         self.ensure_visible(max_visible);
     }
 
+    /// Moves the selection up by half of `max_visible`, clamped at 0, then
+    /// adjusts the scroll offset so the selection stays visible.
+    ///
+    /// Half-page navigation. `delta` is at least 1 so the call is never a
+    /// no-op purely because `max_visible` is small.
+    pub fn page_up(&mut self, max_visible: usize) {
+        let delta = (max_visible / 2).max(1);
+        self.selection = self.selection.saturating_sub(delta);
+        self.ensure_visible(max_visible);
+    }
+
+    /// Moves the selection down by half of `max_visible`, clamped at the end
+    /// of the visible list, then adjusts the scroll offset so the selection
+    /// stays visible.
+    ///
+    /// Half-page navigation. `delta` is at least 1 so the call is never a
+    /// no-op purely because `max_visible` is small.
+    pub fn page_down(&mut self, max_visible: usize) {
+        let delta = (max_visible / 2).max(1);
+        let max = self.visible.len();
+        let target = self.selection.saturating_add(delta);
+        self.selection = if max > 0 { target.min(max - 1) } else { 0 };
+        self.ensure_visible(max_visible);
+    }
+
     /// Adjusts `scroll_offset` so that `selection` is within the visible window.
     pub fn ensure_visible(&mut self, max_visible: usize) {
         if self.selection < self.scroll_offset {
@@ -505,6 +530,14 @@ impl<I: TreeItem> PickerOps for TreePickerState<I> {
 
     fn move_down(&mut self, max_visible: usize) {
         TreePickerState::move_down(self, max_visible);
+    }
+
+    fn page_up(&mut self, max_visible: usize) {
+        TreePickerState::page_up(self, max_visible);
+    }
+
+    fn page_down(&mut self, max_visible: usize) {
+        TreePickerState::page_down(self, max_visible);
     }
 
     fn move_cursor_left(&mut self) {

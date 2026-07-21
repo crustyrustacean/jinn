@@ -413,6 +413,8 @@ impl IntentHandler {
             }
             Intent::PickerMoveUp => feat::picker::intent::handle_move_up(state),
             Intent::PickerMoveDown => feat::picker::intent::handle_move_down(state),
+            Intent::PickerPageUp => feat::picker::intent::handle_page_up(state),
+            Intent::PickerPageDown => feat::picker::intent::handle_page_down(state),
             Intent::PickerMoveCursorLeft => feat::picker::intent::handle_move_cursor_left(state),
             Intent::PickerMoveCursorRight => feat::picker::intent::handle_move_cursor_right(state),
             Intent::ToolToggleSelected => feat::picker::intent::handle_tool_toggle(state),
