@@ -20,7 +20,9 @@ A TUI agent harness with multi-session support and Vim-style keybinds.
 
 ![jinn-full](doc/jinn-full.png)
 ![Model Selection](doc/model-selection.png)
+![WhichKey](doc/whichkey.png)
 ![Skill Picker](doc/skill-picker.png)
+![Forked Sessions](doc/forked-sessions.png)
 ![Task Preview](doc/task-preview.png)
 ![Tool Picker](doc/tool-picker.png)
 
