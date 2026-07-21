@@ -117,8 +117,15 @@ pub async fn new(ctx: BotContext<'_>) -> Result<(), BotError> {
 
     // 8. The actual "Setup complete" message is posted by the drain loop when
     //    the SessionSetupCompleted event arrives. Acknowledge here only.
+    // Render a friendly label for the blank pick (empty name) so the ack
+    // doesn't read `lifecycle `` `. Explicit picks show their real name.
+    let lifecycle_label = if lifecycle.is_empty() {
+        "blank"
+    } else {
+        &lifecycle
+    };
     ctx.say(format!(
-        "Setting up session `{new_session_id}` (lifecycle `{lifecycle}`)..."
+        "Setting up session `{new_session_id}` (lifecycle `{lifecycle_label}`)..."
     ))
     .await?;
     Ok(())
