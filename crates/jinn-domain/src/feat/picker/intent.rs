@@ -306,6 +306,30 @@ pub fn handle_move_down(state: &mut AppState) -> IntentResult {
     IntentResult::empty()
 }
 
+/// Pages the selection up by half the visible window in the active picker.
+pub fn handle_page_up(state: &mut AppState) -> IntentResult {
+    validator::validate_picker_page_up(state);
+    let viewport = active_viewport(state);
+    if let Some(picker) = state.active_picker_ops() {
+        picker.page_up(viewport);
+    }
+    reset_preview_scroll(state);
+    preview_theme_if_active(state);
+    IntentResult::empty()
+}
+
+/// Pages the selection down by half the visible window in the active picker.
+pub fn handle_page_down(state: &mut AppState) -> IntentResult {
+    validator::validate_picker_page_down(state);
+    let viewport = active_viewport(state);
+    if let Some(picker) = state.active_picker_ops() {
+        picker.page_down(viewport);
+    }
+    reset_preview_scroll(state);
+    preview_theme_if_active(state);
+    IntentResult::empty()
+}
+
 /// Moves the filter cursor left in the active picker.
 pub fn handle_move_cursor_left(state: &mut AppState) -> IntentResult {
     validator::validate_picker_move_cursor_left(state);
