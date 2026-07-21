@@ -29,7 +29,6 @@ use crate::protocol::{ChatEntry, Intent, IntentResult, PickerKind};
 use super::geometry::active_viewport;
 use super::validator;
 
-
 /// Opens a picker of the given kind. Sets mode to Picker and optionally
 /// requests picker entries from the actor system.
 pub fn handle_open_picker(state: &mut AppState, kind: PickerKind) -> IntentResult {
@@ -654,10 +653,7 @@ pub fn handle_tool_toggle(state: &mut AppState) -> IntentResult {
         entry.enabled = !entry.enabled;
     });
     let viewport = active_viewport(state);
-    state
-        .frontend
-        .tool_picker_mut()
-        .move_down(viewport);
+    state.frontend.tool_picker_mut().move_down(viewport);
     IntentResult::empty()
 }
 
@@ -824,10 +820,7 @@ pub fn handle_skill_toggle(state: &mut AppState) -> IntentResult {
             entry.enabled = !entry.enabled;
         });
     let viewport = active_viewport(state);
-    state
-        .frontend
-        .skill_picker_mut()
-        .move_down(viewport);
+    state.frontend.skill_picker_mut().move_down(viewport);
     IntentResult::empty()
 }
 
@@ -2462,13 +2455,22 @@ mod tests {
         let mut state = state_with_provider_picker(3);
         state.provider.set_alloy_mode(true);
         // Check model-0.
-        state.provider.provider_picker.move_up(active_viewport(&state));
+        state
+            .provider
+            .provider_picker
+            .move_up(active_viewport(&state));
         state.provider.provider_picker.with_selected_mut(|e| {
             e.selected = true;
         });
         // Move to model-2 (down twice from model-0).
-        state.provider.provider_picker.move_down(active_viewport(&state));
-        state.provider.provider_picker.move_down(active_viewport(&state));
+        state
+            .provider
+            .provider_picker
+            .move_down(active_viewport(&state));
+        state
+            .provider
+            .provider_picker
+            .move_down(active_viewport(&state));
 
         // When resolving the selection for the highlighted entry.
         let selection = resolve_provider_selection(&state.provider, "prov/model-2".to_owned());

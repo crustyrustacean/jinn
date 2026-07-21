@@ -15,8 +15,8 @@ pub mod which_key;
 pub use app_layout::{AppFrameLayout, AppLayout, DashboardLayout, MIN_HEIGHT, MIN_WIDTH};
 
 use jinn_domain::{
-    AppUiRegistry, FocusScope, Mode, RenderCtx,
-    feat::ui::picker_states::PickerExt, feat::ui::sidebar::Sidebar,
+    AppUiRegistry, FocusScope, Mode, RenderCtx, feat::ui::picker_states::PickerExt,
+    feat::ui::sidebar::Sidebar,
 };
 use ratatui::{Frame, layout::Rect};
 
@@ -77,7 +77,8 @@ fn apply_pre_render_mutation(app: &mut TuiApp, area: Rect) {
     // Measure the active picker's results viewport every frame so navigation
     // intents scroll against the real on-screen height instead of a stale
     // hardcoded constant.
-    let picker_viewport = jinn_domain::feat::picker::geometry::measure_active_picker_results_height(&wstate, area);
+    let picker_viewport =
+        jinn_domain::feat::picker::geometry::measure_active_picker_results_height(&wstate, area);
     wstate.frontend.set_picker_results_viewport(picker_viewport);
     let is_dashboard = matches!(
         wstate.frontend.scope_stack.base(),

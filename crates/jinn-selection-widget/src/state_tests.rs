@@ -395,7 +395,6 @@ fn page_down_keeps_selection_visible_by_advancing_scroll() {
     assert_eq!(state.scroll_offset(), 1);
 }
 
-
 #[rstest::rstest]
 fn ensure_visible_selection_within_view() {
     // Given a selection state with scroll_offset=2 and selection=3.
