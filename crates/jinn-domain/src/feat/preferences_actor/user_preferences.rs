@@ -211,22 +211,28 @@ impl Default for UserPreferences {
         Self {
             tool_entry_max_lines: None,
             min_collapse_count: None,
-            session_lifecycles: vec![SessionLifecycle {
-                name: "git worktree".to_owned(),
-                description: Some("Open a git worktree + branch".to_owned()),
-                setup: Some(
-                    crate::feat::session_lifecycle::builtin::LifecycleCommand::Shell(
-                        "git worktree add -b <branch> ../<branch> && echo ../<branch>"
-                            .to_owned(),
-                    ),
-                ),
-                teardown: Some(
-                    crate::feat::session_lifecycle::builtin::LifecycleCommand::Shell(
-                        "git merge <branch> && git worktree remove ../<branch> && git branch -d <branch>"
-                            .to_owned(),
-                    ),
-                ),
-            }],
+            session_lifecycles: vec![
+                SessionLifecycle {
+                    name: "fossil branch checkout".to_owned(),
+                    description: Some("Open a new checkout + branch".to_owned()),
+                    setup: Some(crate::feat::session_lifecycle::builtin::LifecycleCommand::Shell(
+                        "mkdir <branch> && cd <branch> && fossil open ../<repo>.fossil && fossil commit -m 'Open <branch>' --branch <branch> --allow-empty && echo ./<branch>".to_owned(),
+                    )),
+                    teardown: Some(crate::feat::session_lifecycle::builtin::LifecycleCommand::Shell(
+                        "fossil merge trunk --force && fossil addremove && fossil commit -m 'Bring in latest trunk' && fossil update trunk && fossil merge <branch> && fossil addremove && fossil commit -m 'Merge <branch>' && fossil branch close <branch> && cd .. && rm -rfv <branch>".to_owned(),
+                    )),
+                },
+                SessionLifecycle {
+                    name: "git worktree".to_owned(),
+                    description: Some("Open a git worktree + branch".to_owned()),
+                    setup: Some(crate::feat::session_lifecycle::builtin::LifecycleCommand::Shell(
+                        "cd <repo> && git worktree add -b <branch> ../<branch> && cd .. && echo $(pwd)/<branch>".to_owned(),
+                    )),
+                    teardown: Some(crate::feat::session_lifecycle::builtin::LifecycleCommand::Shell(
+                        "bash -c 'git add -A && (git diff --cached --quiet || git commit -q -m \"auto-commit at teardown\") && git merge main && cd ../<repo> && git merge --squash <branch> && (git diff --cached --quiet || git commit -q -m \"Merge <branch>\") && git worktree remove ../<branch> && git branch -D <branch>'".to_owned(),
+                    )),
+                },
+            ],
             projects: vec![],
             max_tool_output_lines: None,
             max_tool_output_bytes: None,
@@ -555,7 +561,6 @@ mod tests {
             "default_jinn.toml has drifted from UserPreferences::default(): {result:?}",
         );
     }
-
     #[rstest::rstest]
     fn init_writes_template_when_missing() {
         // Given a path to a nonexistent file.
@@ -768,9 +773,12 @@ mod tests {
         let prefs = UserPreferences::default();
 
         // Then session_lifecycles contains the git worktree lifecycle.
-        assert_eq!(prefs.session_lifecycles.len(), 1);
-        assert_eq!(prefs.session_lifecycles[0].name, "git worktree");
-        assert!(prefs.session_lifecycles[0].setup.is_some());
+        let worktree = prefs
+            .session_lifecycles
+            .iter()
+            .find(|l| l.name == "git worktree")
+            .expect("git worktree lifecycle present");
+        assert!(worktree.setup.is_some());
     }
 
     #[rstest::rstest]
