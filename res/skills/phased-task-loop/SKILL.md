@@ -81,11 +81,13 @@ Update the task list **at the moment a decision is made**, never retroactively:
 
     e. **Repeat from (a)** with the task named by the NEXT block, until the NEXT block says the phase is complete.
 
-    If the build fails: fix, re-run, continue. Do not commit broken code. For truly unrecoverable blockers: document in the execution plan and stop.
+    If the build fails: fix, re-run, continue.
+
+    If you discover that a task cannot be implemented _as planned_ and there is no obvious solution that **aligns with the user request**, then STOP and explain the details to the user and ask how to proceed.
 
     If you discover untracked work: call `todo_add_task` / `todo_add_phase` immediately — then resume the sub-loop at step (a) with whichever task is now next per the NEXT block.
 
-    If a task grew beyond one assistant turn of work: split it via `todo_add_task` and complete the original. Do not silently absorb the extra work into the same task.
+    If you discover that a task is actually larger than expected, call `todo_add_task` / `todo_add_phase` immediately — then resume the sub-loop at step (a) with whichever task is now next per the NEXT block. Do this so that you don't lose track of what needs to be done.
 
 3.5. **Audit before verify.** Before moving on, call `todo_get_task_list`. If any task in the current phase is not `[✓]`, **STOP and audit.** You have drifted. Pick the next pending task in this phase and return to step 3. Do not run tests. Do not commit. The list must be clean before you proceed.
 
@@ -93,28 +95,31 @@ Update the task list **at the moment a decision is made**, never retroactively:
 
 5.  **Commit and cleanup.**
 
+    Refer to the commands table in AGENTS.md for how to properly commit code.
+
     ```
-    # e.g. for jinn (Fossil):
-    fossil commit -m "<TASK> Phase N: <brief description>"   # the project's `commit` command
-    fossil merge trunk                                       # the project's `sync-trunk` command (resolve conflicts, re-test, commit)
+    <commit command> "<TASK> Phase N: <one sentence description>"   # the project's `commit` command
+    <sync command>                                           # the project's `sync-trunk` command (resolve conflicts, re-test, commit)
     ```
 
     Never merge your branch onto the project's main line.
 
+    _NEVER commit broken code_.
+
 6.  **Review.** _Append_ to the _execution plan_ file: **Changes** (what and why), **Divergence** (what didn't go to plan, or "None"), **Verification** (how verified), **Risks** (concerns or follow-up).
 
-7.  **Annotate the spec.** Add strikethrough / divergence notes only. Never rewrite. For structural changes use `todo_add_phase`, `todo_postpone_task`, or `todo_cancel_task`.
+7.  **Annotate the spec.** Add strikethrough / divergence notes only. Never rewrite. This **must** be done at the end of each phase. The purpose is so that the next plan that gets generated from the spec has up-to-date information.
 
 8.  **Go to step 1.**
 
 ## When you are done
 
-If the project defines `lint` and `format` commands, run them and fix every error and warning, then `commit` the result. For example, on jinn (Fossil + Rust):
+If the project defines `lint` and `format` commands, run them and fix every error and warning, then `commit` the result. For example:
 
 ```
-just lint            # the project's `lint` command
-just fmt-fix         # the project's `format` command
-fossil commit -m "<TASK>: Lints fixed"   # the project's `commit` command
+<lint command>                           # the project's `lint` command
+<format command>                         # the project's `format` command
+<commit command> "<TASK>: Lints fixed"   # the project's `commit` command
 ```
 
 _All reported errors and warnings must be fixed_, **even if they are from other files that you didn't touch**. **DO NOT SIGNAL COMPLETION UNLESS THERE ARE ZERO WARNINGS**. If the project defines no `lint`/`format` commands, skip this step.
