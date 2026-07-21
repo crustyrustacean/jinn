@@ -18,6 +18,12 @@ A TUI agent harness with multi-session support and Vim-style keybinds.
 - Customizable personas
 - Standard agent harness-y things like `AGENTS.md`, `~/.agents` skill discovery, custom prompts (including project-specific for all of these)
 
+![jinn-full](doc/jinn-full.png)
+![Model Selection](doc/model-selection.png)
+![Skill Picker](doc/skill-picker.png)
+![Task Preview](doc/task-preview.png)
+![Tool Picker](doc/tool-picker.png)
+
 ## Usage
 
 ```sh
