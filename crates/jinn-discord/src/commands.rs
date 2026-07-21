@@ -9,6 +9,7 @@
 use std::time::Duration;
 
 use jinn_domain::feat::context::prompt_template::PromptTemplateStore;
+use jinn_domain::feat::preferences_actor::user_preferences::SessionLifecycle;
 use jinn_domain::feat::session::protocol::archive_session::ArchiveSession;
 use jinn_domain::protocol::Intent;
 use jinn_domain::{Bridge, SessionId};
@@ -18,12 +19,13 @@ use crate::gateway::{BotContext, BotData, BotError};
 
 /// Start a new jinn session in this thread.
 ///
-/// Runs the configured lifecycle setup with the args that lifecycle declares
-/// (any number of positional params via `$1`/`<name>`/`$@`). The user picks a
-/// project (sets the starting CWD), then the bot prompts once for the
-/// lifecycle's params, space-delimited, and re-prompts on a count mismatch.
-/// The setup result is posted by the drain loop when the
-/// `SessionSetupCompleted` event arrives.
+/// The user first picks a project (sets the starting CWD), then picks a
+/// lifecycle from the `[[session_lifecycle]]` entries in preferences (plus an
+/// implicit "blank" option). The picked lifecycle's setup runs with the args
+/// that lifecycle declares (any number of positional params via
+/// `$1`/`<name>`/`$@`); the bot prompts once for them, space-delimited, and
+/// re-prompts on a count mismatch. The setup result is posted by the drain
+/// loop when the `SessionSetupCompleted` event arrives.
 #[poise::command(slash_command)]
 pub async fn new(ctx: BotContext<'_>) -> Result<(), BotError> {
     let data = ctx.data();
@@ -69,9 +71,7 @@ pub async fn new(ctx: BotContext<'_>) -> Result<(), BotError> {
         ctx.say("Invalid selection. Run `/new` again.").await?;
         return Ok(());
     };
-
-    let Some((lifecycle, args)) = collect_lifecycle_args(ctx, data, sctx, channel, author).await?
-    else {
+    let Some((lifecycle, args)) = pick_lifecycle(ctx, sctx, channel, author, data).await? else {
         return Ok(());
     };
 
@@ -117,8 +117,15 @@ pub async fn new(ctx: BotContext<'_>) -> Result<(), BotError> {
 
     // 8. The actual "Setup complete" message is posted by the drain loop when
     //    the SessionSetupCompleted event arrives. Acknowledge here only.
+    // Render a friendly label for the blank pick (empty name) so the ack
+    // doesn't read `lifecycle `` `. Explicit picks show their real name.
+    let lifecycle_label = if lifecycle.is_empty() {
+        "blank"
+    } else {
+        &lifecycle
+    };
     ctx.say(format!(
-        "Setting up session `{new_session_id}` (lifecycle `{lifecycle}`)..."
+        "Setting up session `{new_session_id}` (lifecycle `{lifecycle_label}`)..."
     ))
     .await?;
     Ok(())
@@ -286,30 +293,101 @@ fn ephemeral(content: impl Into<String>) -> poise::CreateReply {
         .ephemeral(true)
 }
 
-/// Resolve the configured lifecycle and collect its positional args from the user.
+/// Build the numbered lifecycle list for the `/new` picker.
 ///
-/// Returns `Ok(Some(args))` to proceed, `Ok(None)` after responding with a reason
-/// (missing config, missing lifecycle, timeout), or `Err` on a Discord failure.
+/// Always begins with the implicit "blank" entry (mirrors the TUI picker),
+/// so the list is never empty even when `lifecycles` is empty. Each entry is
+/// `N. {name}` and appends ` - {description}` when the lifecycle declares
+/// one. Returns the full prompt text (header + entries + reply instruction).
+fn format_lifecycle_list(lifecycles: &[SessionLifecycle]) -> String {
+    use std::fmt::Write as _;
+    let mut out = String::from("Available lifecycles:\n");
+    let _ = writeln!(out, "1. blank - New empty session");
+    for (i, l) in lifecycles.iter().enumerate() {
+        let _ = match &l.description {
+            Some(d) => writeln!(out, "{}. {} - {}", i + 2, l.name, d),
+            None => writeln!(out, "{}. {}", i + 2, l.name),
+        };
+    }
+    out.push_str("\nReply with a number.");
+    out
+}
+
+/// Present the numbered lifecycle list and resolve the user's pick.
 ///
-/// The lifecycle name is required to use the bot — enforced by config validation,
-/// but guarded here too so a misconfigured instance fails gracefully. Zero-param
-/// lifecycles skip collection entirely. On a count mismatch the bot responds and
-/// re-prompts; each attempt is bounded by [`collect_reply`]'s 2-minute timeout.
+/// Returns `Ok(Some((lifecycle_name, args)))` to proceed, `Ok(None)` after
+/// responding with a reason (timeout, invalid selection), or `Err` on a
+/// Discord failure. The list always begins with the implicit "blank" entry
+/// (option 1), followed by every `[[session_lifecycle]]` from preferences.
+///
+/// Selecting "blank" short-circuits arg collection (no setup command); any
+/// other pick flows into [`collect_lifecycle_args`] for positional params.
+async fn pick_lifecycle(
+    ctx: BotContext<'_>,
+    sctx: &serenity::Context,
+    channel: serenity::ChannelId,
+    author: serenity::UserId,
+    data: &BotData,
+) -> Result<Option<(String, Vec<String>)>, BotError> {
+    let lifecycles = {
+        data.state
+            .read()
+            .frontend
+            .preferences
+            .session_lifecycles
+            .clone()
+    };
+
+    ctx.say(format_lifecycle_list(&lifecycles)).await?;
+
+    let Some(pick) = collect_reply(sctx, channel, author).await else {
+        ctx.say("Timed out waiting for lifecycle selection.")
+            .await?;
+        return Ok(None);
+    };
+
+    // blank = 1; explicit entries start at 2 (index + 2).
+    let n: usize = match pick.content.trim().parse::<usize>() {
+        Ok(n) => n,
+        _ => {
+            ctx.say("Invalid selection. Run `/new` again.").await?;
+            return Ok(None);
+        }
+    };
+
+    // blank: empty name, no args — skip collection entirely.
+    if n == 1 {
+        return Ok(Some((String::new(), vec![])));
+    }
+
+    // n >= 2: map to an index without underflowing and validate it against
+    // the lifecycle slice in one step.
+    let Some(lifecycle) = n.checked_sub(2).and_then(|i| lifecycles.get(i)) else {
+        ctx.say("Invalid selection. Run `/new` again.").await?;
+        return Ok(None);
+    };
+    let lifecycle_name = lifecycle.name.clone();
+    collect_lifecycle_args(ctx, data, sctx, channel, author, lifecycle_name).await
+}
+
+/// Collect the named lifecycle's positional args from the user.
+///
+/// Returns `Ok(Some((lifecycle, args)))` to proceed, `Ok(None)` after
+/// responding with a reason (missing lifecycle, timeout), or `Err` on a
+/// Discord failure. The `lifecycle` name is supplied by the caller (resolved
+/// via [`pick_lifecycle`]); zero-param lifecycles skip collection entirely.
+/// On a count mismatch the bot responds and re-prompts; each attempt is
+/// bounded by [`collect_reply`]'s 2-minute timeout.
 async fn collect_lifecycle_args(
     ctx: BotContext<'_>,
     data: &BotData,
     sctx: &serenity::Context,
     channel: serenity::ChannelId,
     author: serenity::UserId,
+    lifecycle: String,
 ) -> Result<Option<(String, Vec<String>)>, BotError> {
     use crate::feat::discord::lifecycle_inputs::resolve_lifecycle_inputs;
     use jinn_domain::feat::session_lifecycle::command_template::parse_quoted_args;
-
-    let Some(lifecycle) = data.config.lifecycle.clone() else {
-        ctx.say("No `lifecycle` configured under `[discord]` in jinn.toml.")
-            .await?;
-        return Ok(None);
-    };
 
     // Resolve how many positional args the lifecycle needs and the prompt text
     // to show for them. Reading preferences under a short-lived read guard so it
@@ -417,9 +495,20 @@ fn render_prompts_list(store: &PromptTemplateStore) -> Option<String> {
 
 #[cfg(test)]
 mod tests {
-    use super::render_prompts_list;
+    use super::{format_lifecycle_list, render_prompts_list};
     use jinn_domain::feat::context::prompt_template::PromptTemplateStore;
+    use jinn_domain::feat::preferences_actor::user_preferences::SessionLifecycle;
+    use jinn_domain::feat::session_lifecycle::builtin::LifecycleCommand;
     use jinn_domain::protocol::PromptTemplate;
+
+    fn lifecycle(name: &str, description: Option<&str>) -> SessionLifecycle {
+        SessionLifecycle {
+            name: name.to_owned(),
+            description: description.map(str::to_owned),
+            setup: Some(LifecycleCommand::Shell("true".to_owned())),
+            teardown: None,
+        }
+    }
 
     fn template(name: &str, description: &str) -> PromptTemplate {
         PromptTemplate {
@@ -520,6 +609,77 @@ mod tests {
         assert!(
             out.contains("`#prompt-000`"),
             "head prompt was truncated: {out:?}"
+        );
+    }
+
+    #[test]
+    fn format_lifecycle_list_renders_blank_first() {
+        // Given an empty lifecycle list.
+        let lifecycles: Vec<SessionLifecycle> = vec![];
+
+        // When formatting.
+        let out = format_lifecycle_list(&lifecycles);
+
+        // Then blank is rendered as option 1 with its description.
+        assert!(
+            out.starts_with("Available lifecycles:\n1. blank - New empty session"),
+            "blank-first header wrong: {out:?}"
+        );
+        // And the reply instruction is appended.
+        assert!(
+            out.ends_with("\nReply with a number."),
+            "missing reply instruction: {out:?}"
+        );
+    }
+
+    #[test]
+    fn format_lifecycle_list_enumerates_explicit_entries() {
+        // Given two explicit lifecycles.
+        let lifecycles = vec![lifecycle("alpha", None), lifecycle("beta", None)];
+
+        // When formatting.
+        let out = format_lifecycle_list(&lifecycles);
+
+        // Then blank stays option 1 and the two entries are numbered 2 and 3.
+        assert!(
+            out.contains("1. blank - New empty session"),
+            "blank missing: {out:?}"
+        );
+        assert!(out.contains("2. alpha"), "alpha line wrong: {out:?}");
+        assert!(out.contains("3. beta"), "beta line wrong: {out:?}");
+    }
+
+    #[test]
+    fn format_lifecycle_list_appends_description_when_present() {
+        // Given a lifecycle that declares a description.
+        let lifecycles = vec![lifecycle("branch", Some("opens a fossil branch"))];
+
+        // When formatting.
+        let out = format_lifecycle_list(&lifecycles);
+
+        // Then the entry line carries the description after the name.
+        assert!(
+            out.contains("2. branch - opens a fossil branch"),
+            "description line wrong: {out:?}"
+        );
+    }
+
+    #[test]
+    fn format_lifecycle_list_omits_description_when_absent() {
+        // Given a lifecycle with no description.
+        let lifecycles = vec![lifecycle("plain", None)];
+
+        // When formatting.
+        let out = format_lifecycle_list(&lifecycles);
+
+        // Then the entry line is just the number and name, no trailing dash.
+        assert!(
+            out.contains("2. plain\n"),
+            "expected bare `2. plain` line, got: {out:?}"
+        );
+        assert!(
+            !out.contains("2. plain -"),
+            "unexpected description separator on description-less entry: {out:?}"
         );
     }
 }

@@ -23,10 +23,9 @@ fn empty_toml_deserializes_to_disabled_bot() {
     // When deserializing as a DiscordConfig.
     let cfg: DiscordConfig = toml::from_str(toml_str).expect("parse");
 
-    // Then the bot is disabled with no token/lifecycle/guild.
+    // Then the bot is disabled with no token/guild.
     assert!(!cfg.enabled);
     assert_eq!(cfg.bot_token, None);
-    assert_eq!(cfg.lifecycle, None);
     assert_eq!(cfg.guild_id, None);
 }
 
@@ -41,7 +40,6 @@ fn populated_discord_table_round_trips() {
         [discord]
         enabled = true
         bot_token = "abc123"
-        lifecycle = "fossil branch quickfix"
         guild_id = "9999"
     "#;
 
@@ -51,10 +49,32 @@ fn populated_discord_table_round_trips() {
     // Then all fields are preserved.
     assert!(parsed.discord.enabled);
     assert_eq!(parsed.discord.bot_token.as_deref(), Some("abc123"));
-    assert_eq!(
-        parsed.discord.lifecycle.as_deref(),
-        Some("fossil branch quickfix")
-    );
+    assert_eq!(parsed.discord.guild_id.as_deref(), Some("9999"));
+}
+
+#[test]
+fn leftover_lifecycle_key_is_ignored() {
+    // Given a [discord] table with a stale `lifecycle` key plus the
+    // current fields.
+    #[derive(Deserialize)]
+    struct Wrapper {
+        discord: DiscordConfig,
+    }
+    let toml_str = r#"
+        [discord]
+        enabled = true
+        bot_token = "abc123"
+        lifecycle = "x"
+        guild_id = "9999"
+    "#;
+
+    // When deserializing.
+    let parsed: Wrapper = toml::from_str(toml_str).expect("parse");
+
+    // Then the stale `lifecycle` key is silently dropped and the
+    // remaining fields are populated.
+    assert!(parsed.discord.enabled);
+    assert_eq!(parsed.discord.bot_token.as_deref(), Some("abc123"));
     assert_eq!(parsed.discord.guild_id.as_deref(), Some("9999"));
 }
 
