@@ -39,7 +39,9 @@ Note that each part of the UI has it's own set of keybinds. Make use of `?` to d
 There are multiple ways to create new sessions:
 
 - `/new` in the chat input
-- `<M-s>n` (alt+s)n
+- `n` while in normal mode
+- `<M-s>n` (alt+s)n: switch to session panel then create new
+- `<leader>so` (space)so: search -> projects then create a session for a project
 
 ### Message Queueing
 
