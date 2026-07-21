@@ -1163,4 +1163,124 @@ mod leak_check {
             "previous group should appear in Normal scope; got {all_desc:?}"
         );
     }
+
+    #[test]
+    fn picker_scope_pgup_fires_picker_page_up() {
+        // Given a keymap queried in a generic picker scope.
+        use crate::app::WhichKeyInstance;
+        use jinn_domain::{Key, KeyEvent, Modifiers};
+
+        let keymap = init();
+        let mut wk = WhichKeyInstance::new(keymap, Scope::PickerPersona);
+
+        // When pressing PageUp.
+        let pgup = KeyEvent {
+            key: Key::PageUp,
+            modifiers: Modifiers { ctrl: false, alt: false, shift: false },
+        };
+        let intent = wk.handle_key(pgup);
+
+        // Then it resolves to PickerPageUp.
+        let intent = intent.expect("PageUp in PickerPersona must fire an intent");
+        assert!(
+            matches!(intent, jinn_domain::Intent::PickerPageUp),
+            "PageUp must resolve to PickerPageUp; got {intent:?}",
+        );
+    }
+
+    #[test]
+    fn picker_scope_pgdn_fires_picker_page_down() {
+        // Given a keymap queried in a generic picker scope.
+        use crate::app::WhichKeyInstance;
+        use jinn_domain::{Key, KeyEvent, Modifiers};
+
+        let keymap = init();
+        let mut wk = WhichKeyInstance::new(keymap, Scope::PickerPersona);
+
+        // When pressing PageDown.
+        let pgdn = KeyEvent {
+            key: Key::PageDown,
+            modifiers: Modifiers { ctrl: false, alt: false, shift: false },
+        };
+        let intent = wk.handle_key(pgdn);
+
+        // Then it resolves to PickerPageDown.
+        let intent = intent.expect("PageDown in PickerPersona must fire an intent");
+        assert!(
+            matches!(intent, jinn_domain::Intent::PickerPageDown),
+            "PageDown must resolve to PickerPageDown; got {intent:?}",
+        );
+    }
+
+    #[test]
+    fn skill_scope_pgup_fires_picker_page_up_not_preview_scroll() {
+        // Given a keymap queried in the skill picker scope.
+        use crate::app::WhichKeyInstance;
+        use jinn_domain::{Key, KeyEvent, Modifiers};
+
+        let keymap = init();
+        let mut wk = WhichKeyInstance::new(keymap, Scope::PickerSkill);
+
+        // When pressing PageUp.
+        let pgup = KeyEvent {
+            key: Key::PageUp,
+            modifiers: Modifiers { ctrl: false, alt: false, shift: false },
+        };
+        let intent = wk.handle_key(pgup);
+
+        // Then it resolves to PickerPageUp (list paging), NOT PreviewScrollUp.
+        let intent = intent.expect("PageUp in PickerSkill must fire an intent");
+        assert!(
+            matches!(intent, jinn_domain::Intent::PickerPageUp),
+            "PageUp in PickerSkill must route to list paging; got {intent:?}",
+        );
+    }
+
+    #[test]
+    fn skill_scope_ctrl_u_fires_preview_scroll_up() {
+        // Given a keymap queried in the skill picker scope.
+        use crate::app::WhichKeyInstance;
+        use jinn_domain::{Key, KeyEvent, Modifiers};
+
+        let keymap = init();
+        let mut wk = WhichKeyInstance::new(keymap, Scope::PickerSkill);
+
+        // When pressing Ctrl+U.
+        let c_u = KeyEvent {
+            key: Key::Char('u'),
+            modifiers: Modifiers::ctrl(),
+        };
+        let intent = wk.handle_key(c_u);
+
+        // Then it resolves to PreviewScrollUp (preview pane paging).
+        let intent = intent.expect("Ctrl+U in PickerSkill must fire an intent");
+        assert!(
+            matches!(intent, jinn_domain::Intent::PreviewScrollUp),
+            "Ctrl+U in PickerSkill must scroll the preview pane; got {intent:?}",
+        );
+    }
+
+    #[test]
+    fn skill_scope_ctrl_d_fires_preview_scroll_down() {
+        // Given a keymap queried in the skill picker scope.
+        use crate::app::WhichKeyInstance;
+        use jinn_domain::{Key, KeyEvent, Modifiers};
+
+        let keymap = init();
+        let mut wk = WhichKeyInstance::new(keymap, Scope::PickerSkill);
+
+        // When pressing Ctrl+D.
+        let c_d = KeyEvent {
+            key: Key::Char('d'),
+            modifiers: Modifiers::ctrl(),
+        };
+        let intent = wk.handle_key(c_d);
+
+        // Then it resolves to PreviewScrollDown (preview pane paging).
+        let intent = intent.expect("Ctrl+D in PickerSkill must fire an intent");
+        assert!(
+            matches!(intent, jinn_domain::Intent::PreviewScrollDown),
+            "Ctrl+D in PickerSkill must scroll the preview pane; got {intent:?}",
+        );
+    }
 }
