@@ -76,6 +76,8 @@ fn add_picker_base(b: &mut ratatui_which_key::ScopeBuilder<KeyEvent, Scope, Inte
         .bind("<enter>", Intent::PickerConfirm, KeyCategory::Model)
         .bind("<up>", Intent::PickerMoveUp, KeyCategory::Navigation)
         .bind("<down>", Intent::PickerMoveDown, KeyCategory::Navigation)
+        .bind("<pgup>", Intent::PickerPageUp, KeyCategory::Navigation)
+        .bind("<pgdn>", Intent::PickerPageDown, KeyCategory::Navigation)
         .bind("<left>", Intent::PickerMoveCursorLeft, KeyCategory::Input)
         .bind("<right>", Intent::PickerMoveCursorRight, KeyCategory::Input)
         .bind("<backspace>", Intent::PickerBackspace, KeyCategory::Input)
@@ -338,8 +340,8 @@ pub fn init() -> Keymap<KeyEvent, Scope, Intent, KeyCategory> {
         .scope(Scope::PickerSkill, |b| {
             add_picker_base(b);
             b.bind("<Tab>", Intent::SkillToggleSelected, KeyCategory::General)
-             .bind("<pgup>", Intent::PreviewScrollUp, KeyCategory::Navigation)
-             .bind("<pgdn>", Intent::PreviewScrollDown, KeyCategory::Navigation)
+             .bind("<c-u>", Intent::PreviewScrollUp, KeyCategory::Navigation)
+             .bind("<c-d>", Intent::PreviewScrollDown, KeyCategory::Navigation)
              .bind("<c-r>", Intent::RefreshSkills, KeyCategory::General);
         })
         .scope(Scope::PickerTaskList, |b| {
