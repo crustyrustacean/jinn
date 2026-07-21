@@ -20,7 +20,9 @@ A TUI agent harness with multi-session support and Vim-style keybinds.
 
 ![jinn-full](doc/jinn-full.png)
 ![Model Selection](doc/model-selection.png)
+![WhichKey](doc/whichkey.png)
 ![Skill Picker](doc/skill-picker.png)
+![Forked Sessions](doc/forked-sessions.png)
 ![Task Preview](doc/task-preview.png)
 ![Tool Picker](doc/tool-picker.png)
 
@@ -37,7 +39,9 @@ Note that each part of the UI has it's own set of keybinds. Make use of `?` to d
 There are multiple ways to create new sessions:
 
 - `/new` in the chat input
-- `<M-s>n` (alt+s)n
+- `n` while in normal mode
+- `<M-s>n` (alt+s)n: switch to session panel then create new
+- `<leader>so` (space)so: search -> projects then create a session for a project
 
 ### Message Queueing
 

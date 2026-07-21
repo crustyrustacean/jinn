@@ -76,10 +76,18 @@ pub struct PickerStates {
     /// OWNER: IntentHandler (populated on task list picker open).
     pub task_list_picker: jinn_selection_widget::TreePickerState<TaskListTreeEntry>,
 
-    /// Project picker state (items, filter text, selection index).
-    /// OWNER: IntentHandler (populated from `UserPreferences.projects` on open).
     pub project_picker:
         jinn_selection_widget::SelectionState<crate::feat::project::picker_entry::ProjectEntry>,
+
+    /// Measured results-area row count for the currently-active picker, as
+    /// written by the TUI render pre-pass each frame. Used by the picker
+    /// navigation intents to keep the cursor inside the visible window.
+    ///
+    /// Zero before the first render of a picker; the intent layer falls back
+    /// to a sane default in that case.
+    /// OWNER: TUI render pre-pass (writes) / IntentHandler (reads via
+    /// `active_viewport`).
+    pub picker_results_viewport: u16,
 }
 
 /// Extension trait providing typed access to picker state on [`FrontendState`](super::FrontendState).
@@ -166,10 +174,18 @@ pub trait PickerExt {
     fn project_picker(
         &self,
     ) -> &jinn_selection_widget::SelectionState<crate::feat::project::picker_entry::ProjectEntry>;
-    /// Mutable access to the project picker state.
     fn project_picker_mut(
         &mut self,
     ) -> &mut jinn_selection_widget::SelectionState<crate::feat::project::picker_entry::ProjectEntry>;
+
+    /// Measured results-area row count for the currently-active picker, as
+    /// written by the TUI render pre-pass each frame. Used by the picker
+    /// navigation intents to keep the cursor inside the visible window.
+    fn picker_results_viewport(&self) -> u16;
+
+    /// Updates the measured results-area row count. Called once per frame
+    /// from the render pre-pass.
+    fn set_picker_results_viewport(&mut self, val: u16);
 }
 
 impl PickerExt for super::frontend_state::FrontendState {
@@ -301,5 +317,13 @@ impl PickerExt for super::frontend_state::FrontendState {
     ) -> &mut jinn_selection_widget::SelectionState<crate::feat::project::picker_entry::ProjectEntry>
     {
         &mut self.pickers.project_picker
+    }
+
+    fn picker_results_viewport(&self) -> u16 {
+        self.pickers.picker_results_viewport
+    }
+
+    fn set_picker_results_viewport(&mut self, val: u16) {
+        self.pickers.picker_results_viewport = val;
     }
 }

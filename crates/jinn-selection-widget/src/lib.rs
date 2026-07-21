@@ -34,7 +34,9 @@ pub use highlight::{
 pub use item::{MatchRanges, PickerItem};
 pub use picker_ops::PickerOps;
 pub use preview_content::{PreviewCache, PreviewContent};
-pub use preview_widget::PreviewSelectionWidget;
+pub use preview_widget::{
+    HORIZONTAL_LIST_ROWS, LIST_FRACTION, PreviewSelectionWidget, VERTICAL_SPLIT_MIN_WIDTH,
+};
 pub use state::SelectionState;
 pub use tree_item::TreeItem;
 pub use tree_state::{TreePickerState, VisibleEntry};
