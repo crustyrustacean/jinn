@@ -2695,4 +2695,71 @@ mod tests {
             "web_search should be visible for openrouter model, got: {names:?}"
         );
     }
+
+    #[rstest::rstest]
+    fn handle_move_down_uses_measured_viewport() {
+        // Given a provider picker with 20 entries and a measured viewport of 5,
+        // selection already on the last visible row (index 4).
+        let mut state = state_with_provider_picker(20);
+        state.frontend.set_picker_results_viewport(5);
+        state.provider.provider_picker.move_up(5); // back to selection 0
+        for _ in 0..4 {
+            state.provider.provider_picker.move_down(5);
+        }
+        assert_eq!(state.provider.provider_picker.selection(), 4);
+        assert_eq!(state.provider.provider_picker.scroll_offset(), 0);
+
+        // When moving down once more.
+        handle_move_down(&mut state);
+
+        // Then selection advances to 5 and scroll_offset advances by one
+        // (measured viewport of 5, not the old hardcoded 100).
+        assert_eq!(state.provider.provider_picker.selection(), 5);
+        assert_eq!(state.provider.provider_picker.scroll_offset(), 1);
+    }
+
+    #[rstest::rstest]
+    fn handle_move_down_uses_fallback_when_viewport_unmeasured() {
+        // Given a provider picker with 30 entries and viewport left at 0
+        // (before the first render writes a measurement).
+        let mut state = state_with_provider_picker(30);
+        assert_eq!(state.frontend.picker_results_viewport(), 0);
+
+        // When moving down once.
+        handle_move_down(&mut state);
+
+        // Then selection advances by one without panic, using the fallback.
+        assert_eq!(state.provider.provider_picker.selection(), 2);
+    }
+
+    #[rstest::rstest]
+    fn handle_page_down_advances_selection_by_half_viewport() {
+        // Given a provider picker with 20 entries, selection at 0, viewport 10.
+        let mut state = state_with_provider_picker(20);
+        state.frontend.set_picker_results_viewport(10);
+        state.provider.provider_picker.move_up(5); // selection back to 0
+
+        // When handling PickerPageDown (half of 10 = 5).
+        handle_page_down(&mut state);
+
+        // Then selection advances by 5.
+        assert_eq!(state.provider.provider_picker.selection(), 5);
+    }
+
+    #[rstest::rstest]
+    fn handle_page_up_decrements_selection_by_half_viewport() {
+        // Given a provider picker with 20 entries, selection at 10, viewport 10.
+        let mut state = state_with_provider_picker(20);
+        state.frontend.set_picker_results_viewport(10);
+        // Advance selection to 10.
+        for _ in 0..9 {
+            state.provider.provider_picker.move_down(10);
+        }
+
+        // When handling PickerPageUp (half of 10 = 5).
+        handle_page_up(&mut state);
+
+        // Then selection decrements by 5.
+        assert_eq!(state.provider.provider_picker.selection(), 5);
+    }
 }
