@@ -305,6 +305,97 @@ fn move_down_adjusts_scroll_offset_when_selection_below_view() {
 }
 
 #[rstest::rstest]
+fn page_down_advances_selection_by_half_viewport() {
+    // Given a selection state with 20 items and selection=0.
+    let mut state =
+        SelectionState::with_items((0..20).map(|i| TestItem::new(&i.to_string())).collect());
+    state.selection = 0;
+    state.scroll_offset = 0;
+
+    // When paging down with max_visible=10.
+    state.page_down(10);
+
+    // Then selection advances by half the viewport (5).
+    assert_eq!(state.selection(), 5);
+}
+
+#[rstest::rstest]
+fn page_down_clamps_at_end_of_list() {
+    // Given a selection state with 20 items and selection=18.
+    let mut state =
+        SelectionState::with_items((0..20).map(|i| TestItem::new(&i.to_string())).collect());
+    state.selection = 18;
+    state.scroll_offset = 13;
+
+    // When paging down with max_visible=10 (delta=5 would overshoot).
+    state.page_down(10);
+
+    // Then selection clamps to the last index (19).
+    assert_eq!(state.selection(), 19);
+}
+
+#[rstest::rstest]
+fn page_up_decrements_selection_by_half_viewport() {
+    // Given a selection state with 20 items and selection=10.
+    let mut state =
+        SelectionState::with_items((0..20).map(|i| TestItem::new(&i.to_string())).collect());
+    state.selection = 10;
+    state.scroll_offset = 5;
+
+    // When paging up with max_visible=10.
+    state.page_up(10);
+
+    // Then selection decrements by half the viewport (5).
+    assert_eq!(state.selection(), 5);
+}
+
+#[rstest::rstest]
+fn page_up_clamps_at_zero() {
+    // Given a selection state with 20 items and selection=2.
+    let mut state =
+        SelectionState::with_items((0..20).map(|i| TestItem::new(&i.to_string())).collect());
+    state.selection = 2;
+    state.scroll_offset = 0;
+
+    // When paging up with max_visible=10 (delta=5 would underflow).
+    state.page_up(10);
+
+    // Then selection clamps to 0.
+    assert_eq!(state.selection(), 0);
+}
+
+#[rstest::rstest]
+fn page_down_moves_at_least_one_when_viewport_small() {
+    // Given a selection state with 20 items and selection=0.
+    let mut state =
+        SelectionState::with_items((0..20).map(|i| TestItem::new(&i.to_string())).collect());
+    state.selection = 0;
+    state.scroll_offset = 0;
+
+    // When paging down with max_visible=1 (delta = 1/2 = 0, floored to 1).
+    state.page_down(1);
+
+    // Then selection moves by at least 1.
+    assert_eq!(state.selection(), 1);
+}
+
+#[rstest::rstest]
+fn page_down_keeps_selection_visible_by_advancing_scroll() {
+    // Given a selection state with 20 items, scroll_offset=0, selection=5.
+    let mut state =
+        SelectionState::with_items((0..20).map(|i| TestItem::new(&i.to_string())).collect());
+    state.selection = 5;
+    state.scroll_offset = 0;
+
+    // When paging down with max_visible=10 (selection moves to 10).
+    state.page_down(10);
+
+    // Then scroll_offset advances so selection 10 is the last visible row.
+    assert_eq!(state.selection(), 10);
+    assert_eq!(state.scroll_offset(), 1);
+}
+
+#[rstest::rstest]
 fn ensure_visible_selection_within_view() {
     // Given a selection state with scroll_offset=2 and selection=3.
     let mut state = SelectionState::<TestItem>::new();

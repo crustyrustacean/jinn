@@ -20,6 +20,12 @@ pub fn validate_picker_move_up(_state: &AppState) {}
 /// Validates the PickerMoveDown intent.
 pub fn validate_picker_move_down(_state: &AppState) {}
 
+/// Validates the PickerPageUp intent.
+pub fn validate_picker_page_up(_state: &AppState) {}
+
+/// Validates the PickerPageDown intent.
+pub fn validate_picker_page_down(_state: &AppState) {}
+
 /// Validates the PickerMoveCursorLeft intent.
 pub fn validate_picker_move_cursor_left(_state: &AppState) {}
 

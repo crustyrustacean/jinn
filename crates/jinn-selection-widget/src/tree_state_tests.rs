@@ -513,6 +513,91 @@ fn tree_move_down_adjusts_scroll_offset() {
 }
 
 #[test]
+fn tree_page_down_advances_selection_by_half_viewport() {
+    // Given a tree with 20 root items and selection=0.
+    let items: Vec<TestItem> = (0..20)
+        .map(|i| item(&format!("{i}"), None, &format!("Item{i}")))
+        .collect();
+    let mut state = TreePickerState::with_items(items);
+    state.selection = 0;
+    state.scroll_offset = 0;
+
+    // When paging down with max_visible=10.
+    state.page_down(10);
+
+    // Then selection advances by half the viewport (5).
+    assert_eq!(state.selection(), 5);
+}
+
+#[test]
+fn tree_page_down_clamps_at_end_of_list() {
+    // Given a tree with 20 root items and selection=18.
+    let items: Vec<TestItem> = (0..20)
+        .map(|i| item(&format!("{i}"), None, &format!("Item{i}")))
+        .collect();
+    let mut state = TreePickerState::with_items(items);
+    state.selection = 18;
+    state.scroll_offset = 13;
+
+    // When paging down with max_visible=10.
+    state.page_down(10);
+
+    // Then selection clamps to the last index (19).
+    assert_eq!(state.selection(), 19);
+}
+
+#[test]
+fn tree_page_up_decrements_selection_by_half_viewport() {
+    // Given a tree with 20 root items and selection=10.
+    let items: Vec<TestItem> = (0..20)
+        .map(|i| item(&format!("{i}"), None, &format!("Item{i}")))
+        .collect();
+    let mut state = TreePickerState::with_items(items);
+    state.selection = 10;
+    state.scroll_offset = 5;
+
+    // When paging up with max_visible=10.
+    state.page_up(10);
+
+    // Then selection decrements by half the viewport (5).
+    assert_eq!(state.selection(), 5);
+}
+
+#[test]
+fn tree_page_up_clamps_at_zero() {
+    // Given a tree with 20 root items and selection=2.
+    let items: Vec<TestItem> = (0..20)
+        .map(|i| item(&format!("{i}"), None, &format!("Item{i}")))
+        .collect();
+    let mut state = TreePickerState::with_items(items);
+    state.selection = 2;
+    state.scroll_offset = 0;
+
+    // When paging up with max_visible=10.
+    state.page_up(10);
+
+    // Then selection clamps to 0.
+    assert_eq!(state.selection(), 0);
+}
+
+#[test]
+fn tree_page_down_moves_at_least_one_when_viewport_small() {
+    // Given a tree with 20 root items and selection=0.
+    let items: Vec<TestItem> = (0..20)
+        .map(|i| item(&format!("{i}"), None, &format!("Item{i}")))
+        .collect();
+    let mut state = TreePickerState::with_items(items);
+    state.selection = 0;
+    state.scroll_offset = 0;
+
+    // When paging down with max_visible=1.
+    state.page_down(1);
+
+    // Then selection moves by at least 1.
+    assert_eq!(state.selection(), 1);
+}
+
+#[test]
 fn tree_ensure_visible_selection_above_view() {
     let mut state = TreePickerState::<TestItem>::new();
     state.scroll_offset = 3;
