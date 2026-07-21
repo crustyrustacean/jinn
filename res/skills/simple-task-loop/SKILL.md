@@ -60,7 +60,7 @@ Update the task list **at the moment a decision is made**, never retroactively:
 
     a. **Restate** the current task in one sentence before touching the keyboard.
 
-    b. **Do the work** for that one task. Run the build command after each logical group of changes.
+    b. **Do the work**. Run the build/check command after each logical group of changes. A "logical group" might be a single task, an entire phase, or multiple phases depending on the nature of the work. Run build/check regularly so that you know your edits landed properly and that you get expected results (ie: you rename something and expect to get compiler errors indicating what needs to be updated; use this information to help guide the process. You won't see those errors unless you _actually run the commands_).
 
     c. **Complete the task.** Call `todo_complete_task` for the task you just finished.
 
@@ -68,38 +68,39 @@ Update the task list **at the moment a decision is made**, never retroactively:
 
     e. **Repeat from (a)** with the task named by the NEXT block, until the NEXT block says the phase is complete.
 
-    If the build fails: fix, re-run, continue. Do not commit broken code. For truly unrecoverable blockers: document in the execution plan and stop.
+    If the build fails: fix, re-run, continue. Some tasks are large and will inherently fail to build/check between major phases; this is OK and sometimes expected. HOWEVER, once you reach a point where the code is in a state where it _should_ build/check, then make sure that the build/check no longer fails.
 
-    If you discover untracked work: call `todo_add_task` / `todo_add_phase` immediately — then resume the sub-loop at step (a) with whichever task is now next per the NEXT block.
+    If you discover that a task is actually larger than expected, call `todo_add_task` / `todo_add_phase` immediately — then resume the sub-loop at step (a) with whichever task is now next per the NEXT block. Do this so that you don't lose track of what needs to be done.
 
-    If a task grew beyond one assistant turn of work: split it via `todo_add_task` and complete the original. Do not silently absorb the extra work into the same task.
+    If you discover that a task cannot be implemented _as planned_ and there is no obvious solution that **aligns with the user request**, then STOP and explain the details to the user and ask how to proceed.
 
 3.5. **Audit before verify.** Before moving on, call `todo_get_task_list`. If any task in the current phase is not `[✓]`, **STOP and audit.** You have drifted. Pick the next pending task in this phase and return to step 3. Do not run tests. Do not commit. The list must be clean before you proceed.
 
-4.  **Verify.** At the end of the phase, run the full test suite. All tests must pass. Fix failed tests before proceeding.
+4.  **Verify.** At the end of the phase, run the full test suite. In most cases: all tests must pass and you must fix failed tests before proceeding. Some changes will require a broken build between phases, such as large refactors; this is an exception to the rule. If a build will be broken between phases, make an attempt to re-order the tasks such that you actually _can_ verify the build/tests between phases.
 
 5.  **Commit and cleanup.**
 
+    Refer to the commands table in AGENTS.md for how to properly commit code.
+
     ```
-    # e.g. for jinn (Fossil):
-    fossil commit -m "<TASK> Phase N: <brief description>"   # the project's `commit` command
-    fossil merge trunk                                       # the project's `sync-trunk` command (resolve conflicts, re-test, commit)
+    <commit command> "<TASK> Phase N: <one sentence description>"   # the project's `commit` command
+    <sync command>                                           # the project's `sync-trunk` command (resolve conflicts, re-test, commit)
     ```
 
     Never merge your branch onto the project's main line.
 
-6.  **Annotate the spec.** Add strikethrough / divergence from spec notes only. Never rewrite. For structural changes use `todo_add_phase`, `todo_postpone_task`, or `todo_cancel_task`.
+    _NEVER commit broken code_. If the code is broken intentionally between phases (like during a large refactor), DO NOT COMMIT. Wait until the next phase where the code builds properly before committing.
 
-7.  **Go to step 1.**
+6.  **Go to step 1.**
 
 ## When you are done
 
-If the project defines `lint` and `format` commands, run them and fix every error and warning, then `commit` the result. For example, on jinn (Fossil + Rust):
+If the project defines `lint` and `format` commands, run them and fix every error and warning, then `commit` the result. For example:
 
 ```
-just lint            # the project's `lint` command
-just fmt-fix         # the project's `format` command
-fossil commit -m "<TASK>: Lints fixed"   # the project's `commit` command
+<lint command>                           # the project's `lint` command
+<format command>                         # the project's `format` command
+<commit command> "<TASK>: Lints fixed"   # the project's `commit` command
 ```
 
 _All reported errors and warnings must be fixed_, **even if they are from other files that you didn't touch**. **DO NOT SIGNAL COMPLETION UNLESS THERE ARE ZERO WARNINGS**. If the project defines no `lint`/`format` commands, skip this step.
