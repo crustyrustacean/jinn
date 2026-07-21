@@ -140,6 +140,28 @@ fn flat_move_down_through_trait() {
 }
 
 #[test]
+fn flat_page_up_through_trait() {
+    // Given a flat state with 20 items and selection=10.
+    let items: Vec<FlatItem> = (0..20).map(|i| FlatItem::new(&i.to_string())).collect();
+    let mut state = SelectionState::with_items(items);
+    state.selection = 10;
+    let ops: &mut dyn PickerOps = &mut state;
+    ops.page_up(10);
+    assert_eq!(state.selection(), 5);
+}
+
+#[test]
+fn flat_page_down_through_trait() {
+    // Given a flat state with 20 items and selection=0.
+    let items: Vec<FlatItem> = (0..20).map(|i| FlatItem::new(&i.to_string())).collect();
+    let mut state = SelectionState::with_items(items);
+    state.selection = 0;
+    let ops: &mut dyn PickerOps = &mut state;
+    ops.page_down(10);
+    assert_eq!(state.selection(), 5);
+}
+
+#[test]
 fn flat_move_cursor_left_through_trait() {
     let mut state: SelectionState<FlatItem> = SelectionState::new();
     state.cursor_pos = 3;
@@ -223,6 +245,32 @@ fn tree_move_down_through_trait() {
     let ops: &mut dyn PickerOps = &mut state;
     ops.move_down(5);
     assert_eq!(state.selection(), 1);
+}
+
+#[test]
+fn tree_page_up_through_trait() {
+    // Given a tree with 20 root items and selection=10.
+    let items: Vec<TreeTestItem> = (0..20)
+        .map(|i| tree_item(&i.to_string(), None, &format!("Item{i}")))
+        .collect();
+    let mut state = TreePickerState::with_items(items);
+    state.selection = 10;
+    let ops: &mut dyn PickerOps = &mut state;
+    ops.page_up(10);
+    assert_eq!(state.selection(), 5);
+}
+
+#[test]
+fn tree_page_down_through_trait() {
+    // Given a tree with 20 root items and selection=0.
+    let items: Vec<TreeTestItem> = (0..20)
+        .map(|i| tree_item(&i.to_string(), None, &format!("Item{i}")))
+        .collect();
+    let mut state = TreePickerState::with_items(items);
+    state.selection = 0;
+    let ops: &mut dyn PickerOps = &mut state;
+    ops.page_down(10);
+    assert_eq!(state.selection(), 5);
 }
 
 #[test]

@@ -76,7 +76,12 @@ mod tests {
         clippy::indexing_slicing,
         reason = "test code, panics are acceptable"
     )]
+    use jinn_domain::AppState;
+    use jinn_domain::FocusScope;
+    use jinn_domain::PickerKind;
     use jinn_selection_widget::compute_popup_rect;
+    use ratatui::Terminal;
+    use ratatui::backend::TestBackend;
     use ratatui::layout::Rect;
 
     #[rstest::rstest]
@@ -106,5 +111,72 @@ mod tests {
         // Then the small terminal popup uses 75% of height + 4 rows of chrome.
         // floor(24 * 0.75) = 18, min(18 + 4, 24) = 22.
         assert_eq!(small_popup.height, 22);
+    }
+
+    /// Each picker kind must draw exactly the number of footer rows it
+    /// advertises via [`PickerKind::footer_rows`]. This is the drift-prevention
+    /// backstop for the picker viewport measurement: if a render site ever
+    /// adds or drops a footer without updating `footer_rows()`, the geometry
+    /// helper would reserve the wrong number of rows and the cursor could drift
+    /// off-screen. With an empty item list, the results area is blank, so the
+    /// consecutive non-blank rows at the bottom of the popup's inner area equal
+    /// the footer count actually drawn.
+    #[rstest::rstest]
+    #[case::provider(PickerKind::Provider)]
+    #[case::session(PickerKind::Session)]
+    #[case::persona(PickerKind::Persona)]
+    #[case::theme(PickerKind::Theme)]
+    #[case::session_lifecycle(PickerKind::SessionLifecycle)]
+    #[case::compaction_model(PickerKind::CompactionModel)]
+    #[case::reasoning_effort(PickerKind::ReasoningEffort)]
+    #[case::tool(PickerKind::Tool)]
+    #[case::skill(PickerKind::Skill)]
+    #[case::task_list(PickerKind::TaskList)]
+    #[case::project(PickerKind::Project)]
+    fn picker_draws_footer_rows_matching_kind_declaration(#[case] kind: PickerKind) {
+        // Given a picker scope of this kind with the default (empty) state.
+        let mut state = AppState::default();
+        state.frontend.scope_stack.push(FocusScope::Picker { kind });
+
+        // When rendering the picker overlay.
+        let area = Rect::new(0, 0, 100, 30);
+        let mut terminal =
+            Terminal::new(TestBackend::new(area.width, area.height)).expect("terminal");
+        terminal
+            .draw(|frame| {
+                let ctx = jinn_domain::RenderCtx::new(&state);
+                super::render_picker(frame, area, &ctx);
+            })
+            .expect("draw");
+
+        // Then the number of footer rows actually drawn equals the kind's declaration.
+        let popup = compute_popup_rect(area);
+        // Inner popup area excludes the border.
+        let inner_top = popup.y + 1;
+        let inner_bottom = popup.y + popup.height.saturating_sub(2);
+        let inner_x_start = popup.x + 1;
+        let inner_x_end = popup.x + popup.width.saturating_sub(1);
+
+        let buffer = terminal.backend().buffer();
+        let row_is_blank = |y: u16| -> bool {
+            (inner_x_start..inner_x_end).all(|x| buffer[(x, y)].symbol().trim().is_empty())
+        };
+
+        // Count consecutive non-blank rows climbing up from the bottom of the
+        // popup. With an empty results list this is exactly the footer block.
+        let mut drawn_footer_rows = 0u16;
+        for y in (inner_top..=inner_bottom).rev() {
+            if row_is_blank(y) {
+                break;
+            }
+            drawn_footer_rows += 1;
+        }
+
+        assert_eq!(
+            drawn_footer_rows,
+            kind.footer_rows(),
+            "picker {kind} draws {drawn_footer_rows} footer rows but declares {}",
+            kind.footer_rows(),
+        );
     }
 }

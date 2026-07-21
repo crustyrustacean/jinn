@@ -25,6 +25,14 @@ pub trait PickerOps {
     /// Moves the selection down by one item.
     fn move_down(&mut self, max_visible: usize);
 
+    /// Moves the selection up by half of `max_visible`, clamped at 0, then
+    /// keeps it within the scroll window.
+    fn page_up(&mut self, max_visible: usize);
+
+    /// Moves the selection down by half of `max_visible`, clamped at the
+    /// end of the list, then keeps it within the scroll window.
+    fn page_down(&mut self, max_visible: usize);
+
     /// Moves the filter cursor left by one grapheme.
     fn move_cursor_left(&mut self);
 
@@ -63,6 +71,14 @@ impl<T: crate::PickerItem> PickerOps for crate::SelectionState<T> {
 
     fn move_down(&mut self, max_visible: usize) {
         crate::SelectionState::move_down(self, max_visible);
+    }
+
+    fn page_up(&mut self, max_visible: usize) {
+        crate::SelectionState::page_up(self, max_visible);
+    }
+
+    fn page_down(&mut self, max_visible: usize) {
+        crate::SelectionState::page_down(self, max_visible);
     }
 
     fn move_cursor_left(&mut self) {
