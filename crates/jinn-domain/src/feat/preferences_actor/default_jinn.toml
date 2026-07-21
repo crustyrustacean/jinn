@@ -30,16 +30,32 @@
 # setup_command = "mkdir <branch> && cd <branch> && fossil open ../jinn.fossil && fossil commit -m 'Open <branch>' --branch <branch> --allow-empty && just shm-target && echo ./<branch>"
 # teardown_command = "cd <branch> && fossil merge trunk --force && fossil addremove && fossil commit -m 'Bring in latest trunk' && fossil update trunk && fossil merge <branch> && fossil addremove && fossil commit -m 'Merge <branch>' && fossil branch close <branch> && just unshm-target && cd .. && rm -rfv <branch>"
 
-# Git worktree example. Each branch will be a sibling of the repository directory.
-# NOTE: This lifecycle makes these assumptions:
-# - main branch is named "main"
-# - project directory contains the repo in a directory named "workspace"
+# Fossil repos. Project directory should be a parent folder of the repo:
+#
+# my_project/        <-- configured as the project directory in jinn
+#    repo.fossil
+#    checkouts_will_go_here_as_siblings/
+#       .fslckout
+#
+[[session_lifecycle]]
+name = "fossil branch checkout"
+description = "Open a new checkout + branch"
+setup_command = "mkdir <branch> && cd <branch> && fossil open ../<repo>.fossil && fossil commit -m 'Open <branch>' --branch <branch> --allow-empty && echo ./<branch>"
+teardown_command = "fossil merge trunk --force && fossil addremove && fossil commit -m 'Bring in latest trunk' && fossil update trunk && fossil merge <branch> && fossil addremove && fossil commit -m 'Merge <branch>' && fossil branch close <branch> && cd .. && rm -rfv <branch>"
+
+# Git worktrees. Project directory should be a parent folder of the repo:
+#
+# my_project/        <-- configured as the project directory in jinn
+#    repo/           <-- your actual repo
+#       .git/
+#    worktrees_will_go_here_as_siblings/
+#       .git/
+#
 [[session_lifecycle]]
 name = "git worktree"
 description = "Open a git worktree + branch"
-setup_command = "cd workspace && git worktree add -b <branch> ../<branch> && cd .. && echo $(pwd)/<branch>"
-teardown_command = "git merge main && cd ../workspace && git merge --squash <branch> && git commit --allow-empty -m 'Merge <branch>' && git worktree remove ../<branch> && git branch -D <branch>"
-
+setup_command = "cd <repo> && git worktree add -b <branch> ../<branch> && cd .. && echo $(pwd)/<branch>"
+teardown_command = """bash -c 'git add -A && (git diff --cached --quiet || git commit -q -m "auto-commit at teardown") && git merge main && cd ../<repo> && git merge --squash <branch> && (git diff --cached --quiet || git commit -q -m "Merge <branch>") && git worktree remove ../<branch> && git branch -D <branch>'"""
 
 # ---------------------------------------------------------------------------
 # Project directories
