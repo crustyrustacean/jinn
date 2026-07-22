@@ -10,8 +10,9 @@
 //!
 //! Analysis of real session data shows exemplary agents check the todo list on
 //! a median cadence of ~9 history entries (p90 ≈ 30). The default `threshold`
-//! (30) fires only when an agent has gone 3× longer than a good agent ever
-//! does without touching the list — the p90 of exemplary behavior.
+//! (100) is deliberately lenient: it tolerates common multi-step recovery (an
+//! agent getting unstuck) without nagging, while still catching genuine drift
+//! well past exemplary behavior.
 //!
 //! # Anchor model
 //!
@@ -42,9 +43,10 @@ const DEFAULT_TODO_STEER_ENABLED: bool = true;
 /// Default reminder threshold for todo auto-steer.
 ///
 /// Number of history entries that must elapse after the most recent `todo_*`
-/// call (or prior reminder) before a new reminder is injected. Derived from the
-/// p90 of exemplary inter-todo cadence observed in real session data.
-const DEFAULT_TODO_STEER_THRESHOLD: usize = 30;
+/// call (or prior reminder) before a new reminder is injected. Tuned for a
+/// lenient cadence that tolerates common multi-step recovery without nagging,
+/// while still catching genuine drift.
+const DEFAULT_TODO_STEER_THRESHOLD: usize = 100;
 
 /// Stable, recognizable sentinel prefixing every auto-steer reminder's entry
 /// text so the worker can identify its own previously-injected reminders when
@@ -62,7 +64,7 @@ pub struct TodoAutoSteerConfig {
     pub enabled: bool,
     /// Number of history entries that must elapse after the most recent
     /// `todo_*` call (or prior reminder) before a new reminder is injected.
-    /// Default: `30` (the p90 of exemplary inter-todo cadence).
+    /// Default: `100`.
     #[serde(default = "default_threshold")]
     pub threshold: usize,
 }
@@ -296,8 +298,15 @@ mod tests {
         let mut history = vec![todo_call("todo_add_task")];
         history.extend(fillers(30));
 
-        // When evaluating.
-        let mutations = run(&history, TodoAutoSteerConfig::default()).await;
+        // When evaluating with a small explicit threshold matching the filler count.
+        let mutations = run(
+            &history,
+            TodoAutoSteerConfig {
+                enabled: true,
+                threshold: 30,
+            },
+        )
+        .await;
 
         // Then exactly one InsertEntry mutation is produced at the tail.
         assert_eq!(mutations.len(), 1);
@@ -333,8 +342,15 @@ mod tests {
         let mut history = vec![todo_call("todo_add_task"), reminder(0)];
         history.extend(fillers(30));
 
-        // When evaluating.
-        let mutations = run(&history, TodoAutoSteerConfig::default()).await;
+        // When evaluating with a small explicit threshold matching the filler count.
+        let mutations = run(
+            &history,
+            TodoAutoSteerConfig {
+                enabled: true,
+                threshold: 30,
+            },
+        )
+        .await;
 
         // Then exactly one InsertEntry mutation is produced (re-arm).
         assert_eq!(mutations.len(), 1);
@@ -363,7 +379,7 @@ mod tests {
         // When evaluating with the worker disabled.
         let config = TodoAutoSteerConfig {
             enabled: false,
-            threshold: 30,
+            threshold: 100,
         };
         let mutations = run(&history, config).await;
 
@@ -391,8 +407,15 @@ mod tests {
         history.extend(fillers(30));
         let last_id = history.last().unwrap().id.clone();
 
-        // When evaluating.
-        let mutations = run(&history, TodoAutoSteerConfig::default()).await;
+        // When evaluating with a small explicit threshold matching the filler count.
+        let mutations = run(
+            &history,
+            TodoAutoSteerConfig {
+                enabled: true,
+                threshold: 30,
+            },
+        )
+        .await;
 
         // Then the mutation inserts a User entry at the tail.
         match &mutations[0] {
