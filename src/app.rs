@@ -194,6 +194,42 @@ impl App {
             }
         }
 
+        // `install` seeds default resources into user dirs. Like `config`, it
+        // must run before any actor wiring — and it needs no preferences/DB.
+        if let Some(Commands::Install) = &cli.command {
+            use jinn_domain::{
+                AppPaths, Destinations, InstallOutcome, install_defaults_to,
+            };
+
+            let app_paths = AppPaths::default();
+            let destinations = Destinations::new(
+                app_paths.themes_dir(),
+                app_paths.personas_dir(),
+                app_paths.prompts_dir(),
+                app_paths.skills_dir(),
+            );
+            match install_defaults_to(&destinations) {
+                Ok(outcomes) => {
+                    for outcome in outcomes {
+                        match outcome {
+                            InstallOutcome::Created(path) => {
+                                println!("Installed {}", path.display());
+                            }
+                            InstallOutcome::Skipped(path) => {
+                                println!("Already present, skipped {}", path.display());
+                            }
+                        }
+                    }
+                    return Ok(());
+                }
+                Err(report) => {
+                    eprintln!("error: failed to install defaults:");
+                    eprintln!("  {report:?}");
+                    return Err(report.change_context(AppError));
+                }
+            }
+        }
+
         // Parse user preferences early — fail-fast on a bad config BEFORE
         // any actor wiring runs. The shared service is cloned into each
         // command arm below. Config subcommands have already dispatched above.
@@ -356,6 +392,9 @@ impl App {
             // Config subcommands are dispatched above, before the early
             // preferences parse. Reaching this match arm is impossible.
             Commands::Config { .. } => {}
+            // `install` is dispatched above, before the early
+            // preferences parse. Reaching this match arm is impossible.
+            Commands::Install => {}
         }
 
         Ok(())
