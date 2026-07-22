@@ -4,9 +4,21 @@ version.workspace = true
 edition.workspace = true
 resolver = "3"
 default-run = "jinn"
+repository = "https://github.com/jayson-lennon/jinn"
+
 [features]
 default = ["headless-chrome"]
 headless-chrome = ["jinn-web-fetch/headless-chrome"]
+
+# cargo-binstall artifact discovery. The binary is built locally and
+# pushed to GitHub releases (see `just build-release-tarball` / `just release`).
+# `disabled-strategies` ensures binstall never silently falls back to
+# building from source or hitting the third-party quick-install host.
+[package.metadata.binstall]
+pkg-url = "{ repo }/releases/download/v{ version }/{ name }-{ target }-v{ version }{ archive-suffix }"
+bin-dir = "{ name }-{ target }-v{ version }/{ bin }{ binary-ext }"
+pkg-fmt = "tgz"
+disabled-strategies = ["quick-install", "compile"]
 
 
 [workspace]
