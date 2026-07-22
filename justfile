@@ -529,14 +529,29 @@ build-release-tarball:
 
     echo "==> Created ${TARBALL}"
 
-# Upload the cargo-binstall tarball to a GitHub release.
-# Creates the release if it doesn't exist; appends to an existing one.
+# Release the current version to GitHub and verify cargo-binstall.
 #
-# Usage: just release v0.97.0
-# Prerequisite: gh CLI installed (https://cli.github.com/) and `gh auth login` done.
+# Orchestrates the full publish flow after `just bump` has been run:
+#   1. Mirror trunk (and tags) to GitHub
+#   2. Build the cargo-binstall tarball
+#   3. Create (or update) the GitHub release and attach the tarball
+#   4. Smoke-test: `cargo binstall` into a temp dir, confirm `jinn --version`
+#
+# Usage: just release v0.98.0
+# Prerequisites: gh CLI installed + authenticated, cargo-binstall installed.
 release TAG:
     #!/usr/bin/env bash
     set -euo pipefail
+
+    REPO="jayson-lennon/jinn"
+
+    # --- Pre-flight: TAG must match the Cargo.toml version ---
+    VERSION=$(sed -n '/^\[workspace\.package\]/,/^[\[]/{s/^version = "\(.*\)"/\1/p}' Cargo.toml)
+    if [ "{{TAG}}" != "v${VERSION}" ]; then
+        echo "Error: tag '{{TAG}}' does not match Cargo.toml version 'v${VERSION}'." >&2
+        echo "  Run 'just bump <major|minor|patch>' first, then 'just release v${VERSION}'." >&2
+        exit 1
+    fi
 
     # --- Pre-flight: gh must be installed ---
     if ! command -v gh >/dev/null 2>&1; then
@@ -552,22 +567,41 @@ release TAG:
         exit 1
     fi
 
-    # --- Locate the tarball for the current version ---
-    VERSION=$(sed -n '/^\[workspace\.package\]/,/^[\[]/{s/^version = "\(.*\)"/\1/p}' Cargo.toml)
-    TARBALL="jinn-x86_64-unknown-linux-gnu-v${VERSION}.tgz"
-
-    if [ ! -f "${TARBALL}" ]; then
-        echo "Error: ${TARBALL} not found. Run 'just build-release-tarball' first." >&2
+    # --- Pre-flight: cargo-binstall must be installed (for smoke test) ---
+    if ! command -v cargo-binstall >/dev/null 2>&1; then
+        echo "Error: cargo-binstall is not installed." >&2
+        echo "  Run: cargo install cargo-binstall" >&2
         exit 1
     fi
 
-    # --- Create the release if it doesn't exist, else upload ---
-    if gh release view "{{TAG}}" >/dev/null 2>&1; then
+    # --- 1. Mirror trunk (and tags) to GitHub ---
+    echo '==> Mirroring trunk to GitHub...'
+    just sync-github
+
+    # --- 2. Build the cargo-binstall tarball ---
+    just build-release-tarball
+
+    TARBALL="jinn-x86_64-unknown-linux-gnu-v${VERSION}.tgz"
+
+    # --- 3. Create the release if it doesn't exist, else upload ---
+    if gh release view "{{TAG}}" --repo "${REPO}" >/dev/null 2>&1; then
         echo "==> Uploading ${TARBALL} to existing release {{TAG}}"
-        gh release upload "{{TAG}}" "${TARBALL}" --clobber
+        gh release upload "{{TAG}}" "${TARBALL}" --repo "${REPO}" --clobber
     else
         echo "==> Creating release {{TAG}} and uploading ${TARBALL}"
-        gh release create "{{TAG}}" "${TARBALL}" --generate-notes
+        gh release create "{{TAG}}" "${TARBALL}" --repo "${REPO}" --generate-notes
     fi
 
-    echo "==> Done. https://github.com/jayson-lennon/jinn/releases/tag/{{TAG}}"
+    # --- 4. Smoke-test: cargo-binstall into an isolated cargo home ---
+    echo '==> Smoke-testing cargo-binstall...'
+    SMOKE_HOME="$(mktemp -d)"
+    trap 'rm -rf "${SMOKE_HOME}"' EXIT
+    CARGO_HOME="${SMOKE_HOME}" cargo binstall \
+        --git "https://github.com/${REPO}" \
+        --locked jinn \
+        --target x86_64-unknown-linux-gnu \
+        --no-confirm
+    INSTALLED="${SMOKE_HOME}/bin/jinn"
+    echo "==> Installed binary reports: $(${INSTALLED} --version)"
+
+    echo "==> Done. https://github.com/${REPO}/releases/tag/{{TAG}}"
