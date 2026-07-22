@@ -12,5 +12,6 @@ flamegraph*.svg
 perf.*
 pkg/
 *.tar.zst
+*.tgz
 .kilo/
 .opencode/
