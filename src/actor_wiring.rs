@@ -1034,6 +1034,34 @@ jinn_domain::feat::preferences_actor::preferences_actor::PreferencesActor::super
             }
         }
 
+        // Auto-steer worker: periodic todo-list reminder injection.
+        {
+            use jinn_domain::feat::auto_steer_worker::TodoAutoSteerWorker;
+            use jinn_domain::feat::history_worker::actor::{
+                HistoryWorkerActor, HistoryWorkerActorDeps,
+            };
+
+            let config = user_preferences_storage.read().todo_auto_steer;
+
+            if config.enabled {
+                let _worker = spawn_tracked!(
+                    &services.bus,
+                    "history-todo-steer",
+                    "HistoryWorker<TodoAutoSteerWorker>",
+                    HistoryWorkerActor::<TodoAutoSteerWorker>::supervise(
+                        &root,
+                        HistoryWorkerActorDeps {
+                            deps: actor_deps.clone(),
+                            worker: TodoAutoSteerWorker { config },
+                        },
+                    )
+                    .restart_policy(kameo::supervision::RestartPolicy::Never)
+                    .spawn()
+                    .await
+                );
+            }
+        }
+
         // Auto-prune worker: broken-edit context pruning.
         {
             use jinn_domain::feat::auto_prune_worker::BrokenEditAutoPruneWorker;
