@@ -384,3 +384,12 @@ enabled = true
 # Number of entries around a user message that are shielded from exclusion by
 # other workers.
 radius = 20
+
+# ---------------------------------------------------------------------------
+# Periodic task-list reminder. Injects a `User` entry at the tail of history
+# after this many history entries elapse without a `todo_*` tool call (or a prior
+# reminder). Default 30 is the p90 of exemplary inter-todo cadence. Never fires
+# in a session that has never used a `todo_*` tool.
+[todo_auto_steer]
+enabled = true
+threshold = 30
