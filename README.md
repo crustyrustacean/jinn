@@ -2,6 +2,8 @@
 
 A TUI agent harness with multi-session support and Vim-style keybinds.
 
+[CHANGELOG](./CHANGELOG.md)
+
 ## Major Features
 
 - Run any number of concurrent sessions, with live preview
@@ -69,6 +71,45 @@ Prompts are inserted using `#foo` where `foo` is the name of the prompt. You wil
 
 Prompts are only expanded when they get sent to the model and will always show up as `#foo` in the chat input and in the history. If you want to edit the contents of a prompt _before_ sending, type `#foo#`. As soon as the second `#` is typed, the prompt will be fully expanded in the chat input and you can edit it before sending (this does _not_ change the on-disk prompt).
 
+### Lifecycle Scripts
+
+`jinn` can associate "lifecycle" scripts with sessions. These scripts run when a new session is created (via `<leader>so` or `<leader>sl`) and when it's closed (via `xx` on the sidebar). They are used to checkout branches and set up an environment on a new session, and also merge + cleanup when closing the session.
+
+The [default config](./crates/jinn-domain/src/feat/preferences_actor/default_jinn.toml) has both `git` and `fossil` preconfigured. You'll need to make sure your directory structure matches below, otherwise you'll need to write your own scripts.
+
+```toml
+# Git
+#
+# Project directory should be a parent folder of the repo:
+#
+# my_project/        <-- configured as the project directory in jinn
+#    repo/           <-- your actual repo
+#       .git/
+#    worktrees_will_go_here_as_siblings/
+#       .git/
+#
+[[session_lifecycle]]
+name = "git worktree"
+description = "Open a git worktree + branch"
+setup_command = "cd <repo> && git worktree add -b <branch> ../<branch> && cd .. && echo $(pwd)/<branch>"
+teardown_command = """bash -c 'git add -A && (git diff --cached --quiet || git commit -q -m "auto-commit at teardown") && git merge main && cd ../<repo> && git merge --squash <branch> && (git diff --cached --quiet || git commit -q -m "Merge <branch>") && git worktree remove ../<branch> && git branch -D <branch>'"""
+
+# Fossil
+#
+# Project directory should be a parent folder of the repo:
+#
+# my_project/        <-- configured as the project directory in jinn
+#    repo.fossil
+#    checkouts_will_go_here_as_siblings/
+#       .fslckout
+#
+[[session_lifecycle]]
+name = "fossil branch checkout"
+description = "Open a new checkout + branch"
+setup_command = "mkdir <branch> && cd <branch> && fossil open ../<repo>.fossil && fossil commit -m 'Open <branch>' --branch <branch> --allow-empty && echo ./<branch>"
+teardown_command = "fossil merge trunk --force && fossil addremove && fossil commit -m 'Bring in latest trunk' && fossil update trunk && fossil merge <branch> && fossil addremove && fossil commit -m 'Merge <branch>' && fossil branch close <branch> && cd .. && rm -rfv <branch>"
+```
+
 ## Agentic Coding
 
 The primary usage target for `jinn` is agentic coding, so it comes pre-packaged with prompts to help facilitate this.
@@ -99,11 +140,16 @@ jinn is configured via the files in the `~/.config/jinn` directory:
 
 ## Security
 
-None. Bring your OS's sandboxing features.
+_None_
 
+`jinn` has no security warnings, no checks for API keys hoovered up by tools, no tool approvals, no automatic sandboxes, no containerization. If you want to secure `jinn` (or anything), bring the sandboxing features from your OS:
+
+- All OS: run as a user with limited privileges, [Podman](https://podman.io/) (NOT Docker)
 - Linux: [bubblewrap](https://github.com/containers/bubblewrap)
 - macOS: [App Sandbox](https://developer.apple.com/documentation/xcode/configuring-the-macos-app-sandbox)
 - Windows: [Windows Sandbox (WSB)](https://learn.microsoft.com/en-us/windows/security/application-security/application-isolation/windows-sandbox/)
+
+You only need to configure the above once and you can use it with any application that you don't trust (like `jinn`, [Claude Code](https://claude.com/product/claude-code), [Codex](https://github.com/openai/codex), [OpenCode](https://opencode.ai/), [Pi](https://pi.dev/), etc.).
 
 ## Discord Integration
 
@@ -112,8 +158,6 @@ jinn has basic Discord support. Add this to your `jinn.toml`:
 ```toml
 [discord]
 enabled = true
-# Lifecycle script is REQUIRED for Discord integration.
-lifecycle = "<name of a lifecycle script>"
 guild_id = "<guild id>"
 forum_channel = "<snowflake channel id>"
 ```
@@ -122,44 +166,12 @@ Requirements to use:
 
 - Discord bot set up on your server
 - A forum channel to create sessions
-- A lifecycle script
 - Projects pre-configured in `jinn` (`<leader>so` to open the projects finder)
-
-Example lifecycle scripts:
-
-```toml
-# Fossil repos. Project directory should be a parent folder of the repo:
-#
-# my_project/        <-- configured as the project directory in jinn
-#    repo.fossil
-#    checkouts_will_go_here_as_siblings/
-#       .fslckout
-#
-[[session_lifecycle]]
-name = "fossil branch checkout"
-description = "Open a new checkout + branch"
-setup_command = "mkdir <branch> && cd <branch> && fossil open ../<repo>.fossil && fossil commit -m 'Open <branch>' --branch <branch> --allow-empty && echo ./<branch>"
-teardown_command = "fossil merge trunk --force && fossil addremove && fossil commit -m 'Bring in latest trunk' && fossil update trunk && fossil merge <branch> && fossil addremove && fossil commit -m 'Merge <branch>' && fossil branch close <branch> && cd .. && rm -rfv <branch>"
-
-# Git worktrees. Project directory should be a parent folder of the repo:
-#
-# my_project/        <-- configured as the project directory in jinn
-#    repo/           <-- your actual repo
-#       .git/
-#    worktrees_will_go_here_as_siblings/
-#       .git/
-#
-[[session_lifecycle]]
-name = "git worktree"
-description = "Open a git worktree + branch"
-setup_command = "cd <repo> && git worktree add -b <branch> ../<branch> && cd .. && echo $(pwd)/<branch>"
-teardown_command = """bash -c 'git add -A && (git diff --cached --quiet || git commit -q -m "auto-commit at teardown") && git merge main && cd ../<repo> && git merge --squash <branch> && (git diff --cached --quiet || git commit -q -m "Merge <branch>") && git worktree remove ../<branch> && git branch -D <branch>'"""
-```
 
 Available Discord bot commands:
 
 - `/new` - Create a new session. _Run this in a new forum thread to start_.
-- `/teardown` - Run the lifecycle teardown script
+- `/teardown` - Run the lifecycle teardown script (if used)
 - `/archive` - Archive the session
 
 jinn commands:
@@ -168,18 +180,14 @@ jinn commands:
 
 ## Installation
 
-Multiple installation methods are supported. If installing only the binary (cargo-binstall), run `jinn install` afterwards to seed default themes, personas, prompts, and skills into your user directories.
-
-### cargo-binstall
-
-Installs a prebuilt binary without cloning the source. Works without a crates.io publish (downloads directly from GitHub releases):
+### cargo-binstall (recommended)
 
 ```sh
 cargo binstall --git https://github.com/jayson-lennon/jinn --locked jinn
-jinn install
+jinn install --overwrite
 ```
 
-The `jinn install` step writes every default resource to `~/.config/jinn/{themes,personas,prompts}` and `~/.agents/skills`, printing each path. Existing files are skipped, so it is safe to re-run.
+The `jinn install --overwrite` step writes skills, prompts, personas, and themes to your XDG directories (except for agent skills at `~/.agents/skills`). Note that `jinn` works fine without the `jinn install` step, but it's recommended to run so that you can easily edit the pre-existing prompts and also use the premade skills.
 
 ### Arch Linux
 
@@ -187,6 +195,7 @@ The `jinn install` step writes every default resource to `~/.config/jinn/{themes
 git clone https://github.com/jayson-lennon/jinn.git
 cd jinn
 makepkg -si
+pacman -U <package>
 ```
 
 ### Build from source
@@ -197,31 +206,16 @@ makepkg -si
 - SQLite (`sqlite`)
 - `clang`
 - `gcc-libs`
-- [`just`](https://github.com/casey/just)
+- [`just`](https://github.com/casey/just) (recommended)
 
 ```sh
 git clone https://github.com/jayson-lennon/jinn.git
 cd jinn
 cargo build --release
-just install-defaults
+./target/release/jinn install --overwrite
 ```
 
-The binary will be at `target/release/jinn` and you'll need to add it to your `$PATH`. The `just install-defaults` command will copy all of the required themes/prompts/etc to your `~/.config/jinn` directory.
-
-## Releasing
-
-Prebuilt binaries are published to GitHub releases so `cargo-binstall` can fetch them. This is a local-build-and-push workflow (no CI).
-
-**One-time setup:** install the [GitHub CLI](https://cli.github.com/) and run `gh auth login`.
-
-**Per release:**
-
-```sh
-just build-release-tarball   # builds + packages jinn-x86_64-unknown-linux-gnu-v<version>.tgz
-just release v0.97.0         # creates/updates the GitHub release and uploads the tarball
-```
-
-The tag must already exist in Git (Fossil tags flow to GitHub via the one-way mirror). Source `.tar.gz`/`.zip` archives are auto-generated by GitHub per tag.
+The binary will be at `target/release/jinn` and you'll need to add it to your `$PATH`. The `jinn install` command will copy all of the required prompts, skills, etc to your home directory for
 
 ## Contributing
 
