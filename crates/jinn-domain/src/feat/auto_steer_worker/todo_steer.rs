@@ -133,6 +133,19 @@ impl HistoryWorker for TodoAutoSteerWorker {
 ///
 /// Returns an empty vec if disabled, gated, or below threshold.
 fn build_steer_mutations(history: &[ChatEntry], threshold: usize) -> Vec<HistoryMutation> {
+    // GATE: never emit until the session has at least one todo_* ToolCall.
+    // Scanned independently of the anchor so correctness does not depend on
+    // the invariant that entries are never removed from the snapshot.
+    let has_todo = history.iter().any(|entry| {
+        matches!(
+            &entry.kind,
+            ChatEntryKind::ToolCall { name, .. } if is_todo_tool(name)
+        )
+    });
+    if !has_todo {
+        return Vec::new();
+    }
+
     // Iterate from the end (most recent) toward the start to find the most
     // recent anchor: a todo_ ToolCall or a prior steer reminder.
     let anchor_index = history.iter().enumerate().rev().find_map(|(i, entry)| {
@@ -143,8 +156,8 @@ fn build_steer_mutations(history: &[ChatEntry], threshold: usize) -> Vec<History
         (is_todo_call || is_steer_reminder(entry)).then_some(i)
     });
 
+    // has_todo is true, so an anchor (the todo_ call) always exists here.
     let Some(anchor_index) = anchor_index else {
-        // No anchor means no todo_ call and no prior reminder: gated.
         return Vec::new();
     };
 
@@ -248,6 +261,19 @@ mod tests {
         let mutations = run(&history, TodoAutoSteerConfig::default()).await;
 
         // Then no mutations are produced (gated: no todo_ call exists).
+        assert!(mutations.is_empty());
+    }
+
+    #[tokio::test]
+    async fn reminder_without_any_todo_call_is_gated() {
+        // Given a history with a prior reminder but NO todo_* ToolCall anywhere.
+        let mut history = vec![reminder(0)];
+        history.extend(fillers(40));
+
+        // When evaluating.
+        let mutations = run(&history, TodoAutoSteerConfig::default()).await;
+
+        // Then no mutations are produced (gate: no todo_* call has ever occurred).
         assert!(mutations.is_empty());
     }
 

@@ -1,12 +1,13 @@
 //! Resolve the Discord `/new` input requirements for the configured lifecycle.
 //!
-//! The Discord bot drives any single lifecycle script (selected via
-//! `[discord] lifecycle` in `jinn.toml`). Each lifecycle's `setup_command`
-//! declares its positional parameters (`$1`, `<name>`, `$@`). This module is
-//! the frontend-agnostic bridge between that template and the bot's
-//! interactive collection loop: given the user's `[[session_lifecycle]]`
-//! list and the configured lifecycle name, it reports how many args the bot
-//! must collect and the prompt text to show.
+//! The Discord bot drives a lifecycle script selected interactively by the
+//! user during `/new` (chosen from the `[[session_lifecycle]]` list, not from
+//! any `[discord]` config field). Each lifecycle's `setup_command` declares
+//! its positional parameters (`$1`, `<name>`, `$@`). This module is the
+//! frontend-agnostic bridge between that template and the bot's interactive
+//! collection loop: given the user's `[[session_lifecycle]]` list and the
+//! chosen lifecycle name, it reports how many args the bot must collect and
+//! the prompt text to show.
 //!
 //! It reuses [`CommandTemplate`] from `jinn-domain` so the Discord prompt and
 //! arg-count semantics match the TUI path exactly.
