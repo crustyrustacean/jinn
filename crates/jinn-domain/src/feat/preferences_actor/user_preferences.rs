@@ -29,6 +29,7 @@ pub use crate::feat::auto_prune_worker::regex::{RegexAutoPruneConfig, RegexPrune
 pub use crate::feat::auto_prune_worker::todo_prune::TodoAutoPruneConfig;
 pub use crate::feat::auto_prune_worker::tool_age_window::ToolAgeWindowAutoPruneConfig;
 pub use crate::feat::auto_prune_worker::trivial_assistant::TrivialAssistantAutoPruneConfig;
+pub use crate::feat::auto_steer_worker::todo_steer::TodoAutoSteerConfig;
 pub use crate::feat::compaction_worker::CompactionConfig;
 pub use crate::feat::cwd_input::CwdSelectorConfig;
 pub use crate::feat::llm_actor::RequestRetryConfig;
@@ -173,6 +174,9 @@ pub struct UserPreferences {
     /// Auto-prune configuration.
     #[serde(default)]
     pub auto_prune: AutoPruneConfig,
+    /// Todo auto-steer configuration.
+    #[serde(default)]
+    pub todo_auto_steer: TodoAutoSteerConfig,
     /// Discord bot configuration. Off by default.
     #[serde(default)]
     pub discord: crate::feat::discord::DiscordConfig,
@@ -245,6 +249,7 @@ impl Default for UserPreferences {
             cwd_selector: CwdSelectorConfig::default(),
             minimap: MinimapConfig::default(),
             auto_prune: AutoPruneConfig::default(),
+            todo_auto_steer: TodoAutoSteerConfig::default(),
             discord: crate::feat::discord::DiscordConfig::default(),
             tool_default_timeout_secs: default_tool_default_timeout_secs(),
             history_stall_timeout_secs: default_history_stall_timeout_secs(),
@@ -629,6 +634,7 @@ mod tests {
             cwd_selector: CwdSelectorConfig::default(),
             minimap: MinimapConfig::default(),
             auto_prune: AutoPruneConfig::default(),
+            todo_auto_steer: TodoAutoSteerConfig::default(),
             projects: vec![],
             discord: crate::feat::discord::DiscordConfig::default(),
             tool_default_timeout_secs: default_tool_default_timeout_secs(),
@@ -714,6 +720,7 @@ mod tests {
             cwd_selector: CwdSelectorConfig::default(),
             minimap: MinimapConfig::default(),
             auto_prune: AutoPruneConfig::default(),
+            todo_auto_steer: TodoAutoSteerConfig::default(),
             projects: vec![],
             discord: crate::feat::discord::DiscordConfig::default(),
             tool_default_timeout_secs: default_tool_default_timeout_secs(),
@@ -750,6 +757,7 @@ mod tests {
             cwd_selector: CwdSelectorConfig::default(),
             minimap: MinimapConfig::default(),
             auto_prune: AutoPruneConfig::default(),
+            todo_auto_steer: TodoAutoSteerConfig::default(),
             projects: vec![],
             discord: crate::feat::discord::DiscordConfig::default(),
             tool_default_timeout_secs: default_tool_default_timeout_secs(),
@@ -1057,6 +1065,7 @@ mod tests {
             cwd_selector: CwdSelectorConfig::default(),
             minimap: MinimapConfig::default(),
             auto_prune: AutoPruneConfig::default(),
+            todo_auto_steer: TodoAutoSteerConfig::default(),
             projects: vec![],
             discord: crate::feat::discord::DiscordConfig::default(),
             tool_default_timeout_secs: default_tool_default_timeout_secs(),
