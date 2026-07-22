@@ -18,7 +18,8 @@ fn main() {
         | Some(jinn_cli::cli::Commands::Tui)
         | Some(jinn_cli::cli::Commands::Completions { .. }) => TracingMode::Tui { log_path },
         Some(jinn_cli::cli::Commands::Fetch { .. })
-        | Some(jinn_cli::cli::Commands::Config { .. }) => TracingMode::Headless { log_path },
+        | Some(jinn_cli::cli::Commands::Config { .. })
+        | Some(jinn_cli::cli::Commands::Install) => TracingMode::Headless { log_path },
         #[cfg(debug_assertions)]
         Some(jinn_cli::cli::Commands::Headless { .. }) => TracingMode::Headless { log_path },
     };

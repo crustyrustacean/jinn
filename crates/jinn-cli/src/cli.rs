@@ -81,6 +81,12 @@ pub enum Commands {
         shell: clap_complete::Shell,
     },
 
+    /// Install default themes, personas, prompts, and skills to user directories.
+    ///
+    /// Skips any resource that already exists. Useful for binary-only installs
+    /// (e.g. `cargo-binstall`) where no source tree is available.
+    Install,
+
     /// Fetch reference data from external sources.
     Fetch {
         /// The fetch subcommand to run.

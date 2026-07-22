@@ -25,3 +25,4 @@ mutants.out
 *.db-shm
 *.db-wal
 build/
+*.tgz
