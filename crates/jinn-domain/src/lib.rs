@@ -84,6 +84,9 @@ pub use feat::preferences_actor::protocol::command::{PreferenceUpdate, UpdatePre
 pub use feat::preferences_actor::protocol::event::PreferencesUpdated;
 pub use feat::preferences_actor::{InitOutcome, init_default_config_to, preferences_path};
 
+// Re-export install (default resource seeding for binary-only installs).
+pub use feat::install::{Destinations, InstallError, InstallOutcome, install_defaults_to};
+
 // Re-export persona types
 pub use feat::persona::{Persona, PersonaEntry};
 
