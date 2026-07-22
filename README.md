@@ -182,6 +182,8 @@ jinn commands:
 
 ## Installation
 
+Note: `jinn` has only ever been tested on Linux. Windows and Mac users will need to [build from source](#build-from-source).
+
 ### cargo-binstall (recommended)
 
 ```sh
