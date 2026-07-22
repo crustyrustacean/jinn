@@ -1054,7 +1054,9 @@ jinn_domain::feat::preferences_actor::preferences_actor::PreferencesActor::super
                             deps: actor_deps.clone(),
                             worker: TodoAutoSteerWorker {
                                 config,
-                                pending_steer_id: std::sync::Arc::new(std::sync::Mutex::new(None)),
+                                pending_steer_id: std::sync::Arc::new(std::sync::Mutex::new(
+                                    std::collections::HashMap::new(),
+                                )),
                             },
                         },
                     )

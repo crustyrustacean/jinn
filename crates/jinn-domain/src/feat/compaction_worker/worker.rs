@@ -4,8 +4,8 @@
 //! exclude old entries and insert a compaction summary. Runs asynchronously
 //! (LLM call for summarization).
 
+use std::collections::{HashMap, HashSet};
 use std::sync::Arc;
-use std::sync::atomic::{AtomicBool, Ordering};
 
 use parking_lot::Mutex;
 
@@ -67,17 +67,22 @@ pub struct CompactionWorker {
     state: State,
     /// Proof of authority to write session state (model round-robin advance).
     cap: crate::common::tcaps::SessionCap,
-    /// Whether an auto-compaction is currently in flight.
+    /// Sessions with an auto-compaction currently in flight.
+    ///
+    /// Keyed by `SessionId` because a single process hosts multiple
+    /// concurrent sessions (e.g. the Discord bridge). A process-wide flag
+    /// would let one session's in-flight compaction wrongly suppress
+    /// another session's evaluation.
     ///
     /// Set before starting the LLM call, cleared when the compaction
-    /// summary entry is found in a subsequent snapshot (meaning mutations
-    /// were applied) or on error.
-    compaction_in_progress: Arc<AtomicBool>,
-    /// The `ChatEntryId` of the pending compaction summary entry.
+    /// summary entry is found in a subsequent snapshot for that session
+    /// (meaning mutations were applied) or on error.
+    compaction_in_progress: Arc<Mutex<HashSet<SessionId>>>,
+    /// The `ChatEntryId` of the pending compaction summary entry, per session.
     ///
     /// Used to detect when mutations have been applied by scanning the snapshot.
-    /// `None` when no compaction is in flight.
-    pending_compaction_id: Arc<Mutex<Option<ChatEntryId>>>,
+    /// A session is absent from the map when no compaction is in flight for it.
+    pending_compaction_id: Arc<Mutex<HashMap<SessionId, ChatEntryId>>>,
 }
 
 impl CompactionWorker {
@@ -93,8 +98,8 @@ impl CompactionWorker {
             handle,
             state,
             cap,
-            compaction_in_progress: Arc::new(AtomicBool::new(false)),
-            pending_compaction_id: Arc::new(Mutex::new(None)),
+            compaction_in_progress: Arc::new(Mutex::new(HashSet::new())),
+            pending_compaction_id: Arc::new(Mutex::new(HashMap::new())),
         }
     }
 
@@ -104,30 +109,34 @@ impl CompactionWorker {
     }
 
     /// Check whether the compaction summary from a previous auto-compaction
-    /// has been applied by scanning the provided snapshot for its entry ID.
+    /// for `session_id` has been applied by scanning the provided snapshot
+    /// for its entry ID.
     ///
-    /// If found, clears the in-progress flag and pending ID. Returns true
+    /// If found, clears the in-progress state for that session. Returns true
     /// if the flag was cleared (compaction applied), false if still in flight.
-    fn check_compaction_applied(&self, history: &[ChatEntry]) -> bool {
-        let guard = self.pending_compaction_id.lock();
-        let Some(pending_id) = guard.as_ref() else {
+    fn check_compaction_applied(&self, session_id: &SessionId, history: &[ChatEntry]) -> bool {
+        let pending_id = self.pending_compaction_id.lock().get(session_id).cloned();
+        let Some(pending_id) = pending_id else {
             return false;
         };
-        let found = history.iter().any(|entry| entry.id == *pending_id);
-        drop(guard);
+        let found = history.iter().any(|entry| entry.id == pending_id);
 
         if found {
-            self.clear_compaction_state();
-            tracing::info!("compaction summary found in snapshot, clearing in-progress flag");
+            self.clear_compaction_state(session_id);
+            tracing::info!(
+                session_id = %session_id,
+                "compaction summary found in snapshot, clearing in-progress flag"
+            );
         }
 
         found
     }
 
-    /// Clear the compaction in-progress state (flag and pending ID).
-    fn clear_compaction_state(&self) {
-        self.compaction_in_progress.store(false, Ordering::SeqCst);
-        *self.pending_compaction_id.lock() = None;
+    /// Clear the compaction in-progress state (flag and pending ID) for
+    /// `session_id`.
+    fn clear_compaction_state(&self, session_id: &SessionId) {
+        self.compaction_in_progress.lock().remove(session_id);
+        self.pending_compaction_id.lock().remove(session_id);
     }
 }
 
@@ -228,8 +237,8 @@ impl CompactionWorker {
         // snapshot contains the compaction summary entry. If found, the
         // mutations were applied — clear the flag and proceed. If not found,
         // the LLM call or mutation application is still pending — skip.
-        if self.compaction_in_progress.load(Ordering::SeqCst)
-            && !self.check_compaction_applied(history)
+        if self.compaction_in_progress.lock().contains(session_id)
+            && !self.check_compaction_applied(session_id, history)
         {
             tracing::info!(
                 session_id = %session_id,
@@ -304,8 +313,12 @@ impl CompactionWorker {
 
         // Pre-generate the compaction entry ID and mark as in-flight.
         let compaction_entry_id = ChatEntryId::new();
-        self.compaction_in_progress.store(true, Ordering::SeqCst);
-        *self.pending_compaction_id.lock() = Some(compaction_entry_id.clone());
+        self.compaction_in_progress
+            .lock()
+            .insert(session_id.clone());
+        self.pending_compaction_id
+            .lock()
+            .insert(session_id.clone(), compaction_entry_id.clone());
 
         let result = self
             .evaluate_with_config(
@@ -322,13 +335,13 @@ impl CompactionWorker {
         match result {
             Ok(mutations) if mutations.is_empty() => {
                 // Nothing to compact — clear flag so next snapshot can re-evaluate.
-                self.clear_compaction_state();
+                self.clear_compaction_state(session_id);
                 mutations
             }
             Ok(mutations) => mutations,
             Err(e) => {
                 tracing::error!(error = %e, "compaction worker evaluation failed");
-                self.clear_compaction_state();
+                self.clear_compaction_state(session_id);
                 vec![]
             }
         }
