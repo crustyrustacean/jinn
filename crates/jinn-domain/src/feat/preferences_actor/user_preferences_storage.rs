@@ -247,7 +247,7 @@ mod tests {
     use crate::feat::preferences_actor::RequestRetryConfig;
     use crate::feat::preferences_actor::user_preferences::{
         AutoPruneConfig, CompactionConfig, CwdSelectorConfig, MinimapConfig,
-        OpenrouterWebSearchConfig, WebFetchConfig, WebSearchConfig,
+        OpenrouterWebSearchConfig, TodoAutoSteerConfig, WebFetchConfig, WebSearchConfig,
     };
     use crate::feat::project::ProjectConfig;
 
@@ -282,6 +282,7 @@ mod tests {
             cwd_selector: CwdSelectorConfig::default(),
             minimap: MinimapConfig::default(),
             auto_prune: AutoPruneConfig::default(),
+            todo_auto_steer: TodoAutoSteerConfig::default(),
             projects: vec![],
             discord: crate::feat::discord::DiscordConfig::default(),
             tool_default_timeout_secs: default_tool_default_timeout_secs(),
@@ -343,6 +344,7 @@ mod tests {
             cwd_selector: CwdSelectorConfig::default(),
             minimap: MinimapConfig::default(),
             auto_prune: AutoPruneConfig::default(),
+            todo_auto_steer: TodoAutoSteerConfig::default(),
             projects: vec![ProjectConfig {
                 path: PathBuf::from("/tmp/proj-a"),
             }],
@@ -388,6 +390,7 @@ mod tests {
             cwd_selector: CwdSelectorConfig::default(),
             minimap: MinimapConfig::default(),
             auto_prune: AutoPruneConfig::default(),
+            todo_auto_steer: TodoAutoSteerConfig::default(),
             projects: vec![],
             discord: crate::feat::discord::DiscordConfig::default(),
             tool_default_timeout_secs: default_tool_default_timeout_secs(),
@@ -427,6 +430,7 @@ mod tests {
             cwd_selector: CwdSelectorConfig::default(),
             minimap: MinimapConfig::default(),
             auto_prune: AutoPruneConfig::default(),
+            todo_auto_steer: TodoAutoSteerConfig::default(),
             projects: vec![],
             discord: crate::feat::discord::DiscordConfig::default(),
             tool_default_timeout_secs: default_tool_default_timeout_secs(),
@@ -453,6 +457,7 @@ mod tests {
             cwd_selector: CwdSelectorConfig::default(),
             minimap: MinimapConfig::default(),
             auto_prune: AutoPruneConfig::default(),
+            todo_auto_steer: TodoAutoSteerConfig::default(),
             projects: vec![],
             discord: crate::feat::discord::DiscordConfig::default(),
             tool_default_timeout_secs: default_tool_default_timeout_secs(),
@@ -488,6 +493,7 @@ mod tests {
             cwd_selector: CwdSelectorConfig::default(),
             minimap: MinimapConfig::default(),
             auto_prune: AutoPruneConfig::default(),
+            todo_auto_steer: TodoAutoSteerConfig::default(),
             projects: vec![],
             discord: crate::feat::discord::DiscordConfig::default(),
             tool_default_timeout_secs: default_tool_default_timeout_secs(),
