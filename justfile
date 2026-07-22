@@ -528,3 +528,46 @@ build-release-tarball:
     rm -rf "${STAGE_DIR}"
 
     echo "==> Created ${TARBALL}"
+
+# Upload the cargo-binstall tarball to a GitHub release.
+# Creates the release if it doesn't exist; appends to an existing one.
+#
+# Usage: just release v0.97.0
+# Prerequisite: gh CLI installed (https://cli.github.com/) and `gh auth login` done.
+release TAG:
+    #!/usr/bin/env bash
+    set -euo pipefail
+
+    # --- Pre-flight: gh must be installed ---
+    if ! command -v gh >/dev/null 2>&1; then
+        echo "Error: GitHub CLI (gh) is not installed." >&2
+        echo "  Install from https://cli.github.com/ then run: gh auth login" >&2
+        exit 1
+    fi
+
+    # --- Pre-flight: gh must be authenticated ---
+    if ! gh auth status >/dev/null 2>&1; then
+        echo "Error: gh is not authenticated." >&2
+        echo "  Run: gh auth login" >&2
+        exit 1
+    fi
+
+    # --- Locate the tarball for the current version ---
+    VERSION=$(sed -n '/^\[workspace\.package\]/,/^[\[]/{s/^version = "\(.*\)"/\1/p}' Cargo.toml)
+    TARBALL="jinn-x86_64-unknown-linux-gnu-v${VERSION}.tgz"
+
+    if [ ! -f "${TARBALL}" ]; then
+        echo "Error: ${TARBALL} not found. Run 'just build-release-tarball' first." >&2
+        exit 1
+    fi
+
+    # --- Create the release if it doesn't exist, else upload ---
+    if gh release view "{{TAG}}" >/dev/null 2>&1; then
+        echo "==> Uploading ${TARBALL} to existing release {{TAG}}"
+        gh release upload "{{TAG}}" "${TARBALL}" --clobber
+    else
+        echo "==> Creating release {{TAG}} and uploading ${TARBALL}"
+        gh release create "{{TAG}}" "${TARBALL}" --generate-notes
+    fi
+
+    echo "==> Done. https://github.com/jayson-lennon/jinn/releases/tag/{{TAG}}"
