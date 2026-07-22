@@ -47,6 +47,7 @@ use crate::feat::session::chat_entry::{ChatEntry, ChatEntryId, ChatEntryKind};
 use crate::feat::session::history_mutation::HistoryMutation;
 use crate::protocol::SessionId;
 use serde::{Deserialize, Serialize};
+use std::collections::HashMap;
 use std::sync::{Arc, Mutex};
 
 /// Default enabled state for todo auto-steer.
@@ -119,15 +120,18 @@ fn is_steer_reminder(entry: &ChatEntry) -> bool {
 pub struct TodoAutoSteerWorker {
     /// Worker configuration.
     pub config: TodoAutoSteerConfig,
-    /// The `ChatEntryId` of the most recently emitted reminder whose
+    /// Per-session `ChatEntryId`s of the most recently emitted reminder whose
     /// `InsertEntry` mutation has not yet been observed in a snapshot.
     ///
-    /// Set when a reminder is emitted, cleared once a subsequent snapshot
-    /// contains that entry. While set, the worker suppresses re-evaluation
-    /// so the deferred mutation has time to apply — closing the
-    /// scan→application TOCTOU that otherwise produces duplicate reminders.
-    /// `None` means no reminder is in flight.
-    pub pending_steer_id: Arc<Mutex<Option<ChatEntryId>>>,
+    /// Keyed by `SessionId` because a single process hosts multiple
+    /// concurrent sessions. A process-wide single ID would let one session's
+    /// pending reminder wrongly suppress another session's evaluation.
+    ///
+    /// Set when a reminder is emitted for a session, cleared once a
+    /// subsequent snapshot for that session contains that entry. While set,
+    /// the worker suppresses re-evaluation for that session only — closing
+    /// the scan→application TOCTOU that otherwise produces duplicate reminders.
+    pub pending_steer_id: Arc<Mutex<HashMap<SessionId, ChatEntryId>>>,
 }
 
 #[async_trait::async_trait]
@@ -142,39 +146,52 @@ impl HistoryWorker for TodoAutoSteerWorker {
 
     async fn evaluate(
         &self,
-        _session_id: &SessionId,
+        session_id: &SessionId,
         history: Arc<[ChatEntry]>,
     ) -> Vec<HistoryMutation> {
         if !self.config.enabled {
             return Vec::new();
         }
 
-        // GUARD: if a reminder was emitted on a previous snapshot but its
-        // deferred InsertEntry mutation has not yet appeared in history,
-        // suppress re-evaluation to avoid emitting a duplicate. Once the
-        // entry is observed, clear the guard and proceed normally. The
-        // mutex is never held across the rest of evaluate (clone-and-drop).
-        let pending = self.pending_steer_id.lock().unwrap().clone();
+        // GUARD: if a reminder was emitted on a previous snapshot for this
+        // session but its deferred InsertEntry mutation has not yet appeared
+        // in history, suppress re-evaluation to avoid emitting a duplicate.
+        // Once the entry is observed, clear the guard for this session and
+        // proceed normally. The mutex is never held across the rest of
+        // evaluate (clone-and-drop).
+        let pending = self
+            .pending_steer_id
+            .lock()
+            .unwrap()
+            .get(session_id)
+            .cloned();
         if let Some(pending_id) = pending {
             let landed = history.iter().any(|entry| entry.id == pending_id);
             if landed {
-                *self.pending_steer_id.lock().unwrap() = None;
+                self.pending_steer_id.lock().unwrap().remove(session_id);
                 tracing::debug!(
+                    session_id = %session_id,
                     "auto-steer reminder {:?} found in snapshot, clearing guard",
                     pending_id
                 );
             } else {
-                tracing::info!("auto-steer reminder in flight, skipping snapshot");
+                tracing::info!(
+                    session_id = %session_id,
+                    "auto-steer reminder in flight, skipping snapshot"
+                );
                 return Vec::new();
             }
         }
 
         let (mutations, emitted_id) = build_steer_mutations(&history, self.config.threshold);
 
-        // STASH: record the pre-generated ID so the next snapshot can detect
-        // whether this reminder has landed yet.
+        // STASH: record the pre-generated ID for this session so the next
+        // snapshot can detect whether this reminder has landed yet.
         if let Some(id) = emitted_id {
-            *self.pending_steer_id.lock().unwrap() = Some(id);
+            self.pending_steer_id
+                .lock()
+                .unwrap()
+                .insert(session_id.clone(), id);
         }
 
         mutations
@@ -318,35 +335,52 @@ mod tests {
     }
 
     async fn run(history: &[ChatEntry], config: TodoAutoSteerConfig) -> Vec<HistoryMutation> {
-        run_with_pending(history, config, None).await
+        let sid = sid();
+        run_with_pending(&sid, history, config, None).await
     }
 
-    /// Like `run`, but seeds the worker's pending-id guard with `pending`.
+    /// Like `run`, but seeds the worker's pending-id guard with `pending` for
+    /// `session_id`.
     async fn run_with_pending(
+        session_id: &SessionId,
         history: &[ChatEntry],
         config: TodoAutoSteerConfig,
         pending: Option<ChatEntryId>,
     ) -> Vec<HistoryMutation> {
-        let worker = TodoAutoSteerWorker {
-            config,
-            pending_steer_id: Arc::new(Mutex::new(pending)),
-        };
-        worker.evaluate(&sid(), Arc::from(history)).await
+        let worker = worker_with_pending(&config, session_id.clone(), pending);
+        worker.evaluate(session_id, Arc::from(history)).await
     }
 
-    /// A worker pre-seeded with a pending ID, returned alongside the ID so a
-    /// test can assert on it after evaluation.
-    fn worker_with_pending(
+    /// Like `run_with_pending`, but evaluates against `session_id` while the
+    /// pending guard is seeded for a *different* session (`other_session_id`).
+    /// Used to prove one session's guard does not affect another's.
+    async fn run_cross_session(
+        eval_session: &SessionId,
+        guard_session: &SessionId,
+        history: &[ChatEntry],
         config: TodoAutoSteerConfig,
         pending: Option<ChatEntryId>,
-    ) -> (TodoAutoSteerWorker, Option<ChatEntryId>) {
-        (
-            TodoAutoSteerWorker {
-                config,
-                pending_steer_id: Arc::new(Mutex::new(pending.clone())),
-            },
-            pending,
-        )
+    ) -> Vec<HistoryMutation> {
+        let worker = worker_with_pending(&config, guard_session.clone(), pending);
+        worker.evaluate(eval_session, Arc::from(history)).await
+    }
+
+    /// A worker pre-seeded with a pending ID for `session_id`, returned
+    /// alongside the session ID so a test can drive another `evaluate` call
+    /// against the same session.
+    fn worker_with_pending(
+        config: &TodoAutoSteerConfig,
+        session_id: SessionId,
+        pending: Option<ChatEntryId>,
+    ) -> TodoAutoSteerWorker {
+        let mut map = HashMap::new();
+        if let Some(id) = pending {
+            map.insert(session_id, id);
+        }
+        TodoAutoSteerWorker {
+            config: config.clone(),
+            pending_steer_id: Arc::new(Mutex::new(map)),
+        }
     }
 
     #[tokio::test]
@@ -567,8 +601,9 @@ mod tests {
         let mut history = vec![todo_call("todo_add_task")];
         history.extend(fillers(30));
 
-        // When evaluating.
+        // When evaluating against the session the guard was seeded for.
         let mutations = run_with_pending(
+            &sid(),
             &history,
             TodoAutoSteerConfig {
                 enabled: true,
@@ -590,19 +625,26 @@ mod tests {
         history.extend(fillers(30));
 
         // When evaluating with a worker we can inspect afterwards.
-        let (worker, _) = worker_with_pending(
-            TodoAutoSteerConfig {
+        let session_id = sid();
+        let worker = worker_with_pending(
+            &TodoAutoSteerConfig {
                 enabled: true,
                 threshold: 30,
             },
+            session_id.clone(),
             Some(pending_id.clone()),
         );
-        let mutations = worker.evaluate(&sid(), Arc::from(&history[..])).await;
+        let mutations = worker.evaluate(&session_id, Arc::from(&history[..])).await;
 
         // Then no mutations are produced.
         assert!(mutations.is_empty());
-        // And the pending ID remains set (not cleared) since it wasn't found.
-        let after = worker.pending_steer_id.lock().unwrap().clone();
+        // And the pending ID remains set for that session (not cleared).
+        let after = worker
+            .pending_steer_id
+            .lock()
+            .unwrap()
+            .get(&session_id)
+            .cloned();
         assert_eq!(after, Some(pending_id));
     }
 
@@ -618,21 +660,28 @@ mod tests {
         history.extend(fillers(30));
 
         // When evaluating with a worker we can inspect afterwards.
-        let (worker, _) = worker_with_pending(
-            TodoAutoSteerConfig {
+        let session_id = sid();
+        let worker = worker_with_pending(
+            &TodoAutoSteerConfig {
                 enabled: true,
                 threshold: 30,
             },
+            session_id.clone(),
             Some(pending_id.clone()),
         );
-        let mutations = worker.evaluate(&sid(), Arc::from(&history[..])).await;
+        let mutations = worker.evaluate(&session_id, Arc::from(&history[..])).await;
 
         // Then a fresh mutation is produced (the pending reminder landed,
         // so the guard was cleared and evaluation proceeded).
         assert_eq!(mutations.len(), 1);
         // And the original pending ID is no longer stashed — it was cleared
         // and replaced by the fresh emit's new ID.
-        let after = worker.pending_steer_id.lock().unwrap().clone();
+        let after = worker
+            .pending_steer_id
+            .lock()
+            .unwrap()
+            .get(&session_id)
+            .cloned();
         assert_ne!(
             after.as_ref(),
             Some(&pending_id),
@@ -647,20 +696,30 @@ mod tests {
         history.extend(fillers(30));
 
         // When evaluating with a worker we can inspect afterwards.
-        let (worker, _) = worker_with_pending(
-            TodoAutoSteerConfig {
+        let session_id = sid();
+        let worker = worker_with_pending(
+            &TodoAutoSteerConfig {
                 enabled: true,
                 threshold: 30,
             },
+            session_id.clone(),
             None,
         );
-        let mutations = worker.evaluate(&sid(), Arc::from(&history[..])).await;
+        let mutations = worker.evaluate(&session_id, Arc::from(&history[..])).await;
 
         // Then exactly one mutation is emitted.
         assert_eq!(mutations.len(), 1);
-        // And the worker's pending_steer_id is now set.
-        let pending = worker.pending_steer_id.lock().unwrap().clone();
-        assert!(pending.is_some(), "pending should be set after emit");
+        // And the worker has a pending entry for that session.
+        let pending = worker
+            .pending_steer_id
+            .lock()
+            .unwrap()
+            .get(&session_id)
+            .cloned();
+        assert!(
+            pending.is_some(),
+            "pending should be set for session after emit"
+        );
     }
 
     #[tokio::test]
@@ -670,17 +729,25 @@ mod tests {
         history.extend(fillers(30));
 
         // When evaluating.
-        let (worker, _) = worker_with_pending(
-            TodoAutoSteerConfig {
+        let session_id = sid();
+        let worker = worker_with_pending(
+            &TodoAutoSteerConfig {
                 enabled: true,
                 threshold: 30,
             },
+            session_id.clone(),
             None,
         );
-        let mutations = worker.evaluate(&sid(), Arc::from(&history[..])).await;
+        let mutations = worker.evaluate(&session_id, Arc::from(&history[..])).await;
 
-        // Then the emitted entry's ID equals the stashed pending ID.
-        let stashed = worker.pending_steer_id.lock().unwrap().clone();
+        // Then the emitted entry's ID equals the stashed pending ID for
+        // that session.
+        let stashed = worker
+            .pending_steer_id
+            .lock()
+            .unwrap()
+            .get(&session_id)
+            .cloned();
         let emitted_id = match &mutations[0] {
             HistoryMutation::InsertEntry { entry, .. } => entry.id.clone(),
             other => panic!("expected InsertEntry, got {other:?}"),
@@ -696,19 +763,97 @@ mod tests {
         history.extend(fillers(30));
 
         // When evaluating.
-        let (worker, _) = worker_with_pending(
-            TodoAutoSteerConfig {
+        let session_id = sid();
+        let worker = worker_with_pending(
+            &TodoAutoSteerConfig {
                 enabled: false,
                 threshold: 30,
             },
+            session_id.clone(),
             Some(pending_id.clone()),
         );
-        let mutations = worker.evaluate(&sid(), Arc::from(&history[..])).await;
+        let mutations = worker.evaluate(&session_id, Arc::from(&history[..])).await;
 
         // Then no mutations are produced (disabled wins).
         assert!(mutations.is_empty());
         // And the pending ID is untouched (not inspected, not cleared).
-        let after = worker.pending_steer_id.lock().unwrap().clone();
+        let after = worker
+            .pending_steer_id
+            .lock()
+            .unwrap()
+            .get(&session_id)
+            .cloned();
         assert_eq!(after, Some(pending_id));
+    }
+
+    // ── Multi-session isolation tests ──
+
+    #[tokio::test]
+    async fn one_session_pending_does_not_suppress_another_session() {
+        // Given session A has a pending reminder (in flight, not yet landed)
+        // and session B is independently at threshold and ready to emit.
+        let session_a = sid();
+        let session_b = sid();
+        let pending_a = ChatEntryId::new();
+        let mut history = vec![todo_call("todo_add_task")];
+        history.extend(fillers(30));
+
+        // When evaluating session B against a worker whose guard is seeded
+        // only for session A.
+        let mutations = run_cross_session(
+            &session_b,
+            &session_a,
+            &history,
+            TodoAutoSteerConfig {
+                enabled: true,
+                threshold: 30,
+            },
+            Some(pending_a),
+        )
+        .await;
+
+        // Then session B emits normally — it is NOT suppressed by A's guard.
+        assert_eq!(
+            mutations.len(),
+            1,
+            "session B should emit despite session A's pending reminder"
+        );
+    }
+
+    #[tokio::test]
+    async fn pending_guard_is_keyed_per_session() {
+        // Given a worker where session A has a pending reminder and session B
+        // is empty (no pending entry).
+        let session_a = sid();
+        let session_b = sid();
+        let pending_a = ChatEntryId::new();
+        let mut history = vec![todo_call("todo_add_task")];
+        history.extend(fillers(30));
+
+        let worker = worker_with_pending(
+            &TodoAutoSteerConfig {
+                enabled: true,
+                threshold: 30,
+            },
+            session_a.clone(),
+            Some(pending_a.clone()),
+        );
+
+        // When evaluating session A (pending, not landed) — suppressed.
+        let m_a = worker.evaluate(&session_a, Arc::from(&history[..])).await;
+        assert!(m_a.is_empty(), "session A suppressed by its own guard");
+
+        // And evaluating session B (no pending entry) — emits normally.
+        let m_b = worker.evaluate(&session_b, Arc::from(&history[..])).await;
+        assert_eq!(m_b.len(), 1, "session B emits, unaffected by A");
+
+        // And session A's pending entry is still set (unaffected by B's emit).
+        let still_pending = worker
+            .pending_steer_id
+            .lock()
+            .unwrap()
+            .get(&session_a)
+            .cloned();
+        assert_eq!(still_pending, Some(pending_a));
     }
 }
