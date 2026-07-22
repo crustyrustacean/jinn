@@ -197,9 +197,7 @@ impl App {
         // `install` seeds default resources into user dirs. Like `config`, it
         // must run before any actor wiring — and it needs no preferences/DB.
         if let Some(Commands::Install) = &cli.command {
-            use jinn_domain::{
-                AppPaths, Destinations, InstallOutcome, install_defaults_to,
-            };
+            use jinn_domain::{AppPaths, Destinations, InstallOutcome, install_defaults_to};
 
             let app_paths = AppPaths::default();
             let destinations = Destinations::new(
