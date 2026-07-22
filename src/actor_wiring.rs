@@ -1052,7 +1052,10 @@ jinn_domain::feat::preferences_actor::preferences_actor::PreferencesActor::super
                         &root,
                         HistoryWorkerActorDeps {
                             deps: actor_deps.clone(),
-                            worker: TodoAutoSteerWorker { config },
+                            worker: TodoAutoSteerWorker {
+                                config,
+                                pending_steer_id: std::sync::Arc::new(std::sync::Mutex::new(None)),
+                            },
                         },
                     )
                     .restart_policy(kameo::supervision::RestartPolicy::Never)
