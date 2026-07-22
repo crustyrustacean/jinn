@@ -14,7 +14,6 @@
 //! Bug regression tests verify the three reported compaction bugs are fixed.
 
 use std::sync::Arc;
-use std::sync::atomic::Ordering;
 
 use jinn_provider::RetryConfig;
 
@@ -1351,32 +1350,43 @@ fn gate_skips_after_compaction_reduces_context_size() {
 
 // ── Compaction deduplication tests ──────────────────────────────────
 
-fn set_compaction_in_flight(worker: &CompactionWorker, entry_id: ChatEntryId) {
-    worker.compaction_in_progress.store(true, Ordering::SeqCst);
-    *worker.pending_compaction_id.lock() = Some(entry_id);
+fn set_compaction_in_flight(
+    worker: &CompactionWorker,
+    session_id: &SessionId,
+    entry_id: ChatEntryId,
+) {
+    worker
+        .compaction_in_progress
+        .lock()
+        .insert(session_id.clone());
+    worker
+        .pending_compaction_id
+        .lock()
+        .insert(session_id.clone(), entry_id);
 }
 
-fn worker_in_flight(worker: &CompactionWorker) -> bool {
-    worker.compaction_in_progress.load(Ordering::SeqCst)
+fn worker_in_flight(worker: &CompactionWorker, session_id: &SessionId) -> bool {
+    worker.compaction_in_progress.lock().contains(session_id)
 }
 
-fn worker_pending_id(worker: &CompactionWorker) -> Option<ChatEntryId> {
-    worker.pending_compaction_id.lock().clone()
+fn worker_pending_id(worker: &CompactionWorker, session_id: &SessionId) -> Option<ChatEntryId> {
+    worker.pending_compaction_id.lock().get(session_id).cloned()
 }
 
 #[test]
 fn snapshot_skipped_when_compaction_in_flight() {
     // Given a worker with compaction in flight.
     let worker = test_worker("summary");
+    let session_id = SessionId::new();
     let pending_id = ChatEntryId::new();
-    set_compaction_in_flight(&worker, pending_id.clone());
+    set_compaction_in_flight(&worker, &session_id, pending_id.clone());
 
     // And a snapshot that does NOT contain the pending compaction entry.
     let snapshot: Arc<[ChatEntry]> = Arc::from(alternating_history(5));
 
     // When evaluating.
     let rt = tokio::runtime::Runtime::new().expect("test runtime");
-    let mutations = rt.block_on(async { worker.evaluate(&SessionId::new(), snapshot).await });
+    let mutations = rt.block_on(async { worker.evaluate(&session_id, snapshot).await });
 
     // Then no mutations are produced.
     assert!(
@@ -1385,30 +1395,36 @@ fn snapshot_skipped_when_compaction_in_flight() {
     );
 
     // And the flag is still set.
-    assert!(worker_in_flight(&worker), "flag should still be set");
-    assert_eq!(worker_pending_id(&worker), Some(pending_id));
+    assert!(
+        worker_in_flight(&worker, &session_id),
+        "flag should still be set"
+    );
+    assert_eq!(worker_pending_id(&worker, &session_id), Some(pending_id));
 }
 
 #[test]
 fn snapshot_clears_flag_when_compaction_entry_found() {
     // Given a worker with compaction in flight.
     let worker = test_worker("summary");
+    let session_id = SessionId::new();
     let pending_id = ChatEntryId::new();
-    set_compaction_in_flight(&worker, pending_id.clone());
+    set_compaction_in_flight(&worker, &session_id, pending_id.clone());
 
     // And a snapshot that CONTAINS the pending compaction entry.
     let mut snapshot = vec![compaction_entry("old summary")];
     snapshot[0].id = pending_id;
     let snapshot: Arc<[ChatEntry]> = Arc::from(snapshot);
 
-    // When evaluating.
     let rt = tokio::runtime::Runtime::new().expect("test runtime");
-    let mutations = rt.block_on(async { worker.evaluate(&SessionId::new(), snapshot).await });
+    let mutations = rt.block_on(async { worker.evaluate(&session_id, snapshot).await });
 
     // Then the flag is cleared.
-    assert!(!worker_in_flight(&worker), "flag should be cleared");
     assert!(
-        worker_pending_id(&worker).is_none(),
+        !worker_in_flight(&worker, &session_id),
+        "flag should be cleared"
+    );
+    assert!(
+        worker_pending_id(&worker, &session_id).is_none(),
         "pending ID should be cleared"
     );
 
@@ -1477,11 +1493,11 @@ fn error_clears_flag_and_allows_retry() {
 
     // And the flag is cleared.
     assert!(
-        !worker_in_flight(&worker),
+        !worker_in_flight(&worker, &session_id),
         "flag should be cleared after error"
     );
     assert!(
-        worker_pending_id(&worker).is_none(),
+        worker_pending_id(&worker, &session_id).is_none(),
         "pending ID should be cleared after error"
     );
 }
@@ -1544,7 +1560,7 @@ fn manual_compaction_does_not_set_flag() {
     // Given a worker.
     let (worker, session_id) = test_worker_with_session("summary", alternating_history(20));
     let trigger = CompactionTrigger {
-        session_id,
+        session_id: session_id.clone(),
         compact_all: true,
     };
 
@@ -1561,11 +1577,92 @@ fn manual_compaction_does_not_set_flag() {
 
     // And the flag is NOT set.
     assert!(
-        !worker_in_flight(&worker),
+        !worker_in_flight(&worker, &session_id),
         "manual compaction should not set the flag"
     );
     assert!(
-        worker_pending_id(&worker).is_none(),
+        worker_pending_id(&worker, &session_id).is_none(),
         "manual compaction should not set pending ID"
+    );
+}
+
+// ── Multi-session isolation tests ──────────────────────────────────
+
+#[test]
+fn one_session_in_flight_does_not_suppress_another() {
+    // Given a worker where session A has compaction in flight (pending
+    // summary not yet landed) and session B is independent.
+    let worker = test_worker("summary");
+    let session_a = SessionId::new();
+    let session_b = SessionId::new();
+    let pending_a = ChatEntryId::new();
+    set_compaction_in_flight(&worker, &session_a, pending_a.clone());
+
+    // And a snapshot for session B that does NOT contain session A's pending
+    // compaction entry (and is otherwise at the gate's "nothing to do" path).
+    let snapshot_b: Arc<[ChatEntry]> = Arc::from(alternating_history(5));
+
+    // When evaluating session B.
+    let rt = tokio::runtime::Runtime::new().expect("test runtime");
+    let mutations_b = rt.block_on(async { worker.evaluate(&session_b, snapshot_b).await });
+
+    // Then session B is NOT suppressed by A's guard: it evaluates normally
+    // (empty here because no threshold/context_size is set, but crucially it
+    // did not take the "in flight, skip" early return).
+    assert!(
+        mutations_b.is_empty(),
+        "session B evaluates normally, returns empty (no threshold)"
+    );
+    // And session A's in-flight state is untouched by session B's evaluation.
+    assert!(
+        worker_in_flight(&worker, &session_a),
+        "session A guard untouched by session B"
+    );
+    assert_eq!(
+        worker_pending_id(&worker, &session_a),
+        Some(pending_a),
+        "session A pending ID untouched"
+    );
+}
+
+#[test]
+fn clearing_session_b_does_not_clear_session_a() {
+    // Given a worker where BOTH sessions have compaction in flight.
+    let worker = test_worker("summary");
+    let session_a = SessionId::new();
+    let session_b = SessionId::new();
+    let pending_a = ChatEntryId::new();
+    let pending_b = ChatEntryId::new();
+    set_compaction_in_flight(&worker, &session_a, pending_a.clone());
+    set_compaction_in_flight(&worker, &session_b, pending_b.clone());
+
+    // And a snapshot for session B that CONTAINS its pending entry (so B
+    // should clear).
+    let mut snapshot = vec![compaction_entry("b summary")];
+    snapshot[0].id = pending_b.clone();
+    let snapshot_b: Arc<[ChatEntry]> = Arc::from(snapshot);
+
+    // When evaluating session B.
+    let rt = tokio::runtime::Runtime::new().expect("test runtime");
+    let _mutations_b = rt.block_on(async { worker.evaluate(&session_b, snapshot_b).await });
+
+    // Then session B's guard is cleared.
+    assert!(
+        !worker_in_flight(&worker, &session_b),
+        "session B cleared after its summary landed"
+    );
+    assert!(
+        worker_pending_id(&worker, &session_b).is_none(),
+        "session B pending ID cleared"
+    );
+    // And session A's guard is untouched (not cleared by B).
+    assert!(
+        worker_in_flight(&worker, &session_a),
+        "session A guard NOT cleared by session B"
+    );
+    assert_eq!(
+        worker_pending_id(&worker, &session_a),
+        Some(pending_a),
+        "session A pending ID NOT cleared by session B"
     );
 }
