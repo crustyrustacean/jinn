@@ -19,6 +19,7 @@ pub mod file_lister;
 pub mod global;
 pub mod history_worker;
 pub mod image_convert;
+pub mod install;
 pub mod intent;
 pub mod llm_actor;
 pub mod navigation;
