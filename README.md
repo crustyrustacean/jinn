@@ -75,6 +75,8 @@ Prompts are only expanded when they get sent to the model and will always show u
 
 `jinn` can associate "lifecycle" scripts with sessions. These scripts run when a new session is created (via `<leader>so` or `<leader>sl`) and when it's closed (via `xx` on the sidebar). They are used to checkout branches and set up an environment on a new session, and also merge + cleanup when closing the session.
 
+You can use any number of `<foo>` tokens in the scripts and their values will be prompted for interactively on session creation, saved to the session, and then re-used during teardown.
+
 The [default config](./crates/jinn-domain/src/feat/preferences_actor/default_jinn.toml) has both `git` and `fossil` preconfigured. You'll need to make sure your directory structure matches below, otherwise you'll need to write your own scripts.
 
 ```toml
