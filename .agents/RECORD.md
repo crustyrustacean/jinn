@@ -25,7 +25,7 @@ A missing record, or an un-recorded area, simply means the list has no entry the
 
 ## Editing
 
-Entries are added or amended only with human approval, via a "Record Updates" section surfaced in the approved plan. The gap-analysis step checks whether implementation actually changed a recorded fact and flags any needed update.
+Entries are added or amended **only with human approval**.
 
 ---
 
@@ -131,3 +131,29 @@ Entries are added or amended only with human approval, via a "Record Updates" se
 - A stall watchdog detects sessions stuck in sending, mid-tool-batch stalls, and streaming sessions with no history change, and publishes a cancel after the budget is exhausted.
 - The watchdog resets its stall counter at turn boundaries (not on activity jitter) and resets the budget when provider activity resumes; retries are suppressed within a backoff window.
 - An idle session is never scanned by the watchdog, and an active streaming session is never flagged.
+
+- The TUI tracks focus as a scope stack (`FocusScope`); keys resolve differently per scope, and the active scope determines which bindings are available (e.g. the dashboard scope has no chat-history or sidebar bindings).
+- Scope transitions are driven by keybinds that emit routing intents; leaving a scope pops back to the prior one (e.g. picker/skill/task-list scopes return to normal on `Esc`).
+- `Alt+Q` in input scope toggles input mode; `Alt+S` focuses the sidebar sessions section from both input and normal scopes.
+
+- Leader-chord keybinds resolve multi-key sequences: `<leader>se` opens the persona picker, `<leader>sr` opens the reasoning-effort picker, and `<leader>[p]` jumps to pinned intents — chords that don't complete (e.g. `[c` in input scope) don't resolve.
+- The `p` prefix group in the sidebar does not drop the normal-scope pin binding (group bindings are scope-local and don't shadow cross-scope bindings).
+- Bare letters in pickers route to the filter input rather than triggering actions: `a` in the project picker types into the filter, and `d` removes the highlighted entry (not a filter character).
+
+- The sidebar has four sections — Persona, Pins, TaskList, Sessions — with cyclic navigation (Persona→Pins→TaskList→Sessions and back).
+- The sidebar restores history position when leaving Pins, and the Sessions section is anchored to the bottom of the sidebar.
+- A section is shown only when non-empty (Pins requires pinned ids, TaskList requires tasks); empty sections are hidden.
+- Sidebar confirm/insert flows resolve per section: Sessions `i` resolves to confirm-insert, Sessions `Enter` to confirm, and Pins `Enter` resolves to sidebar-leave.
+- The sidebar can enter an interactive resize mode (via `sidebar_resize`) to adjust its width.
+- `s` in the sidebar task-list section opens the task-list picker.
+
+- Picker scopes bind `PgUp`/`PgDn` to page-up/page-down of the picker list; in the skill and task-list scopes these also scroll a preview pane (`Ctrl+D`/`Ctrl+U` for the skill preview).
+- In the skill scope, `PgUp` pages the picker list, not the preview, so list paging and preview scrolling are separate bindings.
+- Popups scale with terminal size: larger terminals get taller popups, small terminals use ~75% height, and a minimum size is enforced (otherwise the popup reports too-small).
+- The dashboard tab layout uses the full terminal width; the chat tab layout is the normal chat layout.
+
+- Text selection in the chat is modeled as a state machine (idle → dragging → active); selection can be forward or backward and both extract the same text.
+- Selection rects find the smallest matching region for a position and exclude the right and bottom edges; the focus position is clamped to bounds.
+- Mouse drag creates a dragging selection state, `finalize` transitions dragging to active, and `cancel` returns to idle.
+
+- Paste events are coalesced: empty chunks are harmless, multiple paste chunks within a window merge into one (preserving order), and coalescing stops at the first non-paste event.
