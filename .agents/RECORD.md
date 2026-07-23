@@ -43,12 +43,12 @@ Entries are added or amended **only with human approval**.
 - (compaction) The compaction gate splits on `provider/model` format and uses the session's model for the context-length lookup.
 - (compaction) The compaction worker is per-session: clearing/compacting session A does not affect session B.
 - (compaction) When working history exceeds the session token budget, entries are trimmed newest-to-oldest (pinned entries preserved) and a compaction prompt is injected.
-- (dashboard) The dashboard tab tracks actor lifecycle (starting/running/dead) and browser-binary detection (Chrome vs bundled) for the web-fetch feature.
 - (context) A forced system-prompt override replaces all generated system parts but still includes pinned system entries from history.
 - (context) Context assembly builds the system prompt in priority order: skills block, pinned system entries, environment context, tool context.
 - (context) Pin splitting separates entries into TOP pins, BOTTOM pins, and working history based on pin position.
 - (context) The `context_files_scan_actor` walks the bounded ancestor chain, reads the first existing candidate (AGENTS.md / CLAUDE.md) per dir, and writes results into the session's discovered set.
 - (context) `#name` prompt-template tokens in user text expand to the template body; `@path` tokens resolve to `file://` URIs against cwd/home and are consumed in a second expansion pass.
+- (dashboard) The dashboard tab tracks actor lifecycle (starting/running/dead) and browser-binary detection (Chrome vs bundled) for the web-fetch feature.
 - (discovery) Project discovery walks ancestors from the session cwd up to either a VCS root or `$HOME`, whichever comes first; `$HOME` is exclusive.
 - (discovery) VCS roots are detected by marker files (`.git`, `.hg`, `.fslckout`, `.fossil`, `.jj`), not by shelling out to a VCS CLI.
 - (discovery) A discovery coordinator orchestrates project, browser-binary, file-listing, and skills scans across ancestor dirs; a notifier surfaces settled results to the session.
@@ -59,7 +59,6 @@ Entries are added or amended **only with human approval**.
 - (history) Auto-steer is keyed per-session, so a pending steer in one session does not suppress another session, and it clears once the pending id appears in history.
 - (history) History workers implement a `HistoryWorker` trait and are spawned via `actor_wiring.rs`; adding a new strategy means adding a worker file and wiring it.
 - (history) There is a per-session steering buffer for mid-turn message injection; drained steering entries become normal User entries with the default context override and are never pinned.
-- (persona) Personas are markdown templates loaded via the prompt-template system; the persona picker (`<leader>se`) switches the active session persona.
 - (identity) **This repository** uses Fossil for version control (the app supports git/hg/jj/fossil via marker detection).
 - (identity) **jinn** is a terminal-based agent harness written in Rust (edition 2024).
 - (identity) Four personas ship by default: `coding-assistant`, `general`, `brainstorm`, and `learning-tutor`.
@@ -75,6 +74,7 @@ Entries are added or amended **only with human approval**.
 - (paths) Config lives at `~/.config/jinn` (providers, prompts, personas, themes, `jinn.toml`).
 - (paths) Data lives at `~/.local/share/jinn` (`sessions.db`).
 - (paths) State/logs live at `~/.local/state/jinn` (`jinn.log`), falling back to the data dir on platforms without a state dir.
+- (persona) Personas are markdown templates loaded via the prompt-template system; the persona picker (`<leader>se`) switches the active session persona.
 - (providers) LLM responses stream as a unified `StreamEvent` type, decoupled from any provider's native stream format.
 - (providers) The provider crate supports three backends: Anthropic, Google, and OpenAI-compatible.
 - (selection) Chat entry selection applies an accumulated-exclude guard that only takes effect after a threshold, with per-entry forced include/exclude tracked separately.
@@ -131,6 +131,6 @@ Entries are added or amended **only with human approval**.
 - (watchdog) A stall watchdog detects sessions stuck in sending, mid-tool-batch stalls, and streaming sessions with no history change, and publishes a cancel after the budget is exhausted.
 - (watchdog) An idle session is never scanned by the watchdog, and an active streaming session is never flagged.
 - (watchdog) The watchdog resets its stall counter at turn boundaries (not on activity jitter) and resets the budget when provider activity resumes; retries are suppressed within a backoff window.
+- (web) Web search runs via DuckDuckGo and web fetch supports concurrent requests; consulted sources are deduped and flushed as a Sources footer when the turn reaches a final assistant answer.
 - (workflow) Commits use `just commit '<message>'`, which runs `fossil addremove --dotfiles` so dot-directories like `.agents/` are included.
 - (workflow) The workspace is checked with `just check` (compile), `just test` (tests), and `just lint` (lints); all tests must pass before committing.
-- (web) Web search runs via DuckDuckGo and web fetch supports concurrent requests; consulted sources are deduped and flushed as a Sources footer when the turn reaches a final assistant answer.
