@@ -6,6 +6,10 @@ export RSTEST_TIMEOUT := "5"
 fossil-branch NAME:
     fossil commit -m "Open {{NAME}}" --branch {{NAME}} --allow-empty
 
+# Commit changes: stage all adds/removes (with `--dotfiles`) and commit.
+commit MSG:
+    fossil addremove --dotfiles && fossil commit -m "{{MSG}}"
+
 test:
     cargo test --workspace
 

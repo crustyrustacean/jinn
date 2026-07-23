@@ -568,7 +568,7 @@ Skills refer to commands by **role**; the table below resolves each role to this
 | `test`       | `just test`                                        | `cargo test --workspace` + e2e tests — **all tests must pass before committing**.                      |
 | `lint`       | `just lint`                                        | Lint checks.                                                                                           |
 | `format`     | `just fmt-fix`                                     | Apply formatting fixes.                                                                                |
-| `commit`     | `fossil addremove && fossil commit -m "<message>"` | Commit changes.                                                                                        |
+| `commit`     | `just commit '<message>'`                         | Commit changes (uses `--dotfiles` so `.agents/` is included).                                          |
 | `sync-trunk` | `fossil merge trunk`                               | Sync latest changes with your branch (resolve conflicts, re-test, commit).                             |
 
 ### Plan Directory
