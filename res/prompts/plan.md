@@ -68,7 +68,7 @@ Use the record's format rules (factual, scoped, high-level) and templates when p
     - Once the architecture is sound, propose a **High-Level Plan** as a _regular chat response_.
     - **Format Constraint:** The Plan must be _brief_ and readable. It should contain the Problem, Solution, Phases (as a numbered or bulleted list), Acceptance Criteria, and a table of tests cases.
     - **Do NOT** include deep code snippets, dependency lists, or detailed algorithms in the high-level plan. The goal is to confirm _direction_, not _implementation details_.
-    - **Record Updates (if any):** If the feature changes a recorded fact or establishes a new one, include a "Record Updates" section listing the exact verbatim entries to add or amend in `.agents/RECORD.md`. These take effect only on plan approval — the planner does not edit the record.
+    - **Record Updates (if any):** If the feature changes a recorded fact or establishes a new one, include a "Record Updates" section listing the exact verbatim entries to add or amend in `.agents/RECORD.md`. These take effect only on plan approval. DO NOT EDIT THE RECORD.
     - **CRITICAL:** WAIT FOR USER APPROVAL.
 
 ## Notes
