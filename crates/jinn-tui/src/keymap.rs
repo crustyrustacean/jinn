@@ -6,9 +6,9 @@
 
 use crossterm::event::{self, MouseEventKind};
 use derive_more::Display;
+use jinn_domain::protocol::CwdRoot;
 use jinn_domain::Intent;
 use jinn_domain::PickerKind;
-use jinn_domain::protocol::CwdRoot;
 use jinn_domain::{Key, KeyEvent};
 use ratatui_which_key::CrosstermKeymapExt as _;
 use ratatui_which_key::Keymap;
@@ -544,7 +544,7 @@ mod tests {
     }
 
     #[test]
-    fn backtick_in_input_scope_does_not_insert_literal_backtick() {
+    fn alt_backtick_in_input_scope_does_not_insert_literal_backtick() {
         // Given a keymap with the global <M-`> binding, queried in Input scope.
         use crate::app::WhichKeyInstance;
         use jinn_domain::{Key, KeyEvent, Modifiers};
