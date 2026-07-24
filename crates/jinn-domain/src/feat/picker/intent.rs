@@ -812,7 +812,23 @@ fn confirm_skill(state: &mut AppState) -> IntentResult {
 }
 
 /// Toggles the `enabled` state of the currently selected skill entry.
+///
+/// A skill already loaded into context cannot be disabled here. Disabling would
+/// give a false sense of "unloaded" — the body is still pinned in history until
+/// it is unpinned and pruned. So TAB is a no-op for a loaded skill: the entry
+/// stays enabled and the cursor stays put (no movement on a no-op).
 pub fn handle_skill_toggle(state: &mut AppState) -> IntentResult {
+    // A loaded skill cannot be unloaded by disabling; leave it as-is.
+    if state
+        .frontend
+        .skill_picker()
+        .selected_item()
+        .map(|e| e.name.clone())
+        .is_some_and(|name| state.active_session().loaded_skills().contains(&name))
+    {
+        return IntentResult::empty();
+    }
+
     state
         .frontend
         .skill_picker_mut()
@@ -2060,6 +2076,7 @@ mod tests {
     fn skill_load_pushes_pinned_tool_result_for_selected_skill() {
         // Given an open skill picker with "web-coder" highlighted.
         let mut state = setup_with_open_skill_picker();
+        let scope_len_before = state.frontend.scope_stack.len();
 
         // When loading the highlighted skill.
         let _ = handle_skill_load_selected(&mut state);
@@ -2068,6 +2085,21 @@ mod tests {
         assert!(
             state.active_session().loaded_skills().contains("web-coder"),
             "web-coder should be loaded after <c-l>"
+        );
+        // And the picker stays open (no scope pop) for multi-load workflows.
+        assert_eq!(
+            state.frontend.scope_stack.len(),
+            scope_len_before,
+            "a successful load must not pop the skill picker scope"
+        );
+        assert!(
+            matches!(
+                state.frontend.scope_stack.current(),
+                FocusScope::Picker {
+                    kind: PickerKind::Skill
+                }
+            ),
+            "the top scope must still be the skill picker after a load"
         );
     }
 
@@ -2202,6 +2234,64 @@ mod tests {
             "auto-enable should remove the skill from the live disabled set"
         );
         assert!(state.active_session().loaded_skills().contains("web-coder"));
+    }
+
+    /// Opens the skill picker with "web-coder" staged as disabled and captured in
+    /// the revert snapshot — the precondition for testing an auto-enabled load.
+    fn setup_with_disabled_open_skill_picker() -> AppState {
+        let mut state = setup_with_open_skill_picker();
+        state
+            .active_session_mut()
+            .set_disabled_skills(std::collections::HashSet::from(["web-coder".to_owned()]));
+        state.frontend.scope_stack.pop();
+        handle_open_picker(&mut state, PickerKind::Skill);
+        state
+    }
+
+    #[rstest::rstest]
+    fn skill_load_auto_enable_survives_confirm() {
+        // Given an open skill picker with "web-coder" disabled, then loaded.
+        let mut state = setup_with_disabled_open_skill_picker();
+        let _ = handle_skill_load_selected(&mut state);
+
+        // When confirming the picker (Enter).
+        let _ = confirm_skill(&mut state);
+
+        // Then the skill stays enabled and is not recorded as disabled.
+        assert!(
+            state.frontend.skill_picker().items()[0].enabled,
+            "auto-enabled skill must remain enabled after confirming the picker"
+        );
+        assert!(
+            !state
+                .active_session()
+                .disabled_skills()
+                .contains("web-coder"),
+            "a loaded skill must not be committed as disabled on Enter"
+        );
+    }
+
+    #[rstest::rstest]
+    fn skill_load_auto_enable_survives_escape() {
+        // Given an open skill picker with "web-coder" disabled, then loaded.
+        let mut state = setup_with_disabled_open_skill_picker();
+        let _ = handle_skill_load_selected(&mut state);
+
+        // When cancelling the picker (ESC).
+        let _ = crate::feat::chat_input::intent::handle_enter_normal_mode(&mut state);
+
+        // Then the skill stays enabled and is not reverted to disabled.
+        assert!(
+            state.frontend.skill_picker().items()[0].enabled,
+            "auto-enabled skill must remain enabled after escaping the picker"
+        );
+        assert!(
+            !state
+                .active_session()
+                .disabled_skills()
+                .contains("web-coder"),
+            "a loaded skill must not be reverted to disabled on ESC"
+        );
     }
 
     #[rstest::rstest]
@@ -2352,6 +2442,38 @@ mod tests {
 
         // Then the cursor has moved down to 1.
         assert_eq!(state.frontend.skill_picker().selection(), 1);
+    }
+
+    #[rstest::rstest]
+    fn skill_toggle_does_not_disable_already_loaded_skill() {
+        // Given an open skill picker with "web-coder" loaded into context.
+        let mut state = setup_with_open_skill_picker();
+        let _ = handle_skill_load_selected(&mut state);
+        assert!(state.active_session().loaded_skills().contains("web-coder"));
+        assert_eq!(state.frontend.skill_picker().selection(), 0);
+
+        // When pressing TAB to disable it.
+        handle_skill_toggle(&mut state);
+
+        // Then the entry stays enabled.
+        assert!(
+            state.frontend.skill_picker().items()[0].enabled,
+            "a loaded skill cannot be disabled via TAB"
+        );
+        // And the cursor does not move on the no-op.
+        assert_eq!(
+            state.frontend.skill_picker().selection(),
+            0,
+            "TAB should not move the cursor when it is a no-op"
+        );
+        // And disabled_skills stays empty (the enable is never staged for removal).
+        assert!(
+            !state
+                .active_session()
+                .disabled_skills()
+                .contains("web-coder"),
+            "a loaded skill must not be staged as disabled"
+        );
     }
 
     #[rstest::rstest]
