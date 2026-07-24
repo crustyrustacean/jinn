@@ -97,6 +97,13 @@ pub fn handle_open_picker(state: &mut AppState, kind: PickerKind) -> IntentResul
             state.frontend.project_picker_mut().reset();
             load_project_picker_entries(&mut state.frontend);
         }
+        PickerKind::McpServer => {
+            state.frontend.mcp_server_picker_mut().reset();
+            // Snapshot current enabled set for ESC revert.
+            *state.frontend.mcp_server_picker_snapshot_mut() =
+                Some(state.active_session().enabled_mcp_servers().clone());
+            crate::feat::mcp::intent::load_mcp_picker_entries(state);
+        }
     }
 
     match kind {
@@ -107,7 +114,8 @@ pub fn handle_open_picker(state: &mut AppState, kind: PickerKind) -> IntentResul
         | PickerKind::Tool
         | PickerKind::Skill
         | PickerKind::TaskList
-        | PickerKind::Project => IntentResult::empty(),
+        | PickerKind::Project
+        | PickerKind::McpServer => IntentResult::empty(),
         PickerKind::SessionLifecycle => {
             // Populate from user preferences + implicit blank lifecycle.
             load_lifecycle_picker_entries(state);
@@ -272,6 +280,7 @@ pub fn handle_picker_confirm(state: &mut AppState) -> (IntentResult, Option<Inte
         Some(PickerKind::SessionLifecycle) => (confirm_session_lifecycle(state), None),
         Some(PickerKind::Project) => (confirm_project(state), None),
         Some(PickerKind::ReasoningEffort) => (confirm_reasoning_effort(state), None),
+        Some(PickerKind::McpServer) => (crate::feat::mcp::intent::confirm_mcp(state), None),
 
         Some(PickerKind::CompactionModel | PickerKind::TaskList) | None => {
             (IntentResult::empty(), None)

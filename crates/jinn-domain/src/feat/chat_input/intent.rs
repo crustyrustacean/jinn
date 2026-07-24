@@ -694,6 +694,14 @@ pub fn handle_enter_normal_mode(state: &mut AppState) -> IntentResult {
         state.active_session_mut().set_disabled_tools(snapshot);
     }
 
+    // If leaving the MCP server picker without confirming, restore the original
+    // enabled MCP server set.
+    if state.frontend.scope_stack.picker_kind() == Some(&crate::protocol::PickerKind::McpServer)
+        && let Some(snapshot) = state.frontend.mcp_server_picker_snapshot_mut().take()
+    {
+        state.active_session_mut().set_enabled_mcp_servers(snapshot);
+    }
+
     // TaskList picker is read-only and always opened from SidebarTaskList.
     // Pop only the picker to preserve the sidebar scope (rather than clearing all
     // overlays, which would drop SidebarTaskList and strand the user in Normal).

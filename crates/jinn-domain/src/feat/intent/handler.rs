@@ -419,6 +419,7 @@ impl IntentHandler {
             Intent::PickerMoveCursorRight => feat::picker::intent::handle_move_cursor_right(state),
             Intent::ToolToggleSelected => feat::picker::intent::handle_tool_toggle(state),
             Intent::SkillToggleSelected => feat::picker::intent::handle_skill_toggle(state),
+            Intent::McpToggleSelected => feat::mcp::intent::handle_mcp_toggle(state),
             Intent::ProjectNewAtHighlightedWithLifecycle => {
                 feat::picker::intent::handle_project_lifecycle_confirm(state)
             }

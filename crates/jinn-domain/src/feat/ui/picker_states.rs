@@ -7,6 +7,7 @@
 
 use std::collections::HashSet;
 
+use crate::feat::mcp::picker_entry::McpServerEntry;
 use crate::feat::persona::PersonaEntry;
 use crate::feat::reasoning::ReasoningEffortEntry;
 use crate::feat::session::picker_entry::SessionTreeEntry;
@@ -88,6 +89,14 @@ pub struct PickerStates {
     /// OWNER: TUI render pre-pass (writes) / IntentHandler (reads via
     /// `active_viewport`).
     pub picker_results_viewport: u16,
+
+    /// MCP server picker state - shows configured servers with toggle state.
+    /// OWNER: IntentHandler (populated on MCP picker open).
+    pub mcp_server_picker: jinn_selection_widget::SelectionState<McpServerEntry>,
+
+    /// Snapshot of enabled MCP servers before picker opens - restored on ESC.
+    /// OWNER: IntentHandler (set on MCP picker open, consumed on confirm/cancel).
+    pub mcp_server_picker_snapshot: Option<std::collections::BTreeSet<String>>,
 }
 
 /// Extension trait providing typed access to picker state on [`FrontendState`](super::FrontendState).
@@ -133,6 +142,11 @@ pub trait PickerExt {
     fn skill_picker_snapshot(&self) -> &Option<HashSet<String>>;
     /// Mutable access to the disabled skills snapshot.
     fn skill_picker_snapshot_mut(&mut self) -> &mut Option<HashSet<String>>;
+    /// Read-only access to the enabled MCP servers snapshot.
+    fn mcp_server_picker_snapshot(&self) -> &Option<std::collections::BTreeSet<String>>;
+    /// Mutable access to the enabled MCP servers snapshot.
+    fn mcp_server_picker_snapshot_mut(&mut self)
+    -> &mut Option<std::collections::BTreeSet<String>>;
     /// Current preview pane scroll offset for the skill picker.
     fn skill_preview_scroll(&self) -> usize;
     /// Set the preview pane scroll offset for the skill picker.
@@ -178,9 +192,13 @@ pub trait PickerExt {
         &mut self,
     ) -> &mut jinn_selection_widget::SelectionState<crate::feat::project::picker_entry::ProjectEntry>;
 
-    /// Measured results-area row count for the currently-active picker, as
-    /// written by the TUI render pre-pass each frame. Used by the picker
-    /// navigation intents to keep the cursor inside the visible window.
+    /// Read-only access to the MCP server picker state.
+    fn mcp_server_picker(&self) -> &jinn_selection_widget::SelectionState<McpServerEntry>;
+    /// Mutable access to the MCP server picker state.
+    fn mcp_server_picker_mut(
+        &mut self,
+    ) -> &mut jinn_selection_widget::SelectionState<McpServerEntry>;
+
     fn picker_results_viewport(&self) -> u16;
 
     /// Updates the measured results-area row count. Called once per frame
@@ -255,6 +273,16 @@ impl PickerExt for super::frontend_state::FrontendState {
         &mut self.pickers.skill_picker_snapshot
     }
 
+    fn mcp_server_picker_snapshot(&self) -> &Option<std::collections::BTreeSet<String>> {
+        &self.pickers.mcp_server_picker_snapshot
+    }
+
+    fn mcp_server_picker_snapshot_mut(
+        &mut self,
+    ) -> &mut Option<std::collections::BTreeSet<String>> {
+        &mut self.pickers.mcp_server_picker_snapshot
+    }
+
     fn skill_preview_scroll(&self) -> usize {
         self.pickers.skill_preview_scroll
     }
@@ -317,6 +345,16 @@ impl PickerExt for super::frontend_state::FrontendState {
     ) -> &mut jinn_selection_widget::SelectionState<crate::feat::project::picker_entry::ProjectEntry>
     {
         &mut self.pickers.project_picker
+    }
+
+    fn mcp_server_picker(&self) -> &jinn_selection_widget::SelectionState<McpServerEntry> {
+        &self.pickers.mcp_server_picker
+    }
+
+    fn mcp_server_picker_mut(
+        &mut self,
+    ) -> &mut jinn_selection_widget::SelectionState<McpServerEntry> {
+        &mut self.pickers.mcp_server_picker
     }
 
     fn picker_results_viewport(&self) -> u16 {
