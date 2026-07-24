@@ -6,9 +6,9 @@
 
 use crossterm::event::{self, MouseEventKind};
 use derive_more::Display;
-use jinn_domain::protocol::CwdRoot;
 use jinn_domain::Intent;
 use jinn_domain::PickerKind;
+use jinn_domain::protocol::CwdRoot;
 use jinn_domain::{Key, KeyEvent};
 use ratatui_which_key::CrosstermKeymapExt as _;
 use ratatui_which_key::Keymap;

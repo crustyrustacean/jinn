@@ -135,6 +135,7 @@ impl kameo::Actor for WebSearchActor {
             .publish(RegisterTools {
                 provider: "web-search".to_owned(),
                 definitions: vec![web_search_tool_definition()],
+                session_id: None,
             })
             .await;
 
