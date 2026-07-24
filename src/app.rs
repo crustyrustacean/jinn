@@ -151,24 +151,11 @@ impl App {
         // Initial factory is the no-provider sentinel until actors resolve the real one.
         let llm_service = LlmServiceFactoryService::new(Arc::new(NoProvidersAvailableFactory));
 
-        // Create the session store - uses --db-path if provided, otherwise
-        // the platform default.
-        let (session_store, session_pool) = {
-            let store = self.runtime.block_on(async {
-                match cli.db_path_opt() {
-                    Some(path) => SqliteSessionStore::open_or_create(path).await,
-                    None => SqliteSessionStore::new().await,
-                }
-            });
-            let store = store.change_context(AppError)?;
-            let pool = store.pool().clone();
-            (SessionStoreService::new(Arc::new(store)), pool)
-        };
-
-        // Dispatch `config` subcommands BEFORE the early preferences parse.
+        // Dispatch `config` subcommands BEFORE the early preferences parse and
+        // before any DB wiring.
         // `jinn config init` is the user's recovery tool for a missing or broken
         // config, so it must not be guarded by load-time parsing (which itself
-        // auto-creates the file on first run).
+        // auto-creates the file on first run) — and it needs no session store.
         if let Some(Commands::Config { subcommand }) = &cli.command {
             use jinn_cli::cli::ConfigCommands;
             use jinn_domain::{InitOutcome, init_default_config_to, preferences_path};
@@ -195,8 +182,9 @@ impl App {
         }
 
         // `install` seeds default resources into user dirs. Like `config`, it
-        // must run before any actor wiring — and it needs no preferences/DB.
-        if let Some(Commands::Install) = &cli.command {
+        // must run before any actor wiring — and it needs no preferences/DB,
+        // so it dispatches before the session store is opened.
+        if let Some(Commands::Install { force }) = &cli.command {
             use jinn_domain::{AppPaths, Destinations, InstallOutcome, install_defaults_to};
 
             let app_paths = AppPaths::default();
@@ -206,7 +194,7 @@ impl App {
                 app_paths.prompts_dir(),
                 app_paths.skills_dir(),
             );
-            match install_defaults_to(&destinations) {
+            match install_defaults_to(&destinations, *force) {
                 Ok(outcomes) => {
                     for outcome in outcomes {
                         match outcome {
@@ -215,6 +203,9 @@ impl App {
                             }
                             InstallOutcome::Skipped(path) => {
                                 println!("Already present, skipped {}", path.display());
+                            }
+                            InstallOutcome::Overwritten(path) => {
+                                println!("Overwrote {}", path.display());
                             }
                         }
                     }
@@ -227,6 +218,21 @@ impl App {
                 }
             }
         }
+
+        // Create the session store - uses --db-path if provided, otherwise
+        // the platform default. Deferred until after the `config`/`install`
+        // early-returns so neither pays for DB open or migrations.
+        let (session_store, session_pool) = {
+            let store = self.runtime.block_on(async {
+                match cli.db_path_opt() {
+                    Some(path) => SqliteSessionStore::open_or_create(path).await,
+                    None => SqliteSessionStore::new().await,
+                }
+            });
+            let store = store.change_context(AppError)?;
+            let pool = store.pool().clone();
+            (SessionStoreService::new(Arc::new(store)), pool)
+        };
 
         // Parse user preferences early — fail-fast on a bad config BEFORE
         // any actor wiring runs. The shared service is cloned into each
@@ -392,7 +398,7 @@ impl App {
             Commands::Config { .. } => {}
             // `install` is dispatched above, before the early
             // preferences parse. Reaching this match arm is impossible.
-            Commands::Install => {}
+            Commands::Install { .. } => {}
         }
 
         Ok(())
