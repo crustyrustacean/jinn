@@ -82,10 +82,12 @@ pub enum Commands {
     },
 
     /// Install default themes, personas, prompts, and skills to user directories.
-    ///
-    /// Skips any resource that already exists. Useful for binary-only installs
-    /// (e.g. `cargo-binstall`) where no source tree is available.
-    Install,
+    /// Skips any resource that already exists unless --force is given.
+    Install {
+        /// Overwrite existing resources if they already exist.
+        #[arg(long)]
+        force: bool,
+    },
 
     /// Fetch reference data from external sources.
     Fetch {

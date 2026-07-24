@@ -409,5 +409,5 @@ radius = 20
 # catching genuine drift. Never fires in a session that has never used a
 # `todo_*` tool.
 [todo_auto_steer]
-enabled = true
-threshold = 100
+enabled = false
+threshold = 200
