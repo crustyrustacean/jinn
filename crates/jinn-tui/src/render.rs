@@ -111,6 +111,48 @@ fn apply_pre_render_mutation(app: &mut TuiApp, area: Rect) {
             );
         }
     }
+
+    refresh_mcp_inspector_snapshot(&mut wstate);
+}
+
+/// Refreshes the selected MCP server picker entry's live status/stderr/tools
+/// snapshot from the active session's maps before render reads it. No-op
+/// unless the MCP server inspector is the active overlay.
+fn refresh_mcp_inspector_snapshot(state: &mut jinn_domain::AppState) {
+    use jinn_domain::FocusScope;
+    let is_mcp_picker = matches!(
+        state.frontend.scope_stack.current(),
+        FocusScope::Picker { kind: jinn_domain::PickerKind::McpServer },
+    );
+    if !is_mcp_picker {
+        return;
+    }
+    let server_name = match state.frontend.mcp_server_picker().selected_item() {
+        Some(e) => e.name.clone(),
+        None => return,
+    };
+    let session_id = state.active_session().session_id().clone();
+    let (status, stderr_tail, tools) = {
+        let session = state.active_session();
+        let status = session.mcp_server_status().get(&server_name).copied();
+        let stderr_tail = session
+            .mcp_server_stderr()
+            .get(&server_name)
+            .cloned()
+            .unwrap_or_default();
+        let defs = state.context.tools_for_session(&session_id);
+        jinn_domain::feat::mcp::picker_entry::refresh_snapshot(
+            &server_name,
+            status,
+            &stderr_tail,
+            &defs,
+        )
+    };
+    state.frontend.mcp_server_picker_mut().with_selected_mut(|e| {
+        e.status = status;
+        e.stderr_tail = stderr_tail;
+        e.tools = tools;
+    });
 }
 
 /// Renders the base layers for the active tab. In Chat mode: tab bar, border,

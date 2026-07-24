@@ -392,3 +392,103 @@ async fn chat_layout_still_draws_vertical_border_for_sidebar() {
         "chat tab must still render the sidebar border (regression guard)",
     );
 }
+
+#[rstest::rstest]
+#[tokio::test]
+async fn mcp_inspector_renders_server_list_and_logs_pane() {
+    // Given the MCP server inspector open with one server selected + running.
+    let mut app = render_test_app().await;
+    {
+        use jinn_domain::feat::mcp::picker_entry::McpServerEntry;
+        use jinn_domain::feat::mcp_actor::protocol::McpConnectionStatus;
+        use jinn_domain::feat::theme::default_theme;
+        use jinn_domain::feat::ui::picker_states::PickerExt;
+        let mut w = app.core.state.write_test_no_cap();
+        // Seed the active session's live data sources so the per-frame refresh
+        // produces the right preview.
+        w.active_session_mut()
+            .set_mcp_server_status("excalimate", McpConnectionStatus::Running);
+        w.active_session_mut()
+            .set_mcp_server_stderr("excalimate", "hello from stderr".to_owned());
+        let entry = McpServerEntry::new(
+            "excalimate".to_owned(),
+            "npx @excalimate/mcp-server".to_owned(),
+            true,
+            default_theme(),
+        );
+        w.frontend.mcp_server_picker_mut().set_items(vec![entry]);
+        w.frontend.scope_stack.push(jinn_domain::FocusScope::Picker {
+            kind: jinn_domain::PickerKind::McpServer,
+        });
+    }
+
+    let (mut terminal, _area) = setup_term(100, 30);
+
+    // When rendering.
+    terminal
+        .draw(|frame| {
+            app.render(frame);
+        })
+        .unwrap();
+
+    // Then the buffer mentions the server name, the logs badge, and the stderr tail.
+    let buf = terminal.backend().buffer();
+    let rendered: String = buf.content.iter().map(|c| c.symbol()).collect();
+    assert!(rendered.contains("excalimate"), "server list shows the server name");
+    assert!(rendered.contains("running"), "logs pane shows the status badge");
+    assert!(rendered.contains("hello from stderr"), "logs pane shows the stderr tail");
+}
+
+#[rstest::rstest]
+#[tokio::test]
+async fn mcp_inspector_tools_pane_renders_tool_names() {
+    // Given the MCP inspector open in Tools mode with one advertised tool.
+    let mut app = render_test_app().await;
+    {
+        use jinn_domain::feat::mcp::picker_entry::{McpPreviewMode, McpServerEntry};
+        use jinn_domain::feat::theme::default_theme;
+        use jinn_domain::feat::ui::picker_states::PickerExt;
+        let mut w = app.core.state.write_test_no_cap();
+        // Seed a tool definition so the per-frame refresh surfaces it in tools mode.
+        let session_id = w.active_session().session_id().clone();
+        let mut defs = std::collections::HashMap::new();
+        defs.insert(
+            "mcp__excalimate__create_scene".to_owned(),
+            jinn_domain::ToolDefinition {
+                name: "mcp__excalimate__create_scene".to_owned(),
+                description: "Create a scene".to_owned(),
+                parameters: serde_json::Value::Object(serde_json::Map::new()),
+                prompt_snippet: None,
+                prompt_guidelines: Vec::new(),
+                server_tool_type: None,
+            },
+        );
+        w.context.session_tool_definitions.insert(session_id, defs);
+        // Entry starts in Logs mode; flip to Tools so the rendered pane shows tools.
+        let mut entry = McpServerEntry::new(
+            "excalimate".to_owned(),
+            "npx @excalimate/mcp-server".to_owned(),
+            true,
+            default_theme(),
+        );
+        entry.preview_mode = McpPreviewMode::Tools;
+        w.frontend.mcp_server_picker_mut().set_items(vec![entry]);
+        w.frontend.scope_stack.push(jinn_domain::FocusScope::Picker {
+            kind: jinn_domain::PickerKind::McpServer,
+        });
+    }
+
+    let (mut terminal, _area) = setup_term(100, 30);
+
+    // When rendering.
+    terminal
+        .draw(|frame| {
+            app.render(frame);
+        })
+        .unwrap();
+
+    // Then the tools pane shows the advertised tool name.
+    let buf = terminal.backend().buffer();
+    let rendered: String = buf.content.iter().map(|c| c.symbol()).collect();
+    assert!(rendered.contains("create_scene"), "tools pane shows the tool name");
+}
