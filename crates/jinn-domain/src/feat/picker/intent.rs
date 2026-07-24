@@ -24,7 +24,7 @@ use crate::feat::skills::ScanSkills;
 use crate::feat::tools_actor::tool_entry::ToolEntry;
 
 use crate::feat::ui::picker_states::PickerExt;
-use crate::protocol::{ChatEntry, Intent, IntentResult, PickerKind};
+use crate::protocol::{ChatEntry, ChatEntryId, Intent, IntentResult, PickerKind, PinPosition};
 
 use super::geometry::active_viewport;
 use super::validator;
@@ -812,7 +812,23 @@ fn confirm_skill(state: &mut AppState) -> IntentResult {
 }
 
 /// Toggles the `enabled` state of the currently selected skill entry.
+///
+/// A skill already loaded into context cannot be disabled here. Disabling would
+/// give a false sense of "unloaded" — the body is still pinned in history until
+/// it is unpinned and pruned. So TAB is a no-op for a loaded skill: the entry
+/// stays enabled and the cursor stays put (no movement on a no-op).
 pub fn handle_skill_toggle(state: &mut AppState) -> IntentResult {
+    // A loaded skill cannot be unloaded by disabling; leave it as-is.
+    if state
+        .frontend
+        .skill_picker()
+        .selected_item()
+        .map(|e| e.name.clone())
+        .is_some_and(|name| state.active_session().loaded_skills().contains(&name))
+    {
+        return IntentResult::empty();
+    }
+
     state
         .frontend
         .skill_picker_mut()
@@ -822,6 +838,95 @@ pub fn handle_skill_toggle(state: &mut AppState) -> IntentResult {
     let viewport = active_viewport(state);
     state.frontend.skill_picker_mut().move_down(viewport);
     IntentResult::empty()
+}
+/// Loads the highlighted skill into context as a pinned ToolResult (skill picker `<c-l>`).
+///
+/// Pushes a synthetic `ToolCall` + pinned-Relative `ToolResult` pair — the same
+/// on-disk shape the agent-driven `skill` tool produces — so the load is valid in
+/// provider context (no orphan `Tool` message) and is detected by `loaded_skills()`
+/// without inventing a new representation of "loaded."
+///
+/// A disabled skill is auto-enabled first, and the enable is made durable by
+/// removing the name from both the cancel-revert snapshot and the live
+/// `disabled_skills` set, so neither `Enter` nor `ESC` can re-disable a skill
+/// that is now in context. The picker stays open (no scope pop, no cursor move)
+/// so several skills can be loaded in one visit.
+pub fn handle_skill_load_selected(state: &mut AppState) -> IntentResult {
+    // Defensive: only act from the skill picker.
+    if state.frontend.scope_stack.picker_kind() != Some(&PickerKind::Skill) {
+        return IntentResult::empty();
+    }
+
+    let Some(entry) = state.frontend.skill_picker().selected_item().cloned() else {
+        return IntentResult::empty();
+    };
+    let name = entry.name.clone();
+
+    // Resolve the skill's file_path from the session's discovered set rather than
+    // re-deriving from the global dir — this is what makes project-local skills
+    // loadable and matches the `skill` tool's `resolve_skill_path`.
+    let Some(skill_path) = state
+        .active_session()
+        .discovered_skills()
+        .iter()
+        .find(|s| s.name == name)
+        .map(|s| s.file_path.clone())
+    else {
+        return IntentResult::empty();
+    };
+
+    // Idempotency: a pinned ToolResult for this skill already exists in history.
+    if state.active_session().loaded_skills().contains(&name) {
+        state
+            .active_session_mut()
+            .push_entry(ChatEntry::transient(format!(
+                "Skill '{name}' is already loaded"
+            )));
+        return IntentResult::empty();
+    }
+
+    // Auto-enable a disabled skill so the load is not immediately contradicted by
+    // a staged/committed disable. Make the enable durable against both commit
+    // (`Enter`) and revert (`ESC`) paths.
+    if !entry.enabled {
+        state
+            .frontend
+            .skill_picker_mut()
+            .with_selected_mut(|e| e.enabled = true);
+        if let Some(snap) = state.frontend.skill_picker_snapshot_mut() {
+            snap.remove(&name);
+        }
+        let mut disabled = state.active_session().disabled_skills().clone();
+        disabled.remove(&name);
+        state.active_session_mut().set_disabled_skills(disabled);
+    }
+
+    // Push the paired entries with a shared synthetic id. The body comes from the
+    // in-memory SkillEntry (already frontmatter-stripped), so there is no file I/O.
+    let tool_call_id = ChatEntryId::new().to_string();
+    let location = skill_path.to_string_lossy().to_string();
+    let xml = format!(
+        "<skill name=\"{name}\" location=\"{location}\">\n{}\n</skill>",
+        entry.body
+    );
+    let arguments = serde_json::json!({ "name": name }).to_string();
+
+    state.active_session_mut().push_entry(ChatEntry::tool_call(
+        tool_call_id.clone(),
+        "skill",
+        arguments,
+    ));
+    let mut result = ChatEntry::tool_result(
+        tool_call_id,
+        "skill",
+        xml,
+        crate::feat::session::tool_result_status::ToolResultStatus::Success,
+    );
+    result.pin_position = Some(PinPosition::Relative);
+    state.active_session_mut().push_entry(result);
+
+    let session_id = state.active_session().session_id().clone();
+    IntentResult::empty().message(MarkSessionInteracted { session_id })
 }
 
 /// Toggles the selected model's `selected` state in the provider picker.
@@ -1938,6 +2043,282 @@ mod tests {
         state
     }
 
+    /// Returns state seeded with one discovered skill carrying a body, plus an
+    /// open skill picker (scope pushed, snapshot taken, entries loaded).
+    fn setup_with_open_skill_picker() -> AppState {
+        use crate::feat::skills::Skill;
+        use std::path::PathBuf;
+
+        let mut state = AppState::default();
+        let origin = ChatSessionState::new();
+        state.session.insert(origin);
+        state
+            .session
+            .set_active(state.session.active_session_id().clone());
+
+        state
+            .active_session_mut()
+            .set_discovered_skills(vec![Skill {
+                name: "web-coder".to_owned(),
+                description: "Expert web development".to_owned(),
+                body: "# Web Coder\n\nDo web things.".to_owned(),
+                file_path: PathBuf::from("/tmp/skills/web-coder/SKILL.md"),
+                base_dir: PathBuf::from("/tmp/skills/web-coder"),
+                source: crate::feat::skills::SkillSource::Global,
+            }]);
+
+        // Open the picker: pushes the Skill scope and snapshots disabled_skills.
+        handle_open_picker(&mut state, PickerKind::Skill);
+        state
+    }
+
+    #[rstest::rstest]
+    fn skill_load_pushes_pinned_tool_result_for_selected_skill() {
+        // Given an open skill picker with "web-coder" highlighted.
+        let mut state = setup_with_open_skill_picker();
+        let scope_len_before = state.frontend.scope_stack.len();
+
+        // When loading the highlighted skill.
+        let _ = handle_skill_load_selected(&mut state);
+
+        // Then the session reports "web-coder" as loaded.
+        assert!(
+            state.active_session().loaded_skills().contains("web-coder"),
+            "web-coder should be loaded after <c-l>"
+        );
+        // And the picker stays open (no scope pop) for multi-load workflows.
+        assert_eq!(
+            state.frontend.scope_stack.len(),
+            scope_len_before,
+            "a successful load must not pop the skill picker scope"
+        );
+        assert!(
+            matches!(
+                state.frontend.scope_stack.current(),
+                FocusScope::Picker {
+                    kind: PickerKind::Skill
+                }
+            ),
+            "the top scope must still be the skill picker after a load"
+        );
+    }
+
+    #[rstest::rstest]
+    fn skill_load_pushes_matching_tool_call_pair() {
+        use crate::feat::session::chat_entry::ChatEntryKind;
+        use crate::protocol::PinPosition;
+
+        // Given an open skill picker with "web-coder" highlighted.
+        let mut state = setup_with_open_skill_picker();
+
+        // When loading the highlighted skill.
+        let _ = handle_skill_load_selected(&mut state);
+
+        // Then history ends with a skill ToolCall immediately followed by a
+        // pinned-Relative skill ToolResult sharing the same id.
+        let history = state.active_session().history();
+        let last = history.len().checked_sub(2).and_then(|i| {
+            let call = history.get(i)?;
+            let result = history.get(i + 1)?;
+            Some((call, result))
+        });
+        let Some((call, result)) = last else {
+            panic!("expected a ToolCall+ToolResult pair at the tail; got {history:?}");
+        };
+
+        let (
+            ChatEntryKind::ToolCall {
+                id: call_id,
+                name: call_name,
+                ..
+            },
+            ChatEntryKind::ToolResult {
+                id: result_id,
+                name: result_name,
+                content,
+                ..
+            },
+        ) = (&call.kind, &result.kind)
+        else {
+            panic!(
+                "tail entries should be ToolCall then ToolResult; got {:?} {:?}",
+                call.kind, result.kind
+            );
+        };
+
+        assert_eq!(call_name, "skill");
+        assert_eq!(result_name, "skill");
+        assert_eq!(
+            call_id, result_id,
+            "ToolCall and ToolResult must share an id to avoid an orphan-Tool API error"
+        );
+        assert_eq!(result.pin_position, Some(PinPosition::Relative));
+        assert!(
+            content.starts_with("<skill name=\"web-coder\""),
+            "ToolResult content should be skill XML; got {content:?}"
+        );
+    }
+
+    #[rstest::rstest]
+    fn skill_load_already_loaded_emits_transient_notice() {
+        use crate::feat::session::chat_entry::ChatEntryKind;
+
+        // Given an open skill picker where "web-coder" is already loaded.
+        let mut state = setup_with_open_skill_picker();
+        let _ = handle_skill_load_selected(&mut state);
+        let pinned_before = state
+            .active_session()
+            .history()
+            .iter()
+            .filter(|e| e.is_pinned())
+            .count();
+
+        // When loading the same skill again.
+        let _ = handle_skill_load_selected(&mut state);
+
+        // Then a Transient entry is pushed and no new pinned ToolResult appears.
+        let history = state.active_session().history();
+        assert!(
+            matches!(&history.last().expect("at least one entry").kind, ChatEntryKind::Transient(t) if t.contains("already loaded")),
+            "already-loaded skill should emit a transient 'already loaded' notice"
+        );
+        let pinned_after = history.iter().filter(|e| e.is_pinned()).count();
+        assert_eq!(
+            pinned_before, pinned_after,
+            "already-loaded skill must not be re-pinned"
+        );
+    }
+
+    #[rstest::rstest]
+    fn skill_load_auto_enables_disabled_skill() {
+        // Given a session with "web-coder" disabled, then the skill picker opened
+        // (so the snapshot captures it as disabled).
+        let mut state = setup_with_open_skill_picker();
+        // Disable it before opening so the snapshot reflects the disabled state.
+        state
+            .active_session_mut()
+            .set_disabled_skills(std::collections::HashSet::from(["web-coder".to_owned()]));
+        // Reopen to take a fresh snapshot and reload entries from the disabled set.
+        state.frontend.scope_stack.pop();
+        handle_open_picker(&mut state, PickerKind::Skill);
+
+        assert!(!state.frontend.skill_picker().items()[0].enabled);
+        assert!(
+            state
+                .frontend
+                .skill_picker_snapshot()
+                .as_ref()
+                .is_some_and(|s| s.contains("web-coder")),
+            "disabled skill should be in the revert snapshot before load"
+        );
+
+        // When loading the disabled skill.
+        let _ = handle_skill_load_selected(&mut state);
+
+        // Then the entry is enabled, removed from the snapshot, removed from the
+        // live disabled set, and the skill is loaded.
+        assert!(state.frontend.skill_picker().items()[0].enabled);
+        assert!(
+            !state
+                .frontend
+                .skill_picker_snapshot()
+                .as_ref()
+                .is_some_and(|s| s.contains("web-coder")),
+            "auto-enable should remove the skill from the revert snapshot"
+        );
+        assert!(
+            !state
+                .active_session()
+                .disabled_skills()
+                .contains("web-coder"),
+            "auto-enable should remove the skill from the live disabled set"
+        );
+        assert!(state.active_session().loaded_skills().contains("web-coder"));
+    }
+
+    /// Opens the skill picker with "web-coder" staged as disabled and captured in
+    /// the revert snapshot — the precondition for testing an auto-enabled load.
+    fn setup_with_disabled_open_skill_picker() -> AppState {
+        let mut state = setup_with_open_skill_picker();
+        state
+            .active_session_mut()
+            .set_disabled_skills(std::collections::HashSet::from(["web-coder".to_owned()]));
+        state.frontend.scope_stack.pop();
+        handle_open_picker(&mut state, PickerKind::Skill);
+        state
+    }
+
+    #[rstest::rstest]
+    fn skill_load_auto_enable_survives_confirm() {
+        // Given an open skill picker with "web-coder" disabled, then loaded.
+        let mut state = setup_with_disabled_open_skill_picker();
+        let _ = handle_skill_load_selected(&mut state);
+
+        // When confirming the picker (Enter).
+        let _ = confirm_skill(&mut state);
+
+        // Then the skill stays enabled and is not recorded as disabled.
+        assert!(
+            state.frontend.skill_picker().items()[0].enabled,
+            "auto-enabled skill must remain enabled after confirming the picker"
+        );
+        assert!(
+            !state
+                .active_session()
+                .disabled_skills()
+                .contains("web-coder"),
+            "a loaded skill must not be committed as disabled on Enter"
+        );
+    }
+
+    #[rstest::rstest]
+    fn skill_load_auto_enable_survives_escape() {
+        // Given an open skill picker with "web-coder" disabled, then loaded.
+        let mut state = setup_with_disabled_open_skill_picker();
+        let _ = handle_skill_load_selected(&mut state);
+
+        // When cancelling the picker (ESC).
+        let _ = crate::feat::chat_input::intent::handle_enter_normal_mode(&mut state);
+
+        // Then the skill stays enabled and is not reverted to disabled.
+        assert!(
+            state.frontend.skill_picker().items()[0].enabled,
+            "auto-enabled skill must remain enabled after escaping the picker"
+        );
+        assert!(
+            !state
+                .active_session()
+                .disabled_skills()
+                .contains("web-coder"),
+            "a loaded skill must not be reverted to disabled on ESC"
+        );
+    }
+
+    #[rstest::rstest]
+    fn skill_load_with_no_selection_is_noop() {
+        // Given an open skill picker with no entries.
+        let mut state = AppState::default();
+        let origin = ChatSessionState::new();
+        state.session.insert(origin);
+        state
+            .session
+            .set_active(state.session.active_session_id().clone());
+        handle_open_picker(&mut state, PickerKind::Skill);
+
+        // When loading with no selection.
+        let result = handle_skill_load_selected(&mut state);
+
+        // Then nothing is pushed and no commands are emitted.
+        assert!(
+            state.active_session().history().is_empty(),
+            "no-selection load should not push any history entries"
+        );
+        assert!(
+            result.message_names.is_empty(),
+            "no-selection load should emit no messages"
+        );
+    }
+
     #[rstest::rstest]
     fn load_skill_picker_entries_populates_picker() {
         // Given state with two skills.
@@ -2061,6 +2442,38 @@ mod tests {
 
         // Then the cursor has moved down to 1.
         assert_eq!(state.frontend.skill_picker().selection(), 1);
+    }
+
+    #[rstest::rstest]
+    fn skill_toggle_does_not_disable_already_loaded_skill() {
+        // Given an open skill picker with "web-coder" loaded into context.
+        let mut state = setup_with_open_skill_picker();
+        let _ = handle_skill_load_selected(&mut state);
+        assert!(state.active_session().loaded_skills().contains("web-coder"));
+        assert_eq!(state.frontend.skill_picker().selection(), 0);
+
+        // When pressing TAB to disable it.
+        handle_skill_toggle(&mut state);
+
+        // Then the entry stays enabled.
+        assert!(
+            state.frontend.skill_picker().items()[0].enabled,
+            "a loaded skill cannot be disabled via TAB"
+        );
+        // And the cursor does not move on the no-op.
+        assert_eq!(
+            state.frontend.skill_picker().selection(),
+            0,
+            "TAB should not move the cursor when it is a no-op"
+        );
+        // And disabled_skills stays empty (the enable is never staged for removal).
+        assert!(
+            !state
+                .active_session()
+                .disabled_skills()
+                .contains("web-coder"),
+            "a loaded skill must not be staged as disabled"
+        );
     }
 
     #[rstest::rstest]
