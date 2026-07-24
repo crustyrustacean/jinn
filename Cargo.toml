@@ -106,7 +106,7 @@ serde = { version = "1.0", features = ["derive"] }
 serde_json = "1.0"
 
 # MCP client protocol
-rmcp = { version = "3.0.0-beta.1", features = ["client", "transport-child-process"] }
+rmcp = { version = "3.0.0-beta.2", features = ["client", "transport-child-process", "transport-streamable-http-client"] }
 
 # Async / channels
 tokio = { version = "1", features = ["full"] }

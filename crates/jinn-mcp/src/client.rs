@@ -23,6 +23,8 @@ use tokio::io::AsyncBufReadExt;
 use tokio::process::Command;
 use wherror::Error;
 
+use crate::transport::{expand_tokens, pick_free_port};
+
 /// A server process failed to start or communicate.
 #[derive(Debug, Error)]
 #[error(debug)]
@@ -54,6 +56,25 @@ pub struct McpClient {
     service: RunningService<RoleClient, ()>,
     /// Shared stderr ring buffer, written by the drain task.
     stderr_buffer: Arc<Mutex<McpStderrBuffer>>,
+    /// Owned child process for HTTP-mode servers (stdio mode leaves this
+    /// `None` because rmcp's `TokioChildProcess` owns the child).
+    child: Option<tokio::process::Child>,
+}
+
+/// An HTTP-mode MCP server process spawned by jinn but not yet connected.
+///
+/// [`McpClient::connect_http`] produces this; [`McpClient::connect_with_retry`]
+/// consumes it once the HTTP endpoint is reachable. The buffer holds the
+/// combined stdout+stderr captured since spawn.
+pub struct HalfOpenHttp {
+    /// The known URL (`http://<bind_addr>:<port>/mcp`) to connect to.
+    pub url: String,
+    /// The spawned child process; `kill_on_drop` terminates it if dropped
+    /// before connection completes.
+    pub child: tokio::process::Child,
+    /// Shared log buffer (stdout + stderr), kept after connection so the
+    /// inspector's live log pane keeps working.
+    pub buffer: Arc<Mutex<McpStderrBuffer>>,
 }
 
 impl McpClient {
@@ -77,7 +98,9 @@ impl McpClient {
             .attach("failed to spawn MCP server process")?;
 
         let stderr_buffer = Arc::new(Mutex::new(McpStderrBuffer::new()));
-        spawn_stderr_drain(stderr, stderr_buffer.clone());
+        if let Some(stderr) = stderr {
+            spawn_line_drain(stderr, stderr_buffer.clone());
+        }
 
         let service =
             ().serve(transport)
@@ -88,6 +111,7 @@ impl McpClient {
         Ok(Self {
             service,
             stderr_buffer,
+            child: None,
         })
     }
 
@@ -117,7 +141,59 @@ impl McpClient {
         Ok(Self {
             service,
             stderr_buffer: Arc::new(Mutex::new(McpStderrBuffer::new())),
+            child: None,
         })
+    }
+
+    /// Spawns an HTTP-mode MCP server as a child process without connecting.
+    ///
+    /// Allocates a free port (bind-and-release), expands `<ip>`/`<port>` tokens
+    /// in the supplied args, spawns the server with `kill_on_drop`, and drains
+    /// **both stdout and stderr** into one shared log buffer. Returns the
+    /// [`HalfOpenHttp`] handle; the caller completes the connection in
+    /// [`Self::connect_with_retry`] once the HTTP endpoint is reachable.
+    ///
+    /// jinn owns the port allocation and never parses server output for the
+    /// bind address — the URL is known the instant the port is allocated.
+    ///
+    /// # Errors
+    ///
+    /// Returns an error if the port can't be allocated or the child fails
+    /// to spawn.
+    pub async fn connect_http(
+        program: &str,
+        args: &[String],
+        bind_addr: &str,
+    ) -> Result<HalfOpenHttp, Report<McpClientError>> {
+        let port = pick_free_port(bind_addr)
+            .change_context(McpClientError)
+            .attach("failed to allocate a free port for the HTTP MCP server")?;
+        let expanded = expand_tokens(args, bind_addr, port);
+        let url = format!("http://{bind_addr}:{port}/mcp");
+
+        let mut command = Command::new(program);
+        command
+            .args(&expanded)
+            .stdin(Stdio::null())
+            .stdout(Stdio::piped())
+            .stderr(Stdio::piped())
+            .kill_on_drop(true);
+
+        let mut child = command
+            .spawn()
+            .change_context(McpClientError)
+            .attach("failed to spawn HTTP MCP server process")?;
+
+        let buffer = Arc::new(Mutex::new(McpStderrBuffer::new()));
+        if let Some(stdout) = child.stdout.take() {
+            spawn_line_drain(stdout, buffer.clone());
+        }
+        if let Some(stderr) = child.stderr.take() {
+            spawn_line_drain(stderr, buffer.clone());
+        }
+
+        tracing::info!(%url, "spawned HTTP MCP server");
+        Ok(HalfOpenHttp { url, child, buffer })
     }
 
     /// Lists the tools the server exposes.
@@ -187,6 +263,11 @@ impl McpClient {
             .await
         {
             tracing::warn!(error = ?e, "MCP client shutdown join error");
+        }
+        // For HTTP-mode servers, jinn owns the child directly (rmcp doesn't
+        // for this transport). Kill it explicitly.
+        if let Some(child) = self.child.as_mut() {
+            let _ = child.kill().await;
         }
     }
 }
@@ -259,20 +340,17 @@ impl McpStderrBuffer {
     }
 }
 
-/// Spawns a background task that drains `stderr` line-by-line into the shared
-/// buffer. The task exits naturally when the child process dies and the pipe
-/// closes (EOF), so no explicit cancellation is needed — `kill_on_drop`
-/// guarantees the child terminates.
-fn spawn_stderr_drain(
-    stderr: Option<tokio::process::ChildStderr>,
-    buffer: Arc<Mutex<McpStderrBuffer>>,
-) {
-    let Some(stderr) = stderr else {
-        return;
-    };
+/// Spawns a background task that drains a child stream line-by-line into the
+/// shared buffer. Works for both `ChildStderr` and `ChildStdout` (HTTP mode
+/// interleaves both into one log buffer). The task exits naturally when the
+/// child process dies and the pipe closes (EOF), so no explicit cancellation
+/// is needed — `kill_on_drop` guarantees the child terminates.
+fn spawn_line_drain<R>(stream: R, buffer: Arc<Mutex<McpStderrBuffer>>)
+where
+    R: tokio::io::AsyncRead + Unpin + Send + 'static,
+{
     tokio::spawn(async move {
-        let reader = tokio::io::BufReader::new(stderr);
-        let mut lines = reader.lines();
+        let mut lines = tokio::io::BufReader::new(stream).lines();
         while let Ok(Some(line)) = lines.next_line().await {
             if let Ok(mut buf) = buffer.lock() {
                 buf.append_line(&line);
@@ -281,6 +359,7 @@ fn spawn_stderr_drain(
         // EOF or error: child died or pipe closed — drain exits.
     });
 }
+
 
 #[cfg(test)]
 mod tests {
@@ -321,5 +400,36 @@ mod tests {
         assert!(buf.tail().len() <= 11);
         assert!(buf.tail().ends_with("BBBBB"));
         assert!(!buf.tail().starts_with("AAAAA"));
+    }
+
+    #[tokio::test]
+    async fn connect_http_spawns_and_captures_combined_output() {
+        // Given a no-op server script that prints to both stdout and stderr
+        // and stays alive (sleeps), with a <port> token in args.
+        // Use `sh -c` to print to both streams; the <port> token is unused
+        // by the script but must expand without error.
+        let args = vec![
+            "-c".to_owned(),
+            "echo stdout-line; echo stderr-line >&2; sleep 1".to_owned(),
+            "<port>".to_owned(), // token presence proves expansion path
+        ];
+
+        // When spawning via connect_http.
+        let mut half = McpClient::connect_http("sh", &args, "127.0.0.1")
+            .await
+            .expect("spawn");
+
+        // Then the URL is a localhost URL on a real port.
+        assert!(half.url.starts_with("http://127.0.0.1:"));
+        assert!(half.url.ends_with("/mcp"));
+
+        // And after a brief wait, the buffer captures both streams.
+        tokio::time::sleep(Duration::from_millis(300)).await;
+        let tail = half.buffer.lock().map(|b| b.tail().to_owned()).unwrap_or_default();
+        assert!(tail.contains("stdout-line"), "stdout captured: {tail}");
+        assert!(tail.contains("stderr-line"), "stderr captured: {tail}");
+
+        // Cleanup: kill the child.
+        let _ = half.child.kill().await;
     }
 }
