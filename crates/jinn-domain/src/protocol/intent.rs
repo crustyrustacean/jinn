@@ -138,6 +138,8 @@ pub enum Intent {
     SkillToggleSelected,
     /// Toggle the selected MCP server's enabled/disabled state in the MCP picker.
     McpToggleSelected,
+    /// Load the highlighted skill into context as a pinned ToolResult (skill picker `<c-l>`).
+    SkillLoadSelected,
     /// Project picker: create a new session at the highlighted dir, then open
     /// the session lifecycle picker (project picker `<c-enter>` action).
     ProjectNewAtHighlightedWithLifecycle,
@@ -411,6 +413,7 @@ impl std::fmt::Display for Intent {
             Intent::ToolToggleSelected => write!(f, "toggle tool"),
             Intent::SkillToggleSelected => write!(f, "toggle skill"),
             Intent::McpToggleSelected => write!(f, "toggle mcp server"),
+            Intent::SkillLoadSelected => write!(f, "load skill"),
             Intent::ProjectNewAtHighlightedWithLifecycle => write!(f, "project new + lifecycle"),
             Intent::ProjectRemoveHighlighted => write!(f, "remove project"),
             Intent::ModelToggleSelected => write!(f, "toggle model"),
