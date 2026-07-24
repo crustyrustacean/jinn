@@ -10,12 +10,18 @@ use jiff::Timestamp;
 /// Register tools that an actor can execute.
 ///
 /// Sent by actors at startup to declare which tools they provide.
+/// When `session_id` is `None`, the tools are global (visible to every
+/// session, like `web-search`/`web-fetch`); when `Some`, they are scoped to
+/// that session only (e.g. per-session MCP server tools).
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct RegisterTools {
     /// The name of the actor providing these tools.
     pub provider: String,
     /// The tool definitions being registered.
     pub definitions: Vec<ToolDefinition>,
+    /// The session these tools belong to. `None` registers them globally.
+    #[serde(default)]
+    pub session_id: Option<SessionId>,
 }
 
 /// Request execution of a batch of tool calls for a session.
