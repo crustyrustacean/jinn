@@ -34,7 +34,7 @@ use crate::common::actor_deps::{ActorDeps, BusPublish};
 use crate::common::root_supervisor::RootSupervisorRef;
 use crate::common::services::bus_service::BusService;
 use crate::feat::mcp::McpServerConfig;
-use crate::feat::mcp_actor::protocol::McpServerStatus;
+use crate::feat::mcp_actor::protocol::{McpServerLog, McpServerStatus};
 use crate::feat::mcp_actor::{McpActor, McpActorDeps};
 use crate::feat::mcp_coordinator_actor::protocol::{McpEnablementChanged, RestartMcpServer};
 use crate::feat::session::protocol::session_archived::SessionArchived;
@@ -99,7 +99,10 @@ impl kameo::Actor for McpCoordinatorActor {
             .subscribe(actor_ref.clone().recipient::<RestartMcpServer>())
             .await;
         args.deps
-            .subscribe(actor_ref.recipient::<McpServerStatus>())
+            .subscribe(actor_ref.clone().recipient::<McpServerStatus>())
+            .await;
+        args.deps
+            .subscribe(actor_ref.recipient::<McpServerLog>())
             .await;
 
         Ok(Self {
@@ -344,6 +347,21 @@ impl Message<McpServerStatus> for McpCoordinatorActor {
     }
 }
 
+/// Writes a captured stderr tail into the owning session's stderr map.
+///
+/// Like the status handler, the coordinator owns this field inline.
+impl Message<McpServerLog> for McpCoordinatorActor {
+    type Reply = ();
+
+    async fn handle(&mut self, msg: McpServerLog, _ctx: &mut Context<Self, Self::Reply>) {
+        self.state.with_session(&self.cap, |view| {
+            if let Some(session) = view.session.map().get_mut(&msg.session_id) {
+                session.set_mcp_server_stderr(&msg.server, msg.tail);
+            }
+        });
+    }
+}
+
 #[cfg(test)]
 mod lifecycle_tests {
     #![allow(
@@ -566,7 +584,7 @@ mod status_tests {
     use crate::common::bus::test_harness::TestHarness;
     use crate::common::root_supervisor::RootSupervisor;
     use crate::common::state::State;
-    use crate::feat::mcp_actor::protocol::{McpConnectionStatus, McpServerStatus};
+    use crate::feat::mcp_actor::protocol::{McpConnectionStatus, McpServerLog, McpServerStatus};
     use crate::feat::preferences_actor::user_preferences::UserPreferences;
     use crate::protocol::SessionId;
 
@@ -602,6 +620,12 @@ mod status_tests {
         let g = state.read();
         let s = g.session.get(sid)?;
         s.mcp_server_status().get(server).copied()
+    }
+
+    fn tail_of(state: &State, sid: &SessionId, server: &str) -> Option<String> {
+        let g = state.read();
+        let s = g.session.get(sid)?;
+        s.mcp_server_stderr().get(server).cloned()
     }
 
     #[tokio::test]
@@ -674,5 +698,54 @@ mod status_tests {
             Some(McpConnectionStatus::Running)
         );
         assert_eq!(status_of(&state, &session_b, "excalimate"), None);
+    }
+
+    #[tokio::test]
+    async fn stderr_tail_is_written_to_session_map() {
+        // Given a coordinator with a seeded session.
+        let harness = TestHarness::new().await;
+        let (state, session_id) = spawn_with_session(&harness).await;
+
+        // When publishing a stderr tail for one server.
+        harness
+            .publish(McpServerLog {
+                session_id: session_id.clone(),
+                server: "excalimate".to_owned(),
+                tail: "npm warn something".to_owned(),
+            })
+            .await;
+        tokio::time::sleep(std::time::Duration::from_millis(100)).await;
+
+        // Then the session's stderr map shows the latest tail.
+        assert_eq!(
+            tail_of(&state, &session_id, "excalimate"),
+            Some("npm warn something".to_owned())
+        );
+    }
+
+    #[tokio::test]
+    async fn stderr_tail_for_one_session_is_not_visible_in_another() {
+        // Given a coordinator with two seeded sessions.
+        let harness = TestHarness::new().await;
+        let (state, session_a) = spawn_with_session(&harness).await;
+        let session_b = SessionId::new();
+        state.write_test_no_cap().session.get_or_create(&session_b);
+
+        // When publishing a stderr tail for session A only.
+        harness
+            .publish(McpServerLog {
+                session_id: session_a.clone(),
+                server: "excalimate".to_owned(),
+                tail: "only-in-a".to_owned(),
+            })
+            .await;
+        tokio::time::sleep(std::time::Duration::from_millis(100)).await;
+
+        // Then session A shows the tail, but session B has none.
+        assert_eq!(
+            tail_of(&state, &session_a, "excalimate"),
+            Some("only-in-a".to_owned())
+        );
+        assert_eq!(tail_of(&state, &session_b, "excalimate"), None);
     }
 }

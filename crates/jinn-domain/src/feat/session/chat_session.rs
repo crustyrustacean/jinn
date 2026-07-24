@@ -349,6 +349,12 @@ pub struct SessionCore {
     #[serde(skip)]
     pub mcp_server_status:
         std::collections::BTreeMap<String, crate::feat::mcp_actor::protocol::McpConnectionStatus>,
+    /// Per-session captured stderr tail for each MCP server, updated live
+    /// by the stderr-debounce republish.
+    ///
+    /// OWNER: McpCoordinatorActor (writes on `McpServerLog` events).
+    #[serde(skip)]
+    pub mcp_server_stderr: std::collections::BTreeMap<String, String>,
     /// Runtime-only state - not persisted across restarts.
     #[serde(skip)]
     pub ephemeral: SessionCoreEphemeral,
@@ -383,6 +389,7 @@ impl Default for SessionCore {
             task_list: crate::feat::todo_list::TaskList::default(),
             enabled_mcp_servers: std::collections::BTreeSet::new(),
             mcp_server_status: std::collections::BTreeMap::new(),
+            mcp_server_stderr: std::collections::BTreeMap::new(),
             has_interacted: false,
             ephemeral: SessionCoreEphemeral::default(),
         }
@@ -1770,6 +1777,20 @@ impl ChatSessionState {
         self.core
             .mcp_server_status
             .insert(server.to_owned(), status);
+    }
+
+    /// Returns the latest captured stderr tail per MCP server for this session.
+    ///
+    /// Owned by `McpCoordinatorActor`, driven by `McpServerLog` events.
+    pub fn mcp_server_stderr(&self) -> &std::collections::BTreeMap<String, String> {
+        &self.core.mcp_server_stderr
+    }
+
+    /// Sets the captured stderr tail for one MCP server in this session.
+    ///
+    /// Owned by `McpCoordinatorActor`, driven by `McpServerLog` events.
+    pub fn set_mcp_server_stderr(&mut self, server: &str, tail: String) {
+        self.core.mcp_server_stderr.insert(server.to_owned(), tail);
     }
 
     /// Returns `true` if the skill is enabled for this session.

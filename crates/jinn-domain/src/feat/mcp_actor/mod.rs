@@ -26,6 +26,7 @@ pub mod protocol;
 #[cfg(test)]
 mod dispatch_roundtrip_tests;
 
+use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::Arc;
 
 use jinn_mcp::{
@@ -45,10 +46,9 @@ use crate::feat::tools_actor::tool_types::{ToolCall, ToolDefinition, ToolResult}
 use crate::feat::tools_actor::truncation::{DEFAULT_MAX_BYTES, DEFAULT_MAX_LINES, truncate_tail};
 use crate::protocol::SessionId;
 
-/// The MCP client actor — one per (session × enabled server).
-///
-/// Owns a [`McpClient`] connection to a single MCP server process and answers
-/// `ExecuteTool` calls whose name carries this server's namespace prefix.
+/// Debounce interval for live stderr republishing while the actor is Running.
+const STDERR_DEBOUNCE: std::time::Duration = std::time::Duration::from_millis(250);
+
 pub struct McpActor {
     deps: ActorDeps,
     /// The session this actor serves.
@@ -57,6 +57,9 @@ pub struct McpActor {
     server: McpServerConfig,
     /// The live MCP client connection, established during `on_start`.
     client: Option<McpClient>,
+    /// Cancellation flag for the stderr-debounce republish task. Set in
+    /// `on_stop` so the task exits promptly when the actor tears down.
+    stderr_task_shutdown: Arc<AtomicBool>,
 }
 
 /// Dependencies for [`McpActor`].
@@ -237,6 +240,7 @@ impl kameo::Actor for McpActor {
                     session_id,
                     server,
                     client: None,
+                    stderr_task_shutdown: Arc::new(AtomicBool::new(false)),
                 });
             }
         };
@@ -269,11 +273,26 @@ impl kameo::Actor for McpActor {
         .await;
         // Surface any stderr emitted during startup (e.g. `npm warn`).
         publish_log(&deps, &session_id, &server.name, &client.stderr_tail()).await;
+
+        // Spawn the live stderr-debounce task. It polls the client's tail every
+        // `STDERR_DEBOUNCE` and republishes `McpServerLog` when the tail changed,
+        // so subscribers (the inspector) see stderr update in near-real time.
+        // The task exits when `stderr_task_shutdown` is set in `on_stop`.
+        let stderr_task_shutdown = Arc::new(AtomicBool::new(false));
+        spawn_stderr_debounce(
+            stderr_task_shutdown.clone(),
+            client.stderr_buffer(),
+            deps.clone(),
+            session_id.clone(),
+            server.name.clone(),
+        );
+
         Ok(Self {
             deps,
             session_id,
             server,
             client: Some(client),
+            stderr_task_shutdown,
         })
     }
 
@@ -282,6 +301,9 @@ impl kameo::Actor for McpActor {
         _actor_ref: kameo::actor::WeakActorRef<Self>,
         _reason: kameo::error::ActorStopReason,
     ) -> Result<(), Self::Error> {
+        // Signal the stderr-debounce task to exit before we tear down.
+        self.stderr_task_shutdown.store(true, Ordering::SeqCst);
+
         let tail = self
             .client
             .as_ref()
@@ -334,6 +356,48 @@ async fn publish_log(deps: &ActorDeps, session_id: &SessionId, server: &str, tai
             tail: tail.to_owned(),
         })
         .await;
+}
+
+/// Spawns a background task that republishes `McpServerLog` whenever the
+/// client's stderr tail changes, on a [`STDERR_DEBOUNCE`] cadence.
+///
+/// Reads the shared stderr ring buffer directly (no need to clone the full
+/// client connection). Keeps the live inspector up to date without flooding
+/// the bus. The task exits promptly when `shutdown` is set
+/// (see [`McpActor::on_stop`]).
+fn spawn_stderr_debounce(
+    shutdown: Arc<AtomicBool>,
+    stderr_buffer: std::sync::Arc<std::sync::Mutex<jinn_mcp::McpStderrBuffer>>,
+    deps: ActorDeps,
+    session_id: SessionId,
+    server_name: String,
+) {
+    tokio::spawn(async move {
+        let mut last_tail = String::new();
+        loop {
+            tokio::time::sleep(STDERR_DEBOUNCE).await;
+            if shutdown.load(Ordering::SeqCst) {
+                break;
+            }
+            let tail = stderr_buffer
+                .lock()
+                .map(|buf| buf.tail().to_owned())
+                .unwrap_or_default();
+            if let Some(tail) = next_tail(&tail, &last_tail) {
+                publish_log(&deps, &session_id, &server_name, &tail).await;
+                last_tail = tail;
+            }
+        }
+    });
+}
+
+/// Returns the tail to publish when it differs from the last-published one,
+/// else `None`.
+///
+/// Extracted from the debounce loop so the change-detection logic is
+/// unit-testable without depending on the timer cadence.
+fn next_tail(current: &str, last_published: &str) -> Option<String> {
+    (current != last_published).then(|| current.to_owned())
 }
 
 impl BusPublish for McpActor {
@@ -674,5 +738,29 @@ mod tests {
         // Then it passes through unchanged (defaults are generous).
         assert_eq!(result.content, "small");
         assert!(result.truncation.is_none());
+    }
+
+    #[test]
+    fn next_tail_returns_none_when_unchanged() {
+        // Given an unchanged tail.
+        // When checking against the last-published value.
+        // Then no new publish is needed.
+        assert_eq!(next_tail("hello", "hello"), None);
+    }
+
+    #[test]
+    fn next_tail_publishes_when_tail_grew() {
+        // Given a tail that grew since the last publish.
+        // When checking against the last-published value.
+        // Then the new tail is returned for publishing.
+        assert_eq!(next_tail("hello world", "hello"), Some("hello world".to_owned()));
+    }
+
+    #[test]
+    fn next_tail_publishes_first_tail_from_empty_start() {
+        // Given the first non-empty tail (startup).
+        // When checking against the empty last-published value.
+        // Then the tail is returned for publishing.
+        assert_eq!(next_tail("npm warn", ""), Some("npm warn".to_owned()));
     }
 }
