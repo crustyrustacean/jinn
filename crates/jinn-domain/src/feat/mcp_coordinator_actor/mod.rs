@@ -34,8 +34,9 @@ use crate::common::actor_deps::{ActorDeps, BusPublish};
 use crate::common::root_supervisor::RootSupervisorRef;
 use crate::common::services::bus_service::BusService;
 use crate::feat::mcp::McpServerConfig;
+use crate::feat::mcp_actor::protocol::McpServerStatus;
 use crate::feat::mcp_actor::{McpActor, McpActorDeps};
-use crate::feat::mcp_lifecycle_actor::protocol::{McpEnablementChanged, RestartMcpServer};
+use crate::feat::mcp_coordinator_actor::protocol::{McpEnablementChanged, RestartMcpServer};
 use crate::feat::session::protocol::session_archived::SessionArchived;
 use crate::feat::session::protocol::session_closed::SessionClosed;
 use crate::feat::session::protocol::session_load_completed::SessionLoadCompleted;
@@ -46,26 +47,33 @@ use crate::protocol::SessionId;
 type SpawnKey = (SessionId, String);
 
 /// The MCP lifecycle actor.
-pub struct McpLifecycleActor {
+pub struct McpCoordinatorActor {
     deps: ActorDeps,
     root: RootSupervisorRef,
+    state: crate::common::state::State,
+    cap: crate::common::tcaps::SessionCap,
     /// Tracks every live `McpActor` by (session_id, server_name).
     /// Guarded by a mutex so spawn/kill helpers can borrow `self` while
     /// mutating the map without fighting the borrow checker.
     spawned: Mutex<HashMap<SpawnKey, ActorRef<McpActor>>>,
 }
 
-/// Dependencies for [`McpLifecycleActor`].
+/// Dependencies for [`McpCoordinatorActor`].
 #[derive(Clone)]
-pub struct McpLifecycleActorDeps {
+pub struct McpCoordinatorActorDeps {
     /// Common actor dependencies (services + bus).
     pub deps: ActorDeps,
     /// Root supervisor — `McpActor`s are supervised children of it.
     pub root: RootSupervisorRef,
+    /// Shared application state — the per-session MCP server status map is
+    /// written here.
+    pub state: crate::common::state::State,
+    /// Capability to write the session collection.
+    pub cap: crate::common::tcaps::SessionCap,
 }
 
-impl kameo::Actor for McpLifecycleActor {
-    type Args = McpLifecycleActorDeps;
+impl kameo::Actor for McpCoordinatorActor {
+    type Args = McpCoordinatorActorDeps;
     type Error = kameo::error::Infallible;
 
     async fn on_start(args: Self::Args, actor_ref: ActorRef<Self>) -> Result<Self, Self::Error> {
@@ -88,24 +96,29 @@ impl kameo::Actor for McpLifecycleActor {
             .subscribe(actor_ref.clone().recipient::<SessionTeardownFinished>())
             .await;
         args.deps
-            .subscribe(actor_ref.recipient::<RestartMcpServer>())
+            .subscribe(actor_ref.clone().recipient::<RestartMcpServer>())
+            .await;
+        args.deps
+            .subscribe(actor_ref.recipient::<McpServerStatus>())
             .await;
 
         Ok(Self {
             deps: args.deps,
             root: args.root,
+            state: args.state,
+            cap: args.cap,
             spawned: Mutex::new(HashMap::new()),
         })
     }
 }
 
-impl BusPublish for McpLifecycleActor {
+impl BusPublish for McpCoordinatorActor {
     fn bus(&self) -> &BusService {
         &self.deps.services.bus
     }
 }
 
-impl McpLifecycleActor {
+impl McpCoordinatorActor {
     /// Reconciles the spawned-actor map for one session against a desired set.
     ///
     /// Spawns actors for newly-enabled servers, kills actors for
@@ -241,7 +254,7 @@ fn configured_servers(services: &Services) -> Vec<McpServerConfig> {
 
 // ── Message handlers ─────────────────────────────────────────────────────
 
-impl Message<SessionLoadCompleted> for McpLifecycleActor {
+impl Message<SessionLoadCompleted> for McpCoordinatorActor {
     type Reply = ();
 
     async fn handle(&mut self, msg: SessionLoadCompleted, _ctx: &mut Context<Self, Self::Reply>) {
@@ -254,7 +267,7 @@ impl Message<SessionLoadCompleted> for McpLifecycleActor {
     }
 }
 
-impl Message<SessionCreated> for McpLifecycleActor {
+impl Message<SessionCreated> for McpCoordinatorActor {
     type Reply = ();
 
     async fn handle(&mut self, msg: SessionCreated, _ctx: &mut Context<Self, Self::Reply>) {
@@ -268,7 +281,7 @@ impl Message<SessionCreated> for McpLifecycleActor {
     }
 }
 
-impl Message<McpEnablementChanged> for McpLifecycleActor {
+impl Message<McpEnablementChanged> for McpCoordinatorActor {
     type Reply = ();
 
     async fn handle(&mut self, msg: McpEnablementChanged, _ctx: &mut Context<Self, Self::Reply>) {
@@ -278,7 +291,7 @@ impl Message<McpEnablementChanged> for McpLifecycleActor {
     }
 }
 
-impl Message<SessionClosed> for McpLifecycleActor {
+impl Message<SessionClosed> for McpCoordinatorActor {
     type Reply = ();
 
     async fn handle(&mut self, msg: SessionClosed, _ctx: &mut Context<Self, Self::Reply>) {
@@ -286,7 +299,7 @@ impl Message<SessionClosed> for McpLifecycleActor {
     }
 }
 
-impl Message<SessionArchived> for McpLifecycleActor {
+impl Message<SessionArchived> for McpCoordinatorActor {
     type Reply = ();
 
     async fn handle(&mut self, msg: SessionArchived, _ctx: &mut Context<Self, Self::Reply>) {
@@ -294,7 +307,7 @@ impl Message<SessionArchived> for McpLifecycleActor {
     }
 }
 
-impl Message<SessionTeardownFinished> for McpLifecycleActor {
+impl Message<SessionTeardownFinished> for McpCoordinatorActor {
     type Reply = ();
 
     async fn handle(
@@ -306,11 +319,28 @@ impl Message<SessionTeardownFinished> for McpLifecycleActor {
     }
 }
 
-impl Message<RestartMcpServer> for McpLifecycleActor {
+impl Message<RestartMcpServer> for McpCoordinatorActor {
     type Reply = ();
 
     async fn handle(&mut self, msg: RestartMcpServer, _ctx: &mut Context<Self, Self::Reply>) {
         self.restart_one(&msg.session_id, &msg.server).await;
+    }
+}
+
+/// Writes a `McpServerStatus` transition into the owning session's status map.
+///
+/// This is the single owner of each session's `mcp_server_status` field.
+/// There is no sync-sibling actor — the coordinator owns the full MCP
+/// lifecycle domain, so it writes the status inline.
+impl Message<McpServerStatus> for McpCoordinatorActor {
+    type Reply = ();
+
+    async fn handle(&mut self, msg: McpServerStatus, _ctx: &mut Context<Self, Self::Reply>) {
+        self.state.with_session(&self.cap, |view| {
+            if let Some(session) = view.session.map().get_mut(&msg.session_id) {
+                session.set_mcp_server_status(&msg.server, msg.status);
+            }
+        });
     }
 }
 
@@ -335,8 +365,8 @@ mod lifecycle_tests {
     use crate::feat::preferences_actor::user_preferences::UserPreferences;
     use crate::protocol::SessionId;
 
-    use super::{McpLifecycleActor, McpLifecycleActorDeps};
-    use crate::feat::mcp_lifecycle_actor::protocol::McpEnablementChanged;
+    use super::{McpCoordinatorActor, McpCoordinatorActorDeps};
+    use crate::feat::mcp_coordinator_actor::protocol::McpEnablementChanged;
     use crate::feat::session::protocol::session_closed::SessionClosed;
 
     /// A configured MCP server whose command will never spawn successfully,
@@ -352,7 +382,11 @@ mod lifecycle_tests {
     async fn spawn_lifecycle(
         harness: &TestHarness,
         servers: Vec<McpServerConfig>,
-    ) -> (kameo::actor::ActorRef<McpLifecycleActor>, crate::Services) {
+    ) -> (
+        kameo::actor::ActorRef<McpCoordinatorActor>,
+        crate::Services,
+        crate::common::state::State,
+    ) {
         let services = harness.services().await;
         services
             .user_preferences_storage
@@ -362,14 +396,17 @@ mod lifecycle_tests {
             })
             .expect("seed prefs");
         let root = RootSupervisor::spawn_root().await;
-        let actor = McpLifecycleActor::spawn(McpLifecycleActorDeps {
+        let state = crate::common::state::State::new(crate::common::app_state::AppState::default());
+        let actor = McpCoordinatorActor::spawn(McpCoordinatorActorDeps {
             deps: ActorDeps {
                 services: services.clone(),
             },
             root,
+            state: state.clone(),
+            cap: crate::common::tcaps::mint::mint_session_cap(),
         });
         actor.wait_for_startup().await;
-        (actor, services)
+        (actor, services, state)
     }
 
     fn single_enabled(server: &str) -> BTreeSet<String> {
@@ -383,7 +420,7 @@ mod lifecycle_tests {
         // Given a lifecycle actor with one configured server and a status recorder.
         let harness = TestHarness::new().await;
         let recorder = harness.spawn_recorder::<McpServerStatus>().await;
-        let (_actor, _services) = spawn_lifecycle(&harness, vec![unrunnable_server()]).await;
+        let (_actor, _services, _state) = spawn_lifecycle(&harness, vec![unrunnable_server()]).await;
         let session_id = SessionId::new();
 
         // When enabling that server for the session.
@@ -410,7 +447,7 @@ mod lifecycle_tests {
         // Given a lifecycle actor with no configured servers.
         let harness = TestHarness::new().await;
         let recorder = harness.spawn_recorder::<McpServerStatus>().await;
-        let (_actor, _services) = spawn_lifecycle(&harness, vec![]).await;
+        let (_actor, _services, _state) = spawn_lifecycle(&harness, vec![]).await;
         let session_id = SessionId::new();
 
         // When enabling a server that is not configured.
@@ -434,7 +471,7 @@ mod lifecycle_tests {
         // Given a lifecycle actor with an enabled server for a session.
         let harness = TestHarness::new().await;
         let _recorder = harness.spawn_recorder::<McpServerStatus>().await;
-        let (_actor, _services) = spawn_lifecycle(&harness, vec![unrunnable_server()]).await;
+        let (_actor, _services, _state) = spawn_lifecycle(&harness, vec![unrunnable_server()]).await;
         let session_id = SessionId::new();
         harness
             .publish(McpEnablementChanged {
@@ -466,7 +503,7 @@ mod lifecycle_tests {
         // Given a lifecycle actor with one configured server.
         let harness = TestHarness::new().await;
         let recorder = harness.spawn_recorder::<McpServerStatus>().await;
-        let (_actor, _services) = spawn_lifecycle(&harness, vec![unrunnable_server()]).await;
+        let (_actor, _services, _state) = spawn_lifecycle(&harness, vec![unrunnable_server()]).await;
         let session_id = SessionId::new();
 
         // When enabling the server (spawn #1: Starting + Dead on failed connect).
@@ -513,30 +550,127 @@ mod lifecycle_tests {
              expected >=2 Starting events, got {starting_count}: {events:?}"
         );
     }
+}
+
+#[cfg(test)]
+mod status_tests {
+    #![allow(clippy::expect_used, clippy::panic, reason = "test code")]
+
+    use std::collections::BTreeSet;
+
+    use kameo::actor::Spawn;
+
+    use crate::common::actor_deps::ActorDeps;
+    use crate::common::app_state::AppState;
+    use crate::common::bus::test_harness::TestHarness;
+    use crate::common::root_supervisor::RootSupervisor;
+    use crate::common::state::State;
+    use crate::feat::mcp_actor::protocol::{McpConnectionStatus, McpServerStatus};
+    use crate::feat::preferences_actor::user_preferences::UserPreferences;
+    use crate::protocol::SessionId;
+
+    use super::McpCoordinatorActor;
+    use crate::feat::mcp_coordinator_actor::McpCoordinatorActorDeps;
+
+    /// Spawns a coordinator and seeds one session into its state so status
+    /// events for that session land somewhere to write.
+    async fn spawn_with_session(
+        harness: &TestHarness,
+    ) -> (State, SessionId) {
+        let services = harness.services().await;
+        services
+            .user_preferences_storage
+            .save(&UserPreferences::default())
+            .expect("seed prefs");
+        let root = RootSupervisor::spawn_root().await;
+        let state = State::new(AppState::default());
+        let session_id = SessionId::new();
+        // Insert an active session so the coordinator has a target to write to.
+        state.write_test_no_cap().session.get_or_create(&session_id);
+        let actor = McpCoordinatorActor::spawn(McpCoordinatorActorDeps {
+            deps: ActorDeps { services: services.clone() },
+            root,
+            state: state.clone(),
+            cap: crate::common::tcaps::mint::mint_session_cap(),
+        });
+        actor.wait_for_startup().await;
+        (state, session_id)
+    }
+
+    fn status_of(state: &State, sid: &SessionId, server: &str) -> Option<McpConnectionStatus> {
+        let g = state.read();
+        g.session.get(sid).and_then(|s| s.mcp_server_status().get(server).copied())
+    }
 
     #[tokio::test]
-    async fn dead_status_is_published_for_unrunnable_server() {
-        // Given a lifecycle actor with an unrunnable server enabled.
+    async fn dead_status_is_written_to_session_map() {
+        // Given a coordinator with a seeded session.
         let harness = TestHarness::new().await;
-        let recorder = harness.spawn_recorder::<McpServerStatus>().await;
-        let (_actor, _services) = spawn_lifecycle(&harness, vec![unrunnable_server()]).await;
-        let session_id = SessionId::new();
+        let (state, session_id) = spawn_with_session(&harness).await;
 
-        // When enabling the unrunnable server.
+        // When publishing a Dead status for one server.
         harness
-            .publish(McpEnablementChanged {
+            .publish(McpServerStatus {
                 session_id: session_id.clone(),
-                enabled: single_enabled("unrunnable"),
+                server: "excalimate".to_owned(),
+                status: McpConnectionStatus::Dead,
             })
             .await;
+        tokio::time::sleep(std::time::Duration::from_millis(100)).await;
 
-        // Then the McpActor reports Dead (connect failed, no panic).
-        let events = await_recorded(&recorder, 2, std::time::Duration::from_secs(3)).await;
-        let reached_dead = events.iter().any(|e| e.status == McpConnectionStatus::Dead);
-        assert!(
-            reached_dead,
-            "unrunnable server should reach Dead status; got {:?}",
-            events.iter().map(|e| e.status).collect::<Vec<_>>()
+        // Then the session's status map shows Dead.
+        assert_eq!(
+            status_of(&state, &session_id, "excalimate"),
+            Some(McpConnectionStatus::Dead)
         );
     }
+
+    #[tokio::test]
+    async fn running_status_is_written_to_session_map() {
+        // Given a coordinator with a seeded session.
+        let harness = TestHarness::new().await;
+        let (state, session_id) = spawn_with_session(&harness).await;
+
+        // When publishing a Running status for one server.
+        harness
+            .publish(McpServerStatus {
+                session_id: session_id.clone(),
+                server: "excalimate".to_owned(),
+                status: McpConnectionStatus::Running,
+            })
+            .await;
+        tokio::time::sleep(std::time::Duration::from_millis(100)).await;
+
+        // Then the session's status map shows Running.
+        assert_eq!(
+            status_of(&state, &session_id, "excalimate"),
+            Some(McpConnectionStatus::Running)
+        );
+    }
+
+    #[tokio::test]
+    async fn status_for_one_session_is_not_visible_in_another() {
+        // Given a coordinator with two seeded sessions.
+        let harness = TestHarness::new().await;
+        let (state, session_a) = spawn_with_session(&harness).await;
+        let session_b = SessionId::new();
+        state.write_test_no_cap().session.get_or_create(&session_b);
+
+        // When publishing a Running status for session A only.
+        harness
+            .publish(McpServerStatus {
+                session_id: session_a.clone(),
+                server: "excalimate".to_owned(),
+                status: McpConnectionStatus::Running,
+            })
+            .await;
+        tokio::time::sleep(std::time::Duration::from_millis(100)).await;
+
+        // Then session A shows Running, but session B has no status for it.
+        assert_eq!(
+            status_of(&state, &session_a, "excalimate"),
+            Some(McpConnectionStatus::Running)
+        );
+        assert_eq!(status_of(&state, &session_b, "excalimate"), None);
+}
 }

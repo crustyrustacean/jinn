@@ -460,22 +460,24 @@ jinn_domain::feat::preferences_actor::preferences_actor::PreferencesActor::super
         // tool registrations from McpActor land in an already-running
         // orchestrator. Restored sessions are picked up via SessionLoadCompleted;
         // no startup scan is needed here.
-        let _mcp_lifecycle = spawn_tracked!(
+        let _mcp_coordinator = spawn_tracked!(
             &services.bus,
-            "mcp-lifecycle",
-            "McpLifecycleActor",
-            jinn_domain::feat::mcp_lifecycle_actor::McpLifecycleActor::supervise(
+            "mcp-coordinator",
+            "McpCoordinatorActor",
+            jinn_domain::feat::mcp_coordinator_actor::McpCoordinatorActor::supervise(
                 &root,
-                jinn_domain::feat::mcp_lifecycle_actor::McpLifecycleActorDeps {
+                jinn_domain::feat::mcp_coordinator_actor::McpCoordinatorActorDeps {
                     deps: actor_deps.clone(),
                     root: root.clone(),
+                    state: state.clone(),
+                    cap: jinn_domain::common::tcaps::mint::mint_session_cap(),
                 },
             )
             .restart_policy(kameo::supervision::RestartPolicy::Never)
             .spawn()
             .await
         );
-        _mcp_lifecycle.wait_for_startup().await;
+        _mcp_coordinator.wait_for_startup().await;
 
         // Web fetch + web search actors.
         //
