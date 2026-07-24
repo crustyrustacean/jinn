@@ -24,6 +24,7 @@ pub mod intent;
 pub mod llm_actor;
 pub mod mcp;
 pub mod mcp_actor;
+pub mod mcp_lifecycle_actor;
 pub mod navigation;
 pub mod persona;
 pub mod picker;
