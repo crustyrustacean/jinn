@@ -32,6 +32,18 @@ pub fn pick_free_port(bind_addr: &str) -> Result<u16, std::io::Error> {
     Ok(port)
 }
 
+/// Expand `<ip>` and `<port>` replacement tokens in command arguments.
+
+/// Mirrors the lifecycle-script token convention. Each `<ip>` substring is
+/// replaced with `ip`, and each `<port>` substring with the decimal `port`.
+/// Arguments with no tokens pass through unchanged. Pure and allocation-only.
+pub fn expand_tokens(args: &[String], ip: &str, port: u16) -> Vec<String> {
+    args.iter()
+        .map(|a| a.replace("<ip>", ip).replace("<port>", &port.to_string()))
+        .collect()
+}
+
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -63,5 +75,50 @@ mod tests {
 
         // Then it errors.
         assert!(result.is_err());
+    }
+
+    #[test]
+    fn expand_tokens_replaces_ip_and_port() {
+        // Given args with both tokens.
+        let args = vec![
+            "server.js".to_owned(),
+            "--port".to_owned(),
+            "<port>".to_owned(),
+            "--host".to_owned(),
+            "<ip>".to_owned(),
+        ];
+
+        // When expanding.
+        let out = expand_tokens(&args, "127.0.0.1", 42365);
+
+        // Then tokens are replaced with the bind addr and port.
+        assert_eq!(
+            out,
+            vec!["server.js", "--port", "42365", "--host", "127.0.0.1"]
+        );
+    }
+
+    #[test]
+    fn expand_tokens_passes_through_args_without_tokens() {
+        // Given args with no tokens.
+        let args = vec!["--stdio".to_owned(), "--verbose".to_owned()];
+
+        // When expanding.
+        let out = expand_tokens(&args, "127.0.0.1", 42365);
+
+        // Then args pass through unchanged.
+        assert_eq!(out, vec!["--stdio", "--verbose"]);
+    }
+
+    #[test]
+    fn expand_tokens_handles_multiple_tokens_per_arg() {
+        // Given an arg containing both tokens (e.g. a combined URL-ish arg).
+        let args = vec!["http://<ip>:<port>/mcp".to_owned()];
+
+        // When expanding.
+        let out = expand_tokens(&args, "0.0.0.0", 8080);
+
+        // Then both tokens in the same arg are replaced.
+        assert_eq!(out, vec!["http://0.0.0.0:8080/mcp"]);
     }
 }
