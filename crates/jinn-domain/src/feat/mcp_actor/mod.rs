@@ -18,6 +18,7 @@
 //! Each tool call is dispatched to a standalone task so the mailbox stays free
 //! for concurrent requests (mirrors `WebSearchActor`).
 
+pub mod protocol;
 
 use jinn_mcp::{
     CallToolResult, ContentBlock, JsonObject, McpClient, ServerCommand,
@@ -28,6 +29,7 @@ use kameo::prelude::{Context, Message};
 
 use crate::common::actor_deps::{ActorDeps, BusPublish};
 use crate::feat::mcp::McpServerConfig;
+use crate::feat::mcp_actor::protocol::{McpConnectionStatus, McpServerStatus};
 use crate::feat::tools_actor::protocol::command::{ExecuteTool, RegisterTools};
 use crate::feat::tools_actor::protocol::event::ToolExecutionCompleted;
 use crate::feat::tools_actor::tool_types::{ToolCall, ToolDefinition, ToolResult};
@@ -102,6 +104,8 @@ impl kameo::Actor for McpActor {
 
         deps.subscribe(actor_ref.recipient::<ExecuteTool>()).await;
 
+        publish_status(&deps, &session_id, &server.name, McpConnectionStatus::Starting).await;
+
         let provider = provider_name(&server.name);
 
         // Connect + list tools. Failure to connect is non-fatal to the process:
@@ -117,6 +121,7 @@ impl kameo::Actor for McpActor {
                     error = %report,
                     "MCP actor: failed to connect to server"
                 );
+                publish_status(&deps, &session_id, &server.name, McpConnectionStatus::Dead).await;
                 return Ok(Self {
                     deps,
                     session_id,
@@ -140,6 +145,7 @@ impl kameo::Actor for McpActor {
                 );
                 let mut dead_client = client;
                 dead_client.shutdown().await;
+                publish_status(&deps, &session_id, &server.name, McpConnectionStatus::Dead).await;
                 return Ok(Self {
                     deps,
                     session_id,
@@ -166,6 +172,9 @@ impl kameo::Actor for McpActor {
             })
             .await;
 
+        // Tools registered + connection live: we're Running.
+        publish_status(&deps, &session_id, &server.name, McpConnectionStatus::Running).await;
+
         Ok(Self {
             deps,
             session_id,
@@ -182,8 +191,33 @@ impl kameo::Actor for McpActor {
         if let Some(client) = self.client.as_mut() {
             client.shutdown().await;
         }
+        publish_status(
+            &self.deps,
+            &self.session_id,
+            &self.server.name,
+            McpConnectionStatus::Dead,
+        )
+        .await;
         Ok(())
     }
+}
+
+/// Publishes a connection-status transition for this (session × server).
+async fn publish_status(
+    deps: &ActorDeps,
+    session_id: &SessionId,
+    server: &str,
+    status: McpConnectionStatus,
+) {
+    let () = deps
+        .services
+        .bus
+        .publish(McpServerStatus {
+            session_id: session_id.clone(),
+            server: server.to_owned(),
+            status,
+        })
+        .await;
 }
 
 impl BusPublish for McpActor {

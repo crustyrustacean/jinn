@@ -11,6 +11,25 @@ use serde::{Deserialize, Serialize};
 
 use crate::protocol::SessionId;
 
+/// Restart one (session × server) `McpActor`.
+///
+/// Sent to the [`McpLifecycleActor`](crate::feat::mcp_lifecycle_actor)
+/// (e.g. by a future dashboard "restart" button). It kills the currently
+/// spawned actor for the pair — if any — and respawns a fresh one, so a
+/// wedged server process can be recovered without a full enable/disable
+/// toggle through the picker. The respawn only proceeds if the server is
+/// still present in the session's `enabled_mcp_servers` set; otherwise it's
+/// a no-op.
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct RestartMcpServer {
+    /// The session whose actor should restart.
+    pub session_id: SessionId,
+    /// The configured server name to restart.
+    pub server: String,
+}
+
+impl crate::common::bus::BusMessage for RestartMcpServer {}
+
 /// The set of MCP servers enabled for a session changed.
 ///
 /// Published by the MCP picker confirm handler after writing the new
