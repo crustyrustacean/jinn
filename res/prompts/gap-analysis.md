@@ -19,10 +19,11 @@ For all gaps identified:
 
 ## Record reconciliation
 
-Read `.agents/RECORD.md` if it exists. Check whether the implementation changed a behavior described by any recorded entry — this work is authoritative about the current state, and a change on the ground that diverges from a recorded fact is a drift signal that must be surfaced, not silently left.
+The implementation loop writes Record updates at the end of implementation (via the "Update the Record" task), so by the time you run, the Record should already reflect this work. Your job is to **confirm accuracy against the actual implementation**, not to write the record yourself. Read `.agents/RECORD.md` if it exists.
 
-- For each recorded entry the implementation changed, broke, or made stale, flag it as a gap and propose the exact amended (or removed) entry verbatim.
-- For each "Record Updates" entry the approved plan promised to apply, check that it was actually written into `.agents/RECORD.md`. If it was not, flag the omission as a gap.
+- For each "Record Updates" entry the approved plan promised, confirm it was written into `.agents/RECORD.md` and that it **matches what was actually implemented**. If it was not written, or if what was written does not match the implementation, flag the omission/mismatch as a gap.
+- If the loop surfaced a **divergence** (implementation did not match the planned entries, so it wrote nothing), verify that divergence is genuine — then either propose the correct verbatim entry or leave it for the user.
+- For any recorded entry the implementation changed, broke, or made stale that was **not** covered by the planned Record Updates, flag it as a gap and propose the exact amended (or removed) entry verbatim.
 - If the work established a new high-level fact that has no entry yet, propose a verbatim entry following the record's format rules.
 - Do not flag cosmetic or unrelated edits; only surface entries whose stated behavior diverged or was newly established.
   </instructions>
