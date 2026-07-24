@@ -101,3 +101,158 @@ pub(crate) fn confirm_mcp(state: &mut AppState) -> IntentResult {
         },
     )
 }
+
+/// Restarts the selected MCP server's connection by signaling the
+/// coordinator to kill and respawn its `McpActor`.
+///
+/// Does not pop the picker; the inspector stays open so the user can watch
+/// the status cycle. Only acts on the currently selected entry.
+pub fn handle_mcp_restart_selected(state: &mut AppState) -> IntentResult {
+    let Some(server) = state
+        .frontend
+        .mcp_server_picker()
+        .selected_item()
+        .map(|e| e.name.clone())
+    else {
+        return IntentResult::empty();
+    };
+    let session_id = state.active_session().session_id().clone();
+    IntentResult::with_message(
+        crate::feat::mcp_coordinator_actor::protocol::RestartMcpServer { session_id, server },
+    )
+}
+
+/// Toggles the MCP inspector preview pane between logs and tools.
+///
+/// Flips the selected entry's `preview_mode` in place; the next render shows
+/// the other pane.
+pub fn handle_mcp_toggle_preview(state: &mut AppState) -> IntentResult {
+    state
+        .frontend
+        .mcp_server_picker_mut()
+        .with_selected_mut(|entry| {
+            entry.preview_mode = match entry.preview_mode {
+                McpPreviewMode::Logs => McpPreviewMode::Tools,
+                McpPreviewMode::Tools => McpPreviewMode::Logs,
+            };
+        });
+    IntentResult::empty()
+}
+
+#[cfg(test)]
+mod tests {
+    #![allow(
+        clippy::expect_used,
+        clippy::panic,
+        clippy::indexing_slicing,
+        reason = "test code"
+    )]
+    use super::*;
+    use crate::feat::theme::default_theme;
+
+    fn state_with_selected_mcp_entry(name: &str) -> AppState {
+        let mut state = AppState::default();
+        let entry = McpServerEntry::new(
+            name.to_owned(),
+            "npx ...".to_owned(),
+            true,
+            default_theme(),
+        );
+        state.frontend.mcp_server_picker_mut().set_items(vec![entry]);
+        state
+    }
+
+    #[rstest::rstest]
+    fn restart_selected_emits_restart_command_for_selected_server() {
+        // Given the MCP inspector open with "excalimate" selected.
+        let mut state = state_with_selected_mcp_entry("excalimate");
+
+        // When restarting the selected server.
+        let result = handle_mcp_restart_selected(&mut state);
+
+        // Then a RestartMcpServer message is emitted for the active session.
+        assert_eq!(result.message_names.len(), 1);
+        assert!(result.message_names[0].contains("RestartMcpServer"));
+    }
+
+    #[rstest::rstest]
+    fn restart_selected_with_no_selection_emits_nothing() {
+        // Given the MCP inspector open with no items.
+        let mut state = AppState::default();
+        state.frontend.mcp_server_picker_mut().set_items(vec![]);
+
+        // When restarting.
+        let result = handle_mcp_restart_selected(&mut state);
+
+        // Then nothing is emitted.
+        assert!(result.message_names.is_empty());
+    }
+
+    #[rstest::rstest]
+    fn restart_selected_keeps_picker_open() {
+        // Given the MCP inspector open.
+        let mut state = state_with_selected_mcp_entry("excalimate");
+        state.frontend.scope_stack.push(crate::FocusScope::Picker {
+            kind: crate::PickerKind::McpServer,
+        });
+
+        // When restarting.
+        let _ = handle_mcp_restart_selected(&mut state);
+
+        // Then the picker scope is still on the stack.
+        assert!(matches!(
+            state.frontend.scope_stack.current(),
+            crate::FocusScope::Picker { kind: crate::PickerKind::McpServer }
+        ));
+    }
+
+    #[rstest::rstest]
+    fn toggle_preview_flips_logs_to_tools() {
+        // Given the MCP inspector with the selected entry defaulting to Logs mode.
+        let mut state = state_with_selected_mcp_entry("excalimate");
+        assert_eq!(
+            state.frontend.mcp_server_picker().selected_item().expect("entry").preview_mode,
+            McpPreviewMode::Logs
+        );
+
+        // When toggling preview.
+        let _ = handle_mcp_toggle_preview(&mut state);
+
+        // Then the selected entry is now in Tools mode.
+        assert_eq!(
+            state.frontend.mcp_server_picker().selected_item().expect("entry").preview_mode,
+            McpPreviewMode::Tools
+        );
+    }
+
+    #[rstest::rstest]
+    fn toggle_preview_flips_tools_back_to_logs() {
+        // Given the MCP inspector with the selected entry already in Tools mode.
+        let mut state = state_with_selected_mcp_entry("excalimate");
+        state
+            .frontend
+            .mcp_server_picker_mut()
+            .with_selected_mut(|e| e.preview_mode = McpPreviewMode::Tools);
+
+        // When toggling preview.
+        let _ = handle_mcp_toggle_preview(&mut state);
+
+        // Then the selected entry is back in Logs mode.
+        assert_eq!(
+            state.frontend.mcp_server_picker().selected_item().expect("entry").preview_mode,
+            McpPreviewMode::Logs
+        );
+    }
+
+    #[rstest::rstest]
+    fn toggle_preview_emits_no_commands() {
+        // Given the MCP inspector open.
+        let mut state = state_with_selected_mcp_entry("excalimate");
+
+        // When toggling preview.
+        let result = handle_mcp_toggle_preview(&mut state);
+
+        // Then no messages are emitted (pure state flip).
+        assert!(result.message_names.is_empty());
+    }
+}

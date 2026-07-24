@@ -361,7 +361,9 @@ pub fn init() -> Keymap<KeyEvent, Scope, Intent, KeyCategory> {
         })
         .scope(Scope::PickerMcpServer, |b| {
             add_picker_base(b);
-            b.bind("<Tab>", Intent::McpToggleSelected, KeyCategory::General);
+            b.bind("<Tab>", Intent::McpToggleSelected, KeyCategory::General)
+                .bind("<c-r>", Intent::McpRestartSelected, KeyCategory::General)
+                .bind("<c-t>", Intent::McpTogglePreview, KeyCategory::General);
         });
 
     // Dashboard scope - service status overview.
