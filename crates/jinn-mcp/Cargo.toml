@@ -1,0 +1,27 @@
+[package]
+name = "jinn-mcp"
+version.workspace = true
+edition.workspace = true
+
+[dependencies]
+rmcp = { workspace = true, features = ["client", "transport-child-process"] }
+tokio = { workspace = true, features = ["process", "rt", "sync", "macros"] }
+serde = { workspace = true, features = ["derive"] }
+serde_json = { workspace = true }
+wherror = { workspace = true }
+error-stack = { workspace = true }
+tracing = { workspace = true }
+jinn-provider = { workspace = true }
+
+[features]
+default = []
+# `testkit` exposes constructors for rmcp's `#[non_exhaustive]` model types,
+# so downstream crates (jinn-domain) can build fixtures in their own tests.
+testkit = []
+
+[dev-dependencies]
+rstest = { workspace = true }
+tokio = { workspace = true, features = ["full"] }
+
+[lints]
+workspace = true
