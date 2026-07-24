@@ -1,6 +1,6 @@
 //! Bus messages for MCP server lifecycle.
 //!
-//! The [`McpLifecycleActor`](crate::feat::mcp_lifecycle_actor) subscribes to
+//! The [`McpCoordinatorActor`](crate::feat::mcp_coordinator_actor) subscribes to
 //! session lifecycle events (`SessionCreated`, `SessionLoadCompleted`,
 //! `SessionClosed`, `SessionArchived`, `SessionTeardownFinished`) and to
 //! [`McpEnablementChanged`] to spawn and kill `McpActor`s.
@@ -13,7 +13,7 @@ use crate::protocol::SessionId;
 
 /// Restart one (session × server) `McpActor`.
 ///
-/// Sent to the [`McpLifecycleActor`](crate::feat::mcp_lifecycle_actor)
+/// Sent to the [`McpCoordinatorActor`](crate::feat::mcp_coordinator_actor)
 /// (e.g. by a future dashboard "restart" button). It kills the currently
 /// spawned actor for the pair — if any — and respawns a fresh one, so a
 /// wedged server process can be recovered without a full enable/disable
@@ -35,7 +35,7 @@ impl crate::common::bus::BusMessage for RestartMcpServer {}
 /// Published by the MCP picker confirm handler after writing the new
 /// [`ChatSessionState::enabled_mcp_servers`](`crate::feat::session::chat_session::ChatSessionState::enabled_mcp_servers`)
 /// set. Carries the **full** desired set (not a delta): the
-/// [`McpLifecycleActor`](crate::feat::mcp_lifecycle_actor) diffs this against
+/// [`McpCoordinatorActor`](crate::feat::mcp_coordinator_actor) diffs this against
 /// its spawned-actor map, spawning newly-enabled servers and killing
 /// newly-disabled ones.
 ///

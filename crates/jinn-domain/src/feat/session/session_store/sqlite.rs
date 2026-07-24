@@ -546,6 +546,7 @@ impl From<PersistableCore> for SessionCore {
             has_interacted: false, // restored sessions get mark_interacted() in handle_session_load_completed
             task_list: core.task_list,
             enabled_mcp_servers: core.enabled_mcp_servers,
+            mcp_server_status: std::collections::BTreeMap::new(),
             persist: core.persist,
         }
     }
@@ -588,6 +589,7 @@ impl TryFrom<&ChatSessionState> for NewSessionRow {
                     has_interacted: _has_interacted, // deserialized from DB, restored by handle_session_load_completed
                     task_list: _task_list, // included in metadata blob via PersistableCore
                     enabled_mcp_servers: _enabled_mcp_servers, // included in metadata blob via PersistableCore
+                    mcp_server_status: _mcp_server_status, // runtime-only, not persisted
                 },
             ui: _ui, // runtime-only UI state, not persisted
         } = session;

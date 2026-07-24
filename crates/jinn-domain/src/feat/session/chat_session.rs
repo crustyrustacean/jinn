@@ -338,10 +338,17 @@ pub struct SessionCore {
     /// this session. Off by default — enabling spawns a dedicated `McpActor`
     /// and its child-process connection; disabling kills both. Persisted with
     /// the session.
-    /// OWNER: IntentHandler (toggled via the MCP picker); McpLifecycleActor
+    /// OWNER: IntentHandler (toggled via the MCP picker); McpCoordinatorActor
     /// reacts to the resulting commands.
     #[serde(default)]
     pub enabled_mcp_servers: std::collections::BTreeSet<String>,
+    /// Live connection status of each enabled MCP server, keyed by server
+    /// name. Runtime-only (derived from `McpServerStatus` actor events); not
+    /// persisted.
+    /// OWNER: McpCoordinatorActor (writes on `McpServerStatus` events).
+    #[serde(skip)]
+    pub mcp_server_status:
+        std::collections::BTreeMap<String, crate::feat::mcp_actor::protocol::McpConnectionStatus>,
     /// Runtime-only state - not persisted across restarts.
     #[serde(skip)]
     pub ephemeral: SessionCoreEphemeral,
@@ -375,6 +382,7 @@ impl Default for SessionCore {
             assembly_overrides: None,
             task_list: crate::feat::todo_list::TaskList::default(),
             enabled_mcp_servers: std::collections::BTreeSet::new(),
+            mcp_server_status: std::collections::BTreeMap::new(),
             has_interacted: false,
             ephemeral: SessionCoreEphemeral::default(),
         }
@@ -1740,6 +1748,26 @@ impl ChatSessionState {
     /// Used by the MCP picker to commit toggle state.
     pub fn set_enabled_mcp_servers(&mut self, servers: std::collections::BTreeSet<String>) {
         self.core.enabled_mcp_servers = servers;
+    }
+
+    /// Read-only access to this session's live MCP server connection statuses.
+    #[must_use]
+    pub fn mcp_server_status(
+        &self,
+    ) -> &std::collections::BTreeMap<String, crate::feat::mcp_actor::protocol::McpConnectionStatus>
+    {
+        &self.core.mcp_server_status
+    }
+
+    /// Sets the live connection status for one MCP server in this session.
+    ///
+    /// Owned by `McpCoordinatorActor`, driven by `McpServerStatus` events.
+    pub fn set_mcp_server_status(
+        &mut self,
+        server: &str,
+        status: crate::feat::mcp_actor::protocol::McpConnectionStatus,
+    ) {
+        self.core.mcp_server_status.insert(server.to_owned(), status);
     }
 
     /// Returns `true` if the skill is enabled for this session.

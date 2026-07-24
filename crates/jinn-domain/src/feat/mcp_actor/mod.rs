@@ -11,7 +11,7 @@
 //!
 //! - [`Actor::on_start`]: subscribe to [`ExecuteTool`]; connect the client and
 //!   list tools. On success, register the tools. On failure, log and let the
-//!   actor stop — the [`McpLifecycleActor`] reports status; a later
+//!   actor stop — the [`McpCoordinatorActor`] reports status; a later
 //!   enable/disable cycle can respawn.
 //! - [`Actor::on_stop`]: shut the client down so the child process terminates.
 //!

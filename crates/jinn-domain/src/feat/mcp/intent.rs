@@ -91,7 +91,7 @@ pub(crate) fn confirm_mcp(state: &mut AppState) -> IntentResult {
     // Signal the MCP lifecycle actor to spawn/kill `McpActor`s for the diff
     // between this desired set and the currently-running ones.
     IntentResult::with_message(
-        crate::feat::mcp_lifecycle_actor::protocol::McpEnablementChanged {
+        crate::feat::mcp_coordinator_actor::protocol::McpEnablementChanged {
             session_id,
             enabled,
         },

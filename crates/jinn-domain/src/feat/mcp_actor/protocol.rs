@@ -9,7 +9,7 @@
 //! A dead actor is _not_ auto-restarted (the supervisor policy is
 //! [`RestartPolicy::Never`]). The user re-enables the server, or a future
 //! dashboard "restart" capability calls [`RestartMcpServer`]
-//! (defined in [`crate::feat::mcp_lifecycle_actor::protocol`]).
+//! (defined in [`crate::feat::mcp_coordinator_actor::protocol`]).
 
 use serde::{Deserialize, Serialize};
 
