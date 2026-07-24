@@ -90,11 +90,13 @@ pub fn render_skill_picker(frame: &mut Frame<'_>, area: Rect, ctx: &RenderCtx) {
     let gray = Style::default().fg(state.frontend.theme.muted_text);
     let orange = Style::default().fg(state.frontend.theme.accent_action);
     let footer = Line::from(vec![
-        ratatui::text::Span::styled("CTRL+R to refresh ".to_owned(), orange),
+        ratatui::text::Span::styled("TAB ".to_owned(), orange),
+        ratatui::text::Span::styled("toggle · ".to_owned(), gray),
+        ratatui::text::Span::styled("CTRL+L ".to_owned(), orange),
+        ratatui::text::Span::styled("load · ".to_owned(), gray),
+        ratatui::text::Span::styled("CTRL+R ".to_owned(), orange),
         ratatui::text::Span::styled(
-            format!(
-                "\u{00b7} {enabled_count}/{total} enabled \u{00b7} Enter confirm \u{00b7} ESC cancel"
-            ),
+            format!("refresh · {enabled_count}/{total} enabled · Enter confirm · ESC cancel"),
             gray,
         ),
     ]);
@@ -444,6 +446,78 @@ mod tests {
                 break;
             }
         }
+        assert!(
+            found_orange_keybind,
+            "at least one footer cell should use accent_action for a keybind"
+        );
+    }
+
+    #[rstest::rstest]
+    fn render_skill_picker_footer_advertises_tab_and_ctrl_l() {
+        use crate::feat::skills::reload::reload_skill_picker_entries;
+
+        // Given an open skill picker with one entry.
+        let mut state = AppState::default();
+        state
+            .active_session_mut()
+            .set_discovered_skills(vec![crate::feat::skills::Skill {
+                name: "web-coder".to_owned(),
+                description: "Web coder".to_owned(),
+                body: "## Body text".to_owned(),
+                file_path: std::path::PathBuf::from("/tmp/web-coder/SKILL.md"),
+                base_dir: std::path::PathBuf::from("/tmp/web-coder"),
+                source: crate::feat::skills::SkillSource::Global,
+            }]);
+        state.frontend.scope_stack.push(FocusScope::Picker {
+            kind: PickerKind::Skill,
+        });
+        {
+            let disabled = state.active_session().disabled_skills().clone();
+            let theme = state.frontend.theme.clone();
+            let discovered = state.active_session().discovered_skills().to_vec();
+            reload_skill_picker_entries(&mut state.frontend, &discovered, &disabled, &theme);
+        }
+
+        // When rendering the skill picker.
+        let backend = TestBackend::new(100, 30);
+        let mut terminal = Terminal::new(backend).expect("terminal");
+        terminal
+            .draw(|frame| {
+                let ctx = RenderCtx::new(&state);
+                let area = Rect::new(0, 0, 100, 30);
+                render_skill_picker(frame, area, &ctx);
+            })
+            .expect("draw");
+
+        // Then the rendered footer advertises TAB and CTRL+L.
+        let rendered: String = terminal
+            .backend()
+            .buffer()
+            .content
+            .iter()
+            .map(ratatui::buffer::Cell::symbol)
+            .collect();
+        assert!(
+            rendered.contains("TAB"),
+            "footer should advertise the TAB toggle binding"
+        );
+        assert!(
+            rendered.contains("CTRL+L"),
+            "footer should advertise the CTRL+L load binding"
+        );
+        assert!(
+            rendered.contains("CTRL+R"),
+            "footer should still advertise the CTRL+R refresh binding"
+        );
+
+        // And at least one keybind token is styled with accent_action (orange).
+        let accent_action = state.frontend.theme.accent_action;
+        let found_orange_keybind = terminal
+            .backend()
+            .buffer()
+            .content
+            .iter()
+            .any(|c| c.fg == accent_action && !c.symbol().trim().is_empty());
         assert!(
             found_orange_keybind,
             "at least one footer cell should use accent_action for a keybind"

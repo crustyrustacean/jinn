@@ -136,6 +136,8 @@ pub enum Intent {
     ToolToggleSelected,
     /// Toggle the selected skill's enabled/disabled state in the skill picker.
     SkillToggleSelected,
+    /// Load the highlighted skill into context as a pinned ToolResult (skill picker `<c-l>`).
+    SkillLoadSelected,
     /// Project picker: create a new session at the highlighted dir, then open
     /// the session lifecycle picker (project picker `<c-enter>` action).
     ProjectNewAtHighlightedWithLifecycle,
@@ -408,6 +410,7 @@ impl std::fmt::Display for Intent {
             Intent::PickerMoveCursorRight => write!(f, "picker cursor right"),
             Intent::ToolToggleSelected => write!(f, "toggle tool"),
             Intent::SkillToggleSelected => write!(f, "toggle skill"),
+            Intent::SkillLoadSelected => write!(f, "load skill"),
             Intent::ProjectNewAtHighlightedWithLifecycle => write!(f, "project new + lifecycle"),
             Intent::ProjectRemoveHighlighted => write!(f, "remove project"),
             Intent::ModelToggleSelected => write!(f, "toggle model"),
