@@ -1,3 +1,8 @@
+## (development) v0.102.0
+
+- Fix slow startup performance on `install` and `config` commands.
+- Add `--force` flag to `install` command to overwrite existing files.
+
 ## 2026-07-23 v0.101.0
 
 - Add ability to load skills directly via the skill picker using `<c-l>`.
