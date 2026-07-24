@@ -8,6 +8,7 @@
 
 pub mod client;
 pub mod tool_mapping;
+pub mod transport;
 
 pub use client::{McpClient, McpClientError, McpStderrBuffer, ServerCommand};
 pub use tool_mapping::provider_prefix;
