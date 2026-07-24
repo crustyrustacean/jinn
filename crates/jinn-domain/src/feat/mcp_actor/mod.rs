@@ -26,8 +26,8 @@ pub mod protocol;
 #[cfg(test)]
 mod dispatch_roundtrip_tests;
 
-use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::Arc;
+use std::sync::atomic::{AtomicBool, Ordering};
 
 use jinn_mcp::{
     CallToolResult, ContentBlock, JsonObject, McpClient, ServerCommand,
@@ -753,7 +753,10 @@ mod tests {
         // Given a tail that grew since the last publish.
         // When checking against the last-published value.
         // Then the new tail is returned for publishing.
-        assert_eq!(next_tail("hello world", "hello"), Some("hello world".to_owned()));
+        assert_eq!(
+            next_tail("hello world", "hello"),
+            Some("hello world".to_owned())
+        );
     }
 
     #[test]

@@ -122,7 +122,9 @@ fn refresh_mcp_inspector_snapshot(state: &mut jinn_domain::AppState) {
     use jinn_domain::FocusScope;
     let is_mcp_picker = matches!(
         state.frontend.scope_stack.current(),
-        FocusScope::Picker { kind: jinn_domain::PickerKind::McpServer },
+        FocusScope::Picker {
+            kind: jinn_domain::PickerKind::McpServer
+        },
     );
     if !is_mcp_picker {
         return;
@@ -148,11 +150,14 @@ fn refresh_mcp_inspector_snapshot(state: &mut jinn_domain::AppState) {
             &defs,
         )
     };
-    state.frontend.mcp_server_picker_mut().with_selected_mut(|e| {
-        e.status = status;
-        e.stderr_tail = stderr_tail;
-        e.tools = tools;
-    });
+    state
+        .frontend
+        .mcp_server_picker_mut()
+        .with_selected_mut(|e| {
+            e.status = status;
+            e.stderr_tail = stderr_tail;
+            e.tools = tools;
+        });
 }
 
 /// Renders the base layers for the active tab. In Chat mode: tab bar, border,

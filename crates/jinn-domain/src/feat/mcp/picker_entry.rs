@@ -3,8 +3,8 @@
 use crate::feat::mcp_actor::protocol::McpConnectionStatus;
 use crate::feat::theme::Theme;
 use jinn_provider::ToolDefinition;
-use jinn_selection_widget::PreviewContent;
 use jinn_selection_widget::PickerItem;
+use jinn_selection_widget::PreviewContent;
 use jinn_selection_widget::highlight::highlight_text_with_bg;
 use ratatui::style::Style;
 use ratatui::text::{Line, Span};
@@ -93,9 +93,10 @@ impl McpServerEntry {
         let mut lines = Vec::new();
         lines.push(self.status_badge_line());
         if self.stderr_tail.trim().is_empty() {
-            lines.push(Line::from("(no stderr yet)".to_owned()).style(
-                Style::default().fg(self.theme.muted_text),
-            ));
+            lines.push(
+                Line::from("(no stderr yet)".to_owned())
+                    .style(Style::default().fg(self.theme.muted_text)),
+            );
         } else {
             for raw in self.stderr_tail.lines() {
                 lines.extend(wrap_line(raw, width, self.theme.primary_text));
@@ -107,9 +108,10 @@ impl McpServerEntry {
     /// Tools pane: one line per advertised tool (`name — description`).
     fn tools_preview(&self) -> Vec<Line<'static>> {
         if self.tools.is_empty() {
-            return vec![Line::from("(no tools advertised)".to_owned()).style(
-                Style::default().fg(self.theme.muted_text),
-            )];
+            return vec![
+                Line::from("(no tools advertised)".to_owned())
+                    .style(Style::default().fg(self.theme.muted_text)),
+            ];
         }
         self.tools
             .iter()
@@ -134,7 +136,10 @@ impl McpServerEntry {
             Some(McpConnectionStatus::Dead) => ("dead", ratatui::style::Color::Red),
         };
         Line::from(vec![
-            Span::styled("Status: ".to_owned(), Style::default().fg(self.theme.muted_text)),
+            Span::styled(
+                "Status: ".to_owned(),
+                Style::default().fg(self.theme.muted_text),
+            ),
             Span::styled(label.to_owned(), Style::default().fg(color)),
         ])
     }
@@ -275,7 +280,10 @@ pub fn refresh_snapshot(
         .filter(|d| d.name.starts_with(&prefix))
         .map(|d| {
             (
-                d.name[prefix.len()..].to_owned(),
+                d.name
+                    .strip_prefix(prefix.as_str())
+                    .unwrap_or(&d.name)
+                    .to_owned(),
                 d.description.clone(),
             )
         })
@@ -377,10 +385,13 @@ mod tests {
         let lines = entry.preview_lines(40);
 
         // Then the first line is the status badge.
-        assert_eq!(lines.first().expect("at least badge").to_string(), "Status: running");
+        assert_eq!(
+            lines.first().expect("at least badge").to_string(),
+            "Status: running"
+        );
         // And subsequent lines are the tail (one per stderr line).
         assert!(lines.len() >= 3, "badge + 2 tail lines");
-        let rendered: Vec<String> = lines.iter().map(|l| l.to_string()).collect();
+        let rendered: Vec<String> = lines.iter().map(std::string::ToString::to_string).collect();
         assert!(rendered[1..].iter().any(|l| l.contains("first line")));
         assert!(rendered[1..].iter().any(|l| l.contains("second line")));
     }
@@ -400,7 +411,11 @@ mod tests {
 
         // Then there is one line per tool.
         assert_eq!(lines.len(), 2);
-        let rendered: String = lines.iter().map(|l| l.to_string()).collect::<Vec<_>>().join("\n");
+        let rendered: String = lines
+            .iter()
+            .map(std::string::ToString::to_string)
+            .collect::<Vec<_>>()
+            .join("\n");
         assert!(rendered.contains("create_scene"));
         assert!(rendered.contains("auto_animate"));
     }
@@ -441,8 +456,7 @@ mod tests {
         ];
 
         // When refreshing the snapshot for "excalimate".
-        let (_status, _stderr, tools) =
-            refresh_snapshot("excalimate", None, "", &defs);
+        let (_status, _stderr, tools) = refresh_snapshot("excalimate", None, "", &defs);
 
         // Then only excalimate's tools are collected, with prefixes stripped.
         assert_eq!(tools.len(), 2);

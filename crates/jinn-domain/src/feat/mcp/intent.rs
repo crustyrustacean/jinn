@@ -152,13 +152,12 @@ mod tests {
 
     fn state_with_selected_mcp_entry(name: &str) -> AppState {
         let mut state = AppState::default();
-        let entry = McpServerEntry::new(
-            name.to_owned(),
-            "npx ...".to_owned(),
-            true,
-            default_theme(),
-        );
-        state.frontend.mcp_server_picker_mut().set_items(vec![entry]);
+        let entry =
+            McpServerEntry::new(name.to_owned(), "npx ...".to_owned(), true, default_theme());
+        state
+            .frontend
+            .mcp_server_picker_mut()
+            .set_items(vec![entry]);
         state
     }
 
@@ -202,7 +201,9 @@ mod tests {
         // Then the picker scope is still on the stack.
         assert!(matches!(
             state.frontend.scope_stack.current(),
-            crate::FocusScope::Picker { kind: crate::PickerKind::McpServer }
+            crate::FocusScope::Picker {
+                kind: crate::PickerKind::McpServer
+            }
         ));
     }
 
@@ -211,7 +212,12 @@ mod tests {
         // Given the MCP inspector with the selected entry defaulting to Logs mode.
         let mut state = state_with_selected_mcp_entry("excalimate");
         assert_eq!(
-            state.frontend.mcp_server_picker().selected_item().expect("entry").preview_mode,
+            state
+                .frontend
+                .mcp_server_picker()
+                .selected_item()
+                .expect("entry")
+                .preview_mode,
             McpPreviewMode::Logs
         );
 
@@ -220,7 +226,12 @@ mod tests {
 
         // Then the selected entry is now in Tools mode.
         assert_eq!(
-            state.frontend.mcp_server_picker().selected_item().expect("entry").preview_mode,
+            state
+                .frontend
+                .mcp_server_picker()
+                .selected_item()
+                .expect("entry")
+                .preview_mode,
             McpPreviewMode::Tools
         );
     }
@@ -239,7 +250,12 @@ mod tests {
 
         // Then the selected entry is back in Logs mode.
         assert_eq!(
-            state.frontend.mcp_server_picker().selected_item().expect("entry").preview_mode,
+            state
+                .frontend
+                .mcp_server_picker()
+                .selected_item()
+                .expect("entry")
+                .preview_mode,
             McpPreviewMode::Logs
         );
     }
