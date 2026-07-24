@@ -6,9 +6,9 @@
 
 use crossterm::event::{self, MouseEventKind};
 use derive_more::Display;
-use jinn_domain::protocol::CwdRoot;
 use jinn_domain::Intent;
 use jinn_domain::PickerKind;
+use jinn_domain::protocol::CwdRoot;
 use jinn_domain::{Key, KeyEvent};
 use ratatui_which_key::CrosstermKeymapExt as _;
 use ratatui_which_key::Keymap;
@@ -340,6 +340,7 @@ pub fn init() -> Keymap<KeyEvent, Scope, Intent, KeyCategory> {
         .scope(Scope::PickerSkill, |b| {
             add_picker_base(b);
             b.bind("<Tab>", Intent::SkillToggleSelected, KeyCategory::General)
+             .bind("<c-l>", Intent::SkillLoadSelected, KeyCategory::General)
              .bind("<c-u>", Intent::PreviewScrollUp, KeyCategory::Navigation)
              .bind("<c-d>", Intent::PreviewScrollDown, KeyCategory::Navigation)
              .bind("<c-r>", Intent::RefreshSkills, KeyCategory::General);
@@ -1294,6 +1295,29 @@ mod leak_check {
         assert!(
             matches!(intent, jinn_domain::Intent::PreviewScrollDown),
             "Ctrl+D in PickerSkill must scroll the preview pane; got {intent:?}",
+        );
+    }
+
+    #[test]
+    fn ctrl_l_in_skill_picker_fires_skill_load_selected() {
+        use crate::app::WhichKeyInstance;
+        use jinn_domain::{Key, Modifiers};
+
+        // Given a fresh keymap queried in the skill picker scope.
+        let keymap = init();
+        let mut wk = WhichKeyInstance::new(keymap, Scope::PickerSkill);
+
+        // When pressing Ctrl+L.
+        let c_l = jinn_domain::KeyEvent {
+            key: Key::Char('l'),
+            modifiers: Modifiers::ctrl(),
+        };
+        let intent = wk.handle_key(c_l);
+
+        // Then it resolves to SkillLoadSelected.
+        assert!(
+            matches!(intent, Some(jinn_domain::Intent::SkillLoadSelected)),
+            "<c-l> in PickerSkill should fire SkillLoadSelected; got {intent:?}",
         );
     }
 }
