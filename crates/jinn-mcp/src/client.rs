@@ -157,6 +157,15 @@ impl McpClient {
             .attach("tools/call request failed")
     }
 
+    /// Returns a shared handle to the underlying stderr ring buffer.
+    ///
+    /// Allows a background task (e.g. the live-inspector debounce) to read the
+    /// tail without cloning the full client connection.
+    #[must_use]
+    pub fn stderr_buffer(&self) -> Arc<Mutex<McpStderrBuffer>> {
+        self.stderr_buffer.clone()
+    }
+
     /// Returns a snapshot of the captured stderr tail (newest content).
     ///
     /// May be empty if the server hasn't written anything to stderr.

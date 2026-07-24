@@ -547,6 +547,7 @@ impl From<PersistableCore> for SessionCore {
             task_list: core.task_list,
             enabled_mcp_servers: core.enabled_mcp_servers,
             mcp_server_status: std::collections::BTreeMap::new(),
+            mcp_server_stderr: std::collections::BTreeMap::new(),
             persist: core.persist,
         }
     }
@@ -590,6 +591,7 @@ impl TryFrom<&ChatSessionState> for NewSessionRow {
                     task_list: _task_list, // included in metadata blob via PersistableCore
                     enabled_mcp_servers: _enabled_mcp_servers, // included in metadata blob via PersistableCore
                     mcp_server_status: _mcp_server_status,     // runtime-only, not persisted
+                    mcp_server_stderr: _mcp_server_stderr,    // runtime-only, not persisted
                 },
             ui: _ui, // runtime-only UI state, not persisted
         } = session;

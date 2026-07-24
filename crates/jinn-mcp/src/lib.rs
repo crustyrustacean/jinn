@@ -9,7 +9,7 @@
 pub mod client;
 pub mod tool_mapping;
 
-pub use client::{McpClient, McpClientError, ServerCommand};
+pub use client::{McpClient, McpClientError, McpStderrBuffer, ServerCommand};
 
 // Re-export rmcp model types so downstream crates (jinn-domain) can pattern-
 // match on tool results without taking a direct rmcp dependency.
