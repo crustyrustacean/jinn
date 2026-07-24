@@ -647,10 +647,16 @@ impl ToolOrchestratorActor {
                 .await;
             }
             p if p.starts_with(MCP_PROVIDER_PREFIX) => {
+                // Read the same truncation limits builtins use so MCP results
+                // are bounded identically. `build_tool_context` does the same
+                // read for the builtin path.
+                let prefs = self.services.user_preferences_storage.read();
                 self.publish(ExecuteTool {
                     session_id,
                     tool_call,
                     dispatched_at,
+                    max_output_lines: prefs.max_tool_output_lines,
+                    max_output_bytes: prefs.max_tool_output_bytes,
                 })
                 .await;
             }

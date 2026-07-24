@@ -20,12 +20,21 @@
 
 pub mod protocol;
 
+// End-to-end dispatch roundtrip tests live in a separate module so the
+// stub-server fixtures (gated behind jinn-mcp's `server-testkit` feature)
+// stay isolated from the pure unit tests above.
+#[cfg(test)]
+mod dispatch_roundtrip_tests;
+
+use std::sync::Arc;
+
 use jinn_mcp::{
     CallToolResult, ContentBlock, JsonObject, McpClient, ServerCommand,
     tool_mapping::{map_tool, provider_name, strip_namespace},
 };
 use kameo::actor::ActorRef;
 use kameo::prelude::{Context, Message};
+use parking_lot::Mutex;
 
 use crate::common::actor_deps::{ActorDeps, BusPublish};
 use crate::feat::mcp::McpServerConfig;
@@ -33,6 +42,7 @@ use crate::feat::mcp_actor::protocol::{McpConnectionStatus, McpServerStatus};
 use crate::feat::tools_actor::protocol::command::{ExecuteTool, RegisterTools};
 use crate::feat::tools_actor::protocol::event::ToolExecutionCompleted;
 use crate::feat::tools_actor::tool_types::{ToolCall, ToolDefinition, ToolResult};
+use crate::feat::tools_actor::truncation::{DEFAULT_MAX_BYTES, DEFAULT_MAX_LINES, truncate_tail};
 use crate::protocol::SessionId;
 
 /// The MCP client actor — one per (session × enabled server).
@@ -50,14 +60,56 @@ pub struct McpActor {
 }
 
 /// Dependencies for [`McpActor`].
+///
+/// Implements [`Clone`] so the actor can be spawned under kameo's
+/// supervision tree. The optional injected client lives behind a shared slot
+/// (`Arc<Mutex<Option<McpClient>>>`) so cloning the deps clones the *handle* to
+/// the slot, not the client itself; `on_start` drains the slot once.
 #[derive(Clone)]
 pub struct McpActorDeps {
     /// Common actor dependencies (services + bus).
-    pub deps: ActorDeps,
+    deps: ActorDeps,
     /// The session this actor serves.
-    pub session_id: SessionId,
+    session_id: SessionId,
     /// The configured server to connect to.
-    pub server: McpServerConfig,
+    server: McpServerConfig,
+    /// Optional pre-connected client, used only by integration tests.
+    ///
+    /// Production is always `None` (the actor spawns the server from `server`).
+    /// A test injects a client connected to an in-process stub so the full
+    /// subscribe → list → register → dispatch path runs without a child.
+    client_override: Arc<Mutex<Option<McpClient>>>,
+}
+
+impl McpActorDeps {
+    /// Production constructor: spawns the server process at `on_start`.
+    #[must_use]
+    pub fn new(deps: ActorDeps, session_id: SessionId, server: McpServerConfig) -> Self {
+        Self {
+            deps,
+            session_id,
+            server,
+            client_override: Arc::new(Mutex::new(None)),
+        }
+    }
+
+    /// Test-only constructor: inject a pre-connected [`McpClient`] so `on_start`
+    /// skips spawning a child process.
+    #[cfg(test)]
+    #[must_use]
+    pub fn with_client(
+        deps: ActorDeps,
+        session_id: SessionId,
+        server: McpServerConfig,
+        client: McpClient,
+    ) -> Self {
+        Self {
+            deps,
+            session_id,
+            server,
+            client_override: Arc::new(Mutex::new(Some(client))),
+        }
+    }
 }
 
 /// Builds the [`ServerCommand`] for an [`McpServerConfig`].
@@ -65,6 +117,57 @@ fn server_command(config: &McpServerConfig) -> ServerCommand {
     ServerCommand {
         program: config.command.clone(),
         args: config.args.clone(),
+    }
+}
+
+/// Acquires a connected [`McpClient`] and the server's tool definitions.
+///
+/// Production path: spawn the server process (`server.command`/`args`) and
+/// list its tools. Test path: use the injected `client_override` and list its
+/// tools — no child process is spawned.
+///
+/// On failure returns `Err(Some(client))` where `client` is half-open (
+/// connected but list failed) and must be shut down by the caller; returns
+/// `Err(None)` when the failure was at connect time (nothing to shut down).
+/// On success returns the client and its mapped tool definitions together.
+async fn acquire_client(
+    server: &McpServerConfig,
+    client_override: Option<McpClient>,
+) -> Result<(McpClient, Vec<ToolDefinition>), Option<McpClient>> {
+    let client = match client_override {
+        Some(injected) => injected,
+        None => match McpClient::connect(&server_command(server)).await {
+            Ok(client) => client,
+            Err(report) => {
+                tracing::warn!(
+                    server = %server.name,
+                    error = %report,
+                    "MCP actor: failed to connect to server"
+                );
+                // Connect failed before any client existed.
+                return Err(None);
+            }
+        },
+    };
+
+    match client.list_tools().await {
+        Ok(tools) => {
+            let definitions = tools
+                .iter()
+                .map(|tool| map_tool(&server.name, tool))
+                .collect::<Vec<ToolDefinition>>();
+            Ok((client, definitions))
+        }
+        Err(report) => {
+            tracing::warn!(
+                server = %server.name,
+                error = %report,
+                "MCP actor: failed to list tools"
+            );
+            // Half-open: connected but list failed. Return the client so the
+            // caller can shut it down.
+            Err(Some(client))
+        }
     }
 }
 
@@ -100,6 +203,7 @@ impl kameo::Actor for McpActor {
             deps,
             session_id,
             server,
+            client_override,
         } = args;
 
         deps.subscribe(actor_ref.recipient::<ExecuteTool>()).await;
@@ -112,55 +216,32 @@ impl kameo::Actor for McpActor {
         )
         .await;
 
+        // Drain any test-injected client from the shared slot. Production is
+        // always `None` here, so the actor spawns the server process. Tests
+        // inject a pre-connected client so no child is spawned.
+        let injected_client = client_override.lock().take();
+
+        // Obtain a connected client + its tool definitions. Failure (connect or
+        // list) is non-fatal to the process: the actor runs idle, the lifecycle
+        // actor / dashboard surfaces the dead status, and a later enable/disable
+        // cycle can respawn.
+        let (client, definitions) = match acquire_client(&server, injected_client).await {
+            Ok(ready) => ready,
+            Err(half_open) => {
+                if let Some(mut half_open) = half_open {
+                    half_open.shutdown().await;
+                }
+                publish_status(&deps, &session_id, &server.name, McpConnectionStatus::Dead).await;
+                return Ok(Self {
+                    deps,
+                    session_id,
+                    server,
+                    client: None,
+                });
+            }
+        };
+
         let provider = provider_name(&server.name);
-
-        // Connect + list tools. Failure to connect is non-fatal to the process:
-        // we publish a failed registration marker so the LLM never sees stale
-        // tool names, and let the actor run (idle). The lifecycle actor /
-        // dashboard surfaces the dead status.
-        let client = match McpClient::connect(&server_command(&server)).await {
-            Ok(client) => client,
-            Err(report) => {
-                tracing::warn!(
-                    server = %server.name,
-                    session_id = %session_id,
-                    error = %report,
-                    "MCP actor: failed to connect to server"
-                );
-                publish_status(&deps, &session_id, &server.name, McpConnectionStatus::Dead).await;
-                return Ok(Self {
-                    deps,
-                    session_id,
-                    server,
-                    client: None,
-                });
-            }
-        };
-
-        let definitions = match client.list_tools().await {
-            Ok(tools) => tools
-                .iter()
-                .map(|tool| map_tool(&server.name, tool))
-                .collect::<Vec<ToolDefinition>>(),
-            Err(report) => {
-                tracing::warn!(
-                    server = %server.name,
-                    session_id = %session_id,
-                    error = %report,
-                    "MCP actor: failed to list tools"
-                );
-                let mut dead_client = client;
-                dead_client.shutdown().await;
-                publish_status(&deps, &session_id, &server.name, McpConnectionStatus::Dead).await;
-                return Ok(Self {
-                    deps,
-                    session_id,
-                    server,
-                    client: None,
-                });
-            }
-        };
-
         tracing::info!(
             server = %server.name,
             session_id = %session_id,
@@ -266,6 +347,8 @@ impl Message<ExecuteTool> for McpActor {
 
         let session_id = msg.session_id;
         let tool_call = msg.tool_call;
+        let max_output_lines = msg.max_output_lines;
+        let max_output_bytes = msg.max_output_bytes;
 
         let arguments = match parse_arguments(&tool_call.arguments) {
             Ok(args) => args,
@@ -286,15 +369,14 @@ impl Message<ExecuteTool> for McpActor {
         let result = match client.call_tool(&tool_name, arguments).await {
             Ok(mcp_result) => {
                 let success = !mcp_result.is_error.unwrap_or(false);
-                ToolResult {
-                    tool_call_id: tool_call.id.clone(),
-                    name: tool_call.name.clone(),
-                    content: format_result_content(&mcp_result),
+                let content = format_result_content(&mcp_result);
+                build_result(
+                    &tool_call,
+                    &content,
                     success,
-                    full_content: None,
-                    truncation: None,
-                    pin_position: None,
-                }
+                    max_output_lines,
+                    max_output_bytes,
+                )
             }
             Err(report) => {
                 tracing::warn!(error = %report, "MCP tools/call failed");
@@ -333,6 +415,33 @@ fn failure_result(tool_call: &ToolCall, message: impl Into<String>) -> ToolResul
         success: false,
         full_content: None,
         truncation: None,
+        pin_position: None,
+    }
+}
+
+/// Builds a (possibly truncated) [`ToolResult`] from raw MCP output content.
+///
+/// Applies the same tail-truncation as the `bash` tool: large MCP results
+/// are bounded by `max_output_lines`/`max_output_bytes` (falling back to the
+/// shared defaults when the orchestrator sent `None`), and the original
+/// content is preserved in `full_content` when truncation occurred.
+fn build_result(
+    tool_call: &ToolCall,
+    content: &str,
+    success: bool,
+    max_output_lines: Option<usize>,
+    max_output_bytes: Option<usize>,
+) -> ToolResult {
+    let max_lines = max_output_lines.unwrap_or(DEFAULT_MAX_LINES);
+    let max_bytes = max_output_bytes.unwrap_or(DEFAULT_MAX_BYTES);
+    let truncated = truncate_tail(content, max_lines, max_bytes);
+    ToolResult {
+        tool_call_id: tool_call.id.clone(),
+        name: tool_call.name.clone(),
+        content: truncated.content,
+        success,
+        full_content: truncated.truncated.then(|| content.to_owned()),
+        truncation: truncated.meta,
         pin_position: None,
     }
 }
@@ -474,5 +583,73 @@ mod tests {
         // Then the name is namespaced.
         assert_eq!(def.name, "mcp__excalimate__create_scene");
         assert_eq!(def.description, "Create a scene");
+    }
+
+    fn sample_tool_call() -> ToolCall {
+        ToolCall {
+            id: "tc_x".to_owned(),
+            name: "mcp__stub__echo".to_owned(),
+            arguments: "{}".to_owned(),
+        }
+    }
+
+    #[test]
+    fn build_result_passes_small_content_through_unchanged() {
+        // Given content well within limits.
+        let tool_call = sample_tool_call();
+
+        // When building the result.
+        let result = build_result(&tool_call, "hello", true, Some(100), Some(1024));
+
+        // Then no truncation occurred.
+        assert!(result.success);
+        assert_eq!(result.content, "hello");
+        assert!(result.full_content.is_none());
+        assert!(result.truncation.is_none());
+    }
+
+    #[test]
+    fn build_result_truncates_large_content_by_lines() {
+        // Given five lines of content and a three-line limit.
+        let tool_call = sample_tool_call();
+        let content = "line1\nline2\nline3\nline4\nline5".to_owned();
+
+        // When building the result with a 3-line limit.
+        let result = build_result(&tool_call, &content, true, Some(3), Some(1024));
+
+        // Then the tail is kept and the full content is preserved.
+        assert_eq!(result.content, "line3\nline4\nline5");
+        assert_eq!(result.full_content.as_deref(), Some(content.as_str()));
+        let meta = result.truncation.expect("meta");
+        assert_eq!(meta.total_lines, 5);
+        assert_eq!(meta.output_lines, 3);
+    }
+
+    #[test]
+    fn build_result_truncates_large_content_by_bytes() {
+        // Given a single large line exceeding the byte limit.
+        let tool_call = sample_tool_call();
+        let content = "x".repeat(500);
+
+        // When building the result with a 100-byte limit.
+        let result = build_result(&tool_call, &content, true, Some(100), Some(100));
+
+        // Then the content is bounded and metadata records byte truncation.
+        assert!(result.content.len() <= 100);
+        assert!(result.truncation.is_some());
+        assert_eq!(result.full_content.as_deref(), Some(content.as_str()));
+    }
+
+    #[test]
+    fn build_result_uses_defaults_when_limits_are_none() {
+        // Given content under the default limits.
+        let tool_call = sample_tool_call();
+
+        // When building with None limits.
+        let result = build_result(&tool_call, "small", true, None, None);
+
+        // Then it passes through unchanged (defaults are generous).
+        assert_eq!(result.content, "small");
+        assert!(result.truncation.is_none());
     }
 }

@@ -20,3 +20,9 @@ pub use rmcp::model::{CallToolResult, ContentBlock, JsonObject, Tool};
 // Gated behind the `testkit` feature so production builds never pull these in.
 #[cfg(feature = "testkit")]
 pub mod testkit;
+
+// A reusable stub MCP server for downstream integration tests.
+// Gated behind `server-testkit` so production builds never pull in rmcp's
+// server implementation.
+#[cfg(feature = "server-testkit")]
+pub mod server_testkit;

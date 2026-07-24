@@ -165,11 +165,7 @@ impl McpLifecycleActor {
 
         let actor_ref = McpActor::supervise(
             &self.root,
-            McpActorDeps {
-                deps: self.deps.clone(),
-                session_id: session_id.clone(),
-                server: config.clone(),
-            },
+            McpActorDeps::new(self.deps.clone(), session_id.clone(), config.clone()),
         )
         .restart_policy(RestartPolicy::Never)
         .spawn()
