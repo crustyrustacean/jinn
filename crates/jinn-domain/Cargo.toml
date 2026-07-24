@@ -11,6 +11,7 @@ jinn-core-types = { workspace = true }
 jinn-provider-config = { workspace = true }
 jinn-web-fetch = { workspace = true }
 jinn-web-search = { workspace = true }
+jinn-mcp = { workspace = true }
 form_urlencoded = { workspace = true }
 jinn-selection-widget = { workspace = true }
 
@@ -73,6 +74,7 @@ rusqlite = { workspace = true }
 [dev-dependencies]
 rstest = { workspace = true }
 jinn-testutil = { workspace = true }
+jinn-mcp = { workspace = true, features = ["testkit"] }
 tokio = { workspace = true, features = ["test-util"] }
 jinn-common = { workspace = true, features = ["testing"] }
 trybuild = "1"
