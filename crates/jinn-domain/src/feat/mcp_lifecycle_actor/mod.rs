@@ -456,6 +456,68 @@ mod lifecycle_tests {
         // (The observable behavior is clean teardown; a panic would surface here.)
     }
 
+    /// Disabling a server tears down its actor: re-enabling afterwards must
+    /// spawn a *fresh* actor (a new `Starting` status).
+    ///
+    /// Why this works with an unrunnable server: spawn#1's failed-connect leaves
+    /// the entry in the spawned map (the actor stops itself, but nothing removes
+    /// the map entry). Only `reconcile`/`kill_one` on disable removes it. So if
+    /// disable works, re-enable's duplicate-spawn guard sees an empty slot and
+    /// respawns — producing a second `Starting`. If disable were a no-op, the
+    /// stale entry would block respawn and we'd see only one `Starting`.
+    #[tokio::test]
+    async fn disabling_then_re_enabling_respawns_the_actor() {
+        // Given a lifecycle actor with one configured server.
+        let harness = TestHarness::new().await;
+        let recorder = harness.spawn_recorder::<McpServerStatus>().await;
+        let (_actor, _services) = spawn_lifecycle(&harness, vec![unrunnable_server()]).await;
+        let session_id = SessionId::new();
+
+        // When enabling the server (spawn #1: Starting + Dead on failed connect).
+        harness
+            .publish(McpEnablementChanged {
+                session_id: session_id.clone(),
+                enabled: single_enabled("unrunnable"),
+            })
+            .await;
+        tokio::time::sleep(std::time::Duration::from_millis(500)).await;
+
+        // And disabling it (must remove the map entry via kill_one).
+        harness
+            .publish(McpEnablementChanged {
+                session_id: session_id.clone(),
+                enabled: BTreeSet::new(),
+            })
+            .await;
+        tokio::time::sleep(std::time::Duration::from_millis(500)).await;
+
+        // And re-enabling it (spawn #2 — only possible if disable freed the slot).
+        harness
+            .publish(McpEnablementChanged {
+                session_id: session_id.clone(),
+                enabled: single_enabled("unrunnable"),
+            })
+            .await;
+        // Let the full enable→disable→re-enable sequence settle so no events
+        // are still in flight when we read the recorder. GetRecorded drains, so
+        // settling first ensures await_recorded's first poll sees the whole
+        // sequence at once and returns it intact (no mid-flight draining).
+        tokio::time::sleep(std::time::Duration::from_millis(800)).await;
+
+        // Then two distinct `Starting` statuses arrived (one per spawn) — the
+        // second only exists because disable freed the spawned-map slot.
+        let events = await_recorded(&recorder, 3, std::time::Duration::from_secs(2)).await;
+        let starting_count = events
+            .iter()
+            .filter(|e| e.status == McpConnectionStatus::Starting)
+            .count();
+        assert!(
+            starting_count >= 2,
+            "disable must tear down the actor so re-enable respawns it; \
+             expected >=2 Starting events, got {starting_count}: {events:?}"
+        );
+    }
+
     #[tokio::test]
     async fn dead_status_is_published_for_unrunnable_server() {
         // Given a lifecycle actor with an unrunnable server enabled.
