@@ -1,16 +1,18 @@
-//! Rendering for the MCP server picker overlay.
+//! Rendering for the MCP server inspector picker overlay.
 
 use crate::RenderCtx;
 use crate::feat::ui::picker_states::PickerExt;
-use jinn_selection_widget::SelectionWidget;
+use jinn_selection_widget::PreviewSelectionWidget;
 use ratatui::Frame;
 use ratatui::layout::Rect;
-use ratatui::text::Line;
+use ratatui::style::Style;
+use ratatui::text::{Line, Span};
 
-/// Renders the MCP server picker overlay.
+/// Renders the MCP server inspector overlay.
 ///
-/// Lists configured MCP servers with a toggle marker; TAB toggles, Enter
-/// commits the enabled set, ESC reverts. Mirrors the tool/skill picker layout.
+/// Multipane: the server list (left) with a preview pane (right) that shows
+/// either the selected server's live status + stderr tail (logs mode, default)
+/// or its advertised tools (tools mode). Mirrors the skills picker layout.
 pub fn render_mcp_server_picker(frame: &mut Frame<'_>, area: Rect, ctx: &RenderCtx) {
     let state = ctx.state;
     let enabled_count = state
@@ -21,12 +23,26 @@ pub fn render_mcp_server_picker(frame: &mut Frame<'_>, area: Rect, ctx: &RenderC
         .filter(|s| s.enabled)
         .count();
     let total = state.frontend.mcp_server_picker().items().len();
-    let footer = Line::from(format!(
-        " TAB toggle \u{00b7} {enabled_count}/{total} enabled \u{00b7} Enter confirm \u{00b7} ESC cancel "
-    ));
-    let widget = SelectionWidget::new(state.frontend.mcp_server_picker())
+
+    let gray = Style::default().fg(state.frontend.theme.muted_text);
+    let orange = Style::default().fg(state.frontend.theme.accent_action);
+    let footer = Line::from(vec![
+        Span::styled("TAB ".to_owned(), orange),
+        Span::styled("toggle · ".to_owned(), gray),
+        Span::styled("CTRL+R ".to_owned(), orange),
+        Span::styled("restart · ".to_owned(), gray),
+        Span::styled("CTRL+T ".to_owned(), orange),
+        Span::styled("logs/tools · ".to_owned(), gray),
+        Span::styled(
+            format!("{enabled_count}/{total} enabled · Enter confirm · ESC cancel"),
+            gray,
+        ),
+    ]);
+
+    // MCP preview is live (status/stderr/tools refresh every frame), so no cache.
+    let widget = PreviewSelectionWidget::new(state.frontend.mcp_server_picker())
         .title(Line::from(" MCP Servers "))
-        .title_style(ratatui::style::Style::default().fg(state.frontend.theme.popup_title))
+        .title_style(Style::default().fg(state.frontend.theme.popup_title))
         .footer(footer);
     widget.render(frame, area);
 }

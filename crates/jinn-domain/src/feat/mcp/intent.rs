@@ -14,7 +14,7 @@ use std::collections::BTreeSet;
 
 use crate::common::app_state::AppState;
 use crate::feat::intent::IntentResult;
-use crate::feat::mcp::picker_entry::McpServerEntry;
+use crate::feat::mcp::picker_entry::{McpPreviewMode, McpServerEntry};
 use crate::feat::picker::geometry::active_viewport;
 use crate::feat::ui::picker_states::PickerExt;
 
@@ -40,6 +40,10 @@ pub(crate) fn load_mcp_picker_entries(state: &mut AppState) {
                 search_text: name.clone(),
                 enabled: enabled.contains(&name),
                 theme: theme.clone(),
+                status: None,
+                stderr_tail: String::new(),
+                tools: Vec::new(),
+                preview_mode: McpPreviewMode::default(),
             }
         })
         .collect();
