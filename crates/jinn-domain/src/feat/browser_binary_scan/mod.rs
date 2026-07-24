@@ -8,7 +8,7 @@
 //! ## Why events, not direct dashboard writes
 //!
 //! `frontend.dashboard` is sole-owned by
-//! [`DiscordStatusActor`](crate::feat::dashboard::status_actor::DiscordStatusActor).
+//! [`DashboardActor`](crate::feat::dashboard::dashboard_actor::DashboardActor).
 //! To honour the per-sub-struct ownership rule, this actor does **not** write
 //! to the dashboard. It publishes [`BrowserBinaryVerified`]; the dashboard
 //! owner is the correct place to surface the status.

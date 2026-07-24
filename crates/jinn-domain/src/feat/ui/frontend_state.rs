@@ -178,7 +178,7 @@ pub struct FrontendState {
     pub quake_bar: QuakeBarState,
 
     /// Dashboard tab state - actor lifecycle + service status list.
-    /// OWNER: DiscordStatusActor.
+    /// OWNER: DashboardActor.
     pub dashboard: DashboardState,
 
     pub sidebar_width: u16,

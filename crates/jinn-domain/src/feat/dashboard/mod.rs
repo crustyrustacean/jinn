@@ -12,11 +12,13 @@
 //!   text). Other actors leave it `None` until they gain their own
 //!   service-level reporting.
 //!
-//! [`DiscordStatusActor`] owns `frontend.dashboard`. It
-//! subscribes to the generic lifecycle events and drains a kanal channel fed
-//! by the Discord gateway task.
+//! [`DashboardActor`] owns `frontend.dashboard`. It subscribes to the
+//! generic lifecycle events and to [`DiscordStatusUpdate`] (republished by
+//! [`DiscordStatusActor`] from the gateway kanal channel).
+pub mod dashboard_actor;
 pub mod status_actor;
 
+pub use dashboard_actor::{DashboardActor, DashboardActorDeps};
 pub use status_actor::{DiscordStatusActor, DiscordStatusActorDeps, DiscordStatusUpdate};
 use std::collections::HashMap;
 
@@ -52,7 +54,7 @@ pub struct DashboardEntry {
 
 /// Tracks the status of all actors for dashboard display.
 ///
-/// Owned by [`crate::feat::dashboard::status_actor::DiscordStatusActor`] via
+/// Owned by [`crate::feat::dashboard::dashboard_actor::DashboardActor`] via
 /// `frontend.dashboard`. The actor owns this field.
 #[derive(Debug, Clone, Default)]
 pub struct DashboardState {

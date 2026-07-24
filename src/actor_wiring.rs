@@ -201,11 +201,35 @@ impl ActorSystemBuilder {
             services: services.clone(),
         };
 
-        // ── Discord status actor ─────────────────────────────────────────
+        // ── Dashboard actor ───────────────────────────────────────────
         // Always spawned FIRST — subscribes to lifecycle events before any
         // other actor fires them, so the dashboard captures every actor.
-        // The kanal sender feeds the discord connection sub-state from the
-        // gateway task (best-effort, ignored when discord is disabled).
+        // It owns `frontend.dashboard` and is the single sink for all
+        // status sources (generic lifecycle, BrowserBinaryVerified,
+        // DiscordStatusUpdate republished by DiscordStatusActor).
+        let _dashboard = jinn_domain::feat::dashboard::dashboard_actor::DashboardActor::supervise(
+            &root,
+            jinn_domain::feat::dashboard::dashboard_actor::DashboardActorDeps {
+                deps: actor_deps.clone(),
+                state: state.clone(),
+                cap: jinn_domain::common::tcaps::mint::mint_frontend_cap(),
+            },
+        )
+        .restart_policy(kameo::supervision::RestartPolicy::Never)
+        .spawn()
+        .await;
+        // Wait for the dashboard actor's subscriptions to be fully wired
+        // before spawning any other actors. Without this, the bus events
+        // (ActorStarting/ActorStarted) from subsequently spawned actors
+        // can be missed — leaving their dashboard entries stuck on
+        // "Starting" because ActorStarted was never received.
+        _dashboard.wait_for_startup().await;
+
+        // ── Discord status actor ───────────────────────────────────────
+        // A pure translator: drains the gateway kanal channel and
+        // republishes DiscordStatusUpdate on the bus. The DashboardActor
+        // above consumes it. Spawned after the dashboard actor so its
+        // publications are not missed.
         let (discord_status_tx, discord_status_rx) =
             kanal::unbounded::<jinn_domain::feat::dashboard::status_actor::DiscordStatusUpdate>();
         let _discord_status =
@@ -213,19 +237,12 @@ impl ActorSystemBuilder {
                 &root,
                 jinn_domain::feat::dashboard::status_actor::DiscordStatusActorDeps {
                     deps: actor_deps.clone(),
-                    state: state.clone(),
-                    cap: jinn_domain::common::tcaps::mint::mint_frontend_cap(),
                     status_rx: discord_status_rx.to_async(),
                 },
             )
             .restart_policy(kameo::supervision::RestartPolicy::Never)
             .spawn()
             .await;
-        // Wait for the dashboard actor's subscriptions to be fully wired
-        // before spawning any other actors. Without this, the bus events
-        // (ActorStarting/ActorStarted) from subsequently spawned actors
-        // can be missed — leaving their dashboard entries stuck on
-        // "Starting" because ActorStarted was never received.
         _discord_status.wait_for_startup().await;
 
         // ── Infrastructure actors ──────────────────────────────────────────
