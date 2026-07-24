@@ -18,7 +18,7 @@ use jinn_provider::ToolDefinition;
 /// The full namespace prefix for a server's tools: `mcp__<server_name>__`.
 #[must_use]
 pub fn provider_prefix(server_name: &str) -> String {
-    format!("mcp__{}__", server_name)
+    format!("mcp__{server_name}__")
 }
 
 /// The `provider` string used when registering a server's tools with the
@@ -59,5 +59,83 @@ pub fn map_tool(server_name: &str, mcp_tool: &rmcp::model::Tool) -> ToolDefiniti
         prompt_snippet: None,
         prompt_guidelines: Vec::new(),
         server_tool_type: None,
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    #![allow(clippy::expect_used, reason = "test assertions")]
+
+    use super::*;
+    use rmcp::model::Tool;
+
+    fn mcp_tool(name: &str, desc: &str) -> Tool {
+        Tool::new(name.to_owned(), desc.to_owned(), serde_json::Map::new())
+    }
+
+    #[test]
+    fn provider_prefix_is_namespaced() {
+        // Given a server name.
+        // When computing the prefix.
+        let prefix = provider_prefix("excalimate");
+
+        // Then it is the standard mcp__<server>__ shape.
+        assert_eq!(prefix, "mcp__excalimate__");
+    }
+
+    #[test]
+    fn namespaced_tool_name_joins_server_and_tool() {
+        // Given server + tool names.
+        // When namespacing.
+        let name = namespaced_tool_name("excalimate", "create_scene");
+
+        // Then both segments appear in order.
+        assert_eq!(name, "mcp__excalimate__create_scene");
+    }
+
+    #[test]
+    fn strip_namespace_recovers_tool_name() {
+        // Given a namespaced name for "excalimate".
+        // When stripping.
+        let stripped = strip_namespace("excalimate", "mcp__excalimate__create_scene");
+
+        // Then the server-side tool name is recovered.
+        assert_eq!(stripped, Some("create_scene"));
+    }
+
+    #[test]
+    fn strip_namespace_rejects_other_server() {
+        // Given a namespaced name for "excalimate".
+        // When stripping with a different server.
+        let stripped = strip_namespace("other", "mcp__excalimate__create_scene");
+
+        // Then it does not match.
+        assert_eq!(stripped, None);
+    }
+
+    #[test]
+    fn two_servers_get_distinct_namespaces() {
+        // Given the same tool name on two different servers.
+        let alpha = namespaced_tool_name("alpha", "create_scene");
+        let beta = namespaced_tool_name("beta", "create_scene");
+
+        // Then the namespaced names differ.
+        assert_ne!(alpha, beta);
+        // And each strips back to the bare tool name under its own server.
+        assert_eq!(strip_namespace("alpha", &alpha), Some("create_scene"));
+        assert_eq!(strip_namespace("beta", &beta), Some("create_scene"));
+    }
+
+    #[test]
+    fn map_tool_namespaces_name_and_preserves_description() {
+        // Given an rmcp tool.
+        let tool = mcp_tool("create_scene", "Create a scene");
+
+        // When mapping.
+        let def = map_tool("excalimate", &tool);
+
+        // Then the name is namespaced and the description is preserved.
+        assert_eq!(def.name, "mcp__excalimate__create_scene");
+        assert_eq!(def.description, "Create a scene");
     }
 }

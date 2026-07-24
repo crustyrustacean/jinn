@@ -6,7 +6,10 @@
 //! with content blocks) so jinn-domain tests can exercise `format_result_content`
 //! and related logic without depending on rmcp internals.
 
-#![allow(clippy::missing_docs_in_private_items)]
+#![allow(
+    clippy::missing_docs_in_private_items,
+    reason = "test-only helpers for rmcp fixtures"
+)]
 
 use rmcp::model::{CallToolResult, ContentBlock};
 

@@ -22,6 +22,16 @@ testkit = []
 [dev-dependencies]
 rstest = { workspace = true }
 tokio = { workspace = true, features = ["full"] }
+serde_json = { workspace = true }
+# The integration test spins up an in-process stub MCP server. rmcp's `server`
+# feature is a dev-dependency so it can never leak into the production client.
+rmcp = { workspace = true, features = ["client", "server"] }
+
+# The stub-server test lives in a separate file that is only compiled when the
+# `testkit` feature is enabled (it uses the transport-injecting constructor).
+[[test]]
+name = "stub_server"
+required-features = ["testkit"]
 
 [lints]
 workspace = true
