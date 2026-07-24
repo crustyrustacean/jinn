@@ -35,7 +35,7 @@ use crate::common::root_supervisor::RootSupervisorRef;
 use crate::common::services::bus_service::BusService;
 use crate::feat::mcp::McpServerConfig;
 use crate::feat::mcp_actor::{McpActor, McpActorDeps};
-use crate::feat::mcp_lifecycle_actor::protocol::McpEnablementChanged;
+use crate::feat::mcp_lifecycle_actor::protocol::{McpEnablementChanged, RestartMcpServer};
 use crate::feat::session::protocol::session_archived::SessionArchived;
 use crate::feat::session::protocol::session_closed::SessionClosed;
 use crate::feat::session::protocol::session_load_completed::SessionLoadCompleted;
@@ -89,6 +89,9 @@ impl kameo::Actor for McpLifecycleActor {
             .await;
         args.deps
             .subscribe(actor_ref.clone().recipient::<SessionTeardownFinished>())
+            .await;
+        args.deps
+            .subscribe(actor_ref.recipient::<RestartMcpServer>())
             .await;
 
         Ok(Self {
@@ -212,6 +215,29 @@ impl McpLifecycleActor {
             self.kill_one(&key).await;
         }
     }
+
+    /// Restarts a single (session × server) `McpActor`: kills the running one
+    /// (if any) and respawns it from its configured server entry.
+    ///
+    /// No-op if the server isn't configured in `[[mcp_servers]]` — there's
+    /// nothing valid to respawn from. This mirrors the future dashboard
+    /// "restart" capability: recover a wedged process without an
+    /// enable/disable round-trip through the picker.
+    async fn restart_one(&self, session_id: &SessionId, server: &str) {
+        let key = (session_id.clone(), server.to_owned());
+        self.kill_one(&key).await;
+
+        let configs = configured_servers(&self.deps.services);
+        if let Some(config) = configs.iter().find(|c| c.name == server) {
+            self.spawn_one(session_id, config).await;
+        } else {
+            tracing::warn!(
+                server = %server,
+                %session_id,
+                "MCP lifecycle: restart requested for unknown server, ignoring"
+            );
+        }
+    }
 }
 
 /// Reads the configured `[[mcp_servers]]` from user preferences.
@@ -295,3 +321,16 @@ impl Message<SessionTeardownFinished> for McpLifecycleActor {
         self.kill_all_for_session(&msg.session_id).await;
     }
 }
+
+impl Message<RestartMcpServer> for McpLifecycleActor {
+    type Reply = ();
+
+    async fn handle(
+        &mut self,
+        msg: RestartMcpServer,
+        _ctx: &mut Context<Self, Self::Reply>,
+    ) {
+        self.restart_one(&msg.session_id, &msg.server).await;
+    }
+}
+
