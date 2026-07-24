@@ -79,6 +79,8 @@ pub enum InstallOutcome {
     Created(PathBuf),
     /// Resource already existed and was left untouched.
     Skipped(PathBuf),
+    /// Resource already existed and was overwritten in place.
+    Overwritten(PathBuf),
 }
 
 impl InstallOutcome {
@@ -86,7 +88,9 @@ impl InstallOutcome {
     #[must_use]
     pub fn path(&self) -> &Path {
         match self {
-            InstallOutcome::Created(p) | InstallOutcome::Skipped(p) => p,
+            InstallOutcome::Created(p)
+            | InstallOutcome::Skipped(p)
+            | InstallOutcome::Overwritten(p) => p,
         }
     }
 }
@@ -189,8 +193,8 @@ const BUNDLED: &[Bundled] = &[
 /// Installs every bundled default resource into the given destinations.
 ///
 /// Per resource:
-/// - If the destination already exists → [`InstallOutcome::Skipped`] (never
-///   overwrites).
+/// - If the destination already exists and `overwrite` is false → [`InstallOutcome::Skipped`].
+/// - If the destination already exists and `overwrite` is true → the file is replaced, yielding [`InstallOutcome::Overwritten`].
 /// - Otherwise → parents are created via `create_dir_all` and the file is
 ///   written, yielding [`InstallOutcome::Created`].
 ///
@@ -204,10 +208,11 @@ const BUNDLED: &[Bundled] = &[
 /// Returns [`Report<InstallError>`] if directory creation or file writing fails.
 pub fn install_defaults_to(
     destinations: &Destinations,
+    overwrite: bool,
 ) -> Result<Vec<InstallOutcome>, Report<InstallError>> {
     BUNDLED
         .iter()
-        .map(|resource| install_one(resource, destinations))
+        .map(|resource| install_one(resource, destinations, overwrite))
         .collect()
 }
 
@@ -215,10 +220,12 @@ pub fn install_defaults_to(
 fn install_one(
     resource: &Bundled,
     destinations: &Destinations,
+    overwrite: bool,
 ) -> Result<InstallOutcome, Report<InstallError>> {
     let destination = resource.kind.root(destinations).join(resource.relative);
+    let existed = destination.exists();
 
-    if destination.exists() {
+    if existed && !overwrite {
         return Ok(InstallOutcome::Skipped(destination));
     }
 
@@ -234,7 +241,11 @@ fn install_one(
         .attach("failed to write resource")
         .attach(format!("path: {}", destination.display()))?;
 
-    Ok(InstallOutcome::Created(destination))
+    if existed {
+        Ok(InstallOutcome::Overwritten(destination))
+    } else {
+        Ok(InstallOutcome::Created(destination))
+    }
 }
 
 #[cfg(test)]
