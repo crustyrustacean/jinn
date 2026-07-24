@@ -1,10 +1,8 @@
 //! Default resource installation — seeds themes, personas, prompts, and skills
 //! into the user's config and agent directories.
 //!
-//! This is the recovery path for binary-only installs (e.g. `cargo-binstall`),
-//! where no source tree is available to run `just install-defaults`. Every
-//! resource under `res/` is embedded at compile time via [`include_str!`], so
-//! the binary is self-contained.
+//! Every resource under `res/` is embedded at compile time via
+//! [`include_str!`], so the binary is self-contained.
 //!
 //! The pure [`install_defaults_to`] function performs the work and is fully
 //! testable against [`tempfile::TempDir`] roots. The CLI prints the outcomes.
@@ -290,7 +288,7 @@ mod tests {
         let (destinations, _temps) = fresh_destinations();
 
         // When installing defaults.
-        let outcomes = install_defaults_to(&destinations).expect("install");
+        let outcomes = install_defaults_to(&destinations, false).expect("install");
 
         // Then the `default.toml` theme was created.
         let outcome = outcome_for(&outcomes, "default.toml");
@@ -312,7 +310,7 @@ mod tests {
         std::fs::write(&existing, "PRE-EXISTING").unwrap();
 
         // When installing defaults.
-        let outcomes = install_defaults_to(&destinations).expect("install");
+        let outcomes = install_defaults_to(&destinations, false).expect("install");
 
         // Then `default.toml` is skipped (not overwritten).
         let outcome = outcome_for(&outcomes, "default.toml");
@@ -341,7 +339,7 @@ mod tests {
         );
 
         // When installing defaults.
-        let result = install_defaults_to(&destinations);
+        let result = install_defaults_to(&destinations, false);
 
         // Then it succeeds (parents created) rather than erroring.
         assert!(result.is_ok(), "install should create missing parents");
@@ -353,7 +351,7 @@ mod tests {
         let (destinations, _temps) = fresh_destinations();
 
         // When installing defaults.
-        let outcomes = install_defaults_to(&destinations).expect("install");
+        let outcomes = install_defaults_to(&destinations, false).expect("install");
 
         // Then `general.md` lands under the personas root.
         let outcome = outcome_for(&outcomes, "general.md");
@@ -373,7 +371,7 @@ mod tests {
         let (destinations, _temps) = fresh_destinations();
 
         // When installing defaults.
-        let outcomes = install_defaults_to(&destinations).expect("install");
+        let outcomes = install_defaults_to(&destinations, false).expect("install");
 
         // Then `plan.md` lands under the prompts root.
         let outcome = outcome_for(&outcomes, "plan.md");
@@ -389,7 +387,7 @@ mod tests {
         let (destinations, _temps) = fresh_destinations();
 
         // When installing defaults.
-        let outcomes = install_defaults_to(&destinations).expect("install");
+        let outcomes = install_defaults_to(&destinations, false).expect("install");
 
         // Then the nested skill keeps its `<name>/SKILL.md` structure.
         let outcome = outcome_for(&outcomes, "phased-task-loop/SKILL.md");
@@ -407,8 +405,8 @@ mod tests {
         let (destinations, _temps) = fresh_destinations();
 
         // When running install a second time (after a first full run).
-        install_defaults_to(&destinations).expect("first install");
-        let second = install_defaults_to(&destinations).expect("second install");
+        install_defaults_to(&destinations, false).expect("first install");
+        let second = install_defaults_to(&destinations, false).expect("second install");
 
         // Then every outcome is Skipped and nothing reports Created.
         assert!(
@@ -425,7 +423,7 @@ mod tests {
         let (destinations, _temps) = fresh_destinations();
 
         // When installing defaults.
-        let outcomes = install_defaults_to(&destinations).expect("install");
+        let outcomes = install_defaults_to(&destinations, false).expect("install");
 
         // Then every outcome path is absolute (full path for the CLI to print).
         assert!(
@@ -434,5 +432,64 @@ mod tests {
         );
         // And the count matches the bundled catalogue size.
         assert_eq!(outcomes.len(), BUNDLED.len());
+    }
+
+    #[test]
+    fn install_overwrites_theme_when_force() {
+        // Given a destinations dir where `default.toml` already exists.
+        let (destinations, _temps) = fresh_destinations();
+        let existing = destinations.themes.join("default.toml");
+        std::fs::create_dir_all(destinations.themes.clone()).unwrap();
+        std::fs::write(&existing, "PRE-EXISTING").unwrap();
+
+        // When installing defaults with overwrite enabled.
+        let outcomes = install_defaults_to(&destinations, true).expect("install");
+
+        // Then `default.toml` is reported as overwritten (not skipped).
+        let outcome = outcome_for(&outcomes, "default.toml");
+        assert!(
+            matches!(outcome, InstallOutcome::Overwritten(_)),
+            "default.toml should be Overwritten"
+        );
+    }
+
+    #[test]
+    fn install_force_replaces_with_bundled_contents() {
+        // Given a destinations dir where `default.toml` holds stale contents,
+        // and a second destinations dir installed fresh to capture the bundled bytes.
+        let (destinations, _temps) = fresh_destinations();
+        let (bundled, _bundled_temps) = fresh_destinations();
+        let existing = destinations.themes.join("default.toml");
+        std::fs::create_dir_all(destinations.themes.clone()).unwrap();
+        std::fs::write(&existing, "PRE-EXISTING").unwrap();
+        install_defaults_to(&bundled, false).expect("capture bundled contents");
+        let bundled_default = bundled.themes.join("default.toml");
+        let expected = std::fs::read_to_string(&bundled_default).expect("read bundled");
+
+        // When installing with overwrite enabled.
+        install_defaults_to(&destinations, true).expect("install");
+
+        // Then the overwritten file matches the bundled contents, not the stale value.
+        let contents = std::fs::read_to_string(&existing).expect("read");
+        assert_eq!(contents, expected);
+    }
+
+    #[test]
+    fn install_idempotent_under_force() {
+        // Given a fully-installed destinations dir (files already match the bundled bytes).
+        let (destinations, _temps) = fresh_destinations();
+        install_defaults_to(&destinations, false).expect("first install");
+
+        // When installing again with overwrite enabled.
+        let second = install_defaults_to(&destinations, true).expect("force install");
+
+        // Then every outcome is Overwritten — overwrite rewrites unconditionally,
+        // with no content-diff short-circuit that would report Skipped.
+        assert!(
+            second
+                .iter()
+                .all(|o| matches!(o, InstallOutcome::Overwritten(_))),
+            "force run must overwrite everything, even unchanged files"
+        );
     }
 }
