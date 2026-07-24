@@ -51,6 +51,14 @@ pub struct ExecuteTool {
     pub tool_call: ToolCall,
     /// When the original LLM request was dispatched.
     pub dispatched_at: Timestamp,
+    /// Max output lines for truncating results. Forwarded from user
+    /// preferences by the orchestrator; `None` lets the provider pick its
+    /// own default. MCP tool results are truncated the same way builtins are.
+    #[serde(default)]
+    pub max_output_lines: Option<usize>,
+    /// Max output bytes for truncating results.
+    #[serde(default)]
+    pub max_output_bytes: Option<usize>,
 }
 
 /// Cancel all pending tool executions for a session.

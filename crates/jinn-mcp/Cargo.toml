@@ -18,6 +18,10 @@ default = []
 # `testkit` exposes constructors for rmcp's `#[non_exhaustive]` model types,
 # so downstream crates (jinn-domain) can build fixtures in their own tests.
 testkit = []
+# `server-testkit` exposes a stub MCP server builder so downstream tests can drive
+# a real `McpClient` over an in-memory transport without spawning a child process.
+# Enables rmcp's `server` feature (kept out of production builds).
+server-testkit = ["testkit", "rmcp/server"]
 
 [dev-dependencies]
 rstest = { workspace = true }
@@ -32,6 +36,5 @@ rmcp = { workspace = true, features = ["client", "server"] }
 [[test]]
 name = "stub_server"
 required-features = ["testkit"]
-
 [lints]
 workspace = true

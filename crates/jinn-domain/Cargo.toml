@@ -75,7 +75,7 @@ rusqlite = { workspace = true }
 indoc = "2"
 rstest = { workspace = true }
 jinn-testutil = { workspace = true }
-jinn-mcp = { workspace = true, features = ["testkit"] }
+jinn-mcp = { workspace = true, features = ["testkit", "server-testkit"] }
 tokio = { workspace = true, features = ["test-util"] }
 jinn-common = { workspace = true, features = ["testing"] }
 trybuild = "1"
