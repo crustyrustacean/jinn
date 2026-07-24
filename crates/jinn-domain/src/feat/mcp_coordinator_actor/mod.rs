@@ -420,7 +420,8 @@ mod lifecycle_tests {
         // Given a lifecycle actor with one configured server and a status recorder.
         let harness = TestHarness::new().await;
         let recorder = harness.spawn_recorder::<McpServerStatus>().await;
-        let (_actor, _services, _state) = spawn_lifecycle(&harness, vec![unrunnable_server()]).await;
+        let (_actor, _services, _state) =
+            spawn_lifecycle(&harness, vec![unrunnable_server()]).await;
         let session_id = SessionId::new();
 
         // When enabling that server for the session.
@@ -471,7 +472,8 @@ mod lifecycle_tests {
         // Given a lifecycle actor with an enabled server for a session.
         let harness = TestHarness::new().await;
         let _recorder = harness.spawn_recorder::<McpServerStatus>().await;
-        let (_actor, _services, _state) = spawn_lifecycle(&harness, vec![unrunnable_server()]).await;
+        let (_actor, _services, _state) =
+            spawn_lifecycle(&harness, vec![unrunnable_server()]).await;
         let session_id = SessionId::new();
         harness
             .publish(McpEnablementChanged {
@@ -503,7 +505,8 @@ mod lifecycle_tests {
         // Given a lifecycle actor with one configured server.
         let harness = TestHarness::new().await;
         let recorder = harness.spawn_recorder::<McpServerStatus>().await;
-        let (_actor, _services, _state) = spawn_lifecycle(&harness, vec![unrunnable_server()]).await;
+        let (_actor, _services, _state) =
+            spawn_lifecycle(&harness, vec![unrunnable_server()]).await;
         let session_id = SessionId::new();
 
         // When enabling the server (spawn #1: Starting + Dead on failed connect).
@@ -556,8 +559,6 @@ mod lifecycle_tests {
 mod status_tests {
     #![allow(clippy::expect_used, clippy::panic, reason = "test code")]
 
-    use std::collections::BTreeSet;
-
     use kameo::actor::Spawn;
 
     use crate::common::actor_deps::ActorDeps;
@@ -574,9 +575,7 @@ mod status_tests {
 
     /// Spawns a coordinator and seeds one session into its state so status
     /// events for that session land somewhere to write.
-    async fn spawn_with_session(
-        harness: &TestHarness,
-    ) -> (State, SessionId) {
+    async fn spawn_with_session(harness: &TestHarness) -> (State, SessionId) {
         let services = harness.services().await;
         services
             .user_preferences_storage
@@ -588,7 +587,9 @@ mod status_tests {
         // Insert an active session so the coordinator has a target to write to.
         state.write_test_no_cap().session.get_or_create(&session_id);
         let actor = McpCoordinatorActor::spawn(McpCoordinatorActorDeps {
-            deps: ActorDeps { services: services.clone() },
+            deps: ActorDeps {
+                services: services.clone(),
+            },
             root,
             state: state.clone(),
             cap: crate::common::tcaps::mint::mint_session_cap(),
@@ -599,7 +600,8 @@ mod status_tests {
 
     fn status_of(state: &State, sid: &SessionId, server: &str) -> Option<McpConnectionStatus> {
         let g = state.read();
-        g.session.get(sid).and_then(|s| s.mcp_server_status().get(server).copied())
+        let s = g.session.get(sid)?;
+        s.mcp_server_status().get(server).copied()
     }
 
     #[tokio::test]
@@ -672,5 +674,5 @@ mod status_tests {
             Some(McpConnectionStatus::Running)
         );
         assert_eq!(status_of(&state, &session_b, "excalimate"), None);
-}
+    }
 }

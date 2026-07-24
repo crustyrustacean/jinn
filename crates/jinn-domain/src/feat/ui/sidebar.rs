@@ -9,6 +9,7 @@
 //! next/previous section.
 
 pub mod intent;
+pub mod mcp_servers_section;
 pub mod persona_section;
 pub mod pins;
 pub mod section_trait;
@@ -40,5 +41,6 @@ pub fn register_sections(sidebar: &mut Sidebar) {
     sidebar.register(Box::new(persona_section::PersonaSection));
     sidebar.register(Box::new(pins::PinsSection));
     sidebar.register(Box::new(task_list_section::TaskListSection));
+    sidebar.register(Box::new(mcp_servers_section::McpServersSection));
     sidebar.register(Box::new(sessions::SessionsSection::new()));
 }

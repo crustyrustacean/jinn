@@ -130,12 +130,12 @@ mod tests {
         let harness = TestHarness::new().await;
         let (tx, _actor) = spawn_translator(&harness).await;
         let state = State::new(AppState::default());
-        let _dash = DashboardActor::spawn(DashboardActorDeps {
+        let dash = DashboardActor::spawn(DashboardActorDeps {
             deps: harness.actor_deps().await,
             state: state.clone(),
             cap: crate::common::tcaps::mint::mint_frontend_cap(),
         });
-        _dash.wait_for_startup().await;
+        dash.wait_for_startup().await;
 
         // When the gateway sends a Connected update down the kanal channel.
         let _ = tx.send(DiscordStatusUpdate::Connected);

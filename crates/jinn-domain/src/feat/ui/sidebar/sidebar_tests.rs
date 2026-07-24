@@ -455,6 +455,8 @@ fn sessions_header_anchored_to_bottom() {
 #[rstest::rstest]
 fn sessions_header_below_persona_when_sidebar_is_short() {
     // Given a sidebar with all sections and a short area (8 rows).
+    // Empty sections (Pins, TaskList, McpServers) collapse to 0 height, so the
+    // default layout renders Persona(4) + Sessions(2) only.
     let mut sidebar = sidebar_with_all_sections();
     let state = AppState::default();
 
@@ -481,7 +483,6 @@ fn sessions_header_below_persona_when_sidebar_is_short() {
         sessions_row.is_some(),
         "should find 'Sessions' footer in buffer"
     );
-    // Sessions footer should not be at row 0 (top), should be at row 7.
     assert_eq!(
         sessions_row,
         Some(7),

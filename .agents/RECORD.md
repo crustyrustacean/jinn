@@ -50,6 +50,7 @@ Entries are added or amended **only with human approval**.
 - (context) The `context_files_scan_actor` walks the bounded ancestor chain, reads the first existing candidate (AGENTS.md / CLAUDE.md) per dir, and writes results into the session's discovered set.
 - (context) `#name` prompt-template tokens in user text expand to the template body; `@path` tokens resolve to `file://` URIs against cwd/home and are consumed in a second expansion pass.
 - (dashboard) The dashboard tab tracks actor lifecycle (starting/running/dead) and browser-binary detection (Chrome vs bundled) for the web-fetch feature.
+- (dashboard) `frontend.dashboard` is owned by `DashboardActor`, fed exclusively by events; `DiscordStatusActor` republishes its gateway status as a `DiscordStatusUpdate` event rather than writing the dashboard directly.
 - (discovery) Project discovery walks ancestors from the session cwd up to either a VCS root or `$HOME`, whichever comes first; `$HOME` is exclusive.
 - (discovery) VCS roots are detected by marker files (`.git`, `.hg`, `.fslckout`, `.fossil`, `.jj`), not by shelling out to a VCS CLI.
 - (discovery) A discovery coordinator orchestrates project, browser-binary, file-listing, and skills scans across ancestor dirs; a notifier surfaces settled results to the session.
@@ -78,6 +79,8 @@ Entries are added or amended **only with human approval**.
 - (mcp) MCP tools are namespaced `mcp__<server>__<tool>` and registered per-session via `RegisterTools { session_id: Some(_) }`.
 - (mcp) MCP server enablement is per-session, persisted in `SessionCore`, off by default; enabling spawns the actor+process, disabling kills both.
 - (mcp) MCP servers are configured in `jinn.toml` under `[[mcp_servers]]`.
+- (mcp) MCP server child processes have piped stderr captured to a bounded ring buffer owned by each `McpActor`; stderr never reaches jinn's terminal.
+- (mcp) Per-session MCP server status is owned by `McpCoordinatorActor`, driven by `McpServerStatus` events; it is surfaced in the sidebar, not the dashboard.
 - (tools) Actor-provided tools route by their registration `provider` prefix via the generic `ExecuteTool` command, not a hardcoded per-name match; `web-fetch`/`web-search` remain distinct provider keys.
 - (paths) Config lives at `~/.config/jinn` (providers, prompts, personas, themes, `jinn.toml`).
 - (paths) Data lives at `~/.local/share/jinn` (`sessions.db`).
@@ -134,7 +137,7 @@ Entries are added or amended **only with human approval**.
 - (ui) The chat input popup narrows rows by typed prefix and renders directory entries with trailing slashes, plus empty/loading states.
 - (ui) The dashboard tab layout uses the full terminal width; the chat tab layout is the normal chat layout.
 - (ui) The sidebar can enter an interactive resize mode (via `sidebar_resize`) to adjust its width.
-- (ui) The sidebar has four sections — Persona, Pins, TaskList, Sessions — with cyclic navigation (Persona→Pins→TaskList→Sessions and back).
+- (ui) The sidebar has five sections — Persona, Pins, TaskList, McpServers, Sessions — with cyclic navigation.
 - (ui) The sidebar restores history position when leaving Pins, and the Sessions section is anchored to the bottom of the sidebar.
 - (watchdog) A stall watchdog detects sessions stuck in sending, mid-tool-batch stalls, and streaming sessions with no history change, and publishes a cancel after the budget is exhausted.
 - (watchdog) An idle session is never scanned by the watchdog, and an active streaming session is never flagged.
