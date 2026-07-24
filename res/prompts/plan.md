@@ -28,7 +28,7 @@ Before any analysis, read `.agents/RECORD.md` if it exists. This file is the pro
 - **Contradictions gate the plan.** If the intended feature changes, breaks, or replaces the behavior described by any entry, surface the conflict as a dialectic question before proposing a plan. Do not silently work around a recorded fact.
 - **Gaps are opportunities to fill the record.** If the feature establishes a new high-level fact about the application, capture it as a verbatim, scoped entry and surface it in the plan's "Record Updates" section for human approval. Do not record implementation minutiae.
 - **Absence is not a constraint.** If an area has no entry, or the file is missing, proceed normally — absence simply means nothing is recorded there yet, and the feature may establish the first entry.
-- **You do not edit the record mid-planning.** Propose additions/amendments in the plan only; they take effect at the **end of implementation** (via the "Update the Record" task), never at plan approval.
+- **You do not edit the record mid-planning.** Propose additions/amendments in the plan only; they take effect at the **end of implementation**, never at plan approval.
 
 Use the record's format rules (factual, scoped, high-level) and templates when proposing any new entry, so proposed additions are well-formed and unambiguous.
 
