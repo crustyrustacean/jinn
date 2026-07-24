@@ -420,6 +420,7 @@ impl IntentHandler {
             Intent::ToolToggleSelected => feat::picker::intent::handle_tool_toggle(state),
             Intent::SkillToggleSelected => feat::picker::intent::handle_skill_toggle(state),
             Intent::McpToggleSelected => feat::mcp::intent::handle_mcp_toggle(state),
+            Intent::SkillLoadSelected => feat::picker::intent::handle_skill_load_selected(state),
             Intent::ProjectNewAtHighlightedWithLifecycle => {
                 feat::picker::intent::handle_project_lifecycle_confirm(state)
             }
