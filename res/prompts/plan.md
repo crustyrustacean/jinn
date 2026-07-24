@@ -28,7 +28,7 @@ Before any analysis, read `.agents/RECORD.md` if it exists. This file is the pro
 - **Contradictions gate the plan.** If the intended feature changes, breaks, or replaces the behavior described by any entry, surface the conflict as a dialectic question before proposing a plan. Do not silently work around a recorded fact.
 - **Gaps are opportunities to fill the record.** If the feature establishes a new high-level fact about the application, capture it as a verbatim, scoped entry and surface it in the plan's "Record Updates" section for human approval. Do not record implementation minutiae.
 - **Absence is not a constraint.** If an area has no entry, or the file is missing, proceed normally — absence simply means nothing is recorded there yet, and the feature may establish the first entry.
-- **You do not edit the record mid-planning.** Propose additions/amendments in the plan only; they take effect once the plan is approved and applied.
+- **You do not edit the record mid-planning.** Propose additions/amendments in the plan only; they take effect at the **end of implementation** (via the "Update the Record" task), never at plan approval.
 
 Use the record's format rules (factual, scoped, high-level) and templates when proposing any new entry, so proposed additions are well-formed and unambiguous.
 
@@ -68,7 +68,7 @@ Use the record's format rules (factual, scoped, high-level) and templates when p
     - Once the architecture is sound, propose a **High-Level Plan** as a _regular chat response_.
     - **Format Constraint:** The Plan must be _brief_ and readable. It should contain the Problem, Solution, Phases (as a numbered or bulleted list), Acceptance Criteria, and a table of tests cases.
     - **Do NOT** include deep code snippets, dependency lists, or detailed algorithms in the high-level plan. The goal is to confirm _direction_, not _implementation details_.
-    - **Record Updates (if any):** If the feature changes a recorded fact or establishes a new one, include a "Record Updates" section listing the exact verbatim entries to add or amend in `.agents/RECORD.md`. These take effect only on plan approval. DO NOT EDIT THE RECORD.
+    - **Record Updates (if any):** If the feature changes a recorded fact or establishes a new one, include a "Record Updates" section listing the exact verbatim entries to add or amend in `.agents/RECORD.md`. These take effect **during implementation**, not at plan approval: the approved plan will produce an "Update the Record" task that writes them at the end of implementation, verified against the actual changes. DO NOT EDIT THE RECORD during planning.
     - **CRITICAL:** WAIT FOR USER APPROVAL.
 
 ## Notes
