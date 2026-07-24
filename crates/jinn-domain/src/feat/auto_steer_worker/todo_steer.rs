@@ -51,7 +51,7 @@ use std::collections::HashMap;
 use std::sync::{Arc, Mutex};
 
 /// Default enabled state for todo auto-steer.
-const DEFAULT_TODO_STEER_ENABLED: bool = true;
+const DEFAULT_TODO_STEER_ENABLED: bool = false;
 
 /// Default reminder threshold for todo auto-steer.
 ///
@@ -59,7 +59,7 @@ const DEFAULT_TODO_STEER_ENABLED: bool = true;
 /// call (or prior reminder) before a new reminder is injected. Tuned for a
 /// lenient cadence that tolerates common multi-step recovery without nagging,
 /// while still catching genuine drift.
-const DEFAULT_TODO_STEER_THRESHOLD: usize = 100;
+const DEFAULT_TODO_STEER_THRESHOLD: usize = 200;
 
 /// Stable, recognizable sentinel prefixing every auto-steer reminder's entry
 /// text so the worker can identify its own previously-injected reminders when
