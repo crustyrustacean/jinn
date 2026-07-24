@@ -38,7 +38,7 @@ use parking_lot::Mutex;
 
 use crate::common::actor_deps::{ActorDeps, BusPublish};
 use crate::feat::mcp::McpServerConfig;
-use crate::feat::mcp_actor::protocol::{McpConnectionStatus, McpServerStatus};
+use crate::feat::mcp_actor::protocol::{McpConnectionStatus, McpServerLog, McpServerStatus};
 use crate::feat::tools_actor::protocol::command::{ExecuteTool, RegisterTools};
 use crate::feat::tools_actor::protocol::event::ToolExecutionCompleted;
 use crate::feat::tools_actor::tool_types::{ToolCall, ToolDefinition, ToolResult};
@@ -267,7 +267,8 @@ impl kameo::Actor for McpActor {
             McpConnectionStatus::Running,
         )
         .await;
-
+        // Surface any stderr emitted during startup (e.g. `npm warn`).
+        publish_log(&deps, &session_id, &server.name, &client.stderr_tail()).await;
         Ok(Self {
             deps,
             session_id,
@@ -281,6 +282,11 @@ impl kameo::Actor for McpActor {
         _actor_ref: kameo::actor::WeakActorRef<Self>,
         _reason: kameo::error::ActorStopReason,
     ) -> Result<(), Self::Error> {
+        let tail = self
+            .client
+            .as_ref()
+            .map(jinn_mcp::McpClient::stderr_tail)
+            .unwrap_or_default();
         if let Some(client) = self.client.as_mut() {
             client.shutdown().await;
         }
@@ -291,6 +297,7 @@ impl kameo::Actor for McpActor {
             McpConnectionStatus::Dead,
         )
         .await;
+        publish_log(&self.deps, &self.session_id, &self.server.name, &tail).await;
         Ok(())
     }
 }
@@ -309,6 +316,22 @@ async fn publish_status(
             session_id: session_id.clone(),
             server: server.to_owned(),
             status,
+        })
+        .await;
+}
+
+/// Publishes the captured stderr tail for this (session × server).
+///
+/// Best-effort: an empty tail is still published so subscribers can clear
+/// stale content. Called at status transitions and on shutdown.
+async fn publish_log(deps: &ActorDeps, session_id: &SessionId, server: &str, tail: &str) {
+    let () = deps
+        .services
+        .bus
+        .publish(McpServerLog {
+            session_id: session_id.clone(),
+            server: server.to_owned(),
+            tail: tail.to_owned(),
         })
         .await;
 }

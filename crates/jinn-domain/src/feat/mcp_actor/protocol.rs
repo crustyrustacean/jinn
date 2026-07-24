@@ -45,3 +45,21 @@ pub struct McpServerStatus {
 }
 
 impl crate::common::bus::BusMessage for McpServerStatus {}
+
+/// Captured stderr tail for one (session × server) `McpActor`.
+///
+/// Published by `McpActor` whenever new child-process stderr is drained.
+/// The payload is the bounded tail (newest content); subscribers keep a live
+/// view for a future log viewer. Published best-effort, alongside status
+/// transitions.
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct McpServerLog {
+    /// The session the actor serves.
+    pub session_id: SessionId,
+    /// The configured server name.
+    pub server: String,
+    /// The newest captured stderr content (bounded).
+    pub tail: String,
+}
+
+impl crate::common::bus::BusMessage for McpServerLog {}
