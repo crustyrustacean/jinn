@@ -263,6 +263,10 @@ pub fn init() -> Keymap<KeyEvent, Scope, Intent, KeyCategory> {
                 KeyCategory::Sidebar,
             );
         })
+        // Sidebar - MCP servers section (read-only in Part 1: nav only).
+        .scope(Scope::SidebarMcpServers, |b| {
+            add_sidebar_base(b);
+        })
         // Input scope: typing into the input buffer
         .scope(Scope::Input, |b| {
             b.bind("<enter>", Intent::SubmitMessage, KeyCategory::Input)

@@ -1767,7 +1767,9 @@ impl ChatSessionState {
         server: &str,
         status: crate::feat::mcp_actor::protocol::McpConnectionStatus,
     ) {
-        self.core.mcp_server_status.insert(server.to_owned(), status);
+        self.core
+            .mcp_server_status
+            .insert(server.to_owned(), status);
     }
 
     /// Returns `true` if the skill is enabled for this session.

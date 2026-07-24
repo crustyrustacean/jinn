@@ -20,6 +20,8 @@ pub enum Scope {
     SidebarSessions,
     /// Sidebar - Task list section.
     SidebarTaskList,
+    /// Sidebar - MCP servers section.
+    SidebarMcpServers,
     /// Picker - Provider/model selection.
     PickerProvider,
     /// Picker - Session browser.
@@ -77,6 +79,7 @@ impl std::fmt::Display for Scope {
             Self::SidebarPins => write!(f, "SidebarPins"),
             Self::SidebarSessions => write!(f, "SidebarSessions"),
             Self::SidebarTaskList => write!(f, "SidebarTaskList"),
+            Self::SidebarMcpServers => write!(f, "SidebarMcpServers"),
             Self::PickerProvider => write!(f, "Picker(provider)"),
             Self::PickerSession => write!(f, "Picker(session)"),
             Self::PickerPersona => write!(f, "Picker(persona)"),
@@ -114,6 +117,7 @@ impl std::str::FromStr for Scope {
             "SidebarPins" => Ok(Self::SidebarPins),
             "SidebarSessions" => Ok(Self::SidebarSessions),
             "SidebarTaskList" => Ok(Self::SidebarTaskList),
+            "SidebarMcpServers" => Ok(Self::SidebarMcpServers),
             "Picker(provider)" => Ok(Self::PickerProvider),
             "Picker(session)" => Ok(Self::PickerSession),
             "Picker(persona)" => Ok(Self::PickerPersona),
