@@ -33,6 +33,8 @@ pub enum PickerKind {
     /// Project picker - curated project directories; create a new session rooted
     /// at the highlighted dir with `<enter>` (or `<c-enter>` to also pick a lifecycle).
     Project,
+    /// MCP server picker - toggle which MCP servers are enabled for the session.
+    McpServer,
 }
 
 impl std::fmt::Display for PickerKind {
@@ -53,6 +55,7 @@ impl std::fmt::Display for PickerKind {
             Self::Skill => write!(f, "skills"),
             Self::TaskList => write!(f, "task list"),
             Self::Project => write!(f, "projects"),
+            Self::McpServer => write!(f, "mcp servers"),
         }
     }
 }
@@ -83,7 +86,8 @@ impl PickerKind {
             | Self::Tool
             | Self::Skill
             | Self::TaskList
-            | Self::Project => 1,
+            | Self::Project
+            | Self::McpServer => 1,
         }
     }
 }

@@ -137,6 +137,12 @@ pub struct UserPreferences {
     #[serde(default)]
     pub projects: Vec<ProjectConfig>,
 
+    /// Configured MCP servers (Model Context Protocol). Each entry declares
+    /// a server jinn connects to over stdio when enabled per-session. See
+    /// [`McpServerConfig`].
+    #[serde(default)]
+    pub mcp_servers: Vec<crate::feat::mcp::McpServerConfig>,
+
     /// Maximum number of lines for tool output before truncation.
     /// `None` means use the built-in default (2000 lines).
     #[serde(default)]
@@ -238,6 +244,7 @@ impl Default for UserPreferences {
                 },
             ],
             projects: vec![],
+            mcp_servers: vec![],
             max_tool_output_lines: None,
             max_tool_output_bytes: None,
             compaction: CompactionConfig::default(),
@@ -445,6 +452,7 @@ where
         patcher.register_array_key(["session_lifecycle"], "name");
         patcher.register_array_key(["auto_prune", "regex", "rules"], "pattern");
         patcher.register_array_key(["project"], "path");
+        patcher.register_array_key(["mcp_servers"], "name");
 
         patcher
             .apply(new_table, doc.as_table_mut())
@@ -636,6 +644,7 @@ mod tests {
             auto_prune: AutoPruneConfig::default(),
             todo_auto_steer: TodoAutoSteerConfig::default(),
             projects: vec![],
+            mcp_servers: vec![],
             discord: crate::feat::discord::DiscordConfig::default(),
             tool_default_timeout_secs: default_tool_default_timeout_secs(),
             history_stall_timeout_secs: default_history_stall_timeout_secs(),
@@ -722,6 +731,7 @@ mod tests {
             auto_prune: AutoPruneConfig::default(),
             todo_auto_steer: TodoAutoSteerConfig::default(),
             projects: vec![],
+            mcp_servers: vec![],
             discord: crate::feat::discord::DiscordConfig::default(),
             tool_default_timeout_secs: default_tool_default_timeout_secs(),
             history_stall_timeout_secs: default_history_stall_timeout_secs(),
@@ -759,6 +769,7 @@ mod tests {
             auto_prune: AutoPruneConfig::default(),
             todo_auto_steer: TodoAutoSteerConfig::default(),
             projects: vec![],
+            mcp_servers: vec![],
             discord: crate::feat::discord::DiscordConfig::default(),
             tool_default_timeout_secs: default_tool_default_timeout_secs(),
             history_stall_timeout_secs: default_history_stall_timeout_secs(),
@@ -1067,6 +1078,7 @@ mod tests {
             auto_prune: AutoPruneConfig::default(),
             todo_auto_steer: TodoAutoSteerConfig::default(),
             projects: vec![],
+            mcp_servers: vec![],
             discord: crate::feat::discord::DiscordConfig::default(),
             tool_default_timeout_secs: default_tool_default_timeout_secs(),
             history_stall_timeout_secs: default_history_stall_timeout_secs(),

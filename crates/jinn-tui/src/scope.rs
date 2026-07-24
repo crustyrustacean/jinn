@@ -43,6 +43,8 @@ pub enum Scope {
     PickerTaskList,
     /// Picker - Curated project directory selection.
     PickerProject,
+    /// Picker - MCP server toggle selection.
+    PickerMcpServer,
     /// Input mode - typing into the input buffer.
     Input,
     /// Arg input mode - typing positional args for a lifecycle command.
@@ -87,6 +89,7 @@ impl std::fmt::Display for Scope {
             Self::PickerSkill => write!(f, "Picker(skill)"),
             Self::PickerTaskList => write!(f, "Picker(task-list)"),
             Self::PickerProject => write!(f, "Picker(project)"),
+            Self::PickerMcpServer => write!(f, "Picker(mcp-server)"),
             Self::Input => write!(f, "Input"),
             Self::Dashboard => write!(f, "Dashboard"),
             Self::ArgInput => write!(f, "ArgInput"),
@@ -123,6 +126,7 @@ impl std::str::FromStr for Scope {
             "Picker(skill)" => Ok(Self::PickerSkill),
             "Picker(task-list)" => Ok(Self::PickerTaskList),
             "Picker(project)" => Ok(Self::PickerProject),
+            "Picker(mcp-server)" => Ok(Self::PickerMcpServer),
             "Input" => Ok(Self::Input),
             "Dashboard" => Ok(Self::Dashboard),
             "ArgInput" => Ok(Self::ArgInput),

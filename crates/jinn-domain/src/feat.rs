@@ -22,6 +22,7 @@ pub mod image_convert;
 pub mod install;
 pub mod intent;
 pub mod llm_actor;
+pub mod mcp;
 pub mod navigation;
 pub mod persona;
 pub mod picker;

@@ -487,6 +487,10 @@ pub(crate) struct PersistableCore {
     /// OWNER: tools-actor (mutated by task list tools).
     #[serde(default)]
     task_list: crate::feat::todo_list::TaskList,
+    /// Names of MCP servers enabled for this session.
+    /// Persisted in the metadata blob; off by default.
+    #[serde(default)]
+    enabled_mcp_servers: std::collections::BTreeSet<String>,
     /// Whether this session should be persisted to disk.
     /// Defaults to true for blobs written by older versions.
     #[serde(default = "crate::feat::session::chat_session::default_persist")]
@@ -509,6 +513,7 @@ impl From<&SessionCore> for PersistableCore {
             lifecycle_args: core.lifecycle_args.clone(),
             lifecycle_script_state: core.lifecycle_script_state,
             task_list: core.task_list.clone(),
+            enabled_mcp_servers: core.enabled_mcp_servers.clone(),
             persist: core.persist,
         }
     }
@@ -540,6 +545,7 @@ impl From<PersistableCore> for SessionCore {
             assembly_overrides: None, // runtime-only, never persisted
             has_interacted: false, // restored sessions get mark_interacted() in handle_session_load_completed
             task_list: core.task_list,
+            enabled_mcp_servers: core.enabled_mcp_servers,
             persist: core.persist,
         }
     }
@@ -581,6 +587,7 @@ impl TryFrom<&ChatSessionState> for NewSessionRow {
                     assembly_overrides: _assembly_overrides, // runtime-only, not persisted
                     has_interacted: _has_interacted, // deserialized from DB, restored by handle_session_load_completed
                     task_list: _task_list, // included in metadata blob via PersistableCore
+                    enabled_mcp_servers: _enabled_mcp_servers, // included in metadata blob via PersistableCore
                 },
             ui: _ui, // runtime-only UI state, not persisted
         } = session;
