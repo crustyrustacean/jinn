@@ -417,9 +417,11 @@ async fn mcp_inspector_renders_server_list_and_logs_pane() {
             default_theme(),
         );
         w.frontend.mcp_server_picker_mut().set_items(vec![entry]);
-        w.frontend.scope_stack.push(jinn_domain::FocusScope::Picker {
-            kind: jinn_domain::PickerKind::McpServer,
-        });
+        w.frontend
+            .scope_stack
+            .push(jinn_domain::FocusScope::Picker {
+                kind: jinn_domain::PickerKind::McpServer,
+            });
     }
 
     let (mut terminal, _area) = setup_term(100, 30);
@@ -433,10 +435,23 @@ async fn mcp_inspector_renders_server_list_and_logs_pane() {
 
     // Then the buffer mentions the server name, the logs badge, and the stderr tail.
     let buf = terminal.backend().buffer();
-    let rendered: String = buf.content.iter().map(|c| c.symbol()).collect();
-    assert!(rendered.contains("excalimate"), "server list shows the server name");
-    assert!(rendered.contains("running"), "logs pane shows the status badge");
-    assert!(rendered.contains("hello from stderr"), "logs pane shows the stderr tail");
+    let rendered: String = buf
+        .content
+        .iter()
+        .map(ratatui::buffer::Cell::symbol)
+        .collect();
+    assert!(
+        rendered.contains("excalimate"),
+        "server list shows the server name"
+    );
+    assert!(
+        rendered.contains("running"),
+        "logs pane shows the status badge"
+    );
+    assert!(
+        rendered.contains("hello from stderr"),
+        "logs pane shows the stderr tail"
+    );
 }
 
 #[rstest::rstest]
@@ -473,9 +488,11 @@ async fn mcp_inspector_tools_pane_renders_tool_names() {
         );
         entry.preview_mode = McpPreviewMode::Tools;
         w.frontend.mcp_server_picker_mut().set_items(vec![entry]);
-        w.frontend.scope_stack.push(jinn_domain::FocusScope::Picker {
-            kind: jinn_domain::PickerKind::McpServer,
-        });
+        w.frontend
+            .scope_stack
+            .push(jinn_domain::FocusScope::Picker {
+                kind: jinn_domain::PickerKind::McpServer,
+            });
     }
 
     let (mut terminal, _area) = setup_term(100, 30);
@@ -489,6 +506,13 @@ async fn mcp_inspector_tools_pane_renders_tool_names() {
 
     // Then the tools pane shows the advertised tool name.
     let buf = terminal.backend().buffer();
-    let rendered: String = buf.content.iter().map(|c| c.symbol()).collect();
-    assert!(rendered.contains("create_scene"), "tools pane shows the tool name");
+    let rendered: String = buf
+        .content
+        .iter()
+        .map(ratatui::buffer::Cell::symbol)
+        .collect();
+    assert!(
+        rendered.contains("create_scene"),
+        "tools pane shows the tool name"
+    );
 }
