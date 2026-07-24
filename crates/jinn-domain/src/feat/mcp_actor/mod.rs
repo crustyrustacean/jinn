@@ -610,6 +610,7 @@ mod tests {
             name: "excalimate".to_owned(),
             command: "npx".to_owned(),
             args: vec!["@excalimate/mcp-server".to_owned(), "--stdio".to_owned()],
+            ..Default::default()
         };
 
         // When building the command.

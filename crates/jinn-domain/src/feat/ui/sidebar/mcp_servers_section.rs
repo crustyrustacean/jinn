@@ -273,6 +273,7 @@ mod tests {
             name: name.to_owned(),
             command: "echo".to_owned(),
             args: vec![],
+            ..Default::default()
         }
     }
 

@@ -43,6 +43,7 @@ fn stub_config() -> McpServerConfig {
         name: SERVER_NAME.to_owned(),
         command: String::new(),
         args: vec![],
+        ..Default::default()
     }
 }
 

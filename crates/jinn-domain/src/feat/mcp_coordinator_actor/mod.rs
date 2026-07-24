@@ -394,6 +394,7 @@ mod lifecycle_tests {
             name: "unrunnable".to_owned(),
             command: "/this/command/does/not/exist".to_owned(),
             args: vec![],
+            ..Default::default()
         }
     }
 
