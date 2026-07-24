@@ -72,6 +72,7 @@ pub fn handle_mcp_toggle(state: &mut AppState) -> IntentResult {
 /// wiring); this handler only persists the enablement decision and pops the
 /// picker scope.
 pub(crate) fn confirm_mcp(state: &mut AppState) -> IntentResult {
+    let session_id = state.active_session().session_id().clone();
     let enabled: BTreeSet<String> = state
         .frontend
         .mcp_server_picker()
@@ -81,8 +82,16 @@ pub(crate) fn confirm_mcp(state: &mut AppState) -> IntentResult {
         .map(|entry| entry.name.clone())
         .collect();
 
-    state.active_session_mut().set_enabled_mcp_servers(enabled);
+    state.active_session_mut().set_enabled_mcp_servers(enabled.clone());
     *state.frontend.mcp_server_picker_snapshot_mut() = None;
     state.frontend.scope_stack.pop();
-    IntentResult::empty()
+
+    // Signal the MCP lifecycle actor to spawn/kill `McpActor`s for the diff
+    // between this desired set and the currently-running ones.
+    IntentResult::with_message(
+        crate::feat::mcp_lifecycle_actor::protocol::McpEnablementChanged {
+            session_id,
+            enabled,
+        },
+    )
 }

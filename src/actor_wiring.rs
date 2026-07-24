@@ -437,6 +437,29 @@ jinn_domain::feat::preferences_actor::preferences_actor::PreferencesActor::super
         );
         _tools.wait_for_startup().await;
 
+        // MCP lifecycle actor: subscribes to session lifecycle events +
+        // McpEnablementChanged, spawning/killing one McpActor per
+        // (session × enabled server). Spawned after the tool orchestrator so
+        // tool registrations from McpActor land in an already-running
+        // orchestrator. Restored sessions are picked up via SessionLoadCompleted;
+        // no startup scan is needed here.
+        let _mcp_lifecycle = spawn_tracked!(
+            &services.bus,
+            "mcp-lifecycle",
+            "McpLifecycleActor",
+            jinn_domain::feat::mcp_lifecycle_actor::McpLifecycleActor::supervise(
+                &root,
+                jinn_domain::feat::mcp_lifecycle_actor::McpLifecycleActorDeps {
+                    deps: actor_deps.clone(),
+                    root: root.clone(),
+                },
+            )
+            .restart_policy(kameo::supervision::RestartPolicy::Never)
+            .spawn()
+            .await
+        );
+        _mcp_lifecycle.wait_for_startup().await;
+
         // Web fetch + web search actors.
         //
         // Browser-backed tools share one process per MODE (headless/headed): if
