@@ -2022,6 +2022,7 @@ dependencies = [
  "futures",
  "fuzzy-matcher",
  "humantime",
+ "indoc",
  "jiff",
  "jinn-common",
  "jinn-core-types",

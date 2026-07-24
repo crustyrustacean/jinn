@@ -82,7 +82,9 @@ pub(crate) fn confirm_mcp(state: &mut AppState) -> IntentResult {
         .map(|entry| entry.name.clone())
         .collect();
 
-    state.active_session_mut().set_enabled_mcp_servers(enabled.clone());
+    state
+        .active_session_mut()
+        .set_enabled_mcp_servers(enabled.clone());
     *state.frontend.mcp_server_picker_snapshot_mut() = None;
     state.frontend.scope_stack.pop();
 

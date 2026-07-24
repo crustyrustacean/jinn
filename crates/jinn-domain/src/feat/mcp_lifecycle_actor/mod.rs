@@ -22,7 +22,6 @@
 
 pub mod protocol;
 
-
 use std::collections::{BTreeSet, HashMap};
 
 use kameo::actor::{ActorRef, Spawn};
@@ -30,6 +29,7 @@ use kameo::prelude::{Context, Message};
 use kameo::supervision::RestartPolicy;
 use parking_lot::Mutex;
 
+use crate::Services;
 use crate::common::actor_deps::{ActorDeps, BusPublish};
 use crate::common::root_supervisor::RootSupervisorRef;
 use crate::common::services::bus_service::BusService;
@@ -39,11 +39,8 @@ use crate::feat::mcp_lifecycle_actor::protocol::{McpEnablementChanged, RestartMc
 use crate::feat::session::protocol::session_archived::SessionArchived;
 use crate::feat::session::protocol::session_closed::SessionClosed;
 use crate::feat::session::protocol::session_load_completed::SessionLoadCompleted;
-use crate::feat::session_lifecycle::protocol::event::{
-    SessionCreated, SessionTeardownFinished,
-};
+use crate::feat::session_lifecycle::protocol::event::{SessionCreated, SessionTeardownFinished};
 use crate::protocol::SessionId;
-use crate::Services;
 
 /// Key into the spawned-actor map: one `McpActor` per (session × server).
 type SpawnKey = (SessionId, String);
@@ -246,17 +243,12 @@ fn configured_servers(services: &Services) -> Vec<McpServerConfig> {
     prefs.mcp_servers.clone()
 }
 
-
 // ── Message handlers ─────────────────────────────────────────────────────
 
 impl Message<SessionLoadCompleted> for McpLifecycleActor {
     type Reply = ();
 
-    async fn handle(
-        &mut self,
-        msg: SessionLoadCompleted,
-        _ctx: &mut Context<Self, Self::Reply>,
-    ) {
+    async fn handle(&mut self, msg: SessionLoadCompleted, _ctx: &mut Context<Self, Self::Reply>) {
         // Given a session restored from disk.
         let session_id = msg.session.session_id().clone();
         let enabled = msg.session.enabled_mcp_servers().clone();
@@ -283,11 +275,7 @@ impl Message<SessionCreated> for McpLifecycleActor {
 impl Message<McpEnablementChanged> for McpLifecycleActor {
     type Reply = ();
 
-    async fn handle(
-        &mut self,
-        msg: McpEnablementChanged,
-        _ctx: &mut Context<Self, Self::Reply>,
-    ) {
+    async fn handle(&mut self, msg: McpEnablementChanged, _ctx: &mut Context<Self, Self::Reply>) {
         // Given a new desired enablement set for a session.
         // When reconciling.
         self.reconcile(&msg.session_id, &msg.enabled).await;
@@ -325,12 +313,172 @@ impl Message<SessionTeardownFinished> for McpLifecycleActor {
 impl Message<RestartMcpServer> for McpLifecycleActor {
     type Reply = ();
 
-    async fn handle(
-        &mut self,
-        msg: RestartMcpServer,
-        _ctx: &mut Context<Self, Self::Reply>,
-    ) {
+    async fn handle(&mut self, msg: RestartMcpServer, _ctx: &mut Context<Self, Self::Reply>) {
         self.restart_one(&msg.session_id, &msg.server).await;
     }
 }
 
+#[cfg(test)]
+mod lifecycle_tests {
+    #![allow(
+        clippy::expect_used,
+        clippy::indexing_slicing,
+        clippy::panic,
+        reason = "test code"
+    )]
+
+    use std::collections::BTreeSet;
+
+    use kameo::actor::Spawn;
+
+    use crate::common::actor_deps::ActorDeps;
+    use crate::common::bus::test_harness::{TestHarness, await_recorded};
+    use crate::common::root_supervisor::RootSupervisor;
+    use crate::feat::mcp::McpServerConfig;
+    use crate::feat::mcp_actor::protocol::{McpConnectionStatus, McpServerStatus};
+    use crate::feat::preferences_actor::user_preferences::UserPreferences;
+    use crate::protocol::SessionId;
+
+    use super::{McpLifecycleActor, McpLifecycleActorDeps};
+    use crate::feat::mcp_lifecycle_actor::protocol::McpEnablementChanged;
+    use crate::feat::session::protocol::session_closed::SessionClosed;
+
+    /// A configured MCP server whose command will never spawn successfully,
+    /// so the spawned `McpActor` publishes Starting then Dead (never Running).
+    fn unrunnable_server() -> McpServerConfig {
+        McpServerConfig {
+            name: "unrunnable".to_owned(),
+            command: "/this/command/does/not/exist".to_owned(),
+            args: vec![],
+        }
+    }
+
+    async fn spawn_lifecycle(
+        harness: &TestHarness,
+        servers: Vec<McpServerConfig>,
+    ) -> (kameo::actor::ActorRef<McpLifecycleActor>, crate::Services) {
+        let services = harness.services().await;
+        services
+            .user_preferences_storage
+            .save(&UserPreferences {
+                mcp_servers: servers,
+                ..UserPreferences::default()
+            })
+            .expect("seed prefs");
+        let root = RootSupervisor::spawn_root().await;
+        let actor = McpLifecycleActor::spawn(McpLifecycleActorDeps {
+            deps: ActorDeps {
+                services: services.clone(),
+            },
+            root,
+        });
+        actor.wait_for_startup().await;
+        (actor, services)
+    }
+
+    fn single_enabled(server: &str) -> BTreeSet<String> {
+        let mut s = BTreeSet::new();
+        s.insert(server.to_owned());
+        s
+    }
+
+    #[tokio::test]
+    async fn enabling_a_configured_server_spawns_an_mcp_actor() {
+        // Given a lifecycle actor with one configured server and a status recorder.
+        let harness = TestHarness::new().await;
+        let recorder = harness.spawn_recorder::<McpServerStatus>().await;
+        let (_actor, _services) = spawn_lifecycle(&harness, vec![unrunnable_server()]).await;
+        let session_id = SessionId::new();
+
+        // When enabling that server for the session.
+        harness
+            .publish(McpEnablementChanged {
+                session_id: session_id.clone(),
+                enabled: single_enabled("unrunnable"),
+            })
+            .await;
+
+        // Then the lifecycle actor spawned an McpActor that emitted a status event.
+        // (The command is unrunnable, so the actor goes Starting -> Dead, but the
+        //  fact that a status event arrived proves an McpActor was spawned.)
+        let events = await_recorded(&recorder, 1, std::time::Duration::from_secs(3)).await;
+        assert!(
+            !events.is_empty(),
+            "enabling a configured server must spawn an McpActor that publishes a status"
+        );
+        assert_eq!(events[0].server, "unrunnable");
+    }
+
+    #[tokio::test]
+    async fn enabling_unknown_server_spawns_nothing() {
+        // Given a lifecycle actor with no configured servers.
+        let harness = TestHarness::new().await;
+        let recorder = harness.spawn_recorder::<McpServerStatus>().await;
+        let (_actor, _services) = spawn_lifecycle(&harness, vec![]).await;
+        let session_id = SessionId::new();
+
+        // When enabling a server that is not configured.
+        harness
+            .publish(McpEnablementChanged {
+                session_id: session_id.clone(),
+                enabled: single_enabled("ghost"),
+            })
+            .await;
+
+        // Then no McpActor is spawned (no status event arrives within a grace window).
+        let events = await_recorded(&recorder, 1, std::time::Duration::from_millis(300)).await;
+        assert!(
+            events.is_empty(),
+            "unknown server should spawn no actor, but got: {events:?}"
+        );
+    }
+
+    #[tokio::test]
+    async fn closing_a_session_does_not_panic_after_enable() {
+        // Given a lifecycle actor with an enabled server for a session.
+        let harness = TestHarness::new().await;
+        let _recorder = harness.spawn_recorder::<McpServerStatus>().await;
+        let (_actor, _services) = spawn_lifecycle(&harness, vec![unrunnable_server()]).await;
+        let session_id = SessionId::new();
+        harness
+            .publish(McpEnablementChanged {
+                session_id: session_id.clone(),
+                enabled: single_enabled("unrunnable"),
+            })
+            .await;
+        tokio::time::sleep(std::time::Duration::from_millis(300)).await;
+
+        // When closing the session.
+        harness.publish(SessionClosed { session_id }).await;
+
+        // Then the lifecycle actor does not panic and the test completes.
+        tokio::time::sleep(std::time::Duration::from_millis(200)).await;
+        // (The observable behavior is clean teardown; a panic would surface here.)
+    }
+
+    #[tokio::test]
+    async fn dead_status_is_published_for_unrunnable_server() {
+        // Given a lifecycle actor with an unrunnable server enabled.
+        let harness = TestHarness::new().await;
+        let recorder = harness.spawn_recorder::<McpServerStatus>().await;
+        let (_actor, _services) = spawn_lifecycle(&harness, vec![unrunnable_server()]).await;
+        let session_id = SessionId::new();
+
+        // When enabling the unrunnable server.
+        harness
+            .publish(McpEnablementChanged {
+                session_id: session_id.clone(),
+                enabled: single_enabled("unrunnable"),
+            })
+            .await;
+
+        // Then the McpActor reports Dead (connect failed, no panic).
+        let events = await_recorded(&recorder, 2, std::time::Duration::from_secs(3)).await;
+        let reached_dead = events.iter().any(|e| e.status == McpConnectionStatus::Dead);
+        assert!(
+            reached_dead,
+            "unrunnable server should reach Dead status; got {:?}",
+            events.iter().map(|e| e.status).collect::<Vec<_>>()
+        );
+    }
+}

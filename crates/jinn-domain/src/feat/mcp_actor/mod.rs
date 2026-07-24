@@ -104,7 +104,13 @@ impl kameo::Actor for McpActor {
 
         deps.subscribe(actor_ref.recipient::<ExecuteTool>()).await;
 
-        publish_status(&deps, &session_id, &server.name, McpConnectionStatus::Starting).await;
+        publish_status(
+            &deps,
+            &session_id,
+            &server.name,
+            McpConnectionStatus::Starting,
+        )
+        .await;
 
         let provider = provider_name(&server.name);
 
@@ -173,7 +179,13 @@ impl kameo::Actor for McpActor {
             .await;
 
         // Tools registered + connection live: we're Running.
-        publish_status(&deps, &session_id, &server.name, McpConnectionStatus::Running).await;
+        publish_status(
+            &deps,
+            &session_id,
+            &server.name,
+            McpConnectionStatus::Running,
+        )
+        .await;
 
         Ok(Self {
             deps,
@@ -235,7 +247,9 @@ impl Message<ExecuteTool> for McpActor {
         if msg.session_id != self.session_id {
             return;
         }
-        let Some(tool_name) = strip_namespace(&self.server.name, &msg.tool_call.name).map(str::to_owned) else {
+        let Some(tool_name) =
+            strip_namespace(&self.server.name, &msg.tool_call.name).map(str::to_owned)
+        else {
             return;
         };
 
@@ -289,10 +303,7 @@ impl Message<ExecuteTool> for McpActor {
         };
 
         self.deps
-            .publish(ToolExecutionCompleted {
-                session_id,
-                result,
-            })
+            .publish(ToolExecutionCompleted { session_id, result })
             .await;
     }
 }
@@ -305,10 +316,11 @@ fn parse_arguments(raw: &str) -> Result<Option<JsonObject>, String> {
     if raw.trim().is_empty() {
         return Ok(None);
     }
-    let value: serde_json::Value = serde_json::from_str(raw).map_err(|e| format!("invalid arguments: {e}"))?;
+    let value: serde_json::Value =
+        serde_json::from_str(raw).map_err(|e| format!("invalid arguments: {e}"))?;
     match value {
         serde_json::Value::Object(map) => Ok(Some(map)),
-        other => Err(format!("expected JSON object for arguments, got {}", other)),
+        other => Err(format!("expected JSON object for arguments, got {other}")),
     }
 }
 
@@ -453,11 +465,8 @@ mod tests {
     #[test]
     fn map_tool_namespaces_name() {
         // Given an rmcp Tool.
-        let mcp_tool = jinn_mcp::Tool::new(
-            "create_scene",
-            "Create a scene",
-            serde_json::Map::new(),
-        );
+        let mcp_tool =
+            jinn_mcp::Tool::new("create_scene", "Create a scene", serde_json::Map::new());
 
         // When mapping.
         let def = map_tool("excalimate", &mcp_tool);

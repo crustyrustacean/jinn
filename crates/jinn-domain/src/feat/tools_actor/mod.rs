@@ -145,6 +145,23 @@ impl std::fmt::Debug for ToolRegistration {
     }
 }
 
+/// Resolves a tool registration, preferring a session-scoped registration
+/// over a global one.
+///
+/// Extracted as a free function so the lookup-precedence behavior (the core
+/// of generalized routing) is unit-testable without constructing a full
+/// `ToolOrchestratorActor`.
+///
+/// - `session`: the per-session map (`session_tools[session_id]`), if any.
+/// - `global`: the value from the flat `tools` map for this `tool_name`.
+fn lookup_registration<'a>(
+    session: Option<&'a HashMap<String, ToolRegistration>>,
+    global: Option<&'a ToolRegistration>,
+    tool_name: &str,
+) -> Option<&'a ToolRegistration> {
+    session.and_then(|m| m.get(tool_name)).or(global)
+}
+
 /// Tracks pending tool calls within a batch.
 pub(crate) struct PendingBatch {
     /// Number of tool calls still awaiting results.
@@ -566,10 +583,9 @@ impl ToolOrchestratorActor {
         session_id: &SessionId,
         tool_name: &str,
     ) -> Option<&ToolRegistration> {
-        self.session_tools
-            .get(session_id)
-            .and_then(|m| m.get(tool_name))
-            .or_else(|| self.tools.get(tool_name))
+        let session = self.session_tools.get(session_id);
+        let global = self.tools.get(tool_name);
+        lookup_registration(session, global, tool_name)
     }
 
     /// Spawns a builtin tool, applying its configured timeout, and publishes the result.
@@ -1222,5 +1238,88 @@ mod panic_safety_tests {
         assert_eq!(result.content, "tool execution panicked");
         assert_eq!(result.tool_call_id, "call_future");
         assert_eq!(result.name, "future_tool");
+    }
+}
+
+#[cfg(test)]
+mod routing_lookup_tests {
+    #![allow(clippy::expect_used, clippy::indexing_slicing, reason = "test code")]
+    use std::collections::HashMap;
+
+    use super::{ToolRegistration, lookup_registration};
+    use jinn_provider::ToolDefinition;
+
+    fn actor_reg(name: &str, provider: &str) -> ToolRegistration {
+        ToolRegistration::Actor {
+            definition: ToolDefinition {
+                name: name.to_owned(),
+                description: String::new(),
+                parameters: serde_json::Value::Object(serde_json::Map::new()),
+                prompt_snippet: None,
+                prompt_guidelines: Vec::new(),
+                server_tool_type: None,
+            },
+            provider: provider.to_owned(),
+        }
+    }
+
+    fn provider_of(reg: Option<&ToolRegistration>) -> Option<&str> {
+        match reg {
+            Some(ToolRegistration::Actor { provider, .. }) => Some(provider.as_str()),
+            _ => None,
+        }
+    }
+
+    #[test]
+    fn session_scoped_registration_beats_global() {
+        // Given a session map and a global map both defining the same tool name.
+        let mut session = HashMap::new();
+        session.insert("dup".to_owned(), actor_reg("dup", "mcp__session__"));
+        let global_reg = actor_reg("dup", "mcp__global__");
+
+        // When resolving with both present.
+        let resolved = lookup_registration(Some(&session), Some(&global_reg), "dup");
+
+        // Then the session-scoped provider wins.
+        assert_eq!(provider_of(resolved), Some("mcp__session__"));
+    }
+
+    #[test]
+    fn global_used_when_session_map_absent() {
+        // Given only a global registration.
+        let global_reg = actor_reg("web-fetch", "web-fetch");
+
+        // When resolving with no session map.
+        let resolved = lookup_registration(None, Some(&global_reg), "web-fetch");
+
+        // Then the global registration is returned.
+        assert_eq!(provider_of(resolved), Some("web-fetch"));
+    }
+
+    #[test]
+    fn global_used_when_session_map_lacks_tool() {
+        // Given a session map without the tool and a global map with it.
+        let session = HashMap::<String, ToolRegistration>::new();
+        let global_reg = actor_reg("web-search", "web-search");
+
+        // When resolving.
+        let resolved = lookup_registration(Some(&session), Some(&global_reg), "web-search");
+
+        // Then the global registration is the fallback.
+        assert_eq!(provider_of(resolved), Some("web-search"));
+    }
+
+    #[test]
+    fn resolves_none_when_neither_has_tool() {
+        // Given empty session and global maps.
+        let session = HashMap::<String, ToolRegistration>::new();
+        let global = HashMap::<String, ToolRegistration>::new();
+        let global_reg = global.get("nope");
+
+        // When resolving an unknown tool.
+        let resolved = lookup_registration(Some(&session), global_reg, "nope");
+
+        // Then no registration is found.
+        assert!(resolved.is_none());
     }
 }

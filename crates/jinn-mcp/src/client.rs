@@ -61,12 +61,37 @@ impl McpClient {
             .change_context(McpClientError)
             .attach("failed to spawn MCP server process")?;
 
-        let service = ()
-            .serve(transport)
-            .await
-            .change_context(McpClientError)
-            .attach("MCP initialize handshake failed")?;
+        let service =
+            ().serve(transport)
+                .await
+                .change_context(McpClientError)
+                .attach("MCP initialize handshake failed")?;
 
+        Ok(Self { service })
+    }
+
+    /// Connects over an arbitrary transport instead of spawning a child process.
+    ///
+    /// Used by integration tests that drive an in-process stub MCP server
+    /// over an in-memory duplex pipe. Gated behind the `testkit` feature so it
+    /// can never appear in production code paths.
+    ///
+    /// # Errors
+    ///
+    /// Returns an error if the MCP initialize handshake fails over the transport.
+    #[cfg(feature = "testkit")]
+    pub async fn connect_with_transport<T, E, A>(
+        transport: T,
+    ) -> Result<Self, Report<McpClientError>>
+    where
+        T: rmcp::transport::IntoTransport<RoleClient, E, A>,
+        E: std::error::Error + Send + Sync + 'static,
+    {
+        let service =
+            ().serve(transport)
+                .await
+                .change_context(McpClientError)
+                .attach("MCP initialize handshake failed")?;
         Ok(Self { service })
     }
 
@@ -77,7 +102,7 @@ impl McpClient {
     /// Returns an error if the `tools/list` request fails.
     pub async fn list_tools(&self) -> Result<Vec<rmcp::model::Tool>, Report<McpClientError>> {
         self.service
-            .list_tools(Default::default())
+            .list_tools(Option::default())
             .await
             .map(|result| result.tools)
             .change_context(McpClientError)

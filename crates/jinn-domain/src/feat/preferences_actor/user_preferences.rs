@@ -1177,4 +1177,99 @@ mod tests {
         // but responsive providers).
         assert_eq!(prefs.history_stall_timeout_secs, 60);
     }
+
+    #[rstest::rstest]
+    fn mcp_server_config_round_trips_through_toml() {
+        // Given a server config with command + args.
+        let server = crate::feat::mcp::McpServerConfig {
+            name: "excalimate".to_owned(),
+            command: "npx".to_owned(),
+            args: vec!["@excalimate/mcp-server".to_owned(), "--stdio".to_owned()],
+        };
+
+        // When serializing and deserializing.
+        let s = toml::to_string(&server).expect("serialize");
+        let back: crate::feat::mcp::McpServerConfig = toml::from_str(&s).expect("deserialize");
+
+        // Then the fields are preserved.
+        assert_eq!(back.name, "excalimate");
+        assert_eq!(back.command, "npx");
+        assert_eq!(back.args, vec!["@excalimate/mcp-server", "--stdio"]);
+    }
+
+    #[rstest::rstest]
+    fn mcp_servers_array_round_trips_through_preferences() {
+        // Given preferences with two configured servers.
+        let prefs = UserPreferences {
+            mcp_servers: vec![
+                crate::feat::mcp::McpServerConfig {
+                    name: "excalimate".to_owned(),
+                    command: "npx".to_owned(),
+                    args: vec!["@excalimate/mcp-server".to_owned(), "--stdio".to_owned()],
+                },
+                crate::feat::mcp::McpServerConfig {
+                    name: "filesystem".to_owned(),
+                    command: "node".to_owned(),
+                    args: vec!["fs-server.js".to_owned()],
+                },
+            ],
+            ..UserPreferences::default()
+        };
+
+        // When saving and reloading through the patcher.
+        let dir = TempDir::new().expect("temp dir");
+        let path = dir.path().join(PREFS_FILE_NAME);
+        save_preferences_to(&prefs, &path).expect("save");
+        let reloaded = load_preferences_from(&path).expect("load");
+
+        // Then both servers survive the round-trip.
+        assert_eq!(reloaded.mcp_servers.len(), 2);
+        assert_eq!(reloaded.mcp_servers[0].name, "excalimate");
+        assert_eq!(reloaded.mcp_servers[1].name, "filesystem");
+    }
+
+    #[rstest::rstest]
+    fn mcp_servers_patch_preserves_user_comments() {
+        // Given an existing jinn.toml with a user comment on an mcp_servers entry.
+        let dir = TempDir::new().expect("temp dir");
+        let path = dir.path().join(PREFS_FILE_NAME);
+        std::fs::write(
+            &path,
+            r#"# top-level comment
+[[mcp_servers]]
+# this comment must survive
+name = "excalimate"
+command = "npx"
+args = ["@excalimate/mcp-server", "--stdio"]
+"#,
+        )
+        .expect("write");
+
+        // When saving the same config back.
+        let prefs = UserPreferences {
+            mcp_servers: vec![crate::feat::mcp::McpServerConfig {
+                name: "excalimate".to_owned(),
+                command: "npx".to_owned(),
+                args: vec!["@excalimate/mcp-server".to_owned(), "--stdio".to_owned()],
+            }],
+            ..UserPreferences::default()
+        };
+        save_preferences_to(&prefs, &path).expect("save");
+
+        // Then the user comment is preserved on disk.
+        let on_disk = std::fs::read_to_string(&path).expect("read");
+        assert!(
+            on_disk.contains("# this comment must survive"),
+            "user comment was wiped by the patcher: {on_disk}"
+        );
+    }
+
+    #[rstest::rstest]
+    fn default_preferences_has_no_mcp_servers() {
+        // Given default preferences.
+        let prefs = UserPreferences::default();
+
+        // Then no MCP servers are configured by default.
+        assert!(prefs.mcp_servers.is_empty());
+    }
 }

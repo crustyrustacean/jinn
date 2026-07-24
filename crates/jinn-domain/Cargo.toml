@@ -72,6 +72,7 @@ kameo_actors = { workspace = true }
 # JSON surgery that dao's typed DAO layer doesn't cover.
 rusqlite = { workspace = true }
 [dev-dependencies]
+indoc = "2"
 rstest = { workspace = true }
 jinn-testutil = { workspace = true }
 jinn-mcp = { workspace = true, features = ["testkit"] }

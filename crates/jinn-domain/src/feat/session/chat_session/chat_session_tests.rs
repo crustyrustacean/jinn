@@ -5533,3 +5533,84 @@ fn reset_streaming_entries_for_retry_removes_partial_thinking_entry() {
         "reset must stay in Streaming phase for the retry"
     );
 }
+
+// ---------------------------------------------------------------------------
+// MCP server enablement
+// ---------------------------------------------------------------------------
+
+#[test]
+fn new_session_has_no_mcp_servers_enabled() {
+    // Given a freshly created session.
+    let session = ChatSessionState::new();
+
+    // Then no MCP servers are enabled by default.
+    assert!(session.enabled_mcp_servers().is_empty());
+}
+
+#[test]
+fn enabling_mcp_server_adds_it_to_the_set() {
+    // Given a session with no servers enabled.
+    let mut session = ChatSessionState::new();
+
+    // When enabling a server.
+    let changed = session.enable_mcp_server("excalimate");
+
+    // Then the server is now enabled and the call reported a change.
+    assert!(changed, "enable should report a change when newly enabled");
+    assert!(session.is_mcp_server_enabled("excalimate"));
+}
+
+#[test]
+fn enabling_already_enabled_mcp_server_reports_no_change() {
+    // Given a session with a server already enabled.
+    let mut session = ChatSessionState::new();
+    session.enable_mcp_server("excalimate");
+
+    // When enabling it again.
+    let changed = session.enable_mcp_server("excalimate");
+
+    // Then no change is reported.
+    assert!(!changed);
+}
+
+#[test]
+fn disabling_mcp_server_removes_it_from_the_set() {
+    // Given a session with a server enabled.
+    let mut session = ChatSessionState::new();
+    session.enable_mcp_server("excalimate");
+
+    // When disabling it.
+    let changed = session.disable_mcp_server("excalimate");
+
+    // Then the server is no longer enabled and the call reported a change.
+    assert!(changed);
+    assert!(!session.is_mcp_server_enabled("excalimate"));
+}
+
+#[test]
+fn disabling_unknown_mcp_server_reports_no_change() {
+    // Given a session with no servers enabled.
+    let mut session = ChatSessionState::new();
+
+    // When disabling a never-enabled server.
+    let changed = session.disable_mcp_server("excalimate");
+
+    // Then no change is reported.
+    assert!(!changed);
+}
+
+#[test]
+fn set_enabled_mcp_servers_replaces_the_set() {
+    // Given a session with one server enabled.
+    let mut session = ChatSessionState::new();
+    session.enable_mcp_server("excalimate");
+
+    // When replacing with a different set.
+    let mut new_set = std::collections::BTreeSet::new();
+    new_set.insert("filesystem".to_owned());
+    session.set_enabled_mcp_servers(new_set);
+
+    // Then only the new server is enabled.
+    assert!(!session.is_mcp_server_enabled("excalimate"));
+    assert!(session.is_mcp_server_enabled("filesystem"));
+}
