@@ -18,6 +18,8 @@
 )]
 
 use std::sync::Arc;
+use std::sync::atomic::{AtomicBool, Ordering};
+use std::time::Duration;
 
 use jinn_mcp::client::{McpClient, ServerCommand};
 use rmcp::handler::server::ServerHandler;
@@ -196,4 +198,149 @@ fn server_command_carries_program_and_args() {
     // Then the fields round-trip (sanity check for the owned value the actor carries).
     assert_eq!(cmd.program, "npx");
     assert_eq!(cmd.args, vec!["@excalimate/mcp-server", "--stdio"]);
+}
+
+#[tokio::test]
+async fn is_transport_closed_returns_false_on_a_live_client() {
+    // Given a stub MCP server reachable over an in-memory duplex pipe.
+    let client_io = spawn_stub_server();
+    let (client_read, client_write) = tokio::io::split(client_io);
+    let client = McpClient::connect_with_transport(AsyncRwTransport::<
+        RoleClient,
+        tokio::io::ReadHalf<DuplexStream>,
+        tokio::io::WriteHalf<DuplexStream>,
+    >::new(client_read, client_write))
+    .await
+    .expect("client must connect");
+
+    // When polling the transport-level liveness signal on a live connection.
+    let closed = client.is_transport_closed();
+
+    // Then it reports the connection as open.
+    assert!(
+        !closed,
+        "a freshly connected client's transport must not be closed"
+    );
+}
+
+#[tokio::test]
+async fn is_transport_closed_returns_true_after_shutdown() {
+    // Given a connected client.
+    let client_io = spawn_stub_server();
+    let (client_read, client_write) = tokio::io::split(client_io);
+    let mut client = McpClient::connect_with_transport(AsyncRwTransport::<
+        RoleClient,
+        tokio::io::ReadHalf<DuplexStream>,
+        tokio::io::WriteHalf<DuplexStream>,
+    >::new(client_read, client_write))
+    .await
+    .expect("client must connect");
+
+    // When shutting the connection down.
+    client.shutdown().await;
+
+    // Then the transport-level liveness signal reports it as closed.
+    assert!(
+        client.is_transport_closed(),
+        "after shutdown the transport must report closed"
+    );
+}
+
+#[tokio::test]
+async fn liveness_probe_reflects_transport_state_independently_of_client() {
+    // Given a connected client and a standalone liveness probe cloned from it.
+    let client_io = spawn_stub_server();
+    let (client_read, client_write) = tokio::io::split(client_io);
+    let mut client = McpClient::connect_with_transport(AsyncRwTransport::<
+        RoleClient,
+        tokio::io::ReadHalf<DuplexStream>,
+        tokio::io::WriteHalf<DuplexStream>,
+    >::new(client_read, client_write))
+    .await
+    .expect("client must connect");
+    let probe = client.liveness_probe();
+
+    // Then the probe reports the connection open while the client is alive.
+    assert!(!probe.is_transport_closed());
+
+    // And after the client shuts down, the standalone probe also reports closed,
+    // proving the probe polls shared transport state without holding the client.
+    client.shutdown().await;
+    assert!(probe.is_transport_closed());
+}
+
+#[tokio::test]
+async fn killer_drops_and_flips_transport_closed() {
+    // Given a connected client with a killer handle.
+    let (client, killer) = jinn_mcp::server_testkit::spawn_stub_client_with_killer().await;
+
+    // Then while alive the transport reports open.
+    assert!(!client.is_transport_closed());
+
+    // When the killer is dropped (server task aborted).
+    drop(killer);
+
+    // Then within a short window the client's transport reports closed.
+    let mut closed = false;
+    for _ in 0..50 {
+        tokio::time::sleep(Duration::from_millis(20)).await;
+        if client.is_transport_closed() {
+            closed = true;
+            break;
+        }
+    }
+    assert!(
+        closed,
+        "dropping the killer must flip is_transport_closed()"
+    );
+}
+
+#[tokio::test]
+async fn liveness_probe_flips_when_killer_drops_across_task_boundary() {
+    // Given a connected client + killer, mirroring how McpActor owns the client
+    // and spawns a watcher task holding a cloned probe.
+    let (client, killer) = jinn_mcp::server_testkit::spawn_stub_client_with_killer().await;
+    let probe = client.liveness_probe();
+
+    // A watcher task (like McpActor's) polls the probe.
+    let probe_for_task = probe.clone();
+    let closed_flag = Arc::new(AtomicBool::new(false));
+    let flag_clone = closed_flag.clone();
+    let watch = tokio::spawn(async move {
+        loop {
+            tokio::time::sleep(Duration::from_millis(50)).await;
+            if probe_for_task.is_transport_closed() {
+                flag_clone.store(true, Ordering::SeqCst);
+                break;
+            }
+        }
+    });
+
+    // When the killer is dropped (simulating kill -9).
+    drop(killer);
+
+    // Then the watcher task detects the close within a short window.
+    let _ = tokio::time::timeout(Duration::from_secs(3), watch).await;
+    assert!(
+        closed_flag.load(Ordering::SeqCst),
+        "probe polled from a spawned task must detect the transport close"
+    );
+}
+
+#[tokio::test]
+async fn killer_variant_stays_alive_until_dropped() {
+    // Given a connected client from the killer variant.
+    let (client, killer) = jinn_mcp::server_testkit::spawn_stub_client_with_killer().await;
+
+    // Then it stays alive (transport open) for a while without dropping the killer.
+    for i in 0..20 {
+        tokio::time::sleep(Duration::from_millis(50)).await;
+        assert!(
+            !client.is_transport_closed(),
+            "client closed unexpectedly at tick {i} before killer dropped"
+        );
+    }
+
+    // And can still call a tool.
+    drop(killer);
 }

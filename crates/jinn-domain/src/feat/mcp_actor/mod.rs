@@ -63,6 +63,10 @@ pub struct McpActor {
     /// Cancellation flag for the stderr-debounce republish task. Set in
     /// `on_stop` so the task exits promptly when the actor tears down.
     stderr_task_shutdown: Arc<AtomicBool>,
+    /// Cancellation flag for the liveness-watch task. Set in `on_stop`
+    /// *before* `stderr_task_shutdown` so the watcher exits before this
+    /// teardown's own `Dead` publish (no spurious double-publish).
+    liveness_task_shutdown: Arc<AtomicBool>,
 }
 
 /// Dependencies for [`McpActor`].
@@ -278,6 +282,7 @@ impl kameo::Actor for McpActor {
                     server,
                     client: None,
                     stderr_task_shutdown: Arc::new(AtomicBool::new(false)),
+                    liveness_task_shutdown: Arc::new(AtomicBool::new(false)),
                 });
             }
         };
@@ -324,12 +329,30 @@ impl kameo::Actor for McpActor {
             server.name.clone(),
         );
 
+        // Spawn the liveness-watch task. It polls the client's transport
+        // close signal every `STDERR_DEBOUNCE` and publishes `Dead` when the
+        // connection drops post-connect, so the sidebar/picker stop showing
+        // "running" for a dead server. It owns a cheap `LivenessProbe` cloned
+        // from the client (no shared borrow). Exits via its shutdown flag in
+        // `on_stop` (which does its own `Dead` publish).
+        let liveness_task_shutdown = Arc::new(AtomicBool::new(false));
+        spawn_liveness_watch(
+            liveness_task_shutdown.clone(),
+            client.liveness_probe(),
+            client.stderr_buffer(),
+            stderr_task_shutdown.clone(),
+            deps.clone(),
+            session_id.clone(),
+            server.name.clone(),
+        );
+
         Ok(Self {
             deps,
             session_id,
             server,
             client: Some(client),
             stderr_task_shutdown,
+            liveness_task_shutdown,
         })
     }
 
@@ -338,7 +361,10 @@ impl kameo::Actor for McpActor {
         _actor_ref: kameo::actor::WeakActorRef<Self>,
         _reason: kameo::error::ActorStopReason,
     ) -> Result<(), Self::Error> {
-        // Signal the stderr-debounce task to exit before we tear down.
+        // Signal the liveness-watch task first so it cannot publish a `Dead`
+        // that races this teardown's own `Dead` publish below.
+        self.liveness_task_shutdown.store(true, Ordering::SeqCst);
+        // Then signal the stderr-debounce task to exit before we tear down.
         self.stderr_task_shutdown.store(true, Ordering::SeqCst);
 
         let tail = self
@@ -423,6 +449,47 @@ fn spawn_stderr_debounce(
             if let Some(tail) = next_tail(&tail, &last_tail) {
                 publish_log(&deps, &session_id, &server_name, &tail).await;
                 last_tail = tail;
+            }
+        }
+    });
+}
+
+/// Spawns the liveness-watch task that publishes `Dead` when the connection
+/// drops post-connect.
+///
+/// Polls the client's transport-close signal (via a cheap [`LivenessProbe`]
+/// cloned from the client — no shared borrow) every [`STDERR_DEBOUNCE`]. On
+/// close: stops the stderr-debounce task *first* (so it cannot overwrite the
+/// final tail), then publishes `Dead` and the final captured tail, then exits.
+///
+/// Normal teardown wins: `on_stop` sets `liveness_shutdown` before its own
+/// `Dead` publish, so the watcher exits without double-publishing.
+fn spawn_liveness_watch(
+    liveness_shutdown: Arc<AtomicBool>,
+    probe: jinn_mcp::LivenessProbe,
+    stderr_buffer: std::sync::Arc<std::sync::Mutex<jinn_mcp::McpStderrBuffer>>,
+    stderr_task_shutdown: Arc<AtomicBool>,
+    deps: ActorDeps,
+    session_id: SessionId,
+    server_name: String,
+) {
+    tokio::spawn(async move {
+        loop {
+            tokio::time::sleep(STDERR_DEBOUNCE).await;
+            if liveness_shutdown.load(Ordering::SeqCst) {
+                break;
+            }
+            if probe.is_transport_closed() {
+                // Stop the stderr-debounce first so its next poll cannot
+                // republish stale content over the final tail we publish here.
+                stderr_task_shutdown.store(true, Ordering::SeqCst);
+                let tail = stderr_buffer
+                    .lock()
+                    .map(|buf| buf.tail().to_owned())
+                    .unwrap_or_default();
+                publish_status(&deps, &session_id, &server_name, McpConnectionStatus::Dead).await;
+                publish_log(&deps, &session_id, &server_name, &tail).await;
+                break;
             }
         }
     });

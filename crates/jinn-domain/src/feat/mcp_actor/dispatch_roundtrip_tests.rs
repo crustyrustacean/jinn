@@ -20,12 +20,13 @@
 
 use std::time::Duration;
 
-use jinn_mcp::server_testkit::spawn_stub_client;
+use jinn_mcp::server_testkit::{spawn_stub_client, spawn_stub_client_with_killer};
 use kameo::actor::Spawn;
 
 use crate::common::actor_deps::ActorDeps;
 use crate::common::bus::test_harness::{TestHarness, await_recorded};
 use crate::feat::mcp::McpServerConfig;
+use crate::feat::mcp_actor::protocol::{McpConnectionStatus, McpServerStatus};
 use crate::feat::mcp_actor::{McpActor, McpActorDeps};
 use crate::feat::tools_actor::protocol::command::ExecuteTool;
 use crate::feat::tools_actor::protocol::event::ToolExecutionCompleted;
@@ -209,5 +210,167 @@ async fn execute_tool_truncates_large_response_to_orchestrator_limits() {
     assert!(
         result.truncation.is_some(),
         "truncation metadata must be present when truncation occurred"
+    );
+}
+
+/// When the MCP server's transport closes after a successful connection, the
+/// liveness-watch task detects it and publishes `McpServerStatus(Dead)` — the
+/// exact fix for the "kill -9 leaves it stuck on running" bug.
+///
+/// Covers AC1, AC2, AC4: detection works (transport-level), the dead status is
+/// published, and the final tail is published alongside it.
+#[tokio::test]
+async fn transport_close_publishes_dead_status() {
+    // Given an McpActor wired to a stub server we can kill, recording status.
+    let harness = TestHarness::new().await;
+    let status_recorder = harness.spawn_recorder::<McpServerStatus>().await;
+    let session_id = SessionId::new();
+
+    let (client, killer) = spawn_stub_client_with_killer().await;
+    let actor = McpActor::spawn(McpActorDeps::with_client(
+        ActorDeps {
+            services: harness.services().await,
+        },
+        session_id.clone(),
+        stub_config(),
+        client,
+    ));
+    actor.wait_for_startup().await;
+
+    // Then the actor publishes Starting and Running during startup.
+    let startup = await_recorded(&status_recorder, 2, Duration::from_secs(3)).await;
+    assert!(
+        startup
+            .iter()
+            .any(|m| m.status == McpConnectionStatus::Running),
+        "expected a Running status before kill, got: {startup:?}"
+    );
+
+    // Let the watcher run a few ticks with the connection alive to prove the
+    // recorder is drained (no spurious pre-kill Dead), then drop the killer.
+    tokio::time::sleep(Duration::from_millis(800)).await;
+    let drained = await_recorded(&status_recorder, 0, Duration::from_millis(50)).await;
+    assert!(
+        drained
+            .iter()
+            .all(|m| m.status != McpConnectionStatus::Dead),
+        "no Dead should fire while the connection is alive, got: {drained:?}"
+    );
+    // When the server's transport closes (simulating kill -9).
+    drop(killer);
+
+    // Then a Dead status is published within the watch cadence + slack. The
+    // pre-kill read cleared the recorder, so await a single new message.
+    let after = await_recorded(&status_recorder, 1, Duration::from_secs(5)).await;
+    let dead = after
+        .iter()
+        .filter(|m| m.status == McpConnectionStatus::Dead)
+        .count();
+    assert!(
+        dead >= 1,
+        "expected at least one Dead status after transport close, got: {after:?}"
+    );
+}
+
+/// On normal teardown (`on_stop`), the liveness watcher exits without
+/// double-publishing `Dead` beyond `on_stop`'s own publish — the shutdown-flag
+/// ordering prevents the race.
+///
+/// Covers AC3.
+#[tokio::test]
+async fn normal_teardown_publishes_exactly_one_dead() {
+    // Given a running McpActor recording status.
+    let harness = TestHarness::new().await;
+    let status_recorder = harness.spawn_recorder::<McpServerStatus>().await;
+    let session_id = SessionId::new();
+
+    let client = spawn_stub_client().await;
+    let actor = McpActor::spawn(McpActorDeps::with_client(
+        ActorDeps {
+            services: harness.services().await,
+        },
+        session_id.clone(),
+        stub_config(),
+        client,
+    ));
+    actor.wait_for_startup().await;
+
+    // Wait for startup to publish Starting + Running.
+    let startup = await_recorded(&status_recorder, 2, Duration::from_secs(3)).await;
+    assert!(
+        startup
+            .iter()
+            .any(|m| m.status == McpConnectionStatus::Running)
+    );
+
+    // When the actor is stopped normally (the coordinator's teardown path).
+    let _ = actor.stop_gracefully().await;
+    // Then exactly one Dead is published by teardown. The startup await already
+    // drained Starting + Running, so a single new message is the on_stop Dead.
+    // A grace window then catches any racing watcher publish that would make two.
+    let on_stop_statuses = await_recorded(&status_recorder, 1, Duration::from_secs(5)).await;
+    tokio::time::sleep(Duration::from_millis(450)).await;
+    let trailing = await_recorded(&status_recorder, 0, Duration::from_millis(50)).await;
+    let final_statuses = [on_stop_statuses, trailing].concat();
+    let dead_count = final_statuses
+        .iter()
+        .filter(|m| m.status == McpConnectionStatus::Dead)
+        .count();
+    assert_eq!(
+        dead_count, 1,
+        "teardown must publish exactly one Dead, got {dead_count}: {final_statuses:?}"
+    );
+}
+
+/// After an actor is stopped (the kill half of a restart), its liveness
+/// watcher must be gone — a fresh actor spawned in its place must work normally
+/// and its watcher must be the only one publishing. This is the zombie-prevention
+/// regression: `on_stop` sets the old watcher's shutdown flag.
+#[tokio::test]
+async fn restarted_actor_has_no_zombie_watcher_from_the_previous_one() {
+    // Given a first McpActor that is stopped (simulating the kill-half of restart).
+    let harness = TestHarness::new().await;
+    let status_recorder = harness.spawn_recorder::<McpServerStatus>().await;
+    let session_id = SessionId::new();
+
+    let client = spawn_stub_client().await;
+    let first = McpActor::spawn(McpActorDeps::with_client(
+        ActorDeps {
+            services: harness.services().await,
+        },
+        session_id.clone(),
+        stub_config(),
+        client,
+    ));
+    first.wait_for_startup().await;
+    let _ = await_recorded(&status_recorder, 2, Duration::from_secs(3)).await;
+    // Stop the first actor — its on_stop kills its watcher.
+    let _ = first.stop_gracefully().await;
+    // Consume the first actor's on_stop Dead so it isn't counted later.
+    let _ = await_recorded(&status_recorder, 1, Duration::from_secs(3)).await;
+
+    // When spawning a fresh actor in its place (the spawn-half of restart).
+    let client2 = spawn_stub_client().await;
+    let second = McpActor::spawn(McpActorDeps::with_client(
+        ActorDeps {
+            services: harness.services().await,
+        },
+        session_id.clone(),
+        stub_config(),
+        client2,
+    ));
+    second.wait_for_startup().await;
+    // Drain the second actor's startup statuses.
+    let _ = await_recorded(&status_recorder, 2, Duration::from_secs(3)).await;
+
+    // Then the second actor runs without any spurious Dead from the first
+    // actor's (now-killed) watcher.
+    tokio::time::sleep(Duration::from_millis(500)).await;
+    let trailing = await_recorded(&status_recorder, 0, Duration::from_millis(50)).await;
+    assert!(
+        trailing
+            .iter()
+            .all(|m| m.status != McpConnectionStatus::Dead),
+        "no Dead should fire from a zombie watcher while the second actor runs, got: {trailing:?}"
     );
 }

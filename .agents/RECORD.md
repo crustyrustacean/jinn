@@ -86,6 +86,7 @@ Entries are added or amended **only with human approval**.
 - (mcp) For HTTP-mode servers, jinn allocates a free port via bind-and-release and injects it (plus the bind address) into the server's args via `<ip>`/`<port>` replacement tokens; it does not parse server output for the bind address.
 - (mcp) HTTP connect has no wall-clock timeout: a server stays `Starting` until the HTTP endpoint is reachable, and is marked `Dead` only when the child process exits (captured stdout/stderr explain why).
 - (mcp) A `RemoteHttp { url }` server connects to an externally-managed HTTP server with no process management.
+- (mcp) MCP connections are monitored post-connect: `McpActor` spawns a liveness watcher that polls `is_transport_closed()` and publishes `Dead` when the connection drops, working uniformly across stdio, HTTP, and RemoteHttp transports. No auto-restart — a dead connection surfaces in the sidebar/picker for the user to restart via the inspector.
 - (tools) Actor-provided tools route by their registration `provider` prefix via the generic `ExecuteTool` command, not a hardcoded per-name match; `web-fetch`/`web-search` remain distinct provider keys.
 - (paths) Config lives at `~/.config/jinn` (providers, prompts, personas, themes, `jinn.toml`).
 - (paths) Data lives at `~/.local/share/jinn` (`sessions.db`).
@@ -144,6 +145,7 @@ Entries are added or amended **only with human approval**.
 - (ui) The sidebar can enter an interactive resize mode (via `sidebar_resize`) to adjust its width.
 - (ui) The sidebar has five sections — Persona, Pins, TaskList, McpServers, Sessions — with cyclic navigation.
 - (ui) The sidebar restores history position when leaving Pins, and the Sessions section is anchored to the bottom of the sidebar.
+- (ui) The chat-input autocomplete popups (`#` prompts, `/` commands, `@` attachments) anchor horizontally and vertically to the trigger token's wrapped visual line, floating directly above the cursor rather than the top of the input box.
 - (watchdog) A stall watchdog detects sessions stuck in sending, mid-tool-batch stalls, and streaming sessions with no history change, and publishes a cancel after the budget is exhausted.
 - (watchdog) An idle session is never scanned by the watchdog, and an active streaming session is never flagged.
 - (watchdog) The watchdog resets its stall counter at turn boundaries (not on activity jitter) and resets the budget when provider activity resumes; retries are suppressed within a backoff window.
