@@ -541,6 +541,7 @@ impl ToolOrchestratorActor {
             max_output_bytes,
             dispatched_at,
             session_cap: Some(self.session_cap),
+            mcp_coordinator: self.services.mcp_coordinator.get().cloned(),
         }
     }
 
@@ -976,6 +977,7 @@ mod timeout_tests {
             max_output_bytes: None,
             dispatched_at: jiff::Timestamp::now(),
             session_cap: None,
+            mcp_coordinator: None,
         }
     }
 
@@ -1213,6 +1215,7 @@ mod panic_safety_tests {
                 max_output_bytes: None,
                 dispatched_at: jiff::Timestamp::now(),
                 session_cap: None,
+                mcp_coordinator: None,
             },
         ))
         .catch_unwind()

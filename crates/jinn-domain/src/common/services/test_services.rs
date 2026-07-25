@@ -285,6 +285,7 @@ impl TestServices {
             bus,
             bridge,
             root_supervisor,
+            mcp_coordinator: Arc::new(std::sync::OnceLock::new()),
         }
     }
 }

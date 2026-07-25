@@ -90,6 +90,12 @@ pub struct Services {
     /// that don't exercise the full shutdown path.
     #[debug(skip)]
     pub root_supervisor: crate::common::root_supervisor::RootSupervisorRef,
+
+    pub mcp_coordinator: Arc<
+        std::sync::OnceLock<
+            kameo::actor::ActorRef<crate::feat::mcp_coordinator_actor::McpCoordinatorActor>,
+        >,
+    >,
 }
 
 impl Services {
@@ -155,6 +161,7 @@ impl Services {
             bus,
             bridge,
             root_supervisor,
+            mcp_coordinator: Arc::new(std::sync::OnceLock::new()),
         }
     }
 
@@ -200,6 +207,7 @@ impl Services {
             bus,
             bridge,
             root_supervisor,
+            mcp_coordinator: Arc::new(std::sync::OnceLock::new()),
         }
     }
 }

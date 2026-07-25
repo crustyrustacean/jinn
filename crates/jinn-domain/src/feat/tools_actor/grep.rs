@@ -240,6 +240,7 @@ mod tests {
             max_output_bytes: None,
             dispatched_at: jiff::Timestamp::now(),
             session_cap: None,
+            mcp_coordinator: None,
         }
     }
 
@@ -255,6 +256,7 @@ mod tests {
             max_output_bytes: None,
             dispatched_at: jiff::Timestamp::now(),
             session_cap: None,
+            mcp_coordinator: None,
         }
     }
 

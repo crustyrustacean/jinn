@@ -30,6 +30,25 @@ pub struct RestartMcpServer {
 
 impl crate::common::bus::BusMessage for RestartMcpServer {}
 
+/// Outcome of a [`RestartMcpServer`] request, returned by the coordinator.
+///
+/// `Ok(())` means the newly-spawned actor connected successfully (it holds
+/// a live client). The variants explain *why* a restart failed so the
+/// caller (the `restart_mcp_server` tool) can report a useful message.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub enum RestartError {
+    /// No `[[mcp_servers]]` entry matches the requested name.
+    UnknownServer,
+    /// The new actor spawned but its `on_start` connect failed (dead server,
+    /// bad command, etc.). Captured stderr is available in the inspector.
+    ConnectFailed,
+    /// `on_start` did not complete within the restart timeout — the server is
+    /// likely a slow-to-boot JS/Python server still in its startup phase.
+    Timeout,
+    /// Actor mailbox delivery failure (actor stopped mid-restart).
+    Mailbox,
+}
+
 /// The set of MCP servers enabled for a session changed.
 ///
 /// Published by the MCP picker confirm handler after writing the new
