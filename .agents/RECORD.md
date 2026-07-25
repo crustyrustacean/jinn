@@ -131,6 +131,7 @@ Entries are added or amended **only with human approval**.
 - (ui) The sidebar can enter an interactive resize mode (via `sidebar_resize`) to adjust its width.
 - (ui) The sidebar has four sections — Persona, Pins, TaskList, Sessions — with cyclic navigation (Persona→Pins→TaskList→Sessions and back).
 - (ui) The sidebar restores history position when leaving Pins, and the Sessions section is anchored to the bottom of the sidebar.
+- (ui) The chat-input autocomplete popups (`#` prompts, `/` commands, `@` attachments) anchor horizontally and vertically to the trigger token's wrapped visual line, floating directly above the cursor rather than the top of the input box.
 - (watchdog) A stall watchdog detects sessions stuck in sending, mid-tool-batch stalls, and streaming sessions with no history change, and publishes a cancel after the budget is exhausted.
 - (watchdog) An idle session is never scanned by the watchdog, and an active streaming session is never flagged.
 - (watchdog) The watchdog resets its stall counter at turn boundaries (not on activity jitter) and resets the budget when provider activity resumes; retries are suppressed within a backoff window.
