@@ -126,3 +126,45 @@ pub async fn spawn_stub_client() -> McpClient {
     .await
     .expect("client must connect to stub server")
 }
+
+/// Like [`spawn_stub_client`], but also returns a [`ServerKiller`] that aborts
+/// the server task on drop, forcing the client's transport to report closed
+/// (the signal the liveness-watch task polls).
+///
+/// Use in tests that need to simulate post-connect server death without
+/// killing the owning `McpClient` directly.
+///
+/// # Panics
+///
+/// Panics if the MCP handshake fails (a wiring error, not a test condition).
+#[must_use]
+pub async fn spawn_stub_client_with_killer() -> (McpClient, ServerKiller) {
+    let (server_io, client_io) = tokio::io::duplex(4096);
+    let join = tokio::spawn(async move {
+        let Ok(running) = EchoServer.serve(server_io).await else {
+            return;
+        };
+        let _ = running.waiting().await;
+    });
+    let (client_read, client_write) = tokio::io::split(client_io);
+    let client = McpClient::connect_with_transport(AsyncRwTransport::<
+        RoleClient,
+        tokio::io::ReadHalf<DuplexStream>,
+        tokio::io::WriteHalf<DuplexStream>,
+    >::new(client_read, client_write))
+    .await
+    .expect("client must connect to stub server");
+    (client, ServerKiller(join))
+}
+
+/// Aborts the paired stub server task on drop, closing the transport from the
+/// server side so the client's `is_transport_closed()` flips true.
+///
+/// Returned by [`spawn_stub_client_with_killer`].
+pub struct ServerKiller(pub tokio::task::JoinHandle<()>);
+
+impl Drop for ServerKiller {
+    fn drop(&mut self) {
+        self.0.abort();
+    }
+}

@@ -75,6 +75,27 @@ pub struct McpClient {
     child: Option<tokio::process::Child>,
 }
 
+/// A cheap, `Send + 'static` handle for polling whether a connection is
+/// still alive, without holding the full [`McpClient`].
+///
+/// Cloned from the connection's `Peer` (all `Arc`-backed fields).
+/// [`LivenessProbe::is_transport_closed`] returns `true` when the underlying
+/// transport has closed (server process died, HTTP connection dropped, etc.)
+/// — uniform across stdio, HTTP, and RemoteHttp transports.
+///
+/// Owned by the `McpActor` liveness-watch task so it can detect post-connect
+/// death without borrowing the client.
+#[derive(Clone)]
+pub struct LivenessProbe(rmcp::Peer<RoleClient>);
+
+impl LivenessProbe {
+    /// Returns `true` when the underlying transport has closed.
+    #[must_use]
+    pub fn is_transport_closed(&self) -> bool {
+        self.0.is_transport_closed()
+    }
+}
+
 /// An HTTP-mode MCP server process spawned by jinn but not yet connected.
 ///
 /// [`McpClient::connect_http`] produces this; [`McpClient::connect_with_retry`]
@@ -387,6 +408,27 @@ impl McpClient {
             .lock()
             .map(|buf| buf.tail().to_owned())
             .unwrap_or_default()
+    }
+
+    /// Returns `true` when the underlying transport has closed (the server
+    /// process died, the HTTP connection dropped, etc.).
+    ///
+    /// Uniform across stdio, HTTP, and RemoteHttp transports — it reads
+    /// rmcp's transport-level close signal, not a process handle. Used by the
+    /// `McpActor` liveness watcher to detect post-connect death.
+    #[must_use]
+    pub fn is_transport_closed(&self) -> bool {
+        self.service.is_transport_closed()
+    }
+
+    /// Returns a cheap, `Send + 'static` handle for polling connection liveness
+    /// without holding the full [`McpClient`].
+    ///
+    /// Cloned from the connection's `Peer`; see [`LivenessProbe`]. Used by the
+    /// `McpActor` liveness-watch task.
+    #[must_use]
+    pub fn liveness_probe(&self) -> LivenessProbe {
+        LivenessProbe(self.service.peer().clone())
     }
 
     /// Gracefully closes the connection and waits (bounded) for the child to exit.

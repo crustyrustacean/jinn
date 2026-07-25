@@ -10,7 +10,9 @@ pub mod client;
 pub mod tool_mapping;
 pub mod transport;
 
-pub use client::{HalfOpenHttp, McpClient, McpClientError, McpStderrBuffer, ServerCommand};
+pub use client::{
+    HalfOpenHttp, LivenessProbe, McpClient, McpClientError, McpStderrBuffer, ServerCommand,
+};
 pub use tool_mapping::provider_prefix;
 
 // Re-export rmcp model types so downstream crates (jinn-domain) can pattern-
