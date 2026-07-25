@@ -106,7 +106,7 @@ serde = { version = "1.0", features = ["derive"] }
 serde_json = "1.0"
 
 # MCP client protocol
-rmcp = { version = "3.0.0-beta.2", features = ["client", "transport-child-process", "transport-streamable-http-client"] }
+rmcp = { version = "3.0.0-beta.2", features = ["client", "transport-child-process", "transport-streamable-http-client", "transport-streamable-http-client-reqwest"] }
 
 # Async / channels
 tokio = { version = "1", features = ["full"] }
@@ -172,7 +172,7 @@ glob = "0.3"
 libc = "0.2"
 rand = "0.9"
 mockito = "1.7"
-reqwest = { version = "0.12", default-features = false, features = ["rustls-tls"] }
+reqwest = { version = "0.13", default-features = false, features = ["rustls", "form", "json", "stream"] }
 scraper = "0.27"
 anstyle-lossy = "1"
 anstyle = "1"
