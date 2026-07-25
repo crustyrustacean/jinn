@@ -4,6 +4,7 @@
 //! semantic methods that keep the cursor in sync with the buffer content.
 
 use unicode_segmentation::UnicodeSegmentation as _;
+use unicode_width::UnicodeWidthStr as _;
 
 use super::autocomplete::AutocompleteState;
 use super::autocomplete::AutocompleteTrigger;
@@ -110,6 +111,30 @@ fn build_grapheme_bounds(text: &str) -> Vec<usize> {
     let mut out: Vec<usize> = text.grapheme_indices(true).map(|(i, _)| i).collect();
     out.push(text.len());
     out
+}
+
+/// Finds the wrapped visual line containing `token_start`.
+///
+/// Mirrors the line-finding logic of `cursor_row_col_wrapped`: the primary pass
+/// returns the line whose `[grapheme_start, grapheme_end)` contains `token_start`;
+/// the boundary fallback (token on a `\n` or at the buffer end) returns the line
+/// whose `grapheme_end` is `<= token_start` and closest to it.
+fn find_token_line(lines: &[WrappedLine], token_start: usize) -> Option<(usize, &WrappedLine)> {
+    // Primary: token_start falls strictly inside a line's [start, end).
+    for (row, line) in lines.iter().enumerate() {
+        if token_start >= line.grapheme_start && token_start < line.grapheme_end {
+            return Some((row, line));
+        }
+    }
+    // Boundary fallback: token_start is on a `\n` or at end of last line.
+    // Pick the line whose grapheme_end is <= token_start and closest.
+    let mut best: Option<(usize, &WrappedLine)> = None;
+    for (row, line) in lines.iter().enumerate() {
+        if line.grapheme_end <= token_start {
+            best = Some((row, line));
+        }
+    }
+    best
 }
 
 impl ChatInputBoxState {
@@ -741,26 +766,27 @@ impl ChatInputBoxState {
         self.autocomplete.as_ref().map(|ac| ac.token_start)
     }
 
-    /// Returns the screen column of the autocomplete `#` trigger within its visual line.
+    /// Returns the autocomplete trigger token's `(visual_row, display_col)`.
     ///
-    /// The column is a grapheme offset within the line that contains the `#`.
+    /// `visual_row` is the 0-based index into the wrapped visual lines of the
+    /// line that contains the trigger token; `display_col` is the unicode
+    /// display-width offset of the token from the start of that visual line.
     /// Returns `None` if autocomplete is not active.
+    ///
+    /// Wrap-aware: uses the memoized [`wrapped_lines`](Self::wrapped_lines) cache
+    /// and sums display widths (matching [`wrap`](super::wrap) and
+    /// `compute_display_col`), so word-wrapped continuation lines and wide
+    /// characters (CJK/emoji) are positioned correctly.
     #[must_use]
-    pub fn autocomplete_token_screen_col(&self) -> Option<usize> {
+    pub fn autocomplete_token_visual_row_col(&self) -> Option<(usize, usize)> {
         let ac = self.autocomplete.as_ref()?;
         let token_start = ac.token_start();
-        let mut col = 0;
-        for (i, g) in self.input_buffer.graphemes(true).enumerate() {
-            if i == token_start {
-                return Some(col);
-            }
-            if g == "\n" {
-                col = 0;
-            } else {
-                col += 1;
-            }
-        }
-        Some(col) // token_start at end of buffer
+        let lines = self.wrapped_lines();
+        let (row, line) = find_token_line(lines, token_start)?;
+        let display_col = self
+            .grapheme_slice(line.grapheme_start, token_start)
+            .width();
+        Some((row, display_col))
     }
 
     /// Completes the autocomplete: replaces the trigger region with the completed text.
@@ -1104,7 +1130,7 @@ mod tests {
     }
 
     #[rstest::rstest]
-    fn autocomplete_token_screen_col_with_newlines() {
+    fn autocomplete_token_visual_row_col_after_newline() {
         // Given "hello\nworld#" with autocomplete at the #.
         let mut state = ChatInputBoxState::new();
         state.insert_text("hello\nworld#");
@@ -1114,15 +1140,15 @@ mod tests {
             vec![],
         );
 
-        // When reading screen col.
-        let col = state.autocomplete_token_screen_col();
+        // When reading the token's visual row and display column.
+        let pos = state.autocomplete_token_visual_row_col();
 
-        // Then col is 5 (0-indexed position within second line after reset).
-        assert_eq!(col, Some(5));
+        // Then row is 1 (second logical line) and col is 5 (display width of "world").
+        assert_eq!(pos, Some((1, 5)));
     }
 
     #[rstest::rstest]
-    fn autocomplete_token_screen_col_at_line_start() {
+    fn autocomplete_token_visual_row_col_at_line_start() {
         // Given "hello\n#" with autocomplete at #.
         let mut state = ChatInputBoxState::new();
         state.insert_text("hello\n#");
@@ -1132,11 +1158,71 @@ mod tests {
             vec![],
         );
 
-        // When reading screen col.
-        let col = state.autocomplete_token_screen_col();
+        // When reading the token's visual row and display column.
+        let pos = state.autocomplete_token_visual_row_col();
 
-        // Then col is 0 (start of line after newline).
-        assert_eq!(col, Some(0));
+        // Then row is 1 (second logical line) and col is 0 (start of line after newline).
+        assert_eq!(pos, Some((1, 0)));
+    }
+
+    #[rstest::rstest]
+    fn autocomplete_token_visual_row_col_on_wrapped_continuation() {
+        // Given "aaaa bbbb#" word-wrapped at width 5 (so "bbbb#" is a wrapped
+        // continuation line) with autocomplete at the #.
+        let mut state = ChatInputBoxState::new();
+        state.set_wrap_width(5);
+        state.insert_text("aaaa bbbb#");
+        state.activate_autocomplete(
+            9, // grapheme index of #
+            AutocompleteTrigger::Hash,
+            vec![],
+        );
+
+        // When reading the token's visual row and display column.
+        let pos = state.autocomplete_token_visual_row_col();
+
+        // Then the token is on row 1 (the wrapped continuation line "bbbb#")
+        // at display column 4 (within that line), not the logical column 8.
+        assert_eq!(pos, Some((1, 4)));
+    }
+
+    #[rstest::rstest]
+    fn autocomplete_token_visual_row_col_no_wrap_returns_logical_col() {
+        // Given "aaaaaaaaaa#" with the default (no) wrap width and autocomplete at #.
+        let mut state = ChatInputBoxState::new();
+        state.insert_text("aaaaaaaaaa#");
+        state.activate_autocomplete(
+            10, // grapheme index of #
+            AutocompleteTrigger::Hash,
+            vec![],
+        );
+
+        // When reading the token's visual row and display column.
+        let pos = state.autocomplete_token_visual_row_col();
+
+        // Then it is row 0 (single line) at the logical display column 10.
+        assert_eq!(pos, Some((0, 10)));
+    }
+
+    #[rstest::rstest]
+    fn autocomplete_token_visual_row_col_wide_chars_count_display_width() {
+        // Given "你你你#" word-wrapped at width 5 (each 你 is 2 display columns,
+        // so "你你" fills row 0 and "你#" wraps to row 1) with autocomplete at #.
+        let mut state = ChatInputBoxState::new();
+        state.set_wrap_width(5);
+        state.insert_text("你你你#");
+        state.activate_autocomplete(
+            3, // grapheme index of #
+            AutocompleteTrigger::Hash,
+            vec![],
+        );
+
+        // When reading the token's visual row and display column.
+        let pos = state.autocomplete_token_visual_row_col();
+
+        // Then it is row 1 (wrapped continuation "你#") at display column 2
+        // (one 你 = 2 columns), not the grapheme index 3.
+        assert_eq!(pos, Some((1, 2)));
     }
 
     #[rstest::rstest]

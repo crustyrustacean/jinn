@@ -44,7 +44,7 @@ pub fn render_autocomplete_popup(frame: &mut Frame<'_>, input_area: Rect, state:
 
     let matches = ac.matches();
     let selected_index = ac.selected_index();
-    let Some(token_col) = input.autocomplete_token_screen_col() else {
+    let Some((token_row, token_col)) = input.autocomplete_token_visual_row_col() else {
         return;
     };
 
@@ -87,16 +87,21 @@ pub fn render_autocomplete_popup(frame: &mut Frame<'_>, input_area: Rect, state:
         .min(max_width);
 
     let visible_count = matches.len().min(AUTOCOMPLETE_MAX_VISIBLE);
-    let popup_height: u16 = if matches.is_empty() {
+    let raw_popup_height: u16 = if matches.is_empty() {
         3 // border top + "no matches" + border bottom
     } else {
-        u16::try_from(visible_count + 2)
-            .unwrap_or(u16::MAX)
-            .min(input_area.y)
+        u16::try_from(visible_count + 2).unwrap_or(u16::MAX)
     };
 
-    // Position: above the input box, horizontally anchored at the #.
-    let popup_y = input_area.y.saturating_sub(popup_height);
+    // Position: horizontally anchored at the trigger's wrapped column, vertically
+    // floating one row above the trigger's on-screen visual line (the cursor's
+    // line) instead of the top of the whole input box.
+    let scroll_offset = input.scroll_offset();
+    let trigger_screen_y = input_area
+        .y
+        .saturating_add(token_row.saturating_sub(scroll_offset) as u16);
+    let popup_height = clamp_popup_height(raw_popup_height, trigger_screen_y);
+    let popup_y = trigger_screen_y.saturating_sub(popup_height);
     let popup_x = anchor_x.min(term_width.saturating_sub(popup_width));
 
     let popup_area = Rect::new(popup_x, popup_y, popup_width, popup_height);
@@ -141,6 +146,15 @@ pub fn render_autocomplete_popup(frame: &mut Frame<'_>, input_area: Rect, state:
     }
 }
 
+/// Clamps `popup_height` so the popup never extends above terminal row 0 when
+/// its bottom is anchored at `bottom_y`. A minimum height (1 inner row + 2
+/// borders = 3) is enforced so the popup never collapses entirely; this may
+/// overlap the terminal top on very small terminals, matching prior behavior.
+fn clamp_popup_height(raw_height: u16, bottom_y: u16) -> u16 {
+    let min_height: u16 = 3;
+    raw_height.min(bottom_y).max(min_height)
+}
+
 /// Text shown while a directory listing is in flight.
 const AT_LOADING: &str = "<loading…>";
 /// Text shown when a directory listing is empty/unreadable.
@@ -160,7 +174,7 @@ fn render_at_popup(
     let Some(ac) = input.autocomplete() else {
         return;
     };
-    let Some(token_col) = input.autocomplete_token_screen_col() else {
+    let Some((token_row, token_col)) = input.autocomplete_token_visual_row_col() else {
         return;
     };
     let picker = &state.frontend.file_picker;
@@ -207,15 +221,20 @@ fn render_at_popup(
         .min(max_width);
 
     let visible_count = rows.len().min(AUTOCOMPLETE_MAX_VISIBLE);
-    let popup_height: u16 = if rows.len() <= 1 {
+    let raw_popup_height: u16 = if rows.len() <= 1 {
         3 // border top + single line + border bottom
     } else {
-        u16::try_from(visible_count + 2)
-            .unwrap_or(u16::MAX)
-            .min(input_area.y)
+        u16::try_from(visible_count + 2).unwrap_or(u16::MAX)
     };
 
-    let popup_y = input_area.y.saturating_sub(popup_height);
+    // Vertically float the popup one row above the trigger's on-screen visual
+    // line (the cursor's line), matching the `#`/`/` popup.
+    let scroll_offset = input.scroll_offset();
+    let trigger_screen_y = input_area
+        .y
+        .saturating_add(token_row.saturating_sub(scroll_offset) as u16);
+    let popup_height = clamp_popup_height(raw_popup_height, trigger_screen_y);
+    let popup_y = trigger_screen_y.saturating_sub(popup_height);
     let popup_x = anchor_x.min(term_width.saturating_sub(popup_width));
     let popup_area = Rect::new(popup_x, popup_y, popup_width, popup_height);
 
@@ -259,6 +278,13 @@ pub fn scroll_window(selected: usize, total: usize, visible: usize) -> (usize, u
 
 #[cfg(test)]
 mod tests {
+    #![allow(
+        clippy::expect_used,
+        clippy::panic,
+        clippy::unreachable,
+        clippy::indexing_slicing,
+        reason = "test code"
+    )]
     use crate::common::app_state::AppState;
     use crate::feat::chat_input::intent::handle_insert_char;
     use crate::feat::file_lister::{FileEntry, FilePickerState};
@@ -412,6 +438,230 @@ mod tests {
         assert!(
             rendered.contains("empty"),
             "filtered-out entries should render as <empty>"
+        );
+    }
+
+    /// Renders the `#` popup into a `TestBackend` buffer and returns the popup's
+    /// `Rect` by locating its `┌` top-left border corner.
+    ///
+    /// Only one popup renders per draw, so the lone `┌` corner uniquely marks
+    /// the popup origin; width/height are derived by walking the top/left border.
+    /// Panics if no popup rendered.
+    fn popup_rect(state: &AppState) -> ratatui::layout::Rect {
+        let backend = TestBackend::new(80, 24);
+        let mut terminal = Terminal::new(backend).expect("terminal");
+        let input_area = ratatui::layout::Rect::new(0, 20, 80, 4);
+        terminal
+            .draw(|frame| {
+                super::render_autocomplete_popup(frame, input_area, state);
+            })
+            .expect("draw");
+        let buffer = terminal.backend().buffer();
+
+        // Find the top-left corner of the popup.
+        let mut origin: Option<(u16, u16)> = None;
+        for y in 0..24 {
+            for x in 0..80 {
+                if buffer.cell((x, y)).map(ratatui::buffer::Cell::symbol) == Some("┌") {
+                    origin = Some((x, y));
+                }
+            }
+        }
+        let (x, y) = origin.expect("popup corner found");
+
+        // Width: walk right along the top border until it ends.
+        let mut width = 1;
+        while x + width < 80
+            && buffer
+                .cell((x + width, y))
+                .map(ratatui::buffer::Cell::symbol)
+                == Some("─")
+        {
+            width += 1;
+        }
+        // +1 for the `┐` right corner if present.
+        if x + width < 80
+            && buffer
+                .cell((x + width, y))
+                .map(ratatui::buffer::Cell::symbol)
+                == Some("┐")
+        {
+            width += 1;
+        }
+
+        // Height: walk down along the left border until it ends.
+        let mut height = 1;
+        while y + height < 24
+            && buffer
+                .cell((x, y + height))
+                .map(ratatui::buffer::Cell::symbol)
+                == Some("│")
+        {
+            height += 1;
+        }
+        // +1 for the `└` bottom corner if present.
+        if y + height < 24
+            && buffer
+                .cell((x, y + height))
+                .map(ratatui::buffer::Cell::symbol)
+                == Some("└")
+        {
+            height += 1;
+        }
+
+        ratatui::layout::Rect::new(x, y, width, height)
+    }
+
+    #[test]
+    fn hash_popup_horizontal_anchor_follows_wrapped_trigger_col() {
+        // Given a # popup whose trigger sits on a wrapped continuation line,
+        // far from the terminal's right edge.
+        let mut state = AppState::default();
+        state.active_chat_input_mut().set_wrap_width(5);
+        state.active_chat_input_mut().insert_text("aaaa bbbb#");
+        state.active_chat_input_mut().activate_autocomplete(
+            9,
+            crate::feat::chat_input::AutocompleteTrigger::Hash,
+            vec![crate::feat::chat_input::AutocompleteMatch {
+                name: "tmpl".into(),
+                description: String::new(),
+            }],
+        );
+
+        // When rendering.
+        let rect = popup_rect(&state);
+
+        // Then the popup's left edge sits near the trigger's wrapped column
+        // (prompt_indent 2 + display_col 4 = 6), not clamped to the right edge.
+        assert_eq!(
+            rect.x, 6,
+            "popup left edge should follow the wrapped trigger column"
+        );
+        assert!(
+            rect.x < 70,
+            "popup should not be clamped to the terminal's right edge"
+        );
+    }
+
+    #[test]
+    fn hash_popup_sits_above_trigger_visual_line_not_input_top() {
+        // Given a # popup whose trigger sits on the second wrapped visual line.
+        let mut state = AppState::default();
+        state.active_chat_input_mut().set_wrap_width(5);
+        state.active_chat_input_mut().insert_text("aaaa bbbb#");
+        state.active_chat_input_mut().activate_autocomplete(
+            9,
+            crate::feat::chat_input::AutocompleteTrigger::Hash,
+            vec![crate::feat::chat_input::AutocompleteMatch {
+                name: "tmpl".into(),
+                description: String::new(),
+            }],
+        );
+
+        // When rendering (input_area.y=20, trigger on visual row 1 → on-screen y=21).
+        let rect = popup_rect(&state);
+
+        // Then the popup floats with the trigger: popup bottom (y + height) sits
+        // one row above the trigger's on-screen visual line (y=21).
+        assert_eq!(
+            rect.y + rect.height,
+            21,
+            "popup bottom should sit one row above the trigger visual line"
+        );
+    }
+
+    #[test]
+    fn hash_popup_follows_cursor_down_through_wrapped_lines() {
+        // Given a # popup whose trigger sits on the THIRD wrapped visual line,
+        // so the input-box-top anchor (y=20) and the cursor-line anchor diverge.
+        let mut state = AppState::default();
+        state.active_chat_input_mut().set_wrap_width(5);
+        // "aaaa aaaa a#" at width 5 → row0 "aaaa ", row1 "aaaa ", row2 "a#".
+        state.active_chat_input_mut().insert_text("aaaa aaaa a#");
+        state.active_chat_input_mut().activate_autocomplete(
+            11,
+            crate::feat::chat_input::AutocompleteTrigger::Hash,
+            vec![crate::feat::chat_input::AutocompleteMatch {
+                name: "tmpl".into(),
+                description: String::new(),
+            }],
+        );
+
+        // When rendering.
+        let rect = popup_rect(&state);
+
+        // Then the popup floats with the trigger on visual row 2 (on-screen y=22),
+        // not pinned to the input-box top (y=20). Popup height 3.
+        assert_eq!(
+            rect.y + rect.height,
+            22,
+            "popup bottom should follow the trigger down to row 2, not the input top"
+        );
+    }
+
+    #[test]
+    fn at_popup_uses_cursor_anchored_vertical_positioning() {
+        // Given an @ popup whose trigger sits on a wrapped continuation line,
+        // seeded with file-picker entries.
+        use crate::feat::file_lister::{FileEntry, FilePickerState};
+        let mut state = AppState::default();
+        state.active_chat_input_mut().set_wrap_width(5);
+        // "aaaa bbbb@" → row0 "aaaa ", row1 "bbb@"? Use a clean wrap:
+        // "aaaa aaaa @" at width 5 → row0 "aaaa ", row1 "aaaa ", row2 "@".
+        state.active_chat_input_mut().insert_text("aaaa aaaa @");
+        state.active_chat_input_mut().activate_autocomplete(
+            11,
+            crate::feat::chat_input::AutocompleteTrigger::At,
+            vec![],
+        );
+        state.frontend.file_picker = FilePickerState::with_entries(vec![FileEntry {
+            name: "src".into(),
+            is_dir: true,
+        }]);
+
+        // When rendering (the @ trigger is on visual row 2 → on-screen y=22).
+        let rect = popup_rect(&state);
+
+        // Then the @ popup floats with the trigger on row 2 (on-screen y=22),
+        // not pinned to the input-box top.
+        assert_eq!(
+            rect.y + rect.height,
+            22,
+            "@ popup bottom should follow the trigger down to row 2"
+        );
+    }
+    #[test]
+    fn at_popup_horizontal_anchor_follows_wrapped_trigger_col() {
+        // Given an @ popup whose trigger sits on a wrapped continuation line,
+        // far from the terminal's right edge.
+        use crate::feat::file_lister::{FileEntry, FilePickerState};
+        let mut state = AppState::default();
+        state.active_chat_input_mut().set_wrap_width(5);
+        // "aaaa bbbb@" at width 5 → row0 "aaaa ", row1 "bbbb@" with @ at
+        // display col 4 on the wrapped continuation line.
+        state.active_chat_input_mut().insert_text("aaaa bbbb@");
+        state.active_chat_input_mut().activate_autocomplete(
+            9,
+            crate::feat::chat_input::AutocompleteTrigger::At,
+            vec![],
+        );
+        state.frontend.file_picker = FilePickerState::with_entries(vec![FileEntry {
+            name: "src".into(),
+            is_dir: true,
+        }]);
+
+        // When rendering.
+        let rect = popup_rect(&state);
+
+        // Then the popup's left edge sits near the trigger's wrapped column
+        // (prompt_indent 2 + display_col 4 = 6), not clamped to the right edge.
+        assert_eq!(
+            rect.x, 6,
+            "@ popup left edge should follow the wrapped trigger column"
+        );
+        assert!(
+            rect.x < 70,
+            "@ popup should not be clamped to the terminal's right edge"
         );
     }
 }
