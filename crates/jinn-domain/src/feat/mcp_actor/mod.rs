@@ -581,6 +581,25 @@ impl Message<ExecuteTool> for McpActor {
     }
 }
 
+/// Deterministic post-startup query: is this actor holding a live client?
+///
+/// Used by `McpCoordinatorActor::restart_one` after `wait_for_startup` to learn
+/// whether the newly-spawned actor connected successfully, *without* relying on
+/// bus-event ordering (the old status-event approach was race-prone).
+pub struct ConnectionState;
+
+impl Message<ConnectionState> for McpActor {
+    type Reply = bool;
+
+    async fn handle(
+        &mut self,
+        _msg: ConnectionState,
+        _ctx: &mut Context<Self, Self::Reply>,
+    ) -> bool {
+        self.client.is_some()
+    }
+}
+
 /// Parses a tool call's JSON arguments string into an MCP `JsonObject`.
 ///
 /// Returns `Ok(None)` for an empty/blank argument string (valid — the tool

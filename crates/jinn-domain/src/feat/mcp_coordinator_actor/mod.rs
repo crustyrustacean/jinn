@@ -35,8 +35,10 @@ use crate::common::root_supervisor::RootSupervisorRef;
 use crate::common::services::bus_service::BusService;
 use crate::feat::mcp::McpServerConfig;
 use crate::feat::mcp_actor::protocol::{McpServerLog, McpServerStatus};
-use crate::feat::mcp_actor::{McpActor, McpActorDeps};
-use crate::feat::mcp_coordinator_actor::protocol::{McpEnablementChanged, RestartMcpServer};
+use crate::feat::mcp_actor::{ConnectionState, McpActor, McpActorDeps};
+use crate::feat::mcp_coordinator_actor::protocol::{
+    McpEnablementChanged, RestartError, RestartMcpServer,
+};
 use crate::feat::session::protocol::session_archived::SessionArchived;
 use crate::feat::session::protocol::session_closed::SessionClosed;
 use crate::feat::session::protocol::session_load_completed::SessionLoadCompleted;
@@ -45,6 +47,17 @@ use crate::protocol::SessionId;
 
 /// Key into the spawned-actor map: one `McpActor` per (session × server).
 type SpawnKey = (SessionId, String);
+
+/// Maximum time to wait for a restarted `McpActor`'s `on_start` to connect.
+///
+/// Slow-to-boot HTTP/Python servers can legitimately take tens of seconds;
+/// this bounds the tool loop so a wedged server doesn't hang it forever.
+/// On timeout the tool reports failure with the STOP-and-wait instruction.
+#[expect(
+    clippy::duration_suboptimal_units,
+    reason = "60s is the intent, not 1min"
+)]
+const RESTART_TIMEOUT: std::time::Duration = std::time::Duration::from_secs(60);
 
 /// The MCP lifecycle actor.
 pub struct McpCoordinatorActor {
@@ -155,7 +168,7 @@ impl McpCoordinatorActor {
 
         for server in to_spawn {
             if let Some(config) = configs.iter().find(|c| c.name == server) {
-                self.spawn_one(session_id, config).await;
+                let _ = self.spawn_one(session_id, config).await;
             } else {
                 tracing::warn!(
                     server = %server,
@@ -171,12 +184,21 @@ impl McpCoordinatorActor {
     }
 
     /// Spawns a single `McpActor` for a (session, server) pair and records it.
-    async fn spawn_one(&self, session_id: &SessionId, config: &McpServerConfig) {
+    ///
+    /// Returns the spawned actor's ref so the caller can `wait_for_startup`
+    /// and query its connection state (used by [`restart_one`](Self::restart_one)).
+    /// `None` if a duplicate-spawn guard fires (another reconcile already
+    /// inserted this key).
+    async fn spawn_one(
+        &self,
+        session_id: &SessionId,
+        config: &McpServerConfig,
+    ) -> Option<ActorRef<McpActor>> {
         let key = (session_id.clone(), config.name.clone());
         // Duplicate-spawn guard: another in-flight reconcile may have inserted
         // this key between the snapshot and now.
         if self.spawned.lock().contains_key(&key) {
-            return;
+            return None;
         }
 
         let bind_addr = bind_address(&self.deps.services);
@@ -194,12 +216,13 @@ impl McpCoordinatorActor {
         .spawn()
         .await;
 
-        self.spawned.lock().insert(key, actor_ref);
+        self.spawned.lock().insert(key, actor_ref.clone());
         tracing::info!(
             server = %config.name,
             %session_id,
             "MCP lifecycle: spawned McpActor"
         );
+        Some(actor_ref)
     }
 
     /// Stops a single tracked `McpActor` and removes it from the map.
@@ -233,25 +256,46 @@ impl McpCoordinatorActor {
     }
 
     /// Restarts a single (session × server) `McpActor`: kills the running one
-    /// (if any) and respawns it from its configured server entry.
+    /// (if any) and respawns it from its configured server entry, then awaits
+    /// the new actor's `on_start` and asks it whether it connected.
     ///
-    /// No-op if the server isn't configured in `[[mcp_servers]]` — there's
-    /// nothing valid to respawn from. This mirrors the future dashboard
-    /// "restart" capability: recover a wedged process without an
-    /// enable/disable round-trip through the picker.
-    async fn restart_one(&self, session_id: &SessionId, server: &str) {
+    /// This is **deterministic** — unlike the old bus-event approach, the
+    /// result reflects the new actor's actual connection state, queried
+    /// directly via [`McpActor`]'s `ConnectionState` message after
+    /// `wait_for_startup`. No event-ordering race.
+    async fn restart_one(&self, session_id: &SessionId, server: &str) -> Result<(), RestartError> {
         let key = (session_id.clone(), server.to_owned());
         self.kill_one(&key).await;
 
-        let configs = configured_servers(&self.deps.services);
-        if let Some(config) = configs.iter().find(|c| c.name == server) {
-            self.spawn_one(session_id, config).await;
+        let config = configured_servers(&self.deps.services)
+            .into_iter()
+            .find(|c| c.name == server)
+            .ok_or(RestartError::UnknownServer)?;
+
+        let actor_ref = self.spawn_one(session_id, &config).await;
+        let actor_ref = actor_ref.ok_or(RestartError::UnknownServer)?;
+
+        // `on_start` blocks on acquire_client (connect + tools/list); we wait
+        // for it to complete, bounded by the restart timeout so a slow-boot
+        // server can't hang the tool loop forever.
+        let connected = match tokio::time::timeout(RESTART_TIMEOUT, async {
+            actor_ref.wait_for_startup().await;
+            actor_ref
+                .ask(ConnectionState)
+                .await
+                .map_err(|_send_err| RestartError::Mailbox)
+        })
+        .await
+        {
+            Ok(Ok(connected)) => connected,
+            Ok(Err(e)) => return Err(e),
+            Err(_) => return Err(RestartError::Timeout),
+        };
+
+        if connected {
+            Ok(())
         } else {
-            tracing::warn!(
-                server = %server,
-                %session_id,
-                "MCP lifecycle: restart requested for unknown server, ignoring"
-            );
+            Err(RestartError::ConnectFailed)
         }
     }
 }
@@ -340,10 +384,14 @@ impl Message<SessionTeardownFinished> for McpCoordinatorActor {
 }
 
 impl Message<RestartMcpServer> for McpCoordinatorActor {
-    type Reply = ();
+    type Reply = Result<(), RestartError>;
 
-    async fn handle(&mut self, msg: RestartMcpServer, _ctx: &mut Context<Self, Self::Reply>) {
-        self.restart_one(&msg.session_id, &msg.server).await;
+    async fn handle(
+        &mut self,
+        msg: RestartMcpServer,
+        _ctx: &mut Context<Self, Self::Reply>,
+    ) -> Self::Reply {
+        self.restart_one(&msg.session_id, &msg.server).await
     }
 }
 

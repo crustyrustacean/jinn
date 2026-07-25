@@ -195,6 +195,7 @@ impl ActorSystemBuilder {
             bus,
             bridge: bridge.clone(),
             root_supervisor: root.clone(),
+            mcp_coordinator: std::sync::Arc::new(std::sync::OnceLock::new()),
         };
 
         let actor_deps = ActorDeps {
@@ -478,6 +479,9 @@ jinn_domain::feat::preferences_actor::preferences_actor::PreferencesActor::super
             .await
         );
         _mcp_coordinator.wait_for_startup().await;
+        // Expose the coordinator ref to the tool layer (restart_mcp_server).
+        // `OnceLock::set` returns Err if already set; ignore (e.g. test re-seed).
+        let _ = services.mcp_coordinator.set(_mcp_coordinator.clone());
 
         // Web fetch + web search actors.
         //

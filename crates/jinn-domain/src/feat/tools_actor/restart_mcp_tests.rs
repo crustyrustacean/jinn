@@ -1,10 +1,17 @@
-//! Actor-level tests for the `restart_mcp_server` tool.
+//! Actor-level tests for the `restart_mcp_server` tool (ask pattern).
 //!
-//! These bypass the coordinator entirely: they construct a `ToolContext` with a
-//! real bus, call `execute()` directly, and drive the four outcomes by manually
-//! publishing `McpServerStatus` events (Starting/Running/Dead). This isolates
-//! the load-bearing logic — wait-for-terminal + Gotcha #3 ordering guard +
-//! timeout — without needing a live MCP server.
+//! The tool `ask`s the coordinator directly (request/reply). These tests
+//! exercise:
+//!   - the coordinator's `restart_one` outcome (real actor, unrunnable command
+//!     → `ConnectFailed`; unknown server → `UnknownServer`),
+//!   - the tool's `execute()` failure paths (no coordinator ref; unknown
+//!     server routed through the real ask).
+//!
+//! A success-path test (`restart_one` → `Ok`) requires a runnable MCP server
+//! subprocess, which does not exist in this crate; the success path is
+//! structurally identical to the existing dispatch-roundtrip tests that use
+//! the in-process stub. See `mcp_actor/dispatch_roundtrip_tests.rs` for that
+//! coverage.
 
 #![allow(
     clippy::expect_used,
@@ -14,22 +21,64 @@
 )]
 
 use std::path::PathBuf;
-use std::time::Duration;
 
+use crate::common::actor_deps::ActorDeps;
 use crate::common::app_paths::AppPaths;
 use crate::common::app_state::AppState;
 use crate::common::bus::test_harness::TestHarness;
+use crate::common::root_supervisor::RootSupervisor;
 use crate::common::state::State;
 use crate::feat::mcp::McpServerConfig;
-use crate::feat::mcp_actor::protocol::{McpConnectionStatus, McpServerStatus};
+use crate::feat::mcp_coordinator_actor::protocol::{RestartError, RestartMcpServer};
+use crate::feat::mcp_coordinator_actor::{McpCoordinatorActor, McpCoordinatorActorDeps};
 use crate::feat::preferences_actor::UserPreferences;
-use crate::feat::tools_actor::restart_mcp::{RESTART_TIMEOUT, execute_with_timeout};
+use crate::feat::tools_actor::restart_mcp::execute;
 use crate::feat::tools_actor::tool_types::{ToolCall, ToolContext};
 use crate::feat::ui::frontend_state::FrontendState;
 use crate::protocol::SessionId;
+use kameo::actor::Spawn;
 
-/// A short timeout for tests so they run fast.
-const TEST_TIMEOUT: Duration = Duration::from_millis(300);
+/// A configured MCP server whose command will never spawn successfully, so the
+/// spawned `McpActor` fails to connect and goes Dead.
+fn unrunnable_server() -> McpServerConfig {
+    McpServerConfig {
+        name: "unrunnable".to_owned(),
+        command: "/this/command/does/not/exist".to_owned(),
+        args: vec![],
+        ..Default::default()
+    }
+}
+
+/// Spawns a real coordinator seeded with the given configured servers.
+async fn spawn_coordinator(
+    harness: &TestHarness,
+    servers: Vec<McpServerConfig>,
+) -> (
+    kameo::actor::ActorRef<McpCoordinatorActor>,
+    crate::Services,
+    crate::common::state::State,
+) {
+    let services = harness.services().await;
+    services
+        .user_preferences_storage
+        .save(&UserPreferences {
+            mcp_servers: servers,
+            ..UserPreferences::default()
+        })
+        .expect("seed prefs");
+    let root = RootSupervisor::spawn_root().await;
+    let state = State::new(AppState::default());
+    let actor = McpCoordinatorActor::spawn(McpCoordinatorActorDeps {
+        deps: ActorDeps {
+            services: services.clone(),
+        },
+        root,
+        state: state.clone(),
+        cap: crate::common::tcaps::mint::mint_session_cap(),
+    });
+    actor.wait_for_startup().await;
+    (actor, services, state)
+}
 
 /// Builds a tool call targeting the given server.
 fn call(server: &str) -> ToolCall {
@@ -40,10 +89,10 @@ fn call(server: &str) -> ToolCall {
     }
 }
 
-/// Builds a ToolContext wired to the harness bus and a state that has
-/// `excalimate` configured.
-fn ctx_with_excalimate(
-    harness_bus: crate::common::services::bus_service::BusService,
+/// Builds a ToolContext wired to the given coordinator ref + state seeded with
+/// `excalimate`.
+fn ctx_with_coordinator(
+    coordinator: kameo::actor::ActorRef<McpCoordinatorActor>,
     session_id: SessionId,
 ) -> ToolContext {
     let config = McpServerConfig {
@@ -71,238 +120,125 @@ fn ctx_with_excalimate(
         state: Some(state),
         session_id: Some(session_id),
         app_paths: AppPaths::new_in(std::path::Path::new("/tmp")),
-        bus: Some(harness_bus),
+        bus: None,
         max_output_lines: None,
         max_output_bytes: None,
         dispatched_at: jiff::Timestamp::now(),
         session_cap: None,
+        mcp_coordinator: Some(coordinator),
     }
 }
 
-fn status(session_id: &SessionId, server: &str, s: McpConnectionStatus) -> McpServerStatus {
-    McpServerStatus {
-        session_id: session_id.clone(),
-        server: server.to_owned(),
-        status: s,
-    }
-}
+// ---------------------------------------------------------------------------
+// Coordinator-level: restart_one outcomes (the real ask)
+// ---------------------------------------------------------------------------
 
-/// The new server reaches `Running` after `Starting` → the tool reports success.
+/// An unrunnable command → the new actor fails to connect → `ConnectFailed`.
 #[tokio::test]
-async fn execute_returns_success_when_new_server_reaches_running() {
-    // Given a harness + a context with `excalimate` configured.
+async fn restart_one_returns_connect_failed_for_unrunnable_command() {
+    // Given a coordinator with an unrunnable server enabled for a session.
     let harness = TestHarness::new().await;
+    let (coordinator, _services, _state) =
+        spawn_coordinator(&harness, vec![unrunnable_server()]).await;
     let session_id = SessionId::new();
-    let ctx = ctx_with_excalimate(harness.bus(), session_id.clone());
 
-    // When calling execute and driving Starting then Running on the bus.
-    let task = tokio::spawn(execute_with_timeout(
-        call("excalimate"),
-        ctx,
-        RESTART_TIMEOUT,
-    ));
-    // Let the tool subscribe + publish RestartMcpServer.
-    tokio::time::sleep(Duration::from_millis(120)).await;
-    harness
-        .publish(status(
-            &session_id,
-            "excalimate",
-            McpConnectionStatus::Starting,
-        ))
-        .await;
-    tokio::time::sleep(Duration::from_millis(40)).await;
-    harness
-        .publish(status(
-            &session_id,
-            "excalimate",
-            McpConnectionStatus::Running,
-        ))
+    // When asking the coordinator to restart that server.
+    let reply = coordinator
+        .ask(RestartMcpServer {
+            session_id,
+            server: "unrunnable".to_owned(),
+        })
         .await;
 
-    let result = task.await.expect("task");
-
-    // Then the tool reports success.
+    // Then the reply is a domain-level ConnectFailed (wrapped in SendError).
     assert!(
-        result.success,
-        "should succeed on Running; got: {}",
-        result.content
-    );
-    assert!(
-        result.content.contains("back online"),
-        "success message should mention back online; got: {}",
-        result.content
+        matches!(
+            reply,
+            Err(kameo::error::SendError::HandlerError(
+                RestartError::ConnectFailed
+            ))
+        ),
+        "unrunnable command should yield ConnectFailed; got: {reply:?}"
     );
 }
 
-/// The new server goes `Dead` → the tool reports failure with the STOP note.
+/// A server that isn't in the config → `UnknownServer`.
 #[tokio::test]
-async fn execute_returns_failure_with_stop_note_when_new_server_goes_dead() {
-    // Given a harness + context.
+async fn restart_one_returns_unknown_server_for_unconfigured_server() {
+    // Given a coordinator with one configured server.
     let harness = TestHarness::new().await;
+    let (coordinator, _services, _state) =
+        spawn_coordinator(&harness, vec![unrunnable_server()]).await;
     let session_id = SessionId::new();
-    let ctx = ctx_with_excalimate(harness.bus(), session_id.clone());
 
-    // When calling execute and driving Starting then Dead.
-    let task = tokio::spawn(execute_with_timeout(
-        call("excalimate"),
-        ctx,
-        RESTART_TIMEOUT,
-    ));
-    tokio::time::sleep(Duration::from_millis(120)).await;
-    harness
-        .publish(status(
-            &session_id,
-            "excalimate",
-            McpConnectionStatus::Starting,
-        ))
-        .await;
-    tokio::time::sleep(Duration::from_millis(40)).await;
-    harness
-        .publish(status(&session_id, "excalimate", McpConnectionStatus::Dead))
+    // When asking to restart a different (unconfigured) server.
+    let reply = coordinator
+        .ask(RestartMcpServer {
+            session_id,
+            server: "ghost".to_owned(),
+        })
         .await;
 
-    let result = task.await.expect("task");
-
-    // Then the tool reports failure with the STOP-and-wait instruction.
+    // Then the reply is a domain-level UnknownServer.
     assert!(
-        !result.success,
-        "should fail on Dead; got: {}",
-        result.content
-    );
-    assert!(
-        result.content.contains("STOP"),
-        "failure message should include the STOP instruction; got: {}",
-        result.content
+        matches!(
+            reply,
+            Err(kameo::error::SendError::HandlerError(
+                RestartError::UnknownServer
+            ))
+        ),
+        "unconfigured server should yield UnknownServer; got: {reply:?}"
     );
 }
 
-/// The tool does NOT return while the status is only `Starting`.
+// ---------------------------------------------------------------------------
+// Tool-level: execute() failure paths
+// ---------------------------------------------------------------------------
+
+/// No coordinator ref (e.g. test seed without one) → immediate failure.
 #[tokio::test]
-async fn execute_does_not_return_while_status_is_starting() {
-    // Given a harness + context.
-    let harness = TestHarness::new().await;
+async fn execute_fails_when_coordinator_ref_is_none() {
+    // Given a context with no coordinator ref.
     let session_id = SessionId::new();
-    let ctx = ctx_with_excalimate(harness.bus(), session_id.clone());
-
-    // When calling execute and driving only Starting.
-    let task = tokio::spawn(execute_with_timeout(
-        call("excalimate"),
-        ctx,
-        RESTART_TIMEOUT,
-    ));
-    tokio::time::sleep(Duration::from_millis(120)).await;
-    harness
-        .publish(status(
-            &session_id,
-            "excalimate",
-            McpConnectionStatus::Starting,
-        ))
-        .await;
-
-    // Then the future is still pending after a generous wait (no terminal
-    // status has arrived).
-    let pending = tokio::select! {
-        _r = task => "resolved",
-        () = tokio::time::sleep(Duration::from_millis(200)) => "pending",
+    let ctx = ToolContext {
+        cwd: PathBuf::from("/tmp"),
+        timeout: None,
+        state: Some(State::new(AppState::default())),
+        session_id: Some(session_id),
+        app_paths: AppPaths::new_in(std::path::Path::new("/tmp")),
+        bus: None,
+        max_output_lines: None,
+        max_output_bytes: None,
+        dispatched_at: jiff::Timestamp::now(),
+        session_cap: None,
+        mcp_coordinator: None,
     };
-    assert_eq!(pending, "pending", "tool must not return mid-startup");
-}
 
-/// The Gotcha #3 guard: a stale Dead from the old actor (before the new
-/// Starting) is ignored, not treated as the new server's failure.
-#[tokio::test]
-async fn execute_ignores_stale_dead_from_old_actor_before_new_starting() {
-    // Given a harness + context.
-    let harness = TestHarness::new().await;
-    let session_id = SessionId::new();
-    let ctx = ctx_with_excalimate(harness.bus(), session_id.clone());
+    // When executing.
+    let result = execute(call("excalimate"), ctx).await;
 
-    // When calling execute and driving (stale)Dead -> (new)Starting -> Running.
-    let task = tokio::spawn(execute_with_timeout(
-        call("excalimate"),
-        ctx,
-        RESTART_TIMEOUT,
-    ));
-    tokio::time::sleep(Duration::from_millis(120)).await;
-    // Stale Dead from the old actor's teardown (arrives first).
-    harness
-        .publish(status(&session_id, "excalimate", McpConnectionStatus::Dead))
-        .await;
-    tokio::time::sleep(Duration::from_millis(40)).await;
-    harness
-        .publish(status(
-            &session_id,
-            "excalimate",
-            McpConnectionStatus::Starting,
-        ))
-        .await;
-    tokio::time::sleep(Duration::from_millis(40)).await;
-    harness
-        .publish(status(
-            &session_id,
-            "excalimate",
-            McpConnectionStatus::Running,
-        ))
-        .await;
-
-    let result = task.await.expect("task");
-
-    // Then the tool reports success — the stale Dead was correctly ignored.
+    // Then the tool fails fast mentioning the coordinator.
+    assert!(!result.success, "missing coordinator should fail");
     assert!(
-        result.success,
-        "stale pre-Starting Dead must be ignored; got: {}",
+        result.content.contains("coordinator"),
+        "error should mention the coordinator; got: {}",
         result.content
     );
 }
 
-/// A never-Running server → after the timeout, the tool reports "still
-/// starting" (success=true), not a hard failure.
+/// An unknown server routed through the real ask → failure naming the server.
 #[tokio::test]
-async fn execute_returns_still_starting_on_timeout() {
-    // Given a harness + context, with a short test timeout.
+async fn execute_returns_failure_for_unknown_server_via_ask() {
+    // Given a coordinator with `excalimate` configured and a context wired to it.
     let harness = TestHarness::new().await;
-    let session_id = SessionId::new();
-    let ctx = ctx_with_excalimate(harness.bus(), session_id.clone());
+    let (coordinator, _services, _state) =
+        spawn_coordinator(&harness, vec![unrunnable_server()]).await;
+    let ctx = ctx_with_coordinator(coordinator, SessionId::new());
 
-    // When calling execute with a short timeout and driving only Starting
-    // (no terminal status ever arrives in phase 1; phase 2 times out).
-    let task = tokio::spawn(execute_with_timeout(call("excalimate"), ctx, TEST_TIMEOUT));
-    tokio::time::sleep(Duration::from_millis(120)).await;
-    harness
-        .publish(status(
-            &session_id,
-            "excalimate",
-            McpConnectionStatus::Starting,
-        ))
-        .await;
+    // When executing with an unconfigured server name.
+    let result = execute(call("ghost"), ctx).await;
 
-    let result = task.await.expect("task");
-
-    // Then the tool reports "still starting" with success=true.
-    assert!(
-        result.success,
-        "timeout should not be a hard failure; got: {}",
-        result.content
-    );
-    assert!(
-        result.content.contains("still starting"),
-        "should report still-starting on timeout; got: {}",
-        result.content
-    );
-}
-
-/// An unknown server name → clear failure, no restart attempted.
-#[tokio::test]
-async fn execute_returns_failure_for_unknown_server() {
-    // Given a context with only `excalimate` configured.
-    let harness = TestHarness::new().await;
-    let session_id = SessionId::new();
-    let ctx = ctx_with_excalimate(harness.bus(), session_id);
-
-    // When calling execute with an unconfigured server name.
-    let result = execute_with_timeout(call("ghost"), ctx, RESTART_TIMEOUT).await;
-
-    // Then the tool fails fast with the server name in the message.
+    // Then the tool fails, naming the unknown server.
     assert!(!result.success, "unknown server should fail");
     assert!(
         result.content.contains("ghost"),
@@ -311,47 +247,31 @@ async fn execute_returns_failure_for_unknown_server() {
     );
 }
 
-/// A `mcp__<server>__<tool>` tool name is silently resolved to the server.
+/// A namespaced tool name routes to the real ask (and fails UnknownServer if
+/// the server isn't configured) — proves namespace-stripping reaches the ask.
 #[tokio::test]
-async fn execute_silently_strips_namespace_from_tool_name() {
-    // Given a harness + context with `excalimate` configured.
+async fn execute_strips_namespace_and_routes_to_ask() {
+    // Given a coordinator with no `stub` server configured.
     let harness = TestHarness::new().await;
-    let session_id = SessionId::new();
-    let ctx = ctx_with_excalimate(harness.bus(), session_id.clone());
+    let (coordinator, _services, _state) = spawn_coordinator(&harness, vec![]).await;
+    let ctx = ctx_with_coordinator(coordinator, SessionId::new());
 
-    // When calling execute with a namespaced tool name and driving Running.
-    let task = tokio::spawn(execute_with_timeout(
+    // When executing with a namespaced tool name.
+    let result = execute(
         ToolCall {
             id: "tc_1".to_owned(),
             name: "restart_mcp_server".to_owned(),
-            arguments: "{\"server\": \"mcp__excalimate__create_scene\"}".to_owned(),
+            arguments: "{\"server\": \"mcp__stub__echo\"}".to_owned(),
         },
         ctx,
-        RESTART_TIMEOUT,
-    ));
-    tokio::time::sleep(Duration::from_millis(120)).await;
-    harness
-        .publish(status(
-            &session_id,
-            "excalimate",
-            McpConnectionStatus::Starting,
-        ))
-        .await;
-    tokio::time::sleep(Duration::from_millis(40)).await;
-    harness
-        .publish(status(
-            &session_id,
-            "excalimate",
-            McpConnectionStatus::Running,
-        ))
-        .await;
+    )
+    .await;
 
-    let result = task.await.expect("task");
-
-    // Then the tool succeeds — the namespace was stripped and the server matched.
+    // Then the tool fails with UnknownServer for `stub` (namespace stripped).
+    assert!(!result.success, "should reach the ask and fail");
     assert!(
-        result.success,
-        "namespaced name should resolve to the server; got: {}",
+        result.content.contains("stub"),
+        "error should name the stripped server; got: {}",
         result.content
     );
 }

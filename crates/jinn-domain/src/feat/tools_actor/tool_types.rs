@@ -50,6 +50,13 @@ pub struct ToolContext {
     /// Authority to write session state (task lists, skill installs).
     /// Only present for tools that mutate sessions.
     pub session_cap: Option<crate::common::tcaps::session::SessionCap>,
+    /// MCP coordinator actor ref — `Some` only for the `restart_mcp_server`
+    /// tool, which `ask`s the coordinator directly (request/reply) to learn
+    /// whether a restart connected. Resolved from
+    /// `services.mcp_coordinator` at dispatch time. `None` in tests and for
+    /// every tool that doesn't need it.
+    pub mcp_coordinator:
+        Option<kameo::actor::ActorRef<crate::feat::mcp_coordinator_actor::McpCoordinatorActor>>,
 }
 
 impl fmt::Debug for ToolContext {
@@ -90,6 +97,7 @@ mod tests {
             max_output_bytes: None,
             dispatched_at: jiff::Timestamp::now(),
             session_cap: None,
+            mcp_coordinator: None,
         };
 
         // When debugging.

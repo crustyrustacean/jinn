@@ -2,26 +2,30 @@
 //! by name (or by stripping a `mcp__<server>__<tool>` namespace) and learn
 //! whether the restart succeeded before retrying the original tool call.
 //!
+//! Architecture: this tool `ask`s the `McpCoordinatorActor` directly
+//! (request/reply). The coordinator's `restart_one` kills the old actor,
+//! spawns a fresh one, awaits its `on_start`, and queries its `ConnectionState`
+//! to report success/failure deterministically. No bus eavesdropping, no
+//! event-ordering race. The coordinator owns the timeout (60s); this tool just
+//! awaits the reply.
+//!
 //! See the plan at `.plans/mcp-restart-tool/plan.md`.
 
 use std::time::Duration;
 
-use futures::{FutureExt, future::BoxFuture};
-use kameo::actor::{ActorRef, Spawn};
-use kameo::prelude::{Context, Message};
+use futures::FutureExt;
+use kameo::error::SendError;
 
-use crate::feat::mcp_actor::protocol::{McpConnectionStatus, McpServerStatus};
-use crate::feat::mcp_coordinator_actor::protocol::RestartMcpServer;
+use crate::feat::mcp_coordinator_actor::protocol::{RestartError, RestartMcpServer};
 use crate::feat::tools_actor::tool_types::{ToolCall, ToolContext, ToolDefinition, ToolResult};
-use crate::protocol::SessionId;
 
 use super::BoxedToolFuture;
 
-/// How long `execute()` waits for the restarted server to reach `Running` or
-/// `Dead` before reporting "still starting". Generous: slow HTTP/Python servers
-/// can legitimately boot for 45s+. [`execute_with_timeout`] lets tests inject
-/// a smaller value.
-pub const RESTART_TIMEOUT: Duration = Duration::from_mins(1);
+/// Defensive outer bound on the `ask`. The coordinator's own `restart_one`
+/// already bounds at 60s; this catches a coordinator that never replies
+/// (e.g. it died) so the tool loop can't hang forever. Generously above the
+/// coordinator's bound to avoid racing it.
+const ASK_TIMEOUT: Duration = Duration::from_secs(75);
 
 /// Returns the tool definition for the `restart_mcp_server` built-in tool.
 pub fn definition() -> ToolDefinition {
@@ -31,8 +35,8 @@ pub fn definition() -> ToolDefinition {
             Call this when an `mcp__<server>__*` tool call fails (the server has likely died). \
             Pass the server's name (e.g. `excalimate`) — a full `mcp__<server>__<tool>` tool name \
             is also accepted and silently resolved. This waits until the server has finished \
-            restarting, then returns whether it is back online. After a successful restart, retry \
-            the original tool call. \
+            restarting (up to 60s for slow-boot servers), then returns whether it is back online. \
+            After a successful restart, retry the original tool call. \
             **If this tool reports failure, STOP and wait for user instruction — do not retry.**"
             .to_owned(),
         prompt_snippet: None,
@@ -52,152 +56,91 @@ pub fn definition() -> ToolDefinition {
     }
 }
 
-/// Executes the `restart_mcp_server` built-in tool with the default 60s timeout.
+/// Executes the `restart_mcp_server` built-in tool.
 pub fn execute(call: ToolCall, ctx: ToolContext) -> BoxedToolFuture {
-    execute_with_timeout(call, ctx, RESTART_TIMEOUT)
-}
-
-/// Same as [`execute`] but with an injectable timeout (for tests).
-pub fn execute_with_timeout(
-    call: ToolCall,
-    ctx: ToolContext,
-    timeout: Duration,
-) -> BoxedToolFuture {
     let tool_call_id = call.id;
     let tool_name = call.name;
     let args_str = call.arguments;
 
-    // Parse args + resolve the server up front; surface clear failures.
+    // Resolve prerequisites up front; surface clear failures.
+    let Some(coordinator) = ctx.mcp_coordinator else {
+        return futures::future::ready(failure_result(
+            &tool_call_id,
+            &tool_name,
+            "MCP coordinator is unavailable (this should only happen in tests)",
+        ))
+        .boxed();
+    };
     let Some(state) = ctx.state else {
         return failure_future(&tool_call_id, &tool_name, "no application state available");
     };
     let Some(session_id) = ctx.session_id else {
         return failure_future(&tool_call_id, &tool_name, "no active session");
     };
-    let Some(bus) = ctx.bus else {
-        return failure_future(&tool_call_id, &tool_name, "no bus available");
-    };
 
     let server = match parse_args(&args_str, &state) {
         Ok(server) => server,
         Err(msg) => return failure_future(&tool_call_id, &tool_name, &msg),
     };
+
     async move {
-        // Subscribe BEFORE publishing restart so we cannot miss the new actor's
-        // status transitions (see `StatusCollector` doc on race-ordering).
-        let mut statuses =
-            match StatusCollector::start(&bus, session_id.clone(), server.clone()).await {
-                Ok(s) => s,
-                Err(e) => {
-                    return failure_result(
-                        &tool_call_id,
-                        &tool_name,
-                        &format!("failed to subscribe to MCP status: {e}"),
-                    );
-                }
-            };
+        //
+        // kameo flattens a `Result<(), RestartError>` Reply: awaiting yields
+        // `Result<(), SendError<M, RestartError>>`, where
+        // `SendError::HandlerError(e)` carries our domain error variants.
+        match tokio::time::timeout(ASK_TIMEOUT, coordinator.ask(RestartMcpServer { session_id, server: server.clone() })).await {
+            // Outer timeout: coordinator never replied.
+            Err(_) => {
+                return failure_result(
+                    &tool_call_id,
+                    &tool_name,
+                    &format!(
+                        "MCP restart timed out after {ASK_TIMEOUT:?} with no reply from the coordinator. \
+                         **STOP and wait for user instruction.**"
+                    ),
+                );
+            }
+            // Delivery failure (actor stopped / mailbox full / ask timeout).
+            Ok(Err(
+                SendError::ActorNotRunning(_)
+                | SendError::ActorStopped
+                | SendError::MailboxFull(_)
+                | SendError::Timeout(_),
+            )) => {
+                return failure_result(
+                    &tool_call_id,
+                    &tool_name,
+                    "MCP coordinator is unreachable (mailbox failure). \
+                     **STOP and wait for user instruction.**",
+                );
+            }
+            // Domain-level failure from the coordinator's restart_one.
+            Ok(Err(SendError::HandlerError(domain_err))) => {
+                return domain_failure_result(
+                    &tool_call_id,
+                    &tool_name,
+                    &server,
+                    &domain_err,
+                );
+            }
+            // Success: server reconnected.
+            Ok(Ok(())) => {}
+        }
 
-        // Kick off the restart (fire-and-forget command; we observe via the bus).
-        bus.publish(RestartMcpServer {
-            session_id,
-            server: server.clone(),
-        })
-        .await;
-
-        // Wait for the new server's terminal status (Running/Dead), or timeout.
-        // Per Gotcha #3: the kill+spawn sequence emits (old)Dead -> (new)Starting
-        // -> (new)terminal. We ignore everything until the first Starting-after-
-        // publish, then take the terminal status after it. This avoids treating
-        // the old actor's teardown Dead as the new server's failure.
-        match wait_for_terminal(&mut statuses, timeout).await {
-            Outcome::Running => ToolResult {
-                tool_call_id,
-                name: tool_name,
-                content: format!(
-                    "MCP server `{server}` restarted successfully and is back online. \
-                     MCP tools are available again — retry your original tool call."
-                ),
-                success: true,
-                full_content: None,
-                truncation: None,
-                pin_position: None,
-            },
-            Outcome::Dead => ToolResult {
-                tool_call_id,
-                name: tool_name,
-                content: format!(
-                    "MCP server `{server}` failed to restart — it is dead. \
-                     **STOP and wait for user instruction.** Do not retry; the user \
-                     should check the server config in the inspector (`<leader>sM`)."
-                ),
-                success: false,
-                full_content: None,
-                truncation: None,
-                pin_position: None,
-            },
-            Outcome::StillStarting => ToolResult {
-                tool_call_id,
-                name: tool_name,
-                content: format!(
-                    "MCP server `{server}` is still starting after {timeout:?}. \
-                     It is likely a slow-to-boot server (HTTP/Python). Retry your \
-                     original tool call shortly."
-                ),
-                success: true,
-                full_content: None,
-                truncation: None,
-                pin_position: None,
-            },
-            Outcome::Lost => failure_result(
-                &tool_call_id,
-                &tool_name,
-                "MCP status subscriber was lost mid-restart; retry the call.",
+        ToolResult {
+            tool_call_id,
+            name: tool_name,
+            content: format!(
+                "MCP server `{server}` restarted successfully and is back online. \
+                 MCP tools are available again — retry your original tool call."
             ),
+            success: true,
+            full_content: None,
+            truncation: None,
+            pin_position: None,
         }
     }
     .boxed()
-}
-
-/// The observable outcome of waiting for a restart to resolve.
-enum Outcome {
-    Running,
-    Dead,
-    StillStarting,
-    Lost,
-}
-
-/// Wait for the new server's terminal status, applying the kill+spawn ordering
-/// guard (Gotcha #3): ignore statuses until the first `Starting` *after* our
-/// restart publish, then take the terminal status after it.
-///
-/// Returns `Outcome::Lost` if the stream ends (collector dropped) before any
-/// terminal status, and `Outcome::StillStarting` if the timeout fires.
-async fn wait_for_terminal(statuses: &mut StatusStream, timeout: Duration) -> Outcome {
-    // Phase 1: ignore everything until we see the new actor's Starting. The
-    // old actor's teardown Dead may arrive first; we must not treat it as the
-    // new server's failure.
-    loop {
-        match tokio::time::timeout(timeout, statuses.next()).await {
-            Ok(Some(status)) if status.status == McpConnectionStatus::Starting => break,
-            Ok(Some(_)) => {} // ignore pre-Starting (old actor's Dead)
-            Ok(None) => return Outcome::Lost,
-            Err(_) => return Outcome::StillStarting,
-        }
-    }
-
-    // Phase 2: wait for the terminal status (Running/Dead). Ignore further
-    // Starting states (a server shouldn't emit them post-start, but be lenient).
-    loop {
-        match tokio::time::timeout(timeout, statuses.next()).await {
-            Ok(Some(status)) => match status.status {
-                McpConnectionStatus::Running => return Outcome::Running,
-                McpConnectionStatus::Dead => return Outcome::Dead,
-                McpConnectionStatus::Starting => {}
-            },
-            Ok(None) => return Outcome::Lost,
-            Err(_) => return Outcome::StillStarting,
-        }
-    }
 }
 
 // ---------------------------------------------------------------------------
@@ -274,100 +217,32 @@ fn failure_result(call_id: &str, name: &str, message: &str) -> ToolResult {
     }
 }
 
-// ---------------------------------------------------------------------------
-// StatusCollector — transient bus subscriber
-// ---------------------------------------------------------------------------
-
-/// A transient kameo actor that subscribes to `McpServerStatus` on the bus and
-/// forwards every status for the target `(session_id, server)` into a channel
-/// the tool's future reads.
-///
-/// Why a dedicated actor: `BusService` subscriptions are recipient-based
-/// (`kameo::actor::Recipient`), and a builtin tool's `execute()` is a free
-/// function with no actor context. We spawn this actor, subscribe it, then read
-/// the channel until the terminal status arrives — at which point the tool
-/// drops the stream, the collector goes idle, and it stops itself on drop.
-///
-/// Race-ordering: subscribe **before** publishing `RestartMcpServer`. The
-/// kill+spawn sequence emits `(old)Dead -> (new)Starting -> (new)terminal`; the
-/// tool ignores pre-Starting events so the old actor's teardown Dead is never
-/// mistaken for the new server's failure.
-struct StatusCollector {
-    tx: kanal::Sender<McpServerStatus>,
-    session_id: SessionId,
-    server: String,
-}
-
-impl StatusCollector {
-    /// Subscribe to `McpServerStatus` on the bus and return a stream handle.
-    fn start(
-        bus: &crate::common::services::bus_service::BusService,
-        session_id: SessionId,
-        server: String,
-    ) -> BoxFuture<'static, Result<StatusStream, String>> {
-        let bus = bus.clone();
-        async move {
-            let (tx, rx) = kanal::unbounded::<McpServerStatus>();
-            let actor = Spawn::spawn(StatusCollectorArgs {
-                tx,
-                session_id,
-                server,
-            });
-            actor.wait_for_startup().await;
-            bus.subscribe::<McpServerStatus, StatusCollector>(&actor)
-                .await;
-            Ok(StatusStream {
-                rx: rx.to_async(),
-                _actor: actor,
-            })
-        }
-        .boxed()
-    }
-}
-
-/// Spawn args for [`StatusCollector`] (carries the channel + filter keys).
-struct StatusCollectorArgs {
-    tx: kanal::Sender<McpServerStatus>,
-    session_id: SessionId,
-    server: String,
-}
-
-impl kameo::Actor for StatusCollector {
-    type Args = StatusCollectorArgs;
-    type Error = kameo::error::Infallible;
-
-    async fn on_start(args: Self::Args, _actor_ref: ActorRef<Self>) -> Result<Self, Self::Error> {
-        Ok(Self {
-            tx: args.tx,
-            session_id: args.session_id,
-            server: args.server,
-        })
-    }
-}
-
-impl Message<McpServerStatus> for StatusCollector {
-    type Reply = ();
-
-    async fn handle(&mut self, msg: McpServerStatus, _ctx: &mut Context<Self, Self::Reply>) {
-        // Only forward statuses for the target (session × server).
-        if msg.session_id == self.session_id && msg.server == self.server {
-            let _ = self.tx.send(msg);
-        }
-    }
-}
-
-/// Handle returned to the tool; yields the collected statuses.
-struct StatusStream {
-    rx: kanal::AsyncReceiver<McpServerStatus>,
-    /// Kept alive so the actor isn't dropped while the tool is still waiting.
-    _actor: ActorRef<StatusCollector>,
-}
-
-impl StatusStream {
-    /// Yields the next matching status, or `None` if the collector stopped.
-    async fn next(&mut self) -> Option<McpServerStatus> {
-        self.rx.recv().await.ok()
-    }
+/// Maps a domain-level `RestartError` from the coordinator into a failure
+/// result carrying the STOP-and-wait instruction.
+fn domain_failure_result(
+    call_id: &str,
+    name: &str,
+    server: &str,
+    err: &RestartError,
+) -> ToolResult {
+    let content = match err {
+        RestartError::UnknownServer => format!("unknown MCP server `{server}`"),
+        RestartError::ConnectFailed => format!(
+            "MCP server `{server}` failed to restart — it is dead. \
+             **STOP and wait for user instruction.** Do not retry; the user \
+             should check the server config in the inspector (`<leader>sM`)."
+        ),
+        RestartError::Timeout => format!(
+            "MCP server `{server}` did not finish starting within 60s — it is likely a \
+             slow-to-boot server that hasn't come up yet. \
+             **STOP and wait for user instruction.** The user can check its status in the \
+             inspector (`<leader>sM`) and retry once it shows `running`."
+        ),
+        RestartError::Mailbox => "the restarted MCP actor stopped mid-restart (mailbox failure). \
+             **STOP and wait for user instruction.**"
+            .to_owned(),
+    };
+    failure_result(call_id, name, &content)
 }
 
 #[cfg(test)]
