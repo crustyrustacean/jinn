@@ -630,4 +630,38 @@ mod tests {
             "@ popup bottom should follow the trigger down to row 2"
         );
     }
+    #[test]
+    fn at_popup_horizontal_anchor_follows_wrapped_trigger_col() {
+        // Given an @ popup whose trigger sits on a wrapped continuation line,
+        // far from the terminal's right edge.
+        use crate::feat::file_lister::{FileEntry, FilePickerState};
+        let mut state = AppState::default();
+        state.active_chat_input_mut().set_wrap_width(5);
+        // "aaaa bbbb@" at width 5 → row0 "aaaa ", row1 "bbbb@" with @ at
+        // display col 4 on the wrapped continuation line.
+        state.active_chat_input_mut().insert_text("aaaa bbbb@");
+        state.active_chat_input_mut().activate_autocomplete(
+            9,
+            crate::feat::chat_input::AutocompleteTrigger::At,
+            vec![],
+        );
+        state.frontend.file_picker = FilePickerState::with_entries(vec![FileEntry {
+            name: "src".into(),
+            is_dir: true,
+        }]);
+
+        // When rendering.
+        let rect = popup_rect(&state);
+
+        // Then the popup's left edge sits near the trigger's wrapped column
+        // (prompt_indent 2 + display_col 4 = 6), not clamped to the right edge.
+        assert_eq!(
+            rect.x, 6,
+            "@ popup left edge should follow the wrapped trigger column"
+        );
+        assert!(
+            rect.x < 70,
+            "@ popup should not be clamped to the terminal's right edge"
+        );
+    }
 }
