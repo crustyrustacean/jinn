@@ -87,6 +87,7 @@ Entries are added or amended **only with human approval**.
 - (mcp) HTTP connect has no wall-clock timeout: a server stays `Starting` until the HTTP endpoint is reachable, and is marked `Dead` only when the child process exits (captured stdout/stderr explain why).
 - (mcp) A `RemoteHttp { url }` server connects to an externally-managed HTTP server with no process management.
 - (mcp) MCP connections are monitored post-connect: `McpActor` spawns a liveness watcher that polls `is_transport_closed()` and publishes `Dead` when the connection drops, working uniformly across stdio, HTTP, and RemoteHttp transports. No auto-restart — a dead connection surfaces in the sidebar/picker for the user to restart via the inspector.
+- (mcp) The `restart_mcp_server` built-in tool lets the model restart a dead MCP server by name (or by stripping a `mcp__<server>__<tool>` namespace). It waits for the new connection to reach `Running` or `Dead` within 60s before returning, so the model cannot retry a tool call mid-startup; on failure the result instructs the model to stop and wait for the user.
 - (tools) Actor-provided tools route by their registration `provider` prefix via the generic `ExecuteTool` command, not a hardcoded per-name match; `web-fetch`/`web-search` remain distinct provider keys.
 - (paths) Config lives at `~/.config/jinn` (providers, prompts, personas, themes, `jinn.toml`).
 - (paths) Data lives at `~/.local/share/jinn` (`sessions.db`).
@@ -129,7 +130,7 @@ Entries are added or amended **only with human approval**.
 - (tools) The `write` tool creates parent directories automatically and overwrites existing files.
 - (tools) The `write` tool pins the tool result only on success — failed writes (bad JSON, dir creation failure, file write failure) produce no pin.
 - (tools) The `write` tool preserves BOM and CRLF line endings on round-trip; it handles filenames with spaces and Unicode.
-- (tools) The agent's built-in file tools are `read`, `write`, `edit`, `bash`, `grep`, `save_plan`, `get_time`, `session_query`, and `skill`.
+- (tools) The agent's built-in file tools are `read`, `write`, `edit`, `bash`, `grep`, `save_plan`, `get_time`, `session_query`, `restart_mcp_server`, and `skill`.
 - (tools) When the `bash` tool or a built-in tool panics mid-execution, it publishes a failed-execution event rather than crashing the actor.
 - (ui) A section is shown only when non-empty (Pins requires pinned ids, TaskList requires tasks); empty sections are hidden.
 - (ui) Mouse drag creates a dragging selection state, `finalize` transitions dragging to active, and `cancel` returns to idle.
