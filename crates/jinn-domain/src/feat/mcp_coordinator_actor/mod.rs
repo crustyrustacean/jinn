@@ -179,9 +179,16 @@ impl McpCoordinatorActor {
             return;
         }
 
+        let bind_addr = bind_address(&self.deps.services);
+
         let actor_ref = McpActor::supervise(
             &self.root,
-            McpActorDeps::new(self.deps.clone(), session_id.clone(), config.clone()),
+            McpActorDeps::new(
+                self.deps.clone(),
+                session_id.clone(),
+                config.clone(),
+                bind_addr,
+            ),
         )
         .restart_policy(RestartPolicy::Never)
         .spawn()
@@ -253,6 +260,16 @@ impl McpCoordinatorActor {
 fn configured_servers(services: &Services) -> Vec<McpServerConfig> {
     let prefs = services.user_preferences_storage.read();
     prefs.mcp_servers.clone()
+}
+
+/// Reads the global `mcp_bind_address` preference (default `127.0.0.1`).
+fn bind_address(services: &Services) -> String {
+    let prefs = services.user_preferences_storage.read();
+    if prefs.mcp_bind_address.is_empty() {
+        "127.0.0.1".to_owned()
+    } else {
+        prefs.mcp_bind_address.clone()
+    }
 }
 
 // ── Message handlers ─────────────────────────────────────────────────────

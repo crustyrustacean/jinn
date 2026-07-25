@@ -103,7 +103,6 @@ pub(crate) fn default_mcp_bind_address() -> String {
     "127.0.0.1".to_owned()
 }
 
-
 /// Errors that can occur during user preferences I/O.
 #[derive(Debug, Error)]
 pub enum UserPreferencesError {

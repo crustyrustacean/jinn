@@ -85,6 +85,7 @@ impl McpServerConfig {
 
 #[cfg(test)]
 mod tests {
+    #![allow(clippy::expect_used, reason = "test assertions")]
     use super::*;
 
     #[test]
@@ -109,7 +110,10 @@ mod tests {
         let config = McpServerConfig {
             name: "excalimate".to_owned(),
             command: "node".to_owned(),
-            args: vec!["server.js", "--port", "<port>"].into_iter().map(String::from).collect(),
+            args: vec!["server.js", "--port", "<port>"]
+                .into_iter()
+                .map(String::from)
+                .collect(),
             transport: TransportKind::Http,
         };
 
@@ -140,7 +144,9 @@ mod tests {
         // Then the transport + URL are preserved.
         assert_eq!(
             back.transport,
-            TransportKind::RemoteHttp { url: "http://localhost:3001/mcp".to_owned() }
+            TransportKind::RemoteHttp {
+                url: "http://localhost:3001/mcp".to_owned()
+            }
         );
     }
 

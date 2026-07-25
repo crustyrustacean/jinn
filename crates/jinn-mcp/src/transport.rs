@@ -33,7 +33,7 @@ pub fn pick_free_port(bind_addr: &str) -> Result<u16, std::io::Error> {
 }
 
 /// Expand `<ip>` and `<port>` replacement tokens in command arguments.
-
+///
 /// Mirrors the lifecycle-script token convention. Each `<ip>` substring is
 /// replaced with `ip`, and each `<port>` substring with the decimal `port`.
 /// Arguments with no tokens pass through unchanged. Pure and allocation-only.
@@ -43,9 +43,9 @@ pub fn expand_tokens(args: &[String], ip: &str, port: u16) -> Vec<String> {
         .collect()
 }
 
-
 #[cfg(test)]
 mod tests {
+    #![allow(clippy::expect_used, reason = "test assertions")]
     use super::*;
 
     #[test]
@@ -55,7 +55,10 @@ mod tests {
 
         // Then the same port can be re-bound immediately (bind-and-release works).
         let rebind = TcpListener::bind(("127.0.0.1", port));
-        assert!(rebind.is_ok(), "port {port} should be immediately rebindable");
+        assert!(
+            rebind.is_ok(),
+            "port {port} should be immediately rebindable"
+        );
     }
 
     #[test]

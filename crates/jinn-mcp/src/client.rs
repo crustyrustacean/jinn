@@ -1,15 +1,27 @@
-//! MCP client connection to a single server over a stdio child process.
+//! MCP client connection to a single server.
 //!
 //! This module is transport-level: [`McpClient`] owns one `rmcp` client
-//! connection to one MCP server process. It knows nothing about the actor
+//! connection to one MCP server. It knows nothing about the actor
 //! system or `AppState`. The `jinn-domain::feat::mcp_actor` module drives it.
 //!
 //! # Lifecycle
 //!
-//! [`McpClient::connect`] spawns the server process (with `kill_on_drop` so a
-//! dropped connection always terminates the child), performs the MCP
-//! initialize handshake, and is ready to list/call tools. [`McpClient::shutdown`]
-//! closes the transport and waits (with a timeout) for the child to exit.
+//! Three transports are supported, selected by the server's `TransportKind`:
+//!
+//! - **stdio** ([`McpClient::connect`]): spawns the server as a child process
+//!   and handshakes over stdin/stdout. `kill_on_drop` ensures a dropped
+//!   connection always terminates the child.
+//! - **HTTP, managed** ([`McpClient::connect_http`] + [`McpClient::connect_with_retry`]):
+//!   spawns the server with a jinn-allocated port (injected via `<port>`/`<ip>`
+//!   tokens), then polls the HTTP endpoint on a backoff until the handshake
+//!   succeeds or the child exits. No wall-clock timeout — a slow-booting server
+//!   stays connecting for as long as it needs. Both stdout and stderr are drained
+//!   into the log buffer (stdout is available here, unlike stdio mode).
+//! - **HTTP, remote** ([`McpClient::connect_remote`]): connects to an externally
+//!   managed URL with no child process.
+//!
+//! [`McpClient::shutdown`] closes the transport and waits (with a timeout) for
+//! the child to exit if one was spawned.
 
 use std::process::Stdio;
 use std::sync::{Arc, Mutex};
@@ -18,7 +30,9 @@ use std::time::Duration;
 use error_stack::{Report, ResultExt};
 use rmcp::model::{CallToolRequestParams, CallToolResult};
 use rmcp::service::{RoleClient, RunningService, ServiceExt};
+use rmcp::transport::StreamableHttpClientTransport;
 use rmcp::transport::child_process::TokioChildProcess;
+use rmcp::transport::streamable_http_client::StreamableHttpClientTransportConfig;
 use tokio::io::AsyncBufReadExt;
 use tokio::process::Command;
 use wherror::Error;
@@ -160,7 +174,7 @@ impl McpClient {
     ///
     /// Returns an error if the port can't be allocated or the child fails
     /// to spawn.
-    pub async fn connect_http(
+    pub fn connect_http(
         program: &str,
         args: &[String],
         bind_addr: &str,
@@ -194,6 +208,128 @@ impl McpClient {
 
         tracing::info!(%url, "spawned HTTP MCP server");
         Ok(HalfOpenHttp { url, child, buffer })
+    }
+
+    /// Polls an HTTP endpoint until the MCP initialize handshake succeeds,
+    /// with **no wall-clock timeout**.
+    ///
+    /// Loops on a backoff (~50ms growing to a ~1s cap) until either the
+    /// handshake completes (`Ok`) or the child process exits (captured output
+    /// is retained in the buffer, surfaced as the error context). A slow-booting
+    /// server stays `Starting` for as long as it needs.
+    ///
+    /// # Errors
+    ///
+    /// Returns an error if the child process exits before the endpoint is
+    /// reachable. Connection-refused while the server boots is retried
+    /// indefinitely, so this only returns `Err` on process exit or an
+    /// unrecoverable handshake failure.
+    pub async fn connect_with_retry(half: HalfOpenHttp) -> Result<Self, Report<McpClientError>> {
+        let HalfOpenHttp {
+            url,
+            mut child,
+            buffer,
+        } = half;
+        let mut backoff = Duration::from_millis(50);
+        let cap = Duration::from_secs(1);
+
+        loop {
+            // If the child has already exited, surface the captured output.
+            match child.try_wait() {
+                Ok(Some(_status)) => {
+                    let captured = buffer
+                        .lock()
+                        .map(|b| b.tail().to_owned())
+                        .unwrap_or_default();
+                    return Err(Report::new(McpClientError)
+                        .attach("HTTP MCP server process exited before connecting")
+                        .attach(captured));
+                }
+                Ok(None) => {} // still running — proceed to attempt connect
+                Err(e) => {
+                    return Err(Report::new(McpClientError)
+                        .attach("failed to poll HTTP MCP server process")
+                        .attach(format!("{e:?}")));
+                }
+            }
+
+            // Attempt the handshake. A refused connection is expected while the
+            // server boots; retry after backoff. Each attempt is bounded so a
+            // hung handshake (port open but server unresponsive) still lets the
+            // child-exit check re-run — without this, a server that accepts the
+            // TCP connection then hangs mid-handshake blocks forever.
+            match Self::attempt_http_handshake(&url).await {
+                Ok(service) => {
+                    tracing::info!(%url, "connected to HTTP MCP server");
+                    return Ok(Self {
+                        service,
+                        stderr_buffer: buffer,
+                        child: Some(child),
+                    });
+                }
+                Err(reason) => {
+                    tracing::debug!(reason, %url, "HTTP MCP connect attempt failed; retrying");
+                }
+            }
+
+            tokio::time::sleep(backoff).await;
+            backoff = (backoff * 2).min(cap);
+        }
+    }
+
+    /// One bounded attempt at the MCP HTTP handshake.
+    ///
+    /// Returns `Ok(service)` on success, or `Err(reason)` (a tracing field
+    /// value string) if the handshake errored or timed out — both are
+    /// retryable.
+    async fn attempt_http_handshake(
+        url: &str,
+    ) -> Result<RunningService<RoleClient, ()>, &'static str> {
+        let config = StreamableHttpClientTransportConfig::with_uri(url.to_owned());
+        let transport =
+            StreamableHttpClientTransport::with_client(reqwest::Client::default(), config);
+        match tokio::time::timeout(Duration::from_secs(3), ().serve(transport)).await {
+            Ok(Ok(service)) => Ok(service),
+            Ok(Err(_e)) => Err("handshake error"),
+            Err(_elapsed) => Err("attempt timed out"),
+        }
+    }
+
+    /// Connects to a remote, externally-managed HTTP MCP server.
+    ///
+    /// No child process is spawned or owned; jinn only connects to `url`. The
+    /// handshake is retried on a backoff (no wall-clock timeout), matching the
+    /// managed-HTTP behavior, but with **no child-exit check** — there is no
+    /// child to observe, so connect retries forever until the endpoint is up.
+    ///
+    /// # Errors
+    ///
+    /// Returns an error only if the underlying transport construction fails.
+    pub async fn connect_remote(url: &str) -> Result<Self, Report<McpClientError>> {
+        let mut backoff = Duration::from_millis(50);
+        let cap = Duration::from_secs(1);
+        loop {
+            match Self::attempt_http_handshake(url).await {
+                Ok(service) => {
+                    tracing::info!(url, "connected to remote HTTP MCP server");
+                    let stderr_buffer = Arc::new(Mutex::new(McpStderrBuffer::new()));
+                    return Ok(Self {
+                        service,
+                        stderr_buffer,
+                        child: None,
+                    });
+                }
+                Err(reason) => {
+                    tracing::debug!(
+                        reason,
+                        url,
+                        "remote HTTP MCP connect attempt failed; retrying"
+                    );
+                }
+            }
+            tokio::time::sleep(backoff).await;
+            backoff = (backoff * 2).min(cap);
+        }
     }
 
     /// Lists the tools the server exposes.
@@ -360,9 +496,9 @@ where
     });
 }
 
-
 #[cfg(test)]
 mod tests {
+    #![allow(clippy::expect_used, reason = "test assertions")]
     use super::*;
 
     #[test]
@@ -415,9 +551,7 @@ mod tests {
         ];
 
         // When spawning via connect_http.
-        let mut half = McpClient::connect_http("sh", &args, "127.0.0.1")
-            .await
-            .expect("spawn");
+        let mut half = McpClient::connect_http("sh", &args, "127.0.0.1").expect("spawn");
 
         // Then the URL is a localhost URL on a real port.
         assert!(half.url.starts_with("http://127.0.0.1:"));
@@ -425,7 +559,11 @@ mod tests {
 
         // And after a brief wait, the buffer captures both streams.
         tokio::time::sleep(Duration::from_millis(300)).await;
-        let tail = half.buffer.lock().map(|b| b.tail().to_owned()).unwrap_or_default();
+        let tail = half
+            .buffer
+            .lock()
+            .map(|b| b.tail().to_owned())
+            .unwrap_or_default();
         assert!(tail.contains("stdout-line"), "stdout captured: {tail}");
         assert!(tail.contains("stderr-line"), "stderr captured: {tail}");
 
