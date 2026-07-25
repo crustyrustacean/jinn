@@ -264,6 +264,18 @@ impl McpCoordinatorActor {
     /// directly via [`McpActor`]'s `ConnectionState` message after
     /// `wait_for_startup`. No event-ordering race.
     async fn restart_one(&self, session_id: &SessionId, server: &str) -> Result<(), RestartError> {
+        self.restart_one_with_timeout(session_id, server, RESTART_TIMEOUT)
+            .await
+    }
+
+    /// Same as [`restart_one`](Self::restart_one) but with an injectable
+    /// `on_start`+connect timeout (for tests).
+    async fn restart_one_with_timeout(
+        &self,
+        session_id: &SessionId,
+        server: &str,
+        timeout: std::time::Duration,
+    ) -> Result<(), RestartError> {
         let key = (session_id.clone(), server.to_owned());
         self.kill_one(&key).await;
 
@@ -278,7 +290,7 @@ impl McpCoordinatorActor {
         // `on_start` blocks on acquire_client (connect + tools/list); we wait
         // for it to complete, bounded by the restart timeout so a slow-boot
         // server can't hang the tool loop forever.
-        let connected = match tokio::time::timeout(RESTART_TIMEOUT, async {
+        let connected = match tokio::time::timeout(timeout, async {
             actor_ref.wait_for_startup().await;
             actor_ref
                 .ask(ConnectionState)
@@ -395,6 +407,29 @@ impl Message<RestartMcpServer> for McpCoordinatorActor {
     }
 }
 
+#[cfg(test)]
+/// Test-only message: restart with an injectable timeout so tests can
+/// exercise the `Err(Timeout)` path without a 60s wait.
+pub struct RestartForTest {
+    pub session_id: SessionId,
+    pub server: String,
+    pub timeout: std::time::Duration,
+}
+
+#[cfg(test)]
+impl Message<RestartForTest> for McpCoordinatorActor {
+    type Reply = Result<(), RestartError>;
+
+    async fn handle(
+        &mut self,
+        msg: RestartForTest,
+        _ctx: &mut Context<Self, Self::Reply>,
+    ) -> Self::Reply {
+        self.restart_one_with_timeout(&msg.session_id, &msg.server, msg.timeout)
+            .await
+    }
+}
+
 /// Writes a `McpServerStatus` transition into the owning session's status map.
 ///
 /// This is the single owner of each session's `mcp_server_status` field.
@@ -445,6 +480,7 @@ mod lifecycle_tests {
     use crate::common::root_supervisor::RootSupervisor;
     use crate::feat::mcp::McpServerConfig;
     use crate::feat::mcp_actor::protocol::{McpConnectionStatus, McpServerStatus};
+    use crate::feat::mcp_coordinator_actor::protocol::RestartError;
     use crate::feat::preferences_actor::user_preferences::UserPreferences;
     use crate::protocol::SessionId;
 
@@ -459,6 +495,18 @@ mod lifecycle_tests {
             name: "unrunnable".to_owned(),
             command: "/this/command/does/not/exist".to_owned(),
             args: vec![],
+            ..Default::default()
+        }
+    }
+
+    /// A server whose command starts but never speaks the MCP protocol: the
+    /// `initialize` handshake hangs forever, so `on_start` never completes.
+    /// Used to exercise the `Err(Timeout)` path deterministically.
+    fn hanging_server() -> McpServerConfig {
+        McpServerConfig {
+            name: "hanging".to_owned(),
+            command: "sleep".to_owned(),
+            args: vec!["60".to_owned()],
             ..Default::default()
         }
     }
@@ -635,6 +683,34 @@ mod lifecycle_tests {
             starting_count >= 2,
             "disable must tear down the actor so re-enable respawns it; \
              expected >=2 Starting events, got {starting_count}: {events:?}"
+        );
+    }
+
+    /// A 1ms `restart_one` timeout fires before the new actor can finish
+    /// `on_start` (connect + tools/list), so it returns `Err(Timeout)`.
+    #[tokio::test]
+    async fn restart_one_times_out_when_startup_exceeds_the_timeout() {
+        // Given a coordinator with a server that hangs forever on the MCP handshake.
+        let harness = TestHarness::new().await;
+        let (actor, _services, _state) = spawn_lifecycle(&harness, vec![hanging_server()]).await;
+        let session_id = SessionId::new();
+
+        // When restarting with a 1ms timeout.
+        let result = actor
+            .ask(super::RestartForTest {
+                session_id,
+                server: "hanging".to_owned(),
+                timeout: std::time::Duration::from_millis(1),
+            })
+            .await;
+
+        // Then it returns Timeout (startup couldn't complete in 1ms).
+        assert!(
+            matches!(
+                result,
+                Err(kameo::error::SendError::HandlerError(RestartError::Timeout))
+            ),
+            "startup exceeding the timeout should yield Timeout; got: {result:?}"
         );
     }
 }
