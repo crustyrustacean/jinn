@@ -69,6 +69,9 @@ pub(crate) mod input_bounds;
 pub mod protocol;
 pub mod read;
 pub mod registry;
+pub mod restart_mcp;
+#[cfg(test)]
+mod restart_mcp_tests;
 pub mod save_plan;
 pub mod session_query;
 pub mod skill;
