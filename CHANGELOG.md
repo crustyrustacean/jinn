@@ -6,6 +6,7 @@
 - Provide base directory in context for loaded skills to help agent load reference files.
 - Add MCP server support.
 - "Nag" system defaults changed: 200 chat entries + disabled
+- Headed Chrome/Chromium instance restarts on connection lost. This happens if a `web_fetch` or `web_search` request hasn't happened for a while.
 
 ## 2026-07-23 v0.101.0
 
