@@ -931,7 +931,7 @@ use rusqlite::params;
 ///
 /// Constructed by hand (not via `PersistableCore`) so it carries the legacy
 /// serialization that v19 must repair.
-const LEGACY_065_BLOB: &str = "{\"session_id\":\"legacy-065\",\"title\":\"Legacy 065\",\"profile\":{\"strategy\":\"sliding_window\",\"model\":\"ollama/llama3\",\"persona_name\":\"coding-assistant\",\"token_budget\":150000,\"sliding_window_size\":5},\"cwd\":\".\",\"parent_session\":null,\"blobs\":{},\"lifecycle_name\":null,\"lifecycle_args\":[],\"lifecycle_script_state\":\"nothing_ran\",\"session_state\":\"Loaded\",\"created_at\":\"2024-01-01T00:00:00Z\",\"updated_at\":\"2024-01-01T00:00:00Z\",\"is_automated\":false,\"persist\":true}";
+const LEGACY_065_BLOB: &str = "{\"session_id\":\"10000000-0000-0000-0000-000000000065\",\"title\":\"Legacy 065\",\"profile\":{\"strategy\":\"sliding_window\",\"model\":\"ollama/llama3\",\"persona_name\":\"coding-assistant\",\"token_budget\":150000,\"sliding_window_size\":5},\"cwd\":\".\",\"parent_session\":null,\"blobs\":{},\"lifecycle_name\":null,\"lifecycle_args\":[],\"lifecycle_script_state\":\"nothing_ran\",\"session_state\":\"Loaded\",\"created_at\":\"2024-01-01T00:00:00Z\",\"updated_at\":\"2024-01-01T00:00:00Z\",\"is_automated\":false,\"persist\":true}";
 
 #[rstest::rstest]
 #[tokio::test]
@@ -944,7 +944,7 @@ async fn legacy_065_blob_loads_after_v19() {
         conn.execute(
             "INSERT INTO sessions (id, title, updated_at, created_at, cwd, profile, blobs, \
              lifecycle_script_state, is_automated, persist, metadata) \
-             VALUES ('legacy-065', 'Legacy 065', '2024-01-01T00:00:00Z', '2024-01-01T00:00:00Z', '.', \
+             VALUES ('10000000-0000-0000-0000-000000000065', 'Legacy 065', '2024-01-01T00:00:00Z', '2024-01-01T00:00:00Z', '.', \
              '{\"model\":\"ollama/llama3\"}', '{}', 'nothing_ran', 0, 0, ?)",
             params![LEGACY_065_BLOB],
         ).map(|_| ())
@@ -955,7 +955,9 @@ async fn legacy_065_blob_loads_after_v19() {
     // (The store re-runs migrations on open; v19 repairs the blob, v20 drops zombies.)
     let store = SqliteSessionStore::new_in(dir.path()).await.expect("store");
     let loaded = store
-        .load_session(&SessionId::from("legacy-065".to_owned()))
+        .load_session(&SessionId::from(
+            "10000000-0000-0000-0000-000000000065".to_owned(),
+        ))
         .await
         .expect("load_session")
         .expect("session should exist");
@@ -972,7 +974,7 @@ async fn legacy_065_blob_loads_after_v19() {
 }
 
 /// A metadata blob in the 0.66 shape: `profile.model` is already `{"single": ...}`.
-const CURRENT_066_BLOB: &str = "{\"session_id\":\"current-066\",\"title\":\"Current 066\",\"profile\":{\"strategy\":\"sliding_window\",\"model\":{\"single\":\"ollama/llama3\"},\"persona_name\":\"coding-assistant\",\"token_budget\":150000,\"sliding_window_size\":5},\"cwd\":\".\",\"parent_session\":null,\"blobs\":{},\"lifecycle_name\":null,\"lifecycle_args\":[],\"lifecycle_script_state\":\"nothing_ran\",\"session_state\":\"Loaded\",\"created_at\":\"2024-01-01T00:00:00Z\",\"updated_at\":\"2024-01-01T00:00:00Z\",\"is_automated\":false,\"persist\":true}";
+const CURRENT_066_BLOB: &str = "{\"session_id\":\"10000000-0000-0000-0000-000000000066\",\"title\":\"Current 066\",\"profile\":{\"strategy\":\"sliding_window\",\"model\":{\"single\":\"ollama/llama3\"},\"persona_name\":\"coding-assistant\",\"token_budget\":150000,\"sliding_window_size\":5},\"cwd\":\".\",\"parent_session\":null,\"blobs\":{},\"lifecycle_name\":null,\"lifecycle_args\":[],\"lifecycle_script_state\":\"nothing_ran\",\"session_state\":\"Loaded\",\"created_at\":\"2024-01-01T00:00:00Z\",\"updated_at\":\"2024-01-01T00:00:00Z\",\"is_automated\":false,\"persist\":true}";
 
 #[rstest::rstest]
 #[tokio::test]
@@ -984,7 +986,7 @@ async fn current_066_blob_loads_unchanged() {
         conn.execute(
             "INSERT INTO sessions (id, title, updated_at, created_at, cwd, profile, blobs, \
              lifecycle_script_state, is_automated, persist, metadata) \
-             VALUES ('current-066', 'Current 066', '2024-01-01T00:00:00Z', '2024-01-01T00:00:00Z', '.', \
+             VALUES ('10000000-0000-0000-0000-000000000066', 'Current 066', '2024-01-01T00:00:00Z', '2024-01-01T00:00:00Z', '.', \
              '{\"model\":{\"single\":\"ollama/llama3\"}}', '{}', 'nothing_ran', 0, 0, ?)",
             params![CURRENT_066_BLOB],
         ).map(|_| ())
@@ -994,7 +996,9 @@ async fn current_066_blob_loads_unchanged() {
     // When loading the session through the store.
     let store = SqliteSessionStore::new_in(dir.path()).await.expect("store");
     let loaded = store
-        .load_session(&SessionId::from("current-066".to_owned()))
+        .load_session(&SessionId::from(
+            "10000000-0000-0000-0000-000000000066".to_owned(),
+        ))
         .await
         .expect("load_session")
         .expect("session should exist");
@@ -1021,7 +1025,7 @@ async fn legacy_pre_v8_row_loads_after_v20_backfill() {
         conn.execute(
             "INSERT INTO sessions (id, title, updated_at, created_at, cwd, profile, blobs, \
              lifecycle_script_state, is_automated, persist) \
-             VALUES ('legacy-pre-v8', 'Legacy Pre-V8', '2024-01-01T00:00:00Z', '2024-01-01T00:00:00Z', '.', \
+             VALUES ('10000000-0000-0000-0000-000000000008', 'Legacy Pre-V8', '2024-01-01T00:00:00Z', '2024-01-01T00:00:00Z', '.', \
              '{\"model\":{\"single\":\"ollama/llama3\"},\"persona_name\":\"coding-assistant\"}', '{}', 'nothing_ran', 0, 0)",
             params![],
         ).map(|_| ())
@@ -1031,7 +1035,9 @@ async fn legacy_pre_v8_row_loads_after_v20_backfill() {
     // When loading the session through the store (which runs v19 + v20 on open).
     let store = SqliteSessionStore::new_in(dir.path()).await.expect("store");
     let loaded = store
-        .load_session(&SessionId::from("legacy-pre-v8".to_owned()))
+        .load_session(&SessionId::from(
+            "10000000-0000-0000-0000-000000000008".to_owned(),
+        ))
         .await
         .expect("load_session")
         .expect("session should exist");

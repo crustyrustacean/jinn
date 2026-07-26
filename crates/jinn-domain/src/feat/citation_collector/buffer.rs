@@ -102,7 +102,7 @@ mod tests {
     }
 
     fn sid(n: u8) -> SessionId {
-        SessionId::from(format!("s-test-{n}"))
+        SessionId::from(uuid::Uuid::new_v5(&uuid::Uuid::NAMESPACE_URL, &[n]).to_string())
     }
 
     #[test]

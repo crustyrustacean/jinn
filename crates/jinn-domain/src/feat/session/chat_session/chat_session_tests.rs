@@ -2029,7 +2029,7 @@ fn serde_round_trips_lifecycle_fields() {
 #[rstest::rstest]
 fn serde_defaults_lifecycle_fields_when_missing() {
     // Given a JSON object without lifecycle fields.
-    let json = r#"{"session_id":"test","updated_at":"2026-01-01T00:00:00Z","created_at":"2026-01-01T00:00:00Z","history":[],"profile":{"model":{"single":""},"strategy":"passthrough"},"cwd":"."}"#;
+    let json = r#"{"session_id":"00000000-0000-0000-0000-000000000001","updated_at":"2026-01-01T00:00:00Z","created_at":"2026-01-01T00:00:00Z","history":[],"profile":{"model":{"single":""},"strategy":"passthrough"},"cwd":"."}"#;
 
     // When deserializing.
     let back: ChatSessionState = serde_json::from_str(json).expect("deserialize");

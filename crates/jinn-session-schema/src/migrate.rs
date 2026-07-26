@@ -133,6 +133,10 @@ pub(crate) fn run_pending(
         migrate_v22(conn)?;
         record_version(conn, 22, "add_entry_blobs_table")?;
     }
+    if current < 23 {
+        migrate_v23(conn)?;
+        record_version(conn, 23, "strip_s_prefix_from_session_ids")?;
+    }
     Ok(())
 }
 
@@ -873,6 +877,127 @@ pub fn migrate_v22(conn: &mut rusqlite::Connection) -> Result<(), Report<SchemaM
     Ok(())
 }
 
+/// v23: Strip the legacy `s-` prefix from session-id strings.
+///
+/// Historically [`SessionId`] stored its UUID with an `s-` prefix in
+/// `Display` (e.g. `s-0195a3b2-...`). The newtype now exposes the bare
+/// UUID and `Serialize`/`Deserialize` already round-trip bare values, so
+/// the prefix survives only in data written by older jinn versions. This
+/// migration rewrites every persisted session-id location to the bare
+/// UUID form so the in-memory representation matches the persisted one.
+///
+/// Locations rewritten:
+/// - `sessions.id` (PK)
+/// - `sessions.parent_session` (nullable FK)
+/// - `session_history.session_id`
+/// - `token_ledger.session_id`
+/// - `discord_thread.session_id`
+/// - `sessions.metadata` JSON blob keys `session_id` and `parent_session`
+///
+/// Each column is updated only where its value begins with `s-`
+/// (`substr(col, 1, 2) = 's-'`), so already-bare values (and any
+/// non-conforming legacy strings) pass through untouched. The blob rewrite
+/// is fault-tolerant: an unparseable blob is left unchanged (a migration
+/// must never block on data an older system could have produced).
+///
+/// Runs under `PRAGMA foreign_keys=OFF` (the runner toggles it), so the
+/// `sessions.id` rewrite does not fire cascades on the child tables — they
+/// are updated explicitly below.
+pub fn migrate_v23(conn: &mut rusqlite::Connection) -> Result<(), Report<SchemaMigrationError>> {
+    // SQL columns — strip the prefix only where present.
+    conn.execute_batch("UPDATE sessions SET id = substr(id, 3) WHERE substr(id, 1, 2) = 's-'")
+        .change_context(SchemaMigrationError)
+        .attach("v23: strip s- prefix from sessions.id")?;
+
+    conn.execute_batch(
+        "UPDATE sessions SET parent_session = substr(parent_session, 3) WHERE parent_session IS NOT NULL AND substr(parent_session, 1, 2) = 's-'",
+    )
+    .change_context(SchemaMigrationError)
+    .attach("v23: strip s- prefix from sessions.parent_session")?;
+
+    conn.execute_batch(
+        "UPDATE session_history SET session_id = substr(session_id, 3) WHERE substr(session_id, 1, 2) = 's-'",
+    )
+    .change_context(SchemaMigrationError)
+    .attach("v23: strip s- prefix from session_history.session_id")?;
+
+    conn.execute_batch(
+        "UPDATE token_ledger SET session_id = substr(session_id, 3) WHERE substr(session_id, 1, 2) = 's-'",
+    )
+    .change_context(SchemaMigrationError)
+    .attach("v23: strip s- prefix from token_ledger.session_id")?;
+
+    conn.execute_batch(
+        "UPDATE discord_thread SET session_id = substr(session_id, 3) WHERE substr(session_id, 1, 2) = 's-'",
+    )
+    .change_context(SchemaMigrationError)
+    .attach("v23: strip s- prefix from discord_thread.session_id")?;
+
+    // JSON blob — rewrite the session_id / parent_session keys.
+    rewrite_metadata_session_ids(conn)?;
+
+    Ok(())
+}
+
+/// Rewrites the `session_id` and `parent_session` string values inside the
+/// `sessions.metadata` JSON blob, stripping a leading `s-` where present.
+///
+/// Fault-tolerant: rows whose `metadata` is NULL, empty, unparseable as an
+/// object, or whose targeted keys are not strings are left unchanged.
+fn rewrite_metadata_session_ids(
+    conn: &mut rusqlite::Connection,
+) -> Result<(), Report<SchemaMigrationError>> {
+    let mut stmt = conn
+        .prepare("SELECT rowid, metadata FROM sessions WHERE metadata IS NOT NULL")
+        .change_context(SchemaMigrationError)
+        .attach("v23: prepare metadata scan")?;
+    let rows = stmt
+        .query_map([], |row| {
+            Ok((row.get::<_, i64>(0)?, row.get::<_, String>(1)?))
+        })
+        .change_context(SchemaMigrationError)
+        .attach("v23: scan metadata rows")?;
+    for row in rows {
+        let (rowid, raw) = row
+            .change_context(SchemaMigrationError)
+            .attach("v23: read metadata row")?;
+        let rewritten = strip_prefix_in_blob(&raw);
+        if rewritten != raw {
+            conn.execute(
+                "UPDATE sessions SET metadata = ? WHERE rowid = ?",
+                rusqlite::params![rewritten, rowid],
+            )
+            .change_context(SchemaMigrationError)
+            .attach("v23: rewrite metadata blob")?;
+        }
+    }
+    Ok(())
+}
+
+/// Strips a leading `s-` from the `session_id` and `parent_session` string
+/// values inside a `metadata` JSON object. Returns the input verbatim if the
+/// JSON is unparseable, not an object, or the keys are absent/non-string.
+fn strip_prefix_in_blob(raw: &str) -> String {
+    let mut map: serde_json::Map<String, serde_json::Value> = match serde_json::from_str(raw) {
+        Ok(serde_json::Value::Object(m)) => m,
+        _ => return raw.to_owned(),
+    };
+    let mut changed = false;
+    for key in ["session_id", "parent_session"] {
+        if let Some(serde_json::Value::String(s)) = map.get_mut(key) {
+            if let Some(rest) = s.strip_prefix('s').and_then(|t| t.strip_prefix('-')) {
+                *s = rest.to_owned();
+                changed = true;
+            }
+        }
+    }
+    if changed {
+        serde_json::to_string(&serde_json::Value::Object(map)).unwrap_or_else(|_| raw.to_owned())
+    } else {
+        raw.to_owned()
+    }
+}
+
 /// A legacy `sessions` row whose `metadata` is NULL — the pre-v8 shape that
 /// the backfill reconstructs a [`crate::PersistableCoreV20`] blob from.
 struct LegacyRow {
@@ -1057,6 +1182,10 @@ pub fn apply_migrations_inner(conn: &mut rusqlite::Connection, target: i32) {
         migrate_v22(conn).expect("v22");
         record_version(conn, 22, "add_entry_blobs_table").expect("record v22");
     }
+    if target >= 23 {
+        migrate_v23(conn).expect("v23");
+        record_version(conn, 23, "strip_s_prefix_from_session_ids").expect("record v23");
+    }
 }
 
 /// Test-only: applies migrations up to (and including) `target` on a held
@@ -1082,6 +1211,7 @@ pub fn apply_up_to_no_fk(conn: &mut rusqlite::Connection, target: i32) {
 pub mod testing {
     pub use super::{
         apply_migrations_inner, bootstrap_tracking_table, migrate_v10, migrate_v15, migrate_v16,
-        migrate_v17, migrate_v18, migrate_v19, migrate_v21, migrate_v22, record_version,
+        migrate_v17, migrate_v18, migrate_v19, migrate_v21, migrate_v22, migrate_v23,
+        record_version,
     };
 }

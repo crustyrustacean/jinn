@@ -103,7 +103,7 @@ mod tests {
     #[rstest::rstest]
     fn session_summary_defaults_parent_session_to_none() {
         // Given JSON without a parent_session field.
-        let json = r#"{"session_id":"abc","title":"test","updated_at":"2024-01-01T00:00:00Z","created_at":"2024-01-01T00:00:00Z","session_state":"loaded"}"#;
+        let json = r#"{"session_id":"00000000-0000-0000-0000-000000000001","title":"test","updated_at":"2024-01-01T00:00:00Z","created_at":"2024-01-01T00:00:00Z","session_state":"loaded"}"#;
 
         // When deserializing.
         let summary: SessionSummary = serde_json::from_str(json).expect("deserialize");
@@ -115,7 +115,7 @@ mod tests {
     #[rstest::rstest]
     fn session_summary_defaults_title_to_untitled() {
         // Given JSON without a title field.
-        let json = r#"{"session_id":"abc","updated_at":"2024-01-01T00:00:00Z","created_at":"2024-01-01T00:00:00Z","session_state":"loaded"}"#;
+        let json = r#"{"session_id":"00000000-0000-0000-0000-000000000001","updated_at":"2024-01-01T00:00:00Z","created_at":"2024-01-01T00:00:00Z","session_state":"loaded"}"#;
 
         // When deserializing.
         let summary: SessionSummary = serde_json::from_str(json).expect("deserialize");
@@ -127,7 +127,7 @@ mod tests {
     #[rstest::rstest]
     fn session_summary_defaults_session_state_to_loaded() {
         // Given JSON without a session_state field.
-        let json = r#"{"session_id":"abc","title":"test","updated_at":"2024-01-01T00:00:00Z","created_at":"2024-01-01T00:00:00Z"}"#;
+        let json = r#"{"session_id":"00000000-0000-0000-0000-000000000001","title":"test","updated_at":"2024-01-01T00:00:00Z","created_at":"2024-01-01T00:00:00Z"}"#;
 
         // When deserializing.
         let summary: SessionSummary = serde_json::from_str(json).expect("deserialize");

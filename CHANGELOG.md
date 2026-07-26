@@ -5,6 +5,7 @@
 - Fix positioning of file selection and prompt selection popups to be word-wrap aware. They now appear directly over the cursor instead of above the input box.
 - Provide base directory in context for loaded skills to help agent load reference files.
 - Add MCP server support.
+- "Nag" system defaults changed: 200 chat entries + disabled
 
 ## 2026-07-23 v0.101.0
 
