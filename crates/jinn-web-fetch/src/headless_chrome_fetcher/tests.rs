@@ -30,6 +30,30 @@ use crate::{Extractor, FetchError, FetchOptions, OutputFormat, WebFetcher};
 // Test fakes
 // ---------------------------------------------------------------------------
 
+/// The scripted behavior for one fake browser.
+///
+/// Carries a queue of render outcomes (one per `render` call) and a queue
+/// of liveness outcomes (one per `liveness` call). Both default to
+/// empty/`Ok` so existing tests that only script renders stay unchanged.
+///
+/// Each queue is drained LIFO: a call pops the tail; when empty, `render`
+/// panics (render count is always asserted by the test's scripted queue)
+/// while `liveness` returns `Ok` (a healthy browser is the common case).
+#[derive(Clone, Default)]
+struct FakeBrowserScript {
+    behaviors: Vec<RenderOutcome>,
+    liveness: Vec<LivenessOutcome>,
+}
+
+impl From<Vec<RenderOutcome>> for FakeBrowserScript {
+    fn from(behaviors: Vec<RenderOutcome>) -> Self {
+        Self {
+            behaviors,
+            liveness: Vec::new(),
+        }
+    }
+}
+
 /// A render outcome the fake browser should produce for one `render` call.
 #[derive(Clone)]
 enum RenderOutcome {
@@ -42,9 +66,24 @@ enum RenderOutcome {
     Panic(String),
 }
 
-/// A fake browser that serves a queued outcome per `render` call, LIFO.
+/// A liveness outcome the fake browser should produce for one `liveness` call.
+///
+/// Mirrors [`RenderOutcome`]'s crash/panic shape for the heartbeat path:
+/// the default (empty queue) is `Ok`, so a healthy browser needs no scripting.
+#[derive(Clone)]
+enum LivenessOutcome {
+    /// Probe succeeds.
+    Ok,
+    /// Connection-level death (maps to `BrowserCrash`).
+    Crash,
+    /// The closure panics when invoked (simulates a chrome-internal unwind).
+    Panic(String),
+}
+
+/// A fake browser that serves queued outcomes per call, LIFO.
 struct FakeBrowser {
     behaviors: Mutex<Vec<RenderOutcome>>,
+    liveness: Mutex<Vec<LivenessOutcome>>,
 }
 
 impl HeadlessBrowser for FakeBrowser {
@@ -65,6 +104,22 @@ impl HeadlessBrowser for FakeBrowser {
         }
     }
 
+    fn liveness(&self) -> Result<(), FetchError> {
+        // Pop under the lock, then drop the guard before matching so a
+        // `Panic` outcome cannot poison the mutex. An empty queue defaults
+        // to Ok: a healthy browser is the common case, so render-only tests
+        // never need to script liveness.
+        let outcome = {
+            let mut queue = self.liveness.lock().expect("fake browser liveness queue");
+            queue.pop().unwrap_or(LivenessOutcome::Ok)
+        };
+        match outcome {
+            LivenessOutcome::Ok => Ok(()),
+            LivenessOutcome::Crash => Err(FetchError::BrowserCrash),
+            LivenessOutcome::Panic(msg) => panic!("{msg}"),
+        }
+    }
+
     fn name(&self) -> &'static str {
         "FakeBrowser"
     }
@@ -73,18 +128,21 @@ impl HeadlessBrowser for FakeBrowser {
 /// A fake factory that hands out a scripted sequence of browsers.
 ///
 /// The Nth [`launch`](HeadlessBrowserFactory::launch) yields the Nth scripted
-/// browser (LIFO via pop). Launch count is observable for thundering-herd tests.
+/// browser (FIFO). Launch count is observable for thundering-herd tests.
+///
+/// Each script is a [`FakeBrowserScript`]; [`FakeFactory::new`] accepts
+/// `Vec<Vec<RenderOutcome>>` via the `From` impl so render-only tests stay terse.
 pub(crate) struct FakeFactory {
-    browsers: Mutex<Vec<Vec<RenderOutcome>>>,
+    browsers: Mutex<Vec<FakeBrowserScript>>,
     launch_count: AtomicUsize,
 }
 
 impl FakeFactory {
-    /// Each entry is the behavior queue for one launched browser; the first
-    /// launch pops index 0, the second pops index 1, etc.
-    fn new(browsers: Vec<Vec<RenderOutcome>>) -> Arc<Self> {
+    /// Each entry scripts one launched browser; the first launch pops index 0,
+    /// the second pops index 1, etc.
+    fn new<S: Into<FakeBrowserScript>>(browsers: Vec<S>) -> Arc<Self> {
         Arc::new(Self {
-            browsers: Mutex::new(browsers),
+            browsers: Mutex::new(browsers.into_iter().map(Into::into).collect()),
             launch_count: AtomicUsize::new(0),
         })
     }
@@ -102,7 +160,7 @@ impl FakeFactory {
 impl HeadlessBrowserFactory for FakeFactory {
     fn launch(&self) -> Result<Arc<dyn HeadlessBrowser>, FetchError> {
         self.launch_count.fetch_add(1, Ordering::SeqCst);
-        let behaviors = {
+        let script = {
             let queue = self.browsers.lock().expect("fake factory queue");
             queue
                 .first()
@@ -114,7 +172,8 @@ impl HeadlessBrowserFactory for FakeFactory {
             queue.remove(0);
         }
         Ok(Arc::new(FakeBrowser {
-            behaviors: Mutex::new(behaviors),
+            behaviors: Mutex::new(script.behaviors),
+            liveness: Mutex::new(script.liveness),
         }))
     }
 
