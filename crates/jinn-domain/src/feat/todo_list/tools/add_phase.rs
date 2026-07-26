@@ -172,6 +172,7 @@ mod tests {
             max_output_bytes: None,
             dispatched_at: jiff::Timestamp::now(),
             session_cap: Some(crate::common::tcaps::mint::mint_session_cap()),
+            mcp_coordinator: None,
         }
     }
 

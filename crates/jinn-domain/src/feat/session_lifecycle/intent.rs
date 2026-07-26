@@ -175,25 +175,25 @@ pub fn handle_session_lifecycle_setup(
         };
 
         return IntentResult::empty()
-            .message(PersistSession {
+            .with_message(PersistSession {
                 session_id: new_id.clone(),
             })
-            .message(PushChatEntry {
+            .with_message(PushChatEntry {
                 session_id: new_id.clone(),
                 entry: crate::feat::session::session_actor::setup_running_msg(),
             })
-            .message(RunSessionSetup {
+            .with_message(RunSessionSetup {
                 session_id: new_id,
                 command: rendered,
                 args: args.to_vec(),
                 lifecycle_command: Some(setup_cmd.clone()),
             })
-            .message(created_event);
+            .with_message(created_event);
     }
 
     // No setup command — the starting CWD was already set on the new session
     // before insert (above), so there's nothing more to do here.
-    IntentResult::with_message(created_event)
+    IntentResult::new_message(created_event)
 }
 
 /// Handle `Intent::SessionClose`.
@@ -332,11 +332,11 @@ pub fn handle_session_rerun_setup(state: &mut AppState) -> IntentResult {
     };
 
     IntentResult::empty()
-        .message(PushChatEntry {
+        .with_message(PushChatEntry {
             session_id: target_id.clone(),
             entry: setup_running_msg(),
         })
-        .message(RunSessionSetup {
+        .with_message(RunSessionSetup {
             session_id: target_id,
             command: rendered,
             args: lifecycle_args,
@@ -410,7 +410,7 @@ fn find_lifecycle<'a>(state: &'a AppState, name: &str) -> Option<&'a SessionLife
 /// `SessionClosed` for the sidebar actor to clamp the cursor.
 fn close_session_and_switch(closing_id: &SessionId) -> IntentResult {
     use crate::feat::session::protocol::close_session::CloseSession;
-    IntentResult::with_message(CloseSession {
+    IntentResult::new_message(CloseSession {
         session_id: closing_id.clone(),
     })
 }

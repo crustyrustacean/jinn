@@ -50,6 +50,7 @@ Entries are added or amended **only with human approval**.
 - (context) The `context_files_scan_actor` walks the bounded ancestor chain, reads the first existing candidate (AGENTS.md / CLAUDE.md) per dir, and writes results into the session's discovered set.
 - (context) `#name` prompt-template tokens in user text expand to the template body; `@path` tokens resolve to `file://` URIs against cwd/home and are consumed in a second expansion pass.
 - (dashboard) The dashboard tab tracks actor lifecycle (starting/running/dead) and browser-binary detection (Chrome vs bundled) for the web-fetch feature.
+- (dashboard) `frontend.dashboard` is owned by `DashboardActor`, fed exclusively by events; `DiscordStatusActor` republishes its gateway status as a `DiscordStatusUpdate` event rather than writing the dashboard directly.
 - (discovery) Project discovery walks ancestors from the session cwd up to either a VCS root or `$HOME`, whichever comes first; `$HOME` is exclusive.
 - (discovery) VCS roots are detected by marker files (`.git`, `.hg`, `.fslckout`, `.fossil`, `.jj`), not by shelling out to a VCS CLI.
 - (discovery) A discovery coordinator orchestrates project, browser-binary, file-listing, and skills scans across ancestor dirs; a notifier surfaces settled results to the session.
@@ -74,6 +75,20 @@ Entries are added or amended **only with human approval**.
 - (keybinds) The `p` prefix group in the sidebar does not drop the normal-scope pin binding (group bindings are scope-local and don't shadow cross-scope bindings).
 - (keybinds) `Alt+Q` in input scope toggles input mode; `Alt+S` focuses the sidebar sessions section from both input and normal scopes.
 - (keybinds) `s` in the sidebar task-list section opens the task-list picker.
+- (mcp) jinn is an MCP client: one `McpActor` per (session × enabled server) owns a connection to an MCP server over **stdio** (child process, JSON-RPC over stdin/stdout) or **HTTP** (`StreamableHTTP` over a managed child process).
+- (mcp) MCP tools are namespaced `mcp__<server>__<tool>` and registered per-session via `RegisterTools { session_id: Some(_) }`.
+- (mcp) MCP server enablement is per-session, persisted in `SessionCore`, off by default; enabling spawns the actor+process, disabling kills both.
+- (mcp) MCP servers are configured in `jinn.toml` under `[[mcp_servers]]`.
+- (mcp) MCP server child processes have piped stderr captured to a bounded ring buffer owned by each `McpActor`; stderr never reaches jinn's terminal.
+- (mcp) Per-session MCP server status is owned by `McpCoordinatorActor`, driven by `McpServerStatus` events; it is surfaced in the sidebar, not the dashboard.
+- (mcp) `McpActor` republishes its captured stderr tail via `McpServerLog` on a debounce while Running; `McpCoordinatorActor` owns the per-session tails alongside status.
+- (mcp) The MCP server picker (`<leader>sM`) is a multipane inspector: a server list with a preview pane that toggles (Ctrl-prefixed) between a live stderr-tail/status view and the server's tool list.
+- (mcp) For HTTP-mode servers, jinn allocates a free port via bind-and-release and injects it (plus the bind address) into the server's args via `<ip>`/`<port>` replacement tokens; it does not parse server output for the bind address.
+- (mcp) HTTP connect has no wall-clock timeout: a server stays `Starting` until the HTTP endpoint is reachable, and is marked `Dead` only when the child process exits (captured stdout/stderr explain why).
+- (mcp) A `RemoteHttp { url }` server connects to an externally-managed HTTP server with no process management.
+- (mcp) MCP connections are monitored post-connect: `McpActor` spawns a liveness watcher that polls `is_transport_closed()` and publishes `Dead` when the connection drops, working uniformly across stdio, HTTP, and RemoteHttp transports. HTTP-mode connections additionally run a child-exit watcher that reaps the child (preventing zombies) and tears down the transport on process death, since a half-open TCP socket does not trip `is_transport_closed()` on its own. No auto-restart — a dead connection surfaces in the sidebar/picker for the user to restart via the inspector.
+- (mcp) The `restart_mcp_server` built-in tool lets the model restart a dead MCP server by name (or by stripping a `mcp__<server>__<tool>` namespace). It awaits the coordinator's restart result — which resolves when the new connection succeeds (`Running`) or fails (`ConnectFailed`), with a 60s `Timeout` if neither — before returning, so the model cannot retry a tool call mid-startup. On any failure (including timeout) the result instructs the model to stop and wait for the user.
+- (tools) Actor-provided tools route by their registration `provider` prefix via the generic `ExecuteTool` command, not a hardcoded per-name match; `web-fetch`/`web-search` remain distinct provider keys.
 - (paths) Config lives at `~/.config/jinn` (providers, prompts, personas, themes, `jinn.toml`).
 - (paths) Data lives at `~/.local/share/jinn` (`sessions.db`).
 - (paths) State/logs live at `~/.local/state/jinn` (`jinn.log`), falling back to the data dir on platforms without a state dir.
@@ -91,6 +106,7 @@ Entries are added or amended **only with human approval**.
 - (skills) Prompt templates are markdown files with `+++` TOML frontmatter; `#name` tokens in user text expand to a template body.
 - (skills) Skill scanning discovers an ancestor project skill from a nested cwd, and re-scanning the cwd clears previously discovered skills first.
 - (skills) Skill scanning is triggered on session lifecycle events (created, cwd-changed, setup-completed) and on manual `ScanSkills` commands.
+- (skills) Skill supplementals live in spec-standard scripts/, references/, and assets/ directories beside SKILL.md; the `<available_skills>` block and skill tool result each surface the skill's absolute base_dir so the agent can resolve relative links in a skill body without derivation.
 - (skills) The `skill` tool loads a skill's body by name from the discovered set and returns the body in the tool result; loading an already-loaded skill returns "already loaded" instead of reloading.
 - (skills) The `skill` tool loads project-local skills from their discovered file path and refuses disabled or nonexistent skills.
 - (skills) Two skills ship by default: `phased-task-loop` and `simple-task-loop`.
@@ -115,7 +131,7 @@ Entries are added or amended **only with human approval**.
 - (tools) The `write` tool creates parent directories automatically and overwrites existing files.
 - (tools) The `write` tool pins the tool result only on success — failed writes (bad JSON, dir creation failure, file write failure) produce no pin.
 - (tools) The `write` tool preserves BOM and CRLF line endings on round-trip; it handles filenames with spaces and Unicode.
-- (tools) The agent's built-in file tools are `read`, `write`, `edit`, `bash`, `grep`, `save_plan`, `get_time`, `session_query`, and `skill`.
+- (tools) The agent's built-in file tools are `read`, `write`, `edit`, `bash`, `grep`, `save_plan`, `get_time`, `session_query`, `restart_mcp_server`, and `skill`.
 - (tools) When the `bash` tool or a built-in tool panics mid-execution, it publishes a failed-execution event rather than crashing the actor.
 - (ui) A section is shown only when non-empty (Pins requires pinned ids, TaskList requires tasks); empty sections are hidden.
 - (ui) Mouse drag creates a dragging selection state, `finalize` transitions dragging to active, and `cancel` returns to idle.
@@ -129,7 +145,7 @@ Entries are added or amended **only with human approval**.
 - (ui) The chat input popup narrows rows by typed prefix and renders directory entries with trailing slashes, plus empty/loading states.
 - (ui) The dashboard tab layout uses the full terminal width; the chat tab layout is the normal chat layout.
 - (ui) The sidebar can enter an interactive resize mode (via `sidebar_resize`) to adjust its width.
-- (ui) The sidebar has four sections — Persona, Pins, TaskList, Sessions — with cyclic navigation (Persona→Pins→TaskList→Sessions and back).
+- (ui) The sidebar has five sections — Persona, Pins, TaskList, McpServers, Sessions — with cyclic navigation.
 - (ui) The sidebar restores history position when leaving Pins, and the Sessions section is anchored to the bottom of the sidebar.
 - (ui) The chat-input autocomplete popups (`#` prompts, `/` commands, `@` attachments) anchor horizontally and vertically to the trigger token's wrapped visual line, floating directly above the cursor rather than the top of the input box.
 - (watchdog) A stall watchdog detects sessions stuck in sending, mid-tool-batch stalls, and streaming sessions with no history change, and publishes a cancel after the budget is exhausted.

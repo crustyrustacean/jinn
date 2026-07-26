@@ -113,7 +113,7 @@ fn finalize_sweep(
         session_id: session_id.clone(),
         entry_id: id,
     });
-    IntentResult::with_message(PersistSession {
+    IntentResult::new_message(PersistSession {
         session_id: session_id.clone(),
     })
     .with_messages(events)

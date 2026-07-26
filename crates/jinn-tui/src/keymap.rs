@@ -113,6 +113,7 @@ pub fn init() -> Keymap<KeyEvent, Scope, Intent, KeyCategory> {
             .bind("<leader>se", Intent::OpenPicker { kind: PickerKind::Persona }, KeyCategory::General)
             .bind("<leader>st", Intent::OpenPicker { kind: PickerKind::Tool }, KeyCategory::General)
             .bind("<leader>sk", Intent::OpenPicker { kind: PickerKind::Skill }, KeyCategory::General)
+            .bind("<leader>sM", Intent::OpenPicker { kind: PickerKind::McpServer }, KeyCategory::General)
             .bind("<leader>sh", Intent::OpenPicker { kind: PickerKind::Theme }, KeyCategory::General)
             .bind("<leader>sr", Intent::OpenPicker { kind: PickerKind::ReasoningEffort }, KeyCategory::General)
             // Projects - curated directory list for quick session creation
@@ -262,6 +263,10 @@ pub fn init() -> Keymap<KeyEvent, Scope, Intent, KeyCategory> {
                 KeyCategory::Sidebar,
             );
         })
+        // Sidebar - MCP servers section (read-only in Part 1: nav only).
+        .scope(Scope::SidebarMcpServers, |b| {
+            add_sidebar_base(b);
+        })
         // Input scope: typing into the input buffer
         .scope(Scope::Input, |b| {
             b.bind("<enter>", Intent::SubmitMessage, KeyCategory::Input)
@@ -353,6 +358,12 @@ pub fn init() -> Keymap<KeyEvent, Scope, Intent, KeyCategory> {
             b.bind("<c-enter>", Intent::ProjectNewAtHighlightedWithLifecycle, KeyCategory::General)
              .bind("<c-n>", Intent::OpenProjectAddInput, KeyCategory::General)
              .bind("<c-d>", Intent::ProjectRemoveHighlighted, KeyCategory::General);
+        })
+        .scope(Scope::PickerMcpServer, |b| {
+            add_picker_base(b);
+            b.bind("<Tab>", Intent::McpToggleSelected, KeyCategory::General)
+                .bind("<c-r>", Intent::McpRestartSelected, KeyCategory::General)
+                .bind("<c-t>", Intent::McpTogglePreview, KeyCategory::General);
         });
 
     // Dashboard scope - service status overview.

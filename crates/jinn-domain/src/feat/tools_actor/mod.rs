@@ -69,6 +69,9 @@ pub(crate) mod input_bounds;
 pub mod protocol;
 pub mod read;
 pub mod registry;
+pub mod restart_mcp;
+#[cfg(test)]
+mod restart_mcp_tests;
 pub mod save_plan;
 pub mod session_query;
 pub mod skill;
@@ -86,8 +89,10 @@ use crate::common::services::Services;
 use crate::common::services::bus_service::BusService;
 use crate::common::state::State;
 use crate::feat::session::chat_session::ChatSessionState;
+use crate::feat::session::protocol::SessionClosed;
 use crate::feat::tools_actor::protocol::command::{
-    CancelToolBatch, ExecuteToolBatch, ExecuteWebFetch, ExecuteWebSearch, RegisterTools,
+    CancelToolBatch, ExecuteTool, ExecuteToolBatch, ExecuteWebFetch, ExecuteWebSearch,
+    RegisterTools,
 };
 use crate::feat::tools_actor::protocol::event::{
     ToolBatchCompleted, ToolExecutionCompleted, ToolsRegistered,
@@ -97,6 +102,11 @@ use crate::protocol::SessionId;
 use jiff::Timestamp;
 use jinn_provider::ServerToolType;
 use kameo::prelude::{Actor, ActorRef, Context, Message};
+
+/// Prefix for all MCP-provided tool `provider` values. A provider like
+/// `mcp__excalimate` namespaces that server's tools (`mcp__excalimate__<tool>`)
+/// and is routed to MCP client actors via the generic [`ExecuteTool`] command.
+pub(crate) const MCP_PROVIDER_PREFIX: &str = "mcp__";
 
 /// A boxed future returned by built-in tool execute functions.
 pub type BoxedToolFuture = Pin<Box<dyn Future<Output = ToolResult> + Send>>;
@@ -138,6 +148,23 @@ impl std::fmt::Debug for ToolRegistration {
     }
 }
 
+/// Resolves a tool registration, preferring a session-scoped registration
+/// over a global one.
+///
+/// Extracted as a free function so the lookup-precedence behavior (the core
+/// of generalized routing) is unit-testable without constructing a full
+/// `ToolOrchestratorActor`.
+///
+/// - `session`: the per-session map (`session_tools[session_id]`), if any.
+/// - `global`: the value from the flat `tools` map for this `tool_name`.
+fn lookup_registration<'a>(
+    session: Option<&'a HashMap<String, ToolRegistration>>,
+    global: Option<&'a ToolRegistration>,
+    tool_name: &str,
+) -> Option<&'a ToolRegistration> {
+    session.and_then(|m| m.get(tool_name)).or(global)
+}
+
 /// Tracks pending tool calls within a batch.
 pub(crate) struct PendingBatch {
     /// Number of tool calls still awaiting results.
@@ -156,8 +183,13 @@ pub(crate) struct PendingBatch {
 pub struct ToolOrchestratorActor {
     /// Universal actor dependencies.
     deps: ActorDeps,
-    /// Tool name → registration info.
+    /// Global tool name → registration info (builtins + global actor tools
+    /// like `web-fetch`/`web-search`).
     tools: HashMap<String, ToolRegistration>,
+    /// Per-session tool registrations, keyed by session then tool name.
+    /// Used by per-session tool providers (e.g. MCP servers enabled for one
+    /// session). Empty until a session-scoped provider registers tools.
+    session_tools: HashMap<SessionId, HashMap<String, ToolRegistration>>,
     /// Session ID → pending batch tracker.
     pending: HashMap<SessionId, PendingBatch>,
     /// Shared application state for reading session CWD.
@@ -235,6 +267,7 @@ impl Actor for ToolOrchestratorActor {
         bus.subscribe::<ExecuteToolBatch, _>(&actor_ref).await;
         bus.subscribe::<CancelToolBatch, _>(&actor_ref).await;
         bus.subscribe::<ToolExecutionCompleted, _>(&actor_ref).await;
+        bus.subscribe::<SessionClosed, _>(&actor_ref).await;
 
         // Read web search config from preferences storage.
         let web_search_config = args
@@ -255,6 +288,7 @@ impl Actor for ToolOrchestratorActor {
         let mut actor = Self {
             deps: args.deps,
             tools: HashMap::new(),
+            session_tools: HashMap::new(),
             pending: HashMap::new(),
             state: args.state,
             session_cap: args.session_cap,
@@ -328,7 +362,7 @@ impl Message<RegisterTools> for ToolOrchestratorActor {
     type Reply = ();
 
     async fn handle(&mut self, msg: RegisterTools, _ctx: &mut Context<Self, Self::Reply>) {
-        self.handle_register_tools(&msg.provider, &msg.definitions)
+        self.handle_register_tools(&msg.provider, &msg.definitions, msg.session_id)
             .await;
     }
 }
@@ -359,6 +393,20 @@ impl Message<ToolExecutionCompleted> for ToolOrchestratorActor {
     }
 }
 
+impl Message<SessionClosed> for ToolOrchestratorActor {
+    type Reply = ();
+
+    async fn handle(&mut self, msg: SessionClosed, _ctx: &mut Context<Self, Self::Reply>) {
+        // Drop per-session tool registrations so the map does not leak.
+        if self.session_tools.remove(&msg.session_id).is_some() {
+            tracing::debug!(
+                session_id = ?msg.session_id,
+                "removed session-scoped tool registrations on SessionClosed"
+            );
+        }
+    }
+}
+
 impl BusPublish for ToolOrchestratorActor {
     fn bus(&self) -> &BusService {
         &self.deps.services.bus
@@ -367,22 +415,39 @@ impl BusPublish for ToolOrchestratorActor {
 
 impl ToolOrchestratorActor {
     /// Stores actor-provided tools and emits a [`ToolsRegistered`] event.
-    async fn handle_register_tools(&mut self, provider: &str, definitions: &[ToolDefinition]) {
+    ///
+    /// When `session_id` is `Some`, the tools are stored under
+    /// [`session_tools`](Self::session_tools) for that session only; when
+    /// `None`, they are stored in the global [`tools`](Self::tools) map
+    /// (visible to every session).
+    async fn handle_register_tools(
+        &mut self,
+        provider: &str,
+        definitions: &[ToolDefinition],
+        session_id: Option<SessionId>,
+    ) {
         for def in definitions {
-            let name = def.name.clone();
-            self.tools.insert(
-                name,
-                ToolRegistration::Actor {
-                    definition: def.clone(),
-                    provider: provider.to_owned(),
-                },
-            );
+            let registration = ToolRegistration::Actor {
+                definition: def.clone(),
+                provider: provider.to_owned(),
+            };
+            match session_id.as_ref() {
+                Some(id) => {
+                    self.session_tools
+                        .entry(id.clone())
+                        .or_default()
+                        .insert(def.name.clone(), registration);
+                }
+                None => {
+                    self.tools.insert(def.name.clone(), registration);
+                }
+            }
         }
 
         self.publish(ToolsRegistered {
             provider: provider.to_owned(),
             definitions: definitions.to_vec(),
-            session_id: None,
+            session_id,
         })
         .await;
     }
@@ -476,6 +541,7 @@ impl ToolOrchestratorActor {
             max_output_bytes,
             dispatched_at,
             session_cap: Some(self.session_cap),
+            mcp_coordinator: self.services.mcp_coordinator.get().cloned(),
         }
     }
 
@@ -490,25 +556,40 @@ impl ToolOrchestratorActor {
         tool_call: ToolCall,
         dispatched_at: Timestamp,
     ) -> Option<tokio::task::JoinHandle<()>> {
+        let reg_type = match self.find_registration(&session_id, &tool_call.name) {
+            Some(ToolRegistration::Builtin { .. }) => "builtin",
+            Some(ToolRegistration::Actor { .. }) => "actor",
+            None => "unknown",
+        };
         tracing::trace!(
             session_id = ?session_id,
             tool = %tool_call.name,
-            reg_type = match self.tools.get(&tool_call.name) {
-                Some(ToolRegistration::Builtin { .. }) => "builtin",
-                Some(ToolRegistration::Actor { .. }) => "actor",
-                None => "unknown",
-            },
+            reg_type,
         );
 
-        match self.tools.get(&tool_call.name) {
+        match self.find_registration(&session_id, &tool_call.name) {
             Some(ToolRegistration::Builtin { execute, .. }) => {
                 Some(self.dispatch_builtin(session_id, tool_call, dispatched_at, *execute))
             }
-            Some(ToolRegistration::Actor { .. }) => {
-                self.dispatch_actor(session_id, tool_call).await
+            Some(ToolRegistration::Actor { provider, .. }) => {
+                self.dispatch_actor(session_id, tool_call, provider, dispatched_at)
+                    .await
             }
             None => self.reject_unknown_tool(session_id, tool_call).await,
         }
+    }
+
+    /// Looks up a tool registration, preferring a session-scoped registration
+    /// over a global one. Builtins live in the global map; session-scoped
+    /// providers (MCP servers) live under `session_tools`.
+    fn find_registration(
+        &self,
+        session_id: &SessionId,
+        tool_name: &str,
+    ) -> Option<&ToolRegistration> {
+        let session = self.session_tools.get(session_id);
+        let global = self.tools.get(tool_name);
+        lookup_registration(session, global, tool_name)
     }
 
     /// Spawns a builtin tool, applying its configured timeout, and publishes the result.
@@ -541,13 +622,20 @@ impl ToolOrchestratorActor {
         })
     }
 
-    /// Routes an actor-backed tool to its command (currently only `web-fetch`).
+    /// Routes an actor-backed tool to its provider's command.
+    ///
+    /// Global providers (`web-fetch`, `web-search`) keep their dedicated
+    /// commands. MCP providers (`mcp__*`) are delivered via the generic
+    /// [`ExecuteTool`] command to whichever MCP client actor owns the
+    /// matching session-scoped connection.
     async fn dispatch_actor(
         &self,
         session_id: SessionId,
         tool_call: ToolCall,
+        provider: &str,
+        dispatched_at: Timestamp,
     ) -> Option<tokio::task::JoinHandle<()>> {
-        match tool_call.name.as_str() {
+        match provider {
             "web-fetch" => {
                 self.publish(ExecuteWebFetch {
                     session_id,
@@ -562,10 +650,24 @@ impl ToolOrchestratorActor {
                 })
                 .await;
             }
+            p if p.starts_with(MCP_PROVIDER_PREFIX) => {
+                // Read the same truncation limits builtins use so MCP results
+                // are bounded identically. `build_tool_context` does the same
+                // read for the builtin path.
+                let prefs = self.services.user_preferences_storage.read();
+                self.publish(ExecuteTool {
+                    session_id,
+                    tool_call,
+                    dispatched_at,
+                    max_output_lines: prefs.max_tool_output_lines,
+                    max_output_bytes: prefs.max_tool_output_bytes,
+                })
+                .await;
+            }
             other => {
                 tracing::warn!(
-                    tool = %other,
-                    "unknown actor tool — no command mapping"
+                    provider = %other,
+                    "unknown actor provider — no command mapping"
                 );
             }
         }
@@ -875,6 +977,7 @@ mod timeout_tests {
             max_output_bytes: None,
             dispatched_at: jiff::Timestamp::now(),
             session_cap: None,
+            mcp_coordinator: None,
         }
     }
 
@@ -1112,6 +1215,7 @@ mod panic_safety_tests {
                 max_output_bytes: None,
                 dispatched_at: jiff::Timestamp::now(),
                 session_cap: None,
+                mcp_coordinator: None,
             },
         ))
         .catch_unwind()
@@ -1146,5 +1250,88 @@ mod panic_safety_tests {
         assert_eq!(result.content, "tool execution panicked");
         assert_eq!(result.tool_call_id, "call_future");
         assert_eq!(result.name, "future_tool");
+    }
+}
+
+#[cfg(test)]
+mod routing_lookup_tests {
+    #![allow(clippy::expect_used, clippy::indexing_slicing, reason = "test code")]
+    use std::collections::HashMap;
+
+    use super::{ToolRegistration, lookup_registration};
+    use jinn_provider::ToolDefinition;
+
+    fn actor_reg(name: &str, provider: &str) -> ToolRegistration {
+        ToolRegistration::Actor {
+            definition: ToolDefinition {
+                name: name.to_owned(),
+                description: String::new(),
+                parameters: serde_json::Value::Object(serde_json::Map::new()),
+                prompt_snippet: None,
+                prompt_guidelines: Vec::new(),
+                server_tool_type: None,
+            },
+            provider: provider.to_owned(),
+        }
+    }
+
+    fn provider_of(reg: Option<&ToolRegistration>) -> Option<&str> {
+        match reg {
+            Some(ToolRegistration::Actor { provider, .. }) => Some(provider.as_str()),
+            _ => None,
+        }
+    }
+
+    #[test]
+    fn session_scoped_registration_beats_global() {
+        // Given a session map and a global map both defining the same tool name.
+        let mut session = HashMap::new();
+        session.insert("dup".to_owned(), actor_reg("dup", "mcp__session__"));
+        let global_reg = actor_reg("dup", "mcp__global__");
+
+        // When resolving with both present.
+        let resolved = lookup_registration(Some(&session), Some(&global_reg), "dup");
+
+        // Then the session-scoped provider wins.
+        assert_eq!(provider_of(resolved), Some("mcp__session__"));
+    }
+
+    #[test]
+    fn global_used_when_session_map_absent() {
+        // Given only a global registration.
+        let global_reg = actor_reg("web-fetch", "web-fetch");
+
+        // When resolving with no session map.
+        let resolved = lookup_registration(None, Some(&global_reg), "web-fetch");
+
+        // Then the global registration is returned.
+        assert_eq!(provider_of(resolved), Some("web-fetch"));
+    }
+
+    #[test]
+    fn global_used_when_session_map_lacks_tool() {
+        // Given a session map without the tool and a global map with it.
+        let session = HashMap::<String, ToolRegistration>::new();
+        let global_reg = actor_reg("web-search", "web-search");
+
+        // When resolving.
+        let resolved = lookup_registration(Some(&session), Some(&global_reg), "web-search");
+
+        // Then the global registration is the fallback.
+        assert_eq!(provider_of(resolved), Some("web-search"));
+    }
+
+    #[test]
+    fn resolves_none_when_neither_has_tool() {
+        // Given empty session and global maps.
+        let session = HashMap::<String, ToolRegistration>::new();
+        let global = HashMap::<String, ToolRegistration>::new();
+        let global_reg = global.get("nope");
+
+        // When resolving an unknown tool.
+        let resolved = lookup_registration(Some(&session), global_reg, "nope");
+
+        // Then no registration is found.
+        assert!(resolved.is_none());
     }
 }

@@ -75,7 +75,7 @@ pub fn handle_to_discord_thread(state: &mut AppState) -> IntentResult {
     // captured before emitting so a subsequent active-session change can't
     // race the binding.
     let session_id = state.session.active_session_id().clone();
-    IntentResult::with_message(CreateThreadForSession { session_id, title })
+    IntentResult::new_message(CreateThreadForSession { session_id, title })
 }
 
 /// Returns `true` when the discord dashboard entry is `Running` (connected).

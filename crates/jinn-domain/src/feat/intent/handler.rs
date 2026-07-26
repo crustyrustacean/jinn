@@ -64,7 +64,7 @@ impl IntentHandler {
         let mut result = Self::handle_inner(intent, state);
 
         if state.session.active_session_id() != &prev_active {
-            result = result.message(crate::protocol::system::ActiveSessionChanged {
+            result = result.with_message(crate::protocol::system::ActiveSessionChanged {
                 session_id: state.session.active_session_id().clone(),
             });
         }
@@ -419,6 +419,9 @@ impl IntentHandler {
             Intent::PickerMoveCursorRight => feat::picker::intent::handle_move_cursor_right(state),
             Intent::ToolToggleSelected => feat::picker::intent::handle_tool_toggle(state),
             Intent::SkillToggleSelected => feat::picker::intent::handle_skill_toggle(state),
+            Intent::McpToggleSelected => feat::mcp::intent::handle_mcp_toggle(state),
+            Intent::McpRestartSelected => feat::mcp::intent::handle_mcp_restart_selected(state),
+            Intent::McpTogglePreview => feat::mcp::intent::handle_mcp_toggle_preview(state),
             Intent::SkillLoadSelected => feat::picker::intent::handle_skill_load_selected(state),
             Intent::ProjectNewAtHighlightedWithLifecycle => {
                 feat::picker::intent::handle_project_lifecycle_confirm(state)
@@ -774,14 +777,15 @@ fn try_handle_cancel_stream_prompt(intent: &Intent, state: &mut AppState) -> Opt
 
     // Cancel stream.
     state.active_session_mut().cancel_stream_and_drain();
-    let mut result =
-        IntentResult::empty().message(crate::feat::provider::protocol::command::CancelStream {
+    let mut result = IntentResult::empty().with_message(
+        crate::feat::provider::protocol::command::CancelStream {
             session_id: session_id.clone(),
-        });
+        },
+    );
 
     // Also cancel any running lifecycle command.
     if was_busy {
-        result = result.message(
+        result = result.with_message(
             crate::feat::session_lifecycle::protocol::CancelLifecycleCommand { session_id },
         );
     }

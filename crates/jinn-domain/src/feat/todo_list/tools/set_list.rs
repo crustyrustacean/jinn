@@ -216,6 +216,7 @@ mod tests {
 
             dispatched_at: jiff::Timestamp::now(),
             session_cap: Some(crate::common::tcaps::mint::mint_session_cap()),
+            mcp_coordinator: None,
         }
     }
 

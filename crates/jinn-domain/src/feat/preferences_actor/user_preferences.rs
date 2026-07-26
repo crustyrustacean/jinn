@@ -98,6 +98,11 @@ pub(crate) fn default_tool_default_timeout_secs() -> u64 {
     DEFAULT_TOOL_DEFAULT_TIMEOUT_SECS
 }
 
+/// Serde default function for [`UserPreferences::mcp_bind_address`].
+pub(crate) fn default_mcp_bind_address() -> String {
+    "127.0.0.1".to_owned()
+}
+
 /// Errors that can occur during user preferences I/O.
 #[derive(Debug, Error)]
 pub enum UserPreferencesError {
@@ -136,6 +141,18 @@ pub struct UserPreferences {
     /// entries explicitly. See [`ProjectConfig`].
     #[serde(default)]
     pub projects: Vec<ProjectConfig>,
+
+    /// Configured MCP servers (Model Context Protocol). Each entry declares
+    /// a server jinn connects to (over stdio or HTTP, see [`TransportKind`](crate::feat::mcp::TransportKind))
+    /// when enabled per-session. See [`McpServerConfig`].
+    #[serde(default)]
+    pub mcp_servers: Vec<crate::feat::mcp::McpServerConfig>,
+
+    /// The local IP address HTTP-mode MCP servers bind to. Used as the `<ip>`
+    /// replacement token in a server's `args`, and as the bind address for
+    /// jinn's port allocation. Defaults to `127.0.0.1` (loopback only).
+    #[serde(default = "default_mcp_bind_address")]
+    pub mcp_bind_address: String,
 
     /// Maximum number of lines for tool output before truncation.
     /// `None` means use the built-in default (2000 lines).
@@ -238,6 +255,8 @@ impl Default for UserPreferences {
                 },
             ],
             projects: vec![],
+            mcp_servers: vec![],
+            mcp_bind_address: default_mcp_bind_address(),
             max_tool_output_lines: None,
             max_tool_output_bytes: None,
             compaction: CompactionConfig::default(),
@@ -445,6 +464,7 @@ where
         patcher.register_array_key(["session_lifecycle"], "name");
         patcher.register_array_key(["auto_prune", "regex", "rules"], "pattern");
         patcher.register_array_key(["project"], "path");
+        patcher.register_array_key(["mcp_servers"], "name");
 
         patcher
             .apply(new_table, doc.as_table_mut())
@@ -494,6 +514,18 @@ mod tests {
         // Then optional fields default to None.
         assert!(prefs.tool_entry_max_lines.is_none());
         assert!(prefs.min_collapse_count.is_none());
+    }
+
+    #[rstest::rstest]
+    fn mcp_bind_address_defaults_to_loopback_when_absent() {
+        // Given an empty jinn.toml.
+        let toml = "";
+
+        // When deserializing.
+        let prefs: UserPreferences = toml::from_str(toml).expect("parse");
+
+        // Then mcp_bind_address defaults to 127.0.0.1.
+        assert_eq!(prefs.mcp_bind_address, "127.0.0.1");
     }
 
     #[rstest::rstest]
@@ -636,6 +668,8 @@ mod tests {
             auto_prune: AutoPruneConfig::default(),
             todo_auto_steer: TodoAutoSteerConfig::default(),
             projects: vec![],
+            mcp_servers: vec![],
+            mcp_bind_address: default_mcp_bind_address(),
             discord: crate::feat::discord::DiscordConfig::default(),
             tool_default_timeout_secs: default_tool_default_timeout_secs(),
             history_stall_timeout_secs: default_history_stall_timeout_secs(),
@@ -722,6 +756,8 @@ mod tests {
             auto_prune: AutoPruneConfig::default(),
             todo_auto_steer: TodoAutoSteerConfig::default(),
             projects: vec![],
+            mcp_servers: vec![],
+            mcp_bind_address: default_mcp_bind_address(),
             discord: crate::feat::discord::DiscordConfig::default(),
             tool_default_timeout_secs: default_tool_default_timeout_secs(),
             history_stall_timeout_secs: default_history_stall_timeout_secs(),
@@ -759,6 +795,8 @@ mod tests {
             auto_prune: AutoPruneConfig::default(),
             todo_auto_steer: TodoAutoSteerConfig::default(),
             projects: vec![],
+            mcp_servers: vec![],
+            mcp_bind_address: default_mcp_bind_address(),
             discord: crate::feat::discord::DiscordConfig::default(),
             tool_default_timeout_secs: default_tool_default_timeout_secs(),
             history_stall_timeout_secs: default_history_stall_timeout_secs(),
@@ -1067,6 +1105,8 @@ mod tests {
             auto_prune: AutoPruneConfig::default(),
             todo_auto_steer: TodoAutoSteerConfig::default(),
             projects: vec![],
+            mcp_servers: vec![],
+            mcp_bind_address: default_mcp_bind_address(),
             discord: crate::feat::discord::DiscordConfig::default(),
             tool_default_timeout_secs: default_tool_default_timeout_secs(),
             history_stall_timeout_secs: default_history_stall_timeout_secs(),
@@ -1164,5 +1204,104 @@ mod tests {
         // transient provider death faster without false-positiving on slow
         // but responsive providers).
         assert_eq!(prefs.history_stall_timeout_secs, 60);
+    }
+
+    #[rstest::rstest]
+    fn mcp_server_config_round_trips_through_toml() {
+        // Given a server config with command + args.
+        let server = crate::feat::mcp::McpServerConfig {
+            name: "excalimate".to_owned(),
+            command: "npx".to_owned(),
+            args: vec!["@excalimate/mcp-server".to_owned(), "--stdio".to_owned()],
+            ..Default::default()
+        };
+
+        // When serializing and deserializing.
+        let s = toml::to_string(&server).expect("serialize");
+        let back: crate::feat::mcp::McpServerConfig = toml::from_str(&s).expect("deserialize");
+
+        // Then the fields are preserved.
+        assert_eq!(back.name, "excalimate");
+        assert_eq!(back.command, "npx");
+        assert_eq!(back.args, vec!["@excalimate/mcp-server", "--stdio"]);
+    }
+
+    #[rstest::rstest]
+    fn mcp_servers_array_round_trips_through_preferences() {
+        // Given preferences with two configured servers.
+        let prefs = UserPreferences {
+            mcp_servers: vec![
+                crate::feat::mcp::McpServerConfig {
+                    name: "excalimate".to_owned(),
+                    command: "npx".to_owned(),
+                    args: vec!["@excalimate/mcp-server".to_owned(), "--stdio".to_owned()],
+                    ..Default::default()
+                },
+                crate::feat::mcp::McpServerConfig {
+                    name: "filesystem".to_owned(),
+                    command: "node".to_owned(),
+                    args: vec!["fs-server.js".to_owned()],
+                    ..Default::default()
+                },
+            ],
+            ..UserPreferences::default()
+        };
+
+        // When saving and reloading through the patcher.
+        let dir = TempDir::new().expect("temp dir");
+        let path = dir.path().join(PREFS_FILE_NAME);
+        save_preferences_to(&prefs, &path).expect("save");
+        let reloaded = load_preferences_from(&path).expect("load");
+
+        // Then both servers survive the round-trip.
+        assert_eq!(reloaded.mcp_servers.len(), 2);
+        assert_eq!(reloaded.mcp_servers[0].name, "excalimate");
+        assert_eq!(reloaded.mcp_servers[1].name, "filesystem");
+    }
+
+    #[rstest::rstest]
+    fn mcp_servers_patch_preserves_user_comments() {
+        // Given an existing jinn.toml with a user comment on an mcp_servers entry.
+        let dir = TempDir::new().expect("temp dir");
+        let path = dir.path().join(PREFS_FILE_NAME);
+        std::fs::write(
+            &path,
+            r#"# top-level comment
+[[mcp_servers]]
+# this comment must survive
+name = "excalimate"
+command = "npx"
+args = ["@excalimate/mcp-server", "--stdio"]
+"#,
+        )
+        .expect("write");
+
+        // When saving the same config back.
+        let prefs = UserPreferences {
+            mcp_servers: vec![crate::feat::mcp::McpServerConfig {
+                name: "excalimate".to_owned(),
+                command: "npx".to_owned(),
+                args: vec!["@excalimate/mcp-server".to_owned(), "--stdio".to_owned()],
+                ..Default::default()
+            }],
+            ..UserPreferences::default()
+        };
+        save_preferences_to(&prefs, &path).expect("save");
+
+        // Then the user comment is preserved on disk.
+        let on_disk = std::fs::read_to_string(&path).expect("read");
+        assert!(
+            on_disk.contains("# this comment must survive"),
+            "user comment was wiped by the patcher: {on_disk}"
+        );
+    }
+
+    #[rstest::rstest]
+    fn default_preferences_has_no_mcp_servers() {
+        // Given default preferences.
+        let prefs = UserPreferences::default();
+
+        // Then no MCP servers are configured by default.
+        assert!(prefs.mcp_servers.is_empty());
     }
 }
