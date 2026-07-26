@@ -10,7 +10,7 @@ The planner consults this file before proposing a plan. If a feature **contradic
 - **Scoped.** Name what each entry applies to — repo, app, frontend, or a named subsystem. An unscoped fact (e.g. "uses Fossil") is ambiguous: is that the repo, or the app's supported VCS list? Always disambiguate.
 - **High-level.** One-liners (a few sentences at most). Capture decisions and facts a planner needs, not implementation minutiae.
 - **Single tag.** Each entry carries exactly one subsystem tag as a `(tag)` prefix: `- (tools) The bash tool runs...`. One entry, one tag — this keeps tag usage a meaningful coverage metric (a tag growing large signals over-specification or a tag that should split). If you cannot decide between two tags for an entry, that is a signal to **re-evaluate the entry itself**, not to assign both. Use `(tag)` rather than `[tag]` to avoid colliding with markdown task-list (checkbox) syntax.
-- **Singular concept.** Each entry should only be concerned with a single concept. Prefer multiple entries versus combining many things into one.
+- **Singular concept.** Each entry should be a single sentence and only concerned with a single concept. Prefer multiple entries versus combining many things into one.
 
 ## Templates
 
