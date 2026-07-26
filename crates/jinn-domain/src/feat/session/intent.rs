@@ -22,7 +22,7 @@ pub fn handle_refresh_models(state: &mut AppState) -> IntentResult {
         .active_session_mut()
         .push_entry(ChatEntry::transient("Refreshing models..."));
 
-    IntentResult::with_message(RefreshModels)
+    IntentResult::new_message(RefreshModels)
 }
 
 /// Rescans prompt templates from disk.
@@ -35,7 +35,7 @@ pub fn handle_rescan_prompt_templates(state: &mut AppState) -> IntentResult {
 
     let session_id = state.active_session().session_id().clone();
 
-    IntentResult::with_message(RescanPromptTemplates { session_id })
+    IntentResult::new_message(RescanPromptTemplates { session_id })
 }
 
 #[cfg(test)]

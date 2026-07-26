@@ -1,0 +1,44 @@
+[package]
+name = "jinn-mcp"
+version.workspace = true
+edition.workspace = true
+
+[dependencies]
+rmcp = { workspace = true, features = ["client", "transport-child-process", "transport-streamable-http-client", "transport-streamable-http-client-reqwest"] }
+reqwest = { workspace = true }
+tokio = { workspace = true, features = ["process", "rt", "sync", "macros"] }
+serde = { workspace = true, features = ["derive"] }
+serde_json = { workspace = true }
+wherror = { workspace = true }
+error-stack = { workspace = true }
+tracing = { workspace = true }
+jinn-provider = { workspace = true }
+
+[features]
+default = []
+# `testkit` exposes constructors for rmcp's `#[non_exhaustive]` model types,
+# so downstream crates (jinn-domain) can build fixtures in their own tests.
+testkit = []
+# `server-testkit` exposes a stub MCP server builder so downstream tests can drive
+# a real `McpClient` over an in-memory transport without spawning a child process.
+# Enables rmcp's `server` feature (kept out of production builds).
+server-testkit = ["testkit", "rmcp/server"]
+
+[dev-dependencies]
+rstest = { workspace = true }
+tokio = { workspace = true, features = ["full"] }
+serde_json = { workspace = true }
+# The integration test spins up an in-process stub MCP server. rmcp's `server`
+# feature is a dev-dependency so it can never leak into the production client.
+rmcp = { workspace = true, features = ["client", "server", "transport-streamable-http-server"] }
+# The HTTP roundtrip test serves a real Streamable HTTP MCP endpoint via axum.
+axum = "0.8"
+tokio-util = { workspace = true }
+
+# The stub-server test lives in a separate file that is only compiled when the
+# `testkit` feature is enabled (it uses the transport-injecting constructor).
+[[test]]
+name = "stub_server"
+required-features = ["testkit"]
+[lints]
+workspace = true

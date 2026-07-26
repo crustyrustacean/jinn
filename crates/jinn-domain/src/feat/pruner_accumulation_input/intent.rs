@@ -63,7 +63,7 @@ pub fn handle_confirm(state: &mut AppState) -> IntentResult {
     state.frontend.scope_stack.pop();
     state.frontend.pruner_accumulation_input = PrunerAccumulationInputState::default();
 
-    IntentResult::with_message(UpdatePreferences {
+    IntentResult::new_message(UpdatePreferences {
         updates: vec![PreferenceUpdate::SetAccumulationThreshold(threshold)],
     })
 }

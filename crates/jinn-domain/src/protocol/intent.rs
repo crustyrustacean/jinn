@@ -136,6 +136,12 @@ pub enum Intent {
     ToolToggleSelected,
     /// Toggle the selected skill's enabled/disabled state in the skill picker.
     SkillToggleSelected,
+    /// Toggle the selected MCP server's enabled/disabled state in the MCP picker.
+    McpToggleSelected,
+    /// Restart the selected MCP server's connection (MCP inspector `<c-r>`).
+    McpRestartSelected,
+    /// Toggle the MCP inspector preview pane between logs and tools (MCP inspector `<c-t>`).
+    McpTogglePreview,
     /// Load the highlighted skill into context as a pinned ToolResult (skill picker `<c-l>`).
     SkillLoadSelected,
     /// Project picker: create a new session at the highlighted dir, then open
@@ -410,6 +416,9 @@ impl std::fmt::Display for Intent {
             Intent::PickerMoveCursorRight => write!(f, "picker cursor right"),
             Intent::ToolToggleSelected => write!(f, "toggle tool"),
             Intent::SkillToggleSelected => write!(f, "toggle skill"),
+            Intent::McpToggleSelected => write!(f, "toggle mcp server"),
+            Intent::McpRestartSelected => write!(f, "restart mcp server"),
+            Intent::McpTogglePreview => write!(f, "toggle mcp preview"),
             Intent::SkillLoadSelected => write!(f, "load skill"),
             Intent::ProjectNewAtHighlightedWithLifecycle => write!(f, "project new + lifecycle"),
             Intent::ProjectRemoveHighlighted => write!(f, "remove project"),
@@ -541,7 +550,7 @@ impl IntentResult {
     /// The message is wrapped in a closure that calls
     /// `bus.tell(Publish(msg)).await` when the bridge drain task processes it.
     #[must_use]
-    pub fn with_message<M>(msg: M) -> Self
+    pub fn new_message<M>(msg: M) -> Self
     where
         M: BusMessage,
     {
@@ -567,7 +576,7 @@ impl IntentResult {
 
     /// Append a typed message and return self for chaining.
     #[must_use]
-    pub fn message<M: BusMessage>(mut self, msg: M) -> Self {
+    pub fn with_message<M: BusMessage>(mut self, msg: M) -> Self {
         self.messages.push(Bridge::publish_closure(msg));
         self.message_names.push(std::any::type_name::<M>());
         self

@@ -21,6 +21,8 @@ pub enum FocusScope {
     SidebarSessions,
     /// Sidebar - Task list section focused.
     SidebarTaskList,
+    /// Sidebar - MCP servers section focused.
+    SidebarMcpServers,
     /// Picker overlay active - kind distinguishes Provider/Session/Keymap/etc.
     Picker { kind: PickerKind },
     /// Arg input popup - collecting positional args for a lifecycle command.
@@ -55,6 +57,7 @@ impl FocusScope {
             | Self::SidebarPins
             | Self::SidebarSessions
             | Self::SidebarTaskList
+            | Self::SidebarMcpServers
             | Self::SidebarResize => Mode::Normal,
             Self::Input
             | Self::ArgInput
@@ -78,6 +81,7 @@ impl std::fmt::Display for FocusScope {
             Self::SidebarPins => write!(f, "SidebarPins"),
             Self::SidebarSessions => write!(f, "SidebarSessions"),
             Self::SidebarTaskList => write!(f, "SidebarTaskList"),
+            Self::SidebarMcpServers => write!(f, "SidebarMcpServers"),
             Self::Picker { kind } => write!(f, "Picker({kind})"),
             Self::ArgInput => write!(f, "ArgInput"),
             Self::RenameSessionInput => write!(f, "RenameSessionInput"),
@@ -198,6 +202,7 @@ impl ScopeStack {
                 | FocusScope::SidebarPins
                 | FocusScope::SidebarSessions
                 | FocusScope::SidebarTaskList
+                | FocusScope::SidebarMcpServers
         )
     }
 
@@ -209,6 +214,7 @@ impl ScopeStack {
             FocusScope::SidebarPins => Some(SidebarSectionId::Pins),
             FocusScope::SidebarSessions => Some(SidebarSectionId::Sessions),
             FocusScope::SidebarTaskList => Some(SidebarSectionId::TaskList),
+            FocusScope::SidebarMcpServers => Some(SidebarSectionId::McpServers),
             _ => None,
         }
     }
@@ -223,6 +229,7 @@ impl ScopeStack {
                 SidebarSectionId::Pins => FocusScope::SidebarPins,
                 SidebarSectionId::TaskList => FocusScope::SidebarTaskList,
                 SidebarSectionId::Sessions => FocusScope::SidebarSessions,
+                SidebarSectionId::McpServers => FocusScope::SidebarMcpServers,
             };
             self.stack.pop();
             self.stack.push(scope);

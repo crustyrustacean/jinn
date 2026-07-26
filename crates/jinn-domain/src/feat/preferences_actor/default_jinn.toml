@@ -71,6 +71,23 @@ teardown_command = """bash -c 'git add -A && (git diff --cached --quiet || git c
 # path = "~/code/jinn"
 
 
+# ---------------------------------------------------------------------------
+# MCP servers (Model Context Protocol)
+# ---------------------------------------------------------------------------
+# jinn acts as an MCP *client*: each entry below declares a server it can
+# connect to over stdio. Servers are OFF by default and must be enabled
+# per-session (the choice is persisted with the session). When enabled for a
+# session, jinn spawns the server process, advertises its tools to the model
+# under a namespaced id `mcp__<name>__<tool>`, and forwards calls to it.
+#
+# Add one block per server. The `name` must be unique across all servers.
+#
+# [[mcp_servers]]
+# name = "excalimate"
+# command = "npx"
+# args = ["@excalimate/mcp-server", "--stdio"]
+
+
 # Compaction command + auto compaction.
 [compaction]
 # Automatically compact the conversation when the used context window exceeds

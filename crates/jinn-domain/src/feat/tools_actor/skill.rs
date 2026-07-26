@@ -199,6 +199,7 @@ mod tests {
 
             dispatched_at: jiff::Timestamp::now(),
             session_cap: None,
+            mcp_coordinator: None,
         }
     }
 
@@ -255,6 +256,7 @@ mod tests {
 
             dispatched_at: jiff::Timestamp::now(),
             session_cap: None,
+            mcp_coordinator: None,
         };
         let result = execute(
             ToolCall {
@@ -330,6 +332,7 @@ mod tests {
 
             dispatched_at: jiff::Timestamp::now(),
             session_cap: None,
+            mcp_coordinator: None,
         };
 
         // When executing.
@@ -493,6 +496,7 @@ mod tests {
 
             dispatched_at: jiff::Timestamp::now(),
             session_cap: None,
+            mcp_coordinator: None,
         };
 
         // When executing.
@@ -567,6 +571,7 @@ mod tests {
 
             dispatched_at: jiff::Timestamp::now(),
             session_cap: None,
+            mcp_coordinator: None,
         };
         let result = execute(call, ctx).await;
 
@@ -631,6 +636,7 @@ mod tests {
 
             dispatched_at: jiff::Timestamp::now(),
             session_cap: None,
+            mcp_coordinator: None,
         };
         let result = execute(call, ctx).await;
 
@@ -688,6 +694,7 @@ mod tests {
 
             dispatched_at: jiff::Timestamp::now(),
             session_cap: None,
+            mcp_coordinator: None,
         };
 
         // When executing.
