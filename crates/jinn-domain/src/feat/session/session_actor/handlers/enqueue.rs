@@ -1245,4 +1245,324 @@ mod tests {
             "session override should win over global default"
         );
     }
+
+    // Helper: seed a vision-capable model and return the idle session id.
+    async fn idle_vision_session() -> (super::super::super::SessionPersistenceActor, crate::common::state::State, BusAudit, crate::protocol::SessionId) {
+        let (actor, state, audit) = create_actor().await;
+        let session_id = {
+            let mut guard = state.write_test_no_cap();
+            let _ = guard.active_session_mut();
+            guard.session.active_session_id().clone()
+        };
+        seed_models_dev(&actor, "vision-model", true);
+        (actor, state, audit, session_id)
+    }
+
+    /// Extracts the `expanded` text of the most recent `User` entry in history.
+    fn last_user_expanded(session: &crate::feat::session::chat_session::ChatSessionState) -> Option<String> {
+        session.history().iter().rev().find_map(|e| match &e.kind {
+            ChatEntryKind::User { expanded, .. } => Some(expanded.clone()),
+            _ => None,
+        })
+    }
+
+    #[tokio::test]
+    async fn nonexistent_at_path_dispatches() {
+        // Given an idle vision-model session.
+        let (actor, state, audit, session_id) = idle_vision_session().await;
+
+        // When enqueuing a message with a nonexistent @path.
+        actor
+            .handle_enqueue_user_message(&EnqueueUserMessage {
+                session_id: session_id.clone(),
+                entry: ChatEntry::user("describe @/nonexistent/whatever"),
+            })
+            .await;
+
+        // Then the message dispatches normally.
+        let guard = state.read();
+        let session = guard.session.get(&session_id).expect("session");
+        assert_eq!(session.phase(), PhaseKind::Streaming);
+        drop(guard);
+        assert!(audit.contains_name("SendToLlmProvider"), "nonexistent @path should dispatch");
+    }
+
+    #[tokio::test]
+    async fn nonexistent_at_path_keeps_literal_expanded() {
+        // Given an idle vision-model session.
+        let (actor, state, _audit, session_id) = idle_vision_session().await;
+        let token = "@/nonexistent/whatever";
+
+        // When enqueuing a message with a nonexistent @path.
+        actor
+            .handle_enqueue_user_message(&EnqueueUserMessage {
+                session_id: session_id.clone(),
+                entry: ChatEntry::user(&format!("describe {token}")),
+            })
+            .await;
+
+        // Then the AI-facing expanded text keeps the literal token (no file:// rewrite).
+        let guard = state.read();
+        let session = guard.session.get(&session_id).expect("session");
+        let expanded = last_user_expanded(session).expect("user entry");
+        assert!(expanded.contains(token), "expanded should keep literal token: {expanded}");
+        assert!(!expanded.contains("file://"), "expanded must not contain file://: {expanded}");
+    }
+
+    #[tokio::test]
+    async fn existing_non_image_at_path_dispatches() {
+        // Given an idle vision-model session and an existing non-image file.
+        let (actor, state, audit, session_id) = idle_vision_session().await;
+        let dir = tempfile::TempDir::new().expect("temp dir");
+        let notes = dir.path().join("notes.txt");
+        std::fs::write(&notes, b"not an image").expect("write");
+
+        // When enqueuing a message with an @path to a non-image file.
+        actor
+            .handle_enqueue_user_message(&EnqueueUserMessage {
+                session_id: session_id.clone(),
+                entry: ChatEntry::user(&format!("see @{}", notes.to_string_lossy())),
+            })
+            .await;
+
+        // Then the message dispatches normally.
+        let guard = state.read();
+        let session = guard.session.get(&session_id).expect("session");
+        assert_eq!(session.phase(), PhaseKind::Streaming);
+        drop(guard);
+        assert!(audit.contains_name("SendToLlmProvider"), "non-image @path should dispatch");
+    }
+
+    #[tokio::test]
+    async fn existing_non_image_at_path_keeps_literal_expanded() {
+        // Given an idle vision-model session and an existing non-image file.
+        let (actor, state, _audit, session_id) = idle_vision_session().await;
+        let dir = tempfile::TempDir::new().expect("temp dir");
+        let notes = dir.path().join("notes.txt");
+        std::fs::write(&notes, b"not an image").expect("write");
+        let token = format!("@{}", notes.to_string_lossy());
+
+        // When enqueuing a message with an @path to a non-image file.
+        actor
+            .handle_enqueue_user_message(&EnqueueUserMessage {
+                session_id: session_id.clone(),
+                entry: ChatEntry::user(&format!("see {token}")),
+            })
+            .await;
+
+        // Then the AI-facing expanded text keeps the literal token (no file:// rewrite).
+        let guard = state.read();
+        let session = guard.session.get(&session_id).expect("session");
+        let expanded = last_user_expanded(session).expect("user entry");
+        assert!(expanded.contains(&token), "expanded should keep literal token: {expanded}");
+        assert!(!expanded.contains("file://"), "expanded must not contain file://: {expanded}");
+    }
+
+    #[tokio::test]
+    async fn recognizable_image_without_converter_blocks_with_error() {
+        // Given an idle vision-model session and a recognizable HEIC file (test converter is unavailable).
+        let (actor, state, audit, session_id) = idle_vision_session().await;
+        let dir = tempfile::TempDir::new().expect("temp dir");
+        let heic = dir.path().join("photo.heic");
+        let mut bytes = vec![0x00, 0x00, 0x00, 0x18];
+        bytes.extend_from_slice(b"ftypheicpayload");
+        std::fs::write(&heic, &bytes).expect("write");
+
+        // When enqueuing a message with the HEIC @path.
+        actor
+            .handle_enqueue_user_message(&EnqueueUserMessage {
+                session_id: session_id.clone(),
+                entry: ChatEntry::user(&format!("see @{}", heic.to_string_lossy())),
+            })
+            .await;
+
+        // Then an Error entry is pushed and the turn is blocked.
+        let guard = state.read();
+        let session = guard.session.get(&session_id).expect("session");
+        assert_eq!(session.phase(), PhaseKind::Idle, "conversion failure must block");
+        assert!(
+            session.history().iter().any(|e| matches!(&e.kind, ChatEntryKind::Error(_))),
+            "expected an Error entry for the conversion failure"
+        );
+        drop(guard);
+        assert!(!audit.contains_name("SendToLlmProvider"), "conversion failure must not dispatch");
+    }
+
+    #[tokio::test]
+    async fn mixed_native_image_and_nonexistent_token_dispatches_with_one_attachment() {
+        // Given an idle vision-model session, a real PNG, and a nonexistent path in one message.
+        let (actor, state, audit, session_id) = idle_vision_session().await;
+        let dir = tempfile::TempDir::new().expect("temp dir");
+        let png = dir.path().join("real.png");
+        std::fs::write(&png, MULTIMODAL_TINY_PNG).expect("write png");
+        let display = format!("see @{} and @/nonexistent/x", png.to_string_lossy());
+
+        // When enqueuing the mixed message.
+        actor
+            .handle_enqueue_user_message(&EnqueueUserMessage {
+                session_id: session_id.clone(),
+                entry: ChatEntry::user(&display),
+            })
+            .await;
+
+        // Then it dispatches with exactly one attachment and the nonexistent token stays literal.
+        let guard = state.read();
+        let session = guard.session.get(&session_id).expect("session");
+        assert_eq!(session.phase(), PhaseKind::Streaming);
+        let expanded = last_user_expanded(session).expect("user entry");
+        assert!(expanded.contains("@/nonexistent/x"), "nonexistent token must stay literal: {expanded}");
+        assert!(expanded.contains("file://"), "real image token must be rewritten: {expanded}");
+        let attachments = session.history().iter().rev().find_map(|e| match &e.kind {
+            ChatEntryKind::User { attachments, .. } => Some(attachments.len()),
+            _ => None,
+        });
+        assert_eq!(attachments, Some(1), "exactly one attachment expected");
+        drop(guard);
+        assert!(audit.contains_name("SendToLlmProvider"), "mixed message should dispatch");
+    }
+
+    #[tokio::test]
+    async fn mixed_native_image_and_existing_non_image_dispatches_with_one_attachment() {
+        // Given an idle vision-model session, a real PNG, and an existing non-image file.
+        let (actor, state, audit, session_id) = idle_vision_session().await;
+        let dir = tempfile::TempDir::new().expect("temp dir");
+        let png = dir.path().join("real.png");
+        std::fs::write(&png, MULTIMODAL_TINY_PNG).expect("write png");
+        let notes = dir.path().join("notes.txt");
+        std::fs::write(&notes, b"text").expect("write");
+        let display = format!("see @{} and @{}", png.to_string_lossy(), notes.to_string_lossy());
+
+        // When enqueuing the mixed message.
+        actor
+            .handle_enqueue_user_message(&EnqueueUserMessage {
+                session_id: session_id.clone(),
+                entry: ChatEntry::user(&display),
+            })
+            .await;
+
+        // Then it dispatches with exactly one attachment and the non-image token stays literal.
+        let guard = state.read();
+        let session = guard.session.get(&session_id).expect("session");
+        assert_eq!(session.phase(), PhaseKind::Streaming);
+        let expanded = last_user_expanded(session).expect("user entry");
+        assert!(expanded.contains(&format!("@{}", notes.to_string_lossy())), "non-image token must stay literal: {expanded}");
+        assert!(expanded.contains("file://"), "real image token must be rewritten: {expanded}");
+        let attachments = session.history().iter().rev().find_map(|e| match &e.kind {
+            ChatEntryKind::User { attachments, .. } => Some(attachments.len()),
+            _ => None,
+        });
+        assert_eq!(attachments, Some(1), "exactly one attachment expected");
+        drop(guard);
+        assert!(audit.contains_name("SendToLlmProvider"), "mixed message should dispatch");
+    }
+
+    #[tokio::test]
+    async fn multiple_nonexistent_tokens_all_stay_literal() {
+        // Given an idle vision-model session and a message with several nonexistent @paths.
+        let (actor, state, _audit, session_id) = idle_vision_session().await;
+
+        // When enqueuing the message.
+        actor
+            .handle_enqueue_user_message(&EnqueueUserMessage {
+                session_id: session_id.clone(),
+                entry: ChatEntry::user("see @/nope/a and @/nope/b"),
+            })
+            .await;
+
+        // Then both tokens stay literal and nothing is attached.
+        let guard = state.read();
+        let session = guard.session.get(&session_id).expect("session");
+        let expanded = last_user_expanded(session).expect("user entry");
+        assert!(expanded.contains("@/nope/a"), "first token literal: {expanded}");
+        assert!(expanded.contains("@/nope/b"), "second token literal: {expanded}");
+        assert!(!expanded.contains("file://"), "no file:// rewrite: {expanded}");
+        let attachments = session.history().iter().rev().find_map(|e| match &e.kind {
+            ChatEntryKind::User { attachments, .. } => Some(attachments.len()),
+            _ => None,
+        });
+        assert_eq!(attachments, Some(0), "no attachments expected");
+    }
+
+    #[tokio::test]
+    async fn multiple_native_images_all_attach() {
+        // Given an idle vision-model session and a message with two real PNGs.
+        let (actor, state, _audit, session_id) = idle_vision_session().await;
+        let dir = tempfile::TempDir::new().expect("temp dir");
+        let png_a = dir.path().join("a.png");
+        let png_b = dir.path().join("b.png");
+        std::fs::write(&png_a, MULTIMODAL_TINY_PNG).expect("write a");
+        std::fs::write(&png_b, MULTIMODAL_TINY_PNG).expect("write b");
+        let display = format!("see @{} and @{}", png_a.to_string_lossy(), png_b.to_string_lossy());
+
+        // When enqueuing the message.
+        actor
+            .handle_enqueue_user_message(&EnqueueUserMessage {
+                session_id: session_id.clone(),
+                entry: ChatEntry::user(&display),
+            })
+            .await;
+
+        // Then both images attach.
+        let guard = state.read();
+        let session = guard.session.get(&session_id).expect("session");
+        let attachments = session.history().iter().rev().find_map(|e| match &e.kind {
+            ChatEntryKind::User { attachments, .. } => Some(attachments.len()),
+            _ => None,
+        });
+        assert_eq!(attachments, Some(2), "both images should attach");
+    }
+
+    #[tokio::test]
+    async fn mixed_native_image_and_conversion_failing_image_blocks() {
+        // Given an idle vision-model session, a real PNG, and a recognizable HEIC (converter unavailable).
+        let (actor, state, audit, session_id) = idle_vision_session().await;
+        let dir = tempfile::TempDir::new().expect("temp dir");
+        let png = dir.path().join("real.png");
+        std::fs::write(&png, MULTIMODAL_TINY_PNG).expect("write png");
+        let heic = dir.path().join("photo.heic");
+        let mut bytes = vec![0x00, 0x00, 0x00, 0x18];
+        bytes.extend_from_slice(b"ftypheicpayload");
+        std::fs::write(&heic, &bytes).expect("write");
+        let display = format!("see @{} and @{}", png.to_string_lossy(), heic.to_string_lossy());
+
+        // When enqueuing the mixed message.
+        actor
+            .handle_enqueue_user_message(&EnqueueUserMessage {
+                session_id: session_id.clone(),
+                entry: ChatEntry::user(&display),
+            })
+            .await;
+
+        // Then the conversion failure hard-errors and blocks the whole turn.
+        let guard = state.read();
+        let session = guard.session.get(&session_id).expect("session");
+        assert_eq!(session.phase(), PhaseKind::Idle, "conversion failure must block the turn");
+        drop(guard);
+        assert!(!audit.contains_name("SendToLlmProvider"), "conversion failure must not dispatch");
+    }
+
+    #[tokio::test]
+    async fn email_at_path_is_not_matched() {
+        // Given an idle vision-model session and a message with an email address.
+        let (actor, state, _audit, session_id) = idle_vision_session().await;
+
+        // When enqueuing the message.
+        actor
+            .handle_enqueue_user_message(&EnqueueUserMessage {
+                session_id: session_id.clone(),
+                entry: ChatEntry::user("contact foo@bar.com"),
+            })
+            .await;
+
+        // Then the email is not treated as a path: text unchanged, no attachments.
+        let guard = state.read();
+        let session = guard.session.get(&session_id).expect("session");
+        let expanded = last_user_expanded(session).expect("user entry");
+        assert_eq!(expanded, "contact foo@bar.com");
+        let attachments = session.history().iter().rev().find_map(|e| match &e.kind {
+            ChatEntryKind::User { attachments, .. } => Some(attachments.len()),
+            _ => None,
+        });
+        assert_eq!(attachments, Some(0), "email must not produce an attachment");
+    }
 }

@@ -70,6 +70,37 @@ async fn load_session_restores_data() {
 
 #[rstest::rstest]
 #[tokio::test]
+async fn degraded_token_expanded_survives_save_and_reload() {
+    // Given a session with a resolved degraded user entry (marker set, expanded literal).
+    let (_dir, store) = make_store().await;
+    let session_id = SessionId::new();
+    let token = "@/nonexistent/whatever";
+    let mut session = ChatSessionState::new();
+    session.set_session_id(session_id.clone());
+    session.set_title("degraded".to_owned());
+    let mut entry = ChatEntry::user(&format!("describe {token}"));
+    entry.degraded_paths = Some(vec![std::path::PathBuf::from("/nonexistent/whatever")]);
+    session.push_entry(entry);
+
+    // When saving and reloading the session.
+    store.save(&session).await.expect("save");
+    let loaded = store
+        .load_session(&session_id)
+        .await
+        .expect("load_session")
+        .expect("should have a session");
+
+    // Then the AI-facing expanded text keeps the literal token (no file:// revert).
+    let expanded = loaded.history().iter().rev().find_map(|e| match &e.kind {
+        ChatEntryKind::User { expanded, .. } => Some(expanded.clone()),
+        _ => None,
+    }).expect("user entry");
+    assert!(expanded.contains(token), "reloaded expanded must keep literal token: {expanded}");
+    assert!(!expanded.contains("file://"), "reloaded expanded must not contain file://: {expanded}");
+}
+
+#[rstest::rstest]
+#[tokio::test]
 async fn summaries_returns_correct_count() {
     // Given a store with 2 sessions.
     let (_dir, store) = make_store().await;
