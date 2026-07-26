@@ -197,6 +197,9 @@ mod tests {
             fn name(&self) -> &'static str {
                 "stub"
             }
+            fn liveness(&self) -> Result<(), FetchError> {
+                Ok(())
+            }
         }
 
         struct StubFactory {
