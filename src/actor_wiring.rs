@@ -589,7 +589,10 @@ jinn_domain::feat::preferences_actor::preferences_actor::PreferencesActor::super
                         // so an Ok is no-op here. The remaining arms cover the
                         // wedge cases probe() can't observe on its own.
                         Ok(Err(join_err)) => {
-                            tracing::warn!(?join_err, "keepalive: probe task panicked, force-evicting");
+                            tracing::warn!(
+                                ?join_err,
+                                "keepalive: probe task panicked, force-evicting"
+                            );
                             shared.force_evict();
                         }
                         Err(_elapsed) => {

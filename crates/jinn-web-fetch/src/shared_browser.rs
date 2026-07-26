@@ -60,13 +60,13 @@ use crate::stealth::StealthSettings;
 /// A last-resort upper bound on how long a single in-flight render may wait
 /// on the underlying connection before headless_chrome cancels it.
 ///
-/// This is NOT the primary health signal — the heartbeat ([`HEARTBEAT_INTERVAL`]
-/// + [`SharedBrowser::probe`]) owns proactive liveness and force-evicts a dead
-/// browser within ~10s. The library sets this same value as both the per-call
-/// wait AND the idle-teardown timer; it covers one narrow case the heartbeat
-/// cannot: a render already in flight at the exact instant the socket dies,
-/// holding its own handle that the heartbeat's eviction can't kill out from
-/// under it. 60s caps that one render; every subsequent render recovers
+/// This is NOT the primary health signal — the heartbeat
+/// ([`HEARTBEAT_INTERVAL`] + [`SharedBrowser::probe`]) owns proactive liveness and
+/// force-evicts a dead browser within ~10s. The library sets this same value as
+/// both the per-call wait AND the idle-teardown timer; it covers one narrow case
+/// the heartbeat cannot: a render already in flight at the exact instant the
+/// socket dies, holding its own handle that the heartbeat's eviction can't kill
+/// out from under it. 60s caps that one render; every subsequent render recovers
 /// immediately via the normal lazy-relaunch path. Never wait 10 minutes again.
 // `Duration::from_mins` is unstable, so we express the constant in seconds.
 #[expect(
@@ -479,7 +479,6 @@ impl SharedBrowser {
             }
         }
     }
-
 
     /// Force-evicts the cached browser handle, killing the Chromium process.
     ///
