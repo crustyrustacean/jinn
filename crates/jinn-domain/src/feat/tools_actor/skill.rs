@@ -3,8 +3,7 @@
 //! subsequent turn (the entry is pinned with `PinPosition::Relative`, which
 //! survives compaction).
 
-use std::path::PathBuf;
-
+use crate::feat::skills::Skill;
 use crate::feat::skills::frontmatter::strip_frontmatter;
 use crate::feat::tools_actor::tool_types::{
     ToolCall, ToolContext, ToolDefinition, ToolResult, ToolResultPinPosition,
@@ -47,12 +46,12 @@ fn failure_result(call: &ToolCall, message: impl Into<String>) -> ToolResult {
     }
 }
 
-/// Resolves a skill's path from the session's discovered set.
+/// Resolves a skill from the session's discovered set.
 ///
 /// Returns `Err` with a user-facing message if state/session is unavailable or
 /// the skill was not discovered for this session. This avoids re-deriving the
 /// path from the global skills dir, which would break for project-local skills.
-fn resolve_skill_path(ctx: &ToolContext, name: &str) -> Result<PathBuf, String> {
+fn resolve_skill(ctx: &ToolContext, name: &str) -> Result<Skill, String> {
     let Some(state) = ctx.state.as_ref() else {
         return Err(format!("cannot resolve skill '{name}': no state available"));
     };
@@ -69,7 +68,7 @@ fn resolve_skill_path(ctx: &ToolContext, name: &str) -> Result<PathBuf, String> 
         .discovered_skills()
         .iter()
         .find(|s| s.name == name)
-        .map(|s| s.file_path.clone())
+        .cloned()
         .ok_or_else(|| {
             format!(
                 "skill '{name}' was not discovered for this session. It may have been removed or never scanned."
@@ -124,29 +123,32 @@ pub fn execute(call: ToolCall, ctx: ToolContext) -> BoxedToolFuture {
             }
         }
 
-        // Resolve the skill's path from the session's discovered set rather than
+        // Resolve the skill from the session's discovered set rather than
         // re-deriving it from the global dir. This makes project-local skills loadable
         // and fails clearly if the skill was not discovered for this session.
-        let skill_path = match resolve_skill_path(&ctx, &name) {
-            Ok(p) => p,
+        let skill = match resolve_skill(&ctx, &name) {
+            Ok(s) => s,
             Err(msg) => {
                 return failure_result(&call, msg);
             }
         };
 
-        let content = match tokio::fs::read_to_string(&skill_path).await {
+        let content = match tokio::fs::read_to_string(&skill.file_path).await {
             Ok(c) => c,
             Err(e) => {
                 return failure_result(
                     &call,
-                    format!("failed to read skill '{}': {e}", skill_path.display()),
+                    format!("failed to read skill '{}': {e}", skill.file_path.display()),
                 );
             }
         };
 
         let body = strip_frontmatter(&content);
-        let location = skill_path.to_string_lossy().to_string();
-        let xml = format!("<skill name=\"{name}\" location=\"{location}\">\n{body}\n</skill>");
+        let location = skill.file_path.to_string_lossy().to_string();
+        let base_dir = skill.base_dir.to_string_lossy().to_string();
+        let xml = format!(
+            "<skill name=\"{name}\" location=\"{location}\">\nBase directory: {base_dir} — resolve all relative reference paths here.\n{body}\n</skill>"
+        );
 
         ToolResult {
             tool_call_id: call.id,
@@ -345,6 +347,85 @@ mod tests {
             "tool result should contain the project skill body, got: {}",
             &result.content[..result.content.len().min(120)]
         );
+        assert!(
+            result
+                .content
+                .contains(&format!("Base directory: {}", skill_dir.display())),
+            "tool result header should carry the project skill's base_dir, got: {}",
+            &result.content[..result.content.len().min(200)]
+        );
+    }
+
+    #[rstest::rstest]
+    #[tokio::test]
+    async fn execute_result_header_carries_base_dir() {
+        use crate::common::app_state::AppState;
+        use crate::common::state::State;
+        use crate::feat::skills::{Skill, SkillSource};
+        use crate::protocol::SessionId;
+
+        // Given a project-local skill seeded with a distinct base_dir.
+        let tmp = tempfile::tempdir().expect("create temp dir");
+        let skill_dir = tmp.path().join(".agents/skills/header-skill");
+        std::fs::create_dir_all(&skill_dir).expect("create skill dir");
+        let skill_file = skill_dir.join("SKILL.md");
+        std::fs::write(
+            &skill_file,
+            "---\nname: header-skill\ndescription: d\n---\nbody\n",
+        )
+        .expect("write skill");
+
+        let state = State::new(AppState::default());
+        let session_id = SessionId::new();
+        {
+            let mut guard = state.write_test_no_cap();
+            let session = guard.session_mut_or_create(&session_id);
+            session.set_discovered_skills(vec![Skill {
+                name: "header-skill".to_owned(),
+                description: "d".to_owned(),
+                body: String::new(),
+                file_path: skill_file.clone(),
+                base_dir: skill_dir.clone(),
+                source: SkillSource::Project {
+                    dir: tmp.path().to_path_buf(),
+                },
+            }]);
+        }
+
+        let call = ToolCall {
+            id: "call_1".to_owned(),
+            name: "skill".to_owned(),
+            arguments: serde_json::json!({"name": "header-skill"}).to_string(),
+        };
+        let ctx = ToolContext {
+            cwd: PathBuf::from("/tmp"),
+            timeout: None,
+            state: Some(state),
+            session_id: Some(session_id),
+            app_paths: crate::common::app_paths::AppPaths::default(),
+            bus: None,
+            max_output_lines: None,
+            max_output_bytes: None,
+            dispatched_at: jiff::Timestamp::now(),
+            session_cap: None,
+        };
+
+        // When executing.
+        let result = execute(call, ctx).await;
+
+        // Then the successful result's Base directory header equals the seeded base_dir.
+        assert!(
+            result.success,
+            "load should succeed, got: {}",
+            &result.content
+        );
+        assert!(
+            result
+                .content
+                .contains(&format!("Base directory: {}", skill_dir.display())),
+            "header should carry the seeded base_dir verbatim, got: {}",
+            &result.content
+        );
     }
 
     #[rstest::rstest]
@@ -425,6 +506,13 @@ mod tests {
                     .starts_with("<skill name=\"phased-task-loop\""),
                 "tool result should contain the skill body in <skill> XML, got: {}",
                 &result.content[..result.content.len().min(80)]
+            );
+            // And the Base directory header sits on the line immediately after
+            // the opening <skill> tag, before the body.
+            assert!(
+                result.content.contains("\nBase directory: "),
+                "header should follow the opening <skill> tag, got: {}",
+                &result.content[..result.content.len().min(160)]
             );
             assert_eq!(
                 result.pin_position,
