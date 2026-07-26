@@ -1,7 +1,10 @@
-## (development) v0.102.0
+## v0.102.0 (development build)
 
 - Fix slow startup performance on `install` and `config` commands.
 - Add `--force` flag to `install` command to overwrite existing files.
+- Fix positioning of file selection and prompt selection popups to be word-wrap aware. They now appear directly over the cursor instead of above the input box.
+- Provide base directory in context for loaded skills to help agent load reference files.
+- Add MCP server support.
 
 ## 2026-07-23 v0.101.0
 
