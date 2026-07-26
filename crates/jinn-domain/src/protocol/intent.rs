@@ -550,7 +550,7 @@ impl IntentResult {
     /// The message is wrapped in a closure that calls
     /// `bus.tell(Publish(msg)).await` when the bridge drain task processes it.
     #[must_use]
-    pub fn with_message<M>(msg: M) -> Self
+    pub fn new_message<M>(msg: M) -> Self
     where
         M: BusMessage,
     {
@@ -576,7 +576,7 @@ impl IntentResult {
 
     /// Append a typed message and return self for chaining.
     #[must_use]
-    pub fn message<M: BusMessage>(mut self, msg: M) -> Self {
+    pub fn with_message<M: BusMessage>(mut self, msg: M) -> Self {
         self.messages.push(Bridge::publish_closure(msg));
         self.message_names.push(std::any::type_name::<M>());
         self

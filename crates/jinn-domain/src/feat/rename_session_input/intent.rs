@@ -72,7 +72,7 @@ pub fn handle_rename_session_confirm(state: &mut AppState) -> IntentResult {
     state.frontend.scope_stack.pop();
     state.frontend.rename_session_input = RenameSessionInputState::default();
 
-    IntentResult::with_message(PersistSession { session_id })
+    IntentResult::new_message(PersistSession { session_id })
 }
 
 /// Cancels the rename session input popup.

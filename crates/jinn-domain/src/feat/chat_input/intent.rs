@@ -51,7 +51,7 @@ pub fn handle_insert_char(ch: char, state: &mut AppState) -> IntentResult {
                 AutocompleteTrigger::At,
                 Vec::new(),
             );
-            return IntentResult::with_message(emit_list_directory(state, ""));
+            return IntentResult::new_message(emit_list_directory(state, ""));
         }
     }
 
@@ -121,7 +121,7 @@ fn handle_insert_while_autocomplete_active(ch: char, state: &mut AppState) -> In
                 .active_chat_input()
                 .autocomplete_filter()
                 .unwrap_or_default();
-            return IntentResult::with_message(emit_list_directory(state, &filter));
+            return IntentResult::new_message(emit_list_directory(state, &filter));
         }
         return IntentResult::empty();
     }
@@ -217,7 +217,7 @@ pub fn handle_delete_grapheme(state: &mut AppState) -> IntentResult {
                 .active_chat_input()
                 .autocomplete_filter()
                 .unwrap_or_default();
-            return IntentResult::with_message(emit_list_directory(state, &filter));
+            return IntentResult::new_message(emit_list_directory(state, &filter));
         }
 
         let filter = state
@@ -240,7 +240,7 @@ pub fn handle_delete_grapheme(state: &mut AppState) -> IntentResult {
 
     try_reactivate_autocomplete(state);
     if let Some(cmd) = try_reactivate_at_autocomplete(state) {
-        return IntentResult::with_message(cmd);
+        return IntentResult::new_message(cmd);
     }
     IntentResult::empty()
 }
@@ -404,7 +404,7 @@ fn route_to_enqueue_or_steer(
                 phase = ?phase,
                 "submit routed to enqueue"
             );
-            IntentResult::empty().message(EnqueueUserMessage {
+            IntentResult::empty().with_message(EnqueueUserMessage {
                 session_id: session_id.clone(),
                 entry: ChatEntry::user(display),
             })
@@ -416,7 +416,7 @@ fn route_to_enqueue_or_steer(
                 phase = ?phase,
                 "submit routed to steering buffer"
             );
-            IntentResult::empty().message(SubmitSteeringMessage {
+            IntentResult::empty().with_message(SubmitSteeringMessage {
                 session_id: session_id.clone(),
                 text: display,
             })
@@ -446,7 +446,7 @@ fn execute_slash_command(
         SlashCommand::Compact | SlashCommand::CompactAll => {
             let compact_all = matches!(command, SlashCommand::CompactAll);
             let session_id = state.session.active_session_id().clone();
-            IntentResult::with_message(
+            IntentResult::new_message(
                 crate::feat::session::protocol::trigger_compaction::TriggerCompaction {
                     session_id,
                     compact_all,
@@ -535,7 +535,7 @@ fn confirm_at_popup(state: &mut AppState) -> IntentResult {
             .active_chat_input()
             .autocomplete_filter()
             .unwrap_or_default();
-        return IntentResult::with_message(emit_list_directory(state, &filter));
+        return IntentResult::new_message(emit_list_directory(state, &filter));
     }
     IntentResult::empty()
 }
@@ -549,7 +549,7 @@ pub fn handle_move_cursor_left(state: &mut AppState) -> IntentResult {
     }
     try_reactivate_autocomplete(state);
     if let Some(cmd) = try_reactivate_at_autocomplete(state) {
-        return IntentResult::with_message(cmd);
+        return IntentResult::new_message(cmd);
     }
     IntentResult::empty()
 }
@@ -563,7 +563,7 @@ pub fn handle_move_cursor_right(state: &mut AppState) -> IntentResult {
     }
     try_reactivate_autocomplete(state);
     if let Some(cmd) = try_reactivate_at_autocomplete(state) {
-        return IntentResult::with_message(cmd);
+        return IntentResult::new_message(cmd);
     }
     IntentResult::empty()
 }
