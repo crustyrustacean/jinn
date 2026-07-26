@@ -25,8 +25,8 @@ pub use http_fetcher::HttpFetcher;
 pub use headless_chrome_fetcher::HeadlessChromeFetcher;
 #[cfg(feature = "headless-chrome")]
 pub use shared_browser::{
-    ChromeBrowser, ChromeFactory, HeadlessBrowser, HeadlessBrowserFactory, RenderedPage,
-    SharedBrowser,
+    ChromeBrowser, ChromeFactory, HEARTBEAT_INTERVAL, HeadlessBrowser,
+    HeadlessBrowserFactory, PROBE_TIMEOUT, RenderedPage, SharedBrowser,
 };
 
 /// Output format for fetched web page content.

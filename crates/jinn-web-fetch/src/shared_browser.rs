@@ -52,6 +52,23 @@ use crate::stealth::StealthSettings;
 )]
 pub(crate) const IDLE_BROWSER_TIMEOUT: Duration = Duration::from_secs(600);
 
+/// How often the keepalive heartbeat runs [`SharedBrowser::probe`].
+///
+/// On a healthy browser a successful probe response counts as incoming
+/// transport traffic, resetting the library's idle timer — so a warmed
+/// browser is never torn down merely for being idle. On a dead/wedged
+/// socket, this is the worst-case window before the heartbeat notices and
+/// force-evicts so the next request relaunches.
+pub const HEARTBEAT_INTERVAL: Duration = Duration::from_secs(10);
+
+/// How long a single liveness probe may take before the heartbeat treats it
+/// as a wedge and force-evicts.
+///
+/// A healthy `Browser::get_version` round-trip is well under a second; this
+/// bound exists only to cut a stuck CDP call short (the orphaned blocking
+/// thread is harmless — see [`SharedBrowser::probe`]).
+pub const PROBE_TIMEOUT: Duration = Duration::from_secs(5);
+
 /// A page rendered to HTML by a browser tab.
 ///
 /// Extraction (text/markdown) is the consumer's concern, applied after render,
@@ -451,12 +468,16 @@ impl SharedBrowser {
     /// The next request after an eviction lazily launches a fresh browser via
     /// [`ensure_browser`] on the normal render path — no launch logic lives here.
     pub fn force_evict(&self) {
-        if let Some(browser) = self.slot.lock().take() {
+        // Take the handle out of the slot under a `let` binding so the guard is
+        // released at the `;` — NOT held via if-let temporary extension. The
+        // browser drop (which kills the Chromium process) then happens entirely
+        // outside the lock, so a slow teardown can never stall concurrent probes/renders.
+        let evicted = self.slot.lock().take();
+        if let Some(browser) = evicted {
             tracing::info!(
                 backend = browser.name(),
                 "SharedBrowser: force-evicting browser (kills Chromium process)"
             );
-            // Drop outside the lock scope — implicit, after the guard releases.
             drop(browser);
         } else {
             tracing::trace!("SharedBrowser: force-evict was a no-op (slot empty)");
@@ -494,12 +515,14 @@ impl SharedBrowser {
     )]
     pub async fn shutdown(&self) {
         tracing::info!("SharedBrowser: shutting down");
-        if let Some(browser) = self.slot.lock().take() {
+        // Take under a `let` so the guard releases at the `;`; the browser drop
+        // (which kills Chromium) runs outside the lock.
+        let evicted = self.slot.lock().take();
+        if let Some(browser) = evicted {
             tracing::debug!(
                 backend = browser.name(),
                 "SharedBrowser: dropping browser (kills Chromium process)"
             );
-            // Drop the browser - this kills the Chromium process.
             drop(browser);
         }
         tracing::info!("SharedBrowser: shutdown complete");

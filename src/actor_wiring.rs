@@ -568,6 +568,39 @@ jinn_domain::feat::preferences_actor::preferences_actor::PreferencesActor::super
                 .or_insert_with(|| build_shared(mode));
         }
 
+        // Spawn one detached keepalive heartbeat per active SharedBrowser. Each
+        // loop polls [`SharedBrowser::probe`] inside a blocking task bounded by
+        // [`PROBE_TIMEOUT`]; a timeout or panic force-evicts so the next request
+        // lazily relaunches a fresh browser rather than hanging on a dead
+        // WebSocket. The task is detached (handle dropped) — it lives for the
+        // process lifetime and is independent of any actor lifecycle.
+        for shared in shared_by_mode.values() {
+            let shared = shared.clone();
+            tokio::spawn(async move {
+                loop {
+                    tokio::time::sleep(jinn_web_fetch::HEARTBEAT_INTERVAL).await;
+                    let probe = tokio::task::spawn_blocking({
+                        let shared = shared.clone();
+                        move || shared.probe()
+                    });
+                    match tokio::time::timeout(jinn_web_fetch::PROBE_TIMEOUT, probe).await {
+                        Ok(Ok(())) => {}
+                        // probe() returns () — it evicts internally on failure,
+                        // so an Ok is no-op here. The remaining arms cover the
+                        // wedge cases probe() can't observe on its own.
+                        Ok(Err(join_err)) => {
+                            tracing::warn!(?join_err, "keepalive: probe task panicked, force-evicting");
+                            shared.force_evict();
+                        }
+                        Err(_elapsed) => {
+                            tracing::warn!("keepalive: probe timed out, force-evicting");
+                            shared.force_evict();
+                        }
+                    }
+                }
+            });
+        }
+
         // Construct the fetcher.
         let web_fetcher: std::sync::Arc<dyn jinn_web_fetch::WebFetcher> = match fetch_mode {
             None => {
