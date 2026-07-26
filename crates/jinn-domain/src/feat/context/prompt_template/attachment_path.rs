@@ -480,4 +480,88 @@ mod tests {
         // Then the sniffer returns None.
         assert_eq!(sniff_media_type(b"plain text"), None);
     }
+
+    #[rstest::rstest]
+    fn degraded_set_leaves_token_literal_and_excludes_from_pending() {
+        // Given text with a boundary @path and a degraded set containing its resolved path.
+        let abs = "/abs/whatever";
+        let text = format!("describe @{abs}");
+        let degraded = vec![PathBuf::from(abs)];
+
+        // When scanning with the degraded set.
+        let result = scan_at_paths_with_degraded(&text, &dummy_ctx(), &degraded);
+
+        // Then the token stays literal (no file:// rewrite) and is not collected.
+        assert!(
+            result.rewritten_text.contains(&format!("@{abs}")),
+            "degraded token should stay literal, got: {}",
+            result.rewritten_text
+        );
+        assert!(
+            !result.rewritten_text.contains("file://"),
+            "degraded token must not be rewritten to file://"
+        );
+        assert!(
+            result.pending_paths.is_empty(),
+            "degraded token must not be collected as a pending path"
+        );
+    }
+
+    #[rstest::rstest]
+    fn degraded_re_scan_is_idempotent() {
+        // Given text whose degraded token was reverted to literal on a first pass.
+        let abs = "/abs/whatever";
+        let text = format!("describe @{abs}");
+        let degraded = vec![PathBuf::from(abs)];
+        let first = scan_at_paths_with_degraded(&text, &dummy_ctx(), &degraded);
+
+        // When scanning the already-reverted text again with the same degraded set.
+        let second = scan_at_paths_with_degraded(&first.rewritten_text, &dummy_ctx(), &degraded);
+
+        // Then the literal token survives unchanged (no further rewrite).
+        assert_eq!(
+            second.rewritten_text, first.rewritten_text,
+            "re-scanning reverted text must be a no-op"
+        );
+        assert!(second.pending_paths.is_empty());
+    }
+
+    #[rstest::rstest]
+    fn mixed_degraded_and_attachable_tokens_split_correctly() {
+        // Given text with one attachable @path and one degraded @path.
+        let attachable = "/abs/real.png";
+        let degraded_path = "/abs/whatever";
+        let text = format!("see @{attachable} and @{degraded_path}");
+        let degraded = vec![PathBuf::from(degraded_path)];
+
+        // When scanning with the degraded set.
+        let result = scan_at_paths_with_degraded(&text, &dummy_ctx(), &degraded);
+
+        // Then only the attachable token is rewritten and collected.
+        assert!(
+            result.rewritten_text.contains(&format!("(file://{attachable})")),
+            "attachable token should be rewritten: {}",
+            result.rewritten_text
+        );
+        assert!(
+            result.rewritten_text.contains(&format!("@{degraded_path}")),
+            "degraded token should stay literal: {}",
+            result.rewritten_text
+        );
+        assert_eq!(result.pending_paths, vec![PathBuf::from(attachable)]);
+    }
+
+    #[rstest::rstest]
+    fn degraded_set_does_not_reenable_email_matching() {
+        // Given email-style text (no boundary before @) and a non-empty degraded set.
+        let text = "contact foo@bar.com";
+        let degraded = vec![PathBuf::from("/bar.com")];
+
+        // When scanning with the degraded set.
+        let result = scan_at_paths_with_degraded(text, &dummy_ctx(), &degraded);
+
+        // Then the email is still not matched (text unchanged, nothing collected).
+        assert_eq!(result.rewritten_text, text);
+        assert!(result.pending_paths.is_empty());
+    }
 }
