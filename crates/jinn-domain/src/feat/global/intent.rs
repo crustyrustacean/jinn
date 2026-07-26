@@ -45,7 +45,7 @@ pub fn handle_interrupt(state: &mut AppState, target: Option<&SessionId>) -> Int
         state
             .session_mut(id)
             .cancel_streaming(jiff::Timestamp::now());
-        return IntentResult::with_message(CancelStream {
+        return IntentResult::new_message(CancelStream {
             session_id: id.clone(),
         });
     }

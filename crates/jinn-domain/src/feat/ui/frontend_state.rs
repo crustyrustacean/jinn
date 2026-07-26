@@ -16,6 +16,7 @@ use crate::feat::rename_session_input::state::RenameSessionInputState;
 use crate::feat::session_lifecycle::arg_input_state::ArgInputState;
 use crate::feat::theme::Theme;
 use crate::feat::ui::picker_states::PickerStates;
+pub use crate::feat::ui::sidebar::mcp_servers_section::McpServersSectionState;
 pub use crate::feat::ui::sidebar::persona_section::PersonaSectionState;
 pub use crate::feat::ui::sidebar::pins::state::PinsState;
 pub use crate::feat::ui::sidebar::sessions::SessionsSectionState;
@@ -87,6 +88,9 @@ pub struct FrontendState {
     /// Task list sidebar section state - phase cursor tracking.
     /// OWNER: IntentHandler (sidebar navigation).
     pub task_list_section: TaskListSectionState,
+    /// MCP servers sidebar section state - cursor tracking.
+    /// OWNER: IntentHandler (sidebar navigation).
+    pub mcp_servers_section: McpServersSectionState,
     /// Signals from the IntentHandler for the outer platform layer.
     /// OWNER: IntentHandler (cleared and set each handle() call).
     pub tui_signals: TuiSignals,
@@ -178,7 +182,7 @@ pub struct FrontendState {
     pub quake_bar: QuakeBarState,
 
     /// Dashboard tab state - actor lifecycle + service status list.
-    /// OWNER: DiscordStatusActor.
+    /// OWNER: DashboardActor.
     pub dashboard: DashboardState,
 
     pub sidebar_width: u16,
@@ -199,6 +203,7 @@ impl Default for FrontendState {
             persona_section: PersonaSectionState::default(),
             sessions_section: SessionsSectionState::default(),
             task_list_section: TaskListSectionState::default(),
+            mcp_servers_section: McpServersSectionState::default(),
             tui_signals: TuiSignals::new(),
             preferences: UserPreferences::default(),
             app_state: AppStateFile::default(),

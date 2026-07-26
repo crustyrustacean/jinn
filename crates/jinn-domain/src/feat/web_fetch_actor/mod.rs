@@ -112,6 +112,7 @@ impl kameo::Actor for WebFetchActor {
             .publish(RegisterTools {
                 provider: "web-fetch".to_owned(),
                 definitions: vec![web_fetch_tool_definition()],
+                session_id: None,
             })
             .await;
 

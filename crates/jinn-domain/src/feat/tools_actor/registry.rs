@@ -6,9 +6,9 @@
 use crate::feat::tools_actor::tool_types::{ToolCall, ToolContext, ToolDefinition};
 
 use super::{
-    BoxedToolFuture, bash, edit, get_time, grep, read, save_plan, session_query, skill, write,
+    BoxedToolFuture, bash, edit, get_time, grep, read, restart_mcp, save_plan, session_query,
+    skill, write,
 };
-
 use crate::feat::todo_list;
 
 /// A built-in tool entry: its definition paired with its execute function.
@@ -53,6 +53,10 @@ pub fn builtin_tools(default_timeout_secs: u64) -> Vec<BuiltinToolEntry> {
             session_query::execute as fn(ToolCall, ToolContext) -> BoxedToolFuture,
         ),
         (
+            restart_mcp::definition(),
+            restart_mcp::execute as fn(ToolCall, ToolContext) -> BoxedToolFuture,
+        ),
+        (
             grep::definition(),
             grep::execute as fn(ToolCall, ToolContext) -> BoxedToolFuture,
         ),
@@ -60,4 +64,39 @@ pub fn builtin_tools(default_timeout_secs: u64) -> Vec<BuiltinToolEntry> {
     entries.extend(todo_list::tools::tool_entries());
 
     entries
+}
+
+#[cfg(test)]
+mod tests {
+    #![allow(clippy::expect_used, reason = "test assertions")]
+    use super::builtin_tools;
+
+    #[test]
+    fn restart_mcp_server_is_registered() {
+        // Given the builtin tool list.
+        let tools = builtin_tools(30);
+        let names: Vec<&str> = tools.iter().map(|(d, _)| d.name.as_str()).collect();
+
+        // Then restart_mcp_server is present alongside the existing builtins.
+        assert!(
+            names.contains(&"restart_mcp_server"),
+            "restart_mcp_server must be registered; got: {names:?}"
+        );
+        for required in [
+            "get_time",
+            "bash",
+            "read",
+            "write",
+            "edit",
+            "skill",
+            "save_plan",
+            "session_query",
+            "grep",
+        ] {
+            assert!(
+                names.contains(&required),
+                "existing builtin {required} must still be present; got: {names:?}"
+            );
+        }
+    }
 }

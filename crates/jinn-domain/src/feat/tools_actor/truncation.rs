@@ -231,8 +231,10 @@ fn truncate_string_from_end(s: &str, max_bytes: usize) -> String {
         return s.to_owned();
     }
 
-    // Start from max_bytes back, find a valid char boundary.
-    let start = max_bytes;
+    // Keep the LAST `max_bytes` bytes: start the window at `len - max_bytes`,
+    // then walk forward to the next valid UTF-8 char boundary so we never
+    // split a multi-byte sequence.
+    let start = s.len() - max_bytes;
     let mut boundary = start;
     while boundary < s.len() && !s.is_char_boundary(boundary) {
         boundary += 1;

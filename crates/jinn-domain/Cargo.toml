@@ -11,6 +11,7 @@ jinn-core-types = { workspace = true }
 jinn-provider-config = { workspace = true }
 jinn-web-fetch = { workspace = true }
 jinn-web-search = { workspace = true }
+jinn-mcp = { workspace = true }
 form_urlencoded = { workspace = true }
 jinn-selection-widget = { workspace = true }
 
@@ -71,8 +72,10 @@ kameo_actors = { workspace = true }
 # JSON surgery that dao's typed DAO layer doesn't cover.
 rusqlite = { workspace = true }
 [dev-dependencies]
+indoc = "2"
 rstest = { workspace = true }
 jinn-testutil = { workspace = true }
+jinn-mcp = { workspace = true, features = ["testkit", "server-testkit"] }
 tokio = { workspace = true, features = ["test-util"] }
 jinn-common = { workspace = true, features = ["testing"] }
 trybuild = "1"
