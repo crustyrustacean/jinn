@@ -19,6 +19,13 @@ use crate::feat::session::picker_entry::SessionTreeEntry;
 use crate::feat::theme::default_theme;
 use crate::protocol::SessionId;
 
+/// Deterministically maps a mnemonic tag (e.g. "a", "child") to a valid
+/// `SessionId`. Session IDs are `Uuid` newtypes, so opaque test tags must
+/// be projected onto valid UUIDs.
+fn sid(tag: &str) -> SessionId {
+    SessionId::from(uuid::Uuid::new_v5(&uuid::Uuid::NAMESPACE_URL, tag.as_bytes()).to_string())
+}
+
 /// Helper to create a timestamp from a Unix epoch second offset.
 fn ts(offset_secs: i64) -> jiff::Timestamp {
     jiff::Timestamp::from_second(offset_secs).expect("valid timestamp")
@@ -32,7 +39,7 @@ fn root(
     state: SessionState,
 ) -> SessionTreeEntry {
     SessionTreeEntry::new(
-        SessionId::from(id.to_owned()),
+        sid(id),
         title.to_owned(),
         updated_at,
         default_theme(),
@@ -50,12 +57,12 @@ fn child(
     state: SessionState,
 ) -> SessionTreeEntry {
     SessionTreeEntry::new(
-        SessionId::from(id.to_owned()),
+        sid(id),
         title.to_owned(),
         updated_at,
         default_theme(),
         state,
-        Some(SessionId::from(parent.to_owned())),
+        Some(sid(parent)),
     )
 }
 
@@ -69,7 +76,7 @@ fn single_root_no_children_stays_in_output() {
 
     // Then the single entry is present.
     assert_eq!(entries.len(), 1);
-    assert_eq!(entries[0].session_id, SessionId::from("a".to_owned()));
+    assert_eq!(entries[0].session_id, sid("a"));
 }
 
 #[rstest::rstest]
@@ -86,9 +93,9 @@ fn root_with_recent_child_appears_before_standalone_root() {
 
     // Then tree A (max T5) appears before standalone B (T3).
     assert_eq!(entries.len(), 3);
-    assert_eq!(entries[0].session_id, SessionId::from("a".to_owned()));
-    assert_eq!(entries[1].session_id, SessionId::from("c".to_owned()));
-    assert_eq!(entries[2].session_id, SessionId::from("b".to_owned()));
+    assert_eq!(entries[0].session_id, sid("a"));
+    assert_eq!(entries[1].session_id, sid("c"));
+    assert_eq!(entries[2].session_id, sid("b"));
 }
 
 #[rstest::rstest]
@@ -104,9 +111,9 @@ fn older_root_with_recent_child_beats_newer_root_alone() {
     sort_entries_tree_aware(&mut entries);
 
     // Then tree A (max T10) appears before tree B (T5).
-    assert_eq!(entries[0].session_id, SessionId::from("a".to_owned()));
-    assert_eq!(entries[1].session_id, SessionId::from("c".to_owned()));
-    assert_eq!(entries[2].session_id, SessionId::from("b".to_owned()));
+    assert_eq!(entries[0].session_id, sid("a"));
+    assert_eq!(entries[1].session_id, sid("c"));
+    assert_eq!(entries[2].session_id, sid("b"));
 }
 
 #[rstest::rstest]
@@ -121,8 +128,8 @@ fn loaded_tree_appears_above_archived_tree_regardless_of_timestamps() {
     sort_entries_tree_aware(&mut entries);
 
     // Then the Loaded tree appears first.
-    assert_eq!(entries[0].session_id, SessionId::from("load".to_owned()));
-    assert_eq!(entries[1].session_id, SessionId::from("arch".to_owned()));
+    assert_eq!(entries[0].session_id, sid("load"));
+    assert_eq!(entries[1].session_id, sid("arch"));
 }
 
 #[rstest::rstest]
@@ -140,10 +147,10 @@ fn multi_level_tree_sorts_by_max_across_entire_subtree() {
     sort_entries_tree_aware(&mut entries);
 
     // Then tree A (max T10 via grandchild) appears before B (T5).
-    assert_eq!(entries[0].session_id, SessionId::from("a".to_owned()));
-    assert_eq!(entries[1].session_id, SessionId::from("c".to_owned()));
-    assert_eq!(entries[2].session_id, SessionId::from("g".to_owned()));
-    assert_eq!(entries[3].session_id, SessionId::from("b".to_owned()));
+    assert_eq!(entries[0].session_id, sid("a"));
+    assert_eq!(entries[1].session_id, sid("c"));
+    assert_eq!(entries[2].session_id, sid("g"));
+    assert_eq!(entries[3].session_id, sid("b"));
 }
 
 #[rstest::rstest]
@@ -159,9 +166,9 @@ fn children_within_tree_sorted_by_updated_at_descending() {
     sort_entries_tree_aware(&mut entries);
 
     // Then C2 (T7) appears before C1 (T3).
-    assert_eq!(entries[0].session_id, SessionId::from("a".to_owned()));
-    assert_eq!(entries[1].session_id, SessionId::from("c2".to_owned()));
-    assert_eq!(entries[2].session_id, SessionId::from("c1".to_owned()));
+    assert_eq!(entries[0].session_id, sid("a"));
+    assert_eq!(entries[1].session_id, sid("c2"));
+    assert_eq!(entries[2].session_id, sid("c1"));
 }
 
 #[rstest::rstest]
@@ -178,6 +185,6 @@ fn orphaned_entry_treated_as_root() {
 
     // Then A (T5) appears before O (T1), and O is treated as a root.
     assert_eq!(entries.len(), 2);
-    assert_eq!(entries[0].session_id, SessionId::from("a".to_owned()));
-    assert_eq!(entries[1].session_id, SessionId::from("o".to_owned()));
+    assert_eq!(entries[0].session_id, sid("a"));
+    assert_eq!(entries[1].session_id, sid("o"));
 }

@@ -185,7 +185,7 @@ quote = "1"
 proc-macro2 = "1"
 
 # UUID
-uuid = { version = "1.23.1", features = ["v4", "v7", "serde"] }
+uuid = { version = "1.23.1", features = ["v4", "v5", "v7", "serde"] }
 
 # Tokenization
 tiktoken = "3"

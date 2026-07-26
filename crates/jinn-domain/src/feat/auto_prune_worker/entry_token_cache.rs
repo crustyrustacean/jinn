@@ -207,9 +207,10 @@ mod tests {
 
     use super::*;
 
-    /// Deterministic session id for tests (SessionId is opaque).
+    /// Deterministic session id for tests (SessionId is a Uuid newtype).
     fn test_session_id(n: u8) -> SessionId {
-        serde_json::from_str(&format!("\"s-test-{n}\"")).expect("valid SessionId JSON")
+        serde_json::from_str(&format!("\"10000000-0000-0000-0000-{n:012x}\""))
+            .expect("valid SessionId JSON")
     }
 
     /// Deterministic entry id for tests (ChatEntryId is a Uuid newtype).

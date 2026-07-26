@@ -189,11 +189,17 @@ mod tests {
     use super::*;
     use crate::protocol::SessionId;
 
+    /// Deterministically maps a mnemonic tag (e.g. "s-a", "s-child") to a valid
+    /// `SessionId` (a `Uuid` newtype).
+    fn sid(tag: &str) -> SessionId {
+        SessionId::from(uuid::Uuid::new_v5(&uuid::Uuid::NAMESPACE_URL, tag.as_bytes()).to_string())
+    }
+
     fn cand(id: &str, cwd: &str, parent: Option<&str>, updated_at_unix: i64) -> CandidateSession {
         CandidateSession {
-            id: SessionId::from(id.to_owned()),
+            id: sid(id),
             cwd: PathBuf::from(cwd),
-            parent_session: parent.map(|p| SessionId::from(p.to_owned())),
+            parent_session: parent.map(sid),
             updated_at_unix,
         }
     }
@@ -201,7 +207,7 @@ mod tests {
     fn anchor(cwd: &str, session_id: &str, window_days: u32) -> ScopeAnchor {
         ScopeAnchor {
             cwd: PathBuf::from(cwd),
-            session_id: SessionId::from(session_id.to_owned()),
+            session_id: sid(session_id),
             window_days,
             now_unix: NOW,
         }
@@ -220,7 +226,7 @@ mod tests {
         let ids = resolver.resolve(&anchor, &candidates);
 
         // Then the descendant is included.
-        assert_eq!(ids, vec![SessionId::from("s-child".to_owned())]);
+        assert_eq!(ids, vec![sid("s-child")]);
     }
 
     #[rstest::rstest]
@@ -234,7 +240,7 @@ mod tests {
         let ids = resolver.resolve(&anchor, &candidates);
 
         // Then the same-CWD session is included.
-        assert_eq!(ids, vec![SessionId::from("s-self".to_owned())]);
+        assert_eq!(ids, vec![sid("s-self")]);
     }
 
     #[rstest::rstest]
@@ -280,8 +286,8 @@ mod tests {
         let ids = resolver.resolve(&anchor, &candidates);
 
         // Then the anchor's parent chain (s-a, s-b) is included.
-        assert!(ids.contains(&SessionId::from("s-a".to_owned())));
-        assert!(ids.contains(&SessionId::from("s-b".to_owned())));
+        assert!(ids.contains(&sid("s-a")));
+        assert!(ids.contains(&sid("s-b")));
     }
 
     #[rstest::rstest]
@@ -296,8 +302,8 @@ mod tests {
 
         // Then the in-tree session is collected, but the fork walk stops at the
         // missing parent without panicking — s-missing is never inserted.
-        assert_eq!(ids, vec![SessionId::from("s-c".to_owned())]);
-        assert!(!ids.contains(&SessionId::from("s-missing".to_owned())));
+        assert_eq!(ids, vec![sid("s-c")]);
+        assert!(!ids.contains(&sid("s-missing")));
     }
 
     #[rstest::rstest]
@@ -347,6 +353,6 @@ mod tests {
         let ids = resolver.resolve(&anchor, &candidates);
 
         // Then even ancient sessions are included.
-        assert_eq!(ids, vec![SessionId::from("s-old".to_owned())]);
+        assert_eq!(ids, vec![sid("s-old")]);
     }
 }
