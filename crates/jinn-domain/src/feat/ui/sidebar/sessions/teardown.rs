@@ -32,5 +32,5 @@ pub fn handle_session_teardown(state: &mut AppState) -> IntentResult {
     let Some(msg) = build_run_session_teardown(state, &target_id) else {
         return IntentResult::empty();
     };
-    IntentResult::with_message(msg)
+    IntentResult::new_message(msg)
 }

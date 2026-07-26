@@ -1,0 +1,277 @@
+//! Actor-level tests for the `restart_mcp_server` tool (ask pattern).
+//!
+//! The tool `ask`s the coordinator directly (request/reply). These tests
+//! exercise:
+//!   - the coordinator's `restart_one` outcome (real actor, unrunnable command
+//!     → `ConnectFailed`; unknown server → `UnknownServer`),
+//!   - the tool's `execute()` failure paths (no coordinator ref; unknown
+//!     server routed through the real ask).
+//!
+//! A success-path test (`restart_one` → `Ok`) requires a runnable MCP server
+//! subprocess, which does not exist in this crate; the success path is
+//! structurally identical to the existing dispatch-roundtrip tests that use
+//! the in-process stub. See `mcp_actor/dispatch_roundtrip_tests.rs` for that
+//! coverage.
+
+#![allow(
+    clippy::expect_used,
+    clippy::indexing_slicing,
+    clippy::panic,
+    reason = "test assertions"
+)]
+
+use std::path::PathBuf;
+
+use crate::common::actor_deps::ActorDeps;
+use crate::common::app_paths::AppPaths;
+use crate::common::app_state::AppState;
+use crate::common::bus::test_harness::TestHarness;
+use crate::common::root_supervisor::RootSupervisor;
+use crate::common::state::State;
+use crate::feat::mcp::McpServerConfig;
+use crate::feat::mcp_coordinator_actor::protocol::{RestartError, RestartMcpServer};
+use crate::feat::mcp_coordinator_actor::{McpCoordinatorActor, McpCoordinatorActorDeps};
+use crate::feat::preferences_actor::UserPreferences;
+use crate::feat::tools_actor::restart_mcp::execute;
+use crate::feat::tools_actor::tool_types::{ToolCall, ToolContext};
+use crate::feat::ui::frontend_state::FrontendState;
+use crate::protocol::SessionId;
+use kameo::actor::Spawn;
+
+/// A configured MCP server whose command will never spawn successfully, so the
+/// spawned `McpActor` fails to connect and goes Dead.
+fn unrunnable_server() -> McpServerConfig {
+    McpServerConfig {
+        name: "unrunnable".to_owned(),
+        command: "/this/command/does/not/exist".to_owned(),
+        args: vec![],
+        ..Default::default()
+    }
+}
+
+/// Spawns a real coordinator seeded with the given configured servers.
+async fn spawn_coordinator(
+    harness: &TestHarness,
+    servers: Vec<McpServerConfig>,
+) -> (
+    kameo::actor::ActorRef<McpCoordinatorActor>,
+    crate::Services,
+    crate::common::state::State,
+) {
+    let services = harness.services().await;
+    services
+        .user_preferences_storage
+        .save(&UserPreferences {
+            mcp_servers: servers,
+            ..UserPreferences::default()
+        })
+        .expect("seed prefs");
+    let root = RootSupervisor::spawn_root().await;
+    let state = State::new(AppState::default());
+    let actor = McpCoordinatorActor::spawn(McpCoordinatorActorDeps {
+        deps: ActorDeps {
+            services: services.clone(),
+        },
+        root,
+        state: state.clone(),
+        cap: crate::common::tcaps::mint::mint_session_cap(),
+    });
+    actor.wait_for_startup().await;
+    (actor, services, state)
+}
+
+/// Builds a tool call targeting the given server.
+fn call(server: &str) -> ToolCall {
+    ToolCall {
+        id: "tc_1".to_owned(),
+        name: "restart_mcp_server".to_owned(),
+        arguments: format!("{{\"server\": \"{server}\"}}"),
+    }
+}
+
+/// Builds a ToolContext wired to the given coordinator ref + state seeded with
+/// `excalimate`.
+fn ctx_with_coordinator(
+    coordinator: kameo::actor::ActorRef<McpCoordinatorActor>,
+    session_id: SessionId,
+) -> ToolContext {
+    let config = McpServerConfig {
+        name: "excalimate".to_owned(),
+        command: String::new(),
+        args: vec![],
+        ..Default::default()
+    };
+    let frontend = FrontendState {
+        preferences: UserPreferences {
+            mcp_servers: vec![config],
+            ..Default::default()
+        },
+        ..Default::default()
+    };
+    let app = AppState {
+        frontend,
+        ..Default::default()
+    };
+    let state = State::new(app);
+
+    ToolContext {
+        cwd: PathBuf::from("/tmp"),
+        timeout: None,
+        state: Some(state),
+        session_id: Some(session_id),
+        app_paths: AppPaths::new_in(std::path::Path::new("/tmp")),
+        bus: None,
+        max_output_lines: None,
+        max_output_bytes: None,
+        dispatched_at: jiff::Timestamp::now(),
+        session_cap: None,
+        mcp_coordinator: Some(coordinator),
+    }
+}
+
+// ---------------------------------------------------------------------------
+// Coordinator-level: restart_one outcomes (the real ask)
+// ---------------------------------------------------------------------------
+
+/// An unrunnable command → the new actor fails to connect → `ConnectFailed`.
+#[tokio::test]
+async fn restart_one_returns_connect_failed_for_unrunnable_command() {
+    // Given a coordinator with an unrunnable server enabled for a session.
+    let harness = TestHarness::new().await;
+    let (coordinator, _services, _state) =
+        spawn_coordinator(&harness, vec![unrunnable_server()]).await;
+    let session_id = SessionId::new();
+
+    // When asking the coordinator to restart that server.
+    let reply = coordinator
+        .ask(RestartMcpServer {
+            session_id,
+            server: "unrunnable".to_owned(),
+        })
+        .await;
+
+    // Then the reply is a domain-level ConnectFailed (wrapped in SendError).
+    assert!(
+        matches!(
+            reply,
+            Err(kameo::error::SendError::HandlerError(
+                RestartError::ConnectFailed
+            ))
+        ),
+        "unrunnable command should yield ConnectFailed; got: {reply:?}"
+    );
+}
+
+/// A server that isn't in the config → `UnknownServer`.
+#[tokio::test]
+async fn restart_one_returns_unknown_server_for_unconfigured_server() {
+    // Given a coordinator with one configured server.
+    let harness = TestHarness::new().await;
+    let (coordinator, _services, _state) =
+        spawn_coordinator(&harness, vec![unrunnable_server()]).await;
+    let session_id = SessionId::new();
+
+    // When asking to restart a different (unconfigured) server.
+    let reply = coordinator
+        .ask(RestartMcpServer {
+            session_id,
+            server: "ghost".to_owned(),
+        })
+        .await;
+
+    // Then the reply is a domain-level UnknownServer.
+    assert!(
+        matches!(
+            reply,
+            Err(kameo::error::SendError::HandlerError(
+                RestartError::UnknownServer
+            ))
+        ),
+        "unconfigured server should yield UnknownServer; got: {reply:?}"
+    );
+}
+
+// ---------------------------------------------------------------------------
+// Tool-level: execute() failure paths
+// ---------------------------------------------------------------------------
+
+/// No coordinator ref (e.g. test seed without one) → immediate failure.
+#[tokio::test]
+async fn execute_fails_when_coordinator_ref_is_none() {
+    // Given a context with no coordinator ref.
+    let session_id = SessionId::new();
+    let ctx = ToolContext {
+        cwd: PathBuf::from("/tmp"),
+        timeout: None,
+        state: Some(State::new(AppState::default())),
+        session_id: Some(session_id),
+        app_paths: AppPaths::new_in(std::path::Path::new("/tmp")),
+        bus: None,
+        max_output_lines: None,
+        max_output_bytes: None,
+        dispatched_at: jiff::Timestamp::now(),
+        session_cap: None,
+        mcp_coordinator: None,
+    };
+
+    // When executing.
+    let result = execute(call("excalimate"), ctx).await;
+
+    // Then the tool fails fast mentioning the coordinator.
+    assert!(!result.success, "missing coordinator should fail");
+    assert!(
+        result.content.contains("coordinator"),
+        "error should mention the coordinator; got: {}",
+        result.content
+    );
+}
+
+/// An unknown server routed through the real ask → failure naming the server.
+#[tokio::test]
+async fn execute_returns_failure_for_unknown_server_via_ask() {
+    // Given a coordinator with `excalimate` configured and a context wired to it.
+    let harness = TestHarness::new().await;
+    let (coordinator, _services, _state) =
+        spawn_coordinator(&harness, vec![unrunnable_server()]).await;
+    let ctx = ctx_with_coordinator(coordinator, SessionId::new());
+
+    // When executing with an unconfigured server name.
+    let result = execute(call("ghost"), ctx).await;
+
+    // Then the tool fails, naming the unknown server.
+    assert!(!result.success, "unknown server should fail");
+    assert!(
+        result.content.contains("ghost"),
+        "error should name the unknown server; got: {}",
+        result.content
+    );
+}
+
+/// A namespaced tool name routes to the real ask (and fails UnknownServer if
+/// the server isn't configured) — proves namespace-stripping reaches the ask.
+#[tokio::test]
+async fn execute_strips_namespace_and_routes_to_ask() {
+    // Given a coordinator with no `stub` server configured.
+    let harness = TestHarness::new().await;
+    let (coordinator, _services, _state) = spawn_coordinator(&harness, vec![]).await;
+    let ctx = ctx_with_coordinator(coordinator, SessionId::new());
+
+    // When executing with a namespaced tool name.
+    let result = execute(
+        ToolCall {
+            id: "tc_1".to_owned(),
+            name: "restart_mcp_server".to_owned(),
+            arguments: "{\"server\": \"mcp__stub__echo\"}".to_owned(),
+        },
+        ctx,
+    )
+    .await;
+
+    // Then the tool fails with UnknownServer for `stub` (namespace stripped).
+    assert!(!result.success, "should reach the ask and fail");
+    assert!(
+        result.content.contains("stub"),
+        "error should name the stripped server; got: {}",
+        result.content
+    );
+}

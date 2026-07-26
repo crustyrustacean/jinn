@@ -65,7 +65,7 @@ pub fn handle_project_add_input_confirm(state: &mut AppState) -> IntentResult {
     state.frontend.scope_stack.pop();
     state.frontend.project_add_input = ProjectAddInputState::default();
 
-    IntentResult::with_message(UpdatePreferences {
+    IntentResult::new_message(UpdatePreferences {
         updates: vec![PreferenceUpdate::AddProject(path)],
     })
 }

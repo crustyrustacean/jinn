@@ -18,6 +18,8 @@ pub enum SidebarSectionId {
     TaskList,
     /// The open sessions section.
     Sessions,
+    /// The MCP servers section (per-session enabled servers + live status).
+    McpServers,
 }
 
 impl std::fmt::Display for SidebarSectionId {
@@ -27,6 +29,7 @@ impl std::fmt::Display for SidebarSectionId {
             Self::Persona => write!(f, "Persona"),
             Self::TaskList => write!(f, "TaskList"),
             Self::Sessions => write!(f, "Sessions"),
+            Self::McpServers => write!(f, "McpServers"),
         }
     }
 }

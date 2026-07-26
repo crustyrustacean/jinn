@@ -50,7 +50,7 @@ pub fn handle_cwd_input_confirm(state: &mut AppState) -> IntentResult {
 
         state.frontend.scope_stack.pop();
         state.frontend.cwd_input = CwdInputState::default();
-        return IntentResult::with_message(msg);
+        return IntentResult::new_message(msg);
     }
 
     IntentResult::empty()

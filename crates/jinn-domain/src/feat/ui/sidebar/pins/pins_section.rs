@@ -191,7 +191,7 @@ pub fn handle_pins_unpin(state: &mut AppState) -> IntentResult {
         return IntentResult::empty();
     }
     if let Some((session_id, entry_id)) = resolve_selected_entry_id(state) {
-        IntentResult::with_message(UnpinChatEntry {
+        IntentResult::new_message(UnpinChatEntry {
             session_id,
             entry_id,
         })
@@ -206,7 +206,7 @@ pub fn handle_pins_pin(state: &mut AppState, position: PinPosition) -> IntentRes
         return IntentResult::empty();
     }
     if let Some((session_id, entry_id)) = resolve_selected_entry_id(state) {
-        IntentResult::with_message(PinChatEntry {
+        IntentResult::new_message(PinChatEntry {
             session_id,
             entry_id,
             position,
@@ -232,7 +232,7 @@ pub fn handle_pins_pin_cycle(state: &mut AppState) -> IntentResult {
     let next = cycle_position(current);
     let session_id = state.session.active_session_id().clone();
     let entry_id = entry.id.clone();
-    IntentResult::with_message(PinChatEntry {
+    IntentResult::new_message(PinChatEntry {
         session_id,
         entry_id,
         position: next,

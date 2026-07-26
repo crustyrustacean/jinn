@@ -97,27 +97,35 @@ pub fn handle_open_picker(state: &mut AppState, kind: PickerKind) -> IntentResul
             state.frontend.project_picker_mut().reset();
             load_project_picker_entries(&mut state.frontend);
         }
+        PickerKind::McpServer => {
+            state.frontend.mcp_server_picker_mut().reset();
+            // Snapshot current enabled set for ESC revert.
+            *state.frontend.mcp_server_picker_snapshot_mut() =
+                Some(state.active_session().enabled_mcp_servers().clone());
+            crate::feat::mcp::intent::load_mcp_picker_entries(state);
+        }
     }
 
     match kind {
-        PickerKind::Provider => IntentResult::with_message(LoadProviderPickerEntries),
-        PickerKind::Session => IntentResult::with_message(LoadSessionPickerEntries),
-        PickerKind::Persona => IntentResult::with_message(LoadPersonaPickerEntries),
+        PickerKind::Provider => IntentResult::new_message(LoadProviderPickerEntries),
+        PickerKind::Session => IntentResult::new_message(LoadSessionPickerEntries),
+        PickerKind::Persona => IntentResult::new_message(LoadPersonaPickerEntries),
         PickerKind::Theme
         | PickerKind::Tool
         | PickerKind::Skill
         | PickerKind::TaskList
-        | PickerKind::Project => IntentResult::empty(),
+        | PickerKind::Project
+        | PickerKind::McpServer => IntentResult::empty(),
         PickerKind::SessionLifecycle => {
             // Populate from user preferences + implicit blank lifecycle.
             load_lifecycle_picker_entries(state);
             IntentResult::empty()
         }
-        PickerKind::CompactionModel => IntentResult::with_message(
+        PickerKind::CompactionModel => IntentResult::new_message(
             crate::feat::provider::protocol::command::LoadCompactionModelPickerEntries,
         ),
 
-        PickerKind::ReasoningEffort => IntentResult::with_message(
+        PickerKind::ReasoningEffort => IntentResult::new_message(
             crate::feat::provider::protocol::command::LoadReasoningEffortPickerEntries,
         ),
     }
@@ -272,6 +280,7 @@ pub fn handle_picker_confirm(state: &mut AppState) -> (IntentResult, Option<Inte
         Some(PickerKind::SessionLifecycle) => (confirm_session_lifecycle(state), None),
         Some(PickerKind::Project) => (confirm_project(state), None),
         Some(PickerKind::ReasoningEffort) => (confirm_reasoning_effort(state), None),
+        Some(PickerKind::McpServer) => (crate::feat::mcp::intent::confirm_mcp(state), None),
 
         Some(PickerKind::CompactionModel | PickerKind::TaskList) | None => {
             (IntentResult::empty(), None)
@@ -371,11 +380,11 @@ fn confirm_provider(state: &mut AppState) -> IntentResult {
 
     state.frontend.scope_stack.pop();
     IntentResult::empty()
-        .message(ProviderSwitch {
+        .with_message(ProviderSwitch {
             session_id,
             provider_id: model_selection,
         })
-        .message(UpdateAppState {
+        .with_message(UpdateAppState {
             updates: vec![AppStateUpdate::SetLastModel(last_model)],
         })
 }
@@ -438,10 +447,10 @@ fn confirm_persona(state: &mut AppState) -> IntentResult {
 
     state.frontend.scope_stack.pop();
 
-    IntentResult::with_message(UpdateAppState {
+    IntentResult::new_message(UpdateAppState {
         updates: vec![AppStateUpdate::SetPersona(Some(persona_name))],
     })
-    .message(MarkSessionInteracted { session_id })
+    .with_message(MarkSessionInteracted { session_id })
 }
 
 /// Confirms the selected reasoning effort and applies it.
@@ -462,8 +471,8 @@ fn confirm_reasoning_effort(state: &mut AppState) -> IntentResult {
     state.frontend.scope_stack.pop();
 
     IntentResult::empty()
-        .message(MarkSessionInteracted { session_id })
-        .message(UpdateAppState {
+        .with_message(MarkSessionInteracted { session_id })
+        .with_message(UpdateAppState {
             updates: vec![AppStateUpdate::SetReasoningEffort(Some(effort))],
         })
 }
@@ -479,7 +488,7 @@ fn confirm_theme(state: &mut AppState) -> IntentResult {
     *state.frontend.theme_preview_original_mut() = None;
     state.frontend.scope_stack.pop();
 
-    IntentResult::with_message(UpdateAppState {
+    IntentResult::new_message(UpdateAppState {
         updates: vec![AppStateUpdate::SetTheme(Some(theme_name))],
     })
 }
@@ -494,7 +503,7 @@ fn confirm_session(state: &mut AppState) -> IntentResult {
     state.session.begin_load(session_id.clone());
     state.frontend.scope_stack.pop();
 
-    IntentResult::with_message(SessionLoadRequested { session_id })
+    IntentResult::new_message(SessionLoadRequested { session_id })
 }
 
 /// Populates the lifecycle picker entries from user preferences.
@@ -788,7 +797,7 @@ pub fn handle_project_remove_highlighted(state: &mut AppState) -> IntentResult {
         .retain(|p| p.path != entry.path);
     load_project_picker_entries(&mut state.frontend);
 
-    IntentResult::with_message(UpdatePreferences {
+    IntentResult::new_message(UpdatePreferences {
         updates: vec![PreferenceUpdate::RemoveProject(entry.path)],
     })
 }
@@ -926,7 +935,7 @@ pub fn handle_skill_load_selected(state: &mut AppState) -> IntentResult {
     state.active_session_mut().push_entry(result);
 
     let session_id = state.active_session().session_id().clone();
-    IntentResult::empty().message(MarkSessionInteracted { session_id })
+    IntentResult::empty().with_message(MarkSessionInteracted { session_id })
 }
 
 /// Toggles the selected model's `selected` state in the provider picker.
@@ -1007,13 +1016,13 @@ pub fn handle_refresh_skills(state: &mut AppState) -> IntentResult {
     let session_id = state.active_session().session_id().clone();
 
     IntentResult::empty()
-        .message(ScanSkills {
+        .with_message(ScanSkills {
             session_id: session_id.clone(),
         })
-        .message(RescanPromptTemplates {
+        .with_message(RescanPromptTemplates {
             session_id: session_id.clone(),
         })
-        .message(ScanContextFiles { session_id })
+        .with_message(ScanContextFiles { session_id })
 }
 
 #[cfg(test)]

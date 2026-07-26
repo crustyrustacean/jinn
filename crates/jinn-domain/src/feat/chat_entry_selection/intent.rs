@@ -205,12 +205,12 @@ pub fn handle_pin_selected(state: &mut AppState) -> IntentResult {
     let entry_id = selected.id.clone();
 
     if selected.is_pinned() {
-        IntentResult::with_message(UnpinChatEntry {
+        IntentResult::new_message(UnpinChatEntry {
             session_id,
             entry_id,
         })
     } else {
-        IntentResult::with_message(PinChatEntry {
+        IntentResult::new_message(PinChatEntry {
             session_id,
             entry_id,
             position: PinPosition::Relative,
@@ -295,7 +295,7 @@ pub fn handle_fork_from_entry(state: &mut AppState) -> IntentResult {
 
     state.session.begin_load(source_session_id.clone());
 
-    IntentResult::with_message(SessionForkRequested {
+    IntentResult::new_message(SessionForkRequested {
         source_session_id,
         at_ordinal,
     })
@@ -380,12 +380,12 @@ fn handle_fresh_toggle(state: &mut AppState) -> IntentResult {
 
     let session_id = state.active_session().session_id().clone();
 
-    let mut result = IntentResult::empty().message(PersistSession {
+    let mut result = IntentResult::empty().with_message(PersistSession {
         session_id: session_id.clone(),
     });
 
     if let Some(id) = maybe_entry_id {
-        result = result.message(ContextOverrideChanged {
+        result = result.with_message(ContextOverrideChanged {
             session_id,
             entry_id: id,
         });
@@ -445,10 +445,10 @@ pub fn handle_reset_selected(state: &mut AppState) -> IntentResult {
 
     let session_id = state.active_session().session_id().clone();
     IntentResult::empty()
-        .message(PersistSession {
+        .with_message(PersistSession {
             session_id: session_id.clone(),
         })
-        .message(ContextOverrideChanged {
+        .with_message(ContextOverrideChanged {
             session_id,
             entry_id: id,
         })
