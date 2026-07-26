@@ -153,3 +153,39 @@ async fn http_roundtrip_lists_and_calls_tools() {
     client.shutdown().await;
     shutdown.cancel();
 }
+
+/// Cancelling the transport token flips `is_transport_closed()` to true.
+/// This is the load-bearing contract the HTTP child-exit watcher relies on:
+/// when the child dies, the watcher calls `cancel_token().cancel()`, and the
+/// existing liveness watcher observes the close and publishes Dead.
+#[tokio::test]
+async fn cancel_token_cancels_the_transport() {
+    // Given a connected client (remote path, but the transport cancellation
+    // contract is the same as HTTP).
+    let (url, shutdown) = spawn_http_server().await;
+    let client = McpClient::connect_remote(&url)
+        .await
+        .expect("connect succeeds against the live server");
+
+    // Then the transport is open before cancellation.
+    let probe = client.liveness_probe();
+    assert!(
+        !probe.is_transport_closed(),
+        "transport should be open before cancellation"
+    );
+
+    // When the cancellation token is triggered.
+    client.cancel_token().cancel();
+
+    // Then within a short window the transport reports closed.
+    let closed = tokio::time::timeout(Duration::from_secs(2), async {
+        while !probe.is_transport_closed() {
+            tokio::time::sleep(Duration::from_millis(50)).await;
+        }
+    })
+    .await
+    .is_ok();
+    assert!(closed, "transport should report closed after cancellation");
+
+    shutdown.cancel();
+}

@@ -75,6 +75,28 @@ pub struct McpClient {
     child: Option<tokio::process::Child>,
 }
 
+impl McpClient {
+    /// Returns `Some(child)` once, for the HTTP child-exit watcher to own.
+    /// Only ever `Some` for HTTP-mode connections; stdio (rmcp owns the child)
+    /// and remote (no child) always return `None`. After the first call it
+    /// returns `None`.
+    pub fn take_child(&mut self) -> Option<tokio::process::Child> {
+        self.child.take()
+    }
+
+    /// A cheap, `Send + 'static` token that cancels the transport's service
+    /// loop when `.cancel()` is called.
+    ///
+    /// Used by the HTTP child-exit watcher: after reaping the child, it cancels
+    /// the transport so `is_transport_closed()` flips true (closing `tx`),
+    /// which the existing liveness watcher observes to publish `Dead`.
+    /// No `&mut self` access to `McpClient` is needed in the watcher — the token
+    /// is cloned from the `RunningService`.
+    pub fn cancel_token(&self) -> rmcp::service::RunningServiceCancellationToken {
+        self.service.cancellation_token()
+    }
+}
+
 /// A cheap, `Send + 'static` handle for polling whether a connection is
 /// still alive, without holding the full [`McpClient`].
 ///
@@ -431,21 +453,20 @@ impl McpClient {
         LivenessProbe(self.service.peer().clone())
     }
 
-    /// Gracefully closes the connection and waits (bounded) for the child to exit.
+    /// Gracefully closes the connection and waits (bounded) for the service
+    /// loop to terminate.
+    ///
+    /// Does **not** kill the HTTP child — for HTTP-mode servers the child is
+    /// moved into the child-exit watcher via [`take_child`] at connect time,
+    /// and `kill_on_drop` on that handle terminates the process when the
+    /// watcher exits. stdio and remote transports have no jinn-owned child.
     pub async fn shutdown(&mut self) {
-        // close_with_timeout cancels the transport; kill_on_drop guarantees
-        // the child dies if it doesn't exit on its own.
         if let Err(e) = self
             .service
             .close_with_timeout(Duration::from_secs(5))
             .await
         {
             tracing::warn!(error = ?e, "MCP client shutdown join error");
-        }
-        // For HTTP-mode servers, jinn owns the child directly (rmcp doesn't
-        // for this transport). Kill it explicitly.
-        if let Some(child) = self.child.as_mut() {
-            let _ = child.kill().await;
         }
     }
 }
