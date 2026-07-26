@@ -64,7 +64,7 @@ impl IntentHandler {
         let mut result = Self::handle_inner(intent, state);
 
         if state.session.active_session_id() != &prev_active {
-            result = result.message(crate::protocol::system::ActiveSessionChanged {
+            result = result.with_message(crate::protocol::system::ActiveSessionChanged {
                 session_id: state.session.active_session_id().clone(),
             });
         }
@@ -777,14 +777,15 @@ fn try_handle_cancel_stream_prompt(intent: &Intent, state: &mut AppState) -> Opt
 
     // Cancel stream.
     state.active_session_mut().cancel_stream_and_drain();
-    let mut result =
-        IntentResult::empty().message(crate::feat::provider::protocol::command::CancelStream {
+    let mut result = IntentResult::empty().with_message(
+        crate::feat::provider::protocol::command::CancelStream {
             session_id: session_id.clone(),
-        });
+        },
+    );
 
     // Also cancel any running lifecycle command.
     if was_busy {
-        result = result.message(
+        result = result.with_message(
             crate::feat::session_lifecycle::protocol::CancelLifecycleCommand { session_id },
         );
     }

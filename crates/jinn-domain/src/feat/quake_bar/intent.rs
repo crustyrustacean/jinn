@@ -48,7 +48,7 @@ pub fn handle_submit(state: &mut AppState) -> IntentResult {
     if text.is_empty() {
         IntentResult::empty()
     } else {
-        IntentResult::with_message(SubmitQuakeBarCommand { text })
+        IntentResult::new_message(SubmitQuakeBarCommand { text })
     }
 }
 

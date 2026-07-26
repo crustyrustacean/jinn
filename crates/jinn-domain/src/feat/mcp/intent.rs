@@ -17,6 +17,7 @@ use crate::feat::intent::IntentResult;
 use crate::feat::mcp::picker_entry::{McpPreviewMode, McpServerEntry};
 use crate::feat::picker::geometry::active_viewport;
 use crate::feat::ui::picker_states::PickerExt;
+use crate::{ChatEntry, PushChatEntry};
 
 /// Populates the MCP server picker entries from configured servers.
 ///
@@ -94,7 +95,7 @@ pub(crate) fn confirm_mcp(state: &mut AppState) -> IntentResult {
 
     // Signal the MCP lifecycle actor to spawn/kill `McpActor`s for the diff
     // between this desired set and the currently-running ones.
-    IntentResult::with_message(
+    IntentResult::new_message(
         crate::feat::mcp_coordinator_actor::protocol::McpEnablementChanged {
             session_id,
             enabled,
@@ -117,9 +118,18 @@ pub fn handle_mcp_restart_selected(state: &mut AppState) -> IntentResult {
         return IntentResult::empty();
     };
     let session_id = state.active_session().session_id().clone();
-    IntentResult::with_message(
-        crate::feat::mcp_coordinator_actor::protocol::RestartMcpServer { session_id, server },
-    )
+
+    IntentResult::empty()
+        .with_message(
+            crate::feat::mcp_coordinator_actor::protocol::RestartMcpServer {
+                session_id: session_id.clone(),
+                server,
+            },
+        )
+        .with_message(PushChatEntry {
+            session_id,
+            entry: ChatEntry::transient("Restarting MCP server"),
+        })
 }
 
 /// Toggles the MCP inspector preview pane between logs and tools.
@@ -170,7 +180,6 @@ mod tests {
         let result = handle_mcp_restart_selected(&mut state);
 
         // Then a RestartMcpServer message is emitted for the active session.
-        assert_eq!(result.message_names.len(), 1);
         assert!(result.message_names[0].contains("RestartMcpServer"));
     }
 

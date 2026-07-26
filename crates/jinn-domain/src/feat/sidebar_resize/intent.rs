@@ -29,7 +29,7 @@ pub fn handle_resize_expand(state: &mut AppState) -> IntentResult {
     let new_width = max_width;
     state.frontend.sidebar_width = new_width;
 
-    IntentResult::with_message(UpdateAppState {
+    IntentResult::new_message(UpdateAppState {
         updates: vec![AppStateUpdate::SetSidebarWidth(Some(new_width))],
     })
 }
@@ -51,7 +51,7 @@ pub fn handle_resize_contract(state: &mut AppState) -> IntentResult {
 
     state.frontend.sidebar_width = new_width;
 
-    IntentResult::with_message(UpdateAppState {
+    IntentResult::new_message(UpdateAppState {
         updates: vec![AppStateUpdate::SetSidebarWidth(Some(new_width))],
     })
 }
