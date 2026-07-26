@@ -539,7 +539,9 @@ mod tests {
 
         // Then only the attachable token is rewritten and collected.
         assert!(
-            result.rewritten_text.contains(&format!("(file://{attachable})")),
+            result
+                .rewritten_text
+                .contains(&format!("(file://{attachable})")),
             "attachable token should be rewritten: {}",
             result.rewritten_text
         );

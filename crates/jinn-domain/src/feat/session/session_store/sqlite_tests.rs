@@ -78,7 +78,7 @@ async fn degraded_token_expanded_survives_save_and_reload() {
     let mut session = ChatSessionState::new();
     session.set_session_id(session_id.clone());
     session.set_title("degraded".to_owned());
-    let mut entry = ChatEntry::user(&format!("describe {token}"));
+    let mut entry = ChatEntry::user(format!("describe {token}"));
     entry.degraded_paths = Some(vec![std::path::PathBuf::from("/nonexistent/whatever")]);
     session.push_entry(entry);
 
@@ -91,12 +91,23 @@ async fn degraded_token_expanded_survives_save_and_reload() {
         .expect("should have a session");
 
     // Then the AI-facing expanded text keeps the literal token (no file:// revert).
-    let expanded = loaded.history().iter().rev().find_map(|e| match &e.kind {
-        ChatEntryKind::User { expanded, .. } => Some(expanded.clone()),
-        _ => None,
-    }).expect("user entry");
-    assert!(expanded.contains(token), "reloaded expanded must keep literal token: {expanded}");
-    assert!(!expanded.contains("file://"), "reloaded expanded must not contain file://: {expanded}");
+    let expanded = loaded
+        .history()
+        .iter()
+        .rev()
+        .find_map(|e| match &e.kind {
+            ChatEntryKind::User { expanded, .. } => Some(expanded.clone()),
+            _ => None,
+        })
+        .expect("user entry");
+    assert!(
+        expanded.contains(token),
+        "reloaded expanded must keep literal token: {expanded}"
+    );
+    assert!(
+        !expanded.contains("file://"),
+        "reloaded expanded must not contain file://: {expanded}"
+    );
 }
 
 #[rstest::rstest]
