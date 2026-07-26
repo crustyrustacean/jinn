@@ -583,7 +583,9 @@ async fn two_fetchers_sharing_one_browser_launch_once() {
 /// Builds a `SharedBrowser` with a fake factory, returning both so the
 /// probe/force-evict tests can assert on launch count. The browser is NOT
 /// launched until something warms the slot (a render).
-fn shared_and_factory<S: Into<FakeBrowserScript>>(browsers: Vec<S>) -> (Arc<SharedBrowser>, Arc<FakeFactory>) {
+fn shared_and_factory<S: Into<FakeBrowserScript>>(
+    browsers: Vec<S>,
+) -> (Arc<SharedBrowser>, Arc<FakeFactory>) {
     let factory = FakeFactory::new(browsers);
     let shared = Arc::new(SharedBrowser::with_factory(factory.as_backend()));
     (shared, factory)
@@ -592,7 +594,10 @@ fn shared_and_factory<S: Into<FakeBrowserScript>>(browsers: Vec<S>) -> (Arc<Shar
 #[test]
 fn probe_is_noop_when_slot_empty() {
     // Given a shared browser with a factory, never warmed (slot empty).
-    let (shared, factory) = shared_and_factory(vec![vec![RenderOutcome::Ok(ok_page("<p>hi</p>", "https://example.com/"))]]);
+    let (shared, factory) = shared_and_factory(vec![vec![RenderOutcome::Ok(ok_page(
+        "<p>hi</p>",
+        "https://example.com/",
+    ))]]);
 
     // When probing.
     shared.probe();
@@ -609,22 +614,28 @@ fn probe_keeps_healthy_browser() {
         // A second Ok in case a second render is needed to assert reuse.
         RenderOutcome::Ok(ok_page("<p>hi</p>", "https://example.com/")),
     ]]);
-    shared.render_page("https://example.com/").expect("warm render");
+    shared
+        .render_page("https://example.com/")
+        .expect("warm render");
     assert_eq!(factory.launch_count(), 1);
 
     // When probing.
     shared.probe();
 
     // Then the browser is reused on the next render — the probe did NOT evict.
-    shared.render_page("https://example.com/").expect("reuse render");
+    shared
+        .render_page("https://example.com/")
+        .expect("reuse render");
     assert_eq!(factory.launch_count(), 1);
 }
-
 
 #[test]
 fn force_evict_is_noop_on_empty_slot() {
     // Given a shared browser with an empty slot.
-    let (shared, factory) = shared_and_factory(vec![vec![RenderOutcome::Ok(ok_page("<p>hi</p>", "https://example.com/"))]]);
+    let (shared, factory) = shared_and_factory(vec![vec![RenderOutcome::Ok(ok_page(
+        "<p>hi</p>",
+        "https://example.com/",
+    ))]]);
 
     // When force-evicting twice on an already-empty slot.
     shared.force_evict();
@@ -638,16 +649,28 @@ fn force_evict_is_noop_on_empty_slot() {
 fn next_render_relaunches_after_probe_eviction() {
     // Given browser #1 (liveness Crash) and browser #2 (render Ok) so the
     // post-eviction render can succeed against a fresh browser.
-    let mut first: FakeBrowserScript = vec![RenderOutcome::Ok(ok_page("<p>one</p>", "https://example.com/"))].into();
+    let mut first: FakeBrowserScript = vec![RenderOutcome::Ok(ok_page(
+        "<p>one</p>",
+        "https://example.com/",
+    ))]
+    .into();
     first.liveness = vec![LivenessOutcome::Crash];
-    let second: FakeBrowserScript = vec![RenderOutcome::Ok(ok_page("<p>two</p>", "https://example.com/"))].into();
+    let second: FakeBrowserScript = vec![RenderOutcome::Ok(ok_page(
+        "<p>two</p>",
+        "https://example.com/",
+    ))]
+    .into();
     let (shared, factory) = shared_and_factory(vec![first, second]);
-    shared.render_page("https://example.com/").expect("warm render #1");
+    shared
+        .render_page("https://example.com/")
+        .expect("warm render #1");
     assert_eq!(factory.launch_count(), 1);
 
     // When the probe evicts, then a render runs.
     shared.probe();
-    let out = shared.render_page("https://example.com/").expect("render after eviction");
+    let out = shared
+        .render_page("https://example.com/")
+        .expect("render after eviction");
 
     // Then the render succeeded against browser #2 (launch_count -> 2).
     assert_eq!(out.html, "<p>two</p>");
