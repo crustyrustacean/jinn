@@ -48,7 +48,8 @@ Entries are added or amended **only with human approval**.
 - (context) Context assembly builds the system prompt in priority order: skills block, pinned system entries, environment context, tool context.
 - (context) Pin splitting separates entries into TOP pins, BOTTOM pins, and working history based on pin position.
 - (context) The `context_files_scan_actor` walks the bounded ancestor chain, reads the first existing candidate (AGENTS.md / CLAUDE.md) per dir, and writes results into the session's discovered set.
-- (context) `#name` prompt-template tokens in user text expand to the template body; `@path` tokens resolve to `file://` URIs against cwd/home and are consumed in a second expansion pass.
+- (attachments) `@path` image resolution degrades on missing-file or non-image outcomes (the token stays literal and the turn dispatches), and only hard-blocks when a recognizable image fails conversion.
+- (context) `#name` prompt-template tokens in user text expand to the template body; `@path` tokens resolve to `file://` URIs against cwd/home **when the file is a readable image, otherwise the token is left as literal text**; both are consumed in a second expansion pass.
 - (dashboard) The dashboard tab tracks actor lifecycle (starting/running/dead) and browser-binary detection (Chrome vs bundled) for the web-fetch feature.
 - (dashboard) `frontend.dashboard` is owned by `DashboardActor`, fed exclusively by events; `DiscordStatusActor` republishes its gateway status as a `DiscordStatusUpdate` event rather than writing the dashboard directly.
 - (discovery) Project discovery walks ancestors from the session cwd up to either a VCS root or `$HOME`, whichever comes first; `$HOME` is exclusive.

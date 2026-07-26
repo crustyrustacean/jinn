@@ -513,7 +513,7 @@ mod tests {
         let (actor, _audit) = create_actor().await;
         let sid = session_id();
         let token = "@/nonexistent/whatever";
-        let mut entry = ChatEntry::user(&format!("describe {token}"));
+        let mut entry = ChatEntry::user(format!("describe {token}"));
         // Simulate the post-resolution state: marker set, expanded still containing the literal.
         entry.degraded_paths = Some(vec![std::path::PathBuf::from("/nonexistent/whatever")]);
 
@@ -523,12 +523,23 @@ mod tests {
         // Then the AI-facing expanded text keeps the literal token (no file:// revert).
         let state = actor.state.read();
         let session = state.session(&sid);
-        let expanded = session.history().iter().rev().find_map(|e| match &e.kind {
-            crate::protocol::ChatEntryKind::User { expanded, .. } => Some(expanded.clone()),
-            _ => None,
-        }).expect("user entry");
-        assert!(expanded.contains(token), "queue drain must keep degraded token literal: {expanded}");
-        assert!(!expanded.contains("file://"), "queue drain must not revert to file://: {expanded}");
+        let expanded = session
+            .history()
+            .iter()
+            .rev()
+            .find_map(|e| match &e.kind {
+                crate::protocol::ChatEntryKind::User { expanded, .. } => Some(expanded.clone()),
+                _ => None,
+            })
+            .expect("user entry");
+        assert!(
+            expanded.contains(token),
+            "queue drain must keep degraded token literal: {expanded}"
+        );
+        assert!(
+            !expanded.contains("file://"),
+            "queue drain must not revert to file://: {expanded}"
+        );
     }
 
     #[tokio::test]

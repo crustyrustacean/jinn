@@ -1247,7 +1247,12 @@ mod tests {
     }
 
     // Helper: seed a vision-capable model and return the idle session id.
-    async fn idle_vision_session() -> (super::super::super::SessionPersistenceActor, crate::common::state::State, BusAudit, crate::protocol::SessionId) {
+    async fn idle_vision_session() -> (
+        super::super::super::SessionPersistenceActor,
+        crate::common::state::State,
+        BusAudit,
+        crate::protocol::SessionId,
+    ) {
         let (actor, state, audit) = create_actor().await;
         let session_id = {
             let mut guard = state.write_test_no_cap();
@@ -1259,7 +1264,9 @@ mod tests {
     }
 
     /// Extracts the `expanded` text of the most recent `User` entry in history.
-    fn last_user_expanded(session: &crate::feat::session::chat_session::ChatSessionState) -> Option<String> {
+    fn last_user_expanded(
+        session: &crate::feat::session::chat_session::ChatSessionState,
+    ) -> Option<String> {
         session.history().iter().rev().find_map(|e| match &e.kind {
             ChatEntryKind::User { expanded, .. } => Some(expanded.clone()),
             _ => None,
@@ -1284,7 +1291,10 @@ mod tests {
         let session = guard.session.get(&session_id).expect("session");
         assert_eq!(session.phase(), PhaseKind::Streaming);
         drop(guard);
-        assert!(audit.contains_name("SendToLlmProvider"), "nonexistent @path should dispatch");
+        assert!(
+            audit.contains_name("SendToLlmProvider"),
+            "nonexistent @path should dispatch"
+        );
     }
 
     #[tokio::test]
@@ -1297,7 +1307,7 @@ mod tests {
         actor
             .handle_enqueue_user_message(&EnqueueUserMessage {
                 session_id: session_id.clone(),
-                entry: ChatEntry::user(&format!("describe {token}")),
+                entry: ChatEntry::user(format!("describe {token}")),
             })
             .await;
 
@@ -1305,8 +1315,14 @@ mod tests {
         let guard = state.read();
         let session = guard.session.get(&session_id).expect("session");
         let expanded = last_user_expanded(session).expect("user entry");
-        assert!(expanded.contains(token), "expanded should keep literal token: {expanded}");
-        assert!(!expanded.contains("file://"), "expanded must not contain file://: {expanded}");
+        assert!(
+            expanded.contains(token),
+            "expanded should keep literal token: {expanded}"
+        );
+        assert!(
+            !expanded.contains("file://"),
+            "expanded must not contain file://: {expanded}"
+        );
     }
 
     #[tokio::test]
@@ -1321,7 +1337,7 @@ mod tests {
         actor
             .handle_enqueue_user_message(&EnqueueUserMessage {
                 session_id: session_id.clone(),
-                entry: ChatEntry::user(&format!("see @{}", notes.to_string_lossy())),
+                entry: ChatEntry::user(format!("see @{}", notes.to_string_lossy())),
             })
             .await;
 
@@ -1330,7 +1346,10 @@ mod tests {
         let session = guard.session.get(&session_id).expect("session");
         assert_eq!(session.phase(), PhaseKind::Streaming);
         drop(guard);
-        assert!(audit.contains_name("SendToLlmProvider"), "non-image @path should dispatch");
+        assert!(
+            audit.contains_name("SendToLlmProvider"),
+            "non-image @path should dispatch"
+        );
     }
 
     #[tokio::test]
@@ -1346,7 +1365,7 @@ mod tests {
         actor
             .handle_enqueue_user_message(&EnqueueUserMessage {
                 session_id: session_id.clone(),
-                entry: ChatEntry::user(&format!("see {token}")),
+                entry: ChatEntry::user(format!("see {token}")),
             })
             .await;
 
@@ -1354,8 +1373,14 @@ mod tests {
         let guard = state.read();
         let session = guard.session.get(&session_id).expect("session");
         let expanded = last_user_expanded(session).expect("user entry");
-        assert!(expanded.contains(&token), "expanded should keep literal token: {expanded}");
-        assert!(!expanded.contains("file://"), "expanded must not contain file://: {expanded}");
+        assert!(
+            expanded.contains(&token),
+            "expanded should keep literal token: {expanded}"
+        );
+        assert!(
+            !expanded.contains("file://"),
+            "expanded must not contain file://: {expanded}"
+        );
     }
 
     #[tokio::test]
@@ -1372,20 +1397,30 @@ mod tests {
         actor
             .handle_enqueue_user_message(&EnqueueUserMessage {
                 session_id: session_id.clone(),
-                entry: ChatEntry::user(&format!("see @{}", heic.to_string_lossy())),
+                entry: ChatEntry::user(format!("see @{}", heic.to_string_lossy())),
             })
             .await;
 
         // Then an Error entry is pushed and the turn is blocked.
         let guard = state.read();
         let session = guard.session.get(&session_id).expect("session");
-        assert_eq!(session.phase(), PhaseKind::Idle, "conversion failure must block");
+        assert_eq!(
+            session.phase(),
+            PhaseKind::Idle,
+            "conversion failure must block"
+        );
         assert!(
-            session.history().iter().any(|e| matches!(&e.kind, ChatEntryKind::Error(_))),
+            session
+                .history()
+                .iter()
+                .any(|e| matches!(&e.kind, ChatEntryKind::Error(_))),
             "expected an Error entry for the conversion failure"
         );
         drop(guard);
-        assert!(!audit.contains_name("SendToLlmProvider"), "conversion failure must not dispatch");
+        assert!(
+            !audit.contains_name("SendToLlmProvider"),
+            "conversion failure must not dispatch"
+        );
     }
 
     #[tokio::test]
@@ -1410,15 +1445,24 @@ mod tests {
         let session = guard.session.get(&session_id).expect("session");
         assert_eq!(session.phase(), PhaseKind::Streaming);
         let expanded = last_user_expanded(session).expect("user entry");
-        assert!(expanded.contains("@/nonexistent/x"), "nonexistent token must stay literal: {expanded}");
-        assert!(expanded.contains("file://"), "real image token must be rewritten: {expanded}");
+        assert!(
+            expanded.contains("@/nonexistent/x"),
+            "nonexistent token must stay literal: {expanded}"
+        );
+        assert!(
+            expanded.contains("file://"),
+            "real image token must be rewritten: {expanded}"
+        );
         let attachments = session.history().iter().rev().find_map(|e| match &e.kind {
             ChatEntryKind::User { attachments, .. } => Some(attachments.len()),
             _ => None,
         });
         assert_eq!(attachments, Some(1), "exactly one attachment expected");
         drop(guard);
-        assert!(audit.contains_name("SendToLlmProvider"), "mixed message should dispatch");
+        assert!(
+            audit.contains_name("SendToLlmProvider"),
+            "mixed message should dispatch"
+        );
     }
 
     #[tokio::test]
@@ -1430,7 +1474,11 @@ mod tests {
         std::fs::write(&png, MULTIMODAL_TINY_PNG).expect("write png");
         let notes = dir.path().join("notes.txt");
         std::fs::write(&notes, b"text").expect("write");
-        let display = format!("see @{} and @{}", png.to_string_lossy(), notes.to_string_lossy());
+        let display = format!(
+            "see @{} and @{}",
+            png.to_string_lossy(),
+            notes.to_string_lossy()
+        );
 
         // When enqueuing the mixed message.
         actor
@@ -1445,15 +1493,24 @@ mod tests {
         let session = guard.session.get(&session_id).expect("session");
         assert_eq!(session.phase(), PhaseKind::Streaming);
         let expanded = last_user_expanded(session).expect("user entry");
-        assert!(expanded.contains(&format!("@{}", notes.to_string_lossy())), "non-image token must stay literal: {expanded}");
-        assert!(expanded.contains("file://"), "real image token must be rewritten: {expanded}");
+        assert!(
+            expanded.contains(&format!("@{}", notes.to_string_lossy())),
+            "non-image token must stay literal: {expanded}"
+        );
+        assert!(
+            expanded.contains("file://"),
+            "real image token must be rewritten: {expanded}"
+        );
         let attachments = session.history().iter().rev().find_map(|e| match &e.kind {
             ChatEntryKind::User { attachments, .. } => Some(attachments.len()),
             _ => None,
         });
         assert_eq!(attachments, Some(1), "exactly one attachment expected");
         drop(guard);
-        assert!(audit.contains_name("SendToLlmProvider"), "mixed message should dispatch");
+        assert!(
+            audit.contains_name("SendToLlmProvider"),
+            "mixed message should dispatch"
+        );
     }
 
     #[tokio::test]
@@ -1473,9 +1530,18 @@ mod tests {
         let guard = state.read();
         let session = guard.session.get(&session_id).expect("session");
         let expanded = last_user_expanded(session).expect("user entry");
-        assert!(expanded.contains("@/nope/a"), "first token literal: {expanded}");
-        assert!(expanded.contains("@/nope/b"), "second token literal: {expanded}");
-        assert!(!expanded.contains("file://"), "no file:// rewrite: {expanded}");
+        assert!(
+            expanded.contains("@/nope/a"),
+            "first token literal: {expanded}"
+        );
+        assert!(
+            expanded.contains("@/nope/b"),
+            "second token literal: {expanded}"
+        );
+        assert!(
+            !expanded.contains("file://"),
+            "no file:// rewrite: {expanded}"
+        );
         let attachments = session.history().iter().rev().find_map(|e| match &e.kind {
             ChatEntryKind::User { attachments, .. } => Some(attachments.len()),
             _ => None,
@@ -1492,7 +1558,11 @@ mod tests {
         let png_b = dir.path().join("b.png");
         std::fs::write(&png_a, MULTIMODAL_TINY_PNG).expect("write a");
         std::fs::write(&png_b, MULTIMODAL_TINY_PNG).expect("write b");
-        let display = format!("see @{} and @{}", png_a.to_string_lossy(), png_b.to_string_lossy());
+        let display = format!(
+            "see @{} and @{}",
+            png_a.to_string_lossy(),
+            png_b.to_string_lossy()
+        );
 
         // When enqueuing the message.
         actor
@@ -1523,7 +1593,11 @@ mod tests {
         let mut bytes = vec![0x00, 0x00, 0x00, 0x18];
         bytes.extend_from_slice(b"ftypheicpayload");
         std::fs::write(&heic, &bytes).expect("write");
-        let display = format!("see @{} and @{}", png.to_string_lossy(), heic.to_string_lossy());
+        let display = format!(
+            "see @{} and @{}",
+            png.to_string_lossy(),
+            heic.to_string_lossy()
+        );
 
         // When enqueuing the mixed message.
         actor
@@ -1536,9 +1610,16 @@ mod tests {
         // Then the conversion failure hard-errors and blocks the whole turn.
         let guard = state.read();
         let session = guard.session.get(&session_id).expect("session");
-        assert_eq!(session.phase(), PhaseKind::Idle, "conversion failure must block the turn");
+        assert_eq!(
+            session.phase(),
+            PhaseKind::Idle,
+            "conversion failure must block the turn"
+        );
         drop(guard);
-        assert!(!audit.contains_name("SendToLlmProvider"), "conversion failure must not dispatch");
+        assert!(
+            !audit.contains_name("SendToLlmProvider"),
+            "conversion failure must not dispatch"
+        );
     }
 
     #[tokio::test]

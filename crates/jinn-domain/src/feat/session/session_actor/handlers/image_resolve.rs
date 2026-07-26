@@ -66,7 +66,10 @@ pub(super) fn resolve_attachments_blocking(
             OneOutcome::Degraded => degraded_paths.push(path.clone()),
         }
     }
-    Ok(ResolveOutcome { attachments, degraded_paths })
+    Ok(ResolveOutcome {
+        attachments,
+        degraded_paths,
+    })
 }
 
 /// Outcome of resolving a single `@path`.
@@ -96,9 +99,12 @@ fn resolve_one_blocking(
         return Ok(OneOutcome::Degraded);
     };
     match classify_image_bytes(&bytes) {
-        ImageKind::Native { media_type } => Ok(OneOutcome::Attached(Attachment::image(media_type, bytes))),
-        ImageKind::NeedsConversion => convert_via_imagemagick(path, converter)
-            .map(OneOutcome::Attached),
+        ImageKind::Native { media_type } => {
+            Ok(OneOutcome::Attached(Attachment::image(media_type, bytes)))
+        }
+        ImageKind::NeedsConversion => {
+            convert_via_imagemagick(path, converter).map(OneOutcome::Attached)
+        }
         ImageKind::NotAnImage => Ok(OneOutcome::Degraded),
     }
 }
@@ -275,7 +281,7 @@ mod tests {
         let converter = service(true, false);
 
         // When resolving.
-        let result = resolve_attachments_blocking(&[path.clone()], &converter);
+        let result = resolve_attachments_blocking(std::slice::from_ref(&path), &converter);
 
         // Then it degrades: no error, no attachment, path in degraded set.
         let outcome = result.expect("resolve");
@@ -290,7 +296,7 @@ mod tests {
         let converter = service(true, false);
 
         // When resolving.
-        let result = resolve_attachments_blocking(&[path.clone()], &converter);
+        let result = resolve_attachments_blocking(std::slice::from_ref(&path), &converter);
 
         // Then it degrades: no error, no attachment, path in degraded set.
         let outcome = result.expect("resolve");
