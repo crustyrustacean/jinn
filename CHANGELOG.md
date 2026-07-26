@@ -1,4 +1,4 @@
-## v0.102.0 (development build)
+## 2026-07-25 v0.102.0
 
 - Fix slow startup performance on `install` and `config` commands.
 - Add `--force` flag to `install` command to overwrite existing files.
