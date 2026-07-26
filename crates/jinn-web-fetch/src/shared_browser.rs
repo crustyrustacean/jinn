@@ -440,6 +440,51 @@ impl SharedBrowser {
         }
     }
 
+
+    /// Force-evicts the cached browser handle, killing the Chromium process.
+    ///
+    /// Used by the heartbeat ([`Self::probe`]) on a failed liveness check.
+    /// Unconditional — unlike the render path's identity-scoped [`evict_if_matching`],
+    /// the heartbeat has no offender handle to compare against and must clear
+    /// whatever is in the slot. Idempotent: a no-op when the slot is already empty.
+    ///
+    /// The next request after an eviction lazily launches a fresh browser via
+    /// [`ensure_browser`] on the normal render path — no launch logic lives here.
+    pub fn force_evict(&self) {
+        if let Some(browser) = self.slot.lock().take() {
+            tracing::info!(
+                backend = browser.name(),
+                "SharedBrowser: force-evicting browser (kills Chromium process)"
+            );
+            // Drop outside the lock scope — implicit, after the guard releases.
+            drop(browser);
+        } else {
+            tracing::trace!("SharedBrowser: force-evict was a no-op (slot empty)");
+        }
+    }
+
+    /// Probes whether the cached browser is still alive, evicting it if not.
+    ///
+    /// This is the heartbeat entry point: cheap, never launches, and idempotent.
+    /// On an empty slot it returns immediately (preserves lazy launch — the
+    /// heartbeat must never be the reason a browser exists). On a filled slot it
+    /// runs [`HeadlessBrowser::liveness`]; on any failure it calls
+    /// [`Self::force_evict`] so the next request lazily launches a fresh browser.
+    pub fn probe(&self) {
+        // Snapshot the handle (if any) WITHOUT launching. Cloning the Arc
+        // under the lock, then releasing, keeps the lock hold minimal.
+        let Some(browser) = self.slot.lock().clone() else {
+            tracing::trace!("SharedBrowser: probe skipped (no browser)");
+            return;
+        };
+        match browser.liveness() {
+            Ok(()) => tracing::trace!("SharedBrowser: probe ok"),
+            Err(err) => {
+                tracing::warn!(err = %err, "SharedBrowser: probe failed, evicting");
+                self.force_evict();
+            }
+        }
+    }
     /// Drops the cached browser handle, killing the Chromium process.
     ///
     /// Called during application shutdown. Safe to call multiple times.

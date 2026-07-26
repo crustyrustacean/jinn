@@ -68,16 +68,13 @@ enum RenderOutcome {
 
 /// A liveness outcome the fake browser should produce for one `liveness` call.
 ///
-/// Mirrors [`RenderOutcome`]'s crash/panic shape for the heartbeat path:
-/// the default (empty queue) is `Ok`, so a healthy browser needs no scripting.
+/// The default (empty queue) is `Ok`, so a healthy browser needs no scripting.
 #[derive(Clone)]
 enum LivenessOutcome {
     /// Probe succeeds.
     Ok,
     /// Connection-level death (maps to `BrowserCrash`).
     Crash,
-    /// The closure panics when invoked (simulates a chrome-internal unwind).
-    Panic(String),
 }
 
 /// A fake browser that serves queued outcomes per call, LIFO.
@@ -116,7 +113,6 @@ impl HeadlessBrowser for FakeBrowser {
         match outcome {
             LivenessOutcome::Ok => Ok(()),
             LivenessOutcome::Crash => Err(FetchError::BrowserCrash),
-            LivenessOutcome::Panic(msg) => panic!("{msg}"),
         }
     }
 
@@ -578,4 +574,82 @@ async fn two_fetchers_sharing_one_browser_launch_once() {
     assert!(a_content.starts_with("<p>") && a_content.ends_with("</p>"));
     assert!(b_content.starts_with("<p>") && b_content.ends_with("</p>"));
     assert_eq!(factory.launch_count(), 1);
+}
+
+// ===========================================================================
+// SharedBrowser: heartbeat probe / force_evict
+// ===========================================================================
+
+/// Builds a `SharedBrowser` with a fake factory, returning both so the
+/// probe/force-evict tests can assert on launch count. The browser is NOT
+/// launched until something warms the slot (a render).
+fn shared_and_factory<S: Into<FakeBrowserScript>>(browsers: Vec<S>) -> (Arc<SharedBrowser>, Arc<FakeFactory>) {
+    let factory = FakeFactory::new(browsers);
+    let shared = Arc::new(SharedBrowser::with_factory(factory.as_backend()));
+    (shared, factory)
+}
+
+#[test]
+fn probe_is_noop_when_slot_empty() {
+    // Given a shared browser with a factory, never warmed (slot empty).
+    let (shared, factory) = shared_and_factory(vec![vec![RenderOutcome::Ok(ok_page("<p>hi</p>", "https://example.com/"))]]);
+
+    // When probing.
+    shared.probe();
+
+    // Then no browser was launched — the heartbeat never creates a browser.
+    assert_eq!(factory.launch_count(), 0);
+}
+
+#[test]
+fn probe_keeps_healthy_browser() {
+    // Given a warmed browser whose liveness is Ok (the default).
+    let (shared, factory) = shared_and_factory(vec![vec![
+        RenderOutcome::Ok(ok_page("<p>hi</p>", "https://example.com/")),
+        // A second Ok in case a second render is needed to assert reuse.
+        RenderOutcome::Ok(ok_page("<p>hi</p>", "https://example.com/")),
+    ]]);
+    shared.render_page("https://example.com/").expect("warm render");
+    assert_eq!(factory.launch_count(), 1);
+
+    // When probing.
+    shared.probe();
+
+    // Then the browser is reused on the next render — the probe did NOT evict.
+    shared.render_page("https://example.com/").expect("reuse render");
+    assert_eq!(factory.launch_count(), 1);
+}
+
+
+#[test]
+fn force_evict_is_noop_on_empty_slot() {
+    // Given a shared browser with an empty slot.
+    let (shared, factory) = shared_and_factory(vec![vec![RenderOutcome::Ok(ok_page("<p>hi</p>", "https://example.com/"))]]);
+
+    // When force-evicting twice on an already-empty slot.
+    shared.force_evict();
+    shared.force_evict();
+
+    // Then no panic, and nothing launched.
+    assert_eq!(factory.launch_count(), 0);
+}
+
+#[test]
+fn next_render_relaunches_after_probe_eviction() {
+    // Given browser #1 (liveness Crash) and browser #2 (render Ok) so the
+    // post-eviction render can succeed against a fresh browser.
+    let mut first: FakeBrowserScript = vec![RenderOutcome::Ok(ok_page("<p>one</p>", "https://example.com/"))].into();
+    first.liveness = vec![LivenessOutcome::Crash];
+    let second: FakeBrowserScript = vec![RenderOutcome::Ok(ok_page("<p>two</p>", "https://example.com/"))].into();
+    let (shared, factory) = shared_and_factory(vec![first, second]);
+    shared.render_page("https://example.com/").expect("warm render #1");
+    assert_eq!(factory.launch_count(), 1);
+
+    // When the probe evicts, then a render runs.
+    shared.probe();
+    let out = shared.render_page("https://example.com/").expect("render after eviction");
+
+    // Then the render succeeded against browser #2 (launch_count -> 2).
+    assert_eq!(out.html, "<p>two</p>");
+    assert_eq!(factory.launch_count(), 2);
 }
