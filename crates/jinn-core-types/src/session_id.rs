@@ -5,8 +5,9 @@ use uuid::Uuid;
 
 /// A unique identifier for a chat session.
 ///
-/// Generated using UUID v7, stored as an opaque string.
-/// Derives equality and hashing so it can be used as a `HashMap` key.
+/// Generated using UUID v7, stored as a bare `Uuid`. The serialized/displayed
+/// form is the bare UUID string (no prefix). Derives equality and hashing so
+/// it can be used as a `HashMap` key.
 #[derive(Debug, Clone, PartialEq, Eq, Hash, Serialize, Deserialize)]
 pub struct SessionId(Uuid);
 
@@ -25,8 +26,12 @@ impl Default for SessionId {
 }
 
 impl From<String> for SessionId {
-    fn from(s: String) -> Self {
-        Self(Uuid::parse_str(&s).expect("invalid UUID format (programming error)"))
+    #[expect(
+        clippy::expect_used,
+        reason = "From is infallible. Should be caught by testing."
+    )]
+    fn from(id: String) -> Self {
+        Self(Uuid::parse_str(&id).expect("invalid UUID format (programming error)"))
     }
 }
 
@@ -59,15 +64,19 @@ mod tests {
     }
 
     #[rstest::rstest]
-    fn session_id_starts_with_prefix() {
+    fn session_id_serializes_as_bare_uuid() {
         // Given a new session ID.
         let id = SessionId::new();
 
-        // When inspecting the string representation.
-        // Note: we can't access the inner String directly, so we check serialization.
+        // When serializing to JSON and displaying.
         let json = serde_json::to_string(&id).expect("serialize");
+        let display = id.to_string();
 
-        // Then the serialized form starts with "s-".
-        assert!(json.contains("s-"));
+        // Then both forms are the bare UUID with no 's-' prefix.
+        assert!(!json.contains("s-"), "json should be bare uuid: {json}");
+        assert!(
+            !display.starts_with("s-"),
+            "display should be bare uuid: {display}"
+        );
     }
 }
