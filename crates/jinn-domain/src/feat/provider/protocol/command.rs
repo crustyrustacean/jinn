@@ -131,7 +131,7 @@ mod tests {
     #[rstest::rstest]
     fn send_to_llm_provider_deserializes_without_provider_id() {
         // Given JSON without the provider_id field (old format).
-        let json = r#"{"session_id":"sid-1","messages":[],"dispatched_at":"2024-01-01T00:00:00Z"}"#;
+        let json = r#"{"session_id":"00000000-0000-0000-0000-000000000001","messages":[],"dispatched_at":"2024-01-01T00:00:00Z"}"#;
 
         // When deserializing.
         let cmd: SendToLlmProvider = serde_json::from_str(json).expect("deserialize");
