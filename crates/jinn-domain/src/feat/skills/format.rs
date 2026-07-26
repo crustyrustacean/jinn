@@ -35,7 +35,7 @@ where
         "The following skills provide specialized instructions for specific tasks.".to_owned(),
         "Use the skill tool to load a skill's file when the task matches its description.".to_owned(),
         "Skills marked loaded='true' are already in context as a pinned tool result — do not call the skill tool for them.".to_owned(),
-        "When a skill file references a relative path, resolve it against the skill directory (parent of SKILL.md / dirname of the path) and use that absolute path in tool commands.".to_owned(),
+        "Skills bundle reference materials in spec-standard scripts/, references/, and assets/ directories beside SKILL.md. Each skill's <base_dir> holds that directory's absolute path; resolve any relative path in a skill body against it.".to_owned(),
         String::new(),
         "<available_skills>".to_owned(),
     ];
@@ -55,6 +55,10 @@ where
         lines.push(format!(
             "    <location>{}</location>",
             escape_xml(&skill.file_path.to_string_lossy())
+        ));
+        lines.push(format!(
+            "    <base_dir>{}</base_dir>",
+            escape_xml(&skill.base_dir.to_string_lossy())
         ));
         lines.push("  </skill>".to_owned());
     }
@@ -123,6 +127,10 @@ mod tests {
         assert!(
             result.contains("<location>/home/user/.agents/skills/my-skill/SKILL.md</location>")
         );
+        assert!(
+            result.contains("<base_dir>/home/user/.agents/skills/my-skill</base_dir>"),
+            "<base_dir> should hold the skill's base directory (parent of SKILL.md, no trailing /SKILL.md), got: {result}"
+        );
     }
 
     #[rstest::rstest]
@@ -135,7 +143,14 @@ mod tests {
 
         // Then usage instructions are included.
         assert!(result.contains("Use the skill tool"));
-        assert!(result.contains("resolve it against the skill directory"));
+        assert!(
+            result.contains("spec-standard"),
+            "preamble should describe spec-standard reference dirs, got: {result}"
+        );
+        assert!(
+            result.contains("<base_dir>"),
+            "preamble should point at <base_dir> for relative-link resolution, got: {result}"
+        );
     }
 
     #[rstest::rstest]
@@ -157,6 +172,28 @@ mod tests {
         assert!(result.contains("&lt;special&gt;"));
         assert!(result.contains("&amp;"));
         assert!(result.contains("&quot;chars&quot;"));
+    }
+
+    #[rstest::rstest]
+    fn format_escapes_base_dir_special_chars() {
+        // Given a skill whose base_dir path contains XML-special characters.
+        let skills = vec![Skill {
+            name: "weird-path".to_owned(),
+            description: "d".to_owned(),
+            body: String::new(),
+            file_path: PathBuf::from("/a&b<c>/SKILL.md"),
+            base_dir: PathBuf::from("/a&b<c>"),
+            source: crate::feat::skills::SkillSource::Global,
+        }];
+
+        // When formatting.
+        let result = format_skills_for_prompt(&skills, &std::collections::HashSet::new());
+
+        // Then the <base_dir> value is XML-escaped.
+        assert!(
+            result.contains("<base_dir>/a&amp;b&lt;c&gt;</base_dir>"),
+            "base_dir special chars should be escaped, got: {result}"
+        );
     }
 
     #[rstest::rstest]
@@ -221,6 +258,26 @@ mod tests {
             result.matches("Skills marked loaded='true'").count(),
             1,
             "instruction line should appear exactly once: {result}"
+        );
+    }
+
+    #[rstest::rstest]
+    fn format_preamble_instruction_appears_exactly_once() {
+        // Given several skills.
+        let skills = vec![
+            test_skill("a", "A"),
+            test_skill("b", "B"),
+            test_skill("c", "C"),
+        ];
+
+        // When formatting.
+        let result = format_skills_for_prompt(&skills, &std::collections::HashSet::new());
+
+        // Then the spec-standard reference-materials instruction appears exactly once.
+        assert_eq!(
+            result.matches("spec-standard").count(),
+            1,
+            "reference-materials instruction should appear exactly once: {result}"
         );
     }
 
