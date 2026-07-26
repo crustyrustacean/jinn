@@ -281,7 +281,7 @@ fn classify_wrapped_connection_closed_in_source_chain_yields_browser_crash() {
 // ===========================================================================
 
 #[test]
-fn launch_options_uses_ten_minute_idle_timeout() {
+fn launch_options_uses_sixty_second_idle_timeout() {
     // Given the production launch options builder and default stealth settings.
     let settings = StealthSettings::default();
     // When building.
@@ -291,7 +291,7 @@ fn launch_options_uses_ten_minute_idle_timeout() {
         clippy::duration_suboptimal_units,
         reason = "`Duration::from_mins` is unstable; expressed in seconds"
     )]
-    let expected = std::time::Duration::from_secs(600);
+    let expected = std::time::Duration::from_secs(60);
     assert_eq!(opts.idle_browser_timeout, expected);
 }
 

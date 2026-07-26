@@ -17,11 +17,28 @@
 //! the shared browser, since under concurrency that would kill other consumers'
 //! in-flight tabs.
 //!
+//! # Heartbeat health
+//!
+//! Crash recovery above is _reactive_ — it only fires when a render actually
+//! hits the dead socket. Long-running sessions need a _proactive_ liveness
+//! check so a wedged browser is noticed even while no render is in flight.
+//! A detached heartbeat task ([`HEARTBEAT_INTERVAL`]) calls [`SharedBrowser::probe`],
+//! which runs [`HeadlessBrowser::liveness`] (a cheap `Browser::get_version`)
+//! inside a [`PROBE_TIMEOUT`]-bounded blocking task. A probe failure, timeout,
+//! or panic force-evicts the handle via [`SharedBrowser::force_evict`]; the next
+//! request then lazily launches a fresh browser on the normal render path. A
+//! healthy browser is never torn down by the heartbeat — a successful probe
+//! counts as incoming transport traffic, resetting the library's idle timer.
+//! The two mechanisms compose: the heartbeat catches idle death proactively,
+//! crash recovery catches in-flight death reactively.
+//!
 //! # Lifecycle
 //!
 //! - **Lazy launch**: first `render_page` starts Chromium.
 //! - **Reuse**: subsequent calls open a new tab on the same browser.
 //! - **Self-heal**: a dead WebSocket triggers exactly one relaunch + retry.
+//! - **Heartbeat**: a periodic probe force-evicts a wedged browser; the next
+//!   request lazily relaunches.
 //! - **Shutdown**: [`SharedBrowser::shutdown`] drops the browser (kills process).
 //!
 //! # SingletonLock
@@ -40,17 +57,23 @@ use parking_lot::Mutex;
 use crate::FetchError;
 use crate::stealth::StealthSettings;
 
-/// How long a kept-warm browser survives while idle before headless_chrome
-/// tears its WebSocket down. The library default (30s) is far too eager;
-/// self-heal still recovers when a genuine death eventually occurs past this.
-/// 10 minutes — long enough to avoid churn on natural idle gaps while
-// still tearing down an unused browser before it lingers indefinitely.
+/// A last-resort upper bound on how long a single in-flight render may wait
+/// on the underlying connection before headless_chrome cancels it.
+///
+/// This is NOT the primary health signal — the heartbeat ([`HEARTBEAT_INTERVAL`]
+/// + [`SharedBrowser::probe`]) owns proactive liveness and force-evicts a dead
+/// browser within ~10s. The library sets this same value as both the per-call
+/// wait AND the idle-teardown timer; it covers one narrow case the heartbeat
+/// cannot: a render already in flight at the exact instant the socket dies,
+/// holding its own handle that the heartbeat's eviction can't kill out from
+/// under it. 60s caps that one render; every subsequent render recovers
+/// immediately via the normal lazy-relaunch path. Never wait 10 minutes again.
 // `Duration::from_mins` is unstable, so we express the constant in seconds.
 #[expect(
     clippy::duration_suboptimal_units,
     reason = "`Duration::from_mins` is unstable; expressed in seconds"
 )]
-pub(crate) const IDLE_BROWSER_TIMEOUT: Duration = Duration::from_secs(600);
+pub(crate) const IDLE_BROWSER_TIMEOUT: Duration = Duration::from_secs(60);
 
 /// How often the keepalive heartbeat runs [`SharedBrowser::probe`].
 ///
