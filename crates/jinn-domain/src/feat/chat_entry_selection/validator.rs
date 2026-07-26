@@ -367,6 +367,7 @@ mod tests {
             pin_position: None,
             context_override: crate::protocol::ContextOverride::Default,
             context_history: Vec::new(),
+            degraded_paths: None,
         });
         state.active_session_mut().select_next_entry();
 
@@ -643,6 +644,7 @@ mod ignore_selected_tests {
             pin_position: None,
             context_override: crate::protocol::ContextOverride::Default,
             context_history: Vec::new(),
+            degraded_paths: None,
         });
         state.active_session_mut().select_next_entry();
 

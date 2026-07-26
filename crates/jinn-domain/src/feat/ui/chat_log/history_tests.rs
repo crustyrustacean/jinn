@@ -46,6 +46,7 @@ fn compaction_entry(summary: &str) -> ChatEntry {
         pin_position: None,
         context_override: ContextOverride::Default,
         context_history: Vec::new(),
+        degraded_paths: None,
     }
 }
 

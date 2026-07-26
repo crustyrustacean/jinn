@@ -321,11 +321,13 @@ impl SessionPersistenceActor {
                 {
                     *entry_attachments = outcome.attachments;
                 }
-                // Note: `outcome.degraded_paths` is handled in the
-                // caller's text-revert step (Phase 3). For now, degraded
-                // tokens stay as their `(file://…)` rewrite; the literal-text
-                // fix lands when the entry marker is added.
-                let _ = outcome.degraded_paths;
+                // Record the degraded paths on the entry so re-expansion
+                // (push_entry / queue drain) leaves those `@path` tokens as
+                // literal text instead of rewriting them back to
+                // `(file://…)` links. Set unconditionally — an empty `Some`
+                // still marks the entry as resolved, keeping re-expansion
+                // idempotent for fully-attached messages.
+                entry.degraded_paths = Some(outcome.degraded_paths);
                 true
             }
             Ok(Err(report)) => {
