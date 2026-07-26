@@ -80,6 +80,19 @@ pub trait HeadlessBrowser: Send + Sync {
     /// [`FetchError::BrowserCrash`] when the shared connection is dead;
     /// [`FetchError::Render`] for per-tab failures.
     fn render(&self, url: &str) -> Result<RenderedPage, FetchError>;
+    /// Probes whether the browser is still alive.
+    ///
+    /// The heartbeat ([`SharedBrowser::probe`]) calls this periodically; a
+    /// failure force-evicts the handle so the next request lazily launches a
+    /// fresh browser. This is the proactive health check that defeats a
+    /// dead/wedged WebSocket that the render path would otherwise only notice
+    /// passively via the library's idle timer.
+    ///
+    /// # Errors
+    ///
+    /// [`FetchError::BrowserCrash`] when the shared connection is dead;
+    /// [`FetchError::Render`] for per-call failures.
+    fn liveness(&self) -> Result<(), FetchError>;
     /// Backend identifier for tracing/debug.
     fn name(&self) -> &'static str;
 }
@@ -199,6 +212,17 @@ impl HeadlessBrowser for ChromeBrowser {
         let _ = tab.close(true);
 
         Ok(RenderedPage { html, final_url })
+    }
+
+    fn liveness(&self) -> Result<(), FetchError> {
+        // get_version is the cheapest CDP round-trip; its success exercises
+        // the same call_method -> util::Wait path the render uses, so a
+        // healthy probe also resets the library's idle timer as a side
+        // effect. Only Ok/Err matters here — the payload is discarded.
+        self.browser
+            .get_version()
+            .map_err(|e| classify_browser_error(&e))?;
+        Ok(())
     }
 
     fn name(&self) -> &'static str {
