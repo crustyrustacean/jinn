@@ -8,13 +8,13 @@ use uuid::Uuid;
 /// Generated using UUID v7, stored as an opaque string.
 /// Derives equality and hashing so it can be used as a `HashMap` key.
 #[derive(Debug, Clone, PartialEq, Eq, Hash, Serialize, Deserialize)]
-pub struct SessionId(String);
+pub struct SessionId(Uuid);
 
 impl SessionId {
     /// Generate a new unique session ID using UUID v7.
     #[must_use]
     pub fn new() -> Self {
-        Self(format!("s-{}", Uuid::now_v7()))
+        Self(Uuid::now_v7())
     }
 }
 
@@ -26,7 +26,7 @@ impl Default for SessionId {
 
 impl From<String> for SessionId {
     fn from(s: String) -> Self {
-        Self(s)
+        Self(Uuid::parse_str(&s).expect("invalid UUID format (programming error)"))
     }
 }
 
