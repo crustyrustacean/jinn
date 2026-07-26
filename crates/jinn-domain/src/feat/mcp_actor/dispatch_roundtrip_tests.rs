@@ -374,3 +374,124 @@ async fn restarted_actor_has_no_zombie_watcher_from_the_previous_one() {
         "no Dead should fire from a zombie watcher while the second actor runs, got: {trailing:?}"
     );
 }
+
+/// The HTTP child-exit watcher reaps the child (no zombie) and cancels the
+/// transport when the child process dies.
+///
+/// This is the load-bearing behavior for the `kill -9` HTTP bug: without the
+/// watcher, a half-open TCP socket keeps `is_transport_closed()` false, so the
+/// server stays "running" and the child becomes a zombie. The watcher fixes
+/// both: `try_wait()` reaps, and the cancel-token flip lets the liveness
+/// watcher publish `Dead`.
+#[tokio::test]
+async fn http_child_exit_reaps_and_cancels_transport() {
+    // Given a real child process (`sleep 30`) and a stub MCP client whose
+    // transport token we can observe.
+    use std::sync::Arc;
+    use std::sync::atomic::AtomicBool;
+
+    let is_reaped = |pid: u32| -> bool {
+        // Returns true once the child has been reaped (ESRCH); a zombie is
+        // still killable (returns 0).
+        // SAFETY: `libc::kill(pid, 0)` is a signal-0 existence check with no
+        // side effects; safe to call from a test.
+        unsafe { libc::kill(pid as i32, 0) != 0 }
+    };
+
+    let sleep_child = tokio::process::Command::new("sleep")
+        .arg("30")
+        .kill_on_drop(true)
+        .spawn()
+        .expect("spawn sleep");
+    let pid = sleep_child.id().expect("child has a pid");
+
+    let stub_client = spawn_stub_client().await;
+    let probe = stub_client.liveness_probe();
+    let cancel_token = stub_client.cancel_token();
+    assert!(!probe.is_transport_closed(), "transport open before kill");
+
+    // When the child-exit watcher runs and the child is killed externally.
+    let shutdown = Arc::new(AtomicBool::new(false));
+    super::spawn_child_watch(shutdown.clone(), sleep_child, cancel_token);
+    // `try_wait` requires the child to be dead; kill it via the OS.
+    // SAFETY: sending SIGKILL to a child we just spawned; the pid is valid
+    // for the duration of the test.
+    unsafe {
+        libc::kill(pid as i32, libc::SIGKILL);
+    }
+
+    // Then within the watcher cadence + slack, the transport reports closed
+    // (cancel token fired) AND the child is reaped (no longer in /proc).
+    let closed = tokio::time::timeout(Duration::from_secs(3), async {
+        while !probe.is_transport_closed() {
+            tokio::time::sleep(Duration::from_millis(50)).await;
+        }
+    })
+    .await
+    .is_ok();
+    assert!(closed, "transport should report closed after child death");
+
+    // The child should be reaped — `kill(pid, 0)` returns ESRCH (no such
+    // process) once reaped. A zombie would still be killable (return 0).
+    let reaped = tokio::time::timeout(Duration::from_secs(3), async {
+        loop {
+            if is_reaped(pid) {
+                break;
+            }
+            tokio::time::sleep(Duration::from_millis(50)).await;
+        }
+    })
+    .await
+    .is_ok();
+    assert!(
+        reaped,
+        "child should be reaped (no zombie) after watcher handles exit"
+    );
+}
+
+/// Normal teardown (disable/restart) signals the watcher's shutdown flag;
+/// the watcher exits, drops the `Child`, and `kill_on_drop` kills the
+/// still-alive process. The child is reaped (no zombie).
+#[tokio::test]
+async fn http_teardown_kills_and_reaps_still_alive_child() {
+    // Given a watcher running over a still-alive child.
+    use std::sync::Arc;
+    use std::sync::atomic::AtomicBool;
+
+    let is_reaped = |pid: u32| -> bool {
+        // SAFETY: `libc::kill(pid, 0)` is a signal-0 existence check, no side effects.
+        unsafe { libc::kill(pid as i32, 0) != 0 }
+    };
+
+    let sleep_child = tokio::process::Command::new("sleep")
+        .arg("30")
+        .kill_on_drop(true)
+        .spawn()
+        .expect("spawn sleep");
+    let pid = sleep_child.id().expect("child has a pid");
+
+    let stub_client = spawn_stub_client().await;
+    let cancel_token = stub_client.cancel_token();
+
+    let shutdown = Arc::new(AtomicBool::new(false));
+    super::spawn_child_watch(shutdown.clone(), sleep_child, cancel_token);
+
+    // When normal teardown signals the shutdown flag (mimicking on_stop).
+    shutdown.store(true, std::sync::atomic::Ordering::SeqCst);
+
+    // Then within the cadence the child is killed (kill_on_drop) and reaped.
+    let reaped = tokio::time::timeout(Duration::from_secs(3), async {
+        loop {
+            if is_reaped(pid) {
+                break;
+            }
+            tokio::time::sleep(Duration::from_millis(50)).await;
+        }
+    })
+    .await
+    .is_ok();
+    assert!(
+        reaped,
+        "teardown should kill + reap the still-alive child, no zombie"
+    );
+}

@@ -67,6 +67,11 @@ pub struct McpActor {
     /// *before* `stderr_task_shutdown` so the watcher exits before this
     /// teardown's own `Dead` publish (no spurious double-publish).
     liveness_task_shutdown: Arc<AtomicBool>,
+    /// Cancellation flag for the HTTP child-exit watcher (`None` for
+    /// stdio/remote transports, which have no jinn-owned child). Set in
+    /// `on_stop` before `client.shutdown()` so the watcher exits and drops
+    /// the `Child` (`kill_on_drop` terminates a still-alive process).
+    child_task_shutdown: Option<Arc<AtomicBool>>,
 }
 
 /// Dependencies for [`McpActor`].
@@ -268,7 +273,8 @@ impl kameo::Actor for McpActor {
         // list) is non-fatal to the process: the actor runs idle, the lifecycle
         // actor / dashboard surfaces the dead status, and a later enable/disable
         // cycle can respawn.
-        let (client, definitions) = match acquire_client(&server, &bind_addr, injected_client).await
+        let (mut client, definitions) = match acquire_client(&server, &bind_addr, injected_client)
+            .await
         {
             Ok(ready) => ready,
             Err(half_open) => {
@@ -283,6 +289,7 @@ impl kameo::Actor for McpActor {
                     client: None,
                     stderr_task_shutdown: Arc::new(AtomicBool::new(false)),
                     liveness_task_shutdown: Arc::new(AtomicBool::new(false)),
+                    child_task_shutdown: None,
                 });
             }
         };
@@ -346,6 +353,21 @@ impl kameo::Actor for McpActor {
             server.name.clone(),
         );
 
+        // Spawn the HTTP child-exit watcher — only for HTTP-mode connections,
+        // where jinn owns the child directly. stdio (rmcp owns the child) and
+        // remote (no child) return None from take_child(), so no watcher is
+        // spawned and child_task_shutdown stays None.
+        let child_task_shutdown = Arc::new(AtomicBool::new(false));
+        let cancel_token = client.cancel_token();
+        let child_watch_spawned = match client.take_child() {
+            Some(child) => {
+                spawn_child_watch(child_task_shutdown.clone(), child, cancel_token);
+                true
+            }
+            None => false,
+        };
+        let child_task_shutdown = child_watch_spawned.then_some(child_task_shutdown);
+
         Ok(Self {
             deps,
             session_id,
@@ -353,6 +375,7 @@ impl kameo::Actor for McpActor {
             client: Some(client),
             stderr_task_shutdown,
             liveness_task_shutdown,
+            child_task_shutdown,
         })
     }
 
@@ -366,6 +389,11 @@ impl kameo::Actor for McpActor {
         self.liveness_task_shutdown.store(true, Ordering::SeqCst);
         // Then signal the stderr-debounce task to exit before we tear down.
         self.stderr_task_shutdown.store(true, Ordering::SeqCst);
+        // Then signal the HTTP child-exit watcher (if any) to exit; on exit it
+        // drops the `Child`, and `kill_on_drop` terminates a still-alive process.
+        if let Some(flag) = self.child_task_shutdown.as_ref() {
+            flag.store(true, Ordering::SeqCst);
+        }
 
         let tail = self
             .client
@@ -492,6 +520,49 @@ fn spawn_liveness_watch(
                 break;
             }
         }
+    });
+}
+
+/// Spawns the HTTP child-exit watcher.
+///
+/// Only spawned for HTTP-mode connections (the only transport where jinn
+/// owns the child directly). Polls `try_wait()` every [`STDERR_DEBOUNCE`] to
+/// **reap** the child (preventing zombies) and to detect process death. On
+/// death: cancels the transport via the cloned `RunningServiceCancellationToken`
+/// so `is_transport_closed()` flips true — the existing liveness watcher then
+/// publishes `Dead`. This watcher does **not** publish `Dead` itself, to keep a
+/// single death signal and avoid double-publish races.
+///
+/// On loop exit (child dead or `shutdown` set): the `Child` drops, and
+/// `kill_on_drop` kills a still-alive process (normal teardown case) or
+/// no-ops an already-dead one (`kill -9` case).
+fn spawn_child_watch(
+    shutdown: Arc<AtomicBool>,
+    mut child: tokio::process::Child,
+    cancel_token: jinn_mcp::RunningServiceCancellationToken,
+) {
+    tokio::spawn(async move {
+        loop {
+            tokio::time::sleep(STDERR_DEBOUNCE).await;
+            if shutdown.load(Ordering::SeqCst) {
+                break;
+            }
+            match child.try_wait() {
+                Ok(Some(_status)) => {
+                    // Child exited — `try_wait` reaped it (no zombie). Cancel
+                    // the transport so is_transport_closed() flips true; the
+                    // liveness watcher publishes Dead on its next tick.
+                    cancel_token.cancel();
+                    break;
+                }
+                Ok(None) => {} // still alive — keep polling
+                Err(e) => {
+                    tracing::warn!(error = ?e, "HTTP MCP child try_wait failed; stopping watcher");
+                    break;
+                }
+            }
+        }
+        // `child` drops here → kill_on_drop terminates a still-alive process.
     });
 }
 

@@ -15,6 +15,10 @@ pub use client::{
 };
 pub use tool_mapping::provider_prefix;
 
+/// Re-exported so the `McpActor` child watcher can cancel the transport without
+/// jinn-domain taking a direct rmcp dependency.
+pub use rmcp::service::RunningServiceCancellationToken;
+
 // Re-export rmcp model types so downstream crates (jinn-domain) can pattern-
 // match on tool results without taking a direct rmcp dependency.
 pub use rmcp::model::{CallToolResult, ContentBlock, JsonObject, Tool};
