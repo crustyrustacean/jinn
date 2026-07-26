@@ -18,6 +18,7 @@ mod store_tests;
 pub use attachment_path::PathResolveContext;
 pub use attachment_path::ScanResult;
 pub use attachment_path::scan_at_paths;
+pub use attachment_path::scan_at_paths_with_degraded;
 pub use attachment_path::{ImageKind, classify_image_bytes};
 pub use expand::expand_tokens;
 pub use loader::PromptTemplateParseError;

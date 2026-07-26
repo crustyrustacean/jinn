@@ -100,37 +100,56 @@ pub struct ScanResult {
     pub pending_paths: Vec<PathBuf>,
 }
 
-/// Scans `text` for `@path` tokens, resolves each against `ctx`, rewrites
-/// the token to `(file:///resolved/abs/path)` form, and collects the resolved
-/// paths for later byte-reading.
+/// Scans `text` for `@path` tokens, resolving each against `ctx`, rewriting
+/// attachable tokens to `(file:///resolved/abs/path)` form and collecting
+/// their resolved paths for later byte-reading.
+///
+/// Tokens whose resolved path is in `degraded` are left as **literal text**
+/// (the original `@raw` token) and excluded from `pending_paths`. This is
+/// how the actor marks a `@path` that turned out to be missing or
+/// not-a-recognized-image: on re-expansion, the token stays literal so the
+/// model sees exactly what the user typed.
 ///
 /// This is a **pure-text, I/O-free** operation: it does not touch the
-/// filesystem. Every `@path` token at a word boundary (start of buffer or
-/// preceded by space/newline) is rewritten and its resolved path is appended
-/// to [`ScanResult::pending_paths`], regardless of whether the file exists.
-/// File existence and image-format classification happen in the async
-/// session actor via [`classify_image_bytes`].
+/// filesystem. File existence and image-format classification happen in the
+/// async session actor via [`classify_image_bytes`].
 ///
 /// `foo@path` (no boundary) is never matched.
 #[must_use]
-pub fn scan_at_paths(text: &str, ctx: &PathResolveContext<'_>) -> ScanResult {
+pub fn scan_at_paths_with_degraded(
+    text: &str,
+    ctx: &PathResolveContext<'_>,
+    degraded: &[PathBuf],
+) -> ScanResult {
     let mut pending_paths: Vec<PathBuf> = Vec::new();
     let rewritten_text = AT_PATH_RE
         .replace_all(text, |caps: &regex::Captures<'_>| {
             let boundary = &caps[1];
             let raw_path = &caps[2];
             let resolved = ctx.resolve(raw_path);
-            // Use the resolved absolute path so terminals link to the real file.
-            let rewrite = format!("{boundary}(file://{})", resolved.display());
-            // Collect the resolved path for the actor's byte-reading phase.
-            pending_paths.push(resolved);
-            rewrite
+            if degraded.contains(&resolved) {
+                // Degraded: leave the token as the original literal text.
+                format!("{boundary}@{raw_path}")
+            } else {
+                // Use the resolved absolute path so terminals link to the real file.
+                let rewrite = format!("{boundary}(file://{})", resolved.display());
+                // Collect the resolved path for the actor's byte-reading phase.
+                pending_paths.push(resolved);
+                rewrite
+            }
         })
         .into_owned();
     ScanResult {
         rewritten_text,
         pending_paths,
     }
+}
+
+/// Convenience wrapper for [`scan_at_paths_with_degraded`] with no degraded
+/// tokens — the common case for first-time expansion.
+#[must_use]
+pub fn scan_at_paths(text: &str, ctx: &PathResolveContext<'_>) -> ScanResult {
+    scan_at_paths_with_degraded(text, ctx, &[])
 }
 
 /// Classification of a file's bytes by image-format family.

@@ -285,6 +285,7 @@ mod tests {
             pin_position: None,
             context_override: ContextOverride::Default,
             context_history: Vec::new(),
+            degraded_paths: None,
         };
 
         // Then only User and System are valid openers.
@@ -353,6 +354,7 @@ mod tests {
                 pin_position: None,
                 context_override: ContextOverride::Default,
                 context_history: Vec::new(),
+                degraded_paths: None,
             },
             ChatEntry::user("world"),
         ];

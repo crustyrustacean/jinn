@@ -1307,6 +1307,7 @@ mod tests {
             pin_position: None,
             context_override: crate::protocol::ContextOverride::Default,
             context_history: Vec::new(),
+            degraded_paths: None,
         });
         state.active_session_mut().select_next_entry();
 
@@ -2326,6 +2327,7 @@ mod jump_compaction_tests {
             pin_position: None,
             context_override: ContextOverride::Default,
             context_history: Vec::new(),
+            degraded_paths: None,
         }
     }
 

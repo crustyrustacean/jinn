@@ -187,6 +187,7 @@ mod tests {
             pin_position: None,
             context_override: crate::feat::session::chat_entry::ContextOverride::Default,
             context_history: vec![],
+            degraded_paths: None,
         }
     }
 

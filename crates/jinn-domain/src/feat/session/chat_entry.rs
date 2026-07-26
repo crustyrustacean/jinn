@@ -175,6 +175,18 @@ pub struct ChatEntry {
     /// `#[serde(default)]` - no schema migration is required.
     #[serde(default)]
     pub context_history: Vec<ContextChangeEvent>,
+
+    /// Resolved-image attachment marker, set after `@path` resolution runs.
+    ///
+    /// `Some(set)` records the paths that **degraded** (missing file or
+    /// not-a-recognized-image) so re-expansion leaves those `@path` tokens as
+    /// literal text instead of rewriting them back to `(file://…)` links.
+    /// `None` (default) means resolution has not run for this entry. Meaningful
+    /// only on `User` entries; `None` for all other kinds.
+    ///
+    /// OWNER: session-actor (set once during enqueue resolution).
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub degraded_paths: Option<Vec<std::path::PathBuf>>,
 }
 
 /// The kind of chat entry.
@@ -305,6 +317,7 @@ impl ChatEntry {
             pin_position: None,
             context_override: ContextOverride::Default,
             context_history: Vec::new(),
+            degraded_paths: None,
         }
     }
 
@@ -355,6 +368,7 @@ impl ChatEntry {
             pin_position: None,
             context_override: ContextOverride::Default,
             context_history: Vec::new(),
+            degraded_paths: None,
         }
     }
 
@@ -371,6 +385,7 @@ impl ChatEntry {
             pin_position: None,
             context_override: ContextOverride::Default,
             context_history: Vec::new(),
+            degraded_paths: None,
         }
     }
 
@@ -387,6 +402,7 @@ impl ChatEntry {
             pin_position: None,
             context_override: ContextOverride::Default,
             context_history: Vec::new(),
+            degraded_paths: None,
         }
     }
 
@@ -403,6 +419,7 @@ impl ChatEntry {
             pin_position: None,
             context_override: ContextOverride::Default,
             context_history: Vec::new(),
+            degraded_paths: None,
         }
     }
 
@@ -423,6 +440,7 @@ impl ChatEntry {
             pin_position: None,
             context_override: ContextOverride::Default,
             context_history: Vec::new(),
+            degraded_paths: None,
         }
     }
 
@@ -439,6 +457,7 @@ impl ChatEntry {
             pin_position: None,
             context_override: ContextOverride::Default,
             context_history: Vec::new(),
+            degraded_paths: None,
         }
     }
 
@@ -461,6 +480,7 @@ impl ChatEntry {
             pin_position: None,
             context_override: ContextOverride::Default,
             context_history: Vec::new(),
+            degraded_paths: None,
         }
     }
 
@@ -487,6 +507,7 @@ impl ChatEntry {
             pin_position: None,
             context_override: ContextOverride::Default,
             context_history: Vec::new(),
+            degraded_paths: None,
         }
     }
 
@@ -503,6 +524,7 @@ impl ChatEntry {
             pin_position: None,
             context_override: ContextOverride::Default,
             context_history: Vec::new(),
+            degraded_paths: None,
         }
     }
 
@@ -535,6 +557,7 @@ impl ChatEntry {
             pin_position: None,
             context_override: ContextOverride::Default,
             context_history: Vec::new(),
+            degraded_paths: None,
         }
     }
 
@@ -557,6 +580,7 @@ impl ChatEntry {
             pin_position: None,
             context_override: ContextOverride::Default,
             context_history: Vec::new(),
+            degraded_paths: None,
         }
     }
 
@@ -612,6 +636,7 @@ impl ChatEntry {
             pin_position,
             context_override: ContextOverride::Default,
             context_history: Vec::new(),
+            degraded_paths: None,
         }
     }
     /// Set the context override, recording a [`ContextChangeEvent`] if and only if
