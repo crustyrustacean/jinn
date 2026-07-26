@@ -30,6 +30,30 @@ use crate::{Extractor, FetchError, FetchOptions, OutputFormat, WebFetcher};
 // Test fakes
 // ---------------------------------------------------------------------------
 
+/// The scripted behavior for one fake browser.
+///
+/// Carries a queue of render outcomes (one per `render` call) and a queue
+/// of liveness outcomes (one per `liveness` call). Both default to
+/// empty/`Ok` so existing tests that only script renders stay unchanged.
+///
+/// Each queue is drained LIFO: a call pops the tail; when empty, `render`
+/// panics (render count is always asserted by the test's scripted queue)
+/// while `liveness` returns `Ok` (a healthy browser is the common case).
+#[derive(Clone, Default)]
+struct FakeBrowserScript {
+    behaviors: Vec<RenderOutcome>,
+    liveness: Vec<LivenessOutcome>,
+}
+
+impl From<Vec<RenderOutcome>> for FakeBrowserScript {
+    fn from(behaviors: Vec<RenderOutcome>) -> Self {
+        Self {
+            behaviors,
+            liveness: Vec::new(),
+        }
+    }
+}
+
 /// A render outcome the fake browser should produce for one `render` call.
 #[derive(Clone)]
 enum RenderOutcome {
@@ -42,9 +66,21 @@ enum RenderOutcome {
     Panic(String),
 }
 
-/// A fake browser that serves a queued outcome per `render` call, LIFO.
+/// A liveness outcome the fake browser should produce for one `liveness` call.
+///
+/// The default (empty queue) is `Ok`, so a healthy browser needs no scripting.
+#[derive(Clone)]
+enum LivenessOutcome {
+    /// Probe succeeds.
+    Ok,
+    /// Connection-level death (maps to `BrowserCrash`).
+    Crash,
+}
+
+/// A fake browser that serves queued outcomes per call, LIFO.
 struct FakeBrowser {
     behaviors: Mutex<Vec<RenderOutcome>>,
+    liveness: Mutex<Vec<LivenessOutcome>>,
 }
 
 impl HeadlessBrowser for FakeBrowser {
@@ -65,6 +101,21 @@ impl HeadlessBrowser for FakeBrowser {
         }
     }
 
+    fn liveness(&self) -> Result<(), FetchError> {
+        // Pop under the lock, then drop the guard before matching so a
+        // `Panic` outcome cannot poison the mutex. An empty queue defaults
+        // to Ok: a healthy browser is the common case, so render-only tests
+        // never need to script liveness.
+        let outcome = {
+            let mut queue = self.liveness.lock().expect("fake browser liveness queue");
+            queue.pop().unwrap_or(LivenessOutcome::Ok)
+        };
+        match outcome {
+            LivenessOutcome::Ok => Ok(()),
+            LivenessOutcome::Crash => Err(FetchError::BrowserCrash),
+        }
+    }
+
     fn name(&self) -> &'static str {
         "FakeBrowser"
     }
@@ -73,18 +124,21 @@ impl HeadlessBrowser for FakeBrowser {
 /// A fake factory that hands out a scripted sequence of browsers.
 ///
 /// The Nth [`launch`](HeadlessBrowserFactory::launch) yields the Nth scripted
-/// browser (LIFO via pop). Launch count is observable for thundering-herd tests.
+/// browser (FIFO). Launch count is observable for thundering-herd tests.
+///
+/// Each script is a [`FakeBrowserScript`]; [`FakeFactory::new`] accepts
+/// `Vec<Vec<RenderOutcome>>` via the `From` impl so render-only tests stay terse.
 pub(crate) struct FakeFactory {
-    browsers: Mutex<Vec<Vec<RenderOutcome>>>,
+    browsers: Mutex<Vec<FakeBrowserScript>>,
     launch_count: AtomicUsize,
 }
 
 impl FakeFactory {
-    /// Each entry is the behavior queue for one launched browser; the first
-    /// launch pops index 0, the second pops index 1, etc.
-    fn new(browsers: Vec<Vec<RenderOutcome>>) -> Arc<Self> {
+    /// Each entry scripts one launched browser; the first launch pops index 0,
+    /// the second pops index 1, etc.
+    fn new<S: Into<FakeBrowserScript>>(browsers: Vec<S>) -> Arc<Self> {
         Arc::new(Self {
-            browsers: Mutex::new(browsers),
+            browsers: Mutex::new(browsers.into_iter().map(Into::into).collect()),
             launch_count: AtomicUsize::new(0),
         })
     }
@@ -102,7 +156,7 @@ impl FakeFactory {
 impl HeadlessBrowserFactory for FakeFactory {
     fn launch(&self) -> Result<Arc<dyn HeadlessBrowser>, FetchError> {
         self.launch_count.fetch_add(1, Ordering::SeqCst);
-        let behaviors = {
+        let script = {
             let queue = self.browsers.lock().expect("fake factory queue");
             queue
                 .first()
@@ -114,7 +168,8 @@ impl HeadlessBrowserFactory for FakeFactory {
             queue.remove(0);
         }
         Ok(Arc::new(FakeBrowser {
-            behaviors: Mutex::new(behaviors),
+            behaviors: Mutex::new(script.behaviors),
+            liveness: Mutex::new(script.liveness),
         }))
     }
 
@@ -226,7 +281,7 @@ fn classify_wrapped_connection_closed_in_source_chain_yields_browser_crash() {
 // ===========================================================================
 
 #[test]
-fn launch_options_uses_ten_minute_idle_timeout() {
+fn launch_options_uses_sixty_second_idle_timeout() {
     // Given the production launch options builder and default stealth settings.
     let settings = StealthSettings::default();
     // When building.
@@ -236,7 +291,7 @@ fn launch_options_uses_ten_minute_idle_timeout() {
         clippy::duration_suboptimal_units,
         reason = "`Duration::from_mins` is unstable; expressed in seconds"
     )]
-    let expected = std::time::Duration::from_secs(600);
+    let expected = std::time::Duration::from_secs(60);
     assert_eq!(opts.idle_browser_timeout, expected);
 }
 
@@ -519,4 +574,105 @@ async fn two_fetchers_sharing_one_browser_launch_once() {
     assert!(a_content.starts_with("<p>") && a_content.ends_with("</p>"));
     assert!(b_content.starts_with("<p>") && b_content.ends_with("</p>"));
     assert_eq!(factory.launch_count(), 1);
+}
+
+// ===========================================================================
+// SharedBrowser: heartbeat probe / force_evict
+// ===========================================================================
+
+/// Builds a `SharedBrowser` with a fake factory, returning both so the
+/// probe/force-evict tests can assert on launch count. The browser is NOT
+/// launched until something warms the slot (a render).
+fn shared_and_factory<S: Into<FakeBrowserScript>>(
+    browsers: Vec<S>,
+) -> (Arc<SharedBrowser>, Arc<FakeFactory>) {
+    let factory = FakeFactory::new(browsers);
+    let shared = Arc::new(SharedBrowser::with_factory(factory.as_backend()));
+    (shared, factory)
+}
+
+#[test]
+fn probe_is_noop_when_slot_empty() {
+    // Given a shared browser with a factory, never warmed (slot empty).
+    let (shared, factory) = shared_and_factory(vec![vec![RenderOutcome::Ok(ok_page(
+        "<p>hi</p>",
+        "https://example.com/",
+    ))]]);
+
+    // When probing.
+    shared.probe();
+
+    // Then no browser was launched — the heartbeat never creates a browser.
+    assert_eq!(factory.launch_count(), 0);
+}
+
+#[test]
+fn probe_keeps_healthy_browser() {
+    // Given a warmed browser whose liveness is Ok (the default).
+    let (shared, factory) = shared_and_factory(vec![vec![
+        RenderOutcome::Ok(ok_page("<p>hi</p>", "https://example.com/")),
+        // A second Ok in case a second render is needed to assert reuse.
+        RenderOutcome::Ok(ok_page("<p>hi</p>", "https://example.com/")),
+    ]]);
+    shared
+        .render_page("https://example.com/")
+        .expect("warm render");
+    assert_eq!(factory.launch_count(), 1);
+
+    // When probing.
+    shared.probe();
+
+    // Then the browser is reused on the next render — the probe did NOT evict.
+    shared
+        .render_page("https://example.com/")
+        .expect("reuse render");
+    assert_eq!(factory.launch_count(), 1);
+}
+
+#[test]
+fn force_evict_is_noop_on_empty_slot() {
+    // Given a shared browser with an empty slot.
+    let (shared, factory) = shared_and_factory(vec![vec![RenderOutcome::Ok(ok_page(
+        "<p>hi</p>",
+        "https://example.com/",
+    ))]]);
+
+    // When force-evicting twice on an already-empty slot.
+    shared.force_evict();
+    shared.force_evict();
+
+    // Then no panic, and nothing launched.
+    assert_eq!(factory.launch_count(), 0);
+}
+
+#[test]
+fn next_render_relaunches_after_probe_eviction() {
+    // Given browser #1 (liveness Crash) and browser #2 (render Ok) so the
+    // post-eviction render can succeed against a fresh browser.
+    let mut first: FakeBrowserScript = vec![RenderOutcome::Ok(ok_page(
+        "<p>one</p>",
+        "https://example.com/",
+    ))]
+    .into();
+    first.liveness = vec![LivenessOutcome::Crash];
+    let second: FakeBrowserScript = vec![RenderOutcome::Ok(ok_page(
+        "<p>two</p>",
+        "https://example.com/",
+    ))]
+    .into();
+    let (shared, factory) = shared_and_factory(vec![first, second]);
+    shared
+        .render_page("https://example.com/")
+        .expect("warm render #1");
+    assert_eq!(factory.launch_count(), 1);
+
+    // When the probe evicts, then a render runs.
+    shared.probe();
+    let out = shared
+        .render_page("https://example.com/")
+        .expect("render after eviction");
+
+    // Then the render succeeded against browser #2 (launch_count -> 2).
+    assert_eq!(out.html, "<p>two</p>");
+    assert_eq!(factory.launch_count(), 2);
 }

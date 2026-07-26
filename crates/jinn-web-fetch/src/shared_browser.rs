@@ -17,11 +17,28 @@
 //! the shared browser, since under concurrency that would kill other consumers'
 //! in-flight tabs.
 //!
+//! # Heartbeat health
+//!
+//! Crash recovery above is _reactive_ — it only fires when a render actually
+//! hits the dead socket. Long-running sessions need a _proactive_ liveness
+//! check so a wedged browser is noticed even while no render is in flight.
+//! A detached heartbeat task ([`HEARTBEAT_INTERVAL`]) calls [`SharedBrowser::probe`],
+//! which runs [`HeadlessBrowser::liveness`] (a cheap `Browser::get_version`)
+//! inside a [`PROBE_TIMEOUT`]-bounded blocking task. A probe failure, timeout,
+//! or panic force-evicts the handle via [`SharedBrowser::force_evict`]; the next
+//! request then lazily launches a fresh browser on the normal render path. A
+//! healthy browser is never torn down by the heartbeat — a successful probe
+//! counts as incoming transport traffic, resetting the library's idle timer.
+//! The two mechanisms compose: the heartbeat catches idle death proactively,
+//! crash recovery catches in-flight death reactively.
+//!
 //! # Lifecycle
 //!
 //! - **Lazy launch**: first `render_page` starts Chromium.
 //! - **Reuse**: subsequent calls open a new tab on the same browser.
 //! - **Self-heal**: a dead WebSocket triggers exactly one relaunch + retry.
+//! - **Heartbeat**: a periodic probe force-evicts a wedged browser; the next
+//!   request lazily relaunches.
 //! - **Shutdown**: [`SharedBrowser::shutdown`] drops the browser (kills process).
 //!
 //! # SingletonLock
@@ -40,17 +57,40 @@ use parking_lot::Mutex;
 use crate::FetchError;
 use crate::stealth::StealthSettings;
 
-/// How long a kept-warm browser survives while idle before headless_chrome
-/// tears its WebSocket down. The library default (30s) is far too eager;
-/// self-heal still recovers when a genuine death eventually occurs past this.
-/// 10 minutes — long enough to avoid churn on natural idle gaps while
-// still tearing down an unused browser before it lingers indefinitely.
+/// A last-resort upper bound on how long a single in-flight render may wait
+/// on the underlying connection before headless_chrome cancels it.
+///
+/// This is NOT the primary health signal — the heartbeat
+/// ([`HEARTBEAT_INTERVAL`] + [`SharedBrowser::probe`]) owns proactive liveness and
+/// force-evicts a dead browser within ~10s. The library sets this same value as
+/// both the per-call wait AND the idle-teardown timer; it covers one narrow case
+/// the heartbeat cannot: a render already in flight at the exact instant the
+/// socket dies, holding its own handle that the heartbeat's eviction can't kill
+/// out from under it. 60s caps that one render; every subsequent render recovers
+/// immediately via the normal lazy-relaunch path. Never wait 10 minutes again.
 // `Duration::from_mins` is unstable, so we express the constant in seconds.
 #[expect(
     clippy::duration_suboptimal_units,
     reason = "`Duration::from_mins` is unstable; expressed in seconds"
 )]
-pub(crate) const IDLE_BROWSER_TIMEOUT: Duration = Duration::from_secs(600);
+pub(crate) const IDLE_BROWSER_TIMEOUT: Duration = Duration::from_secs(60);
+
+/// How often the keepalive heartbeat runs [`SharedBrowser::probe`].
+///
+/// On a healthy browser a successful probe response counts as incoming
+/// transport traffic, resetting the library's idle timer — so a warmed
+/// browser is never torn down merely for being idle. On a dead/wedged
+/// socket, this is the worst-case window before the heartbeat notices and
+/// force-evicts so the next request relaunches.
+pub const HEARTBEAT_INTERVAL: Duration = Duration::from_secs(10);
+
+/// How long a single liveness probe may take before the heartbeat treats it
+/// as a wedge and force-evicts.
+///
+/// A healthy `Browser::get_version` round-trip is well under a second; this
+/// bound exists only to cut a stuck CDP call short (the orphaned blocking
+/// thread is harmless — see [`SharedBrowser::probe`]).
+pub const PROBE_TIMEOUT: Duration = Duration::from_secs(5);
 
 /// A page rendered to HTML by a browser tab.
 ///
@@ -80,6 +120,19 @@ pub trait HeadlessBrowser: Send + Sync {
     /// [`FetchError::BrowserCrash`] when the shared connection is dead;
     /// [`FetchError::Render`] for per-tab failures.
     fn render(&self, url: &str) -> Result<RenderedPage, FetchError>;
+    /// Probes whether the browser is still alive.
+    ///
+    /// The heartbeat ([`SharedBrowser::probe`]) calls this periodically; a
+    /// failure force-evicts the handle so the next request lazily launches a
+    /// fresh browser. This is the proactive health check that defeats a
+    /// dead/wedged WebSocket that the render path would otherwise only notice
+    /// passively via the library's idle timer.
+    ///
+    /// # Errors
+    ///
+    /// [`FetchError::BrowserCrash`] when the shared connection is dead;
+    /// [`FetchError::Render`] for per-call failures.
+    fn liveness(&self) -> Result<(), FetchError>;
     /// Backend identifier for tracing/debug.
     fn name(&self) -> &'static str;
 }
@@ -199,6 +252,17 @@ impl HeadlessBrowser for ChromeBrowser {
         let _ = tab.close(true);
 
         Ok(RenderedPage { html, final_url })
+    }
+
+    fn liveness(&self) -> Result<(), FetchError> {
+        // get_version is the cheapest CDP round-trip; its success exercises
+        // the same call_method -> util::Wait path the render uses, so a
+        // healthy probe also resets the library's idle timer as a side
+        // effect. Only Ok/Err matters here — the payload is discarded.
+        self.browser
+            .get_version()
+            .map_err(|e| classify_browser_error(&e))?;
+        Ok(())
     }
 
     fn name(&self) -> &'static str {
@@ -416,6 +480,54 @@ impl SharedBrowser {
         }
     }
 
+    /// Force-evicts the cached browser handle, killing the Chromium process.
+    ///
+    /// Used by the heartbeat ([`Self::probe`]) on a failed liveness check.
+    /// Unconditional — unlike the render path's identity-scoped [`evict_if_matching`],
+    /// the heartbeat has no offender handle to compare against and must clear
+    /// whatever is in the slot. Idempotent: a no-op when the slot is already empty.
+    ///
+    /// The next request after an eviction lazily launches a fresh browser via
+    /// [`ensure_browser`] on the normal render path — no launch logic lives here.
+    pub fn force_evict(&self) {
+        // Take the handle out of the slot under a `let` binding so the guard is
+        // released at the `;` — NOT held via if-let temporary extension. The
+        // browser drop (which kills the Chromium process) then happens entirely
+        // outside the lock, so a slow teardown can never stall concurrent probes/renders.
+        let evicted = self.slot.lock().take();
+        if let Some(browser) = evicted {
+            tracing::info!(
+                backend = browser.name(),
+                "SharedBrowser: force-evicting browser (kills Chromium process)"
+            );
+            drop(browser);
+        } else {
+            tracing::trace!("SharedBrowser: force-evict was a no-op (slot empty)");
+        }
+    }
+
+    /// Probes whether the cached browser is still alive, evicting it if not.
+    ///
+    /// This is the heartbeat entry point: cheap, never launches, and idempotent.
+    /// On an empty slot it returns immediately (preserves lazy launch — the
+    /// heartbeat must never be the reason a browser exists). On a filled slot it
+    /// runs [`HeadlessBrowser::liveness`]; on any failure it calls
+    /// [`Self::force_evict`] so the next request lazily launches a fresh browser.
+    pub fn probe(&self) {
+        // Snapshot the handle (if any) WITHOUT launching. Cloning the Arc
+        // under the lock, then releasing, keeps the lock hold minimal.
+        let Some(browser) = self.slot.lock().clone() else {
+            tracing::trace!("SharedBrowser: probe skipped (no browser)");
+            return;
+        };
+        match browser.liveness() {
+            Ok(()) => tracing::trace!("SharedBrowser: probe ok"),
+            Err(err) => {
+                tracing::warn!(err = %err, "SharedBrowser: probe failed, evicting");
+                self.force_evict();
+            }
+        }
+    }
     /// Drops the cached browser handle, killing the Chromium process.
     ///
     /// Called during application shutdown. Safe to call multiple times.
@@ -425,12 +537,14 @@ impl SharedBrowser {
     )]
     pub async fn shutdown(&self) {
         tracing::info!("SharedBrowser: shutting down");
-        if let Some(browser) = self.slot.lock().take() {
+        // Take under a `let` so the guard releases at the `;`; the browser drop
+        // (which kills Chromium) runs outside the lock.
+        let evicted = self.slot.lock().take();
+        if let Some(browser) = evicted {
             tracing::debug!(
                 backend = browser.name(),
                 "SharedBrowser: dropping browser (kills Chromium process)"
             );
-            // Drop the browser - this kills the Chromium process.
             drop(browser);
         }
         tracing::info!("SharedBrowser: shutdown complete");
