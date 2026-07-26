@@ -313,14 +313,19 @@ impl SessionPersistenceActor {
                 .await;
                 false
             }
-            Ok(Ok(attachments)) => {
+            Ok(Ok(outcome)) => {
                 if let ChatEntryKind::User {
                     attachments: entry_attachments,
                     ..
                 } = &mut entry.kind
                 {
-                    *entry_attachments = attachments;
+                    *entry_attachments = outcome.attachments;
                 }
+                // Note: `outcome.degraded_paths` is handled in the
+                // caller's text-revert step (Phase 3). For now, degraded
+                // tokens stay as their `(file://…)` rewrite; the literal-text
+                // fix lands when the entry marker is added.
+                let _ = outcome.degraded_paths;
                 true
             }
             Ok(Err(report)) => {
