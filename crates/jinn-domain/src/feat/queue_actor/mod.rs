@@ -151,22 +151,11 @@ impl QueueActor {
         session_id: &SessionId,
         entry: &crate::protocol::ChatEntry,
     ) -> Option<crate::protocol::ChatEntry> {
-        let models_dev = crate::feat::provider_infra::ModelsDevData::load(
-            &self.deps.services.paths.models_dev_user_path(),
-            &self.deps.services.paths.models_dev_system_path(),
-        );
-        let model_id = {
-            let guard = self.state.read();
-            guard
-                .session
-                .get(session_id)
-                .and_then(|s| s.profile().model.last_model())
-                .map(str::to_owned)
-        };
-        crate::feat::session::session_actor::attachment_gate(
-            model_id.as_deref(),
+        crate::feat::session::session_actor::evaluate_attachment_gate(
+            &self.deps.services,
+            &self.state,
+            session_id,
             entry,
-            &models_dev,
         )
     }
 

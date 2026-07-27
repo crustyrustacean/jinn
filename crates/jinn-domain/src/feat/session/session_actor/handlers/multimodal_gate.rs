@@ -11,8 +11,10 @@
 //! (`None` — not in the reference data) are blocked, not allowed: the user
 //! maintains the reference data / model cache to mark a model capable.
 
+use crate::common::services::Services;
+use crate::common::state::State;
 use crate::feat::provider_infra::ModelsDevData;
-use crate::protocol::{ChatEntry, ChatEntryKind};
+use crate::protocol::{ChatEntry, ChatEntryKind, SessionId};
 
 /// Decides whether a user entry with attachments may be dispatched to the model.
 ///
@@ -48,6 +50,40 @@ pub fn attachment_gate(
         // Both block: the user marks a model capable via models.dev / the cache.
         Some(false) | None => Some(blocked_error_entry(model_id)),
     }
+}
+
+/// Loads the models.dev reference data, resolves the session's active model,
+/// and runs [`attachment_gate`].
+///
+/// Shared by both the Idle dispatch path (`SessionPersistenceActor`) and the
+/// queue-drain path (`QueueActor`) so they gate identically. Returns
+/// `Some(error_entry)` when the entry carries attachments but the active model
+/// is not confirmed image-capable; `None` when the entry is text-only or the
+/// model is confirmed vision-capable (allowed through).
+///
+/// `model_id` is resolved from the session's profile at call time; if the model
+/// changes between enqueue and drain (rare), the drain-time gate uses the
+/// *current* model — the intended behavior.
+#[must_use]
+pub fn evaluate_attachment_gate(
+    services: &Services,
+    state: &State,
+    session_id: &SessionId,
+    entry: &ChatEntry,
+) -> Option<ChatEntry> {
+    let models_dev = ModelsDevData::load(
+        services.paths.models_dev_user_path().as_path(),
+        services.paths.models_dev_system_path().as_path(),
+    );
+    let model_id = {
+        let guard = state.read();
+        guard
+            .session
+            .get(session_id)
+            .and_then(|s| s.profile().model.last_model())
+            .map(str::to_owned)
+    };
+    attachment_gate(model_id.as_deref(), entry, &models_dev)
 }
 
 /// Builds the `Error` entry shown when a model is not confirmed vision-capable.

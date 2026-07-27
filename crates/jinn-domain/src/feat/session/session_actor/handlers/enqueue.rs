@@ -220,21 +220,12 @@ impl SessionPersistenceActor {
             return false;
         }
 
-        let models_dev = crate::feat::provider_infra::ModelsDevData::load(
-            &self.services.paths.models_dev_user_path(),
-            &self.services.paths.models_dev_system_path(),
-        );
-        let model_id = {
-            let guard = self.state.read();
-            guard
-                .session
-                .get(session_id)
-                .and_then(|s| s.profile().model.last_model())
-                .map(str::to_owned)
-        };
-        let Some(error_entry) =
-            super::multimodal_gate::attachment_gate(model_id.as_deref(), entry, &models_dev)
-        else {
+        let Some(error_entry) = super::multimodal_gate::evaluate_attachment_gate(
+            &self.services,
+            &self.state,
+            session_id,
+            entry,
+        ) else {
             return false;
         };
 
