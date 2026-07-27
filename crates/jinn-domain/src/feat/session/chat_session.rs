@@ -38,8 +38,8 @@ use crate::protocol::{
     ChangeSource, ChatEntry, ChatEntryId, ChatEntryKind, ContextOverride, PinPosition, SessionId,
 };
 
-use crate::feat::context::prompt_template::{PendingPath, PathResolveContext};
 use crate::feat::context::prompt_template::PromptTemplateStore;
+use crate::feat::context::prompt_template::{PathResolveContext, PendingPath};
 use crate::feat::context::prompt_template::{expand_tokens, scan_at_paths_with_degraded};
 use crate::feat::session::entry_timing::EntryTiming;
 
@@ -3306,11 +3306,7 @@ pub(crate) fn expand_user_entry(
         // `handle_enqueue_user_message`), so blocking I/O stays in
         // `spawn_blocking`. The resolved paths are returned to the actor for
         // the async byte-reading + conversion phase.
-        let degraded_raw: Vec<String> = outcome
-            .degraded
-            .iter()
-            .map(|t| t.raw.clone())
-            .collect();
+        let degraded_raw: Vec<String> = outcome.degraded.iter().map(|t| t.raw.clone()).collect();
         let scanned = scan_at_paths_with_degraded(&token_expanded, ctx, &degraded_raw);
         *expanded = scanned.rewritten_text;
         pending_paths = scanned.pending_paths;

@@ -435,7 +435,11 @@ mod tests {
         // Then the path is still collected — proving scan did not touch the
         // filesystem to check existence.
         assert_eq!(
-            result.pending_paths.iter().map(|p| p.abs.clone()).collect::<Vec<_>>(),
+            result
+                .pending_paths
+                .iter()
+                .map(|p| p.abs.clone())
+                .collect::<Vec<_>>(),
             vec![PathBuf::from("/this/does/not/exist.png")]
         );
     }
@@ -572,7 +576,11 @@ mod tests {
             result.rewritten_text
         );
         assert_eq!(
-            result.pending_paths.iter().map(|p| p.abs.clone()).collect::<Vec<_>>(),
+            result
+                .pending_paths
+                .iter()
+                .map(|p| p.abs.clone())
+                .collect::<Vec<_>>(),
             vec![PathBuf::from(attachable)]
         );
     }

@@ -143,14 +143,18 @@ mod tests {
         let entry = entry_with_image();
 
         // When gating.
-        let blocked = attachment_gate(Some("my-custom-llama"), &entry, &models_dev).expect("blocked");
+        let blocked =
+            attachment_gate(Some("my-custom-llama"), &entry, &models_dev).expect("blocked");
 
         // Then the Error entry text names the model id AND points at models.dev / cache.
         let text = match &blocked.kind {
             ChatEntryKind::Error(t) => t.clone(),
             _ => panic!("expected an Error entry"),
         };
-        assert!(text.contains("my-custom-llama"), "must name the model id: {text}");
+        assert!(
+            text.contains("my-custom-llama"),
+            "must name the model id: {text}"
+        );
         assert!(
             text.contains("models.dev"),
             "must point the user at models.dev / the cache: {text}"
