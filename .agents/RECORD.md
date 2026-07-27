@@ -48,7 +48,8 @@ Entries are added or amended **only with human approval**.
 - (context) Context assembly builds the system prompt in priority order: skills block, pinned system entries, environment context, tool context.
 - (context) Pin splitting separates entries into TOP pins, BOTTOM pins, and working history based on pin position.
 - (context) The `context_files_scan_actor` walks the bounded ancestor chain, reads the first existing candidate (AGENTS.md / CLAUDE.md) per dir, and writes results into the session's discovered set.
-- (attachments) `@path` image resolution degrades on missing-file or non-image outcomes (the token stays literal and the turn dispatches), and only hard-blocks when a recognizable image fails conversion.
+- (attachments) `@path` image resolution degrades on missing-file or non-image outcomes (token stays literal, turn dispatches); only a recognizable image failing conversion hard-blocks. A user entry carrying attachments is blocked unless the active model is confirmed image-capable via models.dev — unknown models are blocked, not allowed.
+- (attachments) `@path` tokens in user entries are colored by resolution outcome in the chat render: green when attached as an image, red when degraded (missing file or not an image).
 - (context) `#name` prompt-template tokens in user text expand to the template body; `@path` tokens resolve to `file://` URIs against cwd/home **when the file is a readable image, otherwise the token is left as literal text**; both are consumed in a second expansion pass.
 - (dashboard) The dashboard tab tracks actor lifecycle (starting/running/dead) and browser-binary detection (Chrome vs bundled) for the web-fetch feature.
 - (dashboard) `frontend.dashboard` is owned by `DashboardActor`, fed exclusively by events; `DiscordStatusActor` republishes its gateway status as a `DiscordStatusUpdate` event rather than writing the dashboard directly.
@@ -100,7 +101,7 @@ Entries are added or amended **only with human approval**.
 - (session) A replacement session seeded on archive inherits reasoning effort from the global default.
 - (session) An empty session that was never interacted with is not persisted on archive.
 - (session) Archiving the last active session creates a new one; archiving an empty session removes and archives it; archiving the active session switches to the next one.
-- (session) Entry kinds round-trip through serialization; attachments are allowed on vision-capable or unknown models, and image-to-text-only models are blocked with an error entry.
+- (session) Entry kinds round-trip through serialization; image attachments are allowed only on models confirmed image-capable via models.dev — text-only and unknown models are blocked with an error entry.
 - (session) Model selection supports alloy (multi-provider) configs that round-trip through serde; `as_single` returns `None` for an alloy and the string for a single model.
 - (skills) A project skill overrides a global skill with the same name; the discovery walk collects ancestors least-local-first so most-local-wins is a later-overwrites-earlier pass.
 - (skills) Agent skills are discovered from `~/.agents/skills/*/SKILL.md` and `.agents/skills/*/SKILL.md`; project skills override global skills (most-local-wins).
