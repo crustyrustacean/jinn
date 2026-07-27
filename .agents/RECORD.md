@@ -145,6 +145,7 @@ Entries are added or amended **only with human approval**.
 - (ui) Text selection in the chat is modeled as a state machine (idle → dragging → active); selection can be forward or backward and both extract the same text.
 - (ui) The TUI tracks focus as a scope stack (`FocusScope`); keys resolve differently per scope, and the active scope determines which bindings are available (e.g. the dashboard scope has no chat-history or sidebar bindings).
 - (ui) The chat input popup narrows rows by typed prefix and renders directory entries with trailing slashes, plus empty/loading states.
+- (ui) The `@path` autocomplete popup window-scrolls its entries to keep the selected entry in view when the filtered list exceeds the popup height, matching the `#`/`/` popups.
 - (ui) The dashboard tab layout uses the full terminal width; the chat tab layout is the normal chat layout.
 - (ui) The sidebar can enter an interactive resize mode (via `sidebar_resize`) to adjust its width.
 - (ui) The sidebar has five sections — Persona, Pins, TaskList, McpServers, Sessions — with cyclic navigation.
