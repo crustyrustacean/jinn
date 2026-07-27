@@ -139,6 +139,26 @@ impl QueueActor {
         }
     }
 
+    /// Evaluates the vision-capability gate for a queued user entry carrying
+    /// attachments. Returns `Some(error_entry)` when the active model is not
+    /// confirmed image-capable (known text-only or unknown); `None` otherwise
+    /// (text-only entry, or a confirmed vision model).
+    ///
+    /// Mirrors [`SessionPersistenceActor::attachment_gate_blocks`] on the Idle
+    /// path, ensuring queued messages are gated identically.
+    fn evaluate_attachment_gate(
+        &self,
+        session_id: &SessionId,
+        entry: &crate::protocol::ChatEntry,
+    ) -> Option<crate::protocol::ChatEntry> {
+        crate::feat::session::session_actor::evaluate_attachment_gate(
+            &self.deps.services,
+            &self.state,
+            session_id,
+            entry,
+        )
+    }
+
     /// Dispatch a user message: push to history, set title, begin sending,
     /// emit SessionPhaseChanged (if the phase actually changed), assemble
     /// prompt, emit SendToLlmProvider, emit ChatEntrySubmitted, emit PersistSession.
@@ -147,6 +167,28 @@ impl QueueActor {
         session_id: &SessionId,
         entry: &crate::protocol::ChatEntry,
     ) {
+        // Vision gate: if the entry carries attachments but the active model
+        // is not confirmed image-capable, push entry + error and abort dispatch
+        // (no begin_sending, no re-enqueue). Mirrors the Idle-path gate.
+        if let Some(error_entry) = self.evaluate_attachment_gate(session_id, entry) {
+            self.state.with_session(&self.cap, |view| {
+                let session = view.session.map().get_or_create(session_id);
+                session.push_entry(entry.clone());
+                session.push_entry(error_entry);
+            });
+            self.publish(
+                crate::feat::session::protocol::history_appended::HistoryAppended {
+                    session_id: session_id.clone(),
+                },
+            )
+            .await;
+            self.publish(PersistSession {
+                session_id: session_id.clone(),
+            })
+            .await;
+            return;
+        }
+
         let (old_phase, new_phase) = {
             self.state.with_session(&self.cap, |view| {
                 let session = view.session.map().get_or_create(session_id);
@@ -505,6 +547,89 @@ mod tests {
         let state = actor.state.read();
         let session = state.session(&sid);
         assert_eq!(session.phase(), PhaseKind::Sending);
+    }
+
+    #[tokio::test]
+    async fn dispatch_user_message_keeps_degraded_token_literal_through_re_expand() {
+        // Given a resolved-but-queued entry carrying the degraded marker and a literal token.
+        let (actor, _audit) = create_actor().await;
+        let sid = session_id();
+        let token = "@/nonexistent/whatever";
+        let mut entry = ChatEntry::user(format!("describe {token}"));
+        // Simulate the post-resolution state: outcome set, expanded still containing the literal.
+        if let crate::protocol::ChatEntryKind::User { outcome, .. } = &mut entry.kind {
+            outcome
+                .degraded
+                .push(crate::feat::session::chat_entry::ResolvedToken {
+                    raw: "/nonexistent/whatever".to_owned(),
+                    abs: std::path::PathBuf::from("/nonexistent/whatever"),
+                });
+        }
+
+        // When dispatching (which calls push_entry -> expand_user_entry, re-running the scan).
+        actor.dispatch_user_message(&sid, &entry).await;
+
+        // Then the AI-facing expanded text keeps the literal token (no file:// revert).
+        let state = actor.state.read();
+        let session = state.session(&sid);
+        let expanded = session
+            .history()
+            .iter()
+            .rev()
+            .find_map(|e| match &e.kind {
+                crate::protocol::ChatEntryKind::User { expanded, .. } => Some(expanded.clone()),
+                _ => None,
+            })
+            .expect("user entry");
+        assert!(
+            expanded.contains(token),
+            "queue drain must keep degraded token literal: {expanded}"
+        );
+        assert!(
+            !expanded.contains("file://"),
+            "queue drain must not revert to file://: {expanded}"
+        );
+    }
+
+    #[tokio::test]
+    async fn dispatch_user_message_blocks_attachment_to_unknown_model() {
+        // Given a queued entry carrying an image attachment and an unknown model.
+        let (actor, audit) = create_actor().await;
+        let sid = session_id();
+        {
+            let mut state = actor.state.write_test_no_cap();
+            let session = state.session_mut_or_create(&sid);
+            session.profile_mut().model =
+                crate::feat::session::model_selection::ModelSelection::Single(
+                    "my-uncatalogued-llama".to_owned(),
+                );
+        }
+        // Build an entry that already carries an attachment (as if resolved).
+        let mut entry = ChatEntry::user("describe this");
+        if let crate::protocol::ChatEntryKind::User { attachments, .. } = &mut entry.kind {
+            attachments.push(jinn_provider::Attachment::image("image/png", vec![1, 2, 3]));
+        }
+
+        // When dispatching (queue drain).
+        actor.dispatch_user_message(&sid, &entry).await;
+
+        // Then an Error entry was pushed and no SendToLlmProvider was emitted
+        // (the turn is blocked, not re-dispatched).
+        let state = actor.state.read();
+        let session = state.session(&sid);
+        let has_error = session
+            .history()
+            .iter()
+            .any(|e| matches!(&e.kind, crate::protocol::ChatEntryKind::Error(_)));
+        assert!(
+            has_error,
+            "unknown model must block the attachment on drain"
+        );
+        drop(state);
+        assert!(
+            audit.of_type::<SendToLlmProvider>().is_empty(),
+            "blocked attachment must not dispatch"
+        );
     }
 
     #[tokio::test]

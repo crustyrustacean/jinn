@@ -553,7 +553,9 @@ impl<'a> HistoryRender<'a> {
 /// content-width only - the gutter is rendered as a separate column.
 pub fn entry_to_lines(entry: &ChatEntry, ctx: &RenderContext) -> Vec<Line<'static>> {
     match &entry.kind {
-        ChatEntryKind::User { display, .. } => user::to_lines(display, ctx),
+        ChatEntryKind::User {
+            display, outcome, ..
+        } => user::to_lines(display, outcome, ctx),
         ChatEntryKind::System(text) => system::to_lines(text, ctx),
         ChatEntryKind::Error(text) => error_entry::to_lines(text, ctx),
         ChatEntryKind::Actor { source, text } => actor::to_lines(source, text, ctx),

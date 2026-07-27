@@ -38,9 +38,9 @@ use crate::protocol::{
     ChangeSource, ChatEntry, ChatEntryId, ChatEntryKind, ContextOverride, PinPosition, SessionId,
 };
 
-use crate::feat::context::prompt_template::PathResolveContext;
 use crate::feat::context::prompt_template::PromptTemplateStore;
-use crate::feat::context::prompt_template::{expand_tokens, scan_at_paths};
+use crate::feat::context::prompt_template::{PathResolveContext, PendingPath};
+use crate::feat::context::prompt_template::{expand_tokens, scan_at_paths_with_degraded};
 use crate::feat::session::entry_timing::EntryTiming;
 
 /// Error returned when a streaming operation fails.
@@ -954,8 +954,9 @@ impl ChatSessionState {
     /// This is the same expansion `push_entry` applies, factored out so callers
     /// that need to inspect the expanded entry (e.g. the multimodal capability
     /// gate before dispatch) can run it ahead of `push_entry` without double
-    /// work. Expansion is idempotent: running it again inside `push_entry`
-    /// produces identical output (no `@path` tokens survive the first pass).
+    /// work. Expansion is idempotent: attachable `@path` tokens are rewritten
+    /// once on the first pass, while degraded tokens (already recorded in
+    /// [`ChatEntryKind::User::outcome`]) stay literal across re-expansion.
     pub fn expand_entry(&self, entry: &mut ChatEntry) {
         let ctx = PathResolveContext::new(&self.core.cwd, &self.core.home);
         expand_user_entry(
@@ -3282,22 +3283,31 @@ pub(crate) fn expand_user_entry(
     entry: &mut ChatEntry,
     store: &PromptTemplateStore,
     ctx: &PathResolveContext<'_>,
-) -> Vec<std::path::PathBuf> {
+) -> Vec<PendingPath> {
     let mut pending_paths = Vec::new();
     if let ChatEntryKind::User {
-        display, expanded, ..
+        display,
+        expanded,
+        outcome,
+        ..
     } = &mut entry.kind
     {
         // Pass 1: `#token` template expansion.
         let token_expanded = expand_tokens(display, store);
         // Pass 2: `@path` token rewriting — resolves paths against the session
-        // cwd/home and rewrites each `@path` to a `file://` URI. This is a
-        // pure-text transform; reading image bytes / classifying / filling
-        // `attachments` happens in the async session actor (see
+        // cwd/home and rewrites each attachable `@path` to a `file://` URI.
+        // Tokens previously marked degraded (missing file or not-an-image)
+        // via [`ChatEntryKind::User::outcome`] are left as their original literal
+        // text, which makes re-expansion idempotent: a resolved entry pushed
+        // a second time (e.g. via the queue path) keeps its literal `@path`
+        // tokens instead of being rewritten back to `(file://…)` links. This
+        // is a pure-text transform; reading image bytes / classifying /
+        // filling `attachments` happens in the async session actor (see
         // `handle_enqueue_user_message`), so blocking I/O stays in
         // `spawn_blocking`. The resolved paths are returned to the actor for
         // the async byte-reading + conversion phase.
-        let scanned = scan_at_paths(&token_expanded, ctx);
+        let degraded_raw: Vec<String> = outcome.degraded.iter().map(|t| t.raw.clone()).collect();
+        let scanned = scan_at_paths_with_degraded(&token_expanded, ctx, &degraded_raw);
         *expanded = scanned.rewritten_text;
         pending_paths = scanned.pending_paths;
     }
