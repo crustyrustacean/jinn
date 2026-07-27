@@ -16,6 +16,7 @@ use crate::feat::session::token_stats::TokenRecord;
 use crate::protocol::{ChatEntry, ChatEntryKind};
 
 use super::super::SessionPersistenceActor;
+use super::image_resolve::ResolveOutcome;
 use crate::feat::session::phase_machine::PhaseKind;
 
 /// Decision returned after inspecting session state in `EnqueueUserMessage`.
@@ -314,20 +315,28 @@ impl SessionPersistenceActor {
                 false
             }
             Ok(Ok(outcome)) => {
+                let ResolveOutcome {
+                    attachments,
+                    attached_paths,
+                    degraded_paths,
+                } = outcome;
                 if let ChatEntryKind::User {
                     attachments: entry_attachments,
+                    outcome: entry_outcome,
                     ..
                 } = &mut entry.kind
                 {
-                    *entry_attachments = outcome.attachments;
+                    *entry_attachments = attachments;
+                    // Record both outcome sets so re-expansion keeps degraded
+                    // tokens literal and the render can color attached vs
+                    // degraded `@path` tokens. Set unconditionally — an empty
+                    // (but non-default) marker keeps re-expansion idempotent for
+                    // fully-attached messages.
+                    *entry_outcome = crate::feat::session::chat_entry::AttachmentOutcome {
+                        attached: attached_paths,
+                        degraded: degraded_paths,
+                    };
                 }
-                // Record the degraded paths on the entry so re-expansion
-                // (push_entry / queue drain) leaves those `@path` tokens as
-                // literal text instead of rewriting them back to
-                // `(file://…)` links. Set unconditionally — an empty `Some`
-                // still marks the entry as resolved, keeping re-expansion
-                // idempotent for fully-attached messages.
-                entry.degraded_paths = Some(outcome.degraded_paths);
                 true
             }
             Ok(Err(report)) => {

@@ -136,6 +136,32 @@ pub struct ContextChangeEvent {
     pub timestamp: jiff::Timestamp,
 }
 
+/// Per-`@path` token resolution outcome for a user entry.
+///
+/// Recorded after `@path` resolution runs so the chat render can color each
+/// token by outcome (green = attached, red = degraded) and so re-expansion
+/// leaves degraded tokens as literal text. Empty (default) for plain-text
+/// messages and all non-`User` kinds.
+///
+/// OWNER: session-actor (set once during enqueue resolution).
+#[derive(Debug, Clone, Default, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
+pub struct AttachmentOutcome {
+    /// Paths that attached successfully as images.
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub attached: Vec<std::path::PathBuf>,
+    /// Paths that degraded (missing file or not a recognized image).
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub degraded: Vec<std::path::PathBuf>,
+}
+
+impl AttachmentOutcome {
+    /// Whether both outcome sets are empty (no resolution ran, or plain text).
+    #[must_use]
+    pub fn is_empty(&self) -> bool {
+        self.attached.is_empty() && self.degraded.is_empty()
+    }
+}
+
 /// A single entry in the chat history.
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct ChatEntry {
@@ -175,18 +201,6 @@ pub struct ChatEntry {
     /// `#[serde(default)]` - no schema migration is required.
     #[serde(default)]
     pub context_history: Vec<ContextChangeEvent>,
-
-    /// Resolved-image attachment marker, set after `@path` resolution runs.
-    ///
-    /// `Some(set)` records the paths that **degraded** (missing file or
-    /// not-a-recognized-image) so re-expansion leaves those `@path` tokens as
-    /// literal text instead of rewriting them back to `(file://…)` links.
-    /// `None` (default) means resolution has not run for this entry. Meaningful
-    /// only on `User` entries; `None` for all other kinds.
-    ///
-    /// OWNER: session-actor (set once during enqueue resolution).
-    #[serde(default, skip_serializing_if = "Option::is_none")]
-    pub degraded_paths: Option<Vec<std::path::PathBuf>>,
 }
 
 /// The kind of chat entry.
@@ -198,15 +212,10 @@ pub enum ChatEntryKind {
     /// `expanded` is the token-expanded text (sent to the LLM).
     /// When no prompt tokens are present, both fields are identical.
     User {
-        /// What the user typed (shown in UI, used for session titles).
         display: String,
-        /// Token-expanded text (sent to the LLM).
         expanded: String,
-        /// Non-text attachments (images, future media).
-        ///
-        /// Empty for plain-text messages. Old persisted entries without
-        /// this field deserialize to an empty vec (see `#[serde(default)]`).
         attachments: Vec<jinn_provider::Attachment>,
+        outcome: AttachmentOutcome,
     },
     /// A system-generated message (status updates, etc.).
     System(String),
@@ -313,11 +322,11 @@ impl ChatEntry {
                 display: t.clone(),
                 expanded: t,
                 attachments: Vec::new(),
+                outcome: AttachmentOutcome::default(),
             },
             pin_position: None,
             context_override: ContextOverride::Default,
             context_history: Vec::new(),
-            degraded_paths: None,
         }
     }
 
@@ -364,11 +373,11 @@ impl ChatEntry {
                 display: display.into(),
                 expanded: expanded.into(),
                 attachments: Vec::new(),
+                outcome: AttachmentOutcome::default(),
             },
             pin_position: None,
             context_override: ContextOverride::Default,
             context_history: Vec::new(),
-            degraded_paths: None,
         }
     }
 
@@ -385,7 +394,6 @@ impl ChatEntry {
             pin_position: None,
             context_override: ContextOverride::Default,
             context_history: Vec::new(),
-            degraded_paths: None,
         }
     }
 
@@ -402,7 +410,6 @@ impl ChatEntry {
             pin_position: None,
             context_override: ContextOverride::Default,
             context_history: Vec::new(),
-            degraded_paths: None,
         }
     }
 
@@ -419,7 +426,6 @@ impl ChatEntry {
             pin_position: None,
             context_override: ContextOverride::Default,
             context_history: Vec::new(),
-            degraded_paths: None,
         }
     }
 
@@ -440,7 +446,6 @@ impl ChatEntry {
             pin_position: None,
             context_override: ContextOverride::Default,
             context_history: Vec::new(),
-            degraded_paths: None,
         }
     }
 
@@ -457,7 +462,6 @@ impl ChatEntry {
             pin_position: None,
             context_override: ContextOverride::Default,
             context_history: Vec::new(),
-            degraded_paths: None,
         }
     }
 
@@ -480,7 +484,6 @@ impl ChatEntry {
             pin_position: None,
             context_override: ContextOverride::Default,
             context_history: Vec::new(),
-            degraded_paths: None,
         }
     }
 
@@ -507,7 +510,6 @@ impl ChatEntry {
             pin_position: None,
             context_override: ContextOverride::Default,
             context_history: Vec::new(),
-            degraded_paths: None,
         }
     }
 
@@ -524,7 +526,6 @@ impl ChatEntry {
             pin_position: None,
             context_override: ContextOverride::Default,
             context_history: Vec::new(),
-            degraded_paths: None,
         }
     }
 
@@ -557,7 +558,6 @@ impl ChatEntry {
             pin_position: None,
             context_override: ContextOverride::Default,
             context_history: Vec::new(),
-            degraded_paths: None,
         }
     }
 
@@ -580,7 +580,6 @@ impl ChatEntry {
             pin_position: None,
             context_override: ContextOverride::Default,
             context_history: Vec::new(),
-            degraded_paths: None,
         }
     }
 
@@ -636,7 +635,6 @@ impl ChatEntry {
             pin_position,
             context_override: ContextOverride::Default,
             context_history: Vec::new(),
-            degraded_paths: None,
         }
     }
     /// Set the context override, recording a [`ContextChangeEvent`] if and only if
@@ -961,6 +959,7 @@ impl Serialize for ChatEntryKind {
                 display,
                 expanded,
                 attachments,
+                outcome,
             } => {
                 #[derive(Serialize)]
                 struct UserData {
@@ -968,6 +967,8 @@ impl Serialize for ChatEntryKind {
                     expanded: String,
                     #[serde(default, skip_serializing_if = "Vec::is_empty")]
                     attachments: Vec<jinn_provider::Attachment>,
+                    #[serde(default, skip_serializing_if = "AttachmentOutcome::is_empty")]
+                    outcome: AttachmentOutcome,
                 }
                 let mut map = serializer.serialize_map(Some(1))?;
                 map.serialize_entry(
@@ -976,6 +977,7 @@ impl Serialize for ChatEntryKind {
                         display: display.clone(),
                         expanded: expanded.clone(),
                         attachments: attachments.clone(),
+                        outcome: outcome.clone(),
                     },
                 )?;
                 map.end()
@@ -1152,12 +1154,15 @@ impl<'de> Deserialize<'de> for ChatEntryKind {
                             expanded: String,
                             #[serde(default)]
                             attachments: Vec<jinn_provider::Attachment>,
+                            #[serde(default)]
+                            outcome: AttachmentOutcome,
                         }
                         let data: UserData = map.next_value()?;
                         Ok(ChatEntryKind::User {
                             display: data.display,
                             expanded: data.expanded,
                             attachments: data.attachments,
+                            outcome: data.outcome,
                         })
                     }
                     "System" => {
@@ -1439,6 +1444,7 @@ mod tests {
             display: "describe this".to_owned(),
             expanded: "describe this".to_owned(),
             attachments: vec![jinn_provider::Attachment::image("image/png", vec![1, 2, 3])],
+            outcome: AttachmentOutcome::default(),
         };
 
         // When serializing and deserializing.

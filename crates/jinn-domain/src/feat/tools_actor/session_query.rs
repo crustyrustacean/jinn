@@ -187,7 +187,6 @@ mod tests {
             pin_position: None,
             context_override: crate::feat::session::chat_entry::ContextOverride::Default,
             context_history: vec![],
-            degraded_paths: None,
         }
     }
 
@@ -237,12 +236,14 @@ mod tests {
                 display: "Hello world".to_owned(),
                 expanded: "Hello world".to_owned(),
                 attachments: Vec::new(),
+                outcome: crate::feat::session::chat_entry::AttachmentOutcome::default(),
             }),
             make_entry(ChatEntryKind::Assistant("Goodbye moon".to_owned())),
             make_entry(ChatEntryKind::User {
                 display: "Hello again".to_owned(),
                 expanded: "Hello again".to_owned(),
                 attachments: Vec::new(),
+                outcome: crate::feat::session::chat_entry::AttachmentOutcome::default(),
             }),
         ];
         let (state, session_id) = make_state_with_history(entries);

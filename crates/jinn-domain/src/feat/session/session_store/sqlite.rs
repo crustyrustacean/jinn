@@ -777,11 +777,13 @@ fn serialize_lean_kind(kind: &ChatEntryKind) -> String {
             display,
             expanded,
             attachments,
+            outcome,
         } if !attachments.is_empty() => {
             let lean = ChatEntryKind::User {
                 display: display.clone(),
                 expanded: expanded.clone(),
                 attachments: Vec::new(),
+                outcome: outcome.clone(),
             };
             serde_json::to_string(&lean).unwrap_or_else(|_| "{}".to_owned())
         }
@@ -1177,15 +1179,18 @@ fn entry_from_joined(joined: JoinedEntry, attachments: Vec<Attachment>) -> ChatE
         tracing::warn!(entry_id = %joined.entry_id, error = %e, "failed to deserialize entry kind");
         ChatEntryKind::Error(format!("corrupt entry: {e}"))
     });
-    // Hydrate attachment blobs into the kind. Non-user kinds ignore the blobs.
     if let ChatEntryKind::User {
-        display, expanded, ..
+        display,
+        expanded,
+        outcome,
+        ..
     } = &kind
     {
         kind = ChatEntryKind::User {
             display: display.clone(),
             expanded: expanded.clone(),
             attachments,
+            outcome: outcome.clone(),
         };
     }
     let pin_position = joined.pin_position.as_deref().and_then(|s| match s {

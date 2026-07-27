@@ -956,7 +956,7 @@ impl ChatSessionState {
     /// gate before dispatch) can run it ahead of `push_entry` without double
     /// work. Expansion is idempotent: attachable `@path` tokens are rewritten
     /// once on the first pass, while degraded tokens (already recorded in
-    /// [`ChatEntry::degraded_paths`]) stay literal across re-expansion.
+    /// [`ChatEntryKind::User::outcome`]) stay literal across re-expansion.
     pub fn expand_entry(&self, entry: &mut ChatEntry) {
         let ctx = PathResolveContext::new(&self.core.cwd, &self.core.home);
         expand_user_entry(
@@ -3286,7 +3286,10 @@ pub(crate) fn expand_user_entry(
 ) -> Vec<std::path::PathBuf> {
     let mut pending_paths = Vec::new();
     if let ChatEntryKind::User {
-        display, expanded, ..
+        display,
+        expanded,
+        outcome,
+        ..
     } = &mut entry.kind
     {
         // Pass 1: `#token` template expansion.
@@ -3294,7 +3297,7 @@ pub(crate) fn expand_user_entry(
         // Pass 2: `@path` token rewriting — resolves paths against the session
         // cwd/home and rewrites each attachable `@path` to a `file://` URI.
         // Tokens previously marked degraded (missing file or not-an-image)
-        // via [`ChatEntry::degraded_paths`] are left as their original literal
+        // via [`ChatEntryKind::User::outcome`] are left as their original literal
         // text, which makes re-expansion idempotent: a resolved entry pushed
         // a second time (e.g. via the queue path) keeps its literal `@path`
         // tokens instead of being rewritten back to `(file://…)` links. This
@@ -3303,7 +3306,7 @@ pub(crate) fn expand_user_entry(
         // `handle_enqueue_user_message`), so blocking I/O stays in
         // `spawn_blocking`. The resolved paths are returned to the actor for
         // the async byte-reading + conversion phase.
-        let degraded = entry.degraded_paths.as_deref().unwrap_or_default();
+        let degraded = outcome.degraded.as_slice();
         let scanned = scan_at_paths_with_degraded(&token_expanded, ctx, degraded);
         *expanded = scanned.rewritten_text;
         pending_paths = scanned.pending_paths;

@@ -263,6 +263,7 @@ fn build_steer_mutations(
             display: text.clone(),
             expanded: text,
             attachments: Vec::new(),
+            outcome: crate::feat::session::chat_entry::AttachmentOutcome::default(),
         },
         None,
     );
@@ -329,6 +330,7 @@ mod tests {
                 display: format!("{STEER_SENTINEL} reminder"),
                 expanded: format!("{STEER_SENTINEL} reminder"),
                 attachments: Vec::new(),
+                outcome: crate::feat::session::chat_entry::AttachmentOutcome::default(),
             },
             None,
         )
