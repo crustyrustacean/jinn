@@ -1,3 +1,8 @@
+## 2026-07-27 v0.103.0
+
+- `@` behavior now allows sending a message if the attachment cannot be found. Missing files are highlighted in red.
+- `@` popup now scrolls.
+
 ## 2026-07-25 v0.102.0
 
 - Fix slow startup performance on `install` and `config` commands.
