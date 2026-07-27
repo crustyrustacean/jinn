@@ -41,6 +41,13 @@ pub struct ImageResolveError;
 pub(super) struct ResolveOutcome {
     /// Successfully resolved image attachments, in path order.
     pub attachments: Vec<Attachment>,
+    /// Source paths of the successfully attached images, in path order.
+    ///
+    /// Pairs positionally with [`attachments`]; used to build the per-token
+    /// outcome marker that colors attached `@path` tokens in the render.
+    ///
+    /// [`attachments`]: ResolveOutcome::attachments
+    pub attached_paths: Vec<std::path::PathBuf>,
     /// Paths that degraded (missing file or not-an-image), in path order.
     ///
     /// The caller leaves these tokens as literal text instead of attaching.
@@ -59,15 +66,20 @@ pub(super) fn resolve_attachments_blocking(
     converter: &ImageConverterService,
 ) -> Result<ResolveOutcome, Report<ImageResolveError>> {
     let mut attachments = Vec::with_capacity(paths.len());
+    let mut attached_paths = Vec::with_capacity(paths.len());
     let mut degraded_paths = Vec::new();
     for path in paths {
         match resolve_one_blocking(path, converter)? {
-            OneOutcome::Attached(attachment) => attachments.push(attachment),
+            OneOutcome::Attached(attachment) => {
+                attachments.push(attachment);
+                attached_paths.push(path.clone());
+            }
             OneOutcome::Degraded => degraded_paths.push(path.clone()),
         }
     }
     Ok(ResolveOutcome {
         attachments,
+        attached_paths,
         degraded_paths,
     })
 }

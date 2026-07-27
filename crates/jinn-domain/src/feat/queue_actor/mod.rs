@@ -514,8 +514,12 @@ mod tests {
         let sid = session_id();
         let token = "@/nonexistent/whatever";
         let mut entry = ChatEntry::user(format!("describe {token}"));
-        // Simulate the post-resolution state: marker set, expanded still containing the literal.
-        entry.degraded_paths = Some(vec![std::path::PathBuf::from("/nonexistent/whatever")]);
+        // Simulate the post-resolution state: outcome set, expanded still containing the literal.
+        if let crate::protocol::ChatEntryKind::User { outcome, .. } = &mut entry.kind {
+            outcome
+                .degraded
+                .push(std::path::PathBuf::from("/nonexistent/whatever"));
+        }
 
         // When dispatching (which calls push_entry -> expand_user_entry, re-running the scan).
         actor.dispatch_user_message(&sid, &entry).await;

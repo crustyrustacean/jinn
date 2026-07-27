@@ -519,6 +519,7 @@ fn enqueue_message_adds_to_queue() {
             display: "hello".to_owned(),
             expanded: "hello".to_owned(),
             attachments: Vec::new(),
+            outcome: crate::feat::session::chat_entry::AttachmentOutcome::default(),
         }
     ));
 }
@@ -549,6 +550,7 @@ fn dequeue_message_returns_first_in_order() {
             display: "first".to_owned(),
             expanded: "first".to_owned(),
             attachments: Vec::new(),
+            outcome: crate::feat::session::chat_entry::AttachmentOutcome::default(),
         }
     );
     assert_eq!(session.queue_len(), 1);
@@ -601,6 +603,7 @@ fn drain_returns_all_in_order() {
             display: "a".to_owned(),
             expanded: "a".to_owned(),
             attachments: Vec::new(),
+            outcome: crate::feat::session::chat_entry::AttachmentOutcome::default(),
         }
     );
     assert_eq!(
@@ -609,6 +612,7 @@ fn drain_returns_all_in_order() {
             display: "b".to_owned(),
             expanded: "b".to_owned(),
             attachments: Vec::new(),
+            outcome: crate::feat::session::chat_entry::AttachmentOutcome::default(),
         }
     );
     assert_eq!(
@@ -617,6 +621,7 @@ fn drain_returns_all_in_order() {
             display: "c".to_owned(),
             expanded: "c".to_owned(),
             attachments: Vec::new(),
+            outcome: crate::feat::session::chat_entry::AttachmentOutcome::default(),
         }
     );
 }
@@ -1548,6 +1553,7 @@ fn selected_entry_returns_entry_at_index() {
             display: "b".to_owned(),
             expanded: "b".to_owned(),
             attachments: Vec::new(),
+            outcome: crate::feat::session::chat_entry::AttachmentOutcome::default(),
         }
     );
 }

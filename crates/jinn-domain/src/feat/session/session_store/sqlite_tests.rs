@@ -77,9 +77,13 @@ async fn degraded_token_expanded_survives_save_and_reload() {
     let token = "@/nonexistent/whatever";
     let mut session = ChatSessionState::new();
     session.set_session_id(session_id.clone());
-    session.set_title("degraded".to_owned());
     let mut entry = ChatEntry::user(format!("describe {token}"));
-    entry.degraded_paths = Some(vec![std::path::PathBuf::from("/nonexistent/whatever")]);
+    // Simulate the post-resolution state: outcome set, expanded still containing the literal.
+    if let crate::protocol::ChatEntryKind::User { outcome, .. } = &mut entry.kind {
+        outcome
+            .degraded
+            .push(std::path::PathBuf::from("/nonexistent/whatever"));
+    }
     session.push_entry(entry);
 
     // When saving and reloading the session.
