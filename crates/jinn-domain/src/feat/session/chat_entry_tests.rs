@@ -44,6 +44,7 @@ fn user_entry_has_user_kind() {
             display: "hello".to_owned(),
             expanded: "hello".to_owned(),
             attachments: Vec::new(),
+            outcome: crate::feat::session::chat_entry::AttachmentOutcome::default(),
         }
     );
 }

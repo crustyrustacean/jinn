@@ -22,6 +22,8 @@ mod helpers;
 
 pub use handlers::lifecycle::setup_running_msg;
 
+pub(crate) use handlers::multimodal_gate::evaluate_attachment_gate;
+
 use kameo::prelude::{Actor, ActorRef, Context, Message};
 
 use crate::common::actor_deps::{ActorDeps, BusPublish};

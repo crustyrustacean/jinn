@@ -136,6 +136,50 @@ pub struct ContextChangeEvent {
     pub timestamp: jiff::Timestamp,
 }
 
+/// Per-`@path` token resolution outcome for a user entry.
+///
+// Recorded after `@path` resolution runs so the chat render can color each
+// token by outcome (green = attached, red = degraded) and so re-expansion
+// leaves degraded tokens as literal text. Empty (default) for plain-text
+// messages and all non-`User` kinds.
+//
+// OWNER: session-actor (set once during enqueue resolution).
+#[derive(Debug, Clone, Default, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
+pub struct AttachmentOutcome {
+    /// `@path` tokens that attached successfully as images.
+    ///
+    /// Each entry pairs the literal token body (as the user typed it, e.g.
+    /// `img.png`, `~/photo.png`, `/abs/x.heic`) with the absolute path that
+    /// was resolved and attached. The literal is the render-time key into the
+    /// display text; the absolute path is what actually got attached.
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub attached: Vec<ResolvedToken>,
+    /// `@path` tokens that degraded (missing file or not a recognized image).
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub degraded: Vec<ResolvedToken>,
+}
+
+/// A resolved `@path` token: the literal text the user typed, paired with the
+/// absolute path it resolved to.
+///
+// Resolution happens exactly once at enqueue; the render layer reads this
+// frozen result and never touches the filesystem or the session cwd/home.
+#[derive(Debug, Clone, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
+pub struct ResolvedToken {
+    /// The literal token body as it appears in the display text (after the `@`).
+    pub raw: String,
+    /// The absolute path the token resolved to at enqueue time.
+    pub abs: std::path::PathBuf,
+}
+
+impl AttachmentOutcome {
+    /// Whether both outcome sets are empty (no resolution ran, or plain text).
+    #[must_use]
+    pub fn is_empty(&self) -> bool {
+        self.attached.is_empty() && self.degraded.is_empty()
+    }
+}
+
 /// A single entry in the chat history.
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct ChatEntry {
@@ -186,15 +230,10 @@ pub enum ChatEntryKind {
     /// `expanded` is the token-expanded text (sent to the LLM).
     /// When no prompt tokens are present, both fields are identical.
     User {
-        /// What the user typed (shown in UI, used for session titles).
         display: String,
-        /// Token-expanded text (sent to the LLM).
         expanded: String,
-        /// Non-text attachments (images, future media).
-        ///
-        /// Empty for plain-text messages. Old persisted entries without
-        /// this field deserialize to an empty vec (see `#[serde(default)]`).
         attachments: Vec<jinn_provider::Attachment>,
+        outcome: AttachmentOutcome,
     },
     /// A system-generated message (status updates, etc.).
     System(String),
@@ -301,6 +340,7 @@ impl ChatEntry {
                 display: t.clone(),
                 expanded: t,
                 attachments: Vec::new(),
+                outcome: AttachmentOutcome::default(),
             },
             pin_position: None,
             context_override: ContextOverride::Default,
@@ -351,6 +391,7 @@ impl ChatEntry {
                 display: display.into(),
                 expanded: expanded.into(),
                 attachments: Vec::new(),
+                outcome: AttachmentOutcome::default(),
             },
             pin_position: None,
             context_override: ContextOverride::Default,
@@ -936,6 +977,7 @@ impl Serialize for ChatEntryKind {
                 display,
                 expanded,
                 attachments,
+                outcome,
             } => {
                 #[derive(Serialize)]
                 struct UserData {
@@ -943,6 +985,8 @@ impl Serialize for ChatEntryKind {
                     expanded: String,
                     #[serde(default, skip_serializing_if = "Vec::is_empty")]
                     attachments: Vec<jinn_provider::Attachment>,
+                    #[serde(default, skip_serializing_if = "AttachmentOutcome::is_empty")]
+                    outcome: AttachmentOutcome,
                 }
                 let mut map = serializer.serialize_map(Some(1))?;
                 map.serialize_entry(
@@ -951,6 +995,7 @@ impl Serialize for ChatEntryKind {
                         display: display.clone(),
                         expanded: expanded.clone(),
                         attachments: attachments.clone(),
+                        outcome: outcome.clone(),
                     },
                 )?;
                 map.end()
@@ -1127,12 +1172,15 @@ impl<'de> Deserialize<'de> for ChatEntryKind {
                             expanded: String,
                             #[serde(default)]
                             attachments: Vec<jinn_provider::Attachment>,
+                            #[serde(default)]
+                            outcome: AttachmentOutcome,
                         }
                         let data: UserData = map.next_value()?;
                         Ok(ChatEntryKind::User {
                             display: data.display,
                             expanded: data.expanded,
                             attachments: data.attachments,
+                            outcome: data.outcome,
                         })
                     }
                     "System" => {
@@ -1414,6 +1462,7 @@ mod tests {
             display: "describe this".to_owned(),
             expanded: "describe this".to_owned(),
             attachments: vec![jinn_provider::Attachment::image("image/png", vec![1, 2, 3])],
+            outcome: AttachmentOutcome::default(),
         };
 
         // When serializing and deserializing.
