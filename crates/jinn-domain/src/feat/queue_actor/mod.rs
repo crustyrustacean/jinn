@@ -139,6 +139,37 @@ impl QueueActor {
         }
     }
 
+    /// Evaluates the vision-capability gate for a queued user entry carrying
+    /// attachments. Returns `Some(error_entry)` when the active model is not
+    /// confirmed image-capable (known text-only or unknown); `None` otherwise
+    /// (text-only entry, or a confirmed vision model).
+    ///
+    /// Mirrors [`SessionPersistenceActor::attachment_gate_blocks`] on the Idle
+    /// path, ensuring queued messages are gated identically.
+    fn evaluate_attachment_gate(
+        &self,
+        session_id: &SessionId,
+        entry: &crate::protocol::ChatEntry,
+    ) -> Option<crate::protocol::ChatEntry> {
+        let models_dev = crate::feat::provider_infra::ModelsDevData::load(
+            &self.deps.services.paths.models_dev_user_path(),
+            &self.deps.services.paths.models_dev_system_path(),
+        );
+        let model_id = {
+            let guard = self.state.read();
+            guard
+                .session
+                .get(session_id)
+                .and_then(|s| s.profile().model.last_model())
+                .map(str::to_owned)
+        };
+        crate::feat::session::session_actor::attachment_gate(
+            model_id.as_deref(),
+            entry,
+            &models_dev,
+        )
+    }
+
     /// Dispatch a user message: push to history, set title, begin sending,
     /// emit SessionPhaseChanged (if the phase actually changed), assemble
     /// prompt, emit SendToLlmProvider, emit ChatEntrySubmitted, emit PersistSession.
@@ -147,6 +178,28 @@ impl QueueActor {
         session_id: &SessionId,
         entry: &crate::protocol::ChatEntry,
     ) {
+        // Vision gate: if the entry carries attachments but the active model
+        // is not confirmed image-capable, push entry + error and abort dispatch
+        // (no begin_sending, no re-enqueue). Mirrors the Idle-path gate.
+        if let Some(error_entry) = self.evaluate_attachment_gate(session_id, entry) {
+            self.state.with_session(&self.cap, |view| {
+                let session = view.session.map().get_or_create(session_id);
+                session.push_entry(entry.clone());
+                session.push_entry(error_entry);
+            });
+            self.publish(
+                crate::feat::session::protocol::history_appended::HistoryAppended {
+                    session_id: session_id.clone(),
+                },
+            )
+            .await;
+            self.publish(PersistSession {
+                session_id: session_id.clone(),
+            })
+            .await;
+            return;
+        }
+
         let (old_phase, new_phase) = {
             self.state.with_session(&self.cap, |view| {
                 let session = view.session.map().get_or_create(session_id);
