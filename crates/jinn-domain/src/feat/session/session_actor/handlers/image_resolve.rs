@@ -348,7 +348,8 @@ mod tests {
         let converter = service(true, false);
 
         // When resolving both.
-        let result = resolve_attachments_blocking(&[pending(png_path), pending(heic_path)], &converter);
+        let result =
+            resolve_attachments_blocking(&[pending(png_path), pending(heic_path)], &converter);
 
         // Then two image/png attachments are returned (none degraded).
         let outcome = result.expect("resolve");
@@ -368,7 +369,10 @@ mod tests {
         let converter = service(true, false);
 
         // When resolving both.
-        let result = resolve_attachments_blocking(&[pending(png_path), pending(missing_path.clone())], &converter);
+        let result = resolve_attachments_blocking(
+            &[pending(png_path), pending(missing_path.clone())],
+            &converter,
+        );
 
         // Then one attachment and one degraded path; no error.
         let outcome = result.expect("resolve");

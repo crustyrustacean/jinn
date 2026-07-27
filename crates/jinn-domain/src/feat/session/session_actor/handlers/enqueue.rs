@@ -333,10 +333,8 @@ impl SessionPersistenceActor {
                     // degraded `@path` tokens. Set unconditionally — an empty
                     // (but non-default) marker keeps re-expansion idempotent for
                     // fully-attached messages.
-                    *entry_outcome = crate::feat::session::chat_entry::AttachmentOutcome {
-                        attached,
-                        degraded,
-                    };
+                    *entry_outcome =
+                        crate::feat::session::chat_entry::AttachmentOutcome { attached, degraded };
                 }
                 true
             }
@@ -989,6 +987,7 @@ mod tests {
 
     #[tokio::test]
     async fn at_path_image_to_unknown_model_is_blocked_with_error_entry() {
+        use crate::feat::session::model_selection::ModelSelection;
         // Given an idle session whose active model is NOT in models.dev (unknown).
         let (actor, state, audit) = create_actor().await;
         let session_id = {
@@ -997,7 +996,6 @@ mod tests {
             guard.session.active_session_id().clone()
         };
         // Set a model id but write NO models.dev entry for it.
-        use crate::feat::session::model_selection::ModelSelection;
         {
             let mut guard = state.write_test_no_cap();
             guard
@@ -1037,6 +1035,7 @@ mod tests {
 
     #[tokio::test]
     async fn text_only_message_to_unknown_model_dispatches_normally() {
+        use crate::feat::session::model_selection::ModelSelection;
         // Given an idle session whose active model is unknown AND a text-only message.
         let (actor, state, audit) = create_actor().await;
         let session_id = {
@@ -1044,7 +1043,6 @@ mod tests {
             let _session = guard.active_session_mut();
             guard.session.active_session_id().clone()
         };
-        use crate::feat::session::model_selection::ModelSelection;
         {
             let mut guard = state.write_test_no_cap();
             guard

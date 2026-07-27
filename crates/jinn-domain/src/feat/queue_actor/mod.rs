@@ -569,10 +569,12 @@ mod tests {
         let mut entry = ChatEntry::user(format!("describe {token}"));
         // Simulate the post-resolution state: outcome set, expanded still containing the literal.
         if let crate::protocol::ChatEntryKind::User { outcome, .. } = &mut entry.kind {
-            outcome.degraded.push(crate::feat::session::chat_entry::ResolvedToken {
-                raw: "/nonexistent/whatever".to_owned(),
-                abs: std::path::PathBuf::from("/nonexistent/whatever"),
-            });
+            outcome
+                .degraded
+                .push(crate::feat::session::chat_entry::ResolvedToken {
+                    raw: "/nonexistent/whatever".to_owned(),
+                    abs: std::path::PathBuf::from("/nonexistent/whatever"),
+                });
         }
 
         // When dispatching (which calls push_entry -> expand_user_entry, re-running the scan).
@@ -630,7 +632,10 @@ mod tests {
             .history()
             .iter()
             .any(|e| matches!(&e.kind, crate::protocol::ChatEntryKind::Error(_)));
-        assert!(has_error, "unknown model must block the attachment on drain");
+        assert!(
+            has_error,
+            "unknown model must block the attachment on drain"
+        );
         drop(state);
         assert!(
             audit.of_type::<SendToLlmProvider>().is_empty(),

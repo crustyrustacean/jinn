@@ -82,10 +82,7 @@ fn color_at_path_tokens(spans: &mut Vec<Span<'static>>, token_colors: &[(String,
 }
 
 /// Splits a single span around any `@raw` occurrence, recoloring the match.
-fn split_and_recolor(
-    span: Span<'static>,
-    token_colors: &[(String, Color)],
-) -> Vec<Span<'static>> {
+fn split_and_recolor(span: Span<'static>, token_colors: &[(String, Color)]) -> Vec<Span<'static>> {
     let mut produced = Vec::new();
     let mut current = span;
     loop {
@@ -94,19 +91,19 @@ fn split_and_recolor(
             produced.push(current);
             break;
         };
-        let before_end = needle_idx;
-        let after_start = needle_idx + needle_len;
+        let (before, matched_and_rest) = current.content.split_at(needle_idx);
+        let (token_text, remainder) = matched_and_rest.split_at(needle_len);
         // Emit the text before the token, if any, preserving original style.
-        if before_end > 0 {
-            let before = current.content[..before_end].to_owned();
-            produced.push(Span::styled(before, current.style));
+        if !before.is_empty() {
+            produced.push(Span::styled(before.to_owned(), current.style));
         }
         // Emit the recolored token, patched over the original style.
-        let token_text = current.content[needle_idx..after_start].to_owned();
-        produced.push(Span::styled(token_text, current.style.patch(Style::default().fg(color))));
+        produced.push(Span::styled(
+            token_text.to_owned(),
+            current.style.patch(Style::default().fg(color)),
+        ));
         // Continue scanning the remainder for further matches.
-        let remainder = current.content[after_start..].to_owned();
-        current = Span::styled(remainder, current.style);
+        current = Span::styled(remainder.to_owned(), current.style);
     }
     produced
 }
@@ -125,7 +122,12 @@ fn earliest_match(text: &str, token_colors: &[(String, Color)]) -> Option<(usize
 
 #[cfg(test)]
 mod tests {
-    #![allow(clippy::expect_used, clippy::panic, clippy::indexing_slicing, reason = "test code")]
+    #![allow(
+        clippy::expect_used,
+        clippy::panic,
+        clippy::indexing_slicing,
+        reason = "test code"
+    )]
     use super::*;
     use crate::feat::session::chat_entry::{AttachmentOutcome, ResolvedToken};
     use crate::feat::ui::chat_log::shared::RenderContext;
@@ -183,7 +185,10 @@ mod tests {
         let lines = to_lines("describe @whatever here", &outcome, &ctx());
 
         // Then the @whatever token uses the error_text (red) foreground.
-        assert_eq!(token_span(&lines, "@whatever"), Some(ctx().theme.error_text));
+        assert_eq!(
+            token_span(&lines, "@whatever"),
+            Some(ctx().theme.error_text)
+        );
     }
 
     #[test]
@@ -201,7 +206,10 @@ mod tests {
         let lines = to_lines("see @notes.txt", &outcome, &ctx());
 
         // Then the @notes.txt token uses the error_text (red) foreground.
-        assert_eq!(token_span(&lines, "@notes.txt"), Some(ctx().theme.error_text));
+        assert_eq!(
+            token_span(&lines, "@notes.txt"),
+            Some(ctx().theme.error_text)
+        );
     }
 
     #[test]
@@ -215,9 +223,10 @@ mod tests {
         let lines = to_lines("contact foo@bar.com", &outcome, &ctx());
 
         // Then no span carries the success or error_text color.
-        let any_special = lines.iter().flat_map(|l| l.spans.iter()).any(|s| {
-            matches!(s.style.fg, Some(c) if c == theme.success || c == theme.error_text)
-        });
+        let any_special = lines
+            .iter()
+            .flat_map(|l| l.spans.iter())
+            .any(|s| matches!(s.style.fg, Some(c) if c == theme.success || c == theme.error_text));
         assert!(!any_special, "email-style @ must not be outcome-colored");
     }
 
