@@ -17,8 +17,9 @@ use std::path::Path;
 
 use error_stack::{Report, ResultExt};
 
-use crate::feat::context::prompt_template::{ImageKind, classify_image_bytes};
+use crate::feat::context::prompt_template::{ImageKind, PendingPath, classify_image_bytes};
 use crate::feat::image_convert::ImageConverterService;
+use crate::feat::session::chat_entry::ResolvedToken;
 use jinn_provider::Attachment;
 
 /// Errors that can occur while resolving `@path` image attachments.
@@ -30,57 +31,63 @@ pub struct ImageResolveError;
 ///
 /// Attachable images (native or successfully converted) end up in
 /// [`attachments`]. Paths that are **not** attachable — the file is missing,
-/// or it exists but is not a recognized image — end up in [`degraded_paths`]
+/// or it exists but is not a recognized image — end up in [`degraded`]
 /// and are left as literal text in the message. A conversion failure on a
 /// *recognizable* image does **not** degrade; it is a hard error (see the
 /// `Result`-returning entry point).
 ///
 /// [`attachments`]: ResolveOutcome::attachments
-/// [`degraded_paths`]: ResolveOutcome::degraded_paths
+/// [`degraded`]: ResolveOutcome::degraded
 #[derive(Debug, Default, Clone, PartialEq, Eq)]
 pub(super) struct ResolveOutcome {
     /// Successfully resolved image attachments, in path order.
     pub attachments: Vec<Attachment>,
-    /// Source paths of the successfully attached images, in path order.
+    /// Resolved tokens that attached successfully as images, in order.
     ///
     /// Pairs positionally with [`attachments`]; used to build the per-token
     /// outcome marker that colors attached `@path` tokens in the render.
     ///
     /// [`attachments`]: ResolveOutcome::attachments
-    pub attached_paths: Vec<std::path::PathBuf>,
-    /// Paths that degraded (missing file or not-an-image), in path order.
+    pub attached: Vec<ResolvedToken>,
+    /// Resolved tokens that degraded (missing file or not-an-image), in order.
     ///
     /// The caller leaves these tokens as literal text instead of attaching.
-    pub degraded_paths: Vec<std::path::PathBuf>,
+    pub degraded: Vec<ResolvedToken>,
 }
 
 /// Reads, classifies, and (if needed) converts each path into an
 /// [`Attachment`]. Missing files and non-image files **degrade** (they land in
-/// [`ResolveOutcome::degraded_paths`] and do not abort the batch); a
+/// [`ResolveOutcome::degraded`] and do not abort the batch); a
 /// conversion failure on a *recognizable* image is a hard error (`Err`),
 /// since the user clearly intended an image attachment there.
 ///
 /// This is a blocking function — callers must run it inside `spawn_blocking`.
 pub(super) fn resolve_attachments_blocking(
-    paths: &[std::path::PathBuf],
+    paths: &[PendingPath],
     converter: &ImageConverterService,
 ) -> Result<ResolveOutcome, Report<ImageResolveError>> {
     let mut attachments = Vec::with_capacity(paths.len());
-    let mut attached_paths = Vec::with_capacity(paths.len());
-    let mut degraded_paths = Vec::new();
-    for path in paths {
-        match resolve_one_blocking(path, converter)? {
+    let mut attached = Vec::with_capacity(paths.len());
+    let mut degraded = Vec::new();
+    for p in paths {
+        match resolve_one_blocking(&p.abs, converter)? {
             OneOutcome::Attached(attachment) => {
                 attachments.push(attachment);
-                attached_paths.push(path.clone());
+                attached.push(ResolvedToken {
+                    raw: p.raw.clone(),
+                    abs: p.abs.clone(),
+                });
             }
-            OneOutcome::Degraded => degraded_paths.push(path.clone()),
+            OneOutcome::Degraded => degraded.push(ResolvedToken {
+                raw: p.raw.clone(),
+                abs: p.abs.clone(),
+            }),
         }
     }
     Ok(ResolveOutcome {
         attachments,
-        attached_paths,
-        degraded_paths,
+        attached,
+        degraded,
     })
 }
 
@@ -209,6 +216,16 @@ mod tests {
         b"\x89PNG\r\n\x1a\nbody".to_vec()
     }
 
+    /// Wraps a resolved path in a `PendingPath` with the basename as the raw
+    /// token body — sufficient for resolver tests (only `abs` drives I/O).
+    fn pending(path: impl Into<PathBuf>) -> PendingPath {
+        let abs = path.into();
+        let raw = abs
+            .file_name()
+            .map(|n| n.to_string_lossy().into_owned())
+            .unwrap_or_default();
+        PendingPath { raw, abs }
+    }
     #[test]
     fn native_png_attaches_without_conversion() {
         // Given a native PNG file.
@@ -218,13 +235,13 @@ mod tests {
         let converter = service(true, false);
 
         // When resolving.
-        let result = resolve_attachments_blocking(std::slice::from_ref(&path), &converter);
+        let result = resolve_attachments_blocking(&[pending(path)], &converter);
 
         // Then exactly one image/png attachment is returned (none degraded).
         let outcome = result.expect("resolve");
         assert_eq!(outcome.attachments.len(), 1);
         assert_eq!(outcome.attachments[0].media_type(), "image/png");
-        assert!(outcome.degraded_paths.is_empty());
+        assert!(outcome.degraded.is_empty());
     }
 
     #[test]
@@ -241,13 +258,13 @@ mod tests {
         let converter = service(true, false);
 
         // When resolving.
-        let result = resolve_attachments_blocking(std::slice::from_ref(&path), &converter);
+        let result = resolve_attachments_blocking(&[pending(path)], &converter);
 
         // Then a converted image/png attachment is returned (none degraded).
         let outcome = result.expect("resolve");
         assert_eq!(outcome.attachments.len(), 1);
         assert_eq!(outcome.attachments[0].media_type(), "image/png");
-        assert!(outcome.degraded_paths.is_empty());
+        assert!(outcome.degraded.is_empty());
     }
 
     #[test]
@@ -261,7 +278,7 @@ mod tests {
         let converter = service(false, false);
 
         // When resolving.
-        let result = resolve_attachments_blocking(std::slice::from_ref(&path), &converter);
+        let result = resolve_attachments_blocking(&[pending(path)], &converter);
 
         // Then it errors.
         assert!(result.is_err());
@@ -278,7 +295,7 @@ mod tests {
         let converter = service(true, true);
 
         // When resolving.
-        let result = resolve_attachments_blocking(&[path], &converter);
+        let result = resolve_attachments_blocking(&[pending(path)], &converter);
 
         // Then it errors.
         assert!(result.is_err());
@@ -293,12 +310,13 @@ mod tests {
         let converter = service(true, false);
 
         // When resolving.
-        let result = resolve_attachments_blocking(std::slice::from_ref(&path), &converter);
+        let result = resolve_attachments_blocking(&[pending(&path)], &converter);
 
         // Then it degrades: no error, no attachment, path in degraded set.
         let outcome = result.expect("resolve");
         assert!(outcome.attachments.is_empty());
-        assert_eq!(outcome.degraded_paths, vec![path]);
+        assert_eq!(outcome.degraded.len(), 1);
+        assert_eq!(outcome.degraded[0].abs, path);
     }
 
     #[test]
@@ -308,12 +326,13 @@ mod tests {
         let converter = service(true, false);
 
         // When resolving.
-        let result = resolve_attachments_blocking(std::slice::from_ref(&path), &converter);
+        let result = resolve_attachments_blocking(&[pending(&path)], &converter);
 
         // Then it degrades: no error, no attachment, path in degraded set.
         let outcome = result.expect("resolve");
         assert!(outcome.attachments.is_empty());
-        assert_eq!(outcome.degraded_paths, vec![path]);
+        assert_eq!(outcome.degraded.len(), 1);
+        assert_eq!(outcome.degraded[0].abs, path);
     }
 
     #[test]
@@ -329,14 +348,14 @@ mod tests {
         let converter = service(true, false);
 
         // When resolving both.
-        let result = resolve_attachments_blocking(&[png_path, heic_path], &converter);
+        let result = resolve_attachments_blocking(&[pending(png_path), pending(heic_path)], &converter);
 
         // Then two image/png attachments are returned (none degraded).
         let outcome = result.expect("resolve");
         assert_eq!(outcome.attachments.len(), 2);
         assert_eq!(outcome.attachments[0].media_type(), "image/png");
         assert_eq!(outcome.attachments[1].media_type(), "image/png");
-        assert!(outcome.degraded_paths.is_empty());
+        assert!(outcome.degraded.is_empty());
     }
 
     #[test]
@@ -349,12 +368,13 @@ mod tests {
         let converter = service(true, false);
 
         // When resolving both.
-        let result = resolve_attachments_blocking(&[png_path, missing_path.clone()], &converter);
+        let result = resolve_attachments_blocking(&[pending(png_path), pending(missing_path.clone())], &converter);
 
         // Then one attachment and one degraded path; no error.
         let outcome = result.expect("resolve");
         assert_eq!(outcome.attachments.len(), 1);
         assert_eq!(outcome.attachments[0].media_type(), "image/png");
-        assert_eq!(outcome.degraded_paths, vec![missing_path]);
+        assert_eq!(outcome.degraded.len(), 1);
+        assert_eq!(outcome.degraded[0].abs, missing_path);
     }
 }

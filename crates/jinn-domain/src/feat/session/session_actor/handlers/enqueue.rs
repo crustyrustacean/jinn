@@ -17,6 +17,7 @@ use crate::protocol::{ChatEntry, ChatEntryKind};
 
 use super::super::SessionPersistenceActor;
 use super::image_resolve::ResolveOutcome;
+use crate::feat::context::prompt_template::PendingPath;
 use crate::feat::session::phase_machine::PhaseKind;
 
 /// Decision returned after inspecting session state in `EnqueueUserMessage`.
@@ -258,7 +259,7 @@ impl SessionPersistenceActor {
         &self,
         session_id: &crate::SessionId,
         entry: &mut ChatEntry,
-    ) -> Vec<std::path::PathBuf> {
+    ) -> Vec<PendingPath> {
         use crate::feat::context::prompt_template::PathResolveContext;
         use crate::feat::session::chat_session::expand_user_entry as expand;
         let (store, cwd) = {
@@ -292,7 +293,7 @@ impl SessionPersistenceActor {
     async fn resolve_image_attachments(
         &self,
         session_id: &crate::SessionId,
-        pending_paths: Vec<std::path::PathBuf>,
+        pending_paths: Vec<PendingPath>,
         entry: &mut ChatEntry,
     ) -> bool {
         if pending_paths.is_empty() {
@@ -317,8 +318,8 @@ impl SessionPersistenceActor {
             Ok(Ok(outcome)) => {
                 let ResolveOutcome {
                     attachments,
-                    attached_paths,
-                    degraded_paths,
+                    attached,
+                    degraded,
                 } = outcome;
                 if let ChatEntryKind::User {
                     attachments: entry_attachments,
@@ -333,8 +334,8 @@ impl SessionPersistenceActor {
                     // (but non-default) marker keeps re-expansion idempotent for
                     // fully-attached messages.
                     *entry_outcome = crate::feat::session::chat_entry::AttachmentOutcome {
-                        attached: attached_paths,
-                        degraded: degraded_paths,
+                        attached,
+                        degraded,
                     };
                 }
                 true
@@ -983,6 +984,90 @@ mod tests {
         assert!(
             audit.contains_name("SendToLlmProvider"),
             "vision model should receive the dispatch with the image"
+        );
+    }
+
+    #[tokio::test]
+    async fn at_path_image_to_unknown_model_is_blocked_with_error_entry() {
+        // Given an idle session whose active model is NOT in models.dev (unknown).
+        let (actor, state, audit) = create_actor().await;
+        let session_id = {
+            let mut guard = state.write_test_no_cap();
+            let _session = guard.active_session_mut();
+            guard.session.active_session_id().clone()
+        };
+        // Set a model id but write NO models.dev entry for it.
+        use crate::feat::session::model_selection::ModelSelection;
+        {
+            let mut guard = state.write_test_no_cap();
+            guard
+                .active_session_mut()
+                .set_model(ModelSelection::Single("my-uncatalogued-llama".to_owned()));
+        }
+        let dir = tempfile::TempDir::new().expect("temp dir");
+        let png_path = dir.path().join("img.png");
+        std::fs::write(&png_path, MULTIMODAL_TINY_PNG).expect("write png");
+        let display = format!("describe this @{}", png_path.to_string_lossy());
+
+        // When enqueuing a user message with an @path image attachment.
+        actor
+            .handle_enqueue_user_message(&EnqueueUserMessage {
+                session_id: session_id.clone(),
+                entry: ChatEntry::user(&display),
+            })
+            .await;
+
+        // Then an Error entry appears (unknown models block) and no dispatch.
+        let guard = state.read();
+        let session = guard.session.get(&session_id).expect("session");
+        assert!(
+            session
+                .history()
+                .iter()
+                .any(|e| matches!(&e.kind, ChatEntryKind::Error(_))),
+            "expected an Error entry when an image is sent to an unknown model"
+        );
+        assert_eq!(session.phase(), PhaseKind::Idle);
+        drop(guard);
+        assert!(
+            !audit.contains_name("SendToLlmProvider"),
+            "unknown model must not receive the request"
+        );
+    }
+
+    #[tokio::test]
+    async fn text_only_message_to_unknown_model_dispatches_normally() {
+        // Given an idle session whose active model is unknown AND a text-only message.
+        let (actor, state, audit) = create_actor().await;
+        let session_id = {
+            let mut guard = state.write_test_no_cap();
+            let _session = guard.active_session_mut();
+            guard.session.active_session_id().clone()
+        };
+        use crate::feat::session::model_selection::ModelSelection;
+        {
+            let mut guard = state.write_test_no_cap();
+            guard
+                .active_session_mut()
+                .set_model(ModelSelection::Single("my-uncatalogued-llama".to_owned()));
+        }
+
+        // When enqueuing a text-only user message (no @path, no attachments).
+        actor
+            .handle_enqueue_user_message(&EnqueueUserMessage {
+                session_id: session_id.clone(),
+                entry: ChatEntry::user("just a plain message"),
+            })
+            .await;
+
+        // Then it dispatches normally — the gate only fires for attachments.
+        let guard = state.read();
+        let session = guard.session.get(&session_id).expect("session");
+        assert_eq!(session.phase(), PhaseKind::Streaming);
+        drop(guard);
+        assert!(
+            audit.contains_name("SendToLlmProvider"),
+            "text-only message must dispatch even to an unknown model"
         );
     }
 

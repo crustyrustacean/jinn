@@ -138,20 +138,38 @@ pub struct ContextChangeEvent {
 
 /// Per-`@path` token resolution outcome for a user entry.
 ///
-/// Recorded after `@path` resolution runs so the chat render can color each
-/// token by outcome (green = attached, red = degraded) and so re-expansion
-/// leaves degraded tokens as literal text. Empty (default) for plain-text
-/// messages and all non-`User` kinds.
-///
-/// OWNER: session-actor (set once during enqueue resolution).
+// Recorded after `@path` resolution runs so the chat render can color each
+// token by outcome (green = attached, red = degraded) and so re-expansion
+// leaves degraded tokens as literal text. Empty (default) for plain-text
+// messages and all non-`User` kinds.
+//
+// OWNER: session-actor (set once during enqueue resolution).
 #[derive(Debug, Clone, Default, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
 pub struct AttachmentOutcome {
-    /// Paths that attached successfully as images.
+    /// `@path` tokens that attached successfully as images.
+    ///
+    /// Each entry pairs the literal token body (as the user typed it, e.g.
+    /// `img.png`, `~/photo.png`, `/abs/x.heic`) with the absolute path that
+    /// was resolved and attached. The literal is the render-time key into the
+    /// display text; the absolute path is what actually got attached.
     #[serde(default, skip_serializing_if = "Vec::is_empty")]
-    pub attached: Vec<std::path::PathBuf>,
-    /// Paths that degraded (missing file or not a recognized image).
+    pub attached: Vec<ResolvedToken>,
+    /// `@path` tokens that degraded (missing file or not a recognized image).
     #[serde(default, skip_serializing_if = "Vec::is_empty")]
-    pub degraded: Vec<std::path::PathBuf>,
+    pub degraded: Vec<ResolvedToken>,
+}
+
+/// A resolved `@path` token: the literal text the user typed, paired with the
+/// absolute path it resolved to.
+///
+// Resolution happens exactly once at enqueue; the render layer reads this
+// frozen result and never touches the filesystem or the session cwd/home.
+#[derive(Debug, Clone, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
+pub struct ResolvedToken {
+    /// The literal token body as it appears in the display text (after the `@`).
+    pub raw: String,
+    /// The absolute path the token resolved to at enqueue time.
+    pub abs: std::path::PathBuf,
 }
 
 impl AttachmentOutcome {

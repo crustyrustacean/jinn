@@ -79,6 +79,22 @@ impl<'a> PathResolveContext<'a> {
 static AT_PATH_RE: LazyLock<Regex> =
     LazyLock::new(|| Regex::new(r"(^|[ \n])@([^\s]+)").expect("valid @path regex"));
 
+/// The literal body of a scanned `@path` token paired with its resolved
+/// absolute path.
+///
+// This carries both "what the user typed" (the render-time key into the
+// display text) and "where it points" (the absolute path the actor reads).
+// Resolution happens exactly once at enqueue; downstream consumers (the
+// image resolver, the render layer) read this frozen result and never touch
+// the filesystem or re-resolve against cwd/home.
+#[derive(Debug, Clone, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
+pub struct PendingPath {
+    /// The literal token body as it appears in the display text (after the `@`).
+    pub raw: String,
+    /// The absolute path the token resolved to against the session cwd/home.
+    pub abs: PathBuf,
+}
+
 /// Result of scanning text for `@path` references.
 ///
 /// This is a **pure-text** scan: it rewrites tokens to `file://` URIs and
@@ -91,24 +107,26 @@ static AT_PATH_RE: LazyLock<Regex> =
 pub struct ScanResult {
     /// The text with each `@path` replaced by `(file:///abs/path)`.
     pub rewritten_text: String,
-    /// Resolved absolute paths referenced by `@path` tokens, in order.
+    /// Scanned `@path` tokens (literal body + resolved absolute path), in order.
     ///
     /// The caller reads and classifies each (native image → attach as-is;
     /// other image → convert; not an image → error). Path existence is
     /// **not** checked here — a path appears here even if the file is
     /// missing.
-    pub pending_paths: Vec<PathBuf>,
+    pub pending_paths: Vec<PendingPath>,
 }
 
 /// Scans `text` for `@path` tokens, resolving each against `ctx`, rewriting
 /// attachable tokens to `(file:///resolved/abs/path)` form and collecting
 /// their resolved paths for later byte-reading.
 ///
-/// Tokens whose resolved path is in `degraded` are left as **literal text**
-/// (the original `@raw` token) and excluded from `pending_paths`. This is
-/// how the actor marks a `@path` that turned out to be missing or
-/// not-a-recognized-image: on re-expansion, the token stays literal so the
-/// model sees exactly what the user typed.
+/// Tokens whose literal body (the text after `@`) is in `degraded_raw` are
+/// left as **literal text** (the original `@raw` token) and excluded from
+/// `pending_paths`. This is how the actor marks a `@path` that turned out to
+/// be missing or not-a-recognized-image: on re-expansion, the token stays
+/// literal so the model sees exactly what the user typed. Matching is by the
+/// raw token body (what the user typed), not the resolved path — this keeps
+/// the skip check environment-independent and immune to cwd/home changes.
 ///
 /// This is a **pure-text, I/O-free** operation: it does not touch the
 /// filesystem. File existence and image-format classification happen in the
@@ -119,22 +137,25 @@ pub struct ScanResult {
 pub fn scan_at_paths_with_degraded(
     text: &str,
     ctx: &PathResolveContext<'_>,
-    degraded: &[PathBuf],
+    degraded_raw: &[String],
 ) -> ScanResult {
-    let mut pending_paths: Vec<PathBuf> = Vec::new();
+    let mut pending_paths: Vec<PendingPath> = Vec::new();
     let rewritten_text = AT_PATH_RE
         .replace_all(text, |caps: &regex::Captures<'_>| {
             let boundary = &caps[1];
             let raw_path = &caps[2];
             let resolved = ctx.resolve(raw_path);
-            if degraded.contains(&resolved) {
+            if degraded_raw.iter().any(|r| r == raw_path) {
                 // Degraded: leave the token as the original literal text.
                 format!("{boundary}@{raw_path}")
             } else {
                 // Use the resolved absolute path so terminals link to the real file.
                 let rewrite = format!("{boundary}(file://{})", resolved.display());
                 // Collect the resolved path for the actor's byte-reading phase.
-                pending_paths.push(resolved);
+                pending_paths.push(PendingPath {
+                    raw: raw_path.to_owned(),
+                    abs: resolved,
+                });
                 rewrite
             }
         })
@@ -258,7 +279,7 @@ mod tests {
 
         // Then exactly one resolved path was collected.
         assert_eq!(result.pending_paths.len(), 1);
-        assert_eq!(result.pending_paths[0], PathBuf::from("/abs/img.png"));
+        assert_eq!(result.pending_paths[0].abs, PathBuf::from("/abs/img.png"));
     }
 
     #[rstest::rstest]
@@ -339,7 +360,7 @@ mod tests {
 
         // Then the resolved path is under the cwd.
         assert_eq!(result.pending_paths.len(), 1);
-        assert_eq!(result.pending_paths[0], dir.path().join("img.png"));
+        assert_eq!(result.pending_paths[0].abs, dir.path().join("img.png"));
     }
 
     #[rstest::rstest]
@@ -354,7 +375,7 @@ mod tests {
 
         // Then the resolved path is under home.
         assert_eq!(result.pending_paths.len(), 1);
-        assert_eq!(result.pending_paths[0], dir.path().join("photo.png"));
+        assert_eq!(result.pending_paths[0].abs, dir.path().join("photo.png"));
     }
 
     #[rstest::rstest]
@@ -369,7 +390,7 @@ mod tests {
 
         // Then the resolved path is home/bare.png.
         assert_eq!(result.pending_paths.len(), 1);
-        assert_eq!(result.pending_paths[0], dir.path().join("bare.png"));
+        assert_eq!(result.pending_paths[0].abs, dir.path().join("bare.png"));
     }
 
     #[rstest::rstest]
@@ -385,7 +406,7 @@ mod tests {
 
         // Then only `@my` was collected (the space terminated the token).
         assert_eq!(result.pending_paths.len(), 1);
-        assert_eq!(result.pending_paths[0], dir.path().join("my"));
+        assert_eq!(result.pending_paths[0].abs, dir.path().join("my"));
     }
 
     #[rstest::rstest]
@@ -400,7 +421,7 @@ mod tests {
 
         // Then the resolved path descends into the subdirectory.
         assert_eq!(result.pending_paths.len(), 1);
-        assert_eq!(result.pending_paths[0], dir.path().join("sub/img.png"));
+        assert_eq!(result.pending_paths[0].abs, dir.path().join("sub/img.png"));
     }
 
     #[rstest::rstest]
@@ -414,7 +435,7 @@ mod tests {
         // Then the path is still collected — proving scan did not touch the
         // filesystem to check existence.
         assert_eq!(
-            result.pending_paths,
+            result.pending_paths.iter().map(|p| p.abs.clone()).collect::<Vec<_>>(),
             vec![PathBuf::from("/this/does/not/exist.png")]
         );
     }
@@ -483,17 +504,17 @@ mod tests {
 
     #[rstest::rstest]
     fn degraded_set_leaves_token_literal_and_excludes_from_pending() {
-        // Given text with a boundary @path and a degraded set containing its resolved path.
-        let abs = "/abs/whatever";
-        let text = format!("describe @{abs}");
-        let degraded = vec![PathBuf::from(abs)];
+        // Given text with a boundary @path and a degraded set naming its raw token.
+        let raw = "/abs/whatever";
+        let text = format!("describe @{raw}");
+        let degraded = vec![raw.to_owned()];
 
         // When scanning with the degraded set.
         let result = scan_at_paths_with_degraded(&text, &dummy_ctx(), &degraded);
 
         // Then the token stays literal (no file:// rewrite) and is not collected.
         assert!(
-            result.rewritten_text.contains(&format!("@{abs}")),
+            result.rewritten_text.contains(&format!("@{raw}")),
             "degraded token should stay literal, got: {}",
             result.rewritten_text
         );
@@ -510,9 +531,9 @@ mod tests {
     #[rstest::rstest]
     fn degraded_re_scan_is_idempotent() {
         // Given text whose degraded token was reverted to literal on a first pass.
-        let abs = "/abs/whatever";
-        let text = format!("describe @{abs}");
-        let degraded = vec![PathBuf::from(abs)];
+        let raw = "/abs/whatever";
+        let text = format!("describe @{raw}");
+        let degraded = vec![raw.to_owned()];
         let first = scan_at_paths_with_degraded(&text, &dummy_ctx(), &degraded);
 
         // When scanning the already-reverted text again with the same degraded set.
@@ -530,9 +551,9 @@ mod tests {
     fn mixed_degraded_and_attachable_tokens_split_correctly() {
         // Given text with one attachable @path and one degraded @path.
         let attachable = "/abs/real.png";
-        let degraded_path = "/abs/whatever";
-        let text = format!("see @{attachable} and @{degraded_path}");
-        let degraded = vec![PathBuf::from(degraded_path)];
+        let degraded_raw = "/abs/whatever";
+        let text = format!("see @{attachable} and @{degraded_raw}");
+        let degraded = vec![degraded_raw.to_owned()];
 
         // When scanning with the degraded set.
         let result = scan_at_paths_with_degraded(&text, &dummy_ctx(), &degraded);
@@ -546,18 +567,21 @@ mod tests {
             result.rewritten_text
         );
         assert!(
-            result.rewritten_text.contains(&format!("@{degraded_path}")),
+            result.rewritten_text.contains(&format!("@{degraded_raw}")),
             "degraded token should stay literal: {}",
             result.rewritten_text
         );
-        assert_eq!(result.pending_paths, vec![PathBuf::from(attachable)]);
+        assert_eq!(
+            result.pending_paths.iter().map(|p| p.abs.clone()).collect::<Vec<_>>(),
+            vec![PathBuf::from(attachable)]
+        );
     }
 
     #[rstest::rstest]
     fn degraded_set_does_not_reenable_email_matching() {
         // Given email-style text (no boundary before @) and a non-empty degraded set.
         let text = "contact foo@bar.com";
-        let degraded = vec![PathBuf::from("/bar.com")];
+        let degraded = vec!["bar.com".to_owned()];
 
         // When scanning with the degraded set.
         let result = scan_at_paths_with_degraded(text, &dummy_ctx(), &degraded);

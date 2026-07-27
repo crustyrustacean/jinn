@@ -15,7 +15,7 @@ mod store;
 #[cfg(test)]
 mod store_tests;
 
-pub use attachment_path::PathResolveContext;
+pub use attachment_path::{PathResolveContext, PendingPath};
 pub use attachment_path::ScanResult;
 pub use attachment_path::scan_at_paths;
 pub use attachment_path::scan_at_paths_with_degraded;
