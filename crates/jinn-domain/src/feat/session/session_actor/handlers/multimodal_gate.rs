@@ -2,23 +2,25 @@
 //!
 //! Before a user entry carrying image attachments is dispatched to the LLM,
 //! the active model is checked against the models.dev reference data. A model
-//! known to lack image support (`supports_images() == Some(false)`) is blocked:
-//! instead of dispatching, an explanatory `ChatEntryKind::Error` entry is pushed
-//! and the session returns to `Idle`.
+//! that is **not confirmed** vision-capable is blocked: instead of dispatching,
+//! an explanatory `ChatEntryKind::Error` entry is pushed and the session returns
+//! to `Idle`.
 //!
-//! Unknown models (`supports_images() == None`) are allowed through — the gate
-//! only rejects models it can positively identify as text-only.
+//! Only a model positively identified as image-capable
+//! (`supports_images() == Some(true)`) is allowed through. Unknown models
+//! (`None` — not in the reference data) are blocked, not allowed: the user
+//! maintains the reference data / model cache to mark a model capable.
 
 use crate::feat::provider_infra::ModelsDevData;
 use crate::protocol::{ChatEntry, ChatEntryKind};
 
 /// Decides whether a user entry with attachments may be dispatched to the model.
 ///
-/// Returns `None` when the send is allowed (text-only entry, vision-capable
-/// model, or an unknown model we cannot positively rule out). Returns
-/// `Some(error_entry)` when the entry carries attachments but the model is
-/// known to lack image support — the caller pushes the error entry and skips
-/// dispatch.
+/// Returns `None` only when the send is allowed — a text-only entry, or a model
+/// confirmed image-capable by `models.dev`. Returns `Some(error_entry)` when the
+/// entry carries attachments but the model is **not confirmed** image-capable:
+/// either positively text-only (`Some(false)`) or unknown (`None`). The caller
+/// pushes the error entry and skips dispatch.
 ///
 /// `model_id` is the resolved model id (e.g. `"gpt-4o"`); `None` signals no
 /// provider is configured, in which case attachments are allowed (the request
@@ -40,16 +42,21 @@ pub fn attachment_gate(
     let model_id = model_id?;
 
     match models_dev.supports_images(model_id) {
-        Some(false) => Some(blocked_error_entry(model_id)),
-        // Some(true) → vision model, allow. None → unknown model, allow.
-        Some(true) | None => None,
+        // Only a positively confirmed vision model is allowed through.
+        Some(true) => None,
+        // Some(false) → known text-only. None → unknown (not in reference data).
+        // Both block: the user marks a model capable via models.dev / the cache.
+        Some(false) | None => Some(blocked_error_entry(model_id)),
     }
 }
 
-/// Builds the `Error` entry shown when a non-vision model is blocked.
+/// Builds the `Error` entry shown when a model is not confirmed vision-capable.
+///
+/// Names the model and points the user at models.dev / the model cache so they
+/// can mark it image-capable.
 fn blocked_error_entry(model_id: &str) -> ChatEntry {
     ChatEntry::error(format!(
-        "{model_id} does not support image input. Switch to a vision-capable model to send attachments."
+        "{model_id} is not confirmed to support image input, so this attachment was not sent. Switch to a vision-capable model, or mark it image-capable in models.dev / the model cache."
     ))
 }
 
@@ -114,16 +121,18 @@ mod tests {
     }
 
     #[test]
-    fn allows_attachment_on_unknown_model() {
+    fn blocks_attachment_on_unknown_model() {
         // Given an image entry and a model not in the reference data.
         let models_dev = ModelsDevData::new();
         let entry = entry_with_image();
 
         // When gating.
-        // Then None is returned (unknown models are allowed).
+        let blocked = attachment_gate(Some("my-custom-llama"), &entry, &models_dev);
+
+        // Then an error entry is returned (unknown models block, not allowed).
         assert!(
-            attachment_gate(Some("my-custom-llama"), &entry, &models_dev).is_none(),
-            "unknown models must not be blocked"
+            blocked.is_some(),
+            "unknown models must be blocked unless positively confirmed vision-capable"
         );
     }
 
