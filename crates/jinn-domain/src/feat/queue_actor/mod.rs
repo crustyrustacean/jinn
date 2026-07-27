@@ -569,9 +569,10 @@ mod tests {
         let mut entry = ChatEntry::user(format!("describe {token}"));
         // Simulate the post-resolution state: outcome set, expanded still containing the literal.
         if let crate::protocol::ChatEntryKind::User { outcome, .. } = &mut entry.kind {
-            outcome
-                .degraded
-                .push(std::path::PathBuf::from("/nonexistent/whatever"));
+            outcome.degraded.push(crate::feat::session::chat_entry::ResolvedToken {
+                raw: "/nonexistent/whatever".to_owned(),
+                abs: std::path::PathBuf::from("/nonexistent/whatever"),
+            });
         }
 
         // When dispatching (which calls push_entry -> expand_user_entry, re-running the scan).
@@ -596,6 +597,44 @@ mod tests {
         assert!(
             !expanded.contains("file://"),
             "queue drain must not revert to file://: {expanded}"
+        );
+    }
+
+    #[tokio::test]
+    async fn dispatch_user_message_blocks_attachment_to_unknown_model() {
+        // Given a queued entry carrying an image attachment and an unknown model.
+        let (actor, audit) = create_actor().await;
+        let sid = session_id();
+        {
+            let mut state = actor.state.write_test_no_cap();
+            let session = state.session_mut_or_create(&sid);
+            session.profile_mut().model =
+                crate::feat::session::model_selection::ModelSelection::Single(
+                    "my-uncatalogued-llama".to_owned(),
+                );
+        }
+        // Build an entry that already carries an attachment (as if resolved).
+        let mut entry = ChatEntry::user("describe this");
+        if let crate::protocol::ChatEntryKind::User { attachments, .. } = &mut entry.kind {
+            attachments.push(jinn_provider::Attachment::image("image/png", vec![1, 2, 3]));
+        }
+
+        // When dispatching (queue drain).
+        actor.dispatch_user_message(&sid, &entry).await;
+
+        // Then an Error entry was pushed and no SendToLlmProvider was emitted
+        // (the turn is blocked, not re-dispatched).
+        let state = actor.state.read();
+        let session = state.session(&sid);
+        let has_error = session
+            .history()
+            .iter()
+            .any(|e| matches!(&e.kind, crate::protocol::ChatEntryKind::Error(_)));
+        assert!(has_error, "unknown model must block the attachment on drain");
+        drop(state);
+        assert!(
+            audit.of_type::<SendToLlmProvider>().is_empty(),
+            "blocked attachment must not dispatch"
         );
     }
 

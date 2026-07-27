@@ -80,9 +80,10 @@ async fn degraded_token_expanded_survives_save_and_reload() {
     let mut entry = ChatEntry::user(format!("describe {token}"));
     // Simulate the post-resolution state: outcome set, expanded still containing the literal.
     if let crate::protocol::ChatEntryKind::User { outcome, .. } = &mut entry.kind {
-        outcome
-            .degraded
-            .push(std::path::PathBuf::from("/nonexistent/whatever"));
+        outcome.degraded.push(crate::feat::session::chat_entry::ResolvedToken {
+            raw: "/nonexistent/whatever".to_owned(),
+            abs: std::path::PathBuf::from("/nonexistent/whatever"),
+        });
     }
     session.push_entry(entry);
 
@@ -112,6 +113,53 @@ async fn degraded_token_expanded_survives_save_and_reload() {
         !expanded.contains("file://"),
         "reloaded expanded must not contain file://: {expanded}"
     );
+}
+
+#[rstest::rstest]
+#[tokio::test]
+async fn attachment_outcome_survives_save_and_reload() {
+    // Given a resolved user entry carrying BOTH an attached and a degraded token.
+    let (_dir, store) = make_store().await;
+    let session_id = SessionId::new();
+    let mut session = ChatSessionState::new();
+    session.set_session_id(session_id.clone());
+    let mut entry = ChatEntry::user("see @real.png and @whatever");
+    if let ChatEntryKind::User { outcome, .. } = &mut entry.kind {
+        outcome.attached.push(crate::feat::session::chat_entry::ResolvedToken {
+            raw: "real.png".to_owned(),
+            abs: std::path::PathBuf::from("/abs/real.png"),
+        });
+        outcome.degraded.push(crate::feat::session::chat_entry::ResolvedToken {
+            raw: "whatever".to_owned(),
+            abs: std::path::PathBuf::from("/abs/whatever"),
+        });
+    }
+    session.push_entry(entry);
+
+    // When saving and reloading.
+    store.save(&session).await.expect("save");
+    let loaded = store
+        .load_session(&session_id)
+        .await
+        .expect("load_session")
+        .expect("should have a session");
+
+    // Then the per-token outcome marker round-trips through SQLite — both the
+    // attached and degraded tokens survive, so the render can color them after
+    // reload (closing the masked-marker gap).
+    let outcome = loaded
+        .history()
+        .iter()
+        .rev()
+        .find_map(|e| match &e.kind {
+            ChatEntryKind::User { outcome, .. } => Some(outcome.clone()),
+            _ => None,
+        })
+        .expect("user entry");
+    assert_eq!(outcome.attached.len(), 1);
+    assert_eq!(outcome.attached[0].raw, "real.png");
+    assert_eq!(outcome.degraded.len(), 1);
+    assert_eq!(outcome.degraded[0].raw, "whatever");
 }
 
 #[rstest::rstest]
