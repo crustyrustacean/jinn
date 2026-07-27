@@ -246,18 +246,19 @@ fn render_at_popup(
     frame.render_widget(block, popup_area);
 
     let loading = picker.loading;
-    let lines: Vec<Line<'_>> = rows
-        .iter()
-        .enumerate()
-        .map(|(i, text)| {
-            let style = if loading || i != selected_index {
-                Style::default()
-            } else {
-                Style::default().add_modifier(Modifier::REVERSED)
-            };
-            Line::styled(text.as_str(), style)
-        })
-        .collect();
+    let (start, end) = scroll_window(selected_index, rows.len(), inner.height as usize);
+    let mut lines: Vec<Line<'_>> = Vec::with_capacity(inner.height as usize);
+    for (i, text) in rows.iter().enumerate().skip(start).take(end - start) {
+        let style = if loading || i != selected_index {
+            Style::default()
+        } else {
+            Style::default().add_modifier(Modifier::REVERSED)
+        };
+        lines.push(Line::styled(text.as_str(), style));
+    }
+    // Pad remaining inner rows so the popup keeps a fixed height regardless of
+    // where the scroll window sits (mirrors the `#`/`/` popup).
+    lines.resize(inner.height as usize, Line::from(""));
     // Silence the unused-ac warning; `ac` only confirms the popup is active.
     let _ = ac;
     frame.render_widget(Paragraph::new(lines), inner);
@@ -265,8 +266,10 @@ fn render_at_popup(
 
 /// Compute a scroll window `[start, end)` that keeps `selected` visible.
 ///
-/// When `total <= visible`, returns `(0, total)`. Otherwise, centers the window
-/// around the selected entry so it is always in view.
+/// When `total <= visible`, returns `(0, total)`. Otherwise, follows the
+/// selection: it advances the window one row at a time once the highlight
+/// crosses the bottom edge of the previous window, so the selected entry is
+/// always in view (the window trails the highlight, it does not re-center).
 pub fn scroll_window(selected: usize, total: usize, visible: usize) -> (usize, usize) {
     if total <= visible {
         return (0, total);
@@ -662,6 +665,117 @@ mod tests {
         assert!(
             rect.x < 70,
             "@ popup should not be clamped to the terminal's right edge"
+        );
+    }
+
+    #[test]
+    fn at_popup_keeps_selected_entry_visible_when_scrolled() {
+        // Given an @ popup with 30 entries and the selection moved well past
+        // the popup's inner height (18 rows on an 80x24 backend).
+        let mut state = AppState::default();
+        let _ = handle_insert_char('@', &mut state);
+        let entries: Vec<FileEntry> = (0..30)
+            .map(|i| FileEntry {
+                name: format!("e{i:02}"),
+                is_dir: false,
+            })
+            .collect();
+        state.frontend.file_picker = FilePickerState::with_entries(entries);
+        for _ in 0..20 {
+            state
+                .active_chat_input_mut()
+                .autocomplete_move_down_bounded(30);
+        }
+
+        // When rendering.
+        let rendered = render_to_string(&state);
+
+        // Then the selected entry (index 20, "e20") is visible.
+        assert!(
+            rendered.contains("e20"),
+            "selected entry should stay visible after scrolling past the bottom"
+        );
+    }
+
+    #[test]
+    fn at_popup_drops_top_entry_when_selection_scrolls_past() {
+        // Given an @ popup with 30 entries and the selection scrolled to index 20.
+        let mut state = AppState::default();
+        let _ = handle_insert_char('@', &mut state);
+        let entries: Vec<FileEntry> = (0..30)
+            .map(|i| FileEntry {
+                name: format!("e{i:02}"),
+                is_dir: false,
+            })
+            .collect();
+        state.frontend.file_picker = FilePickerState::with_entries(entries);
+        for _ in 0..20 {
+            state
+                .active_chat_input_mut()
+                .autocomplete_move_down_bounded(30);
+        }
+
+        // When rendering.
+        let rendered = render_to_string(&state);
+
+        // Then the top entry (index 0, "e00") is NOT rendered (window scrolled, not
+        // clipped-everything).
+        assert!(
+            !rendered.contains("e00"),
+            "top entry should be scrolled out of view once the window advances"
+        );
+    }
+
+    #[test]
+    fn at_popup_shows_top_entry_when_selection_at_zero() {
+        // Given an @ popup with 30 entries and the selection at index 0.
+        let mut state = AppState::default();
+        let _ = handle_insert_char('@', &mut state);
+        let entries: Vec<FileEntry> = (0..30)
+            .map(|i| FileEntry {
+                name: format!("e{i:02}"),
+                is_dir: false,
+            })
+            .collect();
+        state.frontend.file_picker = FilePickerState::with_entries(entries);
+
+        // When rendering (selection stays at the default index 0).
+        let rendered = render_to_string(&state);
+
+        // Then the top entry (index 0, "e00") IS visible — no spurious scroll at
+        // the top boundary.
+        assert!(
+            rendered.contains("e00"),
+            "top entry should remain visible when the selection is at index 0"
+        );
+    }
+
+    #[test]
+    fn at_popup_keeps_last_entry_visible_at_tail() {
+        // Given an @ popup with 30 entries and the selection at the last entry.
+        let mut state = AppState::default();
+        let _ = handle_insert_char('@', &mut state);
+        let entries: Vec<FileEntry> = (0..30)
+            .map(|i| FileEntry {
+                name: format!("e{i:02}"),
+                is_dir: false,
+            })
+            .collect();
+        state.frontend.file_picker = FilePickerState::with_entries(entries);
+        for _ in 0..30 {
+            state
+                .active_chat_input_mut()
+                .autocomplete_move_down_bounded(30);
+        }
+
+        // When rendering.
+        let rendered = render_to_string(&state);
+
+        // Then the last entry (index 29, "e29") is visible — the window reaches
+        // the tail rather than stopping short.
+        assert!(
+            rendered.contains("e29"),
+            "last entry should stay visible when the selection reaches the tail"
         );
     }
 }
