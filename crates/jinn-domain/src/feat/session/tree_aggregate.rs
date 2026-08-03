@@ -30,6 +30,12 @@ pub struct TreeAggregateStats {
     pub total_turns: u32,
     /// Number of sessions in the tree.
     pub session_count: usize,
+    /// Effective sent total (provider-reported prompt_tokens else estimate).
+    pub effective_sent: u64,
+    /// Sum of provider-reported prompt_tokens over measured turns.
+    pub measured_sent: u64,
+    /// Sum of provider-reported cache-hit counts.
+    pub cached_total: u64,
 }
 
 /// A lightweight snapshot of an archived session's stats.
@@ -51,6 +57,12 @@ pub struct FrozenTreeNode {
     pub total_cost: f64,
     /// Total turns (user messages) in this session.
     pub total_turns: u32,
+    /// Effective sent total (provider-reported prompt_tokens else estimate).
+    pub effective_sent: u64,
+    /// Sum of provider-reported prompt_tokens over measured turns.
+    pub measured_sent: u64,
+    /// Sum of provider-reported cache-hit counts.
+    pub cached_total: u64,
 }
 
 /// Create a `FrozenTreeNode` snapshot from a live session.
@@ -67,6 +79,9 @@ pub fn snapshot_frozen_node(session: &ChatSessionState) -> FrozenTreeNode {
         total_received: token_stats.total_received,
         total_cost: TokenStats::total_cost(session.token_ledger()),
         total_turns: turn_counter::compute_turn_count(session.history(), session.fork_ordinal()),
+        effective_sent: token_stats.effective_sent,
+        measured_sent: token_stats.measured_sent,
+        cached_total: token_stats.cached_total,
     }
 }
 
@@ -187,6 +202,9 @@ pub fn aggregate_tree_stats<S: ::std::hash::BuildHasher>(
         stats.total_cost += TokenStats::total_cost(session.token_ledger());
         stats.total_turns +=
             turn_counter::compute_turn_count(session.history(), session.fork_ordinal());
+        stats.effective_sent += token_stats.effective_sent;
+        stats.measured_sent += token_stats.measured_sent;
+        stats.cached_total += token_stats.cached_total;
     }
 
     // Aggregate stats from frozen nodes.
@@ -195,6 +213,9 @@ pub fn aggregate_tree_stats<S: ::std::hash::BuildHasher>(
         stats.total_received += frozen.total_received;
         stats.total_cost += frozen.total_cost;
         stats.total_turns += frozen.total_turns;
+        stats.effective_sent += frozen.effective_sent;
+        stats.measured_sent += frozen.measured_sent;
+        stats.cached_total += frozen.cached_total;
     }
 
     stats.session_count = tree_sessions.len() + tree_frozen.len();

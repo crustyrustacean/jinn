@@ -140,9 +140,13 @@ fn render_tree_aggregate(
     let turn_symbol = '\u{21BB}';
     let session_symbol = '\u{29C9}';
     let tree_prefix = '\u{1F333}';
+    let cache_segment = match cache_hit_percent_from(tree.cached_total, tree.measured_sent) {
+        Some(pct) => format!("\u{2B22} {pct}% "),
+        None => String::new(),
+    };
     let tree_display = format!(
-        "{tree_prefix} {up_arrow}{} {down_arrow}{} ${:.5} {turn_symbol}{turns} {session_symbol}{count}",
-        format_tokens(tree.total_sent),
+        "{tree_prefix} {cache_segment}{up_arrow}{} {down_arrow}{} ${:.5} {turn_symbol}{turns} {session_symbol}{count}",
+        format_tokens(tree.effective_sent),
         format_tokens(tree.total_received),
         tree.total_cost,
         turns = tree.total_turns,
@@ -161,7 +165,8 @@ fn render_token_info_line(
     style: Style,
 ) {
     let active_model = state.active_session().profile().model.clone();
-    let token_info = build_token_info_string(state, &active_model);
+    let token_stats = TokenStats::from_ledger(state.active_session().token_ledger());
+    let token_info = build_token_info_string(state, &active_model, &token_stats);
 
     let model = build_model_string(state, &active_model);
     let total_cost = TokenStats::total_cost(state.active_session().token_ledger());
@@ -172,11 +177,15 @@ fn render_token_info_line(
             state.active_session().fork_ordinal(),
         );
         let turn_symbol = '\u{21BB}';
-        let left_spans: Vec<Span> = vec![
-            Span::styled(token_info, style),
-            Span::styled(format!(" ${:.5}", total_cost.abs()), style),
-            Span::styled(format!(" {turn_symbol}{turn_count}"), style),
-        ];
+        let mut left_spans: Vec<Span> = Vec::new();
+        // Cache-hit percentage — leftmost, shown only when there are cache hits.
+        if let Some(pct) = cache_hit_percent(&token_stats) {
+            let cache_glyph = '\u{2B22}'; // ⬢
+            left_spans.push(Span::styled(format!("{cache_glyph} {pct}% "), style));
+        }
+        left_spans.push(Span::styled(token_info, style));
+        left_spans.push(Span::styled(format!(" ${:.5}", total_cost.abs()), style));
+        left_spans.push(Span::styled(format!(" {turn_symbol}{turn_count}"), style));
         Paragraph::new(Line::from(left_spans))
             .style(style)
             .alignment(Alignment::Left)
@@ -192,14 +201,13 @@ fn render_token_info_line(
 fn build_token_info_string(
     state: &crate::common::app_state::AppState,
     active_model: &crate::feat::session::model_selection::ModelSelection,
+    token_stats: &TokenStats,
 ) -> String {
-    let active_session = state.active_session();
-    let token_stats = TokenStats::from_ledger(active_session.token_ledger());
     let up_arrow = '\u{2191}';
     let down_arrow = '\u{2193}';
     let token_info = format!(
         "{up_arrow}{} {down_arrow}{}",
-        format_tokens(token_stats.total_sent),
+        format_tokens(token_stats.effective_sent),
         format_tokens(token_stats.total_received),
     );
 
@@ -224,6 +232,26 @@ fn build_token_info_string(
         (None, None) => "0/???".to_owned(),
     };
     format!("{token_info} {context_display}")
+}
+
+/// Cache-hit percentage for a session ledger, or `None` when there are no
+/// cache hits. The denominator is `measured_sent` (provider-reported
+/// `prompt_tokens` over turns that reported usage), so cancelled turns — which
+/// report no usage — are excluded from both numerator and denominator.
+fn cache_hit_percent(stats: &TokenStats) -> Option<u32> {
+    cache_hit_percent_from(stats.cached_total, stats.measured_sent)
+}
+
+/// Cache-hit percentage over measured turns only, computed from raw sums.
+///
+/// Returns `None` when there are no cache hits or no measured turns, so the
+/// glyph stays hidden for providers/turns that report no usage.
+fn cache_hit_percent_from(cached_total: u64, measured_sent: u64) -> Option<u32> {
+    if cached_total == 0 || measured_sent == 0 {
+        return None;
+    }
+    let pct = (cached_total as f64 / measured_sent as f64) * 100.0;
+    Some(pct.round() as u32)
 }
 
 /// Builds the right-side model display string: resolved name + reasoning effort.

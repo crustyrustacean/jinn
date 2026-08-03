@@ -37,6 +37,21 @@ pub struct TokenRecord {
     /// For alloys, this is the resolved model; for single models, the model itself.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub model_used: Option<String>,
+    /// Provider-reported prompt token count for this request.
+    ///
+    /// Set when the stream completed with usage data; `None` when the
+    /// provider did not report it (e.g. a cancelled turn). The pre-send
+    /// local estimate (`tokens_sent`) is never overwritten and is used
+    /// as a fallback when this is `None`.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub prompt_tokens: Option<u32>,
+    /// Provider-reported count of prompt tokens served from a cache
+    /// (`usage.prompt_tokens_details.cached_tokens`).
+    ///
+    /// OpenAI-compat only (e.g. OpenRouter); `None` for providers that do
+    /// not report cache details or for cancelled turns.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub cached_tokens: Option<u32>,
 }
 
 /// Summary statistics derived from a token ledger.
@@ -45,12 +60,20 @@ pub struct TokenRecord {
 /// `TokenStats::from_ledger` to derive.
 #[derive(Debug, Clone, Default, PartialEq, Eq)]
 pub struct TokenStats {
-    /// Total tokens sent across all requests.
+    /// Total tokens sent across all requests (raw local estimate sum).
     pub total_sent: u64,
     /// Total tokens received across all responses.
     pub total_received: u64,
     /// Number of request/response pairs.
     pub request_count: u64,
+    /// Effective sent total: provider-reported `prompt_tokens` when present,
+    /// else the local estimate `tokens_sent`. Used for the `↑sent` display.
+    pub effective_sent: u64,
+    /// Sum of provider-reported `prompt_tokens` over measured turns only
+    /// (records where it is `Some`). The denominator for the cache ratio.
+    pub measured_sent: u64,
+    /// Sum of provider-reported cache-hit counts (`cached_tokens`).
+    pub cached_total: u64,
 }
 
 impl TokenStats {
@@ -61,6 +84,11 @@ impl TokenStats {
             stats.total_sent += u64::from(record.tokens_sent);
             stats.total_received += u64::from(record.tokens_received);
             stats.request_count += 1;
+            stats.effective_sent += u64::from(record.prompt_tokens.unwrap_or(record.tokens_sent));
+            if let Some(prompt) = record.prompt_tokens {
+                stats.measured_sent += u64::from(prompt);
+            }
+            stats.cached_total += u64::from(record.cached_tokens.unwrap_or(0));
         }
         stats
     }
@@ -153,6 +181,9 @@ where
             total.total_sent += child_own.total_sent + child_descendants.total_sent;
             total.total_received += child_own.total_received + child_descendants.total_received;
             total.request_count += child_own.request_count + child_descendants.request_count;
+            total.effective_sent += child_own.effective_sent + child_descendants.effective_sent;
+            total.measured_sent += child_own.measured_sent + child_descendants.measured_sent;
+            total.cached_total += child_own.cached_total + child_descendants.cached_total;
         }
     }
     total
@@ -201,6 +232,8 @@ mod tests {
             tokens_sent: 100,
             tokens_received: 200,
             cost: Some(0.01),
+            prompt_tokens: None,
+            cached_tokens: None,
         });
         let root_id = root.session_id().clone();
 
@@ -212,6 +245,8 @@ mod tests {
             tokens_sent: 300,
             tokens_received: 400,
             cost: Some(0.02),
+            prompt_tokens: None,
+            cached_tokens: None,
         });
         let child_id = child.session_id().clone();
 
@@ -223,6 +258,8 @@ mod tests {
             tokens_sent: 500,
             tokens_received: 600,
             cost: Some(0.03),
+            prompt_tokens: None,
+            cached_tokens: None,
         });
 
         let mut map = HashMap::new();
@@ -373,5 +410,71 @@ mod tests {
 
         // Then zero.
         assert_eq!(cost, 0.0);
+    }
+
+    #[rstest::rstest]
+    fn effective_sent_uses_provider_prompt_when_present_else_estimate() {
+        // Given a ledger with one measured turn (provider prompt=120), one
+        // cancelled turn (estimate only=50), and one turn where prompt matches.
+        let records = vec![
+            TokenRecord {
+                model_used: None,
+                timestamp: Timestamp::now(),
+                tokens_sent: 100,
+                tokens_received: 10,
+                cost: None,
+                prompt_tokens: Some(120),
+                cached_tokens: None,
+            },
+            TokenRecord {
+                model_used: None,
+                timestamp: Timestamp::now(),
+                tokens_sent: 50,
+                tokens_received: 0,
+                cost: None,
+                prompt_tokens: None,
+                cached_tokens: None,
+            },
+        ];
+
+        // When deriving stats.
+        let stats = TokenStats::from_ledger(&records);
+
+        // Then effective_sent = 120 (provider) + 50 (estimate fallback) = 170.
+        assert_eq!(stats.effective_sent, 170);
+    }
+
+    #[rstest::rstest]
+    fn cache_ratio_denominator_excludes_turns_without_usage() {
+        // Given a ledger with a measured turn (prompt=1000, cached=400) and a
+        // cancelled turn (no usage, estimate=50).
+        let records = vec![
+            TokenRecord {
+                model_used: None,
+                timestamp: Timestamp::now(),
+                tokens_sent: 1000,
+                tokens_received: 10,
+                cost: None,
+                prompt_tokens: Some(1000),
+                cached_tokens: Some(400),
+            },
+            TokenRecord {
+                model_used: None,
+                timestamp: Timestamp::now(),
+                tokens_sent: 50,
+                tokens_received: 0,
+                cost: None,
+                prompt_tokens: None,
+                cached_tokens: None,
+            },
+        ];
+
+        // When deriving stats.
+        let stats = TokenStats::from_ledger(&records);
+
+        // Then measured_sent excludes the cancelled turn (1000, not 1050).
+        assert_eq!(stats.measured_sent, 1000);
+        // And cached_total reflects only measured turns (400).
+        assert_eq!(stats.cached_total, 400);
     }
 }

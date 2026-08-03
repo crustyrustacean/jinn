@@ -416,6 +416,10 @@ fn apply_completion_entries(
                 output_tokens,
                 event.cost,
                 event.model_used.clone(),
+                event
+                    .provider_prompt_tokens
+                    .and_then(|t| u32::try_from(t).ok()),
+                event.cached_tokens.and_then(|t| u32::try_from(t).ok()),
             )
         {
             tracing::error!(err = ?e, "failed to finalize token record");
@@ -462,6 +466,8 @@ mod tests {
             tool_calls: None,
             cost: None,
             provider_completion_tokens: None,
+            provider_prompt_tokens: None,
+            cached_tokens: None,
             thinking_content: None,
             dispatched_at: jiff::Timestamp::now(),
         };
@@ -493,6 +499,8 @@ mod tests {
             tool_calls: None,
             cost: None,
             provider_completion_tokens: None,
+            provider_prompt_tokens: None,
+            cached_tokens: None,
             thinking_content: None,
             dispatched_at: jiff::Timestamp::now(),
         };
@@ -528,6 +536,8 @@ mod tests {
             tool_calls: None,
             cost: None,
             provider_completion_tokens: None,
+            provider_prompt_tokens: None,
+            cached_tokens: None,
             thinking_content: None,
             dispatched_at: jiff::Timestamp::now(),
         };
@@ -560,6 +570,8 @@ mod tests {
             tool_calls: None,
             cost: None,
             provider_completion_tokens: None,
+            provider_prompt_tokens: None,
+            cached_tokens: None,
             thinking_content: None,
             dispatched_at: jiff::Timestamp::now(),
         };
@@ -590,6 +602,8 @@ mod tests {
             tool_calls: None,
             cost: None,
             provider_completion_tokens: None,
+            provider_prompt_tokens: None,
+            cached_tokens: None,
             thinking_content: None,
             dispatched_at: jiff::Timestamp::now(),
         };
@@ -620,6 +634,8 @@ mod tests {
             tool_calls: None,
             cost: None,
             provider_completion_tokens: None,
+            provider_prompt_tokens: None,
+            cached_tokens: None,
             thinking_content: None,
             dispatched_at: jiff::Timestamp::now(),
         };
@@ -650,6 +666,8 @@ mod tests {
             tool_calls: None,
             cost: None,
             provider_completion_tokens: None,
+            provider_prompt_tokens: None,
+            cached_tokens: None,
             thinking_content: None,
             dispatched_at: jiff::Timestamp::now(),
         };
@@ -690,6 +708,8 @@ mod tests {
             tool_calls: None,
             cost: None,
             provider_completion_tokens: None,
+            provider_prompt_tokens: None,
+            cached_tokens: None,
             thinking_content: None,
             dispatched_at: jiff::Timestamp::now(),
         };
@@ -725,6 +745,8 @@ mod tests {
             tool_calls: None,
             cost: None,
             provider_completion_tokens: None,
+            provider_prompt_tokens: None,
+            cached_tokens: None,
             thinking_content: None,
             dispatched_at: jiff::Timestamp::now(),
         };
@@ -866,6 +888,8 @@ mod tests {
             tool_calls: None,
             cost: None,
             provider_completion_tokens: None,
+            provider_prompt_tokens: None,
+            cached_tokens: None,
             thinking_content: None,
             dispatched_at: jiff::Timestamp::now(),
         };
@@ -900,6 +924,8 @@ mod tests {
             tool_calls: None,
             cost: None,
             provider_completion_tokens: None,
+            provider_prompt_tokens: None,
+            cached_tokens: None,
             thinking_content: None,
             dispatched_at: jiff::Timestamp::now(),
         };
@@ -934,6 +960,8 @@ mod tests {
             tool_calls: None,
             cost: None,
             provider_completion_tokens: None,
+            provider_prompt_tokens: None,
+            cached_tokens: None,
             thinking_content: None,
             dispatched_at: jiff::Timestamp::now(),
         };
@@ -958,6 +986,8 @@ mod tests {
                 tokens_sent: 100,
                 tokens_received: 0,
                 cost: None,
+                prompt_tokens: None,
+                cached_tokens: None,
             });
             session.begin_streaming();
             state.session.active_session_id().clone()
@@ -971,6 +1001,8 @@ mod tests {
             tool_calls: None,
             cost: None,
             provider_completion_tokens: None,
+            provider_prompt_tokens: None,
+            cached_tokens: None,
             thinking_content: None,
             dispatched_at: jiff::Timestamp::now(),
         };
@@ -1016,6 +1048,8 @@ mod tests {
             }]),
             cost: None,
             provider_completion_tokens: None,
+            provider_prompt_tokens: None,
+            cached_tokens: None,
             thinking_content: None,
             dispatched_at: jiff::Timestamp::now(),
         };
@@ -1045,6 +1079,8 @@ mod tests {
                 tokens_sent: 100,
                 tokens_received: 0,
                 cost: None,
+                prompt_tokens: None,
+                cached_tokens: None,
             });
             session.begin_streaming();
             state.session.active_session_id().clone()
@@ -1062,6 +1098,8 @@ mod tests {
             }]),
             cost: None,
             provider_completion_tokens: None,
+            provider_prompt_tokens: None,
+            cached_tokens: None,
             thinking_content: None,
             dispatched_at: jiff::Timestamp::now(),
         };
@@ -1104,6 +1142,8 @@ mod tests {
             tool_calls: None,
             cost: None,
             provider_completion_tokens: None,
+            provider_prompt_tokens: None,
+            cached_tokens: None,
             thinking_content: None,
             dispatched_at: jiff::Timestamp::now(),
         };
@@ -1148,6 +1188,8 @@ mod tests {
             tool_calls: None,
             cost: None,
             provider_completion_tokens: None,
+            provider_prompt_tokens: None,
+            cached_tokens: None,
             thinking_content: None,
             dispatched_at: jiff::Timestamp::now(),
         };
@@ -1184,6 +1226,8 @@ mod tests {
             tool_calls: None,
             cost: None,
             provider_completion_tokens: None,
+            provider_prompt_tokens: None,
+            cached_tokens: None,
             thinking_content: None,
             dispatched_at: jiff::Timestamp::now(),
         };
@@ -1229,6 +1273,8 @@ mod tests {
             tool_calls: None,
             cost: None,
             provider_completion_tokens: None,
+            provider_prompt_tokens: None,
+            cached_tokens: None,
             thinking_content: None,
             dispatched_at: jiff::Timestamp::now(),
         };
@@ -1279,6 +1325,8 @@ mod tests {
             tool_calls: None,
             cost: None,
             provider_completion_tokens: None,
+            provider_prompt_tokens: None,
+            cached_tokens: None,
             thinking_content: None,
             dispatched_at: jiff::Timestamp::now(),
         };
@@ -1332,6 +1380,8 @@ mod tests {
             tool_calls: None,
             cost: None,
             provider_completion_tokens: None,
+            provider_prompt_tokens: None,
+            cached_tokens: None,
             thinking_content: None,
             dispatched_at: jiff::Timestamp::now(),
         };
@@ -1385,6 +1435,8 @@ mod tests {
             }]),
             cost: None,
             provider_completion_tokens: None,
+            provider_prompt_tokens: None,
+            cached_tokens: None,
             thinking_content: None,
             dispatched_at: jiff::Timestamp::now(),
         };
@@ -1415,6 +1467,8 @@ mod tests {
                 tokens_sent: 100,
                 tokens_received: 0,
                 cost: None,
+                prompt_tokens: None,
+                cached_tokens: None,
                 model_used: None,
             });
             session.begin_streaming();
@@ -1429,6 +1483,8 @@ mod tests {
             tool_calls: None,
             cost: None,
             provider_completion_tokens: Some(5000),
+            provider_prompt_tokens: None,
+            cached_tokens: None,
             thinking_content: Some("very long thinking content here".to_owned()),
             dispatched_at: jiff::Timestamp::now(),
         };
@@ -1450,6 +1506,8 @@ mod tests {
                 tokens_sent: 100,
                 tokens_received: 0,
                 cost: None,
+                prompt_tokens: None,
+                cached_tokens: None,
                 model_used: None,
             });
             session.begin_streaming();
@@ -1464,6 +1522,8 @@ mod tests {
             tool_calls: None,
             cost: None,
             provider_completion_tokens: None,
+            provider_prompt_tokens: None,
+            cached_tokens: None,
             thinking_content: Some("a substantial amount of reasoning text".to_owned()),
             dispatched_at: jiff::Timestamp::now(),
         };
@@ -1490,6 +1550,8 @@ mod tests {
                 tokens_sent: 100,
                 tokens_received: 0,
                 cost: None,
+                prompt_tokens: None,
+                cached_tokens: None,
             });
             session.begin_streaming();
             state.session.active_session_id().clone()
@@ -1503,6 +1565,8 @@ mod tests {
             tool_calls: None,
             cost: None,
             provider_completion_tokens: None,
+            provider_prompt_tokens: None,
+            cached_tokens: None,
             thinking_content: None,
             dispatched_at: jiff::Timestamp::now(),
         };
@@ -1528,6 +1592,8 @@ mod tests {
                 tokens_sent: 100,
                 tokens_received: 0,
                 cost: None,
+                prompt_tokens: None,
+                cached_tokens: None,
             });
             session.begin_streaming();
             state.session.active_session_id().clone()
@@ -1541,6 +1607,8 @@ mod tests {
             tool_calls: None,
             cost: None,
             provider_completion_tokens: Some(9999),
+            provider_prompt_tokens: None,
+            cached_tokens: None,
             thinking_content: Some(
                 "extremely long thinking content that would produce many tokens".to_owned(),
             ),
@@ -1565,6 +1633,8 @@ mod tests {
                 tokens_sent: 100,
                 tokens_received: 0,
                 cost: None,
+                prompt_tokens: None,
+                cached_tokens: None,
             });
             session.begin_streaming();
             state.session.active_session_id().clone()
@@ -1579,6 +1649,8 @@ mod tests {
             tool_calls: None,
             cost: None,
             provider_completion_tokens: None,
+            provider_prompt_tokens: None,
+            cached_tokens: None,
             thinking_content: None,
             dispatched_at: jiff::Timestamp::now(),
         };
@@ -1608,6 +1680,8 @@ mod tests {
                 tokens_sent: 100,
                 tokens_received: 0,
                 cost: None,
+                prompt_tokens: None,
+                cached_tokens: None,
             });
             session.begin_streaming();
             state.session.active_session_id().clone()
@@ -1621,6 +1695,8 @@ mod tests {
             tool_calls: None,
             cost: None,
             provider_completion_tokens: Some(50000),
+            provider_prompt_tokens: None,
+            cached_tokens: None,
             thinking_content: None,
             dispatched_at: jiff::Timestamp::now(),
         };
@@ -1644,6 +1720,8 @@ mod tests {
                 tokens_sent: 100,
                 tokens_received: 0,
                 cost: None,
+                prompt_tokens: None,
+                cached_tokens: None,
             });
             session.begin_streaming();
             state.session.active_session_id().clone()
@@ -1658,6 +1736,8 @@ mod tests {
             tool_calls: None,
             cost: None,
             provider_completion_tokens: None,
+            provider_prompt_tokens: None,
+            cached_tokens: None,
             thinking_content: None,
             dispatched_at: jiff::Timestamp::now(),
         };
@@ -1785,6 +1865,8 @@ mod tests {
             tool_calls: None,
             cost: None,
             provider_completion_tokens: Some(10),
+            provider_prompt_tokens: None,
+            cached_tokens: None,
             thinking_content: None,
             dispatched_at: dispatched,
             model_used: None,
@@ -1951,6 +2033,8 @@ mod tests {
             tool_calls: None,
             cost: None,
             provider_completion_tokens: Some(10),
+            provider_prompt_tokens: None,
+            cached_tokens: None,
             thinking_content: Some("only reasoning".to_owned()),
             dispatched_at: dispatched,
             model_used: None,
@@ -2003,6 +2087,8 @@ mod tests {
             tool_calls: None,
             cost: None,
             provider_completion_tokens: None,
+            provider_prompt_tokens: None,
+            cached_tokens: None,
             thinking_content: None,
             dispatched_at: dispatched,
             model_used: None,
@@ -2062,6 +2148,8 @@ mod tests {
             tool_calls: None,
             cost: None,
             provider_completion_tokens: None,
+            provider_prompt_tokens: None,
+            cached_tokens: None,
             thinking_content: None,
             dispatched_at: dispatched,
             model_used: None,
@@ -2331,6 +2419,8 @@ mod tests {
             tool_calls: None,
             cost: None,
             provider_completion_tokens: None,
+            provider_prompt_tokens: None,
+            cached_tokens: None,
             thinking_content: None,
             dispatched_at: backdated,
         };
@@ -2371,6 +2461,8 @@ mod tests {
             tool_calls: None,
             cost: None,
             provider_completion_tokens: None,
+            provider_prompt_tokens: None,
+            cached_tokens: None,
             thinking_content: None,
             dispatched_at: jiff::Timestamp::now(),
         };

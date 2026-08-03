@@ -257,7 +257,8 @@ impl SessionStore for SqliteSessionStore {
         let ledger_rows: Vec<TokenLedgerRow> = self
             .pool
             .query_all(
-                "SELECT id, session_id, timestamp, tokens_sent, tokens_received, cost, model_used \
+                "SELECT id, session_id, timestamp, tokens_sent, tokens_received, cost, model_used, \
+                 prompt_tokens, cached_tokens \
                  FROM token_ledger WHERE session_id = ?",
                 vec![Box::new(session_id_str.clone())],
             )
@@ -423,6 +424,8 @@ struct TokenLedgerRow {
     tokens_received: i32,
     cost: Option<f64>,
     model_used: Option<String>,
+    prompt_tokens: Option<i32>,
+    cached_tokens: Option<i32>,
 }
 
 // ── Typed DAO traits (compile-time SQL validation via DAOW_DATABASE_URL) ───
@@ -843,6 +846,8 @@ struct PersistableTokenRecord {
     tokens_received: i32,
     cost: Option<f64>,
     model_used: Option<String>,
+    prompt_tokens: Option<i32>,
+    cached_tokens: Option<i32>,
 }
 
 impl PersistableTokenRecord {
@@ -854,6 +859,8 @@ impl PersistableTokenRecord {
             tokens_received: record.tokens_received as i32,
             cost: record.cost,
             model_used: record.model_used.clone(),
+            prompt_tokens: record.prompt_tokens.map(|t| t as i32),
+            cached_tokens: record.cached_tokens.map(|t| t as i32),
         }
     }
 }
@@ -964,8 +971,8 @@ fn insert_token_ledger_row(
 ) -> rusqlite::Result<()> {
     conn.execute(
         "INSERT INTO token_ledger \
-         (session_id, timestamp, tokens_sent, tokens_received, cost, model_used) \
-         VALUES (?, ?, ?, ?, ?, ?)",
+         (session_id, timestamp, tokens_sent, tokens_received, cost, model_used, prompt_tokens, cached_tokens) \
+         VALUES (?, ?, ?, ?, ?, ?, ?, ?)",
         rusqlite::params![
             session_id,
             record.timestamp,
@@ -973,6 +980,8 @@ fn insert_token_ledger_row(
             record.tokens_received,
             record.cost,
             record.model_used,
+            record.prompt_tokens,
+            record.cached_tokens,
         ],
     )?;
     Ok(())
@@ -1258,6 +1267,8 @@ fn record_from_row(row: TokenLedgerRow) -> TokenRecord {
         tokens_sent: row.tokens_sent as u32,
         tokens_received: row.tokens_received as u32,
         cost: row.cost,
+        prompt_tokens: row.prompt_tokens.map(|t| t as u32),
+        cached_tokens: row.cached_tokens.map(|t| t as u32),
     }
 }
 

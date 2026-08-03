@@ -197,6 +197,10 @@ impl StreamResponseParser {
                 .get("completion_tokens")
                 .and_then(serde_json::Value::as_u64),
             cost: usage_val.get("cost").and_then(serde_json::Value::as_f64),
+            cached_tokens: usage_val
+                .get("prompt_tokens_details")
+                .and_then(|d| d.get("cached_tokens"))
+                .and_then(serde_json::Value::as_u64),
         };
         pending.usage = Some(usage);
     }
@@ -705,6 +709,66 @@ mod tests {
         assert_eq!(usage.cost, None);
         assert_eq!(usage.prompt_tokens, Some(100));
         assert_eq!(usage.completion_tokens, Some(50));
+    }
+
+    #[rstest::rstest]
+    fn cached_tokens_parsed_from_prompt_tokens_details() {
+        // Given a usage chunk carrying prompt_tokens_details.cached_tokens.
+        let mut parser = StreamResponseParser::new();
+        let json = r#"{"id":"x","choices":[{"index":0,"delta":{},"finish_reason":"stop"}],"usage":{"prompt_tokens":1000,"completion_tokens":50,"prompt_tokens_details":{"cached_tokens":400}}}"#;
+
+        // When parsing then finalizing.
+        parser.parse_data(json);
+        let events_done = parser.handle_done();
+
+        // Then the Done usage reports 400 cached tokens.
+        let usage = match &events_done[0] {
+            StreamEvent::Done { usage: Some(u), .. } => u.clone(),
+            _ => panic!("expected Done with usage"),
+        };
+        assert_eq!(usage.cached_tokens, Some(400));
+    }
+
+    #[rstest::rstest]
+    fn cached_tokens_none_when_prompt_tokens_details_absent() {
+        // Given a usage chunk without prompt_tokens_details.
+        let mut parser = StreamResponseParser::new();
+        let json = r#"{"id":"x","choices":[{"index":0,"delta":{},"finish_reason":"stop"}],"usage":{"prompt_tokens":1000,"completion_tokens":50}}"#;
+
+        // When parsing then finalizing.
+        parser.parse_data(json);
+        let events_done = parser.handle_done();
+
+        // Then the Done usage reports cached_tokens as None.
+        let usage = match &events_done[0] {
+            StreamEvent::Done { usage: Some(u), .. } => u.clone(),
+            _ => panic!("expected Done with usage"),
+        };
+        assert_eq!(usage.cached_tokens, None);
+    }
+
+    #[rstest::rstest]
+    fn cached_tokens_survives_split_chunk_usage() {
+        // Given OpenRouter-style split: finish_reason in chunk 1, usage (with
+        // prompt_tokens_details) in a second chunk.
+        let mut parser = StreamResponseParser::new();
+
+        let chunk1 = r#"{"id":"x","choices":[{"index":0,"delta":{},"finish_reason":"stop"}]}"#;
+        parser.parse_data(chunk1);
+
+        let chunk2 = r#"{"id":"x","usage":{"prompt_tokens":1000,"completion_tokens":50,"prompt_tokens_details":{"cached_tokens":250}}}"#;
+        parser.parse_data(chunk2);
+
+        // When [DONE] arrives.
+        let events_done = parser.handle_done();
+
+        // Then the enriched Done usage reports the cache hits from chunk 2.
+        let usage = match &events_done[0] {
+            StreamEvent::Done { usage: Some(u), .. } => u.clone(),
+            _ => panic!("expected Done with usage"),
+        };
+        assert_eq!(usage.cached_tokens, Some(250));
+        assert_eq!(usage.prompt_tokens, Some(1000));
     }
 
     #[rstest::rstest]
