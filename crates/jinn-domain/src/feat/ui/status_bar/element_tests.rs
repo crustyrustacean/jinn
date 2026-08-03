@@ -73,6 +73,8 @@ fn render_single_model_ignores_stale_ledger_model_used() {
         tokens_sent: 1000,
         tokens_received: 500,
         cost: None,
+        prompt_tokens: None,
+        cached_tokens: None,
     });
 
     // When rendering.
@@ -174,6 +176,8 @@ fn render_shows_token_counts_with_values() {
         tokens_sent: 1500,
         tokens_received: 750,
         cost: None,
+        prompt_tokens: None,
+        cached_tokens: None,
     });
     let (mut terminal, area) = setup_term(80, 2);
     terminal
@@ -192,6 +196,110 @@ fn render_shows_token_counts_with_values() {
 }
 
 #[rstest::rstest]
+fn render_shows_cache_percent_when_cached_tokens_present() {
+    // Given a session with a measured turn reporting cache hits.
+    use crate::feat::session::token_stats::TokenRecord;
+    let mut element = StatusBarElement;
+    let mut state = AppState::default();
+    state
+        .active_session_mut()
+        .set_model(ModelSelection::Single("openrouter/auto".to_owned()));
+    state.active_session_mut().push_token_record(TokenRecord {
+        model_used: None,
+        timestamp: jiff::Timestamp::now(),
+        tokens_sent: 1000,
+        tokens_received: 50,
+        cost: None,
+        prompt_tokens: Some(1000),
+        cached_tokens: Some(400),
+    });
+    let (mut terminal, area) = setup_term(80, 2);
+    terminal
+        .draw(|frame| {
+            let ctx = RenderCtx::new(&state);
+            element.render(frame, area, &ctx);
+        })
+        .unwrap();
+    let buffer = terminal.backend().buffer().clone();
+    let row = buffer_row(&buffer, 1, 80);
+    // Then the cache glyph + 40% appears leftmost.
+    assert!(row.contains("\u{2B22} 40%"));
+}
+
+#[rstest::rstest]
+fn render_hides_cache_glyph_when_no_cached_tokens() {
+    // Given a session with no cache hits (cached_tokens = None).
+    use crate::feat::session::token_stats::TokenRecord;
+    let mut element = StatusBarElement;
+    let mut state = AppState::default();
+    state
+        .active_session_mut()
+        .set_model(ModelSelection::Single("openrouter/auto".to_owned()));
+    state.active_session_mut().push_token_record(TokenRecord {
+        model_used: None,
+        timestamp: jiff::Timestamp::now(),
+        tokens_sent: 1000,
+        tokens_received: 50,
+        cost: None,
+        prompt_tokens: Some(1000),
+        cached_tokens: None,
+    });
+    let (mut terminal, area) = setup_term(80, 2);
+    terminal
+        .draw(|frame| {
+            let ctx = RenderCtx::new(&state);
+            element.render(frame, area, &ctx);
+        })
+        .unwrap();
+    let buffer = terminal.backend().buffer().clone();
+    let row = buffer_row(&buffer, 1, 80);
+    // Then no cache glyph appears.
+    assert!(!row.contains('\u{2B22}'));
+}
+
+#[rstest::rstest]
+fn render_cache_percent_uses_measured_turns_only() {
+    // Given a session with one measured turn (prompt=1000, cached=400) and one
+    // cancelled turn (estimate=50, no usage). 400/1000 = 40%, not affected by
+    // the cancelled turn's estimate.
+    use crate::feat::session::token_stats::TokenRecord;
+    let mut element = StatusBarElement;
+    let mut state = AppState::default();
+    state
+        .active_session_mut()
+        .set_model(ModelSelection::Single("openrouter/auto".to_owned()));
+    state.active_session_mut().push_token_record(TokenRecord {
+        model_used: None,
+        timestamp: jiff::Timestamp::now(),
+        tokens_sent: 1000,
+        tokens_received: 50,
+        cost: None,
+        prompt_tokens: Some(1000),
+        cached_tokens: Some(400),
+    });
+    state.active_session_mut().push_token_record(TokenRecord {
+        model_used: None,
+        timestamp: jiff::Timestamp::now(),
+        tokens_sent: 50,
+        tokens_received: 0,
+        cost: None,
+        prompt_tokens: None,
+        cached_tokens: None,
+    });
+    let (mut terminal, area) = setup_term(80, 2);
+    terminal
+        .draw(|frame| {
+            let ctx = RenderCtx::new(&state);
+            element.render(frame, area, &ctx);
+        })
+        .unwrap();
+    let buffer = terminal.backend().buffer().clone();
+    let row = buffer_row(&buffer, 1, 80);
+    // Then the percentage is 40% (measured only), not 38% (1050 denominator).
+    assert!(row.contains("\u{2B22} 40%"));
+}
+
+#[rstest::rstest]
 fn render_shows_zero_percent_max_when_context_size_but_no_limit() {
     // Given a session with a cached context size but no model cache.
     use crate::feat::session::token_stats::TokenRecord;
@@ -206,6 +314,8 @@ fn render_shows_zero_percent_max_when_context_size_but_no_limit() {
         tokens_sent: 5000,
         tokens_received: 0,
         cost: None,
+        prompt_tokens: None,
+        cached_tokens: None,
     });
     state.active_session_mut().set_context_size(5000);
     let (mut terminal, area) = setup_term(80, 2);
@@ -446,6 +556,8 @@ fn render_shows_context_limit_with_usage_and_percentage() {
         tokens_sent: 5000,
         tokens_received: 0,
         cost: None,
+        prompt_tokens: None,
+        cached_tokens: None,
     });
     state.active_session_mut().set_context_size(5000);
 
@@ -492,6 +604,8 @@ fn render_falls_back_when_no_context_limit_in_cache() {
         tokens_sent: 5000,
         tokens_received: 0,
         cost: None,
+        prompt_tokens: None,
+        cached_tokens: None,
     });
     state.active_session_mut().set_context_size(5000);
 
@@ -541,6 +655,8 @@ fn render_falls_back_when_no_model_cache() {
         tokens_sent: 5000,
         tokens_received: 0,
         cost: None,
+        prompt_tokens: None,
+        cached_tokens: None,
     });
     state.active_session_mut().set_context_size(5000);
     // No model cache.
@@ -673,6 +789,8 @@ fn render_shows_cost_with_non_zero_value() {
         tokens_sent: 1500,
         tokens_received: 750,
         cost: Some(0.00230),
+        prompt_tokens: None,
+        cached_tokens: None,
     });
     let (mut terminal, area) = setup_term(80, 2);
     terminal
@@ -711,6 +829,8 @@ fn render_shows_cost_before_turns_indicator() {
         tokens_sent: 1000,
         tokens_received: 500,
         cost: Some(0.00150),
+        prompt_tokens: None,
+        cached_tokens: None,
     });
     let (mut terminal, area) = setup_term(80, 2);
     terminal
@@ -774,6 +894,8 @@ fn render_shows_tree_aggregate_when_parent_has_child() {
         tokens_sent: 1000,
         tokens_received: 500,
         cost: Some(0.01),
+        prompt_tokens: None,
+        cached_tokens: None,
     });
 
     // Create a child session.
@@ -787,6 +909,8 @@ fn render_shows_tree_aggregate_when_parent_has_child() {
             tokens_sent: 500,
             tokens_received: 250,
             cost: Some(0.005),
+            prompt_tokens: None,
+            cached_tokens: None,
         });
         child.set_parent_session(active_id);
     }
@@ -904,6 +1028,8 @@ fn render_alloy_with_token_records_shows_prefix_and_last_dispatched_model() {
         tokens_sent: 100,
         tokens_received: 50,
         cost: None,
+        prompt_tokens: None,
+        cached_tokens: None,
         model_used: Some("provider-b/model-2".to_owned()),
     });
 
@@ -1252,6 +1378,8 @@ fn status_bar_alloy_indicator_reflects_last_dispatched_member() {
         tokens_sent: 0,
         tokens_received: 0,
         cost: None,
+        prompt_tokens: None,
+        cached_tokens: None,
     });
     // Cache records gpt-4o as image-capable.
     {

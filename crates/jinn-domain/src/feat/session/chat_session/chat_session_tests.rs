@@ -4788,12 +4788,87 @@ fn restore_token_ledger_sets_records() {
         tokens_sent: 100,
         tokens_received: 50,
         cost: Some(0.01),
+        prompt_tokens: None,
+        cached_tokens: None,
     }];
     session.restore_token_ledger(records);
 
     // Then the ledger contains the records.
     assert_eq!(session.token_ledger().len(), 1);
     assert_eq!(session.token_ledger()[0].tokens_sent, 100);
+}
+
+#[rstest::rstest]
+fn finalize_last_token_record_sets_provider_prompt_tokens_without_overwriting_estimate() {
+    // Given a session with a pending record carrying a local estimate.
+    let mut session = ChatSessionState::new();
+    session.push_token_record(TokenRecord {
+        model_used: None,
+        timestamp: jiff::Timestamp::now(),
+        tokens_sent: 100,
+        tokens_received: 0,
+        cost: None,
+        prompt_tokens: None,
+        cached_tokens: None,
+    });
+
+    // When finalizing with the provider-reported prompt token count.
+    session
+        .finalize_last_token_record(50, Some(0.01), None, Some(120), None)
+        .expect("finalize");
+
+    // Then the provider count is recorded but the estimate is retained.
+    let record = &session.token_ledger()[0];
+    assert_eq!(record.tokens_sent, 100, "local estimate must be retained");
+    assert_eq!(record.prompt_tokens, Some(120));
+}
+
+#[rstest::rstest]
+fn finalize_last_token_record_leaves_new_fields_none_on_no_usage() {
+    // Given a session with a pending record (simulating a cancelled turn).
+    let mut session = ChatSessionState::new();
+    session.push_token_record(TokenRecord {
+        model_used: None,
+        timestamp: jiff::Timestamp::now(),
+        tokens_sent: 100,
+        tokens_received: 0,
+        cost: None,
+        prompt_tokens: None,
+        cached_tokens: None,
+    });
+
+    // When finalizing without provider usage data (None for both).
+    session
+        .finalize_last_token_record(0, None, None, None, None)
+        .expect("finalize");
+
+    // Then both provider-reported fields stay None.
+    let record = &session.token_ledger()[0];
+    assert_eq!(record.prompt_tokens, None);
+    assert_eq!(record.cached_tokens, None);
+}
+
+#[rstest::rstest]
+fn finalize_last_token_record_sets_cached_tokens() {
+    // Given a session with a pending record.
+    let mut session = ChatSessionState::new();
+    session.push_token_record(TokenRecord {
+        model_used: None,
+        timestamp: jiff::Timestamp::now(),
+        tokens_sent: 1000,
+        tokens_received: 0,
+        cost: None,
+        prompt_tokens: None,
+        cached_tokens: None,
+    });
+
+    // When finalizing with a reported cache-hit count.
+    session
+        .finalize_last_token_record(50, Some(0.01), None, Some(1000), Some(400))
+        .expect("finalize");
+
+    // Then cached_tokens is recorded.
+    assert_eq!(session.token_ledger()[0].cached_tokens, Some(400));
 }
 
 #[rstest::rstest]

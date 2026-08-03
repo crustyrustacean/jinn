@@ -83,6 +83,7 @@ impl GeminiStreamParser {
                 .get("completionTokenCount")
                 .and_then(serde_json::Value::as_u64),
             cost: None,
+            cached_tokens: None,
         });
 
         if !finish_reason.is_empty() && !self.done_emitted {

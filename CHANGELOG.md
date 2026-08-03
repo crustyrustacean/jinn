@@ -1,3 +1,14 @@
+## (development) v0.104.0
+
+- MCP server sidebar entry only shows when MCP servers are enabled. Also uses consistent padding (1 cell top + 1 cell bottom).
+- Uploaded tokens indicator now uses provider-returned value, falling back to local calculation.
+- Cached tokens are now displayed (w/hexagon icon) next to uploaded tokens indicator as a percentage.
+- Reasoning effort is now displayed upon starting `jinn`.
+
+### OpenRouter Provider Selection
+
+OpenRouter endpoints can now be selected using `<leader>sE` and selection is persisted per session. When using OpenRouter it's recommended to manually select a provider in order to maximize prompt cache pricing. Default behavior is unchanged and uses your OpenRouter account configuration for endpoints.
+
 ## 2026-07-27 v0.103.0
 
 - `@` behavior now allows sending a message if the attachment cannot be found. Missing files are highlighted in red.

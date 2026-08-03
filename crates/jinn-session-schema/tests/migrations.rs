@@ -2,8 +2,7 @@
 
 use jinn_session_schema::run_migrations;
 
-/// A fresh database, after `run_migrations`, contains all six tables plus the
-/// `_migrations` tracking row at v23.
+/// `_migrations` tracking row at v24.
 #[test]
 fn fresh_database_has_all_tables_and_v21() {
     // Given a fresh in-memory database.
@@ -46,11 +45,28 @@ fn fresh_database_has_all_tables_and_v21() {
         "entry_blobs table missing: {tables:?}"
     );
 
-    // And the highest recorded migration version is 23.
+    // And the highest recorded migration version is 24.
     let version: i64 = conn
         .query_row("SELECT MAX(version) FROM _migrations", [], |row| row.get(0))
         .expect("query version");
-    assert_eq!(version, 23, "migration version");
+    assert_eq!(version, 24, "migration version");
+
+    // And token_ledger has the v24 prompt/cache columns.
+    let columns: Vec<String> = conn
+        .prepare("PRAGMA table_info(token_ledger)")
+        .expect("prepare")
+        .query_map([], |row| row.get::<_, String>(1))
+        .expect("query")
+        .map(|r| r.expect("row"))
+        .collect();
+    assert!(
+        columns.contains(&"prompt_tokens".to_owned()),
+        "token_ledger.prompt_tokens missing: {columns:?}"
+    );
+    assert!(
+        columns.contains(&"cached_tokens".to_owned()),
+        "token_ledger.cached_tokens missing: {columns:?}"
+    );
 }
 
 /// Re-running `run_migrations` on a fully-migrated database is a no-op: the

@@ -212,6 +212,8 @@ impl SessionPersistenceActor {
                     tokens_sent: assembled.estimated_tokens(),
                     tokens_received: 0,
                     cost: None,
+                    prompt_tokens: None,
+                    cached_tokens: None,
                 });
 
                 (
@@ -575,6 +577,8 @@ mod tests {
                 tool_calls: Some(vec![]),
                 cost: None,
                 provider_completion_tokens: None,
+                provider_prompt_tokens: None,
+                cached_tokens: None,
                 thinking_content: None,
                 model_used: None,
                 dispatched_at,
@@ -685,6 +689,8 @@ mod tests {
             dispatched_at: jiff::Timestamp::now(),
             cost: None,
             provider_completion_tokens: None,
+            provider_prompt_tokens: None,
+            cached_tokens: None,
         };
         actor.on_stream_completed(&event).await;
 
@@ -713,6 +719,8 @@ mod tests {
                 tokens_sent: 100,
                 tokens_received: 0,
                 cost: None,
+                prompt_tokens: None,
+                cached_tokens: None,
             });
             session.begin_streaming();
             state.session.active_session_id().clone()
@@ -730,6 +738,8 @@ mod tests {
             }]),
             cost: None,
             provider_completion_tokens: None,
+            provider_prompt_tokens: None,
+            cached_tokens: None,
             thinking_content: None,
             dispatched_at: jiff::Timestamp::now(),
         };
