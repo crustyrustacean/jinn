@@ -99,11 +99,7 @@ pub struct McpActorDeps {
 impl McpActorDeps {
     /// Production constructor: spawns the server process at `on_start`.
     #[must_use]
-    pub fn new(
-        deps: ActorDeps,
-        session_id: SessionId,
-        server: McpServerConfig,
-    ) -> Self {
+    pub fn new(deps: ActorDeps, session_id: SessionId, server: McpServerConfig) -> Self {
         Self {
             deps,
             session_id,
@@ -137,6 +133,10 @@ impl McpActorDeps {
 ///
 /// Panics if `command` is `None` — only valid for `RemoteHttp` servers,
 /// which never reach this function.
+#[expect(
+    clippy::expect_used,
+    reason = "invariant: documented, only called for Stdio/LocalHttp"
+)]
 fn server_command(config: &McpServerConfig) -> ServerCommand {
     ServerCommand {
         program: config
@@ -154,6 +154,10 @@ fn server_command(config: &McpServerConfig) -> ServerCommand {
 ///   token, bind address parsed from `url`), then poll the HTTP endpoint on a
 ///   backoff until the handshake succeeds or the child exits (no wall-clock timeout).
 /// - [`TransportKind::RemoteHttp`]: connect to the configured `url` with no child.
+#[expect(
+    clippy::expect_used,
+    reason = "invariants: url/command documented per transport kind"
+)]
 pub(crate) async fn connect_for_transport(
     server: &McpServerConfig,
 ) -> Result<McpClient, Report<McpClientError>> {
@@ -289,8 +293,7 @@ impl kameo::Actor for McpActor {
         // list) is non-fatal to the process: the actor runs idle, the lifecycle
         // actor / dashboard surfaces the dead status, and a later enable/disable
         // cycle can respawn.
-        let (mut client, definitions) = match acquire_client(&server, injected_client).await
-        {
+        let (mut client, definitions) = match acquire_client(&server, injected_client).await {
             Ok(ready) => ready,
             Err(half_open) => {
                 if let Some(mut half_open) = half_open {

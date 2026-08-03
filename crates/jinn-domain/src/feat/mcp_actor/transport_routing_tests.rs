@@ -25,17 +25,6 @@ use std::time::Duration;
 use crate::feat::mcp::TransportKind;
 use crate::feat::mcp_actor::connect_for_transport;
 
-/// Builds a minimal config carrying only the transport variant under test.
-fn config_with(transport: TransportKind) -> crate::feat::mcp::McpServerConfig {
-    crate::feat::mcp::McpServerConfig {
-        name: "test".to_owned(),
-        command: Some(String::new()),
-        args: vec![],
-        transport,
-        ..Default::default()
-    }
-}
-
 /// `RemoteHttp` to an unreachable URL keeps retrying instead of failing fast.
 ///
 /// This is the no-wall-clock-timeout guarantee (AC5/AC7): a slow or down
@@ -52,15 +41,11 @@ async fn remote_http_to_unreachable_url_loops_instead_of_failing() {
         args: vec![],
         transport: TransportKind::RemoteHttp,
         url: Some("http://127.0.0.1:1/mcp".to_owned()),
-        ..Default::default()
     };
 
     // When attempting to connect, bounded by a short timeout.
-    let result = tokio::time::timeout(
-        Duration::from_millis(500),
-        connect_for_transport(&config),
-    )
-    .await;
+    let result =
+        tokio::time::timeout(Duration::from_millis(500), connect_for_transport(&config)).await;
 
     // Then the connect is still looping (timeout fires), proving it did not
     // fail fast on the first refused connection.

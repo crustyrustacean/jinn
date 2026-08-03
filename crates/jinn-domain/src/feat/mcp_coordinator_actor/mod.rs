@@ -203,11 +203,7 @@ impl McpCoordinatorActor {
 
         let actor_ref = McpActor::supervise(
             &self.root,
-            McpActorDeps::new(
-                self.deps.clone(),
-                session_id.clone(),
-                config.clone(),
-            ),
+            McpActorDeps::new(self.deps.clone(), session_id.clone(), config.clone()),
         )
         .restart_policy(RestartPolicy::Never)
         .spawn()
