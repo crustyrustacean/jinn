@@ -43,6 +43,18 @@ pub fn expand_tokens(args: &[String], ip: &str, port: u16) -> Vec<String> {
         .collect()
 }
 
+/// Extracts the host portion from a URL template like `http://127.0.0.1:<port>/mcp`.
+///
+/// Strips the scheme prefix and takes everything up to the first `:` (port
+/// separator) or `/` (path separator), whichever comes first. Returns the raw
+/// host string without validation — callers pass it to [`pick_free_port`] which
+/// parses it as an IP address.
+#[must_use]
+pub fn parse_host(url_template: &str) -> String {
+    let after_scheme = url_template.split_once("://").map_or(url_template, |(_, rest)| rest);
+    let host = after_scheme.split_once(':').map_or(after_scheme, |(host, _)| host);
+    host.split_once('/').map_or(host, |(host, _)| host).to_owned()
+}
 #[cfg(test)]
 mod tests {
     #![allow(clippy::expect_used, reason = "test assertions")]
@@ -111,6 +123,26 @@ mod tests {
 
         // Then args pass through unchanged.
         assert_eq!(out, vec!["--stdio", "--verbose"]);
+    }
+
+    #[test]
+    fn parse_host_extracts_from_url_with_port_token() {
+        // Given a url template with <port> token.
+        // When parsing the host.
+        let host = parse_host("http://127.0.0.1:<port>/mcp");
+
+        // Then the host is extracted before the port.
+        assert_eq!(host, "127.0.0.1");
+    }
+
+    #[test]
+    fn parse_host_extracts_from_url_without_path() {
+        // Given a url template with no path.
+        // When parsing the host.
+        let host = parse_host("http://0.0.0.0:<port>");
+
+        // Then the host is extracted.
+        assert_eq!(host, "0.0.0.0");
     }
 
     #[test]

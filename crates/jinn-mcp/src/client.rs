@@ -37,7 +37,7 @@ use tokio::io::AsyncBufReadExt;
 use tokio::process::Command;
 use wherror::Error;
 
-use crate::transport::{expand_tokens, pick_free_port};
+use crate::transport::{expand_tokens, parse_host, pick_free_port};
 
 /// A server process failed to start or communicate.
 #[derive(Debug, Error)]
@@ -204,11 +204,13 @@ impl McpClient {
 
     /// Spawns an HTTP-mode MCP server as a child process without connecting.
     ///
-    /// Allocates a free port (bind-and-release), expands `<ip>`/`<port>` tokens
-    /// in the supplied args, spawns the server with `kill_on_drop`, and drains
-    /// **both stdout and stderr** into one shared log buffer. Returns the
-    /// [`HalfOpenHttp`] handle; the caller completes the connection in
-    /// [`Self::connect_with_retry`] once the HTTP endpoint is reachable.
+    /// Parses the bind address from the host portion of `url_template`,
+    /// allocates a free port (bind-and-release), expands `<ip>`/`<port>` tokens
+    /// in the supplied args **and** in the url template, spawns the server with
+    /// `kill_on_drop`, and drains **both stdout and stderr** into one shared log
+    /// buffer. Returns the [`HalfOpenHttp`] handle; the caller completes the
+    /// connection in [`Self::connect_with_retry`] once the HTTP endpoint is
+    /// reachable.
     ///
     /// jinn owns the port allocation and never parses server output for the
     /// bind address — the URL is known the instant the port is allocated.
@@ -220,13 +222,17 @@ impl McpClient {
     pub fn connect_http(
         program: &str,
         args: &[String],
-        bind_addr: &str,
+        url_template: &str,
     ) -> Result<HalfOpenHttp, Report<McpClientError>> {
-        let port = pick_free_port(bind_addr)
+        let bind_addr = parse_host(url_template);
+        let port = pick_free_port(&bind_addr)
             .change_context(McpClientError)
             .attach("failed to allocate a free port for the HTTP MCP server")?;
-        let expanded = expand_tokens(args, bind_addr, port);
-        let url = format!("http://{bind_addr}:{port}/mcp");
+        let expanded = expand_tokens(args, &bind_addr, port);
+        let url = expand_tokens(&[url_template.to_owned()], &bind_addr, port)
+            .into_iter()
+            .next()
+            .expect("single-element vec");
 
         let mut command = Command::new(program);
         command
