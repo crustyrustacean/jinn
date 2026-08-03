@@ -138,10 +138,11 @@ pub struct UserPreferences {
     pub projects: Vec<ProjectConfig>,
 
     /// Configured MCP servers (Model Context Protocol). Each entry declares
-    /// a server jinn connects to (over stdio or HTTP, see [`TransportKind`](crate::feat::mcp::TransportKind))
-    /// when enabled per-session. See [`McpServerConfig`].
+    /// a server jinn connects to (over stdio, local_http, or remote_http — see
+    /// [`TransportKind`](crate::feat::mcp::TransportKind)) when enabled per-session.
+    /// See [`McpServerConfig`].
     #[serde(default)]
-    pub mcp_servers: Vec<crate::feat::mcp::McpServerConfig>,
+    pub mcp_server: Vec<crate::feat::mcp::McpServerConfig>,
 
     /// The local IP address HTTP-mode MCP servers bind to. Used as the `<ip>`
     /// replacement token in a server's `args`, and as the bind address for
@@ -247,7 +248,7 @@ impl Default for UserPreferences {
                 },
             ],
             projects: vec![],
-            mcp_servers: vec![],
+            mcp_server: vec![],
             max_tool_output_lines: None,
             max_tool_output_bytes: None,
             compaction: CompactionConfig::default(),
@@ -455,7 +456,7 @@ where
         patcher.register_array_key(["session_lifecycle"], "name");
         patcher.register_array_key(["auto_prune", "regex", "rules"], "pattern");
         patcher.register_array_key(["project"], "path");
-        patcher.register_array_key(["mcp_servers"], "name");
+        patcher.register_array_key(["mcp_server"], "name");
 
         patcher
             .apply(new_table, doc.as_table_mut())
@@ -647,7 +648,7 @@ mod tests {
             auto_prune: AutoPruneConfig::default(),
             todo_auto_steer: TodoAutoSteerConfig::default(),
             projects: vec![],
-            mcp_servers: vec![],
+            mcp_server: vec![],
             discord: crate::feat::discord::DiscordConfig::default(),
             tool_default_timeout_secs: default_tool_default_timeout_secs(),
             history_stall_timeout_secs: default_history_stall_timeout_secs(),
@@ -734,7 +735,7 @@ mod tests {
             auto_prune: AutoPruneConfig::default(),
             todo_auto_steer: TodoAutoSteerConfig::default(),
             projects: vec![],
-            mcp_servers: vec![],
+            mcp_server: vec![],
             discord: crate::feat::discord::DiscordConfig::default(),
             tool_default_timeout_secs: default_tool_default_timeout_secs(),
             history_stall_timeout_secs: default_history_stall_timeout_secs(),
@@ -772,7 +773,7 @@ mod tests {
             auto_prune: AutoPruneConfig::default(),
             todo_auto_steer: TodoAutoSteerConfig::default(),
             projects: vec![],
-            mcp_servers: vec![],
+            mcp_server: vec![],
             discord: crate::feat::discord::DiscordConfig::default(),
             tool_default_timeout_secs: default_tool_default_timeout_secs(),
             history_stall_timeout_secs: default_history_stall_timeout_secs(),
@@ -1081,7 +1082,7 @@ mod tests {
             auto_prune: AutoPruneConfig::default(),
             todo_auto_steer: TodoAutoSteerConfig::default(),
             projects: vec![],
-            mcp_servers: vec![],
+            mcp_server: vec![],
             discord: crate::feat::discord::DiscordConfig::default(),
             tool_default_timeout_secs: default_tool_default_timeout_secs(),
             history_stall_timeout_secs: default_history_stall_timeout_secs(),
@@ -1202,19 +1203,19 @@ mod tests {
     }
 
     #[rstest::rstest]
-    fn mcp_servers_array_round_trips_through_preferences() {
+    fn mcp_server_array_round_trips_through_preferences() {
         // Given preferences with two configured servers.
         let prefs = UserPreferences {
-            mcp_servers: vec![
+            mcp_server: vec![
                 crate::feat::mcp::McpServerConfig {
                     name: "excalimate".to_owned(),
-                    command: "npx".to_owned(),
+                    command: Some("npx".to_owned()),
                     args: vec!["@excalimate/mcp-server".to_owned(), "--stdio".to_owned()],
                     ..Default::default()
                 },
                 crate::feat::mcp::McpServerConfig {
                     name: "filesystem".to_owned(),
-                    command: "node".to_owned(),
+                    command: Some("node".to_owned()),
                     args: vec!["fs-server.js".to_owned()],
                     ..Default::default()
                 },
@@ -1229,20 +1230,20 @@ mod tests {
         let reloaded = load_preferences_from(&path).expect("load");
 
         // Then both servers survive the round-trip.
-        assert_eq!(reloaded.mcp_servers.len(), 2);
-        assert_eq!(reloaded.mcp_servers[0].name, "excalimate");
-        assert_eq!(reloaded.mcp_servers[1].name, "filesystem");
+        assert_eq!(reloaded.mcp_server.len(), 2);
+        assert_eq!(reloaded.mcp_server[0].name, "excalimate");
+        assert_eq!(reloaded.mcp_server[1].name, "filesystem");
     }
 
     #[rstest::rstest]
-    fn mcp_servers_patch_preserves_user_comments() {
-        // Given an existing jinn.toml with a user comment on an mcp_servers entry.
+    fn mcp_server_patch_preserves_user_comments() {
+        // Given an existing jinn.toml with a user comment on an mcp_server entry.
         let dir = TempDir::new().expect("temp dir");
         let path = dir.path().join(PREFS_FILE_NAME);
         std::fs::write(
             &path,
             r#"# top-level comment
-[[mcp_servers]]
+[[mcp_server]]
 # this comment must survive
 name = "excalimate"
 command = "npx"
@@ -1253,9 +1254,9 @@ args = ["@excalimate/mcp-server", "--stdio"]
 
         // When saving the same config back.
         let prefs = UserPreferences {
-            mcp_servers: vec![crate::feat::mcp::McpServerConfig {
+            mcp_server: vec![crate::feat::mcp::McpServerConfig {
                 name: "excalimate".to_owned(),
-                command: "npx".to_owned(),
+                command: Some("npx".to_owned()),
                 args: vec!["@excalimate/mcp-server".to_owned(), "--stdio".to_owned()],
                 ..Default::default()
             }],
@@ -1277,6 +1278,6 @@ args = ["@excalimate/mcp-server", "--stdio"]
         let prefs = UserPreferences::default();
 
         // Then no MCP servers are configured by default.
-        assert!(prefs.mcp_servers.is_empty());
+        assert!(prefs.mcp_server.is_empty());
     }
 }
