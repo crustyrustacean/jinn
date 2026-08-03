@@ -416,7 +416,9 @@ fn apply_completion_entries(
                 output_tokens,
                 event.cost,
                 event.model_used.clone(),
-                event.provider_prompt_tokens.and_then(|t| u32::try_from(t).ok()),
+                event
+                    .provider_prompt_tokens
+                    .and_then(|t| u32::try_from(t).ok()),
                 event.cached_tokens.and_then(|t| u32::try_from(t).ok()),
             )
         {

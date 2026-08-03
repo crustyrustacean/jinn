@@ -84,8 +84,7 @@ impl TokenStats {
             stats.total_sent += u64::from(record.tokens_sent);
             stats.total_received += u64::from(record.tokens_received);
             stats.request_count += 1;
-            stats.effective_sent +=
-                u64::from(record.prompt_tokens.unwrap_or(record.tokens_sent));
+            stats.effective_sent += u64::from(record.prompt_tokens.unwrap_or(record.tokens_sent));
             if let Some(prompt) = record.prompt_tokens {
                 stats.measured_sent += u64::from(prompt);
             }
