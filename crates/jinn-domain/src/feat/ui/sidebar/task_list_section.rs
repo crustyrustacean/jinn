@@ -456,9 +456,16 @@ mod tests {
         let lines = build_render_lines(&list, &app);
 
         // Then the last line is the section's trailing gap (empty).
-        let last = lines.last().expect("at least one line");
-        let text: String = last.spans.iter().map(|s| s.content.to_string()).collect();
-        assert!(text.trim().is_empty(), "trailing gap line should be blank; got: {text:?}");
+        let final_line = lines.last().expect("at least one line");
+        let text: String = final_line
+            .spans
+            .iter()
+            .map(|s| s.content.to_string())
+            .collect();
+        assert!(
+            text.trim().is_empty(),
+            "trailing gap line should be blank; got: {text:?}"
+        );
     }
 
     #[test]
@@ -473,7 +480,10 @@ mod tests {
         let line_count = build_render_lines(&list, &app).len() as u16;
 
         // Then they agree (render/height lockstep).
-        assert_eq!(height, line_count, "content_height must match build_render_lines");
+        assert_eq!(
+            height, line_count,
+            "content_height must match build_render_lines"
+        );
     }
 
     #[test]
@@ -586,9 +596,9 @@ mod tests {
         // The last line is the section's trailing gap (mirrors Persona/Pins/McpServers),
         // and line index 1 is the header separator blank. Both are expected; every
         // line *between* phases should have content.
-        let last = lines.len().saturating_sub(1);
+        let trailing_index = lines.len().saturating_sub(1);
         for (i, line) in lines.iter().enumerate() {
-            if i == 1 || i == last {
+            if i == 1 || i == trailing_index {
                 continue; // header separator / trailing gap are expected
             }
             let text: String = line.spans.iter().map(|s| s.content.to_string()).collect();
