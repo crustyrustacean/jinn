@@ -71,6 +71,15 @@ pub struct SendToLlmProvider {
     /// field (provider default).
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub reasoning_effort: Option<jinn_provider::ReasoningEffort>,
+    /// Pinned OpenRouter routing endpoint tag, for prefix-cache affinity.
+    ///
+    /// Populated only for a `Single` model whose profile has an endpoint pin;
+    /// the dispatch layer leaves this `None` for alloys (the pin is
+    /// model-specific and incoherent across a rotating set). The factory gates
+    /// this further: it is only injected when the resolved backend is
+    /// OpenRouter. Legacy sessions without a pin deserialize to `None`.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub endpoint_tag: Option<String>,
     /// When this request was dispatched to the LLM.
     pub dispatched_at: Timestamp,
 }

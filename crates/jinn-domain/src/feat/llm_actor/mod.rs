@@ -680,6 +680,7 @@ impl LlmActor {
                 &id,
                 &api_keys,
                 payload.reasoning_effort,
+                payload.endpoint_tag.as_deref(),
             ) {
                 Ok(f) => {
                     tracing::debug!(provider_id = %pid, "created per-request LLM factory");
@@ -1133,6 +1134,7 @@ mod tests {
         let payload = SendToLlmProvider {
             model_used: None,
             reasoning_effort: None,
+            endpoint_tag: None,
             session_id: session_id.clone(),
             messages: vec![],
             tool_definitions: vec![],
@@ -1171,6 +1173,7 @@ mod tests {
         let payload = SendToLlmProvider {
             model_used: None,
             reasoning_effort: None,
+            endpoint_tag: None,
             session_id: session_id.clone(),
             messages: vec![],
             tool_definitions: vec![],
@@ -1206,6 +1209,7 @@ mod tests {
         let payload = SendToLlmProvider {
             model_used: None,
             reasoning_effort: None,
+            endpoint_tag: None,
             session_id: session_id.clone(),
             messages: vec![],
             tool_definitions: vec![],
@@ -1247,6 +1251,7 @@ mod tests {
         let payload = SendToLlmProvider {
             model_used: None,
             reasoning_effort: None,
+            endpoint_tag: None,
             session_id: session_id.clone(),
             messages: vec![],
             tool_definitions: vec![],
@@ -1319,6 +1324,7 @@ mod tests {
             .publish(SendToLlmProvider {
                 model_used: None,
                 reasoning_effort: None,
+            endpoint_tag: None,
                 session_id: session_id.clone(),
                 messages: vec![],
                 tool_definitions: vec![],
@@ -1367,6 +1373,7 @@ mod tests {
             .publish(SendToLlmProvider {
                 model_used: None,
                 reasoning_effort: None,
+            endpoint_tag: None,
                 session_id: session_id.clone(),
                 messages: vec![],
                 tool_definitions: vec![],

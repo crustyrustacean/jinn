@@ -2,17 +2,17 @@
 //!
 //! Implements [`SidebarSection`] for displaying the active session's MCP
 //! servers. Reads the global catalog from `frontend.preferences.mcp_servers`
-//! and overlays the per-session enablement set + live connection status from
-//! the active session. Each configured server renders one row with a visual
-//! treatment matching its effective state:
+//! and shows only the servers enabled for the active session, overlaying their
+//! live connection status. Disabled servers are omitted entirely — they appear
+//! only once enabled. Each enabled server renders one row with a visual
+//! treatment matching its status:
 //!
-//! - **disabled** (not enabled for this session) — muted
 //! - **starting** (enabled but no status yet, or status `Starting`) — yellow
 //! - **running** (status `Running`) — green
 //! - **dead** (status `Dead`) — red
 //!
-//! The section is read-only in Part 1: navigation works (j/k), but there are
-//! no section-specific actions (enable/disable is done via the picker).
+//! The section is read-only: navigation works (j/k), but there are no
+//! section-specific actions (enable/disable is done via the picker).
 
 use crate::common::app_state::AppState;
 use crate::common::render_ctx::RenderCtx;
@@ -41,15 +41,13 @@ pub struct McpServersSectionState {
     pub selected_index: Option<usize>,
 }
 
-/// The effective visual state of a single server row.
+/// The effective visual state of a single (enabled) server row.
 ///
-/// Derived from enablement + live status. A server that is enabled but has
+/// Derived from the optional live status. A server that is enabled but has
 /// not yet reported a status is treated as [`Self::Starting`] — it occupies
 /// the gap between "user toggled on" and "first `McpServerStatus` arrived".
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 enum ServerRowState {
-    /// Not enabled for this session — muted rendering.
-    Disabled,
     /// Enabled and coming up (or explicitly reporting `Starting`).
     Starting,
     /// Live connection established and tools registered.
@@ -59,20 +57,18 @@ enum ServerRowState {
 }
 
 impl ServerRowState {
-    /// Combines enablement + the optional live status into a row state.
-    fn derive(enabled: bool, status: Option<McpConnectionStatus>) -> Self {
-        match (enabled, status) {
-            (false, _) => Self::Disabled,
-            (true, None | Some(McpConnectionStatus::Starting)) => Self::Starting,
-            (true, Some(McpConnectionStatus::Running)) => Self::Running,
-            (true, Some(McpConnectionStatus::Dead)) => Self::Dead,
+    /// Maps the optional live status into a row state.
+    fn derive(status: Option<McpConnectionStatus>) -> Self {
+        match status {
+            None | Some(McpConnectionStatus::Starting) => Self::Starting,
+            Some(McpConnectionStatus::Running) => Self::Running,
+            Some(McpConnectionStatus::Dead) => Self::Dead,
         }
     }
 
     /// Returns the textual label shown after the server name.
     fn label(self) -> &'static str {
         match self {
-            Self::Disabled => "disabled",
             Self::Starting => "starting",
             Self::Running => "running",
             Self::Dead => "dead",
@@ -82,7 +78,6 @@ impl ServerRowState {
     /// Returns the color used for the status label and indicator.
     fn color(self) -> Color {
         match self {
-            Self::Disabled => Color::DarkGray,
             Self::Starting => Color::Yellow,
             Self::Running => Color::Green,
             Self::Dead => Color::Red,
@@ -90,24 +85,29 @@ impl ServerRowState {
     }
 }
 
-/// Collects the configured server names in catalog order.
-fn configured_server_names(state: &AppState) -> Vec<String> {
+/// Collects the names of servers enabled for the active session, in catalog order.
+///
+/// Only enabled servers are surfaced in the sidebar; disabled ones are omitted
+/// entirely (they are toggled on via the picker).
+pub(crate) fn enabled_server_names(state: &AppState) -> Vec<String> {
+    let enabled = state.active_session().enabled_mcp_servers();
     state
         .frontend
         .preferences
         .mcp_servers
         .iter()
+        .filter(|s| enabled.contains(&s.name))
         .map(|s| s.name.clone())
         .collect()
 }
 
 /// Navigate within the MCP servers section.
 ///
-/// Moves the cursor up/down through the configured-servers list. Exhausts at
+/// Moves the cursor up/down through the enabled-servers list. Exhausts at
 /// the list boundaries so the sidebar can move focus to the neighbor section.
 /// The section does NOT modify its cursor on exhaustion.
 pub fn navigate(intent: &SidebarIntent, state: &mut AppState) -> SectionNavResult {
-    let count = configured_server_names(state).len();
+    let count = enabled_server_names(state).len();
     if count == 0 {
         return SectionNavResult::Exhausted;
     }
@@ -142,7 +142,7 @@ pub fn navigate(intent: &SidebarIntent, state: &mut AppState) -> SectionNavResul
 ///
 /// Positions at the edge of the list: index 0 from top, last index from bottom.
 pub fn receive_cursor(state: &mut AppState, enter_from: EnterFrom) {
-    let count = configured_server_names(state).len();
+    let count = enabled_server_names(state).len();
     if count == 0 {
         return;
     }
@@ -155,8 +155,8 @@ pub fn receive_cursor(state: &mut AppState, enter_from: EnterFrom) {
 
 /// The MCP servers sidebar section.
 ///
-/// Renders a header followed by one row per configured server, scoped to the
-/// active session's enablement + status.
+/// Renders a header followed by one row per server enabled for the active
+/// session, overlaying live status. Disabled servers are omitted entirely.
 #[derive(Debug)]
 pub struct McpServersSection;
 
@@ -174,9 +174,6 @@ impl SidebarSection for McpServersSection {
                 Some(SidebarSectionId::McpServers)
             );
 
-        let servers = &state.frontend.preferences.mcp_servers;
-        let enabled = state.active_session().enabled_mcp_servers();
-        let statuses = state.active_session().mcp_server_status();
         let cursor = state.frontend.mcp_servers_section.selected_index;
         let theme = &state.frontend.theme;
 
@@ -187,6 +184,17 @@ impl SidebarSection for McpServersSection {
         };
 
         let lines = {
+            let enabled = state.active_session().enabled_mcp_servers();
+            let statuses = state.active_session().mcp_server_status();
+            // Only enabled servers are surfaced; disabled ones are omitted entirely.
+            let servers: Vec<_> = state
+                .frontend
+                .preferences
+                .mcp_servers
+                .iter()
+                .filter(|s| enabled.contains(&s.name))
+                .collect();
+
             let mut lines = Vec::new();
             // Header.
             lines.push(Line::from(vec![Span::styled(
@@ -198,38 +206,28 @@ impl SidebarSection for McpServersSection {
             // Blank separator.
             lines.push(Line::from(""));
 
-            if servers.is_empty() {
-                lines.push(Line::from(Span::styled(
-                    "  none configured",
-                    Style::default().fg(Color::DarkGray),
-                )));
-            } else {
-                for (index, server) in servers.iter().enumerate() {
-                    let is_selected = section_focused && cursor == Some(index);
-                    let row_state = ServerRowState::derive(
-                        enabled.contains(&server.name),
-                        statuses.get(&server.name).copied(),
-                    );
+            for (index, server) in servers.iter().enumerate() {
+                let is_selected = section_focused && cursor == Some(index);
+                let row_state = ServerRowState::derive(statuses.get(&server.name).copied());
 
-                    let indicator = if is_selected {
-                        Span::styled(SELECTED_INDICATOR, Style::default().fg(indicator_color))
-                    } else {
-                        Span::raw(UNSELECTED_BORDER)
-                    };
+                let indicator = if is_selected {
+                    Span::styled(SELECTED_INDICATOR, Style::default().fg(indicator_color))
+                } else {
+                    Span::raw(UNSELECTED_BORDER)
+                };
 
-                    let name_style = if is_selected {
-                        Style::default().add_modifier(Modifier::REVERSED)
-                    } else {
-                        Style::default()
-                    };
+                let name_style = if is_selected {
+                    Style::default().add_modifier(Modifier::REVERSED)
+                } else {
+                    Style::default()
+                };
 
-                    lines.push(Line::from(vec![
-                        indicator,
-                        Span::styled(format!(" {}", server.name), name_style),
-                        Span::raw(" "),
-                        Span::styled(row_state.label(), Style::default().fg(row_state.color())),
-                    ]));
-                }
+                lines.push(Line::from(vec![
+                    indicator,
+                    Span::styled(format!(" {}", server.name), name_style),
+                    Span::raw(" "),
+                    Span::styled(row_state.label(), Style::default().fg(row_state.color())),
+                ]));
             }
             lines
         };
@@ -239,14 +237,22 @@ impl SidebarSection for McpServersSection {
     }
 
     fn content_height(&self, ctx: &RenderCtx) -> u16 {
-        // Collapsed to 0 when no servers are configured, matching the Pins/TaskList
-        // pattern so an empty catalog wastes no sidebar space.
-        let servers = &ctx.state.frontend.preferences.mcp_servers;
-        if servers.is_empty() {
+        // Collapsed to 0 when no servers are enabled for the active session,
+        // matching the Pins/TaskList pattern so disabled servers waste no space.
+        let enabled = ctx.state.active_session().enabled_mcp_servers();
+        let count = ctx
+            .state
+            .frontend
+            .preferences
+            .mcp_servers
+            .iter()
+            .filter(|s| enabled.contains(&s.name))
+            .count();
+        if count == 0 {
             return 0;
         }
-        // header(1) + blank(1) + one row per server + trailing gap(1).
-        let rows = u16::try_from(servers.len()).unwrap_or(u16::MAX);
+        // header(1) + blank(1) + one row per enabled server + trailing gap(1).
+        let rows = u16::try_from(count).unwrap_or(u16::MAX);
         rows.saturating_add(3)
     }
 }
@@ -261,11 +267,14 @@ mod tests {
         reason = "test code"
     )]
     use super::McpServersSection;
+    use super::{navigate, receive_cursor};
     use crate::common::app_state::AppState;
     use crate::common::render_ctx::RenderCtx;
     use crate::feat::mcp::McpServerConfig;
     use crate::feat::mcp_actor::protocol::McpConnectionStatus;
-    use crate::feat::ui::sidebar::section_trait::{SidebarSection, SidebarSectionId};
+    use crate::feat::ui::sidebar::section_trait::{
+        EnterFrom, SectionNavResult, SidebarIntent, SidebarSection, SidebarSectionId,
+    };
     use jinn_testutil::setup_term;
 
     fn server(name: &str) -> McpServerConfig {
@@ -329,17 +338,19 @@ mod tests {
     }
 
     #[rstest::rstest]
-    fn render_disabled_server_is_muted() {
-        // Given a configured server not enabled for the session.
+    fn render_disabled_server_is_hidden() {
+        // Given a configured server not enabled for the active session.
         let state = state_with_servers(&[server("excalimate")]);
 
         // When rendering.
         let rows = render_rows(&state, 40, 5);
 
-        // Then the row shows the server name and the disabled label.
+        // Then the disabled server does not appear at all.
         let combined = rows.join("\n");
-        assert!(combined.contains("excalimate"));
-        assert!(combined.contains("disabled"));
+        assert!(
+            !combined.contains("excalimate"),
+            "disabled servers must not render; got: {combined}"
+        );
     }
 
     #[rstest::rstest]
@@ -395,8 +406,8 @@ mod tests {
 
     #[rstest::rstest]
     fn render_only_active_session_servers() {
-        // Given two configured servers, with only alpha enabled for the active session.
-        // Session B (not active) has beta enabled, but it must not leak into the render.
+        // Given two configured servers: alpha enabled for the active session (A),
+        // beta enabled only for a different session (B).
         use crate::protocol::SessionId;
         let mut state = state_with_servers(&[server("alpha"), server("beta")]);
         let session_b = SessionId::new();
@@ -409,12 +420,75 @@ mod tests {
         // When rendering the active session (A).
         let rows = render_rows(&state, 40, 6);
 
-        // Then alpha shows enabled (starting) and beta shows disabled, because
-        // beta's enablement lives on session B, not the active session A.
+        // Then alpha (enabled for A) renders, and beta (enabled only for B)
+        // does not leak into the active session's render.
         let combined = rows.join("\n");
         assert!(combined.contains("alpha"));
-        assert!(combined.contains("beta"));
+        assert!(
+            !combined.contains("beta"),
+            "a server enabled only for another session must not render; got: {combined}"
+        );
         assert!(combined.contains("starting"));
-        assert!(combined.contains("disabled"));
+    }
+
+    #[test]
+    fn content_height_is_zero_when_none_enabled() {
+        // Given configured servers, none enabled for the active session.
+        let state = state_with_servers(&[server("alpha"), server("beta")]);
+        let section = McpServersSection;
+
+        // When computing the content height.
+        let height = section.content_height(&{ RenderCtx::new(&state) });
+
+        // Then the section collapses to zero height (hidden).
+        assert_eq!(
+            height, 0,
+            "section must be hidden when no servers are enabled"
+        );
+    }
+
+    #[test]
+    fn content_height_counts_only_enabled_servers() {
+        // Given three configured servers, two enabled for the active session.
+        let mut state = state_with_servers(&[server("alpha"), server("beta"), server("gamma")]);
+        state.active_session_mut().enable_mcp_server("alpha");
+        state.active_session_mut().enable_mcp_server("gamma");
+        let section = McpServersSection;
+
+        // When computing the content height.
+        let height = section.content_height(&{ RenderCtx::new(&state) });
+
+        // Then it counts only the enabled servers:
+        // header(1) + blank(1) + 2 rows + trailing gap(1) = 5.
+        assert_eq!(height, 5, "height must count enabled servers only");
+    }
+
+    #[test]
+    fn navigate_exhausts_at_enabled_subset_boundary() {
+        // Given two enabled servers with the cursor on the last one.
+        let mut state = state_with_servers(&[server("alpha"), server("beta"), server("gamma")]);
+        state.active_session_mut().enable_mcp_server("alpha");
+        state.active_session_mut().enable_mcp_server("gamma");
+        state.frontend.mcp_servers_section.selected_index = Some(1); // last enabled
+
+        // When moving down past the last enabled server.
+        let result = navigate(&SidebarIntent::MoveDown, &mut state);
+
+        // Then navigation exhausts (only 2 enabled servers, indices 0 and 1).
+        assert_eq!(result, SectionNavResult::Exhausted);
+    }
+
+    #[test]
+    fn receive_cursor_enters_enabled_subset_from_top() {
+        // Given enabled servers (alpha, gamma) with no cursor.
+        let mut state = state_with_servers(&[server("alpha"), server("beta"), server("gamma")]);
+        state.active_session_mut().enable_mcp_server("alpha");
+        state.active_session_mut().enable_mcp_server("gamma");
+
+        // When entering the section from the top.
+        receive_cursor(&mut state, EnterFrom::Top);
+
+        // Then the cursor lands on the first enabled server (index 0).
+        assert_eq!(state.frontend.mcp_servers_section.selected_index, Some(0));
     }
 }

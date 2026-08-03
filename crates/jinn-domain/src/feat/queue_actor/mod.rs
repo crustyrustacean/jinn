@@ -232,7 +232,7 @@ impl QueueActor {
             assemble_prompt(&guard, session_id, &self.counter, None)
         };
 
-        let (provider_id, model_used, reasoning_effort) = {
+        let (provider_id, model_used, reasoning_effort, endpoint_tag) = {
             self.state.with_session(&self.cap, |view| {
                 let profile = view
                     .session
@@ -240,11 +240,18 @@ impl QueueActor {
                     .get_unchecked_mut(session_id)
                     .profile_mut();
                 let reasoning_effort = crate::resolve_effort(profile.reasoning_effort);
+                // Endpoint pin applies only to a Single model; alloys rotate.
+                let endpoint_tag = match (&profile.model, &profile.endpoint) {
+                    (crate::feat::session::model_selection::ModelSelection::Single(_), Some(ep)) => {
+                        Some(ep.tag.clone())
+                    }
+                    _ => None,
+                };
                 if profile.model.is_no_provider() {
-                    (None, None, reasoning_effort)
+                    (None, None, reasoning_effort, None)
                 } else {
                     let resolved = profile.model.resolve_model();
-                    (Some(resolved.clone()), Some(resolved), reasoning_effort)
+                    (Some(resolved.clone()), Some(resolved), reasoning_effort, endpoint_tag)
                 }
             })
         };
@@ -254,6 +261,7 @@ impl QueueActor {
         self.publish(SendToLlmProvider {
             model_used,
             reasoning_effort,
+            endpoint_tag,
             session_id: session_id.clone(),
             messages: assembled.messages,
             provider_id,
@@ -306,7 +314,7 @@ impl QueueActor {
             assemble_prompt(&guard, session_id, &self.counter, None)
         };
 
-        let (provider_id, model_used, reasoning_effort) = {
+        let (provider_id, model_used, reasoning_effort, endpoint_tag) = {
             self.state.with_session(&self.cap, |view| {
                 let profile = view
                     .session
@@ -314,11 +322,18 @@ impl QueueActor {
                     .get_unchecked_mut(session_id)
                     .profile_mut();
                 let reasoning_effort = crate::resolve_effort(profile.reasoning_effort);
+                // Endpoint pin applies only to a Single model; alloys rotate.
+                let endpoint_tag = match (&profile.model, &profile.endpoint) {
+                    (crate::feat::session::model_selection::ModelSelection::Single(_), Some(ep)) => {
+                        Some(ep.tag.clone())
+                    }
+                    _ => None,
+                };
                 if profile.model.is_no_provider() {
-                    (None, None, reasoning_effort)
+                    (None, None, reasoning_effort, None)
                 } else {
                     let resolved = profile.model.resolve_model();
-                    (Some(resolved.clone()), Some(resolved), reasoning_effort)
+                    (Some(resolved.clone()), Some(resolved), reasoning_effort, endpoint_tag)
                 }
             })
         };
@@ -328,6 +343,7 @@ impl QueueActor {
         self.publish(SendToLlmProvider {
             model_used,
             reasoning_effort,
+            endpoint_tag,
             session_id: session_id.clone(),
             messages: assembled.messages,
             provider_id,
