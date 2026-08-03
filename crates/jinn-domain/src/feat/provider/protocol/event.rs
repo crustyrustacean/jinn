@@ -44,6 +44,19 @@ pub struct StreamCompleted {
     /// counting, because it matches the provider's billing exactly.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub provider_completion_tokens: Option<u64>,
+    /// Provider-reported prompt token count for this request.
+    ///
+    /// When present, the session ledger records this alongside the pre-send
+    /// local estimate (`tokens_sent`); the estimate is never overwritten.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub provider_prompt_tokens: Option<u64>,
+    /// Provider-reported count of prompt tokens served from a cache
+    /// (`usage.prompt_tokens_details.cached_tokens`).
+    ///
+    /// OpenAI-compat only (e.g. OpenRouter); `None` when the provider did not
+    /// report cache details (e.g. a cancelled turn).
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub cached_tokens: Option<u64>,
     /// Accumulated thinking/reasoning content for local token counting fallback.
     ///
     /// Populated when the stream produced reasoning tokens and the provider did
