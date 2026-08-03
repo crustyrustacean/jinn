@@ -15,6 +15,7 @@ pub mod discord;
 pub mod discovery;
 pub mod discovery_coordinator;
 pub mod discovery_notifier;
+pub mod endpoint;
 pub mod file_lister;
 pub mod global;
 pub mod history_worker;

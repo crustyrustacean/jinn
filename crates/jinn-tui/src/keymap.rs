@@ -116,6 +116,8 @@ pub fn init() -> Keymap<KeyEvent, Scope, Intent, KeyCategory> {
             .bind("<leader>sM", Intent::OpenPicker { kind: PickerKind::McpServer }, KeyCategory::General)
             .bind("<leader>sh", Intent::OpenPicker { kind: PickerKind::Theme }, KeyCategory::General)
             .bind("<leader>sr", Intent::OpenPicker { kind: PickerKind::ReasoningEffort }, KeyCategory::General)
+            // OpenRouter routing endpoint pin (Single + OpenRouter models only).
+            .bind("<leader>sE", Intent::OpenPicker { kind: PickerKind::Endpoint }, KeyCategory::General)
             // Projects - curated directory list for quick session creation
             .bind("<leader>so", Intent::OpenPicker { kind: PickerKind::Project }, KeyCategory::General)
             // Input - enter input mode
@@ -337,6 +339,10 @@ pub fn init() -> Keymap<KeyEvent, Scope, Intent, KeyCategory> {
 
         .scope(Scope::PickerReasoningEffort, |b| {
             add_picker_base(b);
+        })
+        .scope(Scope::PickerEndpoint, |b| {
+            add_picker_base(b);
+            b.bind("<c-r>", Intent::RefreshEndpoints, KeyCategory::General);
         })
         .scope(Scope::PickerTool, |b| {
             add_picker_base(b);
@@ -940,6 +946,72 @@ mod tests {
         assert!(
             matches!(enter_action, Intent::PickerConfirm),
             "enter must resolve to PickerConfirm, got {enter_action:?}"
+        );
+    }
+
+    #[rstest::rstest]
+    fn endpoint_picker_scope_binds_base_intents() {
+        // Given the default keymap.
+        use jinn_domain::{Key, KeyEvent, Modifiers};
+        use ratatui_which_key::NodeResult;
+        let keymap = init();
+        let esc = KeyEvent {
+            key: Key::Esc,
+            modifiers: Modifiers::none(),
+        };
+        let enter = KeyEvent {
+            key: Key::Enter,
+            modifiers: Modifiers::none(),
+        };
+
+        // When navigating the two explicit base keys within the Endpoint picker scope.
+        let esc_res = keymap
+            .navigate(&[esc], &Scope::PickerEndpoint)
+            .expect("esc bound");
+        let enter_res = keymap
+            .navigate(&[enter], &Scope::PickerEndpoint)
+            .expect("enter bound");
+
+        // Then each resolves to a real picker base intent (regression: scope once had no bindings, freezing the popup).
+        let NodeResult::Leaf { action: esc_action } = esc_res else {
+            panic!("esc must be a leaf");
+        };
+        assert!(
+            matches!(esc_action, Intent::EnterNormalMode),
+            "esc must resolve to EnterNormalMode, got {esc_action:?}"
+        );
+
+        let NodeResult::Leaf {
+            action: enter_action,
+        } = enter_res
+        else {
+            panic!("enter must be a leaf");
+        };
+        assert!(
+            matches!(enter_action, Intent::PickerConfirm),
+            "enter must resolve to PickerConfirm, got {enter_action:?}"
+        );
+    }
+
+    #[rstest::rstest]
+    fn endpoint_picker_scope_ctrl_r_resolves_to_refresh_endpoints() {
+        // Given the default keymap.
+        use crate::app::WhichKeyInstance;
+        use jinn_domain::{Key, Modifiers};
+        let keymap = init();
+        let mut wk = WhichKeyInstance::new(keymap, Scope::PickerEndpoint);
+
+        // When pressing Ctrl+R.
+        let c_r = jinn_domain::KeyEvent {
+            key: Key::Char('r'),
+            modifiers: Modifiers::ctrl(),
+        };
+        let intent = wk.handle_key(c_r);
+
+        // Then it resolves to RefreshEndpoints (forces a fresh endpoint fetch).
+        assert!(
+            matches!(intent, Some(jinn_domain::Intent::RefreshEndpoints)),
+            "<c-r> in PickerEndpoint should fire RefreshEndpoints; got {intent:?}",
         );
     }
 

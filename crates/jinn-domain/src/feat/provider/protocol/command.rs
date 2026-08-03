@@ -71,6 +71,15 @@ pub struct SendToLlmProvider {
     /// field (provider default).
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub reasoning_effort: Option<jinn_provider::ReasoningEffort>,
+    /// Pinned OpenRouter routing endpoint tag, for prefix-cache affinity.
+    ///
+    /// Populated only for a `Single` model whose profile has an endpoint pin;
+    /// the dispatch layer leaves this `None` for alloys (the pin is
+    /// model-specific and incoherent across a rotating set). The factory gates
+    /// this further: it is only injected when the resolved backend is
+    /// OpenRouter. Legacy sessions without a pin deserialize to `None`.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub endpoint_tag: Option<String>,
     /// When this request was dispatched to the LLM.
     pub dispatched_at: Timestamp,
 }
@@ -116,6 +125,23 @@ impl BusMessage for LoadCompactionModelPickerEntries {}
 pub struct LoadReasoningEffortPickerEntries;
 
 impl BusMessage for LoadReasoningEffortPickerEntries {}
+
+/// The provider actor receives this, resolves the active session's model
+/// backend, and either fetches the model's OpenRouter routing endpoints via
+/// `list_endpoints` or — for a non-OpenRouter backend — populates a single
+/// explanatory "not served via OpenRouter" row. The entries are written into
+/// `AppState`'s endpoint picker.
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct LoadEndpointPickerEntries;
+
+impl BusMessage for LoadEndpointPickerEntries {}
+
+/// Force-refresh the OpenRouter endpoint picker entries for the active model,
+/// bypassing the in-memory cache (used by the `<c-r>` keybind).
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct RefreshEndpointPickerEntries;
+
+impl BusMessage for RefreshEndpointPickerEntries {}
 
 #[cfg(test)]
 mod tests {

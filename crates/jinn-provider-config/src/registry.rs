@@ -303,6 +303,7 @@ impl ProviderRegistry {
         id: &ProviderId,
         api_keys: &ApiKeys,
         reasoning: Option<ReasoningEffort>,
+        endpoint_tag: Option<&str>,
     ) -> Result<Box<dyn LlmServiceFactory>, Report<LlmServiceError>> {
         // Test-injected override: return a clone of the scripted fake before
         // attempting provider resolution. Production never sets this (`None`).
@@ -312,7 +313,7 @@ impl ProviderRegistry {
         let resolved = self.get(id).ok_or_else(|| {
             Report::new(LlmServiceError::Config).attach(format!("unknown provider: {id}"))
         })?;
-        self.create_factory_from_resolved(resolved, api_keys, reasoning)
+        self.create_factory_from_resolved(resolved, api_keys, reasoning, endpoint_tag)
     }
 
     /// Creates a factory from a statically resolved provider entry.
@@ -322,6 +323,7 @@ impl ProviderRegistry {
         resolved: &ResolvedProvider,
         api_keys: &ApiKeys,
         reasoning: Option<ReasoningEffort>,
+        endpoint_tag: Option<&str>,
     ) -> Result<Box<dyn LlmServiceFactory>, Report<LlmServiceError>> {
         if resolved.backend == "sample" {
             let factory: Box<dyn LlmServiceFactory> = Box::new(SampleLlmServiceFactory);
@@ -345,18 +347,55 @@ impl ProviderRegistry {
             Some("dummy-key".to_owned())
         };
 
+        // When the backend is OpenRouter and a routing endpoint is pinned,
+        // force that single upstream so every turn of the session lands on the
+        // same prefix cache. `allow_fallbacks = false` is the whole point: it
+        // is what keeps the cache warm. Other backends ignore `endpoint_tag`.
+        let extra_body = if backend == Backend::OpenRouter {
+            merge_endpoint_override(resolved.extra_body.as_ref(), endpoint_tag)
+        } else {
+            resolved.extra_body.clone()
+        };
+
         let factory = GenericLlmServiceFactory::new(
             resolved.name.clone(),
             backend,
             resolved.model.clone(),
             resolved.base_url.clone(),
             api_key,
-            resolved.extra_body.clone(),
+            extra_body,
             reasoning,
         );
 
         Ok(Box::new(factory))
     }
+}
+
+/// Merges a pinned OpenRouter routing endpoint into a provider's `extra_body`.
+///
+/// When `tag` is `Some`, injects `provider: { order: [tag], allow_fallbacks: false }`
+/// without clobbering other keys. A `provider` key already present in `extra_body` is
+/// overwritten in full (the pinned endpoint wins over any user-configured routing).
+/// When `tag` is `None`, returns the existing `extra_body` untouched (auto-route).
+fn merge_endpoint_override(
+    existing: Option<&serde_json::Value>,
+    tag: Option<&str>,
+) -> Option<serde_json::Value> {
+    let Some(tag) = tag else {
+        return existing.cloned();
+    };
+
+    // Clone the existing map, or start fresh if there is none.
+    let mut map = match existing {
+        Some(serde_json::Value::Object(m)) => m.clone(),
+        _ => serde_json::Map::new(),
+    };
+
+    map.insert(
+        "provider".to_owned(),
+        serde_json::json!({ "order": [tag], "allow_fallbacks": false }),
+    );
+    Some(serde_json::Value::Object(map))
 }
 
 /// Checks a single resolved provider's availability against resolved keys.
@@ -387,5 +426,79 @@ impl LlmServiceFactory for FactoryOverride {
 
     fn name(&self) -> &str {
         self.0.name()
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    #![allow(
+        clippy::expect_used,
+        clippy::panic,
+        clippy::indexing_slicing,
+        reason = "test code"
+    )]
+    use super::merge_endpoint_override;
+    use serde_json::json;
+
+    #[rstest::rstest]
+    fn endpoint_pin_injects_provider_order_and_disables_fallbacks() {
+        // Given a pinned OpenRouter endpoint tag and no existing extra_body.
+        // When merging the override.
+        let merged = merge_endpoint_override(None, Some("anthropic"));
+
+        // Then the provider object pins a single upstream with no fallbacks.
+        let merged = merged.expect("merged extra_body");
+        let provider = merged.get("provider").expect("provider key present");
+        assert_eq!(provider["order"], json!(["anthropic"]));
+        assert_eq!(provider["allow_fallbacks"], json!(false));
+    }
+
+    #[rstest::rstest]
+    fn endpoint_pin_preserves_other_extra_body_keys() {
+        // Given an existing extra_body with an unrelated vendor key.
+        let existing = json!({ "enable_thinking": true });
+
+        // When merging a pinned endpoint.
+        let merged = merge_endpoint_override(Some(&existing), Some("azure"));
+
+        // Then the existing key survives untouched alongside the new provider key.
+        let map = merged.expect("merged extra_body");
+        assert_eq!(map["enable_thinking"], json!(true));
+        assert!(map.get("provider").is_some());
+    }
+
+    #[rstest::rstest]
+    fn endpoint_pin_overwrites_a_prior_provider_key() {
+        // Given an existing provider key from config (auto-route / fallbacks on).
+        let existing = json!({ "provider": { "order": ["openai"], "allow_fallbacks": true } });
+
+        // When merging a pinned endpoint that should win.
+        let merged = merge_endpoint_override(Some(&existing), Some("anthropic"));
+
+        // Then the pinned endpoint fully replaces the prior provider object.
+        let provider = merged.expect("merged extra_body")["provider"].clone();
+        assert_eq!(provider["order"], json!(["anthropic"]));
+        assert_eq!(provider["allow_fallbacks"], json!(false));
+    }
+
+    #[rstest::rstest]
+    fn no_pin_returns_existing_extra_body_untouched() {
+        // Given an existing extra_body and no pinned tag (auto-route).
+        let existing = json!({ "enable_thinking": true });
+
+        // When merging with no tag.
+        let merged = merge_endpoint_override(Some(&existing), None);
+
+        // Then the result is the existing body unchanged with no provider key.
+        assert_eq!(merged, Some(existing.clone()));
+        assert!(merged.expect("merged").get("provider").is_none());
+    }
+
+    #[rstest::rstest]
+    fn no_pin_and_no_existing_body_is_none() {
+        // Given no existing extra_body and no pin.
+        // When merging.
+        // Then the result stays None (nothing to send).
+        assert_eq!(merge_endpoint_override(None, None), None);
     }
 }
