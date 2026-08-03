@@ -58,6 +58,15 @@ pub struct SessionProfile {
     /// effort field; let the provider decide". Legacy sessions deserialize to `None`.
     #[serde(default)]
     pub reasoning_effort: Option<crate::ReasoningEffort>,
+    /// Pinned OpenRouter routing endpoint for prefix-cache affinity.
+    ///
+    /// `None` (the default) lets OpenRouter route automatically. When `Some`,
+    /// dispatch forces this endpoint with `provider.order = [tag]` and
+    /// `allow_fallbacks = false` — but only for a `Single` model served via the
+    /// OpenRouter backend. Ignored for alloys and all other backends.
+    /// Legacy sessions without this field deserialize to `None`.
+    #[serde(default)]
+    pub endpoint: Option<crate::feat::endpoint::Endpoint>,
 }
 
 impl Default for SessionProfile {
@@ -68,6 +77,7 @@ impl Default for SessionProfile {
             disabled_tools: HashSet::new(),
             disabled_skills: HashSet::new(),
             reasoning_effort: None,
+            endpoint: None,
         }
     }
 }
@@ -81,6 +91,7 @@ impl SessionProfile {
             disabled_tools: HashSet::new(),
             disabled_skills: HashSet::new(),
             reasoning_effort: None,
+            endpoint: None,
         }
     }
 
@@ -92,6 +103,7 @@ impl SessionProfile {
             disabled_tools: HashSet::new(),
             disabled_skills: HashSet::new(),
             reasoning_effort: None,
+            endpoint: None,
         }
     }
 
@@ -102,6 +114,7 @@ impl SessionProfile {
         disabled_tools: HashSet<String>,
         disabled_skills: HashSet<String>,
         reasoning_effort: Option<crate::ReasoningEffort>,
+        endpoint: Option<crate::feat::endpoint::Endpoint>,
     ) -> Self {
         Self {
             model,
@@ -109,6 +122,7 @@ impl SessionProfile {
             disabled_tools,
             disabled_skills,
             reasoning_effort,
+            endpoint,
         }
     }
 }
@@ -162,6 +176,7 @@ mod tests {
             disabled.clone(),
             HashSet::new(),
             None,
+            None,
         );
 
         // When serialized and deserialized.
@@ -183,6 +198,7 @@ mod tests {
             "coding-assistant".to_owned(),
             HashSet::new(),
             disabled.clone(),
+            None,
             None,
         );
 
@@ -300,5 +316,67 @@ mod tests {
             ModelSelection::Single("ollama/llama3".to_owned())
         );
         assert_eq!(profile.persona_name, "coding-assistant");
+    }
+
+    #[rstest::rstest]
+    fn endpoint_round_trips_through_serde() {
+        // Given a profile with a pinned endpoint.
+        let profile = {
+            let mut p = SessionProfile::from_config("openrouter/anthropic/claude".to_owned());
+            p.endpoint = Some(crate::feat::endpoint::Endpoint {
+                tag: "anthropic".to_owned(),
+                provider_name: "Anthropic".to_owned(),
+            });
+            p
+        };
+
+        // When serializing then deserializing (the persist/load path).
+        let json = serde_json::to_string(&profile).expect("serialize");
+        let reloaded: SessionProfile = serde_json::from_str(&json).expect("deserialize");
+
+        // Then the pinned endpoint is preserved.
+        assert_eq!(
+            reloaded.endpoint,
+            Some(crate::feat::endpoint::Endpoint {
+                tag: "anthropic".to_owned(),
+                provider_name: "Anthropic".to_owned(),
+            }),
+            "endpoint pin must survive the serialize/deserialize round trip"
+        );
+    }
+
+    #[rstest::rstest]
+    fn legacy_json_without_endpoint_deserializes_to_none() {
+        // Given JSON from an older version that lacks endpoint.
+        let json = r#"{"model":{"single":"ollama/llama3"},"persona_name":"coding-assistant","disabled_tools":[],"disabled_skills":[],"reasoning_effort":null}"#;
+
+        // When deserialized.
+        let profile: SessionProfile = serde_json::from_str(json).expect("deserialize");
+
+        // Then endpoint is None (auto-route; legacy sessions have no pin).
+        assert!(profile.endpoint.is_none());
+    }
+
+    #[rstest::rstest]
+    fn new_round_trips_with_endpoint_param() {
+        // Given a profile built via new() with a pinned endpoint.
+        let profile = SessionProfile::new(
+            ModelSelection::Single("openrouter/openai/gpt-4o".to_owned()),
+            "coding-assistant".to_owned(),
+            HashSet::new(),
+            HashSet::new(),
+            None,
+            Some(crate::feat::endpoint::Endpoint {
+                tag: "azure".to_owned(),
+                provider_name: "Azure".to_owned(),
+            }),
+        );
+
+        // When serializing then deserializing.
+        let json = serde_json::to_string(&profile).expect("serialize");
+        let reloaded: SessionProfile = serde_json::from_str(&json).expect("deserialize");
+
+        // Then the endpoint passed to new() is preserved.
+        assert_eq!(reloaded.endpoint.as_ref().map(|e| e.tag.as_str()), Some("azure"));
     }
 }
