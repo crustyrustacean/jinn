@@ -18,7 +18,7 @@ A TUI agent harness with multi-session support and Vim-style keybinds.
 - Fork a new session from any message by hitting `f`
 - Agent-managed task list with progress display.
 - Customizable personas
-- Standard agent harness-y things like `AGENTS.md`, `~/.agents` skill discovery, custom prompts (including project-specific for all of these)
+- Standard agent harness-y things like `AGENTS.md`, `~/.agents` skill discovery, custom prompts (including project-specific for all of these), MCP server support.
 
 ![jinn-full](doc/jinn-full.png)
 ![Model Selection](doc/model-selection.png)
