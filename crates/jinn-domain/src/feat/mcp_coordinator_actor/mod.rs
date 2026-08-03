@@ -173,7 +173,7 @@ impl McpCoordinatorActor {
                 tracing::warn!(
                     server = %server,
                     %session_id,
-                    "MCP lifecycle: enabled server not found in jinn.toml [[mcp_servers]], skipping spawn"
+                    "MCP lifecycle: enabled server not found in jinn.toml [[mcp_server]], skipping spawn"
                 );
             }
         }
@@ -309,10 +309,10 @@ impl McpCoordinatorActor {
     }
 }
 
-/// Reads the configured `[[mcp_servers]]` from user preferences.
+/// Reads the configured `[[mcp_server]]` from user preferences.
 fn configured_servers(services: &Services) -> Vec<McpServerConfig> {
     let prefs = services.user_preferences_storage.read();
-    prefs.mcp_servers.clone()
+    prefs.mcp_server.clone()
 }
 
 // ── Message handlers ─────────────────────────────────────────────────────
@@ -510,7 +510,7 @@ mod lifecycle_tests {
         services
             .user_preferences_storage
             .save(&UserPreferences {
-                mcp_servers: servers,
+                mcp_server: servers,
                 ..UserPreferences::default()
             })
             .expect("seed prefs");

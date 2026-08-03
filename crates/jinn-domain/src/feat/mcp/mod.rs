@@ -1,6 +1,6 @@
 //! jinn is an MCP *client*: it connects to externally-defined MCP servers
 //! over stdio or HTTP. Servers are declared in `jinn.toml` under
-//! `[[mcp_servers]]` and enabled per-session from the persisted `SessionCore`.
+//! `[[mcp_server]]` and enabled per-session from the persisted `SessionCore`.
 //!
 //! See [`McpServerConfig`] and [`TransportKind`].
 
@@ -45,7 +45,7 @@ pub enum TransportKind {
 
 /// One configured MCP server.
 ///
-/// Defined in `jinn.toml` under `[[mcp_servers]]`. The `name` field is the
+/// Defined in `jinn.toml` under `[[mcp_server]]`. The `name` field is the
 /// array key the `DocumentPatcher` matches entries by, and it doubles as the
 /// per-session enablement identifier stored in `SessionCore::enabled_mcp_servers`
 /// and the tool-namespace segment (`mcp__<name>__<tool>`).
