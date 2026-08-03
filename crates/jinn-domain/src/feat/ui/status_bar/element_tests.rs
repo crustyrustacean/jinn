@@ -196,6 +196,110 @@ fn render_shows_token_counts_with_values() {
 }
 
 #[rstest::rstest]
+fn render_shows_cache_percent_when_cached_tokens_present() {
+    // Given a session with a measured turn reporting cache hits.
+    use crate::feat::session::token_stats::TokenRecord;
+    let mut element = StatusBarElement;
+    let mut state = AppState::default();
+    state
+        .active_session_mut()
+        .set_model(ModelSelection::Single("openrouter/auto".to_owned()));
+    state.active_session_mut().push_token_record(TokenRecord {
+        model_used: None,
+        timestamp: jiff::Timestamp::now(),
+        tokens_sent: 1000,
+        tokens_received: 50,
+        cost: None,
+        prompt_tokens: Some(1000),
+        cached_tokens: Some(400),
+    });
+    let (mut terminal, area) = setup_term(80, 2);
+    terminal
+        .draw(|frame| {
+            let ctx = RenderCtx::new(&state);
+            element.render(frame, area, &ctx);
+        })
+        .unwrap();
+    let buffer = terminal.backend().buffer().clone();
+    let row = buffer_row(&buffer, 1, 80);
+    // Then the cache glyph + 40% appears leftmost.
+    assert!(row.contains("\u{2B22} 40%"));
+}
+
+#[rstest::rstest]
+fn render_hides_cache_glyph_when_no_cached_tokens() {
+    // Given a session with no cache hits (cached_tokens = None).
+    use crate::feat::session::token_stats::TokenRecord;
+    let mut element = StatusBarElement;
+    let mut state = AppState::default();
+    state
+        .active_session_mut()
+        .set_model(ModelSelection::Single("openrouter/auto".to_owned()));
+    state.active_session_mut().push_token_record(TokenRecord {
+        model_used: None,
+        timestamp: jiff::Timestamp::now(),
+        tokens_sent: 1000,
+        tokens_received: 50,
+        cost: None,
+        prompt_tokens: Some(1000),
+        cached_tokens: None,
+    });
+    let (mut terminal, area) = setup_term(80, 2);
+    terminal
+        .draw(|frame| {
+            let ctx = RenderCtx::new(&state);
+            element.render(frame, area, &ctx);
+        })
+        .unwrap();
+    let buffer = terminal.backend().buffer().clone();
+    let row = buffer_row(&buffer, 1, 80);
+    // Then no cache glyph appears.
+    assert!(!row.contains('\u{2B22}'));
+}
+
+#[rstest::rstest]
+fn render_cache_percent_uses_measured_turns_only() {
+    // Given a session with one measured turn (prompt=1000, cached=400) and one
+    // cancelled turn (estimate=50, no usage). 400/1000 = 40%, not affected by
+    // the cancelled turn's estimate.
+    use crate::feat::session::token_stats::TokenRecord;
+    let mut element = StatusBarElement;
+    let mut state = AppState::default();
+    state
+        .active_session_mut()
+        .set_model(ModelSelection::Single("openrouter/auto".to_owned()));
+    state.active_session_mut().push_token_record(TokenRecord {
+        model_used: None,
+        timestamp: jiff::Timestamp::now(),
+        tokens_sent: 1000,
+        tokens_received: 50,
+        cost: None,
+        prompt_tokens: Some(1000),
+        cached_tokens: Some(400),
+    });
+    state.active_session_mut().push_token_record(TokenRecord {
+        model_used: None,
+        timestamp: jiff::Timestamp::now(),
+        tokens_sent: 50,
+        tokens_received: 0,
+        cost: None,
+        prompt_tokens: None,
+        cached_tokens: None,
+    });
+    let (mut terminal, area) = setup_term(80, 2);
+    terminal
+        .draw(|frame| {
+            let ctx = RenderCtx::new(&state);
+            element.render(frame, area, &ctx);
+        })
+        .unwrap();
+    let buffer = terminal.backend().buffer().clone();
+    let row = buffer_row(&buffer, 1, 80);
+    // Then the percentage is 40% (measured only), not 38% (1050 denominator).
+    assert!(row.contains("\u{2B22} 40%"));
+}
+
+#[rstest::rstest]
 fn render_shows_zero_percent_max_when_context_size_but_no_limit() {
     // Given a session with a cached context size but no model cache.
     use crate::feat::session::token_stats::TokenRecord;
