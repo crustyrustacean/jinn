@@ -272,7 +272,10 @@ mod tests {
     use crate::common::render_ctx::RenderCtx;
     use crate::feat::mcp::McpServerConfig;
     use crate::feat::mcp_actor::protocol::McpConnectionStatus;
-    use crate::feat::ui::sidebar::section_trait::{SidebarSection, SidebarSectionId};
+    use crate::feat::ui::sidebar::section_trait::{
+        EnterFrom, SectionNavResult, SidebarIntent, SidebarSection, SidebarSectionId,
+    };
+    use super::{navigate, receive_cursor};
     use jinn_testutil::setup_term;
 
     fn server(name: &str) -> McpServerConfig {
@@ -336,17 +339,19 @@ mod tests {
     }
 
     #[rstest::rstest]
-    fn render_disabled_server_is_muted() {
-        // Given a configured server not enabled for the session.
+    fn render_disabled_server_is_hidden() {
+        // Given a configured server not enabled for the active session.
         let state = state_with_servers(&[server("excalimate")]);
 
         // When rendering.
         let rows = render_rows(&state, 40, 5);
 
-        // Then the row shows the server name and the disabled label.
+        // Then the disabled server does not appear at all.
         let combined = rows.join("\n");
-        assert!(combined.contains("excalimate"));
-        assert!(combined.contains("disabled"));
+        assert!(
+            !combined.contains("excalimate"),
+            "disabled servers must not render; got: {combined}"
+        );
     }
 
     #[rstest::rstest]
@@ -402,8 +407,8 @@ mod tests {
 
     #[rstest::rstest]
     fn render_only_active_session_servers() {
-        // Given two configured servers, with only alpha enabled for the active session.
-        // Session B (not active) has beta enabled, but it must not leak into the render.
+        // Given two configured servers: alpha enabled for the active session (A),
+        // beta enabled only for a different session (B).
         use crate::protocol::SessionId;
         let mut state = state_with_servers(&[server("alpha"), server("beta")]);
         let session_b = SessionId::new();
@@ -416,12 +421,72 @@ mod tests {
         // When rendering the active session (A).
         let rows = render_rows(&state, 40, 6);
 
-        // Then alpha shows enabled (starting) and beta shows disabled, because
-        // beta's enablement lives on session B, not the active session A.
+        // Then alpha (enabled for A) renders, and beta (enabled only for B)
+        // does not leak into the active session's render.
         let combined = rows.join("\n");
         assert!(combined.contains("alpha"));
-        assert!(combined.contains("beta"));
+        assert!(
+            !combined.contains("beta"),
+            "a server enabled only for another session must not render; got: {combined}"
+        );
         assert!(combined.contains("starting"));
-        assert!(combined.contains("disabled"));
+    }
+
+    #[test]
+    fn content_height_is_zero_when_none_enabled() {
+        // Given configured servers, none enabled for the active session.
+        let state = state_with_servers(&[server("alpha"), server("beta")]);
+        let section = McpServersSection;
+
+        // When computing the content height.
+        let height = section.content_height(&{ RenderCtx::new(&state) });
+
+        // Then the section collapses to zero height (hidden).
+        assert_eq!(height, 0, "section must be hidden when no servers are enabled");
+    }
+
+    #[test]
+    fn content_height_counts_only_enabled_servers() {
+        // Given three configured servers, two enabled for the active session.
+        let mut state = state_with_servers(&[server("alpha"), server("beta"), server("gamma")]);
+        state.active_session_mut().enable_mcp_server("alpha");
+        state.active_session_mut().enable_mcp_server("gamma");
+        let section = McpServersSection;
+
+        // When computing the content height.
+        let height = section.content_height(&{ RenderCtx::new(&state) });
+
+        // Then it counts only the enabled servers:
+        // header(1) + blank(1) + 2 rows + trailing gap(1) = 5.
+        assert_eq!(height, 5, "height must count enabled servers only");
+    }
+
+    #[test]
+    fn navigate_exhausts_at_enabled_subset_boundary() {
+        // Given two enabled servers with the cursor on the last one.
+        let mut state = state_with_servers(&[server("alpha"), server("beta"), server("gamma")]);
+        state.active_session_mut().enable_mcp_server("alpha");
+        state.active_session_mut().enable_mcp_server("gamma");
+        state.frontend.mcp_servers_section.selected_index = Some(1); // last enabled
+
+        // When moving down past the last enabled server.
+        let result = navigate(&SidebarIntent::MoveDown, &mut state);
+
+        // Then navigation exhausts (only 2 enabled servers, indices 0 and 1).
+        assert_eq!(result, SectionNavResult::Exhausted);
+    }
+
+    #[test]
+    fn receive_cursor_enters_enabled_subset_from_top() {
+        // Given enabled servers (alpha, gamma) with no cursor.
+        let mut state = state_with_servers(&[server("alpha"), server("beta"), server("gamma")]);
+        state.active_session_mut().enable_mcp_server("alpha");
+        state.active_session_mut().enable_mcp_server("gamma");
+
+        // When entering the section from the top.
+        receive_cursor(&mut state, EnterFrom::Top);
+
+        // Then the cursor lands on the first enabled server (index 0).
+        assert_eq!(state.frontend.mcp_servers_section.selected_index, Some(0));
     }
 }

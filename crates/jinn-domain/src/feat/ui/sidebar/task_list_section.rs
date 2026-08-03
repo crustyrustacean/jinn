@@ -447,6 +447,36 @@ mod tests {
     }
 
     #[test]
+    fn render_ends_with_trailing_gap_line() {
+        // Given a non-empty task list.
+        let app = setup_with_tasks();
+        let list = app.session.active_session().task_list().clone();
+
+        // When building render lines.
+        let lines = build_render_lines(&list, &app);
+
+        // Then the last line is the section's trailing gap (empty).
+        let last = lines.last().expect("at least one line");
+        let text: String = last.spans.iter().map(|s| s.content.to_string()).collect();
+        assert!(text.trim().is_empty(), "trailing gap line should be blank; got: {text:?}");
+    }
+
+    #[test]
+    fn content_height_matches_rendered_line_count() {
+        // Given a non-empty task list.
+        let app = setup_with_tasks();
+        let list = app.session.active_session().task_list().clone();
+        let section = TaskListSection;
+
+        // When computing the height and the render line count.
+        let height = section.content_height(&{ RenderCtx::new(&app) });
+        let line_count = build_render_lines(&list, &app).len() as u16;
+
+        // Then they agree (render/height lockstep).
+        assert_eq!(height, line_count, "content_height must match build_render_lines");
+    }
+
+    #[test]
     fn navigate_returns_exhausted_without_selection() {
         let mut app = AppState::default();
         let result = navigate(&SidebarIntent::MoveDown, &mut app);
