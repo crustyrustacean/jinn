@@ -565,6 +565,8 @@ mod tests {
                 tool_calls: Some(vec![]),
                 cost: None,
                 provider_completion_tokens: None,
+            provider_prompt_tokens: None,
+            cached_tokens: None,
                 thinking_content: None,
                 model_used: None,
                 dispatched_at,
@@ -675,6 +677,8 @@ mod tests {
             dispatched_at: jiff::Timestamp::now(),
             cost: None,
             provider_completion_tokens: None,
+            provider_prompt_tokens: None,
+            cached_tokens: None,
         };
         actor.on_stream_completed(&event).await;
 
@@ -720,6 +724,8 @@ mod tests {
             }]),
             cost: None,
             provider_completion_tokens: None,
+            provider_prompt_tokens: None,
+            cached_tokens: None,
             thinking_content: None,
             dispatched_at: jiff::Timestamp::now(),
         };

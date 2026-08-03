@@ -153,6 +153,8 @@ async fn emit_stream_error(
         tool_calls: None,
         cost: None,
         provider_completion_tokens: None,
+        provider_prompt_tokens: None,
+        cached_tokens: None,
         thinking_content: None,
         dispatched_at,
     })
@@ -460,6 +462,8 @@ async fn publish_stream_completed(
     tool_calls: Option<Vec<ToolCall>>,
     cost: Option<f64>,
     provider_completion_tokens: Option<u64>,
+    provider_prompt_tokens: Option<u64>,
+    cached_tokens: Option<u64>,
     dispatched_at: jiff::Timestamp,
 ) {
     bus.publish(StreamCompleted {
@@ -471,6 +475,8 @@ async fn publish_stream_completed(
         tool_calls,
         cost,
         provider_completion_tokens,
+        provider_prompt_tokens,
+        cached_tokens,
         dispatched_at,
     })
     .await;
@@ -555,6 +561,8 @@ async fn handle_done_event(
     }
     let cost = usage.as_ref().and_then(|u| u.cost);
     let provider_completion_tokens = usage.as_ref().and_then(|u| u.completion_tokens);
+    let provider_prompt_tokens = usage.as_ref().and_then(|u| u.prompt_tokens);
+    let cached_tokens = usage.as_ref().and_then(|u| u.cached_tokens);
     if stop_reason == StopReason::ToolUse {
         // Publish StreamCompleted(ToolUse) BEFORE ExecuteToolBatch so the
         // session actor transitions Streaming → Sending first. Otherwise
@@ -570,6 +578,8 @@ async fn handle_done_event(
             Some(tool_calls.clone()),
             cost,
             provider_completion_tokens,
+            provider_prompt_tokens,
+            cached_tokens,
             dispatched_at,
         )
         .await;
@@ -588,6 +598,8 @@ async fn handle_done_event(
             None,
             cost,
             provider_completion_tokens,
+            provider_prompt_tokens,
+            cached_tokens,
             dispatched_at,
         )
         .await;
@@ -760,6 +772,8 @@ impl LlmActor {
                 tool_calls: None,
                 cost: None,
                 provider_completion_tokens: None,
+                provider_prompt_tokens: None,
+                cached_tokens: None,
                 thinking_content: None,
                 dispatched_at: dispatched_at.unwrap_or_else(Timestamp::now),
             })
