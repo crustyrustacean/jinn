@@ -342,6 +342,7 @@ pub fn init() -> Keymap<KeyEvent, Scope, Intent, KeyCategory> {
         })
         .scope(Scope::PickerEndpoint, |b| {
             add_picker_base(b);
+            b.bind("<c-r>", Intent::RefreshEndpoints, KeyCategory::General);
         })
         .scope(Scope::PickerTool, |b| {
             add_picker_base(b);
@@ -989,6 +990,28 @@ mod tests {
         assert!(
             matches!(enter_action, Intent::PickerConfirm),
             "enter must resolve to PickerConfirm, got {enter_action:?}"
+        );
+    }
+
+    #[rstest::rstest]
+    fn endpoint_picker_scope_ctrl_r_resolves_to_refresh_endpoints() {
+        // Given the default keymap.
+        use crate::app::WhichKeyInstance;
+        use jinn_domain::{Key, Modifiers};
+        let keymap = init();
+        let mut wk = WhichKeyInstance::new(keymap, Scope::PickerEndpoint);
+
+        // When pressing Ctrl+R.
+        let c_r = jinn_domain::KeyEvent {
+            key: Key::Char('r'),
+            modifiers: Modifiers::ctrl(),
+        };
+        let intent = wk.handle_key(c_r);
+
+        // Then it resolves to RefreshEndpoints (forces a fresh endpoint fetch).
+        assert!(
+            matches!(intent, Some(jinn_domain::Intent::RefreshEndpoints)),
+            "<c-r> in PickerEndpoint should fire RefreshEndpoints; got {intent:?}",
         );
     }
 

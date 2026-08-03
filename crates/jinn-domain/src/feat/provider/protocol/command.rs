@@ -136,6 +136,13 @@ pub struct LoadEndpointPickerEntries;
 
 impl BusMessage for LoadEndpointPickerEntries {}
 
+/// Force-refresh the OpenRouter endpoint picker entries for the active model,
+/// bypassing the in-memory cache (used by the `<c-r>` keybind).
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct RefreshEndpointPickerEntries;
+
+impl BusMessage for RefreshEndpointPickerEntries {}
+
 #[cfg(test)]
 mod tests {
     #![allow(

@@ -18,29 +18,44 @@ pub fn render_endpoint_picker(frame: &mut Frame<'_>, area: Rect, ctx: &RenderCtx
     let state = ctx.state;
     let theme = &state.frontend.theme;
 
-    let footer = {
-        let gray = Style::default().fg(theme.muted_text);
-        let orange = Style::default().fg(theme.accent_action);
-        let pinned_name = state
-            .frontend
-            .endpoint_picker()
-            .items()
-            .iter()
-            .find(|e| e.is_active)
-            .map_or("auto-route", |e| e.provider_name.as_str());
-        Line::from(vec![
-            Span::styled("Routing: ".to_owned(), gray),
-            Span::styled(
-                pinned_name.to_owned(),
-                Style::default().fg(theme.primary_text),
-            ),
-            Span::styled("  ".to_owned(), gray),
-            Span::styled("Enter ".to_owned(), orange),
-            Span::styled("pin · ".to_owned(), gray),
-            Span::styled("ESC ".to_owned(), orange),
-            Span::styled("cancel".to_owned(), gray),
-        ])
-    };
+    let gray = Style::default().fg(theme.muted_text);
+    let orange = Style::default().fg(theme.accent_action);
+
+    let pinned_name = state
+        .frontend
+        .endpoint_picker()
+        .items()
+        .iter()
+        .find(|e| e.is_active)
+        .map_or("auto-route", |e| e.provider_name.as_str());
+
+    let mut spans = vec![
+        Span::styled("Routing: ".to_owned(), gray),
+        Span::styled(
+            pinned_name.to_owned(),
+            Style::default().fg(theme.primary_text),
+        ),
+        Span::styled("  ".to_owned(), gray),
+        Span::styled("Enter ".to_owned(), orange),
+        Span::styled("pin · ".to_owned(), gray),
+        Span::styled("ESC ".to_owned(), orange),
+        Span::styled("cancel".to_owned(), gray),
+    ];
+
+    // A fetch is in flight: show a spinner-style indicator until the actor
+    // writes items back.
+    if state.frontend.pickers.endpoint_loading {
+        spans.push(Span::styled("  ".to_owned(), gray));
+        spans.push(Span::styled("fetching…".to_owned(), orange));
+    } else {
+        // Otherwise show how long ago the cache was last populated (if ever).
+        if let Some(ts) = state.frontend.pickers.endpoint_fetched_at {
+            spans.push(Span::styled("  ".to_owned(), gray));
+            spans.push(Span::styled(format!("fetched {}", format_age(ts)), gray));
+        }
+    }
+
+    let footer = Line::from(spans);
 
     let widget = PreviewSelectionWidget::new(state.frontend.endpoint_picker())
         .title(Line::from(" OpenRouter Endpoint "))
@@ -49,6 +64,21 @@ pub fn render_endpoint_picker(frame: &mut Frame<'_>, area: Rect, ctx: &RenderCtx
     widget.render(frame, area);
 }
 
+/// Coarse "time ago" formatter for the endpoint cache freshness line.
+///
+/// `<60s` → `Xs`, `<60m` → `Xm`, else `Xh`. Mirrors the model picker's
+/// time-ago computation but trimmed for picker-footer brevity.
+fn format_age(fetched_at: jiff::Timestamp) -> String {
+    let elapsed = jiff::Timestamp::now() - fetched_at;
+    let secs = elapsed.total(jiff::Unit::Second).unwrap_or(0.0).max(0.0) as u64;
+    if secs < 60 {
+        format!("{secs}s ago")
+    } else if secs < 60 * 60 {
+        format!("{}m ago", secs / 60)
+    } else {
+        format!("{}h ago", secs / 3600)
+    }
+}
 #[cfg(test)]
 mod tests {
     #![allow(clippy::expect_used, clippy::panic, reason = "test code")]
@@ -105,5 +135,58 @@ mod tests {
             .expect("draw");
 
         // Then it does not panic (preview pane renders the metadata).
+    }
+
+    fn buffer_contains(state: &AppState, needle: &str) -> bool {
+        // Renders the picker and scans every buffer row for `needle`.
+        let mut terminal = Terminal::new(TestBackend::new(120, 30)).expect("terminal");
+        terminal
+            .draw(|frame| {
+                let ctx = RenderCtx::new(state);
+                render_endpoint_picker(frame, Rect::new(0, 0, 120, 30), &ctx);
+            })
+            .expect("draw");
+        let buffer = terminal.backend().buffer();
+        (0..buffer.area.height).any(|y| {
+            let row: String = (0..buffer.area.width)
+                .map(|x| buffer[(x, y)].symbol().to_owned())
+                .collect::<String>();
+            row.contains(needle)
+        })
+    }
+    #[test]
+    fn footer_shows_fetching_indicator_while_loading() {
+        // Given a populated picker mid-fetch (loading flag set).
+        let mut state = AppState::default();
+        state
+            .frontend
+            .endpoint_picker_mut()
+            .set_items(vec![EndpointEntry::auto_route(true, default_theme())]);
+        state.frontend.pickers.endpoint_loading = true;
+
+        // When rendering.
+        // Then the footer contains the fetching indicator.
+        assert!(
+            buffer_contains(&state, "fetching"),
+            "footer must show a fetching indicator while loading"
+        );
+    }
+
+    #[test]
+    fn footer_shows_fetched_age_when_not_loading() {
+        // Given a populated picker with a fetch timestamp and loading cleared.
+        let mut state = AppState::default();
+        state
+            .frontend
+            .endpoint_picker_mut()
+            .set_items(vec![EndpointEntry::auto_route(true, default_theme())]);
+        state.frontend.pickers.endpoint_fetched_at = Some(jiff::Timestamp::now());
+
+        // When rendering.
+        // Then the footer contains a freshness line.
+        assert!(
+            buffer_contains(&state, "fetched"),
+            "footer must show a freshness line when fetched_at is set"
+        );
     }
 }
