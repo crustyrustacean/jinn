@@ -619,8 +619,7 @@ mod tests {
             "<port>".to_owned(), // token presence proves expansion path
         ];
 
-        // When spawning via connect_http.
-        let mut half = McpClient::connect_http("sh", &args, "127.0.0.1").expect("spawn");
+        let mut half = McpClient::connect_http("sh", &args, "http://127.0.0.1:<port>/mcp").expect("spawn");
 
         // Then the URL is a localhost URL on a real port.
         assert!(half.url.starts_with("http://127.0.0.1:"));

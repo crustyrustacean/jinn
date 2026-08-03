@@ -1187,7 +1187,7 @@ mod tests {
         // Given a server config with command + args.
         let server = crate::feat::mcp::McpServerConfig {
             name: "excalimate".to_owned(),
-            command: "npx".to_owned(),
+            command: Some("npx".to_owned()),
             args: vec!["@excalimate/mcp-server".to_owned(), "--stdio".to_owned()],
             ..Default::default()
         };
@@ -1198,7 +1198,7 @@ mod tests {
 
         // Then the fields are preserved.
         assert_eq!(back.name, "excalimate");
-        assert_eq!(back.command, "npx");
+        assert_eq!(back.command.as_deref(), Some("npx"));
         assert_eq!(back.args, vec!["@excalimate/mcp-server", "--stdio"]);
     }
 

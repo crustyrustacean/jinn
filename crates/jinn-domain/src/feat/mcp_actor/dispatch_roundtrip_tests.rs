@@ -42,7 +42,7 @@ const SERVER_NAME: &str = "stub";
 fn stub_config() -> McpServerConfig {
     McpServerConfig {
         name: SERVER_NAME.to_owned(),
-        command: String::new(),
+        command: Some(String::new()),
         args: vec![],
         ..Default::default()
     }

@@ -156,4 +156,16 @@ mod tests {
         // Then both tokens in the same arg are replaced.
         assert_eq!(out, vec!["http://0.0.0.0:8080/mcp"]);
     }
+
+    #[test]
+    fn expand_tokens_replaces_port_in_url_template() {
+        // Given a url template with a <port> token (as used by local_http).
+        let url_template = "http://127.0.0.1:<port>/mcp".to_owned();
+
+        // When expanding as a single-element args list.
+        let expanded = expand_tokens(&[url_template], "127.0.0.1", 42365);
+
+        // Then the port token is replaced with the allocated port.
+        assert_eq!(expanded, vec!["http://127.0.0.1:42365/mcp"]);
+    }
 }

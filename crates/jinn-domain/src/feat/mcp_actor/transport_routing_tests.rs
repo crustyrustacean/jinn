@@ -4,7 +4,7 @@
 //! each arm produces:
 //!
 //! - `Stdio` spawns a child (covered by existing stdio integration tests).
-//! - `Http` spawns a child with a jinn-allocated port then polls (covered by
+//! - `LocalHttp` spawns a child with a jinn-allocated port then polls (covered by
 //!   the HTTP integration test in `jinn-mcp`).
 //! - `RemoteHttp` connects to a URL with no child; when the URL is unreachable
 //!   it loops on a backoff rather than erroring on the first refusal — the
@@ -29,9 +29,10 @@ use crate::feat::mcp_actor::connect_for_transport;
 fn config_with(transport: TransportKind) -> crate::feat::mcp::McpServerConfig {
     crate::feat::mcp::McpServerConfig {
         name: "test".to_owned(),
-        command: String::new(),
+        command: Some(String::new()),
         args: vec![],
         transport,
+        ..Default::default()
     }
 }
 
@@ -45,14 +46,19 @@ fn config_with(transport: TransportKind) -> crate::feat::mcp::McpServerConfig {
 async fn remote_http_to_unreachable_url_loops_instead_of_failing() {
     // Given a RemoteHttp config pointing at a port nothing is listening on.
     // Use a port in the dynamic range that's very likely free.
-    let config = config_with(TransportKind::RemoteHttp {
-        url: "http://127.0.0.1:1/mcp".to_owned(),
-    });
+    let config = crate::feat::mcp::McpServerConfig {
+        name: "test".to_owned(),
+        command: None,
+        args: vec![],
+        transport: TransportKind::RemoteHttp,
+        url: Some("http://127.0.0.1:1/mcp".to_owned()),
+        ..Default::default()
+    };
 
     // When attempting to connect, bounded by a short timeout.
     let result = tokio::time::timeout(
         Duration::from_millis(500),
-        connect_for_transport(&config, "127.0.0.1"),
+        connect_for_transport(&config),
     )
     .await;
 
