@@ -65,6 +65,7 @@ Entries are added or amended **only with human approval**.
 - (history) There is a per-session steering buffer for mid-turn message injection; drained steering entries become normal User entries with the default context override and are never pinned.
 - (identity) **This repository** uses Fossil for version control (the app supports git/hg/jj/fossil via marker detection).
 - (identity) **jinn** is a terminal-based agent harness written in Rust (edition 2024).
+- (identity) Jinn's multimodal scope is bounded to image input (vision) and text output; it has no image-generation pipeline and no art/editing tooling.
 - (identity) Four personas ship by default: `coding-assistant`, `general`, `brainstorm`, and `learning-tutor`.
 - (identity) The TUI is the default entrypoint; the Discord and headless frontends are alternative invocation modes.
 - (identity) The application ships three frontends: a TUI (default), a Discord gateway, and a debug-only headless mode.
@@ -97,6 +98,7 @@ Entries are added or amended **only with human approval**.
 - (persona) Personas are markdown templates loaded via the prompt-template system; the persona picker (`<leader>se`) switches the active session persona.
 - (providers) LLM responses stream as a unified `StreamEvent` type, decoupled from any provider's native stream format.
 - (providers) The provider crate supports three backends: Anthropic, Google, and OpenAI-compatible.
+- (providers) Model output is text-only: the `StreamEvent` pipeline and assistant chat entries carry no image variant.
 - (providers) OpenRouter serves each model through multiple upstream **endpoints**, each identified by a routing **tag**; the per-model `GET /api/v1/models/<id>/endpoints` payload lists them with pricing and uptime.
 - (providers) OpenRouter endpoint listings are cached **in memory, per model, for the application's lifetime** (not persisted to disk); the picker serves cached entries on open and re-fetches on-demand via `<c-r>` (`RefreshEndpoints`).
 - (selection) Chat entry selection applies an accumulated-exclude guard that only takes effect after a threshold, with per-entry forced include/exclude tracked separately.
@@ -141,6 +143,7 @@ Entries are added or amended **only with human approval**.
 - (tools) The `write` tool pins the tool result only on success — failed writes (bad JSON, dir creation failure, file write failure) produce no pin.
 - (tools) The `write` tool preserves BOM and CRLF line endings on round-trip; it handles filenames with spaces and Unicode.
 - (tools) The agent's built-in file tools are `read`, `write`, `edit`, `bash`, `grep`, `save_plan`, `get_time`, `session_query`, `restart_mcp_server`, and `skill`.
+- (tools) Programmatic image files a tool writes (`.png`, `.svg`, charts) are artifacts of the existing file-tool pipeline, not a model image-output capability.
 - (tools) When the `bash` tool or a built-in tool panics mid-execution, it publishes a failed-execution event rather than crashing the actor.
 - (ui) A section is shown only when non-empty (Pins requires pinned ids, TaskList requires tasks); empty sections are hidden.
 - (ui) Mouse drag creates a dragging selection state, `finalize` transitions dragging to active, and `cancel` returns to idle.
