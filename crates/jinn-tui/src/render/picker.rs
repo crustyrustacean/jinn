@@ -23,6 +23,9 @@ pub(super) fn render_picker(frame: &mut Frame<'_>, area: Rect, ctx: &RenderCtx) 
                 frame, area, ctx,
             );
         }
+        Some(PickerKind::Endpoint) => {
+            jinn_domain::feat::endpoint::picker_render::render_endpoint_picker(frame, area, ctx);
+        }
         Some(PickerKind::Tool) => {
             jinn_domain::feat::picker::render::render_tool_picker(frame, area, ctx);
         }
@@ -132,6 +135,7 @@ mod tests {
     #[case::session_lifecycle(PickerKind::SessionLifecycle)]
     #[case::compaction_model(PickerKind::CompactionModel)]
     #[case::reasoning_effort(PickerKind::ReasoningEffort)]
+    #[case::endpoint(PickerKind::Endpoint)]
     #[case::tool(PickerKind::Tool)]
     #[case::skill(PickerKind::Skill)]
     #[case::task_list(PickerKind::TaskList)]

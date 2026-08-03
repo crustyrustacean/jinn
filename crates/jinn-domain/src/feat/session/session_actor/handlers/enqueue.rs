@@ -163,17 +163,23 @@ impl SessionPersistenceActor {
                             crate::resolve_effort(profile.reasoning_effort)
                         };
                         // Snapshot the endpoint tag immutably before mutating the model.
-                        let endpoint_tag = match (&session.profile().model, &session.profile().endpoint) {
-                            (ModelSelection::Single(_), Some(ep)) => Some(ep.tag.clone()),
-                            _ => None,
-                        };
+                        let endpoint_tag =
+                            match (&session.profile().model, &session.profile().endpoint) {
+                                (ModelSelection::Single(_), Some(ep)) => Some(ep.tag.clone()),
+                                _ => None,
+                            };
                         let profile = session.profile_mut();
                         if profile.model.is_no_provider() {
                             (None, None, reasoning_effort, None)
                         } else {
                             let resolved = profile.model.resolve_model();
                             session.set_last_token_model(resolved.clone());
-                            (Some(resolved.clone()), Some(resolved), reasoning_effort, endpoint_tag)
+                            (
+                                Some(resolved.clone()),
+                                Some(resolved),
+                                reasoning_effort,
+                                endpoint_tag,
+                            )
                         }
                     })
                 };
@@ -472,7 +478,15 @@ impl SessionPersistenceActor {
 
         // Resolve model under write lock (round-robin mutates index).
         // Sending → Streaming + record outgoing token count.
-        let (provider_id, model_used, reasoning_effort, endpoint_tag, old_phase, new_phase, dispatched_at) = {
+        let (
+            provider_id,
+            model_used,
+            reasoning_effort,
+            endpoint_tag,
+            old_phase,
+            new_phase,
+            dispatched_at,
+        ) = {
             self.state.with_session(&self.cap, |view| {
                 let session = view.session.map().get_or_create(session_id);
                 let reasoning_effort = {

@@ -5,6 +5,7 @@ use crate::common::services::Services;
 use crate::common::tcaps::provider::{
     FrontendProviderPickerWrite, ModelCacheWrite, ProviderPickerWrite, ProviderView,
 };
+use crate::feat::endpoint::picker_entry::EndpointEntry;
 use crate::feat::provider_infra;
 use crate::feat::reasoning::{ReasoningEffort, ReasoningEffortEntry, resolve_effort};
 use crate::feat::session::model_selection::ModelSelection;
@@ -172,6 +173,119 @@ pub fn load_reasoning_effort_picker_items(view: &mut ProviderView<'_>) {
 
     view.provider_frontend
         .set_reasoning_effort_picker_items(entries);
+}
+
+/// The credentials + model id needed to query OpenRouter's `/endpoints`.
+///
+/// Returned by [`resolve_openrouter_target`] only when the active session's
+/// model is `Single` and its configured backend resolves to OpenRouter.
+pub(crate) struct OpenRouterTarget {
+    model_id: String,
+    base_url: String,
+    api_key: String,
+}
+
+/// Resolves whether the active session's model is served via OpenRouter.
+///
+/// Returns `Some(target)` only when the model selection is `Single` and the
+/// resolved provider's backend parses to `Backend::OpenRouter`. Otherwise
+/// returns `None` — the picker then renders a single "not served via
+/// OpenRouter" explanatory row.
+///
+/// This is the backend gate: it runs in the actor (which owns `Services`)
+/// rather than the validator, because the `IntentHandler` cannot reach the
+/// provider registry.
+pub(crate) fn resolve_openrouter_target(
+    services: &Services,
+    model: &ModelSelection,
+) -> Option<OpenRouterTarget> {
+    let ModelSelection::Single(provider_id) = model else {
+        return None;
+    };
+    let registry = services.provider_registry.read();
+    let resolved = registry.get(&provider_infra::ProviderId::new(provider_id.clone()))?;
+    if resolved.backend.parse::<jinn_provider::Backend>().ok()?
+        != jinn_provider::Backend::OpenRouter
+    {
+        return None;
+    }
+    let api_key = if resolved.requires_key {
+        let env_var = resolved.api_key_env.as_ref()?;
+        services.api_keys.get(env_var)?
+    } else {
+        String::new()
+    };
+    let base_url = resolved.base_url.clone().unwrap_or_else(|| {
+        jinn_provider::ProviderConfig::openrouter()
+            .default_base_url
+            .to_owned()
+    });
+    Some(OpenRouterTarget {
+        model_id: resolved.model.clone(),
+        base_url,
+        api_key,
+    })
+}
+
+/// Fetches the OpenRouter endpoints for `target` and builds picker entries.
+///
+/// Always prepends the "Default (auto-route)" sentinel; real endpoints are
+/// sorted by `provider_name` (done by `list_endpoints`). The currently pinned
+/// endpoint, if any, is marked active.
+///
+/// On fetch error, returns just the sentinel so the user can still clear a
+/// stale pin and retry by re-opening the picker.
+pub(crate) async fn fetch_endpoint_entries(
+    target: &OpenRouterTarget,
+    theme: crate::feat::theme::Theme,
+    pinned: Option<&crate::feat::endpoint::Endpoint>,
+) -> Vec<EndpointEntry> {
+    let sentinel = EndpointEntry::auto_route(pinned.is_none(), theme.clone());
+
+    let fetched = jinn_provider::list_endpoints_default_client(
+        &target.base_url,
+        &target.model_id,
+        &target.api_key,
+        &[],
+    )
+    .await;
+
+    let Ok(endpoints) = fetched else {
+        return vec![sentinel];
+    };
+
+    let mut entries = Vec::with_capacity(endpoints.len() + 1);
+    entries.push(sentinel);
+    for ep in endpoints {
+        let is_active = pinned.is_some_and(|p| p.tag == ep.tag);
+        entries.push(EndpointEntry {
+            tag: ep.tag,
+            provider_name: ep.provider_name,
+            uptime_30m: ep.uptime_30m,
+            prompt_price: ep.prompt_price,
+            completion_price: ep.completion_price,
+            quantization: ep.quantization,
+            max_completion_tokens: ep.max_completion_tokens,
+            is_active,
+            theme: theme.clone(),
+        });
+    }
+    entries
+}
+
+/// Builds the single-row list shown when the active model is not served via
+/// OpenRouter (or is an alloy). The row is an inert explanatory placeholder;
+/// its empty `tag` means confirming it clears any pin.
+pub(crate) fn unavailable_endpoint_entries(
+    theme: crate::feat::theme::Theme,
+    pinned: Option<&crate::feat::endpoint::Endpoint>,
+) -> Vec<EndpointEntry> {
+    vec![EndpointEntry::auto_route(pinned.is_none(), theme)]
+}
+
+/// Loads OpenRouter endpoint entries into the picker from already-fetched data.
+pub(crate) fn set_endpoint_picker_items(view: &mut ProviderView<'_>, entries: Vec<EndpointEntry>) {
+    view.provider_frontend.set_endpoint_picker_items(entries);
 }
 
 #[cfg(test)]

@@ -1324,7 +1324,7 @@ mod tests {
             .publish(SendToLlmProvider {
                 model_used: None,
                 reasoning_effort: None,
-            endpoint_tag: None,
+                endpoint_tag: None,
                 session_id: session_id.clone(),
                 messages: vec![],
                 tool_definitions: vec![],
@@ -1373,7 +1373,7 @@ mod tests {
             .publish(SendToLlmProvider {
                 model_used: None,
                 reasoning_effort: None,
-            endpoint_tag: None,
+                endpoint_tag: None,
                 session_id: session_id.clone(),
                 messages: vec![],
                 tool_definitions: vec![],

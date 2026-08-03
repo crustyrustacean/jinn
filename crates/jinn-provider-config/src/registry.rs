@@ -371,7 +371,6 @@ impl ProviderRegistry {
     }
 }
 
-
 /// Merges a pinned OpenRouter routing endpoint into a provider's `extra_body`.
 ///
 /// When `tag` is `Some`, injects `provider: { order: [tag], allow_fallbacks: false }`
@@ -432,7 +431,12 @@ impl LlmServiceFactory for FactoryOverride {
 
 #[cfg(test)]
 mod tests {
-    #![allow(clippy::expect_used, clippy::panic, reason = "test code")]
+    #![allow(
+        clippy::expect_used,
+        clippy::panic,
+        clippy::indexing_slicing,
+        reason = "test code"
+    )]
     use super::merge_endpoint_override;
     use serde_json::json;
 
@@ -444,9 +448,7 @@ mod tests {
 
         // Then the provider object pins a single upstream with no fallbacks.
         let merged = merged.expect("merged extra_body");
-        let provider = merged
-            .get("provider")
-            .expect("provider key present");
+        let provider = merged.get("provider").expect("provider key present");
         assert_eq!(provider["order"], json!(["anthropic"]));
         assert_eq!(provider["allow_fallbacks"], json!(false));
     }

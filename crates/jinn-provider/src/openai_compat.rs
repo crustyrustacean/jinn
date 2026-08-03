@@ -15,7 +15,7 @@ mod response;
 mod service;
 pub mod sse;
 
-pub use endpoints::{list_endpoints, EndpointInfo};
+pub use endpoints::{EndpointInfo, list_endpoints, list_endpoints_default_client};
 pub use factory::OpenAiCompatibleFactory;
 pub use provider_config::ProviderConfig;
 pub use service::OpenAiCompatibleService;
