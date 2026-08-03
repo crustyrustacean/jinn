@@ -51,9 +51,15 @@ pub fn expand_tokens(args: &[String], ip: &str, port: u16) -> Vec<String> {
 /// parses it as an IP address.
 #[must_use]
 pub fn parse_host(url_template: &str) -> String {
-    let after_scheme = url_template.split_once("://").map_or(url_template, |(_, rest)| rest);
-    let host = after_scheme.split_once(':').map_or(after_scheme, |(host, _)| host);
-    host.split_once('/').map_or(host, |(host, _)| host).to_owned()
+    let after_scheme = url_template
+        .split_once("://")
+        .map_or(url_template, |(_, rest)| rest);
+    let host = after_scheme
+        .split_once(':')
+        .map_or(after_scheme, |(host, _)| host);
+    host.split_once('/')
+        .map_or(host, |(host, _)| host)
+        .to_owned()
 }
 #[cfg(test)]
 mod tests {

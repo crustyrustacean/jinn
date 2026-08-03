@@ -219,6 +219,15 @@ impl McpClient {
     ///
     /// Returns an error if the port can't be allocated or the child fails
     /// to spawn.
+    ///
+    /// # Panics
+    ///
+    /// Panics if `url_template` somehow yields no URL after token expansion
+    /// (impossible for a single-element input).
+    #[expect(
+        clippy::expect_used,
+        reason = "invariant: url_template expands to exactly one URL"
+    )]
     pub fn connect_http(
         program: &str,
         args: &[String],
@@ -232,7 +241,7 @@ impl McpClient {
         let url = expand_tokens(&[url_template.to_owned()], &bind_addr, port)
             .into_iter()
             .next()
-            .expect("single-element vec");
+            .expect("url_template is a single-element vec");
 
         let mut command = Command::new(program);
         command
@@ -619,7 +628,8 @@ mod tests {
             "<port>".to_owned(), // token presence proves expansion path
         ];
 
-        let mut half = McpClient::connect_http("sh", &args, "http://127.0.0.1:<port>/mcp").expect("spawn");
+        let mut half =
+            McpClient::connect_http("sh", &args, "http://127.0.0.1:<port>/mcp").expect("spawn");
 
         // Then the URL is a localhost URL on a real port.
         assert!(half.url.starts_with("http://127.0.0.1:"));

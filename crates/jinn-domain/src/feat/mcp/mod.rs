@@ -162,10 +162,7 @@ mod tests {
 
         // Then the transport + URL are preserved.
         assert_eq!(back.transport, TransportKind::RemoteHttp);
-        assert_eq!(
-            back.url.as_deref(),
-            Some("http://localhost:3001/mcp")
-        );
+        assert_eq!(back.url.as_deref(), Some("http://localhost:3001/mcp"));
     }
 
     #[test]
