@@ -43,7 +43,7 @@ use kameo::actor::Spawn;
 fn unrunnable_server() -> McpServerConfig {
     McpServerConfig {
         name: "unrunnable".to_owned(),
-        command: "/this/command/does/not/exist".to_owned(),
+        command: Some("/this/command/does/not/exist".to_owned()),
         args: vec![],
         ..Default::default()
     }

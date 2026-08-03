@@ -186,4 +186,40 @@ mod tests {
         // Then the transport is preserved as Stdio.
         assert_eq!(back.transport, TransportKind::Stdio);
     }
+
+    #[test]
+    fn command_is_optional_deserializes_when_absent() {
+        // Given a config TOML with no command field.
+        let toml = r#"
+            name = "remote"
+            transport = "remote_http"
+            url = "http://localhost:3001/mcp"
+        "#;
+
+        // When deserializing.
+        let config: McpServerConfig = toml::from_str(toml).expect("parse");
+
+        // Then command is None.
+        assert!(config.command.is_none());
+    }
+
+    #[test]
+    fn remote_http_config_needs_no_command() {
+        // Given a RemoteHttp config with command set to None.
+        let config = McpServerConfig {
+            name: "remote".to_owned(),
+            command: None,
+            args: vec![],
+            transport: TransportKind::RemoteHttp,
+            url: Some("http://localhost:3001/mcp".to_owned()),
+        };
+
+        // When serializing and deserializing.
+        let toml = toml::to_string(&config).expect("serialize");
+        let back: McpServerConfig = toml::from_str(&toml).expect("deserialize");
+
+        // Then command stays None and the config round-trips.
+        assert!(back.command.is_none());
+        assert_eq!(back.transport, TransportKind::RemoteHttp);
+    }
 }

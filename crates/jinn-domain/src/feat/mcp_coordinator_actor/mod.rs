@@ -480,7 +480,7 @@ mod lifecycle_tests {
     fn unrunnable_server() -> McpServerConfig {
         McpServerConfig {
             name: "unrunnable".to_owned(),
-            command: "/this/command/does/not/exist".to_owned(),
+            command: Some("/this/command/does/not/exist".to_owned()),
             args: vec![],
             ..Default::default()
         }
@@ -492,7 +492,7 @@ mod lifecycle_tests {
     fn hanging_server() -> McpServerConfig {
         McpServerConfig {
             name: "hanging".to_owned(),
-            command: "sleep".to_owned(),
+            command: Some("sleep".to_owned()),
             args: vec!["60".to_owned()],
             ..Default::default()
         }

@@ -125,6 +125,7 @@ impl McpActorDeps {
         Self {
             deps,
             session_id,
+            server,
             client_override: Arc::new(Mutex::new(Some(client))),
         }
     }
