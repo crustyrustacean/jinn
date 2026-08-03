@@ -185,6 +185,7 @@ impl AnthropicStreamParser {
                 prompt_tokens: self.input_tokens,
                 completion_tokens: self.output_tokens,
                 cost: None,
+                cached_tokens: None,
             })
         } else {
             None
