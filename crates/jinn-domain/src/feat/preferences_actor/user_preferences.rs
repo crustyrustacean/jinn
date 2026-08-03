@@ -98,11 +98,6 @@ pub(crate) fn default_tool_default_timeout_secs() -> u64 {
     DEFAULT_TOOL_DEFAULT_TIMEOUT_SECS
 }
 
-/// Serde default function for [`UserPreferences::mcp_bind_address`].
-pub(crate) fn default_mcp_bind_address() -> String {
-    "127.0.0.1".to_owned()
-}
-
 /// Errors that can occur during user preferences I/O.
 #[derive(Debug, Error)]
 pub enum UserPreferencesError {
@@ -151,9 +146,6 @@ pub struct UserPreferences {
     /// The local IP address HTTP-mode MCP servers bind to. Used as the `<ip>`
     /// replacement token in a server's `args`, and as the bind address for
     /// jinn's port allocation. Defaults to `127.0.0.1` (loopback only).
-    #[serde(default = "default_mcp_bind_address")]
-    pub mcp_bind_address: String,
-
     /// Maximum number of lines for tool output before truncation.
     /// `None` means use the built-in default (2000 lines).
     #[serde(default)]
@@ -256,7 +248,6 @@ impl Default for UserPreferences {
             ],
             projects: vec![],
             mcp_servers: vec![],
-            mcp_bind_address: default_mcp_bind_address(),
             max_tool_output_lines: None,
             max_tool_output_bytes: None,
             compaction: CompactionConfig::default(),
@@ -517,18 +508,6 @@ mod tests {
     }
 
     #[rstest::rstest]
-    fn mcp_bind_address_defaults_to_loopback_when_absent() {
-        // Given an empty jinn.toml.
-        let toml = "";
-
-        // When deserializing.
-        let prefs: UserPreferences = toml::from_str(toml).expect("parse");
-
-        // Then mcp_bind_address defaults to 127.0.0.1.
-        assert_eq!(prefs.mcp_bind_address, "127.0.0.1");
-    }
-
-    #[rstest::rstest]
     fn load_returns_defaults_and_creates_file_when_missing() {
         // Given a path to a nonexistent file.
         let dir = TempDir::new().expect("temp dir");
@@ -669,7 +648,6 @@ mod tests {
             todo_auto_steer: TodoAutoSteerConfig::default(),
             projects: vec![],
             mcp_servers: vec![],
-            mcp_bind_address: default_mcp_bind_address(),
             discord: crate::feat::discord::DiscordConfig::default(),
             tool_default_timeout_secs: default_tool_default_timeout_secs(),
             history_stall_timeout_secs: default_history_stall_timeout_secs(),
@@ -757,7 +735,6 @@ mod tests {
             todo_auto_steer: TodoAutoSteerConfig::default(),
             projects: vec![],
             mcp_servers: vec![],
-            mcp_bind_address: default_mcp_bind_address(),
             discord: crate::feat::discord::DiscordConfig::default(),
             tool_default_timeout_secs: default_tool_default_timeout_secs(),
             history_stall_timeout_secs: default_history_stall_timeout_secs(),
@@ -796,7 +773,6 @@ mod tests {
             todo_auto_steer: TodoAutoSteerConfig::default(),
             projects: vec![],
             mcp_servers: vec![],
-            mcp_bind_address: default_mcp_bind_address(),
             discord: crate::feat::discord::DiscordConfig::default(),
             tool_default_timeout_secs: default_tool_default_timeout_secs(),
             history_stall_timeout_secs: default_history_stall_timeout_secs(),
@@ -1106,7 +1082,6 @@ mod tests {
             todo_auto_steer: TodoAutoSteerConfig::default(),
             projects: vec![],
             mcp_servers: vec![],
-            mcp_bind_address: default_mcp_bind_address(),
             discord: crate::feat::discord::DiscordConfig::default(),
             tool_default_timeout_secs: default_tool_default_timeout_secs(),
             history_stall_timeout_secs: default_history_stall_timeout_secs(),

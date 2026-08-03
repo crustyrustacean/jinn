@@ -12,7 +12,7 @@ use parking_lot::RwLock;
 
 #[cfg(test)]
 use super::user_preferences::{
-    BrowserConfig, default_history_stall_timeout_secs, default_mcp_bind_address,
+    BrowserConfig, default_history_stall_timeout_secs,
     default_stall_retry_base_delay_secs, default_stall_retry_max_delay_secs,
     default_stall_retry_max_retries, default_tool_default_timeout_secs,
 };
@@ -285,7 +285,6 @@ mod tests {
             todo_auto_steer: TodoAutoSteerConfig::default(),
             projects: vec![],
             mcp_servers: vec![],
-            mcp_bind_address: default_mcp_bind_address(),
             discord: crate::feat::discord::DiscordConfig::default(),
             tool_default_timeout_secs: default_tool_default_timeout_secs(),
             history_stall_timeout_secs: default_history_stall_timeout_secs(),
@@ -351,7 +350,6 @@ mod tests {
                 path: PathBuf::from("/tmp/proj-a"),
             }],
             mcp_servers: vec![],
-            mcp_bind_address: default_mcp_bind_address(),
             discord: crate::feat::discord::DiscordConfig::default(),
             tool_default_timeout_secs: default_tool_default_timeout_secs(),
             history_stall_timeout_secs: default_history_stall_timeout_secs(),
@@ -397,7 +395,6 @@ mod tests {
             todo_auto_steer: TodoAutoSteerConfig::default(),
             projects: vec![],
             mcp_servers: vec![],
-            mcp_bind_address: default_mcp_bind_address(),
             discord: crate::feat::discord::DiscordConfig::default(),
             tool_default_timeout_secs: default_tool_default_timeout_secs(),
             history_stall_timeout_secs: default_history_stall_timeout_secs(),
@@ -439,7 +436,6 @@ mod tests {
             todo_auto_steer: TodoAutoSteerConfig::default(),
             projects: vec![],
             mcp_servers: vec![],
-            mcp_bind_address: default_mcp_bind_address(),
             discord: crate::feat::discord::DiscordConfig::default(),
             tool_default_timeout_secs: default_tool_default_timeout_secs(),
             history_stall_timeout_secs: default_history_stall_timeout_secs(),
@@ -468,7 +464,6 @@ mod tests {
             todo_auto_steer: TodoAutoSteerConfig::default(),
             projects: vec![],
             mcp_servers: vec![],
-            mcp_bind_address: default_mcp_bind_address(),
             discord: crate::feat::discord::DiscordConfig::default(),
             tool_default_timeout_secs: default_tool_default_timeout_secs(),
             history_stall_timeout_secs: default_history_stall_timeout_secs(),
@@ -506,7 +501,6 @@ mod tests {
             todo_auto_steer: TodoAutoSteerConfig::default(),
             projects: vec![],
             mcp_servers: vec![],
-            mcp_bind_address: default_mcp_bind_address(),
             discord: crate::feat::discord::DiscordConfig::default(),
             tool_default_timeout_secs: default_tool_default_timeout_secs(),
             history_stall_timeout_secs: default_history_stall_timeout_secs(),
