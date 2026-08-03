@@ -30,10 +30,16 @@ impl SessionPersistenceActor {
             // fires, so we must not overwrite them with the user's saved preference.
             self.state.with_session(&self.cap, |view| {
                 let session = view.session.map().active_session_mut();
-                if let Some(ref model) = app_state.last_model
-                    && session.profile().model.is_no_provider()
-                {
-                    session.set_model(model.clone());
+                if session.profile().model.is_no_provider() {
+                    if let Some(ref model) = app_state.last_model {
+                        session.set_model(model.clone());
+                    }
+                    // Seed the welcome session's reasoning effort from the
+                    // persisted global default, matching every other
+                    // session-creation path. Without this, the initial
+                    // program-load session shows no thinking-effort bracket
+                    // in the status bar until the user creates a new session.
+                    session.profile_mut().reasoning_effort = app_state.reasoning_effort;
                 }
             });
 
@@ -373,6 +379,109 @@ mod tests {
         assert_eq!(
             state.frontend.app_state.persona_name, None,
             "startup should not fabricate a persona name when none is persisted"
+        );
+    }
+
+    #[tokio::test]
+    async fn saved_reasoning_effort_seeds_into_welcome_session() {
+        // Given an actor with a default welcome session (NO_PROVIDER_ID model)
+        // and saved preferences with a reasoning_effort.
+        let (actor, _store, _audit) = test_actor_with_store_recording(vec![]).await;
+
+        // Save state with a reasoning_effort.
+        let state_file = crate::feat::preferences_actor::app_state_file::AppStateFile {
+            reasoning_effort: Some(crate::ReasoningEffort::High),
+            ..Default::default()
+        };
+        actor
+            .services
+            .app_state_storage
+            .save(&state_file)
+            .expect("save state");
+
+        // When handling EnvironmentLoaded.
+        actor
+            .on_environment_loaded(&crate::feat::provider_infra::ProvidersConfig {
+                providers: vec![],
+                aliases: vec![],
+                default_provider: None,
+            })
+            .await;
+
+        // Then the welcome session's reasoning effort is seeded from the saved value.
+        let state = actor.state.read();
+        assert_eq!(
+            state.active_session().profile().reasoning_effort,
+            Some(crate::ReasoningEffort::High),
+            "welcome session reasoning effort should be seeded from the saved preference"
+        );
+    }
+
+    #[tokio::test]
+    async fn saved_reasoning_effort_does_not_seed_into_explicit_model_session() {
+        // Given an actor with a session that has an explicit model (not
+        // NO_PROVIDER_ID, simulating a bench session) and saved preferences with
+        // a reasoning_effort.
+        let (actor, _store, _audit) = test_actor_with_store_recording(vec![]).await;
+
+        // Set an explicit model on the active session (simulating bench actor behavior).
+        {
+            let mut state = actor.state.write_test_no_cap();
+            state
+                .active_session_mut()
+                .set_model(ModelSelection::Single("bench-model".to_owned()));
+        }
+
+        // Save state with a reasoning_effort.
+        let state_file = crate::feat::preferences_actor::app_state_file::AppStateFile {
+            reasoning_effort: Some(crate::ReasoningEffort::High),
+            ..Default::default()
+        };
+        actor
+            .services
+            .app_state_storage
+            .save(&state_file)
+            .expect("save state");
+
+        // When handling EnvironmentLoaded.
+        actor
+            .on_environment_loaded(&crate::feat::provider_infra::ProvidersConfig {
+                providers: vec![],
+                aliases: vec![],
+                default_provider: None,
+            })
+            .await;
+
+        // Then the explicit-model session's reasoning effort is left as None,
+        // not overwritten by the saved preference.
+        let state = actor.state.read();
+        assert_eq!(
+            state.active_session().profile().reasoning_effort,
+            None,
+            "explicit-model (bench) session reasoning effort should not be seeded"
+        );
+    }
+
+    #[tokio::test]
+    async fn startup_seeds_none_reasoning_effort_when_unpersisted() {
+        // Given an actor with default (empty) app state storage.
+        let (actor, _store, _audit) = test_actor_with_store_recording(vec![]).await;
+
+        // When handling EnvironmentLoaded.
+        actor
+            .on_environment_loaded(&crate::feat::provider_infra::ProvidersConfig {
+                providers: vec![],
+                aliases: vec![],
+                default_provider: None,
+            })
+            .await;
+
+        // Then the welcome session's reasoning effort is None (no fabricated value).
+        let state = actor.state.read();
+        assert_eq!(
+            state.active_session().profile().reasoning_effort,
+            None,
+            "startup should not fabricate a reasoning effort when none is persisted"
         );
     }
 }
