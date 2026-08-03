@@ -1,4 +1,4 @@
-## (development) v0.104.0
+## 2026-08-03 v0.104.0
 
 - MCP server sidebar entry only shows when MCP servers are enabled. Also uses consistent padding (1 cell top + 1 cell bottom).
 - Uploaded tokens indicator now uses provider-returned value, falling back to local calculation.
