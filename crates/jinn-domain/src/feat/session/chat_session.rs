@@ -334,7 +334,7 @@ pub struct SessionCore {
     /// OWNER: tools-actor (mutated by task list tools).
     #[serde(default)]
     pub task_list: crate::feat::todo_list::TaskList,
-    /// Names of MCP servers (`jinn.toml` `[[mcp_servers]].name`) enabled for
+    /// Names of MCP servers (`jinn.toml` `[[mcp_server]].name`) enabled for
     /// this session. Off by default — enabling spawns a dedicated `McpActor`
     /// and its child-process connection; disabling kills both. Persisted with
     /// the session.

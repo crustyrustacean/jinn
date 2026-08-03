@@ -1,7 +1,7 @@
 //! [`McpServersSection`] — the MCP servers sidebar section.
 //!
 //! Implements [`SidebarSection`] for displaying the active session's MCP
-//! servers. Reads the global catalog from `frontend.preferences.mcp_servers`
+//! servers. Reads the global catalog from `frontend.preferences.mcp_server`
 //! and shows only the servers enabled for the active session, overlaying their
 //! live connection status. Disabled servers are omitted entirely — they appear
 //! only once enabled. Each enabled server renders one row with a visual
@@ -94,7 +94,7 @@ pub(crate) fn enabled_server_names(state: &AppState) -> Vec<String> {
     state
         .frontend
         .preferences
-        .mcp_servers
+        .mcp_server
         .iter()
         .filter(|s| enabled.contains(&s.name))
         .map(|s| s.name.clone())
@@ -190,7 +190,7 @@ impl SidebarSection for McpServersSection {
             let servers: Vec<_> = state
                 .frontend
                 .preferences
-                .mcp_servers
+                .mcp_server
                 .iter()
                 .filter(|s| enabled.contains(&s.name))
                 .collect();
@@ -244,7 +244,7 @@ impl SidebarSection for McpServersSection {
             .state
             .frontend
             .preferences
-            .mcp_servers
+            .mcp_server
             .iter()
             .filter(|s| enabled.contains(&s.name))
             .count();
@@ -280,7 +280,7 @@ mod tests {
     fn server(name: &str) -> McpServerConfig {
         McpServerConfig {
             name: name.to_owned(),
-            command: "echo".to_owned(),
+            command: Some("echo".to_owned()),
             args: vec![],
             ..Default::default()
         }
@@ -311,7 +311,7 @@ mod tests {
 
     fn state_with_servers(servers: &[McpServerConfig]) -> AppState {
         let mut state = AppState::default();
-        state.frontend.preferences.mcp_servers = servers.to_vec();
+        state.frontend.preferences.mcp_server = servers.to_vec();
         state
     }
 

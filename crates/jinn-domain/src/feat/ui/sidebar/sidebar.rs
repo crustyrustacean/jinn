@@ -208,7 +208,7 @@ fn section_has_content(id: SidebarSectionId, state: &AppState) -> bool {
             state
                 .frontend
                 .preferences
-                .mcp_servers
+                .mcp_server
                 .iter()
                 .any(|s| enabled.contains(&s.name))
         }

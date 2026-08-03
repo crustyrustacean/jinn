@@ -17,7 +17,7 @@ use std::ops::Range;
 /// enabled state.
 #[derive(Debug, Clone)]
 pub struct McpServerEntry {
-    /// Server name (the `[[mcp_servers]].name`, unique per `jinn.toml`).
+    /// Server name (the `[[mcp_server]].name`, unique per `jinn.toml`).
     pub name: String,
     /// Human-readable launch summary (e.g. `"npx @excalimate/mcp-server"`).
     pub description: String,
