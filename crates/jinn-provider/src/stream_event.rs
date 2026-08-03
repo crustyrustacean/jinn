@@ -52,6 +52,11 @@ pub struct StreamUsage {
     pub completion_tokens: Option<u64>,
     /// Cost in USD reported by the provider (e.g. OpenRouter).
     pub cost: Option<f64>,
+    /// Provider-reported count of prompt tokens served from a cache
+    /// (`usage.prompt_tokens_details.cached_tokens`).
+    /// OpenAI-compat only (e.g. OpenRouter); `None` for providers that
+    /// don't report cache details.
+    pub cached_tokens: Option<u64>,
 }
 
 /// A single web-search source citation from OpenRouter.
