@@ -1,7 +1,7 @@
 //! MCP server picker intent handlers.
 //!
 //! The MCP picker lists every server declared in `jinn.toml` under
-//! `[[mcp_servers]]` and lets the user toggle which ones are enabled for the
+//! `[[mcp_server]]` and lets the user toggle which ones are enabled for the
 //! active session. Enablement is an opt-in set persisted in `SessionCore`;
 //! only the toggled-on servers spawn an `McpActor` (Phase 4 wiring).
 //!
@@ -21,7 +21,7 @@ use crate::{ChatEntry, PushChatEntry};
 
 /// Populates the MCP server picker entries from configured servers.
 ///
-/// Reads `state.frontend.preferences.mcp_servers` and marks each entry enabled
+/// Reads `state.frontend.preferences.mcp_server` and marks each entry enabled
 /// according to the active session's `enabled_mcp_servers` set.
 pub(crate) fn load_mcp_picker_entries(state: &mut AppState) {
     let enabled = state.active_session().enabled_mcp_servers().clone();
@@ -30,7 +30,7 @@ pub(crate) fn load_mcp_picker_entries(state: &mut AppState) {
     let mut entries: Vec<McpServerEntry> = state
         .frontend
         .preferences
-        .mcp_servers
+        .mcp_server
         .iter()
         .map(|server| {
             let name = server.name.clone();

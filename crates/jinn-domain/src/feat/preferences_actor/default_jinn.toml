@@ -75,17 +75,50 @@ teardown_command = """bash -c 'git add -A && (git diff --cached --quiet || git c
 # MCP servers (Model Context Protocol)
 # ---------------------------------------------------------------------------
 # jinn acts as an MCP *client*: each entry below declares a server it can
-# connect to over stdio. Servers are OFF by default and must be enabled
-# per-session (the choice is persisted with the session). When enabled for a
-# session, jinn spawns the server process, advertises its tools to the model
-# under a namespaced id `mcp__<name>__<tool>`, and forwards calls to it.
+# connect to. Servers are OFF by default and must be enabled per-session
+# (the choice is persisted with the session). When enabled for a session,
+# jinn spawns/connects the server, advertises its tools to the model under
+# a namespaced id `mcp__<name>__<tool>`, and forwards calls to it.
 #
 # Add one block per server. The `name` must be unique across all servers.
 #
-# [[mcp_servers]]
+# Three transport modes are available:
+#
+#   stdio       (default) — jinn spawns the server and talks over its
+#                          stdin/stdout. Most MCP servers support this.
+#                          Omit the `transport` field entirely.
+#
+#   local_http  — jinn spawns the server (usually with a --port flag) and
+#                connects over HTTP. jinn allocates a free port for each
+#                session and expands the `<port>` token in both `args` and
+#                `url` with that port. The host is parsed from the `url`.
+#                Use this when the server supports HTTP mode and you want
+#                stdout logging or HTTP transport.
+#
+#   remote_http — jinn connects to an already-running server at the
+#                given `url`. No process is spawned; `command`/`args` are
+#                not needed. Use this for servers running in Docker, on a
+#                remote host, or as a system service.
+#
+# stdio example (transport omitted — it's the default)
+# [[mcp_server]]
 # name = "excalimate"
 # command = "npx"
 # args = ["@excalimate/mcp-server", "--stdio"]
+#
+# local_http example (jinn allocates the port, <port> is expanded)
+# [[mcp_server]]
+# name = "excalimate"
+# command = "npx"
+# args = ["@excalimate/mcp-server", "--port", "<port>", "--host", "<ip>"]
+# transport = "local_http"
+# url = "http://127.0.0.1:<port>/mcp"
+#
+# remote_http example (no process spawned, connect to url)
+# [[mcp_server]]
+# name = "remote"
+# transport = "remote_http"
+# url = "http://localhost:3001/mcp"
 
 
 # Compaction command + auto compaction.

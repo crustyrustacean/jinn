@@ -171,7 +171,7 @@ fn configured_server_names(state: &crate::common::state::State) -> Vec<String> {
         .read()
         .frontend
         .preferences
-        .mcp_servers
+        .mcp_server
         .iter()
         .map(|s| s.name.clone())
         .collect()

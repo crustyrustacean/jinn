@@ -88,9 +88,6 @@ pub struct McpActorDeps {
     session_id: SessionId,
     /// The configured server to connect to.
     server: McpServerConfig,
-    /// The bind address for HTTP-mode servers (`mcp_bind_address` pref).
-    /// Ignored by stdio/remote transports.
-    bind_addr: String,
     /// Optional pre-connected client, used only by integration tests.
     ///
     /// Production is always `None` (the actor spawns the server from `server`).
@@ -102,17 +99,11 @@ pub struct McpActorDeps {
 impl McpActorDeps {
     /// Production constructor: spawns the server process at `on_start`.
     #[must_use]
-    pub fn new(
-        deps: ActorDeps,
-        session_id: SessionId,
-        server: McpServerConfig,
-        bind_addr: String,
-    ) -> Self {
+    pub fn new(deps: ActorDeps, session_id: SessionId, server: McpServerConfig) -> Self {
         Self {
             deps,
             session_id,
             server,
-            bind_addr,
             client_override: Arc::new(Mutex::new(None)),
         }
     }
@@ -131,16 +122,27 @@ impl McpActorDeps {
             deps,
             session_id,
             server,
-            bind_addr: String::new(),
             client_override: Arc::new(Mutex::new(Some(client))),
         }
     }
 }
 
 /// Builds the [`ServerCommand`] for an [`McpServerConfig`].
+///
+/// # Panics
+///
+/// Panics if `command` is `None` — only valid for `RemoteHttp` servers,
+/// which never reach this function.
+#[expect(
+    clippy::expect_used,
+    reason = "invariant: documented, only called for Stdio/LocalHttp"
+)]
 fn server_command(config: &McpServerConfig) -> ServerCommand {
     ServerCommand {
-        program: config.command.clone(),
+        program: config
+            .command
+            .clone()
+            .expect("command required for Stdio/LocalHttp servers"),
         args: config.args.clone(),
     }
 }
@@ -148,21 +150,41 @@ fn server_command(config: &McpServerConfig) -> ServerCommand {
 /// Connects a fresh [`McpClient`] according to the server's configured transport.
 ///
 /// - [`TransportKind::Stdio`]: spawn the child and handshake over stdin/stdout.
-/// - [`TransportKind::Http`]: spawn the child (managed port via `<port>` token),
-///   then poll the HTTP endpoint on a backoff until the handshake succeeds
-///   or the child exits (no wall-clock timeout).
-/// - [`TransportKind::RemoteHttp`]: connect to the configured URL with no child.
+/// - [`TransportKind::LocalHttp`]: spawn the child (managed port via `<port>`
+///   token, bind address parsed from `url`), then poll the HTTP endpoint on a
+///   backoff until the handshake succeeds or the child exits (no wall-clock timeout).
+/// - [`TransportKind::RemoteHttp`]: connect to the configured `url` with no child.
+#[expect(
+    clippy::expect_used,
+    reason = "invariants: url/command documented per transport kind"
+)]
 pub(crate) async fn connect_for_transport(
     server: &McpServerConfig,
-    bind_addr: &str,
 ) -> Result<McpClient, Report<McpClientError>> {
-    match &server.transport {
+    match server.transport {
         TransportKind::Stdio => McpClient::connect(&server_command(server)).await,
-        TransportKind::Http => {
-            let half = McpClient::connect_http(&server.command, &server.args, bind_addr)?;
+        TransportKind::LocalHttp => {
+            let url = server
+                .url
+                .as_ref()
+                .expect("url required for LocalHttp servers");
+            let half = McpClient::connect_http(
+                server
+                    .command
+                    .as_deref()
+                    .expect("command required for LocalHttp servers"),
+                &server.args,
+                url,
+            )?;
             McpClient::connect_with_retry(half).await
         }
-        TransportKind::RemoteHttp { url } => McpClient::connect_remote(url).await,
+        TransportKind::RemoteHttp => {
+            let url = server
+                .url
+                .as_ref()
+                .expect("url required for RemoteHttp servers");
+            McpClient::connect_remote(url).await
+        }
     }
 }
 
@@ -178,12 +200,11 @@ pub(crate) async fn connect_for_transport(
 /// On success returns the client and its mapped tool definitions together.
 async fn acquire_client(
     server: &McpServerConfig,
-    bind_addr: &str,
     client_override: Option<McpClient>,
 ) -> Result<(McpClient, Vec<ToolDefinition>), Option<McpClient>> {
     let client = match client_override {
         Some(injected) => injected,
-        None => match connect_for_transport(server, bind_addr).await {
+        None => match connect_for_transport(server).await {
             Ok(client) => client,
             Err(report) => {
                 tracing::warn!(
@@ -250,7 +271,6 @@ impl kameo::Actor for McpActor {
             deps,
             session_id,
             server,
-            bind_addr,
             client_override,
         } = args;
 
@@ -273,9 +293,7 @@ impl kameo::Actor for McpActor {
         // list) is non-fatal to the process: the actor runs idle, the lifecycle
         // actor / dashboard surfaces the dead status, and a later enable/disable
         // cycle can respawn.
-        let (mut client, definitions) = match acquire_client(&server, &bind_addr, injected_client)
-            .await
-        {
+        let (mut client, definitions) = match acquire_client(&server, injected_client).await {
             Ok(ready) => ready,
             Err(half_open) => {
                 if let Some(mut half_open) = half_open {
@@ -802,7 +820,7 @@ mod tests {
         // Given a server config.
         let config = McpServerConfig {
             name: "excalimate".to_owned(),
-            command: "npx".to_owned(),
+            command: Some("npx".to_owned()),
             args: vec!["@excalimate/mcp-server".to_owned(), "--stdio".to_owned()],
             ..Default::default()
         };

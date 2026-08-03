@@ -173,7 +173,7 @@ impl McpCoordinatorActor {
                 tracing::warn!(
                     server = %server,
                     %session_id,
-                    "MCP lifecycle: enabled server not found in jinn.toml [[mcp_servers]], skipping spawn"
+                    "MCP lifecycle: enabled server not found in jinn.toml [[mcp_server]], skipping spawn"
                 );
             }
         }
@@ -201,16 +201,9 @@ impl McpCoordinatorActor {
             return None;
         }
 
-        let bind_addr = bind_address(&self.deps.services);
-
         let actor_ref = McpActor::supervise(
             &self.root,
-            McpActorDeps::new(
-                self.deps.clone(),
-                session_id.clone(),
-                config.clone(),
-                bind_addr,
-            ),
+            McpActorDeps::new(self.deps.clone(), session_id.clone(), config.clone()),
         )
         .restart_policy(RestartPolicy::Never)
         .spawn()
@@ -312,20 +305,10 @@ impl McpCoordinatorActor {
     }
 }
 
-/// Reads the configured `[[mcp_servers]]` from user preferences.
+/// Reads the configured `[[mcp_server]]` from user preferences.
 fn configured_servers(services: &Services) -> Vec<McpServerConfig> {
     let prefs = services.user_preferences_storage.read();
-    prefs.mcp_servers.clone()
-}
-
-/// Reads the global `mcp_bind_address` preference (default `127.0.0.1`).
-fn bind_address(services: &Services) -> String {
-    let prefs = services.user_preferences_storage.read();
-    if prefs.mcp_bind_address.is_empty() {
-        "127.0.0.1".to_owned()
-    } else {
-        prefs.mcp_bind_address.clone()
-    }
+    prefs.mcp_server.clone()
 }
 
 // ── Message handlers ─────────────────────────────────────────────────────
@@ -493,7 +476,7 @@ mod lifecycle_tests {
     fn unrunnable_server() -> McpServerConfig {
         McpServerConfig {
             name: "unrunnable".to_owned(),
-            command: "/this/command/does/not/exist".to_owned(),
+            command: Some("/this/command/does/not/exist".to_owned()),
             args: vec![],
             ..Default::default()
         }
@@ -505,7 +488,7 @@ mod lifecycle_tests {
     fn hanging_server() -> McpServerConfig {
         McpServerConfig {
             name: "hanging".to_owned(),
-            command: "sleep".to_owned(),
+            command: Some("sleep".to_owned()),
             args: vec!["60".to_owned()],
             ..Default::default()
         }
@@ -523,7 +506,7 @@ mod lifecycle_tests {
         services
             .user_preferences_storage
             .save(&UserPreferences {
-                mcp_servers: servers,
+                mcp_server: servers,
                 ..UserPreferences::default()
             })
             .expect("seed prefs");

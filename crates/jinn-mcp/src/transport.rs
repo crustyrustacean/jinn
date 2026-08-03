@@ -43,6 +43,24 @@ pub fn expand_tokens(args: &[String], ip: &str, port: u16) -> Vec<String> {
         .collect()
 }
 
+/// Extracts the host portion from a URL template like `http://127.0.0.1:<port>/mcp`.
+///
+/// Strips the scheme prefix and takes everything up to the first `:` (port
+/// separator) or `/` (path separator), whichever comes first. Returns the raw
+/// host string without validation — callers pass it to [`pick_free_port`] which
+/// parses it as an IP address.
+#[must_use]
+pub fn parse_host(url_template: &str) -> String {
+    let after_scheme = url_template
+        .split_once("://")
+        .map_or(url_template, |(_, rest)| rest);
+    let host = after_scheme
+        .split_once(':')
+        .map_or(after_scheme, |(host, _)| host);
+    host.split_once('/')
+        .map_or(host, |(host, _)| host)
+        .to_owned()
+}
 #[cfg(test)]
 mod tests {
     #![allow(clippy::expect_used, reason = "test assertions")]
@@ -114,6 +132,26 @@ mod tests {
     }
 
     #[test]
+    fn parse_host_extracts_from_url_with_port_token() {
+        // Given a url template with <port> token.
+        // When parsing the host.
+        let host = parse_host("http://127.0.0.1:<port>/mcp");
+
+        // Then the host is extracted before the port.
+        assert_eq!(host, "127.0.0.1");
+    }
+
+    #[test]
+    fn parse_host_extracts_from_url_without_path() {
+        // Given a url template with no path.
+        // When parsing the host.
+        let host = parse_host("http://0.0.0.0:<port>");
+
+        // Then the host is extracted.
+        assert_eq!(host, "0.0.0.0");
+    }
+
+    #[test]
     fn expand_tokens_handles_multiple_tokens_per_arg() {
         // Given an arg containing both tokens (e.g. a combined URL-ish arg).
         let args = vec!["http://<ip>:<port>/mcp".to_owned()];
@@ -123,5 +161,17 @@ mod tests {
 
         // Then both tokens in the same arg are replaced.
         assert_eq!(out, vec!["http://0.0.0.0:8080/mcp"]);
+    }
+
+    #[test]
+    fn expand_tokens_replaces_port_in_url_template() {
+        // Given a url template with a <port> token (as used by local_http).
+        let url_template = "http://127.0.0.1:<port>/mcp".to_owned();
+
+        // When expanding as a single-element args list.
+        let expanded = expand_tokens(&[url_template], "127.0.0.1", 42365);
+
+        // Then the port token is replaced with the allocated port.
+        assert_eq!(expanded, vec!["http://127.0.0.1:42365/mcp"]);
     }
 }

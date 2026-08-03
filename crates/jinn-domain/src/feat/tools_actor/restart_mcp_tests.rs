@@ -43,7 +43,7 @@ use kameo::actor::Spawn;
 fn unrunnable_server() -> McpServerConfig {
     McpServerConfig {
         name: "unrunnable".to_owned(),
-        command: "/this/command/does/not/exist".to_owned(),
+        command: Some("/this/command/does/not/exist".to_owned()),
         args: vec![],
         ..Default::default()
     }
@@ -62,7 +62,7 @@ async fn spawn_coordinator(
     services
         .user_preferences_storage
         .save(&UserPreferences {
-            mcp_servers: servers,
+            mcp_server: servers,
             ..UserPreferences::default()
         })
         .expect("seed prefs");
@@ -97,13 +97,13 @@ fn ctx_with_coordinator(
 ) -> ToolContext {
     let config = McpServerConfig {
         name: "excalimate".to_owned(),
-        command: String::new(),
+        command: Some(String::new()),
         args: vec![],
         ..Default::default()
     };
     let frontend = FrontendState {
         preferences: UserPreferences {
-            mcp_servers: vec![config],
+            mcp_server: vec![config],
             ..Default::default()
         },
         ..Default::default()
