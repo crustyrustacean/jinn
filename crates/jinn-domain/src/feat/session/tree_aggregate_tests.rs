@@ -40,6 +40,8 @@ fn make_session_with_stats(
             tokens_sent,
             tokens_received,
             cost,
+            prompt_tokens: None,
+            cached_tokens: None,
         });
     }
 

@@ -33,6 +33,8 @@ fn from_ledger_sums_single_record() {
         tokens_sent: 100,
         tokens_received: 50,
         cost: None,
+        prompt_tokens: None,
+        cached_tokens: None,
     }];
 
     // When deriving stats.
@@ -54,6 +56,8 @@ fn from_ledger_sums_multiple_records() {
             tokens_sent: 100,
             tokens_received: 50,
             cost: None,
+            prompt_tokens: None,
+            cached_tokens: None,
         },
         TokenRecord {
             model_used: None,
@@ -61,6 +65,8 @@ fn from_ledger_sums_multiple_records() {
             tokens_sent: 200,
             tokens_received: 75,
             cost: None,
+            prompt_tokens: None,
+            cached_tokens: None,
         },
         TokenRecord {
             model_used: None,
@@ -68,6 +74,8 @@ fn from_ledger_sums_multiple_records() {
             tokens_sent: 150,
             tokens_received: 60,
             cost: None,
+            prompt_tokens: None,
+            cached_tokens: None,
         },
     ];
 
@@ -129,6 +137,8 @@ fn aggregate_returns_own_stats_for_session_with_no_children() {
         tokens_sent: 500,
         tokens_received: 250,
         cost: None,
+        prompt_tokens: None,
+        cached_tokens: None,
     });
 
     let mut sessions = HashMap::new();
@@ -156,6 +166,8 @@ fn aggregate_includes_child_session_stats() {
         tokens_sent: 100,
         tokens_received: 50,
         cost: None,
+        prompt_tokens: None,
+        cached_tokens: None,
     });
 
     let mut child = ChatSessionState::new();
@@ -166,6 +178,8 @@ fn aggregate_includes_child_session_stats() {
         tokens_sent: 200,
         tokens_received: 100,
         cost: None,
+        prompt_tokens: None,
+        cached_tokens: None,
     });
 
     let mut sessions = HashMap::new();
@@ -200,6 +214,8 @@ fn aggregate_handles_nested_children() {
         tokens_sent: 1000,
         tokens_received: 500,
         cost: None,
+        prompt_tokens: None,
+        cached_tokens: None,
     });
 
     let mut parent = ChatSessionState::new();
@@ -210,6 +226,8 @@ fn aggregate_handles_nested_children() {
         tokens_sent: 500,
         tokens_received: 250,
         cost: None,
+        prompt_tokens: None,
+        cached_tokens: None,
     });
 
     let mut child = ChatSessionState::new();
@@ -220,6 +238,8 @@ fn aggregate_handles_nested_children() {
         tokens_sent: 200,
         tokens_received: 100,
         cost: None,
+        prompt_tokens: None,
+        cached_tokens: None,
     });
 
     let mut sessions = HashMap::new();
@@ -246,6 +266,8 @@ fn token_record_with_model_used_round_trips_through_serde() {
         tokens_sent: 100,
         tokens_received: 50,
         cost: Some(0.003),
+        prompt_tokens: None,
+        cached_tokens: None,
     };
 
     // When round-tripping through JSON.

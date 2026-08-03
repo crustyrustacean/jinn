@@ -140,6 +140,8 @@ impl SessionPersistenceActor {
                             tokens_sent: assembled.estimated_tokens(),
                             tokens_received: 0,
                             cost: None,
+                            prompt_tokens: None,
+                            cached_tokens: None,
                         });
                         (old_phase, session.phase())
                     })
@@ -486,6 +488,8 @@ impl SessionPersistenceActor {
                     tokens_sent: assembled.estimated_tokens(),
                     tokens_received: 0,
                     cost: None,
+                    prompt_tokens: None,
+                    cached_tokens: None,
                 });
                 (
                     provider_id,

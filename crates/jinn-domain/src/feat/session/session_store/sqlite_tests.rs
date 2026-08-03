@@ -520,6 +520,8 @@ async fn token_ledger_round_trips() {
         tokens_sent: 100,
         tokens_received: 50,
         cost: None,
+        prompt_tokens: None,
+        cached_tokens: None,
     });
 
     // When saving and loading.
@@ -534,6 +536,55 @@ async fn token_ledger_round_trips() {
     assert_eq!(loaded.token_ledger().len(), 1);
     assert_eq!(loaded.token_ledger()[0].tokens_sent, 100);
     assert_eq!(loaded.token_ledger()[0].tokens_received, 50);
+}
+
+#[rstest::rstest]
+#[tokio::test]
+async fn token_ledger_round_trips_prompt_and_cached_tokens() {
+    // Given a session with token records carrying provider-reported prompt
+    // and cached token counts, plus one record with both as None.
+    use crate::feat::session::token_stats::TokenRecord;
+    let (_dir, store) = make_store().await;
+    let session_id = SessionId::new();
+    let mut session = ChatSessionState::new();
+    session.set_session_id(session_id.clone());
+    session.set_title("Cache tokens".to_owned());
+    session.push_entry(ChatEntry::user("hello"));
+    session.push_token_record(TokenRecord {
+        model_used: Some("openrouter/auto".to_owned()),
+        timestamp: jiff::Timestamp::now(),
+        tokens_sent: 1000,
+        tokens_received: 50,
+        cost: Some(0.01),
+        prompt_tokens: Some(1000),
+        cached_tokens: Some(400),
+    });
+    session.push_token_record(TokenRecord {
+        model_used: None,
+        timestamp: jiff::Timestamp::now(),
+        tokens_sent: 200,
+        tokens_received: 0,
+        cost: None,
+        prompt_tokens: None,
+        cached_tokens: None,
+    });
+
+    // When saving and loading.
+    store.save(&session).await.expect("save");
+    let loaded = store
+        .load_session(&session_id)
+        .await
+        .expect("load")
+        .expect("should exist");
+
+    // Then the provider-reported counts round-trip exactly.
+    let ledger = loaded.token_ledger();
+    assert_eq!(ledger.len(), 2);
+    assert_eq!(ledger[0].prompt_tokens, Some(1000));
+    assert_eq!(ledger[0].cached_tokens, Some(400));
+    // And None round-trips as None.
+    assert_eq!(ledger[1].prompt_tokens, None);
+    assert_eq!(ledger[1].cached_tokens, None);
 }
 
 #[rstest::rstest]

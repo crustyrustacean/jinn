@@ -137,6 +137,10 @@ pub(crate) fn run_pending(
         migrate_v23(conn)?;
         record_version(conn, 23, "strip_s_prefix_from_session_ids")?;
     }
+    if current < 24 {
+        migrate_v24(conn)?;
+        record_version(conn, 24, "add_token_ledger_prompt_cached_columns")?;
+    }
     Ok(())
 }
 
@@ -936,6 +940,30 @@ pub fn migrate_v23(conn: &mut rusqlite::Connection) -> Result<(), Report<SchemaM
     // JSON blob — rewrite the session_id / parent_session keys.
     rewrite_metadata_session_ids(conn)?;
 
+    Ok(())
+}
+
+/// v24: Add provider-reported prompt/cache token columns to `token_ledger`.
+///
+/// Adds `prompt_tokens` (provider-reported prompt count, distinct from the
+/// local estimate `tokens_sent`) and `cached_tokens` (cache-hit count from
+/// `usage.prompt_tokens_details.cached_tokens`). Both nullable: pre-v24 rows
+/// and turns without provider usage (e.g. cancelled) load as `NULL`.
+pub fn migrate_v24(conn: &mut rusqlite::Connection) -> Result<(), Report<SchemaMigrationError>> {
+    for col in ["prompt_tokens", "cached_tokens"] {
+        let sql = format!("ALTER TABLE token_ledger ADD COLUMN {col} INTEGER");
+        // Idempotent: ignore "duplicate column" error if migration runs twice.
+        match conn.execute(&sql, []) {
+            Ok(_) => {}
+            Err(rusqlite::Error::SqliteFailure(_, Some(msg)))
+                if msg.contains("duplicate column name") => {}
+            Err(e) => {
+                return Err(e)
+                    .change_context(SchemaMigrationError)
+                    .attach(format!("v24: add {col} column to token_ledger"));
+            }
+        }
+    }
     Ok(())
 }
 

@@ -416,6 +416,8 @@ fn apply_completion_entries(
                 output_tokens,
                 event.cost,
                 event.model_used.clone(),
+                event.provider_prompt_tokens.and_then(|t| u32::try_from(t).ok()),
+                event.cached_tokens.and_then(|t| u32::try_from(t).ok()),
             )
         {
             tracing::error!(err = ?e, "failed to finalize token record");
@@ -982,6 +984,8 @@ mod tests {
                 tokens_sent: 100,
                 tokens_received: 0,
                 cost: None,
+                prompt_tokens: None,
+                cached_tokens: None,
             });
             session.begin_streaming();
             state.session.active_session_id().clone()
@@ -1073,6 +1077,8 @@ mod tests {
                 tokens_sent: 100,
                 tokens_received: 0,
                 cost: None,
+                prompt_tokens: None,
+                cached_tokens: None,
             });
             session.begin_streaming();
             state.session.active_session_id().clone()
@@ -1459,6 +1465,8 @@ mod tests {
                 tokens_sent: 100,
                 tokens_received: 0,
                 cost: None,
+                prompt_tokens: None,
+                cached_tokens: None,
                 model_used: None,
             });
             session.begin_streaming();
@@ -1496,6 +1504,8 @@ mod tests {
                 tokens_sent: 100,
                 tokens_received: 0,
                 cost: None,
+                prompt_tokens: None,
+                cached_tokens: None,
                 model_used: None,
             });
             session.begin_streaming();
@@ -1538,6 +1548,8 @@ mod tests {
                 tokens_sent: 100,
                 tokens_received: 0,
                 cost: None,
+                prompt_tokens: None,
+                cached_tokens: None,
             });
             session.begin_streaming();
             state.session.active_session_id().clone()
@@ -1578,6 +1590,8 @@ mod tests {
                 tokens_sent: 100,
                 tokens_received: 0,
                 cost: None,
+                prompt_tokens: None,
+                cached_tokens: None,
             });
             session.begin_streaming();
             state.session.active_session_id().clone()
@@ -1617,6 +1631,8 @@ mod tests {
                 tokens_sent: 100,
                 tokens_received: 0,
                 cost: None,
+                prompt_tokens: None,
+                cached_tokens: None,
             });
             session.begin_streaming();
             state.session.active_session_id().clone()
@@ -1662,6 +1678,8 @@ mod tests {
                 tokens_sent: 100,
                 tokens_received: 0,
                 cost: None,
+                prompt_tokens: None,
+                cached_tokens: None,
             });
             session.begin_streaming();
             state.session.active_session_id().clone()
@@ -1700,6 +1718,8 @@ mod tests {
                 tokens_sent: 100,
                 tokens_received: 0,
                 cost: None,
+                prompt_tokens: None,
+                cached_tokens: None,
             });
             session.begin_streaming();
             state.session.active_session_id().clone()
