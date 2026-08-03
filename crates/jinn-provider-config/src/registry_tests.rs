@@ -331,6 +331,7 @@ fn create_factory_succeeds_for_sample_backend() {
         &ProviderId::new("sample/sample".to_owned()),
         &api_keys,
         None,
+        None,
     );
 
     // Then it succeeds and returns a factory named "Sample".
@@ -363,6 +364,7 @@ fn create_factory_succeeds_for_keyless_openai_backend() {
     let factory = registry.create_factory(
         &ProviderId::new("lmstudio/local-model".to_owned()),
         &api_keys,
+        None,
         None,
     );
 
@@ -478,6 +480,7 @@ fn create_factory_for_model_succeeds_for_known_provider() {
         &ProviderId::new("ollama/mistral".to_owned()),
         &api_keys,
         None,
+        None,
     );
 
     // Then it succeeds.
@@ -496,6 +499,7 @@ fn create_factory_fails_for_unknown_provider_after_merge() {
     let factory = registry.create_factory(
         &ProviderId::new("unknown/model".to_owned()),
         &api_keys,
+        None,
         None,
     );
 
@@ -544,6 +548,7 @@ fn create_factory_succeeds_for_merged_remote_model() {
         &ProviderId::new("lmstudio/my-real-model".to_owned()),
         &api_keys,
         None,
+        None,
     );
 
     // Then it succeeds (merged into registry).
@@ -562,6 +567,7 @@ fn create_factory_for_static_model_still_works() {
     let factory = registry.create_factory(
         &ProviderId::new("ollama/llama3".to_owned()),
         &api_keys,
+        None,
         None,
     );
 
@@ -611,6 +617,7 @@ fn create_factory_succeeds_for_merged_model_with_slashes() {
     let factory = registry.create_factory(
         &ProviderId::new("openrouter/anthropic/claude-sonnet-4".to_owned()),
         &api_keys,
+        None,
         None,
     );
 

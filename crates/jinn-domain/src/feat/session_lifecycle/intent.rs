@@ -111,6 +111,7 @@ pub fn handle_session_lifecycle_setup(
         std::collections::HashSet::new(),
         std::collections::HashSet::new(),
         reasoning_effort,
+        None,
     ));
     let new_id = new_session.session_id().clone();
 
