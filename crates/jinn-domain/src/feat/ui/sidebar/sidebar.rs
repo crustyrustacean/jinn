@@ -203,7 +203,15 @@ fn section_has_content(id: SidebarSectionId, state: &AppState) -> bool {
         SidebarSectionId::Persona => true,
         SidebarSectionId::Pins => !state.sorted_pinned_ids().is_empty(),
         SidebarSectionId::TaskList => !state.active_session().task_list().is_empty(),
-        SidebarSectionId::McpServers => !state.frontend.preferences.mcp_servers.is_empty(),
+        SidebarSectionId::McpServers => {
+            let enabled = state.active_session().enabled_mcp_servers();
+            state
+                .frontend
+                .preferences
+                .mcp_servers
+                .iter()
+                .any(|s| enabled.contains(&s.name))
+        }
         SidebarSectionId::Sessions => !state.session.is_empty(),
     }
 }

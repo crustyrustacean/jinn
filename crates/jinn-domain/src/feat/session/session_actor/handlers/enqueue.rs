@@ -18,6 +18,7 @@ use crate::protocol::{ChatEntry, ChatEntryKind};
 use super::super::SessionPersistenceActor;
 use super::image_resolve::ResolveOutcome;
 use crate::feat::context::prompt_template::PendingPath;
+use crate::feat::session::model_selection::ModelSelection;
 use crate::feat::session::phase_machine::PhaseKind;
 
 /// Decision returned after inspecting session state in `EnqueueUserMessage`.
@@ -154,19 +155,33 @@ impl SessionPersistenceActor {
                 )
                 .await;
 
-                let (provider_id, model_used, reasoning_effort) = {
+                let (provider_id, model_used, reasoning_effort, endpoint_tag) = {
                     self.state.with_session(&self.cap, |view| {
                         let Some(session) = view.session.map().get_mut(&payload.session_id) else {
-                            return (None, None, crate::resolve_effort(None));
+                            return (None, None, crate::resolve_effort(None), None);
                         };
+                        let reasoning_effort = {
+                            let profile = session.profile();
+                            crate::resolve_effort(profile.reasoning_effort)
+                        };
+                        // Snapshot the endpoint tag immutably before mutating the model.
+                        let endpoint_tag =
+                            match (&session.profile().model, &session.profile().endpoint) {
+                                (ModelSelection::Single(_), Some(ep)) => Some(ep.tag.clone()),
+                                _ => None,
+                            };
                         let profile = session.profile_mut();
-                        let reasoning_effort = crate::resolve_effort(profile.reasoning_effort);
                         if profile.model.is_no_provider() {
-                            (None, None, reasoning_effort)
+                            (None, None, reasoning_effort, None)
                         } else {
                             let resolved = profile.model.resolve_model();
                             session.set_last_token_model(resolved.clone());
-                            (Some(resolved.clone()), Some(resolved), reasoning_effort)
+                            (
+                                Some(resolved.clone()),
+                                Some(resolved),
+                                reasoning_effort,
+                                endpoint_tag,
+                            )
                         }
                     })
                 };
@@ -176,6 +191,7 @@ impl SessionPersistenceActor {
                 self.publish(SendToLlmProvider {
                     model_used,
                     reasoning_effort,
+                    endpoint_tag,
                     session_id: payload.session_id.clone(),
                     messages: assembled.messages,
                     provider_id,
@@ -464,12 +480,26 @@ impl SessionPersistenceActor {
 
         // Resolve model under write lock (round-robin mutates index).
         // Sending → Streaming + record outgoing token count.
-        let (provider_id, model_used, reasoning_effort, old_phase, new_phase, dispatched_at) = {
+        let (
+            provider_id,
+            model_used,
+            reasoning_effort,
+            endpoint_tag,
+            old_phase,
+            new_phase,
+            dispatched_at,
+        ) = {
             self.state.with_session(&self.cap, |view| {
                 let session = view.session.map().get_or_create(session_id);
                 let reasoning_effort = {
                     let profile = session.profile();
                     crate::resolve_effort(profile.reasoning_effort)
+                };
+                // Snapshot the endpoint tag immutably before mutating the model
+                // (alloy round-robin mutates index during resolve_model).
+                let endpoint_tag = match (&session.profile().model, &session.profile().endpoint) {
+                    (ModelSelection::Single(_), Some(ep)) => Some(ep.tag.clone()),
+                    _ => None,
                 };
                 let model = &mut session.profile_mut().model;
                 let (provider_id, model_used) = if model.is_no_provider() {
@@ -495,6 +525,7 @@ impl SessionPersistenceActor {
                     provider_id,
                     model_used,
                     reasoning_effort,
+                    endpoint_tag,
                     old_phase,
                     session.phase(),
                     dispatched_at,
@@ -509,6 +540,7 @@ impl SessionPersistenceActor {
         self.publish(SendToLlmProvider {
             model_used,
             reasoning_effort,
+            endpoint_tag,
             session_id: session_id.clone(),
             messages: assembled.messages,
             provider_id,

@@ -167,6 +167,8 @@ pub enum Intent {
     RescanPromptTemplates,
     /// Rescan the agent skills directory and reload the skill picker.
     RefreshSkills,
+    /// Force-refresh the OpenRouter endpoint picker (bypass the in-memory cache).
+    RefreshEndpoints,
     /// Enter the sidebar scope.
     SidebarFocus,
     /// Jump directly to the Sessions sidebar section from any scope.
@@ -430,6 +432,7 @@ impl std::fmt::Display for Intent {
             Intent::RefreshModels => write!(f, "refresh models"),
             Intent::RescanPromptTemplates => write!(f, "rescan prompt templates"),
             Intent::RefreshSkills => write!(f, "refresh skills"),
+            Intent::RefreshEndpoints => write!(f, "refresh endpoints"),
             Intent::SidebarFocus => write!(f, "focus sidebar"),
             Intent::SidebarFocusSessions => write!(f, "focus session list"),
             Intent::SidebarLeave => write!(f, "return to normal mode"),
