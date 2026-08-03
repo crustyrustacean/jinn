@@ -5,6 +5,7 @@
 //! is configured via a [`ProviderConfig`] that provides base URL, custom
 //! headers, and endpoint paths.
 
+mod endpoints;
 mod factory;
 mod models;
 mod provider_config;
@@ -14,6 +15,7 @@ mod response;
 mod service;
 pub mod sse;
 
+pub use endpoints::{list_endpoints, EndpointInfo};
 pub use factory::OpenAiCompatibleFactory;
 pub use provider_config::ProviderConfig;
 pub use service::OpenAiCompatibleService;
