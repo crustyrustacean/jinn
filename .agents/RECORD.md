@@ -97,12 +97,15 @@ Entries are added or amended **only with human approval**.
 - (persona) Personas are markdown templates loaded via the prompt-template system; the persona picker (`<leader>se`) switches the active session persona.
 - (providers) LLM responses stream as a unified `StreamEvent` type, decoupled from any provider's native stream format.
 - (providers) The provider crate supports three backends: Anthropic, Google, and OpenAI-compatible.
+- (providers) OpenRouter serves each model through multiple upstream **endpoints**, each identified by a routing **tag**; the per-model `GET /api/v1/models/<id>/endpoints` payload lists them with pricing and uptime.
 - (selection) Chat entry selection applies an accumulated-exclude guard that only takes effect after a threshold, with per-entry forced include/exclude tracked separately.
 - (session) A replacement session seeded on archive inherits reasoning effort from the global default.
 - (session) An empty session that was never interacted with is not persisted on archive.
 - (session) Archiving the last active session creates a new one; archiving an empty session removes and archives it; archiving the active session switches to the next one.
 - (session) Entry kinds round-trip through serialization; image attachments are allowed only on models confirmed image-capable via models.dev — text-only and unknown models are blocked with an error entry.
 - (session) Model selection supports alloy (multi-provider) configs that round-trip through serde; `as_single` returns `None` for an alloy and the string for a single model.
+- (session) A session can pin one OpenRouter endpoint on its profile; when pinned and the model is served via the OpenRouter backend, dispatch forces that endpoint with `provider.order=[tag]` and `allow_fallbacks:false` for prefix-cache affinity.
+- (session) An endpoint pin applies only to a Single (non-alloy) model served via the OpenRouter backend; it is ignored for alloys and all other backends.
 - (skills) A project skill overrides a global skill with the same name; the discovery walk collects ancestors least-local-first so most-local-wins is a later-overwrites-earlier pass.
 - (skills) Agent skills are discovered from `~/.agents/skills/*/SKILL.md` and `.agents/skills/*/SKILL.md`; project skills override global skills (most-local-wins).
 - (skills) Prompt templates are markdown files with `+++` TOML frontmatter; `#name` tokens in user text expand to a template body.
