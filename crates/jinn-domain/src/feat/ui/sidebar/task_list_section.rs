@@ -350,6 +350,10 @@ fn build_render_lines(list: &TaskList, state: &AppState) -> Vec<Line<'static>> {
         lines.extend(view.phase_header_lines(phase, phase_idx, active_phase_id));
     }
 
+    // Trailing gap — matches Persona/Pins/McpServers, each of which ends with a
+    // blank line separating it from the section below (here: McpServers).
+    lines.push(Line::from(""));
+
     lines
 }
 
@@ -368,6 +372,9 @@ fn compute_height(list: &TaskList, state: &AppState) -> u16 {
     for (phase_idx, phase) in list.phases().iter().enumerate() {
         height += view.phase_height(phase, phase_idx);
     }
+
+    // Trailing gap (mirrors build_render_lines).
+    height += 1;
 
     height as u16
 }
@@ -546,12 +553,13 @@ mod tests {
         let app = setup_with_tasks();
         let list = app.session.active_session().task_list().clone();
         let lines = build_render_lines(&list, &app);
-        // No line should be empty (blank) - every line should have content.
+        // The last line is the section's trailing gap (mirrors Persona/Pins/McpServers),
+        // and line index 1 is the header separator blank. Both are expected; every
+        // line *between* phases should have content.
+        let last = lines.len().saturating_sub(1);
         for (i, line) in lines.iter().enumerate() {
-            // The header separator blank (line index 1) is OK.
-            // But between phases there should be no blank lines.
-            if i == 1 {
-                continue; // blank after header is expected
+            if i == 1 || i == last {
+                continue; // header separator / trailing gap are expected
             }
             let text: String = line.spans.iter().map(|s| s.content.to_string()).collect();
             assert!(
