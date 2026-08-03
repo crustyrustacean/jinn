@@ -20,19 +20,20 @@ use std::convert::Infallible;
 
 use crate::common::actor_deps::{ActorDeps, BusPublish};
 use crate::common::state::State;
-use crate::common::tcaps::provider::{ModelCacheWrite, ProviderCap};
+use crate::common::tcaps::provider::{FrontendProviderPickerWrite, ModelCacheWrite, ProviderCap};
 use crate::common::tcaps::session::SessionCap;
 use crate::feat::provider::protocol::command::{
     LoadCompactionModelPickerEntries, LoadEndpointPickerEntries, LoadProviderPickerEntries,
-    LoadReasoningEffortPickerEntries, ProviderSwitch,
+    LoadReasoningEffortPickerEntries, ProviderSwitch, RefreshEndpointPickerEntries,
 };
 use crate::feat::provider::protocol::event::{ModelCacheLoaded, ModelsRefreshed, ProviderSwitched};
 
 use super::loader::{
-    fetch_endpoint_entries, load_compaction_model_picker_items, load_provider_picker_items,
-    load_reasoning_effort_picker_items, resolve_openrouter_target, set_endpoint_picker_items,
-    unavailable_endpoint_entries,
+    build_endpoint_entries, fetch_endpoints, load_compaction_model_picker_items,
+    load_provider_picker_items, load_reasoning_effort_picker_items, resolve_openrouter_target,
+    set_endpoint_picker_items, unavailable_endpoint_entries,
 };
+use crate::feat::endpoint::picker_entry::EndpointEntry;
 use kameo::Actor;
 use kameo::actor::ActorRef;
 use kameo::message::{Context as MsgContext, Message};
@@ -51,6 +52,12 @@ pub struct ProviderActor {
     /// Authority to write the session model ([`SessionCap`]) — used by
     /// `handle_provider_switch` to set the session's active model.
     session_cap: SessionCap,
+    /// In-memory, per-model cache of OpenRouter routing endpoints for the
+    /// application's lifetime (not persisted to disk). Keyed by resolved model
+    /// id; value is the parsed upstream list plus the fetch timestamp. The
+    /// picker serves from this on open and re-fetches on-demand via `<c-r>`.
+    endpoints_cache:
+        std::collections::HashMap<String, (Vec<jinn_provider::EndpointInfo>, jiff::Timestamp)>,
 }
 
 /// Dependencies for [`ProviderActor`].
@@ -80,6 +87,8 @@ impl Actor for ProviderActor {
             .await;
         bus.subscribe::<LoadEndpointPickerEntries, _>(&actor_ref)
             .await;
+        bus.subscribe::<RefreshEndpointPickerEntries, _>(&actor_ref)
+            .await;
         bus.subscribe::<ModelsRefreshed, _>(&actor_ref).await;
         bus.subscribe::<ModelCacheLoaded, _>(&actor_ref).await;
 
@@ -88,6 +97,7 @@ impl Actor for ProviderActor {
             deps: args.deps,
             cap: args.cap,
             session_cap: args.session_cap,
+            endpoints_cache: std::collections::HashMap::new(),
         })
     }
 }
@@ -155,7 +165,19 @@ impl Message<LoadEndpointPickerEntries> for ProviderActor {
         _msg: LoadEndpointPickerEntries,
         _ctx: &mut MsgContext<Self, Self::Reply>,
     ) {
-        self.handle_load_endpoint_picker_entries().await;
+        self.handle_load_endpoint_picker_entries(false).await;
+    }
+}
+
+impl Message<RefreshEndpointPickerEntries> for ProviderActor {
+    type Reply = ();
+
+    async fn handle(
+        &mut self,
+        _msg: RefreshEndpointPickerEntries,
+        _ctx: &mut MsgContext<Self, Self::Reply>,
+    ) {
+        self.handle_load_endpoint_picker_entries(true).await;
     }
 }
 
@@ -237,11 +259,18 @@ impl ProviderActor {
         });
     }
 
-    /// LoadEndpointPickerEntries: resolve the active model's backend and either
-    /// fetch OpenRouter routing endpoints or show the "not served via OpenRouter"
-    /// placeholder. The backend gate lives here (the actor owns `Services`);
-    /// the picker-open validator only checks `Single`.
-    async fn handle_load_endpoint_picker_entries(&self) {
+    /// Resolve the active model's backend and either serve OpenRouter routing
+    /// endpoints from the in-memory cache or fetch them, then write the picker
+    /// entries, fetch timestamp, and clear the loading flag.
+    ///
+    /// `force` is true for `<c-r>` refresh (always re-fetch) and false for picker
+    /// open (serve from cache when present). The backend gate lives here (the
+    /// actor owns `Services`); the picker-open validator only checks `Single`.
+    ///
+    /// Every terminal branch writes back all three: items, fetched_at, and
+    /// loading=false — so the spinner never sticks on success, error, or the
+    /// non-OpenRouter placeholder path.
+    async fn handle_load_endpoint_picker_entries(&mut self, force: bool) {
         // Snapshot what we need under the read lock, then release it before
         // the async network fetch (the view guard is `Send` but not held
         // across `.await` of a network call in practice; clone out instead).
@@ -254,13 +283,56 @@ impl ProviderActor {
             (model, pinned, theme)
         };
 
-        let entries = match resolve_openrouter_target(&self.deps.services, &model) {
-            Some(target) => fetch_endpoint_entries(&target, theme, pinned.as_ref()).await,
-            None => unavailable_endpoint_entries(theme, pinned.as_ref()),
+        let Some(target) = resolve_openrouter_target(&self.deps.services, &model) else {
+            // Not served via OpenRouter (or an alloy): render the placeholder,
+            // clear loading, and leave both the cache and fetched_at untouched
+            // (this path never fetched anything).
+            let entries = unavailable_endpoint_entries(theme, pinned.as_ref());
+            self.state.with_provider(&self.cap, |view| {
+                set_endpoint_picker_items(view, entries);
+                view.provider_frontend.set_endpoint_loading(false);
+            });
+            return;
+        };
+
+        let key = target.model_id().to_owned();
+
+        // Cache hit on a non-forced open: rebuild entries from the cached
+        // upstream list (theme/pin re-derived), no network call.
+        if !force && let Some((endpoints, ts)) = self.endpoints_cache.get(&key).cloned() {
+            let entries = build_endpoint_entries(&endpoints, &theme, pinned.as_ref());
+            self.state.with_provider(&self.cap, |view| {
+                set_endpoint_picker_items(view, entries);
+                view.provider_frontend.set_endpoint_fetched_at(Some(ts));
+                view.provider_frontend.set_endpoint_loading(false);
+            });
+            return;
+        }
+
+        // Cache miss or forced refresh: fetch, store on success, build.
+        let now = jiff::Timestamp::now();
+        let (entries, fetched_at) = match fetch_endpoints(&target).await {
+            Ok(endpoints) => {
+                self.endpoints_cache.insert(key, (endpoints.clone(), now));
+                (
+                    build_endpoint_entries(&endpoints, &theme, pinned.as_ref()),
+                    Some(now),
+                )
+            }
+            // On error: sentinel only, cache untouched, keep prior fetched_at.
+            Err(()) => (
+                vec![EndpointEntry::auto_route(pinned.is_none(), theme)],
+                None,
+            ),
         };
 
         self.state.with_provider(&self.cap, |view| {
             set_endpoint_picker_items(view, entries);
+            // Only stamp fetched_at on a successful fetch; on error leave it.
+            if let Some(at) = fetched_at {
+                view.provider_frontend.set_endpoint_fetched_at(Some(at));
+            }
+            view.provider_frontend.set_endpoint_loading(false);
         });
     }
 }
@@ -1056,6 +1128,42 @@ mod tests {
         assert!(
             !items.is_empty(),
             "compaction picker should have entries after loading"
+        );
+    }
+
+    #[rstest::rstest]
+    #[tokio::test]
+    async fn endpoint_load_for_non_openrouter_model_clears_loading_and_shows_placeholder() {
+        // Given a provider actor whose registry has an ollama (non-OpenRouter) model,
+        // and the loading flag pre-set as the open intent would.
+        let (harness, state) = create_harness().await;
+        let deps = harness.actor_deps().await;
+        let registry = crate::feat::provider_infra::ProviderRegistry::from_config(sample_config())
+            .expect("registry");
+        deps.services.provider_registry.replace(registry);
+        spawn_actor(&harness, &state, deps).await;
+
+        state
+            .write_test_no_cap()
+            .active_session_mut()
+            .set_model(ModelSelection::Single("ollama/llama3".to_owned()));
+        state.write_test_no_cap().frontend.pickers.endpoint_loading = true;
+
+        // When publishing LoadEndpointPickerEntries.
+        harness
+            .publish(crate::feat::provider::protocol::command::LoadEndpointPickerEntries)
+            .await;
+        tokio::time::sleep(std::time::Duration::from_millis(100)).await;
+
+        // Then loading is cleared (no stuck spinner) and a placeholder row shows.
+        let s = state.read();
+        assert!(
+            !s.frontend.pickers.endpoint_loading,
+            "non-OpenRouter load must clear the loading flag"
+        );
+        assert!(
+            !s.frontend.endpoint_picker().items().is_empty(),
+            "non-OpenRouter load must still show the placeholder row"
         );
     }
 }

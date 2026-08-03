@@ -98,6 +98,7 @@ Entries are added or amended **only with human approval**.
 - (providers) LLM responses stream as a unified `StreamEvent` type, decoupled from any provider's native stream format.
 - (providers) The provider crate supports three backends: Anthropic, Google, and OpenAI-compatible.
 - (providers) OpenRouter serves each model through multiple upstream **endpoints**, each identified by a routing **tag**; the per-model `GET /api/v1/models/<id>/endpoints` payload lists them with pricing and uptime.
+- (providers) OpenRouter endpoint listings are cached **in memory, per model, for the application's lifetime** (not persisted to disk); the picker serves cached entries on open and re-fetches on-demand via `<c-r>` (`RefreshEndpoints`).
 - (selection) Chat entry selection applies an accumulated-exclude guard that only takes effect after a threshold, with per-entry forced include/exclude tracked separately.
 - (session) A replacement session seeded on archive inherits reasoning effort from the global default.
 - (session) An empty session that was never interacted with is not persisted on archive.

@@ -185,6 +185,13 @@ pub(crate) struct OpenRouterTarget {
     api_key: String,
 }
 
+impl OpenRouterTarget {
+    /// The resolved model id — used as the per-model endpoint cache key.
+    pub(crate) fn model_id(&self) -> &str {
+        &self.model_id
+    }
+}
+
 /// Resolves whether the active session's model is served via OpenRouter.
 ///
 /// Returns `Some(target)` only when the model selection is `Single` and the
@@ -227,44 +234,45 @@ pub(crate) fn resolve_openrouter_target(
     })
 }
 
-/// Fetches the OpenRouter endpoints for `target` and builds picker entries.
+/// Fetches the OpenRouter endpoints for `target` from the network.
 ///
-/// Always prepends the "Default (auto-route)" sentinel; real endpoints are
-/// sorted by `provider_name` (done by `list_endpoints`). The currently pinned
-/// endpoint, if any, is marked active.
-///
-/// On fetch error, returns just the sentinel so the user can still clear a
-/// stale pin and retry by re-opening the picker.
-pub(crate) async fn fetch_endpoint_entries(
+/// Returns `Ok(endpoints)` on success or `Err(())` on any failure (network,
+/// HTTP, parse). The caller decides what to render from the outcome.
+pub(crate) async fn fetch_endpoints(
     target: &OpenRouterTarget,
-    theme: crate::feat::theme::Theme,
-    pinned: Option<&crate::feat::endpoint::Endpoint>,
-) -> Vec<EndpointEntry> {
-    let sentinel = EndpointEntry::auto_route(pinned.is_none(), theme.clone());
-
-    let fetched = jinn_provider::list_endpoints_default_client(
+) -> Result<Vec<jinn_provider::EndpointInfo>, ()> {
+    jinn_provider::list_endpoints_default_client(
         &target.base_url,
         &target.model_id,
         &target.api_key,
         &[],
     )
-    .await;
+    .await
+    .map_err(|_e| ())
+}
 
-    let Ok(endpoints) = fetched else {
-        return vec![sentinel];
-    };
-
+/// Builds the picker entries from a list of upstream endpoints.
+///
+/// Always prepends the "Default (auto-route)" sentinel; real endpoints are
+/// mapped one-to-one. The currently pinned endpoint, if any, is marked
+/// `is_active`. This is pure: same inputs always produce the same entries,
+/// so both the fresh-fetch path and the cache-hit path reuse it.
+pub(crate) fn build_endpoint_entries(
+    endpoints: &[jinn_provider::EndpointInfo],
+    theme: &crate::feat::theme::Theme,
+    pinned: Option<&crate::feat::endpoint::Endpoint>,
+) -> Vec<EndpointEntry> {
     let mut entries = Vec::with_capacity(endpoints.len() + 1);
-    entries.push(sentinel);
+    entries.push(EndpointEntry::auto_route(pinned.is_none(), theme.clone()));
     for ep in endpoints {
         let is_active = pinned.is_some_and(|p| p.tag == ep.tag);
         entries.push(EndpointEntry {
-            tag: ep.tag,
-            provider_name: ep.provider_name,
+            tag: ep.tag.clone(),
+            provider_name: ep.provider_name.clone(),
             uptime_30m: ep.uptime_30m,
-            prompt_price: ep.prompt_price,
-            completion_price: ep.completion_price,
-            quantization: ep.quantization,
+            prompt_price: ep.prompt_price.clone(),
+            completion_price: ep.completion_price.clone(),
+            quantization: ep.quantization.clone(),
             max_completion_tokens: ep.max_completion_tokens,
             is_active,
             theme: theme.clone(),
@@ -340,6 +348,54 @@ mod tests {
         assert_eq!(items[0].model, "session default");
         // Second entry should be the ollama/llama3 model.
         assert_eq!(items[1].provider_id, "ollama/llama3");
+    }
+
+    #[rstest::rstest]
+    fn build_endpoint_entries_prepends_sentinel_and_marks_pinned_active() {
+        // Given two upstream endpoints and a pin on the second one's tag.
+        let theme = crate::feat::theme::default_theme();
+        let endpoints = vec![
+            jinn_provider::EndpointInfo {
+                tag: "azure".to_owned(),
+                provider_name: "Azure".to_owned(),
+                uptime_30m: Some(99.9),
+                prompt_price: None,
+                completion_price: None,
+                quantization: None,
+                max_completion_tokens: None,
+            },
+            jinn_provider::EndpointInfo {
+                tag: "anthropic".to_owned(),
+                provider_name: "Anthropic".to_owned(),
+                uptime_30m: Some(99.7),
+                prompt_price: None,
+                completion_price: None,
+                quantization: None,
+                max_completion_tokens: None,
+            },
+        ];
+        let pinned = crate::feat::endpoint::Endpoint {
+            tag: "anthropic".to_owned(),
+            provider_name: "Anthropic".to_owned(),
+        };
+
+        // When building entries (pure: same inputs always produce same output).
+        let entries = build_endpoint_entries(&endpoints, &theme, Some(&pinned));
+
+        // Then the auto-route sentinel is prepended and is NOT active (a pin exists).
+        assert!(entries[0].tag.is_empty(), "first entry is the sentinel");
+        assert!(!entries[0].is_active, "sentinel inactive when a pin exists");
+        // And the pinned endpoint (anthropic) is the only active one.
+        let anthropic = entries
+            .iter()
+            .find(|e| e.tag == "anthropic")
+            .expect("anthropic entry");
+        assert!(anthropic.is_active, "pinned entry must be active");
+        assert_eq!(
+            entries.iter().filter(|e| e.is_active).count(),
+            1,
+            "exactly one active entry"
+        );
     }
 
     #[rstest::rstest]

@@ -93,6 +93,8 @@ pub trait FrontendProviderPickerWrite {
     fn set_compaction_model_picker_items(&mut self, items: Vec<PickerEntry>);
     fn set_reasoning_effort_picker_items(&mut self, items: Vec<ReasoningEffortEntry>);
     fn set_endpoint_picker_items(&mut self, items: Vec<EndpointEntry>);
+    fn set_endpoint_loading(&mut self, loading: bool);
+    fn set_endpoint_fetched_at(&mut self, at: Option<jiff::Timestamp>);
 }
 
 impl ProviderPickerWrite for ProviderOps<'_> {
@@ -122,6 +124,12 @@ impl FrontendProviderPickerWrite for FrontendProviderOps<'_> {
     }
     fn set_endpoint_picker_items(&mut self, items: Vec<EndpointEntry>) {
         self.0.endpoint_picker_mut().set_items(items);
+    }
+    fn set_endpoint_loading(&mut self, loading: bool) {
+        self.0.pickers.endpoint_loading = loading;
+    }
+    fn set_endpoint_fetched_at(&mut self, at: Option<jiff::Timestamp>) {
+        self.0.pickers.endpoint_fetched_at = at;
     }
 }
 

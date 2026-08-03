@@ -118,6 +118,7 @@ pub fn handle_open_picker(state: &mut AppState, kind: PickerKind) -> IntentResul
         }
         PickerKind::Endpoint => {
             state.frontend.endpoint_picker_mut().reset();
+            state.frontend.pickers.endpoint_loading = true;
         }
     }
 
@@ -148,6 +149,30 @@ pub fn handle_open_picker(state: &mut AppState, kind: PickerKind) -> IntentResul
             crate::feat::provider::protocol::command::LoadEndpointPickerEntries,
         ),
     }
+}
+
+/// Force-refresh the OpenRouter endpoint picker for the active model, bypassing
+/// the in-memory cache (the `<c-r>` keybind).
+///
+/// Mirrors the open gate: an alloy model is a no-op (the picker does not apply
+/// to alloys). Unlike model refresh this does not push a chat entry — it is a
+/// picker-local action.
+pub fn handle_refresh_endpoints(state: &mut AppState) -> IntentResult {
+    // Given the active model is an alloy, the endpoint picker does not apply.
+    if matches!(
+        state.active_session().profile().model,
+        ModelSelection::Alloy { .. }
+    ) {
+        return IntentResult::empty();
+    }
+
+    // Set loading synchronously so the indicator appears this frame, reset the
+    // picker, and publish the forced-refresh command.
+    state.frontend.pickers.endpoint_loading = true;
+    state.frontend.endpoint_picker_mut().reset();
+    IntentResult::new_message(
+        crate::feat::provider::protocol::command::RefreshEndpointPickerEntries,
+    )
 }
 
 /// Loads discovered themes into the theme picker.
@@ -1847,6 +1872,70 @@ mod tests {
         assert!(
             !state.frontend.scope_stack.is_picker(),
             "endpoint picker must not open for an alloy model"
+        );
+    }
+
+    #[rstest::rstest]
+    fn refresh_endpoints_sets_loading_and_emits_refresh_command() {
+        // Given a session on a single model (the picker applies to it).
+        use crate::feat::session::model_selection::ModelSelection;
+
+        let mut state = AppState::default();
+        let origin = ChatSessionState::new();
+        state.session.insert(origin);
+        state
+            .session
+            .set_active(state.session.active_session_id().clone());
+        state.active_session_mut().set_model(ModelSelection::Single(
+            "openrouter/anthropic/claude-sonnet-4".to_owned(),
+        ));
+
+        // When handling RefreshEndpoints.
+        let result = handle_refresh_endpoints(&mut state);
+
+        // Then loading is set synchronously.
+        assert!(
+            state.frontend.pickers.endpoint_loading,
+            "refresh must set loading so the indicator appears this frame"
+        );
+        // And the forced-refresh command is emitted.
+        assert!(
+            result
+                .message_names
+                .iter()
+                .any(|n| n.ends_with("RefreshEndpointPickerEntries")),
+            "refresh must emit RefreshEndpointPickerEntries; got {:?}",
+            result.message_names
+        );
+    }
+
+    #[rstest::rstest]
+    fn refresh_endpoints_is_noop_for_alloy_model() {
+        // Given a session on an alloy of two models.
+        use crate::feat::session::model_selection::{AlloyStrategy, ModelSelection};
+
+        let mut state = AppState::default();
+        let origin = ChatSessionState::new();
+        state.session.insert(origin);
+        state
+            .session
+            .set_active(state.session.active_session_id().clone());
+        state.active_session_mut().set_model(ModelSelection::Alloy {
+            models: vec!["ollama/llama3".to_owned(), "ollama/mistral".to_owned()],
+            strategy: AlloyStrategy::RoundRobin { index: 0 },
+        });
+
+        // When handling RefreshEndpoints.
+        let result = handle_refresh_endpoints(&mut state);
+
+        // Then it is a no-op: no command emitted, loading never set.
+        assert!(
+            result.message_names.is_empty(),
+            "refresh must be a no-op for an alloy model"
+        );
+        assert!(
+            !state.frontend.pickers.endpoint_loading,
+            "refresh must not set loading for an alloy model"
         );
     }
 

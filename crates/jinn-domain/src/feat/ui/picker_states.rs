@@ -102,6 +102,19 @@ pub struct PickerStates {
     /// OpenRouter endpoint picker state - one row per routing upstream.
     /// OWNER: IntentHandler (populated on endpoint picker open).
     pub endpoint_picker: jinn_selection_widget::SelectionState<EndpointEntry>,
+
+    /// True while an endpoint fetch is in flight (open or `<c-r>` refresh).
+    /// Set synchronously by the open/refresh intent; cleared by `ProviderActor`
+    /// when it writes items back (success or error).
+    /// OWNER: IntentHandler (sets) / ProviderActor (clears).
+    pub endpoint_loading: bool,
+
+    /// When the endpoint cache for the active model was last populated.
+    /// Set by `ProviderActor` on a successful fetch (and preserved on a
+    /// cache-served open). Survives across picker opens so the footer can
+    /// show "fetched Xs ago".
+    /// OWNER: ProviderActor.
+    pub endpoint_fetched_at: Option<jiff::Timestamp>,
 }
 
 /// Extension trait providing typed access to picker state on [`FrontendState`](super::FrontendState).
