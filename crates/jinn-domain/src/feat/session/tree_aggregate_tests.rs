@@ -701,3 +701,48 @@ fn fork_from_fork_turns_counted_correctly() {
     assert_eq!(stats.session_count, 3);
     assert_eq!(stats.total_turns, 3); // 2 + 1 + 0
 }
+
+#[rstest::rstest]
+fn tree_aggregate_sums_cached_total_across_live_and_frozen() {
+    // Given a live root with cached hits and a frozen child with cached hits.
+    let root_id = SessionId::new();
+    let child_id = SessionId::new();
+
+    let mut root = make_session_with_stats(root_id.clone(), 1000, 50, None, 1);
+    root.push_token_record(TokenRecord {
+        model_used: None,
+        timestamp: jiff::Timestamp::now(),
+        tokens_sent: 1000,
+        tokens_received: 10,
+        cost: None,
+        prompt_tokens: Some(1000),
+        cached_tokens: Some(400),
+    });
+
+    let mut sessions = HashMap::new();
+    sessions.insert(root_id.clone(), root);
+
+    let mut frozen_nodes = HashMap::new();
+    frozen_nodes.insert(
+        child_id.clone(),
+        FrozenTreeNode {
+            session_id: child_id,
+            parent_session_id: Some(root_id.clone()),
+            total_sent: 1000,
+            total_received: 50,
+            total_cost: 0.0,
+            total_turns: 1,
+            effective_sent: 1000,
+            measured_sent: 1000,
+            cached_total: 600,
+        },
+    );
+
+    // When aggregating from the root.
+    let stats = aggregate_tree_stats(&sessions, &frozen_nodes, &root_id);
+
+    // Then cached_total sums live + frozen (400 + 600 = 1000).
+    assert_eq!(stats.cached_total, 1000);
+    // And measured_sent sums live + frozen (1000 + 1000 = 2000).
+    assert_eq!(stats.measured_sent, 2000);
+}
