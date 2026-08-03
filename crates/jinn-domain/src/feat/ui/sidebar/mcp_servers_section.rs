@@ -208,8 +208,7 @@ impl SidebarSection for McpServersSection {
 
             for (index, server) in servers.iter().enumerate() {
                 let is_selected = section_focused && cursor == Some(index);
-                let row_state =
-                    ServerRowState::derive(statuses.get(&server.name).copied());
+                let row_state = ServerRowState::derive(statuses.get(&server.name).copied());
 
                 let indicator = if is_selected {
                     Span::styled(SELECTED_INDICATOR, Style::default().fg(indicator_color))
@@ -268,6 +267,7 @@ mod tests {
         reason = "test code"
     )]
     use super::McpServersSection;
+    use super::{navigate, receive_cursor};
     use crate::common::app_state::AppState;
     use crate::common::render_ctx::RenderCtx;
     use crate::feat::mcp::McpServerConfig;
@@ -275,7 +275,6 @@ mod tests {
     use crate::feat::ui::sidebar::section_trait::{
         EnterFrom, SectionNavResult, SidebarIntent, SidebarSection, SidebarSectionId,
     };
-    use super::{navigate, receive_cursor};
     use jinn_testutil::setup_term;
 
     fn server(name: &str) -> McpServerConfig {
@@ -442,7 +441,10 @@ mod tests {
         let height = section.content_height(&{ RenderCtx::new(&state) });
 
         // Then the section collapses to zero height (hidden).
-        assert_eq!(height, 0, "section must be hidden when no servers are enabled");
+        assert_eq!(
+            height, 0,
+            "section must be hidden when no servers are enabled"
+        );
     }
 
     #[test]
