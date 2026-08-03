@@ -5620,3 +5620,24 @@ fn set_enabled_mcp_servers_replaces_the_set() {
     assert!(!session.is_mcp_server_enabled("excalimate"));
     assert!(session.is_mcp_server_enabled("filesystem"));
 }
+
+#[rstest::rstest]
+fn set_model_to_alloy_clears_endpoint_pin() {
+    // Given a session with a pinned endpoint and a single model.
+    let mut session = ChatSessionState::new();
+    session.set_model(ModelSelection::Single("openrouter/anthropic/claude".to_owned()));
+    session.profile_mut().endpoint = Some(crate::feat::endpoint::Endpoint {
+        tag: "anthropic".to_owned(),
+        provider_name: "Anthropic".to_owned(),
+    });
+
+    // When switching the model to an alloy.
+    session.set_model(ModelSelection::Alloy {
+        models: vec!["openrouter/anthropic/claude".to_owned()],
+        strategy: crate::feat::session::model_selection::AlloyStrategy::RoundRobin { index: 0 },
+    });
+
+    // Then the endpoint pin is cleared (an endpoint pin is model-specific and
+    // incoherent across a rotating set).
+    assert!(session.profile().endpoint.is_none());
+}

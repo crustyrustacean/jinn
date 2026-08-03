@@ -12,6 +12,7 @@ pub mod context;
 pub mod cwd_input;
 pub mod dashboard;
 pub mod discord;
+pub mod endpoint;
 pub mod discovery;
 pub mod discovery_coordinator;
 pub mod discovery_notifier;

@@ -1694,7 +1694,13 @@ impl ChatSessionState {
     }
 
     /// Set the model selection for this session.
+    ///
+    /// When switching to an alloy, any pinned OpenRouter endpoint is cleared:
+    /// an endpoint pin is model-specific and incoherent across a rotating set.
     pub fn set_model(&mut self, model: ModelSelection) {
+        if matches!(model, ModelSelection::Alloy { .. }) {
+            self.core.profile.endpoint = None;
+        }
         self.core.profile.model = model;
     }
 
