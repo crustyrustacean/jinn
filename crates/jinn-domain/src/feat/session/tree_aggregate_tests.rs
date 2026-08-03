@@ -323,6 +323,9 @@ fn frozen_parent_is_found_as_root() {
             total_received: 0,
             total_cost: 0.0,
             total_turns: 0,
+            effective_sent: 0,
+            measured_sent: 0,
+            cached_total: 0,
         },
     );
 
@@ -355,6 +358,9 @@ fn frozen_child_included_in_aggregate() {
             total_received: 100,
             total_cost: 0.02,
             total_turns: 3,
+            effective_sent: 0,
+            measured_sent: 0,
+            cached_total: 0,
         },
     );
 
@@ -395,6 +401,9 @@ fn child_of_frozen_included_in_aggregate() {
             total_received: 100,
             total_cost: 0.02,
             total_turns: 3,
+            effective_sent: 0,
+            measured_sent: 0,
+            cached_total: 0,
         },
     );
 
@@ -440,6 +449,9 @@ fn deeply_nested_with_frozen_in_middle() {
             total_received: 10,
             total_cost: 0.0,
             total_turns: 1,
+            effective_sent: 0,
+            measured_sent: 0,
+            cached_total: 0,
         },
     );
 
@@ -473,6 +485,9 @@ fn session_count_includes_frozen_nodes() {
             total_received: 50,
             total_cost: 0.01,
             total_turns: 1,
+            effective_sent: 0,
+            measured_sent: 0,
+            cached_total: 0,
         },
     );
     frozen_nodes.insert(
@@ -484,6 +499,9 @@ fn session_count_includes_frozen_nodes() {
             total_received: 100,
             total_cost: 0.02,
             total_turns: 2,
+            effective_sent: 0,
+            measured_sent: 0,
+            cached_total: 0,
         },
     );
 
@@ -520,6 +538,9 @@ fn frozen_node_not_in_tree_is_excluded() {
             total_received: 999,
             total_cost: 9.99,
             total_turns: 99,
+            effective_sent: 0,
+            measured_sent: 0,
+            cached_total: 0,
         },
     );
     frozen_nodes.insert(
@@ -531,6 +552,9 @@ fn frozen_node_not_in_tree_is_excluded() {
             total_received: 888,
             total_cost: 8.88,
             total_turns: 88,
+            effective_sent: 0,
+            measured_sent: 0,
+            cached_total: 0,
         },
     );
 
@@ -562,6 +586,9 @@ fn all_frozen_tree_aggregates() {
             total_received: 50,
             total_cost: 0.01,
             total_turns: 2,
+            effective_sent: 0,
+            measured_sent: 0,
+            cached_total: 0,
         },
     );
     frozen_nodes.insert(
@@ -573,6 +600,9 @@ fn all_frozen_tree_aggregates() {
             total_received: 100,
             total_cost: 0.02,
             total_turns: 3,
+            effective_sent: 0,
+            measured_sent: 0,
+            cached_total: 0,
         },
     );
 
