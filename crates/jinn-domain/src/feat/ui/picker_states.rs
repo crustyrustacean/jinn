@@ -5,6 +5,7 @@
 //! on [`FrontendState`](super::FrontendState) so consumers are decoupled from the
 //! internal storage layout.
 
+use crate::feat::endpoint::picker_entry::EndpointEntry;
 use std::collections::HashSet;
 
 use crate::feat::mcp::picker_entry::McpServerEntry;
@@ -97,6 +98,10 @@ pub struct PickerStates {
     /// Snapshot of enabled MCP servers before picker opens - restored on ESC.
     /// OWNER: IntentHandler (set on MCP picker open, consumed on confirm/cancel).
     pub mcp_server_picker_snapshot: Option<std::collections::BTreeSet<String>>,
+
+    /// OpenRouter endpoint picker state - one row per routing upstream.
+    /// OWNER: IntentHandler (populated on endpoint picker open).
+    pub endpoint_picker: jinn_selection_widget::SelectionState<EndpointEntry>,
 }
 
 /// Extension trait providing typed access to picker state on [`FrontendState`](super::FrontendState).
@@ -198,6 +203,11 @@ pub trait PickerExt {
     fn mcp_server_picker_mut(
         &mut self,
     ) -> &mut jinn_selection_widget::SelectionState<McpServerEntry>;
+
+    /// Read-only access to the OpenRouter endpoint picker state.
+    fn endpoint_picker(&self) -> &jinn_selection_widget::SelectionState<EndpointEntry>;
+    /// Mutable access to the OpenRouter endpoint picker state.
+    fn endpoint_picker_mut(&mut self) -> &mut jinn_selection_widget::SelectionState<EndpointEntry>;
 
     fn picker_results_viewport(&self) -> u16;
 
@@ -355,6 +365,14 @@ impl PickerExt for super::frontend_state::FrontendState {
         &mut self,
     ) -> &mut jinn_selection_widget::SelectionState<McpServerEntry> {
         &mut self.pickers.mcp_server_picker
+    }
+
+    fn endpoint_picker(&self) -> &jinn_selection_widget::SelectionState<EndpointEntry> {
+        &self.pickers.endpoint_picker
+    }
+
+    fn endpoint_picker_mut(&mut self) -> &mut jinn_selection_widget::SelectionState<EndpointEntry> {
+        &mut self.pickers.endpoint_picker
     }
 
     fn picker_results_viewport(&self) -> u16 {

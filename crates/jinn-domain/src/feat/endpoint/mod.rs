@@ -15,6 +15,9 @@
 
 use serde::{Deserialize, Serialize};
 
+pub mod picker_entry;
+pub mod picker_render;
+
 /// A pinned OpenRouter routing endpoint.
 ///
 /// `tag` is the OpenRouter routing slug sent as `provider.order[0]`;

@@ -113,7 +113,8 @@ impl ProviderRegistryService {
         reasoning: Option<ReasoningEffort>,
         endpoint_tag: Option<&str>,
     ) -> Result<Box<dyn LlmServiceFactory>, Report<LlmServiceError>> {
-        self.read().create_factory(id, api_keys, reasoning, endpoint_tag)
+        self.read()
+            .create_factory(id, api_keys, reasoning, endpoint_tag)
     }
 
     /// Merges runtime-discovered models from the model cache into the registry.

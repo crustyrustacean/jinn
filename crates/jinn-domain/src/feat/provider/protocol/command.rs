@@ -126,6 +126,16 @@ pub struct LoadReasoningEffortPickerEntries;
 
 impl BusMessage for LoadReasoningEffortPickerEntries {}
 
+/// The provider actor receives this, resolves the active session's model
+/// backend, and either fetches the model's OpenRouter routing endpoints via
+/// `list_endpoints` or — for a non-OpenRouter backend — populates a single
+/// explanatory "not served via OpenRouter" row. The entries are written into
+/// `AppState`'s endpoint picker.
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct LoadEndpointPickerEntries;
+
+impl BusMessage for LoadEndpointPickerEntries {}
+
 #[cfg(test)]
 mod tests {
     #![allow(

@@ -36,6 +36,18 @@ pub fn handle_open_picker(state: &mut AppState, kind: PickerKind) -> IntentResul
         return IntentResult::empty();
     }
 
+    // Endpoint picker is only reachable for a Single (non-alloy) model. The
+    // backend gate (OpenRouter vs direct) runs later in the discovery actor,
+    // which owns `Services`; here we only reject the model-shape mismatch.
+    if matches!(kind, PickerKind::Endpoint)
+        && matches!(
+            state.active_session().profile().model,
+            ModelSelection::Alloy { .. }
+        )
+    {
+        return IntentResult::empty();
+    }
+
     state.frontend.scope_stack.push(FocusScope::Picker { kind });
 
     match kind {
@@ -104,6 +116,9 @@ pub fn handle_open_picker(state: &mut AppState, kind: PickerKind) -> IntentResul
                 Some(state.active_session().enabled_mcp_servers().clone());
             crate::feat::mcp::intent::load_mcp_picker_entries(state);
         }
+        PickerKind::Endpoint => {
+            state.frontend.endpoint_picker_mut().reset();
+        }
     }
 
     match kind {
@@ -127,6 +142,10 @@ pub fn handle_open_picker(state: &mut AppState, kind: PickerKind) -> IntentResul
 
         PickerKind::ReasoningEffort => IntentResult::new_message(
             crate::feat::provider::protocol::command::LoadReasoningEffortPickerEntries,
+        ),
+
+        PickerKind::Endpoint => IntentResult::new_message(
+            crate::feat::provider::protocol::command::LoadEndpointPickerEntries,
         ),
     }
 }
@@ -281,6 +300,7 @@ pub fn handle_picker_confirm(state: &mut AppState) -> (IntentResult, Option<Inte
         Some(PickerKind::Project) => (confirm_project(state), None),
         Some(PickerKind::ReasoningEffort) => (confirm_reasoning_effort(state), None),
         Some(PickerKind::McpServer) => (crate::feat::mcp::intent::confirm_mcp(state), None),
+        Some(PickerKind::Endpoint) => (confirm_endpoint(state), None),
 
         Some(PickerKind::CompactionModel | PickerKind::TaskList) | None => {
             (IntentResult::empty(), None)
@@ -475,6 +495,32 @@ fn confirm_reasoning_effort(state: &mut AppState) -> IntentResult {
         .with_message(UpdateAppState {
             updates: vec![AppStateUpdate::SetReasoningEffort(Some(effort))],
         })
+}
+
+/// Confirms the selected OpenRouter endpoint and pins it on the session profile.
+///
+/// Writes `profile.endpoint = Some(...)` for a real upstream, or `None` when the
+/// "Default (auto-route)" sentinel is chosen (its `tag` is empty). Persists the
+/// session immediately via [`MarkSessionInteracted`] so the pin survives reload.
+fn confirm_endpoint(state: &mut AppState) -> IntentResult {
+    let Some(entry) = state.frontend.endpoint_picker().selected_item().cloned() else {
+        return IntentResult::empty();
+    };
+    let endpoint = if entry.tag.is_empty() {
+        None
+    } else {
+        Some(crate::feat::endpoint::Endpoint {
+            tag: entry.tag.clone(),
+            provider_name: entry.provider_name.clone(),
+        })
+    };
+    let session_id = state.session.active_session_id().clone();
+
+    state.active_session_mut().profile_mut().endpoint = endpoint;
+
+    state.frontend.scope_stack.pop();
+
+    IntentResult::empty().with_message(MarkSessionInteracted { session_id })
 }
 
 /// Confirms the selected theme and persists it to preferences.
@@ -1707,6 +1753,100 @@ mod tests {
             state.active_session().profile().reasoning_effort,
             Some(ReasoningEffort::High),
             "confirm should set the session reasoning_effort override"
+        );
+    }
+
+    #[rstest::rstest]
+    fn confirm_endpoint_pins_selected_endpoint_on_profile() {
+        // Given a populated endpoint picker with a real upstream selected.
+        use crate::feat::endpoint::picker_entry::EndpointEntry;
+        use crate::feat::theme::default_theme;
+
+        let mut state = AppState::default();
+        let origin = ChatSessionState::new();
+        state.session.insert(origin);
+        state
+            .session
+            .set_active(state.session.active_session_id().clone());
+
+        let entry = EndpointEntry {
+            tag: "anthropic".to_owned(),
+            provider_name: "Anthropic".to_owned(),
+            uptime_30m: None,
+            prompt_price: None,
+            completion_price: None,
+            quantization: None,
+            max_completion_tokens: None,
+            is_active: false,
+            theme: default_theme(),
+        };
+        state.frontend.endpoint_picker_mut().set_items(vec![entry]);
+        state.frontend.endpoint_picker_mut().move_down(1);
+
+        // When confirming.
+        let _ = confirm_endpoint(&mut state);
+
+        // Then the session profile pins the Anthropic endpoint.
+        let pinned = state.active_session().profile().endpoint.clone();
+        assert_eq!(pinned.map(|e| e.tag), Some("anthropic".to_owned()));
+    }
+
+    #[rstest::rstest]
+    fn confirm_endpoint_sentinel_clears_pin_to_none() {
+        // Given a session that already has a pinned endpoint.
+        use crate::feat::endpoint::picker_entry::EndpointEntry;
+        use crate::feat::theme::default_theme;
+
+        let mut state = AppState::default();
+        let origin = ChatSessionState::new();
+        state.session.insert(origin);
+        state
+            .session
+            .set_active(state.session.active_session_id().clone());
+        state.active_session_mut().profile_mut().endpoint = Some(crate::feat::endpoint::Endpoint {
+            tag: "anthropic".to_owned(),
+            provider_name: "Anthropic".to_owned(),
+        });
+
+        // And the auto-route sentinel (index 0) is the only selected item.
+        state
+            .frontend
+            .endpoint_picker_mut()
+            .set_items(vec![EndpointEntry::auto_route(true, default_theme())]);
+
+        // When confirming the sentinel.
+        let _ = confirm_endpoint(&mut state);
+
+        // Then the pin is cleared.
+        assert!(
+            state.active_session().profile().endpoint.is_none(),
+            "selecting the auto-route sentinel must clear the pin"
+        );
+    }
+
+    #[rstest::rstest]
+    fn open_endpoint_picker_is_noop_for_alloy_model() {
+        // Given a session on an alloy of two models.
+        use crate::feat::session::model_selection::{AlloyStrategy, ModelSelection};
+
+        let mut state = AppState::default();
+        let origin = ChatSessionState::new();
+        state.session.insert(origin);
+        state
+            .session
+            .set_active(state.session.active_session_id().clone());
+        state.active_session_mut().set_model(ModelSelection::Alloy {
+            models: vec!["ollama/llama3".to_owned(), "ollama/mistral".to_owned()],
+            strategy: AlloyStrategy::RoundRobin { index: 0 },
+        });
+
+        // When opening the endpoint picker.
+        handle_open_picker(&mut state, PickerKind::Endpoint);
+
+        // Then no picker scope is pushed (the gate rejected it).
+        assert!(
+            !state.frontend.scope_stack.is_picker(),
+            "endpoint picker must not open for an alloy model"
         );
     }
 

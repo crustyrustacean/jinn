@@ -35,6 +35,9 @@ pub enum PickerKind {
     Project,
     /// MCP server picker - toggle which MCP servers are enabled for the session.
     McpServer,
+    /// OpenRouter endpoint picker - pin a specific routing upstream for
+    /// prefix-cache affinity on an OpenRouter-served Single model.
+    Endpoint,
 }
 
 impl std::fmt::Display for PickerKind {
@@ -56,6 +59,8 @@ impl std::fmt::Display for PickerKind {
             Self::TaskList => write!(f, "task list"),
             Self::Project => write!(f, "projects"),
             Self::McpServer => write!(f, "mcp servers"),
+
+            Self::Endpoint => write!(f, "endpoints"),
         }
     }
 }
@@ -87,7 +92,8 @@ impl PickerKind {
             | Self::Skill
             | Self::TaskList
             | Self::Project
-            | Self::McpServer => 1,
+            | Self::McpServer
+            | Self::Endpoint => 1,
         }
     }
 }
@@ -103,5 +109,13 @@ mod tests {
         // When displaying.
         // Then it renders as 'reasoning effort'.
         assert_eq!(PickerKind::ReasoningEffort.to_string(), "reasoning effort");
+    }
+
+    #[test]
+    fn endpoint_displays_as_endpoints() {
+        // Given the Endpoint picker kind.
+        // When displaying.
+        // Then it renders as 'endpoints'.
+        assert_eq!(PickerKind::Endpoint.to_string(), "endpoints");
     }
 }

@@ -39,7 +39,10 @@ pub(crate) struct EndpointDetails {
 /// The richer fields feed the endpoint picker's preview pane; until the
 /// picker lands they are unused, hence the dead-code allow.
 #[derive(Debug, Deserialize)]
-#[allow(dead_code, reason = "optional fields feed the not-yet-built picker preview")]
+#[allow(
+    dead_code,
+    reason = "optional fields feed the not-yet-built picker preview"
+)]
 pub(crate) struct RawEndpoint {
     /// Human-readable upstream name (e.g. `"Anthropic"`). Display only.
     pub(crate) provider_name: String,
@@ -66,13 +69,30 @@ pub(crate) struct RawEndpoint {
 /// A routing endpoint returned by [`list_endpoints`].
 ///
 /// `tag` is the OpenRouter routing slug sent as `provider.order[0]` to force
-/// routing to a single upstream; `provider_name` is the display label.
-#[derive(Debug, Clone, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
+/// routing to a single upstream; `provider_name` is the display label. The
+/// remaining fields are optional metadata that feeds the endpoint picker's
+/// preview pane (uptime, pricing, quantization).
+#[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
 pub struct EndpointInfo {
     /// The OpenRouter routing slug (e.g. `"anthropic"`).
     pub tag: String,
     /// Human-readable upstream name (e.g. `"Anthropic"`).
     pub provider_name: String,
+    /// 30-minute uptime percentage, if reported.
+    #[serde(default)]
+    pub uptime_30m: Option<f64>,
+    /// Per-token prompt price as reported by OpenRouter, if present.
+    #[serde(default)]
+    pub prompt_price: Option<String>,
+    /// Per-token completion price as reported by OpenRouter, if present.
+    #[serde(default)]
+    pub completion_price: Option<String>,
+    /// Quantization level reported by the upstream, if any.
+    #[serde(default)]
+    pub quantization: Option<String>,
+    /// Max completion tokens the upstream supports, if reported.
+    #[serde(default)]
+    pub max_completion_tokens: Option<u32>,
 }
 
 /// Fetch the routing endpoints available for a model on OpenRouter.
@@ -139,10 +159,48 @@ pub async fn list_endpoints(
         .map(|raw| EndpointInfo {
             tag: raw.tag,
             provider_name: raw.provider_name,
+            uptime_30m: raw.uptime_last_30m,
+            prompt_price: raw
+                .pricing
+                .as_ref()
+                .and_then(|p| p.get("prompt"))
+                .and_then(|v| v.as_str())
+                .map(str::to_owned),
+            completion_price: raw
+                .pricing
+                .as_ref()
+                .and_then(|p| p.get("completion"))
+                .and_then(|v| v.as_str())
+                .map(str::to_owned),
+            quantization: raw.quantization,
+            max_completion_tokens: raw.max_completion_tokens,
         })
         .collect();
     endpoints.sort_by(|a, b| a.provider_name.cmp(&b.provider_name));
     Ok(endpoints)
+}
+
+/// Convenience wrapper that builds a default `reqwest::Client` before calling
+/// [`list_endpoints`].
+///
+/// Use this when callers don't already hold a pooled client (e.g. the endpoint
+/// picker, which fetches only when the picker is opened).
+///
+/// # Errors
+///
+/// Returns [`LlmServiceError::Provider`] if the client cannot be built or the
+/// request/parse fails.
+pub async fn list_endpoints_default_client(
+    base_url: &str,
+    model_id: &str,
+    api_key: &str,
+    custom_headers: &[(String, String)],
+) -> Result<Vec<EndpointInfo>, Report<LlmServiceError>> {
+    let client = Client::builder()
+        .build()
+        .change_context(LlmServiceError::Provider)
+        .attach("failed to build reqwest client for list_endpoints")?;
+    list_endpoints(&client, base_url, model_id, api_key, custom_headers).await
 }
 
 #[cfg(test)]

@@ -192,7 +192,8 @@ impl SessionPersistenceActor {
                 let (provider_id, model_used, endpoint_tag) = {
                     // Snapshot the endpoint tag immutably before mutating the model
                     // (alloy round-robin mutates index during resolve_model).
-                    let endpoint_tag = match (&session.profile().model, &session.profile().endpoint) {
+                    let endpoint_tag = match (&session.profile().model, &session.profile().endpoint)
+                    {
                         (ModelSelection::Single(_), Some(ep)) => Some(ep.tag.clone()),
                         _ => None,
                     };

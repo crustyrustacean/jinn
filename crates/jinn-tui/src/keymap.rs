@@ -116,6 +116,8 @@ pub fn init() -> Keymap<KeyEvent, Scope, Intent, KeyCategory> {
             .bind("<leader>sM", Intent::OpenPicker { kind: PickerKind::McpServer }, KeyCategory::General)
             .bind("<leader>sh", Intent::OpenPicker { kind: PickerKind::Theme }, KeyCategory::General)
             .bind("<leader>sr", Intent::OpenPicker { kind: PickerKind::ReasoningEffort }, KeyCategory::General)
+            // OpenRouter routing endpoint pin (Single + OpenRouter models only).
+            .bind("<leader>sE", Intent::OpenPicker { kind: PickerKind::Endpoint }, KeyCategory::General)
             // Projects - curated directory list for quick session creation
             .bind("<leader>so", Intent::OpenPicker { kind: PickerKind::Project }, KeyCategory::General)
             // Input - enter input mode

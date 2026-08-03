@@ -23,14 +23,15 @@ use crate::common::state::State;
 use crate::common::tcaps::provider::{ModelCacheWrite, ProviderCap};
 use crate::common::tcaps::session::SessionCap;
 use crate::feat::provider::protocol::command::{
-    LoadCompactionModelPickerEntries, LoadProviderPickerEntries, LoadReasoningEffortPickerEntries,
-    ProviderSwitch,
+    LoadCompactionModelPickerEntries, LoadEndpointPickerEntries, LoadProviderPickerEntries,
+    LoadReasoningEffortPickerEntries, ProviderSwitch,
 };
 use crate::feat::provider::protocol::event::{ModelCacheLoaded, ModelsRefreshed, ProviderSwitched};
 
 use super::loader::{
-    load_compaction_model_picker_items, load_provider_picker_items,
-    load_reasoning_effort_picker_items,
+    fetch_endpoint_entries, load_compaction_model_picker_items, load_provider_picker_items,
+    load_reasoning_effort_picker_items, resolve_openrouter_target, set_endpoint_picker_items,
+    unavailable_endpoint_entries,
 };
 use kameo::Actor;
 use kameo::actor::ActorRef;
@@ -76,6 +77,8 @@ impl Actor for ProviderActor {
         bus.subscribe::<LoadCompactionModelPickerEntries, _>(&actor_ref)
             .await;
         bus.subscribe::<LoadReasoningEffortPickerEntries, _>(&actor_ref)
+            .await;
+        bus.subscribe::<LoadEndpointPickerEntries, _>(&actor_ref)
             .await;
         bus.subscribe::<ModelsRefreshed, _>(&actor_ref).await;
         bus.subscribe::<ModelCacheLoaded, _>(&actor_ref).await;
@@ -141,6 +144,18 @@ impl Message<LoadReasoningEffortPickerEntries> for ProviderActor {
         self.state.with_provider(&self.cap, |view| {
             load_reasoning_effort_picker_items(view);
         });
+    }
+}
+
+impl Message<LoadEndpointPickerEntries> for ProviderActor {
+    type Reply = ();
+
+    async fn handle(
+        &mut self,
+        _msg: LoadEndpointPickerEntries,
+        _ctx: &mut MsgContext<Self, Self::Reply>,
+    ) {
+        self.handle_load_endpoint_picker_entries().await;
     }
 }
 
@@ -219,6 +234,33 @@ impl ProviderActor {
         self.state.with_provider(&self.cap, |view| {
             view.provider.set_model_cache(Some(cache));
             load_provider_picker_items(&self.deps.services, view);
+        });
+    }
+
+    /// LoadEndpointPickerEntries: resolve the active model's backend and either
+    /// fetch OpenRouter routing endpoints or show the "not served via OpenRouter"
+    /// placeholder. The backend gate lives here (the actor owns `Services`);
+    /// the picker-open validator only checks `Single`.
+    async fn handle_load_endpoint_picker_entries(&self) {
+        // Snapshot what we need under the read lock, then release it before
+        // the async network fetch (the view guard is `Send` but not held
+        // across `.await` of a network call in practice; clone out instead).
+        let (model, pinned, theme) = {
+            let s = self.state.read();
+            let session = s.session.active_session();
+            let model = session.profile().model.clone();
+            let pinned = session.profile().endpoint.clone();
+            let theme = s.frontend.theme.clone();
+            (model, pinned, theme)
+        };
+
+        let entries = match resolve_openrouter_target(&self.deps.services, &model) {
+            Some(target) => fetch_endpoint_entries(&target, theme, pinned.as_ref()).await,
+            None => unavailable_endpoint_entries(theme, pinned.as_ref()),
+        };
+
+        self.state.with_provider(&self.cap, |view| {
+            set_endpoint_picker_items(view, entries);
         });
     }
 }

@@ -5625,7 +5625,9 @@ fn set_enabled_mcp_servers_replaces_the_set() {
 fn set_model_to_alloy_clears_endpoint_pin() {
     // Given a session with a pinned endpoint and a single model.
     let mut session = ChatSessionState::new();
-    session.set_model(ModelSelection::Single("openrouter/anthropic/claude".to_owned()));
+    session.set_model(ModelSelection::Single(
+        "openrouter/anthropic/claude".to_owned(),
+    ));
     session.profile_mut().endpoint = Some(crate::feat::endpoint::Endpoint {
         tag: "anthropic".to_owned(),
         provider_name: "Anthropic".to_owned(),

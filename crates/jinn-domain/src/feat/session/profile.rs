@@ -377,6 +377,9 @@ mod tests {
         let reloaded: SessionProfile = serde_json::from_str(&json).expect("deserialize");
 
         // Then the endpoint passed to new() is preserved.
-        assert_eq!(reloaded.endpoint.as_ref().map(|e| e.tag.as_str()), Some("azure"));
+        assert_eq!(
+            reloaded.endpoint.as_ref().map(|e| e.tag.as_str()),
+            Some("azure")
+        );
     }
 }
