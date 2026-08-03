@@ -2834,6 +2834,8 @@ impl ChatSessionState {
         tokens_received: u32,
         cost: Option<f64>,
         model_used: Option<String>,
+        prompt_tokens: Option<u32>,
+        cached_tokens: Option<u32>,
     ) -> Result<(), StreamingError> {
         let last = self
             .core
@@ -2843,6 +2845,8 @@ impl ChatSessionState {
         last.tokens_received = tokens_received;
         last.cost = cost;
         last.model_used = model_used;
+        last.prompt_tokens = prompt_tokens;
+        last.cached_tokens = cached_tokens;
         Ok(())
     }
 

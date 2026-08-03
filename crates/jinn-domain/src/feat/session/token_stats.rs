@@ -37,6 +37,21 @@ pub struct TokenRecord {
     /// For alloys, this is the resolved model; for single models, the model itself.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub model_used: Option<String>,
+    /// Provider-reported prompt token count for this request.
+    ///
+    /// Set when the stream completed with usage data; `None` when the
+    /// provider did not report it (e.g. a cancelled turn). The pre-send
+    /// local estimate (`tokens_sent`) is never overwritten and is used
+    /// as a fallback when this is `None`.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub prompt_tokens: Option<u32>,
+    /// Provider-reported count of prompt tokens served from a cache
+    /// (`usage.prompt_tokens_details.cached_tokens`).
+    ///
+    /// OpenAI-compat only (e.g. OpenRouter); `None` for providers that do
+    /// not report cache details or for cancelled turns.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub cached_tokens: Option<u32>,
 }
 
 /// Summary statistics derived from a token ledger.
@@ -201,6 +216,8 @@ mod tests {
             tokens_sent: 100,
             tokens_received: 200,
             cost: Some(0.01),
+            prompt_tokens: None,
+            cached_tokens: None,
         });
         let root_id = root.session_id().clone();
 
@@ -212,6 +229,8 @@ mod tests {
             tokens_sent: 300,
             tokens_received: 400,
             cost: Some(0.02),
+            prompt_tokens: None,
+            cached_tokens: None,
         });
         let child_id = child.session_id().clone();
 
@@ -223,6 +242,8 @@ mod tests {
             tokens_sent: 500,
             tokens_received: 600,
             cost: Some(0.03),
+            prompt_tokens: None,
+            cached_tokens: None,
         });
 
         let mut map = HashMap::new();

@@ -204,6 +204,8 @@ impl SessionPersistenceActor {
                     tokens_sent: assembled.estimated_tokens(),
                     tokens_received: 0,
                     cost: None,
+                    prompt_tokens: None,
+                    cached_tokens: None,
                 });
 
                 (
@@ -707,6 +709,8 @@ mod tests {
                 tokens_sent: 100,
                 tokens_received: 0,
                 cost: None,
+                prompt_tokens: None,
+                cached_tokens: None,
             });
             session.begin_streaming();
             state.session.active_session_id().clone()

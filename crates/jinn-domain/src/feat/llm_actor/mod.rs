@@ -982,6 +982,8 @@ mod tests {
             tool_calls: None,
             cost: None,
             provider_completion_tokens: None,
+            provider_prompt_tokens: None,
+            cached_tokens: None,
             thinking_content: None,
             dispatched_at: jiff::Timestamp::now(),
         };
@@ -1009,6 +1011,8 @@ mod tests {
             tool_calls: None,
             cost: None,
             provider_completion_tokens: None,
+            provider_prompt_tokens: None,
+            cached_tokens: None,
             thinking_content: None,
             dispatched_at: jiff::Timestamp::now(),
         };
@@ -1039,6 +1043,8 @@ mod tests {
             tool_calls: Some(vec![]),
             cost: None,
             provider_completion_tokens: None,
+            provider_prompt_tokens: None,
+            cached_tokens: None,
             thinking_content: None,
             dispatched_at: jiff::Timestamp::now(),
         };
@@ -1066,6 +1072,8 @@ mod tests {
             tool_calls: None,
             cost: None,
             provider_completion_tokens: None,
+            provider_prompt_tokens: None,
+            cached_tokens: None,
             thinking_content: None,
             dispatched_at: jiff::Timestamp::now(),
         };
