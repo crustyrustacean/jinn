@@ -37,6 +37,8 @@ pub enum Scope {
     PickerCompactionModel,
     /// Picker - Reasoning effort selection.
     PickerReasoningEffort,
+    /// Picker - OpenRouter routing endpoint selection.
+    PickerEndpoint,
     /// Picker - Tool toggle selection.
     PickerTool,
     /// Picker - Skill toggle selection.
@@ -88,6 +90,7 @@ impl std::fmt::Display for Scope {
 
             Self::PickerCompactionModel => write!(f, "Picker(compaction-model)"),
             Self::PickerReasoningEffort => write!(f, "Picker(reasoning-effort)"),
+            Self::PickerEndpoint => write!(f, "Picker(endpoint)"),
             Self::PickerTool => write!(f, "Picker(tool)"),
             Self::PickerSkill => write!(f, "Picker(skill)"),
             Self::PickerTaskList => write!(f, "Picker(task-list)"),
@@ -126,6 +129,7 @@ impl std::str::FromStr for Scope {
 
             "Picker(compaction-model)" => Ok(Self::PickerCompactionModel),
             "Picker(reasoning-effort)" => Ok(Self::PickerReasoningEffort),
+            "Picker(endpoint)" => Ok(Self::PickerEndpoint),
             "Picker(tool)" => Ok(Self::PickerTool),
             "Picker(skill)" => Ok(Self::PickerSkill),
             "Picker(task-list)" => Ok(Self::PickerTaskList),

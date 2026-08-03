@@ -518,7 +518,7 @@ async fn generate_summary(
         let api_keys = services.api_keys.read();
         services
             .provider_registry
-            .create_factory(&provider_id, &api_keys, None)
+            .create_factory(&provider_id, &api_keys, None, None)
             .and_then(|factory| factory.create())
             .or_else(|e| {
                 tracing::warn!(

@@ -84,6 +84,7 @@ pub fn validate_picker_confirm(state: &AppState) -> Result<(), PickerConfirmErro
         PickerKind::TaskList => true,
         PickerKind::Project => state.frontend.project_picker().selected_item().is_some(),
         PickerKind::McpServer => state.frontend.mcp_server_picker().selected_item().is_some(),
+        PickerKind::Endpoint => state.frontend.endpoint_picker().selected_item().is_some(),
     };
 
     if has_selection {

@@ -232,28 +232,15 @@ impl QueueActor {
             assemble_prompt(&guard, session_id, &self.counter, None)
         };
 
-        let (provider_id, model_used, reasoning_effort) = {
-            self.state.with_session(&self.cap, |view| {
-                let profile = view
-                    .session
-                    .map()
-                    .get_unchecked_mut(session_id)
-                    .profile_mut();
-                let reasoning_effort = crate::resolve_effort(profile.reasoning_effort);
-                if profile.model.is_no_provider() {
-                    (None, None, reasoning_effort)
-                } else {
-                    let resolved = profile.model.resolve_model();
-                    (Some(resolved.clone()), Some(resolved), reasoning_effort)
-                }
-            })
-        };
+        let (provider_id, model_used, reasoning_effort, endpoint_tag) =
+            self.resolve_dispatch_model(session_id);
 
         let estimated_tokens = assembled.estimated_tokens();
 
         self.publish(SendToLlmProvider {
             model_used,
             reasoning_effort,
+            endpoint_tag,
             session_id: session_id.clone(),
             messages: assembled.messages,
             provider_id,
@@ -273,6 +260,46 @@ impl QueueActor {
             session_id: session_id.clone(),
         })
         .await;
+    }
+
+    /// Reads the active session's resolved model, reasoning effort, and
+    /// endpoint pin for dispatch. The endpoint pin applies only to a Single
+    /// model; alloys rotate members and never pin.
+    fn resolve_dispatch_model(
+        &self,
+        session_id: &SessionId,
+    ) -> (
+        Option<String>,
+        Option<String>,
+        Option<crate::ReasoningEffort>,
+        Option<String>,
+    ) {
+        self.state.with_session(&self.cap, |view| {
+            let profile = view
+                .session
+                .map()
+                .get_unchecked_mut(session_id)
+                .profile_mut();
+            let reasoning_effort = crate::resolve_effort(profile.reasoning_effort);
+            // Endpoint pin applies only to a Single model; alloys rotate.
+            let endpoint_tag = match (&profile.model, &profile.endpoint) {
+                (crate::feat::session::model_selection::ModelSelection::Single(_), Some(ep)) => {
+                    Some(ep.tag.clone())
+                }
+                _ => None,
+            };
+            if profile.model.is_no_provider() {
+                (None, None, reasoning_effort, None)
+            } else {
+                let resolved = profile.model.resolve_model();
+                (
+                    Some(resolved.clone()),
+                    Some(resolved),
+                    reasoning_effort,
+                    endpoint_tag,
+                )
+            }
+        })
     }
 
     /// Dispatch a tool continuation: assemble prompt and emit SendToLlmProvider.
@@ -306,28 +333,15 @@ impl QueueActor {
             assemble_prompt(&guard, session_id, &self.counter, None)
         };
 
-        let (provider_id, model_used, reasoning_effort) = {
-            self.state.with_session(&self.cap, |view| {
-                let profile = view
-                    .session
-                    .map()
-                    .get_unchecked_mut(session_id)
-                    .profile_mut();
-                let reasoning_effort = crate::resolve_effort(profile.reasoning_effort);
-                if profile.model.is_no_provider() {
-                    (None, None, reasoning_effort)
-                } else {
-                    let resolved = profile.model.resolve_model();
-                    (Some(resolved.clone()), Some(resolved), reasoning_effort)
-                }
-            })
-        };
+        let (provider_id, model_used, reasoning_effort, endpoint_tag) =
+            self.resolve_dispatch_model(session_id);
 
         let estimated_tokens = assembled.estimated_tokens();
 
         self.publish(SendToLlmProvider {
             model_used,
             reasoning_effort,
+            endpoint_tag,
             session_id: session_id.clone(),
             messages: assembled.messages,
             provider_id,

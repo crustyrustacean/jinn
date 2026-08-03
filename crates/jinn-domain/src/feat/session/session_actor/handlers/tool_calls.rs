@@ -8,6 +8,7 @@ use crate::feat::context::assemble::assemble_prompt;
 use crate::feat::context::protocol::event::ContextOverrideChanged;
 use crate::feat::provider::protocol::command::SendToLlmProvider;
 use crate::feat::session::chat_entry::PinPosition;
+use crate::feat::session::model_selection::ModelSelection;
 use crate::feat::session::phase_machine::PhaseKind;
 use crate::feat::session::token_stats::TokenRecord;
 use crate::feat::tools_actor::protocol::event::{
@@ -178,7 +179,7 @@ impl SessionPersistenceActor {
 
         // Resolve model under write lock (round-robin mutates index), push token
         // record, and transition phase — all in one lock acquisition.
-        let (provider_id, model_used, reasoning_effort, old_phase, new_phase) = {
+        let (provider_id, model_used, reasoning_effort, endpoint_tag, old_phase, new_phase) = {
             self.state.with_session(&self.cap, |view| {
                 let session = view.session.map().get_or_create(session_id);
                 let old_phase = session.phase();
@@ -188,13 +189,20 @@ impl SessionPersistenceActor {
                     let profile = session.profile();
                     crate::resolve_effort(profile.reasoning_effort)
                 };
-                let (provider_id, model_used) = {
+                let (provider_id, model_used, endpoint_tag) = {
+                    // Snapshot the endpoint tag immutably before mutating the model
+                    // (alloy round-robin mutates index during resolve_model).
+                    let endpoint_tag = match (&session.profile().model, &session.profile().endpoint)
+                    {
+                        (ModelSelection::Single(_), Some(ep)) => Some(ep.tag.clone()),
+                        _ => None,
+                    };
                     let model = &mut session.profile_mut().model;
                     if model.is_no_provider() {
-                        (None, None)
+                        (None, None, endpoint_tag)
                     } else {
                         let resolved = model.resolve_model();
-                        (Some(resolved.clone()), Some(resolved))
+                        (Some(resolved.clone()), Some(resolved), endpoint_tag)
                     }
                 };
 
@@ -210,6 +218,7 @@ impl SessionPersistenceActor {
                     provider_id,
                     model_used,
                     reasoning_effort,
+                    endpoint_tag,
                     old_phase,
                     session.phase(),
                 )
@@ -228,6 +237,7 @@ impl SessionPersistenceActor {
         self.publish(SendToLlmProvider {
             model_used,
             reasoning_effort,
+            endpoint_tag,
             session_id: session_id.clone(),
             messages: assembled.messages,
             provider_id,
