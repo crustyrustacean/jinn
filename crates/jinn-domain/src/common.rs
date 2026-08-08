@@ -18,6 +18,7 @@ pub mod frontmatter;
 pub mod line_input;
 pub mod path_display;
 pub mod process_kill;
+pub mod request_dump;
 pub mod render_ctx;
 pub mod root_supervisor;
 pub mod services;
