@@ -28,17 +28,24 @@ use wherror::Error;
 
 /// Runs all pending schema migrations on the given connection.
 ///
-/// The sequence runs with `PRAGMA foreign_keys=OFF`, then re-enables FK and
-/// runs `PRAGMA foreign_key_check`. The FK toggle is essential: DDL such as
-/// `DROP TABLE sessions` (used by the v15/v16/v20 table-rebuild migrations)
-/// performs an implicit `DELETE` of all rows, which would otherwise fire the
-/// application-level `ON DELETE CASCADE` and wipe every `session_history` and
-/// `token_ledger` row. After the migrations complete (or fail), FK is
-/// re-enabled and `foreign_key_check` verifies referential integrity.
+/// Migrations apply atomically inside a single `BEGIN IMMEDIATE … COMMIT`
+/// transaction (see [`migrate::run_pending`]); a failure or an interrupt (e.g.
+/// Ctrl+C / SIGKILL) before `COMMIT` rolls the whole chain back to the
+/// last-applied version, leaving no half-applied schema.
+///
+/// The FK toggle below (`foreign_keys=OFF` … `ON`) wraps the transaction. The
+/// pragmas stay *outside* `run_pending`'s `BEGIN` because SQLite forbids
+/// changing `foreign_keys` inside an open transaction. The toggle is
+/// essential: DDL such as `DROP TABLE sessions` (used by the v15/v16/v20
+/// table-rebuild migrations) performs an implicit `DELETE` of all rows, which
+/// would otherwise fire the application-level `ON DELETE CASCADE` and wipe
+/// every `session_history` and `token_ledger` row. After the migrations
+/// complete (or fail), FK is re-enabled and `foreign_key_check` verifies
+/// referential integrity.
 ///
 /// Safe to call on an empty database (bootstraps the tracking table) and
-/// idempotent on a fully-migrated one (each migration is guarded by a version
-/// check).
+/// idempotent on a fully-migrated one (the version check short-circuits
+/// before any `BEGIN`).
 ///
 /// # Errors
 ///

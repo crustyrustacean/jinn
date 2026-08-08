@@ -19,6 +19,7 @@ serde_json = { workspace = true }
 error-stack = { workspace = true }
 jiff = { workspace = true }
 wherror = { workspace = true }
+tracing = { workspace = true }
 
 # (no dev-dependencies; the `testing` feature is consumed by jinn-domain test code)
 
