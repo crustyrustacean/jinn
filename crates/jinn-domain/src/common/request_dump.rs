@@ -56,8 +56,8 @@ impl RequestDumpService {
         let path = dir.join(format!("{n:06}.json"));
         match serde_json::to_string_pretty(record) {
             Ok(json) => {
-                if let Err(e) = std::fs::create_dir_all(dir)
-                    .and_then(|()| std::fs::write(&path, json))
+                if let Err(e) =
+                    std::fs::create_dir_all(dir).and_then(|()| std::fs::write(&path, json))
                 {
                     tracing::warn!(path = %path.display(), err = %e, "failed to write request dump");
                 }
@@ -99,7 +99,11 @@ mod tests {
 
         // Then no file is written.
         let entries = std::fs::read_dir(tmp.path()).expect("read dir");
-        assert_eq!(entries.count(), 0, "no files should be written when dir is None");
+        assert_eq!(
+            entries.count(),
+            0,
+            "no files should be written when dir is None"
+        );
     }
 
     #[test]
@@ -115,7 +119,10 @@ mod tests {
         // Then 000001.json exists and equals the pretty-serialized record.
         let path = tmp.path().join("000001.json");
         let written = std::fs::read_to_string(&path).expect("read dump file");
-        assert_eq!(written, serde_json::to_string_pretty(&record).expect("serialize"));
+        assert_eq!(
+            written,
+            serde_json::to_string_pretty(&record).expect("serialize")
+        );
     }
 
     #[test]
