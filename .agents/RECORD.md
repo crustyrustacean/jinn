@@ -101,6 +101,7 @@ Entries are added or amended **only with human approval**.
 - (providers) Model output is text-only: the `StreamEvent` pipeline and assistant chat entries carry no image variant.
 - (providers) OpenRouter serves each model through multiple upstream **endpoints**, each identified by a routing **tag**; the per-model `GET /api/v1/models/<id>/endpoints` payload lists them with pricing and uptime.
 - (providers) OpenRouter endpoint listings are cached **in memory, per model, for the application's lifetime** (not persisted to disk); the picker serves cached entries on open and re-fetches on-demand via `<c-r>` (`RefreshEndpoints`).
+- (providers) A `--dump-requests <dir>` CLI flag writes one JSON file per provider generation send (main dispatch and compaction), capturing the full assembled request payload verbatim; off by default.
 - (selection) Chat entry selection applies an accumulated-exclude guard that only takes effect after a threshold, with per-entry forced include/exclude tracked separately.
 - (session) A replacement session seeded on archive inherits reasoning effort from the global default.
 - (session) An empty session that was never interacted with is not persisted on archive.
