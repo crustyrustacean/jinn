@@ -561,42 +561,48 @@ impl TryFrom<&ChatSessionState> for NewSessionRow {
 
     #[deny(unused_variables)]
     fn try_from(session: &ChatSessionState) -> Result<Self, Self::Error> {
-        // Exhaustive destructuring - adding a field to SessionCore
-        // without updating this pattern is a compile error.
+        // This builds only the 9-column `sessions` ROW. SessionCore has ~25
+        // fields, sorted into four persistence buckets:
+        //   row     — a real `sessions` column, bound in Ok(Self { .. }) below.
+        //   blob    — serialized from `PersistableCore::from(&session.core)` into
+        //            the `sessions.metadata` TEXT column (the `metadata:` field below).
+        //   table   — written by a sibling INSERT loop in `save_in_transaction`,
+        //            not this row builder.
+        //   runtime — never persisted; rebuilt on load.
+        //
+        // `#[deny(unused_variables)]` makes adding a SessionCore field a compile
+        // error until it is classified here.
         let ChatSessionState {
-            core:
-                SessionCore {
-                    session_id,
-                    title,
-                    updated_at,
-                    created_at,
-                    last_history_activity_at: _last_history_activity_at, // runtime-only, not persisted
-                    last_provider_activity_at: _last_provider_activity_at, // runtime-only, not persisted
-                    history: _history, // persisted via entries + session_history tables below
-                    profile: _profile, // persisted via metadata blob
-                    cwd: _cwd,         // persisted via metadata blob
-                    home: _home,       // runtime-only, set from services.paths.home_dir() at setup
-                    token_ledger: _ledger, // persisted via token_ledger table below
-                    parent_session,
-
-                    fork_ordinal: _fork_ordinal, // included in metadata blob via PersistableCore
-
-                    blobs: _blobs,                   // persisted via metadata blob
-                    lifecycle_name: _lifecycle_name, // persisted via metadata blob
-                    lifecycle_args: _lifecycle_args, // persisted via metadata blob
-                    ephemeral: _ephemeral,           // runtime-only state, not persisted
-                    session_state,
-                    lifecycle_script_state: _lifecycle_script_state, // persisted via metadata blob
-                    is_automated,
-                    persist: _persist, // persisted via metadata blob
-                    assembly_overrides: _assembly_overrides, // runtime-only, not persisted
-                    has_interacted: _has_interacted, // deserialized from DB, restored by handle_session_load_completed
-                    task_list: _task_list, // included in metadata blob via PersistableCore
-                    enabled_mcp_servers: _enabled_mcp_servers, // included in metadata blob via PersistableCore
-                    mcp_server_status: _mcp_server_status,     // runtime-only, not persisted
-                    mcp_server_stderr: _mcp_server_stderr,     // runtime-only, not persisted
-                },
-            ui: _ui, // runtime-only UI state, not persisted
+            core: SessionCore {
+                session_id,                                          // row
+                title,                                               // row
+                updated_at,                                          // row
+                created_at,                                          // row
+                last_history_activity_at: _last_history_activity_at, // runtime
+                last_provider_activity_at: _last_provider_activity_at, // runtime
+                history: _history,           // table (entries via insert_entry_and_junction)
+                profile: _profile,          // blob
+                cwd: _cwd,                  // blob
+                home: _home,                // runtime (services.paths.home_dir())
+                token_ledger: _ledger,      // table (insert_token_ledger_row)
+                parent_session,             // row
+                fork_ordinal: _fork_ordinal, // blob
+                blobs: _blobs,              // blob
+                lifecycle_name: _lifecycle_name, // blob
+                lifecycle_args: _lifecycle_args, // blob
+                ephemeral: _ephemeral,     // runtime
+                session_state,             // row (→ archived column)
+                lifecycle_script_state: _lifecycle_script_state, // blob
+                is_automated,              // row
+                persist: _persist,         // blob
+                assembly_overrides: _assembly_overrides, // runtime
+                has_interacted: _has_interacted,        // runtime
+                task_list: _task_list,     // blob
+                enabled_mcp_servers: _enabled_mcp_servers, // blob
+                mcp_server_status: _mcp_server_status,  // runtime
+                mcp_server_stderr: _mcp_server_stderr,  // runtime
+            },
+            ui: _ui, // runtime
         } = session;
 
         Ok(Self {
