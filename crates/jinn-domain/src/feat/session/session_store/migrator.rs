@@ -1039,6 +1039,75 @@ mod tests {
         assert_eq!(meta["title"].as_str(), Some("Legacy"));
     }
 
+    #[tokio::test]
+    async fn migration_failure_rolls_back_to_prior_state() {
+        // Given a fresh database poisoned so a mid-chain migration collides.
+        //
+        // v15 rebuilds `sessions` via a temp table named `sessions_new`.
+        // Pre-creating that name on an empty DB lets v0..=v14 run, then v15's
+        // `CREATE TABLE sessions_new (...)` fails with "table already exists".
+        let (pool, _dir) = make_pool();
+        pool.with_conn(|conn| {
+            conn.execute_batch("CREATE TABLE sessions_new (id TEXT)")?;
+            Ok(())
+        })
+        .await
+        .unwrap();
+
+        // When running migrations, which fail at v15.
+        let result = run_migrations(&pool).await;
+
+        // Then migration fails.
+        assert!(
+            result.is_err(),
+            "migrations must fail when a mid-chain collision occurs"
+        );
+
+        // And the whole chain rolled back: the real `sessions` table (created by
+        // v0 inside the transaction) is absent, so v0's `CREATE TABLE sessions`
+        // was undone.
+        let tables = table_list(&pool).await;
+        assert!(
+            !tables.iter().any(|t| t == "sessions"),
+            "real `sessions` table must be absent after rollback; got {tables:?}"
+        );
+
+        // And `_migrations` exists (bootstrapped pre-BEGIN) but holds 0 rows
+        // (every `record_version` ran inside the rolled-back transaction).
+        assert!(
+            tables.iter().any(|t| t == "_migrations"),
+            "`_migrations` table must exist (bootstrapped before BEGIN)"
+        );
+        assert_eq!(
+            table_count(&pool, "_migrations").await,
+            0,
+            "no version rows must survive a rolled-back transaction"
+        );
+
+        // And the poison table is still there (proves we're at the pre-chain
+        // state, not a partially-applied one).
+        assert!(
+            tables.iter().any(|t| t == "sessions_new"),
+            "poison `sessions_new` must still exist after rollback"
+        );
+    }
+
+    /// Returns the names of all tables in the database, sorted.
+    async fn table_list(pool: &Pool) -> Vec<String> {
+        pool.with_conn(|conn| {
+            let mut stmt =
+                conn.prepare("SELECT name FROM sqlite_master WHERE type='table' ORDER BY name")?;
+            let mapped = stmt.query_map([], |r| r.get::<_, String>(0))?;
+            let mut out = Vec::new();
+            for row in mapped {
+                out.push(row?);
+            }
+            Ok(out)
+        })
+        .await
+        .expect("list tables")
+    }
+
     // ── shared test helpers ───────────────────────────────────────────
 
     async fn table_count(pool: &Pool, table: &str) -> i64 {
