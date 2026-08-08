@@ -101,6 +101,47 @@ pub fn validate_fork_from_entry(state: &AppState) -> Result<(), ForkFromEntryErr
     Ok(())
 }
 
+/// Errors from validating a NewSessionFromEntry intent.
+#[derive(Debug, Error)]
+#[error(debug)]
+pub enum NewSessionFromEntryError {
+    /// No chat entry is currently selected.
+    NoSelection,
+    /// The chat history is empty.
+    EmptyHistory,
+    /// The selected entry is not a User or Assistant entry.
+    InvalidKind,
+}
+
+/// Validates the NewSessionFromEntry intent.
+///
+/// Returns an error if the history is empty, no entry is selected, or the
+/// selected entry is not a User or Assistant entry. Only those two kinds
+/// reliably work as the sole seed of a fresh session: other kinds are either
+/// dropped from context by default (System, Actor, Error, Thinking, Transient)
+/// or produce malformed message sequences (ToolCall, ToolResult, Compaction).
+///
+/// # Errors
+///
+/// Returns an error if the history is empty, no entry is selected, or the
+/// selected entry is not a User or Assistant entry.
+pub fn validate_new_session_from_entry(state: &AppState) -> Result<(), NewSessionFromEntryError> {
+    if state.active_session().history().is_empty() {
+        return Err(NewSessionFromEntryError::EmptyHistory);
+    }
+    let entry = state
+        .active_session()
+        .selected_entry()
+        .ok_or(NewSessionFromEntryError::NoSelection)?;
+    if !matches!(
+        entry.kind,
+        crate::protocol::ChatEntryKind::User { .. } | crate::protocol::ChatEntryKind::Assistant(_)
+    ) {
+        return Err(NewSessionFromEntryError::InvalidKind);
+    }
+    Ok(())
+}
+
 /// Errors from validating a ChatEntryPinSelected intent.
 #[derive(Debug, Error)]
 #[error(debug)]
@@ -260,6 +301,122 @@ mod fork_from_entry_tests {
 
         // When validating fork from entry.
         let result = validate_fork_from_entry(&state);
+
+        // Then validation succeeds.
+        assert!(result.is_ok());
+    }
+}
+
+#[cfg(test)]
+mod new_session_from_entry_tests {
+    #![allow(
+        clippy::expect_used,
+        clippy::panic,
+        clippy::unreachable,
+        clippy::indexing_slicing,
+        reason = "test code"
+    )]
+    use crate::common::app_state::AppState;
+    use crate::feat::session::tool_result_status::ToolResultStatus;
+    use crate::protocol::ChatEntry;
+
+    use super::*;
+
+    #[rstest::rstest]
+    fn new_session_from_entry_rejects_empty_history() {
+        // Given an empty session.
+        let state = AppState::default();
+
+        // When validating new session from entry.
+        let result = validate_new_session_from_entry(&state);
+
+        // Then validation fails with EmptyHistory.
+        assert!(matches!(
+            result,
+            Err(NewSessionFromEntryError::EmptyHistory)
+        ));
+    }
+
+    #[rstest::rstest]
+    fn new_session_from_entry_rejects_no_selection() {
+        // Given a state with entries but no selection.
+        let mut state = AppState::default();
+        state
+            .active_session_mut()
+            .push_entry(ChatEntry::user("hello"));
+        state.active_session_mut().clear_selection();
+
+        // When validating new session from entry.
+        let result = validate_new_session_from_entry(&state);
+
+        // Then validation fails with NoSelection.
+        assert!(matches!(result, Err(NewSessionFromEntryError::NoSelection)));
+    }
+
+    #[rstest::rstest]
+    fn new_session_from_entry_rejects_system_entry() {
+        // Given a state with a selected System entry.
+        let mut state = AppState::default();
+        state
+            .active_session_mut()
+            .push_entry(ChatEntry::system("status update"));
+        state.active_session_mut().select_next_entry();
+
+        // When validating new session from entry.
+        let result = validate_new_session_from_entry(&state);
+
+        // Then validation fails with InvalidKind.
+        assert!(matches!(result, Err(NewSessionFromEntryError::InvalidKind)));
+    }
+
+    #[rstest::rstest]
+    fn new_session_from_entry_rejects_tool_result_entry() {
+        // Given a state with a selected ToolResult entry.
+        let mut state = AppState::default();
+        state
+            .active_session_mut()
+            .push_entry(ChatEntry::tool_result(
+                "call-1",
+                "bash",
+                "ok",
+                ToolResultStatus::Success,
+            ));
+        state.active_session_mut().select_next_entry();
+
+        // When validating new session from entry.
+        let result = validate_new_session_from_entry(&state);
+
+        // Then validation fails with InvalidKind.
+        assert!(matches!(result, Err(NewSessionFromEntryError::InvalidKind)));
+    }
+
+    #[rstest::rstest]
+    fn new_session_from_entry_accepts_user_entry() {
+        // Given a state with a selected User entry.
+        let mut state = AppState::default();
+        state
+            .active_session_mut()
+            .push_entry(ChatEntry::user("hello"));
+        state.active_session_mut().select_next_entry();
+
+        // When validating new session from entry.
+        let result = validate_new_session_from_entry(&state);
+
+        // Then validation succeeds.
+        assert!(result.is_ok());
+    }
+
+    #[rstest::rstest]
+    fn new_session_from_entry_accepts_assistant_entry() {
+        // Given a state with a selected Assistant entry.
+        let mut state = AppState::default();
+        state
+            .active_session_mut()
+            .push_entry(ChatEntry::assistant("a metaprompt"));
+        state.active_session_mut().select_next_entry();
+
+        // When validating new session from entry.
+        let result = validate_new_session_from_entry(&state);
 
         // Then validation succeeds.
         assert!(result.is_ok());
