@@ -102,6 +102,8 @@ pub struct ActorSystemBuilderArgs {
     /// When `Some`, per-mode profiles live under `<dir>/headless` and `<dir>/headed`.
     /// When `None`, defaults to `AppPaths::browser_profile_base_dir()`.
     pub browser_profile_override: Option<std::path::PathBuf>,
+    /// Dump directory for provider request debugging. `None` disables.
+    pub dump_requests: Option<std::path::PathBuf>,
 }
 
 /// Builds the actor system: spawns all actors via kameo.
@@ -139,6 +141,7 @@ impl ActorSystemBuilder {
             app_state_storage,
             paths,
             browser_profile_override,
+            dump_requests,
         } = self.args;
 
         // Create shared State FIRST — injected into multiple actors.
@@ -196,6 +199,7 @@ impl ActorSystemBuilder {
             bridge: bridge.clone(),
             root_supervisor: root.clone(),
             mcp_coordinator: std::sync::Arc::new(std::sync::OnceLock::new()),
+            request_dump: jinn_domain::common::request_dump::RequestDumpService::new(dump_requests),
         };
 
         let actor_deps = ActorDeps {
