@@ -1,7 +1,9 @@
 //! Chat entry selection intent handlers - navigate and pin entries.
 
 use crate::ChatEntry;
+use crate::ChatEntryKind;
 use crate::common::app_state::AppState;
+use crate::feat::chat_input::protocol::command::PushChatEntry;
 use crate::feat::context::protocol::command::{PinChatEntry, UnpinChatEntry};
 use crate::feat::session::ChatSessionState;
 use crate::feat::session::protocol::session_fork_requested::SessionForkRequested;
@@ -301,6 +303,70 @@ pub fn handle_fork_from_entry(state: &mut AppState) -> IntentResult {
     })
 }
 
+/// Creates a new empty session seeded with the selected entry's text.
+///
+/// Unlike [`handle_fork_from_entry`], the new session carries no inherited
+/// history. Only the selected entry is copied in (kind preserved) as the sole
+/// history entry. Restricted to User and Assistant entries.
+///
+/// Creates a fresh session via the no-setup lifecycle path (inheriting model,
+/// persona, reasoning effort, and CWD), then chains a [`PushChatEntry`] command
+/// so the session actor pushes and persists the seed. The handler does NOT push
+/// the seed in-memory — the actor owns that, and a double push would result.
+///
+/// No auto-dispatch: the new session stays idle, ready for the next user message.
+///
+/// [`PushChatEntry`]: crate::feat::chat_input::protocol::command::PushChatEntry
+pub fn handle_new_session_from_entry(state: &mut AppState) -> IntentResult {
+    if super::validator::validate_new_session_from_entry(state).is_err() {
+        return IntentResult::empty();
+    }
+
+    // Capture the source entry's text and kind BEFORE the active session
+    // changes — the lifecycle setup switches the active session to the new one.
+    let (text, is_assistant) = {
+        let Some(entry) = state.active_session().selected_entry() else {
+            return IntentResult::empty();
+        };
+        (
+            entry.text(),
+            matches!(entry.kind, ChatEntryKind::Assistant(_)),
+        )
+    };
+
+    // Create a fresh empty session (inherits model/persona/CWD).
+    let result = crate::feat::session_lifecycle::intent::handle_session_lifecycle_setup(
+        state,
+        "",
+        &[],
+        None,
+    );
+
+    // After setup, the active session is the new one.
+    let new_session_id = state.session.active_session_id().clone();
+    // Build a fresh seed entry preserving kind (new id/timing).
+    let seed = build_seed_entry(text, is_assistant);
+
+    // Chain PushChatEntry; the session actor pushes and persists. Do NOT push
+    // in-memory — that would double-push against the actor's push_entry.
+    result.with_message(PushChatEntry {
+        session_id: new_session_id,
+        entry: seed,
+    })
+}
+
+/// Build a fresh seed entry from captured text, preserving the source kind.
+///
+/// Returns a new [`ChatEntry`] with a fresh id and timing. `is_assistant`
+/// selects the kind: an Assistant seed preserves natural priming (the LLM
+/// sees its own prior framing); a User seed seeds as a user turn.
+fn build_seed_entry(text: String, is_assistant: bool) -> ChatEntry {
+    if is_assistant {
+        ChatEntry::assistant(text)
+    } else {
+        ChatEntry::user(text)
+    }
+}
 /// Yanks (copies) the text of the currently selected chat entry to the clipboard.
 ///
 /// Extracts the entry's text via [`ChatEntry::text()`] and stashes it in
@@ -2867,5 +2933,216 @@ mod jump_compaction_tests {
             Some(&b_id),
             "[c from a collapsed block must not jump forward to compaction B"
         );
+    }
+}
+
+#[cfg(test)]
+mod new_session_from_entry_tests {
+    #![allow(
+        clippy::expect_used,
+        clippy::panic,
+        clippy::unreachable,
+        clippy::indexing_slicing,
+        reason = "test code"
+    )]
+    use crate::common::app_state::AppState;
+    use crate::protocol::ChatEntry;
+
+    use super::*;
+
+    #[rstest::rstest]
+    fn new_session_from_entry_switches_active_session_on_user_entry() {
+        // Given a state with a selected User entry.
+        let mut state = AppState::default();
+        state
+            .active_session_mut()
+            .push_entry(ChatEntry::user("a metaprompt"));
+        state.active_session_mut().select_next_entry();
+        let old_id = state.session.active_session_id().clone();
+
+        // When handling new session from entry.
+        let _result = handle_new_session_from_entry(&mut state);
+
+        // Then the active session switched to a new one.
+        assert_ne!(state.session.active_session_id(), &old_id);
+    }
+
+    #[rstest::rstest]
+    fn new_session_from_entry_returns_push_chat_entry() {
+        // Given a state with a selected User entry.
+        let mut state = AppState::default();
+        state
+            .active_session_mut()
+            .push_entry(ChatEntry::user("a metaprompt"));
+        state.active_session_mut().select_next_entry();
+
+        // When handling new session from entry.
+        let result = handle_new_session_from_entry(&mut state);
+
+        // Then a PushChatEntry command is returned.
+        assert!(
+            result
+                .message_names
+                .iter()
+                .any(|n| n.contains("PushChatEntry")),
+            "expected PushChatEntry in message_names: {:?}",
+            result.message_names
+        );
+    }
+
+    #[rstest::rstest]
+    fn new_session_from_entry_emits_session_created() {
+        // Given a state with a selected User entry.
+        let mut state = AppState::default();
+        state
+            .active_session_mut()
+            .push_entry(ChatEntry::user("a metaprompt"));
+        state.active_session_mut().select_next_entry();
+
+        // When handling new session from entry.
+        let result = handle_new_session_from_entry(&mut state);
+
+        // Then a SessionCreated event is returned (from the lifecycle setup).
+        assert!(
+            result
+                .message_names
+                .iter()
+                .any(|n| n.contains("SessionCreated")),
+            "expected SessionCreated in message_names: {:?}",
+            result.message_names
+        );
+    }
+
+    #[rstest::rstest]
+    fn new_session_from_entry_no_dispatch_command() {
+        // Given a state with a selected User entry.
+        let mut state = AppState::default();
+        state
+            .active_session_mut()
+            .push_entry(ChatEntry::user("a metaprompt"));
+        state.active_session_mut().select_next_entry();
+
+        // When handling new session from entry.
+        let result = handle_new_session_from_entry(&mut state);
+
+        // Then no dispatch command is emitted.
+        assert!(
+            !result
+                .message_names
+                .iter()
+                .any(|n| n.contains("EnqueueUserMessage") || n.contains("SendToLlmProvider")),
+            "no dispatch expected, got: {:?}",
+            result.message_names
+        );
+    }
+
+    #[rstest::rstest]
+    fn new_session_from_entry_preserves_old_session_in_map() {
+        // Given a state with a selected User entry.
+        let mut state = AppState::default();
+        state
+            .active_session_mut()
+            .push_entry(ChatEntry::user("a metaprompt"));
+        state.active_session_mut().select_next_entry();
+        let old_id = state.session.active_session_id().clone();
+
+        // When handling new session from entry.
+        let _result = handle_new_session_from_entry(&mut state);
+
+        // Then the old session is still present in the sessions map.
+        assert!(state.session.contains(&old_id));
+    }
+
+    #[rstest::rstest]
+    fn new_session_from_entry_inherits_active_session_cwd() {
+        // Given a state whose active session has a distinct CWD.
+        let mut state = AppState::default();
+        let inherited_cwd = std::path::PathBuf::from("/tmp/inherited-project");
+        state.active_session_mut().set_cwd(inherited_cwd.clone());
+        state
+            .active_session_mut()
+            .push_entry(ChatEntry::user("a metaprompt"));
+        state.active_session_mut().select_next_entry();
+
+        // When handling new session from entry.
+        let _result = handle_new_session_from_entry(&mut state);
+
+        // Then the new session inherited the old active session's CWD.
+        assert_eq!(state.active_session().cwd(), inherited_cwd);
+    }
+
+    #[rstest::rstest]
+    fn new_session_from_entry_noop_on_system_kind() {
+        // Given a state with a selected System entry.
+        let mut state = AppState::default();
+        state
+            .active_session_mut()
+            .push_entry(ChatEntry::system("status update"));
+        state.active_session_mut().select_next_entry();
+        let old_id = state.session.active_session_id().clone();
+
+        // When handling new session from entry.
+        let result = handle_new_session_from_entry(&mut state);
+
+        // Then the result is empty and the active session is unchanged.
+        assert!(result.message_names.is_empty());
+        assert_eq!(state.session.active_session_id(), &old_id);
+    }
+
+    #[rstest::rstest]
+    fn new_session_from_entry_noop_on_no_selection() {
+        // Given a state with entries but no selection.
+        let mut state = AppState::default();
+        state
+            .active_session_mut()
+            .push_entry(ChatEntry::user("hello"));
+        state.active_session_mut().clear_selection();
+        let old_id = state.session.active_session_id().clone();
+
+        // When handling new session from entry.
+        let result = handle_new_session_from_entry(&mut state);
+
+        // Then the result is empty and the active session is unchanged.
+        assert!(result.message_names.is_empty());
+        assert_eq!(state.session.active_session_id(), &old_id);
+    }
+
+    #[rstest::rstest]
+    fn build_seed_entry_user_preserves_text_and_kind() {
+        // Given captured user text.
+        let text = "a metaprompt".to_owned();
+
+        // When building the seed entry for a non-assistant source.
+        let seed = build_seed_entry(text.clone(), false);
+
+        // Then the seed is a User entry with the copied text.
+        assert_eq!(seed.text(), text);
+        assert!(matches!(seed.kind, ChatEntryKind::User { .. }));
+    }
+
+    #[rstest::rstest]
+    fn build_seed_entry_assistant_preserves_text_and_kind() {
+        // Given captured assistant text.
+        let text = "a generated metaprompt".to_owned();
+
+        // When building the seed entry for an assistant source.
+        let seed = build_seed_entry(text.clone(), true);
+
+        // Then the seed is an Assistant entry with the copied text.
+        assert_eq!(seed.text(), text);
+        assert!(matches!(seed.kind, ChatEntryKind::Assistant(_)));
+    }
+
+    #[rstest::rstest]
+    fn build_seed_entry_mints_fresh_id_distinct_from_source() {
+        // Given a source entry.
+        let source = ChatEntry::user("original");
+        let text = source.text();
+
+        // When building the seed entry.
+        let seed = build_seed_entry(text, false);
+
+        // Then the seed has a different id from the source.
+        assert_ne!(seed.id, source.id);
     }
 }

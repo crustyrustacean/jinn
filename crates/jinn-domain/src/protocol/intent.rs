@@ -239,6 +239,12 @@ pub enum Intent {
     ToggleIgnoredBlockVisibility,
     /// Fork the session at the currently selected chat entry.
     ForkFromEntry,
+    /// Create a new empty session seeded with the selected entry's text.
+    ///
+    /// Unlike [`ForkFromEntry`], the new session carries no inherited history;
+    /// only the selected entry is copied in (kind preserved) as the sole
+    /// history entry. Restricted to User and Assistant entries.
+    NewSessionFromEntry,
     /// Yank (copy) the currently selected chat entry to the system clipboard.
     YankSelectedEntry,
     /// Toggle the `ignored` flag on the currently selected chat entry.
@@ -468,6 +474,7 @@ impl std::fmt::Display for Intent {
             Intent::ToggleAuditPopup => write!(f, "toggle audit popup"),
             Intent::ToggleIgnoredBlockVisibility => write!(f, "toggle ignored block visibility"),
             Intent::ForkFromEntry => write!(f, "fork from entry"),
+            Intent::NewSessionFromEntry => write!(f, "new session from entry"),
             Intent::YankSelectedEntry => write!(f, "yank entry"),
             Intent::ChatEntryIgnoreSelected => write!(f, "toggle entry in/out of context"),
             Intent::ChatEntryResetSelected => write!(f, "reset entry to default context"),
