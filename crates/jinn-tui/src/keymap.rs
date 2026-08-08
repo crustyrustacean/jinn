@@ -167,6 +167,8 @@ pub fn init() -> Keymap<KeyEvent, Scope, Intent, KeyCategory> {
             .bind("h", Intent::ToggleIgnoredBlockVisibility, KeyCategory::ChatHistory)
             // Fork session from selected entry
             .bind("f", Intent::ForkFromEntry, KeyCategory::ChatHistory)
+            // New session seeded with selected entry (no inherited history)
+            .bind("F", Intent::NewSessionFromEntry, KeyCategory::ChatHistory)
             // Yank (copy) selected entry to clipboard
             .bind("y", Intent::YankSelectedEntry, KeyCategory::ChatHistory)
             // Jump to next/previous compaction summary entry
