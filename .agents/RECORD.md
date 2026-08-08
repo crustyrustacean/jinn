@@ -123,6 +123,7 @@ Entries are added or amended **only with human approval**.
 - (storage) User-editable TOML files (`providers.toml`, `jinn.toml`) are written through a comment-preserving `DocumentPatcher`, never via plain serialization.
 - (storage) `jinn.toml` holds user preferences and is auto-created if missing.
 - (storage) `state.toml` holds machine-managed runtime state (e.g. last-selected model) and is NOT auto-created.
+- (storage) Schema migrations run atomically in a single transaction; a crash or interrupt mid-migration rolls back to the last-applied version, leaving no partial schema.
 - (theme) The TUI supports dynamic themes via TOML files in `~/.config/jinn/themes/*.toml`, supporting ANSI name, ANSI code, hex, and RGB color formats.
 - (tokens) A token-count actor estimates per-entry token usage; these estimates drive context-assembly sizing and compaction thresholds.
 - (tokens) The session token ledger stores the pre-send local estimate (`tokens_sent`) alongside provider-reported `prompt_tokens` and `cached_tokens` per request; the estimate is never overwritten.
