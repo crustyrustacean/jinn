@@ -42,6 +42,10 @@ pub struct Cli {
     #[arg(long, value_hint = clap::ValueHint::DirPath)]
     pub browser_profile: Option<PathBuf>,
 
+    /// Dump every provider generation request to <dir> as a separate JSON file.
+    /// Each file contains the complete request payload verbatim.
+    #[arg(long, value_hint = clap::ValueHint::DirPath)]
+    pub dump_requests: Option<PathBuf>,
     /// The subcommand to run. If omitted, launches the TUI.
     #[command(subcommand)]
     pub command: Option<Commands>,
