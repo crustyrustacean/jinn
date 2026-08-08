@@ -660,6 +660,9 @@ impl LlmActor {
         let sid = session_id.clone();
         let dispatched_at = payload.dispatched_at;
 
+        // Dump the complete assembled request payload (one file per dispatch).
+        self.deps.services.request_dump.dump(payload);
+
         let handle = tokio::spawn(run_stream(
             factory,
             bus,
