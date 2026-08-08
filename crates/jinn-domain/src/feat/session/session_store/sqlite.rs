@@ -573,35 +573,36 @@ impl TryFrom<&ChatSessionState> for NewSessionRow {
         // `#[deny(unused_variables)]` makes adding a SessionCore field a compile
         // error until it is classified here.
         let ChatSessionState {
-            core: SessionCore {
-                session_id,                                          // row
-                title,                                               // row
-                updated_at,                                          // row
-                created_at,                                          // row
-                last_history_activity_at: _last_history_activity_at, // runtime
-                last_provider_activity_at: _last_provider_activity_at, // runtime
-                history: _history,           // table (entries via insert_entry_and_junction)
-                profile: _profile,          // blob
-                cwd: _cwd,                  // blob
-                home: _home,                // runtime (services.paths.home_dir())
-                token_ledger: _ledger,      // table (insert_token_ledger_row)
-                parent_session,             // row
-                fork_ordinal: _fork_ordinal, // blob
-                blobs: _blobs,              // blob
-                lifecycle_name: _lifecycle_name, // blob
-                lifecycle_args: _lifecycle_args, // blob
-                ephemeral: _ephemeral,     // runtime
-                session_state,             // row (→ archived column)
-                lifecycle_script_state: _lifecycle_script_state, // blob
-                is_automated,              // row
-                persist: _persist,         // blob
-                assembly_overrides: _assembly_overrides, // runtime
-                has_interacted: _has_interacted,        // runtime
-                task_list: _task_list,     // blob
-                enabled_mcp_servers: _enabled_mcp_servers, // blob
-                mcp_server_status: _mcp_server_status,  // runtime
-                mcp_server_stderr: _mcp_server_stderr,  // runtime
-            },
+            core:
+                SessionCore {
+                    session_id,                                            // row
+                    title,                                                 // row
+                    updated_at,                                            // row
+                    created_at,                                            // row
+                    last_history_activity_at: _last_history_activity_at,   // runtime
+                    last_provider_activity_at: _last_provider_activity_at, // runtime
+                    history: _history, // table (entries via insert_entry_and_junction)
+                    profile: _profile, // blob
+                    cwd: _cwd,         // blob
+                    home: _home,       // runtime (services.paths.home_dir())
+                    token_ledger: _ledger, // table (insert_token_ledger_row)
+                    parent_session,    // row
+                    fork_ordinal: _fork_ordinal, // blob
+                    blobs: _blobs,     // blob
+                    lifecycle_name: _lifecycle_name, // blob
+                    lifecycle_args: _lifecycle_args, // blob
+                    ephemeral: _ephemeral, // runtime
+                    session_state,     // row (→ archived column)
+                    lifecycle_script_state: _lifecycle_script_state, // blob
+                    is_automated,      // row
+                    persist: _persist, // blob
+                    assembly_overrides: _assembly_overrides, // runtime
+                    has_interacted: _has_interacted, // runtime
+                    task_list: _task_list, // blob
+                    enabled_mcp_servers: _enabled_mcp_servers, // blob
+                    mcp_server_status: _mcp_server_status, // runtime
+                    mcp_server_stderr: _mcp_server_stderr, // runtime
+                },
             ui: _ui, // runtime
         } = session;
 

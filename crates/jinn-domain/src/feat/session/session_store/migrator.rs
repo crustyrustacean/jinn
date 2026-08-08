@@ -1058,7 +1058,10 @@ mod tests {
         let result = run_migrations(&pool).await;
 
         // Then migration fails.
-        assert!(result.is_err(), "migrations must fail when a mid-chain collision occurs");
+        assert!(
+            result.is_err(),
+            "migrations must fail when a mid-chain collision occurs"
+        );
 
         // And the whole chain rolled back: the real `sessions` table (created by
         // v0 inside the transaction) is absent, so v0's `CREATE TABLE sessions`
@@ -1092,9 +1095,8 @@ mod tests {
     /// Returns the names of all tables in the database, sorted.
     async fn table_list(pool: &Pool) -> Vec<String> {
         pool.with_conn(|conn| {
-            let mut stmt = conn.prepare(
-                "SELECT name FROM sqlite_master WHERE type='table' ORDER BY name",
-            )?;
+            let mut stmt =
+                conn.prepare("SELECT name FROM sqlite_master WHERE type='table' ORDER BY name")?;
             let mapped = stmt.query_map([], |r| r.get::<_, String>(0))?;
             let mut out = Vec::new();
             for row in mapped {

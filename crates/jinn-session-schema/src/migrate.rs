@@ -63,7 +63,9 @@ pub(crate) fn run_pending(
 
     match apply_migration_chain(conn, current) {
         Ok(()) => {
-            conn.execute_batch("COMMIT").change_context(SchemaMigrationError).attach("commit migration transaction")?;
+            conn.execute_batch("COMMIT")
+                .change_context(SchemaMigrationError)
+                .attach("commit migration transaction")?;
             Ok(())
         }
         Err(report) => {
@@ -83,7 +85,11 @@ fn apply_migration_chain(
     current: i32,
 ) -> Result<(), Report<SchemaMigrationError>> {
     if current < 0 {
-        tracing::debug!(version = 0, name = "create_initial_schema", "applying migration");
+        tracing::debug!(
+            version = 0,
+            name = "create_initial_schema",
+            "applying migration"
+        );
         migrate_v0(conn)?;
         record_version(conn, 0, "create_initial_schema")?;
     }
@@ -93,77 +99,137 @@ fn apply_migration_chain(
         record_version(conn, 1, "add_cwd_column")?;
     }
     if current < 2 {
-        tracing::debug!(version = 2, name = "add_created_at_column", "applying migration");
+        tracing::debug!(
+            version = 2,
+            name = "add_created_at_column",
+            "applying migration"
+        );
         migrate_v2(conn)?;
         record_version(conn, 2, "add_created_at_column")?;
     }
     if current < 3 {
-        tracing::debug!(version = 3, name = "add_ignored_to_session_entries", "applying migration");
+        tracing::debug!(
+            version = 3,
+            name = "add_ignored_to_session_entries",
+            "applying migration"
+        );
         migrate_v3(conn)?;
         record_version(conn, 3, "add_ignored_to_session_entries")?;
     }
     if current < 4 {
-        tracing::debug!(version = 4, name = "add_cost_to_token_ledger", "applying migration");
+        tracing::debug!(
+            version = 4,
+            name = "add_cost_to_token_ledger",
+            "applying migration"
+        );
         migrate_v4(conn)?;
         record_version(conn, 4, "add_cost_to_token_ledger")?;
     }
     if current < 5 {
-        tracing::debug!(version = 5, name = "add_lifecycle_columns_to_sessions", "applying migration");
+        tracing::debug!(
+            version = 5,
+            name = "add_lifecycle_columns_to_sessions",
+            "applying migration"
+        );
         migrate_v5(conn)?;
         record_version(conn, 5, "add_lifecycle_columns_to_sessions")?;
     }
     if current < 6 {
-        tracing::debug!(version = 6, name = "add_archived_column", "applying migration");
+        tracing::debug!(
+            version = 6,
+            name = "add_archived_column",
+            "applying migration"
+        );
         migrate_v6(conn);
         record_version(conn, 6, "add_archived_column")?;
     }
     if current < 7 {
-        tracing::debug!(version = 7, name = "add_lifecycle_script_state_column", "applying migration");
+        tracing::debug!(
+            version = 7,
+            name = "add_lifecycle_script_state_column",
+            "applying migration"
+        );
         migrate_v7(conn)?;
         record_version(conn, 7, "add_lifecycle_script_state_column")?;
     }
     if current < 8 {
-        tracing::debug!(version = 8, name = "add_metadata_column", "applying migration");
+        tracing::debug!(
+            version = 8,
+            name = "add_metadata_column",
+            "applying migration"
+        );
         migrate_v8(conn)?;
         record_version(conn, 8, "add_metadata_column")?;
     }
     if current < 9 {
-        tracing::debug!(version = 9, name = "rename_session_entries_to_session_history", "applying migration");
+        tracing::debug!(
+            version = 9,
+            name = "rename_session_entries_to_session_history",
+            "applying migration"
+        );
         migrate_v9(conn)?;
         record_version(conn, 9, "rename_session_entries_to_session_history")?;
     }
     if current < 10 {
-        tracing::debug!(version = 10, name = "consolidate_to_compaction_strategy", "applying migration");
+        tracing::debug!(
+            version = 10,
+            name = "consolidate_to_compaction_strategy",
+            "applying migration"
+        );
         migrate_v10(conn)?;
         record_version(conn, 10, "consolidate_to_compaction_strategy")?;
     }
     if current < 11 {
-        tracing::debug!(version = 11, name = "add_is_workflow_column", "applying migration");
+        tracing::debug!(
+            version = 11,
+            name = "add_is_workflow_column",
+            "applying migration"
+        );
         migrate_v11(conn)?;
         record_version(conn, 11, "add_is_workflow_column")?;
     }
     if current < 12 {
-        tracing::debug!(version = 12, name = "replace_ignored_with_context_override", "applying migration");
+        tracing::debug!(
+            version = 12,
+            name = "replace_ignored_with_context_override",
+            "applying migration"
+        );
         migrate_v12(conn)?;
         record_version(conn, 12, "replace_ignored_with_context_override")?;
     }
     if current < 13 {
-        tracing::debug!(version = 13, name = "add_judge_meta_column", "applying migration");
+        tracing::debug!(
+            version = 13,
+            name = "add_judge_meta_column",
+            "applying migration"
+        );
         migrate_v13(conn)?;
         record_version(conn, 13, "add_judge_meta_column")?;
     }
     if current < 14 {
-        tracing::debug!(version = 14, name = "add_context_history", "applying migration");
+        tracing::debug!(
+            version = 14,
+            name = "add_context_history",
+            "applying migration"
+        );
         migrate_v14(conn)?;
         record_version(conn, 14, "add_context_history")?;
     }
     if current < 15 {
-        tracing::debug!(version = 15, name = "drop_strategy_state_column", "applying migration");
+        tracing::debug!(
+            version = 15,
+            name = "drop_strategy_state_column",
+            "applying migration"
+        );
         migrate_v15(conn)?;
         record_version(conn, 15, "drop_strategy_state_column")?;
     }
     if current < 16 {
-        tracing::debug!(version = 16, name = "rename_is_workflow_to_is_automated_and_add_persist", "applying migration");
+        tracing::debug!(
+            version = 16,
+            name = "rename_is_workflow_to_is_automated_and_add_persist",
+            "applying migration"
+        );
         migrate_v16(conn)?;
         record_version(
             conn,
@@ -172,7 +238,11 @@ fn apply_migration_chain(
         )?;
     }
     if current < 17 {
-        tracing::debug!(version = 17, name = "rewrite_model_to_model_selection_and_add_model_used", "applying migration");
+        tracing::debug!(
+            version = 17,
+            name = "rewrite_model_to_model_selection_and_add_model_used",
+            "applying migration"
+        );
         migrate_v17(conn)?;
         record_version(
             conn,
@@ -181,37 +251,65 @@ fn apply_migration_chain(
         )?;
     }
     if current < 18 {
-        tracing::debug!(version = 18, name = "rename_entries_timestamp_to_timing", "applying migration");
+        tracing::debug!(
+            version = 18,
+            name = "rename_entries_timestamp_to_timing",
+            "applying migration"
+        );
         migrate_v18(conn)?;
         record_version(conn, 18, "rename_entries_timestamp_to_timing")?;
     }
     if current < 19 {
-        tracing::debug!(version = 19, name = "rewrite_metadata_blob_profile_model", "applying migration");
+        tracing::debug!(
+            version = 19,
+            name = "rewrite_metadata_blob_profile_model",
+            "applying migration"
+        );
         migrate_v19(conn)?;
         record_version(conn, 19, "rewrite_metadata_blob_profile_model")?;
     }
     if current < 20 {
-        tracing::debug!(version = 20, name = "drop_zombie_columns_backfill_metadata", "applying migration");
+        tracing::debug!(
+            version = 20,
+            name = "drop_zombie_columns_backfill_metadata",
+            "applying migration"
+        );
         migrate_v20(conn)?;
         record_version(conn, 20, "drop_zombie_columns_backfill_metadata")?;
     }
     if current < 21 {
-        tracing::debug!(version = 21, name = "add_discord_thread_table", "applying migration");
+        tracing::debug!(
+            version = 21,
+            name = "add_discord_thread_table",
+            "applying migration"
+        );
         migrate_v21(conn)?;
         record_version(conn, 21, "add_discord_thread_table")?;
     }
     if current < 22 {
-        tracing::debug!(version = 22, name = "add_entry_blobs_table", "applying migration");
+        tracing::debug!(
+            version = 22,
+            name = "add_entry_blobs_table",
+            "applying migration"
+        );
         migrate_v22(conn)?;
         record_version(conn, 22, "add_entry_blobs_table")?;
     }
     if current < 23 {
-        tracing::debug!(version = 23, name = "strip_s_prefix_from_session_ids", "applying migration");
+        tracing::debug!(
+            version = 23,
+            name = "strip_s_prefix_from_session_ids",
+            "applying migration"
+        );
         migrate_v23(conn)?;
         record_version(conn, 23, "strip_s_prefix_from_session_ids")?;
     }
     if current < 24 {
-        tracing::debug!(version = 24, name = "add_token_ledger_prompt_cached_columns", "applying migration");
+        tracing::debug!(
+            version = 24,
+            name = "add_token_ledger_prompt_cached_columns",
+            "applying migration"
+        );
         migrate_v24(conn)?;
         record_version(conn, 24, "add_token_ledger_prompt_cached_columns")?;
     }
