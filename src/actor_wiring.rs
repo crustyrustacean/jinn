@@ -196,6 +196,7 @@ impl ActorSystemBuilder {
             bridge: bridge.clone(),
             root_supervisor: root.clone(),
             mcp_coordinator: std::sync::Arc::new(std::sync::OnceLock::new()),
+            request_dump: jinn_domain::common::request_dump::RequestDumpService::default(),
         };
 
         let actor_deps = ActorDeps {

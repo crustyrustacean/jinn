@@ -30,6 +30,8 @@ use crate::feat::provider_infra::{
 use crate::feat::session::SessionStoreService;
 use tokio::runtime::Handle;
 
+use crate::common::request_dump::RequestDumpService;
+
 pub mod test_services;
 
 pub mod bus_service;
@@ -96,6 +98,9 @@ pub struct Services {
             kameo::actor::ActorRef<crate::feat::mcp_coordinator_actor::McpCoordinatorActor>,
         >,
     >,
+
+    /// Request dump directory. `None` disables dumping (default).
+    pub request_dump: RequestDumpService,
 }
 
 impl Services {
@@ -162,6 +167,7 @@ impl Services {
             bridge,
             root_supervisor,
             mcp_coordinator: Arc::new(std::sync::OnceLock::new()),
+            request_dump: RequestDumpService::default(),
         }
     }
 
@@ -208,6 +214,7 @@ impl Services {
             bridge,
             root_supervisor,
             mcp_coordinator: Arc::new(std::sync::OnceLock::new()),
+            request_dump: RequestDumpService::default(),
         }
     }
 }
