@@ -494,6 +494,17 @@ fn resolve_context_limit(
         .and_then(|m| m.context_length)
 }
 
+/// Verbatim record of a compaction LLM send, written by the request dump.
+///
+/// Fields parallel the main dispatch payload so dump files diff uniformly
+/// across both send sources; `kind` distinguishes compaction from main turns.
+#[derive(serde::Serialize)]
+struct CompactionDump<'a> {
+    kind: &'static str,
+    model: &'a str,
+    messages: &'a [LlmMessage],
+}
+
 /// Generate a summary using the LLM.
 #[expect(
     clippy::too_many_arguments,
@@ -563,6 +574,13 @@ async fn generate_summary(
             attachments: Vec::new(),
         },
     ];
+
+    // Dump the complete compaction request payload (one file per send).
+    services.request_dump.dump(&CompactionDump {
+        kind: "compaction",
+        model: model_id,
+        messages: &messages,
+    });
 
     // Call the LLM and collect the response.
     let stream = match service.chat_stream(messages).await {
