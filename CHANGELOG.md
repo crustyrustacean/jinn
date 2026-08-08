@@ -1,3 +1,10 @@
+## 2026-08-07 v0.105.1
+
+- Add `F` keybind in Normal mode to create a _new_ session from an existing User or Assistant message _without_ existing history. Only the selected message will be present in the new session. The new session is not counted as a fork of the previous session since no history is preserved.
+- Add `--dump-requests` debugging flag to get raw output of everything sent to a provider.
+- Migrations should no longer fail if interrupted.
+- Migrations performance improvement (single transaction).
+
 ## 2026-08-03 v0.104.1
 
 - Simpler MCP configuration + added MCP configuration example
