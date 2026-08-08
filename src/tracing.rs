@@ -112,9 +112,10 @@ pub fn init(
     verbosity: Verbosity<WarnLevel>,
     mode: TracingMode,
 ) -> Result<(), Report<TracingInitError>> {
-    let filter = match env::var("RUST_LOG") {
-        Ok(filter_str) => filter_str,
-        Err(_) => format!("{APP_NAME}={verbosity}"),
+    let rust_log = env::var("RUST_LOG").ok();
+    let filter = match &rust_log {
+        Some(filter_str) => filter_str.clone(),
+        None => format!("{APP_NAME}={verbosity}"),
     };
 
     let log_path = match &mode {
@@ -123,6 +124,16 @@ pub fn init(
     };
 
     let logfile = open_log_file(&log_path)?;
+
+    // In TUI mode the terminal enters raw mode shortly after init, so traces
+    // (including RUST_LOG output) go to the file only — never the screen. If the
+    // user set RUST_LOG expecting to watch startup, point them at the file or the
+    // --log-file flag. (Headless mode already prints to the terminal.)
+    if matches!(mode, TracingMode::Tui { .. }) && rust_log.is_some() {
+        eprintln!("RUST_LOG is set, but TUI mode writes traces to a file, not the terminal.");
+        eprintln!("  run tail -f '{}' in another term", log_path.display());
+        eprintln!("  or rerun with --log-file <path> to choose a different file.");
+    }
 
     match mode {
         TracingMode::Tui { .. } => {
