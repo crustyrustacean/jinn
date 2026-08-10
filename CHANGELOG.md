@@ -1,3 +1,7 @@
+## (development) v0.106.1
+
+- Update learning-tutor persona.
+
 ## 2026-08-07 v0.105.1
 
 - Add `F` keybind in Normal mode to create a _new_ session from an existing User or Assistant message _without_ existing history. Only the selected message will be present in the new session. The new session is not counted as a fork of the previous session since no history is preserved.
