@@ -242,6 +242,19 @@ mod tests {
     }
 
     #[rstest::rstest]
+    fn shipped_learning_tutor_persona_parses_with_its_grounding() {
+        // Given the shipped learning-tutor persona bundled into the binary.
+        let content = include_str!("../../../../../res/personas/learning-tutor.md");
+
+        // When parsing it.
+        let persona = parse_persona_content(content, &test_path("learning-tutor")).expect("parse");
+
+        // Then it keeps its shipped name and an evidence-grounded description.
+        assert_eq!(persona.name, "learning-tutor");
+        assert!(persona.description.contains("intelligent-tutoring"));
+    }
+
+    #[rstest::rstest]
     fn scan_personas_dir_returns_sorted_personas() {
         // Given a directory with persona files.
         let dir = tempfile::TempDir::new().expect("temp dir");
