@@ -899,3 +899,158 @@ fn rejects_duplicate_model_info_ids() {
     // Then validation fails.
     assert!(result.is_err());
 }
+
+#[rstest::rstest]
+fn static_expansion_per_model_context_length_beats_block_level() {
+    // Given a provider with both block-level and per-model context lengths.
+    let entry = ProviderEntry {
+        model_info: vec![model_info("llama3", Some(8192), None)],
+        context_length: Some(4096),
+        ..ollama_entry()
+    };
+    let config = make_config(vec![entry], vec![], None);
+
+    // When building the registry.
+    let registry = ProviderRegistry::from_config(config).expect("registry");
+
+    // Then the per-model value wins for that model.
+    let resolved = registry
+        .get(&ProviderId::new("ollama/llama3".to_owned()))
+        .expect("entry");
+    assert_eq!(resolved.context_length, Some(8192));
+}
+
+#[rstest::rstest]
+fn static_expansion_block_level_context_length_applies_without_override() {
+    // Given a provider with block-level context length but no per-model entry.
+    let entry = ProviderEntry {
+        context_length: Some(4096),
+        ..ollama_entry()
+    };
+    let config = make_config(vec![entry], vec![], None);
+
+    // When building the registry.
+    let registry = ProviderRegistry::from_config(config).expect("registry");
+
+    // Then the block-level value applies.
+    let resolved = registry
+        .get(&ProviderId::new("ollama/llama3".to_owned()))
+        .expect("entry");
+    assert_eq!(resolved.context_length, Some(4096));
+}
+
+#[rstest::rstest]
+fn merge_cache_block_level_beats_api_value() {
+    // Given a registry with a block-level context length.
+    let entry = ProviderEntry {
+        context_length: Some(4096),
+        ..ollama_entry()
+    };
+    let config = make_config(vec![entry], vec![], None);
+    let mut registry = ProviderRegistry::from_config(config).expect("registry");
+
+    let mut cache_entries = std::collections::HashMap::new();
+    cache_entries.insert(
+        "ollama".to_owned(),
+        vec![crate::ModelInfo {
+            id: "mistral".to_owned(),
+            context_length: Some(32768),
+            input_modalities: crate::InputModalities::text(),
+        }],
+    );
+    let cache = crate::ModelCache {
+        entries: cache_entries,
+        last_updated_at: None,
+    };
+
+    // When merging a cache whose API value differs.
+    registry.merge_cache(&cache);
+
+    // Then the block-level config value wins over the API value.
+    let remote = registry
+        .get(&ProviderId::new("ollama/mistral".to_owned()))
+        .expect("remote entry");
+    assert_eq!(remote.context_length, Some(4096));
+}
+
+#[rstest::rstest]
+fn merge_cache_per_model_beats_api_and_block() {
+    // Given a registry with per-model and block-level context lengths.
+    let entry = ProviderEntry {
+        model_info: vec![model_info("mistral", Some(16384), None)],
+        context_length: Some(4096),
+        models: vec!["llama3".to_owned(), "mistral".to_owned()],
+        ..ollama_entry()
+    };
+    let config = make_config(vec![entry], vec![], None);
+    let mut registry = ProviderRegistry::from_config(config).expect("registry");
+
+    let mut cache_entries = std::collections::HashMap::new();
+    cache_entries.insert(
+        "ollama".to_owned(),
+        vec![crate::ModelInfo {
+            id: "mistral".to_owned(),
+            context_length: Some(32768),
+            input_modalities: crate::InputModalities::text(),
+        }],
+    );
+    let cache = crate::ModelCache {
+        entries: cache_entries,
+        last_updated_at: None,
+    };
+
+    // When merging a cache whose API value differs from both config layers.
+    registry.merge_cache(&cache);
+
+    // Then the per-model config value wins.
+    let remote = registry
+        .get(&ProviderId::new("ollama/mistral".to_owned()))
+        .expect("remote entry");
+    assert_eq!(remote.context_length, Some(16384));
+}
+
+#[rstest::rstest]
+fn merge_cache_per_model_extra_body_beats_block_level() {
+    // Given a registry with per-model and block-level extra_body.
+    let entry = ProviderEntry {
+        model_info: vec![crate::config::ModelInfoEntry {
+            id: "mistral".to_owned(),
+            context_length: None,
+            input_modalities: None,
+            extra_body: Some(serde_json::json!({"per_model": true})),
+        }],
+        extra_body: Some(serde_json::json!({"block": true})),
+        models: vec!["llama3".to_owned(), "mistral".to_owned()],
+        ..ollama_entry()
+    };
+    let config = make_config(vec![entry], vec![], None);
+    let mut registry = ProviderRegistry::from_config(config).expect("registry");
+
+    let mut cache_entries = std::collections::HashMap::new();
+    cache_entries.insert(
+        "ollama".to_owned(),
+        vec![crate::ModelInfo {
+            id: "mistral".to_owned(),
+            context_length: None,
+            input_modalities: crate::InputModalities::text(),
+        }],
+    );
+    let cache = crate::ModelCache {
+        entries: cache_entries,
+        last_updated_at: None,
+    };
+
+    // When merging the cache.
+    registry.merge_cache(&cache);
+
+    // Then the per-model extra_body wins for the overridden model.
+    let remote = registry
+        .get(&ProviderId::new("ollama/mistral".to_owned()))
+        .expect("remote entry");
+    assert_eq!(remote.extra_body.as_ref().expect("extra")["per_model"], true);
+    // And the block-level extra_body still applies to the static model.
+    let static_entry = registry
+        .get(&ProviderId::new("ollama/llama3".to_owned()))
+        .expect("static entry");
+    assert_eq!(static_entry.extra_body.as_ref().expect("extra")["block"], true);
+}
