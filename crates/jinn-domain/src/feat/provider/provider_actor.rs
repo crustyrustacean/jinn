@@ -224,13 +224,18 @@ impl ProviderActor {
         {
             let registry = self.deps.services.provider_registry.read();
             merge_context_lengths_from_registry(&mut cache, &registry);
-            apply_config_overrides(&mut cache, registry.config());
         }
         let models_dev = crate::feat::provider_infra::ModelsDevData::load(
             &self.deps.services.paths.models_dev_user_path(),
             &self.deps.services.paths.models_dev_system_path(),
         );
         merge_models_dev_data(&mut cache, &models_dev);
+        // Config overrides apply last so explicit per-model values beat
+        // models.dev enrichment (which unconditionally stamps the Image bit).
+        {
+            let registry = self.deps.services.provider_registry.read();
+            apply_config_overrides(&mut cache, registry.config());
+        }
         // Merge remote models into the registry so create_factory() can find them.
         self.deps.services.provider_registry.merge_cache(&cache);
         self.state.with_provider(&self.cap, |view| {
@@ -246,13 +251,18 @@ impl ProviderActor {
         {
             let registry = self.deps.services.provider_registry.read();
             merge_context_lengths_from_registry(&mut cache, &registry);
-            apply_config_overrides(&mut cache, registry.config());
         }
         let models_dev = crate::feat::provider_infra::ModelsDevData::load(
             &self.deps.services.paths.models_dev_user_path(),
             &self.deps.services.paths.models_dev_system_path(),
         );
         merge_models_dev_data(&mut cache, &models_dev);
+        // Config overrides apply last so explicit per-model values beat
+        // models.dev enrichment (which unconditionally stamps the Image bit).
+        {
+            let registry = self.deps.services.provider_registry.read();
+            apply_config_overrides(&mut cache, registry.config());
+        }
         // Merge remote models into the registry so create_factory() can find them.
         self.deps.services.provider_registry.merge_cache(&cache);
         self.state.with_provider(&self.cap, |view| {
@@ -423,6 +433,35 @@ fn apply_config_overrides(
                     });
                 }
             }
+        }
+
+        // Static models with only a block-level context_length (no
+        // `model_info` entry) still need a cache entry so the status bar and
+        // compaction gate can resolve them when discovery never returned them.
+        if entry.context_length.is_some() {
+            inject_block_level_static_models(cache, entry);
+        }
+    }
+}
+
+/// Inserts cache entries for configured models that discovery never returned,
+/// carrying the block-level `context_length`.
+///
+/// Text-only modalities are the conservative default; models.dev enrichment
+/// (applied earlier in the pipeline) has already stamped the `Image` bit for
+/// any model it knows.
+fn inject_block_level_static_models(
+    cache: &mut crate::feat::provider_infra::ModelCache,
+    entry: &crate::feat::provider_infra::ProviderEntry,
+) {
+    let models = cache.entries.entry(entry.name.clone()).or_default();
+    for id in &entry.models {
+        if !models.iter().any(|m| &m.id == id) {
+            models.push(crate::feat::provider_infra::ModelInfo {
+                id: id.clone(),
+                context_length: entry.context_length,
+                input_modalities: crate::feat::provider_infra::InputModalities::text(),
+            });
         }
     }
 }
@@ -916,14 +955,42 @@ mod tests {
         assert_eq!(loaded.entries["ollama"][0].context_length, Some(4096));
     }
 
+    /// Seeds a minimal models.dev user file into the harness's temp cache dir
+    /// marking `model_id` image-capable (or not). Without this, the harness's
+    /// temp-root `AppPaths` has no models.dev data and precedence over
+    /// models.dev would go untested.
+    fn seed_models_dev(services: &crate::common::services::Services, model_id: &str, image: bool) {
+        let inputs: Vec<&str> = if image {
+            vec!["text", "image"]
+        } else {
+            vec!["text"]
+        };
+        let body = serde_json::json!({
+            "data": {
+                "ollama": {
+                    "models": {
+                        model_id: { "modality": { "input": inputs } }
+                    }
+                }
+            }
+        });
+        let path = services.paths.models_dev_user_path();
+        std::fs::create_dir_all(path.parent().expect("parent")).expect("create cache dir");
+        std::fs::write(path, body.to_string()).expect("write models.dev");
+    }
+
     fn config_with_model_info() -> ProvidersConfig {
+        config_with_model_info_modalities(vec!["text".to_owned(), "image".to_owned()])
+    }
+
+    fn config_with_model_info_modalities(modalities: Vec<String>) -> ProvidersConfig {
         use crate::feat::provider_infra::ModelInfoEntry;
         ProvidersConfig {
             providers: vec![ProviderEntry {
                 model_info: vec![ModelInfoEntry {
                     id: "llama3".to_owned(),
                     context_length: Some(16384),
-                    input_modalities: Some(vec!["text".to_owned(), "image".to_owned()]),
+                    input_modalities: Some(modalities),
                     extra_body: None,
                 }],
                 name: "ollama".to_owned(),
@@ -943,10 +1010,12 @@ mod tests {
     #[rstest::rstest]
     #[tokio::test]
     async fn model_cache_loaded_per_model_config_beats_api_value() {
-        // Given a registry with a per-model context_length of 16384.
+        // Given a registry with a per-model context_length of 16384 and
+        // models.dev data that would leave the model text-only.
         let (harness, state) = create_harness().await;
         let deps = harness.actor_deps().await;
         let services = deps.services.clone();
+        seed_models_dev(&services, "llama3", false);
         let registry =
             crate::feat::provider_infra::ProviderRegistry::from_config(config_with_model_info())
                 .expect("registry");
@@ -1021,6 +1090,105 @@ mod tests {
         );
         // And no duplicate entries were created.
         assert_eq!(loaded.entries["ollama"].len(), 2);
+    }
+
+    fn sample_config_with_block_ctx() -> ProvidersConfig {
+        ProvidersConfig {
+            providers: vec![ProviderEntry {
+                model_info: Vec::new(),
+                name: "ollama".to_owned(),
+                backend: "ollama".to_owned(),
+                models: vec!["llama3".to_owned()],
+                base_url: None,
+                api_key_env: None,
+                requires_key: false,
+                extra_body: None,
+                context_length: Some(4096),
+            }],
+            aliases: vec![],
+            default_provider: None,
+        }
+    }
+
+    #[rstest::rstest]
+    #[tokio::test]
+    async fn model_cache_loaded_injects_block_level_only_static_model() {
+        // Given a registry with a block-level context_length and no model_info.
+        let (harness, state) = create_harness().await;
+        let deps = harness.actor_deps().await;
+        let services = deps.services.clone();
+        let registry = crate::feat::provider_infra::ProviderRegistry::from_config(
+            sample_config_with_block_ctx(),
+        )
+        .expect("registry");
+        services.provider_registry.replace(registry);
+        spawn_actor(&harness, &state, deps).await;
+
+        // When publishing a ModelCacheLoaded that lacks the static model entirely.
+        let mut cache = ModelCache::new();
+        cache.entries.insert(
+            "ollama".to_owned(),
+            vec![ModelInfo {
+                id: "mistral".to_owned(),
+                context_length: None,
+                input_modalities: InputModalities::text(),
+            }],
+        );
+        cache.last_updated_at = Some(jiff::Timestamp::now());
+        harness.publish(ModelCacheLoaded { cache }).await;
+        tokio::time::sleep(std::time::Duration::from_millis(50)).await;
+
+        // Then the static model is injected carrying the block-level value.
+        let s = state.read();
+        let loaded = s.provider.model_cache.as_ref().expect("cache set");
+        let injected = loaded.entries["ollama"]
+            .iter()
+            .find(|m| m.id == "llama3")
+            .expect("injected entry");
+        assert_eq!(injected.context_length, Some(4096));
+        // And no duplicate entries.
+        assert_eq!(loaded.entries["ollama"].len(), 2);
+    }
+
+    #[rstest::rstest]
+    #[tokio::test]
+    async fn model_cache_loaded_config_modalities_beat_models_dev_enrichment() {
+        // Given a config that explicitly declares llama3 text-only while the
+        // seeded models.dev data marks it image-capable.
+        let config = config_with_model_info_modalities(vec!["text".to_owned()]);
+        let (harness, state) = create_harness().await;
+        let deps = harness.actor_deps().await;
+        let services = deps.services.clone();
+        seed_models_dev(&services, "llama3", true);
+        let registry =
+            crate::feat::provider_infra::ProviderRegistry::from_config(config).expect("registry");
+        services.provider_registry.replace(registry);
+        spawn_actor(&harness, &state, deps).await;
+
+        // When publishing ModelCacheLoaded for that model.
+        let mut cache = ModelCache::new();
+        cache.entries.insert(
+            "ollama".to_owned(),
+            vec![ModelInfo {
+                id: "llama3".to_owned(),
+                context_length: Some(8192),
+                input_modalities: InputModalities::text(),
+            }],
+        );
+        cache.last_updated_at = Some(jiff::Timestamp::now());
+        harness.publish(ModelCacheLoaded { cache }).await;
+        tokio::time::sleep(std::time::Duration::from_millis(50)).await;
+
+        // Then the config modalities win: the loaded cache stays text-only even
+        // though models.dev enrichment (run before the overlay) stamps Image.
+        let s = state.read();
+        let loaded = s.provider.model_cache.as_ref().expect("cache set");
+        assert!(
+            !loaded.entries["ollama"][0]
+                .input_modalities
+                .contains(crate::feat::provider_infra::Modality::Image),
+            "config [\"text\"] must beat models.dev image stamping"
+        );
     }
 
     #[rstest::rstest]
