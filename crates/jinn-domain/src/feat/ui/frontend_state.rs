@@ -252,7 +252,7 @@ mod tests {
         // Given a populated skill preview cache.
         let caches = FrontendCaches::default();
         caches.skill_preview_cache.write().insert(
-            "web-coder".to_owned(),
+            crate::feat::skills::skill_entry::body_hash_key("## body"),
             80,
             vec![Line::raw("old-theme")],
         );
