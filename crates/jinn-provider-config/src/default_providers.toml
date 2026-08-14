@@ -32,6 +32,20 @@ requires_key = false
 base_url = "http://localhost:11434"
 models = ["llama3", "codellama"]
 
+# Per-model metadata overrides ([[providers.model_info]]).
+# Each entry overrides the provider block for a single model id.
+# Fields left unset fall back to: provider block → API-discovered cache → models.dev.
+# context_length sets the context window in tokens.
+# input_modalities REPLACES the discovered value, e.g. ["text", "image"] for a vision model.
+# extra_body overrides the block-level body params for this model.
+# [[providers.model_info]]
+# id = "llama3"
+# context_length = 8192
+# input_modalities = ["text", "image"]
+#
+# [providers.model_info.extra_body]
+# num_ctx = 8192
+
 [[providers]]
 name = "lmstudio"
 backend = "lmstudio"

@@ -17,6 +17,7 @@ use crate::feat::provider::picker_entry::PickerEntry;
 
 fn ollama_entry() -> ProviderEntry {
     ProviderEntry {
+        model_info: Vec::new(),
         name: "ollama".to_owned(),
         backend: "ollama".to_owned(),
         models: vec!["llama3".to_owned()],
@@ -30,6 +31,7 @@ fn ollama_entry() -> ProviderEntry {
 
 fn openrouter_entry() -> ProviderEntry {
     ProviderEntry {
+        model_info: Vec::new(),
         name: "openrouter".to_owned(),
         backend: "openrouter".to_owned(),
         models: vec!["gpt-4".to_owned()],

@@ -430,6 +430,7 @@ mod tests {
     fn sample_config() -> ProvidersConfig {
         ProvidersConfig {
             providers: vec![ProviderEntry {
+                model_info: Vec::new(),
                 name: "ollama".to_owned(),
                 backend: "ollama".to_owned(),
                 models: vec!["llama3".to_owned()],
@@ -531,6 +532,7 @@ mod tests {
         // Given a registry with zai provider that has context_length: Some(128_000).
         let config = ProvidersConfig {
             providers: vec![ProviderEntry {
+                model_info: Vec::new(),
                 name: "zai".to_owned(),
                 backend: "zai".to_owned(),
                 models: vec!["zai-1.5".to_owned()],
@@ -598,6 +600,7 @@ mod tests {
         // Given a registry with ollama provider that has context_length: Some(4096).
         let config = ProvidersConfig {
             providers: vec![ProviderEntry {
+                model_info: Vec::new(),
                 name: "ollama".to_owned(),
                 backend: "ollama".to_owned(),
                 models: vec!["llama3".to_owned()],
@@ -724,6 +727,7 @@ mod tests {
         // Given a registry with zai provider that has context_length: Some(128_000).
         let config = ProvidersConfig {
             providers: vec![ProviderEntry {
+                model_info: Vec::new(),
                 name: "zai".to_owned(),
                 backend: "zai".to_owned(),
                 models: vec!["zai-1.5".to_owned()],
@@ -792,6 +796,7 @@ mod tests {
         // Given a registry with ollama provider that has context_length: Some(4096).
         let config = ProvidersConfig {
             providers: vec![ProviderEntry {
+                model_info: Vec::new(),
                 name: "ollama".to_owned(),
                 backend: "ollama".to_owned(),
                 models: vec!["llama3".to_owned()],

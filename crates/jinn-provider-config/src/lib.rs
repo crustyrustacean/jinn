@@ -30,8 +30,8 @@ mod stream_event;
 pub use api_keys::ApiKeys;
 pub use api_keys_service::ApiKeysService;
 pub use config::{
-    AliasEntry, AlloyStrategy, ConfigError, ProviderEntry, ProvidersConfig, config_path,
-    create_default_config, load_config, save_config,
+    AliasEntry, AlloyStrategy, ConfigError, ModelInfoEntry, ProviderEntry, ProvidersConfig,
+    config_path, create_default_config, load_config, save_config,
 };
 pub use config_storage::{
     ConfigStorage, ConfigStorageService, FilesystemConfigStorage, InMemoryConfigStorage,
