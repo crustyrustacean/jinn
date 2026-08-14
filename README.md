@@ -135,7 +135,7 @@ To create a new feature or project:
 jinn is configured via the files in the `~/.config/jinn` directory:
 
 - [`jinn.toml`](./crates/jinn-domain/src/feat/preferences_actor/default_jinn.toml) - user preferences (create new one with `jinn config init`)
-- [`providers.toml`](./crates/jinn-domain/src/feat/provider_infra/default_providers.toml) - LLM provider configuration
+- [`providers.toml`](./crates/jinn-provider-config/src/default_providers.toml) - LLM provider configuration. Per-model metadata (context window, input modalities, request body params) can be set with `[[providers.model_info]]` tables; hand-authored values take precedence over API-discovered data.
 - `themes/` - color themes
 - `personas/` - personas
 - `prompts/` - custom prompts
