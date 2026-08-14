@@ -224,6 +224,7 @@ impl ProviderActor {
         {
             let registry = self.deps.services.provider_registry.read();
             merge_context_lengths_from_registry(&mut cache, &registry);
+            apply_config_overrides(&mut cache, registry.config());
         }
         let models_dev = crate::feat::provider_infra::ModelsDevData::load(
             &self.deps.services.paths.models_dev_user_path(),
@@ -245,6 +246,7 @@ impl ProviderActor {
         {
             let registry = self.deps.services.provider_registry.read();
             merge_context_lengths_from_registry(&mut cache, &registry);
+            apply_config_overrides(&mut cache, registry.config());
         }
         let models_dev = crate::feat::provider_infra::ModelsDevData::load(
             &self.deps.services.paths.models_dev_user_path(),
@@ -338,11 +340,12 @@ impl ProviderActor {
 }
 
 /// Merge `context_length` from the registry's resolved providers into the
-/// model cache, filling in `None` slots where the API did not provide a value.
+/// model cache, overwriting API-discovered values.
 ///
-/// This is a conservative merge: API-provided values are never overwritten.
-/// Only `None` entries are filled from the registry (which sources its value
-/// from `providers.toml` manual overrides).
+/// Config precedence: `providers.toml` values (per-model `model_info`, then
+/// block-level) beat API-discovered values, which in turn beat models.dev.
+/// The registry's resolved providers already carry the config-side value, so
+/// a `Some` here always wins; registry `None` leaves the cache value alone.
 fn merge_context_lengths_from_registry(
     cache: &mut crate::feat::provider_infra::ModelCache,
     registry: &crate::feat::provider_infra::ProviderRegistry,
@@ -355,7 +358,7 @@ fn merge_context_lengths_from_registry(
             continue;
         };
         for model in models.iter_mut() {
-            if model.id == provider.model && model.context_length.is_none() {
+            if model.id == provider.model {
                 model.context_length = Some(registry_ctx);
             }
         }
@@ -381,6 +384,69 @@ fn merge_models_dev_data(
             models_dev.enrich(model);
         }
     }
+}
+
+/// Apply hand-authored per-model overrides from `providers.toml` onto the
+/// model cache, and inject entries for static models that discovery never returned.
+///
+/// This is the highest-priority merge: explicit config values replace both
+/// API-discovered and models.dev values. Config `context_length` fills `None`
+/// slots (falling back to what discovery produced); config `input_modalities`
+/// replace the discovered value outright when set.
+///
+/// Models that never appear in the cache get a new entry (so the status bar,
+/// compaction gate, and attachment gate can resolve them); find-or-insert
+/// semantics keep repeated applications idempotent.
+fn apply_config_overrides(
+    cache: &mut crate::feat::provider_infra::ModelCache,
+    config: &crate::feat::provider_infra::ProvidersConfig,
+) {
+    for entry in &config.providers {
+        for info in &entry.model_info {
+            let block_ctx = info.context_length.or(entry.context_length);
+            let models = cache.entries.entry(entry.name.clone()).or_default();
+            match models.iter_mut().find(|m| m.id == info.id) {
+                Some(model) => {
+                    if block_ctx.is_some() {
+                        model.context_length = block_ctx;
+                    }
+                    if let Some(modalities) = parse_modalities(info.input_modalities.as_deref()) {
+                        model.input_modalities = modalities;
+                    }
+                }
+                None => {
+                    models.push(crate::feat::provider_infra::ModelInfo {
+                        id: info.id.clone(),
+                        context_length: block_ctx,
+                        input_modalities: parse_modalities(info.input_modalities.as_deref())
+                            .unwrap_or_else(crate::feat::provider_infra::InputModalities::text),
+                    });
+                }
+            }
+        }
+    }
+}
+
+/// Parses config modality strings ("text", "image") into `InputModalities`.
+/// Unknown strings log a warning and are ignored; `None` (field unset)
+/// returns `None` so the discovered value is kept.
+fn parse_modalities(
+    spec: Option<&[String]>,
+) -> Option<crate::feat::provider_infra::InputModalities> {
+    use crate::feat::provider_infra::{InputModalities, Modality};
+    let spec = spec?;
+    let mut out = InputModalities::default();
+    for s in spec {
+        match s.as_str() {
+            "text" => out.insert(Modality::Text),
+            "image" => out.insert(Modality::Image),
+            other => tracing::warn!(
+                modality = other,
+                "unknown input modality in providers.toml model_info"
+            ),
+        }
+    }
+    Some(out)
 }
 
 #[cfg(test)]
@@ -596,7 +662,7 @@ mod tests {
 
     #[rstest::rstest]
     #[tokio::test]
-    async fn models_refreshed_preserves_api_context_length_when_both_sources_have_value() {
+    async fn models_refreshed_block_config_beats_api_value() {
         // Given a registry with ollama provider that has context_length: Some(4096).
         let config = ProvidersConfig {
             providers: vec![ProviderEntry {
@@ -614,11 +680,12 @@ mod tests {
             default_provider: None,
         };
         let (harness, state) = create_harness().await;
-        let services = harness.actor_deps().await.services;
+        let deps = harness.actor_deps().await;
+        let services = deps.services.clone();
         let registry =
             crate::feat::provider_infra::ProviderRegistry::from_config(config).expect("registry");
         services.provider_registry.replace(registry);
-        spawn_actor(&harness, &state, harness.actor_deps().await).await;
+        spawn_actor(&harness, &state, deps).await;
 
         // When publishing ModelsRefreshed where API returns context_length: Some(8192).
         let mut results = std::collections::HashMap::new();
@@ -639,14 +706,15 @@ mod tests {
 
         tokio::time::sleep(std::time::Duration::from_millis(50)).await;
 
-        // Then the API value wins (8192), not the registry value (4096).
+        // Then the block config value wins (4096), not the API value (8192) —
+        // unified precedence: per-model config > block config > API > models.dev.
         let s = state.read();
         let cache = s
             .provider
             .model_cache
             .as_ref()
             .expect("cache should be set");
-        assert_eq!(cache.entries["ollama"][0].context_length, Some(8192));
+        assert_eq!(cache.entries["ollama"][0].context_length, Some(4096));
     }
 
     #[rstest::rstest]
@@ -792,7 +860,7 @@ mod tests {
 
     #[rstest::rstest]
     #[tokio::test]
-    async fn model_cache_loaded_preserves_cache_value_when_both_sources_have_value() {
+    async fn model_cache_loaded_block_config_beats_api_value() {
         // Given a registry with ollama provider that has context_length: Some(4096).
         let config = ProvidersConfig {
             providers: vec![ProviderEntry {
@@ -810,11 +878,12 @@ mod tests {
             default_provider: None,
         };
         let (harness, state) = create_harness().await;
-        let services = harness.actor_deps().await.services;
+        let deps = harness.actor_deps().await;
+        let services = deps.services.clone();
         let registry =
             crate::feat::provider_infra::ProviderRegistry::from_config(config).expect("registry");
         services.provider_registry.replace(registry);
-        spawn_actor(&harness, &state, harness.actor_deps().await).await;
+        spawn_actor(&harness, &state, deps).await;
 
         // When publishing ModelCacheLoaded with cache that has context_length: Some(8192).
         let mut cache = ModelCache::new();
@@ -836,14 +905,122 @@ mod tests {
 
         tokio::time::sleep(std::time::Duration::from_millis(50)).await;
 
-        // Then the cache value wins (8192), not the registry value (4096).
+        // Then the block config value wins (4096), not the API value (8192) —
+        // unified precedence: per-model config > block config > API > models.dev.
         let s = state.read();
         let loaded = s
             .provider
             .model_cache
             .as_ref()
             .expect("cache should be set");
-        assert_eq!(loaded.entries["ollama"][0].context_length, Some(8192));
+        assert_eq!(loaded.entries["ollama"][0].context_length, Some(4096));
+    }
+
+    fn config_with_model_info() -> ProvidersConfig {
+        use crate::feat::provider_infra::ModelInfoEntry;
+        ProvidersConfig {
+            providers: vec![ProviderEntry {
+                model_info: vec![ModelInfoEntry {
+                    id: "llama3".to_owned(),
+                    context_length: Some(16384),
+                    input_modalities: Some(vec!["text".to_owned(), "image".to_owned()]),
+                    extra_body: None,
+                }],
+                name: "ollama".to_owned(),
+                backend: "ollama".to_owned(),
+                models: vec!["llama3".to_owned()],
+                base_url: None,
+                api_key_env: None,
+                requires_key: false,
+                extra_body: None,
+                context_length: None,
+            }],
+            aliases: vec![],
+            default_provider: None,
+        }
+    }
+
+    #[rstest::rstest]
+    #[tokio::test]
+    async fn model_cache_loaded_per_model_config_beats_api_value() {
+        // Given a registry with a per-model context_length of 16384.
+        let (harness, state) = create_harness().await;
+        let deps = harness.actor_deps().await;
+        let services = deps.services.clone();
+        let registry =
+            crate::feat::provider_infra::ProviderRegistry::from_config(config_with_model_info())
+                .expect("registry");
+        services.provider_registry.replace(registry);
+        spawn_actor(&harness, &state, deps).await;
+
+        // When publishing ModelCacheLoaded with an API-discovered value of 8192.
+        let mut cache = ModelCache::new();
+        cache.entries.insert(
+            "ollama".to_owned(),
+            vec![ModelInfo {
+                id: "llama3".to_owned(),
+                context_length: Some(8192),
+                input_modalities: InputModalities::text(),
+            }],
+        );
+        cache.last_updated_at = Some(jiff::Timestamp::now());
+        harness.publish(ModelCacheLoaded { cache }).await;
+        tokio::time::sleep(std::time::Duration::from_millis(50)).await;
+
+        // Then the per-model config value wins.
+        let s = state.read();
+        let loaded = s.provider.model_cache.as_ref().expect("cache set");
+        assert_eq!(loaded.entries["ollama"][0].context_length, Some(16384));
+        // And the configured modalities replace the discovered text-only value.
+        assert!(
+            loaded.entries["ollama"][0]
+                .input_modalities
+                .contains(crate::feat::provider_infra::Modality::Image)
+        );
+    }
+
+    #[rstest::rstest]
+    #[tokio::test]
+    async fn model_cache_loaded_injects_static_only_model() {
+        // Given a registry whose model_info targets a model with no cache entry.
+        let (harness, state) = create_harness().await;
+        let deps = harness.actor_deps().await;
+        let services = deps.services.clone();
+        let registry =
+            crate::feat::provider_infra::ProviderRegistry::from_config(config_with_model_info())
+                .expect("registry");
+        services.provider_registry.replace(registry);
+        spawn_actor(&harness, &state, deps).await;
+
+        // When publishing a ModelCacheLoaded that lacks the configured model.
+        let mut cache = ModelCache::new();
+        cache.entries.insert(
+            "ollama".to_owned(),
+            vec![ModelInfo {
+                id: "mistral".to_owned(),
+                context_length: None,
+                input_modalities: InputModalities::text(),
+            }],
+        );
+        cache.last_updated_at = Some(jiff::Timestamp::now());
+        harness.publish(ModelCacheLoaded { cache }).await;
+        tokio::time::sleep(std::time::Duration::from_millis(50)).await;
+
+        // Then the static-only model is injected with its config values.
+        let s = state.read();
+        let loaded = s.provider.model_cache.as_ref().expect("cache set");
+        let injected = loaded.entries["ollama"]
+            .iter()
+            .find(|m| m.id == "llama3")
+            .expect("injected entry");
+        assert_eq!(injected.context_length, Some(16384));
+        assert!(
+            injected
+                .input_modalities
+                .contains(crate::feat::provider_infra::Modality::Image)
+        );
+        // And no duplicate entries were created.
+        assert_eq!(loaded.entries["ollama"].len(), 2);
     }
 
     #[rstest::rstest]

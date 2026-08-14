@@ -838,13 +838,15 @@ fn unavailable_providers_returns_empty_when_all_available() {
     assert!(unavailable.is_empty());
 }
 
-fn model_info(id: &str, context_length: Option<u32>, modalities: Option<Vec<&str>>) -> crate::config::ModelInfoEntry {
+fn model_info(
+    id: &str,
+    context_length: Option<u32>,
+    modalities: Option<Vec<&str>>,
+) -> crate::config::ModelInfoEntry {
     crate::config::ModelInfoEntry {
         id: id.to_owned(),
         context_length,
-        input_modalities: modalities.map(|m| {
-            m.into_iter().map(String::from).collect::<Vec<_>>()
-        }),
+        input_modalities: modalities.map(|m| m.into_iter().map(String::from).collect::<Vec<_>>()),
         extra_body: None,
     }
 }
@@ -853,13 +855,16 @@ fn model_info(id: &str, context_length: Option<u32>, modalities: Option<Vec<&str
 fn accepts_model_info_matching_configured_models() {
     // Given a provider whose model_info ids all appear in its models list.
     let entry = ProviderEntry {
-        model_info: vec![model_info("llama3", Some(8192), Some(vec!["text", "image"]))],
+        model_info: vec![model_info(
+            "llama3",
+            Some(8192),
+            Some(vec!["text", "image"]),
+        )],
         ..ollama_entry()
     };
     let config = make_config(vec![entry], vec![], None);
 
     // When building the registry.
-
 
     // Then validation passes.
     assert!(ProviderRegistry::from_config(config).is_ok());
@@ -1047,10 +1052,16 @@ fn merge_cache_per_model_extra_body_beats_block_level() {
     let remote = registry
         .get(&ProviderId::new("ollama/mistral".to_owned()))
         .expect("remote entry");
-    assert_eq!(remote.extra_body.as_ref().expect("extra")["per_model"], true);
+    assert_eq!(
+        remote.extra_body.as_ref().expect("extra")["per_model"],
+        true
+    );
     // And the block-level extra_body still applies to the static model.
     let static_entry = registry
         .get(&ProviderId::new("ollama/llama3".to_owned()))
         .expect("static entry");
-    assert_eq!(static_entry.extra_body.as_ref().expect("extra")["block"], true);
+    assert_eq!(
+        static_entry.extra_body.as_ref().expect("extra")["block"],
+        true
+    );
 }

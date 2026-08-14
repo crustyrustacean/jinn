@@ -85,7 +85,7 @@ pub struct ProviderEntry {
 }
 
 /// Per-model metadata override in `providers.toml`.
-
+///
 /// Declared under a provider block as `[[providers.model_info]]` tables.
 /// Each entry overrides the provider-block defaults for a single model id.
 /// Fields left unset inherit the block-level values, then API-discovered

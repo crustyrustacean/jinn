@@ -122,10 +122,7 @@ impl ProviderRegistry {
                     return Err(Report::new(ConfigError::Validation))
                         .attach(format!("duplicate expanded provider ID: {id}"));
                 }
-                let per_model = entry
-                    .model_info
-                    .iter()
-                    .find(|info| &info.id == model);
+                let per_model = entry.model_info.iter().find(|info| &info.id == model);
                 let resolved = ResolvedProvider {
                     id: id.clone(),
                     name: entry.name.clone(),
@@ -228,7 +225,10 @@ impl ProviderRegistry {
                 }
 
                 // Precedence: per-model config > block config > API-discovered value.
-                let per_model = entry.model_info.iter().find(|info| info.id == model_info.id);
+                let per_model = entry
+                    .model_info
+                    .iter()
+                    .find(|info| info.id == model_info.id);
                 let context_length = per_model
                     .and_then(|info| info.context_length)
                     .or(entry.context_length)
