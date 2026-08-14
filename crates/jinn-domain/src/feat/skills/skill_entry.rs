@@ -117,7 +117,7 @@ impl SkillEntry {
 
 impl PreviewContent for SkillEntry {
     fn cache_key(&self) -> Option<String> {
-        Some(self.name.clone())
+        Some(body_hash_key(&self.body))
     }
     fn preview_lines(&self, width: usize) -> Vec<Line<'static>> {
         if self.body.is_empty() {
@@ -125,6 +125,18 @@ impl PreviewContent for SkillEntry {
         }
         render_markdown(&self.body, width as u16, &self.theme)
     }
+}
+
+/// Stable cache key for a skill body: the decimal content hash.
+///
+/// Keyed on body content (not name) so that editing a SKILL.md or a project
+/// skill shadowing a global of the same name produces a distinct cache entry
+/// — the render cache never serves the wrong markdown.
+pub(crate) fn body_hash_key(body: &str) -> String {
+    use std::hash::Hasher as _;
+    let mut hasher = std::collections::hash_map::DefaultHasher::new();
+    hasher.write(body.as_bytes());
+    hasher.finish().to_string()
 }
 
 /// Splits match indices from `search_text = "{name} {description}"` into
@@ -294,9 +306,21 @@ mod tests {
     }
 
     #[rstest::rstest]
-    fn cache_key_returns_skill_name() {
-        let entry = make_entry("my-skill", "desc", true);
-        assert_eq!(entry.cache_key().as_deref(), Some("my-skill"));
+    fn cache_key_is_body_content_hash() {
+        // Given two entries with the same name but different bodies, and a
+        // third with a different name but the same body as the first.
+        let mut a = make_entry("my-skill", "desc", true);
+        a.body = "# body one".to_owned();
+        let mut b = make_entry("my-skill", "desc", true);
+        b.body = "# body two".to_owned();
+        let mut c = make_entry("other-name", "desc", true);
+        c.body = "# body one".to_owned();
+
+        // When getting cache keys.
+        // Then same body -> same key, different body -> different key,
+        // regardless of skill name.
+        assert_eq!(a.cache_key(), c.cache_key());
+        assert_ne!(a.cache_key(), b.cache_key());
     }
     #[rstest::rstest]
     fn preview_lines_empty_for_empty_body() {

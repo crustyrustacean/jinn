@@ -200,7 +200,6 @@ impl SkillsScanActor {
                     )
                 };
                 self.state.with_skills_frontend(&self.frontend_cap, |ops| {
-                    ops.clear_preview_cache();
                     ops.reload_picker(&discovered, &disabled, &sample_theme);
                 });
 

@@ -18,7 +18,6 @@ use crate::feat::session_lifecycle::protocol::event::{
     SessionCreated, SessionCwdChanged, SessionSetupCompleted,
 };
 use crate::init::env_init_actor::EnvironmentLoaded;
-use jinn_selection_widget::PreviewCache;
 
 use super::*;
 
@@ -266,15 +265,18 @@ async fn environment_loaded_event_scans_active_session_skills() {
 }
 
 #[tokio::test]
-async fn scan_skills_clears_skill_preview_cache() {
+async fn scan_skills_preserves_skill_preview_cache() {
+    use jinn_selection_widget::PreviewCache as _;
+
     // Given an actor whose state holds a populated preview cache (from a
     // previous picker session).
     let dir = tempfile::tempdir().expect("create temp dir");
     let (harness, state, deps) = create_harness_with_paths(AppPaths::new_in(dir.path())).await;
+    let cache_key = crate::feat::skills::skill_entry::body_hash_key("## stale body");
     {
         let guard = state.write_test_no_cap();
         guard.frontend.caches.skill_preview_cache.write().insert(
-            "stale-skill".to_owned(),
+            cache_key.clone(),
             80,
             vec![ratatui::text::Line::raw("stale")],
         );
@@ -285,7 +287,9 @@ async fn scan_skills_clears_skill_preview_cache() {
     // When publishing ScanSkills command (rescan).
     harness.publish(ScanSkills { session_id }).await;
 
-    // Then the cache is cleared so rescanned bodies are re-rendered fresh.
+    // Then the cache still holds its entry — rescans never invalidate the
+    // preview cache because entries are keyed by body content hash, so an
+    // unchanged body is still a hit and a changed body is a new key.
     let recorder = harness.spawn_recorder::<SkillsLoaded>().await;
     let messages = await_recorded(&recorder, 1, std::time::Duration::from_secs(2)).await;
     assert!(!messages.is_empty());
@@ -297,8 +301,147 @@ async fn scan_skills_clears_skill_preview_cache() {
             .caches
             .skill_preview_cache
             .read()
-            .is_empty(),
-        "rescan must clear the skill preview cache"
+            .get(&cache_key, 80)
+            .is_some(),
+        "rescan must preserve the skill preview cache"
+    );
+}
+/// End-to-end AC2 flow: editing a skill's SKILL.md body on disk and rescanning
+/// re-renders the picker preview with the new content (the changed body hashes
+/// to a new cache key, so the stale entry can never be served).
+/// Reloads skill picker entries from the state's active session (mirrors what
+/// the SkillsLoaded handler does in production).
+fn reload_picker(state: &State) {
+    use crate::feat::skills::reload::reload_skill_picker_entries;
+
+    let mut guard = state.write_test_no_cap();
+    let (discovered, disabled, theme) = {
+        let s = guard.active_session();
+        (
+            s.discovered_skills().to_vec(),
+            s.disabled_skills().clone(),
+            guard.frontend.theme.clone(),
+        )
+    };
+    reload_skill_picker_entries(&mut guard.frontend, &discovered, &disabled, &theme);
+}
+
+/// Renders the skill picker into a string via a test terminal.
+fn draw_picker(state: &State) -> String {
+    use crate::feat::picker::render::render_skill_picker;
+    use ratatui::Terminal;
+    use ratatui::backend::TestBackend;
+
+    let backend = TestBackend::new(100, 30);
+    let mut terminal = Terminal::new(backend).expect("terminal");
+    let area = ratatui::layout::Rect::new(0, 0, 100, 30);
+    let read = state.read();
+    terminal
+        .draw(|frame| {
+            let ctx = crate::common::render_ctx::RenderCtx::new(&read);
+            render_skill_picker(frame, area, &ctx);
+        })
+        .expect("draw");
+    let mut buffer = String::new();
+    terminal
+        .backend()
+        .buffer()
+        .content()
+        .iter()
+        .for_each(|cell| buffer.push_str(cell.symbol()));
+    buffer
+}
+
+#[tokio::test]
+async fn rescan_after_body_edit_renders_new_content() {
+    // Given a scanned skill whose preview has been rendered into the cache.
+    let home = tempfile::tempdir().expect("create home dir");
+    let skill_file = home.path().join(".agents/skills/shared/SKILL.md");
+    std::fs::create_dir_all(skill_file.parent().expect("skill dir")).expect("create skill dir");
+    std::fs::write(
+        &skill_file,
+        "---\nname: shared\ndescription: shared skill\n---\n\n# OLD body",
+    )
+    .expect("write SKILL.md");
+
+    let paths_root = tempfile::tempdir().expect("create paths root");
+    let mut paths = AppPaths::new_in(paths_root.path());
+    paths.set_home_dir_for_test(home.path().to_path_buf());
+    let (harness, state, deps) = create_harness_with_paths(paths).await;
+    let session_id = state.read().session.active_session_id().clone();
+    {
+        let mut guard = state.write_test_no_cap();
+        guard
+            .session
+            .active_session_mut()
+            .set_cwd(home.path().to_path_buf());
+    }
+    let _actor = spawn_actor(&deps, &state).await;
+    let recorder = harness.spawn_recorder::<SkillsLoaded>().await;
+    harness
+        .publish(ScanSkills {
+            session_id: session_id.clone(),
+        })
+        .await;
+    let messages = await_recorded(&recorder, 1, std::time::Duration::from_secs(2)).await;
+    assert!(!messages.is_empty(), "first scan should emit SkillsLoaded");
+
+    reload_picker(&state);
+    {
+        let mut guard = state.write_test_no_cap();
+        guard
+            .frontend
+            .scope_stack
+            .push(crate::common::app_state::FocusScope::Picker {
+                kind: crate::protocol::PickerKind::Skill,
+            });
+    }
+    let first_output = draw_picker(&state);
+    assert!(
+        first_output.contains("OLD body"),
+        "initial render shows OLD body"
+    );
+    let entries_after_first = state
+        .read()
+        .frontend
+        .caches
+        .skill_preview_cache
+        .read()
+        .len();
+    assert_eq!(entries_after_first, 1, "old body populates one cache entry");
+
+    // When the SKILL.md body is edited on disk and rescanned.
+    std::fs::write(
+        &skill_file,
+        "---\nname: shared\ndescription: shared skill\n---\n\n# NEW body",
+    )
+    .expect("rewrite SKILL.md");
+    harness
+        .publish(ScanSkills {
+            session_id: session_id.clone(),
+        })
+        .await;
+    let messages = await_recorded(&recorder, 1, std::time::Duration::from_secs(2)).await;
+    assert!(!messages.is_empty(), "rescan should emit SkillsLoaded");
+    reload_picker(&state);
+    let second_output = draw_picker(&state);
+
+    // Then the render shows the NEW body, and the cache grew by one entry
+    // (the old entry remains but can never be served for the new body).
+    assert!(
+        second_output.contains("NEW body"),
+        "render after rescan must show the edited body"
+    );
+    assert_eq!(
+        state
+            .read()
+            .frontend
+            .caches
+            .skill_preview_cache
+            .read()
+            .len(),
+        entries_after_first + 1,
+        "edited body produces a new cache key, not a stale hit"
     );
 }
 

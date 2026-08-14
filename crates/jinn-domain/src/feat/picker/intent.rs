@@ -2579,7 +2579,7 @@ mod tests {
         // Given a populated cache (simulating prior viewing).
         let mut state = setup_state_with_skills();
         state.frontend.caches.skill_preview_cache.write().insert(
-            "web-coder".to_owned(),
+            crate::feat::skills::skill_entry::body_hash_key("## rendered body"),
             80,
             vec![ratatui::text::Line::raw("rendered")],
         );
