@@ -122,6 +122,10 @@ impl ProviderRegistry {
                     return Err(Report::new(ConfigError::Validation))
                         .attach(format!("duplicate expanded provider ID: {id}"));
                 }
+                let per_model = entry
+                    .model_info
+                    .iter()
+                    .find(|info| &info.id == model);
                 let resolved = ResolvedProvider {
                     id: id.clone(),
                     name: entry.name.clone(),
@@ -130,9 +134,13 @@ impl ProviderRegistry {
                     base_url: entry.base_url.clone(),
                     api_key_env: entry.api_key_env.clone(),
                     requires_key: entry.requires_key,
-                    extra_body: entry.extra_body.clone(),
+                    extra_body: per_model
+                        .and_then(|info| info.extra_body.clone())
+                        .or_else(|| entry.extra_body.clone()),
                     is_remote: false,
-                    context_length: entry.context_length,
+                    context_length: per_model
+                        .and_then(|info| info.context_length)
+                        .or(entry.context_length),
                 };
                 resolved_map.insert(id, resolved.clone());
                 resolved_list.push(resolved);
@@ -219,8 +227,12 @@ impl ProviderRegistry {
                     continue; // Static entry wins.
                 }
 
-                // Manual override from config takes precedence over API-discovered value.
-                let context_length = entry.context_length.or(model_info.context_length);
+                // Precedence: per-model config > block config > API-discovered value.
+                let per_model = entry.model_info.iter().find(|info| info.id == model_info.id);
+                let context_length = per_model
+                    .and_then(|info| info.context_length)
+                    .or(entry.context_length)
+                    .or(model_info.context_length);
 
                 let resolved = ResolvedProvider {
                     id: id.clone(),
@@ -230,7 +242,9 @@ impl ProviderRegistry {
                     base_url: entry.base_url.clone(),
                     api_key_env: entry.api_key_env.clone(),
                     requires_key: entry.requires_key,
-                    extra_body: entry.extra_body.clone(),
+                    extra_body: per_model
+                        .and_then(|info| info.extra_body.clone())
+                        .or_else(|| entry.extra_body.clone()),
                     is_remote: true,
                     context_length,
                 };
