@@ -177,6 +177,63 @@ mod tests {
     use ratatui::Terminal;
     use ratatui::backend::TestBackend;
 
+    /// Two skills with the same name but different bodies (the cross-session
+    /// project/global shadowing shape) must occupy distinct cache entries — the
+    /// body-hash key means neither can ever be served the other's markdown.
+    #[test]
+    fn render_skill_picker_same_name_different_bodies_cache_independently() {
+        // Given a picker holding two same-named skills with different bodies
+        // (as two sessions' shadowing would produce).
+        let mut state = AppState::default();
+        let skill = |body: &str| crate::feat::skills::Skill {
+            name: "shared".to_owned(),
+            description: "shadowed".to_owned(),
+            body: body.to_owned(),
+            file_path: std::path::PathBuf::from("/tmp/shared/SKILL.md"),
+            base_dir: std::path::PathBuf::from("/tmp/shared"),
+            source: crate::feat::skills::SkillSource::Global,
+        };
+        state
+            .active_session_mut()
+            .set_discovered_skills(vec![skill("# GLOBAL body"), skill("# PROJECT body")]);
+        state.frontend.scope_stack.push(FocusScope::Picker {
+            kind: PickerKind::Skill,
+        });
+        {
+            let disabled = state.active_session().disabled_skills().clone();
+            let theme = state.frontend.theme.clone();
+            let discovered = state.active_session().discovered_skills().to_vec();
+            reload_skill_picker_entries(&mut state.frontend, &discovered, &disabled, &theme);
+        }
+        state.frontend.skill_picker_mut().set_selection(0);
+
+        let draw = |state: &AppState, area: Rect| {
+            let backend = TestBackend::new(area.width, area.height);
+            let mut terminal = Terminal::new(backend).expect("terminal");
+            terminal
+                .draw(|frame| {
+                    let ctx = RenderCtx::new(state);
+                    render_skill_picker(frame, area, &ctx);
+                })
+                .expect("draw");
+        };
+
+        // When rendering each same-named skill at the same terminal size.
+        let area = Rect::new(0, 0, 100, 30);
+        draw(&state, area);
+        let after_first = state.frontend.caches.skill_preview_cache.read().len();
+        state.frontend.skill_picker_mut().set_selection(1);
+        draw(&state, area);
+        let after_second = state.frontend.caches.skill_preview_cache.read().len();
+
+        // Then the second body adds a second entry — no (name, width) collision.
+        assert_eq!(after_first, 1, "first body populates one entry");
+        assert_eq!(
+            after_second, 2,
+            "different body under the same name must be a cache miss, not a collision"
+        );
+    }
+
     /// Rendering the skill picker with the same selection and width populates the
     /// preview cache exactly once; the second render is a cache hit (no re-render).
     #[test]
@@ -224,12 +281,6 @@ mod tests {
             cache.len(),
             1,
             "second render should be a cache hit, not a second insert"
-        );
-        // The entry is for the selected skill regardless of the popup's computed width.
-        assert_eq!(
-            cache.skill_names(),
-            vec!["web-coder".to_owned()],
-            "only the selected skill's preview should be cached"
         );
     }
 
@@ -302,9 +353,6 @@ mod tests {
             2,
             "returning to A should be a cache hit, not a re-render"
         );
-        let mut names = cache.skill_names();
-        names.sort();
-        assert_eq!(names, vec!["rust".to_owned(), "web-coder".to_owned()]);
     }
 
     /// Resizing the terminal (width change) re-renders for the new width; the cache
@@ -363,20 +411,6 @@ mod tests {
             cache.len(),
             2,
             "width change should create a second width-keyed entry, not overwrite"
-        );
-        // Then the cache holds two entries: one per width key. The single skill
-        // name appears under both widths (not deduplicated by skill_names).
-        let mut names = cache.skill_names();
-        names.sort();
-        assert_eq!(
-            cache.len(),
-            2,
-            "width change should create a second width-keyed entry, not overwrite"
-        );
-        assert_eq!(
-            names,
-            vec!["web-coder".to_owned(), "web-coder".to_owned()],
-            "same skill name appears under two width keys"
         );
     }
 

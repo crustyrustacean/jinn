@@ -119,6 +119,8 @@ Entries are added or amended **only with human approval**.
 - (skills) The `skill` tool loads a skill's body by name from the discovered set and returns the body in the tool result; loading an already-loaded skill returns "already loaded" instead of reloading.
 - (skills) The `skill` tool loads project-local skills from their discovered file path and refuses disabled or nonexistent skills.
 - (skills) Two skills ship by default: `phased-task-loop` and `simple-task-loop`.
+- (skills) The skill picker's rendered markdown previews are cached in an app-lifetime cache keyed by (body content hash, width); skill rescans and session lifecycle events never invalidate it.
+- (skills) The skill preview cache is cleared only on theme change (via FrontendCaches::invalidate_all); its memory usage is unbounded by design.
 - (storage) Sessions and chat history persist to a SQLite database (`sessions.db` under the data dir).
 - (storage) User-editable TOML files (`providers.toml`, `jinn.toml`) are written through a comment-preserving `DocumentPatcher`, never via plain serialization.
 - (storage) `jinn.toml` holds user preferences and is auto-created if missing.

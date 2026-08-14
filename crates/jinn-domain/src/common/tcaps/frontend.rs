@@ -100,10 +100,6 @@ impl DashboardOps<'_> {
 }
 
 impl SkillPickerOps<'_> {
-    /// Clear the skill preview cache.
-    pub fn clear_preview_cache(&mut self) {
-        self.0.caches.skill_preview_cache.write().clear();
-    }
     /// Reload the skills picker entries from the discovered/disabled sets.
     pub fn reload_picker(
         &mut self,
@@ -201,8 +197,7 @@ impl State {
         ))
     }
 
-    /// Write access to the skills picker + preview cache, scoped via
-    /// [`SkillPickerOps`].
+    /// Write access to the skills picker, scoped via [`SkillPickerOps`].
     pub fn with_skills_frontend<R, F>(&self, _cap: &FrontendCap, f: F) -> R
     where
         F: FnOnce(&mut SkillPickerOps<'_>) -> R,

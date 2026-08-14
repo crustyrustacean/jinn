@@ -18,7 +18,6 @@ use crate::feat::session_lifecycle::protocol::event::{
     SessionCreated, SessionCwdChanged, SessionSetupCompleted,
 };
 use crate::init::env_init_actor::EnvironmentLoaded;
-use jinn_selection_widget::PreviewCache;
 
 use super::*;
 
@@ -266,15 +265,18 @@ async fn environment_loaded_event_scans_active_session_skills() {
 }
 
 #[tokio::test]
-async fn scan_skills_clears_skill_preview_cache() {
+async fn scan_skills_preserves_skill_preview_cache() {
+    use jinn_selection_widget::PreviewCache as _;
+
     // Given an actor whose state holds a populated preview cache (from a
     // previous picker session).
     let dir = tempfile::tempdir().expect("create temp dir");
     let (harness, state, deps) = create_harness_with_paths(AppPaths::new_in(dir.path())).await;
+    let cache_key = crate::feat::skills::skill_entry::body_hash_key("## stale body");
     {
         let guard = state.write_test_no_cap();
         guard.frontend.caches.skill_preview_cache.write().insert(
-            "stale-skill".to_owned(),
+            cache_key.clone(),
             80,
             vec![ratatui::text::Line::raw("stale")],
         );
@@ -285,7 +287,9 @@ async fn scan_skills_clears_skill_preview_cache() {
     // When publishing ScanSkills command (rescan).
     harness.publish(ScanSkills { session_id }).await;
 
-    // Then the cache is cleared so rescanned bodies are re-rendered fresh.
+    // Then the cache still holds its entry — rescans never invalidate the
+    // preview cache because entries are keyed by body content hash, so an
+    // unchanged body is still a hit and a changed body is a new key.
     let recorder = harness.spawn_recorder::<SkillsLoaded>().await;
     let messages = await_recorded(&recorder, 1, std::time::Duration::from_secs(2)).await;
     assert!(!messages.is_empty());
@@ -297,8 +301,9 @@ async fn scan_skills_clears_skill_preview_cache() {
             .caches
             .skill_preview_cache
             .read()
-            .is_empty(),
-        "rescan must clear the skill preview cache"
+            .get(&cache_key, 80)
+            .is_some(),
+        "rescan must preserve the skill preview cache"
     );
 }
 
