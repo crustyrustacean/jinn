@@ -52,6 +52,7 @@ impl ProviderRegistry {
     /// - No empty models lists.
     /// - No duplicate expanded IDs (`{name}/{model}`).
     /// - All backend strings parse via `Backend::from_str` (or are `"sample"`).
+    /// - All `model_info` ids exist in their provider's `models` list, without duplicates.
     /// - All alias targets refer to existing expanded IDs.
     ///
     /// # Errors
@@ -74,6 +75,25 @@ impl ProviderRegistry {
                     "provider '{}' has an empty models list",
                     provider.name
                 ));
+            }
+        }
+
+        // Check model_info ids reference configured models and are unique per provider.
+        for provider in &config.providers {
+            let mut seen_info_ids = HashSet::new();
+            for info in &provider.model_info {
+                if !provider.models.contains(&info.id) {
+                    return Err(Report::new(ConfigError::Validation)).attach(format!(
+                        "model_info id '{}' is not in provider '{}' models list",
+                        info.id, provider.name
+                    ));
+                }
+                if !seen_info_ids.insert(&info.id) {
+                    return Err(Report::new(ConfigError::Validation)).attach(format!(
+                        "duplicate model_info id '{}' in provider '{}'",
+                        info.id, provider.name
+                    ));
+                }
             }
         }
 

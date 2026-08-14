@@ -14,6 +14,7 @@ fn clone_sees_same_providers() {
     // Given a service with one provider.
     let config = ProvidersConfig {
         providers: vec![crate::config::ProviderEntry {
+            model_info: Vec::new(),
             name: "ollama".to_owned(),
             backend: "ollama".to_owned(),
             models: vec!["llama3".to_owned()],
@@ -46,6 +47,7 @@ fn service_with_providers() -> ProviderRegistryService {
     let config = ProvidersConfig {
         providers: vec![
             crate::config::ProviderEntry {
+                model_info: Vec::new(),
                 name: "ollama".to_owned(),
                 backend: "ollama".to_owned(),
                 models: vec!["llama3".to_owned()],
@@ -56,6 +58,7 @@ fn service_with_providers() -> ProviderRegistryService {
                 context_length: None,
             },
             crate::config::ProviderEntry {
+                model_info: Vec::new(),
                 name: "openrouter".to_owned(),
                 backend: "openrouter".to_owned(),
                 models: vec!["gpt-4".to_owned()],
@@ -182,6 +185,7 @@ fn default_provider_id_delegates_to_registry() {
     // Given a service with a configured default provider.
     let config = ProvidersConfig {
         providers: vec![crate::config::ProviderEntry {
+            model_info: Vec::new(),
             name: "ollama".to_owned(),
             backend: "ollama".to_owned(),
             models: vec!["llama3".to_owned()],
@@ -213,6 +217,7 @@ fn create_factory_delegates_to_registry() {
     // Given a service with a sample provider.
     let config = ProvidersConfig {
         providers: vec![crate::config::ProviderEntry {
+            model_info: Vec::new(),
             name: "sample".to_owned(),
             backend: "sample".to_owned(),
             models: vec!["sample".to_owned()],
