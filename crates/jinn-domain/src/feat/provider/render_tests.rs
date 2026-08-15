@@ -25,6 +25,7 @@ use crate::feat::session::model_selection::ModelSelection;
 fn picker_state_with_ollama() -> (AppState, Services) {
     let config = ProvidersConfig {
         providers: vec![ProviderEntry {
+            model_info: Vec::new(),
             name: "ollama".to_owned(),
             backend: "ollama".to_owned(),
             models: vec!["llama3".to_owned()],

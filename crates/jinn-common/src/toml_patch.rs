@@ -226,7 +226,7 @@ fn apply_array(
     let key_field = registry.lookup(path);
 
     if let Some(key_field) = key_field {
-        apply_array_of_tables_by_key(new, target, key_field)
+        apply_array_of_tables_by_key(new, target, key_field, registry, path)
     } else {
         // Wholesale replace.
         let mut new_array = toml_edit::Array::new();
@@ -242,11 +242,13 @@ fn apply_array_of_tables_by_key(
     new: &[toml::Value],
     target: &mut Item,
     key_field: &'static str,
+    registry: &KeyRegistry,
+    path: &[String],
 ) -> Result<(), PatchError> {
     let array = ensure_array_of_tables(target)?;
     let (new_keys_in_order, new_by_key) = index_new_entries_by_key(new, key_field);
     let matched = mark_matched_entries(array, &new_by_key, key_field)?;
-    apply_in_place_updates(array, &new_by_key, key_field)?;
+    apply_in_place_updates(array, &new_by_key, key_field, registry, path)?;
     remove_unmatched_entries(array, &matched);
     append_new_entries(array, &new_keys_in_order, &new_by_key, key_field);
     Ok(())
@@ -316,6 +318,8 @@ fn apply_in_place_updates(
     array: &mut ArrayOfTables,
     new_by_key: &HashMap<String, &toml::Value>,
     key_field: &'static str,
+    registry: &KeyRegistry,
+    path: &[String],
 ) -> Result<(), PatchError> {
     let matched_keys: Vec<(usize, String)> = array
         .iter()
@@ -337,18 +341,14 @@ fn apply_in_place_updates(
             what: "idx in range",
         })?;
         for (k, child_value) in repl_t {
+            let mut child_path = path.to_vec();
+            child_path.push(k.clone());
             if entry_mut.contains_key(k) {
                 let child_item: &mut Item =
                     entry_mut.get_mut(k).ok_or(PatchError::InternalInvariant {
                         what: "just checked contains_key",
                     })?;
-                // For nested arrays-of-tables inside an array entry, look up
-                // a fresh registry built from the path of THIS entry — not
-                // implemented yet (no nested registered arrays in scope).
-                // For now, recurse with an empty registry; nested registered
-                // arrays would wholesale-replace.
-                let empty_reg = KeyRegistry::new();
-                apply_value(child_value, child_item, &empty_reg, &[])?;
+                apply_value(child_value, child_item, registry, &child_path)?;
             } else {
                 entry_mut.insert(k, value_to_item(child_value));
             }
