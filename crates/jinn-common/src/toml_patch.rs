@@ -116,9 +116,11 @@ impl KeyRegistry {
 /// pattern segment matches exactly one concrete segment.
 fn path_matches(path: &[String], pattern: &[String]) -> bool {
     path.len() == pattern.len()
-        && path.iter().zip(pattern).all(|(seg, pat)| pat == "*" || pat == seg)
+        && path
+            .iter()
+            .zip(pattern)
+            .all(|(seg, pat)| pat == "*" || pat == seg)
 }
-
 
 /// Applies a `toml::Value` tree onto an existing `DocumentMut` in place.
 #[derive(Debug, Default)]
@@ -869,10 +871,13 @@ mod tests {
         // When patching a mutated context_length through the wildcard path.
         let mut info = toml::value::Table::new();
         info.insert("id".to_owned(), toml::Value::String("glm-5.1".to_owned()));
-        info.insert("context_length".to_owned(), toml::Value::Integer(131072));
+        info.insert("context_length".to_owned(), toml::Value::Integer(131_072));
         let mut zai = toml::value::Table::new();
         zai.insert("backend".to_owned(), toml::Value::String("zai".to_owned()));
-        zai.insert("models".to_owned(), toml::Value::Array(vec!["glm-5.1".into()]));
+        zai.insert(
+            "models".to_owned(),
+            toml::Value::Array(vec!["glm-5.1".into()]),
+        );
         zai.insert(
             "model_info".to_owned(),
             toml::Value::Array(vec![toml::Value::Table(info)]),
@@ -890,7 +895,7 @@ mod tests {
         let out = d.to_string();
         assert!(out.contains("# vision model"), "entry comment lost:\n{out}");
         assert!(out.contains("context_length = 131072"), "value updated");
-        assert!(!out.contains("1000000"), "old value gone");
+        assert!(!out.contains("1_000_000"), "old value gone");
     }
 
     #[test]

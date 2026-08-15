@@ -57,7 +57,14 @@ fn make_config(
 
 /// Loads entries from a registry with ollama (keyless) and openrouter (key present).
 fn load_two_providers() -> Vec<PickerEntry> {
-    let config = make_config(BTreeMap::from([("ollama".to_owned(), ollama_entry()), ("openrouter".to_owned(), openrouter_entry())]), vec![], None);
+    let config = make_config(
+        BTreeMap::from([
+            ("ollama".to_owned(), ollama_entry()),
+            ("openrouter".to_owned(), openrouter_entry()),
+        ]),
+        vec![],
+        None,
+    );
     let registry = ProviderRegistry::from_config(config).expect("registry");
     let mut api_keys = ApiKeys::new();
     api_keys.insert("OPENROUTER_API_KEY".to_owned(), "sk-test".to_owned());
@@ -97,7 +104,11 @@ fn load_provider_entries_returns_provider_with_correct_fields(
 #[rstest::rstest]
 fn load_provider_entries_marks_key_required_unavailable_when_key_missing() {
     // Given a registry with a key-required provider and no API key.
-    let config = make_config(BTreeMap::from([("openrouter".to_owned(), openrouter_entry())]), vec![], None);
+    let config = make_config(
+        BTreeMap::from([("openrouter".to_owned(), openrouter_entry())]),
+        vec![],
+        None,
+    );
     let registry = ProviderRegistry::from_config(config).expect("registry");
     let api_keys = ApiKeys::new();
 
@@ -112,7 +123,11 @@ fn load_provider_entries_marks_key_required_unavailable_when_key_missing() {
 #[rstest::rstest]
 fn load_provider_entries_marks_key_required_available_when_key_present() {
     // Given a registry with a key-required provider and the key set.
-    let config = make_config(BTreeMap::from([("openrouter".to_owned(), openrouter_entry())]), vec![], None);
+    let config = make_config(
+        BTreeMap::from([("openrouter".to_owned(), openrouter_entry())]),
+        vec![],
+        None,
+    );
     let registry = ProviderRegistry::from_config(config).expect("registry");
     let mut api_keys = ApiKeys::new();
     api_keys.insert("OPENROUTER_API_KEY".to_owned(), "sk-test".to_owned());
@@ -128,7 +143,11 @@ fn load_provider_entries_marks_key_required_available_when_key_present() {
 #[rstest::rstest]
 fn load_provider_entries_marks_keyless_always_available() {
     // Given a registry with a keyless provider and no API keys.
-    let config = make_config(BTreeMap::from([("ollama".to_owned(), ollama_entry())]), vec![], None);
+    let config = make_config(
+        BTreeMap::from([("ollama".to_owned(), ollama_entry())]),
+        vec![],
+        None,
+    );
     let registry = ProviderRegistry::from_config(config).expect("registry");
     let api_keys = ApiKeys::new();
 
@@ -231,7 +250,11 @@ fn load_provider_entries_alias_inherits_availability() {
 #[rstest::rstest]
 fn static_entries_present_after_cache_merge() {
     // Given a registry with one keyless provider (ollama/llama3).
-    let config = make_config(BTreeMap::from([("ollama".to_owned(), ollama_entry())]), vec![], None);
+    let config = make_config(
+        BTreeMap::from([("ollama".to_owned(), ollama_entry())]),
+        vec![],
+        None,
+    );
     let registry = ProviderRegistry::from_config(config).expect("registry");
     let api_keys = ApiKeys::new();
 
@@ -261,7 +284,11 @@ fn static_entries_present_after_cache_merge() {
 #[rstest::rstest]
 fn remote_entries_present_after_cache_merge() {
     // Given a registry with one keyless provider (ollama/llama3).
-    let config = make_config(BTreeMap::from([("ollama".to_owned(), ollama_entry())]), vec![], None);
+    let config = make_config(
+        BTreeMap::from([("ollama".to_owned(), ollama_entry())]),
+        vec![],
+        None,
+    );
     let registry = ProviderRegistry::from_config(config).expect("registry");
     let api_keys = ApiKeys::new();
 
@@ -292,7 +319,11 @@ fn remote_entries_present_after_cache_merge() {
 #[rstest::rstest]
 fn static_entry_not_duplicated_on_collision() {
     // Given a registry with ollama/llama3.
-    let config = make_config(BTreeMap::from([("ollama".to_owned(), ollama_entry())]), vec![], None);
+    let config = make_config(
+        BTreeMap::from([("ollama".to_owned(), ollama_entry())]),
+        vec![],
+        None,
+    );
     let registry = ProviderRegistry::from_config(config).expect("registry");
     let api_keys = ApiKeys::new();
 
@@ -326,7 +357,11 @@ fn static_entry_not_duplicated_on_collision() {
 #[rstest::rstest]
 fn new_remote_entry_added_on_collision() {
     // Given a registry with ollama/llama3.
-    let config = make_config(BTreeMap::from([("ollama".to_owned(), ollama_entry())]), vec![], None);
+    let config = make_config(
+        BTreeMap::from([("ollama".to_owned(), ollama_entry())]),
+        vec![],
+        None,
+    );
     let registry = ProviderRegistry::from_config(config).expect("registry");
     let api_keys = ApiKeys::new();
 
@@ -360,7 +395,11 @@ fn new_remote_entry_added_on_collision() {
 #[rstest::rstest]
 fn remote_entry_present_when_key_missing() {
     // Given a registry with a key-required provider (openrouter).
-    let config = make_config(BTreeMap::from([("openrouter".to_owned(), openrouter_entry())]), vec![], None);
+    let config = make_config(
+        BTreeMap::from([("openrouter".to_owned(), openrouter_entry())]),
+        vec![],
+        None,
+    );
     let registry = ProviderRegistry::from_config(config).expect("registry");
     let api_keys = ApiKeys::new(); // No keys set.
 
@@ -389,7 +428,11 @@ fn remote_entry_present_when_key_missing() {
 #[rstest::rstest]
 fn remote_entry_marked_unavailable_when_key_missing() {
     // Given a registry with a key-required provider (openrouter).
-    let config = make_config(BTreeMap::from([("openrouter".to_owned(), openrouter_entry())]), vec![], None);
+    let config = make_config(
+        BTreeMap::from([("openrouter".to_owned(), openrouter_entry())]),
+        vec![],
+        None,
+    );
     let registry = ProviderRegistry::from_config(config).expect("registry");
     let api_keys = ApiKeys::new(); // No keys set.
 
@@ -418,7 +461,11 @@ fn remote_entry_marked_unavailable_when_key_missing() {
 #[rstest::rstest]
 fn load_provider_entries_includes_all_remote_models() {
     // Given a registry and cache with remote models.
-    let config = make_config(BTreeMap::from([("ollama".to_owned(), ollama_entry())]), vec![], None);
+    let config = make_config(
+        BTreeMap::from([("ollama".to_owned(), ollama_entry())]),
+        vec![],
+        None,
+    );
     let registry = ProviderRegistry::from_config(config).expect("registry");
     let api_keys = ApiKeys::new();
 

@@ -537,16 +537,19 @@ mod tests {
 
     fn sample_config() -> ProvidersConfig {
         ProvidersConfig {
-            providers: BTreeMap::from([("ollama".to_owned(), ProviderEntry {
-                model_info: Vec::new(),
-                backend: "ollama".to_owned(),
-                models: vec!["llama3".to_owned()],
-                base_url: None,
-                api_key_env: None,
-                requires_key: false,
-                extra_body: None,
-                context_length: None,
-            })]),
+            providers: BTreeMap::from([(
+                "ollama".to_owned(),
+                ProviderEntry {
+                    model_info: Vec::new(),
+                    backend: "ollama".to_owned(),
+                    models: vec!["llama3".to_owned()],
+                    base_url: None,
+                    api_key_env: None,
+                    requires_key: false,
+                    extra_body: None,
+                    context_length: None,
+                },
+            )]),
             aliases: vec![],
             default_provider: None,
         }
@@ -638,16 +641,19 @@ mod tests {
     async fn models_refreshed_fills_context_length_from_registry_when_api_returns_none() {
         // Given a registry with zai provider that has context_length: Some(128_000).
         let config = ProvidersConfig {
-            providers: BTreeMap::from([("zai".to_owned(), ProviderEntry {
-                model_info: Vec::new(),
-                backend: "zai".to_owned(),
-                models: vec!["zai-1.5".to_owned()],
-                base_url: None,
-                api_key_env: None,
-                requires_key: false,
-                extra_body: None,
-                context_length: Some(128_000),
-            })]),
+            providers: BTreeMap::from([(
+                "zai".to_owned(),
+                ProviderEntry {
+                    model_info: Vec::new(),
+                    backend: "zai".to_owned(),
+                    models: vec!["zai-1.5".to_owned()],
+                    base_url: None,
+                    api_key_env: None,
+                    requires_key: false,
+                    extra_body: None,
+                    context_length: Some(128_000),
+                },
+            )]),
             aliases: vec![],
             default_provider: None,
         };
@@ -705,16 +711,19 @@ mod tests {
     async fn models_refreshed_block_config_beats_api_value() {
         // Given a registry with ollama provider that has context_length: Some(4096).
         let config = ProvidersConfig {
-            providers: BTreeMap::from([("ollama".to_owned(), ProviderEntry {
-                model_info: Vec::new(),
-                backend: "ollama".to_owned(),
-                models: vec!["llama3".to_owned()],
-                base_url: None,
-                api_key_env: None,
-                requires_key: false,
-                extra_body: None,
-                context_length: Some(4096),
-            })]),
+            providers: BTreeMap::from([(
+                "ollama".to_owned(),
+                ProviderEntry {
+                    model_info: Vec::new(),
+                    backend: "ollama".to_owned(),
+                    models: vec!["llama3".to_owned()],
+                    base_url: None,
+                    api_key_env: None,
+                    requires_key: false,
+                    extra_body: None,
+                    context_length: Some(4096),
+                },
+            )]),
             aliases: vec![],
             default_provider: None,
         };
@@ -833,16 +842,19 @@ mod tests {
     async fn model_cache_loaded_fills_context_length_from_registry_when_cache_has_none() {
         // Given a registry with zai provider that has context_length: Some(128_000).
         let config = ProvidersConfig {
-            providers: BTreeMap::from([("zai".to_owned(), ProviderEntry {
-                model_info: Vec::new(),
-                backend: "zai".to_owned(),
-                models: vec!["zai-1.5".to_owned()],
-                base_url: None,
-                api_key_env: None,
-                requires_key: false,
-                extra_body: None,
-                context_length: Some(128_000),
-            })]),
+            providers: BTreeMap::from([(
+                "zai".to_owned(),
+                ProviderEntry {
+                    model_info: Vec::new(),
+                    backend: "zai".to_owned(),
+                    models: vec!["zai-1.5".to_owned()],
+                    base_url: None,
+                    api_key_env: None,
+                    requires_key: false,
+                    extra_body: None,
+                    context_length: Some(128_000),
+                },
+            )]),
             aliases: vec![],
             default_provider: None,
         };
@@ -901,16 +913,19 @@ mod tests {
     async fn model_cache_loaded_block_config_beats_api_value() {
         // Given a registry with ollama provider that has context_length: Some(4096).
         let config = ProvidersConfig {
-            providers: BTreeMap::from([("ollama".to_owned(), ProviderEntry {
-                model_info: Vec::new(),
-                backend: "ollama".to_owned(),
-                models: vec!["llama3".to_owned()],
-                base_url: None,
-                api_key_env: None,
-                requires_key: false,
-                extra_body: None,
-                context_length: Some(4096),
-            })]),
+            providers: BTreeMap::from([(
+                "ollama".to_owned(),
+                ProviderEntry {
+                    model_info: Vec::new(),
+                    backend: "ollama".to_owned(),
+                    models: vec!["llama3".to_owned()],
+                    base_url: None,
+                    api_key_env: None,
+                    requires_key: false,
+                    extra_body: None,
+                    context_length: Some(4096),
+                },
+            )]),
             aliases: vec![],
             default_provider: None,
         };
@@ -984,21 +999,24 @@ mod tests {
     fn config_with_model_info_modalities(modalities: Vec<String>) -> ProvidersConfig {
         use crate::feat::provider_infra::ModelInfoEntry;
         ProvidersConfig {
-            providers: BTreeMap::from([("ollama".to_owned(), ProviderEntry {
-                model_info: vec![ModelInfoEntry {
-                    id: "llama3".to_owned(),
-                    context_length: Some(16384),
-                    input_modalities: Some(modalities),
+            providers: BTreeMap::from([(
+                "ollama".to_owned(),
+                ProviderEntry {
+                    model_info: vec![ModelInfoEntry {
+                        id: "llama3".to_owned(),
+                        context_length: Some(16384),
+                        input_modalities: Some(modalities),
+                        extra_body: None,
+                    }],
+                    backend: "ollama".to_owned(),
+                    models: vec!["llama3".to_owned()],
+                    base_url: None,
+                    api_key_env: None,
+                    requires_key: false,
                     extra_body: None,
-                }],
-                backend: "ollama".to_owned(),
-                models: vec!["llama3".to_owned()],
-                base_url: None,
-                api_key_env: None,
-                requires_key: false,
-                extra_body: None,
-                context_length: None,
-            })]),
+                    context_length: None,
+                },
+            )]),
             aliases: vec![],
             default_provider: None,
         }
@@ -1091,16 +1109,19 @@ mod tests {
 
     fn sample_config_with_block_ctx() -> ProvidersConfig {
         ProvidersConfig {
-            providers: BTreeMap::from([("ollama".to_owned(), ProviderEntry {
-                model_info: Vec::new(),
-                backend: "ollama".to_owned(),
-                models: vec!["llama3".to_owned()],
-                base_url: None,
-                api_key_env: None,
-                requires_key: false,
-                extra_body: None,
-                context_length: Some(4096),
-            })]),
+            providers: BTreeMap::from([(
+                "ollama".to_owned(),
+                ProviderEntry {
+                    model_info: Vec::new(),
+                    backend: "ollama".to_owned(),
+                    models: vec!["llama3".to_owned()],
+                    base_url: None,
+                    api_key_env: None,
+                    requires_key: false,
+                    extra_body: None,
+                    context_length: Some(4096),
+                },
+            )]),
             aliases: vec![],
             default_provider: None,
         }
