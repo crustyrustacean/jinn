@@ -6,24 +6,45 @@
     reason = "test code"
 )]
 
+use std::collections::BTreeMap;
+
+use crate::config::ProviderEntry;
 use crate::config::ProvidersConfig;
 use crate::registry_service::ProviderRegistryService;
+
+/// A keyless ollama entry.
+fn ollama_entry() -> ProviderEntry {
+    ProviderEntry {
+        backend: "ollama".to_owned(),
+        models: vec!["llama3".to_owned()],
+        base_url: None,
+        api_key_env: None,
+        requires_key: false,
+        extra_body: None,
+        context_length: None,
+        model_info: Vec::new(),
+    }
+}
+
+/// A key-required openrouter entry.
+fn openrouter_entry() -> ProviderEntry {
+    ProviderEntry {
+        backend: "openrouter".to_owned(),
+        models: vec!["gpt-4".to_owned()],
+        base_url: None,
+        api_key_env: Some("OPENROUTER_API_KEY".to_owned()),
+        requires_key: true,
+        extra_body: None,
+        context_length: None,
+        model_info: Vec::new(),
+    }
+}
 
 #[rstest::rstest]
 fn clone_sees_same_providers() {
     // Given a service with one provider.
     let config = ProvidersConfig {
-        providers: vec![crate::config::ProviderEntry {
-            model_info: Vec::new(),
-            name: "ollama".to_owned(),
-            backend: "ollama".to_owned(),
-            models: vec!["llama3".to_owned()],
-            base_url: None,
-            api_key_env: None,
-            requires_key: false,
-            extra_body: None,
-            context_length: None,
-        }],
+        providers: BTreeMap::from([("ollama".to_owned(), ollama_entry())]),
         aliases: vec![],
         default_provider: None,
     };
@@ -45,30 +66,10 @@ fn clone_sees_same_providers() {
 /// Helper: build a service with an ollama (keyless) and openrouter (key-required) provider.
 fn service_with_providers() -> ProviderRegistryService {
     let config = ProvidersConfig {
-        providers: vec![
-            crate::config::ProviderEntry {
-                model_info: Vec::new(),
-                name: "ollama".to_owned(),
-                backend: "ollama".to_owned(),
-                models: vec!["llama3".to_owned()],
-                base_url: None,
-                api_key_env: None,
-                requires_key: false,
-                extra_body: None,
-                context_length: None,
-            },
-            crate::config::ProviderEntry {
-                model_info: Vec::new(),
-                name: "openrouter".to_owned(),
-                backend: "openrouter".to_owned(),
-                models: vec!["gpt-4".to_owned()],
-                base_url: None,
-                api_key_env: Some("OPENROUTER_API_KEY".to_owned()),
-                requires_key: true,
-                extra_body: None,
-                context_length: None,
-            },
-        ],
+        providers: BTreeMap::from([
+            ("ollama".to_owned(), ollama_entry()),
+            ("openrouter".to_owned(), openrouter_entry()),
+        ]),
         aliases: vec![crate::config::AliasEntry {
             name: "fast".to_owned(),
             target: "ollama/llama3".to_owned(),
@@ -184,17 +185,7 @@ fn resolve_alias_delegates_to_registry() {
 fn default_provider_id_delegates_to_registry() {
     // Given a service with a configured default provider.
     let config = ProvidersConfig {
-        providers: vec![crate::config::ProviderEntry {
-            model_info: Vec::new(),
-            name: "ollama".to_owned(),
-            backend: "ollama".to_owned(),
-            models: vec!["llama3".to_owned()],
-            base_url: None,
-            api_key_env: None,
-            requires_key: false,
-            extra_body: None,
-            context_length: None,
-        }],
+        providers: BTreeMap::from([("ollama".to_owned(), ollama_entry())]),
         aliases: vec![],
         default_provider: Some("ollama/llama3".to_owned()),
     };
@@ -215,18 +206,13 @@ fn default_provider_id_delegates_to_registry() {
 #[rstest::rstest]
 fn create_factory_delegates_to_registry() {
     // Given a service with a sample provider.
+    let sample = ProviderEntry {
+        backend: "sample".to_owned(),
+        models: vec!["sample".to_owned()],
+        ..ollama_entry()
+    };
     let config = ProvidersConfig {
-        providers: vec![crate::config::ProviderEntry {
-            model_info: Vec::new(),
-            name: "sample".to_owned(),
-            backend: "sample".to_owned(),
-            models: vec!["sample".to_owned()],
-            base_url: None,
-            api_key_env: None,
-            requires_key: false,
-            extra_body: None,
-            context_length: None,
-        }],
+        providers: BTreeMap::from([("sample".to_owned(), sample)]),
         aliases: vec![],
         default_provider: None,
     };

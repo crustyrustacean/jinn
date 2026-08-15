@@ -18,7 +18,7 @@ use jinn_provider::{Backend, ReasoningEffort};
 
 use super::SampleLlmServiceFactory;
 use super::api_keys::ApiKeys;
-use super::config::{AliasEntry, ConfigError, ProvidersConfig};
+use super::config::{AliasEntry, ConfigError, ProviderEntry, ProvidersConfig};
 use super::generic_factory::GenericLlmServiceFactory;
 use super::provider_id::ProviderId;
 use super::resolved_provider::ResolvedProvider;
@@ -48,65 +48,42 @@ impl ProviderRegistry {
     ///
     /// # Validation
     ///
-    /// - No duplicate provider block names.
     /// - No empty models lists.
     /// - No duplicate expanded IDs (`{name}/{model}`).
     /// - All backend strings parse via `Backend::from_str` (or are `"sample"`).
     /// - All `model_info` ids exist in their provider's `models` list, without duplicates.
     /// - All alias targets refer to existing expanded IDs.
     ///
+    /// Provider-name duplicates are structurally impossible: providers are a
+    /// map keyed by name, and TOML rejects duplicate table keys at parse time.
+    ///
     /// # Errors
     ///
     /// Returns [`ConfigError::Validation`] if any check fails.
     pub fn from_config(config: ProvidersConfig) -> Result<Self, Report<ConfigError>> {
-        // Check for duplicate provider block names.
-        let mut seen_names = HashSet::new();
-        for provider in &config.providers {
-            if !seen_names.insert(&provider.name) {
-                return Err(Report::new(ConfigError::Validation))
-                    .attach(format!("duplicate provider name: {}", provider.name));
-            }
-        }
-
         // Check no empty models lists.
-        for provider in &config.providers {
-            if provider.models.is_empty() {
+        for (name, entry) in &config.providers {
+            if entry.models.is_empty() {
                 return Err(Report::new(ConfigError::Validation)).attach(format!(
                     "provider '{}' has an empty models list",
-                    provider.name
+                    name
                 ));
             }
         }
 
         // Check model_info ids reference configured models and are unique per provider.
-        for provider in &config.providers {
-            let mut seen_info_ids = HashSet::new();
-            for info in &provider.model_info {
-                if !provider.models.contains(&info.id) {
-                    return Err(Report::new(ConfigError::Validation)).attach(format!(
-                        "model_info id '{}' is not in provider '{}' models list",
-                        info.id, provider.name
-                    ));
-                }
-                if !seen_info_ids.insert(&info.id) {
-                    return Err(Report::new(ConfigError::Validation)).attach(format!(
-                        "duplicate model_info id '{}' in provider '{}'",
-                        info.id, provider.name
-                    ));
-                }
-            }
-        }
+        validate_model_info(&config)?;
 
         // Check backend strings parse.
-        for provider in &config.providers {
-            if provider.backend != "sample" {
-                let _: Backend = provider
+        for (name, entry) in &config.providers {
+            if entry.backend != "sample" {
+                let _: Backend = entry
                     .backend
                     .parse()
                     .change_context(ConfigError::Validation)
                     .attach(format!(
                         "invalid backend '{}' for provider '{}'",
-                        provider.backend, provider.name
+                        entry.backend, name
                     ))?;
             }
         }
@@ -115,32 +92,15 @@ impl ProviderRegistry {
         let mut resolved_map: HashMap<ProviderId, ResolvedProvider> = HashMap::new();
         let mut resolved_list: Vec<ResolvedProvider> = Vec::new();
 
-        for entry in &config.providers {
+        for (name, entry) in &config.providers {
             for model in &entry.models {
-                let id = ProviderId::new(format!("{}/{}", entry.name, model));
+                let id = ProviderId::new(format!("{name}/{model}"));
                 if resolved_map.contains_key(&id) {
                     return Err(Report::new(ConfigError::Validation))
                         .attach(format!("duplicate expanded provider ID: {id}"));
                 }
-                let per_model = entry.model_info.iter().find(|info| &info.id == model);
-                let resolved = ResolvedProvider {
-                    id: id.clone(),
-                    name: entry.name.clone(),
-                    model: model.clone(),
-                    backend: entry.backend.clone(),
-                    base_url: entry.base_url.clone(),
-                    api_key_env: entry.api_key_env.clone(),
-                    requires_key: entry.requires_key,
-                    extra_body: per_model
-                        .and_then(|info| info.extra_body.clone())
-                        .or_else(|| entry.extra_body.clone()),
-                    is_remote: false,
-                    context_length: per_model
-                        .and_then(|info| info.context_length)
-                        .or(entry.context_length),
-                };
-                resolved_map.insert(id, resolved.clone());
-                resolved_list.push(resolved);
+                resolved_map.insert(id.clone(), expand_entry(&id, name, entry, model, false));
+                resolved_list.push(resolved_map[&id].clone());
             }
         }
 
@@ -209,17 +169,12 @@ impl ProviderRegistry {
     /// up the provider block's backend, API key settings, etc.
     pub fn merge_cache(&mut self, cache: &super::ModelCache) {
         for (provider_name, models) in &cache.entries {
-            let Some(entry) = self
-                .config
-                .providers
-                .iter()
-                .find(|p| p.name == *provider_name)
-            else {
+            let Some(entry) = self.config.providers.get(provider_name) else {
                 continue;
             };
 
             for model_info in models {
-                let id = ProviderId::new(format!("{}/{}", entry.name, model_info.id));
+                let id = ProviderId::new(format!("{provider_name}/{}", model_info.id));
                 if self.resolved_map.contains_key(&id) {
                     continue; // Static entry wins.
                 }
@@ -236,7 +191,7 @@ impl ProviderRegistry {
 
                 let resolved = ResolvedProvider {
                     id: id.clone(),
-                    name: entry.name.clone(),
+                    name: provider_name.clone(),
                     model: model_info.id.clone(),
                     backend: entry.backend.clone(),
                     base_url: entry.base_url.clone(),
@@ -441,6 +396,56 @@ fn resolved_is_available(resolved: &ResolvedProvider, api_keys: &ApiKeys) -> boo
         return false;
     };
     api_keys.is_set(env_var)
+}
+
+/// Validates that every `model_info` id references a model in its provider's
+/// `models` list and is unique within the provider.
+fn validate_model_info(config: &ProvidersConfig) -> Result<(), Report<ConfigError>> {
+    for (name, entry) in &config.providers {
+        let mut seen_info_ids = HashSet::new();
+        for info in &entry.model_info {
+            if !entry.models.contains(&info.id) {
+                return Err(Report::new(ConfigError::Validation)).attach(format!(
+                    "model_info id '{}' is not in provider '{}' models list",
+                    info.id, name
+                ));
+            }
+            if !seen_info_ids.insert(&info.id) {
+                return Err(Report::new(ConfigError::Validation)).attach(format!(
+                    "duplicate model_info id '{}' in provider '{}'",
+                    info.id, name
+                ));
+            }
+        }
+    }
+    Ok(())
+}
+
+/// Expands one provider entry + model into a resolved, per-model provider.
+fn expand_entry(
+    id: &ProviderId,
+    name: &str,
+    entry: &ProviderEntry,
+    model: &str,
+    is_remote: bool,
+) -> ResolvedProvider {
+    let per_model = entry.model_info.iter().find(|info| info.id == model);
+    ResolvedProvider {
+        id: id.clone(),
+        name: name.to_owned(),
+        model: model.to_owned(),
+        backend: entry.backend.clone(),
+        base_url: entry.base_url.clone(),
+        api_key_env: entry.api_key_env.clone(),
+        requires_key: entry.requires_key,
+        extra_body: per_model
+            .and_then(|info| info.extra_body.clone())
+            .or_else(|| entry.extra_body.clone()),
+        is_remote,
+        context_length: per_model
+            .and_then(|info| info.context_length)
+            .or(entry.context_length),
+    }
 }
 
 /// Wraps a shared factory so an `Arc<dyn LlmServiceFactory>` can be returned
