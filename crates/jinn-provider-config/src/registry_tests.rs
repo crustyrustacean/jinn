@@ -6,13 +6,28 @@
     reason = "test code"
 )]
 
+use std::collections::BTreeMap;
+
 use super::registry::*;
 use crate::api_keys::ApiKeys;
 use crate::config::{AliasEntry, ProviderEntry, ProvidersConfig};
 use crate::provider_id::ProviderId;
 
+/// A one-provider map.
+fn one(name: &str, entry: ProviderEntry) -> BTreeMap<String, ProviderEntry> {
+    BTreeMap::from([(name.to_owned(), entry)])
+}
+
+/// A two-provider map.
+fn two(
+    a: (&str, ProviderEntry),
+    b: (&str, ProviderEntry),
+) -> BTreeMap<String, ProviderEntry> {
+    BTreeMap::from([(a.0.to_owned(), a.1), (b.0.to_owned(), b.1)])
+}
+
 fn make_config(
-    providers: Vec<ProviderEntry>,
+    providers: BTreeMap<String, ProviderEntry>,
     aliases: Vec<AliasEntry>,
     default_provider: Option<&str>,
 ) -> ProvidersConfig {
@@ -26,7 +41,6 @@ fn make_config(
 fn ollama_entry() -> ProviderEntry {
     ProviderEntry {
         model_info: Vec::new(),
-        name: "ollama".to_owned(),
         backend: "ollama".to_owned(),
         models: vec!["llama3".to_owned()],
         base_url: Some("http://localhost:11434".to_owned()),
@@ -40,7 +54,6 @@ fn ollama_entry() -> ProviderEntry {
 fn openrouter_entry() -> ProviderEntry {
     ProviderEntry {
         model_info: Vec::new(),
-        name: "openrouter".to_owned(),
         backend: "openrouter".to_owned(),
         models: vec!["gpt-4".to_owned()],
         base_url: None,
@@ -52,22 +65,10 @@ fn openrouter_entry() -> ProviderEntry {
 }
 
 #[rstest::rstest]
-fn rejects_duplicate_provider_names() {
-    // Given a config with duplicate provider names.
-    let config = make_config(vec![ollama_entry(), ollama_entry()], vec![], None);
-
-    // When building the registry.
-    let result = ProviderRegistry::from_config(config);
-
-    // Then it fails with a validation error.
-    assert!(result.is_err());
-}
-
-#[rstest::rstest]
 fn rejects_unknown_alias_target() {
     // Given a config with an alias pointing to a non-existent expanded ID.
     let config = make_config(
-        vec![ollama_entry()],
+        one("ollama", ollama_entry()),
         vec![AliasEntry {
             name: "fast".to_owned(),
             target: "nonexistent/model".to_owned(),
@@ -85,21 +86,12 @@ fn rejects_unknown_alias_target() {
 #[rstest::rstest]
 fn rejects_invalid_backend_string() {
     // Given a config with an invalid backend string.
-    let config = make_config(
-        vec![ProviderEntry {
-            model_info: Vec::new(),
-            name: "bad".to_owned(),
-            backend: "not-a-real-backend".to_owned(),
-            models: vec!["x".to_owned()],
-            base_url: None,
-            api_key_env: None,
-            requires_key: false,
-            extra_body: None,
-            context_length: None,
-        }],
-        vec![],
-        None,
-    );
+    let bad = ProviderEntry {
+        backend: "not-a-real-backend".to_owned(),
+        models: vec!["x".to_owned()],
+        ..ollama_entry()
+    };
+    let config = make_config(one("bad", bad), vec![], None);
 
     // When building the registry.
     let result = ProviderRegistry::from_config(config);
@@ -111,21 +103,11 @@ fn rejects_invalid_backend_string() {
 #[rstest::rstest]
 fn rejects_empty_models_list() {
     // Given a config with a provider that has an empty models list.
-    let config = make_config(
-        vec![ProviderEntry {
-            model_info: Vec::new(),
-            name: "empty".to_owned(),
-            backend: "ollama".to_owned(),
-            models: vec![],
-            base_url: None,
-            api_key_env: None,
-            requires_key: false,
-            extra_body: None,
-            context_length: None,
-        }],
-        vec![],
-        None,
-    );
+    let empty = ProviderEntry {
+        models: vec![],
+        ..ollama_entry()
+    };
+    let config = make_config(one("empty", empty), vec![], None);
 
     // When building the registry.
     let result = ProviderRegistry::from_config(config);
@@ -137,21 +119,11 @@ fn rejects_empty_models_list() {
 #[rstest::rstest]
 fn registry_has_two_entries() {
     // Given a config with one provider that has two models.
-    let config = make_config(
-        vec![ProviderEntry {
-            model_info: Vec::new(),
-            name: "ollama".to_owned(),
-            backend: "ollama".to_owned(),
-            models: vec!["llama3".to_owned(), "mistral".to_owned()],
-            base_url: None,
-            api_key_env: None,
-            requires_key: false,
-            extra_body: None,
-            context_length: None,
-        }],
-        vec![],
-        None,
-    );
+    let ollama = ProviderEntry {
+        models: vec!["llama3".to_owned(), "mistral".to_owned()],
+        ..ollama_entry()
+    };
+    let config = make_config(one("ollama", ollama), vec![], None);
 
     // When building the registry.
     let registry = ProviderRegistry::from_config(config).expect("registry");
@@ -164,21 +136,11 @@ fn registry_has_two_entries() {
 #[rstest::rstest]
 fn entries_have_correct_ids() {
     // Given a config with one provider that has two models.
-    let config = make_config(
-        vec![ProviderEntry {
-            model_info: Vec::new(),
-            name: "ollama".to_owned(),
-            backend: "ollama".to_owned(),
-            models: vec!["llama3".to_owned(), "mistral".to_owned()],
-            base_url: None,
-            api_key_env: None,
-            requires_key: false,
-            extra_body: None,
-            context_length: None,
-        }],
-        vec![],
-        None,
-    );
+    let ollama = ProviderEntry {
+        models: vec!["llama3".to_owned(), "mistral".to_owned()],
+        ..ollama_entry()
+    };
+    let config = make_config(one("ollama", ollama), vec![], None);
 
     // When building the registry.
     let registry = ProviderRegistry::from_config(config).expect("registry");
@@ -197,21 +159,11 @@ fn entries_have_correct_ids() {
 #[rstest::rstest]
 fn entries_are_individually_lookupable() {
     // Given a config with one provider that has two models.
-    let config = make_config(
-        vec![ProviderEntry {
-            model_info: Vec::new(),
-            name: "ollama".to_owned(),
-            backend: "ollama".to_owned(),
-            models: vec!["llama3".to_owned(), "mistral".to_owned()],
-            base_url: None,
-            api_key_env: None,
-            requires_key: false,
-            extra_body: None,
-            context_length: None,
-        }],
-        vec![],
-        None,
-    );
+    let ollama = ProviderEntry {
+        models: vec!["llama3".to_owned(), "mistral".to_owned()],
+        ..ollama_entry()
+    };
+    let config = make_config(one("ollama", ollama), vec![], None);
 
     // When building the registry.
     let registry = ProviderRegistry::from_config(config).expect("registry");
@@ -232,7 +184,7 @@ fn entries_are_individually_lookupable() {
 #[rstest::rstest]
 fn is_available_returns_true_for_keyless_provider() {
     // Given a registry with a keyless provider (Ollama).
-    let config = make_config(vec![ollama_entry()], vec![], None);
+    let config = make_config(one("ollama", ollama_entry()), vec![], None);
     let registry = ProviderRegistry::from_config(config).expect("registry");
     let api_keys = ApiKeys::new();
 
@@ -244,7 +196,7 @@ fn is_available_returns_true_for_keyless_provider() {
 #[rstest::rstest]
 fn is_available_returns_true_when_key_resolved() {
     // Given a registry with a key-required provider and a resolved key.
-    let config = make_config(vec![openrouter_entry()], vec![], None);
+    let config = make_config(one("openrouter", openrouter_entry()), vec![], None);
     let registry = ProviderRegistry::from_config(config).expect("registry");
     let mut api_keys = ApiKeys::new();
     api_keys.insert("OPENROUTER_API_KEY".to_owned(), "sk-test-value".to_owned());
@@ -256,7 +208,7 @@ fn is_available_returns_true_when_key_resolved() {
 #[rstest::rstest]
 fn is_available_returns_false_when_key_missing() {
     // Given a registry with a key-required provider and no resolved key.
-    let config = make_config(vec![openrouter_entry()], vec![], None);
+    let config = make_config(one("openrouter", openrouter_entry()), vec![], None);
     let registry = ProviderRegistry::from_config(config).expect("registry");
     let api_keys = ApiKeys::new();
 
@@ -267,7 +219,7 @@ fn is_available_returns_false_when_key_missing() {
 #[rstest::rstest]
 fn available_providers_filters_correctly() {
     // Given a registry with one keyless and one key-required provider (no key).
-    let config = make_config(vec![ollama_entry(), openrouter_entry()], vec![], None);
+    let config = make_config(two(("ollama", ollama_entry()), ("openrouter", openrouter_entry())), vec![], None);
     let registry = ProviderRegistry::from_config(config).expect("registry");
     let api_keys = ApiKeys::new();
 
@@ -284,7 +236,7 @@ fn available_providers_filters_correctly() {
 fn resolve_alias_finds_target() {
     // Given a registry with an alias pointing to a full expanded ID.
     let config = make_config(
-        vec![ollama_entry()],
+        one("ollama", ollama_entry()),
         vec![AliasEntry {
             name: "fast".to_owned(),
             target: "ollama/llama3".to_owned(),
@@ -306,7 +258,7 @@ fn resolve_alias_finds_target() {
 #[rstest::rstest]
 fn resolve_alias_returns_none_for_unknown() {
     // Given a registry with no matching alias.
-    let config = make_config(vec![ollama_entry()], vec![], None);
+    let config = make_config(one("ollama", ollama_entry()), vec![], None);
     let registry = ProviderRegistry::from_config(config).expect("registry");
 
     // When resolving a nonexistent alias.
@@ -316,21 +268,12 @@ fn resolve_alias_returns_none_for_unknown() {
 #[rstest::rstest]
 fn create_factory_succeeds_for_sample_backend() {
     // Given a registry with a sample provider.
-    let config = make_config(
-        vec![ProviderEntry {
-            model_info: Vec::new(),
-            name: "sample".to_owned(),
-            backend: "sample".to_owned(),
-            models: vec!["sample".to_owned()],
-            base_url: None,
-            api_key_env: None,
-            requires_key: false,
-            extra_body: None,
-            context_length: None,
-        }],
-        vec![],
-        None,
-    );
+    let sample = ProviderEntry {
+        backend: "sample".to_owned(),
+        models: vec!["sample".to_owned()],
+        ..ollama_entry()
+    };
+    let config = make_config(one("sample", sample), vec![], None);
     let registry = ProviderRegistry::from_config(config).expect("registry");
     let api_keys = ApiKeys::new();
 
@@ -350,21 +293,13 @@ fn create_factory_succeeds_for_sample_backend() {
 #[rstest::rstest]
 fn create_factory_succeeds_for_keyless_openai_backend() {
     // Given a registry with an LMStudio-like provider (OpenAI backend, no key required).
-    let config = make_config(
-        vec![ProviderEntry {
-            model_info: Vec::new(),
-            name: "lmstudio".to_owned(),
-            backend: "openai".to_owned(),
-            models: vec!["local-model".to_owned()],
-            base_url: Some("http://localhost:1234/v1".to_owned()),
-            api_key_env: None,
-            requires_key: false,
-            extra_body: None,
-            context_length: None,
-        }],
-        vec![],
-        None,
-    );
+    let lmstudio = ProviderEntry {
+        backend: "openai".to_owned(),
+        models: vec!["local-model".to_owned()],
+        base_url: Some("http://localhost:1234/v1".to_owned()),
+        ..ollama_entry()
+    };
+    let config = make_config(one("lmstudio", lmstudio), vec![], None);
     let registry = ProviderRegistry::from_config(config).expect("registry");
     let api_keys = ApiKeys::new();
 
@@ -384,7 +319,7 @@ fn create_factory_succeeds_for_keyless_openai_backend() {
 #[rstest::rstest]
 fn default_provider_id_returns_configured() {
     // Given a config with a default provider.
-    let config = make_config(vec![ollama_entry()], vec![], Some("ollama/llama3"));
+    let config = make_config(one("ollama", ollama_entry()), vec![], Some("ollama/llama3"));
     let registry = ProviderRegistry::from_config(config).expect("registry");
 
     // When asking for the default.
@@ -397,7 +332,7 @@ fn default_provider_id_returns_configured() {
 #[rstest::rstest]
 fn default_provider_id_returns_none_when_unset() {
     // Given a config with no default provider.
-    let config = make_config(vec![ollama_entry()], vec![], None);
+    let config = make_config(one("ollama", ollama_entry()), vec![], None);
     let registry = ProviderRegistry::from_config(config).expect("registry");
 
     // When asking for the default.
@@ -407,7 +342,7 @@ fn default_provider_id_returns_none_when_unset() {
 #[rstest::rstest]
 fn default_provider_id_returns_none_for_invalid_target() {
     // Given a config with a default that doesn't match any expanded ID.
-    let config = make_config(vec![ollama_entry()], vec![], Some("ollama"));
+    let config = make_config(one("ollama", ollama_entry()), vec![], Some("ollama"));
     let registry = ProviderRegistry::from_config(config).expect("registry");
 
     // When asking for the default.
@@ -418,7 +353,7 @@ fn default_provider_id_returns_none_for_invalid_target() {
 #[rstest::rstest]
 fn set_default_provider_updates_config() {
     // Given a registry with a provider.
-    let config = make_config(vec![ollama_entry()], vec![], None);
+    let config = make_config(one("ollama", ollama_entry()), vec![], None);
     let mut registry = ProviderRegistry::from_config(config).expect("registry");
 
     // When setting the default provider.
@@ -432,7 +367,7 @@ fn set_default_provider_updates_config() {
 #[rstest::rstest]
 fn set_default_provider_clears_when_none() {
     // Given a registry with a default provider.
-    let config = make_config(vec![ollama_entry()], vec![], Some("ollama/llama3"));
+    let config = make_config(one("ollama", ollama_entry()), vec![], Some("ollama/llama3"));
     let mut registry = ProviderRegistry::from_config(config).expect("registry");
     assert!(registry.default_provider_id().is_some());
 
@@ -447,7 +382,7 @@ fn set_default_provider_clears_when_none() {
 fn config_accessor_returns_config() {
     // Given a registry with providers.
     let config = make_config(
-        vec![ollama_entry(), openrouter_entry()],
+        two(("ollama", ollama_entry()), ("openrouter", openrouter_entry())),
         vec![],
         Some("ollama/llama3"),
     );
@@ -464,7 +399,7 @@ fn config_accessor_returns_config() {
 #[rstest::rstest]
 fn create_factory_for_model_succeeds_for_known_provider() {
     // Given a registry with ollama.
-    let config = make_config(vec![ollama_entry()], vec![], None);
+    let config = make_config(one("ollama", ollama_entry()), vec![], None);
     let mut registry = ProviderRegistry::from_config(config).expect("registry");
     let api_keys = ApiKeys::new();
 
@@ -500,7 +435,7 @@ fn create_factory_for_model_succeeds_for_known_provider() {
 #[rstest::rstest]
 fn create_factory_fails_for_unknown_provider_after_merge() {
     // Given a registry with ollama.
-    let config = make_config(vec![ollama_entry()], vec![], None);
+    let config = make_config(one("ollama", ollama_entry()), vec![], None);
     let registry = ProviderRegistry::from_config(config).expect("registry");
     let api_keys = ApiKeys::new();
 
@@ -520,21 +455,13 @@ fn create_factory_fails_for_unknown_provider_after_merge() {
 fn create_factory_succeeds_for_merged_remote_model() {
     // Given a registry with an LMStudio-like provider that has "local-model" as a
     // static placeholder, and a cache with a runtime-discovered model.
-    let config = make_config(
-        vec![ProviderEntry {
-            model_info: Vec::new(),
-            name: "lmstudio".to_owned(),
-            backend: "openai".to_owned(),
-            models: vec!["local-model".to_owned()],
-            base_url: Some("http://localhost:1234/v1".to_owned()),
-            api_key_env: None,
-            requires_key: false,
-            extra_body: None,
-            context_length: None,
-        }],
-        vec![],
-        None,
-    );
+    let lmstudio = ProviderEntry {
+        backend: "openai".to_owned(),
+        models: vec!["local-model".to_owned()],
+        base_url: Some("http://localhost:1234/v1".to_owned()),
+        ..ollama_entry()
+    };
+    let config = make_config(one("lmstudio", lmstudio), vec![], None);
     let mut registry = ProviderRegistry::from_config(config).expect("registry");
     let api_keys = ApiKeys::new();
 
@@ -569,7 +496,7 @@ fn create_factory_succeeds_for_merged_remote_model() {
 #[rstest::rstest]
 fn create_factory_for_static_model_still_works() {
     // Given a registry with a keyless provider.
-    let config = make_config(vec![ollama_entry()], vec![], None);
+    let config = make_config(one("ollama", ollama_entry()), vec![], None);
     let registry = ProviderRegistry::from_config(config).expect("registry");
     let api_keys = ApiKeys::new();
 
@@ -590,21 +517,11 @@ fn create_factory_for_static_model_still_works() {
 fn create_factory_succeeds_for_merged_model_with_slashes() {
     // Given a registry with an OpenRouter-like provider whose models contain slashes,
     // and a cache with a remote model.
-    let config = make_config(
-        vec![ProviderEntry {
-            model_info: Vec::new(),
-            name: "openrouter".to_owned(),
-            backend: "openrouter".to_owned(),
-            models: vec!["openai/gpt-4".to_owned()],
-            base_url: None,
-            api_key_env: Some("OPENROUTER_API_KEY".to_owned()),
-            requires_key: true,
-            extra_body: None,
-            context_length: None,
-        }],
-        vec![],
-        None,
-    );
+    let openrouter = ProviderEntry {
+        models: vec!["openai/gpt-4".to_owned()],
+        ..openrouter_entry()
+    };
+    let config = make_config(one("openrouter", openrouter), vec![], None);
     let mut registry = ProviderRegistry::from_config(config).expect("registry");
     let mut api_keys = ApiKeys::new();
     api_keys.insert("OPENROUTER_API_KEY".to_owned(), "sk-test".to_owned());
@@ -640,21 +557,13 @@ fn create_factory_succeeds_for_merged_model_with_slashes() {
 #[rstest::rstest]
 fn registry_propagates_extra_body_to_resolved_provider() {
     // Given a config with extra_body.
-    let config = make_config(
-        vec![ProviderEntry {
-            model_info: Vec::new(),
-            name: "zai".to_owned(),
-            backend: "ollama".to_owned(), // Use ollama to avoid key requirement
-            models: vec!["glm-5.1".to_owned()],
-            base_url: None,
-            api_key_env: None,
-            requires_key: false,
-            extra_body: Some(serde_json::json!({"enable_thinking": true, "tool_stream": true})),
-            context_length: None,
-        }],
-        vec![],
-        None,
-    );
+    let zai = ProviderEntry {
+        // Use the ollama base to avoid a key requirement.
+        models: vec!["glm-5.1".to_owned()],
+        extra_body: Some(serde_json::json!({"enable_thinking": true, "tool_stream": true})),
+        ..ollama_entry()
+    };
+    let config = make_config(one("zai", zai), vec![], None);
 
     // When building the registry.
     let registry = ProviderRegistry::from_config(config).expect("registry");
@@ -671,7 +580,7 @@ fn registry_propagates_extra_body_to_resolved_provider() {
 #[rstest::rstest]
 fn registry_propagates_none_extra_body_when_absent() {
     // Given a config without extra_body.
-    let config = make_config(vec![ollama_entry()], vec![], None);
+    let config = make_config(one("ollama", ollama_entry()), vec![], None);
 
     // When building the registry.
     let registry = ProviderRegistry::from_config(config).expect("registry");
@@ -686,7 +595,7 @@ fn registry_propagates_none_extra_body_when_absent() {
 #[rstest::rstest]
 fn merge_cache_adds_remote_entries() {
     // Given a registry with ollama (static: llama3).
-    let config = make_config(vec![ollama_entry()], vec![], None);
+    let config = make_config(one("ollama", ollama_entry()), vec![], None);
     let mut registry = ProviderRegistry::from_config(config).expect("registry");
 
     let mut cache_entries = std::collections::HashMap::new();
@@ -718,7 +627,7 @@ fn merge_cache_adds_remote_entries() {
 #[rstest::rstest]
 fn merge_cache_static_wins_on_collision() {
     // Given a registry with ollama (static: llama3).
-    let config = make_config(vec![ollama_entry()], vec![], None);
+    let config = make_config(one("ollama", ollama_entry()), vec![], None);
     let mut registry = ProviderRegistry::from_config(config).expect("registry");
 
     let mut cache_entries = std::collections::HashMap::new();
@@ -749,7 +658,7 @@ fn merge_cache_static_wins_on_collision() {
 #[rstest::rstest]
 fn merge_cache_sets_is_remote_true() {
     // Given a registry with ollama.
-    let config = make_config(vec![ollama_entry()], vec![], None);
+    let config = make_config(one("ollama", ollama_entry()), vec![], None);
     let mut registry = ProviderRegistry::from_config(config).expect("registry");
 
     let mut cache_entries = std::collections::HashMap::new();
@@ -784,7 +693,7 @@ fn merge_cache_sets_is_remote_true() {
 #[rstest::rstest]
 fn merge_cache_ignores_unknown_provider() {
     // Given a registry with ollama.
-    let config = make_config(vec![ollama_entry()], vec![], None);
+    let config = make_config(one("ollama", ollama_entry()), vec![], None);
     let mut registry = ProviderRegistry::from_config(config).expect("registry");
 
     let mut cache_entries = std::collections::HashMap::new();
@@ -811,7 +720,7 @@ fn merge_cache_ignores_unknown_provider() {
 #[rstest::rstest]
 fn unavailable_providers_returns_correct_entries() {
     // Given a registry with one keyless and one key-required provider (no key).
-    let config = make_config(vec![ollama_entry(), openrouter_entry()], vec![], None);
+    let config = make_config(two(("ollama", ollama_entry()), ("openrouter", openrouter_entry())), vec![], None);
     let registry = ProviderRegistry::from_config(config).expect("registry");
     let api_keys = ApiKeys::new();
 
@@ -827,7 +736,7 @@ fn unavailable_providers_returns_correct_entries() {
 #[rstest::rstest]
 fn unavailable_providers_returns_empty_when_all_available() {
     // Given a registry with only keyless providers.
-    let config = make_config(vec![ollama_entry()], vec![], None);
+    let config = make_config(one("ollama", ollama_entry()), vec![], None);
     let registry = ProviderRegistry::from_config(config).expect("registry");
     let api_keys = ApiKeys::new();
 
@@ -862,7 +771,7 @@ fn accepts_model_info_matching_configured_models() {
         )],
         ..ollama_entry()
     };
-    let config = make_config(vec![entry], vec![], None);
+    let config = make_config(one("ollama", entry), vec![], None);
 
     // When building the registry.
 
@@ -877,7 +786,7 @@ fn rejects_model_info_id_not_in_models_list() {
         model_info: vec![model_info("llama4", None, None)],
         ..ollama_entry()
     };
-    let config = make_config(vec![entry], vec![], None);
+    let config = make_config(one("ollama", entry), vec![], None);
 
     // When building the registry.
     let result = ProviderRegistry::from_config(config);
@@ -896,7 +805,7 @@ fn rejects_duplicate_model_info_ids() {
         ],
         ..ollama_entry()
     };
-    let config = make_config(vec![entry], vec![], None);
+    let config = make_config(one("ollama", entry), vec![], None);
 
     // When building the registry.
     let result = ProviderRegistry::from_config(config);
@@ -913,7 +822,7 @@ fn static_expansion_per_model_context_length_beats_block_level() {
         context_length: Some(4096),
         ..ollama_entry()
     };
-    let config = make_config(vec![entry], vec![], None);
+    let config = make_config(one("ollama", entry), vec![], None);
 
     // When building the registry.
     let registry = ProviderRegistry::from_config(config).expect("registry");
@@ -932,7 +841,7 @@ fn static_expansion_block_level_context_length_applies_without_override() {
         context_length: Some(4096),
         ..ollama_entry()
     };
-    let config = make_config(vec![entry], vec![], None);
+    let config = make_config(one("ollama", entry), vec![], None);
 
     // When building the registry.
     let registry = ProviderRegistry::from_config(config).expect("registry");
@@ -951,7 +860,7 @@ fn merge_cache_block_level_beats_api_value() {
         context_length: Some(4096),
         ..ollama_entry()
     };
-    let config = make_config(vec![entry], vec![], None);
+    let config = make_config(one("ollama", entry), vec![], None);
     let mut registry = ProviderRegistry::from_config(config).expect("registry");
 
     let mut cache_entries = std::collections::HashMap::new();
@@ -987,7 +896,7 @@ fn merge_cache_per_model_beats_api_and_block() {
         models: vec!["llama3".to_owned(), "mistral".to_owned()],
         ..ollama_entry()
     };
-    let config = make_config(vec![entry], vec![], None);
+    let config = make_config(one("ollama", entry), vec![], None);
     let mut registry = ProviderRegistry::from_config(config).expect("registry");
 
     let mut cache_entries = std::collections::HashMap::new();
@@ -1028,7 +937,7 @@ fn merge_cache_per_model_extra_body_beats_block_level() {
         models: vec!["llama3".to_owned(), "mistral".to_owned()],
         ..ollama_entry()
     };
-    let config = make_config(vec![entry], vec![], None);
+    let config = make_config(one("ollama", entry), vec![], None);
     let mut registry = ProviderRegistry::from_config(config).expect("registry");
 
     let mut cache_entries = std::collections::HashMap::new();

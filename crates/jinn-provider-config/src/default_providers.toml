@@ -4,122 +4,108 @@
 #
 # API keys are never stored here — reference env var names instead.
 # For providers that don't require a key (Ollama, LMStudio), set requires_key = false.
-# Each provider block groups models that share the same backend, API key, and base URL.
-# Need different settings for the same backend? Create a separate block with a unique name.
+# Each provider is a map-keyed table: [providers.<name>]. The table name IS the
+# provider name — association of nested tables (extra_body, model_info) is part
+# of the key path, so [providers.zai.extra_body] unambiguously belongs to zai.
+# Need different settings for the same backend? Add another table with a unique name.
 
-[[providers]]
-name = "openrouter"
+[providers.openrouter]
 backend = "openrouter"
 api_key_env = "OPENROUTER_API_KEY"
 models = ["openai/gpt-oss-120b", "anthropic/claude-sonnet-4-20250514", "google/gemini-2.5-flash"]
 
-[[providers]]
-name = "openai"
+[providers.openai]
 backend = "openai"
 api_key_env = "OPENAI_API_KEY"
 models = ["gpt-4o", "gpt-4o-mini"]
 
-[[providers]]
-name = "anthropic"
+[providers.anthropic]
 backend = "anthropic"
 api_key_env = "ANTHROPIC_API_KEY"
 models = ["claude-sonnet-4-20250514", "claude-haiku-4-20250514"]
 
-[[providers]]
-name = "ollama"
+[providers.ollama]
 backend = "ollama"
 requires_key = false
 base_url = "http://localhost:11434"
 models = ["llama3", "codellama"]
 
-# Per-model metadata overrides ([[providers.model_info]]).
+# Per-model metadata overrides ([[providers.<name>.model_info]]).
 # Each entry overrides the provider block for a single model id.
 # Fields left unset fall back to: provider block → API-discovered cache → models.dev.
 # context_length sets the context window in tokens.
 # input_modalities REPLACES the discovered value, e.g. ["text", "image"] for a vision model.
 # extra_body overrides the block-level body params for this model.
-# [[providers.model_info]]
+# [[providers.ollama.model_info]]
 # id = "llama3"
 # context_length = 8192
 # input_modalities = ["text", "image"]
 #
-# [providers.model_info.extra_body]
+# [providers.ollama.model_info.extra_body]
 # num_ctx = 8192
 
-[[providers]]
-name = "lmstudio"
+[providers.lmstudio]
 backend = "lmstudio"
 base_url = "http://localhost:1234/v1"
 requires_key = false
 models = ["local-model"]
 
-[[providers]]
-name = "deepseek"
+[providers.deepseek]
 backend = "deepseek"
 api_key_env = "DEEPSEEK_API_KEY"
 models = ["deepseek-chat", "deepseek-reasoner"]
 
-[[providers]]
-name = "xai"
+[providers.xai]
 backend = "xai"
 api_key_env = "XAI_API_KEY"
 models = ["grok-3", "grok-3-mini"]
 
-[[providers]]
-name = "google"
+[providers.google]
 backend = "google"
 api_key_env = "GOOGLE_API_KEY"
 models = ["gemini-2.5-flash", "gemini-2.5-pro"]
 
-[[providers]]
-name = "groq"
+[providers.groq]
 backend = "groq"
 api_key_env = "GROQ_API_KEY"
 models = ["llama-3.3-70b-versatile", "mixtral-8x7b-32768"]
 
-[[providers]]
-name = "cohere"
+[providers.cohere]
 backend = "cohere"
 api_key_env = "COHERE_API_KEY"
 models = ["command-r-plus", "command-r"]
 
-[[providers]]
-name = "mistral"
+[providers.mistral]
 backend = "mistral"
 api_key_env = "MISTRAL_API_KEY"
 models = ["mistral-large-latest", "mistral-small-latest"]
 
-[[providers]]
-name = "huggingface"
+[providers.huggingface]
 backend = "huggingface"
 api_key_env = "HF_API_KEY"
 models = ["meta-llama/Llama-3.3-70B-Instruct"]
 
-[[providers]]
-name = "phind"
+[providers.phind]
 backend = "phind"
 api_key_env = "PHIND_API_KEY"
 models = ["Phind-70B"]
 
-[[providers]]
-name = "elevenlabs"
+[providers.elevenlabs]
 backend = "elevenlabs"
 api_key_env = "ELEVENLABS_API_KEY"
 models = ["eleven-labs-model"]
 
-[[providers]]
-name = "sample"
+[providers.sample]
 backend = "sample"
 requires_key = false
 models = ["sample"]
 
-[[providers]]
-name = "zai"
+[providers.zai]
 backend = "zai"
 api_key_env = "ZAI_API_KEY"
 models = ["glm-4.5-air", "glm-4.7", "glm-4.7-flash", "glm-5", "glm-5-turbo", "glm-5.1"]
 
-[providers.extra_body]
+[providers.zai.extra_body]
 enable_thinking = true
 tool_stream = true
 

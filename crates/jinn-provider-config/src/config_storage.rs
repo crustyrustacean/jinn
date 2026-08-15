@@ -4,6 +4,7 @@
 //! provider configuration. [`FilesystemConfigStorage`] is the production
 //! implementation; [`InMemoryConfigStorage`] is for testing.
 
+use std::collections::BTreeMap;
 use std::path::PathBuf;
 use std::sync::Arc;
 
@@ -135,7 +136,7 @@ impl ConfigStorage for InMemoryConfigStorage {
             None => {
                 // No config saved - return defaults (empty).
                 Ok(ProvidersConfig {
-                    providers: vec![],
+                    providers: BTreeMap::new(),
                     aliases: vec![],
                     default_provider: None,
                 })
@@ -206,6 +207,8 @@ mod tests {
         clippy::indexing_slicing,
         reason = "test code"
     )]
+    use std::collections::BTreeMap;
+
     use tempfile::TempDir;
 
     use super::*;
@@ -230,9 +233,7 @@ mod tests {
         // Given an InMemoryConfigStorage with a config.
         let storage = InMemoryConfigStorage::new();
         let config = ProvidersConfig {
-            providers: vec![ProviderEntry {
-                model_info: Vec::new(),
-                name: "ollama".to_owned(),
+            providers: BTreeMap::from([("ollama".to_owned(), ProviderEntry {
                 backend: "ollama".to_owned(),
                 models: vec!["llama3".to_owned()],
                 base_url: None,
@@ -240,7 +241,8 @@ mod tests {
                 requires_key: false,
                 extra_body: None,
                 context_length: None,
-            }],
+                model_info: Vec::new(),
+            })]),
             aliases: vec![],
             default_provider: Some("ollama".to_owned()),
         };
@@ -251,7 +253,7 @@ mod tests {
 
         // Then the round-tripped config matches.
         assert_eq!(reloaded.providers.len(), 1);
-        assert_eq!(reloaded.providers[0].name, "ollama");
+        assert!(reloaded.providers.contains_key("ollama"));
         assert_eq!(reloaded.default_provider.as_deref(), Some("ollama"));
     }
 
@@ -259,9 +261,7 @@ mod tests {
     fn in_memory_with_config_pre_populates() {
         // Given an InMemoryConfigStorage pre-populated with a config.
         let config = ProvidersConfig {
-            providers: vec![ProviderEntry {
-                model_info: Vec::new(),
-                name: "test".to_owned(),
+            providers: BTreeMap::from([("test".to_owned(), ProviderEntry {
                 backend: "ollama".to_owned(),
                 models: vec!["llama3".to_owned()],
                 base_url: None,
@@ -269,7 +269,8 @@ mod tests {
                 requires_key: false,
                 extra_body: None,
                 context_length: None,
-            }],
+                model_info: Vec::new(),
+            })]),
             aliases: vec![],
             default_provider: None,
         };
@@ -280,7 +281,7 @@ mod tests {
 
         // Then the pre-populated config is returned.
         assert_eq!(loaded.providers.len(), 1);
-        assert_eq!(loaded.providers[0].name, "test");
+        assert!(loaded.providers.contains_key("test"));
     }
 
     #[rstest::rstest]
@@ -308,9 +309,7 @@ mod tests {
         let storage = FilesystemConfigStorage::new(path);
 
         let config = ProvidersConfig {
-            providers: vec![ProviderEntry {
-                model_info: Vec::new(),
-                name: "ollama".to_owned(),
+            providers: BTreeMap::from([("ollama".to_owned(), ProviderEntry {
                 backend: "ollama".to_owned(),
                 models: vec!["llama3".to_owned()],
                 base_url: None,
@@ -318,7 +317,8 @@ mod tests {
                 requires_key: false,
                 extra_body: None,
                 context_length: None,
-            }],
+                model_info: Vec::new(),
+            })]),
             aliases: vec![],
             default_provider: Some("ollama".to_owned()),
         };
@@ -329,7 +329,7 @@ mod tests {
 
         // Then the round-tripped config matches.
         assert_eq!(reloaded.providers.len(), 1);
-        assert_eq!(reloaded.providers[0].name, "ollama");
+        assert!(reloaded.providers.contains_key("ollama"));
         assert_eq!(reloaded.default_provider.as_deref(), Some("ollama"));
     }
 
@@ -340,9 +340,7 @@ mod tests {
         let service = ConfigStorageService::new(Arc::new(storage) as Arc<dyn ConfigStorage>);
 
         let config = ProvidersConfig {
-            providers: vec![ProviderEntry {
-                model_info: Vec::new(),
-                name: "test-persist".to_owned(),
+            providers: BTreeMap::from([("test-persist".to_owned(), ProviderEntry {
                 backend: "ollama".to_owned(),
                 models: vec!["llama3".to_owned()],
                 base_url: None,
@@ -350,7 +348,8 @@ mod tests {
                 requires_key: false,
                 extra_body: None,
                 context_length: None,
-            }],
+                model_info: Vec::new(),
+            })]),
             aliases: vec![],
             default_provider: None,
         };
@@ -360,6 +359,6 @@ mod tests {
 
         // Then the config was actually persisted and retrieved.
         assert_eq!(reloaded.providers.len(), 1);
-        assert_eq!(reloaded.providers[0].name, "test-persist");
+        assert!(reloaded.providers.contains_key("test-persist"));
     }
 }

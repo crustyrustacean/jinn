@@ -5,6 +5,7 @@
 //! lives at `~/.config/jinn/providers.toml` and is auto-created on
 //! first run with commented-out examples for every known backend.
 
+use std::collections::BTreeMap;
 use std::path::{Path, PathBuf};
 
 use error_stack::{Report, ResultExt as _};
@@ -32,8 +33,10 @@ pub enum ConfigError {
 /// Root of `providers.toml`.
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct ProvidersConfig {
-    /// User-defined provider entries.
-    pub providers: Vec<ProviderEntry>,
+    /// User-defined provider entries, keyed by provider name.
+    /// The map key is the provider's identity (`ProviderId` source) and
+    /// the TOML table name — `[providers.<name>]`.
+    pub providers: BTreeMap<String, ProviderEntry>,
     /// User-defined aliases (short names → provider entries).
     #[serde(default)]
     pub aliases: Vec<AliasEntry>,
@@ -45,8 +48,6 @@ pub struct ProvidersConfig {
 /// A single configured provider.
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct ProviderEntry {
-    /// Unique user-visible name (also used as the `ProviderId`).
-    pub name: String,
     /// Backend type string, parsed via `LLMBackend::from_str`.
     /// E.g. `"openrouter"`, `"ollama"`, `"openai"`.
     pub backend: String,
@@ -172,9 +173,20 @@ where
         .change_context(ConfigError::Io)
         .attach("failed to read providers config")?;
 
-    toml::from_str(&content)
-        .change_context(ConfigError::Parse)
-        .attach("failed to parse providers config")
+    toml::from_str(&content).map_err(|err| {
+        let report = Report::new(ConfigError::Parse)
+            .attach("failed to parse providers config")
+            .attach(err.to_string());
+        if content.contains("[[providers]]") {
+            report.attach(
+                "legacy [[providers]] array syntax is no longer supported; \
+                 providers are now declared as [providers.<name>] map tables \
+                 (e.g. [[providers]] name = \"ollama\" ... becomes [providers.ollama] ...)",
+            )
+        } else {
+            report
+        }
+    })
 }
 
 /// Creates the default config file at the standard location.
@@ -303,9 +315,8 @@ where
             })?;
 
         let mut patcher = jinn_common::toml_patch::DocumentPatcher::new();
-        patcher.register_array_key(["providers"], "name");
         patcher.register_array_key(["aliases"], "name");
-        patcher.register_array_key(["providers", "model_info"], "id");
+        patcher.register_array_key(["providers", "*", "model_info"], "id");
 
         let new_value = toml::Value::try_from(config).map_err(|_e| {
             Report::new(ConfigError::Parse).attach("failed to serialize ProvidersConfig")
@@ -341,6 +352,7 @@ where
         .attach("failed to write providers config")
 }
 
+
 #[cfg(test)]
 mod tests {
     #![allow(
@@ -350,9 +362,25 @@ mod tests {
         clippy::indexing_slicing,
         reason = "test code"
     )]
+    use std::collections::BTreeMap;
+
     use tempfile::TempDir;
 
     use super::*;
+
+    /// A minimal provider entry with every optional field unset.
+    fn entry(backend: &str, models: &[&str]) -> ProviderEntry {
+        ProviderEntry {
+            backend: backend.to_owned(),
+            models: models.iter().map(|m| (*m).to_owned()).collect(),
+            base_url: None,
+            api_key_env: None,
+            requires_key: true,
+            extra_body: None,
+            context_length: None,
+            model_info: Vec::new(),
+        }
+    }
 
     #[rstest::rstest]
     fn init_providers_writes_template_when_missing() {
@@ -374,7 +402,7 @@ mod tests {
         // Given an existing file with hand-authored content.
         let dir = TempDir::new().expect("temp dir");
         let path = dir.path().join("providers.toml");
-        let marker = "# user-managed\n[[providers]]\n";
+        let marker = "# user-managed\n[providers.ollama]\n";
         std::fs::write(&path, marker).expect("write");
 
         // When initializing without --force.
@@ -402,21 +430,19 @@ mod tests {
         assert_eq!(on_disk, DEFAULT_CONFIG);
     }
 
-    /// Writes a well-formed TOML config to a temp file and loads it.
+    /// Writes a well-formed new-format TOML config to a temp file and loads it.
     fn load_test_config() -> ProvidersConfig {
         let dir = TempDir::new().expect("temp dir");
         let path = dir.path().join("providers.toml");
         let toml = r#"
-[[providers]]
-name = "ollama"
+[providers.ollama]
 backend = "ollama"
-models = ["llama3", "codellama"]
 requires_key = false
+models = ["llama3", "codellama"]
 
 [[aliases]]
 name = "fast"
-target = "ollama/llama3"
-"#;
+target = "ollama/llama3""#;
         std::fs::write(&path, toml).expect("write");
         load_config_from(&path).expect("load")
     }
@@ -428,35 +454,65 @@ target = "ollama/llama3"
 
         // Then provider count and models are correct.
         assert_eq!(config.providers.len(), 1);
-        assert_eq!(config.providers[0].models, vec!["llama3", "codellama"]);
+        assert_eq!(
+            config.providers["ollama"].models,
+            vec!["llama3", "codellama"]
+        );
     }
 
     #[rstest::rstest]
-    #[case::provider_name("provider_name", "ollama")]
-    #[case::provider_backend("provider_backend", "ollama")]
-    #[case::requires_key("requires_key", "false")]
-    #[case::alias_name("alias_name", "fast")]
-    #[case::alias_target("alias_target", "ollama/llama3")]
-    fn load_config_parses_field_correctly(#[case] field: &str, #[case] expected: &str) {
+    fn load_config_uses_table_name_as_provider_key() {
         // Given a well-formed TOML config.
         let config = load_test_config();
 
-        // Then the field matches the expected value.
-        let actual = match field {
-            "provider_name" => config.providers[0].name.as_str(),
-            "provider_backend" => config.providers[0].backend.as_str(),
-            "requires_key" => {
-                assert!(!config.providers[0].requires_key);
-                return;
-            }
-            "alias_name" => {
-                assert_eq!(config.aliases.len(), 1);
-                config.aliases[0].name.as_str()
-            }
-            "alias_target" => config.aliases[0].target.as_str(),
-            _ => panic!("unknown field: {field}"),
-        };
-        assert_eq!(actual, expected);
+        // Then the map key is the provider name (no name field on disk).
+        assert!(config.providers.contains_key("ollama"));
+    }
+
+    #[rstest::rstest]
+    fn load_config_parses_alias_fields() {
+        // Given a well-formed TOML config.
+        let config = load_test_config();
+
+        // Then the alias name and target match.
+        assert_eq!(config.aliases.len(), 1);
+        assert_eq!(config.aliases[0].name, "fast");
+        assert_eq!(config.aliases[0].target, "ollama/llama3");
+    }
+
+    #[rstest::rstest]
+    fn legacy_array_syntax_fails_with_new_syntax_hint() {
+        // Given a legacy [[providers]] array-format file.
+        let dir = TempDir::new().expect("temp dir");
+        let path = dir.path().join("providers.toml");
+        let toml = "[[providers]]\nname = \"ollama\"\nbackend = \"ollama\"\nmodels = [\"llama3\"]\n";
+        std::fs::write(&path, toml).expect("write");
+
+        // When loading.
+        let result = load_config_from(&path);
+
+        // Then the error names the new [providers.<name>] syntax.
+        let report = result.expect_err("legacy syntax must fail");
+        let rendered = format!("{report:?}");
+        assert!(
+            rendered.contains("[providers.<name>]"),
+            "hint missing: {rendered}"
+        );
+    }
+
+    #[rstest::rstest]
+    fn duplicate_provider_keys_fail_toml_parse() {
+        // Given a file declaring the same provider table twice.
+        let dir = TempDir::new().expect("temp dir");
+        let path = dir.path().join("providers.toml");
+        let toml = "[providers.ollama]\nbackend = \"ollama\"\nmodels = [\"llama3\"]\n\n[providers.ollama]\nbackend = \"ollama\"\nmodels = [\"llama3\"]\n";
+        std::fs::write(&path, toml).expect("write");
+
+        // When loading.
+        let result = load_config_from(&path);
+
+        // Then parsing fails.
+        assert!(result.is_err());
     }
 
     #[rstest::rstest]
@@ -480,17 +536,7 @@ target = "ollama/llama3"
     fn save_config_writes_valid_toml() {
         // Given a config with providers.
         let config = ProvidersConfig {
-            providers: vec![ProviderEntry {
-                model_info: Vec::new(),
-                name: "test".to_owned(),
-                backend: "openrouter".to_owned(),
-                models: vec!["gpt-4".to_owned()],
-                base_url: None,
-                api_key_env: Some("TEST_KEY".to_owned()),
-                requires_key: true,
-                extra_body: None,
-                context_length: None,
-            }],
+            providers: BTreeMap::from([("test".to_owned(), entry("openrouter", &["gpt-4"]))]),
             aliases: vec![],
             default_provider: Some("test/gpt-4".to_owned()),
         };
@@ -504,7 +550,7 @@ target = "ollama/llama3"
 
         // Then the round-tripped config matches.
         assert_eq!(reloaded.providers.len(), 1);
-        assert_eq!(reloaded.providers[0].name, "test");
+        assert!(reloaded.providers.contains_key("test"));
         assert_eq!(reloaded.default_provider.as_deref(), Some("test/gpt-4"));
     }
 
@@ -518,29 +564,30 @@ target = "ollama/llama3"
     }
 
     #[rstest::rstest]
-    fn load_config_parses_extra_body() {
-        // Given a config with extra_body.
+    fn load_config_parses_extra_body_on_named_provider() {
+        // Given a config with extra_body under a named provider.
         let dir = TempDir::new().expect("temp dir");
         let path = dir.path().join("providers.toml");
         let toml = r#"
-[[providers]]
-name = "zai"
+[providers.zai]
 backend = "zai"
 api_key_env = "ZAI_API_KEY"
 models = ["glm-5.1"]
 
-[providers.extra_body]
+[providers.zai.extra_body]
 enable_thinking = true
-tool_stream = true
-"#;
+tool_stream = true"#;
         std::fs::write(&path, toml).expect("write");
 
         // When loading.
         let config = load_config_from(&path).expect("load");
 
-        // Then extra_body is parsed.
+        // Then extra_body lands on the named provider.
         assert_eq!(config.providers.len(), 1);
-        let extra = config.providers[0].extra_body.as_ref().expect("extra_body");
+        let extra = config.providers["zai"]
+            .extra_body
+            .as_ref()
+            .expect("extra_body");
         assert_eq!(extra["enable_thinking"], true);
         assert_eq!(extra["tool_stream"], true);
     }
@@ -548,18 +595,10 @@ tool_stream = true
     #[rstest::rstest]
     fn round_trip_preserves_extra_body() {
         // Given a config with extra_body.
+        let mut zai = entry("zai", &["glm-5.1"]);
+        zai.extra_body = Some(serde_json::json!({"enable_thinking": true}));
         let config = ProvidersConfig {
-            providers: vec![ProviderEntry {
-                model_info: Vec::new(),
-                name: "zai".to_owned(),
-                backend: "zai".to_owned(),
-                models: vec!["glm-5.1".to_owned()],
-                base_url: None,
-                api_key_env: Some("ZAI_API_KEY".to_owned()),
-                requires_key: true,
-                extra_body: Some(serde_json::json!({"enable_thinking": true})),
-                context_length: None,
-            }],
+            providers: BTreeMap::from([("zai".to_owned(), zai)]),
             aliases: vec![],
             default_provider: None,
         };
@@ -572,7 +611,7 @@ tool_stream = true
         let reloaded = load_config_from(&path).expect("reload");
 
         // Then extra_body is preserved.
-        let extra = reloaded.providers[0]
+        let extra = reloaded.providers["zai"]
             .extra_body
             .as_ref()
             .expect("extra_body");
@@ -582,14 +621,14 @@ tool_stream = true
     #[rstest::rstest]
     fn save_config_preserves_user_comments() {
         // Given a comment-rich providers.toml written by the user.
-        let original = "# my favorite provider\n[[providers]]\nname = \"ollama\"\nbackend = \"ollama\"\nmodels = [\"llama3\"]\n";
+        let original = "# my favorite provider\n[providers.ollama]\nbackend = \"ollama\"\nmodels = [\"llama3\"]\n";
         let dir = TempDir::new().expect("temp dir");
         let path = dir.path().join("providers.toml");
         std::fs::write(&path, original).expect("write");
 
         // When loading, mutating default_provider, and saving.
         let mut config = load_config_from(&path).expect("load");
-        config.default_provider = Some("ollama".to_owned());
+        config.default_provider = Some("ollama/llama3".to_owned());
         save_config_to(&config, &path).expect("save");
 
         // Then the original comment is preserved verbatim.
@@ -598,87 +637,32 @@ tool_stream = true
             written.contains("# my favorite provider"),
             "comment was wiped: {written}"
         );
-        assert!(written.contains("default_provider = \"ollama\""));
-    }
-
-    #[rstest::rstest]
-    fn save_config_deletes_provider_block_on_struct_removal() {
-        // Given a config with two providers, only one of which we want to keep.
-        let original = "# keep me\n[[providers]]\nname = \"alpha\"\nbackend = \"x\"\nmodels = [\"a\"]\n\n# delete me\n[[providers]]\nname = \"beta\"\nbackend = \"x\"\nmodels = [\"b\"]\n";
-        let dir = TempDir::new().expect("temp dir");
-        let path = dir.path().join("providers.toml");
-        std::fs::write(&path, original).expect("write");
-
-        // When saving a config containing only alpha.
-        let config = ProvidersConfig {
-            providers: vec![ProviderEntry {
-                model_info: Vec::new(),
-                name: "alpha".to_owned(),
-                backend: "x".to_owned(),
-                models: vec!["a".to_owned()],
-                base_url: None,
-                api_key_env: None,
-                requires_key: false,
-                extra_body: None,
-                context_length: None,
-            }],
-            aliases: vec![],
-            default_provider: None,
-        };
-        save_config_to(&config, &path).expect("save");
-
-        // Then beta's block (and its comment) is removed, alpha's preserved.
-        let written = std::fs::read_to_string(&path).expect("read");
-        assert!(written.contains("# keep me"));
-        assert!(written.contains("name = \"alpha\""));
-        assert!(!written.contains("beta"), "beta still present: {written}");
-        assert!(!written.contains("# delete me"));
+        assert!(written.contains("default_provider = \"ollama/llama3\""));
     }
 
     #[rstest::rstest]
     fn save_config_appends_new_provider_at_end() {
         // Given a single-provider config.
-        let original =
-            "# existing\n[[providers]]\nname = \"alpha\"\nbackend = \"x\"\nmodels = [\"a\"]\n";
+        let original = "# existing\n[providers.alpha]\nbackend = \"x\"\nmodels = [\"a\"]\n";
         let dir = TempDir::new().expect("temp dir");
         let path = dir.path().join("providers.toml");
         std::fs::write(&path, original).expect("write");
 
         // When saving a config with alpha + beta.
         let config = ProvidersConfig {
-            providers: vec![
-                ProviderEntry {
-                    model_info: Vec::new(),
-                    name: "alpha".to_owned(),
-                    backend: "x".to_owned(),
-                    models: vec!["a".to_owned()],
-                    base_url: None,
-                    api_key_env: None,
-                    requires_key: false,
-                    extra_body: None,
-                    context_length: None,
-                },
-                ProviderEntry {
-                    model_info: Vec::new(),
-                    name: "beta".to_owned(),
-                    backend: "x".to_owned(),
-                    models: vec!["b".to_owned()],
-                    base_url: None,
-                    api_key_env: None,
-                    requires_key: false,
-                    extra_body: None,
-                    context_length: None,
-                },
-            ],
+            providers: BTreeMap::from([
+                ("alpha".to_owned(), entry("x", &["a"])),
+                ("beta".to_owned(), entry("x", &["b"])),
+            ]),
             aliases: vec![],
             default_provider: None,
         };
         save_config_to(&config, &path).expect("save");
 
-        // Then beta appears after alpha (appended).
+        // Then beta appears after alpha (appended), and the comment survives.
         let written = std::fs::read_to_string(&path).expect("read");
-        let alpha_pos = written.find("name = \"alpha\"").expect("alpha");
-        let beta_pos = written.find("name = \"beta\"").expect("beta");
+        let alpha_pos = written.find("[providers.alpha]").expect("alpha");
+        let beta_pos = written.find("[providers.beta]").expect("beta");
         assert!(alpha_pos < beta_pos, "beta not appended after alpha");
         assert!(written.contains("# existing"));
     }
@@ -686,7 +670,7 @@ tool_stream = true
     #[rstest::rstest]
     fn save_config_preserves_alias_block_comments_on_mutation() {
         // Given a providers.toml with a comment-rich alias block.
-        let original = "\n# required field (must precede arrays of tables)\nproviders = []\n\n# shortcut for my favorite model\n[[aliases]]\nname = \"fast\"\ntarget = \"ollama/llama3\"\n\n# another alias\n[[aliases]]\nname = \"smart\"\ntarget = \"openrouter/openai/gpt-4o\"\n";
+        let original = "[providers.ollama]\nbackend = \"ollama\"\nrequires_key = false\nmodels = [\"llama3\", \"codellama\"]\n\n# shortcut for my favorite model\n[[aliases]]\nname = \"fast\"\ntarget = \"ollama/llama3\"\n\n# another alias\n[[aliases]]\nname = \"smart\"\ntarget = \"ollama/codellama\"\n";
         let dir = TempDir::new().expect("temp dir");
         let path = dir.path().join("providers.toml");
         std::fs::write(&path, original).expect("write");
@@ -711,7 +695,7 @@ tool_stream = true
             "target not updated"
         );
         assert!(
-            !written.contains("\"ollama/llama3\""),
+            !written.contains("target = \"ollama/llama3\""),
             "old target still present"
         );
     }
@@ -722,17 +706,10 @@ tool_stream = true
         let dir = TempDir::new().expect("temp dir");
         let path = dir.path().join("providers.toml");
         let config = ProvidersConfig {
-            providers: vec![ProviderEntry {
-                model_info: Vec::new(),
-                name: "test-save".to_owned(),
-                backend: "ollama".to_owned(),
-                models: vec!["llama3".to_owned()],
-                base_url: None,
-                api_key_env: None,
-                requires_key: false,
-                extra_body: None,
-                context_length: None,
-            }],
+            providers: BTreeMap::from([(
+                "test-save".to_owned(),
+                entry("ollama", &["llama3"]),
+            )]),
             aliases: vec![],
             default_provider: Some("test-save/llama3".to_owned()),
         };
@@ -768,25 +745,21 @@ tool_stream = true
         // No requires_key field - should default to true.
         std::fs::write(
             &path,
-            "[[providers]]\nname = \"openai\"\nbackend = \"openai\"\nmodels = [\"gpt-4\"]\napi_key_env = \"OPENAI_API_KEY\"\n",
+            "[providers.openai]\nbackend = \"openai\"\nmodels = [\"gpt-4\"]\napi_key_env = \"OPENAI_API_KEY\"\n",
         )
         .expect("write");
 
         let config = load_config_from(&path).expect("load");
 
         assert!(
-            config.providers[0].requires_key,
+            config.providers["openai"].requires_key,
             "requires_key should default to true"
         );
     }
 
-    /// Build a realistic providers.toml with comments in every position we care about:
-    ///   - top-of-file banner
-    ///   - section dividers
-    ///   - per-provider block comments (above the header)
-    ///   - inline trailing comments
-    ///   - commented-out examples (which must remain as comments)
-    ///   - mid-block field comments
+    /// Build a realistic new-format providers.toml with comments in every position
+    /// we care about: banner, section dividers, per-provider comments, inline
+    /// trailing comments, commented-out examples, and mid-block field comments.
     fn realistic_providers_toml() -> &'static str {
         r#"
 # jinn provider configuration
@@ -796,45 +769,41 @@ tool_stream = true
 
 # --- Providers ---
 
-    # my primary chat backend
-    [[providers]]
-    name = "openrouter"
-    backend = "openrouter"
-    api_key_env = "OPENROUTER_API_KEY"   # never checked in
-    models = [
-        "anthropic/claude-sonnet-4-20250514",
-        "google/gemini-2.5-flash",
-    ]
+# my primary chat backend
+[providers.openrouter]
+backend = "openrouter"
+api_key_env = "OPENROUTER_API_KEY"   # never checked in
+models = [
+    "anthropic/claude-sonnet-4-20250514",
+    "google/gemini-2.5-flash",
+]
 
-    # local fallback
-    [[providers]]
-    name = "ollama"
-    backend = "ollama"
-    requires_key = false
-    base_url = "http://localhost:11434"
-    models = ["llama3"]
+# local fallback
+[providers.ollama]
+backend = "ollama"
+requires_key = false
+base_url = "http://localhost:11434"
+models = ["llama3"]
 
 # --- Aliases ---
 
-    # quick picker shortcuts
-    [[aliases]]
-    name = "smart"
-    target = "openrouter/anthropic/claude-sonnet-4-20250514"
+# quick picker shortcuts
+[[aliases]]
+name = "smart"
+target = "openrouter/anthropic/claude-sonnet-4-20250514"
 
-    # local = fast
-    [[aliases]]
-    name = "fast"
-    target = "ollama/llama3"
+# local = fast
+[[aliases]]
+name = "fast"
+target = "ollama/llama3"
 
 # --- Default ---
 
-    default_provider = "smart"   # what opens on launch
+default_provider = "smart"   # what opens on launch
 
 # --- Examples (commented out, must survive as comments) ---
-# [[providers]]
-# name = "sample"
-# backend = "sample"
-"#
+# [providers.sample]
+# backend = "sample""#
     }
 
     #[rstest::rstest]
@@ -858,7 +827,6 @@ tool_stream = true
             "# --- Providers ---",
             "# my primary chat backend",
             "# never checked in",
-            "# never checked in",
             "# local fallback",
             "# --- Aliases ---",
             "# quick picker shortcuts",
@@ -866,8 +834,8 @@ tool_stream = true
             "# --- Default ---",
             "# what opens on launch",
             "# --- Examples (commented out, must survive as comments) ---",
-            "# [[providers]]",
-            "# name = \"sample\"",
+            "# [providers.sample]",
+            "# backend = \"sample\"",
         ];
         for needle in expectations {
             assert!(
@@ -889,8 +857,7 @@ tool_stream = true
         let mut config = load_config_from(&path).expect("load");
         config
             .providers
-            .iter_mut()
-            .find(|p| p.name == "openrouter")
+            .get_mut("openrouter")
             .expect("openrouter exists")
             .models
             .push("openai/gpt-4o".to_owned());
@@ -905,44 +872,7 @@ tool_stream = true
         assert!(written.contains("# local = fast"));
         assert!(written.contains("# --- Default ---"));
         assert!(written.contains("# --- Examples"));
-        // And the openrouter block still has its trailing comments.
-        // Inline-array comments like `"x" # foo` do NOT survive (arrays are wholesale replaced).
-        // We assert only block-level comments above, which do survive.
         assert!(written.contains("# never checked in"));
-    }
-
-    #[rstest::rstest]
-    fn save_config_deleting_one_provider_preserves_its_comment_and_others() {
-        // Given the comment-rich providers.toml fixture.
-        let original = realistic_providers_toml();
-        let dir = TempDir::new().expect("temp dir");
-        let path = dir.path().join("providers.toml");
-        std::fs::write(&path, original).expect("write");
-
-        // When deleting the ollama provider from the struct.
-        let mut config = load_config_from(&path).expect("load");
-        config.providers.retain(|p| p.name != "ollama");
-        save_config_to(&config, &path).expect("save");
-        let written = std::fs::read_to_string(&path).expect("read");
-
-        // Then the ollama block AND its '# local fallback' comment are gone,
-        // but unrelated comments survive untouched.
-        // Look for the full ollama provider block, not just the substring.
-        // (Aliases may still reference "ollama/..." if not also deleted.)
-        assert!(
-            !written.contains("name = \"ollama\""),
-            "ollama provider removed, got:\n{written}"
-        );
-        assert!(
-            !written.contains("# local fallback"),
-            "ollama comment removed with it"
-        );
-        assert!(
-            written.contains("# my primary chat backend"),
-            "openrouter comment untouched"
-        );
-        assert!(written.contains("# --- Aliases ---"));
-        assert!(written.contains("# --- Default ---"));
     }
 
     #[rstest::rstest]
@@ -972,28 +902,26 @@ tool_stream = true
 
     #[rstest::rstest]
     fn load_config_parses_model_info_tables() {
-        // Given a config with [[providers.model_info]] tables.
+        // Given a config with [[providers.<name>.model_info]] tables.
         let dir = TempDir::new().expect("temp dir");
         let path = dir.path().join("providers.toml");
         let toml = r#"
-[[providers]]
-name = "ollama"
+[providers.ollama]
 backend = "ollama"
 requires_key = false
 models = ["llama3", "codellama"]
 
-[[providers.model_info]]
+[[providers.ollama.model_info]]
 id = "llama3"
 context_length = 8192
-input_modalities = ["text", "image"]
-"#;
+input_modalities = ["text", "image"]"#;
         std::fs::write(&path, toml).expect("write");
 
         // When loading.
         let config = load_config_from(&path).expect("load");
 
-        // Then the model_info entry is parsed with all fields.
-        let info = &config.providers[0].model_info;
+        // Then the model_info entry attaches to the named provider with all fields.
+        let info = &config.providers["ollama"].model_info;
         assert_eq!(info.len(), 1);
         assert_eq!(info[0].id, "llama3");
         assert_eq!(info[0].context_length, Some(8192));
@@ -1007,23 +935,15 @@ input_modalities = ["text", "image"]
     #[rstest::rstest]
     fn round_trip_preserves_model_info() {
         // Given a config with a model_info entry.
+        let mut ollama = entry("ollama", &["llama3"]);
+        ollama.model_info = vec![ModelInfoEntry {
+            id: "llama3".to_owned(),
+            context_length: Some(8192),
+            input_modalities: Some(vec!["text".to_owned(), "image".to_owned()]),
+            extra_body: Some(serde_json::json!({"num_ctx": 8192})),
+        }];
         let config = ProvidersConfig {
-            providers: vec![ProviderEntry {
-                model_info: vec![ModelInfoEntry {
-                    id: "llama3".to_owned(),
-                    context_length: Some(8192),
-                    input_modalities: Some(vec!["text".to_owned(), "image".to_owned()]),
-                    extra_body: Some(serde_json::json!({"num_ctx": 8192})),
-                }],
-                name: "ollama".to_owned(),
-                backend: "ollama".to_owned(),
-                models: vec!["llama3".to_owned()],
-                base_url: None,
-                api_key_env: None,
-                requires_key: false,
-                extra_body: None,
-                context_length: None,
-            }],
+            providers: BTreeMap::from([("ollama".to_owned(), ollama)]),
             aliases: vec![],
             default_provider: None,
         };
@@ -1036,7 +956,7 @@ input_modalities = ["text", "image"]
         let reloaded = load_config_from(&path).expect("reload");
 
         // Then the model_info entry round-trips with all fields.
-        let info = &reloaded.providers[0].model_info;
+        let info = &reloaded.providers["ollama"].model_info;
         assert_eq!(info.len(), 1);
         assert_eq!(info[0].id, "llama3");
         assert_eq!(info[0].context_length, Some(8192));
@@ -1050,14 +970,19 @@ input_modalities = ["text", "image"]
     #[rstest::rstest]
     fn save_config_preserves_model_info_block_comments() {
         // Given a user-authored config with commented model_info blocks.
-        let original = "# my vision model\n[[providers]]\nname = \"ollama\"\nbackend = \"ollama\"\nrequires_key = false\nmodels = [\"llama3\"]\n\n# vision-capable local model\n[[providers.model_info]]\nid = \"llama3\"\ncontext_length = 8192\ninput_modalities = [\"text\", \"image\"]\n";
+        let original = "# my vision model\n[providers.ollama]\nbackend = \"ollama\"\nrequires_key = false\nmodels = [\"llama3\"]\n\n# vision-capable local model\n[[providers.ollama.model_info]]\nid = \"llama3\"\ncontext_length = 8192\ninput_modalities = [\"text\", \"image\"]\n";
         let dir = TempDir::new().expect("temp dir");
         let path = dir.path().join("providers.toml");
         std::fs::write(&path, original).expect("write");
 
         // When loading, changing the context length, and saving.
         let mut config = load_config_from(&path).expect("load");
-        config.providers[0].model_info[0].context_length = Some(16384);
+        config
+            .providers
+            .get_mut("ollama")
+            .expect("ollama exists")
+            .model_info[0]
+            .context_length = Some(16384);
         save_config_to(&config, &path).expect("save");
 
         // Then the model_info block comment survives and the value updates in place.
@@ -1076,8 +1001,7 @@ input_modalities = ["text", "image"]
         // AlloyEntry is removed, but the block must survive round-trips
         // so user config (and comments) is never silently erased.
         let original = r#"# my setup
-[[providers]]
-name = "ollama"
+[providers.ollama]
 backend = "ollama"
 models = ["llama3"]
 requires_key = false
@@ -1086,8 +1010,7 @@ requires_key = false
 [[alloys]]
 name = "balanced"
 models = ["ollama/llama3", "openrouter/anthropic/claude-sonnet-4"]
-strategy = "round_robin"
-"#;
+strategy = "round_robin""#;
         let dir = TempDir::new().expect("temp dir");
         let path = dir.path().join("providers.toml");
         std::fs::write(&path, original).expect("write");

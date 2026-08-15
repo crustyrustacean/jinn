@@ -93,9 +93,32 @@ impl KeyRegistry {
     }
 
     fn lookup(&self, path: &[String]) -> Option<&'static str> {
-        self.keys.get(path).copied()
+        // Exact registration wins; wildcard entries ("*") match any single
+        // path segment at their position, consulted afterwards.
+        self.keys
+            .get(path)
+            .copied()
+            .or_else(|| self.lookup_wildcard(path))
+    }
+
+    /// Finds a wildcard registration matching `path`, preferring the most
+    /// specific (fewest wildcards) match.
+    fn lookup_wildcard(&self, path: &[String]) -> Option<&'static str> {
+        self.keys
+            .iter()
+            .filter(|(registered, _)| path_matches(path, registered))
+            .min_by_key(|(registered, _)| registered.iter().filter(|s| *s == "*").count())
+            .map(|(_, key)| *key)
     }
 }
+
+/// Whether a concrete path matches a registered pattern, where a `"*"`
+/// pattern segment matches exactly one concrete segment.
+fn path_matches(path: &[String], pattern: &[String]) -> bool {
+    path.len() == pattern.len()
+        && path.iter().zip(pattern).all(|(seg, pat)| pat == "*" || pat == seg)
+}
+
 
 /// Applies a `toml::Value` tree onto an existing `DocumentMut` in place.
 #[derive(Debug, Default)]
@@ -835,5 +858,52 @@ mod tests {
             "inner comment lost:\n{out}"
         );
         assert!(out.contains("value = 99"), "value updated");
+    }
+
+    #[test]
+    fn wildcard_path_array_of_tables_updates_entry_in_place_by_key() {
+        // Given a provider-keyed document with commented model_info entries.
+        let original = "[providers.zai]\nbackend = \"zai\"\nmodels = [\"glm-5.1\"]\n\n# vision model\n[[providers.zai.model_info]]\nid = \"glm-5.1\"\ncontext_length = 1000000\n";
+        let mut d = doc(original);
+
+        // When patching a mutated context_length through the wildcard path.
+        let mut info = toml::value::Table::new();
+        info.insert("id".to_owned(), toml::Value::String("glm-5.1".to_owned()));
+        info.insert("context_length".to_owned(), toml::Value::Integer(131072));
+        let mut zai = toml::value::Table::new();
+        zai.insert("backend".to_owned(), toml::Value::String("zai".to_owned()));
+        zai.insert("models".to_owned(), toml::Value::Array(vec!["glm-5.1".into()]));
+        zai.insert(
+            "model_info".to_owned(),
+            toml::Value::Array(vec![toml::Value::Table(info)]),
+        );
+        let mut providers = toml::value::Table::new();
+        providers.insert("zai".to_owned(), toml::Value::Table(zai));
+        let mut new = toml::value::Table::new();
+        new.insert("providers".to_owned(), toml::Value::Table(providers));
+
+        let mut p = DocumentPatcher::new();
+        p.register_array_key(["providers", "*", "model_info"], "id");
+        p.apply(&new, d.as_table_mut()).expect("apply");
+
+        // Then the entry is updated in place and its comment survives.
+        let out = d.to_string();
+        assert!(out.contains("# vision model"), "entry comment lost:\n{out}");
+        assert!(out.contains("context_length = 131072"), "value updated");
+        assert!(!out.contains("1000000"), "old value gone");
+    }
+
+    #[test]
+    fn exact_registration_takes_precedence_over_wildcard() {
+        // Given one exact and one wildcard registration that both match a path.
+        let mut registry = super::KeyRegistry::new();
+        registry.register(["providers", "zai", "model_info"], "exact");
+        registry.register(["providers", "*", "model_info"], "wildcard");
+
+        // When looking up the exact-matching path.
+        let path: Vec<String> = vec!["providers".into(), "zai".into(), "model_info".into()];
+
+        // Then the exact registration wins.
+        assert_eq!(registry.lookup(&path), Some("exact"));
     }
 }
