@@ -119,7 +119,7 @@ impl EnvInitActor {
         };
 
         // Resolve API keys from environment variables.
-        for provider in &config.providers {
+        for provider in config.providers.values() {
             if let Some(ref env_var) = provider.api_key_env
                 && let Ok(value) = std::env::var(env_var)
                 && !value.is_empty()
@@ -183,7 +183,7 @@ mod tests {
         let bus = harness.bus();
         bus.publish(EnvironmentLoaded {
             config: crate::feat::provider_infra::ProvidersConfig {
-                providers: vec![],
+                providers: std::collections::BTreeMap::new(),
                 aliases: vec![],
                 default_provider: None,
             },

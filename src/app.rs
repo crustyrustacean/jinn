@@ -141,7 +141,7 @@ impl App {
         // Start with an empty registry.
         let provider_registry = ProviderRegistryService::new(
             ProviderRegistry::from_config(jinn_domain::ProvidersConfig {
-                providers: vec![],
+                providers: std::collections::BTreeMap::new(),
                 aliases: vec![],
                 default_provider: None,
             })

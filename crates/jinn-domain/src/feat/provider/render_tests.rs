@@ -8,6 +8,7 @@
 
 //! Provider picker render tests.
 
+use std::collections::BTreeMap;
 use crate::common::app_state::{AppState, FocusScope};
 use crate::common::render_ctx::RenderCtx;
 use crate::common::services::Services;
@@ -24,9 +25,8 @@ use crate::feat::session::model_selection::ModelSelection;
 
 fn picker_state_with_ollama() -> (AppState, Services) {
     let config = ProvidersConfig {
-        providers: vec![ProviderEntry {
+        providers: BTreeMap::from([("ollama".to_owned(), ProviderEntry {
             model_info: Vec::new(),
-            name: "ollama".to_owned(),
             backend: "ollama".to_owned(),
             models: vec!["llama3".to_owned()],
             base_url: Some("http://localhost:11434".to_owned()),
@@ -34,7 +34,7 @@ fn picker_state_with_ollama() -> (AppState, Services) {
             requires_key: false,
             extra_body: None,
             context_length: None,
-        }],
+        })]),
         aliases: vec![],
         default_provider: None,
     };

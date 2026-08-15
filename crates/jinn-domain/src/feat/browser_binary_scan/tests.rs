@@ -73,7 +73,7 @@ async fn environment_loaded_with_present_binary_emits_verified() {
     harness
         .publish(EnvironmentLoaded {
             config: ProvidersConfig {
-                providers: vec![],
+                providers: std::collections::BTreeMap::new(),
                 aliases: vec![],
                 default_provider: None,
             },
@@ -103,7 +103,7 @@ async fn environment_loaded_with_no_binary_falls_back_to_bundled() {
     harness
         .publish(EnvironmentLoaded {
             config: ProvidersConfig {
-                providers: vec![],
+                providers: std::collections::BTreeMap::new(),
                 aliases: vec![],
                 default_provider: None,
             },
@@ -134,7 +134,7 @@ async fn auto_falls_back_to_chromium_when_chrome_absent() {
     harness
         .publish(EnvironmentLoaded {
             config: ProvidersConfig {
-                providers: vec![],
+                providers: std::collections::BTreeMap::new(),
                 aliases: vec![],
                 default_provider: None,
             },
