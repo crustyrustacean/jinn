@@ -247,7 +247,7 @@ async fn environment_loaded_event_scans_active_session_skills() {
     harness
         .publish(EnvironmentLoaded {
             config: crate::ProvidersConfig {
-                providers: vec![],
+                providers: std::collections::BTreeMap::new(),
                 aliases: vec![],
                 default_provider: None,
             },

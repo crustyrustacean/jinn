@@ -1,5 +1,4 @@
 ## (development) v0.106.1
-
 - Add `[[providers.model_info]]` tables to `providers.toml`: per-model `context_length`, `input_modalities`, and `extra_body` overrides. Hand-authored values take precedence over API-discovered data and models.dev. Models that are only listed in `providers.toml` (never discovered) now appear in the model cache, so the status bar, compaction gate, and attachment gate resolve them; `input_modalities = ["text", "image"]` marks a local model vision-capable.
 - Update learning-tutor persona.
 - Skill preview rendering now uses a shared cache across all sessions.

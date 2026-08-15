@@ -93,11 +93,11 @@ impl DiscoverActor {
             &self.deps.services.paths.models_dev_system_path(),
         );
 
-        for entry in &entries {
+        for (name, entry) in &entries {
             // Need a placeholder model for the builder - use the first static model.
             let Some(placeholder_model) = entry.models.first() else {
                 errors.insert(
-                    entry.name.clone(),
+                    name.clone(),
                     "no models configured (skipping discovery)".to_owned(),
                 );
                 continue;
@@ -106,7 +106,7 @@ impl DiscoverActor {
             let backend = match entry.backend.parse::<Backend>() {
                 Ok(b) => b,
                 Err(e) => {
-                    errors.insert(entry.name.clone(), format!("invalid backend: {e}"));
+                    errors.insert(name.clone(), format!("invalid backend: {e}"));
                     continue;
                 }
             };
@@ -115,7 +115,7 @@ impl DiscoverActor {
             let api_key = if entry.requires_key {
                 let Some(ref env_var) = entry.api_key_env else {
                     errors.insert(
-                        entry.name.clone(),
+                        name.clone(),
                         "requires_key but no api_key_env set".to_owned(),
                     );
                     continue;
@@ -123,7 +123,7 @@ impl DiscoverActor {
                 if let Some(key) = self.deps.services.api_keys.get(env_var) {
                     Some(key)
                 } else {
-                    errors.insert(entry.name.clone(), "API key not resolved".to_owned());
+                    errors.insert(name.clone(), "API key not resolved".to_owned());
                     continue;
                 }
             } else {
@@ -164,15 +164,15 @@ impl DiscoverActor {
                 Ok(mut models) => {
                     enrich_with_models_dev(&mut models, &models_dev);
                     tracing::info!(
-                        provider = %entry.name,
+                        provider = %name,
                         count = models.len(),
                         "discovered models"
                     );
-                    results.insert(entry.name.clone(), models);
+                    results.insert(name.clone(), models);
                 }
                 Err(e) => {
-                    tracing::warn!(provider = %entry.name, err = %e, "list_models failed");
-                    errors.insert(entry.name.clone(), format!("{e}"));
+                    tracing::warn!(provider = %name, err = %e, "list_models failed");
+                    errors.insert(name.clone(), format!("{e}"));
                 }
             }
         }
