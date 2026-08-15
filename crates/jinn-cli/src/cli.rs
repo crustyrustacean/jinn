@@ -141,6 +141,14 @@ pub enum ConfigCommands {
         #[arg(long)]
         force: bool,
     },
+    /// Write the default commented providers.toml template to disk.
+    ///
+    /// Refuses to overwrite an existing file unless --force is given.
+    Providers {
+        /// Overwrite the file if it already exists.
+        #[arg(long)]
+        force: bool,
+    },
 }
 
 #[cfg(test)]
