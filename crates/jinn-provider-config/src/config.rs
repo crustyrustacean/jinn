@@ -208,6 +208,63 @@ where
         .attach("failed to write default providers config")
 }
 
+/// Outcome of [`init_default_providers_to`].
+#[derive(Debug)]
+pub enum InitProvidersOutcome {
+    /// Template was written to a previously-missing path.
+    Created,
+    /// Existing file was overwritten (caller passed `force: true`).
+    Overwritten,
+}
+
+/// Error returned by [`init_default_providers_to`].
+#[derive(Debug, wherror::Error)]
+#[error(debug)]
+pub struct InitProvidersError;
+
+/// Writes the commented providers template to an explicit path.
+///
+/// - If `path` does not exist: writes the template, returns [`InitProvidersOutcome::Created`].
+/// - If `path` exists and `force` is false: fails without touching the file —
+///   `providers.toml` is hand-authored, so a silent clobber would destroy user edits.
+/// - If `path` exists and `force` is true: overwrites, returns [`InitProvidersOutcome::Overwritten`].
+///
+/// # Errors
+///
+/// Returns an error if the file exists and `force` is false, or the write fails.
+pub fn init_default_providers_to<P>(
+    path: P,
+    force: bool,
+) -> Result<InitProvidersOutcome, Report<InitProvidersError>>
+where
+    P: AsRef<Path>,
+{
+    let path = path.as_ref();
+    let existed = path.exists();
+
+    if existed && !force {
+        return Err(Report::new(InitProvidersError))
+            .attach("providers.toml already exists; pass --force to overwrite")
+            .attach(format!("path: {}", path.display()));
+    }
+
+    if let Some(parent) = path.parent() {
+        std::fs::create_dir_all(parent)
+            .change_context(InitProvidersError)
+            .attach("failed to create config directory")?;
+    }
+
+    std::fs::write(path, DEFAULT_CONFIG)
+        .change_context(InitProvidersError)
+        .attach("failed to write default providers config")?;
+
+    if existed {
+        Ok(InitProvidersOutcome::Overwritten)
+    } else {
+        Ok(InitProvidersOutcome::Created)
+    }
+}
+
 /// Saves the config back to disk.
 ///
 /// Serializes the full config as pretty-printed TOML. Note: this may
@@ -296,6 +353,54 @@ mod tests {
     use tempfile::TempDir;
 
     use super::*;
+
+    #[rstest::rstest]
+    fn init_providers_writes_template_when_missing() {
+        // Given a path to a nonexistent file.
+        let dir = TempDir::new().expect("temp dir");
+        let path = dir.path().join("providers.toml");
+
+        // When initializing the default providers config (no force).
+        let outcome = init_default_providers_to(&path, false).expect("init");
+
+        // Then the file is created with the template bytes.
+        assert!(matches!(outcome, InitProvidersOutcome::Created));
+        let on_disk = std::fs::read_to_string(&path).expect("read");
+        assert_eq!(on_disk, DEFAULT_CONFIG);
+    }
+
+    #[rstest::rstest]
+    fn init_providers_refuses_existing_without_force() {
+        // Given an existing file with hand-authored content.
+        let dir = TempDir::new().expect("temp dir");
+        let path = dir.path().join("providers.toml");
+        let marker = "# user-managed\n[[providers]]\n";
+        std::fs::write(&path, marker).expect("write");
+
+        // When initializing without --force.
+        let result = init_default_providers_to(&path, false);
+
+        // Then the call fails and the file is unchanged.
+        assert!(result.is_err());
+        let on_disk = std::fs::read_to_string(&path).expect("read");
+        assert_eq!(on_disk, marker);
+    }
+
+    #[rstest::rstest]
+    fn init_providers_overwrites_when_force() {
+        // Given an existing file with stale content.
+        let dir = TempDir::new().expect("temp dir");
+        let path = dir.path().join("providers.toml");
+        std::fs::write(&path, "# stale\n").expect("write");
+
+        // When initializing with --force.
+        let outcome = init_default_providers_to(&path, true).expect("init");
+
+        // Then the file is overwritten with the template bytes.
+        assert!(matches!(outcome, InitProvidersOutcome::Overwritten));
+        let on_disk = std::fs::read_to_string(&path).expect("read");
+        assert_eq!(on_disk, DEFAULT_CONFIG);
+    }
 
     /// Writes a well-formed TOML config to a temp file and loads it.
     fn load_test_config() -> ProvidersConfig {
