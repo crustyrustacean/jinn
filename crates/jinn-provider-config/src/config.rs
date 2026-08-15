@@ -352,7 +352,6 @@ where
         .attach("failed to write providers config")
 }
 
-
 #[cfg(test)]
 mod tests {
     #![allow(
@@ -485,7 +484,8 @@ target = "ollama/llama3""#;
         // Given a legacy [[providers]] array-format file.
         let dir = TempDir::new().expect("temp dir");
         let path = dir.path().join("providers.toml");
-        let toml = "[[providers]]\nname = \"ollama\"\nbackend = \"ollama\"\nmodels = [\"llama3\"]\n";
+        let toml =
+            "[[providers]]\nname = \"ollama\"\nbackend = \"ollama\"\nmodels = [\"llama3\"]\n";
         std::fs::write(&path, toml).expect("write");
 
         // When loading.
@@ -706,10 +706,7 @@ tool_stream = true"#;
         let dir = TempDir::new().expect("temp dir");
         let path = dir.path().join("providers.toml");
         let config = ProvidersConfig {
-            providers: BTreeMap::from([(
-                "test-save".to_owned(),
-                entry("ollama", &["llama3"]),
-            )]),
+            providers: BTreeMap::from([("test-save".to_owned(), entry("ollama", &["llama3"]))]),
             aliases: vec![],
             default_provider: Some("test-save/llama3".to_owned()),
         };

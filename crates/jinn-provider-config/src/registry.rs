@@ -64,10 +64,8 @@ impl ProviderRegistry {
         // Check no empty models lists.
         for (name, entry) in &config.providers {
             if entry.models.is_empty() {
-                return Err(Report::new(ConfigError::Validation)).attach(format!(
-                    "provider '{}' has an empty models list",
-                    name
-                ));
+                return Err(Report::new(ConfigError::Validation))
+                    .attach(format!("provider '{name}' has an empty models list"));
             }
         }
 
@@ -99,8 +97,9 @@ impl ProviderRegistry {
                     return Err(Report::new(ConfigError::Validation))
                         .attach(format!("duplicate expanded provider ID: {id}"));
                 }
-                resolved_map.insert(id.clone(), expand_entry(&id, name, entry, model, false));
-                resolved_list.push(resolved_map[&id].clone());
+                let resolved = expand_entry(&id, name, entry, model, false);
+                resolved_list.push(resolved.clone());
+                resolved_map.insert(id, resolved);
             }
         }
 

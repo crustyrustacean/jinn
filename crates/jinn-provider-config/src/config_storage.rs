@@ -233,16 +233,19 @@ mod tests {
         // Given an InMemoryConfigStorage with a config.
         let storage = InMemoryConfigStorage::new();
         let config = ProvidersConfig {
-            providers: BTreeMap::from([("ollama".to_owned(), ProviderEntry {
-                backend: "ollama".to_owned(),
-                models: vec!["llama3".to_owned()],
-                base_url: None,
-                api_key_env: None,
-                requires_key: false,
-                extra_body: None,
-                context_length: None,
-                model_info: Vec::new(),
-            })]),
+            providers: BTreeMap::from([(
+                "ollama".to_owned(),
+                ProviderEntry {
+                    backend: "ollama".to_owned(),
+                    models: vec!["llama3".to_owned()],
+                    base_url: None,
+                    api_key_env: None,
+                    requires_key: false,
+                    extra_body: None,
+                    context_length: None,
+                    model_info: Vec::new(),
+                },
+            )]),
             aliases: vec![],
             default_provider: Some("ollama".to_owned()),
         };
@@ -261,16 +264,19 @@ mod tests {
     fn in_memory_with_config_pre_populates() {
         // Given an InMemoryConfigStorage pre-populated with a config.
         let config = ProvidersConfig {
-            providers: BTreeMap::from([("test".to_owned(), ProviderEntry {
-                backend: "ollama".to_owned(),
-                models: vec!["llama3".to_owned()],
-                base_url: None,
-                api_key_env: None,
-                requires_key: false,
-                extra_body: None,
-                context_length: None,
-                model_info: Vec::new(),
-            })]),
+            providers: BTreeMap::from([(
+                "test".to_owned(),
+                ProviderEntry {
+                    backend: "ollama".to_owned(),
+                    models: vec!["llama3".to_owned()],
+                    base_url: None,
+                    api_key_env: None,
+                    requires_key: false,
+                    extra_body: None,
+                    context_length: None,
+                    model_info: Vec::new(),
+                },
+            )]),
             aliases: vec![],
             default_provider: None,
         };
@@ -309,16 +315,19 @@ mod tests {
         let storage = FilesystemConfigStorage::new(path);
 
         let config = ProvidersConfig {
-            providers: BTreeMap::from([("ollama".to_owned(), ProviderEntry {
-                backend: "ollama".to_owned(),
-                models: vec!["llama3".to_owned()],
-                base_url: None,
-                api_key_env: None,
-                requires_key: false,
-                extra_body: None,
-                context_length: None,
-                model_info: Vec::new(),
-            })]),
+            providers: BTreeMap::from([(
+                "ollama".to_owned(),
+                ProviderEntry {
+                    backend: "ollama".to_owned(),
+                    models: vec!["llama3".to_owned()],
+                    base_url: None,
+                    api_key_env: None,
+                    requires_key: false,
+                    extra_body: None,
+                    context_length: None,
+                    model_info: Vec::new(),
+                },
+            )]),
             aliases: vec![],
             default_provider: Some("ollama".to_owned()),
         };
@@ -340,16 +349,19 @@ mod tests {
         let service = ConfigStorageService::new(Arc::new(storage) as Arc<dyn ConfigStorage>);
 
         let config = ProvidersConfig {
-            providers: BTreeMap::from([("test-persist".to_owned(), ProviderEntry {
-                backend: "ollama".to_owned(),
-                models: vec!["llama3".to_owned()],
-                base_url: None,
-                api_key_env: None,
-                requires_key: false,
-                extra_body: None,
-                context_length: None,
-                model_info: Vec::new(),
-            })]),
+            providers: BTreeMap::from([(
+                "test-persist".to_owned(),
+                ProviderEntry {
+                    backend: "ollama".to_owned(),
+                    models: vec!["llama3".to_owned()],
+                    base_url: None,
+                    api_key_env: None,
+                    requires_key: false,
+                    extra_body: None,
+                    context_length: None,
+                    model_info: Vec::new(),
+                },
+            )]),
             aliases: vec![],
             default_provider: None,
         };

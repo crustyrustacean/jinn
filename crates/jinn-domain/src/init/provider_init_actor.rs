@@ -187,16 +187,19 @@ mod tests {
 
     fn sample_config() -> crate::feat::provider_infra::ProvidersConfig {
         crate::feat::provider_infra::ProvidersConfig {
-            providers: BTreeMap::from([("sample".to_owned(), ProviderEntry {
-                model_info: Vec::new(),
-                backend: "sample".to_owned(),
-                models: vec!["sample".to_owned()],
-                base_url: None,
-                api_key_env: None,
-                requires_key: false,
-                extra_body: None,
-                context_length: None,
-            })]),
+            providers: BTreeMap::from([(
+                "sample".to_owned(),
+                ProviderEntry {
+                    model_info: Vec::new(),
+                    backend: "sample".to_owned(),
+                    models: vec!["sample".to_owned()],
+                    base_url: None,
+                    api_key_env: None,
+                    requires_key: false,
+                    extra_body: None,
+                    context_length: None,
+                },
+            )]),
             aliases: vec![],
             default_provider: None,
         }
@@ -252,7 +255,8 @@ mod tests {
             .expect("save app state");
 
         let mut config = sample_config();
-        config.providers.get_mut("sample").expect("sample").models = vec!["alpha".to_owned(), "beta".to_owned()];
+        config.providers.get_mut("sample").expect("sample").models =
+            vec!["alpha".to_owned(), "beta".to_owned()];
 
         // When processing EnvironmentLoaded.
         actor.on_environment_loaded(&config).await;
@@ -284,16 +288,19 @@ mod tests {
         let (actor, audit, _services, _state) = create_actor().await;
 
         let mut config = sample_config();
-        config.providers.insert("openrouter".to_owned(), ProviderEntry {
-            model_info: Vec::new(),
-            backend: "openrouter".to_owned(),
-            models: vec!["gpt-4".to_owned()],
-            base_url: None,
-            api_key_env: Some("OPENROUTER_API_KEY".to_owned()),
-            requires_key: true,
-            extra_body: None,
-            context_length: None,
-        });
+        config.providers.insert(
+            "openrouter".to_owned(),
+            ProviderEntry {
+                model_info: Vec::new(),
+                backend: "openrouter".to_owned(),
+                models: vec!["gpt-4".to_owned()],
+                base_url: None,
+                api_key_env: Some("OPENROUTER_API_KEY".to_owned()),
+                requires_key: true,
+                extra_body: None,
+                context_length: None,
+            },
+        );
 
         // When processing EnvironmentLoaded with no API keys resolved.
         actor.on_environment_loaded(&config).await;
@@ -323,16 +330,19 @@ mod tests {
         cache.save(&cache_path).expect("save cache");
 
         let mut config = sample_config();
-        config.providers.insert("ollama".to_owned(), ProviderEntry {
-            model_info: Vec::new(),
-            backend: "ollama".to_owned(),
-            models: vec!["llama3".to_owned()],
-            base_url: None,
-            api_key_env: None,
-            requires_key: false,
-            extra_body: None,
-            context_length: None,
-        });
+        config.providers.insert(
+            "ollama".to_owned(),
+            ProviderEntry {
+                model_info: Vec::new(),
+                backend: "ollama".to_owned(),
+                models: vec!["llama3".to_owned()],
+                base_url: None,
+                api_key_env: None,
+                requires_key: false,
+                extra_body: None,
+                context_length: None,
+            },
+        );
 
         // When processing EnvironmentLoaded.
         actor.on_environment_loaded(&config).await;

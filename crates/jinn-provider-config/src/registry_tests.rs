@@ -19,10 +19,7 @@ fn one(name: &str, entry: ProviderEntry) -> BTreeMap<String, ProviderEntry> {
 }
 
 /// A two-provider map.
-fn two(
-    a: (&str, ProviderEntry),
-    b: (&str, ProviderEntry),
-) -> BTreeMap<String, ProviderEntry> {
+fn two(a: (&str, ProviderEntry), b: (&str, ProviderEntry)) -> BTreeMap<String, ProviderEntry> {
     BTreeMap::from([(a.0.to_owned(), a.1), (b.0.to_owned(), b.1)])
 }
 
@@ -219,7 +216,14 @@ fn is_available_returns_false_when_key_missing() {
 #[rstest::rstest]
 fn available_providers_filters_correctly() {
     // Given a registry with one keyless and one key-required provider (no key).
-    let config = make_config(two(("ollama", ollama_entry()), ("openrouter", openrouter_entry())), vec![], None);
+    let config = make_config(
+        two(
+            ("ollama", ollama_entry()),
+            ("openrouter", openrouter_entry()),
+        ),
+        vec![],
+        None,
+    );
     let registry = ProviderRegistry::from_config(config).expect("registry");
     let api_keys = ApiKeys::new();
 
@@ -382,7 +386,10 @@ fn set_default_provider_clears_when_none() {
 fn config_accessor_returns_config() {
     // Given a registry with providers.
     let config = make_config(
-        two(("ollama", ollama_entry()), ("openrouter", openrouter_entry())),
+        two(
+            ("ollama", ollama_entry()),
+            ("openrouter", openrouter_entry()),
+        ),
         vec![],
         Some("ollama/llama3"),
     );
@@ -720,7 +727,14 @@ fn merge_cache_ignores_unknown_provider() {
 #[rstest::rstest]
 fn unavailable_providers_returns_correct_entries() {
     // Given a registry with one keyless and one key-required provider (no key).
-    let config = make_config(two(("ollama", ollama_entry()), ("openrouter", openrouter_entry())), vec![], None);
+    let config = make_config(
+        two(
+            ("ollama", ollama_entry()),
+            ("openrouter", openrouter_entry()),
+        ),
+        vec![],
+        None,
+    );
     let registry = ProviderRegistry::from_config(config).expect("registry");
     let api_keys = ApiKeys::new();
 
