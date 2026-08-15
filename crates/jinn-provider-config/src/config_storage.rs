@@ -231,6 +231,7 @@ mod tests {
         let storage = InMemoryConfigStorage::new();
         let config = ProvidersConfig {
             providers: vec![ProviderEntry {
+                model_info: Vec::new(),
                 name: "ollama".to_owned(),
                 backend: "ollama".to_owned(),
                 models: vec!["llama3".to_owned()],
@@ -259,6 +260,7 @@ mod tests {
         // Given an InMemoryConfigStorage pre-populated with a config.
         let config = ProvidersConfig {
             providers: vec![ProviderEntry {
+                model_info: Vec::new(),
                 name: "test".to_owned(),
                 backend: "ollama".to_owned(),
                 models: vec!["llama3".to_owned()],
@@ -307,6 +309,7 @@ mod tests {
 
         let config = ProvidersConfig {
             providers: vec![ProviderEntry {
+                model_info: Vec::new(),
                 name: "ollama".to_owned(),
                 backend: "ollama".to_owned(),
                 models: vec!["llama3".to_owned()],
@@ -338,6 +341,7 @@ mod tests {
 
         let config = ProvidersConfig {
             providers: vec![ProviderEntry {
+                model_info: Vec::new(),
                 name: "test-persist".to_owned(),
                 backend: "ollama".to_owned(),
                 models: vec!["llama3".to_owned()],

@@ -55,9 +55,10 @@ pub use feat::provider_infra::TOOL_LOOP_TRIGGER;
 pub use feat::provider_infra::cache_path;
 pub use feat::provider_infra::{
     ApiKeys, ApiKeysService, ConfigStorageService, FakeLlmServiceFactory, FilesystemConfigStorage,
-    InMemoryConfigStorage, LlmServiceFactoryService, ModelCache, NoProvidersAvailableFactory,
-    ProviderEntry, ProviderId, ProviderRegistry, ProviderRegistryService, ProvidersConfig,
-    ScriptedResponse,
+    InMemoryConfigStorage, InitProvidersOutcome, LlmServiceFactoryService, ModelCache,
+    NoProvidersAvailableFactory, ProviderEntry, ProviderId, ProviderRegistry,
+    ProviderRegistryService, ProvidersConfig, ScriptedResponse, config_path,
+    init_default_providers_to,
 };
 // Re-export context types
 

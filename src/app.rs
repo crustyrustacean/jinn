@@ -178,6 +178,27 @@ impl App {
                     }
                     return Ok(());
                 }
+                ConfigCommands::Providers { force } => {
+                    use jinn_domain::{
+                        InitProvidersOutcome, config_path, init_default_providers_to,
+                    };
+
+                    let path = config_path();
+                    let force = *force;
+                    match init_default_providers_to(&path, force) {
+                        Ok(InitProvidersOutcome::Created) => {
+                            println!("Created {}", path.display());
+                        }
+                        Ok(InitProvidersOutcome::Overwritten) => {
+                            println!("Overwrote {}", path.display());
+                        }
+                        Err(report) => {
+                            eprintln!("{report:?}");
+                            return Err(report.change_context(AppError));
+                        }
+                    }
+                    return Ok(());
+                }
             }
         }
 

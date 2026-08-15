@@ -319,6 +319,7 @@ mod tests {
         let services = TestServices::builder()
             .with_providers(ProvidersConfig {
                 providers: vec![ProviderEntry {
+                    model_info: Vec::new(),
                     name: "ollama".to_owned(),
                     backend: "ollama".to_owned(),
                     models: vec!["llama3".to_owned()],
@@ -486,6 +487,7 @@ mod tests {
         let services = TestServices::builder()
             .with_providers(ProvidersConfig {
                 providers: vec![ProviderEntry {
+                    model_info: Vec::new(),
                     name: "ollama".to_owned(),
                     backend: "ollama".to_owned(),
                     models: vec!["llama3".to_owned(), "mistral".to_owned()],
@@ -534,6 +536,7 @@ mod tests {
         let services = TestServices::builder()
             .with_providers(ProvidersConfig {
                 providers: vec![ProviderEntry {
+                    model_info: Vec::new(),
                     name: "ollama".to_owned(),
                     backend: "ollama".to_owned(),
                     models: vec![
@@ -593,6 +596,7 @@ mod tests {
         let services = TestServices::builder()
             .with_providers(ProvidersConfig {
                 providers: vec![ProviderEntry {
+                    model_info: Vec::new(),
                     name: "ollama".to_owned(),
                     backend: "ollama".to_owned(),
                     models: vec![

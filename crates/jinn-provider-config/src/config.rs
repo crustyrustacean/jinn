@@ -77,6 +77,35 @@ pub struct ProviderEntry {
     /// precedence over API-discovered values.
     #[serde(default)]
     pub context_length: Option<u32>,
+    /// Per-model metadata overrides. Keys match ids in `models`;
+    /// fields left unset fall back to the block-level values above.
+    /// See [`ModelInfoEntry`].
+    #[serde(default)]
+    pub model_info: Vec<ModelInfoEntry>,
+}
+
+/// Per-model metadata override in `providers.toml`.
+///
+/// Declared under a provider block as `[[providers.model_info]]` tables.
+/// Each entry overrides the provider-block defaults for a single model id.
+/// Fields left unset inherit the block-level values, then API-discovered
+/// cache data, then models.dev reference data.
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct ModelInfoEntry {
+    /// Model id — must match an entry in the same provider's `models` list.
+    pub id: String,
+    /// Manual override for the maximum context length in tokens.
+    #[serde(default)]
+    pub context_length: Option<u32>,
+    /// Input modalities the model accepts, e.g. `["text"]` or
+    /// `["text", "image"]`. Replaces the discovered value when set;
+    /// `None` keeps the discovered value.
+    #[serde(default)]
+    pub input_modalities: Option<Vec<String>>,
+    /// Extra JSON body parameters for this model, overriding the
+    /// provider-block `extra_body` when set.
+    #[serde(default)]
+    pub extra_body: Option<serde_json::Value>,
 }
 
 /// A named alias for a provider entry.
@@ -179,6 +208,63 @@ where
         .attach("failed to write default providers config")
 }
 
+/// Outcome of [`init_default_providers_to`].
+#[derive(Debug)]
+pub enum InitProvidersOutcome {
+    /// Template was written to a previously-missing path.
+    Created,
+    /// Existing file was overwritten (caller passed `force: true`).
+    Overwritten,
+}
+
+/// Error returned by [`init_default_providers_to`].
+#[derive(Debug, wherror::Error)]
+#[error(debug)]
+pub struct InitProvidersError;
+
+/// Writes the commented providers template to an explicit path.
+///
+/// - If `path` does not exist: writes the template, returns [`InitProvidersOutcome::Created`].
+/// - If `path` exists and `force` is false: fails without touching the file —
+///   `providers.toml` is hand-authored, so a silent clobber would destroy user edits.
+/// - If `path` exists and `force` is true: overwrites, returns [`InitProvidersOutcome::Overwritten`].
+///
+/// # Errors
+///
+/// Returns an error if the file exists and `force` is false, or the write fails.
+pub fn init_default_providers_to<P>(
+    path: P,
+    force: bool,
+) -> Result<InitProvidersOutcome, Report<InitProvidersError>>
+where
+    P: AsRef<Path>,
+{
+    let path = path.as_ref();
+    let existed = path.exists();
+
+    if existed && !force {
+        return Err(Report::new(InitProvidersError))
+            .attach("providers.toml already exists; pass --force to overwrite")
+            .attach(format!("path: {}", path.display()));
+    }
+
+    if let Some(parent) = path.parent() {
+        std::fs::create_dir_all(parent)
+            .change_context(InitProvidersError)
+            .attach("failed to create config directory")?;
+    }
+
+    std::fs::write(path, DEFAULT_CONFIG)
+        .change_context(InitProvidersError)
+        .attach("failed to write default providers config")?;
+
+    if existed {
+        Ok(InitProvidersOutcome::Overwritten)
+    } else {
+        Ok(InitProvidersOutcome::Created)
+    }
+}
+
 /// Saves the config back to disk.
 ///
 /// Serializes the full config as pretty-printed TOML. Note: this may
@@ -219,6 +305,7 @@ where
         let mut patcher = jinn_common::toml_patch::DocumentPatcher::new();
         patcher.register_array_key(["providers"], "name");
         patcher.register_array_key(["aliases"], "name");
+        patcher.register_array_key(["providers", "model_info"], "id");
 
         let new_value = toml::Value::try_from(config).map_err(|_e| {
             Report::new(ConfigError::Parse).attach("failed to serialize ProvidersConfig")
@@ -266,6 +353,54 @@ mod tests {
     use tempfile::TempDir;
 
     use super::*;
+
+    #[rstest::rstest]
+    fn init_providers_writes_template_when_missing() {
+        // Given a path to a nonexistent file.
+        let dir = TempDir::new().expect("temp dir");
+        let path = dir.path().join("providers.toml");
+
+        // When initializing the default providers config (no force).
+        let outcome = init_default_providers_to(&path, false).expect("init");
+
+        // Then the file is created with the template bytes.
+        assert!(matches!(outcome, InitProvidersOutcome::Created));
+        let on_disk = std::fs::read_to_string(&path).expect("read");
+        assert_eq!(on_disk, DEFAULT_CONFIG);
+    }
+
+    #[rstest::rstest]
+    fn init_providers_refuses_existing_without_force() {
+        // Given an existing file with hand-authored content.
+        let dir = TempDir::new().expect("temp dir");
+        let path = dir.path().join("providers.toml");
+        let marker = "# user-managed\n[[providers]]\n";
+        std::fs::write(&path, marker).expect("write");
+
+        // When initializing without --force.
+        let result = init_default_providers_to(&path, false);
+
+        // Then the call fails and the file is unchanged.
+        assert!(result.is_err());
+        let on_disk = std::fs::read_to_string(&path).expect("read");
+        assert_eq!(on_disk, marker);
+    }
+
+    #[rstest::rstest]
+    fn init_providers_overwrites_when_force() {
+        // Given an existing file with stale content.
+        let dir = TempDir::new().expect("temp dir");
+        let path = dir.path().join("providers.toml");
+        std::fs::write(&path, "# stale\n").expect("write");
+
+        // When initializing with --force.
+        let outcome = init_default_providers_to(&path, true).expect("init");
+
+        // Then the file is overwritten with the template bytes.
+        assert!(matches!(outcome, InitProvidersOutcome::Overwritten));
+        let on_disk = std::fs::read_to_string(&path).expect("read");
+        assert_eq!(on_disk, DEFAULT_CONFIG);
+    }
 
     /// Writes a well-formed TOML config to a temp file and loads it.
     fn load_test_config() -> ProvidersConfig {
@@ -346,6 +481,7 @@ target = "ollama/llama3"
         // Given a config with providers.
         let config = ProvidersConfig {
             providers: vec![ProviderEntry {
+                model_info: Vec::new(),
                 name: "test".to_owned(),
                 backend: "openrouter".to_owned(),
                 models: vec!["gpt-4".to_owned()],
@@ -414,6 +550,7 @@ tool_stream = true
         // Given a config with extra_body.
         let config = ProvidersConfig {
             providers: vec![ProviderEntry {
+                model_info: Vec::new(),
                 name: "zai".to_owned(),
                 backend: "zai".to_owned(),
                 models: vec!["glm-5.1".to_owned()],
@@ -475,6 +612,7 @@ tool_stream = true
         // When saving a config containing only alpha.
         let config = ProvidersConfig {
             providers: vec![ProviderEntry {
+                model_info: Vec::new(),
                 name: "alpha".to_owned(),
                 backend: "x".to_owned(),
                 models: vec!["a".to_owned()],
@@ -510,6 +648,7 @@ tool_stream = true
         let config = ProvidersConfig {
             providers: vec![
                 ProviderEntry {
+                    model_info: Vec::new(),
                     name: "alpha".to_owned(),
                     backend: "x".to_owned(),
                     models: vec!["a".to_owned()],
@@ -520,6 +659,7 @@ tool_stream = true
                     context_length: None,
                 },
                 ProviderEntry {
+                    model_info: Vec::new(),
                     name: "beta".to_owned(),
                     backend: "x".to_owned(),
                     models: vec!["b".to_owned()],
@@ -583,6 +723,7 @@ tool_stream = true
         let path = dir.path().join("providers.toml");
         let config = ProvidersConfig {
             providers: vec![ProviderEntry {
+                model_info: Vec::new(),
                 name: "test-save".to_owned(),
                 backend: "ollama".to_owned(),
                 models: vec!["llama3".to_owned()],
@@ -827,6 +968,106 @@ tool_stream = true
             "smart comment preserved"
         );
         assert!(written.contains("\"smart\""), "smart alias preserved");
+    }
+
+    #[rstest::rstest]
+    fn load_config_parses_model_info_tables() {
+        // Given a config with [[providers.model_info]] tables.
+        let dir = TempDir::new().expect("temp dir");
+        let path = dir.path().join("providers.toml");
+        let toml = r#"
+[[providers]]
+name = "ollama"
+backend = "ollama"
+requires_key = false
+models = ["llama3", "codellama"]
+
+[[providers.model_info]]
+id = "llama3"
+context_length = 8192
+input_modalities = ["text", "image"]
+"#;
+        std::fs::write(&path, toml).expect("write");
+
+        // When loading.
+        let config = load_config_from(&path).expect("load");
+
+        // Then the model_info entry is parsed with all fields.
+        let info = &config.providers[0].model_info;
+        assert_eq!(info.len(), 1);
+        assert_eq!(info[0].id, "llama3");
+        assert_eq!(info[0].context_length, Some(8192));
+        assert_eq!(
+            info[0].input_modalities,
+            Some(vec!["text".to_owned(), "image".to_owned()])
+        );
+        assert!(info[0].extra_body.is_none());
+    }
+
+    #[rstest::rstest]
+    fn round_trip_preserves_model_info() {
+        // Given a config with a model_info entry.
+        let config = ProvidersConfig {
+            providers: vec![ProviderEntry {
+                model_info: vec![ModelInfoEntry {
+                    id: "llama3".to_owned(),
+                    context_length: Some(8192),
+                    input_modalities: Some(vec!["text".to_owned(), "image".to_owned()]),
+                    extra_body: Some(serde_json::json!({"num_ctx": 8192})),
+                }],
+                name: "ollama".to_owned(),
+                backend: "ollama".to_owned(),
+                models: vec!["llama3".to_owned()],
+                base_url: None,
+                api_key_env: None,
+                requires_key: false,
+                extra_body: None,
+                context_length: None,
+            }],
+            aliases: vec![],
+            default_provider: None,
+        };
+
+        let dir = TempDir::new().expect("temp dir");
+        let path = dir.path().join("providers.toml");
+
+        // When saving and reloading.
+        save_config_to(&config, &path).expect("save");
+        let reloaded = load_config_from(&path).expect("reload");
+
+        // Then the model_info entry round-trips with all fields.
+        let info = &reloaded.providers[0].model_info;
+        assert_eq!(info.len(), 1);
+        assert_eq!(info[0].id, "llama3");
+        assert_eq!(info[0].context_length, Some(8192));
+        assert_eq!(
+            info[0].input_modalities,
+            Some(vec!["text".to_owned(), "image".to_owned()])
+        );
+        assert_eq!(info[0].extra_body.as_ref().expect("extra")["num_ctx"], 8192);
+    }
+
+    #[rstest::rstest]
+    fn save_config_preserves_model_info_block_comments() {
+        // Given a user-authored config with commented model_info blocks.
+        let original = "# my vision model\n[[providers]]\nname = \"ollama\"\nbackend = \"ollama\"\nrequires_key = false\nmodels = [\"llama3\"]\n\n# vision-capable local model\n[[providers.model_info]]\nid = \"llama3\"\ncontext_length = 8192\ninput_modalities = [\"text\", \"image\"]\n";
+        let dir = TempDir::new().expect("temp dir");
+        let path = dir.path().join("providers.toml");
+        std::fs::write(&path, original).expect("write");
+
+        // When loading, changing the context length, and saving.
+        let mut config = load_config_from(&path).expect("load");
+        config.providers[0].model_info[0].context_length = Some(16384);
+        save_config_to(&config, &path).expect("save");
+
+        // Then the model_info block comment survives and the value updates in place.
+        let written = std::fs::read_to_string(&path).expect("read");
+        assert!(
+            written.contains("# vision-capable local model"),
+            "model_info comment wiped: {written}"
+        );
+        assert!(written.contains("context_length = 16384"));
+        assert!(!written.contains("context_length = 8192"));
     }
 
     #[rstest::rstest]

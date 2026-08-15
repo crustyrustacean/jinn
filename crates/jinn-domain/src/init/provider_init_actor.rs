@@ -186,6 +186,7 @@ mod tests {
     fn sample_config() -> crate::feat::provider_infra::ProvidersConfig {
         crate::feat::provider_infra::ProvidersConfig {
             providers: vec![ProviderEntry {
+                model_info: Vec::new(),
                 name: "sample".to_owned(),
                 backend: "sample".to_owned(),
                 models: vec!["sample".to_owned()],
@@ -283,6 +284,7 @@ mod tests {
 
         let mut config = sample_config();
         config.providers[0] = ProviderEntry {
+            model_info: Vec::new(),
             name: "openrouter".to_owned(),
             backend: "openrouter".to_owned(),
             models: vec!["gpt-4".to_owned()],
@@ -322,6 +324,7 @@ mod tests {
 
         let mut config = sample_config();
         config.providers[0] = ProviderEntry {
+            model_info: Vec::new(),
             name: "ollama".to_owned(),
             backend: "ollama".to_owned(),
             models: vec!["llama3".to_owned()],
