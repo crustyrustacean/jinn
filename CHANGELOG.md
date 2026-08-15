@@ -1,7 +1,32 @@
-## (development) v0.106.1
+## 2026-08-15 v0.106.1
+
 - Add `[[providers.model_info]]` tables to `providers.toml`: per-model `context_length`, `input_modalities`, and `extra_body` overrides. Hand-authored values take precedence over API-discovered data and models.dev. Models that are only listed in `providers.toml` (never discovered) now appear in the model cache, so the status bar, compaction gate, and attachment gate resolve them; `input_modalities = ["text", "image"]` marks a local model vision-capable.
 - Update learning-tutor persona.
 - Skill preview rendering now uses a shared cache across all sessions.
+- **Breaking:** `providers.toml` providers are now map-keyed tables (`[providers.<name>]`) instead of `[[providers]]` array-of-tables.
+
+### Map-Keyed Providers
+
+Nested tables are now part of the key path, so a nested table's provider is self-describing: `[providers.zai.extra_body]` and `[[providers.zai.model_info]]` unambiguously belong to zai instead of relying on which `[[providers]]` block came before them. Duplicate provider names are now rejected by TOML itself, and file order carries no meaning. Two things to know when converting an existing file: dotted names like `llama.cpp` are no longer valid as table keys (rename to something dot-free, e.g. `llamacpp`), and legacy files fail to load with an error naming the new syntax — the conversion is renaming each block header to `[providers.<its name>]` and deleting the `name =` key inside it.
+
+```toml
+# example
+[providers.llamacpp]
+backend = "openai"
+requires_key = false
+base_url = "http://127.0.0.1:8089/v1"
+models = [
+    "/path/to/model.gguf",
+    "/foo/bar.gguf
+]
+
+[[providers.llamacpp.model_info]]
+id = "/path/to/model.gguf"
+context_length = 96000
+input_modalities = ["text", "image"]
+
+# the `bar.gguf` model is not listed, so it gets application defaults (unknown context + text-only modality)
+```
 
 ## 2026-08-07 v0.105.1
 
