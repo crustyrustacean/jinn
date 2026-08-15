@@ -141,7 +141,7 @@ impl Services {
             )),
             provider_registry: ProviderRegistryService::new(
                 ProviderRegistry::from_config(ProvidersConfig {
-                    providers: vec![],
+                    providers: std::collections::BTreeMap::new(),
                     aliases: vec![],
                     default_provider: None,
                 })
@@ -188,7 +188,7 @@ impl Services {
             )),
             provider_registry: ProviderRegistryService::new(
                 ProviderRegistry::from_config(ProvidersConfig {
-                    providers: vec![],
+                    providers: std::collections::BTreeMap::new(),
                     aliases: vec![],
                     default_provider: None,
                 })

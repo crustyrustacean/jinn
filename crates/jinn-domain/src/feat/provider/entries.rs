@@ -315,7 +315,7 @@ fn merge_remote_entries(
 ) {
     let config = registry.config();
     for (provider_name, models) in &cache.entries {
-        let provider_entry = config.providers.iter().find(|p| &p.name == provider_name);
+        let provider_entry = config.providers.get(provider_name);
 
         let (backend, is_available) = match provider_entry {
             Some(pe) => {

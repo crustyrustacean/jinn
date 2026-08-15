@@ -102,7 +102,8 @@ Entries are added or amended **only with human approval**.
 - (providers) OpenRouter serves each model through multiple upstream **endpoints**, each identified by a routing **tag**; the per-model `GET /api/v1/models/<id>/endpoints` payload lists them with pricing and uptime.
 - (providers) OpenRouter endpoint listings are cached **in memory, per model, for the application's lifetime** (not persisted to disk); the picker serves cached entries on open and re-fetches on-demand via `<c-r>` (`RefreshEndpoints`).
 - (providers) A `--dump-requests <dir>` CLI flag writes one JSON file per provider generation send (main dispatch and compaction), capturing the full assembled request payload verbatim; off by default.
-- (providers) Model metadata (`context_length`, `input_modalities`, `extra_body`) can be set per model in `providers.toml` via `[[providers.model_info]]` tables.
+- (providers) Model metadata (`context_length`, `input_modalities`, `extra_body`) is set per model in `providers.toml` via `[[providers.<name>.model_info]]` tables nested under the provider's map-keyed block.
+- (providers) `providers.toml` declares providers as map-keyed tables (`[providers.<name>]`); provider order in the file carries no meaning, and duplicate names are rejected by TOML parsing.
 - (providers) Model metadata precedence is: per-model config > provider-block config > API-discovered cache > models.dev.
 - (providers) `providers.toml` is hand-authored only; discovered models are never written into it.
 - (selection) Chat entry selection applies an accumulated-exclude guard that only takes effect after a threshold, with per-entry forced include/exclude tracked separately.

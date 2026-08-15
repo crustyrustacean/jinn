@@ -125,7 +125,7 @@ impl Default for TestServices {
     fn default() -> Self {
         Self {
             providers: ProvidersConfig {
-                providers: vec![],
+                providers: std::collections::BTreeMap::new(),
                 aliases: vec![],
                 default_provider: None,
             },

@@ -312,23 +312,26 @@ mod tests {
     use crate::feat::provider_infra::{ProviderEntry, ProvidersConfig};
     use crate::feat::session::model_selection::{AlloyStrategy, ModelSelection};
     use crate::feat::ui::picker_states::PickerExt;
+    use std::collections::BTreeMap;
 
     #[rstest::rstest]
     fn load_compaction_model_picker_items_populates_picker() {
         // If the function were a no-op, the picker would remain empty.
         let services = TestServices::builder()
             .with_providers(ProvidersConfig {
-                providers: vec![ProviderEntry {
-                    model_info: Vec::new(),
-                    name: "ollama".to_owned(),
-                    backend: "ollama".to_owned(),
-                    models: vec!["llama3".to_owned()],
-                    base_url: Some("http://localhost:11434".to_owned()),
-                    api_key_env: None,
-                    requires_key: false,
-                    extra_body: None,
-                    context_length: None,
-                }],
+                providers: BTreeMap::from([(
+                    "ollama".to_owned(),
+                    ProviderEntry {
+                        model_info: Vec::new(),
+                        backend: "ollama".to_owned(),
+                        models: vec!["llama3".to_owned()],
+                        base_url: Some("http://localhost:11434".to_owned()),
+                        api_key_env: None,
+                        requires_key: false,
+                        extra_body: None,
+                        context_length: None,
+                    },
+                )]),
                 aliases: vec![],
                 default_provider: None,
             })
@@ -486,17 +489,19 @@ mod tests {
         // Given a state with a single model and a provider picker.
         let services = TestServices::builder()
             .with_providers(ProvidersConfig {
-                providers: vec![ProviderEntry {
-                    model_info: Vec::new(),
-                    name: "ollama".to_owned(),
-                    backend: "ollama".to_owned(),
-                    models: vec!["llama3".to_owned(), "mistral".to_owned()],
-                    base_url: Some("http://localhost:11434".to_owned()),
-                    api_key_env: None,
-                    requires_key: false,
-                    extra_body: None,
-                    context_length: None,
-                }],
+                providers: BTreeMap::from([(
+                    "ollama".to_owned(),
+                    ProviderEntry {
+                        model_info: Vec::new(),
+                        backend: "ollama".to_owned(),
+                        models: vec!["llama3".to_owned(), "mistral".to_owned()],
+                        base_url: Some("http://localhost:11434".to_owned()),
+                        api_key_env: None,
+                        requires_key: false,
+                        extra_body: None,
+                        context_length: None,
+                    },
+                )]),
                 aliases: vec![],
                 default_provider: None,
             })
@@ -535,21 +540,23 @@ mod tests {
         // Given a state with an alloy of 2 models.
         let services = TestServices::builder()
             .with_providers(ProvidersConfig {
-                providers: vec![ProviderEntry {
-                    model_info: Vec::new(),
-                    name: "ollama".to_owned(),
-                    backend: "ollama".to_owned(),
-                    models: vec![
-                        "llama3".to_owned(),
-                        "mistral".to_owned(),
-                        "gemma".to_owned(),
-                    ],
-                    base_url: Some("http://localhost:11434".to_owned()),
-                    api_key_env: None,
-                    requires_key: false,
-                    extra_body: None,
-                    context_length: None,
-                }],
+                providers: BTreeMap::from([(
+                    "ollama".to_owned(),
+                    ProviderEntry {
+                        model_info: Vec::new(),
+                        backend: "ollama".to_owned(),
+                        models: vec![
+                            "llama3".to_owned(),
+                            "mistral".to_owned(),
+                            "gemma".to_owned(),
+                        ],
+                        base_url: Some("http://localhost:11434".to_owned()),
+                        api_key_env: None,
+                        requires_key: false,
+                        extra_body: None,
+                        context_length: None,
+                    },
+                )]),
                 aliases: vec![],
                 default_provider: None,
             })
@@ -595,21 +602,23 @@ mod tests {
         // Given a state with an alloy of llama3 and mistral, plus gemma as non-member.
         let services = TestServices::builder()
             .with_providers(ProvidersConfig {
-                providers: vec![ProviderEntry {
-                    model_info: Vec::new(),
-                    name: "ollama".to_owned(),
-                    backend: "ollama".to_owned(),
-                    models: vec![
-                        "gemma".to_owned(),
-                        "llama3".to_owned(),
-                        "mistral".to_owned(),
-                    ],
-                    base_url: Some("http://localhost:11434".to_owned()),
-                    api_key_env: None,
-                    requires_key: false,
-                    extra_body: None,
-                    context_length: None,
-                }],
+                providers: BTreeMap::from([(
+                    "ollama".to_owned(),
+                    ProviderEntry {
+                        model_info: Vec::new(),
+                        backend: "ollama".to_owned(),
+                        models: vec![
+                            "gemma".to_owned(),
+                            "llama3".to_owned(),
+                            "mistral".to_owned(),
+                        ],
+                        base_url: Some("http://localhost:11434".to_owned()),
+                        api_key_env: None,
+                        requires_key: false,
+                        extra_body: None,
+                        context_length: None,
+                    },
+                )]),
                 aliases: vec![],
                 default_provider: None,
             })

@@ -17,6 +17,7 @@ use jinn_selection_widget::compute_popup_rect;
 use jinn_testutil::setup_term;
 use ratatui::layout::Rect;
 use ratatui::style::Color;
+use std::collections::BTreeMap;
 
 use super::loader::load_provider_picker_items;
 use super::render::render_provider_picker;
@@ -24,17 +25,19 @@ use crate::feat::session::model_selection::ModelSelection;
 
 fn picker_state_with_ollama() -> (AppState, Services) {
     let config = ProvidersConfig {
-        providers: vec![ProviderEntry {
-            model_info: Vec::new(),
-            name: "ollama".to_owned(),
-            backend: "ollama".to_owned(),
-            models: vec!["llama3".to_owned()],
-            base_url: Some("http://localhost:11434".to_owned()),
-            api_key_env: None,
-            requires_key: false,
-            extra_body: None,
-            context_length: None,
-        }],
+        providers: BTreeMap::from([(
+            "ollama".to_owned(),
+            ProviderEntry {
+                model_info: Vec::new(),
+                backend: "ollama".to_owned(),
+                models: vec!["llama3".to_owned()],
+                base_url: Some("http://localhost:11434".to_owned()),
+                api_key_env: None,
+                requires_key: false,
+                extra_body: None,
+                context_length: None,
+            },
+        )]),
         aliases: vec![],
         default_provider: None,
     };
