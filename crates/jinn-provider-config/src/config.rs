@@ -555,6 +555,53 @@ target = "ollama/llama3""#;
     }
 
     #[rstest::rstest]
+    fn first_save_writes_providers_alphabetically() {
+        // Given a config with providers inserted in non-alphabetical order.
+        let config = ProvidersConfig {
+            providers: BTreeMap::from([
+                ("zeta".to_owned(), entry("openai", &["gpt-4"])),
+                ("alpha".to_owned(), entry("openai", &["gpt-4"])),
+            ]),
+            aliases: vec![],
+            default_provider: None,
+        };
+
+        let dir = TempDir::new().expect("temp dir");
+        let path = dir.path().join("providers.toml");
+
+        // When saving to a path with no existing file (first-save path).
+        save_config_to(&config, &path).expect("save");
+        let written = std::fs::read_to_string(&path).expect("read back");
+
+        // Then alpha serializes before zeta.
+        let alpha_pos = written.find("[providers.alpha]").expect("alpha block");
+        let zeta_pos = written.find("[providers.zeta]").expect("zeta block");
+        assert!(alpha_pos < zeta_pos, "providers not written alphabetically");
+    }
+
+    #[rstest::rstest]
+    fn patch_save_over_shipped_template_preserves_all_comments() {
+        // Given the shipped template written to disk.
+        let dir = TempDir::new().expect("temp dir");
+        let path = dir.path().join("providers.toml");
+        std::fs::write(&path, DEFAULT_CONFIG).expect("write template");
+
+        // When loading, mutating one field, and saving.
+        let mut config = load_config_from(&path).expect("load");
+        config.default_provider = Some("ollama/llama3".to_owned());
+        save_config_to(&config, &path).expect("save");
+
+        // Then every comment line from the template survives verbatim.
+        let written = std::fs::read_to_string(&path).expect("read back");
+        for original_line in DEFAULT_CONFIG.lines().filter(|l| l.starts_with('#')) {
+            assert!(
+                written.contains(original_line),
+                "expected comment line preserved: {original_line}"
+            );
+        }
+    }
+
+    #[rstest::rstest]
     fn config_path_uses_dirs_config_dir() {
         // Given the standard config path.
         let path = config_path();

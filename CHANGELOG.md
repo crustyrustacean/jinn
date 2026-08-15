@@ -1,6 +1,4 @@
 ## (development) v0.106.1
-
-- **Breaking:** `providers.toml` now declares providers as map-keyed tables (`[providers.<name>]`) instead of `[[providers]]` array-of-tables. Nested tables now nest under the named key: `[providers.<name>.extra_body]` and `[[providers.<name>.model_info]]`. Provider order in the file carries no meaning. The shipped template renamed the `llama.cpp` provider to `llamacpp` (dotted keys cannot be map keys). Duplicate provider names are now rejected by TOML parsing itself. Existing files must be converted by hand — a legacy file fails to load with an error pointing at the new syntax.
 - Add `[[providers.model_info]]` tables to `providers.toml`: per-model `context_length`, `input_modalities`, and `extra_body` overrides. Hand-authored values take precedence over API-discovered data and models.dev. Models that are only listed in `providers.toml` (never discovered) now appear in the model cache, so the status bar, compaction gate, and attachment gate resolve them; `input_modalities = ["text", "image"]` marks a local model vision-capable.
 - Update learning-tutor persona.
 - Skill preview rendering now uses a shared cache across all sessions.
