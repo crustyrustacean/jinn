@@ -305,6 +305,7 @@ mod tests {
         clippy::indexing_slicing,
         reason = "test code"
     )]
+    use std::collections::BTreeMap;
     use super::*;
     use crate::common::app_state::AppState;
     use crate::common::services::test_services::TestServices;
@@ -318,9 +319,8 @@ mod tests {
         // If the function were a no-op, the picker would remain empty.
         let services = TestServices::builder()
             .with_providers(ProvidersConfig {
-                providers: vec![ProviderEntry {
+                providers: BTreeMap::from([("ollama".to_owned(), ProviderEntry {
                     model_info: Vec::new(),
-                    name: "ollama".to_owned(),
                     backend: "ollama".to_owned(),
                     models: vec!["llama3".to_owned()],
                     base_url: Some("http://localhost:11434".to_owned()),
@@ -328,7 +328,7 @@ mod tests {
                     requires_key: false,
                     extra_body: None,
                     context_length: None,
-                }],
+                })]),
                 aliases: vec![],
                 default_provider: None,
             })
@@ -486,9 +486,8 @@ mod tests {
         // Given a state with a single model and a provider picker.
         let services = TestServices::builder()
             .with_providers(ProvidersConfig {
-                providers: vec![ProviderEntry {
+                providers: BTreeMap::from([("ollama".to_owned(), ProviderEntry {
                     model_info: Vec::new(),
-                    name: "ollama".to_owned(),
                     backend: "ollama".to_owned(),
                     models: vec!["llama3".to_owned(), "mistral".to_owned()],
                     base_url: Some("http://localhost:11434".to_owned()),
@@ -496,7 +495,7 @@ mod tests {
                     requires_key: false,
                     extra_body: None,
                     context_length: None,
-                }],
+                })]),
                 aliases: vec![],
                 default_provider: None,
             })
@@ -535,9 +534,8 @@ mod tests {
         // Given a state with an alloy of 2 models.
         let services = TestServices::builder()
             .with_providers(ProvidersConfig {
-                providers: vec![ProviderEntry {
+                providers: BTreeMap::from([("ollama".to_owned(), ProviderEntry {
                     model_info: Vec::new(),
-                    name: "ollama".to_owned(),
                     backend: "ollama".to_owned(),
                     models: vec![
                         "llama3".to_owned(),
@@ -549,7 +547,7 @@ mod tests {
                     requires_key: false,
                     extra_body: None,
                     context_length: None,
-                }],
+                })]),
                 aliases: vec![],
                 default_provider: None,
             })
@@ -595,9 +593,8 @@ mod tests {
         // Given a state with an alloy of llama3 and mistral, plus gemma as non-member.
         let services = TestServices::builder()
             .with_providers(ProvidersConfig {
-                providers: vec![ProviderEntry {
+                providers: BTreeMap::from([("ollama".to_owned(), ProviderEntry {
                     model_info: Vec::new(),
-                    name: "ollama".to_owned(),
                     backend: "ollama".to_owned(),
                     models: vec![
                         "gemma".to_owned(),
@@ -609,7 +606,7 @@ mod tests {
                     requires_key: false,
                     extra_body: None,
                     context_length: None,
-                }],
+                })]),
                 aliases: vec![],
                 default_provider: None,
             })

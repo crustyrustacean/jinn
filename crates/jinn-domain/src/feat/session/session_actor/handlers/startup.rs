@@ -151,7 +151,7 @@ mod tests {
         // When handling EnvironmentLoaded.
         actor
             .on_environment_loaded(&crate::feat::provider_infra::ProvidersConfig {
-                providers: vec![],
+                providers: std::collections::BTreeMap::new(),
                 aliases: vec![],
                 default_provider: None,
             })
@@ -170,7 +170,7 @@ mod tests {
         // When handling EnvironmentLoaded.
         actor
             .on_environment_loaded(&crate::feat::provider_infra::ProvidersConfig {
-                providers: vec![],
+                providers: std::collections::BTreeMap::new(),
                 aliases: vec![],
                 default_provider: None,
             })
@@ -204,7 +204,7 @@ mod tests {
         // When handling EnvironmentLoaded.
         actor
             .on_environment_loaded(&crate::feat::provider_infra::ProvidersConfig {
-                providers: vec![],
+                providers: std::collections::BTreeMap::new(),
                 aliases: vec![],
                 default_provider: None,
             })
@@ -231,7 +231,7 @@ mod tests {
         // When handling EnvironmentLoaded.
         actor
             .on_environment_loaded(&crate::feat::provider_infra::ProvidersConfig {
-                providers: vec![],
+                providers: std::collections::BTreeMap::new(),
                 aliases: vec![],
                 default_provider: None,
             })
@@ -269,7 +269,7 @@ mod tests {
         // When handling EnvironmentLoaded.
         actor
             .on_environment_loaded(&crate::feat::provider_infra::ProvidersConfig {
-                providers: vec![],
+                providers: std::collections::BTreeMap::new(),
                 aliases: vec![],
                 default_provider: None,
             })
@@ -312,7 +312,7 @@ mod tests {
         // When handling EnvironmentLoaded.
         actor
             .on_environment_loaded(&crate::feat::provider_infra::ProvidersConfig {
-                providers: vec![],
+                providers: std::collections::BTreeMap::new(),
                 aliases: vec![],
                 default_provider: None,
             })
@@ -343,7 +343,7 @@ mod tests {
         // When handling EnvironmentLoaded.
         actor
             .on_environment_loaded(&crate::feat::provider_infra::ProvidersConfig {
-                providers: vec![],
+                providers: std::collections::BTreeMap::new(),
                 aliases: vec![],
                 default_provider: None,
             })
@@ -367,7 +367,7 @@ mod tests {
         // When handling EnvironmentLoaded.
         actor
             .on_environment_loaded(&crate::feat::provider_infra::ProvidersConfig {
-                providers: vec![],
+                providers: std::collections::BTreeMap::new(),
                 aliases: vec![],
                 default_provider: None,
             })
@@ -402,7 +402,7 @@ mod tests {
         // When handling EnvironmentLoaded.
         actor
             .on_environment_loaded(&crate::feat::provider_infra::ProvidersConfig {
-                providers: vec![],
+                providers: std::collections::BTreeMap::new(),
                 aliases: vec![],
                 default_provider: None,
             })
@@ -446,7 +446,7 @@ mod tests {
         // When handling EnvironmentLoaded.
         actor
             .on_environment_loaded(&crate::feat::provider_infra::ProvidersConfig {
-                providers: vec![],
+                providers: std::collections::BTreeMap::new(),
                 aliases: vec![],
                 default_provider: None,
             })
@@ -470,7 +470,7 @@ mod tests {
         // When handling EnvironmentLoaded.
         actor
             .on_environment_loaded(&crate::feat::provider_infra::ProvidersConfig {
-                providers: vec![],
+                providers: std::collections::BTreeMap::new(),
                 aliases: vec![],
                 default_provider: None,
             })
