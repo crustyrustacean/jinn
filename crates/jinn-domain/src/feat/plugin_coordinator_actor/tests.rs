@@ -1,0 +1,315 @@
+//! Coordinator tests using the scripted fake-guest seam.
+//!
+//! The fake replaces the wasm guest with in-process logic speaking the same
+//! NDJSON wire over the same pipes, so these tests exercise the production
+//! handshake, read-pump, and validation paths without a compiled plugin.
+#![allow(clippy::expect_used, reason = "test assertions")]
+
+use std::sync::Arc;
+use std::time::Duration;
+
+use kameo::actor::Spawn;
+
+use crate::common::bus::test_harness::{TestHarness, await_recorded};
+use crate::common::root_supervisor::RootSupervisor;
+use crate::common::state::State;
+use crate::common::tcaps::mint::mint_plugins_cap;
+use crate::feat::plugin::PluginConfig;
+use crate::feat::plugin_coordinator_actor::PluginCoordinatorActor;
+use crate::feat::plugin_coordinator_actor::PluginCoordinatorActorDeps;
+use crate::feat::plugin_coordinator_actor::PluginDirs;
+use crate::feat::plugin_coordinator_actor::protocol::{PluginPhase, PluginStatus};
+
+/// Timeout for awaiting expected plugin outcomes.
+const WAIT: Duration = Duration::from_secs(5);
+
+/// One valid wire `SetThemeEntries` line (hand-encoded JSON to also prove the
+/// raw wire shape survives decode).
+fn theme_line(name: &str, color: &str) -> String {
+    format!(
+        r#"{{"v":1,"seq":2,"ts":0,"type":"set_theme_entries","themes":[{{"name":"{name}","description":null,"colors":{{"focus_accent":"{color}"}}}}]}}"#
+    )
+}
+
+/// Spawns the coordinator with the given plugin entries and fake script.
+async fn spawn_coordinator(
+    harness: &TestHarness,
+    plugins: Vec<PluginConfig>,
+    script: jinn_plugin::FakeGuestScript,
+) -> State {
+    let services = harness.services().await;
+    {
+        let mut prefs = services.user_preferences_storage.read().clone();
+        prefs.plugin = plugins;
+        prefs.disable_builtin_themes_plugin = true;
+        services
+            .user_preferences_storage
+            .save(&prefs)
+            .expect("save prefs");
+    }
+    let state = State::new(crate::common::app_state::AppState::default());
+    let root = RootSupervisor::spawn_root().await;
+    let dirs = PluginDirs {
+        config_dir: std::path::PathBuf::from("/nonexistent"),
+        data_dir: std::path::PathBuf::from("/nonexistent"),
+        engine: Arc::new(
+            jinn_plugin::PluginEngine::new().expect("engine construction"),
+        ),
+        system_data_dir: std::path::PathBuf::from("/nonexistent"),
+    };
+    let actor = PluginCoordinatorActor::supervise(
+        &root,
+        PluginCoordinatorActorDeps {
+            deps: crate::common::actor_deps::ActorDeps {
+                services: services.clone(),
+            },
+            root: root.clone(),
+            state: state.clone(),
+            cap: mint_plugins_cap(),
+            dirs,
+            fake_guest: Arc::new(std::sync::Mutex::new(Some(script))),
+        },
+    )
+    .restart_policy(kameo::supervision::RestartPolicy::Never)
+    .spawn()
+    .await;
+    actor.wait_for_startup().await;
+    state
+}
+
+/// A manifest entry the coordinator will spawn.
+fn entry() -> PluginConfig {
+    PluginConfig {
+        name: "test-plugin".to_owned(),
+        wasm: "test.wasm".to_owned(),
+        grants: vec![],
+        http: false,
+        config: None,
+        enabled: true,
+    }
+}
+
+/// A healthy guest ends up Running on the bus.
+#[tokio::test]
+async fn healthy_guest_reaches_running_phase() {
+    // Given a coordinator with one scripted-healthy plugin and a recorder.
+    let harness = TestHarness::new().await;
+    let recorder = harness.spawn_recorder::<PluginStatus>().await;
+    let state = spawn_coordinator(
+        &harness,
+        vec![entry()],
+        jinn_plugin::FakeGuestScript::HelloThenLines {
+            protocol_version: jinn_plugin_api::PROTOCOL_VERSION,
+            lines: vec![],
+        },
+    )
+    .await;
+
+    // When the guest's status events flow.
+    let _ = state;
+
+    // Then the Running phase is published for it.
+    let messages = await_recorded(&recorder, 1, WAIT).await;
+    assert!(
+        messages
+            .iter()
+            .any(|m| m.name == "test-plugin" && m.phase == PluginPhase::Running),
+        "expected Running for test-plugin, got {messages:?}"
+    );
+}
+
+/// Contributions from a healthy guest land in the cache.
+#[tokio::test]
+async fn set_theme_entries_populates_contribution_cache() {
+    // Given a coordinator with a guest contributing one theme.
+    let harness = TestHarness::new().await;
+    let state = spawn_coordinator(
+        &harness,
+        vec![entry()],
+        jinn_plugin::FakeGuestScript::HelloThenLines {
+            protocol_version: jinn_plugin_api::PROTOCOL_VERSION,
+            lines: vec![theme_line("ocean", "#00aabb")],
+        },
+    )
+    .await;
+
+    // When the contribution arrives (poll: async pipeline).
+    let deadline = tokio::time::Instant::now() + WAIT;
+    loop {
+        if state.read().plugins.theme("ocean").is_some() {
+            break;
+        }
+        assert!(
+            deadline > tokio::time::Instant::now(),
+            "theme contribution never arrived"
+        );
+        tokio::time::sleep(Duration::from_millis(25)).await;
+    }
+
+    // Then the theme is cached with its contributing source.
+    let source = state.read().plugins.theme("ocean").map(|t| t.source.clone());
+    assert_eq!(source.as_deref(), Some("test-plugin"));
+}
+
+/// Malformed input from a guest does not kill it or the app.
+#[tokio::test]
+async fn malformed_lines_are_dropped_not_fatal() {
+    // Given a guest whose wire output includes garbage around a valid line.
+    let harness = TestHarness::new().await;
+    let state = spawn_coordinator(
+        &harness,
+        vec![entry()],
+        jinn_plugin::FakeGuestScript::HelloThenLines {
+            protocol_version: jinn_plugin_api::PROTOCOL_VERSION,
+            lines: vec![
+                "this is not json".to_owned(),
+                theme_line("after-garbage", "#123456"),
+            ],
+        },
+    )
+    .await;
+
+    // When the lines are processed.
+    // Then the valid contribution still lands (garbage dropped).
+    let deadline = tokio::time::Instant::now() + WAIT;
+    loop {
+        if state.read().plugins.theme("after-garbage").is_some() {
+            break;
+        }
+        assert!(deadline > tokio::time::Instant::now(), "valid line after garbage never arrived");
+        tokio::time::sleep(Duration::from_millis(25)).await;
+    }
+}
+
+/// A guest whose stdout closes dies; its cached contributions remain.
+#[tokio::test]
+async fn guest_end_keeps_contributions_and_marks_dead() {
+    // Given a coordinator with a guest that contributes then ends.
+    let harness = TestHarness::new().await;
+    let recorder = harness.spawn_recorder::<PluginStatus>().await;
+    let state = spawn_coordinator(
+        &harness,
+        vec![entry()],
+        jinn_plugin::FakeGuestScript::HelloThenLines {
+            protocol_version: jinn_plugin_api::PROTOCOL_VERSION,
+            lines: vec![theme_line("persisted", "#abcdef")],
+        },
+    )
+    .await;
+
+    // When the guest ends.
+    let messages = await_recorded(&recorder, 1, WAIT).await;
+    assert!(
+        messages
+            .iter()
+            .any(|m| m.name == "test-plugin" && m.phase == PluginPhase::Dead),
+        "expected Dead for test-plugin, got {messages:?}"
+    );
+
+    // Then its contribution is still cached (stale is visible, not erased).
+    assert!(state.read().plugins.theme("persisted").is_some());
+}
+
+/// A guest that never sends Hello times out and dies without contributing.
+#[tokio::test]
+async fn silent_guest_dies_at_handshake() {
+    // Given a coordinator with a guest that says nothing.
+    let harness = TestHarness::new().await;
+    let recorder = harness.spawn_recorder::<PluginStatus>().await;
+    let state = spawn_coordinator(&harness, vec![entry()], jinn_plugin::FakeGuestScript::Silent)
+        .await;
+
+    // When the handshake timeout lapses.
+    let messages = await_recorded(&recorder, 1, WAIT).await;
+    assert!(
+        messages
+            .iter()
+            .any(|m| m.name == "test-plugin" && m.phase == PluginPhase::Dead),
+        "expected Dead for test-plugin, got {messages:?}"
+    );
+
+    // Then nothing was contributed.
+    assert_eq!(state.read().plugins.themes().count(), 0);
+}
+
+/// A first message that is not Hello fails the handshake.
+#[tokio::test]
+async fn non_hello_first_message_fails_handshake() {
+    // Given a coordinator with a guest whose first line is a contribution.
+    let harness = TestHarness::new().await;
+    let recorder = harness.spawn_recorder::<PluginStatus>().await;
+    let state = spawn_coordinator(
+        &harness,
+        vec![entry()],
+        jinn_plugin::FakeGuestScript::FirstLine(theme_line("too-eager", "#000001")),
+    )
+    .await;
+
+    // When the handshake sees the wrong first message.
+    let messages = await_recorded(&recorder, 1, WAIT).await;
+    assert!(
+        messages
+            .iter()
+            .any(|m| m.name == "test-plugin" && m.phase == PluginPhase::Dead),
+        "expected Dead for test-plugin, got {messages:?}"
+    );
+
+    // Then the eager contribution was never accepted.
+    assert!(state.read().plugins.theme("too-eager").is_none());
+}
+
+/// Protocol version mismatch fails the handshake.
+#[tokio::test]
+async fn version_mismatch_fails_handshake() {
+    // Given a coordinator with a guest speaking a different major version.
+    let harness = TestHarness::new().await;
+    let recorder = harness.spawn_recorder::<PluginStatus>().await;
+    let state = spawn_coordinator(
+        &harness,
+        vec![entry()],
+        jinn_plugin::FakeGuestScript::HelloThenLines {
+            protocol_version: jinn_plugin_api::PROTOCOL_VERSION + 1,
+            lines: vec![theme_line("future", "#000002")],
+        },
+    )
+    .await;
+
+    // When the mismatched Hello is rejected.
+    let messages = await_recorded(&recorder, 1, WAIT).await;
+    assert!(
+        messages
+            .iter()
+            .any(|m| m.name == "test-plugin" && m.phase == PluginPhase::Dead),
+        "expected Dead for test-plugin, got {messages:?}"
+    );
+
+    // Then the future version's contributions are not trusted.
+    assert!(state.read().plugins.theme("future").is_none());
+}
+
+/// Reserved names: a user entry using the first-party name is ignored.
+#[tokio::test]
+async fn user_entry_cannot_shadow_first_party_name() {
+    // Given a user entry named like the first-party themes plugin.
+    let harness = TestHarness::new().await;
+    let mut usurper = entry();
+    usurper.name = crate::feat::plugin_coordinator_actor::THEMES_PLUGIN_NAME.to_owned();
+    let recorder = harness.spawn_recorder::<PluginStatus>().await;
+    let state = spawn_coordinator(
+        &harness,
+        vec![usurper],
+        jinn_plugin::FakeGuestScript::HelloThenLines {
+            protocol_version: jinn_plugin_api::PROTOCOL_VERSION,
+            lines: vec![theme_line("usurped", "#000003")],
+        },
+    )
+    .await;
+
+    // When the coordinator spawns entries.
+    // Then the usurper's entry was skipped (no Running event for it) and
+    // nothing was contributed by it — the only phases it could publish are
+    // from the real (missing) first-party wasm, which fails fast here.
+    tokio::time::sleep(Duration::from_millis(200)).await;
+    assert!(state.read().plugins.theme("usurped").is_none());
+    let _ = recorder;
+}

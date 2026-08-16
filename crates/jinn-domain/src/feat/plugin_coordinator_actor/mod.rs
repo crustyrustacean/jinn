@@ -33,6 +33,9 @@ use tokio::sync::mpsc;
 pub mod protocol;
 pub mod translate;
 
+#[cfg(test)]
+mod tests;
+
 use crate::common::actor_deps::{ActorDeps, BusPublish};
 use crate::common::root_supervisor::RootSupervisorRef;
 use crate::common::services::bus_service::BusService;
@@ -56,6 +59,12 @@ pub struct PluginCoordinatorActor {
     dirs: PluginDirs,
     /// Live plugin actors by name.
     spawned: Mutex<HashMap<String, ActorRef<PluginActor>>>,
+    /// Test seam: when set, spawned plugin actors use a scripted fake
+    /// guest instead of a real wasm module (see
+    /// [`jinn_plugin::FakeGuestScript`]). Shared through deps so tests
+    /// can arm it before spawning the coordinator.
+    #[cfg(test)]
+    fake_guest: std::sync::Arc<std::sync::Mutex<Option<jinn_plugin::FakeGuestScript>>>,
 }
 
 /// Directory context the coordinator resolves plugin paths against.
@@ -67,6 +76,8 @@ pub struct PluginDirs {
     pub data_dir: std::path::PathBuf,
     /// The shared wasmtime engine, reused across all plugin guests.
     pub engine: std::sync::Arc<jinn_plugin::PluginEngine>,
+    /// System data dir (`/usr/share/jinn`) — packaged first-party plugins.
+    pub system_data_dir: std::path::PathBuf,
 }
 
 /// Dependencies for [`PluginCoordinatorActor`].
@@ -74,6 +85,10 @@ pub struct PluginDirs {
 pub struct PluginCoordinatorActorDeps {
     /// Common actor dependencies (services + bus).
     pub deps: ActorDeps,
+    /// Test seam: scripted fake guest for spawned plugin actors.
+    /// Production constructs this as `None`.
+    #[cfg(test)]
+    pub fake_guest: std::sync::Arc<std::sync::Mutex<Option<jinn_plugin::FakeGuestScript>>>,
     /// Root supervisor — plugin actors are supervised children of it.
     pub root: RootSupervisorRef,
     /// Shared application state — the contribution cache lives here.
@@ -103,6 +118,8 @@ impl kameo::Actor for PluginCoordinatorActor {
             cap: args.cap,
             dirs: args.dirs,
             spawned: Mutex::new(HashMap::new()),
+            #[cfg(test)]
+            fake_guest: args.fake_guest.clone(),
         };
 
         // Spawn every enabled plugin from jinn.toml.
@@ -160,6 +177,8 @@ impl PluginCoordinatorActor {
                 wasm_path,
                 engine: self.dirs.engine.clone(),
                 inbound_tx: inbound_tx.clone(),
+                #[cfg(test)]
+                fake_guest: self.fake_guest.clone(),
             },
         )
         .restart_policy(RestartPolicy::Never)
@@ -207,27 +226,69 @@ impl PluginCoordinatorActor {
         jinn_plugin::resolve_grants(&path_grants, config.http, config_value, &ctx)
     }
 
-    /// Resolves a plugin's wasm path: absolute, or relative to the plugins dir.
+    /// Resolves a plugin's wasm path: absolute, or relative to a plugins
+    /// dir. The first-party plugin resolves against the system plugins dir
+    /// (packaged with jinn); user plugins against the data plugins dir.
     fn wasm_path(&self, config: &PluginConfig) -> std::path::PathBuf {
         let candidate = std::path::PathBuf::from(&config.wasm);
         if candidate.is_absolute() {
-            candidate
-        } else {
-            self.dirs.data_dir.join("plugins").join(candidate)
+            return candidate;
         }
+        let dir = if config.name == THEMES_PLUGIN_NAME {
+            self.dirs.system_data_dir.join("plugins")
+        } else {
+            self.dirs.data_dir.join("plugins")
+        };
+        dir.join(candidate)
     }
 }
 
 /// Reads the enabled plugin entries from user preferences.
+/// The reserved name for jinn's first-party themes plugin. User entries
+/// with this name are ignored (the auto-registered one wins) so a stale
+/// config cannot shadow or duplicate it.
+pub const THEMES_PLUGIN_NAME: &str = "jinn-themes";
+
 fn enabled_plugins(services: &crate::Services) -> Vec<PluginConfig> {
-    services
+    let mut plugins: Vec<PluginConfig> = services
         .user_preferences_storage
         .read()
         .plugin
         .iter()
-        .filter(|p| p.enabled)
+        .filter(|p| p.enabled && p.name != THEMES_PLUGIN_NAME)
         .cloned()
-        .collect()
+        .collect();
+    // First-party themes plugin: always present, disabled only by an
+    // explicit opt-out key (see `themes_plugin_disabled`).
+    if !themes_plugin_disabled(services) {
+        plugins.push(first_party_themes_plugin());
+    }
+    plugins
+}
+
+/// Whether the user disabled the first-party themes plugin
+/// (`disable_builtin_themes_plugin = true` in jinn.toml).
+fn themes_plugin_disabled(services: &crate::Services) -> bool {
+    services
+        .user_preferences_storage
+        .read()
+        .disable_builtin_themes_plugin
+}
+
+/// The auto-registered first-party themes plugin entry. The `.wasm` is
+/// resolved from jinn's system data dir (packaged) by the host.
+fn first_party_themes_plugin() -> PluginConfig {
+    PluginConfig {
+        name: THEMES_PLUGIN_NAME.to_owned(),
+        wasm: "jinn-themes.wasm".to_owned(),
+        grants: vec![crate::feat::plugin::PluginPathGrant {
+            path: "<config_dir>/themes".to_owned(),
+            writable: false,
+        }],
+        http: false,
+        config: None,
+        enabled: true,
+    }
 }
 
 /// Validates and applies one inbound plugin message.

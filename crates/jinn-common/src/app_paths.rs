@@ -203,6 +203,26 @@ impl AppPaths {
         &self.system_data_dir
     }
 
+    /// Plugin directory (`~/.local/share/jinn/plugins`) — where
+    /// user-installed plugin `.wasm` files live. Relative `wasm` paths in
+    /// `[[plugin]]` entries resolve against this directory.
+    #[must_use]
+    pub fn plugins_dir(&self) -> PathBuf {
+        self.data_dir.join(APP_NAME).join("plugins")
+    }
+
+    /// Config directory (`~/.config/jinn`).
+    #[must_use]
+    pub fn config_dir(&self) -> &Path {
+        &self.config_dir
+    }
+
+    /// Data directory (`~/.local/share/jinn`).
+    #[must_use]
+    pub fn data_dir(&self) -> &Path {
+        &self.data_dir
+    }
+
     /// System themes directory (`/usr/share/jinn/themes`).
     #[must_use]
     pub fn system_themes_dir(&self) -> PathBuf {
