@@ -96,6 +96,7 @@ jinn-theme = { path = "crates/jinn-theme" }
 jinn-web-fetch = { path = "crates/jinn-web-fetch" }
 jinn-web-search = { path = "crates/jinn-web-search" }
 jinn-mcp = { path = "crates/jinn-mcp" }
+jinn-plugin-api = { path = "crates/jinn-plugin-api" }
 
 # Error handling
 wherror = "2.3.1"
