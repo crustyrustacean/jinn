@@ -128,6 +128,7 @@ Entries are added or amended **only with human approval**.
 - (storage) Sessions and chat history persist to a SQLite database (`sessions.db` under the data dir).
 - (storage) User-editable TOML files (`providers.toml`, `jinn.toml`) are written through a comment-preserving `DocumentPatcher`, never via plain serialization.
 - (storage) `jinn.toml` holds user preferences and is auto-created if missing.
+- (storage) Startup fail-fast: a malformed providers.toml or jinn.toml aborts launch before actor wiring with a stderr report naming the path and TOML detail; recovery via jinn config subcommands stays unguarded.
 - (storage) `state.toml` holds machine-managed runtime state (e.g. last-selected model) and is NOT auto-created.
 - (storage) Schema migrations run atomically in a single transaction; a crash or interrupt mid-migration rolls back to the last-applied version, leaving no partial schema.
 - (theme) The TUI supports dynamic themes via TOML files in `~/.config/jinn/themes/*.toml`, supporting ANSI name, ANSI code, hex, and RGB color formats.

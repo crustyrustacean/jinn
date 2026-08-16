@@ -437,12 +437,10 @@ where
             .change_context(UserPreferencesError::Io)
             .attach("failed to read existing jinn.toml")?;
 
-        let mut doc: toml_edit::DocumentMut =
-            existing.parse().map_err(|err: toml_edit::TomlError| {
-                Report::new(UserPreferencesError::Parse)
-                    .attach("failed to parse existing jinn.toml")
-                    .attach(err.to_string())
-            })?;
+        let mut doc: toml_edit::DocumentMut = existing
+            .parse()
+            .change_context(UserPreferencesError::Parse)
+            .attach("failed to parse existing jinn.toml")?;
 
         let new_value = toml::Value::try_from(prefs)
             .change_context(UserPreferencesError::Parse)
