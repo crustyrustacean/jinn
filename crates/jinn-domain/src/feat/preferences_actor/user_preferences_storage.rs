@@ -619,4 +619,33 @@ default_timeout_secs = 180
             default_tool_default_timeout_secs()
         );
     }
+
+    #[rstest::rstest]
+    fn malformed_toml_render_includes_parse_detail() {
+        // Given a jinn.toml with a syntax error (unterminated inline table).
+        use crate::feat::preferences_actor::user_preferences::load_preferences_from;
+        let dir = tempfile::TempDir::new().expect("temp dir");
+        let path = dir.path().join(PREFS_FILE_NAME);
+        std::fs::write(
+            &path,
+            r#"last_model = "ollama/llama3"
+compaction = { threshold = 10"#,
+        )
+        .expect("write");
+
+        // When loading.
+        let result = load_preferences_from(&path);
+
+        // Then the rendered report carries the TOML parse detail with line info.
+        let report = result.expect_err("malformed toml must fail");
+        let rendered = format!("{report:?}");
+        assert!(
+            rendered.contains("TOML parse error"),
+            "missing TOML parse detail: {rendered}"
+        );
+        assert!(
+            rendered.contains("line"),
+            "missing line information: {rendered}"
+        );
+    }
 }
