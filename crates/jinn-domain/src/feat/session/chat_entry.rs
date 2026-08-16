@@ -901,6 +901,27 @@ impl ChatEntry {
         }
     }
 
+    /// Returns the clipboard text for yanking this entry.
+    ///
+    /// Unlike [`Self::text`], tool entries yield their raw payload: a tool
+    /// result yields the untruncated output (`full_content` when present)
+    /// without the tool-name prefix, and a tool call yields the raw JSON
+    /// arguments. ANSI escape sequences are stripped so the clipboard
+    /// carries clean text (e.g. JSON that `jq` can parse directly).
+    #[must_use]
+    pub fn yank_text(&self) -> String {
+        let text = match &self.kind {
+            ChatEntryKind::ToolCall { arguments, .. } => arguments.clone(),
+            ChatEntryKind::ToolResult {
+                content,
+                full_content,
+                ..
+            } => full_content.clone().unwrap_or_else(|| content.clone()),
+            _ => self.text(),
+        };
+        strip_ansi_escapes::strip_str(&text)
+    }
+
     /// Compute a cheap fingerprint of this entry's visual content.
     ///
     /// Two entries with the same visual content produce the same fingerprint.
